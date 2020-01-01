@@ -1,6 +1,6 @@
 module test.claim.fleet_revision_relation_wet_matrix
 
-import std.types { Bool, String }
+import std.types { Bool, String, FilePath, GitRef }
 import extdeps.git.object_store { GitObjectId, git_sha1_object_id, git_object_id_eq }
 import gunbc.live_deploy.revision {
   DeployRevisionRelation,
@@ -11,8 +11,15 @@ import gunbc.live_deploy.revision {
   DivergedHistories,
   RelationUnverifiable,
 }
-import gunbc.fleet_main_revision { FleetRevisionRelationObservation }
-import gunbc.origin_main_revision_observe { observe_fleet_revision_relation_in }
+import gunbc.fleet_main_revision { FleetRevisionRelationObservation, fleet_landed_main_ref_name }
+import gunbc.origin_main_revision_observe {
+  observe_fleet_revision_relation_in,
+  landed_on_admitted_standing,
+  LandedOnAdmittedStanding,
+  TreeLandedOnAdmitted,
+  TreeNotLandedOnAdmitted,
+  TreeLandedUnobserved,
+}
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -195,4 +202,50 @@ test fn a_non_repository_path_is_unverifiable_rather_than_answering() -> Bool {
 test fn no_merge_base_and_could_not_look_stay_distinguishable() -> Bool {
   is_unrelated(r: relation_in(repository_path: fixture_repository_path, current_hex: revision_b_hex, accepted_hex: revision_d_hex))
     && is_unverifiable(r: relation_in(repository_path: fixture_repository_path, current_hex: revision_b_hex, accepted_hex: revision_absent_hex))
+}
+
+// INHABITANCE of landed_on_admitted_standing (review 78554). The belt gate
+// witness supplies TreeLandedOnAdmitted / TreeNotLandedOnAdmitted; this pair
+// is the last execution of ls-remote → classify → those arms against the
+// fixture graph (A ancestor of main B; C sibling of B). Remote "." is the
+// fixture itself so the advertisement is B without a second clone.
+fn fixture_landed_standing(local_hex: String) -> LandedOnAdmittedStanding? {
+  match rev(hex: local_hex) {
+    Present { value: local } =>
+      Present {
+        value: landed_on_admitted_standing(
+          repo: fixture_repository_path as FilePath,
+          remote: ".",
+          ref_name: fleet_landed_main_ref_name as GitRef,
+          local: local,
+        ),
+      }
+    none => none
+  }
+}
+
+test fn landed_standing_inhabits_an_ancestor_as_landed() -> Bool {
+  match fixture_landed_standing(local_hex: revision_a_hex) {
+    Present { value: TreeLandedOnAdmitted { local: _, admitted: adm } } =>
+      match rev(hex: revision_b_hex) {
+        Present { value: main } => git_object_id_eq(left: adm, right: main)
+        none => false
+      }
+    Present { value: TreeNotLandedOnAdmitted { local: _, admitted: _ } } => false
+    Present { value: TreeLandedUnobserved { cause: _ } } => false
+    none => false
+  }
+}
+
+test fn landed_standing_inhabits_a_sibling_as_not_landed() -> Bool {
+  match fixture_landed_standing(local_hex: revision_c_hex) {
+    Present { value: TreeNotLandedOnAdmitted { local: _, admitted: adm } } =>
+      match rev(hex: revision_b_hex) {
+        Present { value: main } => git_object_id_eq(left: adm, right: main)
+        none => false
+      }
+    Present { value: TreeLandedOnAdmitted { local: _, admitted: _ } } => false
+    Present { value: TreeLandedUnobserved { cause: _ } } => false
+    none => false
+  }
 }
