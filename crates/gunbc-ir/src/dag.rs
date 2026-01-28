@@ -31,6 +31,9 @@ pub struct Port {
 #[derive(Debug, Clone, Default)]
 pub struct DagMetadata {
     pub pattern_decisions: Vec<PatternDecisionEntry>,
+    /// If set, the executor uses this node's outputs as the SubDag result
+    /// instead of the last log entry.
+    pub export_node: Option<NodeId>,
 }
 
 /// Records that a tool was evaluated against a pattern and a decision was made.

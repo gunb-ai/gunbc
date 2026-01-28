@@ -165,9 +165,15 @@ pub fn execute<T: Executable>(dag: &Dag<T>) -> Result<ExecutionLog, ExecError> {
                 NodeBody::SubDag(sub_dag) => {
                     let sub_log = execute(sub_dag)?;
                     let mut sub_outputs = HashMap::new();
-                    if let Some(last_entry) = sub_log.entries.last() {
+                    // Use explicit export_node if set, otherwise fall back to last entry
+                    let source_entry = if let Some(ref export_id) = sub_dag.metadata.export_node {
+                        sub_log.entries.iter().find(|e| e.node_id == export_id.0)
+                    } else {
+                        sub_log.entries.last()
+                    };
+                    if let Some(entry) = source_entry {
                         for output_port in &node.outputs {
-                            if let Some(val) = last_entry.outputs.get(&output_port.name.0) {
+                            if let Some(val) = entry.outputs.get(&output_port.name.0) {
                                 sub_outputs.insert(output_port.name.0.clone(), val.clone());
                             }
                         }

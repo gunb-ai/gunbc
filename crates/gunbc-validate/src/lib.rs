@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;
 
-use gunbc_ir::{Dag, Node};
+use gunbc_ir::{Dag, Node, NodeBody};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ValidationError {
@@ -20,6 +20,28 @@ pub enum ValidationError {
     MissingPatternDecision {
         tool: String,
     },
+    UnknownNode {
+        edge_desc: String,
+        node_id: String,
+    },
+    UnknownPort {
+        edge_desc: String,
+        node_id: String,
+        port_name: String,
+    },
+    DuplicateInputEdge {
+        node: String,
+        port: String,
+    },
+    ExportNodeNotFound {
+        wrapper_node: String,
+        export_node: String,
+    },
+    ExportNodeMissingPort {
+        wrapper_node: String,
+        export_node: String,
+        port: String,
+    },
 }
 
 impl fmt::Display for ValidationError {
@@ -36,6 +58,21 @@ impl fmt::Display for ValidationError {
             Self::MissingPatternDecision { tool } => {
                 write!(f, "tool '{tool}' has no pattern decision in DAG metadata")
             }
+            Self::UnknownNode { edge_desc, node_id } => {
+                write!(f, "edge {edge_desc} references unknown node '{node_id}'")
+            }
+            Self::UnknownPort { edge_desc, node_id, port_name } => {
+                write!(f, "edge {edge_desc} references unknown port '{port_name}' on node '{node_id}'")
+            }
+            Self::DuplicateInputEdge { node, port } => {
+                write!(f, "multiple edges target input port '{port}' on node '{node}'")
+            }
+            Self::ExportNodeNotFound { wrapper_node, export_node } => {
+                write!(f, "subdag in node '{wrapper_node}' references nonexistent export_node '{export_node}'")
+            }
+            Self::ExportNodeMissingPort { wrapper_node, export_node, port } => {
+                write!(f, "export_node '{export_node}' in subdag of '{wrapper_node}' is missing output port '{port}'")
+            }
         }
     }
 }
@@ -48,7 +85,9 @@ pub fn validate<T: fmt::Debug>(dag: &Dag<T>) -> Result<(), Vec<ValidationError>>
     check_acyclic(dag, &mut errors);
     check_type_agreement(dag, &mut errors);
     check_port_saturation(dag, &mut errors);
+    check_unique_input_edges(dag, &mut errors);
     check_pattern_decisions(dag, &mut errors);
+    check_export_nodes(dag, &mut errors);
 
     if errors.is_empty() {
         Ok(())
@@ -110,23 +149,59 @@ fn check_type_agreement<T>(dag: &Dag<T>, errors: &mut Vec<ValidationError>) {
     let node_map: HashMap<&str, &Node<T>> = dag.nodes.iter().map(|n| (n.id.0.as_str(), n)).collect();
 
     for edge in &dag.edges {
-        let from_node = node_map.get(edge.from_node.0.as_str());
-        let to_node = node_map.get(edge.to_node.0.as_str());
+        let edge_desc = format!("{}.{} -> {}.{}", edge.from_node.0, edge.from_port.0, edge.to_node.0, edge.to_port.0);
 
-        if let (Some(from), Some(to)) = (from_node, to_node) {
-            let from_type = from.outputs.iter().find(|p| p.name == edge.from_port).map(|p| &p.type_id);
-            let to_type = to.inputs.iter().find(|p| p.name == edge.to_port).map(|p| &p.type_id);
-
-            if let (Some(ft), Some(tt)) = (from_type, to_type) {
-                if ft != tt {
-                    errors.push(ValidationError::TypeMismatch {
-                        edge_from: format!("{}.{}", edge.from_node.0, edge.from_port.0),
-                        edge_to: format!("{}.{}", edge.to_node.0, edge.to_port.0),
-                        from_type: ft.0.clone(),
-                        to_type: tt.0.clone(),
-                    });
-                }
+        let from_node = match node_map.get(edge.from_node.0.as_str()) {
+            Some(n) => n,
+            None => {
+                errors.push(ValidationError::UnknownNode {
+                    edge_desc,
+                    node_id: edge.from_node.0.clone(),
+                });
+                continue;
             }
+        };
+        let to_node = match node_map.get(edge.to_node.0.as_str()) {
+            Some(n) => n,
+            None => {
+                errors.push(ValidationError::UnknownNode {
+                    edge_desc,
+                    node_id: edge.to_node.0.clone(),
+                });
+                continue;
+            }
+        };
+
+        let from_type = match from_node.outputs.iter().find(|p| p.name == edge.from_port) {
+            Some(p) => &p.type_id,
+            None => {
+                errors.push(ValidationError::UnknownPort {
+                    edge_desc,
+                    node_id: edge.from_node.0.clone(),
+                    port_name: edge.from_port.0.clone(),
+                });
+                continue;
+            }
+        };
+        let to_type = match to_node.inputs.iter().find(|p| p.name == edge.to_port) {
+            Some(p) => &p.type_id,
+            None => {
+                errors.push(ValidationError::UnknownPort {
+                    edge_desc,
+                    node_id: edge.to_node.0.clone(),
+                    port_name: edge.to_port.0.clone(),
+                });
+                continue;
+            }
+        };
+
+        if from_type != to_type {
+            errors.push(ValidationError::TypeMismatch {
+                edge_from: format!("{}.{}", edge.from_node.0, edge.from_port.0),
+                edge_to: format!("{}.{}", edge.to_node.0, edge.to_port.0),
+                from_type: from_type.0.clone(),
+                to_type: to_type.0.clone(),
+            });
         }
     }
 }
@@ -149,6 +224,19 @@ fn check_port_saturation<T>(dag: &Dag<T>, errors: &mut Vec<ValidationError>) {
     }
 }
 
+fn check_unique_input_edges<T>(dag: &Dag<T>, errors: &mut Vec<ValidationError>) {
+    let mut seen: HashSet<(String, String)> = HashSet::new();
+    for edge in &dag.edges {
+        let key = (edge.to_node.0.clone(), edge.to_port.0.clone());
+        if !seen.insert(key) {
+            errors.push(ValidationError::DuplicateInputEdge {
+                node: edge.to_node.0.clone(),
+                port: edge.to_port.0.clone(),
+            });
+        }
+    }
+}
+
 fn check_pattern_decisions<T>(dag: &Dag<T>, errors: &mut Vec<ValidationError>) {
     // Collect all unique tool IDs from nodes
     let tools_in_nodes: HashSet<&str> = dag.nodes.iter()
@@ -165,6 +253,38 @@ fn check_pattern_decisions<T>(dag: &Dag<T>, errors: &mut Vec<ValidationError>) {
             errors.push(ValidationError::MissingPatternDecision {
                 tool: tool.to_string(),
             });
+        }
+    }
+}
+
+fn check_export_nodes<T: fmt::Debug>(dag: &Dag<T>, errors: &mut Vec<ValidationError>) {
+    for node in &dag.nodes {
+        if let NodeBody::SubDag(ref sub) = node.body {
+            if let Some(ref export_id) = sub.metadata.export_node {
+                let export_node = sub.nodes.iter().find(|n| n.id == *export_id);
+                match export_node {
+                    None => {
+                        errors.push(ValidationError::ExportNodeNotFound {
+                            wrapper_node: node.id.0.clone(),
+                            export_node: export_id.0.clone(),
+                        });
+                    }
+                    Some(en) => {
+                        for output in &node.outputs {
+                            let has_port = en.outputs.iter().any(|p| {
+                                p.name == output.name && p.type_id == output.type_id
+                            });
+                            if !has_port {
+                                errors.push(ValidationError::ExportNodeMissingPort {
+                                    wrapper_node: node.id.0.clone(),
+                                    export_node: export_id.0.clone(),
+                                    port: output.name.0.clone(),
+                                });
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -204,6 +324,7 @@ mod tests {
                 pattern: "upsert".into(),
                 decision: PatternDecision::Instantiated,
             }).collect(),
+            export_node: None,
         }
     }
 
@@ -272,6 +393,99 @@ mod tests {
         };
         let errs = validate(&dag).unwrap_err();
         assert!(errs.iter().any(|e| matches!(e, ValidationError::UnsatisfiedInput { .. })));
+    }
+
+    fn subdag_node(id: &str, tool: &str, inputs: Vec<Port>, outputs: Vec<Port>, sub: Dag<String>) -> Node<String> {
+        Node {
+            id: NodeId(id.into()),
+            inputs,
+            outputs,
+            metadata: NodeMetadata {
+                tool: ToolId(tool.into()),
+                behavior: BehaviorKind::Pure,
+            },
+            body: NodeBody::SubDag(sub),
+        }
+    }
+
+    #[test]
+    fn valid_export_node_passes() {
+        let inner = Dag {
+            nodes: vec![
+                simple_node("inner_a", "t", vec![], vec![simple_port("result", "String")]),
+            ],
+            edges: vec![],
+            metadata: DagMetadata {
+                pattern_decisions: vec![PatternDecisionEntry {
+                    tool: ToolId("t".into()),
+                    pattern: "upsert".into(),
+                    decision: PatternDecision::Instantiated,
+                }],
+                export_node: Some(NodeId("inner_a".into())),
+            },
+        };
+        let dag = Dag {
+            nodes: vec![
+                subdag_node("wrapper", "t", vec![], vec![simple_port("result", "String")], inner),
+            ],
+            edges: vec![],
+            metadata: decisions_for(&["t"]),
+        };
+        assert!(validate(&dag).is_ok());
+    }
+
+    #[test]
+    fn export_node_not_found() {
+        let inner = Dag {
+            nodes: vec![
+                simple_node("inner_a", "t", vec![], vec![]),
+            ],
+            edges: vec![],
+            metadata: DagMetadata {
+                pattern_decisions: vec![PatternDecisionEntry {
+                    tool: ToolId("t".into()),
+                    pattern: "upsert".into(),
+                    decision: PatternDecision::Instantiated,
+                }],
+                export_node: Some(NodeId("nonexistent".into())),
+            },
+        };
+        let dag = Dag {
+            nodes: vec![
+                subdag_node("wrapper", "t", vec![], vec![], inner),
+            ],
+            edges: vec![],
+            metadata: decisions_for(&["t"]),
+        };
+        let errs = validate(&dag).unwrap_err();
+        assert!(errs.iter().any(|e| matches!(e, ValidationError::ExportNodeNotFound { wrapper_node, export_node } if wrapper_node == "wrapper" && export_node == "nonexistent")));
+    }
+
+    #[test]
+    fn export_node_missing_port() {
+        let inner = Dag {
+            nodes: vec![
+                simple_node("inner_a", "t", vec![], vec![]), // no outputs
+            ],
+            edges: vec![],
+            metadata: DagMetadata {
+                pattern_decisions: vec![PatternDecisionEntry {
+                    tool: ToolId("t".into()),
+                    pattern: "upsert".into(),
+                    decision: PatternDecision::Instantiated,
+                }],
+                export_node: Some(NodeId("inner_a".into())),
+            },
+        };
+        let dag = Dag {
+            nodes: vec![
+                subdag_node("wrapper", "t", vec![], vec![simple_port("result", "String")], inner),
+            ],
+            edges: vec![],
+            metadata: decisions_for(&["t"]),
+        };
+        let errs = validate(&dag).unwrap_err();
+        assert!(errs.iter().any(|e| matches!(e, ValidationError::ExportNodeMissingPort { wrapper_node, export_node, port } if wrapper_node == "wrapper" && export_node == "inner_a" && port == "result")));
     }
 
     #[test]

@@ -212,9 +212,14 @@ impl Executable for GistgenOp {
                 }
 
                 // Real upload via `gh gist create -`
+                let token = match inputs.get("token") {
+                    Some(Value::Secret(s)) => s.as_inner().clone(),
+                    _ => return Err(ExecError("missing or invalid token for gist upload".into())),
+                };
                 eprintln!("Uploading gist ({} bytes)...", snapshot.len());
                 let mut child = Command::new("gh")
                     .args(["gist", "create", "-"])
+                    .env("GH_TOKEN", &token)
                     .stdin(std::process::Stdio::piped())
                     .stdout(std::process::Stdio::piped())
                     .stderr(std::process::Stdio::piped())

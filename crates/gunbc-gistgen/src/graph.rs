@@ -74,6 +74,7 @@ fn build_auth_subdag() -> Dag<GistgenOp> {
             pattern: "upsert".into(),
             decision: PatternDecision::Instantiated,
         }],
+        export_node: Some(NodeId("auth_resolve".into())),
     };
 
     Dag { nodes, edges, metadata }
@@ -101,7 +102,7 @@ pub fn build_gistgen_dag(repo_path: &str, glob: &str, dry_run: bool) -> Dag<Gist
             id: NodeId("auth".into()),
             inputs: vec![],
             outputs: vec![port("token", "Secret")],
-            metadata: meta("auth", BehaviorKind::Observe),
+            metadata: meta("auth", BehaviorKind::WritesWorld(Idempotency::Idempotent)),
             body: NodeBody::SubDag(build_auth_subdag()),
         },
         Node {
@@ -166,6 +167,7 @@ pub fn build_gistgen_dag(repo_path: &str, glob: &str, dry_run: bool) -> Dag<Gist
                 },
             },
         ],
+        export_node: None,
     };
 
     Dag { nodes, edges, metadata }
