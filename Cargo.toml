@@ -1,0 +1,8 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/gunbc-ir",
+    "crates/gunbc-validate",
+    "crates/gunbc-exec",
+    "crates/gunbc-gistgen",
+]

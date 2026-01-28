@@ -249,6 +249,77 @@ handles it.
 
 ---
 
+## Example 4: `gistgen` — Minimal Ontology + Plan
+
+This example shows how a program is rooted in a small ontology of its
+own concepts, while treating external systems as opaque.
+
+### Ontology (minimal)
+
+- **Context**: the root observation source (env, args, time).
+- **Repo**: the repository identity (e.g., path + optional ref).
+- **Snapshot**: the selected files + contents (payload).
+- **RepoSnapshot**: the composition of `Repo` + `Snapshot`.
+- **SelectionSpec**: rules for which files are included.
+- **AuthCapability**: secret token that permits GitHub API calls.
+- **Gist**: a GitHub artifact created from a payload of files.
+- **GistUrl**: the handle returned by GitHub.
+- **Gistgen**: the process that emits a new Gist.
+
+We do **not** model GitHub's internal set theory. The only external
+contract we rely on is: "given payload + auth, GitHub returns a URL."
+
+### Pattern decisions (total, explicit)
+
+| Pattern | Tool | Decision | Reason |
+|---|---|---|---|
+| Upsert | auth | Instantiated | capability resource |
+| Upsert | gistgen | NotApplicable | non-idempotent emission |
+
+### Top-level DAG
+
+```
+Dag {
+    nodes: [
+        Node { id: "context", outputs: [Env, Args, Time], body: Opaque(Context) },
+        Node { id: "auth", inputs: [Env], outputs: [Secret<GithubToken>], body: SubDag(Upsert) },
+        Node { id: "parse_args", inputs: [Args], outputs: [Repo, SelectionSpec], body: Opaque(ParseArgs) },
+        Node { id: "gistgen",
+               inputs: [Repo, SelectionSpec, Secret<GithubToken>],
+               outputs: [GistUrl],
+               body: SubDag(...) },
+    ],
+    edges: [
+        "context/env"              → "auth/env",
+        "context/args"             → "parse_args/args",
+        "parse_args/repo"          → "gistgen/repo",
+        "parse_args/selection_spec"→ "gistgen/selection_spec",
+        "auth/token"               → "gistgen/token",
+    ],
+}
+```
+
+`gistgen` is a **WriteWorld + NonIdempotent** emission. It does not
+pretend to be an upsert. That is the explicit modeling choice.
+
+### Open `gistgen` → Sub-DAG
+
+```
+enumerate_files → filter_files → read_files → compose_snapshot → upload_gist
+```
+
+Behavior metadata (minimal):
+- `enumerate_files`: Observe (reads repo)
+- `filter_files`: Pure (no I/O)
+- `read_files`: Observe (reads disk)
+- `compose_snapshot`: Pure (Repo + Snapshot → RepoSnapshot)
+- `upload_gist`: WritesWorld + NonIdempotent
+
+This gives a concrete, ontology-rooted program without importing any
+external semantics beyond "payload in → URL out."
+
+---
+
 ## What Disappeared
 
 | V1/V2 concept | V3 representation |
