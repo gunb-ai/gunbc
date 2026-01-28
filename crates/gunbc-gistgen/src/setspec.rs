@@ -10,7 +10,7 @@
 //! | Type Category | Cardinality | SetSpec Cases |
 //! |---------------|-------------|---------------|
 //! | Non-nullable scalar (`String`, `Bool`) | always 1 | `One` only |
-//! | Optional scalar (`Option<T>`) | 0..1 | `One`, `Null` |
+//! | Optional scalar (`Option<T>`) | 0..1 | `Zero`, `One`, `Null` |
 //! | Collection (`StrList`, `MapStrStr`) | 0..N | `Zero`, `One`, `N` |
 //! | Optional collection | 0..N | `Zero`, `One`, `N`, `Null` |
 //!

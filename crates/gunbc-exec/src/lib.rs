@@ -7,8 +7,12 @@ use gunbc_ir::{Dag, Node, NodeBody, NodeId};
 
 pub mod guards;
 pub mod lower;
+pub mod progress;
+pub mod terminal;
 
 pub use lower::{lower, LowerError};
+pub use progress::{ExecutionEvent, ExecutionObserver, NullObserver};
+pub use terminal::TerminalObserver;
 
 /// Runtime value flowing between nodes.
 ///
@@ -160,13 +164,23 @@ fn should_skip_node<T>(node: &Node<T>, inputs: &HashMap<String, Value>) -> bool 
 ///
 /// Pipeline: lower → execute flat. The executor has no knowledge of SubDags.
 pub fn execute<T: Executable + Clone>(dag: &Dag<T>) -> Result<ExecutionLog, ExecError> {
+    execute_with_observer(dag, None)
+}
+
+/// Execute a DAG with an optional observer for progress reporting.
+///
+/// Pipeline: lower → execute flat. The executor has no knowledge of SubDags.
+pub fn execute_with_observer<T: Executable + Clone>(
+    dag: &Dag<T>,
+    observer: Option<&mut dyn ExecutionObserver>,
+) -> Result<ExecutionLog, ExecError> {
     let flat = lower(dag).map_err(|e| ExecError(format!("lowering failed: {e}")))?;
     #[cfg(all(debug_assertions, feature = "validate"))]
     {
         gunbc_validate::validate_acyclic(&flat).expect("lowered DAG has cycle");
         gunbc_validate::validate_types(&flat).expect("lowered DAG has type mismatch");
     }
-    execute_flat(&flat)
+    execute_flat_with_observer(&flat, observer)
 }
 
 /// Execute a flat (fully lowered) DAG. All nodes must be Opaque.
@@ -174,14 +188,47 @@ pub fn execute<T: Executable + Clone>(dag: &Dag<T>) -> Result<ExecutionLog, Exec
 /// This is the executor described in SPEC.md §5.3: it sees nodes and edges,
 /// not patterns, sub-DAGs, or levels.
 pub fn execute_flat<T: Executable>(dag: &Dag<T>) -> Result<ExecutionLog, ExecError> {
+    execute_flat_with_observer(dag, None)
+}
+
+/// Execute a flat (fully lowered) DAG with an optional observer.
+///
+/// This is the executor described in SPEC.md §5.3: it sees nodes and edges,
+/// not patterns, sub-DAGs, or levels.
+pub fn execute_flat_with_observer<T: Executable>(
+    dag: &Dag<T>,
+    mut observer: Option<&mut dyn ExecutionObserver>,
+) -> Result<ExecutionLog, ExecError> {
+    use progress::{node_label, summarize_outputs, ExecutionEvent};
+
     let order = topo_sort(dag);
     let node_map: HashMap<&str, &Node<T>> = dag.nodes.iter().map(|n| (n.id.0.as_str(), n)).collect();
 
+    // Emit start event
+    if let Some(ref mut obs) = observer {
+        obs.on_event(ExecutionEvent::ExecutionStarted {
+            total_nodes: order.len(),
+        });
+    }
+
     let mut node_outputs: HashMap<String, HashMap<String, Value>> = HashMap::new();
     let mut entries = Vec::new();
+    let mut nodes_completed = 0;
+    let mut nodes_skipped = 0;
+    let mut nodes_failed = 0;
 
-    for node_id in &order {
+    for (index, node_id) in order.iter().enumerate() {
         let node = node_map[node_id.0.as_str()];
+        let label = node_label(&node_id.0);
+
+        // Emit start event
+        if let Some(ref mut obs) = observer {
+            obs.on_event(ExecutionEvent::NodeStarted {
+                node_id: &node_id.0,
+                label: label.clone(),
+                index,
+            });
+        }
 
         // Gather inputs from upstream edges
         let mut inputs: HashMap<String, Value> = HashMap::new();
@@ -199,15 +246,80 @@ pub fn execute_flat<T: Executable>(dag: &Dag<T>) -> Result<ExecutionLog, ExecErr
         let skip = should_skip_node(node, &inputs);
 
         let outputs = if skip {
-            node.outputs.iter().map(|p| (p.name.0.clone(), Value::Skipped)).collect()
+            nodes_skipped += 1;
+            let outputs: HashMap<String, Value> = node
+                .outputs
+                .iter()
+                .map(|p| (p.name.0.clone(), Value::Skipped))
+                .collect();
+
+            if let Some(ref mut obs) = observer {
+                obs.on_event(ExecutionEvent::NodeSkipped {
+                    node_id: &node_id.0,
+                    label: label.clone(),
+                    index,
+                });
+            }
+
+            outputs
         } else {
             match &node.body {
-                NodeBody::Opaque(op) => op.execute(inputs)?,
+                NodeBody::Opaque(op) => match op.execute(inputs) {
+                    Ok(outputs) => {
+                        nodes_completed += 1;
+                        let summary = summarize_outputs(&outputs, 60);
+
+                        if let Some(ref mut obs) = observer {
+                            obs.on_event(ExecutionEvent::NodeCompleted {
+                                node_id: &node_id.0,
+                                label: label.clone(),
+                                index,
+                                output_summary: summary,
+                            });
+                        }
+
+                        outputs
+                    }
+                    Err(e) => {
+                        nodes_failed += 1;
+                        if let Some(ref mut obs) = observer {
+                            obs.on_event(ExecutionEvent::NodeFailed {
+                                node_id: &node_id.0,
+                                label: label.clone(),
+                                index,
+                                error: &e.0,
+                            });
+                            obs.on_event(ExecutionEvent::ExecutionFinished {
+                                success: false,
+                                nodes_completed,
+                                nodes_skipped,
+                                nodes_failed,
+                            });
+                        }
+                        return Err(e);
+                    }
+                },
                 NodeBody::SubDag(_) => {
-                    return Err(ExecError(format!(
+                    let err = ExecError(format!(
                         "node '{}' is a SubDag — DAG must be lowered before execution",
                         node_id.0
-                    )));
+                    ));
+                    nodes_failed += 1;
+                    if let Some(ref mut obs) = observer {
+                        obs.on_event(ExecutionEvent::NodeFailed {
+                            node_id: &node_id.0,
+                            label: label.clone(),
+                            index,
+                            error: &err.0,
+                        });
+                        obs.on_event(ExecutionEvent::ExecutionFinished {
+                            success: false,
+                            nodes_completed,
+                            nodes_skipped,
+                            nodes_failed,
+                        });
+                    }
+                    return Err(err);
                 }
             }
         };
@@ -216,6 +328,16 @@ pub fn execute_flat<T: Executable>(dag: &Dag<T>) -> Result<ExecutionLog, ExecErr
         entries.push(LogEntry {
             node_id: node_id.0.clone(),
             outputs,
+        });
+    }
+
+    // Emit finish event
+    if let Some(ref mut obs) = observer {
+        obs.on_event(ExecutionEvent::ExecutionFinished {
+            success: true,
+            nodes_completed,
+            nodes_skipped,
+            nodes_failed,
         });
     }
 

@@ -19,6 +19,8 @@
 //! - `HTTP::Response` - HTTP response body
 //! - `File::Write` - file system write
 
+use std::collections::HashSet;
+
 use gunbc_ir::{BoundaryDeclaration, Dag, Node, NodeBody, Port, TypeId};
 
 /// Entrypoint interface type determined by source/sink TypeIds.
@@ -131,17 +133,29 @@ pub fn analyze_entrypoint<T>(dag: &Dag<T>) -> EntrypointInfo {
     let mut source_nodes = Vec::new();
     let mut sink_nodes = Vec::new();
     let mut cli_args = Vec::new();
+    let mut seen_args = HashSet::new();
+    let mut seen_sources = HashSet::new();
+    let mut seen_sinks = HashSet::new();
+
+    let mut wired_inputs: HashSet<(String, String)> = HashSet::new();
+    for edge in &dag.edges {
+        wired_inputs.insert((edge.to_node.0.clone(), edge.to_port.0.clone()));
+    }
 
     for node in &dag.nodes {
-        // Check if this node produces source types (entrypoint input)
-        let is_source = node.outputs.iter().any(is_source_port);
-        if is_source {
+        // Nodes with any unbound input are entrypoint sources.
+        let has_unbound = node
+            .inputs
+            .iter()
+            .any(|p| !wired_inputs.contains(&(node.id.0.clone(), p.name.0.clone())));
+        if has_unbound && seen_sources.insert(node.id.0.clone()) {
             source_nodes.push(node.id.0.clone());
+        }
 
-            // Extract CLI arg specs from output ports
-            for port in &node.outputs {
-                if is_cli_source(&port.type_id) || !port.type_id.0.starts_with("CLI::") {
-                    // For non-CLI types on source nodes, treat as CLI args
+        // Unbound input ports are external inputs (CLI args for CLI entrypoints).
+        for port in &node.inputs {
+            if !wired_inputs.contains(&(node.id.0.clone(), port.name.0.clone())) {
+                if seen_args.insert(port.name.0.clone()) {
                     cli_args.push(CliArgSpec {
                         name: port.name.0.clone(),
                         type_id: port.type_id.0.clone(),
@@ -153,10 +167,36 @@ pub fn analyze_entrypoint<T>(dag: &Dag<T>) -> EntrypointInfo {
             }
         }
 
+        // Check if this node produces source types (entrypoint input)
+        let is_source = node.outputs.iter().any(is_source_port);
+        if is_source {
+            if seen_sources.insert(node.id.0.clone()) {
+                source_nodes.push(node.id.0.clone());
+            }
+
+            // Extract CLI arg specs from output ports
+            for port in &node.outputs {
+                if is_cli_source(&port.type_id) || !port.type_id.0.starts_with("CLI::") {
+                    // For non-CLI types on source nodes, treat as CLI args
+                    if seen_args.insert(port.name.0.clone()) {
+                        cli_args.push(CliArgSpec {
+                            name: port.name.0.clone(),
+                            type_id: port.type_id.0.clone(),
+                            required: port.guard.is_none(),
+                            default: None,
+                            help: None,
+                        });
+                    }
+                }
+            }
+        }
+
         // Check if this node consumes sink types (entrypoint output)
         let is_sink = node.inputs.iter().any(is_sink_port);
         if is_sink {
-            sink_nodes.push(node.id.0.clone());
+            if seen_sinks.insert(node.id.0.clone()) {
+                sink_nodes.push(node.id.0.clone());
+            }
         }
     }
 
@@ -326,6 +366,28 @@ mod tests {
         let leaves = find_leaf_nodes(&dag);
         assert_eq!(leaves.len(), 1);
         assert_eq!(leaves[0].id.0, "process");
+    }
+
+    #[test]
+    fn test_analyze_entrypoint_unbound_inputs() {
+        let dag = Dag {
+            nodes: vec![
+                Node {
+                    id: NodeId("worker".into()),
+                    inputs: vec![port("repo", "String")],
+                    outputs: vec![port("out", "String")],
+                    body: NodeBody::Opaque(DummyOp),
+                },
+            ],
+            edges: vec![],
+            metadata: DagMetadata::default(),
+        };
+
+        let info = analyze_entrypoint(&dag);
+        assert!(info.source_nodes.iter().any(|n| n == "worker"));
+        let repo_arg = info.cli_args.iter().find(|a| a.name == "repo").unwrap();
+        assert_eq!(repo_arg.type_id, "String");
+        assert!(repo_arg.required);
     }
 
     #[test]

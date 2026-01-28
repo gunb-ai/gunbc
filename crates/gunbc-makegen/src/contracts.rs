@@ -1,5 +1,5 @@
 use gunbc_contracts::*;
-use gunbc_ir::{PortName, TypeId};
+use gunbc_ir::{NodeId, PortName, TypeId};
 
 pub fn context_block() -> BlockContract {
     BlockContract {
@@ -7,8 +7,6 @@ pub fn context_block() -> BlockContract {
         inputs: vec![],
         outputs: vec![
             PortContract { name: PortName("workspace_path".into()), type_id: TypeId("String".into()), optional: false, guard: None },
-            PortContract { name: PortName("per_crate_targets".into()), type_id: TypeId("Bool".into()), optional: false, guard: None },
-            PortContract { name: PortName("lint_targets".into()), type_id: TypeId("Bool".into()), optional: false, guard: None },
             PortContract { name: PortName("output_path".into()), type_id: TypeId("String".into()), optional: false, guard: None },
             PortContract { name: PortName("force".into()), type_id: TypeId("Bool".into()), optional: false, guard: None },
         ],
@@ -22,69 +20,20 @@ pub fn check_block() -> BlockContract {
             PortContract { name: PortName("workspace_path".into()), type_id: TypeId("String".into()), optional: false, guard: None },
             PortContract { name: PortName("output_path".into()), type_id: TypeId("String".into()), optional: false, guard: None },
             PortContract { name: PortName("force".into()), type_id: TypeId("Bool".into()), optional: false, guard: None },
-            PortContract { name: PortName("per_crate_targets".into()), type_id: TypeId("Bool".into()), optional: false, guard: None },
-            PortContract { name: PortName("lint_targets".into()), type_id: TypeId("Bool".into()), optional: false, guard: None },
         ],
         outputs: vec![
             PortContract { name: PortName("input_hash".into()), type_id: TypeId("String".into()), optional: false, guard: None },
             PortContract { name: PortName("makefile_path".into()), type_id: TypeId("String".into()), optional: false, guard: None },
             PortContract { name: PortName("needs_generate".into()), type_id: TypeId("Bool".into()), optional: false, guard: None },
             PortContract { name: PortName("file_exists".into()), type_id: TypeId("Bool".into()), optional: false, guard: None },
-            PortContract { name: PortName("workspace_path".into()), type_id: TypeId("String".into()), optional: false, guard: None },
-            PortContract { name: PortName("per_crate_targets".into()), type_id: TypeId("Bool".into()), optional: false, guard: None },
-            PortContract { name: PortName("lint_targets".into()), type_id: TypeId("Bool".into()), optional: false, guard: None },
         ],
     }
 }
 
-pub fn parse_workspace_block() -> BlockContract {
+pub fn compose_block() -> BlockContract {
     BlockContract {
-        id: "parse_workspace".into(),
+        id: "compose".into(),
         inputs: vec![
-            PortContract { name: PortName("needs_generate".into()), type_id: TypeId("Bool".into()), optional: false, guard: Some("needs_generate == true".into()) },
-            PortContract { name: PortName("workspace_path".into()), type_id: TypeId("String".into()), optional: false, guard: None },
-        ],
-        outputs: vec![
-            PortContract { name: PortName("crate_names".into()), type_id: TypeId("StrList".into()), optional: false, guard: None },
-            PortContract { name: PortName("crate_paths".into()), type_id: TypeId("StrList".into()), optional: false, guard: None },
-            PortContract { name: PortName("crate_is_bin".into()), type_id: TypeId("StrList".into()), optional: false, guard: None },
-            PortContract { name: PortName("crate_is_lib".into()), type_id: TypeId("StrList".into()), optional: false, guard: None },
-        ],
-    }
-}
-
-pub fn generate_targets_block() -> BlockContract {
-    BlockContract {
-        id: "generate_targets".into(),
-        inputs: vec![
-            PortContract { name: PortName("crate_names".into()), type_id: TypeId("StrList".into()), optional: false, guard: None },
-            PortContract { name: PortName("per_crate_targets".into()), type_id: TypeId("Bool".into()), optional: false, guard: None },
-            PortContract { name: PortName("lint_targets".into()), type_id: TypeId("Bool".into()), optional: false, guard: None },
-        ],
-        outputs: vec![
-            PortContract { name: PortName("targets".into()), type_id: TypeId("StrList".into()), optional: false, guard: None },
-        ],
-    }
-}
-
-pub fn generate_rules_block() -> BlockContract {
-    BlockContract {
-        id: "generate_rules".into(),
-        inputs: vec![
-            PortContract { name: PortName("targets".into()), type_id: TypeId("StrList".into()), optional: false, guard: None },
-            PortContract { name: PortName("crate_names".into()), type_id: TypeId("StrList".into()), optional: false, guard: None },
-        ],
-        outputs: vec![
-            PortContract { name: PortName("rules".into()), type_id: TypeId("StrList".into()), optional: false, guard: None },
-        ],
-    }
-}
-
-pub fn compose_makefile_block() -> BlockContract {
-    BlockContract {
-        id: "compose_makefile".into(),
-        inputs: vec![
-            PortContract { name: PortName("rules".into()), type_id: TypeId("StrList".into()), optional: false, guard: None },
             PortContract { name: PortName("input_hash".into()), type_id: TypeId("String".into()), optional: false, guard: None },
         ],
         outputs: vec![
@@ -128,6 +77,35 @@ pub fn sink_block(_dry_run: bool) -> BlockContract {
     }
 }
 
+pub fn makegen_pattern() -> PatternContract {
+    PatternContract {
+        name: "makegen".into(),
+        slots: vec![
+            SlotContract { node_id: NodeId("context".into()), block_id: "context".into() },
+            SlotContract { node_id: NodeId("check".into()), block_id: "check".into() },
+            SlotContract { node_id: NodeId("compose".into()), block_id: "compose".into() },
+            SlotContract { node_id: NodeId("resolve".into()), block_id: "resolve".into() },
+            SlotContract { node_id: NodeId("sink".into()), block_id: "sink".into() },
+        ],
+        edges: vec![
+            EdgeContract { from_node: NodeId("context".into()), from_port: PortName("workspace_path".into()), to_node: NodeId("check".into()), to_port: PortName("workspace_path".into()) },
+            EdgeContract { from_node: NodeId("context".into()), from_port: PortName("output_path".into()), to_node: NodeId("check".into()), to_port: PortName("output_path".into()) },
+            EdgeContract { from_node: NodeId("context".into()), from_port: PortName("force".into()), to_node: NodeId("check".into()), to_port: PortName("force".into()) },
+            EdgeContract { from_node: NodeId("check".into()), from_port: PortName("input_hash".into()), to_node: NodeId("compose".into()), to_port: PortName("input_hash".into()) },
+            EdgeContract { from_node: NodeId("compose".into()), from_port: PortName("content".into()), to_node: NodeId("resolve".into()), to_port: PortName("content".into()) },
+            EdgeContract { from_node: NodeId("check".into()), from_port: PortName("input_hash".into()), to_node: NodeId("resolve".into()), to_port: PortName("input_hash".into()) },
+            EdgeContract { from_node: NodeId("check".into()), from_port: PortName("makefile_path".into()), to_node: NodeId("resolve".into()), to_port: PortName("makefile_path".into()) },
+            EdgeContract { from_node: NodeId("check".into()), from_port: PortName("needs_generate".into()), to_node: NodeId("resolve".into()), to_port: PortName("needs_generate".into()) },
+            EdgeContract { from_node: NodeId("check".into()), from_port: PortName("file_exists".into()), to_node: NodeId("resolve".into()), to_port: PortName("file_exists".into()) },
+            EdgeContract { from_node: NodeId("resolve".into()), from_port: PortName("content".into()), to_node: NodeId("sink".into()), to_port: PortName("content".into()) },
+            EdgeContract { from_node: NodeId("resolve".into()), from_port: PortName("needs_write".into()), to_node: NodeId("sink".into()), to_port: PortName("needs_write".into()) },
+            EdgeContract { from_node: NodeId("resolve".into()), from_port: PortName("makefile_path".into()), to_node: NodeId("sink".into()), to_port: PortName("makefile_path".into()) },
+            EdgeContract { from_node: NodeId("resolve".into()), from_port: PortName("file_existed".into()), to_node: NodeId("sink".into()), to_port: PortName("file_existed".into()) },
+        ],
+        export_slot: NodeId("sink".into()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -137,10 +115,7 @@ mod tests {
         let blocks: Vec<BlockContract> = vec![
             context_block(),
             check_block(),
-            parse_workspace_block(),
-            generate_targets_block(),
-            generate_rules_block(),
-            compose_makefile_block(),
+            compose_block(),
             resolve_block(),
             sink_block(true),
         ];

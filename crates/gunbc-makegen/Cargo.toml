@@ -6,10 +6,11 @@ edition = "2021"
 [dependencies]
 gunbc-ir = { path = "../gunbc-ir" }
 gunbc-exec = { path = "../gunbc-exec" }
+gunbc-contracts = { path = "../gunbc-contracts" }
+gunbc-spec = { path = "../gunbc-spec" }
+gunbc-test = { path = "../gunbc-test" }
 clap = { version = "4", features = ["derive"] }
-toml = "0.8"
 sha2 = "0.10"
 
 [dev-dependencies]
 tempfile = "3"
-gunbc-contracts = { path = "../gunbc-contracts" }

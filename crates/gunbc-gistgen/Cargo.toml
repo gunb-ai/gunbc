@@ -12,6 +12,7 @@ gunbc-ir = { path = "../gunbc-ir" }
 gunbc-exec = { path = "../gunbc-exec" }
 gunbc-test = { path = "../gunbc-test" }
 gunbc-contracts = { path = "../gunbc-contracts" }
+gunbc-spec = { path = "../gunbc-spec" }
 ignore = "0.4"
 globset = "0.4"
 serde_json = "1"

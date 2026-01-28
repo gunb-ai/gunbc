@@ -1,0 +1,9 @@
+[package]
+name = "gunbc-deps"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+gunbc-exec = { path = "../gunbc-exec" }
+gunbc-ir = { path = "../gunbc-ir" }
+gunbc-validate = { path = "../gunbc-validate" }

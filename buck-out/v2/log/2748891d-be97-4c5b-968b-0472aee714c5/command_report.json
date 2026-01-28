@@ -1,0 +1,10 @@
+{
+  "trace_id": "2748891d-be97-4c5b-968b-0472aee714c5",
+  "exit_code": 3,
+  "error_messages": [
+    "Error running analysis for `root//:buck_test (<unspecified>)`\n\nCaused by:\n    Traceback (most recent call last):\n      File <builtin>, in <module>\n      * buck2/prelude.bzl:21, in _buck_test_impl\n          ExternalRunnerTestInfo(\n      File <builtin>, in ExternalRunnerTestInfo\n    error: Missing parameter `type` for call to `ExternalRunnerTestInfo`\n      --> buck2/prelude.bzl:21:9\n       |\n    21 |           ExternalRunnerTestInfo(\n       |  _________^\n    22 | |             command = [\"bash\", \"-c\", ctx.attrs.cmd],\n    23 | |             test_type = \"buck_test\",\n    24 | |             run_from_project_root = True,\n    25 | |         ),\n       | |_________^\n       |\n    "
+  ],
+  "finalizing_error_messages": [
+    "'invocation recorder' failed to finalize\n\nCaused by:\n    Scribe sink not enabled (internal error)"
+  ]
+}

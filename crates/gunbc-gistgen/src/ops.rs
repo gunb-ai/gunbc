@@ -119,22 +119,32 @@ impl Executable for GistgenCoreOp {
                     .and_then(|v| if let Value::Str(s) = v { Some(s.clone()) } else { None })
                     .unwrap_or_else(|| ".".into());
 
-                let mut files = Vec::new();
-                let walker = ignore::WalkBuilder::new(&repo)
-                    .hidden(false)
-                    .git_ignore(true)
-                    .git_global(true)
-                    .git_exclude(true)
-                    .build();
+                let repo_path = Path::new(&repo);
+                let mut files = match git_ls_files(&repo) {
+                    Ok(files) => files,
+                    Err(_) => {
+                        let mut fallback = Vec::new();
+                        let walker = ignore::WalkBuilder::new(&repo)
+                            .hidden(false)
+                            .git_ignore(true)
+                            .git_global(true)
+                            .git_exclude(true)
+                            .build();
 
-                for entry in walker {
-                    match entry {
-                        Ok(e) if e.file_type().map_or(false, |ft| ft.is_file()) => {
-                            files.push(e.path().to_string_lossy().into_owned());
+                        for entry in walker {
+                            match entry {
+                                Ok(e)
+                                    if e.file_type().map_or(false, |ft| ft.is_file())
+                                        && !is_git_dir(e.path()) =>
+                                {
+                                    fallback.push(normalize_repo_relative(repo_path, e.path()));
+                                }
+                                _ => {}
+                            }
                         }
-                        _ => {}
+                        fallback
                     }
-                }
+                };
                 files.sort();
                 let mut out = HashMap::new();
                 out.insert("files".into(), Value::StrList(files));
@@ -173,18 +183,35 @@ impl Executable for GistgenCoreOp {
                     .get("files")
                     .and_then(|v| if let Value::StrList(v) = v { Some(v.clone()) } else { None })
                     .unwrap_or_default();
+                let repo = inputs
+                    .get("repo")
+                    .and_then(|v| if let Value::Str(s) = v { Some(s.clone()) } else { None })
+                    .unwrap_or_else(|| ".".into());
+                let repo_path = Path::new(&repo);
 
                 let mut contents = BTreeMap::new();
                 for path in &file_list {
                     if path.is_empty() {
                         continue;
                     }
-                    match std::fs::read_to_string(path) {
+                    let file_path = Path::new(path);
+                    let (read_path, key) = if file_path.is_absolute() {
+                        let key = file_path
+                            .strip_prefix(repo_path)
+                            .unwrap_or(file_path)
+                            .to_string_lossy()
+                            .into_owned();
+                        (file_path.to_path_buf(), key)
+                    } else {
+                        (repo_path.join(file_path), path.clone())
+                    };
+
+                    match std::fs::read_to_string(&read_path) {
                         Ok(content) => {
-                            contents.insert(path.clone(), content);
+                            contents.insert(key, content);
                         }
                         Err(e) => {
-                            contents.insert(path.clone(), format!("[error reading file: {e}]"));
+                            contents.insert(key, format!("[error reading file: {e}]"));
                         }
                     }
                 }
@@ -490,3 +517,37 @@ fn fnv1a_hash(input: &str) -> u64 {
     hash
 }
 
+fn git_ls_files(repo: &str) -> Result<Vec<String>, ExecError> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(repo)
+        .args(["ls-files", "-co", "--exclude-standard", "-z"])
+        .output()
+        .map_err(|e| ExecError(format!("git ls-files failed: {e}")))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(ExecError(format!("git ls-files failed: {stderr}")));
+    }
+
+    let mut files = Vec::new();
+    for entry in output.stdout.split(|b| *b == 0) {
+        if entry.is_empty() {
+            continue;
+        }
+        files.push(String::from_utf8_lossy(entry).to_string());
+    }
+    Ok(files)
+}
+
+fn is_git_dir(path: &Path) -> bool {
+    path.components()
+        .any(|c| c.as_os_str() == std::ffi::OsStr::new(".git"))
+}
+
+fn normalize_repo_relative(repo_path: &Path, path: &Path) -> String {
+    path.strip_prefix(repo_path)
+        .unwrap_or(path)
+        .to_string_lossy()
+        .into_owned()
+}

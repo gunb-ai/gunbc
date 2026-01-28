@@ -1,0 +1,12 @@
+[package]
+name = "gunbc-testgen"
+version = "0.1.0"
+edition = "2021"
+build = "build.rs"
+
+[dependencies]
+gunbc-spec = { path = "../gunbc-spec" }
+gunbc-test = { path = "../gunbc-test" }
+gunbc-contracts = { path = "../gunbc-contracts" }
+gunbc-gistgen = { path = "../gunbc-gistgen" }
+gunbc-makegen = { path = "../gunbc-makegen" }

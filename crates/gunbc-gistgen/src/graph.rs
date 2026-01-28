@@ -1,4 +1,5 @@
 use gunbc_ir::types::PatternDecision;
+use gunbc_ir::transport::external_types;
 use gunbc_ir::*;
 
 use crate::generated;
@@ -93,7 +94,7 @@ pub fn build_gistgen_dag_with_payload(
         },
         Node {
             id: NodeId("read_files".into()),
-            inputs: vec![port("files", "StrList")],
+            inputs: vec![port("repo", "String"), port("files", "StrList")],
             outputs: vec![port("contents", "MapStrStr")],
             body: NodeBody::Opaque(GistgenOp::Core(GistgenCoreOp::ReadFiles)),
         },
@@ -137,6 +138,7 @@ pub fn build_gistgen_dag_with_payload(
         edge("context", "selection_spec", "filter_files", "selection_spec"),
         edge("enumerate_files", "files", "filter_files", "files"),
         edge("filter_files", "files", "read_files", "files"),
+        edge("context", "repo", "read_files", "repo"),
         edge("auth", "token", "gist", "token"),
         edge("build_gist_request", "request", "gist", "request"),
     ];
@@ -169,9 +171,19 @@ pub fn build_gistgen_dag_with_payload(
             },
         ],
         export_node: None,
-        boundary_declarations: vec![],
+        boundary_declarations: vec![
+            BoundaryDeclaration {
+                node: NodeId("enumerate_files".into()),
+                port: PortName("files".into()),
+                external_type: external_types::git_repo(),
+            },
+            BoundaryDeclaration {
+                node: NodeId("read_files".into()),
+                port: PortName("contents".into()),
+                external_type: external_types::fs_read(),
+            },
+        ],
     };
 
     Dag { nodes, edges, metadata }
 }
-

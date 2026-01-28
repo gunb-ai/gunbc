@@ -24,6 +24,9 @@ pub mod contracts;
 // Tests are generated from these, not written manually.
 pub mod setspec;
 
+// Behavioral specs for test generation.
+pub mod behavior;
+
 // Re-export public API
 pub use ops::{GistgenCoreOp, GistgenOp};
 pub use graph::{build_gistgen_dag, build_gistgen_dag_with_payload, GistPayloadMode, UnderstandingMode};

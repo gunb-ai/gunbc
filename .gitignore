@@ -1,5 +1,6 @@
 # Cargo build artifacts — reproducible from source
 /target/
+/vendor/
 
 # Editor/IDE state
 .idea/

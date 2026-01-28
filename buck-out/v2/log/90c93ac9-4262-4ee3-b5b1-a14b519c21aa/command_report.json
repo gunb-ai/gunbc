@@ -1,0 +1,10 @@
+{
+  "trace_id": "90c93ac9-4262-4ee3-b5b1-a14b519c21aa",
+  "exit_code": 130,
+  "error_messages": [
+    "Broken pipe (os error 32)"
+  ],
+  "finalizing_error_messages": [
+    "'invocation recorder' failed to finalize\n\nCaused by:\n    Scribe sink not enabled (internal error)"
+  ]
+}

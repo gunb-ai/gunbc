@@ -3,6 +3,7 @@
 //! This binary wraps the gunbc-gistgen core library and exposes it via a CLI interface.
 
 use clap::Parser;
+use gunbc_exec::TerminalObserver;
 use gunbc_gistgen::{GistPayloadMode, UnderstandingMode};
 
 #[derive(Parser, Debug)]
@@ -63,13 +64,19 @@ fn main() {
         return;
     }
 
-    eprintln!("DAG constructed ({} nodes, {} edges)", dag.nodes.len(), dag.edges.len());
-
-    // Execute
-    match gunbc_exec::execute(&dag) {
+    // Execute with progress observer
+    let mut observer = TerminalObserver::new("gistgen");
+    match gunbc_exec::execute_with_observer(&dag, Some(&mut observer)) {
         Ok(log) => {
-            eprintln!("\nExecution log:");
-            eprint!("{log}");
+            // Extract and display the gist URL if present
+            // Look for the extract_gist_url node which has the final URL
+            if let Some(entry) = log.entries.iter().find(|e| e.node_id.contains("extract_gist_url"))
+            {
+                if let Some(gunbc_exec::Value::Str(url)) = entry.outputs.get("gist_url") {
+                    eprintln!();
+                    eprintln!("  Gist URL: {url}");
+                }
+            }
         }
         Err(e) => {
             eprintln!("Execution failed: {e}");

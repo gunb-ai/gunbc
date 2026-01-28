@@ -13,7 +13,7 @@ use gunbc_ir::{Dag, Node, NodeBody};
 ///
 /// All types can be viewed through set semantics:
 /// - Non-nullable scalar (`String`, `Bool`): always cardinality 1 → `One` only
-/// - Optional scalar (`Option<T>`): `One` or `Null` (Null = missing input)
+/// - Optional scalar (`Option<T>`): `Zero`, `One`, `Null` (Null = missing input)
 /// - Collection (`StrList`, `MapStrStr`): cardinality 0..N → `Zero`, `One`, `N`
 /// - Optional collection: `Zero`, `One`, `N`, `Null` (Null = missing input)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

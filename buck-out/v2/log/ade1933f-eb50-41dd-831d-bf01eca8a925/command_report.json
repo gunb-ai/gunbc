@@ -1,0 +1,10 @@
+{
+  "trace_id": "ade1933f-eb50-41dd-831d-bf01eca8a925",
+  "exit_code": 3,
+  "error_messages": [
+    "package `prelude//rust:` does not exist\n    missing `BUCK` file (also missing alternatives `BUCK.v2`)"
+  ],
+  "finalizing_error_messages": [
+    "'invocation recorder' failed to finalize\n\nCaused by:\n    Scribe sink not enabled (internal error)"
+  ]
+}

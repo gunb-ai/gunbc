@@ -1,0 +1,10 @@
+{
+  "trace_id": "7adfcd58-5758-40a7-a34a-fdd6c1fedc9f",
+  "exit_code": 3,
+  "error_messages": [
+    "Error creating cell resolver\n\nCaused by:\n    0: Parsing cells\n    1: No cell name for the root path, add an entry for `.`"
+  ],
+  "finalizing_error_messages": [
+    "'invocation recorder' failed to finalize\n\nCaused by:\n    Scribe sink not enabled (internal error)"
+  ]
+}

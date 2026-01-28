@@ -49,6 +49,9 @@ pub mod external_types {
     pub fn github_gist() -> TypeId { TypeId("External::GitHub::Gist".into()) }
     pub fn github_auth() -> TypeId { TypeId("External::GitHub::Auth".into()) }
 
+    // Git layer
+    pub fn git_repo() -> TypeId { TypeId("External::Git::Repo".into()) }
+
     // Filesystem layer
     pub fn fs_read() -> TypeId { TypeId("External::FS::Read".into()) }
     pub fn fs_write() -> TypeId { TypeId("External::FS::Write".into()) }
