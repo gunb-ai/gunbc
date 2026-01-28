@@ -10,11 +10,12 @@ path = "src/lib.rs"
 [dependencies]
 gunbc-ir = { path = "../gunbc-ir" }
 gunbc-exec = { path = "../gunbc-exec" }
+gunbc-test = { path = "../gunbc-test" }
+gunbc-contracts = { path = "../gunbc-contracts" }
 ignore = "0.4"
 globset = "0.4"
+serde_json = "1"
+tempfile = "3"
 
 [dev-dependencies]
-tempfile = "3"
-gunbc-contracts = { path = "../gunbc-contracts" }
 gunbc-codegen = { path = "../gunbc-codegen" }
-gunbc-test = { path = "../gunbc-test" }

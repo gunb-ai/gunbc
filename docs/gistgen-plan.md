@@ -57,14 +57,16 @@ Node contracts (minimal):
 ## 5. `gistgen` Emit Sub-DAG
 
 ```
-enumerate_files → filter_files → read_files → compose_snapshot → upload_gist
+enumerate_files → filter_files → read_files → compose_snapshot → wrap_single_gist_file
+                                                    ↓
+                                          build_gist_request → gist_create
 ```
 
 - `enumerate_files`: Observe
 - `filter_files`: Pure
 - `read_files`: Observe
 - `compose_snapshot`: Pure (Repo + Snapshot → RepoSnapshot)
-- `upload_gist`: WritesWorld + NonIdempotent
+- `gist_create`: WritesWorld + NonIdempotent (GitHub::Gist layer)
 
 ---
 
@@ -83,7 +85,7 @@ enumerate_files → filter_files → read_files → compose_snapshot → upload_
 1. Minimal IR: Node, Dag, Port, Edge.
 2. `PatternDecision` plumbing + validation.
 3. Auth Upsert node (`Env -> Secret<GithubToken>`).
-4. Gistgen emit pipeline ending in `upload_gist`.
+4. Gistgen emit pipeline ending in `gist_create`.
 5. CLI builds the DAG and executes it.
 
 ---

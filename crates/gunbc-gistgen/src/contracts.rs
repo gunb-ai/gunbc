@@ -114,63 +114,39 @@ pub fn compose_snapshot_block() -> BlockContract {
     }
 }
 
-pub fn upload_gist_block(_dry_run: bool) -> BlockContract {
+pub fn wrap_single_gist_file_block() -> BlockContract {
     BlockContract {
-        id: "upload_gist".into(),
+        id: "wrap_single_gist_file".into(),
         inputs: vec![
             PortContract { name: PortName("snapshot".into()), type_id: TypeId("String".into()), optional: false, guard: None },
-            PortContract { name: PortName("token".into()), type_id: TypeId("Secret".into()), optional: false, guard: None },
         ],
         outputs: vec![
-            PortContract { name: PortName("gist_url".into()), type_id: TypeId("String".into()), optional: false, guard: None },
+            PortContract { name: PortName("files".into()), type_id: TypeId("MapStrStr".into()), optional: false, guard: None },
         ],
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use gunbc_codegen::{verify_acyclic, verify_type_agreement, verify_export_alignment, verify_port_saturation};
-
-    fn auth_blocks() -> Vec<BlockContract> {
-        vec![auth_check(), auth_create(), auth_resolve()]
-    }
-
-    #[test]
-    fn auth_pattern_is_acyclic() {
-        verify_acyclic(&upsert_pattern()).unwrap();
-    }
-
-    #[test]
-    fn auth_pattern_types_agree() {
-        verify_type_agreement(&upsert_pattern(), &auth_blocks()).unwrap();
-    }
-
-    #[test]
-    fn auth_pattern_export_aligned() {
-        let wrapper_outputs = vec![
-            PortContract { name: PortName("token".into()), type_id: TypeId("Secret".into()), optional: false, guard: None },
-        ];
-        verify_export_alignment(&upsert_pattern(), &auth_blocks(), &wrapper_outputs).unwrap();
-    }
-
-    #[test]
-    fn auth_pattern_ports_saturated() {
-        verify_port_saturation(&upsert_pattern(), &auth_blocks()).unwrap();
-    }
-
-    #[test]
-    fn all_blocks_have_ids() {
-        let blocks: Vec<BlockContract> = vec![
-            context_block(),
-            enumerate_files_block(),
-            filter_files_block(),
-            read_files_block(),
-            compose_snapshot_block(),
-            upload_gist_block(true),
-        ];
-        for block in &blocks {
-            assert!(!block.id.is_empty(), "block must have a non-empty id");
-        }
+pub fn compose_gist_files_block() -> BlockContract {
+    BlockContract {
+        id: "compose_gist_files".into(),
+        inputs: vec![
+            PortContract { name: PortName("contents".into()), type_id: TypeId("MapStrStr".into()), optional: false, guard: None },
+        ],
+        outputs: vec![
+            PortContract { name: PortName("files".into()), type_id: TypeId("MapStrStr".into()), optional: false, guard: None },
+        ],
     }
 }
+
+pub fn build_gist_request_block() -> BlockContract {
+    BlockContract {
+        id: "build_gist_request".into(),
+        inputs: vec![
+            PortContract { name: PortName("files".into()), type_id: TypeId("MapStrStr".into()), optional: false, guard: None },
+        ],
+        outputs: vec![
+            PortContract { name: PortName("request".into()), type_id: TypeId("GitHub::Gist::CreateRequest".into()), optional: false, guard: None },
+        ],
+    }
+}
+

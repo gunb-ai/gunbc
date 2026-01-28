@@ -305,7 +305,9 @@ pretend to be an upsert. That is the explicit modeling choice.
 ### Open `gistgen` → Sub-DAG
 
 ```
-enumerate_files → filter_files → read_files → compose_snapshot → upload_gist
+enumerate_files → filter_files → read_files → compose_snapshot → wrap_single_gist_file
+                                                    ↓
+                                          build_gist_request → gist_create
 ```
 
 Behavior metadata (minimal):
@@ -313,7 +315,7 @@ Behavior metadata (minimal):
 - `filter_files`: Pure (no I/O)
 - `read_files`: Observe (reads disk)
 - `compose_snapshot`: Pure (Repo + Snapshot → RepoSnapshot)
-- `upload_gist`: WritesWorld + NonIdempotent
+- `gist_create`: WritesWorld + NonIdempotent (GitHub::Gist layer)
 
 This gives a concrete, ontology-rooted program without importing any
 external semantics beyond "payload in → URL out."

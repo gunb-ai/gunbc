@@ -3,10 +3,12 @@ use std::path::Path;
 use std::process::Command;
 
 use gunbc_exec::{ExecError, Executable, Value};
+use gunbc_ir::transport::gist::GistOp;
+use serde_json::json;
 
-/// The operation type for gistgen nodes.
+/// Core operation type for gistgen nodes.
 #[derive(Debug, Clone)]
-pub enum GistgenOp {
+pub enum GistgenCoreOp {
     Context {
         repo_path: String,
         glob_pattern: String,
@@ -18,16 +20,25 @@ pub enum GistgenOp {
     FilterFiles,
     ReadFiles,
     ComposeSnapshot,
-    /// Real gist upload - actually calls GitHub API.
-    GistUploadReal,
-    /// Mock gist upload - returns mock URL without network.
-    GistUploadMock,
+    /// Convert a snapshot string into a single-file gist map.
+    WrapSingleGistFile,
+    /// Convert a map of file contents into a gist files map.
+    ComposeGistFiles,
+    /// Build a Create Gist request JSON string.
+    BuildGistCreateRequest,
 }
 
-impl Executable for GistgenOp {
+/// Union op type used by gistgen DAGs.
+#[derive(Debug, Clone)]
+pub enum GistgenOp {
+    Core(GistgenCoreOp),
+    Gist(GistOp),
+}
+
+impl Executable for GistgenCoreOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         match self {
-            GistgenOp::Context { repo_path, glob_pattern } => {
+            GistgenCoreOp::Context { repo_path, glob_pattern } => {
                 let mut out = HashMap::new();
                 let abs_path = std::fs::canonicalize(repo_path)
                     .unwrap_or_else(|_| std::path::PathBuf::from(repo_path));
@@ -36,7 +47,7 @@ impl Executable for GistgenOp {
                 Ok(out)
             }
 
-            GistgenOp::AuthCheck => {
+            GistgenCoreOp::AuthCheck => {
                 let mut out = HashMap::new();
                 // Try GITHUB_TOKEN env var first
                 if let Ok(token) = std::env::var("GITHUB_TOKEN") {
@@ -64,7 +75,7 @@ impl Executable for GistgenOp {
                 Ok(out)
             }
 
-            GistgenOp::AuthCreate => {
+            GistgenCoreOp::AuthCreate => {
                 eprintln!("No GitHub token found. Please authenticate with `gh auth login`.");
                 let login_status = Command::new("gh")
                     .args(["auth", "login"])
@@ -90,8 +101,9 @@ impl Executable for GistgenOp {
                 Ok(out)
             }
 
-            GistgenOp::AuthResolve => {
-                let token = inputs.get("check_token")
+            GistgenCoreOp::AuthResolve => {
+                let token = inputs
+                    .get("check_token")
                     .filter(|v| !matches!(v, Value::Skipped))
                     .or_else(|| inputs.get("create_token").filter(|v| !matches!(v, Value::Skipped)))
                     .cloned()
@@ -101,8 +113,9 @@ impl Executable for GistgenOp {
                 Ok(out)
             }
 
-            GistgenOp::EnumerateFiles => {
-                let repo = inputs.get("repo")
+            GistgenCoreOp::EnumerateFiles => {
+                let repo = inputs
+                    .get("repo")
                     .and_then(|v| if let Value::Str(s) = v { Some(s.clone()) } else { None })
                     .unwrap_or_else(|| ".".into());
 
@@ -128,11 +141,13 @@ impl Executable for GistgenOp {
                 Ok(out)
             }
 
-            GistgenOp::FilterFiles => {
-                let file_list = inputs.get("files")
+            GistgenCoreOp::FilterFiles => {
+                let file_list = inputs
+                    .get("files")
                     .and_then(|v| if let Value::StrList(v) = v { Some(v.clone()) } else { None })
                     .unwrap_or_default();
-                let spec = inputs.get("selection_spec")
+                let spec = inputs
+                    .get("selection_spec")
                     .and_then(|v| if let Value::Str(s) = v { Some(s.clone()) } else { None })
                     .unwrap_or_else(|| "**/*".into());
 
@@ -140,7 +155,8 @@ impl Executable for GistgenOp {
                     .map_err(|e| ExecError(format!("Invalid glob pattern '{spec}': {e}")))?
                     .compile_matcher();
 
-                let filtered: Vec<String> = file_list.into_iter()
+                let filtered: Vec<String> = file_list
+                    .into_iter()
                     .filter(|line| {
                         let p = Path::new(line);
                         glob.is_match(p) || glob.is_match(p.file_name().unwrap_or_default())
@@ -152,8 +168,9 @@ impl Executable for GistgenOp {
                 Ok(out)
             }
 
-            GistgenOp::ReadFiles => {
-                let file_list = inputs.get("files")
+            GistgenCoreOp::ReadFiles => {
+                let file_list = inputs
+                    .get("files")
                     .and_then(|v| if let Value::StrList(v) = v { Some(v.clone()) } else { None })
                     .unwrap_or_default();
 
@@ -176,8 +193,9 @@ impl Executable for GistgenOp {
                 Ok(out)
             }
 
-            GistgenOp::ComposeSnapshot => {
-                let contents = inputs.get("contents")
+            GistgenCoreOp::ComposeSnapshot => {
+                let contents = inputs
+                    .get("contents")
                     .and_then(|v| if let Value::MapStrStr(m) = v { Some(m.clone()) } else { None })
                     .unwrap_or_default();
 
@@ -190,169 +208,285 @@ impl Executable for GistgenOp {
                 Ok(out)
             }
 
-            GistgenOp::GistUploadMock => {
-                let snapshot = inputs.get("snapshot")
+            GistgenCoreOp::WrapSingleGistFile => {
+                let snapshot = inputs
+                    .get("snapshot")
                     .and_then(|v| if let Value::Str(s) = v { Some(s.clone()) } else { None })
                     .unwrap_or_default();
-                let token_display = match inputs.get("token") {
-                    Some(Value::Secret(_)) => "<REDACTED>".to_string(),
-                    Some(v) => format!("{v}"),
-                    None => "none".into(),
-                };
 
-                eprintln!("[MOCK] Would upload gist:");
-                eprintln!("  Token: {token_display}");
-                eprintln!("  Snapshot length: {} bytes", snapshot.len());
-                if !snapshot.is_empty() {
-                    let preview_len = snapshot.len().min(200);
-                    eprintln!("  Preview: {}...", &snapshot[..preview_len]);
-                }
+                let mut files = BTreeMap::new();
+                files.insert("snapshot.md".into(), snapshot);
                 let mut out = HashMap::new();
-                out.insert("gist_url".into(), Value::Str("https://gist.github.com/mock/preview".into()));
+                out.insert("files".into(), Value::MapStrStr(files));
                 Ok(out)
             }
 
-            GistgenOp::GistUploadReal => {
-                let snapshot = inputs.get("snapshot")
-                    .and_then(|v| if let Value::Str(s) = v { Some(s.clone()) } else { None })
+            GistgenCoreOp::ComposeGistFiles => {
+                let contents = inputs
+                    .get("contents")
+                    .and_then(|v| if let Value::MapStrStr(m) = v { Some(m.clone()) } else { None })
                     .unwrap_or_default();
 
-                // Real upload via `gh gist create -`
-                let token = match inputs.get("token") {
-                    Some(Value::Secret(s)) => s.as_inner().clone(),
-                    _ => return Err(ExecError("missing or invalid token for gist upload".into())),
-                };
-                eprintln!("Uploading gist ({} bytes)...", snapshot.len());
-                let mut child = Command::new("gh")
-                    .args(["gist", "create", "-"])
-                    .env("GH_TOKEN", &token)
-                    .stdin(std::process::Stdio::piped())
-                    .stdout(std::process::Stdio::piped())
-                    .stderr(std::process::Stdio::piped())
-                    .spawn()
-                    .map_err(|e| ExecError(format!("Failed to spawn gh: {e}")))?;
-
-                use std::io::Write;
-                if let Some(mut stdin) = child.stdin.take() {
-                    stdin.write_all(snapshot.as_bytes())
-                        .map_err(|e| ExecError(format!("Failed to write to gh stdin: {e}")))?;
+                let mut files = BTreeMap::new();
+                for (path, content) in contents {
+                    let name = Path::new(&path)
+                        .file_name()
+                        .map(|s| s.to_string_lossy().into_owned())
+                        .unwrap_or(path);
+                    files.insert(name, content);
                 }
 
-                let output = child.wait_with_output()
-                    .map_err(|e| ExecError(format!("Failed to wait for gh: {e}")))?;
-
-                if !output.status.success() {
-                    let stderr = String::from_utf8_lossy(&output.stderr);
-                    return Err(ExecError(format!("gh gist create failed: {stderr}")));
-                }
-
-                let url = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                eprintln!("Gist created: {url}");
                 let mut out = HashMap::new();
-                out.insert("gist_url".into(), Value::Str(url));
+                out.insert("files".into(), Value::MapStrStr(files));
+                Ok(out)
+            }
+
+            GistgenCoreOp::BuildGistCreateRequest => {
+                let files = inputs
+                    .get("files")
+                    .and_then(|v| if let Value::MapStrStr(m) = v { Some(m.clone()) } else { None })
+                    .unwrap_or_default();
+
+                let files_json: serde_json::Map<String, serde_json::Value> = files
+                    .into_iter()
+                    .map(|(name, content)| (name, json!({ "content": content })))
+                    .collect();
+
+                let request = json!({
+                    "description": "gistgen snapshot",
+                    "public": false,
+                    "files": files_json,
+                });
+
+                let request_json = serde_json::to_string(&request)
+                    .map_err(|e| ExecError(format!("failed to serialize gist request: {e}")))?;
+
+                let mut out = HashMap::new();
+                out.insert("request".into(), Value::Str(request_json));
                 Ok(out)
             }
         }
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn enumerate_finds_files() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("a.rs"), "fn main() {}").unwrap();
-        std::fs::write(dir.path().join("b.txt"), "hello").unwrap();
-
-        let mut inputs = HashMap::new();
-        inputs.insert("repo".into(), Value::Str(dir.path().to_string_lossy().into_owned()));
-
-        let op = GistgenOp::EnumerateFiles;
-        let out = op.execute(inputs).unwrap();
-        if let Value::StrList(files) = &out["files"] {
-            let joined = files.join("\n");
-            assert!(joined.contains("a.rs"));
-            assert!(joined.contains("b.txt"));
-        } else {
-            panic!("expected StrList");
+impl Executable for GistgenOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        match self {
+            GistgenOp::Core(op) => op.execute(inputs),
+            GistgenOp::Gist(op) => execute_gist_op(op, inputs),
         }
-    }
-
-    #[test]
-    fn filter_respects_glob() {
-        let mut inputs = HashMap::new();
-        inputs.insert("files".into(), Value::StrList(vec![
-            "src/main.rs".into(), "src/lib.rs".into(), "README.md".into(),
-        ]));
-        inputs.insert("selection_spec".into(), Value::Str("**/*.rs".into()));
-
-        let op = GistgenOp::FilterFiles;
-        let out = op.execute(inputs).unwrap();
-        if let Value::StrList(files) = &out["files"] {
-            assert_eq!(files.len(), 2);
-            assert!(files.iter().any(|f| f.contains("main.rs")));
-            assert!(files.iter().any(|f| f.contains("lib.rs")));
-        } else {
-            panic!("expected StrList");
-        }
-    }
-
-    #[test]
-    fn read_files_returns_map() {
-        let dir = tempfile::tempdir().unwrap();
-        let file_path = dir.path().join("test.txt");
-        std::fs::write(&file_path, "hello world").unwrap();
-
-        let mut inputs = HashMap::new();
-        inputs.insert("files".into(), Value::StrList(vec![
-            file_path.to_string_lossy().into_owned(),
-        ]));
-
-        let op = GistgenOp::ReadFiles;
-        let out = op.execute(inputs).unwrap();
-        if let Value::MapStrStr(map) = &out["contents"] {
-            assert_eq!(map.len(), 1);
-            assert_eq!(map.values().next().unwrap(), "hello world");
-        } else {
-            panic!("expected MapStrStr");
-        }
-    }
-
-    #[test]
-    fn auth_check_reads_env() {
-        std::env::set_var("GITHUB_TOKEN", "test_token_abc");
-        let op = GistgenOp::AuthCheck;
-        let out = op.execute(HashMap::new()).unwrap();
-        assert!(matches!(out.get("token"), Some(Value::Secret(_))));
-        assert!(matches!(out.get("needs_create"), Some(Value::Bool(false))));
-        std::env::remove_var("GITHUB_TOKEN");
-    }
-
-    #[test]
-    fn mock_upload_does_not_call_gh() {
-        let mut inputs = HashMap::new();
-        inputs.insert("snapshot".into(), Value::Str("test snapshot".into()));
-        inputs.insert("token".into(), Value::Secret(gunbc_ir::Secret("tok".into())));
-
-        let op = GistgenOp::GistUploadMock;
-        let out = op.execute(inputs).unwrap();
-        if let Value::Str(url) = &out["gist_url"] {
-            assert!(url.contains("mock"));
-        } else {
-            panic!("expected Str");
-        }
-    }
-
-    #[test]
-    fn auth_resolve_picks_non_skipped() {
-        let mut inputs = HashMap::new();
-        inputs.insert("check_token".into(), Value::Skipped);
-        inputs.insert("create_token".into(), Value::Secret(gunbc_ir::Secret("real_tok".into())));
-
-        let op = GistgenOp::AuthResolve;
-        let out = op.execute(inputs).unwrap();
-        assert!(matches!(out.get("token"), Some(Value::Secret(_))));
     }
 }
+
+fn execute_gist_op(op: &GistOp, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+    match op {
+        GistOp::FormatCreateRequest => {
+            let request_json = get_str(&inputs, "request")?;
+            let value: serde_json::Value = serde_json::from_str(&request_json)
+                .map_err(|e| ExecError(format!("invalid gist request JSON: {e}")))?;
+            validate_gist_request(&value)?;
+
+            let mut out = HashMap::new();
+            out.insert("request_json".into(), Value::Str(request_json));
+            Ok(out)
+        }
+
+        GistOp::CallMock => {
+            let request_json = get_str(&inputs, "request_json")?;
+            let value: serde_json::Value = serde_json::from_str(&request_json)
+                .map_err(|e| ExecError(format!("invalid gist request JSON: {e}")))?;
+            let (files, description) = extract_files_and_description(&value)?;
+
+            let id = format!("{:x}", fnv1a_hash(&request_json));
+            let html_url = format!("https://gist.github.com/mock/{id}");
+            let api_url = format!("https://api.github.com/gists/{id}");
+
+            let files_json: serde_json::Map<String, serde_json::Value> = files
+                .iter()
+                .map(|(name, content)| {
+                    let raw_url = format!("https://gist.github.com/mock/{id}/raw/{name}");
+                    let meta = json!({
+                        "filename": name,
+                        "type": "text/plain",
+                        "language": serde_json::Value::Null,
+                        "raw_url": raw_url,
+                        "size": content.len(),
+                        "truncated": false,
+                        "content": content,
+                        "encoding": "utf-8",
+                    });
+                    (name.clone(), meta)
+                })
+                .collect();
+
+            let response = json!({
+                "id": id,
+                "html_url": html_url,
+                "url": api_url,
+                "files": files_json,
+                "public": false,
+                "description": description,
+                "truncated": false,
+            });
+
+            let response_json = serde_json::to_string(&response)
+                .map_err(|e| ExecError(format!("failed to serialize mock gist response: {e}")))?;
+
+            let mut out = HashMap::new();
+            out.insert("response_json".into(), Value::Str(response_json));
+            Ok(out)
+        }
+
+        GistOp::CallReal => {
+            let request_json = get_str(&inputs, "request_json")?;
+            let value: serde_json::Value = serde_json::from_str(&request_json)
+                .map_err(|e| ExecError(format!("invalid gist request JSON: {e}")))?;
+            let (files, _description) = extract_files_and_description(&value)?;
+
+            let token = match inputs.get("token") {
+                Some(Value::Secret(s)) => s.as_inner().clone(),
+                _ => return Err(ExecError("missing or invalid token for gist upload".into())),
+            };
+
+            let dir = tempfile::tempdir()
+                .map_err(|e| ExecError(format!("failed to create temp dir: {e}")))?;
+            let mut file_paths = Vec::new();
+            for (name, content) in &files {
+                if name.contains('/') || name.contains('\\') {
+                    return Err(ExecError(format!("invalid gist filename '{name}'")));
+                }
+                let path = dir.path().join(name);
+                std::fs::write(&path, content)
+                    .map_err(|e| ExecError(format!("failed to write temp file '{name}': {e}")))?;
+                file_paths.push(path);
+            }
+
+            let mut cmd = Command::new("gh");
+            cmd.arg("gist").arg("create");
+            for path in &file_paths {
+                cmd.arg(path);
+            }
+            cmd.env("GH_TOKEN", &token);
+            let output = cmd
+                .output()
+                .map_err(|e| ExecError(format!("Failed to run gh gist create: {e}")))?;
+
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                return Err(ExecError(format!("gh gist create failed: {stderr}")));
+            }
+
+            let url = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            let response = json!({
+                "id": "",
+                "html_url": url,
+                "url": "",
+                "files": {},
+                "public": false,
+                "description": serde_json::Value::Null,
+                "truncated": false,
+            });
+            let response_json = serde_json::to_string(&response)
+                .map_err(|e| ExecError(format!("failed to serialize gist response: {e}")))?;
+
+            let mut out = HashMap::new();
+            out.insert("response_json".into(), Value::Str(response_json));
+            Ok(out)
+        }
+
+        GistOp::ParseCreateResponse => {
+            let response_json = get_str(&inputs, "response_json")?;
+            serde_json::from_str::<serde_json::Value>(&response_json)
+                .map_err(|e| ExecError(format!("invalid gist response JSON: {e}")))?;
+
+            let mut out = HashMap::new();
+            out.insert("response".into(), Value::Str(response_json));
+            Ok(out)
+        }
+
+        GistOp::ExtractGistUrl => {
+            let response_json = get_str(&inputs, "response")?;
+            let value: serde_json::Value = serde_json::from_str(&response_json)
+                .map_err(|e| ExecError(format!("invalid gist response JSON: {e}")))?;
+            let url = value
+                .get("html_url")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| ExecError("missing html_url in gist response".into()))?;
+
+            let mut out = HashMap::new();
+            out.insert("response".into(), Value::Str(response_json));
+            out.insert("gist_url".into(), Value::Str(url.to_string()));
+            Ok(out)
+        }
+    }
+}
+
+fn get_str(inputs: &HashMap<String, Value>, key: &str) -> Result<String, ExecError> {
+    inputs
+        .get(key)
+        .and_then(|v| if let Value::Str(s) = v { Some(s.clone()) } else { None })
+        .ok_or_else(|| ExecError(format!("missing or invalid '{key}'")))
+}
+
+fn validate_gist_request(value: &serde_json::Value) -> Result<(), ExecError> {
+    let files = value.get("files").and_then(|v| v.as_object())
+        .ok_or_else(|| ExecError("gist request missing 'files' map".into()))?;
+    if files.is_empty() {
+        return Err(ExecError("gist request 'files' map is empty".into()));
+    }
+    for (name, file) in files {
+        if is_reserved_gistfile(name) {
+            return Err(ExecError(format!("gist filename '{name}' is reserved")));
+        }
+        let content = file.get("content").and_then(|v| v.as_str());
+        if content.is_none() {
+            return Err(ExecError(format!("gist file '{name}' missing content")));
+        }
+    }
+    Ok(())
+}
+
+fn extract_files_and_description(
+    value: &serde_json::Value,
+) -> Result<(Vec<(String, String)>, serde_json::Value), ExecError> {
+    let files_value = value.get("files").and_then(|v| v.as_object())
+        .ok_or_else(|| ExecError("gist request missing 'files' map".into()))?;
+    if files_value.is_empty() {
+        return Err(ExecError("gist request 'files' map is empty".into()));
+    }
+
+    let mut files = Vec::new();
+    for (name, file) in files_value {
+        if is_reserved_gistfile(name) {
+            return Err(ExecError(format!("gist filename '{name}' is reserved")));
+        }
+        let content = file
+            .get("content")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ExecError(format!("gist file '{name}' missing content")))?;
+        files.push((name.clone(), content.to_string()));
+    }
+
+    let description = value.get("description")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+
+    Ok((files, description))
+}
+
+fn is_reserved_gistfile(name: &str) -> bool {
+    if let Some(rest) = name.strip_prefix("gistfile") {
+        return !rest.is_empty() && rest.chars().all(|c| c.is_ascii_digit());
+    }
+    false
+}
+
+fn fnv1a_hash(input: &str) -> u64 {
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for b in input.as_bytes() {
+        hash ^= *b as u64;
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    hash
+}
+

@@ -120,7 +120,95 @@ preserve file names and content where possible for test inspection.
 
 ---
 
-## 7. Generation Notes
+## 7. Layer-Owned Mocks + Test Generation
+
+Each layer owns its contract, real SubDAG, mock SubDAG, and test fixtures.
+Mocks are faithful to their layer's request/response shape and do not
+invent new semantics. This enables test generation that composes layers
+and swaps in mocks without changing higher-level tools.
+
+Test strategy:
+- Unit tests: format/parse nodes using lower-layer mocks.
+- Contract tests: feed layer-specific request fixtures into the mock and
+  assert response invariants.
+- Composition tests: compose upper layer -> lower mock, verify that
+  request/response shapes line up (gistgen -> gist mock is canonical).
+
+This ensures mock behavior is grounded in the real service contract.
+
+---
+
+## 8. Test Generation Matrix (Types, Mocks, Expected Evidence)
+
+The generator should produce tests by pairing each layer with the mock
+of the layer directly beneath it. The goal is to show that request/response
+shapes line up across boundaries, and that mock behavior is faithful to
+the contract.
+
+Test categories (intended to be generated):
+
+1) Layer contract tests (same layer inputs -> same layer mock)
+   - Gist layer: CreateRequest fixtures -> Gist mock -> CreateResponse
+     Evidence:
+     - file names preserved
+     - content preserved where not truncated
+     - html_url is stable and derived from request
+     - required fields present (id, url, files)
+
+2) Layer format/parse tests (layer nodes + lower mock)
+   - Gist layer: format_gist_create -> REST mock -> parse_gist_response
+     Evidence:
+     - REST request contains correct method/path/headers
+     - JSON body matches CreateRequest schema
+     - parse yields CreateResponse with expected fields
+
+3) Composition tests (upper layer -> lower mock, cardinality-driven)
+   The generator should prefer fixtures that vary set cardinality:
+   - 0: empty files map (expected reject before REST call)
+   - 1: single file (blob path or map path)
+   - N>1: multiple files (map path)
+   - null: missing/unspecified request (expected reject before REST call)
+
+   These are the "language alignment" cases: they verify the same meaning
+   across layers, not just a happy path.
+
+   Evidence:
+   - request formation matches intended cardinality
+   - invalid cases are rejected at the correct boundary
+   - valid cases produce stable mock gist_url and preserved file names
+
+Mocks used:
+- Gist mock (faithful CreateResponse)
+- REST mock (JSON body)
+- HTTP mock (bytes)
+- TCP mock (bytes/loopback)
+
+Edge cases the matrix should make evident:
+- filename "gistfileNN" rejected or flagged before request formation
+- public flag and description are optional but serialized consistently
+- empty files map rejected before REST call
+- null/missing request rejected before REST call
+
+---
+
+## 9. Op-Set Composition (SetSpec semantics)
+
+When composing DAGs across layers, the op-type universe is the set union
+of each layer's op types. This should use `SetSpec<T>` semantics from
+`gunbc_ir::algebra`:
+
+- Ops(D): SetSpec<OpTypeName> for a DAG D
+- Ops(D_composed) = union of Ops(D_i)
+- Empty means no ops (invalid for real DAGs)
+- Universal means unknown/any (codegen must refuse or use a fallback)
+
+The union enum used by composed test DAGs must be generated from the
+resulting set (deduplicated, deterministic order). It should not be
+hand-curated.
+
+---
+
+## 10. Generation Notes
 
 - The request/response structs should be generated from the contract
   types once codegen supports it.
@@ -129,7 +217,7 @@ preserve file names and content where possible for test inspection.
 
 ---
 
-## 8. References
+## 10. References
 
 - GitHub REST API: Create a gist
   https://docs.github.com/en/rest/gists/gists#create-a-gist

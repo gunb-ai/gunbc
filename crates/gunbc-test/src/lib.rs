@@ -5,6 +5,245 @@ use std::sync::Arc;
 use gunbc_exec::{ExecError, Executable, ExecutionLog, Value};
 use gunbc_ir::{Dag, Node, NodeBody};
 
+// =============================================================================
+// SetSpec: Cardinality-based test generation
+// =============================================================================
+
+/// Cardinality variants for set-based testing.
+///
+/// All types can be viewed through set semantics:
+/// - Non-nullable scalar (`String`, `Bool`): always cardinality 1 → `One` only
+/// - Optional scalar (`Option<T>`): `One` or `Null` (Null = missing input)
+/// - Collection (`StrList`, `MapStrStr`): cardinality 0..N → `Zero`, `One`, `N`
+/// - Optional collection: `Zero`, `One`, `N`, `Null` (Null = missing input)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Cardinality {
+    /// Empty set (0 elements) - empty collection, absent optional
+    Zero,
+    /// Singleton set (1 element) - single element, present optional/scalar
+    One,
+    /// Multiple elements (N > 1)
+    N,
+    /// Null/missing input - truly missing/undefined
+    Null,
+}
+
+impl Cardinality {
+    pub fn all() -> &'static [Cardinality] {
+        &[Cardinality::Zero, Cardinality::One, Cardinality::N, Cardinality::Null]
+    }
+}
+
+impl fmt::Display for Cardinality {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Cardinality::Zero => write!(f, "Zero"),
+            Cardinality::One => write!(f, "One"),
+            Cardinality::N => write!(f, "N"),
+            Cardinality::Null => write!(f, "Null"),
+        }
+    }
+}
+
+/// Output contract for a cardinality case.
+#[derive(Debug, Clone)]
+pub enum SetSpecOutput {
+    /// Operation succeeds with these outputs.
+    Ok(HashMap<String, Value>),
+    /// Operation fails with error containing this substring.
+    Err(String),
+}
+
+impl SetSpecOutput {
+    pub fn ok(outputs: impl IntoIterator<Item = (impl Into<String>, Value)>) -> Self {
+        SetSpecOutput::Ok(outputs.into_iter().map(|(k, v)| (k.into(), v)).collect())
+    }
+
+    pub fn err(contains: impl Into<String>) -> Self {
+        SetSpecOutput::Err(contains.into())
+    }
+}
+
+/// A single test case: inputs and expected output.
+#[derive(Debug, Clone)]
+pub struct SetSpecCase {
+    pub cardinality: Cardinality,
+    pub inputs: HashMap<String, Value>,
+    pub expected: SetSpecOutput,
+}
+
+/// Trait for types that declare their cardinality behavior.
+///
+/// Each implementor declares what happens for 0/1/N/null inputs.
+/// When composed in a graph, the test framework generates all permutations.
+pub trait SetSpec {
+    /// Returns test cases for each cardinality.
+    fn cases() -> Vec<SetSpecCase>;
+
+    /// Optional: port name that carries the "set" (for automatic wiring).
+    fn set_port() -> Option<&'static str> {
+        None
+    }
+}
+
+/// Generate all test permutations for composed SetSpec types.
+pub fn generate_permutations<A: SetSpec, B: SetSpec>() -> Vec<(SetSpecCase, SetSpecCase)> {
+    let a_cases = A::cases();
+    let b_cases = B::cases();
+
+    let mut perms = Vec::new();
+    for a in &a_cases {
+        for b in &b_cases {
+            perms.push((a.clone(), b.clone()));
+        }
+    }
+    perms
+}
+
+// =============================================================================
+// ProducesSpec / AcceptsSpec: Composition-based bug detection
+// =============================================================================
+
+/// What a node PRODUCES for a given input cardinality.
+#[derive(Debug, Clone)]
+pub enum ProducesCase {
+    /// Operation succeeds, producing output with this cardinality.
+    Ok(Cardinality),
+    /// Operation fails for this input cardinality.
+    Err,
+}
+
+/// Trait for types that declare what cardinalities they can produce.
+///
+/// Used in composition checking to verify adjacent nodes are compatible.
+pub trait ProducesSpec {
+    /// Returns (input_cardinality, output_case) pairs.
+    /// Describes what output cardinality results from each input cardinality.
+    fn produces() -> Vec<(Cardinality, ProducesCase)>;
+
+    /// Name of this spec for error messages.
+    fn name() -> &'static str;
+}
+
+/// Trait for types that declare what cardinalities they accept or reject.
+///
+/// Used in composition checking to verify adjacent nodes are compatible.
+pub trait AcceptsSpec {
+    /// Cardinalities this node accepts (valid inputs).
+    fn accepts() -> Vec<Cardinality>;
+
+    /// Cardinalities this node explicitly rejects (should error).
+    fn rejects() -> Vec<Cardinality>;
+
+    /// Name of this spec for error messages.
+    fn name() -> &'static str;
+}
+
+/// An integration bug detected during composition checking.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IntegrationBug {
+    /// Name of the upstream node
+    pub from: &'static str,
+    /// Name of the downstream node
+    pub to: &'static str,
+    /// The cardinality that causes the bug
+    pub cardinality: Cardinality,
+    /// Description of the issue
+    pub issue: IntegrationIssue,
+}
+
+/// Type of integration issue.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum IntegrationIssue {
+    /// A produces something B doesn't handle at all (neither accepts nor rejects).
+    Unhandled,
+    /// A produces something B explicitly rejects - this is a known edge case.
+    /// Not necessarily a bug, but must be tested.
+    KnownRejection,
+}
+
+impl fmt::Display for IntegrationBug {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.issue {
+            IntegrationIssue::Unhandled => {
+                write!(
+                    f,
+                    "BUG: {} can produce {} but {} doesn't handle it",
+                    self.from, self.cardinality, self.to
+                )
+            }
+            IntegrationIssue::KnownRejection => {
+                write!(
+                    f,
+                    "EDGE CASE: {} can produce {} but {} rejects it (test required)",
+                    self.from, self.cardinality, self.to
+                )
+            }
+        }
+    }
+}
+
+/// Result of checking composition between two nodes.
+#[derive(Debug, Clone)]
+pub struct CompositionResult {
+    /// Integration bugs found (Unhandled issues).
+    pub bugs: Vec<IntegrationBug>,
+    /// Known rejections that should be tested.
+    pub edge_cases: Vec<IntegrationBug>,
+}
+
+impl CompositionResult {
+    /// Returns true if no bugs were found.
+    pub fn is_ok(&self) -> bool {
+        self.bugs.is_empty()
+    }
+
+    /// Returns all issues (both bugs and edge cases).
+    pub fn all_issues(&self) -> impl Iterator<Item = &IntegrationBug> {
+        self.bugs.iter().chain(self.edge_cases.iter())
+    }
+}
+
+/// Check composition between producer A and consumer B.
+///
+/// Returns bugs where A can produce cardinalities that B doesn't handle,
+/// and edge cases where A produces cardinalities that B explicitly rejects.
+pub fn check_composition<A: ProducesSpec, B: AcceptsSpec>() -> CompositionResult {
+    let mut bugs = Vec::new();
+    let mut edge_cases = Vec::new();
+
+    let accepts = B::accepts();
+    let rejects = B::rejects();
+
+    for (_input_card, output_case) in A::produces() {
+        let output_card = match output_case {
+            ProducesCase::Ok(card) => card,
+            ProducesCase::Err => continue, // A errors, so nothing flows to B
+        };
+
+        if rejects.contains(&output_card) {
+            // A can produce something B rejects - this is a known edge case
+            edge_cases.push(IntegrationBug {
+                from: A::name(),
+                to: B::name(),
+                cardinality: output_card,
+                issue: IntegrationIssue::KnownRejection,
+            });
+        } else if !accepts.contains(&output_card) {
+            // A can produce something B doesn't handle at all - BUG!
+            bugs.push(IntegrationBug {
+                from: A::name(),
+                to: B::name(),
+                cardinality: output_card,
+                issue: IntegrationIssue::Unhandled,
+            });
+        }
+        // If accepts.contains(&output_card), composition is valid
+    }
+
+    CompositionResult { bugs, edge_cases }
+}
+
 pub type Outputs = HashMap<String, Value>;
 
 #[derive(Clone)]
