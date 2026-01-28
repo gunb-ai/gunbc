@@ -1,11 +1,11 @@
 use gunbc_ir::types::PatternDecision;
 use gunbc_ir::*;
 
-use crate::ops::MakegenOp;
-use crate::types::MakegenConfig;
+use crate::ops::GitignoreOp;
+use crate::types::GitignoreConfig;
 use gunbc_ir::transport::external_types;
 
-/// Build the main DAG for makegen.
+/// Build the main DAG for gitignoregen.
 ///
 /// Structure:
 ///   context → check → compose → sink → resolve
@@ -13,11 +13,11 @@ use gunbc_ir::transport::external_types;
 /// The sink node operation is swapped at build time based on dry_run flag:
 ///   - dry_run=false: FileOp::WriteFile
 ///   - dry_run=true:  FileOp::PrintStdout
-pub fn build_makegen_dag(config: &MakegenConfig, dry_run: bool) -> Dag<MakegenOp> {
+pub fn build_gitignoregen_dag(config: &GitignoreConfig, dry_run: bool) -> Dag<GitignoreOp> {
     let sink_op = if dry_run {
-        MakegenOp::File(gunbc_ir::transport::file::FileOp::PrintStdout)
+        GitignoreOp::File(gunbc_ir::transport::file::FileOp::PrintStdout)
     } else {
-        MakegenOp::File(gunbc_ir::transport::file::FileOp::WriteFile)
+        GitignoreOp::File(gunbc_ir::transport::file::FileOp::WriteFile)
     };
 
     let nodes = vec![
@@ -30,7 +30,7 @@ pub fn build_makegen_dag(config: &MakegenConfig, dry_run: bool) -> Dag<MakegenOp
                 port("force", "Bool"),
                 port("input_hash", "String"),
             ],
-            body: NodeBody::Opaque(MakegenOp::Context {
+            body: NodeBody::Opaque(GitignoreOp::Context {
                 config: config.clone(),
             }),
         },
@@ -48,16 +48,16 @@ pub fn build_makegen_dag(config: &MakegenConfig, dry_run: bool) -> Dag<MakegenOp
                 port("needs_write", "Bool"),
                 port("file_existed", "Bool"),
             ],
-            body: NodeBody::Opaque(MakegenOp::File(
+            body: NodeBody::Opaque(GitignoreOp::File(
                 gunbc_ir::transport::file::FileOp::CheckExisting,
             )),
         },
-        // Compose - generates Makefile content
+        // Compose - generates .gitignore content
         Node {
             id: NodeId("compose".into()),
             inputs: vec![port("input_hash", "String")],
             outputs: vec![port("content", "String")],
-            body: NodeBody::Opaque(MakegenOp::ComposeMakefile),
+            body: NodeBody::Opaque(GitignoreOp::ComposeGitignore),
         },
         // Sink - WriteFile or PrintStdout based on dry_run
         Node {
@@ -76,7 +76,7 @@ pub fn build_makegen_dag(config: &MakegenConfig, dry_run: bool) -> Dag<MakegenOp
             id: NodeId("resolve".into()),
             inputs: vec![port("needs_write", "Bool"), port("write_status", "String")],
             outputs: vec![port("status", "String")],
-            body: NodeBody::Opaque(MakegenOp::File(
+            body: NodeBody::Opaque(GitignoreOp::File(
                 gunbc_ir::transport::file::FileOp::ResolveUpsert,
             )),
         },
@@ -110,7 +110,7 @@ pub fn build_makegen_dag(config: &MakegenConfig, dry_run: bool) -> Dag<MakegenOp
 
     let metadata = DagMetadata {
         pattern_decisions: vec![PatternDecisionEntry {
-            node: NodeId("makegen".into()),
+            node: NodeId("gitignoregen".into()),
             pattern: "upsert".into(),
             decision: PatternDecision::Instantiated,
         }],
@@ -132,8 +132,8 @@ mod tests {
 
     #[test]
     fn dag_executes_dry_run() {
-        let config = MakegenConfig::default();
-        let dag = build_makegen_dag(&config, true);
+        let config = GitignoreConfig::default();
+        let dag = build_gitignoregen_dag(&config, true);
         let log = gunbc_exec::execute(&dag).unwrap();
         assert!(!log.entries.is_empty());
         let resolve_entry = log.entries.iter().find(|e| e.node_id == "resolve").unwrap();
@@ -142,8 +142,8 @@ mod tests {
 
     #[test]
     fn dag_has_pattern_decision() {
-        let config = MakegenConfig::default();
-        let dag = build_makegen_dag(&config, true);
+        let config = GitignoreConfig::default();
+        let dag = build_gitignoregen_dag(&config, true);
         assert_eq!(dag.metadata.pattern_decisions.len(), 1);
         assert_eq!(dag.metadata.pattern_decisions[0].pattern, "upsert");
         assert!(matches!(

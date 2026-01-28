@@ -1,46 +1,40 @@
+use gunbc_ir::transport::external_types;
 use gunbc_ir::types::PatternDecision;
 use gunbc_ir::*;
 
-use crate::ops::MakegenOp;
-use crate::types::MakegenConfig;
-use gunbc_ir::transport::external_types;
+use crate::ops::ToolsgenOp;
+use crate::types::ToolsgenConfig;
 
-/// Build the main DAG for makegen.
+/// Build the DAG for toolsgen.
 ///
 /// Structure:
 ///   context → check → compose → sink → resolve
-///
-/// The sink node operation is swapped at build time based on dry_run flag:
-///   - dry_run=false: FileOp::WriteFile
-///   - dry_run=true:  FileOp::PrintStdout
-pub fn build_makegen_dag(config: &MakegenConfig, dry_run: bool) -> Dag<MakegenOp> {
+pub fn build_toolsgen_dag(config: &ToolsgenConfig, dry_run: bool) -> Dag<ToolsgenOp> {
     let sink_op = if dry_run {
-        MakegenOp::File(gunbc_ir::transport::file::FileOp::PrintStdout)
+        ToolsgenOp::PrintStdout
     } else {
-        MakegenOp::File(gunbc_ir::transport::file::FileOp::WriteFile)
+        ToolsgenOp::WriteFile
     };
 
     let nodes = vec![
-        // Context - produces initial configuration
         Node {
             id: NodeId("context".into()),
             inputs: vec![],
             outputs: vec![
-                port("file_path", "String"),
+                port("workspace_path", "String"),
+                port("output_path", "String"),
                 port("force", "Bool"),
-                port("input_hash", "String"),
             ],
-            body: NodeBody::Opaque(MakegenOp::Context {
+            body: NodeBody::Opaque(ToolsgenOp::Context {
                 config: config.clone(),
             }),
         },
-        // Check - determines if generation is needed
         Node {
             id: NodeId("check".into()),
             inputs: vec![
-                port("file_path", "String"),
+                port("workspace_path", "String"),
+                port("output_path", "String"),
                 port("force", "Bool"),
-                port("input_hash", "String"),
             ],
             outputs: vec![
                 port("input_hash", "String"),
@@ -48,18 +42,14 @@ pub fn build_makegen_dag(config: &MakegenConfig, dry_run: bool) -> Dag<MakegenOp
                 port("needs_write", "Bool"),
                 port("file_existed", "Bool"),
             ],
-            body: NodeBody::Opaque(MakegenOp::File(
-                gunbc_ir::transport::file::FileOp::CheckExisting,
-            )),
+            body: NodeBody::Opaque(ToolsgenOp::Check),
         },
-        // Compose - generates Makefile content
         Node {
             id: NodeId("compose".into()),
             inputs: vec![port("input_hash", "String")],
             outputs: vec![port("content", "String")],
-            body: NodeBody::Opaque(MakegenOp::ComposeMakefile),
+            body: NodeBody::Opaque(ToolsgenOp::ComposeCargoWrapper),
         },
-        // Sink - WriteFile or PrintStdout based on dry_run
         Node {
             id: NodeId("sink".into()),
             inputs: vec![
@@ -71,30 +61,23 @@ pub fn build_makegen_dag(config: &MakegenConfig, dry_run: bool) -> Dag<MakegenOp
             outputs: vec![port("write_status", "String")],
             body: NodeBody::Opaque(sink_op),
         },
-        // Resolve - determines final status
         Node {
             id: NodeId("resolve".into()),
             inputs: vec![port("needs_write", "Bool"), port("write_status", "String")],
             outputs: vec![port("status", "String")],
-            body: NodeBody::Opaque(MakegenOp::File(
-                gunbc_ir::transport::file::FileOp::ResolveUpsert,
-            )),
+            body: NodeBody::Opaque(ToolsgenOp::Resolve),
         },
     ];
 
     let edges = vec![
-        // Context to check
-        edge("context", "file_path", "check", "file_path"),
+        edge("context", "workspace_path", "check", "workspace_path"),
+        edge("context", "output_path", "check", "output_path"),
         edge("context", "force", "check", "force"),
-        edge("context", "input_hash", "check", "input_hash"),
-        // Check to compose
         edge("check", "input_hash", "compose", "input_hash"),
-        // Compose + check to sink
         edge("compose", "content", "sink", "content"),
         edge("check", "needs_write", "sink", "needs_write"),
         edge("check", "file_path", "sink", "file_path"),
         edge("check", "file_existed", "sink", "file_existed"),
-        // Check + sink to resolve
         edge("check", "needs_write", "resolve", "needs_write"),
         edge("sink", "write_status", "resolve", "write_status"),
     ];
@@ -110,7 +93,7 @@ pub fn build_makegen_dag(config: &MakegenConfig, dry_run: bool) -> Dag<MakegenOp
 
     let metadata = DagMetadata {
         pattern_decisions: vec![PatternDecisionEntry {
-            node: NodeId("makegen".into()),
+            node: NodeId("toolsgen".into()),
             pattern: "upsert".into(),
             decision: PatternDecision::Instantiated,
         }],
@@ -132,18 +115,21 @@ mod tests {
 
     #[test]
     fn dag_executes_dry_run() {
-        let config = MakegenConfig::default();
-        let dag = build_makegen_dag(&config, true);
+        let config = ToolsgenConfig::default();
+        let dag = build_toolsgen_dag(&config, true);
         let log = gunbc_exec::execute(&dag).unwrap();
-        assert!(!log.entries.is_empty());
-        let resolve_entry = log.entries.iter().find(|e| e.node_id == "resolve").unwrap();
+        let resolve_entry = log
+            .entries
+            .iter()
+            .find(|e| e.node_id == "resolve")
+            .unwrap();
         assert!(matches!(resolve_entry.outputs.get("status"), Some(Value::Str(_))));
     }
 
     #[test]
     fn dag_has_pattern_decision() {
-        let config = MakegenConfig::default();
-        let dag = build_makegen_dag(&config, true);
+        let config = ToolsgenConfig::default();
+        let dag = build_toolsgen_dag(&config, true);
         assert_eq!(dag.metadata.pattern_decisions.len(), 1);
         assert_eq!(dag.metadata.pattern_decisions[0].pattern, "upsert");
         assert!(matches!(

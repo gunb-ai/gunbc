@@ -10,3 +10,4 @@ gunbc-test = { path = "../gunbc-test" }
 gunbc-contracts = { path = "../gunbc-contracts" }
 gunbc-gistgen = { path = "../gunbc-gistgen" }
 gunbc-makegen = { path = "../gunbc-makegen" }
+gunbc-gitignoregen = { path = "../gunbc-gitignoregen" }

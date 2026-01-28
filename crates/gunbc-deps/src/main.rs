@@ -16,6 +16,7 @@ fn main() {
 
     let list = args.iter().any(|a| a == "--list");
     let svg = args.iter().any(|a| a == "--svg");
+    let dry_run = args.iter().any(|a| a == "--dry-run");
 
     let mode = match value_for(&args, "--mode") {
         Some(v) => match v.as_str() {
@@ -23,10 +24,10 @@ fn main() {
             "upsert" => Mode::Upsert,
             other => exit_err(&format!("unknown mode '{other}'")),
         },
-        None => Mode::Check,
+        None => Mode::Upsert,
     };
 
-    let graph = build_graph(mode);
+    let graph = build_graph(mode, dry_run);
 
     if list {
         for entry in &graph.entries {
@@ -96,7 +97,13 @@ fn value_for(args: &[String], flag: &str) -> Option<String> {
 }
 
 fn print_usage() {
-    println!("usage: gunbc-deps --entry <name> [--mode check|upsert] [--svg] [--list]");
+    println!("usage: gunbc-deps --entry <name> [--mode check|upsert] [--dry-run] [--svg] [--list]");
+    println!();
+    println!("  --entry <name>      Entry point node (e.g. buck_bootstrap, buck_test)");
+    println!("  --mode <mode>       check or upsert (default: upsert)");
+    println!("  --dry-run           Preview install commands without executing");
+    println!("  --svg               Output DAG as SVG visualization");
+    println!("  --list              List available entry points");
 }
 
 fn exit_err(msg: &str) -> ! {

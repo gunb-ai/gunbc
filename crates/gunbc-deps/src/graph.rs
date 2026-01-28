@@ -19,12 +19,65 @@ pub struct DepGraph {
     pub entries: Vec<String>,
 }
 
-pub fn build_graph(mode: Mode) -> DepGraph {
-    let mut builder = GraphBuilder::new();
+pub fn build_graph(mode: Mode, dry_run: bool) -> DepGraph {
+    let mut builder = GraphBuilder::new(dry_run);
 
     // Core deps
-    // TODO(deps): add platform-specific package manager nodes (apt/brew/choco)
-    // and route curl/zstd installs through them.
+    let apt = builder.add_upsert(
+        "apt",
+        DepOp::CheckCommand {
+            name: "apt".to_string(),
+            cmd: r#"case "$(uname -s)" in
+  Linux*) command -v apt-get >/dev/null 2>&1 || command -v apt >/dev/null 2>&1 ;;
+  *) true ;;
+esac"#,
+        },
+        Some(CommandSpec {
+            linux: Some(r#"echo "apt-get not found. Install apt (Debian/Ubuntu) or adjust deps." >&2; exit 1"#),
+            macos: Some("true"),
+            windows: Some("true"),
+        }),
+        &[],
+        mode,
+    );
+
+    let brew = builder.add_upsert(
+        "brew",
+        DepOp::CheckCommand {
+            name: "brew".to_string(),
+            cmd: r#"case "$(uname -s)" in
+  Darwin*) command -v brew >/dev/null 2>&1 ;;
+  *) true ;;
+esac"#,
+        },
+        Some(CommandSpec {
+            linux: Some("true"),
+            macos: Some(r#"echo "Homebrew not found. Install from https://brew.sh" >&2; exit 1"#),
+            windows: Some("true"),
+        }),
+        &[],
+        mode,
+    );
+
+    let choco = builder.add_upsert(
+        "choco",
+        DepOp::CheckCommand {
+            name: "choco".to_string(),
+            cmd: r#"case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*) command -v choco >/dev/null 2>&1 ;;
+  *) true ;;
+esac"#,
+        },
+        Some(CommandSpec {
+            linux: Some("true"),
+            macos: Some("true"),
+            windows: Some(r#"echo "Chocolatey not found. Install from https://chocolatey.org/install" >&2; exit 1"#),
+        }),
+        &[],
+        mode,
+    );
+
+    let package_managers = vec![apt.clone(), brew.clone(), choco.clone()];
     let curl = builder.add_upsert(
         "curl",
         DepOp::CheckCommand {
@@ -33,12 +86,10 @@ pub fn build_graph(mode: Mode) -> DepGraph {
         },
         Some(CommandSpec {
             linux: Some("sudo apt-get update && sudo apt-get install -y curl"),
-            // TODO(deps): add brew install path for curl.
             macos: Some("brew install curl"),
-            // TODO(deps): add choco install path for curl.
             windows: Some("choco install -y curl"),
         }),
-        &[],
+        package_managers.as_slice(),
         mode,
     );
 
@@ -50,12 +101,10 @@ pub fn build_graph(mode: Mode) -> DepGraph {
         },
         Some(CommandSpec {
             linux: Some("sudo apt-get update && sudo apt-get install -y zstd"),
-            // TODO(deps): add brew install path for zstd.
             macos: Some("brew install zstd"),
-            // TODO(deps): add choco install path for zstd.
             windows: Some("choco install -y zstandard"),
         }),
-        &[],
+        package_managers.as_slice(),
         mode,
     );
 
@@ -72,8 +121,13 @@ pub fn build_graph(mode: Mode) -> DepGraph {
             macos: Some(
                 "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y",
             ),
-            // TODO(deps): add rustup installer for Windows (powershell / rustup-init.exe).
-            windows: None,
+            windows: Some(
+                r#"set -e
+TMP="/tmp/rustup-init.exe"
+curl -L https://win.rustup.rs/x86_64 -o "$TMP"
+"$TMP" -y
+rm -f "$TMP""#,
+            ),
         }),
         &[curl.clone()],
         mode,
@@ -88,8 +142,7 @@ pub fn build_graph(mode: Mode) -> DepGraph {
         Some(CommandSpec {
             linux: Some("rustup toolchain install stable && rustup default stable"),
             macos: Some("rustup toolchain install stable && rustup default stable"),
-            // TODO(deps): add windows toolchain install + default selection.
-            windows: None,
+            windows: Some("rustup toolchain install stable && rustup default stable"),
         }),
         &[rustup.clone()],
         mode,
@@ -109,10 +162,48 @@ pub fn build_graph(mode: Mode) -> DepGraph {
                 curl -L \"$URL\" -o \"$TMP\" && zstd -d \"$TMP\" -o \"$OUT\" && chmod +x \"$OUT\" && \
                 mkdir -p \"$HOME/.local/bin\" && mv \"$OUT\" \"$HOME/.local/bin/buck2\"",
             ),
-            // TODO(deps): add macOS buck2 install (brew or release download).
-            macos: None,
-            // TODO(deps): add Windows buck2 install (release download + unpack).
-            windows: None,
+            macos: Some(
+                r#"set -e
+if command -v brew >/dev/null 2>&1; then
+  if brew list buck2 >/dev/null 2>&1; then
+    exit 0
+  fi
+  brew install buck2 || true
+fi
+if command -v buck2 >/dev/null 2>&1; then
+  exit 0
+fi
+ARCH=$(uname -m)
+if [ "$ARCH" = "arm64" ]; then
+  ARCH="aarch64"
+fi
+URL="https://github.com/facebook/buck2/releases/latest/download/buck2-${ARCH}-apple-darwin.zst"
+TMP="/tmp/buck2-${ARCH}-apple-darwin.zst"
+OUT="/tmp/buck2-${ARCH}-apple-darwin"
+curl -L "$URL" -o "$TMP"
+zstd -d "$TMP" -o "$OUT"
+chmod +x "$OUT"
+mkdir -p "$HOME/.cargo/bin"
+mv "$OUT" "$HOME/.cargo/bin/buck2"
+rm -f "$TMP""#,
+            ),
+            windows: Some(
+                r#"set -e
+if command -v choco >/dev/null 2>&1; then
+  choco install -y buck2 || true
+fi
+if command -v buck2 >/dev/null 2>&1; then
+  exit 0
+fi
+URL="https://github.com/facebook/buck2/releases/latest/download/buck2-x86_64-pc-windows-msvc.exe.zst"
+TMP="/tmp/buck2-x86_64-pc-windows-msvc.exe.zst"
+OUT="/tmp/buck2.exe"
+curl -L "$URL" -o "$TMP"
+zstd -d "$TMP" -o "$OUT"
+mkdir -p "$HOME/.cargo/bin"
+mv "$OUT" "$HOME/.cargo/bin/buck2.exe"
+rm -f "$TMP""#,
+            ),
         }),
         &[curl.clone(), zstd.clone()],
         mode,
@@ -187,6 +278,7 @@ pub fn subdag_for_entry(dag: &Dag<DepOp>, entry: &str) -> Result<Dag<DepOp>, Str
 struct GraphBuilder {
     nodes: Vec<Node<DepOp>>,
     edges: Vec<gunbc_ir::dag::Edge>,
+    dry_run: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -196,10 +288,11 @@ struct DepRef {
 }
 
 impl GraphBuilder {
-    fn new() -> Self {
+    fn new(dry_run: bool) -> Self {
         Self {
             nodes: Vec::new(),
             edges: Vec::new(),
+            dry_run,
         }
     }
 
@@ -271,15 +364,25 @@ impl GraphBuilder {
 
         let install_cmd = install.unwrap_or_else(|| CommandSpec::all("false"));
 
+        let install_op = match (mode, self.dry_run) {
+            (Mode::Check, _) => DepOp::FailIfMissing {
+                name: name.to_string(),
+            },
+            (Mode::Upsert, false) => DepOp::InstallCommand {
+                name: name.to_string(),
+                cmd: install_cmd,
+            },
+            (Mode::Upsert, true) => DepOp::PreviewInstall {
+                name: name.to_string(),
+                cmd: install_cmd,
+            },
+        };
+
         self.add_node(
             &install_id,
             install_inputs,
             vec![port("installed", "Bool")],
-            DepOp::InstallCommand {
-                name: name.to_string(),
-                cmd: install_cmd,
-                allow_install: mode == Mode::Upsert,
-            },
+            install_op,
         );
 
         self.add_node(

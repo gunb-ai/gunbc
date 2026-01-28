@@ -17,7 +17,13 @@ pub enum DepOp {
     InstallCommand {
         name: String,
         cmd: CommandSpec,
-        allow_install: bool,
+    },
+    PreviewInstall {
+        name: String,
+        cmd: CommandSpec,
+    },
+    FailIfMissing {
+        name: String,
     },
     ResolveUpsert {
         name: String,
@@ -88,18 +94,7 @@ impl Executable for DepOp {
                 let present = Path::new(path).exists();
                 Ok(outputs_check(name, present))
             }
-            DepOp::InstallCommand {
-                name,
-                cmd,
-                allow_install,
-            } => {
-                if !*allow_install {
-                    return Err(ExecError(format!(
-                        "{} missing and installs are disabled (use upsert mode)",
-                        name
-                    )));
-                }
-
+            DepOp::InstallCommand { name, cmd } => {
                 if let Some(dep_ok) = inputs.get("deps_ok") {
                     if !is_true(dep_ok) {
                         return Err(ExecError(format!("{} prerequisites not satisfied", name)));
@@ -114,6 +109,26 @@ impl Executable for DepOp {
                 let mut outputs = HashMap::new();
                 outputs.insert("installed".to_string(), Value::Bool(true));
                 Ok(outputs)
+            }
+            DepOp::PreviewInstall { name, cmd } => {
+                if let Some(dep_ok) = inputs.get("deps_ok") {
+                    if !is_true(dep_ok) {
+                        return Err(ExecError(format!("{} prerequisites not satisfied", name)));
+                    }
+                }
+
+                let command = cmd.for_current()?;
+                println!("[dry-run] {}: {}", name, command);
+
+                let mut outputs = HashMap::new();
+                outputs.insert("installed".to_string(), Value::Bool(true));
+                Ok(outputs)
+            }
+            DepOp::FailIfMissing { name } => {
+                Err(ExecError(format!(
+                    "{} missing and installs are disabled (use upsert mode)",
+                    name
+                )))
             }
             DepOp::ResolveUpsert { name } => {
                 let present = inputs.get("present").ok_or_else(|| {

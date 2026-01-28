@@ -24,11 +24,13 @@ pub mod tcp;
 pub mod http;
 pub mod rest;
 pub mod gist;
+pub mod file;
 
 pub use tcp::{TcpOp, build_tcp_real, build_tcp_mock};
 pub use http::{HttpOp, build_http_real, build_http_mock};
 pub use rest::{RestOp, build_rest_real, build_rest_mock};
 pub use gist::{GistOp, build_gist_real, build_gist_mock};
+pub use file::{FileOp, build_file_upsert_real, build_file_upsert_mock};
 
 /// External type ID conventions for transport layer boundaries.
 pub mod external_types {

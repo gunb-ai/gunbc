@@ -70,9 +70,9 @@ pub fn resolve_block() -> BlockContract {
     }
 }
 
-pub fn makegen_pattern() -> PatternContract {
+pub fn gitignoregen_pattern() -> PatternContract {
     PatternContract {
-        name: "makegen".into(),
+        name: "gitignoregen".into(),
         slots: vec![
             SlotContract { node_id: NodeId("context".into()), block_id: "context".into() },
             SlotContract { node_id: NodeId("check".into()), block_id: "check".into() },

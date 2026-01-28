@@ -277,6 +277,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "gunbc-file-exec"
+version = "0.1.0"
+dependencies = [
+ "gunbc-exec",
+ "gunbc-ir",
+ "sha2",
+]
+
+[[package]]
 name = "gunbc-gistgen"
 version = "0.1.0"
 dependencies = [
@@ -303,6 +312,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "gunbc-gitignoregen"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "gunbc-contracts",
+ "gunbc-exec",
+ "gunbc-file-exec",
+ "gunbc-ir",
+ "gunbc-spec",
+ "gunbc-test",
+ "sha2",
+ "tempfile",
+]
+
+[[package]]
 name = "gunbc-ir"
 version = "0.1.0"
 
@@ -313,6 +337,7 @@ dependencies = [
  "clap",
  "gunbc-contracts",
  "gunbc-exec",
+ "gunbc-file-exec",
  "gunbc-ir",
  "gunbc-spec",
  "gunbc-test",
@@ -337,11 +362,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "gunbc-test-runner"
+version = "0.1.0"
+
+[[package]]
+name = "gunbc-toolsgen"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "gunbc-exec",
+ "gunbc-ir",
+ "sha2",
+ "tempfile",
+]
+
+[[package]]
 name = "gunbc-testgen"
 version = "0.1.0"
 dependencies = [
  "gunbc-contracts",
  "gunbc-gistgen",
+ "gunbc-gitignoregen",
  "gunbc-makegen",
  "gunbc-spec",
  "gunbc-test",

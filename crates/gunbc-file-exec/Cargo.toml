@@ -1,0 +1,9 @@
+[package]
+name = "gunbc-file-exec"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+gunbc-ir = { path = "../gunbc-ir" }
+gunbc-exec = { path = "../gunbc-exec" }
+sha2 = "0.10"

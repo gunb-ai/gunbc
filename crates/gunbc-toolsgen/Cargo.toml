@@ -1,16 +1,13 @@
 [package]
-name = "gunbc-makegen"
+name = "gunbc-toolsgen"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 gunbc-ir = { path = "../gunbc-ir" }
 gunbc-exec = { path = "../gunbc-exec" }
-gunbc-file-exec = { path = "../gunbc-file-exec" }
-gunbc-contracts = { path = "../gunbc-contracts" }
-gunbc-spec = { path = "../gunbc-spec" }
-gunbc-test = { path = "../gunbc-test" }
 clap = { version = "4", features = ["derive"] }
+sha2 = "0.10"
 
 [dev-dependencies]
 tempfile = "3"

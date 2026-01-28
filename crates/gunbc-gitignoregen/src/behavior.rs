@@ -38,7 +38,7 @@ fn produces_one() -> Vec<(Cardinality, ProducesCase)> {
 
 pub fn tool_spec() -> ToolSpec {
     ToolSpec {
-        tool_name: "makegen",
+        tool_name: "gitignoregen",
         blocks: vec![
             context_block(),
             check_block(),
@@ -46,7 +46,7 @@ pub fn tool_spec() -> ToolSpec {
             sink_block(true),
             resolve_block(),
         ],
-        patterns: vec![makegen_pattern()],
+        patterns: vec![gitignoregen_pattern()],
         type_domains: vec![
             (SpecTypeId("String"), DomainSpec::Scalar),
             (SpecTypeId("Bool"), DomainSpec::Scalar),

@@ -18,6 +18,7 @@ fn main() {
     let tools = vec![
         gunbc_gistgen::behavior::tool_spec(),
         gunbc_makegen::behavior::tool_spec(),
+        gunbc_gitignoregen::behavior::tool_spec(),
     ];
 
     let mut errors = Vec::new();
