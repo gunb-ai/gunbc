@@ -1,0 +1,15 @@
+[package]
+name = "gunbc-makegen"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+gunbc-ir = { path = "../gunbc-ir" }
+gunbc-validate = { path = "../gunbc-validate" }
+gunbc-exec = { path = "../gunbc-exec" }
+clap = { version = "4", features = ["derive"] }
+toml = "0.8"
+sha2 = "0.10"
+
+[dev-dependencies]
+tempfile = "3"

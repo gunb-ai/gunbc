@@ -5,4 +5,6 @@ members = [
     "crates/gunbc-validate",
     "crates/gunbc-exec",
     "crates/gunbc-gistgen",
+    "crates/gunbc-makegen",
+    "crates/gunbc-test",
 ]

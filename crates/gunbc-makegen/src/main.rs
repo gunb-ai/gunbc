@@ -1,22 +1,36 @@
 mod ops;
 mod graph;
+mod types;
 
 use clap::Parser;
+use types::MakegenConfig;
 
 #[derive(Parser, Debug)]
-#[command(name = "gunbc-gistgen", about = "Generate a GitHub Gist from repository files")]
+#[command(name = "gunbc-makegen", about = "Generate a Makefile for a Rust workspace")]
 struct Cli {
-    /// Path to the repository root
-    #[arg(default_value = ".")]
+    /// Path to the workspace root
+    #[arg(long, default_value = ".")]
     path: String,
 
-    /// Glob pattern for file selection
-    #[arg(long, default_value = "**/*")]
-    glob: String,
-
-    /// Print what would be uploaded without actually creating a gist
+    /// Print what would be written without actually creating the Makefile
     #[arg(long)]
     dry_run: bool,
+
+    /// Force regeneration even if up-to-date
+    #[arg(long)]
+    force: bool,
+
+    /// Disable per-crate targets (build-foo, test-foo)
+    #[arg(long)]
+    no_per_crate: bool,
+
+    /// Disable lint targets (lint, fmt)
+    #[arg(long)]
+    no_lint: bool,
+
+    /// Output file path (relative to workspace)
+    #[arg(long, short, default_value = "Makefile")]
+    output: String,
 
     /// Emit node-level SVG graph to stdout and exit
     #[arg(long)]
@@ -33,7 +47,16 @@ struct Cli {
 
 fn main() {
     let cli = Cli::parse();
-    let dag = graph::build_gistgen_dag(&cli.path, &cli.glob, cli.dry_run);
+
+    let config = MakegenConfig {
+        workspace_path: cli.path,
+        per_crate_targets: !cli.no_per_crate,
+        lint_targets: !cli.no_lint,
+        output_path: cli.output,
+        force: cli.force,
+    };
+
+    let dag = graph::build_makegen_dag(&config, cli.dry_run);
 
     if cli.svg_tools {
         println!("{}", gunbc_ir::viz::tools_to_svg(&dag));

@@ -1,0 +1,8 @@
+[package]
+name = "gunbc-test"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+gunbc-ir = { path = "../gunbc-ir" }
+gunbc-exec = { path = "../gunbc-exec" }
