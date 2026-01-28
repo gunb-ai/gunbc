@@ -250,10 +250,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "gunbc-codegen"
+version = "0.1.0"
+dependencies = [
+ "gunbc-contracts",
+ "gunbc-exec",
+ "gunbc-ir",
+]
+
+[[package]]
+name = "gunbc-contracts"
+version = "0.1.0"
+dependencies = [
+ "gunbc-ir",
+]
+
+[[package]]
 name = "gunbc-exec"
 version = "0.1.0"
 dependencies = [
  "gunbc-ir",
+ "gunbc-validate",
 ]
 
 [[package]]
@@ -262,9 +279,11 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "globset",
+ "gunbc-codegen",
+ "gunbc-contracts",
  "gunbc-exec",
  "gunbc-ir",
- "gunbc-validate",
+ "gunbc-test",
  "ignore",
  "tempfile",
 ]
@@ -278,9 +297,9 @@ name = "gunbc-makegen"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "gunbc-contracts",
  "gunbc-exec",
  "gunbc-ir",
- "gunbc-validate",
  "sha2",
  "tempfile",
  "toml",

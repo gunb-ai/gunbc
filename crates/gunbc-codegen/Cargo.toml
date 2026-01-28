@@ -1,0 +1,11 @@
+[package]
+name = "gunbc-codegen"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+gunbc-contracts = { path = "../gunbc-contracts" }
+
+[dev-dependencies]
+gunbc-ir = { path = "../gunbc-ir" }
+gunbc-exec = { path = "../gunbc-exec" }

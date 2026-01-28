@@ -5,6 +5,9 @@ use gunbc_ir::{Dag, Node, NodeBody, NodeId};
 use gunbc_ir::types::Secret;
 
 pub mod guards;
+pub mod lower;
+
+pub use lower::{lower, LowerError};
 
 /// Runtime value flowing between nodes.
 #[derive(Debug, Clone)]
@@ -131,8 +134,24 @@ fn should_skip_node<T>(node: &Node<T>, inputs: &HashMap<String, Value>) -> bool 
     false
 }
 
-/// Execute a DAG.
-pub fn execute<T: Executable>(dag: &Dag<T>) -> Result<ExecutionLog, ExecError> {
+/// Execute a DAG, lowering SubDags first per SPEC.md §5.
+///
+/// Pipeline: lower → execute flat. The executor has no knowledge of SubDags.
+pub fn execute<T: Executable + Clone>(dag: &Dag<T>) -> Result<ExecutionLog, ExecError> {
+    let flat = lower(dag).map_err(|e| ExecError(format!("lowering failed: {e}")))?;
+    #[cfg(all(debug_assertions, feature = "validate"))]
+    {
+        gunbc_validate::validate_acyclic(&flat).expect("lowered DAG has cycle");
+        gunbc_validate::validate_types(&flat).expect("lowered DAG has type mismatch");
+    }
+    execute_flat(&flat)
+}
+
+/// Execute a flat (fully lowered) DAG. All nodes must be Opaque.
+///
+/// This is the executor described in SPEC.md §5.3: it sees nodes and edges,
+/// not patterns, sub-DAGs, or levels.
+pub fn execute_flat<T: Executable>(dag: &Dag<T>) -> Result<ExecutionLog, ExecError> {
     let order = topo_sort(dag);
     let node_map: HashMap<&str, &Node<T>> = dag.nodes.iter().map(|n| (n.id.0.as_str(), n)).collect();
 
@@ -162,29 +181,11 @@ pub fn execute<T: Executable>(dag: &Dag<T>) -> Result<ExecutionLog, ExecError> {
         } else {
             match &node.body {
                 NodeBody::Opaque(op) => op.execute(inputs)?,
-                NodeBody::SubDag(sub_dag) => {
-                    let sub_log = execute(sub_dag)?;
-                    let mut sub_outputs = HashMap::new();
-                    // Use explicit export_node if set, otherwise fall back to last entry
-                    let source_entry = if let Some(ref export_id) = sub_dag.metadata.export_node {
-                        sub_log.entries.iter().find(|e| e.node_id == export_id.0)
-                    } else {
-                        sub_log.entries.last()
-                    };
-                    if let Some(entry) = source_entry {
-                        for output_port in &node.outputs {
-                            if let Some(val) = entry.outputs.get(&output_port.name.0) {
-                                sub_outputs.insert(output_port.name.0.clone(), val.clone());
-                            }
-                        }
-                    }
-                    for entry in sub_log.entries {
-                        entries.push(LogEntry {
-                            node_id: format!("{}/{}", node_id.0, entry.node_id),
-                            outputs: entry.outputs,
-                        });
-                    }
-                    sub_outputs
+                NodeBody::SubDag(_) => {
+                    return Err(ExecError(format!(
+                        "node '{}' is a SubDag — DAG must be lowered before execution",
+                        node_id.0
+                    )));
                 }
             }
         };
@@ -203,8 +204,7 @@ pub fn execute<T: Executable>(dag: &Dag<T>) -> Result<ExecutionLog, ExecError> {
 mod tests {
     use super::*;
     use gunbc_ir::*;
-    use gunbc_ir::metadata::NodeMetadata;
-    use gunbc_ir::types::{BehaviorKind, ToolId};
+    use gunbc_ir::types::BehaviorKind;
 
     #[derive(Debug, Clone)]
     struct Echo;
@@ -218,30 +218,16 @@ mod tests {
         }
     }
 
-    fn port(name: &str, ty: &str) -> Port {
-        Port { name: PortName(name.into()), type_id: TypeId(ty.into()), guard: None }
-    }
-
-    fn guarded_port(name: &str, ty: &str, guard: &str) -> Port {
-        Port { name: PortName(name.into()), type_id: TypeId(ty.into()), guard: Some(guard.into()) }
-    }
-
-    fn meta(behavior: BehaviorKind) -> NodeMetadata {
-        NodeMetadata { tool: ToolId("test".into()), behavior }
-    }
+    use gunbc_ir::{port, guarded_port, node_meta};
 
     fn echo_node(id: &str, inputs: Vec<Port>, outputs: Vec<Port>) -> Node<Echo> {
         Node {
             id: NodeId(id.into()),
             inputs,
             outputs,
-            metadata: meta(BehaviorKind::Pure),
+            metadata: node_meta("test", BehaviorKind::Pure),
             body: NodeBody::Opaque(Echo),
         }
-    }
-
-    fn empty_dag_metadata() -> DagMetadata {
-        DagMetadata::default()
     }
 
     #[test]
@@ -255,7 +241,7 @@ mod tests {
                 from_node: NodeId("a".into()), from_port: PortName("out".into()),
                 to_node: NodeId("b".into()), to_port: PortName("in".into()),
             }],
-            metadata: empty_dag_metadata(),
+            metadata: DagMetadata::default(),
         };
         let order = topo_sort(&dag);
         assert_eq!(order[0].0, "a");
@@ -273,7 +259,7 @@ mod tests {
                 from_node: NodeId("a".into()), from_port: PortName("out".into()),
                 to_node: NodeId("b".into()), to_port: PortName("in".into()),
             }],
-            metadata: empty_dag_metadata(),
+            metadata: DagMetadata::default(),
         };
         let log = execute(&dag).unwrap();
         assert_eq!(log.entries.len(), 2);
@@ -298,14 +284,14 @@ mod tests {
                     id: NodeId("a".into()),
                     inputs: vec![],
                     outputs: vec![port("flag", "S")],
-                    metadata: meta(BehaviorKind::Pure),
+                    metadata: node_meta("test", BehaviorKind::Pure),
                     body: NodeBody::Opaque(Produce),
                 },
                 Node {
                     id: NodeId("b".into()),
                     inputs: vec![guarded_port("flag", "S", "flag == yes")],
                     outputs: vec![port("out", "S")],
-                    metadata: meta(BehaviorKind::Pure),
+                    metadata: node_meta("test", BehaviorKind::Pure),
                     body: NodeBody::Opaque(Produce),
                 },
             ],
@@ -313,7 +299,7 @@ mod tests {
                 from_node: NodeId("a".into()), from_port: PortName("flag".into()),
                 to_node: NodeId("b".into()), to_port: PortName("flag".into()),
             }],
-            metadata: empty_dag_metadata(),
+            metadata: DagMetadata::default(),
         };
         let log = execute(&dag).unwrap();
         let b_entry = log.entries.iter().find(|e| e.node_id == "b").unwrap();
@@ -321,11 +307,14 @@ mod tests {
     }
 
     #[test]
-    fn subdag_executes_recursively() {
+    fn subdag_lowered_then_executed() {
         let sub_dag = Dag {
             nodes: vec![echo_node("inner", vec![], vec![port("out", "S")])],
             edges: vec![],
-            metadata: empty_dag_metadata(),
+            metadata: DagMetadata {
+                export_node: Some(NodeId("inner".into())),
+                ..Default::default()
+            },
         };
 
         let dag = Dag {
@@ -334,16 +323,45 @@ mod tests {
                     id: NodeId("wrapper".into()),
                     inputs: vec![],
                     outputs: vec![port("out", "S")],
-                    metadata: meta(BehaviorKind::Pure),
+                    metadata: node_meta("test", BehaviorKind::Pure),
                     body: NodeBody::SubDag(sub_dag),
                 },
             ],
             edges: vec![],
-            metadata: empty_dag_metadata(),
+            metadata: DagMetadata::default(),
         };
 
+        // execute() lowers first, so inner node appears as wrapper/inner
         let log = execute(&dag).unwrap();
         assert!(log.entries.iter().any(|e| e.node_id == "wrapper/inner"));
-        assert!(log.entries.iter().any(|e| e.node_id == "wrapper"));
+        // No "wrapper" entry — wrapper was replaced by its inlined contents
+        assert!(!log.entries.iter().any(|e| e.node_id == "wrapper"));
+    }
+
+    #[test]
+    fn flat_dag_rejects_subdag_directly() {
+        let sub_dag = Dag {
+            nodes: vec![echo_node("inner", vec![], vec![port("out", "S")])],
+            edges: vec![],
+            metadata: DagMetadata::default(),
+        };
+
+        let dag = Dag {
+            nodes: vec![
+                Node {
+                    id: NodeId("wrapper".into()),
+                    inputs: vec![],
+                    outputs: vec![port("out", "S")],
+                    metadata: node_meta("test", BehaviorKind::Pure),
+                    body: NodeBody::SubDag(sub_dag),
+                },
+            ],
+            edges: vec![],
+            metadata: DagMetadata::default(),
+        };
+
+        // execute_flat rejects SubDag nodes
+        let err = execute_flat(&dag).unwrap_err();
+        assert!(err.0.contains("must be lowered"));
     }
 }

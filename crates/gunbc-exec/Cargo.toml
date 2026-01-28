@@ -5,3 +5,8 @@ edition = "2021"
 
 [dependencies]
 gunbc-ir = { path = "../gunbc-ir" }
+gunbc-validate = { path = "../gunbc-validate", optional = true }
+
+[features]
+default = ["validate"]
+validate = ["dep:gunbc-validate"]

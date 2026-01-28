@@ -1,5 +1,11 @@
 mod ops;
 mod graph;
+mod generated;
+
+// Contract definitions — source of truth for port names, types, and topology.
+// Currently consumed only by verification tests; codegen binary will read these directly.
+#[cfg(test)]
+mod contracts;
 
 use clap::Parser;
 
@@ -44,15 +50,7 @@ fn main() {
         return;
     }
 
-    // Validate
-    if let Err(errors) = gunbc_validate::validate(&dag) {
-        eprintln!("Validation failed:");
-        for e in &errors {
-            eprintln!("  - {e}");
-        }
-        std::process::exit(1);
-    }
-    eprintln!("DAG validated successfully ({} nodes, {} edges)", dag.nodes.len(), dag.edges.len());
+    eprintln!("DAG constructed ({} nodes, {} edges)", dag.nodes.len(), dag.edges.len());
 
     // Execute
     match gunbc_exec::execute(&dag) {

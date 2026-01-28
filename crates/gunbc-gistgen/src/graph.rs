@@ -1,84 +1,8 @@
 use gunbc_ir::*;
-use gunbc_ir::metadata::NodeMetadata;
-use gunbc_ir::types::{BehaviorKind, Idempotency, PatternDecision, ToolId};
+use gunbc_ir::types::{BehaviorKind, Idempotency, PatternDecision};
 
+use crate::generated;
 use crate::ops::GistgenOp;
-
-fn port(name: &str, ty: &str) -> Port {
-    Port {
-        name: PortName(name.into()),
-        type_id: TypeId(ty.into()),
-        guard: None,
-    }
-}
-
-fn guarded_port(name: &str, ty: &str, guard: &str) -> Port {
-    Port {
-        name: PortName(name.into()),
-        type_id: TypeId(ty.into()),
-        guard: Some(guard.into()),
-    }
-}
-
-fn edge(from: &str, from_port: &str, to: &str, to_port: &str) -> Edge {
-    Edge {
-        from_node: NodeId(from.into()),
-        from_port: PortName(from_port.into()),
-        to_node: NodeId(to.into()),
-        to_port: PortName(to_port.into()),
-    }
-}
-
-fn meta(tool: &str, behavior: BehaviorKind) -> NodeMetadata {
-    NodeMetadata {
-        tool: ToolId(tool.into()),
-        behavior,
-    }
-}
-
-/// Build the auth sub-DAG with check → create → resolve diamond.
-fn build_auth_subdag() -> Dag<GistgenOp> {
-    let nodes = vec![
-        Node {
-            id: NodeId("auth_check".into()),
-            inputs: vec![],
-            outputs: vec![port("token", "Secret"), port("needs_create", "Bool")],
-            metadata: meta("auth", BehaviorKind::Observe),
-            body: NodeBody::Opaque(GistgenOp::AuthCheck),
-        },
-        Node {
-            id: NodeId("auth_create".into()),
-            inputs: vec![guarded_port("needs_create", "Bool", "needs_create == true")],
-            outputs: vec![port("token", "Secret")],
-            metadata: meta("auth", BehaviorKind::WritesWorld(Idempotency::Idempotent)),
-            body: NodeBody::Opaque(GistgenOp::AuthCreate),
-        },
-        Node {
-            id: NodeId("auth_resolve".into()),
-            inputs: vec![port("check_token", "Secret"), port("create_token", "Secret")],
-            outputs: vec![port("token", "Secret")],
-            metadata: meta("auth", BehaviorKind::Pure),
-            body: NodeBody::Opaque(GistgenOp::AuthResolve),
-        },
-    ];
-
-    let edges = vec![
-        edge("auth_check", "token", "auth_resolve", "check_token"),
-        edge("auth_check", "needs_create", "auth_create", "needs_create"),
-        edge("auth_create", "token", "auth_resolve", "create_token"),
-    ];
-
-    let metadata = DagMetadata {
-        pattern_decisions: vec![PatternDecisionEntry {
-            tool: ToolId("auth".into()),
-            pattern: "upsert".into(),
-            decision: PatternDecision::Instantiated,
-        }],
-        export_node: Some(NodeId("auth_resolve".into())),
-    };
-
-    Dag { nodes, edges, metadata }
-}
 
 pub fn build_gistgen_dag(repo_path: &str, glob: &str, dry_run: bool) -> Dag<GistgenOp> {
     let upload_behavior = if dry_run {
@@ -87,57 +11,58 @@ pub fn build_gistgen_dag(repo_path: &str, glob: &str, dry_run: bool) -> Dag<Gist
         BehaviorKind::WritesWorld(Idempotency::NotIdempotent)
     };
 
+    // Auth SubDAG — built from generated builder (ports, edges, export_node correct by construction)
+    let auth_node = generated::build_auth_subdag(
+        GistgenOp::AuthCheck,
+        GistgenOp::AuthCreate,
+        GistgenOp::AuthResolve,
+    );
+
     let nodes = vec![
         Node {
             id: NodeId("context".into()),
             inputs: vec![],
             outputs: vec![port("repo", "String"), port("selection_spec", "String")],
-            metadata: meta("gistgen", BehaviorKind::Observe),
+            metadata: node_meta("gistgen", BehaviorKind::Observe),
             body: NodeBody::Opaque(GistgenOp::Context {
                 repo_path: repo_path.into(),
                 glob_pattern: glob.into(),
             }),
         },
-        Node {
-            id: NodeId("auth".into()),
-            inputs: vec![],
-            outputs: vec![port("token", "Secret")],
-            metadata: meta("auth", BehaviorKind::WritesWorld(Idempotency::Idempotent)),
-            body: NodeBody::SubDag(build_auth_subdag()),
-        },
+        auth_node,
         Node {
             id: NodeId("enumerate_files".into()),
             inputs: vec![port("repo", "String")],
             outputs: vec![port("files", "StrList")],
-            metadata: meta("gistgen", BehaviorKind::Observe),
+            metadata: node_meta("gistgen", BehaviorKind::Observe),
             body: NodeBody::Opaque(GistgenOp::EnumerateFiles),
         },
         Node {
             id: NodeId("filter_files".into()),
             inputs: vec![port("files", "StrList"), port("selection_spec", "String")],
             outputs: vec![port("files", "StrList")],
-            metadata: meta("gistgen", BehaviorKind::Pure),
+            metadata: node_meta("gistgen", BehaviorKind::Pure),
             body: NodeBody::Opaque(GistgenOp::FilterFiles),
         },
         Node {
             id: NodeId("read_files".into()),
             inputs: vec![port("files", "StrList")],
             outputs: vec![port("contents", "MapStrStr")],
-            metadata: meta("gistgen", BehaviorKind::Observe),
+            metadata: node_meta("gistgen", BehaviorKind::Observe),
             body: NodeBody::Opaque(GistgenOp::ReadFiles),
         },
         Node {
             id: NodeId("compose_snapshot".into()),
             inputs: vec![port("contents", "MapStrStr")],
             outputs: vec![port("snapshot", "String")],
-            metadata: meta("gistgen", BehaviorKind::Pure),
+            metadata: node_meta("gistgen", BehaviorKind::Pure),
             body: NodeBody::Opaque(GistgenOp::ComposeSnapshot),
         },
         Node {
             id: NodeId("upload_gist".into()),
             inputs: vec![port("snapshot", "String"), port("token", "Secret")],
             outputs: vec![port("gist_url", "String")],
-            metadata: meta("gistgen", upload_behavior),
+            metadata: node_meta("gistgen", upload_behavior),
             body: NodeBody::Opaque(GistgenOp::UploadGist { dry_run }),
         },
     ];
@@ -179,9 +104,18 @@ mod tests {
     use gunbc_exec::Value;
 
     #[test]
-    fn dag_validates() {
+    fn dag_structure_correct() {
         let dag = build_gistgen_dag(".", "**/*.rs", true);
-        assert!(gunbc_validate::validate(&dag).is_ok());
+        let auth = dag.nodes.iter().find(|n| n.id.0 == "auth").unwrap();
+        match &auth.body {
+            NodeBody::SubDag(sub) => {
+                assert!(sub.metadata.export_node.is_some());
+                assert_eq!(sub.metadata.export_node.as_ref().unwrap().0, "auth_resolve");
+                assert_eq!(sub.nodes.len(), 3);
+                assert_eq!(sub.edges.len(), 3);
+            }
+            _ => panic!("auth should be SubDag"),
+        }
     }
 
     #[test]
@@ -196,6 +130,26 @@ mod tests {
         } else {
             panic!("expected gist_url in upload_gist outputs");
         }
+    }
+
+    #[test]
+    fn auth_subdag_has_upsert_topology() {
+        let dag = build_gistgen_dag(".", "**/*.rs", true);
+        let auth = dag.nodes.iter().find(|n| n.id.0 == "auth").unwrap();
+        match &auth.body {
+            NodeBody::SubDag(sub) => {
+                gunbc_test::assert_upsert_topology(sub, "auth_check", "auth_create", "auth_resolve");
+            }
+            _ => panic!("auth should be SubDag"),
+        }
+    }
+
+    #[test]
+    fn auth_create_skipped_when_guard_false() {
+        let dag = build_gistgen_dag(".", "**/*.rs", true);
+        let log = gunbc_exec::execute(&dag).unwrap();
+        // auth_create is lowered to auth/auth_create
+        gunbc_test::assert_upsert_skip_semantics(&log, "auth/auth_create");
     }
 
     #[test]

@@ -31,8 +31,8 @@ pub struct Port {
 #[derive(Debug, Clone, Default)]
 pub struct DagMetadata {
     pub pattern_decisions: Vec<PatternDecisionEntry>,
-    /// If set, the executor uses this node's outputs as the SubDag result
-    /// instead of the last log entry.
+    /// If set, lowering uses this node's outputs as the SubDag's output boundary.
+    /// If unset, lowering falls back to unconnected output ports.
     pub export_node: Option<NodeId>,
 }
 

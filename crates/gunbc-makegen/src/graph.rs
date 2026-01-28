@@ -1,41 +1,8 @@
 use gunbc_ir::*;
-use gunbc_ir::metadata::NodeMetadata;
-use gunbc_ir::types::{BehaviorKind, Idempotency, PatternDecision, ToolId};
+use gunbc_ir::types::{BehaviorKind, Idempotency, PatternDecision};
 
 use crate::ops::MakegenOp;
 use crate::types::MakegenConfig;
-
-fn port(name: &str, ty: &str) -> Port {
-    Port {
-        name: PortName(name.into()),
-        type_id: TypeId(ty.into()),
-        guard: None,
-    }
-}
-
-fn guarded_port(name: &str, ty: &str, guard: &str) -> Port {
-    Port {
-        name: PortName(name.into()),
-        type_id: TypeId(ty.into()),
-        guard: Some(guard.into()),
-    }
-}
-
-fn edge(from: &str, from_port: &str, to: &str, to_port: &str) -> Edge {
-    Edge {
-        from_node: NodeId(from.into()),
-        from_port: PortName(from_port.into()),
-        to_node: NodeId(to.into()),
-        to_port: PortName(to_port.into()),
-    }
-}
-
-fn meta(tool: &str, behavior: BehaviorKind) -> NodeMetadata {
-    NodeMetadata {
-        tool: ToolId(tool.into()),
-        behavior,
-    }
-}
 
 /// Build the main DAG for makegen.
 ///
@@ -73,7 +40,7 @@ pub fn build_makegen_dag(config: &MakegenConfig, dry_run: bool) -> Dag<MakegenOp
                 port("output_path", "String"),
                 port("force", "Bool"),
             ],
-            metadata: meta("makegen", BehaviorKind::Pure),
+            metadata: node_meta("makegen", BehaviorKind::Pure),
             body: NodeBody::Opaque(MakegenOp::Context { config: config.clone() }),
         },
         // Check - determines if generation is needed (Observe)
@@ -96,7 +63,7 @@ pub fn build_makegen_dag(config: &MakegenConfig, dry_run: bool) -> Dag<MakegenOp
                 port("per_crate_targets", "Bool"),
                 port("lint_targets", "Bool"),
             ],
-            metadata: meta("makegen", BehaviorKind::Observe),
+            metadata: node_meta("makegen", BehaviorKind::Observe),
             body: NodeBody::Opaque(MakegenOp::Check),
         },
         // Generation pipeline (guarded by needs_generate)
@@ -112,7 +79,7 @@ pub fn build_makegen_dag(config: &MakegenConfig, dry_run: bool) -> Dag<MakegenOp
                 port("crate_is_bin", "StrList"),
                 port("crate_is_lib", "StrList"),
             ],
-            metadata: meta("makegen", BehaviorKind::Pure),
+            metadata: node_meta("makegen", BehaviorKind::Pure),
             body: NodeBody::Opaque(MakegenOp::ParseWorkspace),
         },
         Node {
@@ -123,7 +90,7 @@ pub fn build_makegen_dag(config: &MakegenConfig, dry_run: bool) -> Dag<MakegenOp
                 port("lint_targets", "Bool"),
             ],
             outputs: vec![port("targets", "StrList")],
-            metadata: meta("makegen", BehaviorKind::Pure),
+            metadata: node_meta("makegen", BehaviorKind::Pure),
             body: NodeBody::Opaque(MakegenOp::GenerateTargets),
         },
         Node {
@@ -133,7 +100,7 @@ pub fn build_makegen_dag(config: &MakegenConfig, dry_run: bool) -> Dag<MakegenOp
                 port("crate_names", "StrList"),
             ],
             outputs: vec![port("rules", "StrList")],
-            metadata: meta("makegen", BehaviorKind::Pure),
+            metadata: node_meta("makegen", BehaviorKind::Pure),
             body: NodeBody::Opaque(MakegenOp::GenerateRules),
         },
         Node {
@@ -143,7 +110,7 @@ pub fn build_makegen_dag(config: &MakegenConfig, dry_run: bool) -> Dag<MakegenOp
                 port("input_hash", "String"),
             ],
             outputs: vec![port("content", "String")],
-            metadata: meta("makegen", BehaviorKind::Pure),
+            metadata: node_meta("makegen", BehaviorKind::Pure),
             body: NodeBody::Opaque(MakegenOp::ComposeMakefile),
         },
         // Resolve - determines what to output (Pure)
@@ -163,7 +130,7 @@ pub fn build_makegen_dag(config: &MakegenConfig, dry_run: bool) -> Dag<MakegenOp
                 port("makefile_path", "String"),
                 port("file_existed", "Bool"),
             ],
-            metadata: meta("makegen", BehaviorKind::Pure),
+            metadata: node_meta("makegen", BehaviorKind::Pure),
             body: NodeBody::Opaque(MakegenOp::Resolve),
         },
         // Sink - WriteFile or PrintStdout based on dry_run
@@ -176,7 +143,7 @@ pub fn build_makegen_dag(config: &MakegenConfig, dry_run: bool) -> Dag<MakegenOp
                 port("file_existed", "Bool"),
             ],
             outputs: vec![port("status", "String")],
-            metadata: meta("makegen", sink_behavior),
+            metadata: node_meta("makegen", sink_behavior),
             body: NodeBody::Opaque(sink_op),
         },
     ];
@@ -232,13 +199,6 @@ mod tests {
     use gunbc_exec::Value;
 
     #[test]
-    fn dag_validates() {
-        let config = MakegenConfig::default();
-        let dag = build_makegen_dag(&config, true);
-        assert!(gunbc_validate::validate(&dag).is_ok());
-    }
-
-    #[test]
     fn dry_run_dag_has_observe_sink() {
         let config = MakegenConfig::default();
         let dag = build_makegen_dag(&config, true);
@@ -260,7 +220,6 @@ mod tests {
         let dag = build_makegen_dag(&config, true);
         let log = gunbc_exec::execute(&dag).unwrap();
         assert!(!log.entries.is_empty());
-        // Find the final sink entry
         let sink_entry = log.entries.iter().find(|e| e.node_id == "sink").unwrap();
         assert!(matches!(sink_entry.outputs.get("status"), Some(Value::Str(_))));
     }
