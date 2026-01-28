@@ -79,7 +79,7 @@ fn sanitize_ident(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gunbc_contracts::{BehaviorContract, PortContract};
+    use gunbc_contracts::PortContract;
     use gunbc_ir::{PortName, TypeId};
 
     #[test]
@@ -91,7 +91,6 @@ mod tests {
                 PortContract { name: PortName("token".into()), type_id: TypeId("Secret".into()), optional: false, guard: None },
                 PortContract { name: PortName("needs_create".into()), type_id: TypeId("Bool".into()), optional: false, guard: None },
             ],
-            behavior: BehaviorContract::Observe,
         };
         let code = emit_io_structs(&block);
         assert!(code.contains("pub struct AuthCheckInputs"));

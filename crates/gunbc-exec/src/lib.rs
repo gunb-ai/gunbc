@@ -1,8 +1,9 @@
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::fmt;
 
-use gunbc_ir::{Dag, Node, NodeBody, NodeId};
+use gunbc_ir::algebra::Value as IrValue;
 use gunbc_ir::types::Secret;
+use gunbc_ir::{Dag, Node, NodeBody, NodeId};
 
 pub mod guards;
 pub mod lower;
@@ -10,6 +11,9 @@ pub mod lower;
 pub use lower::{lower, LowerError};
 
 /// Runtime value flowing between nodes.
+///
+/// This is the execution-layer value type. It extends the IR's Value type
+/// with additional runtime-specific variants (StrList, MapStrStr, Secret).
 #[derive(Debug, Clone)]
 pub enum Value {
     Bool(bool),
@@ -19,6 +23,22 @@ pub enum Value {
     Secret(Secret<String>),
     Skipped,
     Unit,
+}
+
+impl Value {
+    /// Convert to IR value for predicate evaluation.
+    fn to_ir_value(&self) -> IrValue {
+        match self {
+            Value::Bool(b) => IrValue::Bool(*b),
+            Value::Str(s) => IrValue::String(s.clone()),
+            Value::Unit => IrValue::Unit,
+            Value::Skipped => IrValue::Skipped,
+            // Complex types don't have direct IR equivalents - use string representation
+            Value::StrList(v) => IrValue::List(v.iter().map(|s| IrValue::String(s.clone())).collect()),
+            Value::MapStrStr(_) => IrValue::String("<map>".into()),
+            Value::Secret(_) => IrValue::String("<secret>".into()),
+        }
+    }
 }
 
 impl fmt::Display for Value {
@@ -118,15 +138,17 @@ pub fn topo_sort<T>(dag: &Dag<T>) -> Vec<NodeId> {
     result
 }
 
-/// Check whether a node should be skipped based on guard expressions.
+/// Check whether a node should be skipped based on guard predicates.
 fn should_skip_node<T>(node: &Node<T>, inputs: &HashMap<String, Value>) -> bool {
     for port in &node.inputs {
-        if let Some(guard_expr) = &port.guard {
+        if let Some(predicate) = &port.guard {
             if let Some(value) = inputs.get(&port.name.0) {
-                if !guards::eval_guard(guard_expr, value) {
+                let ir_value = value.to_ir_value();
+                if !predicate.evaluate(&ir_value) {
                     return true;
                 }
             } else {
+                // Missing input value - skip the node
                 return true;
             }
         }
@@ -203,8 +225,8 @@ pub fn execute_flat<T: Executable>(dag: &Dag<T>) -> Result<ExecutionLog, ExecErr
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gunbc_ir::*;
-    use gunbc_ir::types::BehaviorKind;
+    use gunbc_ir::algebra::{Predicate, Value as IrValue};
+    use gunbc_ir::{port, Dag, DagMetadata, Edge, Node, NodeBody, NodeId, Port, PortName, TypeId};
 
     #[derive(Debug, Clone)]
     struct Echo;
@@ -218,14 +240,11 @@ mod tests {
         }
     }
 
-    use gunbc_ir::{port, guarded_port, node_meta};
-
     fn echo_node(id: &str, inputs: Vec<Port>, outputs: Vec<Port>) -> Node<Echo> {
         Node {
             id: NodeId(id.into()),
             inputs,
             outputs,
-            metadata: node_meta("test", BehaviorKind::Pure),
             body: NodeBody::Opaque(Echo),
         }
     }
@@ -273,10 +292,15 @@ mod tests {
         impl Executable for Produce {
             fn execute(&self, _inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
                 let mut out = HashMap::new();
+                // Produces "no" as a string value
                 out.insert("flag".into(), Value::Str("no".into()));
                 Ok(out)
             }
         }
+
+        // Guard expects "yes" but node "a" produces "no", so node "b" should be skipped
+        // Note: IrValue::String is used for the predicate, Value::Str for runtime
+        let guard = Predicate::Eq(IrValue::String("yes".into()));
 
         let dag = Dag {
             nodes: vec![
@@ -284,14 +308,16 @@ mod tests {
                     id: NodeId("a".into()),
                     inputs: vec![],
                     outputs: vec![port("flag", "S")],
-                    metadata: node_meta("test", BehaviorKind::Pure),
                     body: NodeBody::Opaque(Produce),
                 },
                 Node {
                     id: NodeId("b".into()),
-                    inputs: vec![guarded_port("flag", "S", "flag == yes")],
+                    inputs: vec![Port {
+                        name: PortName("flag".into()),
+                        type_id: TypeId("S".into()),
+                        guard: Some(guard),
+                    }],
                     outputs: vec![port("out", "S")],
-                    metadata: node_meta("test", BehaviorKind::Pure),
                     body: NodeBody::Opaque(Produce),
                 },
             ],
@@ -323,7 +349,6 @@ mod tests {
                     id: NodeId("wrapper".into()),
                     inputs: vec![],
                     outputs: vec![port("out", "S")],
-                    metadata: node_meta("test", BehaviorKind::Pure),
                     body: NodeBody::SubDag(sub_dag),
                 },
             ],
@@ -352,7 +377,6 @@ mod tests {
                     id: NodeId("wrapper".into()),
                     inputs: vec![],
                     outputs: vec![port("out", "S")],
-                    metadata: node_meta("test", BehaviorKind::Pure),
                     body: NodeBody::SubDag(sub_dag),
                 },
             ],

@@ -277,7 +277,6 @@ dependencies = [
 name = "gunbc-gistgen"
 version = "0.1.0"
 dependencies = [
- "clap",
  "globset",
  "gunbc-codegen",
  "gunbc-contracts",
@@ -286,6 +285,16 @@ dependencies = [
  "gunbc-test",
  "ignore",
  "tempfile",
+]
+
+[[package]]
+name = "gunbc-gistgen-cli"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "gunbc-exec",
+ "gunbc-gistgen",
+ "gunbc-ir",
 ]
 
 [[package]]

@@ -133,7 +133,7 @@ pub fn verify_port_saturation(
 mod tests {
     use super::*;
     use gunbc_contracts::*;
-    use gunbc_ir::{NodeId, PortName, ToolId, TypeId};
+    use gunbc_ir::{NodeId, PortName, TypeId};
 
     fn auth_blocks() -> Vec<BlockContract> {
         vec![
@@ -144,7 +144,6 @@ mod tests {
                     PortContract { name: PortName("token".into()), type_id: TypeId("Secret".into()), optional: false, guard: None },
                     PortContract { name: PortName("needs_create".into()), type_id: TypeId("Bool".into()), optional: false, guard: None },
                 ],
-                behavior: BehaviorContract::Observe,
             },
             BlockContract {
                 id: "auth_create".into(),
@@ -154,7 +153,6 @@ mod tests {
                 outputs: vec![
                     PortContract { name: PortName("token".into()), type_id: TypeId("Secret".into()), optional: false, guard: None },
                 ],
-                behavior: BehaviorContract::WritesWorldIdempotent,
             },
             BlockContract {
                 id: "auth_resolve".into(),
@@ -165,7 +163,6 @@ mod tests {
                 outputs: vec![
                     PortContract { name: PortName("token".into()), type_id: TypeId("Secret".into()), optional: false, guard: None },
                 ],
-                behavior: BehaviorContract::Pure,
             },
         ]
     }
@@ -173,7 +170,6 @@ mod tests {
     fn auth_pattern() -> PatternContract {
         PatternContract {
             name: "auth".into(),
-            tool: ToolId("auth".into()),
             slots: vec![
                 SlotContract { node_id: NodeId("auth_check".into()), block_id: "auth_check".into() },
                 SlotContract { node_id: NodeId("auth_create".into()), block_id: "auth_create".into() },

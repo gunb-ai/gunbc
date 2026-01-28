@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
+use crate::types::PatternDecision;
 use crate::{Dag, Node, NodeBody, Port};
-use crate::types::{BehaviorKind, Idempotency, PatternDecision};
 
 const CHAR_WIDTH: f32 = 7.0;
 const PORT_LINE_HEIGHT: f32 = 14.0;
@@ -33,7 +33,6 @@ struct RenderPort {
 #[derive(Debug, Clone)]
 struct RenderNode {
     id: String,
-    behavior: BehaviorKind,
     is_subdag: bool,
     inputs: Vec<RenderPort>,
     outputs: Vec<RenderPort>,
@@ -51,17 +50,6 @@ struct LayoutItem {
     id: String,
     width: f32,
     height: f32,
-}
-
-fn behavior_label(b: &BehaviorKind) -> String {
-    match b {
-        BehaviorKind::Pure => "Pure".to_string(),
-        BehaviorKind::Observe => "Observe".to_string(),
-        BehaviorKind::WritesWorld(idem) => match idem {
-            Idempotency::Idempotent => "WritesWorld (Idem)".to_string(),
-            Idempotency::NotIdempotent => "WritesWorld (NonIdem)".to_string(),
-        },
-    }
 }
 
 fn decision_label(d: &PatternDecision) -> String {
@@ -156,11 +144,7 @@ fn ports_render(ports: &[Port], show_guards: bool) -> (Vec<RenderPort>, f32, f32
 }
 
 fn center_lines<T>(node: &Node<T>, is_subdag: bool) -> Vec<String> {
-    let mut lines = vec![
-        truncate(&node.id.0, MAX_CENTER_CHARS),
-        truncate(&format!("[{}]", node.metadata.tool.0), MAX_CENTER_CHARS),
-        truncate(&behavior_label(&node.metadata.behavior), MAX_CENTER_CHARS),
-    ];
+    let mut lines = vec![truncate(&node.id.0, MAX_CENTER_CHARS)];
     if is_subdag {
         lines.push("SubDag".to_string());
     }
@@ -380,7 +364,6 @@ fn build_render_nodes<T>(dag: &Dag<T>, show_guards: bool) -> Vec<RenderNode> {
 
         rendered.push(RenderNode {
             id: n.id.0.clone(),
-            behavior: n.metadata.behavior.clone(),
             is_subdag,
             inputs,
             outputs,
@@ -513,11 +496,8 @@ pub fn dag_to_svg<T>(dag: &Dag<T>, show_guards: bool) -> String {
 
     out.push_str("<g class=\"nodes\">\n");
     for node in &nodes {
-        let rect_class = match node.behavior {
-            BehaviorKind::Observe => "node-rect observe",
-            BehaviorKind::WritesWorld(_) => "node-rect writes",
-            BehaviorKind::Pure => "node-rect",
-        };
+        // All nodes are pure by default. SubDags get a different style.
+        let rect_class = if node.is_subdag { "node-rect subdag" } else { "node-rect" };
 
         out.push_str(&format!(
             "  <g id=\"node_{}\" transform=\"translate({:.1} {:.1})\">\n",
@@ -596,14 +576,25 @@ pub fn dag_to_svg<T>(dag: &Dag<T>, show_guards: bool) -> String {
     out
 }
 
-/// Tool-level SVG: compress node graph into tools; label with pattern decisions.
+/// Derive a "group" name from a node ID.
+/// If the ID contains "/", returns the prefix before the first "/".
+/// Otherwise returns the full ID.
+fn derive_group(node_id: &str) -> String {
+    if let Some(pos) = node_id.find('/') {
+        node_id[..pos].to_string()
+    } else {
+        node_id.to_string()
+    }
+}
+
+/// Tool-level SVG: compress node graph into groups; label with pattern decisions.
 pub fn tools_to_svg<T>(dag: &Dag<T>) -> String {
     let mut tool_nodes: BTreeMap<String, Vec<String>> = BTreeMap::new();
     let mut tool_edges: BTreeSet<(String, String)> = BTreeSet::new();
     let mut node_tool: HashMap<String, String> = HashMap::new();
 
     for n in &dag.nodes {
-        let tool = n.metadata.tool.0.clone();
+        let tool = derive_group(&n.id.0);
         tool_nodes.entry(tool.clone()).or_default();
         node_tool.insert(n.id.0.clone(), tool);
     }
@@ -620,7 +611,7 @@ pub fn tools_to_svg<T>(dag: &Dag<T>) -> String {
 
     for pd in &dag.metadata.pattern_decisions {
         tool_nodes
-            .entry(pd.tool.0.clone())
+            .entry(pd.node.0.clone())
             .or_default()
             .push(format!("{}={}", pd.pattern, decision_label(&pd.decision)));
     }

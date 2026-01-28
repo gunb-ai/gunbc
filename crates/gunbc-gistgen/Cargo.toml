@@ -3,10 +3,13 @@ name = "gunbc-gistgen"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+name = "gunbc_gistgen"
+path = "src/lib.rs"
+
 [dependencies]
 gunbc-ir = { path = "../gunbc-ir" }
 gunbc-exec = { path = "../gunbc-exec" }
-clap = { version = "4", features = ["derive"] }
 ignore = "0.4"
 globset = "0.4"
 

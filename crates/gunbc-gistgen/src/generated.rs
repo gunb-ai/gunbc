@@ -1,21 +1,12 @@
 // GENERATED — this file would be produced by gunbc-codegen from contracts.
 // Currently hand-written to validate the design; structure matches codegen output.
 
-use gunbc_ir::*;
-use gunbc_ir::types::{BehaviorKind, Idempotency, PatternDecision};
 use gunbc_exec::Executable;
+use gunbc_ir::algebra::{Predicate, Value};
+use gunbc_ir::types::PatternDecision;
+use gunbc_ir::*;
 
 /// Constructs the auth SubDAG wrapper node with correct wiring by construction.
-///
-/// The returned node is a SubDag node containing:
-/// - 3 inner nodes: auth_check, auth_create, auth_resolve
-/// - 3 edges following the upsert diamond topology
-/// - export_node set to auth_resolve (always present, not Option)
-/// - Pattern decision declared as Instantiated
-///
-/// Port names, types, and edge wiring are derived from the auth contracts —
-/// a mismatch in the contracts would produce a compile error or a codegen
-/// verification failure, not a runtime validation error.
 pub fn build_auth_subdag<T: Executable>(
     auth_check: T,
     auth_create: T,
@@ -29,18 +20,16 @@ pub fn build_auth_subdag<T: Executable>(
                 port("token", "Secret"),
                 port("needs_create", "Bool"),
             ],
-            metadata: node_meta("auth", BehaviorKind::Observe),
             body: NodeBody::Opaque(auth_check),
         },
         Node {
             id: NodeId("auth_create".into()),
             inputs: vec![
-                guarded_port("needs_create", "Bool", "needs_create == true"),
+                guarded_port("needs_create", "Bool", Predicate::Eq(Value::Bool(true))),
             ],
             outputs: vec![
                 port("token", "Secret"),
             ],
-            metadata: node_meta("auth", BehaviorKind::WritesWorld(Idempotency::Idempotent)),
             body: NodeBody::Opaque(auth_create),
         },
         Node {
@@ -52,7 +41,6 @@ pub fn build_auth_subdag<T: Executable>(
             outputs: vec![
                 port("token", "Secret"),
             ],
-            metadata: node_meta("auth", BehaviorKind::Pure),
             body: NodeBody::Opaque(auth_resolve),
         },
     ];
@@ -65,11 +53,12 @@ pub fn build_auth_subdag<T: Executable>(
 
     let inner_metadata = DagMetadata {
         pattern_decisions: vec![PatternDecisionEntry {
-            tool: ToolId("auth".into()),
+            node: NodeId("auth".into()),
             pattern: "upsert".into(),
             decision: PatternDecision::Instantiated,
         }],
         export_node: Some(NodeId("auth_resolve".into())),
+        boundary_declarations: vec![],
     };
 
     let inner_dag = Dag {
@@ -82,7 +71,6 @@ pub fn build_auth_subdag<T: Executable>(
         id: NodeId("auth".into()),
         inputs: vec![],
         outputs: vec![port("token", "Secret")],
-        metadata: node_meta("auth", BehaviorKind::WritesWorld(Idempotency::Idempotent)),
         body: NodeBody::SubDag(inner_dag),
     }
 }

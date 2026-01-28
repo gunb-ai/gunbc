@@ -1,5 +1,5 @@
 use gunbc_contracts::*;
-use gunbc_ir::{NodeId, PortName, ToolId, TypeId};
+use gunbc_ir::{NodeId, PortName, TypeId};
 
 pub fn auth_check() -> BlockContract {
     BlockContract {
@@ -9,7 +9,6 @@ pub fn auth_check() -> BlockContract {
             PortContract { name: PortName("token".into()), type_id: TypeId("Secret".into()), optional: false, guard: None },
             PortContract { name: PortName("needs_create".into()), type_id: TypeId("Bool".into()), optional: false, guard: None },
         ],
-        behavior: BehaviorContract::Observe,
     }
 }
 
@@ -22,7 +21,6 @@ pub fn auth_create() -> BlockContract {
         outputs: vec![
             PortContract { name: PortName("token".into()), type_id: TypeId("Secret".into()), optional: false, guard: None },
         ],
-        behavior: BehaviorContract::WritesWorldIdempotent,
     }
 }
 
@@ -36,14 +34,12 @@ pub fn auth_resolve() -> BlockContract {
         outputs: vec![
             PortContract { name: PortName("token".into()), type_id: TypeId("Secret".into()), optional: false, guard: None },
         ],
-        behavior: BehaviorContract::Pure,
     }
 }
 
 pub fn upsert_pattern() -> PatternContract {
     PatternContract {
         name: "auth".into(),
-        tool: ToolId("auth".into()),
         slots: vec![
             SlotContract { node_id: NodeId("auth_check".into()), block_id: "auth_check".into() },
             SlotContract { node_id: NodeId("auth_create".into()), block_id: "auth_create".into() },
@@ -66,7 +62,6 @@ pub fn context_block() -> BlockContract {
             PortContract { name: PortName("repo".into()), type_id: TypeId("String".into()), optional: false, guard: None },
             PortContract { name: PortName("selection_spec".into()), type_id: TypeId("String".into()), optional: false, guard: None },
         ],
-        behavior: BehaviorContract::Observe,
     }
 }
 
@@ -79,7 +74,6 @@ pub fn enumerate_files_block() -> BlockContract {
         outputs: vec![
             PortContract { name: PortName("files".into()), type_id: TypeId("StrList".into()), optional: false, guard: None },
         ],
-        behavior: BehaviorContract::Observe,
     }
 }
 
@@ -93,7 +87,6 @@ pub fn filter_files_block() -> BlockContract {
         outputs: vec![
             PortContract { name: PortName("files".into()), type_id: TypeId("StrList".into()), optional: false, guard: None },
         ],
-        behavior: BehaviorContract::Pure,
     }
 }
 
@@ -106,7 +99,6 @@ pub fn read_files_block() -> BlockContract {
         outputs: vec![
             PortContract { name: PortName("contents".into()), type_id: TypeId("MapStrStr".into()), optional: false, guard: None },
         ],
-        behavior: BehaviorContract::Observe,
     }
 }
 
@@ -119,11 +111,10 @@ pub fn compose_snapshot_block() -> BlockContract {
         outputs: vec![
             PortContract { name: PortName("snapshot".into()), type_id: TypeId("String".into()), optional: false, guard: None },
         ],
-        behavior: BehaviorContract::Pure,
     }
 }
 
-pub fn upload_gist_block(dry_run: bool) -> BlockContract {
+pub fn upload_gist_block(_dry_run: bool) -> BlockContract {
     BlockContract {
         id: "upload_gist".into(),
         inputs: vec![
@@ -133,7 +124,6 @@ pub fn upload_gist_block(dry_run: bool) -> BlockContract {
         outputs: vec![
             PortContract { name: PortName("gist_url".into()), type_id: TypeId("String".into()), optional: false, guard: None },
         ],
-        behavior: if dry_run { BehaviorContract::Observe } else { BehaviorContract::WritesWorldNotIdempotent },
     }
 }
 

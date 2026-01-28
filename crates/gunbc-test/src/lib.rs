@@ -100,7 +100,6 @@ fn map_dag<T>(dag: &Dag<T>, behaviors: &HashMap<String, MockBehavior>) -> Result
             id: node.id.clone(),
             inputs: node.inputs.clone(),
             outputs: node.outputs.clone(),
-            metadata: node.metadata.clone(),
             body,
         });
     }

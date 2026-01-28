@@ -1,12 +1,11 @@
-use gunbc_ir::{NodeId, PortName, ToolId, TypeId};
+use gunbc_ir::{NodeId, PortName, TypeId};
 
-/// A block contract declares a node's typed I/O interface and behavior.
+/// A block contract declares a node's typed I/O interface.
 #[derive(Debug, Clone)]
 pub struct BlockContract {
     pub id: String,
     pub inputs: Vec<PortContract>,
     pub outputs: Vec<PortContract>,
-    pub behavior: BehaviorContract,
 }
 
 /// A port contract declares a single input or output port.
@@ -22,7 +21,6 @@ pub struct PortContract {
 #[derive(Debug, Clone)]
 pub struct PatternContract {
     pub name: String,
-    pub tool: ToolId,
     pub slots: Vec<SlotContract>,
     pub edges: Vec<EdgeContract>,
     pub export_slot: NodeId,
@@ -44,30 +42,11 @@ pub struct EdgeContract {
     pub to_port: PortName,
 }
 
-/// Behavior classification mirroring gunbc_ir::BehaviorKind.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum BehaviorContract {
-    Pure,
-    Observe,
-    WritesWorldIdempotent,
-    WritesWorldNotIdempotent,
-}
-
-/// A full tool contract bundles block contracts and pattern contracts.
-#[derive(Debug, Clone)]
-pub struct ToolContract {
-    pub tool_name: ToolId,
-    pub blocks: Vec<BlockContract>,
-    pub patterns: Vec<PatternContract>,
-    /// Pattern decisions: (tool, pattern, decision).
-    /// "instantiated" or "not_applicable:reason"
-    pub pattern_decisions: Vec<PatternDecisionContract>,
-}
-
 /// A pattern decision declaration.
 #[derive(Debug, Clone)]
 pub struct PatternDecisionContract {
-    pub tool: ToolId,
+    /// The SubDag node this decision applies to.
+    pub node: NodeId,
     pub pattern: String,
     pub decision: DecisionContract,
 }

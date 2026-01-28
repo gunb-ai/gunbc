@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 gunbc-contracts = { path = "../gunbc-contracts" }
+gunbc-ir = { path = "../gunbc-ir" }
 
 [dev-dependencies]
-gunbc-ir = { path = "../gunbc-ir" }
 gunbc-exec = { path = "../gunbc-exec" }

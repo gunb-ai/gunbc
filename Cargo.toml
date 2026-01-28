@@ -7,6 +7,7 @@ members = [
     "crates/gunbc-validate",
     "crates/gunbc-exec",
     "crates/gunbc-gistgen",
+    "crates/gunbc-gistgen-cli",
     "crates/gunbc-makegen",
     "crates/gunbc-test",
 ]

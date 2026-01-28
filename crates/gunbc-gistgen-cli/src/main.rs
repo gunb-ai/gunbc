@@ -1,13 +1,9 @@
-mod ops;
-mod graph;
-mod generated;
-
-// Contract definitions — source of truth for port names, types, and topology.
-// Currently consumed only by verification tests; codegen binary will read these directly.
-#[cfg(test)]
-mod contracts;
+//! CLI entrypoint for gistgen.
+//!
+//! This binary wraps the gunbc-gistgen core library and exposes it via a CLI interface.
 
 use clap::Parser;
+use gunbc_gistgen::UnderstandingMode;
 
 #[derive(Parser, Debug)]
 #[command(name = "gunbc-gistgen", about = "Generate a GitHub Gist from repository files")]
@@ -20,7 +16,7 @@ struct Cli {
     #[arg(long, default_value = "**/*")]
     glob: String,
 
-    /// Print what would be uploaded without actually creating a gist
+    /// Preview what would be uploaded without creating a gist
     #[arg(long)]
     dry_run: bool,
 
@@ -39,7 +35,14 @@ struct Cli {
 
 fn main() {
     let cli = Cli::parse();
-    let dag = graph::build_gistgen_dag(&cli.path, &cli.glob, cli.dry_run);
+
+    let mode = if cli.dry_run {
+        UnderstandingMode::Mock
+    } else {
+        UnderstandingMode::Real
+    };
+
+    let dag = gunbc_gistgen::build_gistgen_dag(&cli.path, &cli.glob, mode);
 
     if cli.svg_tools {
         println!("{}", gunbc_ir::viz::tools_to_svg(&dag));

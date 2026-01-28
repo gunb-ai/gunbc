@@ -308,7 +308,6 @@ fn prefix_id(parent: &NodeId, child: &NodeId) -> NodeId {
 mod tests {
     use super::*;
     use gunbc_ir::*;
-    use gunbc_ir::types::BehaviorKind;
 
     #[test]
     fn lower_flat_dag_unchanged() {
@@ -318,14 +317,12 @@ mod tests {
                     id: NodeId("a".into()),
                     inputs: vec![],
                     outputs: vec![port("out", "String")],
-                    metadata: node_meta("test", BehaviorKind::Pure),
                     body: NodeBody::Opaque(()),
                 },
                 Node {
                     id: NodeId("b".into()),
                     inputs: vec![port("in", "String")],
                     outputs: vec![],
-                    metadata: node_meta("test", BehaviorKind::Pure),
                     body: NodeBody::Opaque(()),
                 },
             ],
@@ -346,14 +343,12 @@ mod tests {
                     id: NodeId("inner_source".into()),
                     inputs: vec![port("x", "String")], // Open input — boundary
                     outputs: vec![port("y", "String")],
-                    metadata: node_meta("test", BehaviorKind::Pure),
                     body: NodeBody::Opaque(()),
                 },
                 Node {
                     id: NodeId("inner_sink".into()),
                     inputs: vec![port("y", "String")],
                     outputs: vec![port("z", "String")],
-                    metadata: node_meta("test", BehaviorKind::Pure),
                     body: NodeBody::Opaque(()),
                 },
             ],
@@ -370,21 +365,18 @@ mod tests {
                     id: NodeId("producer".into()),
                     inputs: vec![],
                     outputs: vec![port("x", "String")],
-                    metadata: node_meta("test", BehaviorKind::Pure),
                     body: NodeBody::Opaque(()),
                 },
                 Node {
                     id: NodeId("wrapper".into()),
                     inputs: vec![port("x", "String")],
                     outputs: vec![port("z", "String")],
-                    metadata: node_meta("test", BehaviorKind::Pure),
                     body: NodeBody::SubDag(inner),
                 },
                 Node {
                     id: NodeId("consumer".into()),
                     inputs: vec![port("z", "String")],
                     outputs: vec![],
-                    metadata: node_meta("test", BehaviorKind::Pure),
                     body: NodeBody::Opaque(()),
                 },
             ],
@@ -427,14 +419,12 @@ mod tests {
                     id: NodeId("a".into()),
                     inputs: vec![port("open", "String")],
                     outputs: vec![port("out", "String")],
-                    metadata: node_meta("test", BehaviorKind::Pure),
                     body: NodeBody::Opaque(()),
                 },
                 Node {
                     id: NodeId("b".into()),
                     inputs: vec![port("connected", "String")],
                     outputs: vec![],
-                    metadata: node_meta("test", BehaviorKind::Pure),
                     body: NodeBody::Opaque(()),
                 },
             ],
@@ -456,14 +446,12 @@ mod tests {
                     id: NodeId("a".into()),
                     inputs: vec![],
                     outputs: vec![port("x", "String")],
-                    metadata: node_meta("test", BehaviorKind::Pure),
                     body: NodeBody::Opaque(()),
                 },
                 Node {
                     id: NodeId("b".into()),
                     inputs: vec![port("x", "String")],
                     outputs: vec![port("result", "String")],
-                    metadata: node_meta("test", BehaviorKind::Pure),
                     body: NodeBody::Opaque(()),
                 },
             ],
@@ -487,14 +475,12 @@ mod tests {
                     id: NodeId("a".into()),
                     inputs: vec![port("x", "String")], // open
                     outputs: vec![],
-                    metadata: node_meta("test", BehaviorKind::Pure),
                     body: NodeBody::Opaque(()),
                 },
                 Node {
                     id: NodeId("b".into()),
                     inputs: vec![port("x", "String")], // also open, same name
                     outputs: vec![],
-                    metadata: node_meta("test", BehaviorKind::Pure),
                     body: NodeBody::Opaque(()),
                 },
             ],
@@ -515,7 +501,6 @@ mod tests {
                     id: NodeId("inner".into()),
                     inputs: vec![port("x", "Int")], // Inner expects Int
                     outputs: vec![port("y", "String")],
-                    metadata: node_meta("test", BehaviorKind::Pure),
                     body: NodeBody::Opaque(()),
                 },
             ],
@@ -532,14 +517,12 @@ mod tests {
                     id: NodeId("producer".into()),
                     inputs: vec![],
                     outputs: vec![port("x", "String")],
-                    metadata: node_meta("test", BehaviorKind::Pure),
                     body: NodeBody::Opaque(()),
                 },
                 Node {
                     id: NodeId("wrapper".into()),
                     inputs: vec![port("x", "String")], // Wrapper declares String
                     outputs: vec![port("y", "String")],
-                    metadata: node_meta("test", BehaviorKind::Pure),
                     body: NodeBody::SubDag(inner),
                 },
             ],

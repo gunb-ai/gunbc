@@ -1,0 +1,14 @@
+[package]
+name = "gunbc-gistgen-cli"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "gunbc-gistgen"
+path = "src/main.rs"
+
+[dependencies]
+gunbc-gistgen = { path = "../gunbc-gistgen" }
+gunbc-ir = { path = "../gunbc-ir" }
+gunbc-exec = { path = "../gunbc-exec" }
+clap = { version = "4", features = ["derive"] }

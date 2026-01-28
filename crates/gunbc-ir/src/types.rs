@@ -12,10 +12,6 @@ pub struct PortName(pub String);
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct TypeId(pub String);
 
-/// Identifies which tool a node belongs to.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct ToolId(pub String);
-
 /// A secret value that redacts its contents in Debug output and has no Display.
 #[derive(Clone, PartialEq, Eq)]
 pub struct Secret<T>(pub T);
@@ -34,21 +30,6 @@ impl<T> Secret<T> {
     pub fn as_inner(&self) -> &T {
         &self.0
     }
-}
-
-/// Behavior classification for a node.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum BehaviorKind {
-    Pure,
-    Observe,
-    WritesWorld(Idempotency),
-}
-
-/// Idempotency declaration for WritesWorld nodes.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Idempotency {
-    Idempotent,
-    NotIdempotent,
 }
 
 /// Whether a pattern-based node was instantiated.

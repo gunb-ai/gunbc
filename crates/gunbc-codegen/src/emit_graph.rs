@@ -1,6 +1,30 @@
-use gunbc_contracts::{
-    BehaviorContract, BlockContract, PatternContract, PatternDecisionContract,
-};
+use gunbc_contracts::{BlockContract, PatternContract, PatternDecisionContract};
+
+/// Convert a string guard expression to Predicate code.
+///
+/// Parses simple `name == value` and `name != value` patterns.
+fn guard_to_predicate_code(guard: &str) -> String {
+    if let Some(pos) = guard.find("!=") {
+        let expected = guard[pos + 2..].trim();
+        return match expected {
+            "true" => "Predicate::NotEq(Value::Bool(true))".to_string(),
+            "false" => "Predicate::NotEq(Value::Bool(false))".to_string(),
+            _ => format!("Predicate::NotEq(Value::String(\"{}\".into()))", expected),
+        };
+    }
+
+    if let Some(pos) = guard.find("==") {
+        let expected = guard[pos + 2..].trim();
+        return match expected {
+            "true" => "Predicate::Eq(Value::Bool(true))".to_string(),
+            "false" => "Predicate::Eq(Value::Bool(false))".to_string(),
+            _ => format!("Predicate::Eq(Value::String(\"{}\".into()))", expected),
+        };
+    }
+
+    // Fallback: emit True predicate (always passes)
+    "Predicate::True".to_string()
+}
 
 /// Emit a function that constructs a SubDAG from a pattern contract and its block contracts.
 ///
@@ -11,7 +35,6 @@ pub fn emit_subdag_builder(
     blocks: &[BlockContract],
     wrapper_inputs: &[gunbc_contracts::PortContract],
     wrapper_outputs: &[gunbc_contracts::PortContract],
-    wrapper_behavior: &BehaviorContract,
     _pattern_decisions: &[PatternDecisionContract],
 ) -> String {
     let fn_name = format!("build_{}_subdag", pattern.name);
@@ -45,9 +68,10 @@ pub fn emit_subdag_builder(
         out.push_str("            inputs: vec![\n");
         for p in &block.inputs {
             if let Some(ref guard) = p.guard {
+                let pred_code = guard_to_predicate_code(guard);
                 out.push_str(&format!(
-                    "                Port {{ name: PortName(\"{}\".into()), type_id: TypeId(\"{}\".into()), guard: Some(\"{}\".into()) }},\n",
-                    p.name.0, p.type_id.0, guard
+                    "                Port {{ name: PortName(\"{}\".into()), type_id: TypeId(\"{}\".into()), guard: Some({}) }},\n",
+                    p.name.0, p.type_id.0, pred_code
                 ));
             } else {
                 out.push_str(&format!(
@@ -67,13 +91,6 @@ pub fn emit_subdag_builder(
             ));
         }
         out.push_str("            ],\n");
-
-        // Metadata
-        let behavior_str = behavior_to_code(&block.behavior);
-        out.push_str(&format!(
-            "            metadata: NodeMetadata {{ tool: ToolId(\"{}\".into()), behavior: {} }},\n",
-            pattern.tool.0, behavior_str
-        ));
 
         out.push_str(&format!(
             "            body: NodeBody::Opaque({}),\n",
@@ -97,8 +114,8 @@ pub fn emit_subdag_builder(
     out.push_str("    let inner_metadata = DagMetadata {\n");
     out.push_str("        pattern_decisions: vec![\n");
     out.push_str(&format!(
-        "            PatternDecisionEntry {{ tool: ToolId(\"{}\".into()), pattern: \"{}\".into(), decision: PatternDecision::Instantiated }},\n",
-        pattern.tool.0, pattern.name
+        "            PatternDecisionEntry {{ node: NodeId(\"{}\".into()), pattern: \"{}\".into(), decision: PatternDecision::Instantiated }},\n",
+        pattern.name, pattern.name
     ));
     out.push_str("        ],\n");
 
@@ -126,9 +143,10 @@ pub fn emit_subdag_builder(
     out.push_str("        inputs: vec![\n");
     for p in wrapper_inputs {
         if let Some(ref guard) = p.guard {
+            let pred_code = guard_to_predicate_code(guard);
             out.push_str(&format!(
-                "            Port {{ name: PortName(\"{}\".into()), type_id: TypeId(\"{}\".into()), guard: Some(\"{}\".into()) }},\n",
-                p.name.0, p.type_id.0, guard
+                "            Port {{ name: PortName(\"{}\".into()), type_id: TypeId(\"{}\".into()), guard: Some({}) }},\n",
+                p.name.0, p.type_id.0, pred_code
             ));
         } else {
             out.push_str(&format!(
@@ -149,30 +167,12 @@ pub fn emit_subdag_builder(
     }
     out.push_str("        ],\n");
 
-    let wrapper_beh = behavior_to_code(wrapper_behavior);
-    out.push_str(&format!(
-        "        metadata: NodeMetadata {{ tool: ToolId(\"{}\".into()), behavior: {} }},\n",
-        pattern.tool.0, wrapper_beh
-    ));
     out.push_str("        body: NodeBody::SubDag(inner_dag),\n");
     out.push_str("    }\n");
 
     out.push_str("}\n");
 
     out
-}
-
-fn behavior_to_code(b: &BehaviorContract) -> String {
-    match b {
-        BehaviorContract::Pure => "BehaviorKind::Pure".into(),
-        BehaviorContract::Observe => "BehaviorKind::Observe".into(),
-        BehaviorContract::WritesWorldIdempotent => {
-            "BehaviorKind::WritesWorld(Idempotency::Idempotent)".into()
-        }
-        BehaviorContract::WritesWorldNotIdempotent => {
-            "BehaviorKind::WritesWorld(Idempotency::NotIdempotent)".into()
-        }
-    }
 }
 
 fn sanitize_ident(s: &str) -> String {
@@ -183,7 +183,7 @@ fn sanitize_ident(s: &str) -> String {
 mod tests {
     use super::*;
     use gunbc_contracts::*;
-    use gunbc_ir::{NodeId, PortName, ToolId, TypeId};
+    use gunbc_ir::{NodeId, PortName, TypeId};
 
     fn auth_blocks() -> Vec<BlockContract> {
         vec![
@@ -194,7 +194,6 @@ mod tests {
                     PortContract { name: PortName("token".into()), type_id: TypeId("Secret".into()), optional: false, guard: None },
                     PortContract { name: PortName("needs_create".into()), type_id: TypeId("Bool".into()), optional: false, guard: None },
                 ],
-                behavior: BehaviorContract::Observe,
             },
             BlockContract {
                 id: "auth_create".into(),
@@ -204,7 +203,6 @@ mod tests {
                 outputs: vec![
                     PortContract { name: PortName("token".into()), type_id: TypeId("Secret".into()), optional: false, guard: None },
                 ],
-                behavior: BehaviorContract::WritesWorldIdempotent,
             },
             BlockContract {
                 id: "auth_resolve".into(),
@@ -215,7 +213,6 @@ mod tests {
                 outputs: vec![
                     PortContract { name: PortName("token".into()), type_id: TypeId("Secret".into()), optional: false, guard: None },
                 ],
-                behavior: BehaviorContract::Pure,
             },
         ]
     }
@@ -223,7 +220,6 @@ mod tests {
     fn auth_pattern() -> PatternContract {
         PatternContract {
             name: "auth".into(),
-            tool: ToolId("auth".into()),
             slots: vec![
                 SlotContract { node_id: NodeId("auth_check".into()), block_id: "auth_check".into() },
                 SlotContract { node_id: NodeId("auth_create".into()), block_id: "auth_create".into() },
@@ -246,7 +242,7 @@ mod tests {
             PortContract { name: PortName("token".into()), type_id: TypeId("Secret".into()), optional: false, guard: None },
         ];
         let decisions = vec![PatternDecisionContract {
-            tool: ToolId("auth".into()),
+            node: NodeId("auth".into()),
             pattern: "upsert".into(),
             decision: DecisionContract::Instantiated,
         }];
@@ -256,7 +252,6 @@ mod tests {
             &blocks,
             &[],
             &wrapper_outputs,
-            &BehaviorContract::WritesWorldIdempotent,
             &decisions,
         );
 

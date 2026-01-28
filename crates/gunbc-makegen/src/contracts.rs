@@ -12,7 +12,6 @@ pub fn context_block() -> BlockContract {
             PortContract { name: PortName("output_path".into()), type_id: TypeId("String".into()), optional: false, guard: None },
             PortContract { name: PortName("force".into()), type_id: TypeId("Bool".into()), optional: false, guard: None },
         ],
-        behavior: BehaviorContract::Pure,
     }
 }
 
@@ -35,7 +34,6 @@ pub fn check_block() -> BlockContract {
             PortContract { name: PortName("per_crate_targets".into()), type_id: TypeId("Bool".into()), optional: false, guard: None },
             PortContract { name: PortName("lint_targets".into()), type_id: TypeId("Bool".into()), optional: false, guard: None },
         ],
-        behavior: BehaviorContract::Observe,
     }
 }
 
@@ -52,7 +50,6 @@ pub fn parse_workspace_block() -> BlockContract {
             PortContract { name: PortName("crate_is_bin".into()), type_id: TypeId("StrList".into()), optional: false, guard: None },
             PortContract { name: PortName("crate_is_lib".into()), type_id: TypeId("StrList".into()), optional: false, guard: None },
         ],
-        behavior: BehaviorContract::Pure,
     }
 }
 
@@ -67,7 +64,6 @@ pub fn generate_targets_block() -> BlockContract {
         outputs: vec![
             PortContract { name: PortName("targets".into()), type_id: TypeId("StrList".into()), optional: false, guard: None },
         ],
-        behavior: BehaviorContract::Pure,
     }
 }
 
@@ -81,7 +77,6 @@ pub fn generate_rules_block() -> BlockContract {
         outputs: vec![
             PortContract { name: PortName("rules".into()), type_id: TypeId("StrList".into()), optional: false, guard: None },
         ],
-        behavior: BehaviorContract::Pure,
     }
 }
 
@@ -95,7 +90,6 @@ pub fn compose_makefile_block() -> BlockContract {
         outputs: vec![
             PortContract { name: PortName("content".into()), type_id: TypeId("String".into()), optional: false, guard: None },
         ],
-        behavior: BehaviorContract::Pure,
     }
 }
 
@@ -116,11 +110,10 @@ pub fn resolve_block() -> BlockContract {
             PortContract { name: PortName("makefile_path".into()), type_id: TypeId("String".into()), optional: false, guard: None },
             PortContract { name: PortName("file_existed".into()), type_id: TypeId("Bool".into()), optional: false, guard: None },
         ],
-        behavior: BehaviorContract::Pure,
     }
 }
 
-pub fn sink_block(dry_run: bool) -> BlockContract {
+pub fn sink_block(_dry_run: bool) -> BlockContract {
     BlockContract {
         id: "sink".into(),
         inputs: vec![
@@ -132,7 +125,6 @@ pub fn sink_block(dry_run: bool) -> BlockContract {
         outputs: vec![
             PortContract { name: PortName("status".into()), type_id: TypeId("String".into()), optional: false, guard: None },
         ],
-        behavior: if dry_run { BehaviorContract::Observe } else { BehaviorContract::WritesWorldIdempotent },
     }
 }
 
@@ -156,11 +148,5 @@ mod tests {
             assert!(!block.id.is_empty(), "block must have a non-empty id");
             assert!(!block.outputs.is_empty(), "block '{}' must have outputs", block.id);
         }
-    }
-
-    #[test]
-    fn sink_behavior_varies_with_dry_run() {
-        assert_eq!(sink_block(true).behavior, BehaviorContract::Observe);
-        assert_eq!(sink_block(false).behavior, BehaviorContract::WritesWorldIdempotent);
     }
 }

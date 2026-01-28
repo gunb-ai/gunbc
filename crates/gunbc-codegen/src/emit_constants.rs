@@ -32,7 +32,7 @@ pub fn emit_port_constants(block: &BlockContract) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gunbc_contracts::{BehaviorContract, PortContract};
+    use gunbc_contracts::PortContract;
     use gunbc_ir::{PortName, TypeId};
 
     #[test]
@@ -44,7 +44,6 @@ mod tests {
                 PortContract { name: PortName("token".into()), type_id: TypeId("Secret".into()), optional: false, guard: None },
                 PortContract { name: PortName("needs_create".into()), type_id: TypeId("Bool".into()), optional: false, guard: None },
             ],
-            behavior: BehaviorContract::Observe,
         };
         let code = emit_port_constants(&block);
         assert!(code.contains("pub mod auth_check {"));
@@ -62,7 +61,6 @@ mod tests {
             outputs: vec![
                 PortContract { name: PortName("files".into()), type_id: TypeId("StrList".into()), optional: false, guard: None },
             ],
-            behavior: BehaviorContract::Pure,
         };
         let code = emit_port_constants(&block);
         // "files" should appear only once as a constant

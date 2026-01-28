@@ -152,7 +152,6 @@ pub fn validate_port_saturation<T>(dag: &Dag<T>) -> Result<(), String> {
 mod tests {
     use super::*;
     use gunbc_ir::*;
-    use gunbc_ir::types::BehaviorKind;
 
     fn simple_dag() -> Dag<()> {
         Dag {
@@ -161,14 +160,12 @@ mod tests {
                     id: NodeId("a".into()),
                     inputs: vec![],
                     outputs: vec![port("out", "String")],
-                    metadata: node_meta("test", BehaviorKind::Pure),
                     body: NodeBody::Opaque(()),
                 },
                 Node {
                     id: NodeId("b".into()),
                     inputs: vec![port("in", "String")],
                     outputs: vec![],
-                    metadata: node_meta("test", BehaviorKind::Pure),
                     body: NodeBody::Opaque(()),
                 },
             ],
@@ -195,14 +192,12 @@ mod tests {
                     id: NodeId("a".into()),
                     inputs: vec![],
                     outputs: vec![port("out", "Int")],
-                    metadata: node_meta("test", BehaviorKind::Pure),
                     body: NodeBody::Opaque(()),
                 },
                 Node {
                     id: NodeId("b".into()),
                     inputs: vec![port("in", "String")],
                     outputs: vec![],
-                    metadata: node_meta("test", BehaviorKind::Pure),
                     body: NodeBody::Opaque(()),
                 },
             ],
@@ -225,14 +220,12 @@ mod tests {
                     id: NodeId("a".into()),
                     inputs: vec![],
                     outputs: vec![port("x", "String")],
-                    metadata: node_meta("test", BehaviorKind::Pure),
                     body: NodeBody::Opaque(()),
                 },
                 Node {
                     id: NodeId("b".into()),
                     inputs: vec![port("x", "String"), port("y", "String")],
                     outputs: vec![],
-                    metadata: node_meta("test", BehaviorKind::Pure),
                     body: NodeBody::Opaque(()),
                 },
             ],

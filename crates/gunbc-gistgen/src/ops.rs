@@ -18,9 +18,10 @@ pub enum GistgenOp {
     FilterFiles,
     ReadFiles,
     ComposeSnapshot,
-    UploadGist {
-        dry_run: bool,
-    },
+    /// Real gist upload - actually calls GitHub API.
+    GistUploadReal,
+    /// Mock gist upload - returns mock URL without network.
+    GistUploadMock,
 }
 
 impl Executable for GistgenOp {
@@ -189,7 +190,7 @@ impl Executable for GistgenOp {
                 Ok(out)
             }
 
-            GistgenOp::UploadGist { dry_run } => {
+            GistgenOp::GistUploadMock => {
                 let snapshot = inputs.get("snapshot")
                     .and_then(|v| if let Value::Str(s) = v { Some(s.clone()) } else { None })
                     .unwrap_or_default();
@@ -199,17 +200,22 @@ impl Executable for GistgenOp {
                     None => "none".into(),
                 };
 
-                if *dry_run {
-                    eprintln!("[DRY RUN] Would upload gist:");
-                    eprintln!("  Token: {token_display}");
-                    eprintln!("  Snapshot length: {} bytes", snapshot.len());
-                    if !snapshot.is_empty() {
-                        eprintln!("  Preview: {}...", &snapshot[..snapshot.len().min(200)]);
-                    }
-                    let mut out = HashMap::new();
-                    out.insert("gist_url".into(), Value::Str("https://gist.github.com/dry-run/preview".into()));
-                    return Ok(out);
+                eprintln!("[MOCK] Would upload gist:");
+                eprintln!("  Token: {token_display}");
+                eprintln!("  Snapshot length: {} bytes", snapshot.len());
+                if !snapshot.is_empty() {
+                    let preview_len = snapshot.len().min(200);
+                    eprintln!("  Preview: {}...", &snapshot[..preview_len]);
                 }
+                let mut out = HashMap::new();
+                out.insert("gist_url".into(), Value::Str("https://gist.github.com/mock/preview".into()));
+                Ok(out)
+            }
+
+            GistgenOp::GistUploadReal => {
+                let snapshot = inputs.get("snapshot")
+                    .and_then(|v| if let Value::Str(s) = v { Some(s.clone()) } else { None })
+                    .unwrap_or_default();
 
                 // Real upload via `gh gist create -`
                 let token = match inputs.get("token") {
@@ -325,15 +331,15 @@ mod tests {
     }
 
     #[test]
-    fn dry_run_does_not_call_gh() {
+    fn mock_upload_does_not_call_gh() {
         let mut inputs = HashMap::new();
         inputs.insert("snapshot".into(), Value::Str("test snapshot".into()));
         inputs.insert("token".into(), Value::Secret(gunbc_ir::Secret("tok".into())));
 
-        let op = GistgenOp::UploadGist { dry_run: true };
+        let op = GistgenOp::GistUploadMock;
         let out = op.execute(inputs).unwrap();
         if let Value::Str(url) = &out["gist_url"] {
-            assert!(url.contains("dry-run"));
+            assert!(url.contains("mock"));
         } else {
             panic!("expected Str");
         }

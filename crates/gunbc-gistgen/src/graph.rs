@@ -1,16 +1,27 @@
+use gunbc_ir::types::PatternDecision;
 use gunbc_ir::*;
-use gunbc_ir::types::{BehaviorKind, Idempotency, PatternDecision};
 
 use crate::generated;
 use crate::ops::GistgenOp;
 
-pub fn build_gistgen_dag(repo_path: &str, glob: &str, dry_run: bool) -> Dag<GistgenOp> {
-    let upload_behavior = if dry_run {
-        BehaviorKind::Observe
-    } else {
-        BehaviorKind::WritesWorld(Idempotency::NotIdempotent)
-    };
+/// Understanding mode determines which implementation of external boundaries to use.
+///
+/// Each mode selects a different SubDAG for external operations:
+/// - `Real` - actual network/filesystem calls
+/// - `Mock` - return canned responses, no external calls
+/// - `Simulator` - more sophisticated simulation (e.g., record/replay)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum UnderstandingMode {
+    /// Actually perform external operations (network, filesystem, etc.)
+    #[default]
+    Real,
+    /// Mock all external operations - return canned responses.
+    Mock,
+    /// Simulate external operations with more fidelity than mock.
+    Simulator,
+}
 
+pub fn build_gistgen_dag(repo_path: &str, glob: &str, mode: UnderstandingMode) -> Dag<GistgenOp> {
     // Auth SubDAG — built from generated builder (ports, edges, export_node correct by construction)
     let auth_node = generated::build_auth_subdag(
         GistgenOp::AuthCheck,
@@ -23,7 +34,6 @@ pub fn build_gistgen_dag(repo_path: &str, glob: &str, dry_run: bool) -> Dag<Gist
             id: NodeId("context".into()),
             inputs: vec![],
             outputs: vec![port("repo", "String"), port("selection_spec", "String")],
-            metadata: node_meta("gistgen", BehaviorKind::Observe),
             body: NodeBody::Opaque(GistgenOp::Context {
                 repo_path: repo_path.into(),
                 glob_pattern: glob.into(),
@@ -34,36 +44,34 @@ pub fn build_gistgen_dag(repo_path: &str, glob: &str, dry_run: bool) -> Dag<Gist
             id: NodeId("enumerate_files".into()),
             inputs: vec![port("repo", "String")],
             outputs: vec![port("files", "StrList")],
-            metadata: node_meta("gistgen", BehaviorKind::Observe),
             body: NodeBody::Opaque(GistgenOp::EnumerateFiles),
         },
         Node {
             id: NodeId("filter_files".into()),
             inputs: vec![port("files", "StrList"), port("selection_spec", "String")],
             outputs: vec![port("files", "StrList")],
-            metadata: node_meta("gistgen", BehaviorKind::Pure),
             body: NodeBody::Opaque(GistgenOp::FilterFiles),
         },
         Node {
             id: NodeId("read_files".into()),
             inputs: vec![port("files", "StrList")],
             outputs: vec![port("contents", "MapStrStr")],
-            metadata: node_meta("gistgen", BehaviorKind::Observe),
             body: NodeBody::Opaque(GistgenOp::ReadFiles),
         },
         Node {
             id: NodeId("compose_snapshot".into()),
             inputs: vec![port("contents", "MapStrStr")],
             outputs: vec![port("snapshot", "String")],
-            metadata: node_meta("gistgen", BehaviorKind::Pure),
             body: NodeBody::Opaque(GistgenOp::ComposeSnapshot),
         },
         Node {
             id: NodeId("upload_gist".into()),
             inputs: vec![port("snapshot", "String"), port("token", "Secret")],
             outputs: vec![port("gist_url", "String")],
-            metadata: node_meta("gistgen", upload_behavior),
-            body: NodeBody::Opaque(GistgenOp::UploadGist { dry_run }),
+            body: NodeBody::Opaque(match mode {
+                UnderstandingMode::Real => GistgenOp::GistUploadReal,
+                UnderstandingMode::Mock | UnderstandingMode::Simulator => GistgenOp::GistUploadMock,
+            }),
         },
     ];
 
@@ -77,15 +85,28 @@ pub fn build_gistgen_dag(repo_path: &str, glob: &str, dry_run: bool) -> Dag<Gist
         edge("compose_snapshot", "snapshot", "upload_gist", "snapshot"),
     ];
 
+    // Only declare external boundary for real mode
+    let boundary_declarations = if mode == UnderstandingMode::Real {
+        vec![
+            BoundaryDeclaration {
+                node: NodeId("upload_gist".into()),
+                port: PortName("gist_url".into()),
+                external_type: TypeId("External::GitHub::Gist".into()),
+            },
+        ]
+    } else {
+        vec![]
+    };
+
     let metadata = DagMetadata {
         pattern_decisions: vec![
             PatternDecisionEntry {
-                tool: ToolId("auth".into()),
+                node: NodeId("auth".into()),
                 pattern: "upsert".into(),
                 decision: PatternDecision::Instantiated,
             },
             PatternDecisionEntry {
-                tool: ToolId("gistgen".into()),
+                node: NodeId("gistgen".into()),
                 pattern: "upsert".into(),
                 decision: PatternDecision::NotApplicable {
                     reason: "gistgen is an Emit tool, not Upsert".into(),
@@ -93,6 +114,7 @@ pub fn build_gistgen_dag(repo_path: &str, glob: &str, dry_run: bool) -> Dag<Gist
             },
         ],
         export_node: None,
+        boundary_declarations,
     };
 
     Dag { nodes, edges, metadata }
@@ -105,7 +127,7 @@ mod tests {
 
     #[test]
     fn dag_structure_correct() {
-        let dag = build_gistgen_dag(".", "**/*.rs", true);
+        let dag = build_gistgen_dag(".", "**/*.rs", UnderstandingMode::Mock);
         let auth = dag.nodes.iter().find(|n| n.id.0 == "auth").unwrap();
         match &auth.body {
             NodeBody::SubDag(sub) => {
@@ -119,14 +141,14 @@ mod tests {
     }
 
     #[test]
-    fn dag_executes_dry_run() {
-        let dag = build_gistgen_dag(".", "**/*.rs", true);
+    fn dag_executes_mock() {
+        let dag = build_gistgen_dag(".", "**/*.rs", UnderstandingMode::Mock);
         let log = gunbc_exec::execute(&dag).unwrap();
         assert!(!log.entries.is_empty());
         let last = log.entries.last().unwrap();
         assert_eq!(last.node_id, "upload_gist");
         if let Some(Value::Str(url)) = last.outputs.get("gist_url") {
-            assert!(url.contains("dry-run"));
+            assert!(url.contains("mock"));
         } else {
             panic!("expected gist_url in upload_gist outputs");
         }
@@ -134,7 +156,7 @@ mod tests {
 
     #[test]
     fn auth_subdag_has_upsert_topology() {
-        let dag = build_gistgen_dag(".", "**/*.rs", true);
+        let dag = build_gistgen_dag(".", "**/*.rs", UnderstandingMode::Mock);
         let auth = dag.nodes.iter().find(|n| n.id.0 == "auth").unwrap();
         match &auth.body {
             NodeBody::SubDag(sub) => {
@@ -146,23 +168,25 @@ mod tests {
 
     #[test]
     fn auth_create_skipped_when_guard_false() {
-        let dag = build_gistgen_dag(".", "**/*.rs", true);
+        let dag = build_gistgen_dag(".", "**/*.rs", UnderstandingMode::Mock);
         let log = gunbc_exec::execute(&dag).unwrap();
         // auth_create is lowered to auth/auth_create
         gunbc_test::assert_upsert_skip_semantics(&log, "auth/auth_create");
     }
 
     #[test]
-    fn dry_run_upload_is_observe() {
-        let dag = build_gistgen_dag(".", "**/*", true);
-        let upload = dag.nodes.iter().find(|n| n.id.0 == "upload_gist").unwrap();
-        assert_eq!(upload.metadata.behavior, BehaviorKind::Observe);
+    fn real_mode_has_boundary_declaration() {
+        let dag = build_gistgen_dag(".", "**/*.rs", UnderstandingMode::Real);
+        assert_eq!(dag.metadata.boundary_declarations.len(), 1);
+        assert_eq!(
+            dag.metadata.boundary_declarations[0].external_type.0,
+            "External::GitHub::Gist"
+        );
     }
 
     #[test]
-    fn real_upload_is_writes_world() {
-        let dag = build_gistgen_dag(".", "**/*", false);
-        let upload = dag.nodes.iter().find(|n| n.id.0 == "upload_gist").unwrap();
-        assert_eq!(upload.metadata.behavior, BehaviorKind::WritesWorld(Idempotency::NotIdempotent));
+    fn mock_mode_has_no_boundary() {
+        let dag = build_gistgen_dag(".", "**/*.rs", UnderstandingMode::Mock);
+        assert!(dag.metadata.boundary_declarations.is_empty());
     }
 }
