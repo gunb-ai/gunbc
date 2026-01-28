@@ -23,6 +23,8 @@ pub fn build_graph(mode: Mode) -> DepGraph {
     let mut builder = GraphBuilder::new();
 
     // Core deps
+    // TODO(deps): add platform-specific package manager nodes (apt/brew/choco)
+    // and route curl/zstd installs through them.
     let curl = builder.add_upsert(
         "curl",
         DepOp::CheckCommand {
@@ -31,7 +33,9 @@ pub fn build_graph(mode: Mode) -> DepGraph {
         },
         Some(CommandSpec {
             linux: Some("sudo apt-get update && sudo apt-get install -y curl"),
+            // TODO(deps): add brew install path for curl.
             macos: Some("brew install curl"),
+            // TODO(deps): add choco install path for curl.
             windows: Some("choco install -y curl"),
         }),
         &[],
@@ -46,7 +50,9 @@ pub fn build_graph(mode: Mode) -> DepGraph {
         },
         Some(CommandSpec {
             linux: Some("sudo apt-get update && sudo apt-get install -y zstd"),
+            // TODO(deps): add brew install path for zstd.
             macos: Some("brew install zstd"),
+            // TODO(deps): add choco install path for zstd.
             windows: Some("choco install -y zstandard"),
         }),
         &[],
@@ -66,6 +72,7 @@ pub fn build_graph(mode: Mode) -> DepGraph {
             macos: Some(
                 "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y",
             ),
+            // TODO(deps): add rustup installer for Windows (powershell / rustup-init.exe).
             windows: None,
         }),
         &[curl.clone()],
@@ -81,6 +88,7 @@ pub fn build_graph(mode: Mode) -> DepGraph {
         Some(CommandSpec {
             linux: Some("rustup toolchain install stable && rustup default stable"),
             macos: Some("rustup toolchain install stable && rustup default stable"),
+            // TODO(deps): add windows toolchain install + default selection.
             windows: None,
         }),
         &[rustup.clone()],
@@ -101,7 +109,9 @@ pub fn build_graph(mode: Mode) -> DepGraph {
                 curl -L \"$URL\" -o \"$TMP\" && zstd -d \"$TMP\" -o \"$OUT\" && chmod +x \"$OUT\" && \
                 mkdir -p \"$HOME/.local/bin\" && mv \"$OUT\" \"$HOME/.local/bin/buck2\"",
             ),
+            // TODO(deps): add macOS buck2 install (brew or release download).
             macos: None,
+            // TODO(deps): add Windows buck2 install (release download + unpack).
             windows: None,
         }),
         &[curl.clone(), zstd.clone()],
