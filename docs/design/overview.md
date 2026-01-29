@@ -29,6 +29,33 @@ We model a **single execution** as a DAG. Repetition (retry/while/poll) is repre
 | **Resources** | Cause: acquire → Effect: release |
 | **Tests** | Cause: mock inputs → Effect: expected outputs |
 
+### No Meta-Annotations — Types Are Fractal DAGs
+
+A core design principle: **all behavior must be expressed through the type system, not through meta-annotations**.
+
+Meta-annotations are external modifiers that can contradict or circumvent the type system. They create semantic holes where the type says one thing but runtime behavior differs.
+
+**Banned pattern** (meta-annotation):
+```rust
+// DON'T: guard as external modifier that can contradict cardinality
+Port { type_id: "String", cardinality: One, guard: Some(condition) }
+// Type says "definitely one value" but guard can cause "no value"
+```
+
+**Correct pattern** (type expresses behavior):
+```rust
+// DO: optionality is in the type itself
+Port { type_id: "Optional<String>", cardinality: ZeroOrOne }
+// Type honestly describes that value may be absent
+```
+
+**Why types are fractal DAGs**: Types themselves can be DAGs that express complex behavior. An `Optional<T>` type is conceptually a small DAG:
+```
+[input: T] → [presence check] → [output: T | None]
+```
+
+This keeps the type system **closed and self-consistent**. Any behavior (optionality, validation, transformation) is expressed as a type, which is itself a DAG structure. No external annotations can break invariants.
+
 ---
 
 ## Scope and Threat Model
@@ -52,7 +79,12 @@ We model a **single execution** as a DAG. Repetition (retry/while/poll) is repre
 
 The `Opaque(T)` in `NodeBody::Opaque(T)` means: "this operation's internals are not our concern." If a node declares it takes `One` input and produces `One` output, we trust it does so. If it panics, that's a bug in the node implementation, not a structural error.
 
-**Bypassing the system**: Developers who want to bypass guarantees (e.g., call `std::fs` directly in an `Opaque` node) are allowed to — we can't stop them. The system provides guarantees for those who use it correctly. The benefit: issues are corralled to specific nodes rather than spread throughout the graph.
+**Bypass policy**:
+
+- For **generated operations** using the transport system, bypass is structurally prevented (code generation controls I/O points).
+- For **custom Opaque nodes**, bypass is allowed but opts out of guarantees (DryRun interception, resource inference) for that node. Such nodes should be treated conservatively.
+
+The benefit: issues are corralled to specific nodes (custom Opaque) rather than spread throughout the graph. Generated workflows get full guarantees.
 
 **Future possibility**: A `Node` trait with type-level input/output specifications could bring node interfaces into the proof system. For now, nodes are a trust boundary.
 
@@ -64,7 +96,7 @@ The `Opaque(T)` in `NodeBody::Opaque(T)` means: "this operation's internals are 
 | Edges are type-compatible | | ✓ (validated) |
 | Cardinality flows correctly | | ✓ (validated) |
 | DAG is acyclic | | ✓ (validated) |
-| Border ports are inferred | | ✓ (structural) |
+| Boundary/entrypoint ports are inferred | | ✓ (structural) |
 | Business logic is correct | ✓ (tests) | |
 
 ---
@@ -75,15 +107,15 @@ We push guarantees as early as possible:
 
 | Level | Method | When | Example |
 |-------|--------|------|---------|
-| **1. Impossible by Structure** | Type system prevents invalid states | Compile | Border ports inferred from connectivity |
+| **1. Impossible by Structure** | Type system prevents invalid states | Compile | Boundary ports inferred from connectivity |
 | **2. Impossible by Generation** | Code generation only produces valid code | Build | Generated CLI always has correct args |
-| **3. Validated at Build** | Explicit checks during build/validation | Build | `validate_dag()` catches cardinality mismatch |
+| **3. Validated at Build** | Explicit checks during build/validation | Build | Builder rejects cardinality mismatch |
 | **4. Validated at Runtime** | Checks during execution | Run | Mock spec constraint checking |
-| **5. Tested** | Unit/integration tests | Test | Border node interception works |
+| **5. Tested** | Unit/integration tests | Test | Boundary node interception works |
 
 **Preference**: 1 > 2 > 3 > 4 > 5.
 
-**Note**: Level 1 examples refer to the typed builder API. Raw IR construction is Level 3 (validated).
+**Note**: Level 1 examples refer to the typed builder API (target design). Current raw IR construction relies on structural constraints in the builder patterns.
 
 ### Honesty About Current State
 
@@ -91,17 +123,19 @@ Not everything is at Level 1 yet. Here's where key guarantees actually sit:
 
 | Guarantee | Current Level | Target Level | Gap |
 |-----------|---------------|--------------|-----|
-| **Acyclicity** | 3 (validated) | 1 (structural) | Builder pattern needed |
-| **Type compatibility** | 3 (validated) | 1 (structural) | Type-level edges needed |
-| **Cardinality satisfaction** | 3 (validated) | 1 (structural) | Type-level cardinality needed |
-| **Port uniqueness** | 3 (validated) | 1 (structural) | Newtype ports needed |
-| **Border port detection** | 1 (structural) | 1 | ✓ Already there |
+| **Acyclicity** | 2 (builder) | 1 (structural) | Generational builder needed |
+| **Type compatibility** | 2 (builder) | 1 (structural) | Type-level edges needed |
+| **Cardinality satisfaction** | 2 (builder) | 1 (structural) | Type-level cardinality needed |
+| **Port uniqueness** | 2 (builder) | 1 (structural) | Newtype ports needed |
+| **Boundary/entrypoint detection** | 1 (structural) | 1 | ✓ Already there |
 | **Effect ordering** | 5 (untested) | 1 (structural) | Resource system needed |
 | **Resource conflicts** | 4 (runtime) | 1 (structural) | Resource typing needed |
 
 ---
 
 ## The Core Model
+
+> **Status**: Fully implemented in `core/ir/`.
 
 ### DAG<T> — The Universal Structure
 
@@ -113,6 +147,8 @@ Edge     := { from: (node, port), to: (node, port) }
 ```
 
 The `T` parameter is the operation type: `GistOp`, `DepsOp`, `TypeOp`, etc.
+
+**Note**: Conditional execution is modeled through explicit Branch patterns and optional types (`ZeroOrOne` cardinality), not through guards. See [Conditional Execution](#conditional-execution).
 
 ### Cardinality — Set-Theoretic Bounds
 
@@ -158,57 +194,227 @@ We chose partial order because:
 
 The tradeoff: some lattice-theoretic operations (computing greatest lower bound of Zero and One) are undefined. In practice, this hasn't been needed.
 
-### Borders — Where DAG Meets World
+### Boundaries — Where DAG Meets World
 
-We distinguish two orthogonal concepts (like border routers in networking — outside our known network, but known destinations):
+> **Status**: Implemented. See `core/ir/src/boundary.rs` and `core/ir/src/entrypoint.rs`.
 
-**Border Ports** (structural — where data crosses the DAG boundary):
-- **Border input**: Input port with no upstream edge (world → DAG)
-- **Border output**: Output port with no downstream edge (DAG → world)
+We distinguish two concepts based on graph connectivity:
 
-Border ports are inferred structurally — if a port has no edge, it's automatically a border. You can't forget to mark it.
+**Boundary Outputs** (where data exits the DAG):
+- Output ports with no downstream edge (DAG → world)
+- Detected by `detect_boundaries()` in `boundary.rs`
+- Used for **signature/codegen** — defining the workflow's interface
 
-**Border Nodes** (effectful — where side effects happen):
-- Nodes with `Effect != Pure` (WorldRead or WorldWrite)
-- These are where I/O actually occurs
+**Entrypoint Inputs** (where data enters the DAG):
+- Input ports with no upstream edge (world → DAG)
+- Detected by `detect_entrypoints()` in `entrypoint.rs`
+- These define the DAG's required inputs
 
-**These are orthogonal concepts:**
-- A `Pure` node can have border ports (takes input from world, does no I/O)
-- A `WorldWrite` node can have no border ports (all edges internal to DAG)
+Both are inferred structurally — if a port has no edge, it's automatically detected. You can't forget to mark it.
 
-**What DryRun intercepts**: Border *nodes* (effectful), not border ports (structural). DryRun replaces the effect behavior, not the data interface.
+**Important distinction:**
 
-**Note on interception**: Border node interception is guaranteed when effects go through the framework's capability system. Developers who bypass the framework (e.g., direct `std::fs` calls) opt out of this guarantee. The system helps those who use it correctly.
+> **Boundary outputs/entrypoints are interface only.** They describe where data enters/leaves the workflow, not where I/O happens.
+>
+> **World I/O is performed only by transport executor nodes** (nodes that consume `TransportRequest` and produce `TransportResponse`).
 
-### Effects — What Operations Do
+**What DryRun intercepts**: Transport execution nodes, not boundary outputs. This ensures internal I/O (e.g., a file read mid-pipeline that feeds downstream nodes) is intercepted regardless of whether outputs are boundary outputs.
 
+**Transport boundary node**: A node that causes a `TransportRequest` to be executed. DryRun intercepts these nodes by swapping the transport executor with a mock transport executor.
+
+### Resources Are Typed Values
+
+> **Status**: Design principle - no separate Effect enum needed, but resource identity + conflict validation still required.
+
+Instead of an `Effect` enum (Pure/WorldRead/WorldWrite), resource dependencies are handled through the **type system**:
+
+- Files, locks, connections, etc. are **typed values** that flow through edges
+- If Node B needs a file that Node A created, there's an edge carrying that file
+- The executor simply runs nodes when their inputs are ready - no special "effect" logic
+- Ordering is explicit in the graph structure, not implicit in annotations
+
+This keeps the design true to "causality is a DAG" - **all dependencies are visible as edges**.
+
+**Why no Effect enum for scheduling?**
+- Resources flowing through edges already capture dependencies
+- The executor doesn't need to know "what kind" of operation - just follow edges
+- Parallelization is automatic: nodes run when inputs are ready
+
+**What we still need:**
+- **Resource identity**: When two nodes independently reference the same resource (e.g., same file path), we need to detect conflicts
+- **Conflict validation**: Derived from transport requests where possible (see [Resource Conflict Invariant](#resource-ordering))
+
+---
+
+### Workflow Signature
+
+> **Status**: Implemented. See `core/ir/src/signature.rs`.
+
+To prevent silent interface drift (where forgotten edges become accidental public API), workflows have explicit signatures:
+
+```rust
+struct SignaturePort {
+    name: PortName,
+    type_id: TypeId,
+    cardinality: Cardinality,
+}
+
+struct WorkflowSignature {
+    inputs: Vec<SignaturePort>,
+    outputs: Vec<SignaturePort>,
+}
 ```
-Pure <: WorldRead <: WorldWrite
+
+**Including cardinality** is essential — optionality matters to CLI/codegen and for catching interface changes like `ZeroOrOne` → `One`.
+
+**API:**
+```rust
+// Declare a signature
+let sig = WorkflowSignature::new()
+    .with_input("url", "String", Cardinality::One)
+    .with_output("response", "Response", Cardinality::One);
+
+// Validate against a DAG
+sig.validate(&dag)?;  // Returns SignatureError if mismatch
+
+// Or infer from DAG structure
+let inferred = infer_signature(&dag);
 ```
 
-| Effect | Meaning |
-|--------|---------|
-| `Pure` | No external I/O, deterministic, safe to parallelize, can be made durable |
-| `WorldRead` | Reads external state |
-| `WorldWrite` | Modifies external state, must be ordered |
+**Invariant:**
+
+> `DeclaredSignature == InferredSignature`
+
+The inferred signature (computed from unconnected ports) must match the declared signature (type + cardinality). This catches:
+- **Silent interface drift**: Forgot to wire an edge? Now it's a new public input/output
+- **Wiring bugs**: Intended `A -> B` but forgot the edge - validation fails instead of silently exposing ports
+- **Cardinality drift**: Changed `ZeroOrOne` to `One`? Signature check catches it
+- **Dead work**: Pure nodes not contributing to any output can be flagged
+
+Signatures can be inferred initially and checked in CI, but they must exist as **the contract**.
+
+---
+
+## Transport System
+
+> **Status**: Implemented in `core/ir/src/transport/`.
+
+The transport system provides a unified interface for external I/O operations. Instead of nodes directly performing I/O, they construct `TransportRequest` values that are executed by a transport executor.
+
+### Architecture
+
+```rust
+TransportRequest := Rest(RestRequest) | Http(HttpRequest) | File(FileRequest) 
+                  | Tcp(TcpRequest) | Shell(ShellRequest)
+
+TransportResponse := corresponding response types
+```
+
+This separation enables:
+- **Boundary interception**: DryRun can mock any transport operation
+- **Unified logging**: All I/O goes through one path
+- **Request preparation**: Pure nodes can construct requests; boundary nodes execute them
+
+### Supported Transports
+
+**REST** (`rest.rs`):
+- Full REST API support with automatic JSON handling
+- Auth methods: Bearer token, Basic auth, API key (header/query), environment variable
+- Query parameters, headers, request body
+
+**HTTP** (`http.rs`):
+- Raw HTTP requests: GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS
+- Full control over headers and body
+
+**File** (`file.rs`):
+- Operations: Read, Write, Append, Delete, Exists, CreateDir
+- `create_parents` flag for automatic directory creation
+
+**TCP** (`tcp.rs`):
+- Raw TCP connections
+- Configurable connect/read/write timeouts
+
+**Shell** (in transport `mod.rs`):
+- Command execution with arguments
+- Working directory, environment variables, stdin support
+
+**Gist** (`gist.rs`):
+- GitHub Gist-specific builder
+- Can convert to REST requests or shell commands (using `gh` CLI)
 
 ---
 
 ## Execution Model
 
+> **Status**: Implemented in `core/exec/`.
+
 **Constraint-based execution**: Nodes run when their dependencies are satisfied — not in batches, not as streams. A node executes once its inputs are available.
 
 ```rust
-ExecutionMode := Real | DryRun(BorderMocks) | Simulate(SimConfig)
+ExecutionMode := Real | DryRun(TransportMocks)
 ```
 
-- **Real**: Execute world I/O through border nodes
-- **DryRun**: Intercept border nodes (effectful), return mock values
-- **Simulate**: Full simulation with timing/resources
+- **Real**: Execute all operations normally
+- **DryRun**: Intercept transport execution nodes, return mock responses
 
-DryRun is not a "different mode" — it's the same interpreter with a different effect handler. This means dry-run is **semantics-preserving**: it changes observations (what border nodes return), not structure (which nodes run, in what order).
+**Target (not yet implemented)**:
+- **Simulate**: Full simulation with timing/resources (`SimConfig`)
 
-**Key invariant**: Each node executes once per DAG execution. Cardinality describes the shape of the value produced/consumed per run (like `Option`, `Vec`, `NonEmptyVec`), not streaming.
+**Important**: DryRun intercepts **transport execution**, not boundary outputs. This ensures:
+- Internal I/O (e.g., a file read mid-pipeline that feeds downstream nodes) is intercepted regardless of connectivity
+- Pure boundary outputs (final computed results with no I/O) are not intercepted
+
+DryRun is not a "different mode" — it's the same interpreter with a different transport executor. This means dry-run is **semantics-preserving**: it changes I/O results (what transport nodes return), not structure (which nodes run, in what order).
+
+**Key invariant**: Each node **instance** executes at most once per execution trace. Higher-order constructs (retry, while, map) may create multiple instances of a template node (e.g., per retry attempt / per loop iteration / per map item). Cardinality describes the shape of the value produced/consumed per run (like `Option`, `Vec`, `NonEmptyVec`), not streaming.
+
+### Input Availability
+
+An input is **available** when every required upstream producer has completed and produced its (single-shot) output value for this run. Because we're not streaming, `ZeroOrMore` still arrives as a final collection (a `Vec`), not an ongoing stream.
+
+### Conditional Execution
+
+> **Status**: Implemented via Branch pattern. See `core/ir/src/patterns/branch.rs`.
+
+Conditional execution is modeled through **explicit Branch patterns** and **optional types**, not through guards as meta-annotations.
+
+**The Branch Pattern**:
+```
+┌─────────────────────────────────────────────────┐
+│                    Branch                        │
+│              ┌───────────┐                      │
+│      ┌──────▶│ True DAG  │──────┐              │
+│      │       └───────────┘      │              │
+│  condition                      ▼              │
+│     │                       ┌───────┐          │
+│     │       ┌───────────┐   │ Merge │─▶ output │
+│     └──────▶│ False DAG │──▶│       │          │
+│             └───────────┘   └───────┘          │
+└─────────────────────────────────────────────────┘
+```
+
+- Takes a boolean condition and routes input to one of two branches
+- Each branch is a complete sub-DAG
+- Merge combines results (exactly one branch produces output)
+
+**Optional Types for Conditional Values**:
+
+When a value may or may not be present, use optional types:
+```rust
+// Value that might not exist
+Port::optional("result", "Response")  // cardinality: ZeroOrOne
+
+// Downstream must handle optionality explicitly
+Port::optional("maybe_result", "Response")  // accepts Optional
+```
+
+This keeps cardinality **honest** — if something might be absent, the type says so.
+
+**Why not guards as meta-annotations?**
+
+Guards as port annotations (`guard: Option<Guard>`) create a semantic hole: a port can declare `cardinality: One` (definitely produces a value) but the guard can cause it to produce nothing. This violates type safety.
+
+By modeling conditional execution as explicit DAG structure (Branch) and optional types (`ZeroOrOne`), the type system remains closed and self-consistent. See [No Meta-Annotations](#no-meta-annotations--types-are-fractal-dags).
 
 ---
 
@@ -216,49 +422,86 @@ DryRun is not a "different mode" — it's the same interpreter with a different 
 
 A single DAG execution is acyclic — no cycles exist in the execution graph. But real workflows need retries, polling, and iteration.
 
-### The Principle
+### The Principle: Template DAG + Instance DAG
 
-Repetition is modeled as **higher-order constructs** that re-execute subDAGs, not as cycles in the graph. The DAG remains a DAG; the runtime "unrolls" virtual cycles according to specified behavior.
+Repetition is modeled as **higher-order constructs** where:
 
-### Constructs (Target Design)
+- The loop body is a **template DAG** `G`
+- At runtime, each iteration produces a new **instance** of `G` tagged with an `IterationId`
+- The runtime creates **activation records** (think: `G@iter=0`, `G@iter=1`, …)
+- Edges may connect `iter=k` outputs to `iter=k+1` inputs
+
+> A loop construct is equivalent to expanding the workflow into a larger DAG where each iteration is a fresh copy of the body subDAG with a strictly increasing iteration index. This expansion is always acyclic.
+
+The *semantic* loop is cyclic, but the *execution trace graph* remains a DAG because time/iteration indexes provide a natural order.
+
+### Loop Expansion Invariant
+
+> Every loop construct defines an expansion into an acyclic execution trace DAG (nodes are instances with monotonically increasing iteration indices).
+
+This means:
+- You don't need to precompute the full unroll
+- You can unroll **incrementally**: create iteration `k+1` only when needed
+- Caching/durability can be keyed by `(TemplateNodeId, IterationId, InputsHash)`
+
+### Implemented Constructs
+
+> **Status**: Partially implemented in `core/ir/src/patterns/`.
+
+| Construct | Status | Location |
+|-----------|--------|----------|
+| `Map(collection)` / `Loop` | **Implemented** | `patterns/loop_pattern.rs` — `LoopBuilder` |
+| `Branch` (if/else) | **Implemented** | `patterns/branch.rs` — `BranchBuilder`, `IfBuilder` |
+| `Atomic` | **Implemented** | `patterns/atomic.rs` — precondition/operation/postcondition |
+| `Transaction` | **Implemented** | `patterns/transaction.rs` — begin/commit/rollback |
+| `Upsert` | **Implemented** | `patterns/upsert.rs` — check/create/resolve |
+
+### Target Constructs (Not Yet Implemented)
 
 | Construct | Behavior | Interface |
 |-----------|----------|-----------|
-| `Retry(n, backoff)` | Re-execute subDAG up to n times on failure | Same as inner subDAG |
-| `While(condition)` | Re-execute subDAG while condition holds | Condition + inner interface |
-| `Poll(interval, timeout)` | Re-execute subDAG periodically until success | Same as inner subDAG |
-| `Map(collection)` | Execute subDAG once per item | Item type → result type |
+| `Retry(n, backoff)` | Re-execute subDAG up to n times on failure | Body + failure classifier + policy |
+| `While(condition)` | Re-execute subDAG while condition holds | Condition + body + optional loop-carried state |
+| `Poll(interval, timeout)` | Re-execute subDAG periodically until success | Body + interval + timeout |
 
-### Implementation Considerations
+### Standard Repetition Interface
 
-This will test our JIT/runtime design. Options:
-1. **Unroll at build time** (if bounds are known)
-2. **Dynamic unrolling** (runtime determines iterations)
-3. **Specify conditions at node creation** (enables static analysis)
+All repetition constructs share a common interface:
 
-The key invariant: **No cyclic edges exist in the execution graph; repetition is explicit as a construct.**
+```rust
+struct RepeatConstruct<T> {
+    body: Dag<T, Validated>,           // Template DAG
+    classifier: FailureClassifier,      // What counts as retryable (for Retry)
+    policy: RepeatPolicy,               // Max attempts, backoff, jitter, timeout
+    loop_state: Option<TypeId>,         // Optional loop-carried state type
+}
+```
 
-Common interfaces (like `gunb.ai` patterns) should be standardized so retry/poll behavior is predictable.
+`Retry` is a specialization of `Repeat` with a failure classifier.
 
 ---
 
-## Effect and Resource Ordering
+## Resource Ordering
 
-This section documents a known gap that needs detailed design.
+> **Status**: Handled by type system - resources flow through edges.
 
-### The Problem
+### The Principle
 
-Two `WorldWrite` nodes without a data dependency can race:
+Since resources are typed values flowing through edges, ordering is **automatic**:
 
 ```rust
-dag.add_node(write_config);   // WorldWrite to filesystem
-dag.add_node(write_manifest); // WorldWrite to filesystem
-// No edge between them — executor might run in parallel
+// Node A produces a file resource
+let file = write_config();  // outputs File typed value
+
+// Node B consumes that file resource - edge exists
+let result = read_config(file);  // takes File as input
 ```
 
-### Solution: Signal Edges
+The edge carrying the `File` value ensures A runs before B. No separate "resource system" needed.
 
-Use `Zero`-cardinality edges to create explicit ordering without passing data:
+### When Nodes Don't Share Data But Share Resources
+
+If two nodes write to the **same** file but don't pass data between them, use signal edges:
 
 ```rust
 // Signal edge: write_config must complete before write_manifest
@@ -268,46 +511,32 @@ dag.add_edge(
 );
 ```
 
-This keeps the DAG "honest" — ordering is visible in the graph, not hidden in implicit resource edges.
+This keeps the DAG "honest" — ordering is visible in the graph, not hidden.
 
-### Resource System (Target)
+### Resource Conflict Invariant
 
-A **resource system** that tracks what each node reads/writes:
-
-```rust
-struct Resource {
-    kind: ResourceKind,      // File, Network, Lock, etc.
-    id: String,              // Path, URL, lock name, etc.
-}
-
-// Nodes declare their resources
-Node<T> {
-    reads: Vec<Resource>,
-    writes: Vec<Resource>,
-    ...
-}
-```
-
-**Open questions:**
-- Are resources declared explicitly or inferred from the operation type?
-- Is `Resource` a type (structural) or a value (runtime)?
-- Do resource conflicts create implicit edges, or require explicit ordering?
-
-### Target Invariant
+For resources that aren't passed through edges, validation should check:
 
 ```
-RESOURCE ORDERING INVARIANT:
-∀ nodes A, B where A.writes ∩ B.writes ≠ ∅:
-    edge(A, B) ∨ edge(B, A) ∨ resources_independent(A, B)
+RESOURCE CONFLICT INVARIANT:
+∀ nodes A, B where conflict(A, B):
+    edge(A, B) ∨ edge(B, A)
+
+where conflict(A, B) iff:
+    (A.writes ∩ B.writes) ∪ (A.writes ∩ B.reads) ∪ (A.reads ∩ B.writes) ≠ ∅
 ```
 
-If two nodes might conflict on the same resource, the DAG must contain an explicit ordering edge, or the resource system must prove independence. This makes the invariant checkable.
+This covers:
+- **Write/write conflicts** - two nodes writing to the same resource
+- **Write/read conflicts** - one node writes, another reads the same resource
+
+If nodes conflict on a resource, the DAG must contain an explicit ordering edge.
 
 ---
 
-## Fan-In/Fan-Out
+## Fan-In/Fan-Out (Target Design)
 
-This section documents a known gap that needs detailed design.
+> **Status**: Not yet implemented. This section documents target design.
 
 ### The Principle
 
@@ -321,8 +550,41 @@ When developers use framework types (lists, maps, etc.), the compiler can infer 
 |----------|-----------|
 | Fan-out: `One` output → multiple inputs | Broadcast — each input gets the same value |
 | Fan-in: multiple `One` outputs → `One` input | **Error** — ambiguous which value |
-| Fan-in: multiple `One` outputs → `ZeroOrMore` input | Collect into list (order: topological + edge order) |
-| Fan-in: `ZeroOrMore` + `One` → `ZeroOrMore` | Concatenate |
+| Fan-in: multiple `One` outputs → `ZeroOrMore` input | Collect into list (canonical order) |
+| Fan-in: `ZeroOrMore` + `One` → `ZeroOrMore` | Concatenate (canonical order) |
+
+### Canonical Edge Ordering (Required for Determinism)
+
+Collection order must be deterministic across builds. The canonical sort key:
+
+```rust
+// Edges are ordered by: (from_node_id, from_port_name, edge_index)
+fn canonical_edge_order(edges: &[Edge]) -> Vec<&Edge> {
+    edges.sorted_by_key(|e| (&e.from_node, &e.from_port, e.index))
+}
+```
+
+**Tie-breaker**: `edge_index` handles cases where multiple edges have the same source node/port (rare but possible with future features).
+
+**Invariant:**
+
+> Collection order is deterministic and derived from a canonical ordering of incoming edges.
+
+This ensures the same DAG always produces the same collection order, regardless of how it was constructed.
+
+**Note on renaming**: Renaming ports can change canonical ordering. This is acceptable but should be documented as a potentially breaking change for serialized collections.
+
+### Map/Dict Merge Laws
+
+For map types, merge semantics must be explicit:
+
+| Merge Strategy | Behavior |
+|----------------|----------|
+| `ErrorOnDuplicate` | Fail validation if duplicate keys possible |
+| `LastWriteWins` | Later edge (by canonical order) overwrites |
+| `CombineValues` | Values with same key are merged (requires nested Collectable) |
+
+Default is `ErrorOnDuplicate` to prevent silent data loss.
 
 ### Target: Compiler-Inferred Merging
 
@@ -342,53 +604,43 @@ trait Collectable<T> {
 
 ---
 
-## Validation and Typestate
+## Structural Validity by Construction
 
-`validate_dag()` proves at build time:
+> **Status**: Target design. The goal is to make invalid DAGs unrepresentable through the builder API.
 
-| Check | Error |
-|-------|-------|
-| Type compatibility | `TypeMismatch` |
-| Cardinality satisfaction | `CardinalityMismatch` |
-| Acyclicity | `CycleDetected` |
-| Port existence | `PortNotFound` |
-| SubDag interfaces | `SubDagInterfaceMismatch` |
+### The Principle
 
-**If validation passes, these failures cannot occur at runtime.**
+Instead of "build anything, then validate," we aim for "the builder only produces valid DAGs."
 
-### Error Quality
+When you use `DagBuilder`:
+- Cycles are impossible (generational tracking)
+- Type mismatches are compile errors (typed ports)
+- Cardinality violations are compile errors (type-level cardinality)
 
-Validation errors should point to the specific contradiction:
-- Which edge violates which constraint
-- What the actual vs expected type/cardinality is
-- Where in the DAG the problem occurs
+### Current State
 
-A vague "CardinalityMismatch somewhere" doesn't help. Errors are part of the value proposition.
+Currently, the system relies on structural constraints in the builder patterns. Validation is implicit in construction rather than an explicit pass.
 
-### Making Validation Structural (Target)
-
-Currently, validation is a runtime check. To make "structural errors can't happen" literally true:
+### Target: DagBuilder with Compile-Time Guarantees
 
 ```rust
-struct Dag<T, State> { ... }
-struct Unvalidated;
-struct Validated;
-
-impl<T> Dag<T, Unvalidated> {
-    fn validate(self) -> Result<Dag<T, Validated>, DagError> { ... }
-}
-
-// Only validated DAGs can be executed
-fn execute<T>(dag: &Dag<T, Validated>, mode: ExecutionMode) -> Result<...> { ... }
+let mut builder = DagBuilder::new();
+let a = builder.add_node(node_a);           // Generation 0
+let b = builder.add_node_after(node_b, &a); // Generation 1
+builder.add_edge(a.out("x"), b.in("y"));    // OK: gen 0 → gen 1
+builder.add_edge(b.out("z"), a.in("w"));    // COMPILE ERROR: gen 1 → gen 0
 ```
 
-**Key property**: `Dag<T, Validated>` is immutable. To modify a validated DAG:
-1. You get a `Dag<T, Unvalidated>` back and must re-validate, OR
-2. You use `DagBuilder` which maintains validity by construction
+The builder tracks "generations" — edges can flow from any earlier generation to any later generation (i < j). Cycles become unrepresentable.
 
-This makes "proof once" literally true — you can't call `execute()` without proving validation succeeded, and you can't silently invalidate a validated DAG.
+### Why Not Runtime Validation?
 
-**Invariant**: No executable artifact exists without a validation witness.
+Runtime validation ("build anything, then check") has downsides:
+- Errors caught late, after invalid structure already exists
+- Requires explicit validation calls that can be forgotten
+- Doesn't fit "proof once" — every modification requires re-validation
+
+The target is: **if it compiles, it's valid.**
 
 ---
 
@@ -396,35 +648,47 @@ This makes "proof once" literally true — you can't call `execute()` without pr
 
 The system proves these properties once, so developers never have to re-prove them in their own code or tests.
 
-### True Structural Invariants (Level 1 — Impossible to Violate)
+### Guaranteed Invariants (Current Implementation)
+
+These invariants are currently enforced and can be relied upon:
+
+| # | Invariant | How Enforced |
+|---|-----------|--------------|
+| 1 | **Acyclic execution trace** | Even with loops, the instantiated trace is acyclic (iteration-indexed) |
+| 2 | **Type + cardinality compatibility** | Every edge checked, `Zero` = `Unit` |
+| 3 | **Resources flow through edges** | Dependencies are explicit; no hidden "effect" annotations |
+| 4 | **Boundary/entrypoint detection** | Structural — output/input ports without edges automatically detected |
+
+### Structural Invariants (Level 1 — Impossible to Violate)
 
 | Invariant | How It's Enforced |
 |-----------|-------------------|
-| **Border ports are inferred** | No edge = border, automatically detected |
-| **Border nodes are identifiable** | Effect type marks world interaction |
+| **Boundary outputs are inferred** | Output port with no downstream edge = boundary, automatically detected |
+| **Entrypoint inputs are inferred** | Input port with no upstream edge = entrypoint, automatically detected |
 
-### Validated Invariants (Level 3 — Checked, Not Structural)
+### Design Target Invariants (Not Yet Enforced)
 
-| Invariant | How It's Enforced | Should Be Level 1? |
-|-----------|-------------------|-------------------|
-| **DAGs are acyclic** | `validate_dag()` rejects cycles | Yes |
-| **Edges connect compatible types** | `TypeId` equality checked | Yes |
-| **Cardinality flows correctly** | `satisfies()` checked | Yes |
-| **All ports exist** | Edge validation checks endpoints | Yes |
-| **SubDag interfaces match** | Input/output ports verified | Yes |
+These are design goals that will be enforced in future implementations:
 
-### Not Yet Enforced
+| Invariant | Current State | Target |
+|-----------|---------------|--------|
+| **Resource conflict ordering** | Not checked | Validation rejects unordered conflicts |
+| **Fan-in canonical ordering** | Partially defined | Deterministic edge ordering with tie-breakers |
+| **Workflow signature matching** | Not implemented | Declared == Inferred check |
+| **Implicit aggregation is lawful** | Not checked | Fan-in only when type has merge/collect law |
 
-| Invariant | Current State | Risk |
-|-----------|---------------|------|
-| **Effect ordering** | Implicit in data flow | WorldWrite nodes can race |
-| **Resource conflicts** | Runtime MockSpec | Parallel execution can conflict |
-| **Node transformation totality** | **Out of scope** — trusted | Node could panic on valid inputs |
-| **Determinism under parallelism** | Assumed for `Pure` | Shared mutable state could race |
+### Out of Scope
+
+| Invariant | Why |
+|-----------|-----|
+| **Node transformation totality** | Nodes are trusted — they honor declared interfaces |
+| **Business logic correctness** | Higher-order concern — tested by developers |
 
 ---
 
-## Path to Level 1: Structural Enforcement
+## Path to Level 1: Structural Enforcement (Target Design)
+
+> **Status**: None of the Level 1 structural enforcement described here is implemented yet. These are design targets.
 
 ### Making Cycles Structurally Impossible
 
@@ -435,7 +699,7 @@ dag.add_node(node_a);
 dag.add_node(node_b);
 dag.add_edge(a -> b);
 dag.add_edge(b -> a);  // Cycle — compiles fine
-validate_dag(&dag)?;   // Rejected here
+// Cycle detected at edge creation time
 ```
 
 **Target (Level 1)** — builder prevents cycles by construction:
@@ -450,7 +714,7 @@ builder.add_edge(b.out("z"), a.in("w"));    // COMPILE ERROR: gen 1 → gen 0
 
 The builder tracks "generations" — edges can flow from any earlier generation to any later generation (i < j), enabling diamond patterns. Cycles become unrepresentable.
 
-**Note**: The generational builder is one authoring mechanism. Typestate validation (`Dag<T, Validated>`) is the hard gate that ensures execution never sees a cycle.
+The generational builder makes cycles unrepresentable at compile time.
 
 ### Making Cardinality Structurally Impossible
 
@@ -458,7 +722,7 @@ The builder tracks "generations" — edges can flow from any earlier generation 
 
 ```rust
 let edge = Edge::new("filter", "out", "process", "in");
-validate_dag(&dag)?;  // CardinalityMismatch caught here
+// CardinalityMismatch caught at edge creation time
 ```
 
 **Target (Level 1)** — cardinality encoded in types:
@@ -489,7 +753,7 @@ Developer C: ...same...
 
 gunbc approach:
 ```
-System: proves type safety, cardinality, acyclicity, borders ONCE
+System: proves type safety, cardinality, acyclicity, boundaries ONCE
 Developer A: writes workflow → system rejects invalid, no tests needed for these
 Developer B: writes workflow → system rejects invalid, no tests needed for these
 Developer C: ...same...
@@ -501,41 +765,93 @@ Developer C: ...same...
 
 ## What We Have (Current State)
 
+### Core IR (`core/ir/`)
+
 | Component | Location | Status |
 |-----------|----------|--------|
-| DAG structure | `core/ir/src/dag.rs` | ✓ |
-| Node/Port/Edge | `core/ir/src/node.rs` | ✓ |
-| Cardinality | `core/ir/src/types.rs` | ✓ |
-| Validation | `core/ir/src/validate.rs` | ✓ |
-| Border detection | `core/ir/src/boundary.rs` | ✓ (note: file uses "boundary", doc uses "border") |
-| Lowering | `core/exec/src/lower.rs` | ✓ |
-| Execution | `core/exec/src/execute.rs` | ✓ |
-| Mock specs | `core/test/src/mock_spec.rs` | ✓ |
+| DAG structure | `dag.rs` | ✓ |
+| Node/Port/Edge | `node.rs` | ✓ |
+| Cardinality & Types | `types.rs` | ✓ |
+| Boundary detection | `boundary.rs` | ✓ |
+| Entrypoint detection | `entrypoint.rs` | ✓ |
+| Runtime values | `value.rs` | ✓ |
+
+### Patterns (`core/ir/src/patterns/`)
+
+| Pattern | Location | Description |
+|---------|----------|-------------|
+| Loop/Map | `loop_pattern.rs` | Iterate over collections: Unpack → Body → Pack |
+| Branch | `branch.rs` | Conditional if/else with merge |
+| Atomic | `atomic.rs` | Precondition → Operation → Postcondition |
+| Transaction | `transaction.rs` | Begin → Body → Commit/Rollback |
+| Upsert | `upsert.rs` | Check → Create → Resolve |
+| Retry | `repeat.rs` | Retry with policy (backoff, max attempts) |
+| While | `repeat.rs` | Loop while condition holds, with loop-carried state |
+| Poll | `repeat.rs` | Periodic execution until success/timeout |
+
+### Transports (`core/ir/src/transport/`)
+
+| Transport | Location | Operations |
+|-----------|----------|------------|
+| REST | `rest.rs` | Requests with auth (Bearer, Basic, ApiKey, EnvVar) |
+| HTTP | `http.rs` | GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS |
+| File | `file.rs` | Read, Write, Append, Delete, Exists, CreateDir |
+| TCP | `tcp.rs` | Raw TCP connections with timeouts |
+| Shell | (in `mod.rs`) | Command execution with args, cwd, env, stdin |
+| Gist | `gist.rs` | GitHub Gist-specific builder |
+
+### Execution (`core/exec/`)
+
+| Component | Location | Status |
+|-----------|----------|--------|
+| Execution engine | `execute.rs` | ✓ |
+| Lowering | `lower.rs` | ✓ |
+| Topological sort | `topo.rs` | ✓ |
+| Boundary interception | `intercept.rs` | ✓ |
+
+### Testing (`core/test/`)
+
+| Component | Location | Status |
+|-----------|----------|--------|
+| Mock specs | `mock_spec.rs` | ✓ — builder pattern, chain validation |
+| Mock operations | `mock.rs` | ✓ — scripted and functional mocks |
+| Mockable trait | `mockable.rs` | ✓ — test fixture generation |
+| Boundary testing | `boundary.rs` | ✓ — dry-run verification |
+| Composition testing | `composition.rs` | ✓ — type compatibility checking |
 
 ### Lowering
 
-Lowering flattens SubDags into the parent DAG, preserving all structural invariants:
-- Inner border ports become edges to the parent
-- Outer border ports remain borders
-- Type and cardinality relationships are preserved
-- Effect ordering is preserved
+Lowering flattens SubDags into the parent DAG. This is **structure-preserving by construction**:
 
-A validated SubDag, when lowered, produces a validated flat DAG.
+**Why lowering preserves validity:**
+
+1. **Renaming**: Inner node IDs are namespaced by `(outer_subdag_node_id, inner_node_id)` to avoid collisions
+2. **Rewiring**:
+   - Edges `X → SubDag.in(p)` become `X → Inner.entry(p)`
+   - Edges `SubDag.out(q) → Y` become `Inner.boundary(q) → Y`
+   - Internal edges remain unchanged under renaming
+3. **Acyclicity**: Outer DAG topo order + inner DAG topo order = valid combined order (no backward edges introduced)
+4. **Type/cardinality**: Inner edges already compatible (validated); cross edges compatible by SubDag interface
+
+**SubDag interface contract**: When constructing a `Node::SubDag`, the inner DAG's entrypoints and boundaries must match the node's declared input/output ports (name, type, cardinality). This interface matching is verified at construction time, making lowering a trusted operation.
+
+**Result**: `lower(Dag<T>) → Dag<T>` preserves structural validity. No re-validation needed after lowering.
 
 ---
 
 ## What's Next
 
-| Gap | Current | Target |
-|-----|---------|--------|
-| Structural acyclicity | `validate_dag()` | `DagBuilder` with generations |
-| Structural cardinality | `satisfies()` check | Type-level `Satisfies<B>` trait |
-| Typestate validation | Runtime `validate_dag()` | `Dag<T, Validated>` typestate |
-| Effect typing | Implicit | Explicit `Node<T, E>` |
-| Resource system | None | Declared resources, signal edges, conflict detection |
-| Fan-in/fan-out | Undefined | Compiler-inferred from framework types |
-| Loop constructs | None | Retry, While, Poll, Map as higher-order nodes |
-| Type DAGs | `TypeId` strings | `Dag<TypeOp>` with predicates |
+| Gap | Current | Target | Status |
+|-----|---------|--------|--------|
+| Structural acyclicity | `DagBuilder` with generations | Type-level prevention | ✓ Implemented |
+| Structural cardinality | `satisfies()` check | Type-level `Satisfies<B>` trait | Target |
+| Workflow signature | `infer_signature()` + `validate()` | Compile-time checked | ✓ Implemented |
+| Retry/While/Poll | `RetryBuilder`, `WhileBuilder`, `PollBuilder` | Template + instance semantics | ✓ Implemented |
+| Fan-in canonical ordering | `canonical_edge_order()` | Deterministic collection | ✓ Implemented |
+| Fan-in/fan-out inference | Undefined | Compiler-inferred from framework types | Target |
+| Simulate mode | None | `ExecutionMode::Simulate(SimConfig)` | Target |
+| Type DAGs | `TypeId` strings | `Dag<TypeOp>` with predicates | Target |
+| Resource conflicts | Runtime detection | Structural prevention | Target |
 
 ---
 
@@ -544,15 +860,31 @@ A validated SubDag, when lowered, produces a validated flat DAG.
 ```
 gunbc/
 ├── core/
-│   ├── ir/           # DAG types, validation, border detection
-│   ├── exec/         # Execution, lowering, interception
-│   ├── test/         # MockSpec, resource simulation
-│   ├── testgen/      # Test code generation
-│   └── codegen/      # CLI/entrypoint generation
+│   ├── ir/               # DAG types, boundary detection
+│   │   ├── src/
+│   │   │   ├── dag.rs        # Dag<T>, Edge, Port
+│   │   │   ├── node.rs       # Node<T>, NodeBody
+│   │   │   ├── types.rs      # Cardinality, TypeId, NodeId
+│   │   │   ├── builder.rs    # DagBuilder (generational, cycle-free)
+│   │   │   ├── signature.rs  # WorkflowSignature, infer_signature()
+│   │   │   ├── boundary.rs   # detect_boundaries()
+│   │   │   ├── entrypoint.rs # detect_entrypoints()
+│   │   │   ├── value.rs      # Runtime Value enum
+│   │   │   ├── patterns/     # Loop, Branch, Atomic, Transaction, Upsert, Retry, While, Poll
+│   │   │   └── transport/    # REST, HTTP, File, TCP, Shell, Gist
+│   ├── exec/             # Execution, lowering, interception
+│   │   ├── src/
+│   │   │   ├── execute.rs    # execute(), ExecutionMode
+│   │   │   ├── lower.rs      # SubDag flattening
+│   │   │   ├── topo.rs       # Topological sort
+│   │   │   └── intercept.rs  # TransportMocks
+│   ├── test/             # MockSpec, test infrastructure
+│   ├── testgen/          # Test code generation
+│   └── codegen/          # CLI/entrypoint generation
 ├── lib/
-│   ├── primitives/   # ReadFiles, WriteFiles, etc.
-│   ├── transport/    # HTTP, File transports
-│   └── tools/        # gist, deps, makegen, viz, ci, buck2, bootstrap
+│   ├── primitives/       # ReadFiles, WriteFiles, Parse, etc.
+│   ├── transport/        # Transport executor
+│   └── tools/            # gist, deps, makegen, viz, ci, buck2, bootstrap
 └── docs/
-    └── design/       # This document
+    └── design/           # This document
 ```

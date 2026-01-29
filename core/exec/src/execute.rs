@@ -184,9 +184,9 @@ fn execute_flat<T: Executable>(
 /// Check whether a node should be skipped based on guard predicates.
 fn should_skip_node<T>(node: &Node<T>, inputs: &HashMap<String, Value>) -> bool {
     for port in &node.inputs {
-        if let Some(guard) = &port.guard {
+        if port.has_guard() {
             if let Some(value) = inputs.get(&port.name.0) {
-                if !guard.evaluate(value) {
+                if !port.check_guard(value) {
                     return true;
                 }
             } else {

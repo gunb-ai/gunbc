@@ -195,7 +195,7 @@ pub enum CardinalityCase {
 }
 
 /// Unique identifier for a node within a DAG.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct NodeId(pub String);
 
 impl NodeId {
@@ -223,7 +223,7 @@ impl std::fmt::Display for NodeId {
 }
 
 /// Name of a port on a node.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct PortName(pub String);
 
 impl PortName {

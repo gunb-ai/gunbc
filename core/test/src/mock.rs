@@ -148,10 +148,14 @@ impl<'a, T> ScriptedDagBuilder<'a, T> {
             });
         }
 
-        Ok(Dag {
-            nodes,
-            edges: self.dag.edges.clone(),
-        })
+        let mut result = Dag::new();
+        for node in nodes {
+            result.add_node(node);
+        }
+        for edge in &self.dag.edges {
+            result.add_edge(edge.clone());
+        }
+        Ok(result)
     }
 }
 

@@ -7,6 +7,9 @@
 //! - [`AtomicBuilder`]: Precondition → Operation → Postcondition pattern for atomic operations
 //! - [`LoopBuilder`]: Iterate over collection, applying body to each element
 //! - [`BranchBuilder`]: Conditional execution based on boolean condition
+//! - [`RetryBuilder`]: Re-execute on failure with configurable backoff
+//! - [`WhileBuilder`]: Re-execute while a condition holds
+//! - [`PollBuilder`]: Re-execute at intervals until success or timeout
 //!
 //! Each builder creates a [`Node`] with a [`NodeBody::SubDag`] containing the pattern's
 //! internal structure, with proper guards for conditional execution.
@@ -26,11 +29,13 @@
 pub mod atomic;
 pub mod branch;
 pub mod loop_pattern;
+pub mod repeat;
 pub mod transaction;
 pub mod upsert;
 
 pub use atomic::AtomicBuilder;
 pub use branch::BranchBuilder;
 pub use loop_pattern::LoopBuilder;
+pub use repeat::{BackoffStrategy, FailureClassifier, PollBuilder, RepeatPolicy, RetryBuilder, WhileBuilder};
 pub use transaction::TransactionBuilder;
 pub use upsert::UpsertBuilder;

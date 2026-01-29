@@ -4,7 +4,7 @@
 //! - [`Node`]: A node in the DAG (opaque operation or sub-DAG)
 //! - [`Dag`]: A directed acyclic graph of nodes
 //! - [`Edge`]: Connection between output and input ports
-//! - [`Port`]: Input or output port with type and optional guard
+//! - [`Port`]: Input or output port with type and cardinality
 //! - [`Value`]: Runtime values flowing through the DAG
 //! - [`detect_boundaries`]: Find outputs that leave the DAG (world writes)
 //! - [`detect_entrypoints`]: Find inputs that enter the DAG (world reads)
@@ -22,6 +22,12 @@
 //! These are detected by [`detect_boundaries`] and [`detect_entrypoints`],
 //! not by annotations on nodes.
 //!
+//! # No Meta-Annotations
+//!
+//! Conditional execution is modeled through explicit Branch patterns and
+//! optional types (ZeroOrOne cardinality), not through guards on ports.
+//! This keeps the type system closed and self-consistent.
+//!
 //! # Transport Layer
 //!
 //! All world I/O can be modeled as transport requests/responses:
@@ -34,25 +40,27 @@
 //! happens at well-defined boundaries.
 
 pub mod boundary;
+pub mod builder;
 pub mod dag;
 pub mod entrypoint;
 pub mod node;
 pub mod patterns;
+pub mod signature;
 pub mod transport;
 pub mod types;
-pub mod validate;
 pub mod value;
 
 // Re-exports for convenience
 pub use boundary::{detect_boundaries, BoundaryInfo};
-pub use dag::{build, Dag, Edge, Guard, Port};
+pub use builder::{BuilderError, DagBuilder, InputRef, NodeRef, OutputRef, PortKind};
+pub use dag::{build, canonical_edge_order, edges_to_port, Dag, Edge, Port};
 pub use entrypoint::{detect_entrypoints, EntrypointInfo};
 pub use node::{Node, NodeBody};
-pub use patterns::{AtomicBuilder, TransactionBuilder, UpsertBuilder};
+pub use patterns::{
+    AtomicBuilder, BackoffStrategy, FailureClassifier, PollBuilder, RepeatPolicy, RetryBuilder,
+    TransactionBuilder, UpsertBuilder, WhileBuilder,
+};
+pub use signature::{infer_signature, SignatureError, SignaturePort, WorkflowSignature};
 pub use transport::{TransportRequest, TransportResponse};
 pub use types::{Cardinality, CardinalityCase, CardinalityMismatch, NodeId, PortName, TypeId};
-pub use validate::{
-    check_port_saturation_lowered, validate_dag, validate_dag_quick, ValidationError,
-    ValidationResult,
-};
 pub use value::Value;
