@@ -306,7 +306,7 @@ enum GateKind {
 ## Completed
 
 - [x] Core IR types (Node, Dag, Edge, Port, Value, Guard)
-- [x] Boundary and entrypoint detection
+- [x] Boundary and entrypoint detection (structural, impossible to forget)
 - [x] Pattern builders (Upsert, Atomic, Transaction, Loop, Branch)
 - [x] Sequential execution engine
 - [x] Dry-run via boundary interception
@@ -317,11 +317,69 @@ enum GateKind {
 - [x] **SubDag boundary wiring** in lowering (edges rewired to inner nodes)
 - [x] **Full validation pipeline** (types, cycles, SubDag interface, duplicates)
 - [x] **Structured validation errors** (typed error enum)
+- [x] **Cardinality satisfaction checking** (`satisfies()` on edges)
+- [x] **MockSpec with resource simulation** (locks, leases, pool slots)
+- [x] **Test generation** (boundary, chain, resource tests)
+- [x] **Mock specs for all tools** (gist, deps, makegen, viz, bootstrap, ci, buck2)
+
+---
+
+## Phase 0: Thorough Review
+
+**Status**: Not started  
+**Priority**: Immediate
+
+Before proceeding with new features, audit the current system.
+
+### 0.1 Design Overview Review
+**Reference**: `docs/design/overview.md`
+
+Tasks:
+- [ ] Verify all tools have complete MockSpec coverage
+- [ ] Verify all cardinality annotations are correct (not just defaults)
+- [ ] Check lowering preserves all invariants
+- [ ] Review SubDag boundary wiring completeness
+- [ ] Ensure generated tests match current guarantees
+- [ ] Document any validation gaps
+
+### 0.2 Guarantee Audit
+
+For each guarantee, verify evidence:
+
+| Guarantee | Evidence Location | Status |
+|-----------|------------------|--------|
+| Type compatibility | `validate.rs::check_edges` | [ ] Verify |
+| Cardinality satisfaction | `types.rs::satisfies` | [ ] Verify |
+| Cycle detection | `validate.rs::check_cycles` | [ ] Verify |
+| Boundary detection | `boundary.rs::detect_boundaries` | [ ] Verify |
+| SubDag lowering | `lower.rs::lower` | [ ] Verify |
+| Dry-run interception | `exec/lib.rs::execute_with_mode` | [ ] Verify |
+
+### 0.3 Move Runtime → Compile-Time
+
+Identify opportunities to strengthen guarantees:
+
+- [ ] Effect classification (Pure/Read/Write) → could be structural
+- [ ] Resource requirements → could be compile-time checked
+- [ ] Mock constraint checking → could generate compile-time asserts
+- [ ] Idempotency → could be pattern-enforced
+
+### 0.4 Impossibility by Structure Opportunities
+
+- [ ] Can boundary detection be even more structural?
+- [ ] Can cardinality be type-level instead of runtime?
+- [ ] Can SubDag interface matching be type-level?
+- [ ] Can effect purity be enforced by node type?
 
 ---
 
 ## Design Documents
 
+- `docs/design/rfc-types-as-dags.md` - **Types as DAGs — Fractal Unification (RFC)**
+- `docs/design/rfc-workflow-ir-spec.md` - Formal IR specification (RFC)
+- `docs/design/rfc-contract-tower.md` - Multi-level boundary contracts (RFC)
+- `docs/design/gap-analysis.md` - Audit of current implementation vs design
+- `docs/design/overview.md` - Complete design overview with evidence
 - `docs/design/reconciliation.md` - Relationship between gunbc/the-gunbai/gunb.ai
 - `docs/design/executor-model.md` - Work-queue executor design
-- `docs/design/contracts.md` - Provides/Requires contract system (TODO)
+- `docs/design/contracts.md` - Provides/Requires contract system (superseded)
