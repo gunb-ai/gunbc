@@ -1,9 +1,12 @@
 //! CI operations.
+//!
+//! Demonstrates decomposition into primitives where possible.
+//! Command execution delegates to ExecuteOp primitive.
 
 use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::Value;
+use gunbc_primitives::ExecuteOp;
 use std::collections::HashMap;
-use std::process::Command;
 
 /// Operations for the CI tool.
 #[derive(Debug, Clone)]
@@ -54,18 +57,20 @@ fn execute_setup_deps(_inputs: HashMap<String, Value>) -> Result<HashMap<String,
     Ok(out)
 }
 
-/// Build the project.
+/// Build the project using ExecuteOp primitive.
 fn execute_build(_inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
     println!("Running: cargo build --all-targets");
 
-    let output = Command::new("cargo")
-        .args(["build", "--all-targets"])
-        .output()
-        .map_err(|e| ExecError::new(format!("failed to run cargo build: {}", e)))?;
+    // Use ExecuteOp primitive
+    let mut exec_inputs = HashMap::new();
+    exec_inputs.insert("command".to_string(), Value::Str("cargo".to_string()));
+    exec_inputs.insert("args".to_string(), Value::StrList(vec!["build".to_string(), "--all-targets".to_string()]));
+    
+    let exec_result = ExecuteOp.execute(exec_inputs)?;
 
-    let success = output.status.success();
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    let success = exec_result.get("success").and_then(|v: &Value| v.as_bool()).unwrap_or(false);
+    let stdout = exec_result.get("stdout").and_then(|v: &Value| v.as_str()).unwrap_or("").to_string();
+    let stderr = exec_result.get("stderr").and_then(|v: &Value| v.as_str()).unwrap_or("").to_string();
 
     let mut out = HashMap::new();
     out.insert("build_success".to_string(), Value::Bool(success));
@@ -74,7 +79,7 @@ fn execute_build(_inputs: HashMap<String, Value>) -> Result<HashMap<String, Valu
     Ok(out)
 }
 
-/// Run tests.
+/// Run tests using ExecuteOp primitive.
 fn execute_test(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
     let build_success = match inputs.get("build_success") {
         Some(Value::Bool(b)) => *b,
@@ -91,14 +96,16 @@ fn execute_test(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>
 
     println!("Running: cargo test");
 
-    let output = Command::new("cargo")
-        .args(["test"])
-        .output()
-        .map_err(|e| ExecError::new(format!("failed to run cargo test: {}", e)))?;
+    // Use ExecuteOp primitive
+    let mut exec_inputs = HashMap::new();
+    exec_inputs.insert("command".to_string(), Value::Str("cargo".to_string()));
+    exec_inputs.insert("args".to_string(), Value::StrList(vec!["test".to_string()]));
+    
+    let exec_result = ExecuteOp.execute(exec_inputs)?;
 
-    let success = output.status.success();
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    let success = exec_result.get("success").and_then(|v: &Value| v.as_bool()).unwrap_or(false);
+    let stdout = exec_result.get("stdout").and_then(|v: &Value| v.as_str()).unwrap_or("").to_string();
+    let stderr = exec_result.get("stderr").and_then(|v: &Value| v.as_str()).unwrap_or("").to_string();
 
     let mut out = HashMap::new();
     out.insert("test_success".to_string(), Value::Bool(success));
@@ -108,7 +115,7 @@ fn execute_test(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>
     Ok(out)
 }
 
-/// Run linter.
+/// Run linter using ExecuteOp primitive.
 fn execute_lint(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
     let build_success = match inputs.get("build_success") {
         Some(Value::Bool(b)) => *b,
@@ -125,14 +132,22 @@ fn execute_lint(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>
 
     println!("Running: cargo clippy");
 
-    let output = Command::new("cargo")
-        .args(["clippy", "--all-targets", "--", "-D", "warnings"])
-        .output()
-        .map_err(|e| ExecError::new(format!("failed to run cargo clippy: {}", e)))?;
+    // Use ExecuteOp primitive
+    let mut exec_inputs = HashMap::new();
+    exec_inputs.insert("command".to_string(), Value::Str("cargo".to_string()));
+    exec_inputs.insert("args".to_string(), Value::StrList(vec![
+        "clippy".to_string(),
+        "--all-targets".to_string(),
+        "--".to_string(),
+        "-D".to_string(),
+        "warnings".to_string(),
+    ]));
+    
+    let exec_result = ExecuteOp.execute(exec_inputs)?;
 
-    let success = output.status.success();
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    let success = exec_result.get("success").and_then(|v: &Value| v.as_bool()).unwrap_or(false);
+    let stdout = exec_result.get("stdout").and_then(|v: &Value| v.as_str()).unwrap_or("").to_string();
+    let stderr = exec_result.get("stderr").and_then(|v: &Value| v.as_str()).unwrap_or("").to_string();
 
     let mut out = HashMap::new();
     out.insert("lint_success".to_string(), Value::Bool(success));

@@ -1,31 +1,33 @@
 //! Graph builder for the Buck2 tool.
 //!
-//! Composes buck2-specific ops with library ops from lib crates.
+//! Composes buck2-specific ops with primitives and library ops.
 
 use crate::ops::Buck2Op;
-use gunbc_ir::{build::*, Dag, Edge, Node};
-use gunbc_lib_fs::FsOp;
+use gunbc_exec::{ExecError, Executable};
+use gunbc_ir::{build::*, Dag, Edge, Node, Value};
 use gunbc_lib_transport::TransportOps;
+use gunbc_primitives::PrepareFileWriteOp;
+use std::collections::HashMap;
 
-/// The operation type for buck2 graphs - a union of library and tool-specific ops.
+/// The operation type for buck2 graphs - a union of primitives, library, and tool-specific ops.
 #[derive(Debug, Clone)]
 pub enum Buck2GraphOp {
     /// Buck2-specific operations
     Buck2(Buck2Op),
-    /// Filesystem operations (from gunbc-ops)
-    Fs(FsOp),
+    /// Prepare file write (primitive)
+    PrepareFileWrite(PrepareFileWriteOp),
     /// Transport operations (from gunbc-ops)
     Transport(TransportOps),
 }
 
-impl gunbc_exec::Executable for Buck2GraphOp {
+impl Executable for Buck2GraphOp {
     fn execute(
         &self,
-        inputs: std::collections::HashMap<String, gunbc_ir::Value>,
-    ) -> Result<std::collections::HashMap<String, gunbc_ir::Value>, gunbc_exec::ExecError> {
+        inputs: HashMap<String, Value>,
+    ) -> Result<HashMap<String, Value>, ExecError> {
         match self {
             Buck2GraphOp::Buck2(op) => op.execute(inputs),
-            Buck2GraphOp::Fs(op) => op.execute(inputs),
+            Buck2GraphOp::PrepareFileWrite(op) => op.execute(inputs),
             Buck2GraphOp::Transport(op) => op.execute(inputs),
         }
     }
@@ -69,7 +71,7 @@ pub fn build_buck2_graph() -> Dag<Buck2GraphOp> {
         Buck2GraphOp::Buck2(Buck2Op::GenerateBuckTargets),
     ));
 
-    // Node: PrepareFileWrite (from gunbc-ops/fs - PURE)
+    // Node: PrepareFileWrite (primitive - PURE)
     dag.add_node(Node::opaque(
         "prepare_file_write",
         vec![
@@ -77,7 +79,7 @@ pub fn build_buck2_graph() -> Dag<Buck2GraphOp> {
             port("output_path", "String"),  // Keep buck2's port name
         ],
         vec![port("request", "TransportRequest")],
-        Buck2GraphOp::Fs(FsOp::PrepareFileWrite),
+        Buck2GraphOp::PrepareFileWrite(PrepareFileWriteOp),
     ));
 
     // Node: ExecuteTransport (from gunbc-ops/transport - BOUNDARY)

@@ -23,6 +23,7 @@ gunbc-bootstrap = { path = "../bootstrap" }
 
 [dev-dependencies]
 gunbc-test = { path = "../../../core/test" }
+serde_json = { workspace = true }
 
 [[bin]]
 name = "gunbc-viz"

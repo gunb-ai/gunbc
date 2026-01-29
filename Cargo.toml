@@ -10,7 +10,7 @@ members = [
     
     # Library crates (DAG op libraries)
     "lib/primitives",
-    "lib/fs",
+    # "lib/fs",  # DEPRECATED: Consolidated into lib/primitives
     "lib/gist-ops",
     "lib/markdown",
     "lib/transport",
@@ -33,4 +33,5 @@ license = "MIT"
 [workspace.dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+thiserror = "1.0"
 toml = "0.8"

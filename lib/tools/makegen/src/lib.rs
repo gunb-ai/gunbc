@@ -11,11 +11,18 @@
 //! gist:
 //!     @cargo run -p gunbc-gist -- $(if $(REPO),--repo $(REPO))
 //! ```
+//!
+//! # Mock Specifications
+//!
+//! Mock specs are in `graph_mock.rs` for test generation.
 
 pub mod ops;
 pub mod graph;
 pub mod registry;
 pub mod render;
+
+#[cfg(test)]
+pub mod graph_mock;
 
 pub use graph::build_makegen_graph;
 pub use ops::MakegenOp;

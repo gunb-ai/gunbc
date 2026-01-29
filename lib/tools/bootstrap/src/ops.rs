@@ -1,8 +1,11 @@
 //! Bootstrap operations.
+//!
+//! Demonstrates decomposition into primitives where possible.
+//! File writing delegates to WriteFileOp primitive.
 
-use gunbc_codegen::FileWriter;
 use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::Value;
+use gunbc_primitives::WriteFileOp;
 use std::collections::HashMap;
 
 /// Operations for the bootstrap tool.
@@ -164,29 +167,26 @@ Thumbs.db
     Ok(out)
 }
 
-/// Write all generated files.
+/// Write all generated files using WriteFileOp primitive.
 fn execute_write_files(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-    let writer = FileWriter::real();
     let mut files_written = Vec::new();
 
-    // Write Makefile
+    // Write Makefile using primitive
     if let Some(Value::Str(content)) = inputs.get("makefile_content") {
-        let result = writer
-            .write_if_changed("Makefile", content)
-            .map_err(|e| ExecError::new(format!("failed to write Makefile: {}", e)))?;
-        if result.changed {
-            files_written.push("Makefile".to_string());
-        }
+        let mut write_inputs = HashMap::new();
+        write_inputs.insert("path".to_string(), Value::Str("Makefile".to_string()));
+        write_inputs.insert("content".to_string(), Value::Str(content.clone()));
+        WriteFileOp.execute(write_inputs)?;
+        files_written.push("Makefile".to_string());
     }
 
-    // Write .gitignore
+    // Write .gitignore using primitive
     if let Some(Value::Str(content)) = inputs.get("gitignore_content") {
-        let result = writer
-            .write_if_changed(".gitignore", content)
-            .map_err(|e| ExecError::new(format!("failed to write .gitignore: {}", e)))?;
-        if result.changed {
-            files_written.push(".gitignore".to_string());
-        }
+        let mut write_inputs = HashMap::new();
+        write_inputs.insert("path".to_string(), Value::Str(".gitignore".to_string()));
+        write_inputs.insert("content".to_string(), Value::Str(content.clone()));
+        WriteFileOp.execute(write_inputs)?;
+        files_written.push(".gitignore".to_string());
     }
 
     let mut out = HashMap::new();

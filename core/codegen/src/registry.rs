@@ -1,8 +1,186 @@
-//! Tool registry for CLI generation.
+//! Tool registry for CLI generation and DAG definition.
 //!
-//! Defines metadata for all tools that need CLI generation.
+//! Defines metadata for all tools that need CLI and DAG generation.
+//!
+//! # Architecture
+//!
+//! Tools can be defined declaratively using:
+//! - `ToolDef`: Overall tool metadata and CLI configuration
+//! - `NodeDef`: DAG nodes with operation type
+//! - `EdgeDef`: Edges connecting node ports
+//! - `PortDef`: Input/output port specifications
+//!
+//! Eventually, the entire graph.rs can be generated from these definitions.
 
 use crate::cli_gen::{CliBoundary, CliEntrypoint, ToolMeta};
+
+// ============================================================================
+// DAG Definition Structures
+// ============================================================================
+
+/// Definition for a port on a node.
+#[derive(Debug, Clone)]
+pub struct PortDef {
+    /// Port name
+    pub name: String,
+    /// Type identifier (e.g., "String", "StrList", "Json")
+    pub type_id: String,
+    /// Cardinality ("One", "ZeroOrOne", "ZeroOrMore", "OneOrMore")
+    pub cardinality: String,
+}
+
+impl PortDef {
+    /// Create a scalar (One cardinality) port.
+    pub fn scalar(name: &str, type_id: &str) -> Self {
+        Self {
+            name: name.to_string(),
+            type_id: type_id.to_string(),
+            cardinality: "One".to_string(),
+        }
+    }
+
+    /// Create an optional (ZeroOrOne cardinality) port.
+    pub fn optional(name: &str, type_id: &str) -> Self {
+        Self {
+            name: name.to_string(),
+            type_id: type_id.to_string(),
+            cardinality: "ZeroOrOne".to_string(),
+        }
+    }
+
+    /// Create a list (ZeroOrMore cardinality) port.
+    pub fn list(name: &str, type_id: &str) -> Self {
+        Self {
+            name: name.to_string(),
+            type_id: type_id.to_string(),
+            cardinality: "ZeroOrMore".to_string(),
+        }
+    }
+
+    /// Create a non-empty list (OneOrMore cardinality) port.
+    pub fn list_nonempty(name: &str, type_id: &str) -> Self {
+        Self {
+            name: name.to_string(),
+            type_id: type_id.to_string(),
+            cardinality: "OneOrMore".to_string(),
+        }
+    }
+}
+
+/// Definition for a DAG node.
+#[derive(Debug, Clone)]
+pub struct NodeDef {
+    /// Node identifier
+    pub id: String,
+    /// Input ports
+    pub inputs: Vec<PortDef>,
+    /// Output ports
+    pub outputs: Vec<PortDef>,
+    /// Operation crate (e.g., "gunbc_primitives")
+    pub op_crate: String,
+    /// Operation type (e.g., "PrimitiveOp")
+    pub op_type: String,
+    /// Operation variant (e.g., "Parse(ParseOp::Toml)")
+    pub op_variant: String,
+}
+
+impl NodeDef {
+    /// Create a new node definition.
+    pub fn new(id: &str) -> Self {
+        Self {
+            id: id.to_string(),
+            inputs: vec![],
+            outputs: vec![],
+            op_crate: String::new(),
+            op_type: String::new(),
+            op_variant: String::new(),
+        }
+    }
+
+    /// Add an input port.
+    pub fn input(mut self, port: PortDef) -> Self {
+        self.inputs.push(port);
+        self
+    }
+
+    /// Add an output port.
+    pub fn output(mut self, port: PortDef) -> Self {
+        self.outputs.push(port);
+        self
+    }
+
+    /// Set the operation (crate, type, variant).
+    pub fn op(mut self, crate_name: &str, op_type: &str, variant: &str) -> Self {
+        self.op_crate = crate_name.to_string();
+        self.op_type = op_type.to_string();
+        self.op_variant = variant.to_string();
+        self
+    }
+
+    /// Shorthand for primitive operation.
+    pub fn primitive(mut self, variant: &str) -> Self {
+        self.op_crate = "gunbc_primitives".to_string();
+        self.op_type = "PrimitiveOp".to_string();
+        self.op_variant = variant.to_string();
+        self
+    }
+}
+
+/// Definition for an edge connecting two nodes.
+#[derive(Debug, Clone)]
+pub struct EdgeDef {
+    /// Source node ID
+    pub from_node: String,
+    /// Source port name
+    pub from_port: String,
+    /// Destination node ID
+    pub to_node: String,
+    /// Destination port name
+    pub to_port: String,
+}
+
+impl EdgeDef {
+    /// Create a new edge definition.
+    pub fn new(from_node: &str, from_port: &str, to_node: &str, to_port: &str) -> Self {
+        Self {
+            from_node: from_node.to_string(),
+            from_port: from_port.to_string(),
+            to_node: to_node.to_string(),
+            to_port: to_port.to_string(),
+        }
+    }
+}
+
+/// Definition for a complete DAG.
+#[derive(Debug, Clone, Default)]
+pub struct DagDef {
+    /// Nodes in the DAG
+    pub nodes: Vec<NodeDef>,
+    /// Edges connecting nodes
+    pub edges: Vec<EdgeDef>,
+}
+
+impl DagDef {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Add a node to the DAG.
+    pub fn node(mut self, node: NodeDef) -> Self {
+        self.nodes.push(node);
+        self
+    }
+
+    /// Add an edge to the DAG.
+    pub fn edge(mut self, from_node: &str, from_port: &str, to_node: &str, to_port: &str) -> Self {
+        self.edges.push(EdgeDef::new(from_node, from_port, to_node, to_port));
+        self
+    }
+}
+
+// ============================================================================
+// Tool Definition
+// ============================================================================
 
 /// A tool that needs CLI generation.
 pub struct ToolDef {
@@ -13,6 +191,8 @@ pub struct ToolDef {
     pub custom_import: Option<String>,
     /// Output artifacts produced by this tool (for clean/rollback)
     pub outputs: Vec<String>,
+    /// Declarative DAG definition (optional - for generated graphs)
+    pub dag: Option<DagDef>,
 }
 
 impl ToolDef {
@@ -35,7 +215,19 @@ impl ToolDef {
             boundaries: vec![],
             custom_import: None,
             outputs: vec![],
+            dag: None,
         }
+    }
+
+    /// Set a declarative DAG definition (enables graph generation).
+    pub fn dag(mut self, dag: DagDef) -> Self {
+        self.dag = Some(dag);
+        self
+    }
+
+    /// Check if this tool has a declarative DAG definition.
+    pub fn has_dag(&self) -> bool {
+        self.dag.is_some()
     }
 
     /// Set a custom import line.
@@ -164,6 +356,8 @@ pub fn all_tools() -> Vec<ToolDef> {
             "",
         )
         .import("use gunbc_makegen::build_makegen_graph;")
+        // Declarative DAG definition (POC for graph generation)
+        .dag(makegen_dag())
         .entrypoint(
             CliEntrypoint::new("output_path", "String")
                 .short('o')
@@ -265,4 +459,48 @@ pub fn all_cleanable_outputs() -> Vec<String> {
     outputs.sort();
     outputs.dedup();
     outputs
+}
+
+// ============================================================================
+// Declarative DAG Definitions
+// ============================================================================
+
+/// Declarative definition of the makegen DAG.
+///
+/// Pipeline:
+/// ```text
+/// LoadRegistry -> RenderMakefile -> WriteMakefile
+///                                        ↓
+///                                   (boundary)
+/// ```
+fn makegen_dag() -> DagDef {
+    DagDef::new()
+        // Node: LoadRegistry - no inputs, outputs tool metadata
+        .node(
+            NodeDef::new("load_registry")
+                .output(PortDef::scalar("tool_count", "Int"))
+                .output(PortDef::list_nonempty("tool_names", "StrList"))
+                .output(PortDef::scalar("registry", "Json"))
+                .op("", "MakegenOp", "MakegenOp::LoadRegistry")
+        )
+        // Node: RenderMakefile - registry input, content output
+        .node(
+            NodeDef::new("render_makefile")
+                .input(PortDef::scalar("registry", "Json"))
+                .output(PortDef::scalar("makefile_content", "String"))
+                .op("", "MakegenOp", "MakegenOp::RenderMakefile")
+        )
+        // Node: WriteMakefile - BOUNDARY (world write)
+        .node(
+            NodeDef::new("write_makefile")
+                .input(PortDef::scalar("makefile_content", "String"))
+                .input(PortDef::optional("output_path", "String"))
+                .output(PortDef::scalar("written_path", "String"))
+                .output(PortDef::scalar("content", "String"))
+                .output(PortDef::scalar("changed", "Bool"))
+                .op("", "MakegenOp", "MakegenOp::WriteMakefile")
+        )
+        // Wire up the pipeline
+        .edge("load_registry", "registry", "render_makefile", "registry")
+        .edge("render_makefile", "makefile_content", "write_makefile", "makefile_content")
 }

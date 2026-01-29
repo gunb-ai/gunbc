@@ -231,6 +231,173 @@ impl Executable for HttpRequestOp {
     }
 }
 
+/// List files in a directory, respecting .gitignore.
+///
+/// Uses `git ls-files` when in a git repository, falls back to recursive
+/// directory listing otherwise.
+///
+/// Inputs:
+/// - `repo_path`: Optional String path (defaults to ".")
+///
+/// Outputs:
+/// - `files`: StrList of file paths
+/// - `count`: Int number of files
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ListFilesOp;
+
+impl Executable for ListFilesOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        let repo_path = inputs
+            .get("repo_path")
+            .and_then(|v| v.as_str())
+            .unwrap_or(".");
+
+        let files = list_files_impl(repo_path)?;
+        let count = files.len() as i64;
+
+        let mut out = HashMap::new();
+        out.insert("files".to_string(), Value::StrList(files));
+        out.insert("count".to_string(), Value::Int(count));
+        Ok(out)
+    }
+}
+
+/// List files implementation - tries git ls-files, falls back to recursive listing.
+fn list_files_impl(repo_path: &str) -> Result<Vec<String>, ExecError> {
+    // Try git ls-files first
+    let output = Command::new("git")
+        .current_dir(repo_path)
+        .args(["ls-files", "--cached", "--others", "--exclude-standard"])
+        .output()
+        .map_err(|e| ExecError::new(format!("failed to run git ls-files: {}", e)))?;
+
+    if output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let files: Vec<String> = stdout
+            .lines()
+            .filter(|l| !l.is_empty())
+            .map(|l| l.to_string())
+            .collect();
+        return Ok(files);
+    }
+
+    // Fallback to recursive listing
+    list_files_recursive(Path::new(repo_path))
+        .map_err(|e| ExecError::new(format!("failed to list files: {}", e)))
+}
+
+/// Recursive directory listing (fallback when not in git repo).
+fn list_files_recursive(dir: &Path) -> Result<Vec<String>, std::io::Error> {
+    let mut files = Vec::new();
+
+    if dir.is_dir() {
+        for entry in fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+
+            // Skip hidden directories
+            if path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .map(|n| n.starts_with('.'))
+                .unwrap_or(false)
+            {
+                continue;
+            }
+
+            if path.is_dir() {
+                files.extend(list_files_recursive(&path)?);
+            } else if let Some(p) = path.to_str() {
+                files.push(p.to_string());
+            }
+        }
+    }
+
+    Ok(files)
+}
+
+/// Read multiple files into a map.
+///
+/// Returns a map from filename to contents. Skips files that can't be read
+/// (binary, permissions, etc.)
+///
+/// Inputs:
+/// - `files`: StrList of file paths
+/// - `repo_path`: Optional String base path (defaults to ".")
+///
+/// Outputs:
+/// - `contents`: MapStrStr of filename -> content
+/// - `count`: Int number of files read successfully
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ReadFilesOp;
+
+impl Executable for ReadFilesOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        let files = inputs
+            .get("files")
+            .and_then(|v| v.as_str_list())
+            .ok_or_else(|| ExecError::new("missing or invalid 'files' input"))?;
+
+        let repo_path = inputs
+            .get("repo_path")
+            .and_then(|v| v.as_str())
+            .unwrap_or(".");
+
+        let mut contents = std::collections::BTreeMap::new();
+
+        for file in &files {
+            let path = Path::new(repo_path).join(file);
+            if let Ok(content) = fs::read_to_string(&path) {
+                contents.insert(file.clone(), content);
+            }
+            // Silently skip files that can't be read
+        }
+
+        let count = contents.len() as i64;
+
+        let mut out = HashMap::new();
+        out.insert("contents".to_string(), Value::MapStrStr(contents));
+        out.insert("count".to_string(), Value::Int(count));
+        Ok(out)
+    }
+}
+
+/// Prepare a file write request (PURE - no I/O).
+///
+/// This separates the business logic (deciding what to write) from the
+/// actual I/O (writing to disk). Use with TransportOps::Execute.
+///
+/// Inputs:
+/// - `path`: String path to write to
+/// - `content`: String content to write
+///
+/// Outputs:
+/// - `request`: TransportRequest for transport layer
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct PrepareFileWriteOp;
+
+impl Executable for PrepareFileWriteOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        // Accept multiple port names for flexibility, with default
+        let path = inputs
+            .get("path")
+            .or_else(|| inputs.get("output_path"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("output");  // Default if not provided
+
+        let content = inputs
+            .get("content")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ExecError::new("missing or invalid 'content' string"))?;
+
+        let request = TransportRequest::File(FileRequest::write(path, content));
+
+        let mut out = HashMap::new();
+        out.insert("request".to_string(), Value::Request(request));
+        Ok(out)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

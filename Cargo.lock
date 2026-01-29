@@ -55,6 +55,7 @@ dependencies = [
  "gunbc-codegen",
  "gunbc-exec",
  "gunbc-ir",
+ "gunbc-primitives",
  "gunbc-test",
 ]
 
@@ -64,7 +65,6 @@ version = "0.1.0"
 dependencies = [
  "gunbc-exec",
  "gunbc-ir",
- "gunbc-lib-fs",
  "gunbc-lib-transport",
  "gunbc-primitives",
  "gunbc-test",
@@ -78,6 +78,7 @@ version = "0.1.0"
 dependencies = [
  "gunbc-exec",
  "gunbc-ir",
+ "gunbc-primitives",
  "gunbc-test",
 ]
 
@@ -114,12 +115,12 @@ version = "0.1.0"
 dependencies = [
  "gunbc-exec",
  "gunbc-ir",
- "gunbc-lib-fs",
  "gunbc-lib-gist-ops",
  "gunbc-lib-markdown",
  "gunbc-lib-transport",
  "gunbc-primitives",
  "gunbc-test",
+ "serde_json",
 ]
 
 [[package]]
@@ -128,15 +129,7 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
-]
-
-[[package]]
-name = "gunbc-lib-fs"
-version = "0.1.0"
-dependencies = [
- "gunbc-exec",
- "gunbc-ir",
- "gunbc-test",
+ "thiserror",
 ]
 
 [[package]]
@@ -175,6 +168,7 @@ dependencies = [
  "gunbc-codegen",
  "gunbc-exec",
  "gunbc-ir",
+ "gunbc-primitives",
  "gunbc-test",
  "serde_json",
 ]
@@ -204,6 +198,7 @@ name = "gunbc-testgen"
 version = "0.1.0"
 dependencies = [
  "gunbc-ir",
+ "gunbc-test",
 ]
 
 [[package]]

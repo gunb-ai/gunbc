@@ -1,18 +1,22 @@
-//! CLI generator - generates main.rs for all tools.
+//! CLI and DAG generator - generates main.rs and graph.rs for all tools.
 //!
 //! This is a transaction-based code generator:
 //! - `commit` (default): Generate CLIs, build binaries, create symlink
 //! - `rollback`: Remove all generated artifacts
 //! - `codegen`: Just generate CLIs (partial commit)
+//! - `daggen`: Generate graph.rs from declarative DAG definitions
 //!
 //! Usage:
 //!   gunbc-codegen                    # same as 'commit'
 //!   gunbc-codegen commit             # full build transaction
 //!   gunbc-codegen rollback           # undo all generated files
 //!   gunbc-codegen codegen            # just generate CLIs
+//!   gunbc-codegen daggen             # generate graph.rs files
 //!   gunbc-codegen codegen --dry-run  # preview codegen
 
-use gunbc_codegen::{all_cleanable_outputs, all_tools, generate_cli_with_import, FileWriter};
+use gunbc_codegen::{
+    all_cleanable_outputs, all_tools, generate_cli_with_import, generate_graph_rs, FileWriter,
+};
 use std::env;
 use std::fs;
 use std::path::Path;
@@ -39,6 +43,7 @@ fn main() {
         "commit" => cmd_commit(dry_run),
         "rollback" => cmd_rollback(dry_run),
         "codegen" => cmd_codegen(dry_run),
+        "daggen" => cmd_daggen(dry_run),
         _ => {
             eprintln!("Unknown command: {}", command);
             eprintln!("Run 'gunbc-codegen --help' for usage");
@@ -131,6 +136,48 @@ fn cmd_codegen(dry_run: bool) {
     codegen_clis(dry_run);
 }
 
+/// Generate graph.rs files from declarative DAG definitions.
+fn cmd_daggen(dry_run: bool) {
+    println!("gunbc-codegen: daggen");
+    println!("  mode: {}", if dry_run { "dry-run" } else { "real" });
+    println!();
+    
+    let writer = FileWriter::new(dry_run);
+    let tools = all_tools();
+    let output_dir = "buck-out/gen/lib";
+    
+    let mut generated = 0;
+    let mut skipped = 0;
+    
+    for tool in &tools {
+        if let Some(code) = generate_graph_rs(&tool) {
+            let tool_dir = Path::new(output_dir).join(&tool.meta.tool_name);
+            let graph_path = tool_dir.join("graph.rs");
+            
+            match writer.write(&graph_path, &code) {
+                Ok(result) => {
+                    let status = if result.written {
+                        if result.changed { "written" } else { "unchanged" }
+                    } else {
+                        "dry-run"
+                    };
+                    println!("  [{}] {} ({})", tool.meta.tool_name, graph_path.display(), status);
+                    generated += 1;
+                }
+                Err(e) => {
+                    eprintln!("  [{}] ERROR: {}", tool.meta.tool_name, e);
+                }
+            }
+        } else {
+            println!("  [{}] skipped (no declarative DAG)", tool.meta.tool_name);
+            skipped += 1;
+        }
+    }
+    
+    println!();
+    println!("Generated: {}, Skipped: {}", generated, skipped);
+}
+
 /// Generate CLI main.rs files for all tools
 fn codegen_clis(dry_run: bool) -> bool {
     let writer = FileWriter::new(dry_run);
@@ -178,6 +225,7 @@ fn print_help() {
     println!("    commit     Generate CLIs, build binaries, create symlink (default)");
     println!("    rollback   Remove all generated artifacts (clean)");
     println!("    codegen    Just generate CLIs (partial commit)");
+    println!("    daggen     Generate graph.rs from declarative DAG definitions");
     println!();
     println!("OPTIONS:");
     println!("    -n, --dry-run    Preview changes without writing");
@@ -187,4 +235,5 @@ fn print_help() {
     println!("    gunbc-codegen                # full build");
     println!("    gunbc-codegen rollback       # clean everything");
     println!("    gunbc-codegen codegen -n     # preview CLI generation");
+    println!("    gunbc-codegen daggen         # generate graph.rs for tools with DAG defs");
 }

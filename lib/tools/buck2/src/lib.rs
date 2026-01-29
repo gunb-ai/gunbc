@@ -13,9 +13,16 @@
 //! The last step (ExecuteTransport) is a boundary — it has no downstream edges,
 //! so it's automatically identified as a world-write. In dry-run mode,
 //! it gets intercepted and returns the generated content without writing.
+//!
+//! # Mock Specifications
+//!
+//! Mock specs are in `graph_mock.rs` for test generation.
 
 pub mod graph;
 pub mod ops;
+
+#[cfg(test)]
+pub mod graph_mock;
 
 pub use graph::{build_buck2_graph, Buck2GraphOp};
 pub use ops::Buck2Op;

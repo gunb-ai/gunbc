@@ -1,31 +1,58 @@
 //! Graph builder for the gist tool.
 //!
-//! This graph is composed from library ops - it doesn't define any ops itself,
-//! just wires together existing functionality.
+//! This graph is composed from primitives and library ops.
+//! Demonstrates the migration from lib/fs to primitives.
 
-use gunbc_ir::{build::*, Dag, Edge, Node};
-use gunbc_lib_fs::FsOp;
+use gunbc_exec::{ExecError, Executable};
+use gunbc_ir::{build::*, Dag, Edge, Node, Value};
 use gunbc_lib_gist_ops::GistOps;
 use gunbc_lib_markdown::MarkdownOp;
+use gunbc_primitives::{ListFilesOp, ReadFilesOp};
+use std::collections::HashMap;
 
-/// The operation type for gist graphs - a union of library ops.
+/// The operation type for gist graphs - a union of primitives and library ops.
 #[derive(Debug, Clone)]
 pub enum GistGraphOp {
-    /// Filesystem operations
-    Fs(FsOp),
+    /// List files (primitive)
+    ListFiles(ListFilesOp),
+    /// Read multiple files (primitive)
+    ReadFiles(ReadFilesOp),
+    /// Filter by extension (local op - specialized for gist)
+    FilterByExtension { extensions: Vec<String> },
     /// Markdown operations
     Markdown(MarkdownOp),
     /// Gist operations
     Gist(GistOps),
 }
 
-impl gunbc_exec::Executable for GistGraphOp {
+impl Executable for GistGraphOp {
     fn execute(
         &self,
-        inputs: std::collections::HashMap<String, gunbc_ir::Value>,
-    ) -> Result<std::collections::HashMap<String, gunbc_ir::Value>, gunbc_exec::ExecError> {
+        inputs: HashMap<String, Value>,
+    ) -> Result<HashMap<String, Value>, ExecError> {
         match self {
-            GistGraphOp::Fs(op) => op.execute(inputs),
+            GistGraphOp::ListFiles(op) => op.execute(inputs),
+            GistGraphOp::ReadFiles(op) => op.execute(inputs),
+            GistGraphOp::FilterByExtension { extensions } => {
+                // Local specialized filter
+                let files = inputs
+                    .get("files")
+                    .and_then(|v| v.as_str_list())
+                    .ok_or_else(|| ExecError::new("missing or invalid 'files' input"))?;
+
+                let filtered: Vec<String> = if extensions.is_empty() {
+                    files
+                } else {
+                    files
+                        .into_iter()
+                        .filter(|f| extensions.iter().any(|ext| f.ends_with(ext)))
+                        .collect()
+                };
+
+                let mut out = HashMap::new();
+                out.insert("files".to_string(), Value::StrList(filtered));
+                Ok(out)
+            }
             GistGraphOp::Markdown(op) => op.execute(inputs),
             GistGraphOp::Gist(op) => op.execute(inputs),
         }
@@ -48,28 +75,28 @@ impl gunbc_exec::Executable for GistGraphOp {
 pub fn build_gist_graph(extensions: Vec<String>, public: bool) -> Dag<GistGraphOp> {
     let mut dag = Dag::new();
 
-    // Node: ListFiles (from fs flavor)
+    // Node: ListFiles (primitive)
     dag.add_node(Node::opaque(
         "list_files",
         vec![optional("repo_path", "String")],
         vec![list("files", "StrList")],
-        GistGraphOp::Fs(FsOp::ListFiles),
+        GistGraphOp::ListFiles(ListFilesOp),
     ));
 
-    // Node: FilterByExtension (from fs flavor)
+    // Node: FilterByExtension (local specialized op)
     dag.add_node(Node::opaque(
         "filter_files",
         vec![list("files", "StrList")],
         vec![list("files", "StrList")],
-        GistGraphOp::Fs(FsOp::FilterByExtension { extensions }),
+        GistGraphOp::FilterByExtension { extensions },
     ));
 
-    // Node: ReadFiles (from fs flavor)
+    // Node: ReadFiles (primitive)
     dag.add_node(Node::opaque(
         "read_files",
         vec![list("files", "StrList"), optional("repo_path", "String")],
         vec![list("contents", "MapStrStr")],
-        GistGraphOp::Fs(FsOp::ReadFiles),
+        GistGraphOp::ReadFiles(ReadFilesOp),
     ));
 
     // Node: RenderCodeSnapshot (from markdown flavor)

@@ -20,6 +20,10 @@
 //! method = "brew"
 //! packages = ["gh"]
 //! ```
+//!
+//! # Mock Specifications
+//!
+//! Mock specs are in `graph_mock.rs` for test generation.
 
 pub mod graph;
 pub mod installer;
@@ -27,6 +31,9 @@ pub mod manifest;
 pub mod ops;
 pub mod platform;
 pub mod upsert;
+
+#[cfg(test)]
+pub mod graph_mock;
 
 pub use graph::build_deps_graph;
 pub use installer::{InstallMethod, Installer};

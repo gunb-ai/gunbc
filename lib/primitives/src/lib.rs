@@ -26,7 +26,7 @@ pub mod io;
 pub use collection::{CollectionOp, FilterOp, FirstOp, FoldOp, LastOp, MapOp, SortOp};
 pub use control::{BranchOp, LoopOp};
 pub use data::{ConcatOp, ExtractOp, FormatOp, ParseOp, SplitOp};
-pub use io::{ExecuteOp, HttpRequestOp, ReadFileOp, WriteFileOp};
+pub use io::{ExecuteOp, HttpRequestOp, ListFilesOp, PrepareFileWriteOp, ReadFileOp, ReadFilesOp, WriteFileOp};
 
 use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::Value;
@@ -53,7 +53,10 @@ pub enum PrimitiveOp {
 
     // I/O primitives (boundaries)
     ReadFile(ReadFileOp),
+    ReadFiles(ReadFilesOp),
+    ListFiles(ListFilesOp),
     WriteFile(WriteFileOp),
+    PrepareFileWrite(PrepareFileWriteOp),
     Execute(ExecuteOp),
     HttpRequest(HttpRequestOp),
 
@@ -82,7 +85,10 @@ impl Executable for PrimitiveOp {
 
             // I/O
             PrimitiveOp::ReadFile(op) => op.execute(inputs),
+            PrimitiveOp::ReadFiles(op) => op.execute(inputs),
+            PrimitiveOp::ListFiles(op) => op.execute(inputs),
             PrimitiveOp::WriteFile(op) => op.execute(inputs),
+            PrimitiveOp::PrepareFileWrite(op) => op.execute(inputs),
             PrimitiveOp::Execute(op) => op.execute(inputs),
             PrimitiveOp::HttpRequest(op) => op.execute(inputs),
 

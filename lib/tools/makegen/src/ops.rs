@@ -1,8 +1,11 @@
 //! Makegen operations.
+//!
+//! Demonstrates decomposition into primitives where possible.
+//! File writing delegates to WriteFileOp primitive.
 
-use gunbc_codegen::FileWriter;
 use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::Value;
+use gunbc_primitives::WriteFileOp;
 use std::collections::HashMap;
 
 use crate::registry::ToolRegistry;
@@ -75,7 +78,7 @@ fn execute_render_makefile(_inputs: HashMap<String, Value>) -> Result<HashMap<St
     Ok(out)
 }
 
-/// Write the Makefile to disk.
+/// Write the Makefile to disk using WriteFileOp primitive.
 fn execute_write_makefile(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
     let content = match inputs.get("makefile_content") {
         Some(Value::Str(s)) => s.clone(),
@@ -87,15 +90,23 @@ fn execute_write_makefile(inputs: HashMap<String, Value>) -> Result<HashMap<Stri
         _ => "Makefile".to_string(),
     };
 
-    let writer = FileWriter::real();
-    let result = writer
-        .write(&output_path, &content)
-        .map_err(|e| ExecError::new(format!("failed to write Makefile: {}", e)))?;
+    // Use WriteFileOp primitive
+    let mut write_inputs = HashMap::new();
+    write_inputs.insert("path".to_string(), Value::Str(output_path.clone()));
+    write_inputs.insert("content".to_string(), Value::Str(content.clone()));
+    
+    let write_result = WriteFileOp.execute(write_inputs)?;
+    
+    let written_path = write_result
+        .get("written_path")
+        .and_then(|v| v.as_str())
+        .unwrap_or(&output_path)
+        .to_string();
 
     let mut out = HashMap::new();
-    out.insert("written_path".to_string(), Value::Str(result.path));
+    out.insert("written_path".to_string(), Value::Str(written_path));
     out.insert("content".to_string(), Value::Str(content));
-    out.insert("changed".to_string(), Value::Bool(result.changed));
+    out.insert("changed".to_string(), Value::Bool(true)); // WriteFileOp always writes
     Ok(out)
 }
 

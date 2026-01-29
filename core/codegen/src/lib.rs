@@ -7,13 +7,18 @@
 //! - [`cli_gen`]: CLI generation from DAG entrypoints
 
 pub mod cli_gen;
+pub mod dag_gen;
 pub mod file_writer;
 pub mod registry;
 pub mod template;
 
 pub use cli_gen::{generate_cli, generate_cli_with_import, CliBoundary, CliEntrypoint, ToolMeta};
+pub use dag_gen::generate_graph_rs;
 pub use file_writer::{FileWriter, WriteResult};
-pub use registry::{all_cleanable_outputs, all_tools, core_outputs, ToolDef};
+pub use registry::{
+    all_cleanable_outputs, all_tools, core_outputs,
+    DagDef, EdgeDef, NodeDef, PortDef, ToolDef,
+};
 pub use template::Template;
 
 use gunbc_ir::{detect_boundaries, detect_entrypoints, BoundaryInfo, Dag, EntrypointInfo};

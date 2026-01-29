@@ -70,6 +70,105 @@ impl Cardinality {
             Cardinality::OneOrMore => vec![CardinalityCase::One, CardinalityCase::Many],
         }
     }
+
+    /// Check if this output cardinality satisfies an input cardinality requirement.
+    ///
+    /// Returns true if ALL possible outputs from `self` are acceptable by `input_requirement`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use gunbc_ir::Cardinality;
+    ///
+    /// // One always satisfies One
+    /// assert!(Cardinality::One.satisfies(Cardinality::One));
+    ///
+    /// // OneOrMore satisfies ZeroOrMore (non-empty fits in any-length)
+    /// assert!(Cardinality::OneOrMore.satisfies(Cardinality::ZeroOrMore));
+    ///
+    /// // ZeroOrMore does NOT satisfy OneOrMore (might produce empty)
+    /// assert!(!Cardinality::ZeroOrMore.satisfies(Cardinality::OneOrMore));
+    ///
+    /// // ZeroOrOne does NOT satisfy One (might produce zero)
+    /// assert!(!Cardinality::ZeroOrOne.satisfies(Cardinality::One));
+    /// ```
+    pub fn satisfies(&self, input_requirement: Cardinality) -> bool {
+        use Cardinality::*;
+        
+        match (self, input_requirement) {
+            // Zero output
+            (Zero, Zero) => true,
+            (Zero, ZeroOrOne) => true,
+            (Zero, ZeroOrMore) => true,
+            (Zero, _) => false,  // Zero can't satisfy One or OneOrMore
+            
+            // One output - scalar always present
+            (One, Zero) => false,  // Can't send one to void
+            (One, One) => true,
+            (One, ZeroOrOne) => true,
+            (One, ZeroOrMore) => true,
+            (One, OneOrMore) => true,
+            
+            // ZeroOrOne output - might be absent
+            (ZeroOrOne, Zero) => false,
+            (ZeroOrOne, One) => false,     // Might produce zero
+            (ZeroOrOne, ZeroOrOne) => true,
+            (ZeroOrOne, ZeroOrMore) => true,
+            (ZeroOrOne, OneOrMore) => false, // Might produce zero
+            
+            // ZeroOrMore output - might be empty
+            (ZeroOrMore, Zero) => false,
+            (ZeroOrMore, One) => false,      // Might produce zero or many
+            (ZeroOrMore, ZeroOrOne) => false, // Might produce many
+            (ZeroOrMore, ZeroOrMore) => true,
+            (ZeroOrMore, OneOrMore) => false, // Might produce zero
+            
+            // OneOrMore output - at least one, maybe more
+            (OneOrMore, Zero) => false,
+            (OneOrMore, One) => false,       // Might produce many
+            (OneOrMore, ZeroOrOne) => false, // Might produce many
+            (OneOrMore, ZeroOrMore) => true,
+            (OneOrMore, OneOrMore) => true,
+        }
+    }
+
+    /// Check if this output can satisfy the input, with detailed error.
+    pub fn check_satisfies(&self, input_requirement: Cardinality) -> Result<(), CardinalityMismatch> {
+        if self.satisfies(input_requirement) {
+            Ok(())
+        } else {
+            Err(CardinalityMismatch {
+                output: *self,
+                input: input_requirement,
+                reason: self.mismatch_reason(input_requirement),
+            })
+        }
+    }
+
+    fn mismatch_reason(&self, input: Cardinality) -> String {
+        use Cardinality::*;
+        match (self, input) {
+            (Zero, One) | (Zero, OneOrMore) => 
+                "output produces nothing but input requires at least one".into(),
+            (ZeroOrOne, One) | (ZeroOrMore, One) => 
+                "output might be empty but input requires exactly one".into(),
+            (ZeroOrOne, OneOrMore) | (ZeroOrMore, OneOrMore) => 
+                "output might be empty but input requires non-empty".into(),
+            (OneOrMore, One) => 
+                "output might have multiple but input requires exactly one".into(),
+            (OneOrMore, ZeroOrOne) | (ZeroOrMore, ZeroOrOne) => 
+                "output might have multiple but input accepts at most one".into(),
+            _ => format!("cardinality {} cannot satisfy {}", self, input),
+        }
+    }
+}
+
+/// Error when output cardinality doesn't satisfy input requirement.
+#[derive(Debug, Clone)]
+pub struct CardinalityMismatch {
+    pub output: Cardinality,
+    pub input: Cardinality,
+    pub reason: String,
 }
 
 impl fmt::Display for Cardinality {

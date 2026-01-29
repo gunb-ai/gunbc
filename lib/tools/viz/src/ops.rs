@@ -1,13 +1,14 @@
 //! Visualization-specific operations.
 //!
-//! Only contains operations specific to DAG visualization.
-//! Common ops (file write, transport) come from gunbc-ops.
+//! Demonstrates decomposition into primitives where possible.
+//! Domain-specific logic (DAG discovery, export) remains,
+//! but file preparation delegates to primitives.
 
 use crate::discover::discover_all_dags;
 use crate::export::VizCollection;
 use gunbc_exec::{ExecError, Executable};
-use gunbc_ir::transport::FileRequest;
 use gunbc_ir::Value;
+use gunbc_primitives::PrepareFileWriteOp;
 use std::collections::HashMap;
 
 /// Viz-specific operations for use in DAG nodes.
@@ -70,7 +71,9 @@ fn execute_export_json(inputs: HashMap<String, Value>) -> Result<HashMap<String,
     Ok(out)
 }
 
-/// Prepare viz output file write with viz-specific default (viz-data.json).
+/// Prepare viz output file write using PrepareFileWriteOp primitive.
+///
+/// Adds viz-specific default path (viz-data.json) before delegating.
 fn execute_prepare_viz_output(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
@@ -84,13 +87,12 @@ fn execute_prepare_viz_output(
         .and_then(|v| v.as_str())
         .unwrap_or("viz-data.json");  // Viz-specific default
     
-    let request = gunbc_ir::transport::TransportRequest::File(
-        FileRequest::write(output_path, content)
-    );
+    // Use PrepareFileWriteOp primitive
+    let mut prep_inputs = HashMap::new();
+    prep_inputs.insert("path".to_string(), Value::Str(output_path.to_string()));
+    prep_inputs.insert("content".to_string(), Value::Str(content.to_string()));
     
-    let mut out = HashMap::new();
-    out.insert("request".to_string(), Value::Request(request));
-    Ok(out)
+    PrepareFileWriteOp.execute(prep_inputs)
 }
 
 /// Simple timestamp.

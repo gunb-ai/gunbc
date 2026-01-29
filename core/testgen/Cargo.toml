@@ -7,3 +7,4 @@ description = "Test generation for gunbc DAGs"
 
 [dependencies]
 gunbc-ir = { path = "../ir" }
+gunbc-test = { path = "../test" }

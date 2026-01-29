@@ -1,20 +1,30 @@
 //! Deps operations.
+//!
+//! Demonstrates decomposition into primitives where possible.
+//! Domain-specific logic (manifest parsing, platform detection) remains,
+//! but file I/O and command execution delegate to primitives.
 
 use crate::installer::Installer;
 use crate::manifest::DepsManifest;
 use crate::upsert::upsert_dry_run;
 use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::Value;
+use gunbc_primitives::io::{ExecuteOp, ReadFileOp};
+use gunbc_primitives::data::ParseOp;
 use std::collections::HashMap;
 
 /// Operations for the deps tool.
+///
+/// These operations use primitives internally where possible:
+/// - `LoadManifest`: Uses `ReadFileOp` + `ParseOp::Toml` internally
+/// - `ExecuteInstalls`: Uses `ExecuteOp` internally
 #[derive(Debug, Clone)]
 pub enum DepsOp {
-    /// Load the deps manifest
+    /// Load the deps manifest (uses ReadFile + Parse primitives internally)
     LoadManifest,
-    /// Generate install scripts
+    /// Generate install scripts (domain-specific logic)
     GenerateScripts,
-    /// Execute installs (boundary - world write)
+    /// Execute installs (boundary - uses Execute primitive internally)
     ExecuteInstalls,
 }
 
@@ -28,13 +38,45 @@ impl Executable for DepsOp {
     }
 }
 
-/// Load the deps manifest.
+/// Load the deps manifest using primitives internally.
+///
+/// Decomposition:
+/// 1. ReadFileOp reads the manifest file
+/// 2. ParseOp::Toml parses the TOML content
+/// 3. Domain-specific extraction of dependency info
 fn execute_load_manifest(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
     let manifest_path = match inputs.get("manifest_path") {
         Some(Value::Str(s)) => s.clone(),
         _ => "deps.toml".to_string(),
     };
 
+    // Step 1: Use ReadFileOp primitive to read the file
+    let mut read_inputs = HashMap::new();
+    read_inputs.insert("path".to_string(), Value::Str(manifest_path.clone()));
+    let read_result = ReadFileOp.execute(read_inputs)?;
+    
+    let content = read_result
+        .get("content")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| ExecError::new(format!("failed to read manifest: {}", manifest_path)))?;
+
+    let exists = read_result
+        .get("exists")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    if !exists {
+        return Err(ExecError::new(format!("failed to load manifest: file not found: {}", manifest_path)));
+    }
+
+    // Step 2: Use ParseOp::Toml primitive to parse (validates TOML structure)
+    let mut parse_inputs = HashMap::new();
+    parse_inputs.insert("input".to_string(), Value::Str(content.to_string()));
+    let _parse_result = ParseOp::Toml.execute(parse_inputs)?;
+
+    // Step 3: Domain-specific: Use DepsManifest for structured extraction
+    // (This could be further decomposed with ExtractOp, but DepsManifest
+    // handles schema validation and defaults)
     let manifest = DepsManifest::load(&manifest_path)
         .map_err(|e| ExecError::new(format!("failed to load manifest: {}", e)))?;
 
@@ -88,18 +130,46 @@ fn execute_generate_scripts(inputs: HashMap<String, Value>) -> Result<HashMap<St
     Ok(out)
 }
 
-/// Execute the install scripts (world write).
+/// Execute the install scripts using ExecuteOp primitive.
+///
+/// Decomposition:
+/// 1. ExecuteOp runs the script via sh -c
 fn execute_execute_installs(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
     let script = match inputs.get("install_script") {
         Some(Value::Str(s)) => s.clone(),
         _ => return Err(ExecError::new("missing install_script input")),
     };
 
-    // For now, just return the script
-    // In a real implementation, we'd execute this via sh -c
+    // Use ExecuteOp primitive to run the script
+    let mut exec_inputs = HashMap::new();
+    exec_inputs.insert("command".to_string(), Value::Str("sh".to_string()));
+    exec_inputs.insert("args".to_string(), Value::StrList(vec!["-c".to_string(), script.clone()]));
+    
+    let exec_result = ExecuteOp.execute(exec_inputs)?;
+
+    let success = exec_result
+        .get("success")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    let stdout = exec_result
+        .get("stdout")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    let stderr = exec_result
+        .get("stderr")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
     let mut out = HashMap::new();
     out.insert("executed".to_string(), Value::Bool(true));
+    out.insert("success".to_string(), Value::Bool(success));
     out.insert("script".to_string(), Value::Str(script));
+    out.insert("stdout".to_string(), Value::Str(stdout));
+    out.insert("stderr".to_string(), Value::Str(stderr));
     Ok(out)
 }
 

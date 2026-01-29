@@ -40,6 +40,7 @@ pub mod node;
 pub mod patterns;
 pub mod transport;
 pub mod types;
+pub mod validate;
 pub mod value;
 
 // Re-exports for convenience
@@ -49,5 +50,9 @@ pub use entrypoint::{detect_entrypoints, EntrypointInfo};
 pub use node::{Node, NodeBody};
 pub use patterns::{AtomicBuilder, TransactionBuilder, UpsertBuilder};
 pub use transport::{TransportRequest, TransportResponse};
-pub use types::{Cardinality, CardinalityCase, NodeId, PortName, TypeId};
+pub use types::{Cardinality, CardinalityCase, CardinalityMismatch, NodeId, PortName, TypeId};
+pub use validate::{
+    check_port_saturation_lowered, validate_dag, validate_dag_quick, ValidationError,
+    ValidationResult,
+};
 pub use value::Value;
