@@ -1,9 +1,18 @@
 //! Makefile rendering.
+//!
+//! Uses `BuildConfig` as the single source of truth for all build commands.
 
-use crate::registry::{EntrypointParam, ExtraTarget, MetaTarget, PrepLevel, ToolInfo, ToolRegistry};
+use crate::registry::{
+    BuildConfig, EntrypointParam, ExtraTarget, MetaTarget, PrepLevel, ToolInfo, ToolRegistry,
+};
 
 /// Render a complete Makefile from the tool registry.
 pub fn render_makefile(registry: &ToolRegistry) -> String {
+    render_makefile_with_config(registry, &BuildConfig::cargo())
+}
+
+/// Render a complete Makefile with a specific build config.
+pub fn render_makefile_with_config(registry: &ToolRegistry, config: &BuildConfig) -> String {
     let mut output = String::new();
 
     // Header
@@ -15,7 +24,7 @@ pub fn render_makefile(registry: &ToolRegistry) -> String {
 
     // Phony targets - include core targets, meta targets, and tool targets
     output.push_str(".PHONY: help codegen ensure-codegen build clean");
-    
+
     // Add meta targets
     for meta in &registry.meta_targets {
         output.push_str(&format!(" {}", meta.name));
@@ -23,7 +32,7 @@ pub fn render_makefile(registry: &ToolRegistry) -> String {
             output.push_str(&format!(" {}-check", meta.name));
         }
     }
-    
+
     // Add tool targets
     for tool in &registry.tools {
         output.push_str(&format!(" {} {}-dry", tool.short_name, tool.short_name));
@@ -34,13 +43,13 @@ pub fn render_makefile(registry: &ToolRegistry) -> String {
     output.push_str("\n\n");
 
     // Core build system targets
-    output.push_str(&render_core_targets());
+    output.push_str(&render_core_targets(config));
 
     // Help target
     output.push_str(&render_help_target(registry));
 
     // Meta targets (test, check, fmt, clippy)
-    output.push_str(&render_meta_targets(registry));
+    output.push_str(&render_meta_targets(registry, config));
 
     // Tool targets
     for tool in &registry.tools {
@@ -54,26 +63,29 @@ pub fn render_makefile(registry: &ToolRegistry) -> String {
     output
 }
 
-/// Render core build system targets.
-fn render_core_targets() -> String {
+/// Render core build system targets using BuildConfig.
+fn render_core_targets(config: &BuildConfig) -> String {
     let mut output = String::new();
 
     // Ensure codegen has run (upsert pattern: check -> create if missing)
     output.push_str("# Ensure codegen has run (upsert pattern: check -> create if missing)\n");
     output.push_str("ensure-codegen:\n");
     output.push_str("\t@if [ ! -f buck-out/gen/bin/gist/main.rs ]; then \\\n");
-    output.push_str("\t\tcargo run -p gunbc-codegen --release -- codegen; \\\n");
+    output.push_str(&format!(
+        "\t\t{}; \\\n",
+        config.codegen_command.join(" ")
+    ));
     output.push_str("\tfi\n\n");
 
     // Force regenerate CLIs from DAG entrypoints
     output.push_str("# Force regenerate CLIs from DAG entrypoints\n");
     output.push_str("codegen:\n");
-    output.push_str("\t@cargo run -p gunbc-codegen --release -- codegen\n\n");
+    output.push_str(&format!("\t{}\n\n", config.codegen_shell()));
 
     // Full build transaction: codegen → cargo build → symlink
     output.push_str("# Full build transaction: codegen → cargo build → symlink\n");
     output.push_str("build: ensure-codegen\n");
-    output.push_str("\t@cargo build --all-targets\n\n");
+    output.push_str(&format!("\t{}\n\n", config.build_shell()));
 
     // Rollback transaction: remove all generated artifacts
     output.push_str("# Rollback transaction: remove all generated artifacts\n");
@@ -135,8 +147,8 @@ fn render_help_target(registry: &ToolRegistry) -> String {
     output
 }
 
-/// Render meta targets.
-fn render_meta_targets(registry: &ToolRegistry) -> String {
+/// Render meta targets using BuildConfig for commands.
+fn render_meta_targets(registry: &ToolRegistry, config: &BuildConfig) -> String {
     let mut output = String::new();
 
     output.push_str("# ============================================================================\n");
@@ -144,17 +156,17 @@ fn render_meta_targets(registry: &ToolRegistry) -> String {
     output.push_str("# ============================================================================\n\n");
 
     for meta in &registry.meta_targets {
-        output.push_str(&render_meta_target(meta));
+        output.push_str(&render_meta_target(meta, config));
         if meta.has_check_variant {
-            output.push_str(&render_meta_check_variant(meta));
+            output.push_str(&render_meta_check_variant(meta, config));
         }
     }
 
     output
 }
 
-/// Render a single meta target.
-fn render_meta_target(meta: &MetaTarget) -> String {
+/// Render a single meta target using MetaTarget's get_command method.
+fn render_meta_target(meta: &MetaTarget, config: &BuildConfig) -> String {
     let mut output = String::new();
 
     // Determine dependency based on prep level
@@ -164,18 +176,21 @@ fn render_meta_target(meta: &MetaTarget) -> String {
         PrepLevel::Full => " build",
     };
 
+    // Use MetaTarget's get_command which references BuildConfig via ConfigField
+    let command = meta.get_command(config);
     output.push_str(&format!("# {}: {}\n", meta.name, meta.description));
     output.push_str(&format!("{}:{}\n", meta.name, dependency));
-    output.push_str(&format!("\t{}\n\n", meta.command));
+    output.push_str(&format!("\t{}\n\n", command));
 
     output
 }
 
 /// Render a check variant for a meta target.
-fn render_meta_check_variant(meta: &MetaTarget) -> String {
+fn render_meta_check_variant(meta: &MetaTarget, config: &BuildConfig) -> String {
     let mut output = String::new();
 
-    if let Some(ref check_cmd) = meta.check_command {
+    // Use MetaTarget's get_check_command which references BuildConfig via ConfigField
+    if let Some(check_cmd) = meta.get_check_command(config) {
         let dependency = match meta.prep_level {
             PrepLevel::None => "",
             PrepLevel::Codegen => " ensure-codegen",
@@ -360,10 +375,25 @@ mod tests {
     }
 
     #[test]
-    fn test_render_makefile_has_prep_target() {
+    fn test_render_makefile_with_build_config() {
         let registry = ToolRegistry::default_registry();
-        let makefile = render_makefile(&registry);
+        let config = BuildConfig::cargo();
+        let makefile = render_makefile_with_config(&registry, &config);
 
-        assert!(makefile.contains("prep: ensure-codegen"));
+        // Should use BuildConfig commands
+        assert!(makefile.contains("cargo build --all-targets"));
+        assert!(makefile.contains("cargo test"));
+        assert!(makefile.contains("cargo clippy"));
+    }
+
+    #[test]
+    fn test_render_makefile_buck2_config() {
+        let registry = ToolRegistry::default_registry();
+        let config = BuildConfig::buck2();
+        let makefile = render_makefile_with_config(&registry, &config);
+
+        // Should use buck2 commands for build/test
+        assert!(makefile.contains("buck2 build //..."));
+        assert!(makefile.contains("buck2 test //..."));
     }
 }

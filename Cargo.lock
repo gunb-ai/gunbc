@@ -78,6 +78,7 @@ version = "0.1.0"
 dependencies = [
  "gunbc-exec",
  "gunbc-ir",
+ "gunbc-makegen",
  "gunbc-primitives",
  "gunbc-test",
 ]
@@ -174,16 +175,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gunbc-prep"
-version = "0.1.0"
-dependencies = [
- "gunbc-exec",
- "gunbc-ir",
- "gunbc-primitives",
- "gunbc-test",
-]
-
-[[package]]
 name = "gunbc-primitives"
 version = "0.1.0"
 dependencies = [
@@ -224,7 +215,6 @@ dependencies = [
  "gunbc-ir",
  "gunbc-lib-transport",
  "gunbc-makegen",
- "gunbc-prep",
  "gunbc-primitives",
  "gunbc-test",
  "serde",

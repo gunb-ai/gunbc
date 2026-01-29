@@ -5,12 +5,56 @@
 //!
 //! The CI pipeline now includes a Prep stage that runs codegen
 //! to ensure all generated code exists before building/testing.
+//!
+//! # BuildConfig Integration
+//!
+//! All build/test/lint commands are sourced from `BuildConfig` in the
+//! makegen registry. This ensures a single source of truth for commands.
 
 use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::Value;
+use gunbc_makegen::{BuildConfig, ToolRegistry};
 use gunbc_primitives::ExecuteOp;
 use std::collections::HashMap;
 use std::process::Command;
+
+/// Run a command from BuildConfig, returning (success, stdout, stderr).
+fn run_config_command(command: &[&str]) -> Result<(bool, String, String), ExecError> {
+    if command.is_empty() {
+        return Err(ExecError::new("Empty command"));
+    }
+
+    let program = command[0];
+    let args: Vec<&str> = command[1..].to_vec();
+
+    println!("Running: {} {}", program, args.join(" "));
+
+    let mut exec_inputs = HashMap::new();
+    exec_inputs.insert("command".to_string(), Value::Str(program.to_string()));
+    exec_inputs.insert(
+        "args".to_string(),
+        Value::StrList(args.iter().map(|s| s.to_string()).collect()),
+    );
+
+    let exec_result = ExecuteOp.execute(exec_inputs)?;
+
+    let success = exec_result
+        .get("success")
+        .and_then(|v: &Value| v.as_bool())
+        .unwrap_or(false);
+    let stdout = exec_result
+        .get("stdout")
+        .and_then(|v: &Value| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let stderr = exec_result
+        .get("stderr")
+        .and_then(|v: &Value| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    Ok((success, stdout, stderr))
+}
 
 /// Operations for the CI tool.
 #[derive(Debug, Clone)]
@@ -70,25 +114,31 @@ fn execute_setup_deps(_inputs: HashMap<String, Value>) -> Result<HashMap<String,
 /// CLI main.rs files, and daggen to generate graph.rs files from
 /// declarative DAG definitions. This ensures the repo is in a
 /// consistent state before building and testing.
+///
+/// Uses `ToolRegistry::needs_codegen()` to check if codegen is needed,
+/// and `BuildConfig` to get the codegen command.
 fn execute_prep(_inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-    // Check if codegen is needed
-    let buck_out = std::path::Path::new("buck-out/gen/bin");
-    let needs_codegen = !buck_out.exists() || !buck_out.join("gist/main.rs").exists();
+    let registry = ToolRegistry::default_registry();
+    let config = BuildConfig::cargo();
 
-    if !needs_codegen {
+    // Use registry to check if codegen is needed
+    if !registry.needs_codegen() {
         println!("Prep: Generated code exists, skipping codegen");
         let mut out = HashMap::new();
         out.insert("prep_success".to_string(), Value::Bool(true));
         out.insert("codegen_ran".to_string(), Value::Bool(false));
-        out.insert("prep_message".to_string(), Value::Str("Generated code already exists".to_string()));
+        out.insert(
+            "prep_message".to_string(),
+            Value::Str("Generated code already exists".to_string()),
+        );
         return Ok(out);
     }
 
     println!("Prep: Running codegen to generate CLIs...");
 
-    // Run codegen
-    let status = Command::new("cargo")
-        .args(["run", "-p", "gunbc-codegen", "--release", "--", "codegen"])
+    // Run codegen using BuildConfig command
+    let status = Command::new(config.codegen_command[0])
+        .args(&config.codegen_command[1..])
         .status()
         .map_err(|e| ExecError::new(format!("Failed to run codegen: {}", e)))?;
 
@@ -96,7 +146,10 @@ fn execute_prep(_inputs: HashMap<String, Value>) -> Result<HashMap<String, Value
         let mut out = HashMap::new();
         out.insert("prep_success".to_string(), Value::Bool(false));
         out.insert("codegen_ran".to_string(), Value::Bool(true));
-        out.insert("prep_message".to_string(), Value::Str("Codegen failed".to_string()));
+        out.insert(
+            "prep_message".to_string(),
+            Value::Str("Codegen failed".to_string()),
+        );
         return Ok(out);
     }
 
@@ -105,11 +158,14 @@ fn execute_prep(_inputs: HashMap<String, Value>) -> Result<HashMap<String, Value
     let mut out = HashMap::new();
     out.insert("prep_success".to_string(), Value::Bool(true));
     out.insert("codegen_ran".to_string(), Value::Bool(true));
-    out.insert("prep_message".to_string(), Value::Str("Codegen completed successfully".to_string()));
+    out.insert(
+        "prep_message".to_string(),
+        Value::Str("Codegen completed successfully".to_string()),
+    );
     Ok(out)
 }
 
-/// Build the project using ExecuteOp primitive.
+/// Build the project using BuildConfig command.
 fn execute_build(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
     // Check if prep succeeded
     let prep_success = inputs
@@ -123,22 +179,15 @@ fn execute_build(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value
         out.insert("build_success".to_string(), Value::Bool(false));
         out.insert("build_skipped".to_string(), Value::Bool(true));
         out.insert("build_stdout".to_string(), Value::Str(String::new()));
-        out.insert("build_stderr".to_string(), Value::Str("Skipped due to prep failure".to_string()));
+        out.insert(
+            "build_stderr".to_string(),
+            Value::Str("Skipped due to prep failure".to_string()),
+        );
         return Ok(out);
     }
 
-    println!("Running: cargo build --all-targets");
-
-    // Use ExecuteOp primitive
-    let mut exec_inputs = HashMap::new();
-    exec_inputs.insert("command".to_string(), Value::Str("cargo".to_string()));
-    exec_inputs.insert("args".to_string(), Value::StrList(vec!["build".to_string(), "--all-targets".to_string()]));
-    
-    let exec_result = ExecuteOp.execute(exec_inputs)?;
-
-    let success = exec_result.get("success").and_then(|v: &Value| v.as_bool()).unwrap_or(false);
-    let stdout = exec_result.get("stdout").and_then(|v: &Value| v.as_str()).unwrap_or("").to_string();
-    let stderr = exec_result.get("stderr").and_then(|v: &Value| v.as_str()).unwrap_or("").to_string();
+    let config = BuildConfig::cargo();
+    let (success, stdout, stderr) = run_config_command(&config.build_command)?;
 
     let mut out = HashMap::new();
     out.insert("build_success".to_string(), Value::Bool(success));
@@ -148,7 +197,7 @@ fn execute_build(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value
     Ok(out)
 }
 
-/// Run tests using ExecuteOp primitive.
+/// Run tests using BuildConfig command.
 fn execute_test(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
     let build_success = match inputs.get("build_success") {
         Some(Value::Bool(b)) => *b,
@@ -159,22 +208,15 @@ fn execute_test(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>
         let mut out = HashMap::new();
         out.insert("test_success".to_string(), Value::Bool(false));
         out.insert("test_skipped".to_string(), Value::Bool(true));
-        out.insert("message".to_string(), Value::Str("Skipped due to build failure".to_string()));
+        out.insert(
+            "message".to_string(),
+            Value::Str("Skipped due to build failure".to_string()),
+        );
         return Ok(out);
     }
 
-    println!("Running: cargo test");
-
-    // Use ExecuteOp primitive
-    let mut exec_inputs = HashMap::new();
-    exec_inputs.insert("command".to_string(), Value::Str("cargo".to_string()));
-    exec_inputs.insert("args".to_string(), Value::StrList(vec!["test".to_string()]));
-    
-    let exec_result = ExecuteOp.execute(exec_inputs)?;
-
-    let success = exec_result.get("success").and_then(|v: &Value| v.as_bool()).unwrap_or(false);
-    let stdout = exec_result.get("stdout").and_then(|v: &Value| v.as_str()).unwrap_or("").to_string();
-    let stderr = exec_result.get("stderr").and_then(|v: &Value| v.as_str()).unwrap_or("").to_string();
+    let config = BuildConfig::cargo();
+    let (success, stdout, stderr) = run_config_command(&config.test_command)?;
 
     let mut out = HashMap::new();
     out.insert("test_success".to_string(), Value::Bool(success));
@@ -184,7 +226,7 @@ fn execute_test(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>
     Ok(out)
 }
 
-/// Run linter using ExecuteOp primitive.
+/// Run linter using BuildConfig command.
 fn execute_lint(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
     let build_success = match inputs.get("build_success") {
         Some(Value::Bool(b)) => *b,
@@ -195,28 +237,15 @@ fn execute_lint(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>
         let mut out = HashMap::new();
         out.insert("lint_success".to_string(), Value::Bool(false));
         out.insert("lint_skipped".to_string(), Value::Bool(true));
-        out.insert("message".to_string(), Value::Str("Skipped due to build failure".to_string()));
+        out.insert(
+            "message".to_string(),
+            Value::Str("Skipped due to build failure".to_string()),
+        );
         return Ok(out);
     }
 
-    println!("Running: cargo clippy");
-
-    // Use ExecuteOp primitive
-    let mut exec_inputs = HashMap::new();
-    exec_inputs.insert("command".to_string(), Value::Str("cargo".to_string()));
-    exec_inputs.insert("args".to_string(), Value::StrList(vec![
-        "clippy".to_string(),
-        "--all-targets".to_string(),
-        "--".to_string(),
-        "-D".to_string(),
-        "warnings".to_string(),
-    ]));
-    
-    let exec_result = ExecuteOp.execute(exec_inputs)?;
-
-    let success = exec_result.get("success").and_then(|v: &Value| v.as_bool()).unwrap_or(false);
-    let stdout = exec_result.get("stdout").and_then(|v: &Value| v.as_str()).unwrap_or("").to_string();
-    let stderr = exec_result.get("stderr").and_then(|v: &Value| v.as_str()).unwrap_or("").to_string();
+    let config = BuildConfig::cargo();
+    let (success, stdout, stderr) = run_config_command(&config.lint_command)?;
 
     let mut out = HashMap::new();
     out.insert("lint_success".to_string(), Value::Bool(success));
