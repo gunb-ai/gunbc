@@ -12,7 +12,7 @@ use std::collections::HashMap;
 ///
 /// This is a high-level representation of a gist operation that can be
 /// converted to either a REST API request or a shell command (gh CLI).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GistRequest {
     /// Files to include in the gist
     pub files: HashMap<String, GistFile>,
@@ -23,7 +23,7 @@ pub struct GistRequest {
 }
 
 /// A file in a gist.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GistFile {
     /// File content
     pub content: String,

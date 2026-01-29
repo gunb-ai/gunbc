@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// Authentication method for REST APIs.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum AuthMethod {
     /// No authentication
     None,
@@ -20,7 +20,7 @@ pub enum AuthMethod {
 }
 
 /// REST API request.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RestRequest {
     /// Request URL
     pub url: String,
@@ -41,7 +41,7 @@ pub struct RestRequest {
 }
 
 /// REST API response.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RestResponse {
     /// HTTP status code
     pub status: u16,

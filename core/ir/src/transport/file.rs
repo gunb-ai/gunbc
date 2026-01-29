@@ -20,7 +20,7 @@ pub enum FileOp {
 }
 
 /// File operation request.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FileRequest {
     /// File path
     pub path: String,
@@ -33,7 +33,7 @@ pub struct FileRequest {
 }
 
 /// File operation response.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FileResponse {
     /// File path
     pub path: String,

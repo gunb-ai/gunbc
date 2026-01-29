@@ -28,7 +28,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// All I/O operations are represented as one of these request types,
 /// allowing uniform handling at transport boundaries.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum TransportRequest {
     /// REST API request
     Rest(RestRequest),
@@ -43,7 +43,7 @@ pub enum TransportRequest {
 }
 
 /// Unified transport response enum.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum TransportResponse {
     /// REST API response
     Rest(RestResponse),
@@ -58,7 +58,7 @@ pub enum TransportResponse {
 }
 
 /// Shell command request.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ShellRequest {
     /// Command to execute
     pub command: String,
@@ -74,7 +74,7 @@ pub struct ShellRequest {
 }
 
 /// Shell command response.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ShellResponse {
     /// Exit code
     pub exit_code: i32,

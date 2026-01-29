@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 /// TCP connection request.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TcpRequest {
     /// Host address
     pub host: String,
@@ -18,7 +18,7 @@ pub struct TcpRequest {
 }
 
 /// TCP connection response.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TcpResponse {
     /// Whether the connection was successful
     pub connected: bool,

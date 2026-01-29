@@ -9,6 +9,7 @@ members = [
     "core/testgen",
     
     # Library crates (DAG op libraries)
+    "lib/primitives",
     "lib/fs",
     "lib/gist-ops",
     "lib/markdown",

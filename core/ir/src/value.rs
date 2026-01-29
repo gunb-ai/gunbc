@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 /// Runtime value flowing between nodes.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Value {
     /// Unit value (no data)
     Unit,
@@ -46,10 +46,34 @@ impl Value {
         matches!(self, Value::Response(_))
     }
 
+    /// Try to extract a boolean.
+    pub fn as_bool(&self) -> Option<bool> {
+        match self {
+            Value::Bool(b) => Some(*b),
+            _ => None,
+        }
+    }
+
+    /// Try to extract an integer.
+    pub fn as_int(&self) -> Option<i64> {
+        match self {
+            Value::Int(i) => Some(*i),
+            _ => None,
+        }
+    }
+
     /// Try to extract a string.
     pub fn as_str(&self) -> Option<&str> {
         match self {
             Value::Str(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    /// Try to extract a JSON value.
+    pub fn as_json(&self) -> Option<&serde_json::Value> {
+        match self {
+            Value::Json(j) => Some(j),
             _ => None,
         }
     }

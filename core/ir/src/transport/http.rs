@@ -51,7 +51,7 @@ impl std::fmt::Display for HttpMethod {
 }
 
 /// Raw HTTP request.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct HttpRequest {
     /// Request URL
     pub url: String,
@@ -67,7 +67,7 @@ pub struct HttpRequest {
 }
 
 /// Raw HTTP response.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct HttpResponse {
     /// HTTP status code
     pub status: u16,
