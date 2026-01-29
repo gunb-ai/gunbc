@@ -21,6 +21,7 @@ gunbc-makegen = { path = "../makegen" }
 gunbc-deps = { path = "../deps" }
 gunbc-ci = { path = "../ci" }
 gunbc-bootstrap = { path = "../bootstrap" }
+gunbc-prep = { path = "../prep" }
 
 [dev-dependencies]
 gunbc-test = { path = "../../../core/test" }

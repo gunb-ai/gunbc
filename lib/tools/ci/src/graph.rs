@@ -1,6 +1,10 @@
 //! Graph builder for the CI tool.
 //!
 //! Uses DagBuilder for compile-time cycle prevention and edge validation.
+//!
+//! The CI pipeline includes a Prep stage that runs codegen to ensure
+//! all generated code exists before building and testing. This is the
+//! "fractal unwind" pattern - CI unwinds all DAGs before executing.
 
 use crate::ops::CIOp;
 use gunbc_ir::{
@@ -14,6 +18,9 @@ pub fn ci_signature() -> WorkflowSignature {
         // Outputs - boundary outputs from intermediate nodes and report
         .with_output("deps_installed", "Int", Cardinality::One)
         .with_output("message", "String", Cardinality::One)
+        .with_output("codegen_ran", "Bool", Cardinality::One)
+        .with_output("prep_message", "String", Cardinality::One)
+        .with_output("build_skipped", "Bool", Cardinality::One)
         .with_output("build_stdout", "String", Cardinality::One)
         .with_output("build_stderr", "String", Cardinality::One)
         .with_output("test_skipped", "Bool", Cardinality::One)
@@ -30,10 +37,13 @@ pub fn ci_signature() -> WorkflowSignature {
 ///
 /// Pipeline:
 /// ```text
-/// SetupDeps -> Build -> Test  -> Report
-///                   \-> Lint -/
-///                              (boundary)
+/// SetupDeps -> Prep -> Build -> Test  -> Report
+///                          \-> Lint -/
+///                                     (boundary)
 /// ```
+///
+/// The Prep stage runs codegen to ensure all generated code exists.
+/// This is the "fractal unwind" pattern - CI unwinds all DAGs before executing.
 pub fn build_ci_graph() -> Result<Dag<CIOp>, BuilderError> {
     let mut builder = DagBuilder::new();
 
@@ -49,19 +59,35 @@ pub fn build_ci_graph() -> Result<Dag<CIOp>, BuilderError> {
         CIOp::SetupDeps,
     ))?;
 
-    // Node: Build - generation 1
+    // Node: Prep - generation 1 (codegen/unwind)
+    let prep = builder.add_node_after(
+        Node::opaque(
+            "prep",
+            vec![port("deps_checked", "Bool")],
+            vec![
+                port("prep_success", "Bool"),
+                port("codegen_ran", "Bool"),
+                port("prep_message", "String"),
+            ],
+            CIOp::Prep,
+        ),
+        &setup_deps,
+    )?;
+
+    // Node: Build - generation 2
     let build = builder.add_node_after(
         Node::opaque(
             "build",
-            vec![port("deps_checked", "Bool")],
+            vec![port("prep_success", "Bool")],
             vec![
                 port("build_success", "Bool"),
+                port("build_skipped", "Bool"),
                 port("build_stdout", "String"),
                 port("build_stderr", "String"),
             ],
             CIOp::Build,
         ),
-        &setup_deps,
+        &prep,
     )?;
 
     // Node: Test - generation 2
@@ -115,7 +141,8 @@ pub fn build_ci_graph() -> Result<Dag<CIOp>, BuilderError> {
     )?;
 
     // Wire up the pipeline
-    builder.add_edge(setup_deps.out("deps_checked"), build.in_port("deps_checked"))?;
+    builder.add_edge(setup_deps.out("deps_checked"), prep.in_port("deps_checked"))?;
+    builder.add_edge(prep.out("prep_success"), build.in_port("prep_success"))?;
     builder.add_edge(build.out("build_success"), test.in_port("build_success"))?;
     builder.add_edge(build.out("build_success"), lint.in_port("build_success"))?;
     builder.add_edge(build.out("build_success"), report.in_port("build_success"))?;

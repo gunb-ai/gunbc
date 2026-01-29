@@ -40,6 +40,10 @@ fn get_viz_graph_for_tool(crate_name: &str) -> Option<VizGraph> {
             let dag = crate::graph::build_viz_graph().ok()?;
             Some(export_dag(&dag, crate_name))
         }
+        "gunbc-prep" => {
+            let dag = gunbc_prep::build_prep_graph().ok()?;
+            Some(export_dag(&dag, crate_name))
+        }
         _ => None, // Unknown tool - skip it
     }
 }
@@ -69,6 +73,7 @@ fn has_dag_builder(crate_name: &str) -> bool {
             | "gunbc-ci"
             | "gunbc-bootstrap"
             | "gunbc-viz"
+            | "gunbc-prep"
     )
 }
 

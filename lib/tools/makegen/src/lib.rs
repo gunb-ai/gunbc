@@ -26,5 +26,7 @@ pub mod graph_mock;
 
 pub use graph::{build_makegen_graph, makegen_signature};
 pub use ops::MakegenOp;
-pub use registry::{ToolInfo, ToolRegistry, EntrypointParam};
+pub use registry::{
+    default_meta_targets, EntrypointParam, MetaTarget, PrepLevel, ToolInfo, ToolRegistry,
+};
 pub use render::render_makefile;

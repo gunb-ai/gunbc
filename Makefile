@@ -3,7 +3,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help codegen ensure-codegen build clean gist gist-dry buck2 buck2-dry makegen makegen-dry deps deps-dry ci ci-dry bootstrap bootstrap-dry viz viz-dry viz-serve
+.PHONY: help codegen ensure-codegen build clean test check clippy fmt fmt-check gist gist-dry buck2 buck2-dry makegen makegen-dry deps deps-dry ci ci-dry bootstrap bootstrap-dry viz viz-dry viz-serve prep prep-dry
 
 # Ensure codegen has run (upsert pattern: check -> create if missing)
 ensure-codegen:
@@ -16,8 +16,8 @@ codegen:
 	@cargo run -p gunbc-codegen --release -- codegen
 
 # Full build transaction: codegen → cargo build → symlink
-build:
-	@cargo run -p gunbc-codegen --release -- commit
+build: ensure-codegen
+	@cargo build --all-targets
 
 # Rollback transaction: remove all generated artifacts
 clean:
@@ -27,9 +27,16 @@ help:
 	@echo "gunbc tools - generated Makefile"
 	@echo ""
 	@echo "Build transactions:"
-	@echo "  build    - Commit: codegen → cargo build → symlink"
+	@echo "  build    - Commit: codegen → cargo build"
 	@echo "  clean    - Rollback: remove all generated artifacts"
 	@echo "  codegen  - Partial commit: just generate CLIs"
+	@echo ""
+	@echo "Development:"
+	@echo "  test  - Run all tests"
+	@echo "  check  - Type check all targets"
+	@echo "  clippy  - Run clippy linter"
+	@echo "  fmt  - Format all code"
+	@echo "  fmt-check  - Format all code (check only)"
 	@echo ""
 	@echo "Tools:"
 	@echo "  gist [REPO=.] [EXT=...]  - Create a GitHub gist from code files"
@@ -40,8 +47,32 @@ help:
 	@echo "  bootstrap   - Generate Makefile and .gitignore"
 	@echo "  viz [OUTPUT=viz-data.json]  - Generate DAG visualization data"
 	@echo "  viz-serve  - Generate viz data and open in browser"
+	@echo "  prep   - Prepare repo - run all code generation and build"
 	@echo ""
 	@echo "Add -dry suffix for dry-run (e.g., make gist-dry)"
+
+# ============================================================================
+# Meta Targets - Development workflow commands
+# ============================================================================
+
+# test: Run all tests
+test: build
+	@cargo test
+
+# check: Type check all targets
+check: ensure-codegen
+	@cargo check --all-targets
+
+# clippy: Run clippy linter
+clippy: ensure-codegen
+	@cargo clippy --all-targets -- -D warnings
+
+# fmt: Format all code
+fmt:
+	@cargo fmt
+
+fmt-check:
+	@cargo fmt -- --check
 
 # gunbc-gist entrypoints: repo_path (String), extensions (String)
 gist: ensure-codegen
@@ -97,4 +128,11 @@ viz-serve: viz
 	@echo "Starting server at http://localhost:8080/viz.html"
 	@(sleep 1 && python3 -c "import webbrowser; webbrowser.open('http://localhost:8080/viz.html')") &
 	@python3 -m http.server 8080
+
+# gunbc-prep entrypoints: 
+prep: ensure-codegen
+	@cargo run -p gunbc-prep --
+
+prep-dry: ensure-codegen
+	@cargo run -p gunbc-prep -- --dry-run
 

@@ -33,28 +33,51 @@ We model a **single execution** as a DAG. Repetition (retry/while/poll) is repre
 
 A core design principle: **all behavior must be expressed through the type system, not through meta-annotations**.
 
-Meta-annotations are external modifiers that can contradict or circumvent the type system. They create semantic holes where the type says one thing but runtime behavior differs.
+#### Definition: Semantic Meta-Annotation
 
-**Banned pattern** (meta-annotation):
+> **Semantic meta-annotation:** any attribute that can change observable behavior (values, branching, ordering, I/O, retries, failure behavior), **without being representable as nodes/edges/types** in the core DAG model and therefore without being validated by structural rules.
+
+Guards on ports were the canonical example: a port could declare `cardinality: One` but a guard could cause it to produce nothing, violating the type contract.
+
+#### The Erasure Lemma
+
+This invariant makes the ban operational:
+
+> **Metadata erasure is semantics-preserving:** removing all non-semantic metadata does not change the workflow's observable behavior (given the same transport/mock results).
+
+If you can defend this statement, you've successfully eliminated semantic holes.
+
+#### Metadata Classification
+
+| Class | Allowed? | Rule | Examples |
+|-------|----------|------|----------|
+| **Descriptive** | ✅ Yes | Must be erasable without behavior change | Display names, docs, tags, ownership, version, source spans, logging labels, visualization hints |
+| **Optimization hints** | ✅ Yes (with rule) | Must not change functional results | Cost estimates (cpu/mem/time), parallelism hints, cache hints, placement hints |
+| **Semantic modifiers** | ❌ Banned | Must be modeled structurally | Guards that skip required values, implicit resource edges, "world write" tags not tied to transport |
+
+**Optimization hint rule:** If a hint can change results, it is not a hint — it must be modeled structurally (nodes/edges/types).
+
+#### Correct Pattern: Cardinality Expresses Optionality
+
 ```rust
-// DON'T: guard as external modifier that can contradict cardinality
-Port { type_id: "String", cardinality: One, guard: Some(condition) }
-// Type says "definitely one value" but guard can cause "no value"
+// DO: optionality expressed through cardinality
+Port::optional("result", "Response")  // cardinality: ZeroOrOne
+// Type system knows value may be absent and validates accordingly
 ```
 
-**Correct pattern** (type expresses behavior):
-```rust
-// DO: optionality is in the type itself
-Port { type_id: "Optional<String>", cardinality: ZeroOrOne }
-// Type honestly describes that value may be absent
+Any "nice syntax" that *looks* like an annotation must **desugar** into explicit DAG structure (Branch/Repeat/Collect/etc.) before validation/execution.
+
+#### Why Types Are Fractal DAGs
+
+Types themselves can be DAGs (`Dag<TypeOp>`) that express validation and transformation:
+
+```
+String (raw) → [NonEmpty check] → [URL pattern check] → Url (validated)
 ```
 
-**Why types are fractal DAGs**: Types themselves can be DAGs that express complex behavior. An `Optional<T>` type is conceptually a small DAG:
-```
-[input: T] → [presence check] → [output: T | None]
-```
+This is not an analogy — type validation IS a causal chain. Using `Dag<TypeOp>` makes this explicit and reuses all DAG infrastructure. See `type_op.rs` and `type_lib.rs`.
 
-This keeps the type system **closed and self-consistent**. Any behavior (optionality, validation, transformation) is expressed as a type, which is itself a DAG structure. No external annotations can break invariants.
+**Note:** Types may *eventually* be fully represented as DAGs of type-operations. For now, `TypeId` is an opaque identifier with cardinality inference via `TypeRegistry`, but the system is designed to lift type semantics into graph structure.
 
 ---
 
@@ -194,6 +217,31 @@ We chose partial order because:
 
 The tradeoff: some lattice-theoretic operations (computing greatest lower bound of Zero and One) are undefined. In practice, this hasn't been needed.
 
+#### Normalization: Cardinality Is The Canonical Shape Layer
+
+**Cardinality is the single source of truth for value shape.** Type IDs describe the *kind* of data; cardinality describes *how many*.
+
+| Port Declaration | Canonical Form | Type | Cardinality |
+|-----------------|----------------|------|-------------|
+| `Port::optional("x", "String")` | ✅ Canonical | `String` | `ZeroOrOne` |
+| `Port::scalar("x", "String")` | ✅ Canonical | `String` | `One` |
+| `Port::list("x", "String")` | ✅ Canonical | `String` | `ZeroOrMore` |
+
+**Anti-pattern** (redundant/contradictory):
+```rust
+// DON'T: type_id encodes optionality AND cardinality also encodes it
+Port { type_id: "Optional<String>", cardinality: ZeroOrOne }  // redundant
+Port { type_id: "Optional<String>", cardinality: One }         // contradictory!
+```
+
+**Rule:** If the type registry contains wrapper types (e.g., types built with `type_lib::optional()`), their cardinality is inferred via `TypeRegistry::infer_cardinality()`. The canonical pattern is to use unwrapped types with explicit cardinality:
+
+```rust
+Port::optional("result", "String")  // type: String, cardinality: ZeroOrOne
+```
+
+This prevents contradictions like `Optional<T>` + `OneOrMore`.
+
 ### Boundaries — Where DAG Meets World
 
 > **Status**: Implemented. See `core/ir/src/boundary.rs` and `core/ir/src/entrypoint.rs`.
@@ -224,7 +272,7 @@ Both are inferred structurally — if a port has no edge, it's automatically det
 
 ### Resources Are Typed Values
 
-> **Status**: Design principle - no separate Effect enum needed, but resource identity + conflict validation still required.
+> **Status**: Implemented. No separate Effect enum needed for scheduling. Resource conflict detection implemented in `resource.rs`.
 
 Instead of an `Effect` enum (Pure/WorldRead/WorldWrite), resource dependencies are handled through the **type system**:
 
@@ -240,9 +288,12 @@ This keeps the design true to "causality is a DAG" - **all dependencies are visi
 - The executor doesn't need to know "what kind" of operation - just follow edges
 - Parallelization is automatic: nodes run when inputs are ready
 
-**What we still need:**
-- **Resource identity**: When two nodes independently reference the same resource (e.g., same file path), we need to detect conflicts
-- **Conflict validation**: Derived from transport requests where possible (see [Resource Conflict Invariant](#resource-ordering))
+**What's implemented (`resource.rs`):**
+- **Resource identity**: `ResourceId` identifies resources (files, locks, connections)
+- **Conflict detection**: `detect_conflicts()` finds unordered accesses to the same resource
+- **Access modes**: `AccessMode` (Read/Write/Exclusive) determines what conflicts
+
+See [Resource Conflict Invariant](#resource-ordering) for details.
 
 ---
 
@@ -446,23 +497,18 @@ This means:
 
 ### Implemented Constructs
 
-> **Status**: Partially implemented in `core/ir/src/patterns/`.
+> **Status**: Implemented in `core/ir/src/patterns/`.
 
-| Construct | Status | Location |
-|-----------|--------|----------|
-| `Map(collection)` / `Loop` | **Implemented** | `patterns/loop_pattern.rs` — `LoopBuilder` |
-| `Branch` (if/else) | **Implemented** | `patterns/branch.rs` — `BranchBuilder`, `IfBuilder` |
-| `Atomic` | **Implemented** | `patterns/atomic.rs` — precondition/operation/postcondition |
-| `Transaction` | **Implemented** | `patterns/transaction.rs` — begin/commit/rollback |
-| `Upsert` | **Implemented** | `patterns/upsert.rs` — check/create/resolve |
-
-### Target Constructs (Not Yet Implemented)
-
-| Construct | Behavior | Interface |
-|-----------|----------|-----------|
-| `Retry(n, backoff)` | Re-execute subDAG up to n times on failure | Body + failure classifier + policy |
-| `While(condition)` | Re-execute subDAG while condition holds | Condition + body + optional loop-carried state |
-| `Poll(interval, timeout)` | Re-execute subDAG periodically until success | Body + interval + timeout |
+| Construct | Location | Description |
+|-----------|----------|-------------|
+| `Map(collection)` / `Loop` | `loop_pattern.rs` — `LoopBuilder` | Iterate over collections |
+| `Branch` (if/else) | `branch.rs` — `BranchBuilder`, `IfBuilder` | Conditional execution |
+| `Atomic` | `atomic.rs` | Precondition → operation → postcondition |
+| `Transaction` | `transaction.rs` | Begin → body → commit/rollback |
+| `Upsert` | `upsert.rs` | Check → create → resolve |
+| `Retry(n, backoff)` | `repeat.rs` — `RetryBuilder` | Re-execute on failure with backoff |
+| `While(condition)` | `repeat.rs` — `WhileBuilder` | Loop while condition holds |
+| `Poll(interval, timeout)` | `repeat.rs` — `PollBuilder` | Periodic execution until success |
 
 ### Standard Repetition Interface
 
@@ -497,7 +543,13 @@ let file = write_config();  // outputs File typed value
 let result = read_config(file);  // takes File as input
 ```
 
-The edge carrying the `File` value ensures A runs before B. No separate "resource system" needed.
+The edge carrying the `File` value ensures A runs before B.
+
+**Clarification on resource systems:**
+
+> **No separate effect system is needed for scheduling.** Resources flowing through edges already capture dependencies — the executor doesn't need to know "what kind" of operation, just follow edges.
+>
+> **A resource conflict checker IS still needed** for independently referenced resources (e.g., two nodes both write to the same file path without an edge between them). This is implemented in `resource.rs` with `detect_conflicts()` and `ResourceAccess`.
 
 ### When Nodes Don't Share Data But Share Resources
 
@@ -672,9 +724,8 @@ These are design goals that will be enforced in future implementations:
 
 | Invariant | Current State | Target |
 |-----------|---------------|--------|
-| **Resource conflict ordering** | Not checked | Validation rejects unordered conflicts |
-| **Fan-in canonical ordering** | Partially defined | Deterministic edge ordering with tie-breakers |
-| **Workflow signature matching** | Not implemented | Declared == Inferred check |
+| **Resource conflict ordering** | Implemented (`resource.rs`) | Validation rejects unordered conflicts |
+| **Fan-in canonical ordering** | Implemented (`dag.rs`) | Deterministic edge ordering with tie-breakers |
 | **Implicit aggregation is lawful** | Not checked | Fan-in only when type has merge/collect law |
 
 ### Out of Scope
@@ -877,6 +928,15 @@ Lowering flattens SubDags into the parent DAG. This is **structure-preserving by
 4. **Type/cardinality**: Inner edges already compatible (validated); cross edges compatible by SubDag interface
 
 **SubDag interface contract**: When constructing a `Node::SubDag`, the inner DAG's entrypoints and boundaries must match the node's declared input/output ports (name, type, cardinality). This interface matching is verified at construction time, making lowering a trusted operation.
+
+**Trusted Kernel Statement:**
+
+> **Lowering is part of the trusted kernel:** it is only defined on validated SubDag nodes whose interface contracts were verified at construction, and it returns a validated DAG by construction.
+
+This means:
+- Lowering can be typed as `lower(Dag<T, Validated>) → Dag<T, Validated>`
+- "No re-validation needed" is a consequence of types, not a runtime promise
+- Future contributors cannot slip in "best-effort lowering" — the type signature enforces it
 
 **Result**: `lower(Dag<T>) → Dag<T>` preserves structural validity. No re-validation needed after lowering.
 

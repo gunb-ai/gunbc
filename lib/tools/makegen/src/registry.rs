@@ -1,6 +1,7 @@
 //! Tool registry for makegen.
 //!
 //! Defines what tools exist and their entrypoint parameters.
+//! Also defines meta targets (test, check, fmt, clippy) that compose with prep.
 
 /// Information about a gunbc tool.
 #[derive(Debug, Clone)]
@@ -122,16 +123,128 @@ impl EntrypointParam {
     }
 }
 
-/// Registry of all gunbc tools.
-#[derive(Debug, Default)]
+// ============================================================================
+// Meta Targets - Holistic targets that compose with prep
+// ============================================================================
+
+/// How much preparation is needed before running a meta target.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PrepLevel {
+    /// No prep needed (e.g., fmt just formats existing code)
+    None,
+    /// Just ensure codegen has run (light prep)
+    Codegen,
+    /// Full prep including build (heavy prep)
+    Full,
+}
+
+/// A meta target that composes prep + a specific operation.
+///
+/// Meta targets are holistic targets like `test`, `check`, `fmt`, `clippy`
+/// that developers use frequently. They depend on the appropriate prep level
+/// to ensure the repository is in a consistent state.
+#[derive(Debug, Clone)]
+pub struct MetaTarget {
+    /// Target name (e.g., "test")
+    pub name: String,
+    /// Description for help text
+    pub description: String,
+    /// How much prep is needed
+    pub prep_level: PrepLevel,
+    /// Shell command to run (e.g., "cargo test")
+    pub command: String,
+    /// Whether this target has a check variant (e.g., fmt-check)
+    pub has_check_variant: bool,
+    /// Command for check variant (if any)
+    pub check_command: Option<String>,
+}
+
+impl MetaTarget {
+    /// Create a new meta target.
+    pub fn new(
+        name: impl Into<String>,
+        description: impl Into<String>,
+        prep_level: PrepLevel,
+        command: impl Into<String>,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            description: description.into(),
+            prep_level,
+            command: command.into(),
+            has_check_variant: false,
+            check_command: None,
+        }
+    }
+
+    /// Add a check variant (e.g., fmt-check).
+    pub fn with_check_variant(mut self, check_command: impl Into<String>) -> Self {
+        self.has_check_variant = true;
+        self.check_command = Some(check_command.into());
+        self
+    }
+}
+
+/// Get the default meta targets.
+pub fn default_meta_targets() -> Vec<MetaTarget> {
+    vec![
+        // test - run all tests (requires full prep)
+        MetaTarget::new(
+            "test",
+            "Run all tests",
+            PrepLevel::Full,
+            "@cargo test",
+        ),
+        // check - type check without building (requires codegen)
+        MetaTarget::new(
+            "check",
+            "Type check all targets",
+            PrepLevel::Codegen,
+            "@cargo check --all-targets",
+        ),
+        // clippy - run linter (requires codegen)
+        MetaTarget::new(
+            "clippy",
+            "Run clippy linter",
+            PrepLevel::Codegen,
+            "@cargo clippy --all-targets -- -D warnings",
+        ),
+        // fmt - format code (no prep needed)
+        MetaTarget::new(
+            "fmt",
+            "Format all code",
+            PrepLevel::None,
+            "@cargo fmt",
+        )
+        .with_check_variant("@cargo fmt -- --check"),
+    ]
+}
+
+/// Registry of all gunbc tools and meta targets.
+#[derive(Debug)]
 pub struct ToolRegistry {
+    /// Individual tool targets (gist, buck2, etc.)
     pub tools: Vec<ToolInfo>,
+    /// Meta targets (test, check, fmt, clippy)
+    pub meta_targets: Vec<MetaTarget>,
+}
+
+impl Default for ToolRegistry {
+    fn default() -> Self {
+        Self {
+            tools: Vec::new(),
+            meta_targets: default_meta_targets(),
+        }
+    }
 }
 
 impl ToolRegistry {
     /// Create a new empty registry.
     pub fn new() -> Self {
-        Self { tools: Vec::new() }
+        Self {
+            tools: Vec::new(),
+            meta_targets: Vec::new(),
+        }
     }
 
     /// Add a tool to the registry.
@@ -139,9 +252,17 @@ impl ToolRegistry {
         self.tools.push(tool);
     }
 
+    /// Add a meta target to the registry.
+    pub fn register_meta(&mut self, target: MetaTarget) {
+        self.meta_targets.push(target);
+    }
+
     /// Build the default registry with all known gunbc tools.
     pub fn default_registry() -> Self {
-        let mut registry = Self::new();
+        let mut registry = Self {
+            tools: Vec::new(),
+            meta_targets: default_meta_targets(),
+        };
 
         // gunbc-gist
         registry.register(
@@ -212,6 +333,11 @@ impl ToolRegistry {
                 ),
         );
 
+        // gunbc-prep - repo preparation / DAG unwind
+        registry.register(
+            ToolInfo::new("gunbc-prep", "prep", "Prepare repo - run all code generation and build"),
+        );
+
         registry
     }
 }
@@ -242,5 +368,53 @@ mod tests {
         let repo_param = gist.entrypoints.iter().find(|p| p.port_name == "repo_path");
         assert!(repo_param.is_some());
         assert_eq!(repo_param.unwrap().make_var, "REPO");
+    }
+
+    #[test]
+    fn test_registry_has_prep() {
+        let registry = ToolRegistry::default_registry();
+        let prep = registry.tools.iter().find(|t| t.short_name == "prep");
+        assert!(prep.is_some(), "Registry should include prep tool");
+    }
+
+    #[test]
+    fn test_default_meta_targets() {
+        let targets = default_meta_targets();
+        
+        // Should have test, check, clippy, fmt
+        assert!(targets.iter().any(|t| t.name == "test"));
+        assert!(targets.iter().any(|t| t.name == "check"));
+        assert!(targets.iter().any(|t| t.name == "clippy"));
+        assert!(targets.iter().any(|t| t.name == "fmt"));
+    }
+
+    #[test]
+    fn test_meta_target_prep_levels() {
+        let targets = default_meta_targets();
+        
+        let test = targets.iter().find(|t| t.name == "test").unwrap();
+        assert_eq!(test.prep_level, PrepLevel::Full);
+        
+        let fmt = targets.iter().find(|t| t.name == "fmt").unwrap();
+        assert_eq!(fmt.prep_level, PrepLevel::None);
+        
+        let clippy = targets.iter().find(|t| t.name == "clippy").unwrap();
+        assert_eq!(clippy.prep_level, PrepLevel::Codegen);
+    }
+
+    #[test]
+    fn test_fmt_has_check_variant() {
+        let targets = default_meta_targets();
+        let fmt = targets.iter().find(|t| t.name == "fmt").unwrap();
+        
+        assert!(fmt.has_check_variant);
+        assert!(fmt.check_command.is_some());
+    }
+
+    #[test]
+    fn test_registry_has_meta_targets() {
+        let registry = ToolRegistry::default_registry();
+        assert!(!registry.meta_targets.is_empty());
+        assert!(registry.meta_targets.iter().any(|t| t.name == "test"));
     }
 }

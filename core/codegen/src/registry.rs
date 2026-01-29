@@ -447,6 +447,24 @@ pub fn all_tools() -> Vec<ToolDef> {
                 ("written_path", "Value::Str(\"<DRY-RUN>\".to_string())"),
             ],
         ),
+
+        // gunbc-prep (uses DagBuilder - returns Result)
+        ToolDef::new(
+            "gunbc-prep",
+            "prep",
+            "Prepare repo - run all code generation and build",
+            "build_prep_graph",
+            "",
+        )
+        .returns_result()
+        .import("use gunbc_prep::build_prep_graph;")
+        .boundary(
+            "build",
+            vec![
+                ("build_ran", "Value::Bool(true)"),
+                ("build_success", "Value::Bool(true)"),
+            ],
+        ),
     ]
 }
 

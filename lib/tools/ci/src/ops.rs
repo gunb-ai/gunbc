@@ -2,17 +2,23 @@
 //!
 //! Demonstrates decomposition into primitives where possible.
 //! Command execution delegates to ExecuteOp primitive.
+//!
+//! The CI pipeline now includes a Prep stage that runs codegen
+//! to ensure all generated code exists before building/testing.
 
 use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::Value;
 use gunbc_primitives::ExecuteOp;
 use std::collections::HashMap;
+use std::process::Command;
 
 /// Operations for the CI tool.
 #[derive(Debug, Clone)]
 pub enum CIOp {
     /// Check and install dependencies
     SetupDeps,
+    /// Run codegen to ensure all generated code exists (prep/unwind)
+    Prep,
     /// Build the project
     Build,
     /// Run tests
@@ -27,6 +33,7 @@ impl Executable for CIOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         match self {
             CIOp::SetupDeps => execute_setup_deps(inputs),
+            CIOp::Prep => execute_prep(inputs),
             CIOp::Build => execute_build(inputs),
             CIOp::Test => execute_test(inputs),
             CIOp::Lint => execute_lint(inputs),
@@ -57,8 +64,69 @@ fn execute_setup_deps(_inputs: HashMap<String, Value>) -> Result<HashMap<String,
     Ok(out)
 }
 
+/// Run prep/unwind to ensure all generated code exists.
+///
+/// This is the "fractal unwind" step - it runs codegen to generate
+/// CLI main.rs files, and daggen to generate graph.rs files from
+/// declarative DAG definitions. This ensures the repo is in a
+/// consistent state before building and testing.
+fn execute_prep(_inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+    // Check if codegen is needed
+    let buck_out = std::path::Path::new("buck-out/gen/bin");
+    let needs_codegen = !buck_out.exists() || !buck_out.join("gist/main.rs").exists();
+
+    if !needs_codegen {
+        println!("Prep: Generated code exists, skipping codegen");
+        let mut out = HashMap::new();
+        out.insert("prep_success".to_string(), Value::Bool(true));
+        out.insert("codegen_ran".to_string(), Value::Bool(false));
+        out.insert("prep_message".to_string(), Value::Str("Generated code already exists".to_string()));
+        return Ok(out);
+    }
+
+    println!("Prep: Running codegen to generate CLIs...");
+
+    // Run codegen
+    let status = Command::new("cargo")
+        .args(["run", "-p", "gunbc-codegen", "--release", "--", "codegen"])
+        .status()
+        .map_err(|e| ExecError::new(format!("Failed to run codegen: {}", e)))?;
+
+    if !status.success() {
+        let mut out = HashMap::new();
+        out.insert("prep_success".to_string(), Value::Bool(false));
+        out.insert("codegen_ran".to_string(), Value::Bool(true));
+        out.insert("prep_message".to_string(), Value::Str("Codegen failed".to_string()));
+        return Ok(out);
+    }
+
+    println!("Prep: Codegen complete");
+
+    let mut out = HashMap::new();
+    out.insert("prep_success".to_string(), Value::Bool(true));
+    out.insert("codegen_ran".to_string(), Value::Bool(true));
+    out.insert("prep_message".to_string(), Value::Str("Codegen completed successfully".to_string()));
+    Ok(out)
+}
+
 /// Build the project using ExecuteOp primitive.
-fn execute_build(_inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+fn execute_build(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+    // Check if prep succeeded
+    let prep_success = inputs
+        .get("prep_success")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+
+    if !prep_success {
+        println!("Build: Skipped due to prep failure");
+        let mut out = HashMap::new();
+        out.insert("build_success".to_string(), Value::Bool(false));
+        out.insert("build_skipped".to_string(), Value::Bool(true));
+        out.insert("build_stdout".to_string(), Value::Str(String::new()));
+        out.insert("build_stderr".to_string(), Value::Str("Skipped due to prep failure".to_string()));
+        return Ok(out);
+    }
+
     println!("Running: cargo build --all-targets");
 
     // Use ExecuteOp primitive
@@ -74,6 +142,7 @@ fn execute_build(_inputs: HashMap<String, Value>) -> Result<HashMap<String, Valu
 
     let mut out = HashMap::new();
     out.insert("build_success".to_string(), Value::Bool(success));
+    out.insert("build_skipped".to_string(), Value::Bool(false));
     out.insert("build_stdout".to_string(), Value::Str(stdout));
     out.insert("build_stderr".to_string(), Value::Str(stderr));
     Ok(out)
@@ -236,9 +305,17 @@ impl Mockable for CIOp {
                 out.insert("message".to_string(), Value::Str("Dependencies ready".to_string()));
                 out
             }
+            CIOp::Prep => {
+                let mut out = HashMap::new();
+                out.insert("prep_success".to_string(), Value::Bool(true));
+                out.insert("codegen_ran".to_string(), Value::Bool(false));
+                out.insert("prep_message".to_string(), Value::Str("Generated code exists".to_string()));
+                out
+            }
             CIOp::Build => {
                 let mut out = HashMap::new();
                 out.insert("build_success".to_string(), Value::Bool(true));
+                out.insert("build_skipped".to_string(), Value::Bool(false));
                 out.insert("build_stdout".to_string(), Value::Str("Build complete".to_string()));
                 out.insert("build_stderr".to_string(), Value::Str(String::new()));
                 out

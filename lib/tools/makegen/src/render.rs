@@ -1,6 +1,6 @@
 //! Makefile rendering.
 
-use crate::registry::{EntrypointParam, ExtraTarget, ToolInfo, ToolRegistry};
+use crate::registry::{EntrypointParam, ExtraTarget, MetaTarget, PrepLevel, ToolInfo, ToolRegistry};
 
 /// Render a complete Makefile from the tool registry.
 pub fn render_makefile(registry: &ToolRegistry) -> String {
@@ -13,8 +13,18 @@ pub fn render_makefile(registry: &ToolRegistry) -> String {
     // Default goal
     output.push_str(".DEFAULT_GOAL := help\n\n");
 
-    // Phony targets
-    output.push_str(".PHONY: help");
+    // Phony targets - include core targets, meta targets, and tool targets
+    output.push_str(".PHONY: help codegen ensure-codegen build clean");
+    
+    // Add meta targets
+    for meta in &registry.meta_targets {
+        output.push_str(&format!(" {}", meta.name));
+        if meta.has_check_variant {
+            output.push_str(&format!(" {}-check", meta.name));
+        }
+    }
+    
+    // Add tool targets
     for tool in &registry.tools {
         output.push_str(&format!(" {} {}-dry", tool.short_name, tool.short_name));
         for extra in &tool.extra_targets {
@@ -23,11 +33,89 @@ pub fn render_makefile(registry: &ToolRegistry) -> String {
     }
     output.push_str("\n\n");
 
+    // Core build system targets
+    output.push_str(&render_core_targets());
+
     // Help target
+    output.push_str(&render_help_target(registry));
+
+    // Meta targets (test, check, fmt, clippy)
+    output.push_str(&render_meta_targets(registry));
+
+    // Tool targets
+    for tool in &registry.tools {
+        output.push_str(&render_tool_target(tool));
+        output.push_str(&render_dry_run_target(tool));
+        for extra in &tool.extra_targets {
+            output.push_str(&render_extra_target(tool, extra));
+        }
+    }
+
+    output
+}
+
+/// Render core build system targets.
+fn render_core_targets() -> String {
+    let mut output = String::new();
+
+    // Ensure codegen has run (upsert pattern: check -> create if missing)
+    output.push_str("# Ensure codegen has run (upsert pattern: check -> create if missing)\n");
+    output.push_str("ensure-codegen:\n");
+    output.push_str("\t@if [ ! -f buck-out/gen/bin/gist/main.rs ]; then \\\n");
+    output.push_str("\t\tcargo run -p gunbc-codegen --release -- codegen; \\\n");
+    output.push_str("\tfi\n\n");
+
+    // Force regenerate CLIs from DAG entrypoints
+    output.push_str("# Force regenerate CLIs from DAG entrypoints\n");
+    output.push_str("codegen:\n");
+    output.push_str("\t@cargo run -p gunbc-codegen --release -- codegen\n\n");
+
+    // Full build transaction: codegen → cargo build → symlink
+    output.push_str("# Full build transaction: codegen → cargo build → symlink\n");
+    output.push_str("build: ensure-codegen\n");
+    output.push_str("\t@cargo build --all-targets\n\n");
+
+    // Rollback transaction: remove all generated artifacts
+    output.push_str("# Rollback transaction: remove all generated artifacts\n");
+    output.push_str("clean:\n");
+    output.push_str("\t@cargo run -p gunbc-codegen --release -- rollback\n\n");
+
+    output
+}
+
+/// Render the help target.
+fn render_help_target(registry: &ToolRegistry) -> String {
+    let mut output = String::new();
+
     output.push_str("help:\n");
     output.push_str("\t@echo \"gunbc tools - generated Makefile\"\n");
     output.push_str("\t@echo \"\"\n");
-    output.push_str("\t@echo \"Available targets:\"\n");
+    
+    // Build transactions section
+    output.push_str("\t@echo \"Build transactions:\"\n");
+    output.push_str("\t@echo \"  build    - Commit: codegen → cargo build\"\n");
+    output.push_str("\t@echo \"  clean    - Rollback: remove all generated artifacts\"\n");
+    output.push_str("\t@echo \"  codegen  - Partial commit: just generate CLIs\"\n");
+    output.push_str("\t@echo \"\"\n");
+    
+    // Meta targets section
+    output.push_str("\t@echo \"Development:\"\n");
+    for meta in &registry.meta_targets {
+        output.push_str(&format!(
+            "\t@echo \"  {}  - {}\"\n",
+            meta.name, meta.description
+        ));
+        if meta.has_check_variant {
+            output.push_str(&format!(
+                "\t@echo \"  {}-check  - {} (check only)\"\n",
+                meta.name, meta.description
+            ));
+        }
+    }
+    output.push_str("\t@echo \"\"\n");
+    
+    // Tools section
+    output.push_str("\t@echo \"Tools:\"\n");
     for tool in &registry.tools {
         let params = render_help_params(&tool.entrypoints);
         output.push_str(&format!(
@@ -44,13 +132,58 @@ pub fn render_makefile(registry: &ToolRegistry) -> String {
     output.push_str("\t@echo \"\"\n");
     output.push_str("\t@echo \"Add -dry suffix for dry-run (e.g., make gist-dry)\"\n\n");
 
-    // Tool targets
-    for tool in &registry.tools {
-        output.push_str(&render_tool_target(tool));
-        output.push_str(&render_dry_run_target(tool));
-        for extra in &tool.extra_targets {
-            output.push_str(&render_extra_target(tool, extra));
+    output
+}
+
+/// Render meta targets.
+fn render_meta_targets(registry: &ToolRegistry) -> String {
+    let mut output = String::new();
+
+    output.push_str("# ============================================================================\n");
+    output.push_str("# Meta Targets - Development workflow commands\n");
+    output.push_str("# ============================================================================\n\n");
+
+    for meta in &registry.meta_targets {
+        output.push_str(&render_meta_target(meta));
+        if meta.has_check_variant {
+            output.push_str(&render_meta_check_variant(meta));
         }
+    }
+
+    output
+}
+
+/// Render a single meta target.
+fn render_meta_target(meta: &MetaTarget) -> String {
+    let mut output = String::new();
+
+    // Determine dependency based on prep level
+    let dependency = match meta.prep_level {
+        PrepLevel::None => "",
+        PrepLevel::Codegen => " ensure-codegen",
+        PrepLevel::Full => " build",
+    };
+
+    output.push_str(&format!("# {}: {}\n", meta.name, meta.description));
+    output.push_str(&format!("{}:{}\n", meta.name, dependency));
+    output.push_str(&format!("\t{}\n\n", meta.command));
+
+    output
+}
+
+/// Render a check variant for a meta target.
+fn render_meta_check_variant(meta: &MetaTarget) -> String {
+    let mut output = String::new();
+
+    if let Some(ref check_cmd) = meta.check_command {
+        let dependency = match meta.prep_level {
+            PrepLevel::None => "",
+            PrepLevel::Codegen => " ensure-codegen",
+            PrepLevel::Full => " build",
+        };
+
+        output.push_str(&format!("{}-check:{}\n", meta.name, dependency));
+        output.push_str(&format!("\t{}\n\n", check_cmd));
     }
 
     output
@@ -84,8 +217,8 @@ fn render_tool_target(tool: &ToolInfo) -> String {
         .join(", ");
     output.push_str(&format!("# {} entrypoints: {}\n", tool.crate_name, port_list));
 
-    // Target
-    output.push_str(&format!("{}:\n", tool.short_name));
+    // Target with ensure-codegen dependency
+    output.push_str(&format!("{}: ensure-codegen\n", tool.short_name));
     output.push_str(&format!(
         "\t@cargo run -p {} --{}",
         tool.crate_name,
@@ -100,7 +233,7 @@ fn render_tool_target(tool: &ToolInfo) -> String {
 fn render_dry_run_target(tool: &ToolInfo) -> String {
     let mut output = String::new();
 
-    output.push_str(&format!("{}-dry:\n", tool.short_name));
+    output.push_str(&format!("{}-dry: ensure-codegen\n", tool.short_name));
     output.push_str(&format!(
         "\t@cargo run -p {} -- --dry-run{}",
         tool.crate_name,
@@ -166,10 +299,10 @@ mod tests {
         let registry = ToolRegistry::default_registry();
         let makefile = render_makefile(&registry);
 
-        assert!(makefile.contains("gist:"));
-        assert!(makefile.contains("gist-dry:"));
-        assert!(makefile.contains("buck2:"));
-        assert!(makefile.contains("buck2-dry:"));
+        assert!(makefile.contains("gist: ensure-codegen"));
+        assert!(makefile.contains("gist-dry: ensure-codegen"));
+        assert!(makefile.contains("buck2: ensure-codegen"));
+        assert!(makefile.contains("buck2-dry: ensure-codegen"));
     }
 
     #[test]
@@ -180,5 +313,57 @@ mod tests {
         // Should have conditional variable expansion
         assert!(makefile.contains("$(if $(REPO)"));
         assert!(makefile.contains("--repo"));
+    }
+
+    #[test]
+    fn test_render_makefile_has_core_targets() {
+        let registry = ToolRegistry::default_registry();
+        let makefile = render_makefile(&registry);
+
+        assert!(makefile.contains("ensure-codegen:"));
+        assert!(makefile.contains("codegen:"));
+        assert!(makefile.contains("build: ensure-codegen"));
+        assert!(makefile.contains("clean:"));
+    }
+
+    #[test]
+    fn test_render_makefile_has_meta_targets() {
+        let registry = ToolRegistry::default_registry();
+        let makefile = render_makefile(&registry);
+
+        // Meta targets section
+        assert!(makefile.contains("# Meta Targets"));
+        
+        // Individual meta targets
+        assert!(makefile.contains("test: build"));
+        assert!(makefile.contains("@cargo test"));
+        
+        assert!(makefile.contains("check: ensure-codegen"));
+        assert!(makefile.contains("@cargo check --all-targets"));
+        
+        assert!(makefile.contains("clippy: ensure-codegen"));
+        assert!(makefile.contains("@cargo clippy"));
+        
+        assert!(makefile.contains("fmt:"));
+        assert!(makefile.contains("@cargo fmt"));
+        assert!(makefile.contains("fmt-check:"));
+    }
+
+    #[test]
+    fn test_render_makefile_help_has_sections() {
+        let registry = ToolRegistry::default_registry();
+        let makefile = render_makefile(&registry);
+
+        assert!(makefile.contains("Build transactions:"));
+        assert!(makefile.contains("Development:"));
+        assert!(makefile.contains("Tools:"));
+    }
+
+    #[test]
+    fn test_render_makefile_has_prep_target() {
+        let registry = ToolRegistry::default_registry();
+        let makefile = render_makefile(&registry);
+
+        assert!(makefile.contains("prep: ensure-codegen"));
     }
 }
