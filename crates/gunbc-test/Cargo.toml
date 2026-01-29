@@ -1,8 +1,10 @@
 [package]
 name = "gunbc-test"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Test infrastructure for gunbc: boundary mocks and composition tests"
 
 [dependencies]
-gunbc-ir = { path = "../gunbc-ir" }
-gunbc-exec = { path = "../gunbc-exec" }
+gunbc-ir = { workspace = true }
+gunbc-exec = { workspace = true }

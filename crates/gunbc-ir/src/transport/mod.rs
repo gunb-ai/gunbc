@@ -1,71 +1,159 @@
-//! Transport stack as nested SubDAGs.
+//! Transport layer types for I/O abstraction.
 //!
-//! Each transport layer wraps the layer below it as a swappable SubDAG:
+//! This module provides request/response types for different transport mechanisms:
+//! - REST/HTTP for web APIs
+//! - File operations for filesystem I/O
+//! - TCP for raw network connections
+//! - Shell for command execution
 //!
-//! ```text
-//! External (nominal boundary - the real world)
-//!     ↑
-//! TCP (SubDAG: socket operations)
-//!     ↑
-//! HTTP (SubDAG: request/response on TCP)
-//!     ↑
-//! REST (SubDAG: semantic operations on HTTP)
-//!     ↑
-//! GitHub::Gist (SubDAG: gist operations on REST)
-//! ```
-//!
-//! Mocking at any level is achieved by swapping the SubDAG for that layer:
-//! - `--mock-gist` → swap Gist SubDAG for mock (fake URL, no network)
-//! - `--mock-rest` → swap REST SubDAG for mock (fake HTTP response, real gist parsing)
-//! - `--mock-http` → swap HTTP SubDAG for mock (fake TCP response, real HTTP/REST parsing)
-//! - `--mock-tcp` → swap TCP SubDAG for loopback (rarely needed)
+//! The key insight is that all world I/O can be modeled as request/response pairs,
+//! allowing business logic to remain pure while transport execution happens at
+//! well-defined boundaries.
 
-pub mod tcp;
+pub mod file;
+pub mod gist;
 pub mod http;
 pub mod rest;
-pub mod gist;
-pub mod file;
+pub mod tcp;
 
-pub use tcp::{TcpOp, build_tcp_real, build_tcp_mock};
-pub use http::{HttpOp, build_http_real, build_http_mock};
-pub use rest::{RestOp, build_rest_real, build_rest_mock};
-pub use gist::{GistOp, build_gist_real, build_gist_mock};
-pub use file::{FileOp, build_file_upsert_real, build_file_upsert_mock};
+pub use file::{FileOp, FileRequest, FileResponse};
+pub use gist::GistRequest;
+pub use http::{HttpMethod, HttpRequest, HttpResponse};
+pub use rest::{AuthMethod, RestRequest, RestResponse};
+pub use tcp::{TcpRequest, TcpResponse};
 
-/// External type ID conventions for transport layer boundaries.
-pub mod external_types {
-    use crate::TypeId;
+use serde::{Deserialize, Serialize};
 
-    // TCP layer
-    pub fn tcp_connection() -> TypeId { TypeId("External::TCP::Connection".into()) }
+/// Unified transport request enum.
+///
+/// All I/O operations are represented as one of these request types,
+/// allowing uniform handling at transport boundaries.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum TransportRequest {
+    /// REST API request
+    Rest(RestRequest),
+    /// Raw HTTP request
+    Http(HttpRequest),
+    /// File operation request
+    File(FileRequest),
+    /// TCP connection request
+    Tcp(TcpRequest),
+    /// Shell command request
+    Shell(ShellRequest),
+}
 
-    // HTTP layer
-    pub fn http_request() -> TypeId { TypeId("External::HTTP::Request".into()) }
-    pub fn http_response() -> TypeId { TypeId("External::HTTP::Response".into()) }
+/// Unified transport response enum.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum TransportResponse {
+    /// REST API response
+    Rest(RestResponse),
+    /// Raw HTTP response
+    Http(HttpResponse),
+    /// File operation response
+    File(FileResponse),
+    /// TCP connection response
+    Tcp(TcpResponse),
+    /// Shell command response
+    Shell(ShellResponse),
+}
 
-    // REST layer
-    pub fn rest_request() -> TypeId { TypeId("External::REST::Request".into()) }
-    pub fn rest_response() -> TypeId { TypeId("External::REST::Response".into()) }
+/// Shell command request.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShellRequest {
+    /// Command to execute
+    pub command: String,
+    /// Command arguments
+    pub args: Vec<String>,
+    /// Working directory (optional)
+    pub cwd: Option<String>,
+    /// Environment variables
+    #[serde(default)]
+    pub env: std::collections::HashMap<String, String>,
+    /// Standard input to pipe to the command
+    pub stdin: Option<String>,
+}
 
-    // GitHub layer
-    pub fn github_gist() -> TypeId { TypeId("External::GitHub::Gist".into()) }
-    pub fn github_auth() -> TypeId { TypeId("External::GitHub::Auth".into()) }
+/// Shell command response.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShellResponse {
+    /// Exit code
+    pub exit_code: i32,
+    /// Standard output
+    pub stdout: String,
+    /// Standard error
+    pub stderr: String,
+}
 
-    // Git layer
-    pub fn git_repo() -> TypeId { TypeId("External::Git::Repo".into()) }
-
-    // Filesystem layer
-    pub fn fs_read() -> TypeId { TypeId("External::FS::Read".into()) }
-    pub fn fs_write() -> TypeId { TypeId("External::FS::Write".into()) }
-
-    /// Extract the layer name from an External type ID.
-    /// e.g., "External::GitHub::Gist" -> "gist"
-    pub fn extract_layer_name(type_id: &TypeId) -> Option<String> {
-        let s = &type_id.0;
-        if !s.starts_with("External::") {
-            return None;
+impl ShellRequest {
+    /// Create a new shell request.
+    pub fn new(command: impl Into<String>) -> Self {
+        Self {
+            command: command.into(),
+            args: Vec::new(),
+            cwd: None,
+            env: std::collections::HashMap::new(),
+            stdin: None,
         }
-        // Get the last segment and lowercase it
-        s.rsplit("::").next().map(|s| s.to_lowercase())
+    }
+
+    /// Add an argument.
+    pub fn arg(mut self, arg: impl Into<String>) -> Self {
+        self.args.push(arg.into());
+        self
+    }
+
+    /// Add multiple arguments.
+    pub fn args<I, S>(mut self, args: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.args.extend(args.into_iter().map(|s| s.into()));
+        self
+    }
+
+    /// Set the working directory.
+    pub fn cwd(mut self, cwd: impl Into<String>) -> Self {
+        self.cwd = Some(cwd.into());
+        self
+    }
+
+    /// Set standard input.
+    pub fn stdin(mut self, stdin: impl Into<String>) -> Self {
+        self.stdin = Some(stdin.into());
+        self
+    }
+
+    /// Set an environment variable.
+    pub fn env(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.env.insert(key.into(), value.into());
+        self
+    }
+}
+
+impl ShellResponse {
+    /// Check if the command succeeded (exit code 0).
+    pub fn success(&self) -> bool {
+        self.exit_code == 0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_shell_request_builder() {
+        let req = ShellRequest::new("gh")
+            .args(["gist", "create"])
+            .arg("-f")
+            .arg("test.md")
+            .cwd("/tmp")
+            .stdin("# Test");
+
+        assert_eq!(req.command, "gh");
+        assert_eq!(req.args, vec!["gist", "create", "-f", "test.md"]);
+        assert_eq!(req.cwd, Some("/tmp".to_string()));
+        assert_eq!(req.stdin, Some("# Test".to_string()));
     }
 }

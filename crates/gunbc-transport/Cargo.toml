@@ -1,0 +1,11 @@
+[package]
+name = "gunbc-transport"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Transport layer executors for gunbc I/O operations"
+
+[dependencies]
+gunbc-ir = { workspace = true }
+gunbc-exec = { workspace = true }
+serde_json = { workspace = true }

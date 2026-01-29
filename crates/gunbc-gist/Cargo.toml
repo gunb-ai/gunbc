@@ -1,0 +1,16 @@
+[package]
+name = "gunbc-gist"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Gist generation tool built on gunbc"
+
+[dependencies]
+gunbc-ir = { workspace = true }
+gunbc-exec = { workspace = true }
+gunbc-transport = { workspace = true }
+gunbc-test = { workspace = true }
+
+[[bin]]
+name = "gunbc-gist"
+path = "src/main.rs"

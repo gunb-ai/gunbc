@@ -1,135 +1,164 @@
-//! HTTP transport layer understanding.
-//!
-//! This layer wraps TCP to provide HTTP request/response semantics.
+//! Low-level HTTP request/response types.
 
-use crate::{
-    edge, port, BoundaryDeclaration, Dag, DagMetadata, Node, NodeBody, NodeId, PortName,
-};
-use crate::transport::external_types;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
-/// HTTP layer operations.
-#[derive(Debug, Clone)]
-pub enum HttpOp {
-    /// Format an HTTP request from method, url, headers, body.
-    FormatRequest,
-    /// Parse an HTTP response into status, headers, body.
-    ParseResponse,
-    /// Mock: return a canned HTTP response.
-    MockResponse { status: u16, body: String },
+/// HTTP method.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum HttpMethod {
+    Get,
+    Post,
+    Put,
+    Patch,
+    Delete,
+    Head,
+    Options,
 }
 
-/// Build a real HTTP understanding SubDAG.
-///
-/// This SubDAG wraps a TCP SubDAG to perform HTTP over TCP.
-pub fn build_http_real<T: Clone>(_tcp: Dag<T>) -> Dag<HttpOp> {
-    // For now, simplified structure - in practice would wrap tcp SubDAG
-    let nodes = vec![
-        Node {
-            id: NodeId("format_request".into()),
-            inputs: vec![
-                port("method", "String"),
-                port("url", "String"),
-                port("headers", "MapStrStr"),
-                port("body", "String"),
-            ],
-            outputs: vec![port("request_bytes", "Bytes")],
-            body: NodeBody::Opaque(HttpOp::FormatRequest),
-        },
-        // In a real implementation, tcp SubDAG would be here
-        Node {
-            id: NodeId("parse_response".into()),
-            inputs: vec![port("response_bytes", "Bytes")],
-            outputs: vec![
-                port("status", "Int"),
-                port("headers", "MapStrStr"),
-                port("body", "String"),
-            ],
-            body: NodeBody::Opaque(HttpOp::ParseResponse),
-        },
-    ];
+impl HttpMethod {
+    /// Parse from string.
+    pub fn parse(s: &str) -> Option<Self> {
+        match s.to_uppercase().as_str() {
+            "GET" => Some(HttpMethod::Get),
+            "POST" => Some(HttpMethod::Post),
+            "PUT" => Some(HttpMethod::Put),
+            "PATCH" => Some(HttpMethod::Patch),
+            "DELETE" => Some(HttpMethod::Delete),
+            "HEAD" => Some(HttpMethod::Head),
+            "OPTIONS" => Some(HttpMethod::Options),
+            _ => None,
+        }
+    }
 
-    let edges = vec![
-        // format_request -> tcp -> parse_response (tcp layer omitted for simplicity)
-        edge("format_request", "request_bytes", "parse_response", "response_bytes"),
-    ];
-
-    let metadata = DagMetadata {
-        boundary_declarations: vec![
-            BoundaryDeclaration {
-                node: NodeId("format_request".into()),
-                port: PortName("request_bytes".into()),
-                external_type: external_types::http_request(),
-            },
-        ],
-        export_node: Some(NodeId("parse_response".into())),
-        ..Default::default()
-    };
-
-    Dag { nodes, edges, metadata }
+    /// Get the method name as a string.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            HttpMethod::Get => "GET",
+            HttpMethod::Post => "POST",
+            HttpMethod::Put => "PUT",
+            HttpMethod::Patch => "PATCH",
+            HttpMethod::Delete => "DELETE",
+            HttpMethod::Head => "HEAD",
+            HttpMethod::Options => "OPTIONS",
+        }
+    }
 }
 
-/// Build a mock HTTP understanding SubDAG.
-///
-/// Returns canned HTTP responses without making network calls.
-pub fn build_http_mock(status: u16, body: &str) -> Dag<HttpOp> {
-    let nodes = vec![
-        Node {
-            id: NodeId("format_request".into()),
-            inputs: vec![
-                port("method", "String"),
-                port("url", "String"),
-                port("headers", "MapStrStr"),
-                port("body", "String"),
-            ],
-            outputs: vec![port("request_bytes", "Bytes")],
-            body: NodeBody::Opaque(HttpOp::FormatRequest),
-        },
-        Node {
-            id: NodeId("mock_response".into()),
-            inputs: vec![port("request_bytes", "Bytes")],
-            outputs: vec![
-                port("status", "Int"),
-                port("headers", "MapStrStr"),
-                port("body", "String"),
-            ],
-            body: NodeBody::Opaque(HttpOp::MockResponse {
-                status,
-                body: body.into(),
-            }),
-        },
-    ];
+impl std::fmt::Display for HttpMethod {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
 
-    let edges = vec![
-        edge("format_request", "request_bytes", "mock_response", "request_bytes"),
-    ];
+/// Raw HTTP request.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HttpRequest {
+    /// Request URL
+    pub url: String,
+    /// HTTP method
+    pub method: HttpMethod,
+    /// Request headers
+    #[serde(default)]
+    pub headers: HashMap<String, String>,
+    /// Request body (raw bytes as base64 or string)
+    pub body: Option<String>,
+    /// Timeout in milliseconds
+    pub timeout_ms: Option<u64>,
+}
 
-    let metadata = DagMetadata {
-        export_node: Some(NodeId("mock_response".into())),
-        ..Default::default()
-    };
+/// Raw HTTP response.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HttpResponse {
+    /// HTTP status code
+    pub status: u16,
+    /// Response headers
+    #[serde(default)]
+    pub headers: HashMap<String, String>,
+    /// Response body
+    pub body: String,
+}
 
-    Dag { nodes, edges, metadata }
+impl HttpRequest {
+    /// Create a new GET request.
+    pub fn get(url: impl Into<String>) -> Self {
+        Self {
+            url: url.into(),
+            method: HttpMethod::Get,
+            headers: HashMap::new(),
+            body: None,
+            timeout_ms: None,
+        }
+    }
+
+    /// Create a new POST request.
+    pub fn post(url: impl Into<String>) -> Self {
+        Self {
+            url: url.into(),
+            method: HttpMethod::Post,
+            headers: HashMap::new(),
+            body: None,
+            timeout_ms: None,
+        }
+    }
+
+    /// Add a header.
+    pub fn header(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.headers.insert(key.into(), value.into());
+        self
+    }
+
+    /// Set the body.
+    pub fn body(mut self, body: impl Into<String>) -> Self {
+        self.body = Some(body.into());
+        self
+    }
+
+    /// Set the timeout.
+    pub fn timeout(mut self, ms: u64) -> Self {
+        self.timeout_ms = Some(ms);
+        self
+    }
+}
+
+impl HttpResponse {
+    /// Check if the response was successful (2xx status).
+    pub fn is_success(&self) -> bool {
+        (200..300).contains(&self.status)
+    }
+
+    /// Check if the response was a client error (4xx status).
+    pub fn is_client_error(&self) -> bool {
+        (400..500).contains(&self.status)
+    }
+
+    /// Check if the response was a server error (5xx status).
+    pub fn is_server_error(&self) -> bool {
+        (500..600).contains(&self.status)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::transport::tcp::build_tcp_mock;
 
     #[test]
-    fn http_real_has_boundary_declaration() {
-        let tcp = build_tcp_mock(vec![]);
-        let dag = build_http_real(tcp);
-        assert_eq!(dag.metadata.boundary_declarations.len(), 1);
-        assert_eq!(
-            dag.metadata.boundary_declarations[0].external_type.0,
-            "External::HTTP::Request"
-        );
+    fn test_http_method_parse() {
+        assert_eq!(HttpMethod::parse("GET"), Some(HttpMethod::Get));
+        assert_eq!(HttpMethod::parse("post"), Some(HttpMethod::Post));
+        assert_eq!(HttpMethod::parse("INVALID"), None);
     }
 
     #[test]
-    fn http_mock_has_no_boundary() {
-        let dag = build_http_mock(200, "OK");
-        assert!(dag.metadata.boundary_declarations.is_empty());
+    fn test_http_request_builder() {
+        let req = HttpRequest::post("https://api.example.com")
+            .header("Content-Type", "application/json")
+            .body(r#"{"test": true}"#)
+            .timeout(5000);
+
+        assert_eq!(req.method, HttpMethod::Post);
+        assert_eq!(req.url, "https://api.example.com");
+        assert_eq!(req.headers.get("Content-Type"), Some(&"application/json".to_string()));
+        assert_eq!(req.body, Some(r#"{"test": true}"#.to_string()));
+        assert_eq!(req.timeout_ms, Some(5000));
     }
 }

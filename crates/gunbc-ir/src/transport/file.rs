@@ -1,204 +1,192 @@
-//! File I/O transport layer.
-//!
-//! Provides SubDAGs for file operations:
-//! - **File Upsert SubDAG** - Check existing file, write/print if needed, resolve status
-//!
-//! Used by tools like makegen, gitignoregen.
+//! File operation request/response types.
 
-use crate::{
-    edge, eq_guarded_port, port, BoundaryDeclaration, Dag, DagMetadata, Node, NodeBody, NodeId,
-    PortName, Value,
-};
-use crate::transport::external_types;
+use serde::{Deserialize, Serialize};
 
-/// File I/O layer operations.
-#[derive(Debug, Clone)]
+/// File operation type.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FileOp {
-    // Upsert operations (for makegen, gitignoregen)
-    /// Check existing file state - reads file, extracts hash
-    CheckExisting,
-    /// Resolve whether write is needed based on check + generated content
-    ResolveUpsert,
-    /// Write content to file
-    WriteFile,
-    /// Print content to stdout (for dry-run)
-    PrintStdout,
+    /// Read file contents
+    Read,
+    /// Write file (create or overwrite)
+    Write,
+    /// Append to file
+    Append,
+    /// Delete file
+    Delete,
+    /// Check if file exists
+    Exists,
+    /// Create directory
+    CreateDir,
 }
 
-/// Build a real file upsert SubDAG.
-///
-/// Structure: check → sink → resolve (write)
-///
-/// Inputs (to be wired by parent DAG):
-/// - check.file_path: String - path to the file
-/// - check.force: Bool - force regeneration
-/// - check.input_hash: String - hash of input content
-/// - sink.content: String - generated content to potentially write
-///
-/// Outputs (from resolve node):
-/// - status: String - Created/Updated/Unchanged/DryRun
-pub fn build_file_upsert_real<T: Clone, F>(wrap: F) -> Dag<T>
-where
-    F: Fn(FileOp) -> T + Copy,
-{
-    let nodes = vec![
-        Node {
-            id: NodeId("file_check".into()),
-            inputs: vec![
-                port("file_path", "String"),
-                port("force", "Bool"),
-                port("input_hash", "String"),
-            ],
-            outputs: vec![
-                port("file_path", "String"),
-                port("input_hash", "String"),
-                port("needs_write", "Bool"),
-                port("file_existed", "Bool"),
-            ],
-            body: NodeBody::Opaque(wrap(FileOp::CheckExisting)),
-        },
-        Node {
-            id: NodeId("file_sink".into()),
-            inputs: vec![
-                port("content", "String"),
-                eq_guarded_port("needs_write", "Bool", Value::Bool(true)),
-                port("file_path", "String"),
-                port("file_existed", "Bool"),
-            ],
-            outputs: vec![port("write_status", "String")],
-            body: NodeBody::Opaque(wrap(FileOp::WriteFile)),
-        },
-        Node {
-            id: NodeId("file_resolve".into()),
-            inputs: vec![port("needs_write", "Bool"), port("write_status", "String")],
-            outputs: vec![port("status", "String")],
-            body: NodeBody::Opaque(wrap(FileOp::ResolveUpsert)),
-        },
-    ];
-
-    let edges = vec![
-        // Check to sink
-        edge("file_check", "needs_write", "file_sink", "needs_write"),
-        edge("file_check", "file_path", "file_sink", "file_path"),
-        edge("file_check", "file_existed", "file_sink", "file_existed"),
-        // Check + sink to resolve
-        edge("file_check", "needs_write", "file_resolve", "needs_write"),
-        edge("file_sink", "write_status", "file_resolve", "write_status"),
-    ];
-
-    let metadata = DagMetadata {
-        boundary_declarations: vec![
-            BoundaryDeclaration {
-                node: NodeId("file_sink".into()),
-                port: PortName("write_status".into()),
-                external_type: external_types::fs_write(),
-            },
-        ],
-        export_node: Some(NodeId("file_resolve".into())),
-        ..Default::default()
-    };
-
-    Dag { nodes, edges, metadata }
+/// File operation request.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileRequest {
+    /// File path
+    pub path: String,
+    /// Operation to perform
+    pub operation: FileOp,
+    /// Content for write/append operations
+    pub content: Option<String>,
+    /// Create parent directories if needed (for write operations)
+    pub create_parents: bool,
 }
 
-/// Build a mock file upsert SubDAG (dry-run mode).
-///
-/// Same structure as real, but sink prints to stdout instead of writing.
-pub fn build_file_upsert_mock<T: Clone, F>(wrap: F) -> Dag<T>
-where
-    F: Fn(FileOp) -> T + Copy,
-{
-    let nodes = vec![
-        Node {
-            id: NodeId("file_check".into()),
-            inputs: vec![
-                port("file_path", "String"),
-                port("force", "Bool"),
-                port("input_hash", "String"),
-            ],
-            outputs: vec![
-                port("file_path", "String"),
-                port("input_hash", "String"),
-                port("needs_write", "Bool"),
-                port("file_existed", "Bool"),
-            ],
-            body: NodeBody::Opaque(wrap(FileOp::CheckExisting)),
-        },
-        Node {
-            id: NodeId("file_sink".into()),
-            inputs: vec![
-                port("content", "String"),
-                eq_guarded_port("needs_write", "Bool", Value::Bool(true)),
-                port("file_path", "String"),
-                port("file_existed", "Bool"),
-            ],
-            outputs: vec![port("write_status", "String")],
-            body: NodeBody::Opaque(wrap(FileOp::PrintStdout)),
-        },
-        Node {
-            id: NodeId("file_resolve".into()),
-            inputs: vec![port("needs_write", "Bool"), port("write_status", "String")],
-            outputs: vec![port("status", "String")],
-            body: NodeBody::Opaque(wrap(FileOp::ResolveUpsert)),
-        },
-    ];
+/// File operation response.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileResponse {
+    /// File path
+    pub path: String,
+    /// Operation that was performed
+    pub operation: FileOp,
+    /// Whether the operation succeeded
+    pub success: bool,
+    /// Content (for read operations)
+    pub content: Option<String>,
+    /// Whether the file exists (for exists operations)
+    pub exists: Option<bool>,
+    /// Error message if operation failed
+    pub error: Option<String>,
+}
 
-    let edges = vec![
-        // Check to sink
-        edge("file_check", "needs_write", "file_sink", "needs_write"),
-        edge("file_check", "file_path", "file_sink", "file_path"),
-        edge("file_check", "file_existed", "file_sink", "file_existed"),
-        // Check + sink to resolve
-        edge("file_check", "needs_write", "file_resolve", "needs_write"),
-        edge("file_sink", "write_status", "file_resolve", "write_status"),
-    ];
+impl FileRequest {
+    /// Create a read request.
+    pub fn read(path: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            operation: FileOp::Read,
+            content: None,
+            create_parents: false,
+        }
+    }
 
-    let metadata = DagMetadata {
-        export_node: Some(NodeId("file_resolve".into())),
-        ..Default::default()
-    };
+    /// Create a write request.
+    pub fn write(path: impl Into<String>, content: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            operation: FileOp::Write,
+            content: Some(content.into()),
+            create_parents: true,
+        }
+    }
 
-    Dag { nodes, edges, metadata }
+    /// Create an append request.
+    pub fn append(path: impl Into<String>, content: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            operation: FileOp::Append,
+            content: Some(content.into()),
+            create_parents: true,
+        }
+    }
+
+    /// Create a delete request.
+    pub fn delete(path: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            operation: FileOp::Delete,
+            content: None,
+            create_parents: false,
+        }
+    }
+
+    /// Create an exists check request.
+    pub fn exists(path: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            operation: FileOp::Exists,
+            content: None,
+            create_parents: false,
+        }
+    }
+
+    /// Create a directory creation request.
+    pub fn create_dir(path: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            operation: FileOp::CreateDir,
+            content: None,
+            create_parents: true,
+        }
+    }
+
+    /// Set whether to create parent directories.
+    pub fn with_create_parents(mut self, create: bool) -> Self {
+        self.create_parents = create;
+        self
+    }
+}
+
+impl FileResponse {
+    /// Create a successful response for a write operation.
+    pub fn written(path: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            operation: FileOp::Write,
+            success: true,
+            content: None,
+            exists: None,
+            error: None,
+        }
+    }
+
+    /// Create a successful response for a read operation.
+    pub fn read_ok(path: impl Into<String>, content: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            operation: FileOp::Read,
+            success: true,
+            content: Some(content.into()),
+            exists: None,
+            error: None,
+        }
+    }
+
+    /// Create an error response.
+    pub fn error(path: impl Into<String>, operation: FileOp, error: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            operation,
+            success: false,
+            content: None,
+            exists: None,
+            error: Some(error.into()),
+        }
+    }
+
+    /// Create an exists check response.
+    pub fn exists_result(path: impl Into<String>, exists: bool) -> Self {
+        Self {
+            path: path.into(),
+            operation: FileOp::Exists,
+            success: true,
+            content: None,
+            exists: Some(exists),
+            error: None,
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[derive(Debug, Clone)]
-    enum DummyOp {
-        File(FileOp),
-    }
+    #[test]
+    fn test_file_request_builders() {
+        let read = FileRequest::read("/tmp/test.txt");
+        assert_eq!(read.operation, FileOp::Read);
+        assert_eq!(read.path, "/tmp/test.txt");
 
-    fn wrap(op: FileOp) -> DummyOp {
-        DummyOp::File(op)
+        let write = FileRequest::write("/tmp/test.txt", "content");
+        assert_eq!(write.operation, FileOp::Write);
+        assert_eq!(write.content, Some("content".to_string()));
+        assert!(write.create_parents);
     }
 
     #[test]
-    fn file_upsert_real_has_boundary_declaration() {
-        let dag = build_file_upsert_real(wrap);
-        assert_eq!(dag.metadata.boundary_declarations.len(), 1);
-        assert_eq!(
-            dag.metadata.boundary_declarations[0].external_type.0,
-            "External::FS::Write"
-        );
-    }
-
-    #[test]
-    fn file_upsert_mock_has_no_boundary() {
-        let dag = build_file_upsert_mock(wrap);
-        assert!(dag.metadata.boundary_declarations.is_empty());
-    }
-
-    #[test]
-    fn file_upsert_has_correct_node_count() {
-        let dag = build_file_upsert_real(wrap);
-        assert_eq!(dag.nodes.len(), 3);
-    }
-
-    #[test]
-    fn file_upsert_has_export_node() {
-        let dag = build_file_upsert_real(wrap);
-        assert_eq!(dag.metadata.export_node, Some(NodeId("file_resolve".into())));
+    fn test_file_response() {
+        let resp = FileResponse::read_ok("/tmp/test.txt", "file content");
+        assert!(resp.success);
+        assert_eq!(resp.content, Some("file content".to_string()));
     }
 }

@@ -1,22 +1,33 @@
-pub mod emit_io;
-pub mod emit_graph;
-pub mod emit_constants;
-pub mod emit_entrypoint;
-pub mod emit_cli;
-pub mod verify;
+//! gunbc-codegen: Shared code generation utilities.
+//!
+//! This crate provides common utilities for code generation tools:
+//! - [`Template`]: Simple string template rendering
+//! - [`FileWriter`]: File writing with dry-run support
+//! - [`DagInfo`]: Combined boundary and entrypoint information
 
-pub use emit_io::emit_io_structs;
-pub use emit_graph::emit_subdag_builder;
-pub use emit_constants::emit_port_constants;
-pub use emit_entrypoint::{
-    analyze_entrypoint, detect_entrypoint_kind, extract_layer_name,
-    find_all_boundaries_recursive, find_leaf_nodes, find_root_nodes,
-    is_cli_sink, is_cli_source, is_external_type, is_http_sink, is_http_source,
-    is_sink_node, is_source_node,
-    CliArgSpec, EntrypointInfo, EntrypointKind,
-};
-pub use emit_cli::{
-    derive_execution_mode_flags, emit_cli_main, emit_cli_main_explicit, emit_cli_struct,
-    emit_main_function, CliCodegenConfig,
-};
-pub use verify::{verify_acyclic, verify_type_agreement, verify_export_alignment, verify_port_saturation};
+pub mod file_writer;
+pub mod template;
+
+pub use file_writer::{FileWriter, WriteResult};
+pub use template::Template;
+
+use gunbc_ir::{detect_boundaries, detect_entrypoints, BoundaryInfo, Dag, EntrypointInfo};
+
+/// Combined DAG analysis information for code generation.
+#[derive(Debug)]
+pub struct DagInfo {
+    /// Boundary information (world writes)
+    pub boundaries: BoundaryInfo,
+    /// Entrypoint information (world reads)
+    pub entrypoints: EntrypointInfo,
+}
+
+impl DagInfo {
+    /// Analyze a DAG for code generation.
+    pub fn analyze<T>(dag: &Dag<T>) -> Self {
+        Self {
+            boundaries: detect_boundaries(dag),
+            entrypoints: detect_entrypoints(dag),
+        }
+    }
+}

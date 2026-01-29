@@ -1,13 +1,9 @@
 [package]
 name = "gunbc-testgen"
-version = "0.1.0"
-edition = "2021"
-build = "build.rs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Test generation for gunbc DAGs"
 
 [dependencies]
-gunbc-spec = { path = "../gunbc-spec" }
-gunbc-test = { path = "../gunbc-test" }
-gunbc-contracts = { path = "../gunbc-contracts" }
-gunbc-gistgen = { path = "../gunbc-gistgen" }
-gunbc-makegen = { path = "../gunbc-makegen" }
-gunbc-gitignoregen = { path = "../gunbc-gitignoregen" }
+gunbc-ir = { workspace = true }

@@ -1,11 +1,9 @@
 [package]
 name = "gunbc-codegen"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Shared code generation utilities for gunbc"
 
 [dependencies]
-gunbc-contracts = { path = "../gunbc-contracts" }
-gunbc-ir = { path = "../gunbc-ir" }
-
-[dev-dependencies]
-gunbc-exec = { path = "../gunbc-exec" }
+gunbc-ir = { workspace = true }

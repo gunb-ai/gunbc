@@ -1,122 +1,94 @@
-//! TCP transport layer understanding.
-//!
-//! This is the bottom layer of the transport stack - actual network connections.
+//! TCP connection request/response types.
 
-use crate::{
-    edge, port, BoundaryDeclaration, Dag, DagMetadata, Node, NodeBody, NodeId, PortName,
-};
-use crate::transport::external_types;
+use serde::{Deserialize, Serialize};
 
-/// TCP layer operations.
-#[derive(Debug, Clone)]
-pub enum TcpOp {
-    /// Establish a TCP connection.
-    Connect { host: String, tcp_port: u16 },
-    /// Send bytes over a connection.
-    Send,
-    /// Receive bytes from a connection.
-    Receive,
-    /// Close the connection.
-    Close,
-    /// Mock: simulate a connection.
-    MockConnect,
-    /// Mock: return canned response bytes.
-    MockReceive { response: Vec<u8> },
+/// TCP connection request.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TcpRequest {
+    /// Host address
+    pub host: String,
+    /// Port number
+    pub port: u16,
+    /// Data to send
+    pub data: Option<String>,
+    /// Connection timeout in milliseconds
+    pub connect_timeout_ms: Option<u64>,
+    /// Read timeout in milliseconds
+    pub read_timeout_ms: Option<u64>,
 }
 
-/// Build a real TCP understanding SubDAG.
-///
-/// This SubDAG performs actual network operations.
-pub fn build_tcp_real(host: &str, tcp_port: u16) -> Dag<TcpOp> {
-    let nodes = vec![
-        Node {
-            id: NodeId("connect".into()),
-            inputs: vec![],
-            outputs: vec![port("connection", "TcpConnection")],
-            body: NodeBody::Opaque(TcpOp::Connect {
-                host: host.into(),
-                tcp_port,
-            }),
-        },
-        Node {
-            id: NodeId("send".into()),
-            inputs: vec![
-                port("connection", "TcpConnection"),
-                port("data", "Bytes"),
-            ],
-            outputs: vec![port("connection", "TcpConnection")],
-            body: NodeBody::Opaque(TcpOp::Send),
-        },
-        Node {
-            id: NodeId("receive".into()),
-            inputs: vec![port("connection", "TcpConnection")],
-            outputs: vec![port("data", "Bytes")],
-            body: NodeBody::Opaque(TcpOp::Receive),
-        },
-        Node {
-            id: NodeId("close".into()),
-            inputs: vec![port("connection", "TcpConnection")],
-            outputs: vec![],
-            body: NodeBody::Opaque(TcpOp::Close),
-        },
-    ];
-
-    let edges = vec![
-        edge("connect", "connection", "send", "connection"),
-        edge("send", "connection", "receive", "connection"),
-    ];
-
-    let metadata = DagMetadata {
-        boundary_declarations: vec![
-            BoundaryDeclaration {
-                node: NodeId("connect".into()),
-                port: PortName("connection".into()),
-                external_type: external_types::tcp_connection(),
-            },
-        ],
-        ..Default::default()
-    };
-
-    Dag { nodes, edges, metadata }
+/// TCP connection response.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TcpResponse {
+    /// Whether the connection was successful
+    pub connected: bool,
+    /// Data received
+    pub data: Option<String>,
+    /// Bytes sent
+    pub bytes_sent: usize,
+    /// Bytes received
+    pub bytes_received: usize,
+    /// Error message if connection failed
+    pub error: Option<String>,
 }
 
-/// Build a mock TCP understanding SubDAG.
-///
-/// This SubDAG simulates network operations without actual connections.
-pub fn build_tcp_mock(response: Vec<u8>) -> Dag<TcpOp> {
-    let nodes = vec![
-        Node {
-            id: NodeId("connect".into()),
-            inputs: vec![],
-            outputs: vec![port("connection", "TcpConnection")],
-            body: NodeBody::Opaque(TcpOp::MockConnect),
-        },
-        Node {
-            id: NodeId("send".into()),
-            inputs: vec![
-                port("connection", "TcpConnection"),
-                port("data", "Bytes"),
-            ],
-            outputs: vec![port("connection", "TcpConnection")],
-            body: NodeBody::Opaque(TcpOp::MockConnect), // No-op for mock
-        },
-        Node {
-            id: NodeId("receive".into()),
-            inputs: vec![port("connection", "TcpConnection")],
-            outputs: vec![port("data", "Bytes")],
-            body: NodeBody::Opaque(TcpOp::MockReceive { response }),
-        },
-    ];
+impl TcpRequest {
+    /// Create a new TCP request.
+    pub fn new(host: impl Into<String>, port: u16) -> Self {
+        Self {
+            host: host.into(),
+            port,
+            data: None,
+            connect_timeout_ms: Some(30000),
+            read_timeout_ms: Some(30000),
+        }
+    }
 
-    let edges = vec![
-        edge("connect", "connection", "send", "connection"),
-        edge("send", "connection", "receive", "connection"),
-    ];
+    /// Set the data to send.
+    pub fn data(mut self, data: impl Into<String>) -> Self {
+        self.data = Some(data.into());
+        self
+    }
 
-    Dag {
-        nodes,
-        edges,
-        metadata: DagMetadata::default(),
+    /// Set the connection timeout.
+    pub fn connect_timeout(mut self, ms: u64) -> Self {
+        self.connect_timeout_ms = Some(ms);
+        self
+    }
+
+    /// Set the read timeout.
+    pub fn read_timeout(mut self, ms: u64) -> Self {
+        self.read_timeout_ms = Some(ms);
+        self
+    }
+}
+
+impl TcpResponse {
+    /// Create a successful response.
+    pub fn ok(data: Option<String>, bytes_sent: usize, bytes_received: usize) -> Self {
+        Self {
+            connected: true,
+            data,
+            bytes_sent,
+            bytes_received,
+            error: None,
+        }
+    }
+
+    /// Create an error response.
+    pub fn error(error: impl Into<String>) -> Self {
+        Self {
+            connected: false,
+            data: None,
+            bytes_sent: 0,
+            bytes_received: 0,
+            error: Some(error.into()),
+        }
+    }
+
+    /// Check if the connection was successful.
+    pub fn is_ok(&self) -> bool {
+        self.connected && self.error.is_none()
     }
 }
 
@@ -125,18 +97,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn tcp_real_has_boundary_declaration() {
-        let dag = build_tcp_real("example.com", 443);
-        assert_eq!(dag.metadata.boundary_declarations.len(), 1);
-        assert_eq!(
-            dag.metadata.boundary_declarations[0].external_type.0,
-            "External::TCP::Connection"
-        );
-    }
+    fn test_tcp_request_builder() {
+        let req = TcpRequest::new("localhost", 8080)
+            .data("PING\n")
+            .connect_timeout(5000)
+            .read_timeout(10000);
 
-    #[test]
-    fn tcp_mock_has_no_boundary() {
-        let dag = build_tcp_mock(vec![0, 1, 2]);
-        assert!(dag.metadata.boundary_declarations.is_empty());
+        assert_eq!(req.host, "localhost");
+        assert_eq!(req.port, 8080);
+        assert_eq!(req.data, Some("PING\n".to_string()));
+        assert_eq!(req.connect_timeout_ms, Some(5000));
     }
 }

@@ -1,168 +1,214 @@
-//! GitHub Gist transport layer understanding.
+//! GitHub Gist-specific request types.
 //!
-//! This layer wraps REST to provide GitHub Gist semantics.
+//! This module provides convenience builders for GitHub Gist API requests,
+//! which can be converted to either REST or Shell transport requests.
 
-use crate::{
-    edge, port, BoundaryDeclaration, Dag, DagMetadata, Node, NodeBody, NodeId, PortName,
-};
-use crate::transport::external_types;
+use super::rest::RestRequest;
+use super::{ShellRequest, TransportRequest};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
-/// GitHub Gist layer operations.
-#[derive(Debug, Clone)]
-pub enum GistOp {
-    /// Format a Create Gist request from the contract shape.
-    FormatCreateRequest,
-    /// Perform the real GitHub Gist call (implementation in higher layer).
-    CallReal,
-    /// Mock: return a canned Gist response derived from request.
-    CallMock,
-    /// Parse a Gist response into contract shape.
-    ParseCreateResponse,
-    /// Extract html_url as gist_url convenience output.
-    ExtractGistUrl,
+/// GitHub Gist request.
+///
+/// This is a high-level representation of a gist operation that can be
+/// converted to either a REST API request or a shell command (gh CLI).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GistRequest {
+    /// Files to include in the gist
+    pub files: HashMap<String, GistFile>,
+    /// Whether the gist should be public
+    pub public: bool,
+    /// Gist description (optional)
+    pub description: Option<String>,
 }
 
-/// Build a real GitHub Gist understanding SubDAG.
-///
-/// This SubDAG wraps REST to perform Create Gist.
-pub fn build_gist_real<T: Clone, F>(wrap: F) -> Dag<T>
-where
-    F: Fn(GistOp) -> T + Copy,
-{
-    let nodes = vec![
-        Node {
-            id: NodeId("format_gist_create".into()),
-            inputs: vec![port("request", "GitHub::Gist::CreateRequest")],
-            outputs: vec![port("request_json", "Json")],
-            body: NodeBody::Opaque(wrap(GistOp::FormatCreateRequest)),
-        },
-        Node {
-            id: NodeId("call_gist_real".into()),
-            inputs: vec![
-                port("request_json", "Json"),
-                port("token", "Secret"),
-            ],
-            outputs: vec![port("response_json", "Json")],
-            body: NodeBody::Opaque(wrap(GistOp::CallReal)),
-        },
-        Node {
-            id: NodeId("parse_gist_response".into()),
-            inputs: vec![port("response_json", "Json")],
-            outputs: vec![port("response", "GitHub::Gist::CreateResponse")],
-            body: NodeBody::Opaque(wrap(GistOp::ParseCreateResponse)),
-        },
-        Node {
-            id: NodeId("extract_gist_url".into()),
-            inputs: vec![port("response", "GitHub::Gist::CreateResponse")],
-            outputs: vec![
-                port("response", "GitHub::Gist::CreateResponse"),
-                port("gist_url", "String"),
-            ],
-            body: NodeBody::Opaque(wrap(GistOp::ExtractGistUrl)),
-        },
-    ];
+/// A file in a gist.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GistFile {
+    /// File content
+    pub content: String,
+}
 
-    let edges = vec![
-        edge("format_gist_create", "request_json", "call_gist_real", "request_json"),
-        edge("call_gist_real", "response_json", "parse_gist_response", "response_json"),
-        edge("parse_gist_response", "response", "extract_gist_url", "response"),
-    ];
+impl GistRequest {
+    /// Create a new gist request.
+    pub fn new() -> Self {
+        Self {
+            files: HashMap::new(),
+            public: false,
+            description: None,
+        }
+    }
 
-    let metadata = DagMetadata {
-        boundary_declarations: vec![
-            BoundaryDeclaration {
-                node: NodeId("extract_gist_url".into()),
-                port: PortName("gist_url".into()),
-                external_type: external_types::github_gist(),
+    /// Add a file to the gist.
+    pub fn file(mut self, name: impl Into<String>, content: impl Into<String>) -> Self {
+        self.files.insert(
+            name.into(),
+            GistFile {
+                content: content.into(),
             },
-        ],
-        export_node: Some(NodeId("extract_gist_url".into())),
-        ..Default::default()
-    };
+        );
+        self
+    }
 
-    Dag { nodes, edges, metadata }
+    /// Set whether the gist is public.
+    pub fn public(mut self, public: bool) -> Self {
+        self.public = public;
+        self
+    }
+
+    /// Set the description.
+    pub fn description(mut self, desc: impl Into<String>) -> Self {
+        self.description = Some(desc.into());
+        self
+    }
+
+    /// Convert to a REST API request.
+    ///
+    /// Uses the GitHub Gist API: POST https://api.github.com/gists
+    pub fn to_rest_request(&self) -> TransportRequest {
+        let files_json: serde_json::Map<String, serde_json::Value> = self
+            .files
+            .iter()
+            .map(|(name, file)| {
+                (
+                    name.clone(),
+                    serde_json::json!({ "content": file.content }),
+                )
+            })
+            .collect();
+
+        let mut body = serde_json::json!({
+            "public": self.public,
+            "files": files_json,
+        });
+
+        if let Some(ref desc) = self.description {
+            body["description"] = serde_json::Value::String(desc.clone());
+        }
+
+        let request = RestRequest::post("https://api.github.com/gists")
+            .json(body)
+            .header("Accept", "application/vnd.github+json")
+            .header("X-GitHub-Api-Version", "2022-11-28")
+            .auth_env("GITHUB_TOKEN");
+
+        TransportRequest::Rest(request)
+    }
+
+    /// Convert to a shell request using the gh CLI.
+    ///
+    /// This is useful when a GitHub CLI is available and authenticated.
+    pub fn to_shell_request(&self) -> TransportRequest {
+        // Get the first file (gh CLI creates gist from a single file or stdin)
+        let (filename, content) = self
+            .files
+            .iter()
+            .next()
+            .map(|(n, f)| (n.clone(), f.content.clone()))
+            .unwrap_or_else(|| ("gist.txt".to_string(), String::new()));
+
+        let mut req = ShellRequest::new("gh")
+            .args(["gist", "create", "-f", &filename])
+            .arg("-") // Read from stdin
+            .stdin(content);
+
+        if self.public {
+            req = req.arg("--public");
+        }
+
+        if let Some(ref desc) = self.description {
+            req = req.args(["--desc", desc]);
+        }
+
+        TransportRequest::Shell(req)
+    }
 }
 
-/// Build a mock GitHub Gist understanding SubDAG.
-///
-/// Returns canned Gist responses without making external calls.
-pub fn build_gist_mock<T: Clone, F>(wrap: F) -> Dag<T>
-where
-    F: Fn(GistOp) -> T + Copy,
-{
-    let nodes = vec![
-        Node {
-            id: NodeId("format_gist_create".into()),
-            inputs: vec![port("request", "GitHub::Gist::CreateRequest")],
-            outputs: vec![port("request_json", "Json")],
-            body: NodeBody::Opaque(wrap(GistOp::FormatCreateRequest)),
-        },
-        Node {
-            id: NodeId("call_gist_mock".into()),
-            inputs: vec![
-                port("request_json", "Json"),
-                port("token", "Secret"),
-            ],
-            outputs: vec![port("response_json", "Json")],
-            body: NodeBody::Opaque(wrap(GistOp::CallMock)),
-        },
-        Node {
-            id: NodeId("parse_gist_response".into()),
-            inputs: vec![port("response_json", "Json")],
-            outputs: vec![port("response", "GitHub::Gist::CreateResponse")],
-            body: NodeBody::Opaque(wrap(GistOp::ParseCreateResponse)),
-        },
-        Node {
-            id: NodeId("extract_gist_url".into()),
-            inputs: vec![port("response", "GitHub::Gist::CreateResponse")],
-            outputs: vec![
-                port("response", "GitHub::Gist::CreateResponse"),
-                port("gist_url", "String"),
-            ],
-            body: NodeBody::Opaque(wrap(GistOp::ExtractGistUrl)),
-        },
-    ];
+impl Default for GistRequest {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
-    let edges = vec![
-        edge("format_gist_create", "request_json", "call_gist_mock", "request_json"),
-        edge("call_gist_mock", "response_json", "parse_gist_response", "response_json"),
-        edge("parse_gist_response", "response", "extract_gist_url", "response"),
-    ];
+/// Parse a gist URL from a shell response.
+pub fn parse_gist_url_from_shell(stdout: &str) -> Option<String> {
+    stdout
+        .lines()
+        .find(|line| line.starts_with("https://gist.github.com/"))
+        .map(|s| s.trim().to_string())
+}
 
-    let metadata = DagMetadata {
-        export_node: Some(NodeId("extract_gist_url".into())),
-        ..Default::default()
-    };
-
-    Dag { nodes, edges, metadata }
+/// Parse a gist URL from a REST response.
+pub fn parse_gist_url_from_rest(body: &serde_json::Value) -> Option<String> {
+    body.get("html_url").and_then(|v| v.as_str()).map(String::from)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[derive(Debug, Clone)]
-    enum DummyOp {
-        Gist(GistOp),
-    }
+    #[test]
+    fn test_gist_request_builder() {
+        let req = GistRequest::new()
+            .file("test.md", "# Test content")
+            .file("code.rs", "fn main() {}")
+            .public(true)
+            .description("A test gist");
 
-    fn wrap(op: GistOp) -> DummyOp {
-        DummyOp::Gist(op)
+        assert_eq!(req.files.len(), 2);
+        assert!(req.public);
+        assert_eq!(req.description, Some("A test gist".to_string()));
     }
 
     #[test]
-    fn gist_real_has_boundary_declaration() {
-        let dag = build_gist_real(wrap);
-        assert_eq!(dag.metadata.boundary_declarations.len(), 1);
+    fn test_to_rest_request() {
+        let gist = GistRequest::new()
+            .file("test.md", "# Test")
+            .public(true);
+
+        let transport = gist.to_rest_request();
+        
+        match transport {
+            TransportRequest::Rest(req) => {
+                assert_eq!(req.url, "https://api.github.com/gists");
+                assert!(req.body.is_some());
+            }
+            _ => panic!("expected REST request"),
+        }
+    }
+
+    #[test]
+    fn test_to_shell_request() {
+        let gist = GistRequest::new()
+            .file("test.md", "# Test")
+            .public(true);
+
+        let transport = gist.to_shell_request();
+
+        match transport {
+            TransportRequest::Shell(req) => {
+                assert_eq!(req.command, "gh");
+                assert!(req.args.contains(&"gist".to_string()));
+                assert!(req.args.contains(&"--public".to_string()));
+            }
+            _ => panic!("expected Shell request"),
+        }
+    }
+
+    #[test]
+    fn test_parse_gist_url() {
+        let stdout = "https://gist.github.com/abc123\n";
         assert_eq!(
-            dag.metadata.boundary_declarations[0].external_type.0,
-            "External::GitHub::Gist"
+            parse_gist_url_from_shell(stdout),
+            Some("https://gist.github.com/abc123".to_string())
         );
-    }
 
-    #[test]
-    fn gist_mock_has_no_boundary() {
-        let dag = build_gist_mock(wrap);
-        assert!(dag.metadata.boundary_declarations.is_empty());
+        let body = serde_json::json!({
+            "html_url": "https://gist.github.com/xyz789"
+        });
+        assert_eq!(
+            parse_gist_url_from_rest(&body),
+            Some("https://gist.github.com/xyz789".to_string())
+        );
     }
 }

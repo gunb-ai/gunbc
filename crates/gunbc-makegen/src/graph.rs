@@ -1,154 +1,108 @@
-use gunbc_ir::types::PatternDecision;
-use gunbc_ir::*;
+//! Graph builder for the makegen tool.
 
 use crate::ops::MakegenOp;
-use crate::types::MakegenConfig;
-use gunbc_ir::transport::external_types;
+use gunbc_ir::{build::*, Dag, Edge, Node};
 
-/// Build the main DAG for makegen.
+/// Build the makegen graph.
 ///
-/// Structure:
-///   context → check → compose → sink → resolve
+/// Pipeline:
+/// ```text
+/// LoadRegistry -> RenderMakefile -> WriteMakefile
+///                                        ↓
+///                                   (boundary)
+/// ```
 ///
-/// The sink node operation is swapped at build time based on dry_run flag:
-///   - dry_run=false: FileOp::WriteFile
-///   - dry_run=true:  FileOp::PrintStdout
-pub fn build_makegen_dag(config: &MakegenConfig, dry_run: bool) -> Dag<MakegenOp> {
-    let sink_op = if dry_run {
-        MakegenOp::File(gunbc_ir::transport::file::FileOp::PrintStdout)
-    } else {
-        MakegenOp::File(gunbc_ir::transport::file::FileOp::WriteFile)
-    };
+/// # Port Cardinalities
+///
+/// - `tool_count`: One (scalar integer)
+/// - `tool_names`: OneOrMore (at least one tool should exist)
+/// - `registry`: One (JSON registry object)
+/// - `makefile_content`: One (generated content)
+/// - `output_path`: One (optional, defaults to "Makefile")
+/// - `written_path`, `content`: One (results)
+/// - `changed`: One (boolean flag)
+pub fn build_makegen_graph() -> Dag<MakegenOp> {
+    let mut dag = Dag::new();
 
-    let nodes = vec![
-        // Context - produces initial configuration
-        Node {
-            id: NodeId("context".into()),
-            inputs: vec![],
-            outputs: vec![
-                port("file_path", "String"),
-                port("force", "Bool"),
-                port("input_hash", "String"),
-            ],
-            body: NodeBody::Opaque(MakegenOp::Context {
-                config: config.clone(),
-            }),
-        },
-        // Check - determines if generation is needed
-        Node {
-            id: NodeId("check".into()),
-            inputs: vec![
-                port("file_path", "String"),
-                port("force", "Bool"),
-                port("input_hash", "String"),
-            ],
-            outputs: vec![
-                port("input_hash", "String"),
-                port("file_path", "String"),
-                port("needs_write", "Bool"),
-                port("file_existed", "Bool"),
-            ],
-            body: NodeBody::Opaque(MakegenOp::File(
-                gunbc_ir::transport::file::FileOp::CheckExisting,
-            )),
-        },
-        // Compose - generates Makefile content
-        Node {
-            id: NodeId("compose".into()),
-            inputs: vec![port("input_hash", "String")],
-            outputs: vec![port("content", "String")],
-            body: NodeBody::Opaque(MakegenOp::ComposeMakefile),
-        },
-        // Sink - WriteFile or PrintStdout based on dry_run
-        Node {
-            id: NodeId("sink".into()),
-            inputs: vec![
-                port("content", "String"),
-                eq_guarded_port("needs_write", "Bool", Value::Bool(true)),
-                port("file_path", "String"),
-                port("file_existed", "Bool"),
-            ],
-            outputs: vec![port("write_status", "String")],
-            body: NodeBody::Opaque(sink_op),
-        },
-        // Resolve - determines final status
-        Node {
-            id: NodeId("resolve".into()),
-            inputs: vec![port("needs_write", "Bool"), port("write_status", "String")],
-            outputs: vec![port("status", "String")],
-            body: NodeBody::Opaque(MakegenOp::File(
-                gunbc_ir::transport::file::FileOp::ResolveUpsert,
-            )),
-        },
-    ];
+    // Node: LoadRegistry
+    // No inputs (uses default registry)
+    // Outputs: tool metadata and registry JSON
+    dag.add_node(Node::opaque(
+        "load_registry",
+        vec![],
+        vec![
+            scalar("tool_count", "Int"),
+            non_empty_list("tool_names", "StrList"),
+            scalar("registry", "Json"),
+        ],
+        MakegenOp::LoadRegistry,
+    ));
 
-    let edges = vec![
-        // Context to check
-        edge("context", "file_path", "check", "file_path"),
-        edge("context", "force", "check", "force"),
-        edge("context", "input_hash", "check", "input_hash"),
-        // Check to compose
-        edge("check", "input_hash", "compose", "input_hash"),
-        // Compose + check to sink
-        edge("compose", "content", "sink", "content"),
-        edge("check", "needs_write", "sink", "needs_write"),
-        edge("check", "file_path", "sink", "file_path"),
-        edge("check", "file_existed", "sink", "file_existed"),
-        // Check + sink to resolve
-        edge("check", "needs_write", "resolve", "needs_write"),
-        edge("sink", "write_status", "resolve", "write_status"),
-    ];
+    // Node: RenderMakefile
+    // Input: registry JSON
+    // Output: generated Makefile content
+    dag.add_node(Node::opaque(
+        "render_makefile",
+        vec![scalar("registry", "Json")],
+        vec![scalar("makefile_content", "String")],
+        MakegenOp::RenderMakefile,
+    ));
 
-    let mut boundary_declarations = Vec::new();
-    if !dry_run {
-        boundary_declarations.push(BoundaryDeclaration {
-            node: NodeId("sink".into()),
-            port: PortName("write_status".into()),
-            external_type: external_types::fs_write(),
-        });
-    }
+    // Node: WriteMakefile (BOUNDARY - world write)
+    // Input: content and optional path
+    // Output: write results
+    dag.add_node(Node::opaque(
+        "write_makefile",
+        vec![
+            scalar("makefile_content", "String"),
+            optional("output_path", "String"),
+        ],
+        vec![
+            scalar("written_path", "String"),
+            scalar("content", "String"),
+            scalar("changed", "Bool"),
+        ],
+        MakegenOp::WriteMakefile,
+    ));
 
-    let metadata = DagMetadata {
-        pattern_decisions: vec![PatternDecisionEntry {
-            node: NodeId("makegen".into()),
-            pattern: "upsert".into(),
-            decision: PatternDecision::Instantiated,
-        }],
-        export_node: Some(NodeId("resolve".into())),
-        boundary_declarations,
-    };
+    // Wire up the pipeline
+    dag.add_edge(Edge::new("load_registry", "registry", "render_makefile", "registry"));
+    dag.add_edge(Edge::new("render_makefile", "makefile_content", "write_makefile", "makefile_content"));
 
-    Dag {
-        nodes,
-        edges,
-        metadata,
-    }
+    dag
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gunbc_exec::Value;
+    use gunbc_ir::{detect_boundaries, detect_entrypoints};
 
     #[test]
-    fn dag_executes_dry_run() {
-        let config = MakegenConfig::default();
-        let dag = build_makegen_dag(&config, true);
-        let log = gunbc_exec::execute(&dag).unwrap();
-        assert!(!log.entries.is_empty());
-        let resolve_entry = log.entries.iter().find(|e| e.node_id == "resolve").unwrap();
-        assert!(matches!(resolve_entry.outputs.get("status"), Some(Value::Str(_))));
+    fn test_graph_has_boundary() {
+        let dag = build_makegen_graph();
+        let boundaries = detect_boundaries(&dag);
+
+        // WriteMakefile should be a boundary (world write)
+        assert!(boundaries.is_boundary_node(&"write_makefile".into()));
+        // load_registry also has unconnected outputs (tool_count, tool_names) 
+        // which are informational - that's fine, they're secondary boundaries
+        assert!(boundaries.boundary_nodes.len() >= 1);
     }
 
     #[test]
-    fn dag_has_pattern_decision() {
-        let config = MakegenConfig::default();
-        let dag = build_makegen_dag(&config, true);
-        assert_eq!(dag.metadata.pattern_decisions.len(), 1);
-        assert_eq!(dag.metadata.pattern_decisions[0].pattern, "upsert");
-        assert!(matches!(
-            dag.metadata.pattern_decisions[0].decision,
-            PatternDecision::Instantiated
-        ));
+    fn test_graph_has_entrypoint() {
+        let dag = build_makegen_graph();
+        let entrypoints = detect_entrypoints(&dag);
+
+        // output_path is an entrypoint (input to write_makefile with no upstream)
+        assert!(entrypoints.is_entrypoint_port(&"write_makefile".into(), &"output_path".into()));
+    }
+
+    #[test]
+    fn test_graph_structure() {
+        let dag = build_makegen_graph();
+
+        assert_eq!(dag.nodes.len(), 3);
+        assert_eq!(dag.edges.len(), 2);
     }
 }
