@@ -3,20 +3,35 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help build gist gist-dry buck2 buck2-dry makegen makegen-dry deps deps-dry ci ci-dry bootstrap bootstrap-dry viz viz-dry viz-serve
+.PHONY: help codegen ensure-codegen build clean gist gist-dry buck2 buck2-dry makegen makegen-dry deps deps-dry ci ci-dry bootstrap bootstrap-dry viz viz-dry viz-serve
 
-# Build all tools and create bin symlink
+# Ensure codegen has run (upsert pattern: check -> create if missing)
+ensure-codegen:
+	@if [ ! -f buck-out/gen/bin/gist/main.rs ]; then \
+		cargo run -p gunbc-codegen --release -- codegen; \
+	fi
+
+# Force regenerate CLIs from DAG entrypoints
+codegen:
+	@cargo run -p gunbc-codegen --release -- codegen
+
+# Full build transaction: codegen → cargo build → symlink
 build:
-	@cargo build --release
-	@rm -f bin
-	@ln -s target/release bin
-	@echo "Built. Binaries available at ./bin/"
+	@cargo run -p gunbc-codegen --release -- commit
+
+# Rollback transaction: remove all generated artifacts
+clean:
+	@cargo run -p gunbc-codegen --release -- rollback
 
 help:
 	@echo "gunbc tools - generated Makefile"
 	@echo ""
-	@echo "Available targets:"
-	@echo "  build  - Build all tools (creates ./bin symlink)"
+	@echo "Build transactions:"
+	@echo "  build    - Commit: codegen → cargo build → symlink"
+	@echo "  clean    - Rollback: remove all generated artifacts"
+	@echo "  codegen  - Partial commit: just generate CLIs"
+	@echo ""
+	@echo "Tools:"
 	@echo "  gist [REPO=.] [EXT=...]  - Create a GitHub gist from code files"
 	@echo "  buck2 [INPUT=Cargo.toml] [OUTPUT=BUCK]  - Generate BUCK file from Cargo.toml"
 	@echo "  makegen [OUTPUT=Makefile]  - Generate Makefile from tool registry"
@@ -29,52 +44,52 @@ help:
 	@echo "Add -dry suffix for dry-run (e.g., make gist-dry)"
 
 # gunbc-gist entrypoints: repo_path (String), extensions (String)
-gist:
+gist: ensure-codegen
 	@cargo run -p gunbc-gist -- $(if $(REPO),--repo $(REPO)) $(if $(EXT),-e $(EXT))
 
-gist-dry:
+gist-dry: ensure-codegen
 	@cargo run -p gunbc-gist -- --dry-run $(if $(REPO),--repo $(REPO)) $(if $(EXT),-e $(EXT))
 
 # gunbc-buck2 entrypoints: cargo_toml_path (String), output_path (String)
-buck2:
+buck2: ensure-codegen
 	@cargo run -p gunbc-buck2 -- $(if $(INPUT),--input $(INPUT)) $(if $(OUTPUT),--output $(OUTPUT))
 
-buck2-dry:
+buck2-dry: ensure-codegen
 	@cargo run -p gunbc-buck2 -- --dry-run $(if $(INPUT),--input $(INPUT)) $(if $(OUTPUT),--output $(OUTPUT))
 
 # gunbc-makegen entrypoints: output_path (String)
-makegen:
+makegen: ensure-codegen
 	@cargo run -p gunbc-makegen -- $(if $(OUTPUT),--output $(OUTPUT))
 
-makegen-dry:
+makegen-dry: ensure-codegen
 	@cargo run -p gunbc-makegen -- --dry-run $(if $(OUTPUT),--output $(OUTPUT))
 
 # gunbc-deps entrypoints: manifest_path (String)
-deps:
+deps: ensure-codegen
 	@cargo run -p gunbc-deps -- $(if $(MANIFEST),--manifest $(MANIFEST))
 
-deps-dry:
+deps-dry: ensure-codegen
 	@cargo run -p gunbc-deps -- --dry-run $(if $(MANIFEST),--manifest $(MANIFEST))
 
 # gunbc-ci entrypoints: 
-ci:
+ci: ensure-codegen
 	@cargo run -p gunbc-ci --
 
-ci-dry:
+ci-dry: ensure-codegen
 	@cargo run -p gunbc-ci -- --dry-run
 
 # gunbc-bootstrap entrypoints: 
-bootstrap:
+bootstrap: ensure-codegen
 	@cargo run -p gunbc-bootstrap --
 
-bootstrap-dry:
+bootstrap-dry: ensure-codegen
 	@cargo run -p gunbc-bootstrap -- --dry-run
 
 # gunbc-viz entrypoints: output_path (String)
-viz:
+viz: ensure-codegen
 	@cargo run -p gunbc-viz -- $(if $(OUTPUT),--output $(OUTPUT))
 
-viz-dry:
+viz-dry: ensure-codegen
 	@cargo run -p gunbc-viz -- --dry-run $(if $(OUTPUT),--output $(OUTPUT))
 
 # viz-serve: Generate viz data and open in browser

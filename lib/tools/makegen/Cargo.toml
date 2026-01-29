@@ -17,4 +17,4 @@ gunbc-test = { path = "../../../core/test" }
 
 [[bin]]
 name = "gunbc-makegen"
-path = "src/main.rs"
+path = "../../../buck-out/gen/bin/makegen/main.rs"

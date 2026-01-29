@@ -18,4 +18,4 @@ gunbc-test = { path = "../../../core/test" }
 
 [[bin]]
 name = "gunbc-gist"
-path = "src/main.rs"
+path = "../../../buck-out/gen/bin/gist/main.rs"

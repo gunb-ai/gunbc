@@ -7,3 +7,7 @@ description = "Shared code generation utilities for gunbc"
 
 [dependencies]
 gunbc-ir = { path = "../ir" }
+
+[[bin]]
+name = "gunbc-codegen"
+path = "src/main.rs"

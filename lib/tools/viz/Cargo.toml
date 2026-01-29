@@ -25,4 +25,4 @@ gunbc-test = { path = "../../../core/test" }
 
 [[bin]]
 name = "gunbc-viz"
-path = "src/main.rs"
+path = "../../../buck-out/gen/bin/viz/main.rs"
