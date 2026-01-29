@@ -809,6 +809,49 @@ Developer C: ...same...
 | Topological sort | `topo.rs` | ✓ |
 | Boundary interception | `intercept.rs` | ✓ |
 
+### Tools (`lib/tools/`)
+
+All 7 tools have been migrated to use `DagBuilder` and `WorkflowSignature`:
+
+| Tool | DagBuilder | WorkflowSignature | Mockable |
+|------|------------|-------------------|----------|
+| gunbc-deps | ✓ | ✓ | ✓ |
+| gunbc-gist | ✓ | ✓ | ✓ |
+| gunbc-buck2 | ✓ | ✓ | ✓ |
+| gunbc-viz | ✓ | ✓ | ✓ |
+| gunbc-ci | ✓ | ✓ | ✓ |
+| gunbc-makegen | ✓ | ✓ | ✓ |
+| gunbc-bootstrap | ✓ | ✓ | ✓ |
+
+**Benefits of migration:**
+
+1. **Cycle prevention**: `DagBuilder` uses generational tracking to prevent cycles by construction
+2. **Edge validation**: Type and cardinality mismatches are caught at edge creation time
+3. **Interface stability**: `WorkflowSignature` validates that declared interfaces match the inferred DAG structure
+4. **Test fixtures**: `Mockable` trait enables automatic test fixture generation
+
+**Example usage (deps tool):**
+
+```rust
+pub fn build_deps_graph() -> Result<Dag<DepsOp>, BuilderError> {
+    let mut builder = DagBuilder::new();
+    
+    let load_manifest = builder.add_root_node(Node::opaque(...))?;
+    let generate_scripts = builder.add_node_after(Node::opaque(...), &load_manifest)?;
+    
+    builder.add_edge(load_manifest.out("manifest_path"), generate_scripts.in_port("manifest_path"))?;
+    
+    Ok(builder.build())
+}
+
+pub fn deps_signature() -> WorkflowSignature {
+    WorkflowSignature::new()
+        .with_input("manifest_path", "String", Cardinality::ZeroOrOne)
+        .with_output("executed", "Bool", Cardinality::One)
+        // ... other outputs
+}
+```
+
 ### Testing (`core/test/`)
 
 | Component | Location | Status |
@@ -844,14 +887,14 @@ Lowering flattens SubDags into the parent DAG. This is **structure-preserving by
 | Gap | Current | Target | Status |
 |-----|---------|--------|--------|
 | Structural acyclicity | `DagBuilder` with generations | Type-level prevention | ✓ Implemented |
-| Structural cardinality | `satisfies()` check | Type-level `Satisfies<B>` trait | Target |
+| Structural cardinality | `satisfies()` + `infer_cardinality()` | Type-level `Satisfies<B>` trait | ✓ Implemented (runtime) |
 | Workflow signature | `infer_signature()` + `validate()` | Compile-time checked | ✓ Implemented |
 | Retry/While/Poll | `RetryBuilder`, `WhileBuilder`, `PollBuilder` | Template + instance semantics | ✓ Implemented |
 | Fan-in canonical ordering | `canonical_edge_order()` | Deterministic collection | ✓ Implemented |
-| Fan-in/fan-out inference | Undefined | Compiler-inferred from framework types | Target |
-| Simulate mode | None | `ExecutionMode::Simulate(SimConfig)` | Target |
-| Type DAGs | `TypeId` strings | `Dag<TypeOp>` with predicates | Target |
-| Resource conflicts | Runtime detection | Structural prevention | Target |
+| Fan-in/fan-out inference | `edge_count_to_port()`, `fan_in_ports()` | Compiler-inferred | ✓ Implemented |
+| Simulate mode | `ExecutionMode::Simulate(SimConfig)` | Full simulation | ✓ Implemented |
+| Type DAGs | `Dag<TypeOp>`, `type_lib`, `TypeRegistry` | Types as fractal DAGs | ✓ Implemented |
+| Resource conflicts | `detect_conflicts()`, `ResourceAccess` | Structural detection | ✓ Implemented |
 
 ---
 
@@ -865,16 +908,21 @@ gunbc/
 │   │   │   ├── dag.rs        # Dag<T>, Edge, Port
 │   │   │   ├── node.rs       # Node<T>, NodeBody
 │   │   │   ├── types.rs      # Cardinality, TypeId, NodeId
-│   │   │   ├── builder.rs    # DagBuilder (generational, cycle-free)
+│   │   │   ├── builder.rs    # DagBuilder (generational, cycle-free, fan-in/out)
 │   │   │   ├── signature.rs  # WorkflowSignature, infer_signature()
 │   │   │   ├── boundary.rs   # detect_boundaries()
 │   │   │   ├── entrypoint.rs # detect_entrypoints()
 │   │   │   ├── value.rs      # Runtime Value enum
+│   │   │   ├── type_op.rs    # TypeOp, Predicate, BaseType (types as DAGs)
+│   │   │   ├── type_lib.rs   # Type library helpers (string, url, optional, list)
+│   │   │   ├── type_registry.rs # TypeRegistry for named types
+│   │   │   ├── contract.rs   # Contract tower (cardinality, base_type, predicates)
+│   │   │   ├── resource.rs   # ResourceId, ResourceAccess, conflict detection
 │   │   │   ├── patterns/     # Loop, Branch, Atomic, Transaction, Upsert, Retry, While, Poll
 │   │   │   └── transport/    # REST, HTTP, File, TCP, Shell, Gist
 │   ├── exec/             # Execution, lowering, interception
 │   │   ├── src/
-│   │   │   ├── execute.rs    # execute(), ExecutionMode
+│   │   │   ├── execute.rs    # execute(), ExecutionMode (Real, DryRun, Simulate)
 │   │   │   ├── lower.rs      # SubDag flattening
 │   │   │   ├── topo.rs       # Topological sort
 │   │   │   └── intercept.rs  # TransportMocks

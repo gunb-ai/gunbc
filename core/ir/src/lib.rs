@@ -22,6 +22,12 @@
 //! These are detected by [`detect_boundaries`] and [`detect_entrypoints`],
 //! not by annotations on nodes.
 //!
+//! # Types as DAGs
+//!
+//! Types are also DAGs (`Dag<TypeOp>`) that describe validation and transformation
+//! of values. This unifies types with workflows — same infrastructure, same
+//! composition rules. See [`type_op`] and [`type_lib`] modules.
+//!
 //! # No Meta-Annotations
 //!
 //! Conditional execution is modeled through explicit Branch patterns and
@@ -41,12 +47,18 @@
 
 pub mod boundary;
 pub mod builder;
+pub mod compose;
+pub mod contract;
 pub mod dag;
 pub mod entrypoint;
 pub mod node;
 pub mod patterns;
+pub mod resource;
 pub mod signature;
 pub mod transport;
+pub mod type_lib;
+pub mod type_op;
+pub mod type_registry;
 pub mod types;
 pub mod value;
 
@@ -61,6 +73,10 @@ pub use patterns::{
     TransactionBuilder, UpsertBuilder, WhileBuilder,
 };
 pub use signature::{infer_signature, SignatureError, SignaturePort, WorkflowSignature};
+pub use contract::TypeContract;
+pub use resource::{AccessMode, ResourceAccess, ResourceConflict, ResourceId};
 pub use transport::{TransportRequest, TransportResponse};
+pub use type_op::{BaseType, Coercion, Predicate, PredicateValue, TypeOp, WrapperKind};
+pub use type_registry::{TypeNotFoundError, TypeRegistry};
 pub use types::{Cardinality, CardinalityCase, CardinalityMismatch, NodeId, PortName, TypeId};
 pub use value::Value;

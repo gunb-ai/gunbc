@@ -1,9 +1,23 @@
 //! Graph builder for the bootstrap tool.
+//!
+//! Uses DagBuilder for compile-time cycle prevention and edge validation.
 
 use crate::ops::BootstrapOp;
-use gunbc_ir::{build::*, Dag, Edge, Node};
+use gunbc_ir::{
+    build::*, BuilderError, Cardinality, Dag, DagBuilder, Node, WorkflowSignature,
+};
 
-/// Build the bootstrap graph.
+/// Get the declared signature for the bootstrap workflow.
+pub fn bootstrap_signature() -> WorkflowSignature {
+    WorkflowSignature::new()
+        // No inputs (scan_workspace has no entrypoint inputs)
+        // Outputs - boundary outputs
+        .with_output("crate_count", "Int", Cardinality::One)
+        .with_output("files_written", "StrList", Cardinality::One)
+        .with_output("write_count", "Int", Cardinality::One)
+}
+
+/// Build the bootstrap graph using DagBuilder.
 ///
 /// Pipeline:
 /// ```text
@@ -11,11 +25,11 @@ use gunbc_ir::{build::*, Dag, Edge, Node};
 ///               -> GenerateGitignore -/
 ///                                   (boundary)
 /// ```
-pub fn build_bootstrap_graph() -> Dag<BootstrapOp> {
-    let mut dag = Dag::new();
+pub fn build_bootstrap_graph() -> Result<Dag<BootstrapOp>, BuilderError> {
+    let mut builder = DagBuilder::new();
 
-    // Node: ScanWorkspace
-    dag.add_node(Node::opaque(
+    // Node: ScanWorkspace - generation 0
+    let scan_workspace = builder.add_root_node(Node::opaque(
         "scan_workspace",
         vec![],
         vec![
@@ -23,75 +37,71 @@ pub fn build_bootstrap_graph() -> Dag<BootstrapOp> {
             port("crate_names", "StrList"),
         ],
         BootstrapOp::ScanWorkspace,
-    ));
+    ))?;
 
-    // Node: GenerateMakefile
-    dag.add_node(Node::opaque(
-        "generate_makefile",
-        vec![port("crate_names", "StrList")],
-        vec![port("makefile_content", "String")],
-        BootstrapOp::GenerateMakefile,
-    ));
+    // Node: GenerateMakefile - generation 1
+    let generate_makefile = builder.add_node_after(
+        Node::opaque(
+            "generate_makefile",
+            vec![port("crate_names", "StrList")],
+            vec![port("makefile_content", "String")],
+            BootstrapOp::GenerateMakefile,
+        ),
+        &scan_workspace,
+    )?;
 
-    // Node: GenerateGitignore
-    dag.add_node(Node::opaque(
-        "generate_gitignore",
-        vec![port("crate_names", "StrList")],
-        vec![port("gitignore_content", "String")],
-        BootstrapOp::GenerateGitignore,
-    ));
+    // Node: GenerateGitignore - generation 1 (parallel with makefile)
+    let generate_gitignore = builder.add_node_after(
+        Node::opaque(
+            "generate_gitignore",
+            vec![port("crate_names", "StrList")],
+            vec![port("gitignore_content", "String")],
+            BootstrapOp::GenerateGitignore,
+        ),
+        &scan_workspace,
+    )?;
 
-    // Node: WriteFiles (BOUNDARY)
-    dag.add_node(Node::opaque(
-        "write_files",
-        vec![
-            port("makefile_content", "String"),
-            port("gitignore_content", "String"),
-        ],
-        vec![
-            port("files_written", "StrList"),
-            port("write_count", "Int"),
-        ],
-        BootstrapOp::WriteFiles,
-    ));
+    // Node: WriteFiles (BOUNDARY) - generation 2
+    let write_files = builder.add_node_after_all(
+        Node::opaque(
+            "write_files",
+            vec![
+                port("makefile_content", "String"),
+                port("gitignore_content", "String"),
+            ],
+            vec![
+                port("files_written", "StrList"),
+                port("write_count", "Int"),
+            ],
+            BootstrapOp::WriteFiles,
+        ),
+        &[&generate_makefile, &generate_gitignore],
+    )?;
 
     // Wire up the pipeline
-    dag.add_edge(Edge::new(
-        "scan_workspace",
-        "crate_names",
-        "generate_makefile",
-        "crate_names",
-    ));
-    dag.add_edge(Edge::new(
-        "scan_workspace",
-        "crate_names",
-        "generate_gitignore",
-        "crate_names",
-    ));
-    dag.add_edge(Edge::new(
-        "generate_makefile",
-        "makefile_content",
-        "write_files",
-        "makefile_content",
-    ));
-    dag.add_edge(Edge::new(
-        "generate_gitignore",
-        "gitignore_content",
-        "write_files",
-        "gitignore_content",
-    ));
+    builder.add_edge(scan_workspace.out("crate_names"), generate_makefile.in_port("crate_names"))?;
+    builder.add_edge(scan_workspace.out("crate_names"), generate_gitignore.in_port("crate_names"))?;
+    builder.add_edge(generate_makefile.out("makefile_content"), write_files.in_port("makefile_content"))?;
+    builder.add_edge(generate_gitignore.out("gitignore_content"), write_files.in_port("gitignore_content"))?;
 
-    dag
+    Ok(builder.build())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gunbc_ir::{detect_boundaries, detect_entrypoints};
+    use gunbc_ir::{detect_boundaries, detect_entrypoints, infer_signature};
+
+    #[test]
+    fn test_graph_builds_successfully() {
+        let dag = build_bootstrap_graph().expect("graph should build");
+        assert_eq!(dag.nodes.len(), 4);
+        assert_eq!(dag.edges.len(), 4);
+    }
 
     #[test]
     fn test_graph_has_boundary() {
-        let dag = build_bootstrap_graph();
+        let dag = build_bootstrap_graph().expect("graph should build");
         let boundaries = detect_boundaries(&dag);
 
         // WriteFiles should be a boundary
@@ -100,7 +110,7 @@ mod tests {
 
     #[test]
     fn test_graph_no_entrypoints() {
-        let dag = build_bootstrap_graph();
+        let dag = build_bootstrap_graph().expect("graph should build");
         let entrypoints = detect_entrypoints(&dag);
 
         // ScanWorkspace has no inputs, so nothing should be an entrypoint
@@ -110,9 +120,26 @@ mod tests {
 
     #[test]
     fn test_graph_structure() {
-        let dag = build_bootstrap_graph();
+        let dag = build_bootstrap_graph().expect("graph should build");
 
         assert_eq!(dag.nodes.len(), 4);
         assert_eq!(dag.edges.len(), 4);
+    }
+
+    #[test]
+    fn test_signature_matches_dag() {
+        let dag = build_bootstrap_graph().expect("graph should build");
+        let sig = bootstrap_signature();
+        sig.validate(&dag).expect("signature should match DAG");
+    }
+
+    #[test]
+    fn test_inferred_signature() {
+        let dag = build_bootstrap_graph().expect("graph should build");
+        let inferred = infer_signature(&dag);
+        
+        // 0 inputs (no entrypoints), 3 boundary outputs
+        assert_eq!(inferred.inputs.len(), 0);
+        assert_eq!(inferred.outputs.len(), 3);
     }
 }

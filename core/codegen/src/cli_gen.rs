@@ -19,6 +19,8 @@ pub struct ToolMeta {
     pub graph_builder: String,
     /// Arguments to pass to graph builder (e.g., "extensions.clone(), public")
     pub graph_builder_args: String,
+    /// Whether the graph builder returns Result<Dag, BuilderError>
+    pub returns_result: bool,
 }
 
 /// An entrypoint that becomes a CLI flag.
@@ -138,6 +140,39 @@ pub fn generate_cli_with_import(
     let default_import = format!("use {}::{{build_{}_graph, {}}};", crate_module, tool.tool_name, graph_op_type);
     let actual_import = if import_line.is_empty() { default_import } else { import_line };
 
+    // Generate the graph builder call - handle Result-returning builders
+    let graph_builder_call = if tool.returns_result {
+        if tool.graph_builder_args.is_empty() {
+            format!(
+                r#"match {}() {{
+        Ok(d) => d,
+        Err(e) => {{
+            eprintln!("Error building graph: {{}}", e);
+            process::exit(1);
+        }}
+    }}"#,
+                tool.graph_builder
+            )
+        } else {
+            format!(
+                r#"match {}({}) {{
+        Ok(d) => d,
+        Err(e) => {{
+            eprintln!("Error building graph: {{}}", e);
+            process::exit(1);
+        }}
+    }}"#,
+                tool.graph_builder, tool.graph_builder_args
+            )
+        }
+    } else {
+        if tool.graph_builder_args.is_empty() {
+            format!("{}()", tool.graph_builder)
+        } else {
+            format!("{}({})", tool.graph_builder, tool.graph_builder_args)
+        }
+    };
+
     format!(
         r#"//! Generated CLI for {tool_name}.
 //!
@@ -157,7 +192,7 @@ fn main() {{
 {arg_parsing}
     
     // Build the graph
-    let dag = {graph_builder}({graph_builder_args});
+    let dag = {graph_builder_call};
     
     // Set up execution mode
     let mode = if dry_run {{
@@ -226,8 +261,7 @@ fn print_help() {{
         tool_name = tool.tool_name,
         import_line = actual_import,
         arg_parsing = arg_parsing,
-        graph_builder = tool.graph_builder,
-        graph_builder_args = tool.graph_builder_args,
+        graph_builder_call = graph_builder_call,
         mock_setup = mock_setup,
         print_inputs = print_inputs,
         final_output = final_output,
@@ -428,6 +462,7 @@ mod tests {
             description: "Create gist from files".to_string(),
             graph_builder: "build_gist_graph".to_string(),
             graph_builder_args: "extensions.clone(), public".to_string(),
+            returns_result: false,
         };
 
         let entrypoints = vec![

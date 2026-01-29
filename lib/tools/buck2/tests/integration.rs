@@ -9,7 +9,7 @@ use gunbc_test::{assert_boundary_mockable, default_mocks};
 /// Test that dry-run mode intercepts the transport boundary.
 #[test]
 fn test_dry_run_intercepts_transport() {
-    let dag = build_buck2_graph();
+    let dag = build_buck2_graph().expect("Failed to build buck2 graph");
 
     // Set up dry-run mode with mock
     let mut mocks = BoundaryMocks::new();
@@ -61,7 +61,7 @@ fn test_dry_run_intercepts_transport() {
 /// Test that the graph structure correctly identifies boundaries.
 #[test]
 fn test_boundary_detection() {
-    let dag = build_buck2_graph();
+    let dag = build_buck2_graph().expect("Failed to build buck2 graph");
     let boundaries = detect_boundaries(&dag);
 
     // Only execute_transport should be a boundary
@@ -78,7 +78,7 @@ fn test_boundary_detection() {
 /// Test that the buck2 graph passes the boundary mockable test.
 #[test]
 fn test_buck2_graph_boundary_mockable() {
-    let dag = build_buck2_graph();
+    let dag = build_buck2_graph().expect("Failed to build buck2 graph");
     let result = assert_boundary_mockable(&dag, default_mocks());
 
     assert!(

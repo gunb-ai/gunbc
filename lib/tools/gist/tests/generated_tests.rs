@@ -17,7 +17,7 @@ use gunbc_test::{assert_boundary_mockable, assert_types_compatible, default_mock
 /// Test that all boundaries can be mocked.
 #[test]
 fn test_boundaries_mockable() {
-    let dag = build_gist_graph(vec![], false);
+    let dag = build_gist_graph(vec![], false).expect("Failed to build gist graph");
     let result = assert_boundary_mockable(&dag, default_mocks());
     assert!(
         result.is_ok(),
@@ -29,7 +29,7 @@ fn test_boundaries_mockable() {
 /// Test that execute_transport boundary can be mocked.
 #[test]
 fn test_boundary_execute_transport_mockable() {
-    let dag = build_gist_graph(vec![], false);
+    let dag = build_gist_graph(vec![], false).expect("Failed to build gist graph");
     let boundaries = detect_boundaries(&dag);
     assert!(
         boundaries.is_boundary_node(&"execute_transport".into()),
@@ -63,7 +63,7 @@ fn test_boundary_execute_transport_mockable() {
 /// Test that prepare_gist_request is NOT a boundary (pure logic).
 #[test]
 fn test_prepare_gist_request_not_boundary() {
-    let dag = build_gist_graph(vec![], false);
+    let dag = build_gist_graph(vec![], false).expect("Failed to build gist graph");
     let boundaries = detect_boundaries(&dag);
     assert!(
         !boundaries.is_boundary_node(&"prepare_gist_request".into()),
@@ -78,7 +78,7 @@ fn test_prepare_gist_request_not_boundary() {
 /// Test that all edge types are compatible.
 #[test]
 fn test_all_edges_compatible() {
-    let dag = build_gist_graph(vec![], false);
+    let dag = build_gist_graph(vec![], false).expect("Failed to build gist graph");
     let results = assert_types_compatible(&dag);
     for result in &results {
         assert!(

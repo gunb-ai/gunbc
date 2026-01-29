@@ -1,10 +1,12 @@
 //! Graph builder for the Buck2 tool.
 //!
-//! Composes buck2-specific ops with primitives and library ops.
+//! Uses DagBuilder for compile-time cycle prevention and edge validation.
 
 use crate::ops::Buck2Op;
 use gunbc_exec::{ExecError, Executable};
-use gunbc_ir::{build::*, Dag, Edge, Node, Value};
+use gunbc_ir::{
+    build::*, BuilderError, Cardinality, Dag, DagBuilder, Node, Value, WorkflowSignature,
+};
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::PrepareFileWriteOp;
 use std::collections::HashMap;
@@ -33,106 +35,112 @@ impl Executable for Buck2GraphOp {
     }
 }
 
-/// Build the Buck2 generation graph.
+/// Get the declared signature for the buck2 workflow.
+pub fn buck2_signature() -> WorkflowSignature {
+    WorkflowSignature::new()
+        // Inputs (entrypoints)
+        .with_input("cargo_toml_path", "String", Cardinality::One)
+        .with_input("output_path", "String", Cardinality::One)
+        // Outputs from execute_transport (boundary)
+        .with_output("response", "TransportResponse", Cardinality::One)
+        .with_output("written_path", "String", Cardinality::One)
+        .with_output("content", "String", Cardinality::One)
+}
+
+/// Build the Buck2 generation graph using DagBuilder.
 ///
 /// Pipeline:
 /// ```text
 /// ParseCargoToml -> ExtractDeps -> GenerateBuckTargets -> PrepareFileWrite -> ExecuteTransport
 ///    (buck2)        (buck2)           (buck2)               (fs)              (transport)
 /// ```
-///
-/// The transport layer separates pure business logic (PrepareFileWrite) from I/O
-/// (ExecuteTransport). The boundary is now at the transport level, making dry-run
-/// interception uniform across all I/O operations.
-pub fn build_buck2_graph() -> Dag<Buck2GraphOp> {
-    let mut dag = Dag::new();
+pub fn build_buck2_graph() -> Result<Dag<Buck2GraphOp>, BuilderError> {
+    let mut builder = DagBuilder::new();
 
-    // Node: ParseCargoToml (buck2-specific)
-    dag.add_node(Node::opaque(
+    // Node: ParseCargoToml (buck2-specific) - generation 0
+    let parse_cargo_toml = builder.add_root_node(Node::opaque(
         "parse_cargo_toml",
         vec![port("cargo_toml_path", "String")],
         vec![port("cargo_toml", "Json")],
         Buck2GraphOp::Buck2(Buck2Op::ParseCargoToml),
-    ));
+    ))?;
 
-    // Node: ExtractDeps (buck2-specific)
-    dag.add_node(Node::opaque(
-        "extract_deps",
-        vec![port("cargo_toml", "Json")],
-        vec![port("members", "StrList"), port("deps", "MapStrStr")],
-        Buck2GraphOp::Buck2(Buck2Op::ExtractDeps),
-    ));
+    // Node: ExtractDeps (buck2-specific) - generation 1
+    let extract_deps = builder.add_node_after(
+        Node::opaque(
+            "extract_deps",
+            vec![port("cargo_toml", "Json")],
+            vec![port("members", "StrList"), port("deps", "MapStrStr")],
+            Buck2GraphOp::Buck2(Buck2Op::ExtractDeps),
+        ),
+        &parse_cargo_toml,
+    )?;
 
-    // Node: GenerateBuckTargets (buck2-specific)
-    dag.add_node(Node::opaque(
-        "generate_targets",
-        vec![port("members", "StrList"), port("deps", "MapStrStr")],
-        vec![port("buck_content", "String")],
-        Buck2GraphOp::Buck2(Buck2Op::GenerateBuckTargets),
-    ));
+    // Node: GenerateBuckTargets (buck2-specific) - generation 2
+    let generate_targets = builder.add_node_after(
+        Node::opaque(
+            "generate_targets",
+            vec![port("members", "StrList"), port("deps", "MapStrStr")],
+            vec![port("buck_content", "String")],
+            Buck2GraphOp::Buck2(Buck2Op::GenerateBuckTargets),
+        ),
+        &extract_deps,
+    )?;
 
-    // Node: PrepareFileWrite (primitive - PURE)
-    dag.add_node(Node::opaque(
-        "prepare_file_write",
-        vec![
-            port("content", "String"),
-            port("output_path", "String"),  // Keep buck2's port name
-        ],
-        vec![port("request", "TransportRequest")],
-        Buck2GraphOp::PrepareFileWrite(PrepareFileWriteOp),
-    ));
+    // Node: PrepareFileWrite (primitive - PURE) - generation 3
+    let prepare_file_write = builder.add_node_after(
+        Node::opaque(
+            "prepare_file_write",
+            vec![
+                port("content", "String"),
+                port("output_path", "String"),
+            ],
+            vec![port("request", "TransportRequest")],
+            Buck2GraphOp::PrepareFileWrite(PrepareFileWriteOp),
+        ),
+        &generate_targets,
+    )?;
 
-    // Node: ExecuteTransport (from gunbc-ops/transport - BOUNDARY)
-    dag.add_node(Node::opaque(
-        "execute_transport",
-        vec![port("request", "TransportRequest")],
-        vec![
-            port("response", "TransportResponse"),
-            port("written_path", "String"),
-            port("content", "String"),
-        ],
-        Buck2GraphOp::Transport(TransportOps::Execute),
-    ));
+    // Node: ExecuteTransport (from gunbc-ops/transport - BOUNDARY) - generation 4
+    let execute_transport = builder.add_node_after(
+        Node::opaque(
+            "execute_transport",
+            vec![port("request", "TransportRequest")],
+            vec![
+                port("response", "TransportResponse"),
+                port("written_path", "String"),
+                port("content", "String"),
+            ],
+            Buck2GraphOp::Transport(TransportOps::Execute),
+        ),
+        &prepare_file_write,
+    )?;
 
     // Wire up the pipeline
-    dag.add_edge(Edge::new(
-        "parse_cargo_toml",
-        "cargo_toml",
-        "extract_deps",
-        "cargo_toml",
-    ));
-    dag.add_edge(Edge::new(
-        "extract_deps",
-        "members",
-        "generate_targets",
-        "members",
-    ));
-    dag.add_edge(Edge::new("extract_deps", "deps", "generate_targets", "deps"));
-    // Connect to library ops with renamed ports
-    dag.add_edge(Edge::new(
-        "generate_targets",
-        "buck_content",
-        "prepare_file_write",
-        "content",
-    ));
-    dag.add_edge(Edge::new(
-        "prepare_file_write",
-        "request",
-        "execute_transport",
-        "request",
-    ));
+    builder.add_edge(parse_cargo_toml.out("cargo_toml"), extract_deps.in_port("cargo_toml"))?;
+    builder.add_edge(extract_deps.out("members"), generate_targets.in_port("members"))?;
+    builder.add_edge(extract_deps.out("deps"), generate_targets.in_port("deps"))?;
+    builder.add_edge(generate_targets.out("buck_content"), prepare_file_write.in_port("content"))?;
+    builder.add_edge(prepare_file_write.out("request"), execute_transport.in_port("request"))?;
 
-    dag
+    Ok(builder.build())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gunbc_ir::{detect_boundaries, detect_entrypoints};
+    use gunbc_ir::{detect_boundaries, detect_entrypoints, infer_signature};
+
+    #[test]
+    fn test_graph_builds_successfully() {
+        let dag = build_buck2_graph().expect("graph should build");
+        assert_eq!(dag.nodes.len(), 5);
+        assert_eq!(dag.edges.len(), 5);
+    }
 
     #[test]
     fn test_graph_has_boundary() {
-        let dag = build_buck2_graph();
+        let dag = build_buck2_graph().expect("graph should build");
         let boundaries = detect_boundaries(&dag);
 
         // ExecuteTransport should be the only boundary
@@ -142,7 +150,7 @@ mod tests {
 
     #[test]
     fn test_graph_has_entrypoints() {
-        let dag = build_buck2_graph();
+        let dag = build_buck2_graph().expect("graph should build");
         let entrypoints = detect_entrypoints(&dag);
 
         // cargo_toml_path and output_path are entrypoints
@@ -152,24 +160,36 @@ mod tests {
 
     #[test]
     fn test_graph_structure() {
-        let dag = build_buck2_graph();
+        let dag = build_buck2_graph().expect("graph should build");
 
-        // Should have 5 nodes
         assert_eq!(dag.nodes.len(), 5);
-
-        // Should have 5 edges
         assert_eq!(dag.edges.len(), 5);
     }
 
     #[test]
     fn test_intermediate_nodes_not_boundaries() {
-        let dag = build_buck2_graph();
+        let dag = build_buck2_graph().expect("graph should build");
         let boundaries = detect_boundaries(&dag);
 
-        // Intermediate nodes should not be boundaries
         assert!(!boundaries.is_boundary_node(&"parse_cargo_toml".into()));
         assert!(!boundaries.is_boundary_node(&"extract_deps".into()));
         assert!(!boundaries.is_boundary_node(&"generate_targets".into()));
         assert!(!boundaries.is_boundary_node(&"prepare_file_write".into()));
+    }
+
+    #[test]
+    fn test_signature_matches_dag() {
+        let dag = build_buck2_graph().expect("graph should build");
+        let sig = buck2_signature();
+        sig.validate(&dag).expect("signature should match DAG");
+    }
+
+    #[test]
+    fn test_inferred_signature() {
+        let dag = build_buck2_graph().expect("graph should build");
+        let inferred = infer_signature(&dag);
+        
+        assert_eq!(inferred.inputs.len(), 2);
+        assert_eq!(inferred.outputs.len(), 3);
     }
 }

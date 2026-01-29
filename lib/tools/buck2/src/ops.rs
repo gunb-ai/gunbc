@@ -320,3 +320,32 @@ mod tests {
         }
     }
 }
+
+// Mockable implementation for test generation
+use gunbc_test::Mockable;
+
+impl Mockable for Buck2Op {
+    fn mock_outputs(&self) -> HashMap<String, Value> {
+        match self {
+            Buck2Op::ParseCargoToml => {
+                let mut out = HashMap::new();
+                out.insert("cargo_toml".to_string(), Value::Json(serde_json::json!({
+                    "package": { "name": "test-crate" },
+                    "workspace": { "members": ["crates/foo"] }
+                })));
+                out
+            }
+            Buck2Op::ExtractDeps => {
+                let mut out = HashMap::new();
+                out.insert("members".to_string(), Value::StrList(vec!["foo".to_string()]));
+                out.insert("deps".to_string(), Value::MapStrStr(std::collections::BTreeMap::new()));
+                out
+            }
+            Buck2Op::GenerateBuckTargets => {
+                let mut out = HashMap::new();
+                out.insert("buck_content".to_string(), Value::Str("# Mock BUCK content\nrust_library(name = \"foo\")".to_string()));
+                out
+            }
+        }
+    }
+}

@@ -24,5 +24,5 @@ pub mod ops;
 #[cfg(test)]
 pub mod graph_mock;
 
-pub use graph::{build_buck2_graph, Buck2GraphOp};
+pub use graph::{build_buck2_graph, buck2_signature, Buck2GraphOp};
 pub use ops::Buck2Op;

@@ -210,6 +210,7 @@ impl ToolDef {
                 description: description.to_string(),
                 graph_builder: graph_builder.to_string(),
                 graph_builder_args: graph_builder_args.to_string(),
+                returns_result: false,
             },
             entrypoints: vec![],
             boundaries: vec![],
@@ -217,6 +218,12 @@ impl ToolDef {
             outputs: vec![],
             dag: None,
         }
+    }
+
+    /// Mark that this tool's graph builder returns Result<Dag, BuilderError>.
+    pub fn returns_result(mut self) -> Self {
+        self.meta.returns_result = true;
+        self
     }
 
     /// Set a declarative DAG definition (enables graph generation).
@@ -262,7 +269,7 @@ impl ToolDef {
 /// Get all tool definitions for CLI generation.
 pub fn all_tools() -> Vec<ToolDef> {
     vec![
-        // gunbc-gist
+        // gunbc-gist (uses DagBuilder - returns Result)
         ToolDef::new(
             "gunbc-gist",
             "gist",
@@ -270,6 +277,7 @@ pub fn all_tools() -> Vec<ToolDef> {
             "build_gist_graph",
             "extensions.clone(), public",
         )
+        .returns_result()
         .entrypoint(
             CliEntrypoint::new("repo_path", "String")
                 .short('r')
@@ -294,7 +302,7 @@ pub fn all_tools() -> Vec<ToolDef> {
             ],
         ), // gist creates a remote gist, no local output
 
-        // gunbc-buck2
+        // gunbc-buck2 (uses DagBuilder - returns Result)
         ToolDef::new(
             "gunbc-buck2",
             "buck2",
@@ -302,6 +310,7 @@ pub fn all_tools() -> Vec<ToolDef> {
             "build_buck2_graph",
             "",
         )
+        .returns_result()
         .entrypoint(
             CliEntrypoint::new("cargo_toml_path", "String")
                 .short('i')
@@ -324,7 +333,7 @@ pub fn all_tools() -> Vec<ToolDef> {
             ],
         ),
 
-        // gunbc-viz
+        // gunbc-viz (uses DagBuilder - returns Result)
         ToolDef::new(
             "gunbc-viz",
             "viz",
@@ -332,6 +341,7 @@ pub fn all_tools() -> Vec<ToolDef> {
             "build_viz_graph",
             "",
         )
+        .returns_result()
         .entrypoint(
             CliEntrypoint::new("output_path", "String")
                 .short('o')
@@ -347,7 +357,7 @@ pub fn all_tools() -> Vec<ToolDef> {
             ],
         ),
 
-        // gunbc-makegen
+        // gunbc-makegen (uses DagBuilder - returns Result)
         ToolDef::new(
             "gunbc-makegen",
             "makegen",
@@ -355,6 +365,7 @@ pub fn all_tools() -> Vec<ToolDef> {
             "build_makegen_graph",
             "",
         )
+        .returns_result()
         .import("use gunbc_makegen::build_makegen_graph;")
         // Declarative DAG definition (POC for graph generation)
         .dag(makegen_dag())
@@ -373,7 +384,7 @@ pub fn all_tools() -> Vec<ToolDef> {
             ],
         ),
 
-        // gunbc-deps
+        // gunbc-deps (uses DagBuilder - returns Result)
         ToolDef::new(
             "gunbc-deps",
             "deps",
@@ -381,6 +392,7 @@ pub fn all_tools() -> Vec<ToolDef> {
             "build_deps_graph",
             "",
         )
+        .returns_result()
         .import("use gunbc_deps::build_deps_graph;")
         .entrypoint(
             CliEntrypoint::new("manifest_path", "String")
@@ -389,13 +401,14 @@ pub fn all_tools() -> Vec<ToolDef> {
                 .help("Path to deps.toml manifest"),
         )
         .boundary(
-            "install",
+            "execute_installs",
             vec![
-                ("installed", "Value::Bool(true)"),
+                ("executed", "Value::Bool(true)"),
+                ("script", "Value::Str(\"<DRY-RUN>\".to_string())"),
             ],
         ),
 
-        // gunbc-ci
+        // gunbc-ci (uses DagBuilder - returns Result)
         ToolDef::new(
             "gunbc-ci",
             "ci",
@@ -403,6 +416,7 @@ pub fn all_tools() -> Vec<ToolDef> {
             "build_ci_graph",
             "",
         )
+        .returns_result()
         .import("use gunbc_ci::build_ci_graph;")
         .boundary(
             "run_tests",
@@ -411,7 +425,7 @@ pub fn all_tools() -> Vec<ToolDef> {
             ],
         ),
 
-        // gunbc-bootstrap
+        // gunbc-bootstrap (uses DagBuilder - returns Result)
         ToolDef::new(
             "gunbc-bootstrap",
             "bootstrap",
@@ -419,6 +433,7 @@ pub fn all_tools() -> Vec<ToolDef> {
             "build_bootstrap_graph",
             "",
         )
+        .returns_result()
         .import("use gunbc_bootstrap::build_bootstrap_graph;")
         .boundary(
             "write_makefile",

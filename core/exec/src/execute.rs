@@ -1,21 +1,24 @@
-//! DAG execution with boundary interception.
+//! DAG execution with boundary interception and simulation.
 
 use crate::error::ExecError;
 use crate::intercept::BoundaryMocks;
 use crate::lower::lower;
 use crate::topo::topo_sort;
 use crate::Executable;
-use gunbc_ir::{detect_boundaries, BoundaryInfo, Dag, Node, NodeBody, Value};
+use gunbc_ir::{detect_boundaries, BoundaryInfo, Dag, Node, NodeBody, NodeId, Value};
 use std::collections::HashMap;
 use std::fmt;
+use std::time::Duration;
 
-/// Execution mode: real or dry-run.
+/// Execution mode: real, dry-run, or simulate.
 #[derive(Debug, Clone)]
 pub enum ExecutionMode {
     /// Execute all operations normally
     Real,
     /// Intercept boundary operations with mocks
     DryRun(BoundaryMocks),
+    /// Simulate execution with timing and resource tracking
+    Simulate(SimConfig),
 }
 
 impl Default for ExecutionMode {
@@ -24,8 +27,121 @@ impl Default for ExecutionMode {
     }
 }
 
+/// Configuration for simulation mode.
+#[derive(Debug, Clone, Default)]
+pub struct SimConfig {
+    /// Simulated execution time for each node.
+    /// If a node is not in the map, it defaults to zero.
+    pub timing: HashMap<NodeId, Duration>,
+    /// Resource budget (memory, CPU limits).
+    pub resources: ResourceBudget,
+    /// Random seed for deterministic simulation.
+    /// If None, uses system randomness.
+    pub random_seed: Option<u64>,
+    /// Mock values for boundary nodes (like DryRun).
+    pub boundary_mocks: BoundaryMocks,
+}
+
+impl SimConfig {
+    /// Create a new empty simulation config.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Set the timing for a specific node.
+    pub fn with_timing(mut self, node_id: impl Into<NodeId>, duration: Duration) -> Self {
+        self.timing.insert(node_id.into(), duration);
+        self
+    }
+
+    /// Set the resource budget.
+    pub fn with_resources(mut self, resources: ResourceBudget) -> Self {
+        self.resources = resources;
+        self
+    }
+
+    /// Set the random seed.
+    pub fn with_seed(mut self, seed: u64) -> Self {
+        self.random_seed = Some(seed);
+        self
+    }
+
+    /// Set boundary mocks.
+    pub fn with_mocks(mut self, mocks: BoundaryMocks) -> Self {
+        self.boundary_mocks = mocks;
+        self
+    }
+
+    /// Get the simulated duration for a node.
+    pub fn node_duration(&self, node_id: &NodeId) -> Duration {
+        self.timing.get(node_id).copied().unwrap_or(Duration::ZERO)
+    }
+}
+
+/// Resource budget for simulation.
+#[derive(Debug, Clone, Default)]
+pub struct ResourceBudget {
+    /// Maximum memory usage in bytes (None = unlimited).
+    pub max_memory: Option<u64>,
+    /// Maximum CPU time in milliseconds (None = unlimited).
+    pub max_cpu_ms: Option<u64>,
+    /// Maximum number of concurrent operations (None = unlimited).
+    pub max_concurrency: Option<usize>,
+}
+
+impl ResourceBudget {
+    /// Create a new unlimited resource budget.
+    pub fn unlimited() -> Self {
+        Self::default()
+    }
+
+    /// Set maximum memory.
+    pub fn with_memory(mut self, bytes: u64) -> Self {
+        self.max_memory = Some(bytes);
+        self
+    }
+
+    /// Set maximum CPU time.
+    pub fn with_cpu(mut self, ms: u64) -> Self {
+        self.max_cpu_ms = Some(ms);
+        self
+    }
+
+    /// Set maximum concurrency.
+    pub fn with_concurrency(mut self, n: usize) -> Self {
+        self.max_concurrency = Some(n);
+        self
+    }
+}
+
+/// Result of a simulated execution.
+#[derive(Debug, Clone)]
+pub struct SimulationResult {
+    /// Total simulated execution time.
+    pub total_time: Duration,
+    /// The critical path (longest dependency chain).
+    pub critical_path: Vec<NodeId>,
+    /// Resource usage during simulation.
+    pub resource_usage: ResourceUsage,
+    /// Timeline of node executions (node_id, start_time, duration).
+    pub timeline: Vec<(NodeId, Duration, Duration)>,
+    /// The execution log (same as real execution).
+    pub log: ExecutionLog,
+}
+
+/// Resource usage during simulation.
+#[derive(Debug, Clone, Default)]
+pub struct ResourceUsage {
+    /// Peak memory usage in bytes.
+    pub peak_memory: u64,
+    /// Total CPU time in milliseconds.
+    pub total_cpu_ms: u64,
+    /// Maximum concurrent operations observed.
+    pub max_concurrency: usize,
+}
+
 /// A single entry in the execution log.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LogEntry {
     pub node_id: String,
     pub outputs: HashMap<String, Value>,
@@ -44,7 +160,7 @@ impl fmt::Display for LogEntry {
 }
 
 /// Full execution log.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ExecutionLog {
     pub entries: Vec<LogEntry>,
 }
@@ -78,6 +194,7 @@ pub fn execute<T: Executable + Clone>(dag: &Dag<T>) -> Result<ExecutionLog, Exec
 /// Execute a DAG with the specified execution mode.
 ///
 /// In dry-run mode, boundary nodes have their outputs replaced with mock values.
+/// In simulate mode, timing and resource usage are tracked.
 pub fn execute_with_mode<T: Executable + Clone>(
     dag: &Dag<T>,
     mode: ExecutionMode,
@@ -90,6 +207,66 @@ pub fn execute_with_mode<T: Executable + Clone>(
 
     // Execute the flat DAG
     execute_flat(&flat, &boundaries, &mode)
+}
+
+/// Simulate execution of a DAG with timing and resource tracking.
+///
+/// This is a convenience wrapper that returns a `SimulationResult` instead
+/// of just an `ExecutionLog`.
+pub fn simulate<T: Executable + Clone>(
+    dag: &Dag<T>,
+    config: SimConfig,
+) -> Result<SimulationResult, ExecError> {
+    // Lower sub-DAGs first
+    let flat = lower(dag).map_err(|e| ExecError::new(format!("lowering failed: {e}")))?;
+
+    // Detect boundaries
+    let boundaries = detect_boundaries(&flat);
+
+    // Get topological order
+    let order = topo_sort(&flat);
+
+    // Execute with simulation tracking
+    let log = execute_flat(&flat, &boundaries, &ExecutionMode::Simulate(config.clone()))?;
+
+    // Compute simulation metrics
+    let timeline = compute_timeline(&order, &config);
+    let total_time = timeline.iter().map(|(_, start, dur)| *start + *dur).max().unwrap_or(Duration::ZERO);
+    let critical_path = compute_critical_path(&flat, &config);
+    let resource_usage = ResourceUsage::default(); // Simplified for now
+
+    Ok(SimulationResult {
+        total_time,
+        critical_path,
+        resource_usage,
+        timeline,
+        log,
+    })
+}
+
+/// Compute the execution timeline (node_id, start_time, duration).
+fn compute_timeline(order: &[NodeId], config: &SimConfig) -> Vec<(NodeId, Duration, Duration)> {
+    let mut timeline = Vec::new();
+    let mut current_time = Duration::ZERO;
+
+    for node_id in order {
+        let duration = config.node_duration(node_id);
+        timeline.push((node_id.clone(), current_time, duration));
+        current_time += duration;
+    }
+
+    timeline
+}
+
+/// Compute the critical path (longest dependency chain).
+fn compute_critical_path<T>(dag: &Dag<T>, _config: &SimConfig) -> Vec<NodeId> {
+    // Simple implementation: just return all nodes in topological order
+    // A more sophisticated implementation would track actual dependencies
+    let order = topo_sort(dag);
+    
+    // Find the path with the longest total duration
+    // For now, just return the topological order
+    order
 }
 
 /// Execute a flat (fully lowered) DAG.
@@ -133,14 +310,15 @@ fn execute_flat<T: Executable>(
                 .collect();
             (outputs, false)
         } else {
-            // Check if this is a boundary node in dry-run mode
+            // Check if this is a boundary node in dry-run or simulate mode
             let is_boundary = boundaries.is_boundary_node(node_id);
-            let should_intercept = is_boundary && matches!(mode, ExecutionMode::DryRun(_));
+            let should_intercept = is_boundary && matches!(mode, ExecutionMode::DryRun(_) | ExecutionMode::Simulate(_));
 
             if should_intercept {
                 // Intercept: use mock values for boundary outputs
                 let mocks = match mode {
                     ExecutionMode::DryRun(ref m) => m,
+                    ExecutionMode::Simulate(ref config) => &config.boundary_mocks,
                     _ => unreachable!(),
                 };
 
@@ -316,5 +494,88 @@ mod tests {
         // B is a boundary — should be intercepted
         let b_entry = log.get("B").unwrap();
         assert!(b_entry.was_intercepted);
+    }
+
+    #[test]
+    fn test_simulate_basic() {
+        let mut dag: Dag<Produce> = Dag::new();
+        dag.add_node(Node::opaque(
+            "A",
+            vec![],
+            vec![port("out", "String")],
+            Produce::new("out", Value::Str("hello".to_string())),
+        ));
+        dag.add_node(Node::opaque(
+            "B",
+            vec![port("in", "String")],
+            vec![port("out", "String")],
+            Produce::new("out", Value::Str("world".to_string())),
+        ));
+        dag.add_edge(edge("A", "out", "B", "in"));
+
+        // Configure simulation with timing
+        let config = SimConfig::new()
+            .with_timing("A", Duration::from_millis(100))
+            .with_timing("B", Duration::from_millis(200))
+            .with_mocks(BoundaryMocks::with_default(Value::Str("mocked".to_string())));
+
+        let result = simulate(&dag, config).unwrap();
+
+        // Check that simulation ran
+        assert!(!result.log.entries.is_empty());
+        
+        // Check timeline
+        assert_eq!(result.timeline.len(), 2);
+        
+        // Check total time is sum of node times (sequential execution)
+        assert_eq!(result.total_time, Duration::from_millis(300));
+    }
+
+    #[test]
+    fn test_simulate_with_mocks() {
+        let mut dag: Dag<Produce> = Dag::new();
+        dag.add_node(Node::opaque(
+            "boundary_node",
+            vec![],
+            vec![port("result", "String")],
+            Produce::new("result", Value::Str("real-value".to_string())),
+        ));
+
+        let mut mocks = BoundaryMocks::new();
+        mocks.set_value("boundary_node", "result", Value::Str("simulated-value".to_string()));
+
+        let config = SimConfig::new().with_mocks(mocks);
+
+        let result = simulate(&dag, config).unwrap();
+
+        // Boundary should be intercepted with mock value
+        let entry = result.log.get("boundary_node").unwrap();
+        assert!(entry.was_intercepted);
+        assert_eq!(
+            entry.outputs.get("result"),
+            Some(&Value::Str("simulated-value".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_sim_config_builder() {
+        let config = SimConfig::new()
+            .with_timing("node1", Duration::from_secs(1))
+            .with_timing("node2", Duration::from_secs(2))
+            .with_seed(42)
+            .with_resources(
+                ResourceBudget::unlimited()
+                    .with_memory(1024 * 1024)
+                    .with_cpu(5000)
+                    .with_concurrency(4)
+            );
+
+        assert_eq!(config.node_duration(&NodeId::from("node1")), Duration::from_secs(1));
+        assert_eq!(config.node_duration(&NodeId::from("node2")), Duration::from_secs(2));
+        assert_eq!(config.node_duration(&NodeId::from("unknown")), Duration::ZERO);
+        assert_eq!(config.random_seed, Some(42));
+        assert_eq!(config.resources.max_memory, Some(1024 * 1024));
+        assert_eq!(config.resources.max_cpu_ms, Some(5000));
+        assert_eq!(config.resources.max_concurrency, Some(4));
     }
 }

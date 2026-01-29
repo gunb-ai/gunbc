@@ -255,6 +255,27 @@ impl Port {
     pub fn has_guard(&self) -> bool {
         self.guard.is_some()
     }
+
+    /// Infer cardinality from the type registry.
+    ///
+    /// If the port's type is registered in the registry, returns the cardinality
+    /// derived from the type DAG structure. Otherwise, returns the port's
+    /// declared cardinality.
+    ///
+    /// This enables type-driven cardinality inference:
+    /// - `Optional<T>` types → `ZeroOrOne`
+    /// - `List<T>` types → `ZeroOrMore`
+    /// - `NonEmptyList<T>` types → `OneOrMore`
+    /// - Everything else → `One` (or the declared cardinality)
+    pub fn infer_cardinality(&self, registry: &crate::type_registry::TypeRegistry) -> Cardinality {
+        // Try to look up the type in the registry and infer cardinality from it
+        if let Some(inferred) = registry.infer_cardinality(&self.type_id) {
+            inferred
+        } else {
+            // Fall back to declared cardinality
+            self.cardinality
+        }
+    }
 }
 
 /// Guard predicate for conditional routing in patterns (internal use only).
@@ -425,5 +446,33 @@ mod tests {
     fn test_edge_default_index() {
         let edge = Edge::new("a", "out", "b", "in");
         assert_eq!(edge.index, 0);
+    }
+
+    #[test]
+    fn test_port_infer_cardinality() {
+        use crate::type_lib;
+        use crate::type_registry::TypeRegistry;
+
+        let mut registry = TypeRegistry::with_primitives();
+        registry.register("OptionalString", type_lib::optional(type_lib::string()));
+        registry.register("StringList", type_lib::list(type_lib::string()));
+        registry.register("NonEmptyStringList", type_lib::non_empty_list(type_lib::string()));
+
+        // Port with registered type - should infer cardinality
+        let port1 = Port::scalar("p1", "String");
+        assert_eq!(port1.infer_cardinality(&registry), Cardinality::One);
+
+        let port2 = Port::scalar("p2", "OptionalString");
+        assert_eq!(port2.infer_cardinality(&registry), Cardinality::ZeroOrOne);
+
+        let port3 = Port::scalar("p3", "StringList");
+        assert_eq!(port3.infer_cardinality(&registry), Cardinality::ZeroOrMore);
+
+        let port4 = Port::scalar("p4", "NonEmptyStringList");
+        assert_eq!(port4.infer_cardinality(&registry), Cardinality::OneOrMore);
+
+        // Port with unregistered type - should fall back to declared cardinality
+        let port5 = Port::optional("p5", "Unknown");
+        assert_eq!(port5.infer_cardinality(&registry), Cardinality::ZeroOrOne);
     }
 }

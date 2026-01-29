@@ -13,31 +13,31 @@ use gunbc_makegen::registry::ToolRegistry;
 fn get_viz_graph_for_tool(crate_name: &str) -> Option<VizGraph> {
     match crate_name {
         "gunbc-gist" => {
-            let dag = gunbc_gist::build_gist_graph(vec![], false);
+            let dag = gunbc_gist::build_gist_graph(vec![], false).ok()?;
             Some(export_dag(&dag, crate_name))
         }
         "gunbc-buck2" => {
-            let dag = gunbc_buck2::build_buck2_graph();
+            let dag = gunbc_buck2::build_buck2_graph().ok()?;
             Some(export_dag(&dag, crate_name))
         }
         "gunbc-makegen" => {
-            let dag = gunbc_makegen::build_makegen_graph();
+            let dag = gunbc_makegen::build_makegen_graph().ok()?;
             Some(export_dag(&dag, crate_name))
         }
         "gunbc-deps" => {
-            let dag = gunbc_deps::build_deps_graph();
+            let dag = gunbc_deps::build_deps_graph().ok()?;
             Some(export_dag(&dag, crate_name))
         }
         "gunbc-ci" => {
-            let dag = gunbc_ci::build_ci_graph();
+            let dag = gunbc_ci::build_ci_graph().ok()?;
             Some(export_dag(&dag, crate_name))
         }
         "gunbc-bootstrap" => {
-            let dag = gunbc_bootstrap::build_bootstrap_graph();
+            let dag = gunbc_bootstrap::build_bootstrap_graph().ok()?;
             Some(export_dag(&dag, crate_name))
         }
         "gunbc-viz" => {
-            let dag = crate::graph::build_viz_graph();
+            let dag = crate::graph::build_viz_graph().ok()?;
             Some(export_dag(&dag, crate_name))
         }
         _ => None, // Unknown tool - skip it

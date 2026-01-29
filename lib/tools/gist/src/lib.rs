@@ -28,7 +28,7 @@ pub mod graph;
 pub mod graph_mock;
 
 // Re-export for backwards compatibility
-pub use graph::{build_gist_graph, GistGraphOp};
+pub use graph::{build_gist_graph, gist_signature, GistGraphOp};
 
 // Re-export the library ops for convenience
 pub use gunbc_lib_gist_ops::GistOps;

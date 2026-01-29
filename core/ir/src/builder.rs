@@ -443,6 +443,68 @@ impl<T> DagBuilder<T> {
         Ok(())
     }
 
+    /// Count the number of edges already connected to a specific input port.
+    ///
+    /// This is useful for fan-in detection — when multiple edges feed into
+    /// the same port.
+    pub fn edge_count_to_port(&self, node_id: &NodeId, port: &PortName) -> usize {
+        self.edges
+            .iter()
+            .filter(|e| &e.to_node == node_id && &e.to_port == port)
+            .count()
+    }
+
+    /// Count the number of edges coming from a specific output port.
+    ///
+    /// This is useful for fan-out detection — when one port feeds multiple
+    /// downstream ports.
+    pub fn edge_count_from_port(&self, node_id: &NodeId, port: &PortName) -> usize {
+        self.edges
+            .iter()
+            .filter(|e| &e.from_node == node_id && &e.from_port == port)
+            .count()
+    }
+
+    /// Check if a port has fan-in (multiple incoming edges).
+    pub fn has_fan_in(&self, node_id: &NodeId, port: &PortName) -> bool {
+        self.edge_count_to_port(node_id, port) > 1
+    }
+
+    /// Check if a port has fan-out (multiple outgoing edges).
+    pub fn has_fan_out(&self, node_id: &NodeId, port: &PortName) -> bool {
+        self.edge_count_from_port(node_id, port) > 1
+    }
+
+    /// Get information about fan-in for all input ports.
+    ///
+    /// Returns a map of (node_id, port_name) → edge_count for ports with
+    /// more than one incoming edge.
+    pub fn fan_in_ports(&self) -> HashMap<(NodeId, PortName), usize> {
+        let mut counts: HashMap<(NodeId, PortName), usize> = HashMap::new();
+        
+        for edge in &self.edges {
+            let key = (edge.to_node.clone(), edge.to_port.clone());
+            *counts.entry(key).or_insert(0) += 1;
+        }
+        
+        counts.into_iter().filter(|(_, count)| *count > 1).collect()
+    }
+
+    /// Get information about fan-out for all output ports.
+    ///
+    /// Returns a map of (node_id, port_name) → edge_count for ports with
+    /// more than one outgoing edge.
+    pub fn fan_out_ports(&self) -> HashMap<(NodeId, PortName), usize> {
+        let mut counts: HashMap<(NodeId, PortName), usize> = HashMap::new();
+        
+        for edge in &self.edges {
+            let key = (edge.from_node.clone(), edge.from_port.clone());
+            *counts.entry(key).or_insert(0) += 1;
+        }
+        
+        counts.into_iter().filter(|(_, count)| *count > 1).collect()
+    }
+
     /// Consume the builder and produce the DAG.
     ///
     /// Since all edges were validated during construction, the resulting DAG
@@ -1022,5 +1084,119 @@ mod tests {
             Some(Guard::Eq(Value::Str(s))) => assert_eq!(s, "expected"),
             _ => panic!("Expected Eq guard with string value"),
         }
+    }
+
+    // ==================== Fan-in/Fan-out Tests ====================
+
+    #[test]
+    fn test_fan_in_detection() {
+        let mut builder: DagBuilder<String> = DagBuilder::new();
+        
+        // Create a diamond pattern: a, b → c
+        let node_a = test_node("a", vec![], vec![("out", "String")]);
+        let node_b = test_node("b", vec![], vec![("out", "String")]);
+        let node_c = Node::opaque(
+            "c",
+            vec![Port::list("in", "String")],  // List to accept fan-in
+            vec![],
+            "op_c".to_string(),
+        );
+        
+        let a = builder.add_root_node(node_a).unwrap();
+        let b = builder.add_root_node(node_b).unwrap();
+        let c = builder.add_node_after_all(node_c, &[&a, &b]).unwrap();
+        
+        builder.add_edge(a.out("out"), c.in_port("in")).unwrap();
+        
+        // Before second edge, no fan-in
+        assert!(!builder.has_fan_in(&c.id().clone(), &PortName::from("in")));
+        assert_eq!(builder.edge_count_to_port(&c.id().clone(), &PortName::from("in")), 1);
+        
+        builder.add_edge(b.out("out"), c.in_port("in")).unwrap();
+        
+        // After second edge, has fan-in
+        assert!(builder.has_fan_in(&c.id().clone(), &PortName::from("in")));
+        assert_eq!(builder.edge_count_to_port(&c.id().clone(), &PortName::from("in")), 2);
+    }
+
+    #[test]
+    fn test_fan_out_detection() {
+        let mut builder: DagBuilder<String> = DagBuilder::new();
+        
+        // Create a broadcast pattern: a → b, c
+        let node_a = test_node("a", vec![], vec![("out", "String")]);
+        let node_b = test_node("b", vec![("in", "String")], vec![]);
+        let node_c = test_node("c", vec![("in", "String")], vec![]);
+        
+        let a = builder.add_root_node(node_a).unwrap();
+        let b = builder.add_node_after(node_b, &a).unwrap();
+        let c = builder.add_node_after(node_c, &a).unwrap();
+        
+        builder.add_edge(a.out("out"), b.in_port("in")).unwrap();
+        
+        // Before second edge, no fan-out
+        assert!(!builder.has_fan_out(&a.id().clone(), &PortName::from("out")));
+        assert_eq!(builder.edge_count_from_port(&a.id().clone(), &PortName::from("out")), 1);
+        
+        builder.add_edge(a.out("out"), c.in_port("in")).unwrap();
+        
+        // After second edge, has fan-out
+        assert!(builder.has_fan_out(&a.id().clone(), &PortName::from("out")));
+        assert_eq!(builder.edge_count_from_port(&a.id().clone(), &PortName::from("out")), 2);
+    }
+
+    #[test]
+    fn test_fan_in_ports_summary() {
+        let mut builder: DagBuilder<String> = DagBuilder::new();
+        
+        let node_a = test_node("a", vec![], vec![("out", "String")]);
+        let node_b = test_node("b", vec![], vec![("out", "String")]);
+        let node_c = test_node("c", vec![], vec![("out", "String")]);
+        let node_d = Node::opaque(
+            "d",
+            vec![Port::list("in", "String")],
+            vec![],
+            "op_d".to_string(),
+        );
+        
+        let a = builder.add_root_node(node_a).unwrap();
+        let b = builder.add_root_node(node_b).unwrap();
+        let c = builder.add_root_node(node_c).unwrap();
+        let d = builder.add_node_after_all(node_d, &[&a, &b, &c]).unwrap();
+        
+        builder.add_edge(a.out("out"), d.in_port("in")).unwrap();
+        builder.add_edge(b.out("out"), d.in_port("in")).unwrap();
+        builder.add_edge(c.out("out"), d.in_port("in")).unwrap();
+        
+        let fan_ins = builder.fan_in_ports();
+        assert_eq!(fan_ins.len(), 1);
+        
+        let key = (NodeId::from("d"), PortName::from("in"));
+        assert_eq!(fan_ins.get(&key), Some(&3));
+    }
+
+    #[test]
+    fn test_fan_out_ports_summary() {
+        let mut builder: DagBuilder<String> = DagBuilder::new();
+        
+        let node_a = test_node("a", vec![], vec![("out", "String")]);
+        let node_b = test_node("b", vec![("in", "String")], vec![]);
+        let node_c = test_node("c", vec![("in", "String")], vec![]);
+        let node_d = test_node("d", vec![("in", "String")], vec![]);
+        
+        let a = builder.add_root_node(node_a).unwrap();
+        let b = builder.add_node_after(node_b, &a).unwrap();
+        let c = builder.add_node_after(node_c, &a).unwrap();
+        let d = builder.add_node_after(node_d, &a).unwrap();
+        
+        builder.add_edge(a.out("out"), b.in_port("in")).unwrap();
+        builder.add_edge(a.out("out"), c.in_port("in")).unwrap();
+        builder.add_edge(a.out("out"), d.in_port("in")).unwrap();
+        
+        let fan_outs = builder.fan_out_ports();
+        assert_eq!(fan_outs.len(), 1);
+        
+        let key = (NodeId::from("a"), PortName::from("out"));
+        assert_eq!(fan_outs.get(&key), Some(&3));
     }
 }

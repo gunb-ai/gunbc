@@ -35,7 +35,7 @@ pub mod upsert;
 #[cfg(test)]
 pub mod graph_mock;
 
-pub use graph::build_deps_graph;
+pub use graph::{build_deps_graph, deps_signature};
 pub use installer::{InstallMethod, Installer};
 pub use manifest::{Dependency, DepsManifest, PlatformInstall};
 pub use ops::DepsOp;

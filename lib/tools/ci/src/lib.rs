@@ -17,5 +17,5 @@ pub mod ops;
 #[cfg(test)]
 pub mod graph_mock;
 
-pub use graph::build_ci_graph;
+pub use graph::{build_ci_graph, ci_signature};
 pub use ops::CIOp;

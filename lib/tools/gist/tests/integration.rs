@@ -9,7 +9,7 @@ use gunbc_test::{assert_boundary_mockable, default_mocks};
 /// Test that dry-run mode intercepts the transport boundary.
 #[test]
 fn test_dry_run_intercepts_transport() {
-    let dag = build_gist_graph(vec![], false);
+    let dag = build_gist_graph(vec![], false).expect("Failed to build gist graph");
 
     // Set up dry-run mode with mock
     let mut mocks = BoundaryMocks::new();
@@ -65,7 +65,7 @@ fn test_dry_run_intercepts_transport() {
 /// Test that the graph structure correctly identifies boundaries.
 #[test]
 fn test_boundary_detection() {
-    let dag = build_gist_graph(vec![], false);
+    let dag = build_gist_graph(vec![], false).expect("Failed to build gist graph");
     let boundaries = detect_boundaries(&dag);
 
     // Only execute_transport should be a boundary
@@ -83,7 +83,7 @@ fn test_boundary_detection() {
 /// Test that the gist graph passes the boundary mockable test.
 #[test]
 fn test_gist_graph_boundary_mockable() {
-    let dag = build_gist_graph(vec![], false);
+    let dag = build_gist_graph(vec![], false).expect("Failed to build gist graph");
     let result = assert_boundary_mockable(&dag, default_mocks());
 
     assert!(
@@ -97,7 +97,7 @@ fn test_gist_graph_boundary_mockable() {
 /// Test that real mode does NOT intercept boundaries.
 #[test]
 fn test_real_mode_no_interception() {
-    let dag = build_gist_graph(vec![], false);
+    let dag = build_gist_graph(vec![], false).expect("Failed to build gist graph");
 
     // Real mode - note: this will fail at execute_transport if gh isn't authenticated,
     // but we can still verify that intermediate nodes executed without interception

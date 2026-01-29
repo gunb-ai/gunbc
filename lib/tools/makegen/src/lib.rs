@@ -24,7 +24,7 @@ pub mod render;
 #[cfg(test)]
 pub mod graph_mock;
 
-pub use graph::build_makegen_graph;
+pub use graph::{build_makegen_graph, makegen_signature};
 pub use ops::MakegenOp;
 pub use registry::{ToolInfo, ToolRegistry, EntrypointParam};
 pub use render::render_makefile;

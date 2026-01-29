@@ -222,3 +222,49 @@ mod tests {
         }
     }
 }
+
+// Mockable implementation for test generation
+use gunbc_test::Mockable;
+
+impl Mockable for CIOp {
+    fn mock_outputs(&self) -> HashMap<String, Value> {
+        match self {
+            CIOp::SetupDeps => {
+                let mut out = HashMap::new();
+                out.insert("deps_checked".to_string(), Value::Bool(true));
+                out.insert("deps_installed".to_string(), Value::Int(0));
+                out.insert("message".to_string(), Value::Str("Dependencies ready".to_string()));
+                out
+            }
+            CIOp::Build => {
+                let mut out = HashMap::new();
+                out.insert("build_success".to_string(), Value::Bool(true));
+                out.insert("build_stdout".to_string(), Value::Str("Build complete".to_string()));
+                out.insert("build_stderr".to_string(), Value::Str(String::new()));
+                out
+            }
+            CIOp::Test => {
+                let mut out = HashMap::new();
+                out.insert("test_success".to_string(), Value::Bool(true));
+                out.insert("test_skipped".to_string(), Value::Bool(false));
+                out.insert("test_stdout".to_string(), Value::Str("All tests passed".to_string()));
+                out.insert("test_stderr".to_string(), Value::Str(String::new()));
+                out
+            }
+            CIOp::Lint => {
+                let mut out = HashMap::new();
+                out.insert("lint_success".to_string(), Value::Bool(true));
+                out.insert("lint_skipped".to_string(), Value::Bool(false));
+                out.insert("lint_stdout".to_string(), Value::Str("No warnings".to_string()));
+                out.insert("lint_stderr".to_string(), Value::Str(String::new()));
+                out
+            }
+            CIOp::Report => {
+                let mut out = HashMap::new();
+                out.insert("overall_success".to_string(), Value::Bool(true));
+                out.insert("report".to_string(), Value::Str("CI passed".to_string()));
+                out
+            }
+        }
+    }
+}

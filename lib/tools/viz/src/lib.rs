@@ -26,5 +26,5 @@ pub mod graph_mock;
 
 pub use discover::discover_all_dags;
 pub use export::{export_dag, VizCollection, VizGraph};
-pub use graph::{build_viz_graph, VizGraphOp};
+pub use graph::{build_viz_graph, viz_signature, VizGraphOp};
 pub use ops::VizOp;
