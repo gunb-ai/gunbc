@@ -1,0 +1,14 @@
+[package]
+name = "gunbc-ci"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "CI orchestration binary for gunbc"
+
+[dependencies]
+gunbc-ir = { workspace = true }
+gunbc-exec = { workspace = true }
+
+[[bin]]
+name = "gunbc-ci"
+path = "src/main.rs"

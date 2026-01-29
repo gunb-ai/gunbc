@@ -1,0 +1,28 @@
+[package]
+name = "gunbc-viz"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Interactive DAG visualizer for gunbc"
+
+[dependencies]
+gunbc-ir = { workspace = true }
+gunbc-exec = { workspace = true }
+gunbc-transport = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Import all tool crates to discover their DAGs generically
+gunbc-gist = { path = "../gunbc-gist" }
+gunbc-buck2 = { path = "../gunbc-buck2" }
+gunbc-makegen = { path = "../gunbc-makegen" }
+gunbc-deps = { path = "../gunbc-deps" }
+gunbc-ci = { path = "../gunbc-ci" }
+gunbc-bootstrap = { path = "../gunbc-bootstrap" }
+
+[dev-dependencies]
+gunbc-test = { workspace = true }
+
+[[bin]]
+name = "gunbc-viz"
+path = "src/main.rs"

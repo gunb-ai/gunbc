@@ -2,7 +2,32 @@
 resolver = "2"
 members = [
     "crates/gunbc-ir",
-    "crates/gunbc-validate",
     "crates/gunbc-exec",
-    "crates/gunbc-gistgen",
+    "crates/gunbc-test",
+    "crates/gunbc-testgen",
+    "crates/gunbc-codegen",
+    "crates/gunbc-transport",
+    "crates/gunbc-makegen",
+    "crates/gunbc-deps",
+    "crates/gunbc-ci",
+    "crates/gunbc-bootstrap",
+    "crates/gunbc-gist",
+    "crates/gunbc-buck2",
+    "crates/gunbc-viz",
 ]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[workspace.dependencies]
+gunbc-ir = { path = "crates/gunbc-ir" }
+gunbc-exec = { path = "crates/gunbc-exec" }
+gunbc-test = { path = "crates/gunbc-test" }
+gunbc-codegen = { path = "crates/gunbc-codegen" }
+gunbc-transport = { path = "crates/gunbc-transport" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "1.0"
+toml = "0.8"
