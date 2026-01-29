@@ -18,7 +18,7 @@ direction; it is the normalization target.
 ```
 V2 (authoring)  →  gunbc IR (this spec)  →  flat executable DAG
    patterns,           Node/Dag/Edge,           all Opaque,
-   typed semantics,    ports + guards,           skip predicates,
+   typed semantics,    ports + cardinality,      no SubDags,
    lane discipline     type registry             topo-sorted
 ```
 
@@ -79,13 +79,22 @@ builder.
 struct Port {
     name: PortName,
     type_id: TypeId,
-    guard: Option<Guard>,
+    cardinality: Cardinality,
+}
+
+enum Cardinality {
+    Zero,        // Signal only (Unit type)
+    One,         // Exactly one value (required)
+    ZeroOrOne,   // Optional
+    ZeroOrMore,  // List (may be empty)
+    OneOrMore,   // Non-empty list
 }
 ```
 
-A port is a named, typed connection point on a node. Input ports may
-carry a guard — a predicate on the incoming value that determines
-whether this node executes.
+A port is a named, typed connection point on a node. Every port has a
+cardinality that describes how many values can flow through it.
+Cardinality is the canonical way to express optionality — use
+`ZeroOrOne` for optional values, not external annotations.
 
 ### 1.4 Edge
 
@@ -100,24 +109,33 @@ An edge connects an output port of one node to an input port of another.
 The types of the connected ports must match. There is no other kind of
 dependency — if it's not an edge, it doesn't exist.
 
-### 1.5 Guard
+### 1.5 Conditional Execution
 
-```rust
-struct Guard {
-    predicate: GuardPredicate,
-}
+Conditional execution is modeled through **explicit DAG structure**, not
+through annotations on ports:
 
-enum GuardPredicate {
-    Equals(Value),
-    NotEquals(Value),
-    // extensible
-}
+- **Branch pattern**: Routes input to one of two sub-DAGs based on a
+  boolean condition. Only one branch executes.
+- **Optional cardinality**: Use `ZeroOrOne` to express that a value may
+  be absent. Downstream nodes must handle optionality explicitly.
+
+There are no "guards" as user-facing port annotations. Any conditional
+routing is expressed as explicit graph structure (Branch nodes) that the
+type system can validate.
+
 ```
-
-A guard on an input port determines whether the owning node executes.
-If the guard evaluates to false, the node is skipped and its outputs
-propagate a `Skipped` sentinel. Guards are the only mechanism for
-conditional execution — there are no implicit skips.
+┌─────────────────────────────────────────────┐
+│                   Branch                     │
+│           ┌───────────┐                     │
+│   ┌──────▶│ True DAG  │──────┐             │
+│   │       └───────────┘      │             │
+│ condition                    ▼             │
+│   │                      ┌───────┐         │
+│   │       ┌───────────┐  │ Merge │─▶ output│
+│   └──────▶│ False DAG │──┘       │         │
+│           └───────────┘          │         │
+└─────────────────────────────────────────────┘
+```
 
 ### 1.6 Identifiers
 
@@ -159,11 +177,12 @@ If a node has body `SubDag(dag)`, then:
   in the sub-DAG.
 - Types match at the boundary.
 
-### 2.5 Guard completeness
-If a node has a guarded input port, and the guard evaluates to false
-(node is skipped), every node that transitively depends on this node's
-outputs must handle the `Skipped` sentinel — either by having its own
-guard or by propagating `Skipped`.
+### 2.5 Cardinality honesty
+If a port declares `cardinality: One`, it must always produce exactly
+one value. If a value may be absent, the port must declare
+`cardinality: ZeroOrOne`. The type system enforces this — a `One` output
+cannot connect to a `One` input through a conditional path without an
+explicit merge that guarantees exactly one value.
 
 ### 2.6 Explicit opt-out
 If a pattern exists in the registry, every tool must either instantiate
@@ -266,27 +285,30 @@ lower(dag: Dag<T>) -> Dag<T>:
         if node.body is SubDag(inner):
             lowered_inner = lower(inner)
             inline lowered_inner's nodes and edges into dag
-            rewire: parent's input edges → inner source nodes
-            rewire: inner sink nodes → parent's output edges
+            rewire: parent's input edges → inner entrypoint nodes
+            rewire: inner boundary nodes → parent's output edges
             remove the parent node (replaced by its contents)
-        if node has guarded inputs:
-            attach skip_predicate to the lowered node
     return dag (all nodes are now Opaque)
 ```
 
 The result is `Dag<T>` where every node is `Opaque` — a flat execution
 graph. The fractal structure exists only before lowering.
 
+**Lowering is part of the trusted kernel**: it is only defined on
+validated SubDag nodes whose interface contracts were verified at
+construction, and it returns a validated DAG by construction. No
+re-validation is needed after lowering.
+
 ### 5.3 Execute
 
 The executor receives a flat `Dag<T>` (all `Opaque`). It:
 1. Topologically sorts nodes.
 2. Executes in dependency order (parallelizing independent nodes).
-3. Evaluates skip predicates before each node.
-4. Propagates `Skipped` sentinels through edges.
+3. Runs each node when its inputs are available.
 
 The executor has no knowledge of patterns, sub-DAGs, or levels. It sees
-nodes and edges.
+nodes and edges. Conditional execution is already encoded in the graph
+structure (Branch patterns) — the executor simply follows data flow.
 
 ---
 
@@ -313,7 +335,8 @@ declared I/O manifests, and runtime detection of undeclared access.
   named pattern at 2+ tools.
 - **New levels**: Open any opaque node into a sub-DAG. Same types,
   same invariants. No framework changes.
-- **New guard predicates**: Extend `GuardPredicate` enum.
+- **New conditional patterns**: Express as explicit DAG structure
+  (like Branch) that the type system can validate.
 - **Dynamic subgraphs**: A node may produce a `Dag<T>` as output,
   which the executor inlines and runs. This loses static analysis
   for that subgraph. Use sparingly.

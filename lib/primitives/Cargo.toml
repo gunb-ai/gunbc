@@ -1,0 +1,16 @@
+[package]
+name = "gunbc-primitives"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Fundamental DAG primitives - the leaf operations for all compositions"
+
+[dependencies]
+gunbc-ir = { path = "../../core/ir" }
+gunbc-exec = { path = "../../core/exec" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"
+
+[dev-dependencies]
+tempfile = "3"

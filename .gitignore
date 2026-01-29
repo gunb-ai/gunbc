@@ -22,6 +22,12 @@ Thumbs.db
 *.so
 *.dylib
 
+# Generated symlinks (created by build)
+/bin
+
+# Buck2 output
+/buck-out/
+
 # Generated files (keep these tracked)
 # Makefile
 # .github/workflows/ci.yml

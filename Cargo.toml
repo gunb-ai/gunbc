@@ -1,19 +1,28 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/gunbc-ir",
-    "crates/gunbc-exec",
-    "crates/gunbc-test",
-    "crates/gunbc-testgen",
-    "crates/gunbc-codegen",
-    "crates/gunbc-transport",
-    "crates/gunbc-makegen",
-    "crates/gunbc-deps",
-    "crates/gunbc-ci",
-    "crates/gunbc-bootstrap",
-    "crates/gunbc-gist",
-    "crates/gunbc-buck2",
-    "crates/gunbc-viz",
+    # Core crates (handwritten foundation)
+    "core/ir",
+    "core/exec",
+    "core/codegen",
+    "core/test",
+    "core/testgen",
+    
+    # Library crates (DAG op libraries)
+    "lib/primitives",
+    # "lib/fs",  # DEPRECATED: Consolidated into lib/primitives
+    "lib/gist-ops",
+    "lib/markdown",
+    "lib/transport",
+    
+    # Tool compositions (higher-level DAG pipelines)
+    "lib/tools/gist",
+    "lib/tools/buck2",
+    "lib/tools/viz",
+    "lib/tools/makegen",
+    "lib/tools/deps",
+    "lib/tools/ci",
+    "lib/tools/bootstrap",
 ]
 
 [workspace.package]
@@ -22,11 +31,6 @@ edition = "2021"
 license = "MIT"
 
 [workspace.dependencies]
-gunbc-ir = { path = "crates/gunbc-ir" }
-gunbc-exec = { path = "crates/gunbc-exec" }
-gunbc-test = { path = "crates/gunbc-test" }
-gunbc-codegen = { path = "crates/gunbc-codegen" }
-gunbc-transport = { path = "crates/gunbc-transport" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "1.0"
