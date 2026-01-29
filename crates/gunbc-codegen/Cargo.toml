@@ -1,9 +1,0 @@
-[package]
-name = "gunbc-codegen"
-version.workspace = true
-edition.workspace = true
-license.workspace = true
-description = "Shared code generation utilities for gunbc"
-
-[dependencies]
-gunbc-ir = { workspace = true }

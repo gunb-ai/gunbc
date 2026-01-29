@@ -1,0 +1,21 @@
+[package]
+name = "gunbc-buck2"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Buck2 file generation from Cargo.toml"
+
+[dependencies]
+gunbc-ir = { path = "../../../core/ir" }
+gunbc-exec = { path = "../../../core/exec" }
+gunbc-lib-fs = { path = "../../fs" }
+gunbc-lib-transport = { path = "../../transport" }
+toml = "0.8"
+serde_json = "1.0"
+
+[dev-dependencies]
+gunbc-test = { path = "../../../core/test" }
+
+[[bin]]
+name = "gunbc-buck2"
+path = "src/main.rs"

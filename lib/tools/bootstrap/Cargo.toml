@@ -1,0 +1,18 @@
+[package]
+name = "gunbc-bootstrap"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Bootstrap tool for initializing gunbc projects"
+
+[dependencies]
+gunbc-ir = { path = "../../../core/ir" }
+gunbc-exec = { path = "../../../core/exec" }
+gunbc-codegen = { path = "../../../core/codegen" }
+
+[dev-dependencies]
+gunbc-test = { path = "../../../core/test" }
+
+[[bin]]
+name = "gunbc-bootstrap"
+path = "src/main.rs"

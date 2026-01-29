@@ -15,6 +15,7 @@ dependencies = [
  "gunbc-codegen",
  "gunbc-exec",
  "gunbc-ir",
+ "gunbc-test",
 ]
 
 [[package]]
@@ -23,8 +24,9 @@ version = "0.1.0"
 dependencies = [
  "gunbc-exec",
  "gunbc-ir",
+ "gunbc-lib-fs",
+ "gunbc-lib-transport",
  "gunbc-test",
- "gunbc-transport",
  "serde_json",
  "toml",
 ]
@@ -35,6 +37,7 @@ version = "0.1.0"
 dependencies = [
  "gunbc-exec",
  "gunbc-ir",
+ "gunbc-test",
 ]
 
 [[package]]
@@ -69,8 +72,11 @@ version = "0.1.0"
 dependencies = [
  "gunbc-exec",
  "gunbc-ir",
+ "gunbc-lib-fs",
+ "gunbc-lib-gist-ops",
+ "gunbc-lib-markdown",
+ "gunbc-lib-transport",
  "gunbc-test",
- "gunbc-transport",
 ]
 
 [[package]]
@@ -78,6 +84,44 @@ name = "gunbc-ir"
 version = "0.1.0"
 dependencies = [
  "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "gunbc-lib-fs"
+version = "0.1.0"
+dependencies = [
+ "gunbc-exec",
+ "gunbc-ir",
+ "gunbc-test",
+]
+
+[[package]]
+name = "gunbc-lib-gist-ops"
+version = "0.1.0"
+dependencies = [
+ "gunbc-exec",
+ "gunbc-ir",
+ "gunbc-lib-transport",
+ "gunbc-test",
+]
+
+[[package]]
+name = "gunbc-lib-markdown"
+version = "0.1.0"
+dependencies = [
+ "gunbc-exec",
+ "gunbc-ir",
+ "gunbc-test",
+]
+
+[[package]]
+name = "gunbc-lib-transport"
+version = "0.1.0"
+dependencies = [
+ "gunbc-exec",
+ "gunbc-ir",
+ "gunbc-test",
  "serde_json",
 ]
 
@@ -108,15 +152,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gunbc-transport"
-version = "0.1.0"
-dependencies = [
- "gunbc-exec",
- "gunbc-ir",
- "serde_json",
-]
-
-[[package]]
 name = "gunbc-viz"
 version = "0.1.0"
 dependencies = [
@@ -127,9 +162,9 @@ dependencies = [
  "gunbc-exec",
  "gunbc-gist",
  "gunbc-ir",
+ "gunbc-lib-transport",
  "gunbc-makegen",
  "gunbc-test",
- "gunbc-transport",
  "serde",
  "serde_json",
 ]

@@ -1,0 +1,20 @@
+[package]
+name = "gunbc-deps"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Tool dependency management with upsert pattern"
+
+[dependencies]
+gunbc-ir = { path = "../../../core/ir" }
+gunbc-exec = { path = "../../../core/exec" }
+gunbc-test = { path = "../../../core/test" }
+serde = { version = "1.0", features = ["derive"] }
+toml = "0.8"
+
+[dev-dependencies]
+gunbc-test = { path = "../../../core/test" }
+
+[[bin]]
+name = "gunbc-deps"
+path = "src/main.rs"
