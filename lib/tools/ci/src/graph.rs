@@ -160,8 +160,8 @@ mod tests {
     #[test]
     fn test_graph_builds_successfully() {
         let dag = build_ci_graph().expect("graph should build");
-        assert_eq!(dag.nodes.len(), 5);
-        assert_eq!(dag.edges.len(), 6);
+        assert_eq!(dag.nodes.len(), 6); // setup_deps, prep, build, test, lint, report
+        assert_eq!(dag.edges.len(), 7); // setup->prep, prep->build, build->test, build->lint, build->report, test->report, lint->report
     }
 
     #[test]
@@ -174,12 +174,21 @@ mod tests {
     }
 
     #[test]
+    fn test_graph_has_prep() {
+        let dag = build_ci_graph().expect("graph should build");
+        
+        // Verify prep node exists
+        let prep = dag.get_node(&"prep".into());
+        assert!(prep.is_some(), "prep node should exist in CI graph");
+    }
+
+    #[test]
     fn test_graph_structure() {
         let dag = build_ci_graph().expect("graph should build");
 
-        assert_eq!(dag.nodes.len(), 5);
-        // setup->build, build->test, build->lint, build->report, test->report, lint->report
-        assert_eq!(dag.edges.len(), 6);
+        assert_eq!(dag.nodes.len(), 6);
+        // setup->prep, prep->build, build->test, build->lint, build->report, test->report, lint->report
+        assert_eq!(dag.edges.len(), 7);
     }
 
     #[test]
@@ -194,8 +203,8 @@ mod tests {
         let dag = build_ci_graph().expect("graph should build");
         let inferred = infer_signature(&dag);
         
-        // No inputs, 12 boundary outputs
+        // No inputs, 15 boundary outputs (added prep outputs and build_skipped)
         assert_eq!(inferred.inputs.len(), 0);
-        assert_eq!(inferred.outputs.len(), 12);
+        assert_eq!(inferred.outputs.len(), 15);
     }
 }

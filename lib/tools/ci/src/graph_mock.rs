@@ -53,6 +53,16 @@ pub fn ci_mock_spec_build_fails() -> MockSpec {
         .resource_lock("cargo:build")
 }
 
+/// Mock spec for testing prep/codegen failure.
+pub fn ci_mock_spec_prep_fails() -> MockSpec {
+    MockSpec::new("ci")
+        .boundary("prep", "prep_success", Value::Bool(false))
+        .boundary("prep", "codegen_ran", Value::Bool(true))
+        .boundary("prep", "prep_message", Value::Str("Codegen failed".into()))
+        .boundary("report", "overall_success", Value::Bool(false))
+        .boundary("report", "report", Value::Str(mock_ci_report_prep_fail()))
+}
+
 /// Mock spec for testing lint failure.
 pub fn ci_mock_spec_lint_fails() -> MockSpec {
     MockSpec::new("ci")
@@ -97,6 +107,18 @@ fn mock_ci_report_build_fail() -> String {
     r#"CI Report
 =========
 Build:  FAIL (compilation error)
+Test:   SKIPPED
+Lint:   SKIPPED
+
+Overall: FAILURE"#
+        .to_string()
+}
+
+fn mock_ci_report_prep_fail() -> String {
+    r#"CI Report
+=========
+Prep:   FAIL (codegen error)
+Build:  SKIPPED
 Test:   SKIPPED
 Lint:   SKIPPED
 
