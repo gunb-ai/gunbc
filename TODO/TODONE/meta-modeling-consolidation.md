@@ -1,8 +1,11 @@
 # Meta-Modeling Consolidation
 
-**Status**: In Progress
+**Status**: Complete (Core Goals Achieved)
 **Date**: 2026-01-29
-**Updated**: 2026-01-30
+**Completed**: 2026-01-30
+
+**Note**: Auto-discovery of tools from workspace is deferred as a future enhancement.
+The current manual `default_registry()` approach is explicit and works correctly.
 
 ## Goal
 
@@ -28,10 +31,11 @@ Consolidate all build artifact generation (Makefile, .gitignore, ci.yml) around 
 
 | Component | Issue | Fix |
 |-----------|-------|-----|
-| Bootstrap Makefile | Hardcoded in `ops.rs` | Use `render_makefile()` |
-| Bootstrap .gitignore | Hardcoded in `ops.rs` | Create `GitignoreRenderer` |
+| ~~Bootstrap Makefile~~ | ~~Hardcoded in `ops.rs`~~ | ✅ Uses `render_makefile()` |
+| ~~Bootstrap .gitignore~~ | ~~Hardcoded in `ops.rs`~~ | ✅ Uses `render_gitignore()` |
 | makegen tool list | Hardcoded in `default_registry()` | Derive from central registry |
 | Help text | Manually maintained | Generate from tool descriptions |
+| Documentation | Not updated | Update AGENT.md with patterns |
 
 ## Architecture
 
@@ -208,31 +212,38 @@ pub fn default_registry() -> Self {
 ## Tasks
 
 ### GitignoreRenderer
-- [ ] Create `gitignore.rs` module in makegen
-- [ ] Define `GitignoreConfig` struct
-- [ ] Define `LanguagePatterns` with Rust preset
-- [ ] Implement `GitignoreRenderer` with `Renderable`
-- [ ] Add `render_gitignore()` public function
-- [ ] Add unit tests
+- [x] Create `gitignore.rs` module in makegen
+- [x] Define `GitignoreConfig` struct (as `IgnoreCategory`)
+- [x] Define `LanguagePatterns` with Rust preset (via `derive_categories()`)
+- [x] Implement `GitignoreRenderer` with `Renderable`
+- [x] Add `render_gitignore()` public function
+- [x] Add unit tests
 
 ### Bootstrap Integration
-- [ ] Add makegen dependency to bootstrap Cargo.toml
-- [ ] Update `execute_generate_makefile()` to use renderer
-- [ ] Update `execute_generate_gitignore()` to use renderer
-- [ ] Update/fix bootstrap tests
+- [x] Add makegen dependency to bootstrap Cargo.toml
+- [x] Update `execute_generate_makefile()` to use renderer
+- [x] Update `execute_generate_gitignore()` to use renderer
+- [x] Update/fix bootstrap tests
 
 ### Documentation
-- [ ] Update AGENT.md with meta-modeling patterns
-- [ ] Document how to add new tools to registry
+- [x] Update AGENT.md with meta-modeling patterns
+- [x] Document how to add new tools to registry
+
+### Language Module Integration (Added 2026-01-30)
+- [x] Create `core/ir/src/language/` module with fractal DAG pattern
+- [x] Centralize comment syntax in `CommentSyntax` struct
+- [x] Update `Renderable` trait to use `format_id()` → `comment_syntax_for()`
+- [x] Add `generated_header()` function for consistent file headers
+- [x] Export MAKEFILE, RUST, GITIGNORE configs from language module
 
 ## Success Criteria
 
-- [ ] Bootstrap generates Makefile from `ToolRegistry` (not hardcoded)
-- [ ] Bootstrap generates .gitignore from `GitignoreConfig` (not hardcoded)
-- [ ] Adding a new tool to registry automatically updates Makefile
-- [ ] `BuildConfig` remains single source of truth for commands
-- [ ] All generation is deterministic and testable
-- [ ] No hardcoded tool lists anywhere
+- [x] Bootstrap generates Makefile from `ToolRegistry` (not hardcoded)
+- [x] Bootstrap generates .gitignore from `GitignoreConfig` (not hardcoded)
+- [x] Adding a new tool to registry automatically updates Makefile
+- [x] `BuildConfig` remains single source of truth for commands
+- [x] All generation is deterministic and testable
+- [~] No hardcoded tool lists anywhere (deferred: auto-discovery is future enhancement)
 
 ## Related Files
 
