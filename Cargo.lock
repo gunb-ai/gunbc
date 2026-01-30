@@ -221,6 +221,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "gunbc-workspace"
+version = "0.1.0"
+dependencies = [
+ "gunbc-bootstrap",
+ "gunbc-buck2",
+ "gunbc-ci",
+ "gunbc-clippy",
+ "gunbc-deps",
+ "gunbc-exec",
+ "gunbc-gist",
+ "gunbc-ir",
+ "gunbc-lib-gist-ops",
+ "gunbc-lib-transport",
+ "gunbc-makegen",
+ "gunbc-primitives",
+ "gunbc-test",
+]
+
+[[package]]
 name = "hashbrown"
 version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -7,6 +7,7 @@ members = [
     "core/codegen",
     "core/test",
     "core/testgen",
+    "core/workspace",  # Unified WorkspaceOp and fractal DAG composition
     
     # Library crates (DAG op libraries)
     "lib/primitives",
