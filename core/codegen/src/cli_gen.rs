@@ -129,7 +129,6 @@ pub fn generate_cli_with_import(
     custom_import: Option<&str>,
 ) -> String {
     let crate_module = tool.crate_name.replace('-', "_");
-    let graph_op_type = format!("{}GraphOp", capitalize(&tool.tool_name));
     let arg_parsing = generate_arg_parsing(entrypoints);
     let mock_setup = generate_mock_setup(boundaries);
     let print_inputs = generate_print_inputs(entrypoints);
@@ -137,7 +136,7 @@ pub fn generate_cli_with_import(
     let help_options = generate_help_options(entrypoints);
     
     let import_line = custom_import.unwrap_or_else(|| "").to_string();
-    let default_import = format!("use {}::{{build_{}_graph, {}}};", crate_module, tool.tool_name, graph_op_type);
+    let default_import = format!("use {}::build_{}_graph;", crate_module, tool.tool_name);
     let actual_import = if import_line.is_empty() { default_import } else { import_line };
 
     // Generate the graph builder call - handle Result-returning builders
@@ -227,10 +226,6 @@ fn main() {{
             process::exit(1);
         }}
     }}
-}}
-
-fn tool_name() -> &'static str {{
-    "{tool_name}"
 }}
 
 fn print_value(port: &str, value: &Value) {{
@@ -434,14 +429,6 @@ fn generate_help_options(entrypoints: &[CliEntrypoint]) -> String {
         ));
     }
     code
-}
-
-fn capitalize(s: &str) -> String {
-    let mut c = s.chars();
-    match c.next() {
-        None => String::new(),
-        Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
-    }
 }
 
 #[cfg(test)]
