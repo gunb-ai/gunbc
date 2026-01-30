@@ -1,5 +1,9 @@
 # Clippy configuration for gunbc
 #
+# BuilderError is intentionally large (144 bytes) to contain diagnostic info.
+# Increase the threshold to allow it in Result types.
+large-error-threshold = 256
+
 # This enforces two patterns:
 #
 # 1. TRANSPORT PATTERN: Direct I/O operations disallowed outside approved crates

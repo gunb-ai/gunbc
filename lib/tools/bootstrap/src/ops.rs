@@ -173,6 +173,32 @@ Thumbs.db
     Ok(out)
 }
 
+// Mockable implementation for test generation
+use gunbc_test::Mockable;
+
+impl Mockable for BootstrapOp {
+    fn mock_outputs(&self) -> HashMap<String, Value> {
+        match self {
+            BootstrapOp::ScanWorkspace => {
+                let mut out = HashMap::new();
+                out.insert("crate_count".to_string(), Value::Int(5));
+                out.insert("crate_names".to_string(), Value::StrList(vec!["lib-a".to_string(), "lib-b".to_string()]));
+                out
+            }
+            BootstrapOp::GenerateMakefile => {
+                let mut out = HashMap::new();
+                out.insert("makefile_content".to_string(), Value::Str("# Mock Makefile".to_string()));
+                out
+            }
+            BootstrapOp::GenerateGitignore => {
+                let mut out = HashMap::new();
+                out.insert("gitignore_content".to_string(), Value::Str("# Mock .gitignore\n/target/".to_string()));
+                out
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -201,32 +227,6 @@ mod tests {
                 assert!(content.contains(".DS_Store"));
             }
             _ => panic!("expected gitignore content"),
-        }
-    }
-}
-
-// Mockable implementation for test generation
-use gunbc_test::Mockable;
-
-impl Mockable for BootstrapOp {
-    fn mock_outputs(&self) -> HashMap<String, Value> {
-        match self {
-            BootstrapOp::ScanWorkspace => {
-                let mut out = HashMap::new();
-                out.insert("crate_count".to_string(), Value::Int(5));
-                out.insert("crate_names".to_string(), Value::StrList(vec!["lib-a".to_string(), "lib-b".to_string()]));
-                out
-            }
-            BootstrapOp::GenerateMakefile => {
-                let mut out = HashMap::new();
-                out.insert("makefile_content".to_string(), Value::Str("# Mock Makefile".to_string()));
-                out
-            }
-            BootstrapOp::GenerateGitignore => {
-                let mut out = HashMap::new();
-                out.insert("gitignore_content".to_string(), Value::Str("# Mock .gitignore\n/target/".to_string()));
-                out
-            }
         }
     }
 }

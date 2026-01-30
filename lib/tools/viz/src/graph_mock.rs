@@ -55,7 +55,7 @@ pub fn viz_mock_spec_custom_path(path: &str) -> MockSpec {
             })),
         )
         .expects_input("output_path", InputConstraint::Any)
-        .resource_lock(&format!("fs:{}", path))
+        .resource_lock(format!("fs:{}", path))
 }
 
 /// Mock spec for testing file system failure.

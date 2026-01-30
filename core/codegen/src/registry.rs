@@ -211,6 +211,7 @@ impl ToolDef {
                 graph_builder: graph_builder.to_string(),
                 graph_builder_args: graph_builder_args.to_string(),
                 returns_result: false,
+                success_port: None,
             },
             entrypoints: vec![],
             boundaries: vec![],
@@ -223,6 +224,13 @@ impl ToolDef {
     /// Mark that this tool's graph builder returns Result<Dag, BuilderError>.
     pub fn returns_result(mut self) -> Self {
         self.meta.returns_result = true;
+        self
+    }
+
+    /// Set the output port to check for success.
+    /// If this port is false, the CLI exits with code 1.
+    pub fn check_success(mut self, port_name: &str) -> Self {
+        self.meta.success_port = Some(port_name.to_string());
         self
     }
 
@@ -417,11 +425,13 @@ pub fn all_tools() -> Vec<ToolDef> {
             "",
         )
         .returns_result()
+        .check_success("overall_success")  // Exit with code 1 if any step fails
         .import("use gunbc_ci::build_ci_graph;")
         .boundary(
-            "run_tests",
+            "report",
             vec![
-                ("passed", "Value::Bool(true)"),
+                ("overall_success", "Value::Bool(true)"),
+                ("report", "Value::Str(\"<DRY-RUN>\".to_string())"),
             ],
         ),
 

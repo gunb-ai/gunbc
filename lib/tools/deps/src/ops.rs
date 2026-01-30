@@ -306,6 +306,7 @@ mod tests {
     use std::fs;
 
     #[test]
+    #[allow(clippy::disallowed_methods)] // Test needs direct fs access
     fn test_generate_scripts_with_temp_manifest() {
         let temp_dir = env::temp_dir();
         let manifest_path = temp_dir.join("test-deps.toml");

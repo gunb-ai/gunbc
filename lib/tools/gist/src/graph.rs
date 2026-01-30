@@ -182,6 +182,48 @@ pub fn build_gist_graph(extensions: Vec<String>, public: bool) -> Result<Dag<Gis
     Ok(builder.build())
 }
 
+// Mockable implementation for test generation
+use gunbc_test::Mockable;
+
+impl Mockable for GistGraphOp {
+    fn mock_outputs(&self) -> HashMap<String, Value> {
+        match self {
+            GistGraphOp::ListFiles(_) => {
+                let mut out = HashMap::new();
+                out.insert("files".to_string(), Value::StrList(vec!["src/main.rs".to_string(), "README.md".to_string()]));
+                out
+            }
+            GistGraphOp::ReadFiles(_) => {
+                let mut out = HashMap::new();
+                let mut contents = std::collections::BTreeMap::new();
+                contents.insert("src/main.rs".to_string(), "fn main() {}".to_string());
+                out.insert("contents".to_string(), Value::MapStrStr(contents));
+                out
+            }
+            GistGraphOp::FilterByExtension { .. } => {
+                let mut out = HashMap::new();
+                out.insert("files".to_string(), Value::StrList(vec!["src/main.rs".to_string()]));
+                out
+            }
+            GistGraphOp::Markdown(_) => {
+                let mut out = HashMap::new();
+                out.insert("markdown".to_string(), Value::Str("# Code Snapshot\n```rust\nfn main() {}\n```".to_string()));
+                out
+            }
+            GistGraphOp::Gist(_) => {
+                let mut out = HashMap::new();
+                out.insert("url".to_string(), Value::Str("https://gist.github.com/mock/123".to_string()));
+                out.insert("response".to_string(), Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse {
+                    exit_code: 0,
+                    stdout: "https://gist.github.com/mock/123".to_string(),
+                    stderr: String::new(),
+                })));
+                out
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -269,47 +311,5 @@ mod tests {
         let output_names: Vec<_> = inferred.outputs.iter().map(|p| p.name.0.as_str()).collect();
         assert!(output_names.contains(&"response"));
         assert!(output_names.contains(&"url"));
-    }
-}
-
-// Mockable implementation for test generation
-use gunbc_test::Mockable;
-
-impl Mockable for GistGraphOp {
-    fn mock_outputs(&self) -> HashMap<String, Value> {
-        match self {
-            GistGraphOp::ListFiles(_) => {
-                let mut out = HashMap::new();
-                out.insert("files".to_string(), Value::StrList(vec!["src/main.rs".to_string(), "README.md".to_string()]));
-                out
-            }
-            GistGraphOp::ReadFiles(_) => {
-                let mut out = HashMap::new();
-                let mut contents = std::collections::BTreeMap::new();
-                contents.insert("src/main.rs".to_string(), "fn main() {}".to_string());
-                out.insert("contents".to_string(), Value::MapStrStr(contents));
-                out
-            }
-            GistGraphOp::FilterByExtension { .. } => {
-                let mut out = HashMap::new();
-                out.insert("files".to_string(), Value::StrList(vec!["src/main.rs".to_string()]));
-                out
-            }
-            GistGraphOp::Markdown(_) => {
-                let mut out = HashMap::new();
-                out.insert("markdown".to_string(), Value::Str("# Code Snapshot\n```rust\nfn main() {}\n```".to_string()));
-                out
-            }
-            GistGraphOp::Gist(_) => {
-                let mut out = HashMap::new();
-                out.insert("url".to_string(), Value::Str("https://gist.github.com/mock/123".to_string()));
-                out.insert("response".to_string(), Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse {
-                    exit_code: 0,
-                    stdout: "https://gist.github.com/mock/123".to_string(),
-                    stderr: String::new(),
-                })));
-                out
-            }
-        }
     }
 }

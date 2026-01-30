@@ -343,22 +343,6 @@ Overall: {}
     Ok(out)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_setup_deps_no_manifest() {
-        // This test runs in a temp dir without deps.toml
-        let result = execute_setup_deps(HashMap::new()).unwrap();
-        
-        match result.get("deps_checked") {
-            Some(Value::Bool(b)) => assert!(*b),
-            _ => panic!("expected deps_checked"),
-        }
-    }
-}
-
 // Mockable implementation for test generation
 use gunbc_test::Mockable;
 
@@ -409,6 +393,22 @@ impl Mockable for CIOp {
                 out.insert("report".to_string(), Value::Str("CI passed".to_string()));
                 out
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_setup_deps_no_manifest() {
+        // This test runs in a temp dir without deps.toml
+        let result = execute_setup_deps(HashMap::new()).unwrap();
+        
+        match result.get("deps_checked") {
+            Some(Value::Bool(b)) => assert!(*b),
+            _ => panic!("expected deps_checked"),
         }
     }
 }

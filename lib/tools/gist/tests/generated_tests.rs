@@ -92,37 +92,39 @@ fn test_all_edges_compatible() {
 /// Test edge list_files.files -> filter_files.files type compatibility.
 #[test]
 fn test_edge_list_files_files_to_filter_files_files() {
-    // StrList -> StrList
-    assert!(true, "Types StrList and StrList should be compatible");
+    let dag = build_gist_graph(vec![], false).expect("Failed to build gist graph");
+    // StrList -> StrList: verified by edge existence in graph
+    assert!(dag.edges.iter().any(|e| e.from_node.0 == "list_files" && e.to_node.0 == "filter_files"));
 }
 
 /// Test edge filter_files.files -> read_files.files type compatibility.
 #[test]
 fn test_edge_filter_files_files_to_read_files_files() {
-    // StrList -> StrList
-    assert!(true, "Types StrList and StrList should be compatible");
+    let dag = build_gist_graph(vec![], false).expect("Failed to build gist graph");
+    // StrList -> StrList: verified by edge existence in graph
+    assert!(dag.edges.iter().any(|e| e.from_node.0 == "filter_files" && e.to_node.0 == "read_files"));
 }
 
 /// Test edge read_files.contents -> render_markdown.contents type compatibility.
 #[test]
 fn test_edge_read_files_contents_to_render_markdown_contents() {
-    // MapStrStr -> MapStrStr
-    assert!(true, "Types MapStrStr and MapStrStr should be compatible");
+    let dag = build_gist_graph(vec![], false).expect("Failed to build gist graph");
+    // MapStrStr -> MapStrStr: verified by edge existence in graph
+    assert!(dag.edges.iter().any(|e| e.from_node.0 == "read_files" && e.to_node.0 == "render_markdown"));
 }
 
 /// Test edge render_markdown.markdown -> prepare_gist_request.markdown type compatibility.
 #[test]
 fn test_edge_render_markdown_markdown_to_prepare_gist_request_markdown() {
-    // String -> String
-    assert!(true, "Types String and String should be compatible");
+    let dag = build_gist_graph(vec![], false).expect("Failed to build gist graph");
+    // String -> String: verified by edge existence in graph
+    assert!(dag.edges.iter().any(|e| e.from_node.0 == "render_markdown" && e.to_node.0 == "prepare_gist_request"));
 }
 
 /// Test edge prepare_gist_request.request -> execute_transport.request type compatibility.
 #[test]
 fn test_edge_prepare_gist_request_to_execute_transport() {
-    // TransportRequest -> TransportRequest
-    assert!(
-        true,
-        "Types TransportRequest and TransportRequest should be compatible"
-    );
+    let dag = build_gist_graph(vec![], false).expect("Failed to build gist graph");
+    // TransportRequest -> TransportRequest: verified by edge existence in graph
+    assert!(dag.edges.iter().any(|e| e.from_node.0 == "prepare_gist_request" && e.to_node.0 == "execute_transport"));
 }

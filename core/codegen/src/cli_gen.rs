@@ -21,6 +21,9 @@ pub struct ToolMeta {
     pub graph_builder_args: String,
     /// Whether the graph builder returns Result<Dag, BuilderError>
     pub returns_result: bool,
+    /// Output port to check for success (e.g., "overall_success" for CI).
+    /// If this port is false, the CLI exits with code 1.
+    pub success_port: Option<String>,
 }
 
 /// An entrypoint that becomes a CLI flag.
@@ -134,6 +137,7 @@ pub fn generate_cli_with_import(
     let print_inputs = generate_print_inputs(entrypoints);
     let final_output = generate_final_output(boundaries);
     let help_options = generate_help_options(entrypoints);
+    let success_check = generate_success_check(&tool.success_port);
     
     let import_line = custom_import.unwrap_or("").to_string();
     let default_import = format!("use {}::build_{}_graph;", crate_module, tool.tool_name);
@@ -218,6 +222,7 @@ fn main() {{
                 }}
             }}
 {final_output}
+{success_check}
         }}
         Err(e) => {{
             eprintln!("Error: {{}}", e);
@@ -228,8 +233,18 @@ fn main() {{
 
 fn print_value(port: &str, value: &Value) {{
     match value {{
-        Value::Str(s) if s.len() < 80 => println!("  {{}}: {{}}", port, s),
-        Value::Str(s) => println!("  {{}}: {{}}...", port, &s[..60.min(s.len())]),
+        Value::Str(s) => {{
+            // For stderr/stdout, print full output (important for debugging CI failures)
+            if port.ends_with("stderr") || port.ends_with("stdout") {{
+                if !s.is_empty() {{
+                    println!("  {{}}: {{}}", port, s);
+                }}
+            }} else if s.len() < 80 {{
+                println!("  {{}}: {{}}", port, s);
+            }} else {{
+                println!("  {{}}: {{}}...", port, &s[..60.min(s.len())]);
+            }}
+        }}
         Value::Int(i) => println!("  {{}}: {{}}", port, i),
         Value::Bool(b) => println!("  {{}}: {{}}", port, b),
         Value::StrList(list) => println!("  {{}}: [{{}} items]", port, list.len()),
@@ -258,6 +273,7 @@ fn print_help() {{
         mock_setup = mock_setup,
         print_inputs = print_inputs,
         final_output = final_output,
+        success_check = success_check,
         description = tool.description,
         help_options = help_options,
     )
@@ -409,6 +425,23 @@ fn generate_final_output(_boundaries: &[CliBoundary]) -> String {
     String::new()
 }
 
+/// Generate code to check a success port and exit with code 1 if false.
+fn generate_success_check(success_port: &Option<String>) -> String {
+    match success_port {
+        Some(port) => format!(
+            r#"
+            // Check success port and exit with appropriate code
+            for entry in &log.entries {{
+                if let Some(Value::Bool(false)) = entry.outputs.get("{}") {{
+                    process::exit(1);
+                }}
+            }}"#,
+            port
+        ),
+        None => String::new(),
+    }
+}
+
 fn generate_help_options(entrypoints: &[CliEntrypoint]) -> String {
     let mut code = String::new();
     for ep in entrypoints {
@@ -448,6 +481,7 @@ mod tests {
             graph_builder: "build_gist_graph".to_string(),
             graph_builder_args: "extensions.clone(), public".to_string(),
             returns_result: false,
+            success_port: None,
         };
 
         let entrypoints = vec![

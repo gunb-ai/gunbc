@@ -104,6 +104,39 @@ fn chrono_lite() -> String {
     format!("{}", duration.as_secs())
 }
 
+// Mockable implementation for test generation
+use gunbc_test::Mockable;
+
+impl Mockable for VizOp {
+    fn mock_outputs(&self) -> HashMap<String, Value> {
+        match self {
+            VizOp::CollectDags => {
+                let mut out = HashMap::new();
+                out.insert("graph_count".to_string(), Value::Int(7));
+                out.insert("graph_names".to_string(), Value::StrList(vec![
+                    "gunbc-gist".to_string(), 
+                    "gunbc-buck2".to_string(),
+                ]));
+                out.insert("graphs".to_string(), Value::Json(serde_json::json!([])));
+                out
+            }
+            VizOp::ExportJson => {
+                let mut out = HashMap::new();
+                out.insert("json_content".to_string(), Value::Str("{\"graphs\":[]}".to_string()));
+                out.insert("content".to_string(), Value::Str("{\"graphs\":[]}".to_string()));
+                out
+            }
+            VizOp::PrepareVizOutput => {
+                let mut out = HashMap::new();
+                out.insert("request".to_string(), Value::Request(gunbc_ir::transport::TransportRequest::File(
+                    gunbc_ir::transport::FileRequest::write("viz-data.json", "{}"),
+                )));
+                out
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -136,39 +169,6 @@ mod tests {
                 assert!(s.contains("graphs"));
             }
             _ => panic!("expected JSON content"),
-        }
-    }
-}
-
-// Mockable implementation for test generation
-use gunbc_test::Mockable;
-
-impl Mockable for VizOp {
-    fn mock_outputs(&self) -> HashMap<String, Value> {
-        match self {
-            VizOp::CollectDags => {
-                let mut out = HashMap::new();
-                out.insert("graph_count".to_string(), Value::Int(7));
-                out.insert("graph_names".to_string(), Value::StrList(vec![
-                    "gunbc-gist".to_string(), 
-                    "gunbc-buck2".to_string(),
-                ]));
-                out.insert("graphs".to_string(), Value::Json(serde_json::json!([])));
-                out
-            }
-            VizOp::ExportJson => {
-                let mut out = HashMap::new();
-                out.insert("json_content".to_string(), Value::Str("{\"graphs\":[]}".to_string()));
-                out.insert("content".to_string(), Value::Str("{\"graphs\":[]}".to_string()));
-                out
-            }
-            VizOp::PrepareVizOutput => {
-                let mut out = HashMap::new();
-                out.insert("request".to_string(), Value::Request(gunbc_ir::transport::TransportRequest::File(
-                    gunbc_ir::transport::FileRequest::write("viz-data.json", "{}"),
-                )));
-                out
-            }
         }
     }
 }

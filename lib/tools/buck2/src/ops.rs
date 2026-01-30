@@ -212,8 +212,7 @@ fn execute_generate_targets(
             .or_else(|| member.strip_prefix("core/"))
             .or_else(|| member.strip_prefix("lib/"))
             .unwrap_or(member)
-            .replace('-', "_")
-            .replace('/', "_");
+            .replace(['-', '/'], "_");
 
         // Determine if it's a binary or library (would be: Branch based on file exists)
         let member_path = Path::new(member);
@@ -261,6 +260,35 @@ fn execute_generate_targets(
     let mut out = HashMap::new();
     out.insert("buck_content".to_string(), Value::Str(buck_content));
     Ok(out)
+}
+
+// Mockable implementation for test generation
+use gunbc_test::Mockable;
+
+impl Mockable for Buck2Op {
+    fn mock_outputs(&self) -> HashMap<String, Value> {
+        match self {
+            Buck2Op::ParseCargoToml => {
+                let mut out = HashMap::new();
+                out.insert("cargo_toml".to_string(), Value::Json(serde_json::json!({
+                    "package": { "name": "test-crate" },
+                    "workspace": { "members": ["crates/foo"] }
+                })));
+                out
+            }
+            Buck2Op::ExtractDeps => {
+                let mut out = HashMap::new();
+                out.insert("members".to_string(), Value::StrList(vec!["foo".to_string()]));
+                out.insert("deps".to_string(), Value::MapStrStr(std::collections::BTreeMap::new()));
+                out
+            }
+            Buck2Op::GenerateBuckTargets => {
+                let mut out = HashMap::new();
+                out.insert("buck_content".to_string(), Value::Str("# Mock BUCK content\nrust_library(name = \"foo\")".to_string()));
+                out
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -317,35 +345,6 @@ mod tests {
                 assert!(content.contains("crates/foo"), "should contain path");
             }
             _ => panic!("expected buck content"),
-        }
-    }
-}
-
-// Mockable implementation for test generation
-use gunbc_test::Mockable;
-
-impl Mockable for Buck2Op {
-    fn mock_outputs(&self) -> HashMap<String, Value> {
-        match self {
-            Buck2Op::ParseCargoToml => {
-                let mut out = HashMap::new();
-                out.insert("cargo_toml".to_string(), Value::Json(serde_json::json!({
-                    "package": { "name": "test-crate" },
-                    "workspace": { "members": ["crates/foo"] }
-                })));
-                out
-            }
-            Buck2Op::ExtractDeps => {
-                let mut out = HashMap::new();
-                out.insert("members".to_string(), Value::StrList(vec!["foo".to_string()]));
-                out.insert("deps".to_string(), Value::MapStrStr(std::collections::BTreeMap::new()));
-                out
-            }
-            Buck2Op::GenerateBuckTargets => {
-                let mut out = HashMap::new();
-                out.insert("buck_content".to_string(), Value::Str("# Mock BUCK content\nrust_library(name = \"foo\")".to_string()));
-                out
-            }
         }
     }
 }

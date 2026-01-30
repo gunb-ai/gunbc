@@ -64,7 +64,7 @@ pub fn buck2_mock_spec_custom_output(path: &str) -> MockSpec {
         .expects_input("cargo_toml_path", InputConstraint::NonEmpty)
         .expects_input("output_path", InputConstraint::Any)
         .resource_lock("fs:Cargo.toml")
-        .resource_lock(&format!("fs:{}", path))
+        .resource_lock(format!("fs:{}", path))
 }
 
 /// Mock spec for testing missing Cargo.toml.
