@@ -27,15 +27,42 @@
 //! ```
 
 use super::GH_CLI_MIN_VERSION;
+use crate::transport::tool::{InstallInputs, InstallOption, ToolDef};
 use crate::transport::ShellRequest;
 
 // ============================================================================
-// Tool Definition
+// Tool Definition (New - uses tool module)
 // ============================================================================
 
-/// GitHub CLI tool definition.
+/// GitHub CLI tool definition using the unified ToolDef type.
+///
+/// This is the source of truth for gh CLI installation. It integrates with
+/// the tool registry for satisfiability checks and deps.toml generation.
+pub static GH_TOOL: ToolDef = ToolDef {
+    id: "gh",
+    command: "gh",
+    verify: "gh --version",
+    install_options: &[
+        InstallOption {
+            via: "apt",
+            inputs: InstallInputs::packages(&["gh"]),
+        },
+        InstallOption {
+            via: "brew",
+            inputs: InstallInputs::packages(&["gh"]),
+        },
+    ],
+    depends_on: &[],
+};
+
+// ============================================================================
+// Legacy Tool Definition (kept for backward compatibility)
+// ============================================================================
+
+/// GitHub CLI tool definition (legacy).
 ///
 /// Contains all metadata needed to identify, verify, and document the gh CLI.
+/// For new code, prefer using `GH_TOOL` which integrates with the tool registry.
 #[derive(Debug, Clone)]
 pub struct GitHubCLI {
     /// Unique identifier for this tool (used in deps.toml, etc.)
@@ -50,7 +77,9 @@ pub struct GitHubCLI {
     pub docs_url: &'static str,
 }
 
-/// The gh CLI tool definition.
+/// The gh CLI tool definition (legacy).
+///
+/// For new code, prefer using `GH_TOOL` which integrates with the tool registry.
 pub const GH_CLI: GitHubCLI = GitHubCLI {
     id: "gh",
     command: "gh",
@@ -398,5 +427,39 @@ mod tests {
         let _release = InstallMethod::GithubRelease {
             url_template: "https://github.com/...",
         };
+    }
+
+    #[test]
+    fn test_gh_tool_definition() {
+        // Test the new unified ToolDef
+        assert_eq!(GH_TOOL.id, "gh");
+        assert_eq!(GH_TOOL.command, "gh");
+        assert_eq!(GH_TOOL.verify, "gh --version");
+        assert!(GH_TOOL.depends_on.is_empty());
+
+        // Should have apt and brew install options
+        let apt_opt = GH_TOOL.install_options.iter().find(|o| o.via == "apt");
+        assert!(apt_opt.is_some());
+        assert_eq!(apt_opt.unwrap().inputs.packages, Some(&["gh"][..]));
+
+        let brew_opt = GH_TOOL.install_options.iter().find(|o| o.via == "brew");
+        assert!(brew_opt.is_some());
+        assert_eq!(brew_opt.unwrap().inputs.packages, Some(&["gh"][..]));
+    }
+
+    #[test]
+    fn test_gh_tool_satisfiable() {
+        use crate::transport::tool::{is_satisfiable, default_tool_registry};
+        use std::collections::HashSet;
+
+        let registry = default_tool_registry();
+        
+        // gh should be satisfiable via apt (ubuntu)
+        let apt_available: HashSet<&str> = ["apt"].into_iter().collect();
+        assert!(is_satisfiable(&GH_TOOL, &apt_available, &registry).is_ok());
+
+        // gh should be satisfiable via brew (macos)
+        let brew_available: HashSet<&str> = ["brew"].into_iter().collect();
+        assert!(is_satisfiable(&GH_TOOL, &brew_available, &registry).is_ok());
     }
 }
