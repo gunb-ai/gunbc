@@ -39,8 +39,5 @@ jobs:
           restore-keys: |
             cargo-${{ runner.os }}-
 
-      - name: Generate CLI Code
-        run: cargo run -p gunbc-codegen --release -- codegen
-
       - name: Run CI Pipeline
         run: cargo run -p gunbc-ci --release

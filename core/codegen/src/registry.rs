@@ -425,26 +425,10 @@ pub fn all_tools() -> Vec<ToolDef> {
             ],
         ),
 
-        // gunbc-ci (uses DagBuilder - returns Result)
-        // Step mode enabled for CI visibility in GitHub Actions / GitLab CI
-        ToolDef::new(
-            "gunbc-ci",
-            "ci",
-            "Run CI pipeline",
-            "build_ci_graph",
-            "",
-        )
-        .returns_result()
-        .check_success("overall_success")  // Exit with code 1 if any step fails
-        .enable_step_mode()  // Enable `step <node>` subcommand for CI
-        .import("use gunbc_ci::build_ci_graph;")
-        .boundary(
-            "report",
-            vec![
-                ("overall_success", "Value::Bool(true)"),
-                ("report", "Value::Str(\"<DRY-RUN>\".to_string())"),
-            ],
-        ),
+        // NOTE: gunbc-ci is NOT in this registry.
+        // It has a handwritten main.rs because it's the bootstrap tool that
+        // runs codegen for other tools. It cannot depend on generated code.
+        // See lib/tools/ci/src/main.rs
 
         // gunbc-bootstrap (uses DagBuilder - returns Result)
         ToolDef::new(

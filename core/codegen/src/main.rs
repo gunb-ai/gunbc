@@ -262,90 +262,67 @@ fn cmd_daggen(dry_run: bool) {
     println!("Generated: {}, Skipped: {}", generated, skipped);
 }
 
-/// Generate CI workflow YAML files for tools with step mode enabled.
+/// Generate CI workflow YAML files.
 ///
-/// Generates both GitHub Actions and GitLab CI configurations from the
-/// CI DAG structure. Currently generates a template based on the tool's
-/// enable_step_mode flag.
+/// Generates both GitHub Actions and GitLab CI configurations.
+/// The CI tool (gunbc-ci) has a handwritten main.rs that handles
+/// the resource acquisition pattern internally - it runs codegen
+/// if generated files are missing.
 fn cmd_cigen(dry_run: bool) {
     println!("gunbc-codegen: cigen");
     println!("  mode: {}", if dry_run { "dry-run" } else { "real" });
     println!();
     
     let writer = FileWriter::new(dry_run);
-    let tools = all_tools();
     
     let github_provider = GitHubActionsProvider;
     let gitlab_provider = GitLabCiProvider::default();
     
-    let mut generated = 0;
-    let mut skipped = 0;
+    // Generate CI YAML for gunbc-ci
+    // gunbc-ci is special - it has a handwritten main.rs that handles codegen internally
+    let config = RenderConfig::new("ci", "gunbc-ci")
+        .with_runner("ubuntu-latest")
+        .with_env("CARGO_TERM_COLOR", "always")
+        .with_branches(vec!["main"]);
     
-    for tool in &tools {
-        if tool.meta.enable_step_mode {
-            // Generate GitHub Actions YAML
-            let config = RenderConfig::new(&tool.meta.tool_name, &tool.meta.crate_name)
-                .with_runner("ubuntu-latest")
-                .with_env("CARGO_TERM_COLOR", "always")
-                .with_branches(vec!["main"]);
-            
-            // Create a minimal DAG for rendering (since we can't call the graph builder at compile time)
-            // The actual step names come from the CI tool's list-steps command at runtime
-            let ci_yaml = generate_ci_yaml_template(&github_provider, &config);
-            let github_path = github_provider.output_path(&tool.meta.tool_name);
-            
-            match writer.write(Path::new(&github_path), &ci_yaml) {
-                Ok(result) => {
-                    let status = if result.written {
-                        if result.changed { "written" } else { "unchanged" }
-                    } else {
-                        "dry-run"
-                    };
-                    println!("  [{}] {} ({})", tool.meta.tool_name, github_path, status);
-                    generated += 1;
-                }
-                Err(e) => {
-                    eprintln!("  [{}] GitHub Actions ERROR: {}", tool.meta.tool_name, e);
-                }
-            }
-            
-            // Generate GitLab CI YAML
-            let gitlab_yaml = generate_ci_yaml_template(&gitlab_provider, &config);
-            let gitlab_path = gitlab_provider.output_path(&tool.meta.tool_name);
-            
-            match writer.write(Path::new(&gitlab_path), &gitlab_yaml) {
-                Ok(result) => {
-                    let status = if result.written {
-                        if result.changed { "written" } else { "unchanged" }
-                    } else {
-                        "dry-run"
-                    };
-                    println!("  [{}] {} ({})", tool.meta.tool_name, gitlab_path, status);
-                    generated += 1;
-                }
-                Err(e) => {
-                    eprintln!("  [{}] GitLab CI ERROR: {}", tool.meta.tool_name, e);
-                }
-            }
-        } else {
-            skipped += 1;
+    // Generate GitHub Actions YAML
+    let ci_yaml = generate_github_actions_template(&config);
+    let github_path = github_provider.output_path("ci");
+    
+    match writer.write(Path::new(&github_path), &ci_yaml) {
+        Ok(result) => {
+            let status = if result.written {
+                if result.changed { "written" } else { "unchanged" }
+            } else {
+                "dry-run"
+            };
+            println!("  [ci] {} ({})", github_path, status);
+        }
+        Err(e) => {
+            eprintln!("  [ci] GitHub Actions ERROR: {}", e);
+        }
+    }
+    
+    // Generate GitLab CI YAML
+    let gitlab_yaml = generate_gitlab_ci_template(&config);
+    let gitlab_path = gitlab_provider.output_path("ci");
+    
+    match writer.write(Path::new(&gitlab_path), &gitlab_yaml) {
+        Ok(result) => {
+            let status = if result.written {
+                if result.changed { "written" } else { "unchanged" }
+            } else {
+                "dry-run"
+            };
+            println!("  [ci] {} ({})", gitlab_path, status);
+        }
+        Err(e) => {
+            eprintln!("  [ci] GitLab CI ERROR: {}", e);
         }
     }
     
     println!();
-    println!("Generated: {} CI files, Skipped: {} tools", generated, skipped);
-}
-
-/// Generate CI YAML template for a tool using the given provider.
-///
-/// Since we can't call the graph builder at compile time (circular dependency),
-/// we generate a template that uses the tool's step mode CLI interface.
-fn generate_ci_yaml_template<P: CiRenderer>(provider: &P, config: &RenderConfig) -> String {
-    if provider.provider_id() == "github-actions" {
-        generate_github_actions_template(config)
-    } else {
-        generate_gitlab_ci_template(config)
-    }
+    println!("Generated: 2 CI files");
 }
 
 /// Generate GitHub Actions YAML template.
@@ -411,11 +388,10 @@ fn generate_github_actions_template(config: &RenderConfig) -> String {
     yaml.push_str("            cargo-${{ runner.os }}-\n");
     yaml.push('\n');
     
-    // Codegen (generates main.rs files for tool binaries)
-    yaml.push_str("      - name: Generate CLI Code\n");
-    yaml.push_str("        run: cargo run -p gunbc-codegen --release -- codegen\n\n");
-    
-    // Run CI (this builds and runs in one step - simpler than separate build + run)
+    // Run CI Pipeline
+    // gunbc-ci has a handwritten main.rs that handles codegen internally via the prep node.
+    // The prep node uses the resource acquisition (upsert) pattern: check if generated
+    // files exist, generate them if not. This makes CI self-healing.
     yaml.push_str("      - name: Run CI Pipeline\n");
     yaml.push_str(&format!("        run: cargo run -p {} --release\n", config.tool_binary));
     
@@ -453,11 +429,10 @@ fn generate_gitlab_ci_template(config: &RenderConfig) -> String {
     yaml.push_str("    - .cargo/\n");
     yaml.push_str("    - target/\n\n");
     
-    // CI job (codegen + run in one job - simpler pipeline)
+    // CI job - gunbc-ci handles codegen internally via the prep node
     yaml.push_str(&format!("{}:\n", config.workflow_name));
     yaml.push_str("  stage: ci\n");
     yaml.push_str("  script:\n");
-    yaml.push_str("    - cargo run -p gunbc-codegen --release -- codegen\n");
     yaml.push_str(&format!("    - cargo run -p {} --release\n", config.tool_binary));
     
     yaml

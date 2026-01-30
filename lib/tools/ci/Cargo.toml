@@ -17,4 +17,6 @@ gunbc-test = { path = "../../../core/test" }
 
 [[bin]]
 name = "gunbc-ci"
-path = "../../../buck-out/gen/bin/ci/main.rs"
+# Note: This is NOT generated. gunbc-ci is the bootstrap tool that runs codegen
+# for other tools. It has a handwritten main.rs to avoid circular dependency.
+path = "src/main.rs"

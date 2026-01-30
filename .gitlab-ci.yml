@@ -18,5 +18,4 @@ cache:
 ci:
   stage: ci
   script:
-    - cargo run -p gunbc-codegen --release -- codegen
     - cargo run -p gunbc-ci --release
