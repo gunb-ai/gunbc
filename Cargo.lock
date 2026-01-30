@@ -49,19 +49,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gunbc-bootstrap"
-version = "0.1.0"
-dependencies = [
- "gunbc-codegen",
- "gunbc-exec",
- "gunbc-ir",
- "gunbc-lib-transport",
- "gunbc-makegen",
- "gunbc-primitives",
- "gunbc-test",
-]
-
-[[package]]
 name = "gunbc-buck2"
 version = "0.1.0"
 dependencies = [
@@ -72,19 +59,6 @@ dependencies = [
  "gunbc-test",
  "serde_json",
  "toml",
-]
-
-[[package]]
-name = "gunbc-ci"
-version = "0.1.0"
-dependencies = [
- "gunbc-deps",
- "gunbc-exec",
- "gunbc-ir",
- "gunbc-lib-transport",
- "gunbc-makegen",
- "gunbc-primitives",
- "gunbc-test",
 ]
 
 [[package]]
@@ -102,6 +76,24 @@ version = "0.1.0"
 dependencies = [
  "gunbc-clippy",
  "gunbc-ir",
+]
+
+[[package]]
+name = "gunbc-dag"
+version = "0.1.0"
+dependencies = [
+ "gunbc-buck2",
+ "gunbc-clippy",
+ "gunbc-codegen",
+ "gunbc-deps",
+ "gunbc-exec",
+ "gunbc-gist",
+ "gunbc-ir",
+ "gunbc-lib-gist-ops",
+ "gunbc-lib-transport",
+ "gunbc-primitives",
+ "gunbc-test",
+ "serde_json",
 ]
 
 [[package]]
@@ -179,20 +171,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gunbc-makegen"
-version = "0.1.0"
-dependencies = [
- "gunbc-codegen",
- "gunbc-deps",
- "gunbc-exec",
- "gunbc-ir",
- "gunbc-lib-transport",
- "gunbc-primitives",
- "gunbc-test",
- "serde_json",
-]
-
-[[package]]
 name = "gunbc-primitives"
 version = "0.1.0"
 dependencies = [
@@ -217,25 +195,6 @@ name = "gunbc-testgen"
 version = "0.1.0"
 dependencies = [
  "gunbc-ir",
- "gunbc-test",
-]
-
-[[package]]
-name = "gunbc-workspace"
-version = "0.1.0"
-dependencies = [
- "gunbc-bootstrap",
- "gunbc-buck2",
- "gunbc-ci",
- "gunbc-clippy",
- "gunbc-deps",
- "gunbc-exec",
- "gunbc-gist",
- "gunbc-ir",
- "gunbc-lib-gist-ops",
- "gunbc-lib-transport",
- "gunbc-makegen",
- "gunbc-primitives",
  "gunbc-test",
 ]
 

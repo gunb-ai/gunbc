@@ -42,6 +42,74 @@ impl<T> Dag<T> {
     pub fn get_node_mut(&mut self, id: &NodeId) -> Option<&mut Node<T>> {
         self.nodes.iter_mut().find(|n| &n.id == id)
     }
+
+    /// Render this DAG as a Mermaid flowchart.
+    ///
+    /// SubDag nodes are rendered with double brackets [[name]] and include
+    /// a subgraph showing their internal structure.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let dag = build_workspace_dag();
+    /// println!("{}", dag.to_mermaid("workspace"));
+    /// ```
+    pub fn to_mermaid(&self, name: &str) -> String {
+        self.to_mermaid_impl(name, 0)
+    }
+
+    /// Internal implementation with indentation level for nested subdags.
+    fn to_mermaid_impl(&self, name: &str, depth: usize) -> String {
+        let indent = "    ".repeat(depth);
+        let mut out = String::new();
+
+        if depth == 0 {
+            out.push_str("flowchart TB\n");
+        }
+
+        // Create a subgraph for this DAG
+        let subgraph_id = name.replace('-', "_").replace(' ', "_");
+        out.push_str(&format!("{}subgraph {}[\"{}\"]\n", indent, subgraph_id, name));
+
+        // Render nodes
+        for node in &self.nodes {
+            let node_id = format!("{}_{}", subgraph_id, node.id.0.replace('-', "_"));
+            let label = &node.id.0;
+
+            if node.is_subdag() {
+                // SubDag nodes get double brackets
+                out.push_str(&format!("{}    {}[[{}]]\n", indent, node_id, label));
+            } else {
+                // Regular nodes get single brackets
+                out.push_str(&format!("{}    {}[{}]\n", indent, node_id, label));
+            }
+        }
+
+        // Render edges
+        for edge in &self.edges {
+            let from_id = format!("{}_{}", subgraph_id, edge.from_node.0.replace('-', "_"));
+            let to_id = format!("{}_{}", subgraph_id, edge.to_node.0.replace('-', "_"));
+            let label = format!("{}:{}", edge.from_port.0, edge.to_port.0);
+            out.push_str(&format!("{}    {} -->|{}| {}\n", indent, from_id, label, to_id));
+        }
+
+        out.push_str(&format!("{}end\n", indent));
+
+        // Recursively render subdags
+        for node in &self.nodes {
+            if let crate::node::NodeBody::SubDag(ref subdag) = node.body {
+                let subdag_name = format!("{}::{}", name, node.id.0);
+                out.push_str(&subdag.to_mermaid_impl(&subdag_name, depth + 1));
+
+                // Link parent node to subgraph
+                let parent_node_id = format!("{}_{}", subgraph_id, node.id.0.replace('-', "_"));
+                let child_subgraph_id = subdag_name.replace('-', "_").replace(' ', "_").replace("::", "_");
+                out.push_str(&format!("{}    {} -.-> {}\n", indent, parent_node_id, child_subgraph_id));
+            }
+        }
+
+        out
+    }
 }
 
 /// An edge connecting an output port of one node to an input port of another.

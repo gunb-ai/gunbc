@@ -1,0 +1,249 @@
+//! DAG Visualization Tool
+//!
+//! Generates an interactive HTML page with Mermaid diagrams showing
+//! all DAGs in the gunbc workspace.
+
+use gunbc_dag::{
+    build_workspace_dag, build_ci_graph, build_makegen_graph, build_bootstrap_graph,
+};
+
+fn main() {
+    let args: Vec<String> = std::env::args().collect();
+    
+    if args.iter().any(|a| a == "-h" || a == "--help") {
+        println!("dag-viz - Visualize gunbc DAG structure");
+        println!();
+        println!("USAGE:");
+        println!("    dag-viz [OPTIONS] [OUTPUT_PATH]");
+        println!();
+        println!("OPTIONS:");
+        println!("    --no-open    Don't open browser automatically");
+        println!("    -h, --help   Print this help");
+        println!();
+        println!("Default OUTPUT_PATH: dag-viz.html");
+        return;
+    }
+    
+    let open_browser = !args.iter().any(|a| a == "--no-open");
+    let output_path = args.iter()
+        .skip(1)
+        .find(|a| !a.starts_with('-'))
+        .map(|s| s.as_str())
+        .unwrap_or("dag-viz.html");
+    
+    // Collect all DAGs
+    let mut diagrams = Vec::new();
+    
+    // 1. Workspace DAG (top-level composition)
+    let workspace_dag = build_workspace_dag();
+    diagrams.push(("Workspace DAG", workspace_dag.to_mermaid("workspace")));
+    
+    // 2. Individual tool graphs (for detailed view)
+    if let Ok(ci_dag) = build_ci_graph() {
+        diagrams.push(("CI Pipeline", ci_dag.to_mermaid("ci")));
+    }
+    
+    if let Ok(makegen_dag) = build_makegen_graph() {
+        diagrams.push(("Makegen", makegen_dag.to_mermaid("makegen")));
+    }
+    
+    if let Ok(bootstrap_dag) = build_bootstrap_graph() {
+        diagrams.push(("Bootstrap", bootstrap_dag.to_mermaid("bootstrap")));
+    }
+    
+    // 3. Language DAGs
+    let languages_dag = gunbc_ir::build_languages_dag();
+    diagrams.push(("Languages", languages_dag.to_mermaid("languages")));
+    
+    // Generate HTML
+    let html = generate_html(&diagrams);
+    
+    // Write to file
+    std::fs::write(output_path, &html).expect("Failed to write HTML file");
+    println!("Generated: {}", output_path);
+    
+    // Open in browser
+    if open_browser {
+        #[cfg(target_os = "linux")]
+        {
+            let _ = std::process::Command::new("xdg-open")
+                .arg(output_path)
+                .spawn();
+        }
+        #[cfg(target_os = "macos")]
+        {
+            let _ = std::process::Command::new("open")
+                .arg(output_path)
+                .spawn();
+        }
+        #[cfg(target_os = "windows")]
+        {
+            let _ = std::process::Command::new("cmd")
+                .args(["/C", "start", output_path])
+                .spawn();
+        }
+    }
+}
+
+fn generate_html(diagrams: &[(&str, String)]) -> String {
+    let mut nav_items = String::new();
+    let mut diagram_sections = String::new();
+    
+    for (_i, (name, mermaid)) in diagrams.iter().enumerate() {
+        let id = name.to_lowercase().replace(' ', "-");
+        
+        // Navigation item
+        nav_items.push_str(&format!(
+            "<a href=\"#{}\" class=\"nav-item\">{}</a>",
+            id, name
+        ));
+        nav_items.push('\n');
+        
+        // Diagram section
+        diagram_sections.push_str(&format!(
+            r##"
+    <section id="{id}">
+        <h2>{name}</h2>
+        <div class="mermaid-container">
+            <pre class="mermaid">
+{mermaid}
+            </pre>
+        </div>
+    </section>
+"##,
+            id = id,
+            name = name,
+            mermaid = mermaid
+        ));
+    }
+    
+    format!(r##"<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>gunbc DAG Visualization</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <style>
+        :root {{
+            --bg: #1a1a2e;
+            --bg-secondary: #16213e;
+            --text: #eee;
+            --accent: #0f3460;
+            --highlight: #e94560;
+        }}
+        
+        * {{
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }}
+        
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+        }}
+        
+        header {{
+            background: var(--bg-secondary);
+            padding: 1rem 2rem;
+            border-bottom: 2px solid var(--accent);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }}
+        
+        header h1 {{
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+        }}
+        
+        nav {{
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }}
+        
+        .nav-item {{
+            color: var(--text);
+            text-decoration: none;
+            padding: 0.25rem 0.75rem;
+            border-radius: 4px;
+            background: var(--accent);
+            transition: background 0.2s;
+        }}
+        
+        .nav-item:hover {{
+            background: var(--highlight);
+        }}
+        
+        main {{
+            padding: 2rem;
+            max-width: 100%;
+        }}
+        
+        section {{
+            margin-bottom: 3rem;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            padding: 1.5rem;
+        }}
+        
+        section h2 {{
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--accent);
+        }}
+        
+        .mermaid-container {{
+            overflow-x: auto;
+            background: #fff;
+            border-radius: 4px;
+            padding: 1rem;
+        }}
+        
+        .mermaid {{
+            text-align: center;
+        }}
+        
+        footer {{
+            text-align: center;
+            padding: 1rem;
+            color: #666;
+            font-size: 0.9rem;
+        }}
+    </style>
+</head>
+<body>
+    <header>
+        <h1>gunbc DAG Visualization</h1>
+        <nav>
+            {nav_items}
+        </nav>
+    </header>
+    
+    <main>
+        {diagram_sections}
+    </main>
+    
+    <footer>
+        Generated by gunbc-dag-viz | <a href="https://mermaid.js.org/" style="color: #888;">Powered by Mermaid</a>
+    </footer>
+    
+    <script>
+        mermaid.initialize({{ 
+            startOnLoad: true,
+            theme: 'default',
+            flowchart: {{
+                useMaxWidth: true,
+                htmlLabels: true,
+                curve: 'basis'
+            }}
+        }});
+    </script>
+</body>
+</html>
+"##, nav_items = nav_items, diagram_sections = diagram_sections)
+}

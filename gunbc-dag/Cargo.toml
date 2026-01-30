@@ -1,0 +1,45 @@
+[package]
+name = "gunbc-dag"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "gunbc repo-specific DAG configuration, CI, and generators"
+
+[dependencies]
+# Core
+gunbc-ir = { path = "../core/ir" }
+gunbc-exec = { path = "../core/exec" }
+gunbc-codegen = { path = "../core/codegen" }
+gunbc-test = { path = "../core/test" }
+
+# Libraries
+gunbc-primitives = { path = "../lib/primitives" }
+gunbc-lib-transport = { path = "../lib/transport" }
+gunbc-lib-gist-ops = { path = "../lib/gist-ops" }
+
+# General tools (reusable)
+gunbc-deps = { path = "../lib/tools/deps" }
+gunbc-gist = { path = "../lib/tools/gist" }
+gunbc-buck2 = { path = "../lib/tools/buck2" }
+gunbc-clippy = { path = "../lib/tools/clippy" }
+
+serde_json = { workspace = true }
+
+[dev-dependencies]
+gunbc-test = { path = "../core/test" }
+
+[[bin]]
+name = "gunbc-ci"
+path = "src/bin/ci.rs"
+
+[[bin]]
+name = "gunbc-makegen"
+path = "src/bin/makegen.rs"
+
+[[bin]]
+name = "gunbc-bootstrap"
+path = "src/bin/bootstrap.rs"
+
+[[bin]]
+name = "gunbc-dag-viz"
+path = "src/bin/dag-viz.rs"

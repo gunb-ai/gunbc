@@ -3,7 +3,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help codegen ensure-codegen build clean test check clippy fmt fmt-check ci-yaml gist gist-dry buck2 buck2-dry makegen makegen-dry deps deps-dry ci ci-dry bootstrap bootstrap-dry
+.PHONY: help codegen ensure-codegen build clean test check clippy fmt fmt-check ci-yaml gist gist-dry buck2 buck2-dry makegen makegen-dry deps deps-dry ci ci-dry bootstrap bootstrap-dry dag-viz
 
 # Ensure codegen has run (upsert pattern: check stamp -> run if missing)
 ensure-codegen:
@@ -117,4 +117,8 @@ bootstrap: ensure-codegen
 
 bootstrap-dry: ensure-codegen
 	@cargo run -p gunbc-bootstrap -- --dry-run
+
+# dag-viz: Generate interactive DAG visualization (opens in browser)
+dag-viz:
+	@cargo run -p gunbc-dag --bin gunbc-dag-viz
 

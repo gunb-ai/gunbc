@@ -7,7 +7,6 @@ members = [
     "core/codegen",
     "core/test",
     "core/testgen",
-    "core/workspace",  # Unified WorkspaceOp and fractal DAG composition
     
     # Library crates (DAG op libraries)
     "lib/primitives",
@@ -15,14 +14,14 @@ members = [
     "lib/markdown",
     "lib/transport",
     
-    # Tool compositions (higher-level DAG pipelines)
+    # General tool definitions (reusable by any project)
     "lib/tools/gist",
     "lib/tools/buck2",
-    "lib/tools/makegen",
     "lib/tools/deps",
-    "lib/tools/ci",
-    "lib/tools/bootstrap",
-    "lib/tools/clippy",  # Config modeling + tool upsert (cli::CLIPPY for acquisition)
+    "lib/tools/clippy",
+    
+    # Repo-specific configuration (gunbc's own DAGs)
+    "gunbc-dag",
 ]
 
 [workspace.package]
