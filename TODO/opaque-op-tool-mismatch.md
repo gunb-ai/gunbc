@@ -71,7 +71,17 @@ The capability-based pattern (`.requires()` + `ToolHandle` through inputs) provi
 
 ## Status
 
-**Deferred** - Current approach is functional with runtime safety. Revisit when:
-- Codegen is more mature
-- More operations need tool dependencies
+**Partially Resolved** (2026-01-30)
+
+The pure node migration addressed much of this issue:
+- CI no longer uses `.requires()` - tool invocations go through explicit `PrepareShellOp` → `TransportOps::Execute` chains
+- Tool dependencies are now visible in the graph structure (shell commands with tool names)
+- The clippy tool uses `UpsertBuilder` which makes tool acquisition structural
+
+**Remaining gap**: The `.requires()` API still exists in `Node` but is unused. The "tool handle through inputs" pattern is documented but not implemented anywhere.
+
+**Recommendation**: Consider deprecating `.requires()` since the transport pattern makes tool usage explicit. Alternatively, evolve it to work with the new pure node model.
+
+Revisit when:
+- Codegen generates operations from DAG definitions
 - Pattern for "operations as sub-DAGs" is established

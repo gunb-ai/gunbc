@@ -1,7 +1,8 @@
 # Makefile Generation & CI Improvements
 
-**Status**: Draft
+**Status**: Mostly Complete
 **Date**: 2026-01-29
+**Updated**: 2026-01-30
 
 ## Goal
 
@@ -277,19 +278,23 @@ pub fn ci_integrations_with_cache() -> Vec<Action> {
 - [x] **Add prep target generation** — ensure codegen/daggen run as needed (exists in makegen)
 - [x] **Support multiple build systems** — BuildConfig already has cargo/buck2
 
-### CI Improvements
+### CI Improvements (All Done)
 
-- [x] **Add satisfiability check** — verify tools available before pipeline (`WorkflowConfig.check_satisfiability()`)
-- [x] **Generate ci.yml** — from WorkflowConfig (`WorkflowConfig.render()`)
-- [x] **Add caching** — cache cargo registry and target (`CacheConfig::rust()`)
-- [x] **Generate CI deps.toml** — only tools not provided by runner (`generate_deps_toml()`)
-- [x] **Model Actions as typed entities** — with provides_tools, inputs, outputs (`Integration` struct)
+- [x] **Add satisfiability check** — `WorkflowConfig.check_satisfiability()` in `github_actions.rs`
+- [x] **Generate ci.yml** — `WorkflowConfig` implements `Renderable`, generates full YAML
+- [x] **Add caching** — CI YAML includes `actions/cache@v4` with cargo paths
+- [x] **Model Actions as typed entities** — `Integration` struct with `provides_tools`, permissions
+- [x] **RunnerImage** — Models runner environments with pre-installed tools
 
-### Integration
+### Integration (Mostly Done)
 
-- [x] **Connect runner tools to ToolDef** — ubuntu-latest provides git, cargo, etc. (`RunnerImage.tools`)
-- [x] **Validate CI config** — tools used match runner capabilities (`check_satisfiability()`)
+- [x] **Connect runner tools to Integration** — `Integration.provides_tools()` 
+- [x] **Validate CI config** — `check_satisfiability()` verifies tools available
 - [ ] **Bootstrap validation** — ensure generated files match source of truth
+
+### Remaining Work
+
+The main remaining gap is **makefile generation not using ToolDef registry**. This overlaps with `bootstrap-meta-modeling.md` which addresses the same issue from bootstrap's perspective.
 
 ## Notes
 
