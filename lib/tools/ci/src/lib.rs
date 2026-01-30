@@ -38,6 +38,7 @@ pub mod graph_mock;
 
 pub use graph::{
     build_ci_graph, ci_integrations, ci_signature, ci_workflow_config, ci_workflow_permissions,
-    WorkflowConfig,
 };
+// Re-export WorkflowConfig from github_actions for convenience
+pub use gunbc_ir::transport::github_actions::WorkflowConfig;
 pub use ops::CIOp;

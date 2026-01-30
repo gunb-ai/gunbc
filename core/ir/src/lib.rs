@@ -53,6 +53,7 @@ pub mod dag;
 pub mod entrypoint;
 pub mod node;
 pub mod patterns;
+pub mod render;
 pub mod resource;
 pub mod signature;
 pub mod transport;
@@ -80,3 +81,4 @@ pub use type_op::{BaseType, Coercion, Predicate, PredicateValue, TypeOp, Wrapper
 pub use type_registry::{TypeNotFoundError, TypeRegistry};
 pub use types::{Cardinality, CardinalityCase, CardinalityMismatch, NodeId, PortName, TypeId};
 pub use value::Value;
+pub use render::Renderable;

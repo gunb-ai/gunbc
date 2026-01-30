@@ -8,22 +8,19 @@
 //!
 //! # GitHub Actions Integration
 //!
-//! This module also provides typed workflow configuration via the
-//! [`ci_workflow_config`] function, which declares:
-//! - Which integrations (actions) the workflow uses
-//! - Required permissions (computed from integrations)
-//! - Target runner image
+//! This module provides CI-specific workflow configuration via the
+//! [`ci_workflow_config`] function. The underlying [`WorkflowConfig`]
+//! type lives in `github_actions` module alongside other GitHub Actions specs.
 
 use crate::ops::CIOp;
 use gunbc_ir::{
     build::*, BuilderError, Cardinality, Dag, DagBuilder, Node, WorkflowSignature,
     transport::cli,
     transport::github_actions::{
-        checkout, merge_permissions, rust_toolchain, ubuntu_latest,
-        Integration, Permissions, RunnerImage,
+        checkout, rust_toolchain, ubuntu_latest,
+        Integration, Permissions, WorkflowConfig,
     },
 };
-use std::collections::HashSet;
 
 /// Get the declared signature for the ci workflow.
 pub fn ci_signature() -> WorkflowSignature {
@@ -48,83 +45,11 @@ pub fn ci_signature() -> WorkflowSignature {
 }
 
 // ============================================================================
-// GitHub Actions Workflow Configuration
+// CI-Specific Workflow Configuration
 // ============================================================================
 
-/// GitHub Actions workflow configuration.
-///
-/// Contains all the metadata needed to generate a complete workflow YAML,
-/// with permissions automatically computed from declared integrations.
-#[derive(Debug, Clone)]
-pub struct WorkflowConfig {
-    /// Workflow name
-    pub name: &'static str,
-    /// Target runner image
-    pub runner: RunnerImage,
-    /// Integrations (actions) used by this workflow
-    pub integrations: Vec<Integration>,
-    /// Computed permissions from integrations
-    pub permissions: Permissions,
-}
-
-impl WorkflowConfig {
-    /// Create a new workflow configuration.
-    pub fn new(name: &'static str, runner: RunnerImage, integrations: Vec<Integration>) -> Self {
-        // Compute permissions from all integrations
-        let permission_sets: Vec<Permissions> = integrations
-            .iter()
-            .map(|i| i.required_permissions())
-            .collect();
-        let permissions = merge_permissions(&permission_sets);
-
-        Self {
-            name,
-            runner,
-            integrations,
-            permissions,
-        }
-    }
-
-    /// Check if this workflow has any special permissions.
-    pub fn has_permissions(&self) -> bool {
-        !self.permissions.is_empty()
-    }
-
-    /// Get all action references (uses: fields) for the workflow.
-    pub fn action_refs(&self) -> Vec<&'static str> {
-        self.integrations.iter().map(|i| i.uses).collect()
-    }
-
-    /// Get all tools available to this workflow.
-    ///
-    /// This combines tools provided by the runner image with tools
-    /// provided by the integrations (actions) used in the workflow.
-    pub fn available_tools(&self) -> HashSet<&str> {
-        let mut tools: HashSet<&str> = self.runner.tools().iter().copied().collect();
-        for integration in &self.integrations {
-            tools.extend(integration.provides_tools().iter().copied());
-        }
-        tools
-    }
-
-    /// Check if all required tools are available.
-    ///
-    /// Returns Ok(()) if all tools are available, or Err with the list of
-    /// missing tool IDs.
-    pub fn check_satisfiability<'a>(&self, required: &[&'a str]) -> Result<(), Vec<&'a str>> {
-        let available = self.available_tools();
-        let missing: Vec<&'a str> = required
-            .iter()
-            .filter(|t| !available.contains(*t))
-            .copied()
-            .collect();
-        if missing.is_empty() {
-            Ok(())
-        } else {
-            Err(missing)
-        }
-    }
-}
+// WorkflowConfig is now defined in github_actions.rs and re-exported above.
+// The following functions provide CI-specific configuration using that type.
 
 /// Get the integrations used by the CI workflow.
 ///
@@ -162,6 +87,7 @@ pub fn ci_workflow_config() -> WorkflowConfig {
         ubuntu_latest(),
         ci_integrations(),
     )
+    .with_run_command("|\n          cargo run -p gunbc-codegen -- codegen\n          cargo run -p gunbc-ci -- run")
 }
 
 /// Get the required permissions for the CI workflow.

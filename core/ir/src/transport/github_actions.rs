@@ -37,8 +37,9 @@
 //! assert!(ubuntu_latest().has_tool("cargo"));
 //! ```
 
+use crate::render::Renderable;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 // ============================================================================
 // Permission Model
@@ -466,6 +467,159 @@ pub fn runner_image_by_id(id: &str) -> Option<RunnerImage> {
 }
 
 // ============================================================================
+// Workflow Configuration
+// ============================================================================
+
+/// GitHub Actions workflow configuration.
+///
+/// Contains all the metadata needed to generate a complete workflow YAML,
+/// with permissions automatically computed from declared integrations.
+///
+/// This struct is the spec for workflow generation. Use the [`Renderable`]
+/// trait implementation to generate the actual YAML file.
+///
+/// # Example
+///
+/// ```ignore
+/// use gunbc_ir::transport::github_actions::*;
+///
+/// let config = WorkflowConfig::new(
+///     "CI",
+///     ubuntu_latest(),
+///     vec![checkout(), rust_toolchain()],
+/// );
+///
+/// // Permissions are auto-computed from integrations
+/// assert!(config.has_permissions());
+///
+/// // Generate the YAML
+/// let yaml = config.render();
+/// ```
+#[derive(Debug, Clone)]
+pub struct WorkflowConfig {
+    /// Workflow name
+    pub name: &'static str,
+    /// Target runner image
+    pub runner: RunnerImage,
+    /// Integrations (actions) used by this workflow
+    pub integrations: Vec<Integration>,
+    /// Computed permissions from integrations
+    pub permissions: Permissions,
+    /// Command to run in the CI step
+    pub run_command: String,
+}
+
+impl WorkflowConfig {
+    /// Create a new workflow configuration.
+    ///
+    /// Permissions are automatically computed from all integrations.
+    pub fn new(name: &'static str, runner: RunnerImage, integrations: Vec<Integration>) -> Self {
+        // Compute permissions from all integrations
+        let permission_sets: Vec<Permissions> = integrations
+            .iter()
+            .map(|i| i.required_permissions())
+            .collect();
+        let permissions = merge_permissions(&permission_sets);
+
+        Self {
+            name,
+            runner,
+            integrations,
+            permissions,
+            run_command: String::new(),
+        }
+    }
+
+    /// Set the run command for the CI step.
+    pub fn with_run_command(mut self, cmd: impl Into<String>) -> Self {
+        self.run_command = cmd.into();
+        self
+    }
+
+    /// Check if this workflow has any special permissions.
+    pub fn has_permissions(&self) -> bool {
+        !self.permissions.is_empty()
+    }
+
+    /// Get all action references (uses: fields) for the workflow.
+    pub fn action_refs(&self) -> Vec<&'static str> {
+        self.integrations.iter().map(|i| i.uses).collect()
+    }
+
+    /// Get all tools available to this workflow.
+    ///
+    /// This combines tools provided by the runner image with tools
+    /// provided by the integrations (actions) used in the workflow.
+    pub fn available_tools(&self) -> HashSet<&str> {
+        let mut tools: HashSet<&str> = self.runner.tools().iter().copied().collect();
+        for integration in &self.integrations {
+            tools.extend(integration.provides_tools().iter().copied());
+        }
+        tools
+    }
+
+    /// Check if all required tools are available.
+    ///
+    /// Returns Ok(()) if all tools are available, or Err with the list of
+    /// missing tool IDs.
+    pub fn check_satisfiability<'a>(&self, required: &[&'a str]) -> Result<(), Vec<&'a str>> {
+        let available = self.available_tools();
+        let missing: Vec<&'a str> = required
+            .iter()
+            .filter(|t| !available.contains(*t))
+            .copied()
+            .collect();
+        if missing.is_empty() {
+            Ok(())
+        } else {
+            Err(missing)
+        }
+    }
+}
+
+impl Renderable for WorkflowConfig {
+    fn generator_name(&self) -> &str {
+        "gunbc-ci"
+    }
+
+    fn regenerate_command(&self) -> &str {
+        "make ci-yaml"
+    }
+
+    fn render_content(&self) -> String {
+        let mut yaml = String::new();
+
+        yaml.push_str(&format!("name: {}\n\n", self.name));
+
+        // Triggers
+        yaml.push_str("on:\n");
+        yaml.push_str("  push:\n");
+        yaml.push_str("    branches: [main, master]\n");
+        yaml.push_str("  pull_request:\n");
+        yaml.push_str("    branches: [main, master]\n\n");
+
+        // Jobs
+        yaml.push_str("jobs:\n");
+        yaml.push_str("  ci:\n");
+        yaml.push_str(&format!("    runs-on: {}\n", self.runner.id));
+        yaml.push_str("    steps:\n");
+
+        // Integration steps (actions)
+        for integration in &self.integrations {
+            yaml.push_str(&format!("      - uses: {}\n", integration.uses));
+        }
+
+        // Run command
+        if !self.run_command.is_empty() {
+            yaml.push_str("      - name: Run CI\n");
+            yaml.push_str(&format!("        run: {}\n", self.run_command));
+        }
+
+        yaml
+    }
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 
@@ -558,5 +712,117 @@ mod tests {
         assert!(runner_image_by_id("ubuntu-latest").is_some());
         assert!(runner_image_by_id("ubuntu-24.04").is_some());
         assert!(runner_image_by_id("nonexistent").is_none());
+    }
+
+    // ========================================================================
+    // WorkflowConfig and Renderable Tests
+    // ========================================================================
+
+    #[test]
+    fn test_workflow_config_new() {
+        let config = WorkflowConfig::new(
+            "Test",
+            ubuntu_latest(),
+            vec![checkout(), rust_toolchain()],
+        );
+
+        assert_eq!(config.name, "Test");
+        assert_eq!(config.runner.id, "ubuntu-latest");
+        assert_eq!(config.integrations.len(), 2);
+        // Should have computed permissions from checkout
+        assert!(config.has_permissions());
+    }
+
+    #[test]
+    fn test_workflow_config_with_run_command() {
+        let config = WorkflowConfig::new(
+            "CI",
+            ubuntu_latest(),
+            vec![checkout()],
+        )
+        .with_run_command("cargo test");
+
+        assert_eq!(config.run_command, "cargo test");
+    }
+
+    #[test]
+    fn test_workflow_config_render() {
+        let config = WorkflowConfig::new(
+            "CI",
+            ubuntu_latest(),
+            vec![checkout(), rust_toolchain()],
+        )
+        .with_run_command("cargo test");
+
+        let yaml = config.render();
+
+        // Check header
+        assert!(yaml.contains("# Generated by gunbc-ci"));
+        assert!(yaml.contains("# DO NOT EDIT - regenerate with: make ci-yaml"));
+
+        // Check content
+        assert!(yaml.contains("name: CI"));
+        assert!(yaml.contains("runs-on: ubuntu-latest"));
+        assert!(yaml.contains("- uses: actions/checkout@v4"));
+        assert!(yaml.contains("- uses: dtolnay/rust-toolchain@stable"));
+        assert!(yaml.contains("run: cargo test"));
+    }
+
+    #[test]
+    fn test_workflow_config_render_content_only() {
+        let config = WorkflowConfig::new(
+            "CI",
+            ubuntu_latest(),
+            vec![checkout()],
+        )
+        .with_run_command("cargo build");
+
+        let content = config.render_content();
+
+        // Should NOT have header (render_content is just the body)
+        assert!(!content.contains("Generated by"));
+
+        // Should have the yaml content
+        assert!(content.contains("name: CI"));
+        assert!(content.contains("on:"));
+        assert!(content.contains("push:"));
+        assert!(content.contains("branches: [main, master]"));
+    }
+
+    #[test]
+    fn test_workflow_config_available_tools() {
+        let config = WorkflowConfig::new(
+            "CI",
+            ubuntu_latest(),
+            vec![checkout(), rust_toolchain()],
+        );
+
+        let tools = config.available_tools();
+
+        // Should have tools from runner
+        assert!(tools.contains("cargo"));
+        assert!(tools.contains("git"));
+
+        // Should have tools from integrations
+        // checkout provides git, rust_toolchain provides cargo, clippy, rustfmt
+        assert!(tools.contains("clippy"));
+        assert!(tools.contains("rustfmt"));
+    }
+
+    #[test]
+    fn test_workflow_config_check_satisfiability() {
+        let config = WorkflowConfig::new(
+            "CI",
+            ubuntu_latest(),
+            vec![checkout(), rust_toolchain()],
+        );
+
+        // Should be satisfied - all tools available
+        assert!(config.check_satisfiability(&["cargo", "git", "clippy"]).is_ok());
+
+        // Should fail - missing tool
+        let result = config.check_satisfiability(&["cargo", "nonexistent"]);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), vec!["nonexistent"]);
     }
 }

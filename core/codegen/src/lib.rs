@@ -5,6 +5,7 @@
 //! - [`FileWriter`]: File writing with dry-run support
 //! - [`DagInfo`]: Combined boundary and entrypoint information
 //! - [`cli_gen`]: CLI generation from DAG entrypoints
+//! - [`Renderable`]: Trait for types that can be rendered to generated files
 //!
 //! # Note
 //!
@@ -29,6 +30,9 @@ pub use registry::{
     DagDef, EdgeDef, NodeDef, PortDef, ToolDef,
 };
 pub use template::Template;
+
+// Re-export Renderable from gunbc_ir for backwards compatibility
+pub use gunbc_ir::Renderable;
 
 use gunbc_ir::{detect_boundaries, detect_entrypoints, BoundaryInfo, Dag, EntrypointInfo};
 
