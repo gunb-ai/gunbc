@@ -49,6 +49,14 @@ impl Executable for TransportOps {
                         out.insert("content".to_string(), Value::Str(content.clone()));
                     }
                 }
+
+                // Extract extra info for shell responses
+                if let TransportResponse::Shell(shell_resp) = &response {
+                    out.insert("stdout".to_string(), Value::Str(shell_resp.stdout.clone()));
+                    out.insert("stderr".to_string(), Value::Str(shell_resp.stderr.clone()));
+                    out.insert("exit_code".to_string(), Value::Int(shell_resp.exit_code as i64));
+                    out.insert("success".to_string(), Value::Bool(shell_resp.success()));
+                }
                 
                 out.insert("response".to_string(), Value::Response(response));
                 Ok(out)
@@ -79,7 +87,9 @@ pub fn execute_request(request: &TransportRequest) -> Result<TransportResponse, 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gunbc_ir::transport::FileRequest;
+    use gunbc_ir::transport::{FileRequest, ShellRequest};
+    use gunbc_ir::Value;
+    use std::collections::HashMap;
 
     #[test]
     fn test_transport_ops_requires_request() {
@@ -94,5 +104,28 @@ mod tests {
         let request = TransportRequest::File(FileRequest::exists("Cargo.toml"));
         let response = execute_request(&request);
         assert!(response.is_ok());
+    }
+
+    #[test]
+    fn test_transport_ops_shell_outputs() {
+        let request = TransportRequest::Shell(ShellRequest {
+            command: "echo".to_string(),
+            args: vec!["hello".to_string()],
+            cwd: None,
+            env: HashMap::new(),
+            stdin: None,
+        });
+
+        let mut inputs = HashMap::new();
+        inputs.insert("request".to_string(), Value::Request(request));
+
+        let result = TransportOps::Execute.execute(inputs).expect("transport should execute");
+
+        assert_eq!(result.get("success"), Some(&Value::Bool(true)));
+        let stdout = result
+            .get("stdout")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        assert!(stdout.contains("hello"));
     }
 }
