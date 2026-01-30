@@ -737,6 +737,103 @@ These are design goals that will be enforced in future implementations:
 
 ---
 
+## Graph Invariants
+
+These invariants define what makes a well-formed graph beyond structural validity. They ensure graphs are not just correct, but elegant, observable, and maintainable.
+
+### I1. Node Purity
+
+> **Every node is either pure (deterministic, no side effects) or a Transport Execute node (the designated I/O boundary).**
+
+| Node Type | Properties | Example |
+|-----------|------------|---------|
+| **Pure** | Given same inputs, produces same outputs. No I/O. | `ParseTomlOp`, `PrepareFileReadOp`, `ValidateOp` |
+| **Transport Execute** | Takes `TransportRequest` input, produces `TransportResponse` output. The only I/O point. | `TransportOps::Execute` |
+
+**Violation**: An opaque node that calls `execute_transport()` internally. The I/O is hidden, making the node impure without being a proper Transport Execute node.
+
+**Why it matters**: Pure nodes can be memoized, parallelized, and reasoned about locally. Mixing I/O into pure nodes breaks these properties.
+
+### I2. Transport Boundary
+
+> **All world I/O flows through `TransportRequest` → `TransportOps::Execute` → `TransportResponse`.**
+
+The transport layer (`lib/transport`) is the single point where I/O actually happens. All other code constructs requests or processes responses.
+
+| Layer | Responsibility |
+|-------|---------------|
+| **Domain ops** | Construct `TransportRequest` values (pure) |
+| **Transport Execute** | Execute requests, produce responses (I/O boundary) |
+| **Result processing** | Parse/validate responses (pure) |
+
+**Violation**: Direct `std::fs::*`, `std::process::Command::new`, or HTTP calls outside the transport layer.
+
+**Enforcement**: `clippy.toml` bans these methods. Only `lib/transport/` has the allowance.
+
+### I3. Observable I/O
+
+> **All I/O operations are visible as explicit nodes in the graph structure.**
+
+This is the graph-level consequence of I1 and I2. If I/O is hidden inside opaque nodes, it's not observable.
+
+| Property | Observable | Hidden |
+|----------|------------|--------|
+| DryRun interception | ✓ Intercepts `TransportRequest` inputs | ✗ Can't see internal `execute_transport()` calls |
+| Visualization | ✓ Shows I/O nodes explicitly | ✗ Opaque box hides I/O |
+| Composition | ✓ Can wrap I/O in Retry/Circuit Breaker | ✗ I/O is internal implementation detail |
+
+**Target structure**:
+```
+Pure (Prepare) → Transport Execute → Pure (Parse)
+                      ↑
+              DryRun intercepts here
+```
+
+**Violation structure**:
+```
+Opaque Node (I/O hidden inside)
+      ↑
+DryRun can't intercept
+```
+
+### I4. Minimal Graph
+
+> **Workflows use the minimum nodes necessary, with maximum reuse of canonical patterns.**
+
+Sub-properties:
+
+| Property | Description |
+|----------|-------------|
+| **No redundancy** | Every node contributes to an output. No dead nodes. |
+| **Pattern reuse** | Use `UpsertBuilder`, `LoopBuilder`, `TransactionBuilder` instead of ad-hoc equivalents |
+| **No reinventing** | Don't hand-write check-create-verify when `Upsert` exists |
+| **Elegance** | Graphs are clean, understandable, and match the problem structure |
+
+**Canonical patterns** (in `core/ir/src/patterns/`):
+
+| Pattern | Use When |
+|---------|----------|
+| `Upsert` | Check if exists → create if not → resolve |
+| `Loop` | Apply body DAG to each item in collection |
+| `Transaction` | Begin → body → commit/rollback |
+| `Branch` | Conditional execution with merge |
+| `Atomic` | Precondition → operation → postcondition |
+| `Retry/While/Poll` | Repetition with policies |
+
+**Violation**: Hand-writing a check-exists-then-create pattern instead of using `UpsertBuilder`.
+
+### I5. Deterministic Ordering
+
+> **Fan-in produces deterministic collection order via canonical edge ordering.**
+
+When multiple edges feed into a single port, the order of values in the resulting collection is deterministic.
+
+**Canonical sort key**: `(from_node_id, from_port_name, edge_index)`
+
+**Status**: Implemented in `dag.rs` with `canonical_edge_order()`.
+
+---
+
 ## Path to Level 1: Structural Enforcement (Target Design)
 
 > **Status**: None of the Level 1 structural enforcement described here is implemented yet. These are design targets.

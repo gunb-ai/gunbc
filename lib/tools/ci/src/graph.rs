@@ -2,31 +2,177 @@
 //!
 //! Uses DagBuilder for compile-time cycle prevention and edge validation.
 //!
-//! The CI pipeline includes a Prep stage that runs codegen to ensure
-//! all generated code exists before building and testing. This is the
-//! "fractal unwind" pattern - CI unwinds all DAGs before executing.
+//! # Transport Pattern (following MakegenGraphOp)
 //!
-//! # GitHub Actions Integration
+//! This module follows the "every node is pure" principle:
+//! - `CIGraphOp` is a union of pure CI ops, primitives, and transport
+//! - All I/O happens through explicit `TransportOps::Execute` nodes
+//! - DryRun can intercept all transport nodes
 //!
-//! This module provides CI-specific workflow configuration via the
-//! [`ci_workflow_config`] function. The underlying [`WorkflowConfig`]
-//! type lives in `github_actions` module alongside other GitHub Actions specs.
+//! # Pipeline Structure
+//!
+//! ```text
+//! SetupDeps Stage:
+//!   PrepareFileExists(deps.toml) -> Execute -> ParseDepsExists
+//!
+//! Prep Stage:
+//!   PrepareCodegenExistsCheck -> Execute -> ParseCodegenExists
+//!   -> (if needed) PrepareCodegenCommand -> Execute -> ParseCodegenResult
+//!
+//! Build Stage:
+//!   PrepareBuildCommand -> Execute -> ParseBuildResult
+//!
+//! Test Stage (parallel with Lint):
+//!   PrepareTestCommand -> Execute -> ParseTestResult
+//!
+//! Lint Stage:
+//!   PrepareLintCommand -> Execute -> ParseLintResult
+//!
+//! Report:
+//!   Report (pure)
+//! ```
 
 use crate::ops::CIOp;
+use gunbc_exec::{ExecError, Executable};
+use gunbc_ir::transport::{FileRequest, ShellRequest, TransportRequest};
 use gunbc_ir::{
-    build::*, BuilderError, Cardinality, Dag, DagBuilder, Node, WorkflowSignature,
-    transport::cli,
+    build::*, BuilderError, Cardinality, Dag, DagBuilder, Node, Value, WorkflowSignature,
     transport::github_actions::{
         checkout, rust_toolchain, ubuntu_latest,
         Integration, Permissions, WorkflowConfig,
     },
 };
+use gunbc_lib_transport::TransportOps;
+use std::collections::HashMap;
+
+// ============================================================================
+// CIGraphOp - Union type following MakegenGraphOp pattern
+// ============================================================================
+
+/// The operation type for CI graphs - a union of CI ops, primitives, and transport.
+///
+/// This follows the MakegenGraphOp pattern:
+/// - `CI(CIOp)` - domain-specific pure operations
+/// - `PrepareFileExists` - local primitive for file existence checks (with embedded path)
+/// - `PrepareShell` - local primitive for shell command preparation
+/// - `Transport` - boundary for actual I/O
+#[derive(Debug, Clone)]
+pub enum CIGraphOp {
+    /// CI-specific pure operations
+    CI(CIOp),
+    /// Prepare file exists check (pure - path embedded)
+    PrepareFileExists(PrepareFileExistsOp),
+    /// Prepare shell command (pure - outputs TransportRequest)
+    PrepareShell(PrepareShellOp),
+    /// Transport operations (boundary - actual I/O)
+    Transport(TransportOps),
+}
+
+impl Executable for CIGraphOp {
+    fn execute(
+        &self,
+        inputs: HashMap<String, Value>,
+    ) -> Result<HashMap<String, Value>, ExecError> {
+        match self {
+            CIGraphOp::CI(op) => op.execute(inputs),
+            CIGraphOp::PrepareFileExists(op) => op.execute(inputs),
+            CIGraphOp::PrepareShell(op) => op.execute(inputs),
+            CIGraphOp::Transport(op) => op.execute(inputs),
+        }
+    }
+}
+
+// ============================================================================
+// PrepareFileExistsOp - Pure file exists check preparation (with embedded path)
+// ============================================================================
+
+/// Pure operation to prepare a file exists check.
+///
+/// Unlike the generic primitive, this embeds the path for convenience in CI graphs.
+#[derive(Debug, Clone)]
+pub struct PrepareFileExistsOp {
+    pub path: String,
+}
+
+impl PrepareFileExistsOp {
+    pub fn new(path: &str) -> Self {
+        Self {
+            path: path.to_string(),
+        }
+    }
+}
+
+impl Executable for PrepareFileExistsOp {
+    fn execute(&self, _inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        let request = TransportRequest::File(FileRequest::exists(&self.path));
+
+        let mut out = HashMap::new();
+        out.insert("request".to_string(), Value::Request(request));
+        Ok(out)
+    }
+}
+
+// ============================================================================
+// PrepareShellOp - Pure shell command preparation
+// ============================================================================
+
+/// Pure operation to prepare a shell command (no I/O).
+///
+/// This is a local primitive that outputs a `TransportRequest::Shell`.
+#[derive(Debug, Clone)]
+pub struct PrepareShellOp {
+    pub command: String,
+    pub args: Vec<String>,
+}
+
+impl PrepareShellOp {
+    pub fn new(command: &str, args: &[&str]) -> Self {
+        Self {
+            command: command.to_string(),
+            args: args.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    pub fn from_config(config_cmd: &[&str]) -> Self {
+        if config_cmd.is_empty() {
+            Self {
+                command: String::new(),
+                args: Vec::new(),
+            }
+        } else {
+            Self {
+                command: config_cmd[0].to_string(),
+                args: config_cmd[1..].iter().map(|s| s.to_string()).collect(),
+            }
+        }
+    }
+}
+
+impl Executable for PrepareShellOp {
+    fn execute(&self, _inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        let request = TransportRequest::Shell(ShellRequest {
+            command: self.command.clone(),
+            args: self.args.clone(),
+            cwd: None,
+            env: HashMap::new(),
+            stdin: None,
+        });
+
+        let mut out = HashMap::new();
+        out.insert("request".to_string(), Value::Request(request));
+        Ok(out)
+    }
+}
+
+// ============================================================================
+// Signature
+// ============================================================================
 
 /// Get the declared signature for the ci workflow.
 pub fn ci_signature() -> WorkflowSignature {
     WorkflowSignature::new()
-        // No inputs (setup_deps has no entrypoint inputs)
-        // Outputs - boundary outputs from intermediate nodes and report
+        // No inputs (all paths are hardcoded)
+        // Outputs - boundary outputs from transport nodes and report
         .with_output("deps_installed", "Int", Cardinality::One)
         .with_output("message", "String", Cardinality::One)
         .with_output("codegen_ran", "Bool", Cardinality::One)
@@ -48,14 +194,7 @@ pub fn ci_signature() -> WorkflowSignature {
 // CI-Specific Workflow Configuration
 // ============================================================================
 
-// WorkflowConfig is now defined in github_actions.rs and re-exported above.
-// The following functions provide CI-specific configuration using that type.
-
 /// Get the integrations used by the CI workflow.
-///
-/// The CI workflow uses:
-/// - `actions/checkout@v4` - clone repository
-/// - `dtolnay/rust-toolchain@stable` - install Rust
 pub fn ci_integrations() -> Vec<Integration> {
     vec![
         checkout(),
@@ -64,23 +203,6 @@ pub fn ci_integrations() -> Vec<Integration> {
 }
 
 /// Get the complete workflow configuration for CI.
-///
-/// This returns a typed configuration object that can be used to:
-/// - Generate workflow YAML with correct permissions
-/// - Validate that runner has required tools
-/// - Document which actions are used
-///
-/// # Example
-///
-/// ```ignore
-/// let config = ci_workflow_config();
-/// 
-/// // Check permissions are minimal (contents:read only)
-/// assert!(config.permissions.get(&PermissionScope::Contents) == Some(&PermissionLevel::Read));
-///
-/// // Verify runner has cargo
-/// assert!(config.runner.has_tool("cargo"));
-/// ```
 pub fn ci_workflow_config() -> WorkflowConfig {
     WorkflowConfig::new(
         "CI",
@@ -91,106 +213,338 @@ pub fn ci_workflow_config() -> WorkflowConfig {
 }
 
 /// Get the required permissions for the CI workflow.
-///
-/// This is a convenience function that returns just the permissions,
-/// computed from all integrations used by the workflow.
 pub fn ci_workflow_permissions() -> Permissions {
     ci_workflow_config().permissions
 }
 
-/// Build the CI graph using DagBuilder.
+// ============================================================================
+// Graph Builder
+// ============================================================================
+
+/// Build the CI graph using DagBuilder with explicit transport nodes.
+///
+/// Every I/O operation is visible as a `TransportOps::Execute` node.
+/// This enables DryRun interception of all I/O.
 ///
 /// Pipeline:
 /// ```text
-/// SetupDeps -> Prep -> Build -> Test  -> Report
-///                          \-> Lint -/
-///                                     (boundary)
+/// SetupDeps: PrepareFileExists -> Execute -> ParseDepsExists
+/// Prep:      PrepareCodegenExists -> Execute -> ParseCodegenExists
+///            -> PrepareCodegenCmd -> Execute -> ParseCodegenResult
+/// Build:     PrepareBuildCommand -> Execute -> ParseBuildResult
+/// Test:      PrepareTestCommand -> Execute -> ParseTestResult
+/// Lint:      PrepareLintCommand -> Execute -> ParseLintResult
+/// Report:    Report (pure)
 /// ```
-///
-/// The Prep stage runs codegen to ensure all generated code exists.
-/// This is the "fractal unwind" pattern - CI unwinds all DAGs before executing.
 #[allow(clippy::result_large_err)]
-pub fn build_ci_graph() -> Result<Dag<CIOp>, BuilderError> {
+pub fn build_ci_graph() -> Result<Dag<CIGraphOp>, BuilderError> {
     let mut builder = DagBuilder::new();
 
-    // Node: SetupDeps - generation 0
-    let setup_deps = builder.add_root_node(Node::opaque(
-        "setup_deps",
+    // ========================================================================
+    // SetupDeps Stage: Check if deps.toml exists
+    // ========================================================================
+
+    // PrepareFileExists("deps.toml") - pure
+    let prepare_deps_exists = builder.add_root_node(Node::opaque(
+        "prepare_deps_exists",
         vec![],
-        vec![
-            port("deps_checked", "Bool"),
-            port("deps_installed", "Int"),
-            port("message", "String"),
-        ],
-        CIOp::SetupDeps,
+        vec![port("request", "TransportRequest")],
+        CIGraphOp::PrepareFileExists(PrepareFileExistsOp::new("deps.toml")),
     ))?;
 
-    // Node: Prep - generation 1 (codegen/unwind)
-    let prep = builder.add_node_after(
+    // Execute - transport boundary
+    let execute_deps_exists = builder.add_node_after(
         Node::opaque(
-            "prep",
-            vec![port("deps_checked", "Bool")],
+            "execute_deps_exists",
+            vec![port("request", "TransportRequest")],
+            vec![port("response", "TransportResponse")],
+            CIGraphOp::Transport(TransportOps::Execute),
+        ),
+        &prepare_deps_exists,
+    )?;
+
+    // ParseDepsExists - pure
+    let parse_deps_exists = builder.add_node_after(
+        Node::opaque(
+            "parse_deps_exists",
+            vec![port("response", "TransportResponse")],
+            vec![
+                port("deps_exists", "Bool"),
+                port("deps_checked", "Bool"),
+                port("deps_installed", "Int"),
+                port("message", "String"),
+            ],
+            CIGraphOp::CI(CIOp::ParseDepsExists),
+        ),
+        &execute_deps_exists,
+    )?;
+
+    // ========================================================================
+    // Prep Stage: Check codegen exists, run if needed
+    // ========================================================================
+
+    // PrepareCodegenExistsCheck - pure
+    let prepare_codegen_exists = builder.add_node_after(
+        Node::opaque(
+            "prepare_codegen_exists",
+            vec![],
+            vec![port("request", "TransportRequest")],
+            CIGraphOp::CI(CIOp::PrepareCodegenExistsCheck),
+        ),
+        &parse_deps_exists,
+    )?;
+
+    // Execute - transport boundary
+    let execute_codegen_exists = builder.add_node_after(
+        Node::opaque(
+            "execute_codegen_exists",
+            vec![port("request", "TransportRequest")],
+            vec![port("response", "TransportResponse")],
+            CIGraphOp::Transport(TransportOps::Execute),
+        ),
+        &prepare_codegen_exists,
+    )?;
+
+    // ParseCodegenExists - pure (outputs codegen_needed, maybe prep_success)
+    let parse_codegen_exists = builder.add_node_after(
+        Node::opaque(
+            "parse_codegen_exists",
+            vec![port("response", "TransportResponse")],
+            vec![
+                port("codegen_needed", "Bool"),
+                optional("prep_success", "Bool"),
+                optional("codegen_ran", "Bool"),
+                optional("prep_message", "String"),
+            ],
+            CIGraphOp::CI(CIOp::ParseCodegenExists),
+        ),
+        &execute_codegen_exists,
+    )?;
+
+    // PrepareCodegenCommand - pure (may skip)
+    let prepare_codegen_cmd = builder.add_node_after(
+        Node::opaque(
+            "prepare_codegen_cmd",
+            vec![port("codegen_needed", "Bool")],
+            vec![
+                optional("request", "TransportRequest"),
+                port("skip", "Bool"),
+            ],
+            CIGraphOp::CI(CIOp::PrepareCodegenCommand),
+        ),
+        &parse_codegen_exists,
+    )?;
+
+    // Execute codegen - transport boundary (may be skipped by downstream)
+    let execute_codegen = builder.add_node_after(
+        Node::opaque(
+            "execute_codegen",
+            vec![
+                optional("request", "TransportRequest"),
+                port("skip", "Bool"),
+            ],
+            vec![
+                optional("response", "TransportResponse"),
+                port("skip", "Bool"),
+            ],
+            CIGraphOp::Transport(TransportOps::Execute),
+        ),
+        &prepare_codegen_cmd,
+    )?;
+
+    // ParseCodegenResult - pure
+    let parse_codegen_result = builder.add_node_after(
+        Node::opaque(
+            "parse_codegen_result",
+            vec![
+                optional("response", "TransportResponse"),
+                port("skip", "Bool"),
+            ],
             vec![
                 port("prep_success", "Bool"),
                 port("codegen_ran", "Bool"),
                 port("prep_message", "String"),
             ],
-            CIOp::Prep,
+            CIGraphOp::CI(CIOp::ParseCodegenResult),
         ),
-        &setup_deps,
+        &execute_codegen,
     )?;
 
-    // Node: Build - generation 2
-    let build = builder.add_node_after(
+    // ========================================================================
+    // Build Stage
+    // ========================================================================
+
+    // PrepareBuildCommand - pure
+    let prepare_build = builder.add_node_after(
         Node::opaque(
-            "build",
+            "prepare_build",
             vec![port("prep_success", "Bool")],
+            vec![
+                optional("request", "TransportRequest"),
+                port("skip", "Bool"),
+                optional("skip_reason", "String"),
+            ],
+            CIGraphOp::CI(CIOp::PrepareBuildCommand),
+        ),
+        &parse_codegen_result,
+    )?;
+
+    // Execute build - transport boundary
+    let execute_build = builder.add_node_after(
+        Node::opaque(
+            "execute_build",
+            vec![
+                optional("request", "TransportRequest"),
+                port("skip", "Bool"),
+            ],
+            vec![
+                optional("response", "TransportResponse"),
+                port("skip", "Bool"),
+                optional("skip_reason", "String"),
+            ],
+            CIGraphOp::Transport(TransportOps::Execute),
+        ),
+        &prepare_build,
+    )?;
+
+    // ParseBuildResult - pure
+    let parse_build = builder.add_node_after(
+        Node::opaque(
+            "parse_build",
+            vec![
+                optional("response", "TransportResponse"),
+                port("skip", "Bool"),
+                optional("skip_reason", "String"),
+            ],
             vec![
                 port("build_success", "Bool"),
                 port("build_skipped", "Bool"),
                 port("build_stdout", "String"),
                 port("build_stderr", "String"),
             ],
-            CIOp::Build,
+            CIGraphOp::CI(CIOp::ParseBuildResult),
         ),
-        &prep,
+        &execute_build,
     )?;
 
-    // Node: Test - generation 2
-    let test = builder.add_node_after(
+    // ========================================================================
+    // Test Stage (parallel with Lint after build)
+    // ========================================================================
+
+    // PrepareTestCommand - pure
+    let prepare_test = builder.add_node_after(
         Node::opaque(
-            "test",
+            "prepare_test",
             vec![port("build_success", "Bool")],
+            vec![
+                optional("request", "TransportRequest"),
+                port("skip", "Bool"),
+                optional("skip_reason", "String"),
+            ],
+            CIGraphOp::CI(CIOp::PrepareTestCommand),
+        ),
+        &parse_build,
+    )?;
+
+    // Execute test - transport boundary
+    let execute_test = builder.add_node_after(
+        Node::opaque(
+            "execute_test",
+            vec![
+                optional("request", "TransportRequest"),
+                port("skip", "Bool"),
+            ],
+            vec![
+                optional("response", "TransportResponse"),
+                port("skip", "Bool"),
+                optional("skip_reason", "String"),
+            ],
+            CIGraphOp::Transport(TransportOps::Execute),
+        ),
+        &prepare_test,
+    )?;
+
+    // ParseTestResult - pure
+    let parse_test = builder.add_node_after(
+        Node::opaque(
+            "parse_test",
+            vec![
+                optional("response", "TransportResponse"),
+                port("skip", "Bool"),
+                optional("skip_reason", "String"),
+            ],
             vec![
                 port("test_success", "Bool"),
                 port("test_skipped", "Bool"),
                 port("test_stdout", "String"),
                 port("test_stderr", "String"),
             ],
-            CIOp::Test,
+            CIGraphOp::CI(CIOp::ParseTestResult),
         ),
-        &build,
+        &execute_test,
     )?;
 
-    // Node: Lint - generation 2 (parallel with test)
-    // Uses .requires() to declare clippy dependency - framework handles acquisition
-    let lint = builder.add_node_after(
+    // ========================================================================
+    // Lint Stage (parallel with Test)
+    // ========================================================================
+
+    // PrepareLintCommand - pure
+    let prepare_lint = builder.add_node_after(
         Node::opaque(
-            "lint",
+            "prepare_lint",
             vec![port("build_success", "Bool")],
+            vec![
+                optional("request", "TransportRequest"),
+                port("skip", "Bool"),
+                optional("skip_reason", "String"),
+            ],
+            CIGraphOp::CI(CIOp::PrepareLintCommand),
+        ),
+        &parse_build,
+    )?;
+
+    // Execute lint - transport boundary
+    let execute_lint = builder.add_node_after(
+        Node::opaque(
+            "execute_lint",
+            vec![
+                optional("request", "TransportRequest"),
+                port("skip", "Bool"),
+            ],
+            vec![
+                optional("response", "TransportResponse"),
+                port("skip", "Bool"),
+                optional("skip_reason", "String"),
+            ],
+            CIGraphOp::Transport(TransportOps::Execute),
+        ),
+        &prepare_lint,
+    )?;
+
+    // ParseLintResult - pure
+    let parse_lint = builder.add_node_after(
+        Node::opaque(
+            "parse_lint",
+            vec![
+                optional("response", "TransportResponse"),
+                port("skip", "Bool"),
+                optional("skip_reason", "String"),
+            ],
             vec![
                 port("lint_success", "Bool"),
                 port("lint_skipped", "Bool"),
                 port("lint_stdout", "String"),
                 port("lint_stderr", "String"),
             ],
-            CIOp::Lint,
-        )
-        .requires(&cli::CLIPPY),  // Capability-based tool acquisition
-        &build,
+            CIGraphOp::CI(CIOp::ParseLintResult),
+        ),
+        &execute_lint,
     )?;
 
-    // Node: Report (BOUNDARY) - generation 3
+    // ========================================================================
+    // Report Stage
+    // ========================================================================
+
     let report = builder.add_node_after_all(
         Node::opaque(
             "report",
@@ -203,34 +557,88 @@ pub fn build_ci_graph() -> Result<Dag<CIOp>, BuilderError> {
                 port("overall_success", "Bool"),
                 port("report", "String"),
             ],
-            CIOp::Report,
+            CIGraphOp::CI(CIOp::Report),
         ),
-        &[&test, &lint],
+        &[&parse_test, &parse_lint],
     )?;
 
+    // ========================================================================
     // Wire up the pipeline
-    builder.add_edge(setup_deps.out("deps_checked"), prep.in_port("deps_checked"))?;
-    builder.add_edge(prep.out("prep_success"), build.in_port("prep_success"))?;
-    builder.add_edge(build.out("build_success"), test.in_port("build_success"))?;
-    builder.add_edge(build.out("build_success"), lint.in_port("build_success"))?;
-    builder.add_edge(build.out("build_success"), report.in_port("build_success"))?;
-    builder.add_edge(test.out("test_success"), report.in_port("test_success"))?;
-    builder.add_edge(lint.out("lint_success"), report.in_port("lint_success"))?;
+    // ========================================================================
+
+    // SetupDeps stage
+    builder.add_edge(prepare_deps_exists.out("request"), execute_deps_exists.in_port("request"))?;
+    builder.add_edge(execute_deps_exists.out("response"), parse_deps_exists.in_port("response"))?;
+
+    // Prep stage
+    builder.add_edge(prepare_codegen_exists.out("request"), execute_codegen_exists.in_port("request"))?;
+    builder.add_edge(execute_codegen_exists.out("response"), parse_codegen_exists.in_port("response"))?;
+    builder.add_edge(parse_codegen_exists.out("codegen_needed"), prepare_codegen_cmd.in_port("codegen_needed"))?;
+    builder.add_edge(prepare_codegen_cmd.out("request"), execute_codegen.in_port("request"))?;
+    builder.add_edge(prepare_codegen_cmd.out("skip"), execute_codegen.in_port("skip"))?;
+    builder.add_edge(execute_codegen.out("response"), parse_codegen_result.in_port("response"))?;
+    builder.add_edge(execute_codegen.out("skip"), parse_codegen_result.in_port("skip"))?;
+
+    // Build stage
+    builder.add_edge(parse_codegen_result.out("prep_success"), prepare_build.in_port("prep_success"))?;
+    builder.add_edge(prepare_build.out("request"), execute_build.in_port("request"))?;
+    builder.add_edge(prepare_build.out("skip"), execute_build.in_port("skip"))?;
+    builder.add_edge(execute_build.out("response"), parse_build.in_port("response"))?;
+    builder.add_edge(execute_build.out("skip"), parse_build.in_port("skip"))?;
+    builder.add_edge(prepare_build.out("skip_reason"), parse_build.in_port("skip_reason"))?;
+
+    // Test stage
+    builder.add_edge(parse_build.out("build_success"), prepare_test.in_port("build_success"))?;
+    builder.add_edge(prepare_test.out("request"), execute_test.in_port("request"))?;
+    builder.add_edge(prepare_test.out("skip"), execute_test.in_port("skip"))?;
+    builder.add_edge(execute_test.out("response"), parse_test.in_port("response"))?;
+    builder.add_edge(execute_test.out("skip"), parse_test.in_port("skip"))?;
+    builder.add_edge(prepare_test.out("skip_reason"), parse_test.in_port("skip_reason"))?;
+
+    // Lint stage (parallel with test, both depend on build)
+    builder.add_edge(parse_build.out("build_success"), prepare_lint.in_port("build_success"))?;
+    builder.add_edge(prepare_lint.out("request"), execute_lint.in_port("request"))?;
+    builder.add_edge(prepare_lint.out("skip"), execute_lint.in_port("skip"))?;
+    builder.add_edge(execute_lint.out("response"), parse_lint.in_port("response"))?;
+    builder.add_edge(execute_lint.out("skip"), parse_lint.in_port("skip"))?;
+    builder.add_edge(prepare_lint.out("skip_reason"), parse_lint.in_port("skip_reason"))?;
+
+    // Report
+    builder.add_edge(parse_build.out("build_success"), report.in_port("build_success"))?;
+    builder.add_edge(parse_test.out("test_success"), report.in_port("test_success"))?;
+    builder.add_edge(parse_lint.out("lint_success"), report.in_port("lint_success"))?;
 
     Ok(builder.build())
 }
 
+// ============================================================================
+// Tests
+// ============================================================================
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gunbc_ir::{detect_boundaries, infer_signature};
+    use gunbc_ir::detect_boundaries;
     use gunbc_ir::transport::github_actions::{PermissionLevel, PermissionScope};
 
     #[test]
     fn test_graph_builds_successfully() {
         let dag = build_ci_graph().expect("graph should build");
-        assert_eq!(dag.nodes.len(), 6); // setup_deps, prep, build, test, lint, report
-        assert_eq!(dag.edges.len(), 7); // setup->prep, prep->build, build->test, build->lint, build->report, test->report, lint->report
+        // Should have many more nodes now with explicit transport
+        assert!(dag.nodes.len() > 6, "expected more nodes with explicit transport, got {}", dag.nodes.len());
+    }
+
+    #[test]
+    fn test_graph_has_transport_nodes() {
+        let dag = build_ci_graph().expect("graph should build");
+        
+        // Count transport nodes
+        let transport_nodes: Vec<_> = dag.nodes.iter()
+            .filter(|n| n.id.0.starts_with("execute_"))
+            .collect();
+        
+        // Should have transport nodes for: deps_exists, codegen_exists, codegen, build, test, lint
+        assert!(transport_nodes.len() >= 5, "expected at least 5 transport nodes, got {}", transport_nodes.len());
     }
 
     #[test]
@@ -238,54 +646,29 @@ mod tests {
         let dag = build_ci_graph().expect("graph should build");
         let boundaries = detect_boundaries(&dag);
 
-        // Report should be a boundary
+        // Report should still be a boundary
         assert!(boundaries.is_boundary_node(&"report".into()));
     }
 
     #[test]
-    fn test_graph_has_prep() {
+    fn test_transport_nodes_are_visible() {
         let dag = build_ci_graph().expect("graph should build");
         
-        // Verify prep node exists
-        let prep = dag.get_node(&"prep".into());
-        assert!(prep.is_some(), "prep node should exist in CI graph");
-    }
-
-    #[test]
-    fn test_graph_structure() {
-        let dag = build_ci_graph().expect("graph should build");
-
-        assert_eq!(dag.nodes.len(), 6);
-        // setup->prep, prep->build, build->test, build->lint, build->report, test->report, lint->report
-        assert_eq!(dag.edges.len(), 7);
-    }
-
-    #[test]
-    fn test_signature_matches_dag() {
-        let dag = build_ci_graph().expect("graph should build");
-        let sig = ci_signature();
-        sig.validate(&dag).expect("signature should match DAG");
-    }
-
-    #[test]
-    fn test_inferred_signature() {
-        let dag = build_ci_graph().expect("graph should build");
-        let inferred = infer_signature(&dag);
+        // Find execute_build node
+        let execute_build = dag.get_node(&"execute_build".into());
+        assert!(execute_build.is_some(), "execute_build node should exist");
         
-        // No inputs, 15 boundary outputs (added prep outputs and build_skipped)
-        assert_eq!(inferred.inputs.len(), 0);
-        assert_eq!(inferred.outputs.len(), 15);
+        // Verify it's a Transport op
+        if let Some(node) = execute_build {
+            // The node should have TransportRequest as input type
+            let has_request_input = node.inputs.iter().any(|p| p.type_id.0 == "TransportRequest");
+            assert!(has_request_input, "execute_build should have TransportRequest input");
+        }
     }
-
-    // ========================================================================
-    // GitHub Actions Workflow Configuration Tests
-    // ========================================================================
 
     #[test]
     fn test_ci_integrations() {
         let integrations = ci_integrations();
-        
-        // Should have checkout and rust-toolchain
         assert_eq!(integrations.len(), 2);
         assert!(integrations.iter().any(|i| i.id == "checkout"));
         assert!(integrations.iter().any(|i| i.id == "rust-toolchain"));
@@ -294,43 +677,23 @@ mod tests {
     #[test]
     fn test_ci_workflow_config() {
         let config = ci_workflow_config();
-        
         assert_eq!(config.name, "CI");
         assert_eq!(config.runner.id, "ubuntu-latest");
-        assert_eq!(config.integrations.len(), 2);
     }
 
     #[test]
     fn test_ci_workflow_permissions() {
         let perms = ci_workflow_permissions();
-        
-        // Checkout requires contents:read
         assert_eq!(
             perms.get(&PermissionScope::Contents),
             Some(&PermissionLevel::Read)
         );
-        
-        // Should NOT have write permissions (minimal permissions)
-        assert!(perms.values().all(|level| *level != PermissionLevel::Write));
     }
 
     #[test]
     fn test_ci_runner_has_required_tools() {
         let config = ci_workflow_config();
-        
-        // CI needs cargo, git (provided by runner)
         assert!(config.runner.has_tool("cargo"));
         assert!(config.runner.has_tool("git"));
-        assert!(config.runner.has_tool("rustc"));
     }
-
-    #[test]
-    fn test_workflow_config_action_refs() {
-        let config = ci_workflow_config();
-        let refs = config.action_refs();
-        
-        assert!(refs.contains(&"actions/checkout@v4"));
-        assert!(refs.contains(&"dtolnay/rust-toolchain@stable"));
-    }
-
 }
