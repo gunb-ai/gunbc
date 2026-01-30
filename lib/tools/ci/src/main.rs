@@ -6,9 +6,16 @@
 //!
 //! The CI pipeline uses the resource acquisition pattern internally - the
 //! `prep` node checks if codegen is needed and runs it if so.
+//!
+//! # GitHub Actions Integration
+//!
+//! When running in GitHub Actions, this tool emits `::group::` commands
+//! for each DAG node, creating collapsible sections in the Actions UI.
+//! This gives visibility into each step (prep, build, test, lint, report)
+//! without requiring separate workflow steps.
 
 use gunbc_ci::build_ci_graph;
-use gunbc_exec::{execute_with_mode, BoundaryMocks, ExecutionMode};
+use gunbc_exec::{execute_with_mode_and_ci, BoundaryMocks, CiContext, ExecutionMode};
 use gunbc_ir::Value;
 use std::env;
 use std::process;
@@ -42,14 +49,25 @@ fn main() {
         ExecutionMode::Real
     };
     
+    // Detect CI environment and create context for workflow commands
+    // In GitHub Actions: emits ::group:: for collapsible sections
+    // In GitLab CI: emits section_start/end escape sequences
+    // Locally: just prints plain text
+    let mut ci = CiContext::detect();
+    
     // Print header
     println!("gunbc-ci");
     println!("  mode: {}", if dry_run { "dry-run" } else { "real" });
+    // Show CI provider if detected (not "plain")
+    if ci.provider_id() != "plain" {
+        println!("  ci: {}", ci.provider_name());
+    }
     println!();
     
-    // Execute the CI pipeline
-    match execute_with_mode(&dag, mode) {
+    // Execute the CI pipeline with CI context for step visibility
+    match execute_with_mode_and_ci(&dag, mode, &mut ci) {
         Ok(log) => {
+            // Print summary (outside of groups)
             for entry in &log.entries {
                 let marker = if entry.was_intercepted { " [DRY-RUN]" } else { "" };
                 println!("[{}]{}", entry.node_id, marker);
