@@ -256,6 +256,83 @@ pub fn execute_with_mode_and_ci<T: Executable + Clone>(
     execute_flat(&flat, &boundaries, &mode, Some(ci))
 }
 
+/// Execute a single node from a DAG.
+///
+/// This function allows running an individual DAG node for CI step visibility.
+/// Each node can be executed as a separate CI step, with inputs provided from
+/// the previous step's outputs (via environment variables or artifacts).
+///
+/// # Arguments
+///
+/// * `dag` - The full DAG (needed to find the node definition)
+/// * `node_id` - The ID of the node to execute
+/// * `inputs` - Pre-computed inputs for this node (typically from previous CI steps)
+/// * `mode` - Execution mode (Real or DryRun)
+///
+/// # Returns
+///
+/// The outputs of the executed node, or an error if execution fails.
+///
+/// # Example
+///
+/// ```ignore
+/// use gunbc_exec::{execute_single_node, ExecutionMode};
+/// use std::collections::HashMap;
+/// use gunbc_ir::Value;
+///
+/// let dag = build_ci_graph()?;
+/// let inputs = HashMap::new();  // Or load from environment
+/// let outputs = execute_single_node(&dag, "lint", inputs, ExecutionMode::Real)?;
+/// ```
+pub fn execute_single_node<T: Executable + Clone>(
+    dag: &Dag<T>,
+    node_id: &str,
+    inputs: HashMap<String, Value>,
+    mode: ExecutionMode,
+) -> Result<HashMap<String, Value>, ExecError> {
+    // Lower sub-DAGs first (in case the target node is inside a sub-DAG)
+    let flat = lower(dag).map_err(|e| ExecError::new(format!("lowering failed: {e}")))?;
+
+    // Find the node
+    let node = flat
+        .nodes
+        .iter()
+        .find(|n| n.id.0 == node_id)
+        .ok_or_else(|| ExecError::new(format!("node '{}' not found in DAG", node_id)))?;
+
+    // Check if this is a transport execution node for interception
+    let is_transport_executor = is_transport_execution_node(node);
+    let should_intercept = is_transport_executor && matches!(mode, ExecutionMode::DryRun(_) | ExecutionMode::Simulate(_));
+
+    if should_intercept {
+        // Intercept: use mock values for boundary outputs
+        let mocks = match &mode {
+            ExecutionMode::DryRun(m) => m,
+            ExecutionMode::Simulate(config) => &config.boundary_mocks,
+            _ => unreachable!(),
+        };
+
+        let outputs: HashMap<String, Value> = node
+            .outputs
+            .iter()
+            .map(|p| {
+                let mock = mocks.get_mock(&node.id, &p.name);
+                (p.name.0.clone(), mock.value.clone())
+            })
+            .collect();
+        return Ok(outputs);
+    }
+
+    // Execute the node
+    match &node.body {
+        NodeBody::Opaque(op) => op.execute(inputs),
+        NodeBody::SubDag(_) => Err(ExecError::new(format!(
+            "node '{}' is a SubDag — this should not happen after lowering",
+            node_id
+        ))),
+    }
+}
+
 /// Simulate execution of a DAG with timing and resource tracking.
 ///
 /// This is a convenience wrapper that returns a `SimulationResult` instead

@@ -212,6 +212,7 @@ impl ToolDef {
                 graph_builder_args: graph_builder_args.to_string(),
                 returns_result: false,
                 success_port: None,
+                enable_step_mode: false,
             },
             entrypoints: vec![],
             boundaries: vec![],
@@ -231,6 +232,14 @@ impl ToolDef {
     /// If this port is false, the CLI exits with code 1.
     pub fn check_success(mut self, port_name: &str) -> Self {
         self.meta.success_port = Some(port_name.to_string());
+        self
+    }
+
+    /// Enable step mode for this tool.
+    /// This generates a CLI with `step <node>` and `list-steps` subcommands
+    /// for better CI visibility (each DAG node can be a separate CI step).
+    pub fn enable_step_mode(mut self) -> Self {
+        self.meta.enable_step_mode = true;
         self
     }
 
@@ -417,6 +426,7 @@ pub fn all_tools() -> Vec<ToolDef> {
         ),
 
         // gunbc-ci (uses DagBuilder - returns Result)
+        // Step mode enabled for CI visibility in GitHub Actions / GitLab CI
         ToolDef::new(
             "gunbc-ci",
             "ci",
@@ -426,6 +436,7 @@ pub fn all_tools() -> Vec<ToolDef> {
         )
         .returns_result()
         .check_success("overall_success")  // Exit with code 1 if any step fails
+        .enable_step_mode()  // Enable `step <node>` subcommand for CI
         .import("use gunbc_ci::build_ci_graph;")
         .boundary(
             "report",

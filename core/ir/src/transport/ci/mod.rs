@@ -56,12 +56,16 @@
 pub mod command;
 pub mod provider;
 pub mod providers;
+pub mod render;
 pub mod runner;
 
 // Re-exports for convenience
 pub use command::{AnnotationLevel, FileLocation, WorkflowCommand};
 pub use provider::{detect_provider, is_ci, CiProvider};
 pub use providers::{GitHubActionsProvider, GitLabCiProvider, PlainTextProvider};
+pub use render::{
+    dag_to_shared_steps, CacheConfig, CheckoutConfig, CiRenderer, RenderConfig, SharedStep,
+};
 pub use runner::{
     all_gitlab_runners, gitlab_saas_linux_large, gitlab_saas_linux_medium, gitlab_saas_linux_small,
     GitLabRunner, Runner,

@@ -37,8 +37,8 @@ pub mod topo;
 pub use ci_context::CiContext;
 pub use error::ExecError;
 pub use execute::{
-    execute, execute_with_ci, execute_with_mode, execute_with_mode_and_ci, ExecutionLog,
-    ExecutionMode, LogEntry,
+    execute, execute_single_node, execute_with_ci, execute_with_mode, execute_with_mode_and_ci,
+    ExecutionLog, ExecutionMode, LogEntry,
 };
 pub use intercept::{BoundaryMock, BoundaryMocks};
 pub use lower::{lower, LowerError};

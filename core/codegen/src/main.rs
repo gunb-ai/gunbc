@@ -1,10 +1,11 @@
-//! CLI and DAG generator - generates main.rs and graph.rs for all tools.
+//! CLI and DAG generator - generates main.rs, graph.rs, and CI YAML for all tools.
 //!
 //! This is a transaction-based code generator:
 //! - `commit` (default): Generate CLIs, build binaries, create bin directory
 //! - `rollback`: Remove all generated artifacts
 //! - `codegen`: Just generate CLIs (partial commit)
 //! - `daggen`: Generate graph.rs from declarative DAG definitions
+//! - `cigen`: Generate CI workflow YAML (GitHub Actions and GitLab CI)
 //!
 //! Usage:
 //!   gunbc-codegen                    # same as 'commit'
@@ -12,6 +13,7 @@
 //!   gunbc-codegen rollback           # undo all generated files
 //!   gunbc-codegen codegen            # just generate CLIs
 //!   gunbc-codegen daggen             # generate graph.rs files
+//!   gunbc-codegen cigen              # generate CI YAML files
 //!   gunbc-codegen codegen --dry-run  # preview codegen
 //!
 //! # Architecture Note
@@ -26,6 +28,7 @@
 use gunbc_codegen::{
     all_cleanable_outputs, all_tools, generate_cli_with_import, generate_graph_rs, FileWriter,
 };
+use gunbc_ir::transport::ci::{CiRenderer, GitHubActionsProvider, GitLabCiProvider, RenderConfig};
 use std::env;
 use std::fs;
 use std::io;
@@ -54,6 +57,7 @@ fn main() {
         "rollback" => cmd_rollback(dry_run),
         "codegen" => cmd_codegen(dry_run),
         "daggen" => cmd_daggen(dry_run),
+        "cigen" => cmd_cigen(dry_run),
         _ => {
             eprintln!("Unknown command: {}", command);
             eprintln!("Run 'gunbc-codegen --help' for usage");
@@ -258,6 +262,212 @@ fn cmd_daggen(dry_run: bool) {
     println!("Generated: {}, Skipped: {}", generated, skipped);
 }
 
+/// Generate CI workflow YAML files for tools with step mode enabled.
+///
+/// Generates both GitHub Actions and GitLab CI configurations from the
+/// CI DAG structure. Currently generates a template based on the tool's
+/// enable_step_mode flag.
+fn cmd_cigen(dry_run: bool) {
+    println!("gunbc-codegen: cigen");
+    println!("  mode: {}", if dry_run { "dry-run" } else { "real" });
+    println!();
+    
+    let writer = FileWriter::new(dry_run);
+    let tools = all_tools();
+    
+    let github_provider = GitHubActionsProvider;
+    let gitlab_provider = GitLabCiProvider::default();
+    
+    let mut generated = 0;
+    let mut skipped = 0;
+    
+    for tool in &tools {
+        if tool.meta.enable_step_mode {
+            // Generate GitHub Actions YAML
+            let config = RenderConfig::new(&tool.meta.tool_name, &tool.meta.crate_name)
+                .with_runner("ubuntu-latest")
+                .with_env("CARGO_TERM_COLOR", "always")
+                .with_branches(vec!["main"]);
+            
+            // Create a minimal DAG for rendering (since we can't call the graph builder at compile time)
+            // The actual step names come from the CI tool's list-steps command at runtime
+            let ci_yaml = generate_ci_yaml_template(&github_provider, &config);
+            let github_path = github_provider.output_path(&tool.meta.tool_name);
+            
+            match writer.write(Path::new(&github_path), &ci_yaml) {
+                Ok(result) => {
+                    let status = if result.written {
+                        if result.changed { "written" } else { "unchanged" }
+                    } else {
+                        "dry-run"
+                    };
+                    println!("  [{}] {} ({})", tool.meta.tool_name, github_path, status);
+                    generated += 1;
+                }
+                Err(e) => {
+                    eprintln!("  [{}] GitHub Actions ERROR: {}", tool.meta.tool_name, e);
+                }
+            }
+            
+            // Generate GitLab CI YAML
+            let gitlab_yaml = generate_ci_yaml_template(&gitlab_provider, &config);
+            let gitlab_path = gitlab_provider.output_path(&tool.meta.tool_name);
+            
+            match writer.write(Path::new(&gitlab_path), &gitlab_yaml) {
+                Ok(result) => {
+                    let status = if result.written {
+                        if result.changed { "written" } else { "unchanged" }
+                    } else {
+                        "dry-run"
+                    };
+                    println!("  [{}] {} ({})", tool.meta.tool_name, gitlab_path, status);
+                    generated += 1;
+                }
+                Err(e) => {
+                    eprintln!("  [{}] GitLab CI ERROR: {}", tool.meta.tool_name, e);
+                }
+            }
+        } else {
+            skipped += 1;
+        }
+    }
+    
+    println!();
+    println!("Generated: {} CI files, Skipped: {} tools", generated, skipped);
+}
+
+/// Generate CI YAML template for a tool using the given provider.
+///
+/// Since we can't call the graph builder at compile time (circular dependency),
+/// we generate a template that uses the tool's step mode CLI interface.
+fn generate_ci_yaml_template<P: CiRenderer>(provider: &P, config: &RenderConfig) -> String {
+    if provider.provider_id() == "github-actions" {
+        generate_github_actions_template(config)
+    } else {
+        generate_gitlab_ci_template(config)
+    }
+}
+
+/// Generate GitHub Actions YAML template.
+fn generate_github_actions_template(config: &RenderConfig) -> String {
+    let mut yaml = String::new();
+    
+    yaml.push_str("# Generated by gunbc-codegen. Do not edit manually.\n");
+    yaml.push_str(&format!("name: {}\n\n", config.workflow_name));
+    
+    // Triggers
+    yaml.push_str("on:\n");
+    yaml.push_str("  push:\n");
+    yaml.push_str("    branches:\n");
+    for branch in &config.branches {
+        yaml.push_str(&format!("      - {}\n", branch));
+    }
+    yaml.push_str("  pull_request:\n");
+    yaml.push_str("    branches:\n");
+    for branch in &config.branches {
+        yaml.push_str(&format!("      - {}\n", branch));
+    }
+    yaml.push('\n');
+    
+    // Environment
+    yaml.push_str("env:\n");
+    yaml.push_str("  CARGO_TERM_COLOR: always\n");
+    for (key, value) in &config.env {
+        if key != "CARGO_TERM_COLOR" {
+            yaml.push_str(&format!("  {}: {}\n", key, value));
+        }
+    }
+    yaml.push('\n');
+    
+    // Job
+    yaml.push_str("jobs:\n");
+    yaml.push_str(&format!("  {}:\n", config.workflow_name));
+    yaml.push_str(&format!("    runs-on: {}\n", config.runner));
+    yaml.push_str("    steps:\n");
+    yaml.push_str("      - name: Checkout\n");
+    yaml.push_str("        uses: actions/checkout@v4\n");
+    yaml.push_str("        with:\n");
+    yaml.push_str("          fetch-depth: 1\n");
+    yaml.push('\n');
+    
+    // Cache
+    yaml.push_str("      - name: Cache Cargo\n");
+    yaml.push_str("        uses: actions/cache@v4\n");
+    yaml.push_str("        with:\n");
+    yaml.push_str("          path: |\n");
+    yaml.push_str("            ~/.cargo/bin/\n");
+    yaml.push_str("            ~/.cargo/registry/index/\n");
+    yaml.push_str("            ~/.cargo/registry/cache/\n");
+    yaml.push_str("            ~/.cargo/git/db/\n");
+    yaml.push_str("            target/\n");
+    yaml.push_str("          key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}\n");
+    yaml.push_str("          restore-keys: |\n");
+    yaml.push_str("            cargo-${{ runner.os }}-\n");
+    yaml.push('\n');
+    
+    // Build tool
+    yaml.push_str("      - name: Build CI Tool\n");
+    yaml.push_str(&format!("        run: cargo build --release -p {}\n\n", config.tool_binary));
+    
+    // Run full DAG (with step mode, the tool will emit groups for each step)
+    yaml.push_str("      - name: Run CI Pipeline\n");
+    yaml.push_str(&format!("        run: ./target/release/{}\n", config.tool_binary.replace('-', "_")));
+    
+    yaml
+}
+
+/// Generate GitLab CI YAML template.
+fn generate_gitlab_ci_template(config: &RenderConfig) -> String {
+    let mut yaml = String::new();
+    
+    yaml.push_str("# Generated by gunbc-codegen. Do not edit manually.\n\n");
+    
+    // Image
+    yaml.push_str("image: rust:latest\n\n");
+    
+    // Variables
+    yaml.push_str("variables:\n");
+    yaml.push_str("  CARGO_TERM_COLOR: always\n");
+    for (key, value) in &config.env {
+        if key != "CARGO_TERM_COLOR" {
+            yaml.push_str(&format!("  {}: \"{}\"\n", key, value));
+        }
+    }
+    yaml.push('\n');
+    
+    // Stages
+    yaml.push_str("stages:\n");
+    yaml.push_str("  - build\n");
+    yaml.push_str("  - run\n\n");
+    
+    // Cache
+    yaml.push_str("cache:\n");
+    yaml.push_str("  key: cargo-${CI_COMMIT_REF_SLUG}\n");
+    yaml.push_str("  paths:\n");
+    yaml.push_str("    - .cargo/\n");
+    yaml.push_str("    - target/\n\n");
+    
+    // Build job
+    yaml.push_str("build:\n");
+    yaml.push_str("  stage: build\n");
+    yaml.push_str("  script:\n");
+    yaml.push_str(&format!("    - cargo build --release -p {}\n", config.tool_binary));
+    yaml.push_str("  artifacts:\n");
+    yaml.push_str("    paths:\n");
+    yaml.push_str(&format!("      - target/release/{}\n", config.tool_binary.replace('-', "_")));
+    yaml.push_str("    expire_in: 1 hour\n\n");
+    
+    // Run job
+    yaml.push_str(&format!("{}:\n", config.workflow_name));
+    yaml.push_str("  stage: run\n");
+    yaml.push_str("  needs:\n");
+    yaml.push_str("    - build\n");
+    yaml.push_str("  script:\n");
+    yaml.push_str(&format!("    - ./target/release/{}\n", config.tool_binary.replace('-', "_")));
+    
+    yaml
+}
+
 /// Generate CLI main.rs files for all tools
 fn codegen_clis(dry_run: bool) -> bool {
     let writer = FileWriter::new(dry_run);
@@ -306,6 +516,7 @@ fn print_help() {
     println!("    rollback   Remove all generated artifacts (clean)");
     println!("    codegen    Just generate CLIs (partial commit)");
     println!("    daggen     Generate graph.rs from declarative DAG definitions");
+    println!("    cigen      Generate CI workflow YAML (GitHub Actions & GitLab CI)");
     println!();
     println!("OPTIONS:");
     println!("    -n, --dry-run    Preview changes without writing");
@@ -316,4 +527,5 @@ fn print_help() {
     println!("    gunbc-codegen rollback       # clean everything");
     println!("    gunbc-codegen codegen -n     # preview CLI generation");
     println!("    gunbc-codegen daggen         # generate graph.rs for tools with DAG defs");
+    println!("    gunbc-codegen cigen          # generate CI YAML files");
 }
