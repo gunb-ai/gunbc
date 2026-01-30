@@ -7,34 +7,37 @@
 # Increase the threshold to allow it in Result types.
 large-error-threshold = 256
 
-# This enforces two patterns:
+# This configuration enforces system invariants:
 #
-# 1. TRANSPORT PATTERN: Direct I/O operations disallowed outside approved crates
-#    - gunbc-transport (Transport executor is the designated I/O boundary)
-#    - gunbc-codegen (Bootstrap code - can't use transport (chicken/egg))
-#    - gunbc-primitives (Deprecated ops, allowed for backwards compatibility)
+# I6. NO ESCAPE HATCHES
+#     The system cannot be bypassed. If I/O must go through transport,
+#     there's no function to call to skip it.
 #
-# 2. TOOL ACQUISITION PATTERN: Command::new disallowed except:
-#    - lib/transport/src/executor.rs (the I/O boundary)
-#    - core/ir/src/transport/cli.rs (tool acquisition implementation)
-#    - core/codegen/src/main.rs (bootstrapper)
+# I7. NO FALLBACKS
+#     Operations either succeed or fail. No silent degradation.
+#     Don't use .unwrap_or_default() to hide errors.
 #
-# For CLI tools, use node.requires(&cli::TOOL) to declare dependencies.
-# The framework handles tool acquisition automatically.
+# I8. NO WARNINGS
+#     Run with: cargo clippy --all-targets -- -D warnings
+#     Warnings are errors. If something is wrong, the build fails.
 #
-# Exceptions use #[allow(clippy::disallowed_methods)] with a comment explaining why.
+# APPROVED EXCEPTIONS (must have documented reason):
+#   - gunbc-transport (IS the I/O boundary - the designated place for I/O)
+#   - gunbc-codegen (Bootstrap code - can't use transport (chicken/egg))
+#
+# To add an exception: #[allow(clippy::disallowed_methods)] with comment.
 
 disallowed-methods = [
     # Filesystem operations - use PrepareFileReadOp/PrepareFileWriteOp instead
-    { path = "std::fs::read", reason = "Use PrepareFileReadOp + TransportOps::Execute for transport compliance" },
-    { path = "std::fs::read_to_string", reason = "Use PrepareFileReadOp + TransportOps::Execute for transport compliance" },
-    { path = "std::fs::write", reason = "Use PrepareFileWriteOp + TransportOps::Execute for transport compliance" },
-    { path = "std::fs::read_dir", reason = "Use PrepareDirectoryListOp + TransportOps::Execute for transport compliance" },
-    { path = "std::fs::remove_file", reason = "Direct filesystem ops should be in transport layer" },
-    { path = "std::fs::remove_dir_all", reason = "Direct filesystem ops should be in transport layer" },
-    { path = "std::fs::create_dir_all", reason = "Direct filesystem ops should be in transport layer" },
+    { path = "std::fs::read", reason = "I6: No escape hatches. Use PrepareFileReadOp + TransportOps::Execute" },
+    { path = "std::fs::read_to_string", reason = "I6: No escape hatches. Use PrepareFileReadOp + TransportOps::Execute" },
+    { path = "std::fs::write", reason = "I6: No escape hatches. Use PrepareFileWriteOp + TransportOps::Execute" },
+    { path = "std::fs::read_dir", reason = "I6: No escape hatches. Use PrepareDirectoryListOp + TransportOps::Execute" },
+    { path = "std::fs::remove_file", reason = "I6: No escape hatches. Direct filesystem ops must be in transport layer" },
+    { path = "std::fs::remove_dir_all", reason = "I6: No escape hatches. Direct filesystem ops must be in transport layer" },
+    { path = "std::fs::create_dir_all", reason = "I6: No escape hatches. Direct filesystem ops must be in transport layer" },
     
     # Process execution - use node.requires(&cli::TOOL) for tool dependencies
     # Direct Command::new should only be in transport executor and cli.rs
-    { path = "std::process::Command::new", reason = "Use node.requires(&cli::TOOL) for tool dependencies. Command::new only in transport executor." },
+    { path = "std::process::Command::new", reason = "I6: No escape hatches. Use node.requires(&cli::TOOL). Command::new only in transport executor." },
 ]

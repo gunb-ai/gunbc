@@ -656,7 +656,7 @@ mod tests {
 
         let result = execute_prepare_build_command(inputs).unwrap();
         assert_eq!(result.get("skip").and_then(|v| v.as_bool()), Some(false));
-        assert!(result.get("request").is_some());
+        assert!(result.contains_key("request"));
     }
 
     #[test]
@@ -666,7 +666,7 @@ mod tests {
 
         let result = execute_prepare_build_command(inputs).unwrap();
         assert_eq!(result.get("skip").and_then(|v| v.as_bool()), Some(true));
-        assert!(result.get("request").is_none());
+        assert!(!result.contains_key("request"));
     }
 
     #[test]

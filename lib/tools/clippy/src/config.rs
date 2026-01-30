@@ -110,63 +110,68 @@ impl ClippyConfig {
 
     /// Transport pattern enforcement configuration.
     ///
-    /// This configuration enforces that:
-    /// 1. Direct filesystem operations (std::fs::*) go through the transport layer
-    /// 2. Process execution (Command::new) uses the tool acquisition pattern
+    /// This configuration enforces system invariants:
     ///
-    /// Approved crates that may bypass these rules:
-    /// - `gunbc-transport` — IS the I/O boundary
-    /// - `gunbc-codegen` — Bootstrap code (chicken/egg problem)
-    /// - `core/ir/src/transport/cli.rs` — Tool acquisition implementation
+    /// ## I6. No Escape Hatches
+    /// Direct I/O operations are disallowed. You cannot bypass the transport layer.
+    /// If I/O must go through transport, there's no function to call to skip it.
+    ///
+    /// ## I7. No Fallbacks  
+    /// Operations either succeed or fail. No silent degradation.
+    /// Don't use `.unwrap_or_default()` to hide errors.
+    ///
+    /// ## I8. No Warnings
+    /// All lints run with `-D warnings`. Warnings are errors.
+    /// If something is wrong, the build fails — it doesn't print a warning and continue.
+    ///
+    /// ## Approved Exceptions (must have documented reason):
+    /// - `gunbc-transport` — IS the I/O boundary (the one place I/O is allowed)
+    /// - `gunbc-codegen` — Bootstrap code (chicken/egg problem with transport)
     pub fn transport_pattern() -> Self {
         Self::new()
             .with_large_error_threshold(256)
-            // Filesystem operations
+            // Filesystem operations - enforces I6 (no escape hatches)
             .disallow(
                 "std::fs::read",
-                "Use PrepareFileReadOp + TransportOps::Execute for transport compliance",
+                "I6: No escape hatches. Use PrepareFileReadOp + TransportOps::Execute",
             )
             .disallow(
                 "std::fs::read_to_string",
-                "Use PrepareFileReadOp + TransportOps::Execute for transport compliance",
+                "I6: No escape hatches. Use PrepareFileReadOp + TransportOps::Execute",
             )
             .disallow(
                 "std::fs::write",
-                "Use PrepareFileWriteOp + TransportOps::Execute for transport compliance",
+                "I6: No escape hatches. Use PrepareFileWriteOp + TransportOps::Execute",
             )
             .disallow(
                 "std::fs::read_dir",
-                "Use PrepareDirectoryListOp + TransportOps::Execute for transport compliance",
+                "I6: No escape hatches. Use PrepareDirectoryListOp + TransportOps::Execute",
             )
             .disallow(
                 "std::fs::remove_file",
-                "Direct filesystem ops should be in transport layer",
+                "I6: No escape hatches. Direct filesystem ops must be in transport layer",
             )
             .disallow(
                 "std::fs::remove_dir_all",
-                "Direct filesystem ops should be in transport layer",
+                "I6: No escape hatches. Direct filesystem ops must be in transport layer",
             )
             .disallow(
                 "std::fs::create_dir_all",
-                "Direct filesystem ops should be in transport layer",
+                "I6: No escape hatches. Direct filesystem ops must be in transport layer",
             )
-            // Process execution
+            // Process execution - enforces I6
             .disallow(
                 "std::process::Command::new",
-                "Use node.requires(&cli::TOOL) for tool dependencies. Command::new only in transport executor.",
+                "I6: No escape hatches. Use node.requires(&cli::TOOL). Command::new only in transport executor.",
             )
-            // Document approved crates
+            // Document approved crates (minimal exceptions)
             .allow_crate(
                 "gunbc-transport",
-                "Transport executor is the designated I/O boundary",
+                "IS the I/O boundary - the designated place for I/O",
             )
             .allow_crate(
                 "gunbc-codegen",
                 "Bootstrap code - can't use transport (chicken/egg)",
-            )
-            .allow_crate(
-                "gunbc-primitives",
-                "Deprecated ops, allowed for backwards compatibility",
             )
     }
 }
@@ -196,26 +201,28 @@ pub fn generate_clippy_toml(config: &ClippyConfig) -> String {
         output.push_str(&format!("large-error-threshold = {}\n\n", threshold));
     }
 
-    // Document the patterns being enforced
+    // Document the invariants being enforced
     if !config.disallowed_methods.is_empty() {
-        output.push_str("# This enforces two patterns:\n");
+        output.push_str("# This configuration enforces system invariants:\n");
         output.push_str("#\n");
-        output.push_str("# 1. TRANSPORT PATTERN: Direct I/O operations disallowed outside approved crates\n");
-        
-        // List approved crates
+        output.push_str("# I6. NO ESCAPE HATCHES\n");
+        output.push_str("#     The system cannot be bypassed. If I/O must go through transport,\n");
+        output.push_str("#     there's no function to call to skip it.\n");
+        output.push_str("#\n");
+        output.push_str("# I7. NO FALLBACKS\n");
+        output.push_str("#     Operations either succeed or fail. No silent degradation.\n");
+        output.push_str("#     Don't use .unwrap_or_default() to hide errors.\n");
+        output.push_str("#\n");
+        output.push_str("# I8. NO WARNINGS\n");
+        output.push_str("#     Run with: cargo clippy --all-targets -- -D warnings\n");
+        output.push_str("#     Warnings are errors. If something is wrong, the build fails.\n");
+        output.push_str("#\n");
+        output.push_str("# APPROVED EXCEPTIONS (must have documented reason):\n");
         for allowance in &config.crate_allowances {
-            output.push_str(&format!("#    - {} ({})\n", allowance.crate_name, allowance.reason));
+            output.push_str(&format!("#   - {} ({})\n", allowance.crate_name, allowance.reason));
         }
         output.push_str("#\n");
-        output.push_str("# 2. TOOL ACQUISITION PATTERN: Command::new disallowed except:\n");
-        output.push_str("#    - lib/transport/src/executor.rs (the I/O boundary)\n");
-        output.push_str("#    - core/ir/src/transport/cli.rs (tool acquisition implementation)\n");
-        output.push_str("#    - core/codegen/src/main.rs (bootstrapper)\n");
-        output.push_str("#\n");
-        output.push_str("# For CLI tools, use node.requires(&cli::TOOL) to declare dependencies.\n");
-        output.push_str("# The framework handles tool acquisition automatically.\n");
-        output.push_str("#\n");
-        output.push_str("# Exceptions use #[allow(clippy::disallowed_methods)] with a comment explaining why.\n");
+        output.push_str("# To add an exception: #[allow(clippy::disallowed_methods)] with comment.\n");
         output.push('\n');
     }
 

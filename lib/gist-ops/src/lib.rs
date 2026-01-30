@@ -52,7 +52,7 @@ impl Executable for GistOps {
                     .and_then(|v| v.as_response())
                     .ok_or_else(|| ExecError::new("missing or invalid 'response' input"))?;
 
-                let url = extract_gist_url(&response);
+                let url = extract_gist_url(response);
 
                 let mut out = HashMap::new();
                 out.insert("url".to_string(), Value::Str(url));

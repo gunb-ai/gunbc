@@ -18,8 +18,7 @@
 //! This is a known deviation from the transport pattern and is documented
 //! for future migration to PrepareDirectoryListOp + TransportOps::Execute.
 
-// ScanWorkspace uses direct filesystem reads (future migration target)
-#![allow(clippy::disallowed_methods)]
+// Bootstrap ops are now pure - I/O goes through explicit transport nodes
 
 pub mod graph;
 pub mod ops;

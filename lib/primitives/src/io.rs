@@ -272,7 +272,7 @@ mod tests {
         inputs.insert("content".to_string(), Value::Str("hello".to_string()));
 
         let result = op.execute(inputs).unwrap();
-        assert!(result.get("request").is_some());
+        assert!(result.contains_key("request"));
     }
 
     #[test]
@@ -282,7 +282,7 @@ mod tests {
         inputs.insert("path".to_string(), Value::Str("test.txt".to_string()));
 
         let result = op.execute(inputs).unwrap();
-        assert!(result.get("request").is_some());
+        assert!(result.contains_key("request"));
     }
 
     #[test]
@@ -292,7 +292,7 @@ mod tests {
         inputs.insert("path".to_string(), Value::Str("test.txt".to_string()));
 
         let result = op.execute(inputs).unwrap();
-        assert!(result.get("request").is_some());
+        assert!(result.contains_key("request"));
     }
 
     #[test]
@@ -306,7 +306,7 @@ mod tests {
         );
 
         let result = op.execute(inputs).unwrap();
-        assert!(result.get("request").is_some());
+        assert!(result.contains_key("request"));
     }
 
     #[test]
@@ -316,7 +316,7 @@ mod tests {
         inputs.insert("path".to_string(), Value::Str(".".to_string()));
 
         let result = op.execute(inputs).unwrap();
-        assert!(result.get("request").is_some());
+        assert!(result.contains_key("request"));
     }
 
     #[test]
@@ -330,6 +330,6 @@ mod tests {
         inputs.insert("method".to_string(), Value::Str("GET".to_string()));
 
         let result = op.execute(inputs).unwrap();
-        assert!(result.get("request").is_some());
+        assert!(result.contains_key("request"));
     }
 }
