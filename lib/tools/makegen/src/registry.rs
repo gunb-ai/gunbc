@@ -43,6 +43,8 @@ pub struct BuildConfig {
     pub fmt_check_command: Vec<&'static str>,
     /// Command to type-check without full build
     pub check_command: Vec<&'static str>,
+    /// Command to generate CI YAML
+    pub ci_yaml_command: Vec<&'static str>,
 }
 
 impl BuildConfig {
@@ -58,6 +60,7 @@ impl BuildConfig {
             fmt_command: vec!["cargo", "fmt"],
             fmt_check_command: vec!["cargo", "fmt", "--", "--check"],
             check_command: vec!["cargo", "check", "--all-targets"],
+            ci_yaml_command: vec!["cargo", "run", "-p", "gunbc-codegen", "--release", "--", "cigen"],
         }
     }
 
@@ -73,6 +76,7 @@ impl BuildConfig {
             fmt_command: vec!["cargo", "fmt"], // fmt stays cargo
             fmt_check_command: vec!["cargo", "fmt", "--", "--check"],
             check_command: vec!["buck2", "build", "//..."], // buck2 check is same as build
+            ci_yaml_command: vec!["cargo", "run", "-p", "gunbc-codegen", "--release", "--", "cigen"],
         }
     }
 
@@ -109,6 +113,10 @@ impl BuildConfig {
     /// Get the check command as a shell string.
     pub fn check_shell(&self) -> String {
         format!("@{}", self.check_command.join(" "))
+    }
+
+    pub fn ci_yaml_shell(&self) -> String {
+        format!("@{}", self.ci_yaml_command.join(" "))
     }
 }
 
@@ -281,6 +289,8 @@ pub enum ConfigField {
     Check,
     /// Use build_command
     Build,
+    /// Use ci_yaml_command
+    CiYaml,
 }
 
 impl ConfigField {
@@ -292,6 +302,7 @@ impl ConfigField {
             ConfigField::Fmt => config.fmt_shell(),
             ConfigField::Check => config.check_shell(),
             ConfigField::Build => config.build_shell(),
+            ConfigField::CiYaml => config.ci_yaml_shell(),
         }
     }
 
@@ -395,6 +406,13 @@ pub fn default_meta_targets() -> Vec<MetaTarget> {
         // fmt - format code (no prep needed)
         MetaTarget::new("fmt", "Format all code", PrepLevel::None, ConfigField::Fmt)
             .with_check_variant(),
+        // ci-yaml - generate CI workflow files (no prep needed)
+        MetaTarget::new(
+            "ci-yaml",
+            "Generate CI workflow YAML (GitHub Actions & GitLab CI)",
+            PrepLevel::None,
+            ConfigField::CiYaml,
+        ),
     ]
 }
 

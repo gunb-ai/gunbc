@@ -3,12 +3,12 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help codegen ensure-codegen build clean test check clippy fmt fmt-check gist gist-dry buck2 buck2-dry makegen makegen-dry deps deps-dry ci ci-dry bootstrap bootstrap-dry viz viz-dry viz-serve prep prep-dry
+.PHONY: help codegen ensure-codegen build clean test check clippy fmt fmt-check ci-yaml gist gist-dry buck2 buck2-dry makegen makegen-dry deps deps-dry ci ci-dry bootstrap bootstrap-dry viz viz-dry viz-serve
 
-# Ensure codegen has run (upsert pattern: check -> create if missing)
+# Ensure codegen has run (upsert pattern: check stamp -> run if missing)
 ensure-codegen:
-	@if [ ! -f buck-out/gen/bin/gist/main.rs ]; then \
-		cargo run -p gunbc-codegen --release -- codegen; \
+	@if [ ! -f buck-out/gen/.codegen-stamp ]; then \
+		cargo run -p gunbc-codegen --release -- codegen && touch buck-out/gen/.codegen-stamp; \
 	fi
 
 # Force regenerate CLIs from DAG entrypoints
@@ -37,6 +37,7 @@ help:
 	@echo "  clippy  - Run clippy linter"
 	@echo "  fmt  - Format all code"
 	@echo "  fmt-check  - Format all code (check only)"
+	@echo "  ci-yaml  - Generate CI workflow YAML (GitHub Actions & GitLab CI)"
 	@echo ""
 	@echo "Tools:"
 	@echo "  gist [REPO=.] [EXT=...]  - Create a GitHub gist from code files"
@@ -46,8 +47,7 @@ help:
 	@echo "  ci   - Run CI pipeline"
 	@echo "  bootstrap   - Generate Makefile and .gitignore"
 	@echo "  viz [OUTPUT=viz-data.json]  - Generate DAG visualization data"
-	@echo "  viz-serve  - Generate viz data and open in browser"
-	@echo "  prep   - Prepare repo - run all code generation and build"
+	@echo "  viz-serve  - Start HTTP server for viz (open http://localhost:8080/viz.html)"
 	@echo ""
 	@echo "Add -dry suffix for dry-run (e.g., make gist-dry)"
 
@@ -73,6 +73,10 @@ fmt:
 
 fmt-check:
 	@cargo fmt -- --check
+
+# ci-yaml: Generate CI workflow YAML (GitHub Actions & GitLab CI)
+ci-yaml:
+	@cargo run -p gunbc-codegen --release -- cigen
 
 # gunbc-gist entrypoints: repo_path (String), extensions (String)
 gist: ensure-codegen
@@ -123,15 +127,9 @@ viz: ensure-codegen
 viz-dry: ensure-codegen
 	@cargo run -p gunbc-viz -- --dry-run $(if $(OUTPUT),--output $(OUTPUT))
 
-# viz-serve: Generate viz data and open in browser
+# viz-serve: Start HTTP server for viz (open http://localhost:8080/viz.html)
 viz-serve: viz
-	@echo "Starting server at http://localhost:8080/viz.html"
-	@(sleep 1 && python3 -c "import webbrowser; webbrowser.open('http://localhost:8080/viz.html')") &
+	@echo "Serving at http://localhost:8080/viz.html"
+	@echo "Press Ctrl+C to stop"
 	@python3 -m http.server 8080
 
-# gunbc-prep entrypoints: 
-prep: ensure-codegen
-	@cargo run -p gunbc-prep --
-
-prep-dry: ensure-codegen
-	@cargo run -p gunbc-prep -- --dry-run
