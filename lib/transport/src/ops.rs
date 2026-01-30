@@ -1,20 +1,18 @@
 //! Transport operations.
 //!
-//! Unified transport execution for any I/O operation.
-//! This is the standard way to execute transport requests - use this
-//! instead of implementing your own transport wrapper.
+//! Unified transport execution for any I/O operation via `TransportOps::Execute` nodes.
 //!
 //! # Example
 //!
 //! ```ignore
-//! use gunbc_lib_transport::{TransportOps, execute_request};
+//! use gunbc_lib_transport::TransportOps;
 //!
-//! // In a DAG node
+//! // In a DAG node - this is the ONLY way to do I/O
 //! let node = Node::opaque("execute", inputs, outputs, TransportOps::Execute);
-//!
-//! // Or call directly
-//! let response = execute_request(&request)?;
 //! ```
+//!
+//! Note: `execute_request()` is internal to this crate and not exported.
+//! This structural enforcement ensures all I/O goes through visible DAG nodes.
 
 use crate::executor::execute_transport;
 use gunbc_exec::{ExecError, Executable};
@@ -69,18 +67,11 @@ impl Executable for TransportOps {
 // Standalone helper functions
 // ============================================================================
 
-/// Execute a transport request.
+/// Execute a transport request (internal).
 ///
-/// This is the standard way to execute any I/O operation in gunbc.
-/// Returns the transport response.
-///
-/// # Example
-///
-/// ```ignore
-/// let request = TransportRequest::File(FileRequest::read("config.toml"));
-/// let response = execute_request(&request)?;
-/// ```
-pub fn execute_request(request: &TransportRequest) -> Result<TransportResponse, ExecError> {
+/// This function is NOT exported - it's only callable from within this crate.
+/// External code must use `TransportOps::Execute` nodes in a DAG.
+pub(crate) fn execute_request(request: &TransportRequest) -> Result<TransportResponse, ExecError> {
     execute_transport(request).map_err(|e| ExecError::new(format!("transport error: {}", e)))
 }
 

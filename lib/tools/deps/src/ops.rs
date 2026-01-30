@@ -1,8 +1,7 @@
 //! Deps operations.
 //!
-//! Uses the transport layer for all I/O operations.
-//! Domain-specific logic (manifest parsing, platform detection) remains,
-//! but file I/O and command execution go through the transport layer.
+//! All I/O happens through explicit `TransportOps::Execute` nodes in the DAG.
+//! The ops here are PURE (no I/O) - they prepare requests and parse responses.
 
 use crate::installer::Installer;
 use crate::manifest::DepsManifest;
@@ -10,68 +9,102 @@ use crate::upsert::upsert_dry_run;
 use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::transport::{FileRequest, ShellRequest, TransportRequest, TransportResponse};
 use gunbc_ir::Value;
-use gunbc_lib_transport::execute_transport;
 use gunbc_primitives::data::ParseOp;
 use std::collections::HashMap;
 
 /// Operations for the deps tool.
 ///
-/// These operations use primitives internally where possible:
-/// - `LoadManifest`: Uses `ReadFileOp` + `ParseOp::Toml` internally
-/// - `ExecuteInstalls`: Uses `ExecuteOp` internally
+/// All operations are PURE - no I/O. I/O happens via TransportOps::Execute nodes.
 #[derive(Debug, Clone)]
 pub enum DepsOp {
-    /// Load the deps manifest (uses ReadFile + Parse primitives internally)
-    LoadManifest,
-    /// Generate install scripts (domain-specific logic)
+    // ========================================================================
+    // LoadManifest chain: PrepareLoadManifest -> Execute -> ParseManifest
+    // ========================================================================
+    /// Prepare file read request for manifest (PURE)
+    PrepareLoadManifest,
+    /// Parse manifest file response (PURE)
+    ParseManifest,
+
+    // ========================================================================
+    // Pure domain logic
+    // ========================================================================
+    /// Generate install scripts (domain-specific logic, PURE)
     GenerateScripts,
-    /// Execute installs (boundary - uses Execute primitive internally)
-    ExecuteInstalls,
+
+    // ========================================================================
+    // ExecuteInstalls chain: PrepareExecuteInstalls -> Execute -> ParseExecuteResult
+    // ========================================================================
+    /// Prepare shell command for install script (PURE)
+    PrepareExecuteInstalls,
+    /// Parse execute result (PURE)
+    ParseExecuteResult,
 }
 
 impl Executable for DepsOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         match self {
-            DepsOp::LoadManifest => execute_load_manifest(inputs),
+            // LoadManifest chain
+            DepsOp::PrepareLoadManifest => execute_prepare_load_manifest(inputs),
+            DepsOp::ParseManifest => execute_parse_manifest(inputs),
+            // Pure domain logic
             DepsOp::GenerateScripts => execute_generate_scripts(inputs),
-            DepsOp::ExecuteInstalls => execute_execute_installs(inputs),
+            // ExecuteInstalls chain
+            DepsOp::PrepareExecuteInstalls => execute_prepare_execute_installs(inputs),
+            DepsOp::ParseExecuteResult => execute_parse_execute_result(inputs),
         }
     }
 }
 
-/// Load the deps manifest using transport layer.
-///
-/// Decomposition:
-/// 1. FileRequest::read reads the manifest file via transport
-/// 2. ParseOp::Toml parses the TOML content
-/// 3. Domain-specific extraction of dependency info
-fn execute_load_manifest(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+// ============================================================================
+// PrepareLoadManifest - PURE (builds TransportRequest)
+// ============================================================================
+
+/// Prepare file read request for manifest (PURE - no I/O).
+fn execute_prepare_load_manifest(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
     let manifest_path = match inputs.get("manifest_path") {
         Some(Value::Str(s)) => s.clone(),
         _ => "deps.toml".to_string(),
     };
 
-    // Step 1: Read file via transport layer
     let request = TransportRequest::File(FileRequest::read(&manifest_path));
-    let response = execute_transport(&request)
-        .map_err(|e| ExecError::new(format!("failed to read manifest {}: {}", manifest_path, e)))?;
+
+    let mut out = HashMap::new();
+    out.insert("request".to_string(), Value::Request(request));
+    out.insert("manifest_path".to_string(), Value::Str(manifest_path));
+    Ok(out)
+}
+
+// ============================================================================
+// ParseManifest - PURE (parses TransportResponse)
+// ============================================================================
+
+/// Parse manifest file response (PURE - no I/O).
+fn execute_parse_manifest(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+    let response = inputs
+        .get("response")
+        .and_then(|v| v.as_response())
+        .ok_or_else(|| ExecError::new("missing or invalid 'response' input"))?;
+
+    let manifest_path = inputs
+        .get("manifest_path")
+        .and_then(|v| v.as_str())
+        .unwrap_or("deps.toml");
 
     let content = match response {
         TransportResponse::File(file_resp) => {
-            file_resp.content.ok_or_else(|| {
+            file_resp.content.clone().ok_or_else(|| {
                 ExecError::new(format!("failed to load manifest: file not found: {}", manifest_path))
             })?
         }
         _ => return Err(ExecError::new("unexpected response type")),
     };
 
-    // Step 2: Use ParseOp::Toml primitive to parse (validates TOML structure)
+    // Use ParseOp::Toml primitive to parse (validates TOML structure)
     let mut parse_inputs = HashMap::new();
     parse_inputs.insert("input".to_string(), Value::Str(content.clone()));
     let _parse_result = ParseOp::Toml.execute(parse_inputs)?;
 
-    // Step 3: Domain-specific: Use DepsManifest for structured extraction
-    // Parse from content instead of re-loading from file
+    // Domain-specific: Use DepsManifest for structured extraction
     let manifest = DepsManifest::parse(&content)
         .map_err(|e| ExecError::new(format!("failed to parse manifest: {}", e)))?;
 
@@ -80,7 +113,7 @@ fn execute_load_manifest(inputs: HashMap<String, Value>) -> Result<HashMap<Strin
     let mut out = HashMap::new();
     out.insert("dep_count".to_string(), Value::Int(manifest.dependency.len() as i64));
     out.insert("dep_names".to_string(), Value::StrList(dep_names));
-    out.insert("manifest_path".to_string(), Value::Str(manifest_path));
+    out.insert("manifest_path".to_string(), Value::Str(manifest_path.to_string()));
     Ok(out)
 }
 
@@ -125,16 +158,17 @@ fn execute_generate_scripts(inputs: HashMap<String, Value>) -> Result<HashMap<St
     Ok(out)
 }
 
-/// Execute the install scripts using transport layer.
-///
-/// Uses ShellRequest to run the script via sh -c.
-fn execute_execute_installs(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+// ============================================================================
+// PrepareExecuteInstalls - PURE (builds TransportRequest)
+// ============================================================================
+
+/// Prepare shell command for install script (PURE - no I/O).
+fn execute_prepare_execute_installs(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
     let script = match inputs.get("install_script") {
         Some(Value::Str(s)) => s.clone(),
         _ => return Err(ExecError::new("missing install_script input")),
     };
 
-    // Use transport layer to run the script
     let request = TransportRequest::Shell(ShellRequest {
         command: "sh".to_string(),
         args: vec!["-c".to_string(), script.clone()],
@@ -143,11 +177,31 @@ fn execute_execute_installs(inputs: HashMap<String, Value>) -> Result<HashMap<St
         stdin: None,
     });
 
-    let response = execute_transport(&request)
-        .map_err(|e| ExecError::new(format!("transport error: {}", e)))?;
+    let mut out = HashMap::new();
+    out.insert("request".to_string(), Value::Request(request));
+    out.insert("script".to_string(), Value::Str(script));
+    Ok(out)
+}
+
+// ============================================================================
+// ParseExecuteResult - PURE (parses TransportResponse)
+// ============================================================================
+
+/// Parse execute result (PURE - no I/O).
+fn execute_parse_execute_result(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+    let response = inputs
+        .get("response")
+        .and_then(|v| v.as_response())
+        .ok_or_else(|| ExecError::new("missing or invalid 'response' input"))?;
+
+    let script = inputs
+        .get("script")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
 
     let (success, stdout, stderr) = match response {
-        TransportResponse::Shell(shell) => (shell.success(), shell.stdout, shell.stderr),
+        TransportResponse::Shell(shell) => (shell.success(), shell.stdout.clone(), shell.stderr.clone()),
         _ => return Err(ExecError::new("unexpected response type")),
     };
 
@@ -170,7 +224,16 @@ use gunbc_test::{CardinalityTestInput, ErrorTestCase, Mockable};
 impl Mockable for DepsOp {
     fn mock_outputs(&self) -> HashMap<String, Value> {
         match self {
-            DepsOp::LoadManifest => {
+            DepsOp::PrepareLoadManifest => {
+                let mut out = HashMap::new();
+                out.insert(
+                    "request".to_string(),
+                    Value::Request(TransportRequest::File(FileRequest::read("deps.toml"))),
+                );
+                out.insert("manifest_path".to_string(), Value::Str("deps.toml".to_string()));
+                out
+            }
+            DepsOp::ParseManifest => {
                 let mut out = HashMap::new();
                 out.insert("dep_count".to_string(), Value::Int(2));
                 out.insert(
@@ -204,13 +267,28 @@ echo "Installing git..."
                 out.insert("platform".to_string(), Value::Str("linux".to_string()));
                 out
             }
-            DepsOp::ExecuteInstalls => {
+            DepsOp::PrepareExecuteInstalls => {
+                let mut out = HashMap::new();
+                out.insert(
+                    "request".to_string(),
+                    Value::Request(TransportRequest::Shell(ShellRequest {
+                        command: "sh".to_string(),
+                        args: vec!["-c".to_string(), "echo mock".to_string()],
+                        cwd: None,
+                        env: HashMap::new(),
+                        stdin: None,
+                    })),
+                );
+                out.insert("script".to_string(), Value::Str("echo mock".to_string()));
+                out
+            }
+            DepsOp::ParseExecuteResult => {
                 let mut out = HashMap::new();
                 out.insert("executed".to_string(), Value::Bool(true));
-                out.insert(
-                    "script".to_string(),
-                    Value::Str("echo 'mock install'".to_string()),
-                );
+                out.insert("success".to_string(), Value::Bool(true));
+                out.insert("script".to_string(), Value::Str("echo 'mock install'".to_string()));
+                out.insert("stdout".to_string(), Value::Str("mock install\n".to_string()));
+                out.insert("stderr".to_string(), Value::Str("".to_string()));
                 out
             }
         }
@@ -218,11 +296,9 @@ echo "Installing git..."
 
     fn cardinality_inputs(&self) -> Vec<CardinalityTestInput> {
         match self {
-            DepsOp::LoadManifest => vec![
-                // manifest_path is optional (defaults to deps.toml)
-            ],
+            DepsOp::PrepareLoadManifest => vec![],
+            DepsOp::ParseManifest => vec![],
             DepsOp::GenerateScripts => vec![
-                // dep_names could be tested with cardinality
                 CardinalityTestInput::succeeds(
                     "dep_names",
                     CardinalityCase::Empty,
@@ -243,26 +319,15 @@ echo "Installing git..."
                     ]),
                 ),
             ],
-            DepsOp::ExecuteInstalls => vec![],
+            DepsOp::PrepareExecuteInstalls => vec![],
+            DepsOp::ParseExecuteResult => vec![],
         }
     }
 
     fn error_cases(&self) -> Vec<ErrorTestCase> {
         match self {
-            DepsOp::LoadManifest => vec![
-                ErrorTestCase::new(
-                    "missing_manifest_file",
-                    {
-                        let mut m = HashMap::new();
-                        m.insert(
-                            "manifest_path".to_string(),
-                            Value::Str("/nonexistent/path/deps.toml".to_string()),
-                        );
-                        m
-                    },
-                    "failed to load manifest",
-                ),
-            ],
+            DepsOp::PrepareLoadManifest => vec![],
+            DepsOp::ParseManifest => vec![],
             DepsOp::GenerateScripts => vec![
                 ErrorTestCase::new(
                     "missing_manifest_file",
@@ -277,11 +342,12 @@ echo "Installing git..."
                     "failed to load manifest",
                 ),
             ],
-            DepsOp::ExecuteInstalls => vec![ErrorTestCase::new(
+            DepsOp::PrepareExecuteInstalls => vec![ErrorTestCase::new(
                 "missing_install_script",
                 HashMap::new(),
                 "missing install_script input",
             )],
+            DepsOp::ParseExecuteResult => vec![],
         }
     }
 }

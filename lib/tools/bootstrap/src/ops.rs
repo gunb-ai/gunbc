@@ -1,81 +1,96 @@
 //! Bootstrap operations.
 //!
-//! This module contains pure bootstrap-specific operations.
-//! File writing is handled via the transport pattern:
-//! - `PrepareFileWriteOp` (primitive) creates the TransportRequest
-//! - `TransportOps::Execute` (boundary) performs actual I/O
-//!
-//! All I/O (including workspace scanning) goes through the transport layer.
+//! All I/O happens through explicit `TransportOps::Execute` nodes in the DAG.
+//! The ops here are PURE (no I/O) - they prepare requests and parse responses.
 
 use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::transport::{FileRequest, ShellRequest, TransportRequest, TransportResponse};
 use gunbc_ir::Value;
-use gunbc_lib_transport::execute_transport;
 use std::collections::HashMap;
 
 /// Operations for the bootstrap tool.
 ///
-/// These operations use the transport layer for all I/O.
-/// File writing is handled via `PrepareFileWriteOp` + `TransportOps::Execute`.
+/// All operations are PURE - no I/O. I/O happens via TransportOps::Execute nodes.
 #[derive(Debug, Clone)]
 pub enum BootstrapOp {
-    /// Scan workspace for crates (uses transport layer for directory listing)
-    ScanWorkspace,
-    /// Generate Makefile content (pure - string generation)
+    // ========================================================================
+    // ScanWorkspace chain: PrepareScan -> Execute -> ParseScanResult
+    // ========================================================================
+    /// Prepare workspace scan request (PURE)
+    PrepareScanWorkspace,
+    /// Parse scan result (PURE)
+    ParseScanResult,
+
+    // ========================================================================
+    // Pure domain logic
+    // ========================================================================
+    /// Generate Makefile content (PURE)
     GenerateMakefile,
-    /// Generate .gitignore content (pure - string generation)
+    /// Generate .gitignore content (PURE)
     GenerateGitignore,
 }
 
 impl Executable for BootstrapOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         match self {
-            BootstrapOp::ScanWorkspace => execute_scan_workspace(inputs),
+            BootstrapOp::PrepareScanWorkspace => execute_prepare_scan_workspace(inputs),
+            BootstrapOp::ParseScanResult => execute_parse_scan_result(inputs),
             BootstrapOp::GenerateMakefile => execute_generate_makefile(inputs),
             BootstrapOp::GenerateGitignore => execute_generate_gitignore(inputs),
         }
     }
 }
 
-/// Scan workspace for crate information using transport layer.
-fn execute_scan_workspace(_inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-    // Check if crates directory exists using transport
-    let exists_request = TransportRequest::File(FileRequest::exists("crates"));
-    let crates_exists = match execute_transport(&exists_request) {
-        Ok(TransportResponse::File(resp)) => resp.exists.unwrap_or(false),
-        _ => false,
-    };
+// ============================================================================
+// PrepareScanWorkspace - PURE (builds TransportRequest)
+// ============================================================================
+
+/// Prepare workspace scan request (PURE - no I/O).
+fn execute_prepare_scan_workspace(_inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+    // Use find to list directories in crates/
+    let request = TransportRequest::Shell(ShellRequest {
+        command: "find".to_string(),
+        args: vec![
+            "crates".to_string(),
+            "-maxdepth".to_string(),
+            "1".to_string(),
+            "-mindepth".to_string(),
+            "1".to_string(),
+            "-type".to_string(),
+            "d".to_string(),
+        ],
+        cwd: None,
+        env: HashMap::new(),
+        stdin: None,
+    });
+
+    let mut out = HashMap::new();
+    out.insert("request".to_string(), Value::Request(request));
+    Ok(out)
+}
+
+// ============================================================================
+// ParseScanResult - PURE (parses TransportResponse)
+// ============================================================================
+
+/// Parse scan result (PURE - no I/O).
+fn execute_parse_scan_result(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+    let response = inputs
+        .get("response")
+        .and_then(|v| v.as_response())
+        .ok_or_else(|| ExecError::new("missing or invalid 'response' input"))?;
 
     let mut crate_names = Vec::new();
 
-    if crates_exists {
-        // List directories in crates/ using find via transport
-        let list_request = TransportRequest::Shell(ShellRequest {
-            command: "find".to_string(),
-            args: vec![
-                "crates".to_string(),
-                "-maxdepth".to_string(),
-                "1".to_string(),
-                "-mindepth".to_string(),
-                "1".to_string(),
-                "-type".to_string(),
-                "d".to_string(),
-            ],
-            cwd: None,
-            env: HashMap::new(),
-            stdin: None,
-        });
-
-        if let Ok(TransportResponse::Shell(shell)) = execute_transport(&list_request) {
-            if shell.success() {
-                for line in shell.stdout.lines() {
-                    let line = line.trim();
-                    if !line.is_empty() {
-                        // Extract crate name from path like "crates/foo"
-                        if let Some(name) = line.strip_prefix("crates/") {
-                            if !name.is_empty() && !name.contains('/') {
-                                crate_names.push(name.to_string());
-                            }
+    if let TransportResponse::Shell(shell) = response {
+        if shell.success() {
+            for line in shell.stdout.lines() {
+                let line = line.trim();
+                if !line.is_empty() {
+                    // Extract crate name from path like "crates/foo"
+                    if let Some(name) = line.strip_prefix("crates/") {
+                        if !name.is_empty() && !name.contains('/') {
+                            crate_names.push(name.to_string());
                         }
                     }
                 }
@@ -206,7 +221,18 @@ use gunbc_test::Mockable;
 impl Mockable for BootstrapOp {
     fn mock_outputs(&self) -> HashMap<String, Value> {
         match self {
-            BootstrapOp::ScanWorkspace => {
+            BootstrapOp::PrepareScanWorkspace => {
+                let mut out = HashMap::new();
+                out.insert("request".to_string(), Value::Request(TransportRequest::Shell(ShellRequest {
+                    command: "find".to_string(),
+                    args: vec!["crates".to_string()],
+                    cwd: None,
+                    env: HashMap::new(),
+                    stdin: None,
+                })));
+                out
+            }
+            BootstrapOp::ParseScanResult => {
                 let mut out = HashMap::new();
                 out.insert("crate_count".to_string(), Value::Int(5));
                 out.insert("crate_names".to_string(), Value::StrList(vec!["lib-a".to_string(), "lib-b".to_string()]));

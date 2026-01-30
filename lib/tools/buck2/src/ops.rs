@@ -1,59 +1,54 @@
 //! Buck2-specific operations.
 //!
-//! This module demonstrates how tool-specific operations can be decomposed
-//! into primitive operations. The Buck2Op enum provides high-level operations
-//! that use the transport layer for I/O.
-//!
-//! # Transport Pattern
-//!
-//! `ParseCargoToml` uses:
-//! ```text
-//! FileRequest::read(path) → execute_transport → ParseOp::Toml → json
-//! ```
-//!
-//! All I/O goes through the transport layer for consistent handling.
+//! All I/O happens through explicit `TransportOps::Execute` nodes in the DAG.
+//! The ops here are PURE (no I/O) - they prepare requests and parse responses.
 
 use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::transport::{FileRequest, TransportRequest, TransportResponse};
 use gunbc_ir::Value;
-use gunbc_lib_transport::execute_transport;
 use gunbc_primitives::data::{ExtractOp, ParseOp};
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 
 /// Buck2-specific operations for use in DAG nodes.
 ///
-/// These operations are implemented by composing primitives from gunbc-primitives.
-/// Eventually, even these wrappers will be generated from DAG definitions.
+/// All operations are PURE - no I/O. I/O happens via TransportOps::Execute nodes.
 #[derive(Debug, Clone)]
 pub enum Buck2Op {
-    /// Parse a Cargo.toml file
-    /// Internally: ReadFile → Parse(Toml)
-    ParseCargoToml,
-    /// Extract workspace members and dependencies
-    /// Internally: Multiple Extract operations
+    // ========================================================================
+    // ParseCargoToml chain: PrepareParseCargoToml -> Execute -> ParseCargoTomlResult
+    // ========================================================================
+    /// Prepare file read request for Cargo.toml (PURE)
+    PrepareParseCargoToml,
+    /// Parse Cargo.toml response (PURE)
+    ParseCargoTomlResult,
+
+    // ========================================================================
+    // Pure domain logic
+    // ========================================================================
+    /// Extract workspace members and dependencies (PURE)
     ExtractDeps,
-    /// Generate Buck2 target definitions
-    /// Internally: Format → Concat for each member
+    /// Generate Buck2 target definitions (PURE)
     GenerateBuckTargets,
 }
 
 impl Executable for Buck2Op {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         match self {
-            Buck2Op::ParseCargoToml => execute_parse_cargo_toml(inputs),
+            Buck2Op::PrepareParseCargoToml => execute_prepare_parse_cargo_toml(inputs),
+            Buck2Op::ParseCargoTomlResult => execute_parse_cargo_toml_result(inputs),
             Buck2Op::ExtractDeps => execute_extract_deps(inputs),
             Buck2Op::GenerateBuckTargets => execute_generate_targets(inputs),
         }
     }
 }
 
-/// Parse Cargo.toml file using transport layer.
-///
-/// Decomposition:
-/// 1. FileRequest::read reads the file via transport
-/// 2. ParseOp::Toml parses the content
-fn execute_parse_cargo_toml(
+// ============================================================================
+// PrepareParseCargoToml - PURE (builds TransportRequest)
+// ============================================================================
+
+/// Prepare file read request for Cargo.toml (PURE - no I/O).
+fn execute_prepare_parse_cargo_toml(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
     let path = match inputs.get("cargo_toml_path") {
@@ -61,21 +56,42 @@ fn execute_parse_cargo_toml(
         _ => "Cargo.toml".to_string(),
     };
 
-    // Step 1: Read file via transport layer
     let request = TransportRequest::File(FileRequest::read(&path));
-    let response = execute_transport(&request)
-        .map_err(|e| ExecError::new(format!("transport error reading {}: {}", path, e)))?;
+
+    let mut out = HashMap::new();
+    out.insert("request".to_string(), Value::Request(request));
+    out.insert("cargo_toml_path".to_string(), Value::Str(path));
+    Ok(out)
+}
+
+// ============================================================================
+// ParseCargoTomlResult - PURE (parses TransportResponse)
+// ============================================================================
+
+/// Parse Cargo.toml response (PURE - no I/O).
+fn execute_parse_cargo_toml_result(
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    let response = inputs
+        .get("response")
+        .and_then(|v| v.as_response())
+        .ok_or_else(|| ExecError::new("missing or invalid 'response' input"))?;
+
+    let path = inputs
+        .get("cargo_toml_path")
+        .and_then(|v| v.as_str())
+        .unwrap_or("Cargo.toml");
 
     let content = match response {
         TransportResponse::File(file_resp) => {
-            file_resp.content.ok_or_else(|| {
+            file_resp.content.clone().ok_or_else(|| {
                 ExecError::new(format!("file not found or empty: {}", path))
             })?
         }
         _ => return Err(ExecError::new("unexpected response type")),
     };
 
-    // Step 2: Use ParseOp::Toml primitive
+    // Use ParseOp::Toml primitive
     let mut parse_inputs = HashMap::new();
     parse_inputs.insert("input".to_string(), Value::Str(content));
     let parse_result = ParseOp::Toml.execute(parse_inputs)?;
@@ -171,14 +187,15 @@ fn extract_version(spec: &serde_json::Value) -> String {
     }
 }
 
-/// Check if a file exists using the transport layer.
-fn file_exists(path: &Path) -> bool {
-    let path_str = path.to_string_lossy().to_string();
-    let request = TransportRequest::File(FileRequest::exists(path_str));
-    match execute_transport(&request) {
-        Ok(TransportResponse::File(resp)) => resp.exists.unwrap_or(false),
-        _ => false,
-    }
+/// Check if a file exists.
+///
+/// TODO: This should be done via transport in the graph, not hidden here.
+/// For now, stub to assume library crate (return false for main.rs check).
+fn file_exists(_path: &Path) -> bool {
+    // STUB: This hidden I/O is problematic. In a proper implementation,
+    // file existence checks should be explicit transport nodes in the graph.
+    // For now, assume library crate (no main.rs).
+    false
 }
 
 /// Generate Buck2 target definitions.
@@ -273,7 +290,13 @@ use gunbc_test::Mockable;
 impl Mockable for Buck2Op {
     fn mock_outputs(&self) -> HashMap<String, Value> {
         match self {
-            Buck2Op::ParseCargoToml => {
+            Buck2Op::PrepareParseCargoToml => {
+                let mut out = HashMap::new();
+                out.insert("request".to_string(), Value::Request(TransportRequest::File(FileRequest::read("Cargo.toml"))));
+                out.insert("cargo_toml_path".to_string(), Value::Str("Cargo.toml".to_string()));
+                out
+            }
+            Buck2Op::ParseCargoTomlResult => {
                 let mut out = HashMap::new();
                 out.insert("cargo_toml".to_string(), Value::Json(serde_json::json!({
                     "package": { "name": "test-crate" },

@@ -2,29 +2,32 @@
 //!
 //! Operations for working with GitHub Gists.
 //!
+//! All operations are PURE (no I/O). I/O happens through TransportOps::Execute nodes.
+//!
 //! # Example
 //!
 //! ```ignore
 //! use gunbc_lib_gist_ops::prepare_gist_request;
 //!
 //! let request = prepare_gist_request("# My Content", true, "My gist");
-//! // request is now a TransportRequest ready to be executed
+//! // request is now a TransportRequest ready to be executed via TransportOps::Execute
 //! ```
 
 use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::transport::gist::GistRequest;
 use gunbc_ir::transport::{ShellResponse, TransportRequest, TransportResponse};
 use gunbc_ir::Value;
-use gunbc_lib_transport::execute_transport;
 use std::collections::HashMap;
 
 /// Gist operations for use in DAG nodes.
+///
+/// All operations are PURE - no I/O. Use TransportOps::Execute for actual I/O.
 #[derive(Debug, Clone)]
 pub enum GistOps {
     /// Prepare a gist creation request (PURE - no I/O)
     PrepareRequest { public: bool },
-    /// Execute a transport request (BOUNDARY)
-    ExecuteTransport,
+    /// Parse gist response to extract URL (PURE - no I/O)
+    ParseGistResponse,
 }
 
 impl Executable for GistOps {
@@ -43,19 +46,15 @@ impl Executable for GistOps {
                 out.insert("request".to_string(), Value::Request(request));
                 Ok(out)
             }
-            GistOps::ExecuteTransport => {
-                let request = inputs
-                    .get("request")
-                    .and_then(|v| v.as_request())
-                    .ok_or_else(|| ExecError::new("missing or invalid 'request' input"))?;
-
-                let response = execute_transport(&request)
-                    .map_err(|e| ExecError::new(format!("transport error: {}", e)))?;
+            GistOps::ParseGistResponse => {
+                let response = inputs
+                    .get("response")
+                    .and_then(|v| v.as_response())
+                    .ok_or_else(|| ExecError::new("missing or invalid 'response' input"))?;
 
                 let url = extract_gist_url(&response);
 
                 let mut out = HashMap::new();
-                out.insert("response".to_string(), Value::Response(response));
                 out.insert("url".to_string(), Value::Str(url));
                 Ok(out)
             }
@@ -76,7 +75,7 @@ impl Executable for GistOps {
 ///
 /// ```ignore
 /// let request = prepare_gist_request("# Hello", true, "My public gist");
-/// // Execute with gunbc_transport::execute_transport(&request)
+/// // Execute via TransportOps::Execute node in the DAG
 /// ```
 pub fn prepare_gist_request(
     content: &str,

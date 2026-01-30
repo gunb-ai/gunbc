@@ -2,7 +2,6 @@
 //!
 //! This library provides:
 //! - `TransportOps` - DAG node operations for transport execution
-//! - `execute_transport` - The actual I/O executor
 //!
 //! The transport layer separates pure business logic from I/O:
 //! - Pure ops prepare `TransportRequest` values
@@ -10,11 +9,20 @@
 //!
 //! In dry-run mode, the boundary is mocked to intercept I/O.
 //!
+//! # Structural I/O Enforcement
+//!
+//! `execute_transport()` and `execute_request()` are NOT exported from this crate.
+//! The ONLY way to perform I/O is through `TransportOps::Execute` nodes in a DAG.
+//! This ensures all I/O is:
+//! - Visible in the graph structure
+//! - Interceptable by DryRun mode
+//! - Auditable
+//!
 //! # Note
 //!
-//! This is the ONLY crate (besides codegen and deprecated primitives) that
-//! should perform direct I/O operations via std::fs and std::process::Command.
-//! All other crates should use PrepareXxxOp + TransportOps::Execute.
+//! This is the ONLY crate (besides codegen) that performs direct I/O operations
+//! via std::fs and std::process::Command. All other crates MUST use
+//! PrepareXxxOp + TransportOps::Execute.
 
 // This crate IS the transport layer - it's allowed to use direct I/O
 #![allow(clippy::disallowed_methods)]
@@ -22,5 +30,6 @@
 pub mod executor;
 pub mod ops;
 
-pub use executor::execute_transport;
-pub use ops::{execute_request, TransportOps};
+// STRUCTURAL ENFORCEMENT: Only export TransportOps
+// execute_transport and execute_request are internal - not exported
+pub use ops::TransportOps;

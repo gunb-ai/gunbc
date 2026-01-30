@@ -471,28 +471,18 @@ impl ToolRegistry {
             .collect()
     }
 
-    /// Check if any codegen is needed by examining the filesystem.
-    /// Returns true if any tool's main.rs is missing.
+    /// Check if any codegen is needed.
+    ///
+    /// BUILD-TIME EXCEPTION: This function previously checked the filesystem directly.
+    /// Since we've closed the execute_transport escape hatch, this check would need
+    /// to be part of a DAG execution. For now, we always return true (assume codegen needed).
+    ///
+    /// TODO: Properly integrate this check into a build DAG or use a separate
+    /// build-time mechanism.
     pub fn needs_codegen(&self) -> bool {
-        use gunbc_ir::transport::{FileRequest, TransportRequest, TransportResponse};
-        use gunbc_lib_transport::execute_transport;
-
-        // Helper to check if a path exists via transport
-        let path_exists = |path: &str| -> bool {
-            let request = TransportRequest::File(FileRequest::exists(path));
-            match execute_transport(&request) {
-                Ok(TransportResponse::File(resp)) => resp.exists.unwrap_or(false),
-                _ => false,
-            }
-        };
-
-        if !path_exists("buck-out/gen/bin") {
-            return true;
-        }
-        self.tools.iter().any(|t| {
-            let main_path = format!("buck-out/gen/bin/{}/main.rs", t.short_name);
-            !path_exists(&main_path)
-        })
+        // STUB: Always return true until we have proper build-time file checking
+        // This means codegen will always run, which is safe but potentially redundant.
+        true
     }
 
     /// Check if any daggen is needed.

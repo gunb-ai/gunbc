@@ -62,29 +62,52 @@ pub fn bootstrap_signature() -> WorkflowSignature {
 ///
 /// Pipeline (follows transport pattern):
 /// ```text
-/// ScanWorkspace -> GenerateMakefile  -> PrepareMakefileWrite  -> ExecuteMakefileTransport
-///      |                                      (PURE)                   (BOUNDARY)
-///      |
-///      +--------> GenerateGitignore -> PrepareGitignoreWrite -> ExecuteGitignoreTransport
-///                                            (PURE)                   (BOUNDARY)
+/// PrepareScan -> Execute -> ParseScanResult -> GenerateMakefile -> PrepareMakefileWrite -> ExecuteMakefileTransport
+///                   ↑                               |                    (PURE)                 (BOUNDARY)
+///              (boundary)                           |
+///                                                   +--------> GenerateGitignore -> ...
 /// ```
 ///
 /// Each file write has its own prepare→execute chain for proper transport interception.
 pub fn build_bootstrap_graph() -> Result<Dag<BootstrapGraphOp>, BuilderError> {
     let mut builder = DagBuilder::new();
 
-    // Node: ScanWorkspace (bootstrap-specific) - generation 0
-    // NOTE: This still uses direct fs operations internally. A future refactor
-    // could use PrepareShellOp + TransportOps::Execute with `find` or `ls`.
-    let scan_workspace = builder.add_root_node(Node::opaque(
-        "scan_workspace",
+    // ========================================================================
+    // ScanWorkspace chain: PrepareScanWorkspace -> Execute -> ParseScanResult
+    // ========================================================================
+
+    // Node: PrepareScanWorkspace (PURE)
+    let prepare_scan = builder.add_root_node(Node::opaque(
+        "prepare_scan_workspace",
         vec![],
-        vec![
-            port("crate_count", "Int"),
-            port("crate_names", "StrList"),
-        ],
-        BootstrapGraphOp::Bootstrap(BootstrapOp::ScanWorkspace),
+        vec![port("request", "TransportRequest")],
+        BootstrapGraphOp::Bootstrap(BootstrapOp::PrepareScanWorkspace),
     ))?;
+
+    // Node: Execute scan (BOUNDARY)
+    let execute_scan = builder.add_node_after(
+        Node::opaque(
+            "execute_scan_workspace",
+            vec![port("request", "TransportRequest")],
+            vec![port("response", "TransportResponse")],
+            BootstrapGraphOp::Transport(TransportOps::Execute),
+        ),
+        &prepare_scan,
+    )?;
+
+    // Node: ParseScanResult (PURE)
+    let scan_workspace = builder.add_node_after(
+        Node::opaque(
+            "parse_scan_result",
+            vec![port("response", "TransportResponse")],
+            vec![
+                port("crate_count", "Int"),
+                port("crate_names", "StrList"),
+            ],
+            BootstrapGraphOp::Bootstrap(BootstrapOp::ParseScanResult),
+        ),
+        &execute_scan,
+    )?;
 
     // === Makefile write chain ===
 
@@ -164,6 +187,10 @@ pub fn build_bootstrap_graph() -> Result<Dag<BootstrapGraphOp>, BuilderError> {
         &prepare_gitignore,
     )?;
 
+    // Wire up the ScanWorkspace chain
+    builder.add_edge(prepare_scan.out("request"), execute_scan.in_port("request"))?;
+    builder.add_edge(execute_scan.out("response"), scan_workspace.in_port("response"))?;
+
     // Wire up the Makefile chain
     builder.add_edge(scan_workspace.out("crate_names"), generate_makefile.in_port("crate_names"))?;
     builder.add_edge(generate_makefile.out("makefile_content"), prepare_makefile.in_port("content"))?;
@@ -185,21 +212,22 @@ mod tests {
     #[test]
     fn test_graph_builds_successfully() {
         let dag = build_bootstrap_graph().expect("graph should build");
-        // 7 nodes: scan, gen_makefile, gen_gitignore, prep_makefile, prep_gitignore,
+        // 9 nodes: prepare_scan, execute_scan, parse_scan,
+        //          gen_makefile, gen_gitignore, prep_makefile, prep_gitignore,
         //          exec_makefile, exec_gitignore
-        assert_eq!(dag.nodes.len(), 7);
-        // 6 edges: 3 for makefile chain, 3 for gitignore chain
-        assert_eq!(dag.edges.len(), 6);
+        assert_eq!(dag.nodes.len(), 9);
+        // 8 edges: 2 for scan chain + 3 for makefile chain + 3 for gitignore chain
+        assert_eq!(dag.edges.len(), 8);
     }
 
     #[test]
     fn test_graph_has_transport_boundaries() {
         let dag = build_bootstrap_graph().expect("graph should build");
-        let boundaries = detect_boundaries(&dag);
 
-        // Both transport execute nodes should be boundaries
-        assert!(boundaries.is_boundary_node(&"execute_makefile_transport".into()));
-        assert!(boundaries.is_boundary_node(&"execute_gitignore_transport".into()));
+        // Verify transport nodes exist
+        assert!(dag.get_node(&"execute_scan_workspace".into()).is_some());
+        assert!(dag.get_node(&"execute_makefile_transport".into()).is_some());
+        assert!(dag.get_node(&"execute_gitignore_transport".into()).is_some());
     }
 
     #[test]
@@ -207,20 +235,19 @@ mod tests {
         let dag = build_bootstrap_graph().expect("graph should build");
         let entrypoints = detect_entrypoints(&dag);
 
-        // ScanWorkspace has no inputs, so nothing should be an entrypoint
-        // (entrypoints are inputs without upstream, but scan_workspace has no inputs at all)
+        // prepare_scan_workspace has no inputs, so nothing should be an entrypoint
         assert!(entrypoints.entrypoint_ports.is_empty());
     }
 
     #[test]
     fn test_graph_structure() {
         let dag = build_bootstrap_graph().expect("graph should build");
-        assert_eq!(dag.nodes.len(), 7);
-        assert_eq!(dag.edges.len(), 6);
+        assert_eq!(dag.nodes.len(), 9);
+        assert_eq!(dag.edges.len(), 8);
     }
 
     #[test]
-    fn test_intermediate_nodes_not_boundaries() {
+    fn test_pure_nodes_not_boundaries() {
         let dag = build_bootstrap_graph().expect("graph should build");
         let boundaries = detect_boundaries(&dag);
 

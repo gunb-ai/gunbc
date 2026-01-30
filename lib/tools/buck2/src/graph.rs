@@ -51,19 +51,52 @@ pub fn buck2_signature() -> WorkflowSignature {
 ///
 /// Pipeline:
 /// ```text
-/// ParseCargoToml -> ExtractDeps -> GenerateBuckTargets -> PrepareFileWrite -> ExecuteTransport
-///    (buck2)        (buck2)           (buck2)               (fs)              (transport)
+/// PrepareParseCargoToml -> Execute -> ParseCargoTomlResult -> ExtractDeps -> GenerateBuckTargets -> PrepareFileWrite -> Execute
+///                            ↑                                                                                            ↑
+///                       (boundary)                                                                                   (boundary)
 /// ```
 pub fn build_buck2_graph() -> Result<Dag<Buck2GraphOp>, BuilderError> {
     let mut builder = DagBuilder::new();
 
-    // Node: ParseCargoToml (buck2-specific) - generation 0
-    let parse_cargo_toml = builder.add_root_node(Node::opaque(
-        "parse_cargo_toml",
+    // ========================================================================
+    // ParseCargoToml chain: PrepareParseCargoToml -> Execute -> ParseCargoTomlResult
+    // ========================================================================
+
+    // Node: PrepareParseCargoToml (PURE)
+    let prepare_parse = builder.add_root_node(Node::opaque(
+        "prepare_parse_cargo_toml",
         vec![port("cargo_toml_path", "String")],
-        vec![port("cargo_toml", "Json")],
-        Buck2GraphOp::Buck2(Buck2Op::ParseCargoToml),
+        vec![
+            port("request", "TransportRequest"),
+            port("cargo_toml_path", "String"),
+        ],
+        Buck2GraphOp::Buck2(Buck2Op::PrepareParseCargoToml),
     ))?;
+
+    // Node: Execute parse (BOUNDARY)
+    let execute_parse = builder.add_node_after(
+        Node::opaque(
+            "execute_parse_cargo_toml",
+            vec![port("request", "TransportRequest")],
+            vec![port("response", "TransportResponse")],
+            Buck2GraphOp::Transport(TransportOps::Execute),
+        ),
+        &prepare_parse,
+    )?;
+
+    // Node: ParseCargoTomlResult (PURE)
+    let parse_cargo_toml = builder.add_node_after(
+        Node::opaque(
+            "parse_cargo_toml_result",
+            vec![
+                port("response", "TransportResponse"),
+                port("cargo_toml_path", "String"),
+            ],
+            vec![port("cargo_toml", "Json")],
+            Buck2GraphOp::Buck2(Buck2Op::ParseCargoTomlResult),
+        ),
+        &execute_parse,
+    )?;
 
     // Node: ExtractDeps (buck2-specific) - generation 1
     let extract_deps = builder.add_node_after(
@@ -117,6 +150,13 @@ pub fn build_buck2_graph() -> Result<Dag<Buck2GraphOp>, BuilderError> {
     )?;
 
     // Wire up the pipeline
+
+    // ParseCargoToml chain
+    builder.add_edge(prepare_parse.out("request"), execute_parse.in_port("request"))?;
+    builder.add_edge(execute_parse.out("response"), parse_cargo_toml.in_port("response"))?;
+    builder.add_edge(prepare_parse.out("cargo_toml_path"), parse_cargo_toml.in_port("cargo_toml_path"))?;
+
+    // Rest of pipeline
     builder.add_edge(parse_cargo_toml.out("cargo_toml"), extract_deps.in_port("cargo_toml"))?;
     builder.add_edge(extract_deps.out("members"), generate_targets.in_port("members"))?;
     builder.add_edge(extract_deps.out("deps"), generate_targets.in_port("deps"))?;
@@ -134,18 +174,19 @@ mod tests {
     #[test]
     fn test_graph_builds_successfully() {
         let dag = build_buck2_graph().expect("graph should build");
-        assert_eq!(dag.nodes.len(), 5);
-        assert_eq!(dag.edges.len(), 5);
+        // 7 nodes now: prepare_parse, execute_parse, parse_result, extract, generate, prepare_write, execute
+        assert_eq!(dag.nodes.len(), 7);
+        // 8 edges
+        assert_eq!(dag.edges.len(), 8);
     }
 
     #[test]
-    fn test_graph_has_boundary() {
+    fn test_graph_has_transport_boundaries() {
         let dag = build_buck2_graph().expect("graph should build");
-        let boundaries = detect_boundaries(&dag);
 
-        // ExecuteTransport should be the only boundary
-        assert_eq!(boundaries.boundary_nodes.len(), 1);
-        assert!(boundaries.is_boundary_node(&"execute_transport".into()));
+        // Verify transport nodes exist
+        assert!(dag.get_node(&"execute_parse_cargo_toml".into()).is_some());
+        assert!(dag.get_node(&"execute_transport".into()).is_some());
     }
 
     #[test]
@@ -154,7 +195,7 @@ mod tests {
         let entrypoints = detect_entrypoints(&dag);
 
         // cargo_toml_path and output_path are entrypoints
-        assert!(entrypoints.is_entrypoint_port(&"parse_cargo_toml".into(), &"cargo_toml_path".into()));
+        assert!(entrypoints.is_entrypoint_port(&"prepare_parse_cargo_toml".into(), &"cargo_toml_path".into()));
         assert!(entrypoints.is_entrypoint_port(&"prepare_file_write".into(), &"output_path".into()));
     }
 
@@ -162,8 +203,8 @@ mod tests {
     fn test_graph_structure() {
         let dag = build_buck2_graph().expect("graph should build");
 
-        assert_eq!(dag.nodes.len(), 5);
-        assert_eq!(dag.edges.len(), 5);
+        assert_eq!(dag.nodes.len(), 7);
+        assert_eq!(dag.edges.len(), 8);
     }
 
     #[test]

@@ -15,10 +15,9 @@ use gunbc_test::{InputConstraint, MockSpec};
 ///
 /// # Boundary Mocks
 ///
-/// The `execute_transport` node is the only boundary (world write).
-/// It outputs:
-/// - `url`: A mock gist URL
-/// - `response`: A mock transport response
+/// Transport boundary nodes:
+/// - `execute_list_files`: Lists files via git ls-files
+/// - `execute_gist`: Creates the gist (world write)
 ///
 /// # Input Expectations
 ///
@@ -27,14 +26,34 @@ use gunbc_test::{InputConstraint, MockSpec};
 /// - Files must exist and be readable (checked by transport layer)
 pub fn gist_mock_spec() -> MockSpec {
     MockSpec::new("gist")
-        // Boundary: execute_transport outputs
+        // Boundary: execute_list_files outputs
         .boundary(
-            "execute_transport",
+            "execute_list_files",
+            "response",
+            Value::Json(serde_json::json!({
+                "exit_code": 0,
+                "stdout": "src/main.rs\nREADME.md\n",
+                "stderr": ""
+            })),
+        )
+        // Boundary: execute_read_files outputs
+        .boundary(
+            "execute_read_files",
+            "response",
+            Value::Json(serde_json::json!({
+                "exit_code": 0,
+                "stdout": "===GUNBC_FILE:src/main.rs===\nfn main() {}\n===GUNBC_FILE:README.md===\n# README\n",
+                "stderr": ""
+            })),
+        )
+        // Boundary: execute_gist outputs
+        .boundary(
+            "execute_gist",
             "url",
             Value::Str("https://gist.github.com/mock/abc123def456".into()),
         )
         .boundary(
-            "execute_transport",
+            "execute_gist",
             "response",
             Value::Json(serde_json::json!({
                 "id": "abc123def456",
@@ -70,17 +89,21 @@ mod tests {
     use std::collections::HashMap;
 
     #[test]
-    fn test_mock_spec_has_boundary() {
+    fn test_mock_spec_has_boundaries() {
         let spec = gist_mock_spec();
 
-        assert!(spec.get_boundary_mock("execute_transport", "url").is_some());
-        assert!(spec.get_boundary_mock("execute_transport", "response").is_some());
+        // execute_list_files boundary
+        assert!(spec.get_boundary_mock("execute_list_files", "response").is_some());
+
+        // execute_gist boundary
+        assert!(spec.get_boundary_mock("execute_gist", "url").is_some());
+        assert!(spec.get_boundary_mock("execute_gist", "response").is_some());
     }
 
     #[test]
     fn test_mock_spec_url_is_valid() {
         let spec = gist_mock_spec();
-        let url = spec.get_boundary_mock("execute_transport", "url").unwrap();
+        let url = spec.get_boundary_mock("execute_gist", "url").unwrap();
 
         if let Value::Str(s) = url {
             assert!(s.starts_with("https://gist.github.com/"));
