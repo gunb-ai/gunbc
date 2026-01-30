@@ -107,14 +107,23 @@ fn generate_html(diagrams: &[(&str, String)]) -> String {
             id, name
         ));
 
-        // Diagram section
+        // Diagram section with zoom controls
         diagram_sections.push_str(&format!(
             r#"    <section id="{id}">
         <h2>{name}</h2>
-        <div class="mermaid-container">
-            <pre class="mermaid">
+        <div class="zoom-controls">
+            <button onclick="zoomIn('{id}')" title="Zoom In">+</button>
+            <button onclick="zoomReset('{id}')" title="Reset">100%</button>
+            <button onclick="zoomOut('{id}')" title="Zoom Out">-</button>
+            <span class="zoom-level" id="zoom-{id}">100%</span>
+            <span class="zoom-hint">Scroll to zoom, drag to pan</span>
+        </div>
+        <div class="mermaid-container" id="container-{id}">
+            <div class="mermaid-wrapper" id="wrapper-{id}">
+                <pre class="mermaid">
 {mermaid}
-            </pre>
+                </pre>
+            </div>
         </div>
     </section>
 "#,
@@ -149,10 +158,94 @@ fn generate_html(diagrams: &[(&str, String)]) -> String {
             startOnLoad: true,
             theme: 'default',
             flowchart: {{
-                useMaxWidth: true,
+                useMaxWidth: false,
                 htmlLabels: true,
                 curve: 'basis'
+            }},
+            securityLevel: 'loose'
+        }});
+
+        // Zoom state per diagram
+        const zoomState = {{}};
+
+        function getState(id) {{
+            if (!zoomState[id]) {{
+                zoomState[id] = {{ scale: 1, panX: 0, panY: 0, dragging: false }};
             }}
+            return zoomState[id];
+        }}
+
+        function updateTransform(id) {{
+            const state = getState(id);
+            const wrapper = document.getElementById('wrapper-' + id);
+            if (wrapper) {{
+                wrapper.style.transform = `translate(${{state.panX}}px, ${{state.panY}}px) scale(${{state.scale}})`;
+                document.getElementById('zoom-' + id).textContent = Math.round(state.scale * 100) + '%';
+            }}
+        }}
+
+        function zoomIn(id) {{
+            const state = getState(id);
+            state.scale = Math.min(state.scale * 1.25, 5);
+            updateTransform(id);
+        }}
+
+        function zoomOut(id) {{
+            const state = getState(id);
+            state.scale = Math.max(state.scale / 1.25, 0.1);
+            updateTransform(id);
+        }}
+
+        function zoomReset(id) {{
+            const state = getState(id);
+            state.scale = 1;
+            state.panX = 0;
+            state.panY = 0;
+            updateTransform(id);
+        }}
+
+        // Mouse wheel zoom
+        document.querySelectorAll('.mermaid-container').forEach(container => {{
+            const id = container.id.replace('container-', '');
+            
+            container.addEventListener('wheel', (e) => {{
+                e.preventDefault();
+                const state = getState(id);
+                const delta = e.deltaY > 0 ? 0.9 : 1.1;
+                state.scale = Math.max(0.1, Math.min(5, state.scale * delta));
+                updateTransform(id);
+            }});
+
+            // Pan with mouse drag
+            let startX, startY;
+            container.addEventListener('mousedown', (e) => {{
+                const state = getState(id);
+                state.dragging = true;
+                startX = e.clientX - state.panX;
+                startY = e.clientY - state.panY;
+                container.style.cursor = 'grabbing';
+            }});
+
+            container.addEventListener('mousemove', (e) => {{
+                const state = getState(id);
+                if (state.dragging) {{
+                    state.panX = e.clientX - startX;
+                    state.panY = e.clientY - startY;
+                    updateTransform(id);
+                }}
+            }});
+
+            container.addEventListener('mouseup', () => {{
+                const state = getState(id);
+                state.dragging = false;
+                container.style.cursor = 'grab';
+            }});
+
+            container.addEventListener('mouseleave', () => {{
+                const state = getState(id);
+                state.dragging = false;
+                container.style.cursor = 'grab';
+            }});
         }});
     </script>"#,
         nav_items = nav_items,
@@ -236,15 +329,62 @@ const DAG_VIZ_STYLES: &str = r#"    <style>
             border-bottom: 1px solid var(--accent);
         }
 
+        .zoom-controls {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .zoom-controls button {
+            background: var(--accent);
+            color: var(--text);
+            border: none;
+            padding: 0.25rem 0.75rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: bold;
+        }
+
+        .zoom-controls button:hover {
+            background: var(--highlight);
+        }
+
+        .zoom-level {
+            color: var(--text);
+            font-family: monospace;
+            min-width: 4em;
+        }
+
+        .zoom-hint {
+            color: #888;
+            font-size: 0.8rem;
+            margin-left: 1rem;
+        }
+
         .mermaid-container {
-            overflow-x: auto;
+            overflow: hidden;
             background: #fff;
             border-radius: 4px;
             padding: 1rem;
+            cursor: grab;
+            height: 600px;
+            position: relative;
+        }
+
+        .mermaid-wrapper {
+            transform-origin: 0 0;
+            transition: transform 0.1s ease-out;
+            display: inline-block;
         }
 
         .mermaid {
-            text-align: center;
+            text-align: left;
+        }
+
+        .mermaid svg {
+            max-width: none !important;
         }
 
         footer {
