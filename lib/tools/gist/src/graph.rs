@@ -2,23 +2,30 @@
 //!
 //! This graph is composed from primitives and library ops.
 //! Uses DagBuilder for compile-time cycle prevention and edge validation.
+//!
+//! # Transport Pattern
+//!
+//! File listing and reading use the transport layer for consistent I/O handling:
+//! - ListFiles: uses ShellRequest("git ls-files") via transport
+//! - ReadFiles: uses FileRequest::read for each file via transport
 
 use gunbc_exec::{ExecError, Executable};
+use gunbc_ir::transport::{FileRequest, ShellRequest, TransportRequest, TransportResponse};
 use gunbc_ir::{
     build::*, BuilderError, Cardinality, Dag, DagBuilder, Node, Value, WorkflowSignature,
 };
 use gunbc_lib_gist_ops::GistOps;
 use gunbc_lib_markdown::MarkdownOp;
-use gunbc_primitives::{ListFilesOp, ReadFilesOp};
-use std::collections::HashMap;
+use gunbc_lib_transport::execute_transport;
+use std::collections::{BTreeMap, HashMap};
 
 /// The operation type for gist graphs - a union of primitives and library ops.
 #[derive(Debug, Clone)]
 pub enum GistGraphOp {
-    /// List files (primitive)
-    ListFiles(ListFilesOp),
-    /// Read multiple files (primitive)
-    ReadFiles(ReadFilesOp),
+    /// List files using git ls-files via transport
+    ListFiles,
+    /// Read multiple files using transport
+    ReadFiles,
     /// Filter by extension (local op - specialized for gist)
     FilterByExtension { extensions: Vec<String> },
     /// Markdown operations
@@ -33,8 +40,8 @@ impl Executable for GistGraphOp {
         inputs: HashMap<String, Value>,
     ) -> Result<HashMap<String, Value>, ExecError> {
         match self {
-            GistGraphOp::ListFiles(op) => op.execute(inputs),
-            GistGraphOp::ReadFiles(op) => op.execute(inputs),
+            GistGraphOp::ListFiles => execute_list_files(inputs),
+            GistGraphOp::ReadFiles => execute_read_files(inputs),
             GistGraphOp::FilterByExtension { extensions } => {
                 // Local specialized filter
                 let files = inputs
@@ -61,6 +68,119 @@ impl Executable for GistGraphOp {
     }
 }
 
+/// List files using git ls-files via transport layer.
+fn execute_list_files(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+    let repo_path = inputs
+        .get("repo_path")
+        .and_then(|v| v.as_str())
+        .unwrap_or(".");
+
+    // Use git ls-files via transport
+    let request = TransportRequest::Shell(ShellRequest {
+        command: "git".to_string(),
+        args: vec![
+            "ls-files".to_string(),
+            "--cached".to_string(),
+            "--others".to_string(),
+            "--exclude-standard".to_string(),
+        ],
+        cwd: Some(repo_path.to_string()),
+        env: HashMap::new(),
+        stdin: None,
+    });
+
+    let response = execute_transport(&request)
+        .map_err(|e| ExecError::new(format!("failed to list files: {}", e)))?;
+
+    let files = match response {
+        TransportResponse::Shell(shell) => {
+            if shell.success() {
+                shell
+                    .stdout
+                    .lines()
+                    .filter(|l| !l.is_empty())
+                    .map(|l| l.to_string())
+                    .collect()
+            } else {
+                // Fallback: try ls command if not in a git repo
+                list_files_fallback(repo_path)?
+            }
+        }
+        _ => return Err(ExecError::new("unexpected response type")),
+    };
+
+    let mut out = HashMap::new();
+    out.insert("files".to_string(), Value::StrList(files));
+    Ok(out)
+}
+
+/// Fallback file listing when not in a git repo.
+fn list_files_fallback(path: &str) -> Result<Vec<String>, ExecError> {
+    let request = TransportRequest::Shell(ShellRequest {
+        command: "find".to_string(),
+        args: vec![path.to_string(), "-type".to_string(), "f".to_string()],
+        cwd: None,
+        env: HashMap::new(),
+        stdin: None,
+    });
+
+    let response = execute_transport(&request)
+        .map_err(|e| ExecError::new(format!("failed to list files: {}", e)))?;
+
+    match response {
+        TransportResponse::Shell(shell) => {
+            Ok(shell
+                .stdout
+                .lines()
+                .filter(|l| !l.is_empty() && !l.starts_with('.'))
+                .map(|l| l.to_string())
+                .collect())
+        }
+        _ => Err(ExecError::new("unexpected response type")),
+    }
+}
+
+/// Read multiple files using transport layer.
+fn execute_read_files(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+    let files = inputs
+        .get("files")
+        .and_then(|v| v.as_str_list())
+        .ok_or_else(|| ExecError::new("missing or invalid 'files' input"))?;
+
+    let repo_path = inputs
+        .get("repo_path")
+        .and_then(|v| v.as_str())
+        .unwrap_or(".");
+
+    let mut contents = BTreeMap::new();
+
+    for file in &files {
+        let full_path = if repo_path == "." {
+            file.clone()
+        } else {
+            format!("{}/{}", repo_path, file)
+        };
+
+        let request = TransportRequest::File(FileRequest::read(&full_path));
+
+        match execute_transport(&request) {
+            Ok(TransportResponse::File(file_resp)) => {
+                if let Some(content) = file_resp.content {
+                    contents.insert(file.clone(), content);
+                }
+                // Silently skip files that can't be read (binary, permissions, etc.)
+            }
+            _ => {
+                // Silently skip files that can't be read
+            }
+        }
+    }
+
+    let mut out = HashMap::new();
+    out.insert("contents".to_string(), Value::MapStrStr(contents));
+    Ok(out)
+}
+
 /// Get the declared signature for the gist workflow.
 ///
 /// Inputs (entrypoints):
@@ -84,7 +204,7 @@ pub fn gist_signature() -> WorkflowSignature {
 /// ```text
 /// ListFiles -> FilterByExtension -> ReadFiles -> RenderCodeSnapshot -> PrepareRequest -> ExecuteTransport
 ///     ↓                                                                                        ↓
-/// (primitive)                                                                              (boundary)
+/// (transport)                                                                              (boundary)
 /// ```
 ///
 /// # Benefits of DagBuilder
@@ -92,25 +212,18 @@ pub fn gist_signature() -> WorkflowSignature {
 /// - Cycles are prevented by construction (generational tracking)
 /// - Type and cardinality mismatches are caught at edge creation
 /// - Signature validation ensures interface stability
-///
-/// # Future: RetryBuilder for HTTP
-///
-/// The execute_transport node could be wrapped in RetryBuilder for resilient HTTP:
-/// ```ignore
-/// let transport_with_retry = RetryBuilder::new("gist_transport_retry")
-///     .with_body(transport_subdag)
-///     .with_policy(RepeatPolicy::exponential(3, Duration::from_secs(1), 2.0))
-///     .build();
-/// ```
-pub fn build_gist_graph(extensions: Vec<String>, public: bool) -> Result<Dag<GistGraphOp>, BuilderError> {
+pub fn build_gist_graph(
+    extensions: Vec<String>,
+    public: bool,
+) -> Result<Dag<GistGraphOp>, BuilderError> {
     let mut builder = DagBuilder::new();
 
-    // Node: ListFiles (primitive) - generation 0
+    // Node: ListFiles (uses transport internally) - generation 0
     let list_files = builder.add_root_node(Node::opaque(
         "list_files",
         vec![optional("repo_path", "String")],
         vec![list("files", "StrList")],
-        GistGraphOp::ListFiles(ListFilesOp),
+        GistGraphOp::ListFiles,
     ))?;
 
     // Node: FilterByExtension (local specialized op) - generation 1
@@ -124,14 +237,14 @@ pub fn build_gist_graph(extensions: Vec<String>, public: bool) -> Result<Dag<Gis
         &list_files,
     )?;
 
-    // Node: ReadFiles (primitive) - generation 2
+    // Node: ReadFiles (uses transport internally) - generation 2
     // Also has repo_path input (entrypoint, not connected)
     let read_files = builder.add_node_after(
         Node::opaque(
             "read_files",
             vec![list("files", "StrList"), optional("repo_path", "String")],
             vec![list("contents", "MapStrStr")],
-            GistGraphOp::ReadFiles(ReadFilesOp),
+            GistGraphOp::ReadFiles,
         ),
         &filter_files,
     )?;
@@ -176,8 +289,14 @@ pub fn build_gist_graph(extensions: Vec<String>, public: bool) -> Result<Dag<Gis
     builder.add_edge(list_files.out("files"), filter_files.in_port("files"))?;
     builder.add_edge(filter_files.out("files"), read_files.in_port("files"))?;
     builder.add_edge(read_files.out("contents"), render_markdown.in_port("contents"))?;
-    builder.add_edge(render_markdown.out("markdown"), prepare_gist_request.in_port("markdown"))?;
-    builder.add_edge(prepare_gist_request.out("request"), execute_transport.in_port("request"))?;
+    builder.add_edge(
+        render_markdown.out("markdown"),
+        prepare_gist_request.in_port("markdown"),
+    )?;
+    builder.add_edge(
+        prepare_gist_request.out("request"),
+        execute_transport.in_port("request"),
+    )?;
 
     Ok(builder.build())
 }
@@ -188,12 +307,15 @@ use gunbc_test::Mockable;
 impl Mockable for GistGraphOp {
     fn mock_outputs(&self) -> HashMap<String, Value> {
         match self {
-            GistGraphOp::ListFiles(_) => {
+            GistGraphOp::ListFiles => {
                 let mut out = HashMap::new();
-                out.insert("files".to_string(), Value::StrList(vec!["src/main.rs".to_string(), "README.md".to_string()]));
+                out.insert(
+                    "files".to_string(),
+                    Value::StrList(vec!["src/main.rs".to_string(), "README.md".to_string()]),
+                );
                 out
             }
-            GistGraphOp::ReadFiles(_) => {
+            GistGraphOp::ReadFiles => {
                 let mut out = HashMap::new();
                 let mut contents = std::collections::BTreeMap::new();
                 contents.insert("src/main.rs".to_string(), "fn main() {}".to_string());
@@ -202,22 +324,36 @@ impl Mockable for GistGraphOp {
             }
             GistGraphOp::FilterByExtension { .. } => {
                 let mut out = HashMap::new();
-                out.insert("files".to_string(), Value::StrList(vec!["src/main.rs".to_string()]));
+                out.insert(
+                    "files".to_string(),
+                    Value::StrList(vec!["src/main.rs".to_string()]),
+                );
                 out
             }
             GistGraphOp::Markdown(_) => {
                 let mut out = HashMap::new();
-                out.insert("markdown".to_string(), Value::Str("# Code Snapshot\n```rust\nfn main() {}\n```".to_string()));
+                out.insert(
+                    "markdown".to_string(),
+                    Value::Str("# Code Snapshot\n```rust\nfn main() {}\n```".to_string()),
+                );
                 out
             }
             GistGraphOp::Gist(_) => {
                 let mut out = HashMap::new();
-                out.insert("url".to_string(), Value::Str("https://gist.github.com/mock/123".to_string()));
-                out.insert("response".to_string(), Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse {
-                    exit_code: 0,
-                    stdout: "https://gist.github.com/mock/123".to_string(),
-                    stderr: String::new(),
-                })));
+                out.insert(
+                    "url".to_string(),
+                    Value::Str("https://gist.github.com/mock/123".to_string()),
+                );
+                out.insert(
+                    "response".to_string(),
+                    Value::Response(gunbc_ir::transport::TransportResponse::Shell(
+                        gunbc_ir::transport::ShellResponse {
+                            exit_code: 0,
+                            stdout: "https://gist.github.com/mock/123".to_string(),
+                            stderr: String::new(),
+                        },
+                    )),
+                );
                 out
             }
         }
@@ -293,7 +429,7 @@ mod tests {
     fn test_signature_matches_dag() {
         let dag = build_gist_graph(vec![], false).expect("graph should build");
         let sig = gist_signature();
-        
+
         // Validate declared signature matches inferred
         sig.validate(&dag).expect("signature should match DAG");
     }
@@ -302,10 +438,10 @@ mod tests {
     fn test_inferred_signature() {
         let dag = build_gist_graph(vec![], false).expect("graph should build");
         let inferred = infer_signature(&dag);
-        
+
         // Should have two inputs (repo_path on list_files and read_files)
         assert_eq!(inferred.inputs.len(), 2);
-        
+
         // Should have two outputs (response, url)
         assert_eq!(inferred.outputs.len(), 2);
         let output_names: Vec<_> = inferred.outputs.iter().map(|p| p.name.0.as_str()).collect();

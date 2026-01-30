@@ -5,22 +5,21 @@
 //! - `PrepareFileWriteOp` (primitive) creates the TransportRequest
 //! - `TransportOps::Execute` (boundary) performs actual I/O
 //!
-//! NOTE: `ScanWorkspace` still uses direct fs operations internally.
-//! A future refactor could use PrepareShellOp + TransportOps::Execute
-//! with `find` or `ls` commands.
+//! All I/O (including workspace scanning) goes through the transport layer.
 
 use gunbc_exec::{ExecError, Executable};
+use gunbc_ir::transport::{FileRequest, ShellRequest, TransportRequest, TransportResponse};
 use gunbc_ir::Value;
+use gunbc_lib_transport::execute_transport;
 use std::collections::HashMap;
 
 /// Operations for the bootstrap tool.
 ///
-/// These are all pure operations - no direct I/O (except ScanWorkspace which
-/// is a read-only operation that could be migrated to transport pattern later).
+/// These operations use the transport layer for all I/O.
 /// File writing is handled via `PrepareFileWriteOp` + `TransportOps::Execute`.
 #[derive(Debug, Clone)]
 pub enum BootstrapOp {
-    /// Scan workspace for crates (read-only, uses direct fs for now)
+    /// Scan workspace for crates (uses transport layer for directory listing)
     ScanWorkspace,
     /// Generate Makefile content (pure - string generation)
     GenerateMakefile,
@@ -38,18 +37,46 @@ impl Executable for BootstrapOp {
     }
 }
 
-/// Scan workspace for crate information.
+/// Scan workspace for crate information using transport layer.
 fn execute_scan_workspace(_inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-    // Find all crates in the workspace
-    let crates_dir = std::path::Path::new("crates");
+    // Check if crates directory exists using transport
+    let exists_request = TransportRequest::File(FileRequest::exists("crates"));
+    let crates_exists = match execute_transport(&exists_request) {
+        Ok(TransportResponse::File(resp)) => resp.exists.unwrap_or(false),
+        _ => false,
+    };
+
     let mut crate_names = Vec::new();
 
-    if crates_dir.exists() {
-        if let Ok(entries) = std::fs::read_dir(crates_dir) {
-            for entry in entries.flatten() {
-                if entry.path().is_dir() {
-                    if let Some(name) = entry.file_name().to_str() {
-                        crate_names.push(name.to_string());
+    if crates_exists {
+        // List directories in crates/ using find via transport
+        let list_request = TransportRequest::Shell(ShellRequest {
+            command: "find".to_string(),
+            args: vec![
+                "crates".to_string(),
+                "-maxdepth".to_string(),
+                "1".to_string(),
+                "-mindepth".to_string(),
+                "1".to_string(),
+                "-type".to_string(),
+                "d".to_string(),
+            ],
+            cwd: None,
+            env: HashMap::new(),
+            stdin: None,
+        });
+
+        if let Ok(TransportResponse::Shell(shell)) = execute_transport(&list_request) {
+            if shell.success() {
+                for line in shell.stdout.lines() {
+                    let line = line.trim();
+                    if !line.is_empty() {
+                        // Extract crate name from path like "crates/foo"
+                        if let Some(name) = line.strip_prefix("crates/") {
+                            if !name.is_empty() && !name.contains('/') {
+                                crate_names.push(name.to_string());
+                            }
+                        }
                     }
                 }
             }

@@ -1,6 +1,6 @@
 //! CI operations.
 //!
-//! Command execution delegates to ExecuteOp primitive.
+//! Command execution uses the transport layer for consistent I/O handling.
 //!
 //! The CI pipeline includes a Prep stage that runs codegen
 //! to ensure all generated code exists before building/testing.
@@ -9,14 +9,23 @@
 //!
 //! All build/test/lint commands are sourced from `BuildConfig` in the
 //! makegen registry. This ensures a single source of truth for commands.
+//!
+//! # Transport Pattern
+//!
+//! Shell commands are executed via `execute_transport()` from `gunbc_lib_transport`.
+//! This ensures all I/O goes through the central transport layer, enabling
+//! consistent mocking and interception.
 
 use gunbc_exec::{ExecError, Executable};
+use gunbc_ir::transport::{ShellRequest, TransportRequest, TransportResponse};
 use gunbc_ir::Value;
+use gunbc_lib_transport::execute_transport;
 use gunbc_makegen::{BuildConfig, ToolRegistry};
-use gunbc_primitives::ExecuteOp;
 use std::collections::HashMap;
 
 /// Run a command from BuildConfig, returning (success, stdout, stderr).
+///
+/// Uses the transport layer for consistent I/O handling.
 fn run_config_command(command: &[&str]) -> Result<(bool, String, String), ExecError> {
     if command.is_empty() {
         return Err(ExecError::new("Empty command"));
@@ -27,31 +36,25 @@ fn run_config_command(command: &[&str]) -> Result<(bool, String, String), ExecEr
 
     println!("Running: {} {}", program, args.join(" "));
 
-    let mut exec_inputs = HashMap::new();
-    exec_inputs.insert("command".to_string(), Value::Str(program.to_string()));
-    exec_inputs.insert(
-        "args".to_string(),
-        Value::StrList(args.iter().map(|s| s.to_string()).collect()),
-    );
+    // Build a shell request and execute through transport layer
+    let request = TransportRequest::Shell(ShellRequest {
+        command: program.to_string(),
+        args: args.iter().map(|s| s.to_string()).collect(),
+        cwd: None,
+        env: HashMap::new(),
+        stdin: None,
+    });
 
-    let exec_result = ExecuteOp.execute(exec_inputs)?;
+    let response = execute_transport(&request)
+        .map_err(|e| ExecError::new(format!("transport error: {}", e)))?;
 
-    let success = exec_result
-        .get("success")
-        .and_then(|v: &Value| v.as_bool())
-        .unwrap_or(false);
-    let stdout = exec_result
-        .get("stdout")
-        .and_then(|v: &Value| v.as_str())
-        .unwrap_or("")
-        .to_string();
-    let stderr = exec_result
-        .get("stderr")
-        .and_then(|v: &Value| v.as_str())
-        .unwrap_or("")
-        .to_string();
-
-    Ok((success, stdout, stderr))
+    // Extract shell response
+    match response {
+        TransportResponse::Shell(shell) => {
+            Ok((shell.success(), shell.stdout, shell.stderr))
+        }
+        _ => Err(ExecError::new("unexpected response type from shell command")),
+    }
 }
 
 /// Operations for the CI tool.

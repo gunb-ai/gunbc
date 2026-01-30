@@ -79,6 +79,7 @@ version = "0.1.0"
 dependencies = [
  "gunbc-exec",
  "gunbc-ir",
+ "gunbc-lib-transport",
  "gunbc-makegen",
  "gunbc-primitives",
  "gunbc-test",
@@ -107,6 +108,7 @@ version = "0.1.0"
 dependencies = [
  "gunbc-exec",
  "gunbc-ir",
+ "gunbc-lib-transport",
  "gunbc-primitives",
  "gunbc-test",
  "serde",

@@ -9,6 +9,7 @@ description = "Tool dependency management with upsert pattern"
 gunbc-ir = { path = "../../../core/ir" }
 gunbc-exec = { path = "../../../core/exec" }
 gunbc-primitives = { path = "../../primitives" }
+gunbc-lib-transport = { path = "../../transport" }
 gunbc-test = { path = "../../../core/test" }
 serde = { version = "1.0", features = ["derive"] }
 toml = "0.8"

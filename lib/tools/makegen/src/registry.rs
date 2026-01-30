@@ -474,12 +474,24 @@ impl ToolRegistry {
     /// Check if any codegen is needed by examining the filesystem.
     /// Returns true if any tool's main.rs is missing.
     pub fn needs_codegen(&self) -> bool {
-        let buck_out = std::path::Path::new("buck-out/gen/bin");
-        if !buck_out.exists() {
+        use gunbc_ir::transport::{FileRequest, TransportRequest, TransportResponse};
+        use gunbc_lib_transport::execute_transport;
+
+        // Helper to check if a path exists via transport
+        let path_exists = |path: &str| -> bool {
+            let request = TransportRequest::File(FileRequest::exists(path));
+            match execute_transport(&request) {
+                Ok(TransportResponse::File(resp)) => resp.exists.unwrap_or(false),
+                _ => false,
+            }
+        };
+
+        if !path_exists("buck-out/gen/bin") {
             return true;
         }
         self.tools.iter().any(|t| {
-            !buck_out.join(&t.short_name).join("main.rs").exists()
+            let main_path = format!("buck-out/gen/bin/{}/main.rs", t.short_name);
+            !path_exists(&main_path)
         })
     }
 

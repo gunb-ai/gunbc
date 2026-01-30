@@ -8,18 +8,27 @@
 //!
 //! - **Data**: Parse, Extract, Format, Concat, Split - pure data transformations
 //! - **Collection**: Map, Filter, Fold, Sort, First/Last - list operations with cardinality
-//! - **IO**: ReadFile, WriteFile, Execute, HttpRequest - world interactions (boundaries)
+//! - **IO**: Prepare* ops that build TransportRequest values (pure, no I/O)
 //! - **Control**: Loop, Branch - control flow patterns
+//!
+//! # Transport Pattern
+//!
+//! All I/O operations follow the transport pattern:
+//! ```text
+//! [Prepare*Op] -> [TransportOps::Execute] -> [Parse/Extract]
+//!    (pure)          (interceptable)           (pure)
+//! ```
+//!
+//! The Prepare* ops are pure - they build `TransportRequest` values without
+//! performing any I/O. Actual I/O happens in `TransportOps::Execute` from
+//! `lib/transport`, which is properly intercepted in DryRun mode.
 //!
 //! # Design Principles
 //!
 //! 1. Each primitive is tiny (< 20 lines of execute logic)
 //! 2. Primitives are composable via DAG edges
 //! 3. Cardinality is used for automatic test generation
-//! 4. Boundaries are clearly marked for dry-run interception
-
-// I/O ops use direct filesystem/process access - this is expected for primitives crate
-#![allow(clippy::disallowed_methods)]
+//! 4. All primitives are pure - no direct I/O
 
 pub mod collection;
 pub mod control;
@@ -30,8 +39,8 @@ pub use collection::{CollectionOp, FilterOp, FirstOp, FoldOp, LastOp, MapOp, Sor
 pub use control::{BranchOp, LoopOp};
 pub use data::{ConcatOp, ExtractOp, FormatOp, ParseOp, SplitOp};
 pub use io::{
-    ExecuteOp, HttpRequestOp, ListFilesOp, PrepareDirectoryListOp, PrepareFileExistsOp,
-    PrepareFileReadOp, PrepareFileWriteOp, PrepareShellOp, ReadFileOp, ReadFilesOp, WriteFileOp,
+    HttpRequestOp, PrepareDirectoryListOp, PrepareFileExistsOp, PrepareFileReadOp,
+    PrepareFileWriteOp, PrepareShellOp,
 };
 
 use gunbc_exec::{ExecError, Executable};
@@ -57,19 +66,12 @@ pub enum PrimitiveOp {
     First(FirstOp),
     Last(LastOp),
 
-    // I/O primitives - Pure prepare ops (preferred)
+    // I/O primitives - Pure prepare ops (build TransportRequest, no I/O)
     PrepareFileRead(PrepareFileReadOp),
     PrepareFileWrite(PrepareFileWriteOp),
     PrepareFileExists(PrepareFileExistsOp),
     PrepareShell(PrepareShellOp),
     PrepareDirectoryList(PrepareDirectoryListOp),
-
-    // I/O primitives - direct I/O
-    ReadFile(ReadFileOp),
-    ReadFiles(ReadFilesOp),
-    ListFiles(ListFilesOp),
-    WriteFile(WriteFileOp),
-    Execute(ExecuteOp),
     HttpRequest(HttpRequestOp),
 
     // Control primitives
@@ -101,13 +103,6 @@ impl Executable for PrimitiveOp {
             PrimitiveOp::PrepareFileExists(op) => op.execute(inputs),
             PrimitiveOp::PrepareShell(op) => op.execute(inputs),
             PrimitiveOp::PrepareDirectoryList(op) => op.execute(inputs),
-
-            // I/O - direct I/O
-            PrimitiveOp::ReadFile(op) => op.execute(inputs),
-            PrimitiveOp::ReadFiles(op) => op.execute(inputs),
-            PrimitiveOp::ListFiles(op) => op.execute(inputs),
-            PrimitiveOp::WriteFile(op) => op.execute(inputs),
-            PrimitiveOp::Execute(op) => op.execute(inputs),
             PrimitiveOp::HttpRequest(op) => op.execute(inputs),
 
             // Control

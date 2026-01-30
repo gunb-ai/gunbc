@@ -1,15 +1,16 @@
 //! Deps operations.
 //!
-//! Demonstrates decomposition into primitives where possible.
+//! Uses the transport layer for all I/O operations.
 //! Domain-specific logic (manifest parsing, platform detection) remains,
-//! but file I/O and command execution delegate to primitives.
+//! but file I/O and command execution go through the transport layer.
 
 use crate::installer::Installer;
 use crate::manifest::DepsManifest;
 use crate::upsert::upsert_dry_run;
 use gunbc_exec::{ExecError, Executable};
+use gunbc_ir::transport::{FileRequest, ShellRequest, TransportRequest, TransportResponse};
 use gunbc_ir::Value;
-use gunbc_primitives::io::{ExecuteOp, ReadFileOp};
+use gunbc_lib_transport::execute_transport;
 use gunbc_primitives::data::ParseOp;
 use std::collections::HashMap;
 
@@ -38,10 +39,10 @@ impl Executable for DepsOp {
     }
 }
 
-/// Load the deps manifest using primitives internally.
+/// Load the deps manifest using transport layer.
 ///
 /// Decomposition:
-/// 1. ReadFileOp reads the manifest file
+/// 1. FileRequest::read reads the manifest file via transport
 /// 2. ParseOp::Toml parses the TOML content
 /// 3. Domain-specific extraction of dependency info
 fn execute_load_manifest(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
@@ -50,35 +51,29 @@ fn execute_load_manifest(inputs: HashMap<String, Value>) -> Result<HashMap<Strin
         _ => "deps.toml".to_string(),
     };
 
-    // Step 1: Use ReadFileOp primitive to read the file
-    let mut read_inputs = HashMap::new();
-    read_inputs.insert("path".to_string(), Value::Str(manifest_path.clone()));
-    let read_result = ReadFileOp.execute(read_inputs)?;
-    
-    let content = read_result
-        .get("content")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| ExecError::new(format!("failed to read manifest: {}", manifest_path)))?;
+    // Step 1: Read file via transport layer
+    let request = TransportRequest::File(FileRequest::read(&manifest_path));
+    let response = execute_transport(&request)
+        .map_err(|e| ExecError::new(format!("failed to read manifest {}: {}", manifest_path, e)))?;
 
-    let exists = read_result
-        .get("exists")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-
-    if !exists {
-        return Err(ExecError::new(format!("failed to load manifest: file not found: {}", manifest_path)));
-    }
+    let content = match response {
+        TransportResponse::File(file_resp) => {
+            file_resp.content.ok_or_else(|| {
+                ExecError::new(format!("failed to load manifest: file not found: {}", manifest_path))
+            })?
+        }
+        _ => return Err(ExecError::new("unexpected response type")),
+    };
 
     // Step 2: Use ParseOp::Toml primitive to parse (validates TOML structure)
     let mut parse_inputs = HashMap::new();
-    parse_inputs.insert("input".to_string(), Value::Str(content.to_string()));
+    parse_inputs.insert("input".to_string(), Value::Str(content.clone()));
     let _parse_result = ParseOp::Toml.execute(parse_inputs)?;
 
     // Step 3: Domain-specific: Use DepsManifest for structured extraction
-    // (This could be further decomposed with ExtractOp, but DepsManifest
-    // handles schema validation and defaults)
-    let manifest = DepsManifest::load(&manifest_path)
-        .map_err(|e| ExecError::new(format!("failed to load manifest: {}", e)))?;
+    // Parse from content instead of re-loading from file
+    let manifest = DepsManifest::parse(&content)
+        .map_err(|e| ExecError::new(format!("failed to parse manifest: {}", e)))?;
 
     let dep_names: Vec<String> = manifest.dependency.iter().map(|d| d.name.clone()).collect();
 
@@ -130,39 +125,31 @@ fn execute_generate_scripts(inputs: HashMap<String, Value>) -> Result<HashMap<St
     Ok(out)
 }
 
-/// Execute the install scripts using ExecuteOp primitive.
+/// Execute the install scripts using transport layer.
 ///
-/// Decomposition:
-/// 1. ExecuteOp runs the script via sh -c
+/// Uses ShellRequest to run the script via sh -c.
 fn execute_execute_installs(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
     let script = match inputs.get("install_script") {
         Some(Value::Str(s)) => s.clone(),
         _ => return Err(ExecError::new("missing install_script input")),
     };
 
-    // Use ExecuteOp primitive to run the script
-    let mut exec_inputs = HashMap::new();
-    exec_inputs.insert("command".to_string(), Value::Str("sh".to_string()));
-    exec_inputs.insert("args".to_string(), Value::StrList(vec!["-c".to_string(), script.clone()]));
-    
-    let exec_result = ExecuteOp.execute(exec_inputs)?;
+    // Use transport layer to run the script
+    let request = TransportRequest::Shell(ShellRequest {
+        command: "sh".to_string(),
+        args: vec!["-c".to_string(), script.clone()],
+        cwd: None,
+        env: HashMap::new(),
+        stdin: None,
+    });
 
-    let success = exec_result
-        .get("success")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
+    let response = execute_transport(&request)
+        .map_err(|e| ExecError::new(format!("transport error: {}", e)))?;
 
-    let stdout = exec_result
-        .get("stdout")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
-
-    let stderr = exec_result
-        .get("stderr")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
+    let (success, stdout, stderr) = match response {
+        TransportResponse::Shell(shell) => (shell.success(), shell.stdout, shell.stderr),
+        _ => return Err(ExecError::new("unexpected response type")),
+    };
 
     let mut out = HashMap::new();
     out.insert("executed".to_string(), Value::Bool(true));

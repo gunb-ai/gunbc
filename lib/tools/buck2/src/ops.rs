@@ -2,21 +2,22 @@
 //!
 //! This module demonstrates how tool-specific operations can be decomposed
 //! into primitive operations. The Buck2Op enum provides high-level operations
-//! that internally delegate to primitives from gunbc-primitives.
+//! that use the transport layer for I/O.
 //!
-//! # Decomposition Example
+//! # Transport Pattern
 //!
-//! `ParseCargoToml` is decomposed into:
+//! `ParseCargoToml` uses:
 //! ```text
-//! ReadFileOp(path) → ParseOp::Toml(content) → json
+//! FileRequest::read(path) → execute_transport → ParseOp::Toml → json
 //! ```
 //!
-//! This shows the migration path: tool ops become thin wrappers around primitives.
+//! All I/O goes through the transport layer for consistent handling.
 
 use gunbc_exec::{ExecError, Executable};
+use gunbc_ir::transport::{FileRequest, TransportRequest, TransportResponse};
 use gunbc_ir::Value;
+use gunbc_lib_transport::execute_transport;
 use gunbc_primitives::data::{ExtractOp, ParseOp};
-use gunbc_primitives::io::ReadFileOp;
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 
@@ -47,10 +48,10 @@ impl Executable for Buck2Op {
     }
 }
 
-/// Parse Cargo.toml file using primitives.
+/// Parse Cargo.toml file using transport layer.
 ///
 /// Decomposition:
-/// 1. ReadFileOp reads the file
+/// 1. FileRequest::read reads the file via transport
 /// 2. ParseOp::Toml parses the content
 fn execute_parse_cargo_toml(
     inputs: HashMap<String, Value>,
@@ -60,29 +61,23 @@ fn execute_parse_cargo_toml(
         _ => "Cargo.toml".to_string(),
     };
 
-    // Step 1: Use ReadFileOp primitive
-    let mut read_inputs = HashMap::new();
-    read_inputs.insert("path".to_string(), Value::Str(path.clone()));
-    let read_result = ReadFileOp.execute(read_inputs)?;
+    // Step 1: Read file via transport layer
+    let request = TransportRequest::File(FileRequest::read(&path));
+    let response = execute_transport(&request)
+        .map_err(|e| ExecError::new(format!("transport error reading {}: {}", path, e)))?;
 
-    let content = read_result
-        .get("content")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| ExecError::new(format!("failed to read file: {}", path)))?;
-
-    // Check if file exists
-    let exists = read_result
-        .get("exists")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-
-    if !exists {
-        return Err(ExecError::new(format!("file not found: {}", path)));
-    }
+    let content = match response {
+        TransportResponse::File(file_resp) => {
+            file_resp.content.ok_or_else(|| {
+                ExecError::new(format!("file not found or empty: {}", path))
+            })?
+        }
+        _ => return Err(ExecError::new("unexpected response type")),
+    };
 
     // Step 2: Use ParseOp::Toml primitive
     let mut parse_inputs = HashMap::new();
-    parse_inputs.insert("input".to_string(), Value::Str(content.to_string()));
+    parse_inputs.insert("input".to_string(), Value::Str(content));
     let parse_result = ParseOp::Toml.execute(parse_inputs)?;
 
     let json = parse_result
@@ -176,6 +171,16 @@ fn extract_version(spec: &serde_json::Value) -> String {
     }
 }
 
+/// Check if a file exists using the transport layer.
+fn file_exists(path: &Path) -> bool {
+    let path_str = path.to_string_lossy().to_string();
+    let request = TransportRequest::File(FileRequest::exists(path_str));
+    match execute_transport(&request) {
+        Ok(TransportResponse::File(resp)) => resp.exists.unwrap_or(false),
+        _ => false,
+    }
+}
+
 /// Generate Buck2 target definitions.
 ///
 /// This operation is more complex and would require:
@@ -216,8 +221,8 @@ fn execute_generate_targets(
 
         // Determine if it's a binary or library (would be: Branch based on file exists)
         let member_path = Path::new(member);
-        let has_main = member_path.join("src/main.rs").exists()
-            || Path::new(".").join(member).join("src/main.rs").exists();
+        let has_main = file_exists(&member_path.join("src/main.rs"))
+            || file_exists(&Path::new(".").join(member).join("src/main.rs"));
 
         // Generate target (would be: Format with template)
         if has_main {
