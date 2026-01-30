@@ -754,12 +754,9 @@ These invariants define what makes a well-formed graph beyond structural validit
 
 **Why it matters**: Pure nodes can be memoized, parallelized, and reasoned about locally. Mixing I/O into pure nodes breaks these properties.
 
-**Target (Pure DAG Composition)**: Beyond "pure execute functions," the target is **primitives only** — all ops should be compositions of primitives from `lib/primitives/`, not custom `execute_*` functions. This enables:
-- Codegen validation (reject graphs with non-primitive ops)
-- Guaranteed interceptability (all primitives are known-pure)
-- Maximum reusability (no tool-specific boutique ops)
+**Structural Enforcement**: The escape hatch (`execute_transport()` callable from ops) is being removed. Once `execute_transport()` is not exported from `lib/transport`, the only way to do I/O is through `TransportOps::Execute` nodes — which is enforced by the compiler, not linting.
 
-See [Pure DAG Composition](#pure-dag-composition-target-architecture) for details.
+**Key insight**: Custom pure ops are fine. The invariant is simply: **no `execute_transport()` calls outside `TransportOps::Execute`**. This is much simpler than "primitives only."
 
 ### I2. Transport Boundary
 
@@ -841,81 +838,79 @@ When multiple edges feed into a single port, the order of values in the resultin
 
 ---
 
-## Pure DAG Composition (Target Architecture)
+## Structural I/O Enforcement
 
-> **Status**: Target design. The goal is to eliminate all custom `execute_*` functions.
+> **Status**: In progress. CI is migrated; other tools pending.
 
-### The Principle
+### The Problem
 
-All workflow logic should be expressible as **compositions of primitives** in DAGs, not as custom Rust code inside ops. This means:
+Two ways to do I/O exist:
+1. **Correct**: `TransportOps::Execute` nodes (visible in graph, interceptable by DryRun)
+2. **Escape hatch**: `execute_transport()` called inside ops (hidden, not interceptable)
 
-1. **No custom execute functions** — Delete all `execute_*` functions in tool crates
-2. **Type coercion in compiler** — Handle `TransportResponse` → `Json` automatically
-3. **Control flow is structural** — Use `BranchBuilder`/`GuardOp` at DAG level, not inside nodes
-4. **Generic primitives only** — Use `FoldOp` with reducers, not boutique ops
-5. **Constants from files** — Use `PrepareFileReadOp`, not hardcoded templates
+As long as both exist, developers regress to the convenient path.
 
-### Available Primitives
+### The Fix
 
-All tool logic should be expressible using these existing primitives (in `lib/primitives/`):
+**Remove the escape hatch structurally**: Don't export `execute_transport()` from `lib/transport`.
 
-| Category | Primitives | Purpose |
-|----------|------------|---------|
-| **Data** | `ParseOp`, `ExtractOp`, `FormatOp`, `ConcatOp`, `SplitOp` | Pure transforms |
-| **Collection** | `MapOp`, `FilterOp`, `FoldOp`, `SortOp`, `FirstOp`, `LastOp` | List operations |
-| **I/O Prepare** | `PrepareFileReadOp`, `PrepareFileWriteOp`, `PrepareFileExistsOp`, `PrepareShellOp`, `PrepareDirectoryListOp` | Build `TransportRequest` (pure) |
-| **Control** | `LoopOp`, `BranchOp`, `GuardOp`, `SequenceOp` | Control flow |
-
-### Compiler Type Coercion
-
-Instead of conversion primitives, the compiler should auto-coerce when safe:
-
-| From | To | Coercion |
-|------|----|---------| 
-| `TransportResponse` | `Json` | Extract structured data |
-| `ShellResponse` | `Json` | `{exit_code, stdout, stderr}` |
-| `FileResponse` | `Json` | `{content, exists}` |
-| `Json` | `String` | Serialize |
-| `StrList` | `Json` | Array |
-
-This eliminates the need for explicit conversion ops — if a node declares it wants `Json` and upstream produces `TransportResponse`, the compiler inserts the coercion.
-
-### Example: CI Build Stage
-
-**Before** (custom execute function):
 ```rust
-fn execute_prepare_build_command(inputs) {
-    if !prep_success { return skip }  // Logic hidden in code
-    build_shell_request()
+// lib/transport/src/lib.rs
+// BEFORE:
+pub use executor::execute_transport;  // Escape hatch!
+pub use ops::TransportOps;
+
+// AFTER:
+pub use ops::TransportOps;  // Only the DAG node type
+```
+
+Now code that tries to call `execute_transport()` won't compile. The only way to do I/O is through `TransportOps::Execute` as a graph node.
+
+### Key Insight: Custom Pure Ops Are Fine
+
+The goal is NOT "decompose everything into primitives" — that creates massive cognitive load.
+
+Custom `execute_*` functions are **fine** as long as they're **pure**:
+
+```rust
+// GOOD: Custom pure op (no I/O)
+fn execute_parse_build_result(inputs) -> Result<...> {
+    let response = inputs.get("response")?;  // Just parsing data
+    let success = response.exit_code == 0;
+    Ok(outputs)
+}
+
+// BAD: Custom op with hidden I/O  
+fn execute_scan_workspace(inputs) -> Result<...> {
+    let response = execute_transport(&request)?;  // HIDDEN I/O!
+    Ok(outputs)
 }
 ```
 
-**After** (pure DAG composition):
-```
-prep_success ──► GuardOp ──► PrepareShellOp("cargo", ["build"]) ──► Execute
-                   │
-                   │ (outputs Value::Skipped if false)
-                   ▼
-```
+The invariant is simpler than "primitives only":
 
-The branching is **structural** (visible in the graph), not hidden in a function.
+> **No `execute_transport()` calls outside `TransportOps::Execute`**
 
-### Benefits
+### Current State
 
-| Benefit | Why |
-|---------|-----|
-| **Testability** | Each primitive is unit-testable; composition is structural |
-| **Visibility** | All logic visible in graph structure |
-| **Reusability** | Primitives are generic; no tool-specific boutique ops |
-| **DryRun** | All I/O interceptable because it's explicit |
-| **Codegen validation** | Can reject graphs that don't use primitives |
+| Tool | Status |
+|------|--------|
+| CI | ✅ Migrated (pure ops + explicit transport nodes) |
+| clippy | ✅ Uses UpsertBuilder, SubDag exposed |
+| gist | ❌ Hidden I/O in `ListFiles`, `ReadFiles` |
+| deps | ❌ Hidden I/O in `LoadManifest`, `ExecuteInstalls` |
+| buck2 | ❌ Hidden I/O in `ParseCargoToml` |
+| bootstrap | ❌ Hidden I/O in `ScanWorkspace` |
+| lib/fs | ❌ Direct `std::fs` side door |
 
-### Migration Path
+### Migration Order
 
-1. **Phase 1** (done for CI): Pure `execute_*` functions with explicit transport nodes
-2. **Phase 2** (target): No `execute_*` functions — pure DAG composition of primitives
+1. Build transport chain helper (make correct path cheap)
+2. Migrate gist (proof of concept)
+3. Make `execute_transport()` non-public (close escape hatch)
+4. Migrate remaining tools (deps → buck2 → bootstrap)
 
-See `TODO/graph-level-transport.md` for implementation details.
+See `TODO/graph-level-transport.md` for details.
 
 ---
 

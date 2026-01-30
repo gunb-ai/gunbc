@@ -26,18 +26,29 @@ The CI tool was migrated to have pure `execute_*` functions with no hidden I/O:
 - All ops decomposed into `Prepare*` → `TransportOps::Execute` → `Parse*` chains
 - No `execute_transport()` calls in `ops.rs`
 
-### Phase 2: Pure DAG Composition (NEW DIRECTION)
+### Phase 2: Structural I/O Enforcement (CURRENT DIRECTION)
 
-**The Phase 1 approach still has custom code in `execute_*` functions.**
+**The root cause**: Two ways to do I/O exist:
+1. Correct: `TransportOps::Execute` nodes (visible, interceptable)
+2. Escape hatch: `execute_transport()` called inside ops (hidden, not interceptable)
 
-The refined architecture goes further: **ban ALL custom `execute_*` code**.
+**The fix**: Remove the escape hatch structurally — make `execute_transport()` not callable from tool crates.
 
-Key principles:
-1. **No custom execute functions** - All logic is primitives composed in DAGs
-2. **Type coercion in compiler** - Handle `TransportResponse` → `Json` automatically
-3. **Control flow is structural** - Use `BranchBuilder`/`GuardOp` at DAG level, not inside nodes
-4. **Generic primitives only** - Use `FoldOp(and)`, not boutique `AllOp`
-5. **Constants from files** - Use `PrepareFileReadOp`, not hardcoded templates
+```rust
+// lib/transport/src/lib.rs - make execute_transport non-public
+pub use ops::TransportOps;  // Only export the DAG node type
+// execute_transport is NOT exported
+```
+
+**Key insight**: Custom pure ops are fine. The goal is NOT "primitives only" — that's massive cognitive load. The invariant is simpler:
+
+> **No `execute_transport()` calls outside `TransportOps::Execute`**
+
+**Migration order**:
+1. Build transport chain helper (make correct path cheap)
+2. Migrate gist (proof of concept)
+3. Make `execute_transport()` non-public (close escape hatch)
+4. Migrate remaining tools (deps → buck2 → bootstrap)
 
 See: `~/.cursor/plans/pure_node_enforcement_bf6bf5f3.plan.md`
 
@@ -53,9 +64,9 @@ See: `~/.cursor/plans/pure_node_enforcement_bf6bf5f3.plan.md`
 
 ### What's Violated
 
-**I1, I3, I4** are still violated in remaining tools (gist, deps, buck2, bootstrap, makegen): I/O is hidden inside opaque nodes, not exposed in graph structure.
+**I1, I3** are violated in remaining tools (gist, deps, buck2, bootstrap, makegen): I/O is hidden inside opaque nodes via `execute_transport()` calls, not exposed in graph structure.
 
-**New violation identified**: Even "pure" `execute_*` functions are custom code that could be expressed as primitive compositions.
+**Side door identified**: `lib/fs` uses direct `std::fs` and `Command::new`, bypassing transport entirely.
 
 ```
 Current (violates I1, I3):
@@ -323,49 +334,48 @@ After reconciliation, all nodes fall into these categories:
 
 ---
 
-## Pure DAG Composition Architecture (Target State)
+## Structural Enforcement Details
 
-### Available Primitives
+### The Invariant
 
-All tool logic should be expressible using these existing primitives:
+> **No `execute_transport()` calls outside `TransportOps::Execute`**
 
-| Category | Primitives | Purpose |
-|----------|------------|---------|
-| **Data** | `ParseOp`, `ExtractOp`, `FormatOp`, `ConcatOp`, `SplitOp` | Pure transforms |
-| **Collection** | `MapOp`, `FilterOp`, `FoldOp`, `SortOp`, `FirstOp`, `LastOp` | List operations |
-| **I/O Prepare** | `PrepareFileReadOp`, `PrepareFileWriteOp`, `PrepareFileExistsOp`, `PrepareShellOp`, `PrepareDirectoryListOp` | Build `TransportRequest` (pure) |
-| **Control** | `LoopOp`, `BranchOp`, `GuardOp`, `SequenceOp` | Control flow |
-| **Patterns** | `BranchBuilder`, `IfBuilder`, `UpsertBuilder`, `LoopBuilder`, `AtomicBuilder`, `TransactionBuilder` | SubDAG composition |
+Custom pure ops are fine. The goal is visible I/O, not "primitives only."
 
-### Compiler Support Needed
+### What's Needed
 
-1. **Type Coercion**: Auto-convert when safe
-   - `TransportResponse` → `Json`
-   - `ShellResponse` → `{exit_code, stdout, stderr}`
-   - `FileResponse` → `{content, exists}`
+1. **Transport chain helper**: Make prepare → execute → parse wiring cheap
+2. **Close escape hatch**: Make `execute_transport()` non-public to tools
+3. **Refactor side doors**: `lib/fs` uses direct `std::fs` — convert to pure `Prepare*` ops
 
-2. **Primitive-Only Validation**: Codegen rejects non-primitive ops
+### Example: Correct Pattern (CI does this)
 
-### Example: CI Build Stage as Pure DAG
-
-```
-BEFORE (custom execute_prepare_build_command):
-fn execute_prepare_build_command(inputs) {
-    if !prep_success { return skip }  // Custom logic
-    build_shell_request()
+```rust
+// Custom pure op - GOOD (no I/O)
+fn execute_parse_build_result(inputs) -> Result<...> {
+    let response = inputs.get("response")?;  // Just parsing
+    let success = response.exit_code == 0;
+    Ok(outputs)
 }
 
-AFTER (pure DAG composition):
-┌─────────────────────────────────────────────────────────────┐
-│ prep_success ──► GuardOp ──► PrepareShellOp("cargo build") │
-│                    │                    │                   │
-│                    │ (skipped if false) │                   │
-│                    ▼                    ▼                   │
-│              (Value::Skipped)    (TransportRequest)         │
-└─────────────────────────────────────────────────────────────┘
+// Graph has explicit transport nodes:
+// PrepareBuildCommand → TransportOps::Execute → ParseBuildResult
+//                              ↑
+//                      DryRun intercepts here
 ```
 
-No custom code. Branching is structural (visible in DAG).
+### Example: Violation (to be fixed)
+
+```rust
+// Op with hidden I/O - BAD
+fn execute_scan_workspace(inputs) -> Result<...> {
+    let response = execute_transport(&request)?;  // Hidden!
+    // ... process response ...
+    Ok(outputs)
+}
+```
+
+Fix: Split into `PrepareScan` → `Execute` → `ParseScanResult`
 
 ---
 

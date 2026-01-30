@@ -544,42 +544,45 @@ This replaced the approach in `TODO.md` (trait-based with enums) with a data-dri
 - Satisfiability is checked before execution
 - deps.toml is generated from the registry
 
-### Pure DAG Composition Architecture (January 2026)
+### Structural I/O Enforcement (January 2026)
 
-The architecture is evolving toward **pure DAG composition** — banning all custom `execute_*` functions and expressing all logic as compositions of primitives.
+The architecture enforces **all I/O through explicit graph nodes** by making `execute_transport()` not callable from tool crates.
 
-**Core principles:**
+**The problem:** Two ways to do I/O existed:
+1. Correct: `TransportOps::Execute` nodes (visible, interceptable by DryRun)
+2. Escape hatch: `execute_transport()` called inside ops (hidden, not interceptable)
 
-1. **No custom execute functions** — All logic is primitives composed in DAGs, not custom Rust code in ops
-2. **Type coercion in compiler** — Handle `TransportResponse` → `Json` automatically, not via conversion primitives
-3. **Control flow is structural** — Use `BranchBuilder`/`GuardOp` at DAG level, not inside nodes
-4. **Generic primitives only** — Use `FoldOp(and)`, not boutique `AllOp`; use `FormatOp` with template, not `ReportOp`
-5. **Constants from files** — Use `PrepareFileReadOp("templates/x.template")`, not hardcoded strings
+**The fix:** Remove the escape hatch structurally — don't export `execute_transport()` from `lib/transport`.
 
-**Available primitives** (in `lib/primitives/`):
+**Key insight:** Custom pure ops are fine. The goal is NOT "decompose everything into primitives" — that's massive cognitive load. The invariant is simpler:
 
-| Category | Primitives |
-|----------|------------|
-| Data | `ParseOp`, `ExtractOp`, `FormatOp`, `ConcatOp`, `SplitOp` |
-| Collection | `MapOp`, `FilterOp`, `FoldOp`, `SortOp`, `FirstOp`, `LastOp` |
-| I/O Prepare | `PrepareFileReadOp`, `PrepareFileWriteOp`, `PrepareFileExistsOp`, `PrepareShellOp`, `PrepareDirectoryListOp` |
-| Control | `LoopOp`, `BranchOp`, `GuardOp`, `SequenceOp` |
-
-**Example transformation:**
+> **No `execute_transport()` calls outside `TransportOps::Execute`**
 
 ```rust
-// BEFORE (custom execute function):
-fn execute_prepare_build_command(inputs) {
-    if !prep_success { return skip }  // Custom logic hidden in code
-    build_shell_request()
+// GOOD: Custom pure op (no I/O)
+fn execute_parse_build_result(inputs) -> Result<...> {
+    let response = inputs.get("response")?;  // Just parsing data
+    Ok(outputs)
 }
 
-// AFTER (pure DAG composition):
-GuardOp(prep_success) -> PrepareShellOp("cargo", ["build"]) -> Execute
-// Branching is structural, visible in graph
+// BAD: Custom op with hidden I/O
+fn execute_scan_workspace(inputs) -> Result<...> {
+    let response = execute_transport(&request)?;  // HIDDEN I/O!
+    Ok(outputs)
+}
 ```
 
-**Status**: CI tool has been migrated to "pure execute_* functions" (Phase 1). Phase 2 (pure DAG composition with no custom code) is the target. See `TODO/graph-level-transport.md` for details.
+**Current state:**
+- CI, clippy: migrated correctly (pure ops + explicit transport nodes)
+- gist, deps, buck2, bootstrap: still hide I/O in opaque nodes
+- lib/fs: direct `std::fs` side door (to be deprecated)
+
+**Reference implementation:** CI tool (`lib/tools/ci/`) shows the correct pattern:
+- `CIOp` variants are pure (no I/O)
+- I/O happens only at explicit `TransportOps::Execute` nodes in the graph
+- All I/O is visible and interceptable by DryRun
+
+See `TODO/graph-level-transport.md` for migration status.
 
 ### Bootstrap Pattern for CI (Self-Healing Codegen)
 
