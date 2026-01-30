@@ -1,21 +1,14 @@
 [package]
-name = "gunbc-ci"
+name = "gunbc-cargo"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "CI orchestration binary for gunbc"
+description = "Cargo/Rust tool DAG - self-ensuring Rust toolchain with upsert"
 
 [dependencies]
 gunbc-ir = { path = "../../../core/ir" }
 gunbc-exec = { path = "../../../core/exec" }
-gunbc-primitives = { path = "../../primitives" }
 gunbc-test = { path = "../../../core/test" }
-gunbc-makegen = { path = "../makegen" }
-gunbc-clippy = { path = "../clippy" }
 
 [dev-dependencies]
 gunbc-test = { path = "../../../core/test" }
-
-[[bin]]
-name = "gunbc-ci"
-path = "../../../buck-out/gen/bin/ci/main.rs"

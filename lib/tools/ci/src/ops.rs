@@ -17,6 +17,7 @@
 //! to `PrepareShellOp` + `TransportOps::Execute` in a future refactor.
 //! This ensures consistent interception for dry-run mode.
 
+use gunbc_clippy::ClippyOp;
 use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::Value;
 use gunbc_makegen::{BuildConfig, ToolRegistry};
@@ -232,7 +233,15 @@ fn execute_test(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>
     Ok(out)
 }
 
-/// Run linter using BuildConfig command.
+/// Run linter using Clippy with automatic upsert.
+///
+/// This step uses the Clippy tool DAG internally:
+/// 1. Check if clippy is installed
+/// 2. Install clippy if needed (via rustup)
+/// 3. Run cargo clippy with lint arguments
+///
+/// The dependency on clippy is implicit through usage - by using
+/// ClippyOp, we automatically get the upsert behavior.
 fn execute_lint(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
     let build_success = match inputs.get("build_success") {
         Some(Value::Bool(b)) => *b,
@@ -250,8 +259,37 @@ fn execute_lint(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>
         return Ok(out);
     }
 
-    let config = BuildConfig::cargo();
-    let (success, stdout, stderr) = run_config_command(&config.lint_command)?;
+    // Step 1: Check if clippy is installed
+    let check_result = ClippyOp::CheckInstalled.execute(HashMap::new())?;
+    let clippy_exists = check_result
+        .get("exists")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    // Step 2: Install clippy if needed (upsert pattern)
+    if !clippy_exists {
+        println!("Clippy not found, installing...");
+        ClippyOp::Install.execute(HashMap::new())?;
+    }
+
+    // Step 3: Run clippy with lint arguments
+    let run_op = ClippyOp::lint_all();
+    let run_result = run_op.execute(HashMap::new())?;
+
+    let success = run_result
+        .get("success")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let stdout = run_result
+        .get("stdout")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let stderr = run_result
+        .get("stderr")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
 
     let mut out = HashMap::new();
     out.insert("lint_success".to_string(), Value::Bool(success));

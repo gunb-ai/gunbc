@@ -48,12 +48,12 @@ pub use rest::{AuthMethod, RestRequest, RestResponse};
 pub use tcp::{TcpRequest, TcpResponse};
 pub use tool::{
     check_all_satisfiable, default_platform_registry, default_tool_registry, is_satisfiable,
-    plan_installation, InstallInputs, InstallOption, InstallPlan, PlatformDef, PlatformRegistry,
-    ToolDef, ToolRegistry, UnsatisfiableError,
+    plan_installation, InstallInputs, InstallOption, InstallPlan,
+    PlatformDef, PlatformRegistry, ToolDef, ToolRegistry, UnsatisfiableError,
     // Package managers
     APK, APT, BREW, CARGO,
     // Tools
-    GIT, RUST,
+    CLIPPY, GIT, RUST, RUSTFMT,
     // Platforms
     ALPINE, DEBIAN, LINUX, MACOS, UBUNTU,
 };

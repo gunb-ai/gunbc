@@ -23,6 +23,8 @@ members = [
     "lib/tools/deps",
     "lib/tools/ci",
     "lib/tools/bootstrap",
+    "lib/tools/clippy",
+    "lib/tools/cargo",
 ]
 
 [workspace.package]

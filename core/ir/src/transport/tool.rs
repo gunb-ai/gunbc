@@ -516,6 +516,29 @@ pub static RUST: ToolDef = ToolDef {
     depends_on: &[],
 };
 
+/// Clippy linter (Rust component).
+///
+/// Clippy is installed as a rustup component, not a standalone package.
+/// It's invoked via `cargo clippy`.
+pub static CLIPPY: ToolDef = ToolDef {
+    id: "clippy",
+    command: "cargo",
+    verify: "cargo clippy --version",
+    install_options: &[], // Installed as rust component via rustup
+    depends_on: &["cargo"],
+};
+
+/// Rustfmt formatter (Rust component).
+///
+/// Rustfmt is installed as a rustup component, not a standalone package.
+pub static RUSTFMT: ToolDef = ToolDef {
+    id: "rustfmt",
+    command: "rustfmt",
+    verify: "rustfmt --version",
+    install_options: &[], // Installed as rust component via rustup
+    depends_on: &["cargo"],
+};
+
 // ============================================================================
 // Platform Definitions
 // ============================================================================
@@ -572,6 +595,8 @@ pub fn default_tool_registry() -> ToolRegistry {
     // Tools
     registry.register(&GIT);
     registry.register(&RUST);
+    registry.register(&CLIPPY);
+    registry.register(&RUSTFMT);
     registry.register(&GH_TOOL);
     registry
 }

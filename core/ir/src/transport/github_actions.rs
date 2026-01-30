@@ -154,6 +154,9 @@ macro_rules! permissions {
 /// Integrations are typed references to GitHub Actions with the permissions
 /// they require to function. This enables automatic permission propagation
 /// from step declarations to workflow configuration.
+///
+/// Integrations can also declare what tools they provide (install), enabling
+/// satisfiability checks against required tools.
 #[derive(Debug, Clone)]
 pub struct Integration {
     /// Unique identifier (e.g., "checkout", "rust-toolchain")
@@ -164,6 +167,8 @@ pub struct Integration {
     pub description: &'static str,
     /// Permissions required for this integration to work
     required_permissions: Permissions,
+    /// Tool IDs that this integration provides/installs
+    provides_tools: Vec<&'static str>,
 }
 
 impl Integration {
@@ -178,6 +183,7 @@ impl Integration {
             uses,
             description,
             required_permissions: HashMap::new(),
+            provides_tools: Vec::new(),
         }
     }
 
@@ -191,6 +197,17 @@ impl Integration {
         self.required_permissions = perms;
         self
     }
+
+    /// Get the tools this integration provides/installs.
+    pub fn provides_tools(&self) -> &[&'static str] {
+        &self.provides_tools
+    }
+
+    /// Create an integration that provides specific tools.
+    pub fn with_provides_tools(mut self, tools: Vec<&'static str>) -> Self {
+        self.provides_tools = tools;
+        self
+    }
 }
 
 // ============================================================================
@@ -201,6 +218,7 @@ impl Integration {
 ///
 /// Uses: actions/checkout@v4
 /// Requires: contents:read
+/// Provides: git (ensures git is available for the workflow)
 pub fn checkout() -> Integration {
     Integration::new(
         "checkout",
@@ -210,12 +228,14 @@ pub fn checkout() -> Integration {
     .with_permissions(permissions! {
         PermissionScope::Contents => PermissionLevel::Read,
     })
+    .with_provides_tools(vec!["git"])
 }
 
 /// Checkout with push - clones repository and enables pushing changes.
 ///
 /// Uses: actions/checkout@v4
 /// Requires: contents:write
+/// Provides: git (ensures git is available for the workflow)
 pub fn checkout_push() -> Integration {
     Integration::new(
         "checkout-push",
@@ -225,18 +245,21 @@ pub fn checkout_push() -> Integration {
     .with_permissions(permissions! {
         PermissionScope::Contents => PermissionLevel::Write,
     })
+    .with_provides_tools(vec!["git"])
 }
 
 /// Rust toolchain action - installs Rust via rustup.
 ///
 /// Uses: dtolnay/rust-toolchain@stable
 /// Requires: (none - just needs checkout first)
+/// Provides: rust, cargo, clippy, rustfmt (full Rust toolchain)
 pub fn rust_toolchain() -> Integration {
     Integration::new(
         "rust-toolchain",
         "dtolnay/rust-toolchain@stable",
         "Install Rust toolchain via rustup",
     )
+    .with_provides_tools(vec!["rust", "cargo", "clippy", "rustfmt"])
     // No special permissions required
 }
 

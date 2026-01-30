@@ -22,6 +22,7 @@ use gunbc_ir::{
         Integration, Permissions, RunnerImage,
     },
 };
+use std::collections::HashSet;
 
 /// Get the declared signature for the ci workflow.
 pub fn ci_signature() -> WorkflowSignature {
@@ -91,6 +92,36 @@ impl WorkflowConfig {
     /// Get all action references (uses: fields) for the workflow.
     pub fn action_refs(&self) -> Vec<&'static str> {
         self.integrations.iter().map(|i| i.uses).collect()
+    }
+
+    /// Get all tools available to this workflow.
+    ///
+    /// This combines tools provided by the runner image with tools
+    /// provided by the integrations (actions) used in the workflow.
+    pub fn available_tools(&self) -> HashSet<&str> {
+        let mut tools: HashSet<&str> = self.runner.tools().iter().copied().collect();
+        for integration in &self.integrations {
+            tools.extend(integration.provides_tools().iter().copied());
+        }
+        tools
+    }
+
+    /// Check if all required tools are available.
+    ///
+    /// Returns Ok(()) if all tools are available, or Err with the list of
+    /// missing tool IDs.
+    pub fn check_satisfiability<'a>(&self, required: &[&'a str]) -> Result<(), Vec<&'a str>> {
+        let available = self.available_tools();
+        let missing: Vec<&'a str> = required
+            .iter()
+            .filter(|t| !available.contains(*t))
+            .copied()
+            .collect();
+        if missing.is_empty() {
+            Ok(())
+        } else {
+            Err(missing)
+        }
     }
 }
 
@@ -371,4 +402,5 @@ mod tests {
         assert!(refs.contains(&"actions/checkout@v4"));
         assert!(refs.contains(&"dtolnay/rust-toolchain@stable"));
     }
+
 }
