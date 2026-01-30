@@ -37,6 +37,8 @@ pub struct BuildConfig {
     pub test_command: Vec<&'static str>,
     /// Command to run linter
     pub lint_command: Vec<&'static str>,
+    /// Command to auto-fix lint issues (cargo clippy --fix)
+    pub lint_fix_command: Vec<&'static str>,
     /// Command to format code
     pub fmt_command: Vec<&'static str>,
     /// Command to check formatting
@@ -57,6 +59,7 @@ impl BuildConfig {
             build_command: vec!["cargo", "build", "--all-targets"],
             test_command: vec!["cargo", "test"],
             lint_command: vec!["cargo", "clippy", "--all-targets", "--", "-D", "warnings"],
+            lint_fix_command: vec!["cargo", "clippy", "--fix", "--workspace", "--allow-dirty", "--allow-staged", "--", "-D", "warnings"],
             fmt_command: vec!["cargo", "fmt"],
             fmt_check_command: vec!["cargo", "fmt", "--", "--check"],
             check_command: vec!["cargo", "check", "--all-targets"],
@@ -73,6 +76,7 @@ impl BuildConfig {
             build_command: vec!["buck2", "build", "//..."],
             test_command: vec!["buck2", "test", "//..."],
             lint_command: vec!["buck2", "run", "//tools:clippy"],
+            lint_fix_command: vec!["cargo", "clippy", "--fix", "--workspace", "--allow-dirty", "--allow-staged", "--", "-D", "warnings"],
             fmt_command: vec!["cargo", "fmt"], // fmt stays cargo
             fmt_check_command: vec!["cargo", "fmt", "--", "--check"],
             check_command: vec!["buck2", "build", "//..."], // buck2 check is same as build
@@ -98,6 +102,11 @@ impl BuildConfig {
     /// Get the lint command as a shell string.
     pub fn lint_shell(&self) -> String {
         format!("@{}", self.lint_command.join(" "))
+    }
+
+    /// Get the lint-fix command as a shell string.
+    pub fn lint_fix_shell(&self) -> String {
+        format!("@{}", self.lint_fix_command.join(" "))
     }
 
     /// Get the fmt command as a shell string.
@@ -313,6 +322,17 @@ impl ConfigField {
             _ => None,
         }
     }
+
+    /// Get the fix variant command if applicable.
+    /// Currently only Lint has a dedicated fix command (clippy --fix).
+    pub fn get_fix_command(&self, config: &BuildConfig) -> Option<String> {
+        match self {
+            ConfigField::Lint => Some(config.lint_fix_shell()),
+            // For Fmt, the "fix" is just the regular fmt command
+            ConfigField::Fmt => Some(config.fmt_shell()),
+            _ => None,
+        }
+    }
 }
 
 /// A meta target that composes prep + a specific operation.
@@ -323,6 +343,13 @@ impl ConfigField {
 ///
 /// Commands are now referenced via `ConfigField` to ensure BuildConfig
 /// remains the single source of truth.
+///
+/// # Dev UX Convention (from the-gunbai)
+///
+/// - `make <target>` - verify only (CI-safe, fails on issues)
+/// - `make <target>-fix` - auto-fix then verify (for dev)
+///
+/// Example: `make test` runs tests, `make test-fix` runs fmt-fix + lint-fix first.
 #[derive(Debug, Clone)]
 pub struct MetaTarget {
     /// Target name (e.g., "test")
@@ -335,6 +362,12 @@ pub struct MetaTarget {
     pub config_field: ConfigField,
     /// Whether this target has a check variant (e.g., fmt-check)
     pub has_check_variant: bool,
+    /// Whether this target has a fix variant (e.g., test-fix, clippy-fix)
+    /// Following the-gunbai convention: <target>-fix auto-fixes before running
+    pub has_fix_variant: bool,
+    /// Dependencies for the fix variant (e.g., ["fmt-fix", "lint-fix"] for test-fix)
+    /// These targets are run before the main command in the -fix variant
+    pub fix_deps: Vec<&'static str>,
     // Legacy fields kept for backward compatibility during transition
     /// Shell command to run (deprecated: use config_field instead)
     pub command: String,
@@ -357,6 +390,8 @@ impl MetaTarget {
             prep_level,
             config_field,
             has_check_variant: false,
+            has_fix_variant: false,
+            fix_deps: Vec::new(),
             // Legacy: empty strings as placeholders
             command: String::new(),
             check_command: None,
@@ -366,6 +401,18 @@ impl MetaTarget {
     /// Mark this target as having a check variant (e.g., fmt-check).
     pub fn with_check_variant(mut self) -> Self {
         self.has_check_variant = true;
+        self
+    }
+
+    /// Mark this target as having a fix variant (e.g., test-fix, clippy-fix).
+    ///
+    /// The fix variant runs the specified dependencies before the main command.
+    /// Following the-gunbai convention:
+    /// - `make test` - verify only (CI-safe)
+    /// - `make test-fix` - auto-fix (fmt + lint) then verify
+    pub fn with_fix_variant(mut self, deps: Vec<&'static str>) -> Self {
+        self.has_fix_variant = true;
+        self.fix_deps = deps;
         self
     }
 
@@ -382,28 +429,62 @@ impl MetaTarget {
             None
         }
     }
+
+    /// Get the fix command for this meta target from BuildConfig.
+    /// Returns the dedicated fix command if available, otherwise the regular command.
+    pub fn get_fix_command(&self, config: &BuildConfig) -> Option<String> {
+        if self.has_fix_variant {
+            // Try to get dedicated fix command, fall back to regular command
+            self.config_field
+                .get_fix_command(config)
+                .or_else(|| Some(self.config_field.get_command(config)))
+        } else {
+            None
+        }
+    }
+
+    /// Get the fix dependencies for this meta target.
+    pub fn get_fix_deps(&self) -> &[&'static str] {
+        &self.fix_deps
+    }
 }
 
 /// Get the default meta targets.
+///
+/// # Dev UX Convention (from the-gunbai)
+///
+/// - `make <target>` - verify only (CI-safe, fails on issues)
+/// - `make <target>-fix` - auto-fix then verify (for dev)
+///
+/// Examples:
+/// - `make test` runs tests (CI uses this)
+/// - `make test-fix` runs fmt-fix + lint-fix, then tests (dev uses this)
 pub fn default_meta_targets() -> Vec<MetaTarget> {
     vec![
         // test - run all tests (requires full prep)
-        MetaTarget::new("test", "Run all tests", PrepLevel::Full, ConfigField::Test),
+        // test-fix: fmt-fix + lint-fix first, then test
+        MetaTarget::new("test", "Run all tests", PrepLevel::Full, ConfigField::Test)
+            .with_fix_variant(vec!["fmt-fix", "lint-fix"]),
         // check - type check without building (requires codegen)
+        // check-fix: fmt-fix first, then check
         MetaTarget::new(
             "check",
             "Type check all targets",
             PrepLevel::Codegen,
             ConfigField::Check,
-        ),
+        )
+        .with_fix_variant(vec!["fmt-fix"]),
         // clippy - run linter (requires codegen)
+        // clippy-fix: uses cargo clippy --fix (auto-fix where possible)
         MetaTarget::new(
             "clippy",
             "Run clippy linter",
             PrepLevel::Codegen,
             ConfigField::Lint,
-        ),
+        )
+        .with_fix_variant(vec![]),
         // fmt - format code (no prep needed)
+        // fmt has check variant (fmt-check) but not fix variant (fmt IS the fix)
         MetaTarget::new("fmt", "Format all code", PrepLevel::None, ConfigField::Fmt)
             .with_check_variant(),
         // ci-yaml - generate CI workflow files (no prep needed)
@@ -689,5 +770,56 @@ mod tests {
         let registry = ToolRegistry::default_registry();
         assert!(!registry.meta_targets.is_empty());
         assert!(registry.meta_targets.iter().any(|t| t.name == "test"));
+    }
+
+    // ========================================================================
+    // Fix Variant Tests (the-gunbai dev UX convention)
+    // ========================================================================
+
+    #[test]
+    fn test_test_has_fix_variant() {
+        let targets = default_meta_targets();
+        let test = targets.iter().find(|t| t.name == "test").unwrap();
+
+        assert!(test.has_fix_variant);
+        assert_eq!(test.fix_deps, vec!["fmt-fix", "lint-fix"]);
+    }
+
+    #[test]
+    fn test_check_has_fix_variant() {
+        let targets = default_meta_targets();
+        let check = targets.iter().find(|t| t.name == "check").unwrap();
+
+        assert!(check.has_fix_variant);
+        assert_eq!(check.fix_deps, vec!["fmt-fix"]);
+    }
+
+    #[test]
+    fn test_clippy_has_fix_variant() {
+        let targets = default_meta_targets();
+        let clippy = targets.iter().find(|t| t.name == "clippy").unwrap();
+        let config = BuildConfig::cargo();
+
+        assert!(clippy.has_fix_variant);
+        // clippy-fix uses dedicated fix command
+        let fix_cmd = clippy.get_fix_command(&config).unwrap();
+        assert!(fix_cmd.contains("--fix"));
+    }
+
+    #[test]
+    fn test_fmt_has_no_fix_variant() {
+        // fmt has check variant, but not fix variant (fmt IS the fix)
+        let targets = default_meta_targets();
+        let fmt = targets.iter().find(|t| t.name == "fmt").unwrap();
+
+        assert!(fmt.has_check_variant);
+        assert!(!fmt.has_fix_variant);
+    }
+
+    #[test]
+    fn test_lint_fix_command() {
+        let config = BuildConfig::cargo();
+        assert!(config.lint_fix_shell().contains("--fix"));
+        assert!(config.lint_fix_shell().contains("--allow-dirty"));
     }
 }

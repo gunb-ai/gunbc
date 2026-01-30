@@ -12,6 +12,7 @@ gunbc-primitives = { path = "../../primitives" }
 gunbc-lib-transport = { path = "../../transport" }
 gunbc-codegen = { path = "../../../core/codegen" }
 gunbc-test = { path = "../../../core/test" }
+gunbc-makegen = { path = "../makegen" }
 
 [dev-dependencies]
 gunbc-test = { path = "../../../core/test" }

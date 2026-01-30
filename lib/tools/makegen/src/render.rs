@@ -75,17 +75,28 @@ pub fn render_makefile_with_config(registry: &ToolRegistry, config: &BuildConfig
 fn render_makefile_content(registry: &ToolRegistry, config: &BuildConfig) -> String {
     let mut output = String::new();
 
+    // Naming convention header (from the-gunbai)
+    output.push_str("# Naming convention:\n");
+    output.push_str("#   make <target>      - verify only (CI-safe, fails on issues)\n");
+    output.push_str("#   make <target>-fix  - auto-fix then verify (for dev)\n");
+    output.push_str("#\n");
+    output.push_str("# Dev workflow:     make test-fix  (fix everything, then test)\n");
+    output.push_str("# CI verification:  make test      (verify fmt + lint + test)\n\n");
+
     // Default goal
     output.push_str(".DEFAULT_GOAL := help\n\n");
 
     // Phony targets - include core targets, meta targets, and tool targets
-    output.push_str(".PHONY: help codegen ensure-codegen build clean");
+    output.push_str(".PHONY: help codegen ensure-codegen build clean fmt-fix lint-fix");
 
-    // Add meta targets
+    // Add meta targets (with check and fix variants)
     for meta in &registry.meta_targets {
         output.push_str(&format!(" {}", meta.name));
         if meta.has_check_variant {
             output.push_str(&format!(" {}-check", meta.name));
+        }
+        if meta.has_fix_variant {
+            output.push_str(&format!(" {}-fix", meta.name));
         }
     }
 
@@ -159,6 +170,10 @@ fn render_help_target(registry: &ToolRegistry) -> String {
     output.push_str("help:\n");
     output.push_str("\t@echo \"gunbc tools - generated Makefile\"\n");
     output.push_str("\t@echo \"\"\n");
+    output.push_str("\t@echo \"Naming convention:\"\n");
+    output.push_str("\t@echo \"  make <target>      - verify only (CI-safe)\"\n");
+    output.push_str("\t@echo \"  make <target>-fix  - auto-fix then verify (for dev)\"\n");
+    output.push_str("\t@echo \"\"\n");
     
     // Build transactions section
     output.push_str("\t@echo \"Build transactions:\"\n");
@@ -174,6 +189,17 @@ fn render_help_target(registry: &ToolRegistry) -> String {
             "\t@echo \"  {}  - {}\"\n",
             meta.name, meta.description
         ));
+        if meta.has_fix_variant {
+            let deps = if meta.fix_deps.is_empty() {
+                "auto-fix".to_string()
+            } else {
+                format!("{} first", meta.fix_deps.join(" + "))
+            };
+            output.push_str(&format!(
+                "\t@echo \"  {}-fix  - {} ({})\"\n",
+                meta.name, meta.description, deps
+            ));
+        }
         if meta.has_check_variant {
             output.push_str(&format!(
                 "\t@echo \"  {}-check  - {} (check only)\"\n",
@@ -212,12 +238,38 @@ fn render_meta_targets(registry: &ToolRegistry, config: &BuildConfig) -> String 
     output.push_str("# Meta Targets - Development workflow commands\n");
     output.push_str("# ============================================================================\n\n");
 
+    // Render alias targets for common fix dependencies
+    // These are used as dependencies by -fix targets (e.g., test-fix: fmt-fix lint-fix)
+    output.push_str(&render_fix_alias_targets(config));
+
     for meta in &registry.meta_targets {
         output.push_str(&render_meta_target(meta, config));
+        if meta.has_fix_variant {
+            output.push_str(&render_meta_fix_variant(meta, config));
+        }
         if meta.has_check_variant {
             output.push_str(&render_meta_check_variant(meta, config));
         }
     }
+
+    output
+}
+
+/// Render alias targets for common fix dependencies.
+///
+/// These provide consistent -fix naming so targets like test-fix can depend on fmt-fix.
+fn render_fix_alias_targets(config: &BuildConfig) -> String {
+    let mut output = String::new();
+
+    // fmt-fix: alias for fmt (fmt IS the fix)
+    output.push_str("# fmt-fix: apply formatting (alias for fmt)\n");
+    output.push_str("fmt-fix:\n");
+    output.push_str(&format!("\t{}\n\n", config.fmt_shell()));
+
+    // lint-fix: run clippy with --fix
+    output.push_str("# lint-fix: auto-fix lint issues where possible\n");
+    output.push_str("lint-fix: ensure-codegen\n");
+    output.push_str(&format!("\t{}\n\n", config.lint_fix_shell()));
 
     output
 }
@@ -257,6 +309,49 @@ fn render_meta_check_variant(meta: &MetaTarget, config: &BuildConfig) -> String 
         output.push_str(&format!("{}-check:{}\n", meta.name, dependency));
         output.push_str(&format!("\t{}\n\n", check_cmd));
     }
+
+    output
+}
+
+/// Render a fix variant for a meta target.
+///
+/// Following the-gunbai convention:
+/// - `make test-fix` runs fmt-fix + lint-fix, then test
+/// - `make clippy-fix` runs cargo clippy --fix
+fn render_meta_fix_variant(meta: &MetaTarget, config: &BuildConfig) -> String {
+    let mut output = String::new();
+
+    if !meta.has_fix_variant {
+        return output;
+    }
+
+    // Build dependencies list
+    let mut deps = Vec::new();
+    
+    // Add fix_deps from meta target (e.g., ["fmt-fix", "lint-fix"])
+    for dep in meta.get_fix_deps() {
+        deps.push(dep.to_string());
+    }
+
+    // Add prep dependency based on prep level
+    match meta.prep_level {
+        PrepLevel::None => {}
+        PrepLevel::Codegen => deps.push("ensure-codegen".to_string()),
+        PrepLevel::Full => deps.push("build".to_string()),
+    }
+
+    let deps_str = if deps.is_empty() {
+        String::new()
+    } else {
+        format!(" {}", deps.join(" "))
+    };
+
+    // Get the fix command (dedicated fix command or regular command)
+    let fix_cmd = meta.get_fix_command(config).unwrap_or_else(|| meta.get_command(config));
+
+    output.push_str(&format!("# {}-fix: auto-fix then verify\n", meta.name));
+    output.push_str(&format!("{}-fix:{}\n", meta.name, deps_str));
+    output.push_str(&format!("\t{}\n\n", fix_cmd));
 
     output
 }
@@ -490,5 +585,58 @@ mod tests {
         let content = renderer.render_content();
         assert!(!content.contains("Generated by"));
         assert!(content.contains(".DEFAULT_GOAL := help"));
+    }
+
+    // ========================================================================
+    // Fix Variant Tests (the-gunbai dev UX convention)
+    // ========================================================================
+
+    #[test]
+    fn test_render_makefile_has_naming_convention_header() {
+        let registry = ToolRegistry::default_registry();
+        let makefile = render_makefile(&registry);
+
+        assert!(makefile.contains("# Naming convention:"));
+        assert!(makefile.contains("make <target>      - verify only"));
+        assert!(makefile.contains("make <target>-fix  - auto-fix then verify"));
+    }
+
+    #[test]
+    fn test_render_makefile_has_fix_alias_targets() {
+        let registry = ToolRegistry::default_registry();
+        let makefile = render_makefile(&registry);
+
+        // Should have fmt-fix and lint-fix as dependency targets
+        assert!(makefile.contains("fmt-fix:"));
+        assert!(makefile.contains("lint-fix:"));
+        assert!(makefile.contains("@cargo fmt")); // fmt-fix uses fmt command
+        assert!(makefile.contains("--fix")); // lint-fix uses clippy --fix
+    }
+
+    #[test]
+    fn test_render_makefile_has_fix_variants() {
+        let registry = ToolRegistry::default_registry();
+        let makefile = render_makefile(&registry);
+
+        // test-fix should depend on fmt-fix and lint-fix
+        assert!(makefile.contains("test-fix:"));
+        assert!(makefile.contains("fmt-fix"));
+        assert!(makefile.contains("lint-fix"));
+
+        // clippy-fix should exist
+        assert!(makefile.contains("clippy-fix:"));
+
+        // check-fix should exist  
+        assert!(makefile.contains("check-fix:"));
+    }
+
+    #[test]
+    fn test_render_makefile_help_shows_fix_variants() {
+        let registry = ToolRegistry::default_registry();
+        let makefile = render_makefile(&registry);
+
+        // Help should mention fix variants
+        assert!(makefile.contains("test-fix"));
+        assert!(makefile.contains("clippy-fix"));
     }
 }

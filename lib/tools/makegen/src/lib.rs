@@ -1,8 +1,17 @@
-//! gunbc-makegen: Makefile generation from DAG entrypoints.
+//! gunbc-makegen: Makefile and .gitignore generation from repo layout.
 //!
-//! This crate generates Makefile targets from gunbc tool entrypoints.
-//! Entrypoints are inputs with no upstream edge — they come from the world
-//! and become Make variables.
+//! This crate generates Makefile targets and .gitignore patterns from the
+//! repo's `BuildConfig` and `ToolRegistry`.
+//!
+//! # Generated Files
+//!
+//! - **Makefile**: Tool targets from DAG entrypoints, dev UX targets with -fix variants
+//! - **.gitignore**: Patterns derived from build system (Cargo, Buck2, etc.)
+//!
+//! # Dev UX Convention (from the-gunbai)
+//!
+//! - `make <target>` - verify only (CI-safe, fails on issues)
+//! - `make <target>-fix` - auto-fix then verify (for dev)
 //!
 //! # Example Generated Makefile
 //!
@@ -16,14 +25,16 @@
 //!
 //! Mock specs are in `graph_mock.rs` for test generation.
 
-pub mod ops;
+pub mod gitignore;
 pub mod graph;
+pub mod ops;
 pub mod registry;
 pub mod render;
 
 #[cfg(test)]
 pub mod graph_mock;
 
+pub use gitignore::{derive_categories, render_gitignore, GitignoreRenderer, IgnoreCategory};
 pub use graph::{build_makegen_graph, makegen_signature};
 pub use ops::MakegenOp;
 pub use registry::{

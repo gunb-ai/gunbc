@@ -56,6 +56,7 @@ dependencies = [
  "gunbc-exec",
  "gunbc-ir",
  "gunbc-lib-transport",
+ "gunbc-makegen",
  "gunbc-primitives",
  "gunbc-test",
 ]
