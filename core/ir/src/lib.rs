@@ -88,7 +88,8 @@ pub use render::Renderable;
 pub use language::{
     build_languages_dag, detect_language_from_file, markdown_language_id,
     rust_type, NamingCase, LanguageOp,
-    MakefileConfig, MakeTarget, RustConfig, GitignoreConfig,
+    MakefileConfig, MakeTarget, RustConfig, GitignoreConfig, HtmlConfig, MarkdownConfig,
     DEFAULT_GITIGNORE_FILENAME, DEFAULT_MAKEFILE_FILENAME,
-    MAKEFILE, RUST, GITIGNORE,
+    MAKEFILE, RUST, GITIGNORE, HTML, MARKDOWN,
+    render_html_document, render_code_block, html_comment, markdown_comment,
 };

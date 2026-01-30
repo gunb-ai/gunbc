@@ -49,12 +49,22 @@ pub use traits::{
     build_comment_prefix_subdag, build_naming_conventions_subdag, build_type_system_mapping_subdag,
 };
 pub use categories::{build_config_format_subdag, build_turing_complete_subdag};
-pub use languages::{build_gitignore_subdag, build_makefile_subdag, build_rust_subdag};
+pub use languages::{
+    build_css_subdag, build_gitignore_subdag, build_html_subdag, build_makefile_subdag,
+    build_markdown_subdag, build_rust_subdag, build_toml_subdag, build_yaml_subdag,
+};
 
 // Re-exports - Static configurations
 pub use languages::{
-    rust_type, GitignoreConfig, MakefileConfig, MakeTarget, RustConfig,
-    DEFAULT_GITIGNORE_FILENAME, DEFAULT_MAKEFILE_FILENAME, GITIGNORE, MAKEFILE, RUST,
+    rust_type, CssConfig, GitignoreConfig, HtmlConfig, MakefileConfig, MakeTarget, MarkdownConfig,
+    RustConfig, TomlConfig, YamlConfig, CSS, DEFAULT_GITIGNORE_FILENAME, DEFAULT_MAKEFILE_FILENAME,
+    GITIGNORE, HTML, MAKEFILE, MARKDOWN, RUST, TOML, YAML,
+};
+
+// Re-exports - Rendering functions
+pub use languages::{
+    css_comment, html_comment, markdown_comment, render_code_block, render_html_document,
+    toml_comment, yaml_comment,
 };
 
 /// Operations within the Languages DAG.
@@ -103,6 +113,16 @@ pub enum LanguageOp {
     YamlConfig,
     /// TOML format configuration
     TomlConfig,
+    /// HTML format configuration
+    HtmlConfig,
+    /// HTML document rendering
+    HtmlRender,
+    /// CSS format configuration
+    CssConfig,
+    /// Markdown format configuration
+    MarkdownConfig,
+    /// Markdown code block rendering
+    MarkdownRenderCodeBlock,
     /// Python language configuration
     PythonConfig,
     /// TypeScript language configuration
@@ -229,6 +249,11 @@ pub fn build_languages_dag() -> Dag<LanguageOp> {
     dag.add_node(build_rust_subdag());
     dag.add_node(build_gitignore_subdag());
     dag.add_node(build_makefile_subdag());
+    dag.add_node(build_html_subdag());
+    dag.add_node(build_css_subdag());
+    dag.add_node(build_markdown_subdag());
+    dag.add_node(build_yaml_subdag());
+    dag.add_node(build_toml_subdag());
 
     dag
 }

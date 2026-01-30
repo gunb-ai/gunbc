@@ -2,10 +2,19 @@
 //!
 //! Generates an interactive HTML page with Mermaid diagrams showing
 //! all DAGs in the gunbc workspace.
+//!
+//! This is a development tool that directly writes files and opens browsers.
+//! It's exempt from the transport layer requirement because it's purely for
+//! developer introspection, not part of the DAG workflow.
+//!
+//! Uses the HTML language module from gunbc-ir for document generation.
+
+#![allow(clippy::disallowed_methods)] // Dev tool - direct I/O is acceptable
 
 use gunbc_dag::{
-    build_workspace_dag, build_ci_graph, build_makegen_graph, build_bootstrap_graph,
+    build_bootstrap_graph, build_ci_graph, build_makegen_graph, build_workspace_dag,
 };
+use gunbc_ir::render_html_document;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -88,21 +97,19 @@ fn main() {
 fn generate_html(diagrams: &[(&str, String)]) -> String {
     let mut nav_items = String::new();
     let mut diagram_sections = String::new();
-    
-    for (_i, (name, mermaid)) in diagrams.iter().enumerate() {
+
+    for (name, mermaid) in diagrams.iter() {
         let id = name.to_lowercase().replace(' ', "-");
-        
+
         // Navigation item
         nav_items.push_str(&format!(
-            "<a href=\"#{}\" class=\"nav-item\">{}</a>",
+            "        <a href=\"#{}\" class=\"nav-item\">{}</a>\n",
             id, name
         ));
-        nav_items.push('\n');
-        
+
         // Diagram section
         diagram_sections.push_str(&format!(
-            r##"
-    <section id="{id}">
+            r#"    <section id="{id}">
         <h2>{name}</h2>
         <div class="mermaid-container">
             <pre class="mermaid">
@@ -110,130 +117,35 @@ fn generate_html(diagrams: &[(&str, String)]) -> String {
             </pre>
         </div>
     </section>
-"##,
+"#,
             id = id,
             name = name,
             mermaid = mermaid
         ));
     }
-    
-    format!(r##"<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>gunbc DAG Visualization</title>
-    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
-    <style>
-        :root {{
-            --bg: #1a1a2e;
-            --bg-secondary: #16213e;
-            --text: #eee;
-            --accent: #0f3460;
-            --highlight: #e94560;
-        }}
-        
-        * {{
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }}
-        
-        body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: var(--bg);
-            color: var(--text);
-            min-height: 100vh;
-        }}
-        
-        header {{
-            background: var(--bg-secondary);
-            padding: 1rem 2rem;
-            border-bottom: 2px solid var(--accent);
-            position: sticky;
-            top: 0;
-            z-index: 100;
-        }}
-        
-        header h1 {{
-            font-size: 1.5rem;
-            margin-bottom: 0.5rem;
-        }}
-        
-        nav {{
-            display: flex;
-            gap: 1rem;
-            flex-wrap: wrap;
-        }}
-        
-        .nav-item {{
-            color: var(--text);
-            text-decoration: none;
-            padding: 0.25rem 0.75rem;
-            border-radius: 4px;
-            background: var(--accent);
-            transition: background 0.2s;
-        }}
-        
-        .nav-item:hover {{
-            background: var(--highlight);
-        }}
-        
-        main {{
-            padding: 2rem;
-            max-width: 100%;
-        }}
-        
-        section {{
-            margin-bottom: 3rem;
-            background: var(--bg-secondary);
-            border-radius: 8px;
-            padding: 1.5rem;
-        }}
-        
-        section h2 {{
-            margin-bottom: 1rem;
-            padding-bottom: 0.5rem;
-            border-bottom: 1px solid var(--accent);
-        }}
-        
-        .mermaid-container {{
-            overflow-x: auto;
-            background: #fff;
-            border-radius: 4px;
-            padding: 1rem;
-        }}
-        
-        .mermaid {{
-            text-align: center;
-        }}
-        
-        footer {{
-            text-align: center;
-            padding: 1rem;
-            color: #666;
-            font-size: 0.9rem;
-        }}
-    </style>
-</head>
-<body>
-    <header>
+
+    let head = format!(
+        r#"    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+{}"#,
+        DAG_VIZ_STYLES
+    );
+
+    let body = format!(
+        r#"    <header>
         <h1>gunbc DAG Visualization</h1>
         <nav>
-            {nav_items}
-        </nav>
+{nav_items}        </nav>
     </header>
-    
+
     <main>
-        {diagram_sections}
-    </main>
-    
+{diagram_sections}    </main>
+
     <footer>
         Generated by gunbc-dag-viz | <a href="https://mermaid.js.org/" style="color: #888;">Powered by Mermaid</a>
     </footer>
-    
+
     <script>
-        mermaid.initialize({{ 
+        mermaid.initialize({{
             startOnLoad: true,
             theme: 'default',
             flowchart: {{
@@ -242,8 +154,103 @@ fn generate_html(diagrams: &[(&str, String)]) -> String {
                 curve: 'basis'
             }}
         }});
-    </script>
-</body>
-</html>
-"##, nav_items = nav_items, diagram_sections = diagram_sections)
+    </script>"#,
+        nav_items = nav_items,
+        diagram_sections = diagram_sections
+    );
+
+    render_html_document("gunbc DAG Visualization", &head, &body)
 }
+
+/// CSS styles for the DAG visualization page.
+const DAG_VIZ_STYLES: &str = r#"    <style>
+        :root {
+            --bg: #1a1a2e;
+            --bg-secondary: #16213e;
+            --text: #eee;
+            --accent: #0f3460;
+            --highlight: #e94560;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+        }
+
+        header {
+            background: var(--bg-secondary);
+            padding: 1rem 2rem;
+            border-bottom: 2px solid var(--accent);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        header h1 {
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        nav {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .nav-item {
+            color: var(--text);
+            text-decoration: none;
+            padding: 0.25rem 0.75rem;
+            border-radius: 4px;
+            background: var(--accent);
+            transition: background 0.2s;
+        }
+
+        .nav-item:hover {
+            background: var(--highlight);
+        }
+
+        main {
+            padding: 2rem;
+            max-width: 100%;
+        }
+
+        section {
+            margin-bottom: 3rem;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            padding: 1.5rem;
+        }
+
+        section h2 {
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--accent);
+        }
+
+        .mermaid-container {
+            overflow-x: auto;
+            background: #fff;
+            border-radius: 4px;
+            padding: 1rem;
+        }
+
+        .mermaid {
+            text-align: center;
+        }
+
+        footer {
+            text-align: center;
+            padding: 1rem;
+            color: #666;
+            font-size: 0.9rem;
+        }
+    </style>"#;

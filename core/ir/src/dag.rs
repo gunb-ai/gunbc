@@ -68,7 +68,7 @@ impl<T> Dag<T> {
         }
 
         // Create a subgraph for this DAG
-        let subgraph_id = name.replace('-', "_").replace(' ', "_");
+        let subgraph_id = name.replace(['-', ' '], "_");
         out.push_str(&format!("{}subgraph {}[\"{}\"]\n", indent, subgraph_id, name));
 
         // Render nodes
@@ -103,7 +103,7 @@ impl<T> Dag<T> {
 
                 // Link parent node to subgraph
                 let parent_node_id = format!("{}_{}", subgraph_id, node.id.0.replace('-', "_"));
-                let child_subgraph_id = subdag_name.replace('-', "_").replace(' ', "_").replace("::", "_");
+                let child_subgraph_id = subdag_name.replace(['-', ' ', ':'], "_");
                 out.push_str(&format!("{}    {} -.-> {}\n", indent, parent_node_id, child_subgraph_id));
             }
         }
