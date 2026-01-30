@@ -7,6 +7,7 @@
 //! - Shell for command execution
 //! - GitHub platform (API + CLI)
 //! - GitHub Actions for CI/CD integration
+//! - CI provider abstraction for workflow commands
 //!
 //! The key insight is that all world I/O can be modeled as request/response pairs,
 //! allowing business logic to remain pure while transport execution happens at
@@ -22,8 +23,15 @@
 //!
 //! gist.rs                     ← Service layer (uses github/)
 //! github_actions.rs           ← Service layer (uses github/)
+//!
+//! ci/                         ← CI provider abstraction
+//! ├── command.rs (WorkflowCommand enum)
+//! ├── provider.rs (CiProvider trait)
+//! ├── runner.rs (Runner trait)
+//! └── providers/ (GitHub, GitLab, Plain)
 //! ```
 
+pub mod ci;
 pub mod cli;
 pub mod file;
 pub mod gist;
@@ -65,6 +73,10 @@ pub use tool::{
     ALPINE, DEBIAN, LINUX, MACOS, UBUNTU,
 };
 pub use github::cli::GH_TOOL;
+pub use ci::{
+    detect_provider, is_ci, AnnotationLevel, CiProvider, FileLocation, GitHubActionsProvider,
+    GitLabCiProvider, GitLabRunner, PlainTextProvider, Runner, WorkflowCommand,
+};
 
 use serde::{Deserialize, Serialize};
 

@@ -6,9 +6,10 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 /// Runtime value flowing between nodes.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub enum Value {
     /// Unit value (no data)
+    #[default]
     Unit,
     /// Boolean
     Bool(bool),
@@ -125,12 +126,6 @@ impl fmt::Display for Value {
             Value::Response(r) => write!(f, "<Response: {:?}>", std::mem::discriminant(r)),
             Value::Skipped => write!(f, "<SKIPPED>"),
         }
-    }
-}
-
-impl Default for Value {
-    fn default() -> Self {
-        Value::Unit
     }
 }
 

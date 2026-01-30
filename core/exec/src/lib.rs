@@ -5,6 +5,7 @@
 //! - [`execute`]: Execute a DAG in real mode
 //! - [`execute_with_mode`]: Execute with dry-run interception at transport nodes
 //! - [`lower`]: Flatten sub-DAGs into a single flat DAG
+//! - [`CiContext`]: Runtime CI context for emitting workflow commands
 //!
 //! # Dry-Run via Transport Interception
 //!
@@ -19,15 +20,26 @@
 //! - Pure nodes always execute (they can't do I/O)
 //! - Transport executors are replaced with mocks
 //! - Boundaries are just interface definitions, not interception points
+//!
+//! # CI Context
+//!
+//! When executing in a CI environment (GitHub Actions, GitLab CI, etc.),
+//! [`CiContext`] automatically emits workflow commands to create collapsible
+//! log groups around DAG nodes, emit annotations for errors, etc.
 
+pub mod ci_context;
 pub mod error;
 pub mod execute;
 pub mod intercept;
 pub mod lower;
 pub mod topo;
 
+pub use ci_context::CiContext;
 pub use error::ExecError;
-pub use execute::{execute, execute_with_mode, ExecutionLog, ExecutionMode, LogEntry};
+pub use execute::{
+    execute, execute_with_ci, execute_with_mode, execute_with_mode_and_ci, ExecutionLog,
+    ExecutionMode, LogEntry,
+};
 pub use intercept::{BoundaryMock, BoundaryMocks};
 pub use lower::{lower, LowerError};
 pub use topo::topo_sort;

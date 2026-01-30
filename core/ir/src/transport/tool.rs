@@ -233,14 +233,10 @@ impl PlatformRegistry {
         let mut pms = HashSet::new();
         let mut current = platform_id;
 
-        loop {
-            if let Some(platform) = self.get(current) {
-                pms.extend(platform.available_pms.iter().copied());
-                if let Some(parent) = platform.parent {
-                    current = parent;
-                } else {
-                    break;
-                }
+        while let Some(platform) = self.get(current) {
+            pms.extend(platform.available_pms.iter().copied());
+            if let Some(parent) = platform.parent {
+                current = parent;
             } else {
                 break;
             }
@@ -432,7 +428,7 @@ pub fn plan_installation(
 
     for tool in tools {
         visit(
-            *tool,
+            tool,
             available_pms,
             registry,
             &mut install_order,

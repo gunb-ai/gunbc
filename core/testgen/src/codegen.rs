@@ -82,7 +82,7 @@ impl<'a, T> TestGenerator<'a, T> {
         if self.config.chain_tests && self.mock_spec.is_some() {
             code.push_str("use gunbc_test::{validate_chain, MockSpec, InputConstraint};\n");
         }
-        if self.config.resource_tests && self.mock_spec.as_ref().map_or(false, |s| !s.resource_mocks.resources.is_empty()) {
+        if self.config.resource_tests && self.mock_spec.as_ref().is_some_and(|s| !s.resource_mocks.resources.is_empty()) {
             code.push_str("use gunbc_test::{ResourceAcquireResult, ResourceSimulation};\n");
         }
         code.push('\n');
@@ -260,7 +260,7 @@ impl<'a, T> TestGenerator<'a, T> {
         code.push_str("/// Test that this tool's mock spec is self-consistent.\n");
         code.push_str("#[test]\n");
         code.push_str("fn test_mock_spec_self_consistent() {\n");
-        code.push_str(&format!("    let spec = mock_spec();\n"));
+        code.push_str("    let spec = mock_spec();\n");
         code.push_str("    // Verify all boundary mocks are present\n");
         
         for mock in &spec.boundary_mocks {
@@ -327,7 +327,7 @@ impl<'a, T> TestGenerator<'a, T> {
         for resource in &spec.resource_mocks.resources {
             let test_name = format!(
                 "test_resource_{}_acquire",
-                resource.resource_id.replace(':', "_").replace('-', "_")
+                resource.resource_id.replace([':', '-'], "_")
             );
 
             let resource_type = match &resource.resource_type {
@@ -384,7 +384,7 @@ impl<'a, T> TestGenerator<'a, T> {
             if let gunbc_test::ResourceType::Lease { duration_ms } = resource.resource_type {
                 let timeout_test = format!(
                     "test_resource_{}_timeout",
-                    resource.resource_id.replace(':', "_").replace('-', "_")
+                    resource.resource_id.replace([':', '-'], "_")
                 );
                 code.push_str(&format!(
                     "/// Test resource '{}' lease expiration after {}ms.\n",

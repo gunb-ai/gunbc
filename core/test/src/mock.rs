@@ -7,12 +7,15 @@ use std::fmt;
 use std::sync::Arc;
 
 /// Mock behavior: either scripted outputs or a function.
+/// Type alias for mock function to reduce complexity
+pub type MockFn = Arc<dyn Fn(HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> + Send + Sync>;
+
 #[derive(Clone)]
 pub enum MockBehavior {
     /// Return fixed outputs
     Scripted(HashMap<String, Value>),
     /// Compute outputs from inputs
-    Func(Arc<dyn Fn(HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> + Send + Sync>),
+    Func(MockFn),
 }
 
 impl MockBehavior {

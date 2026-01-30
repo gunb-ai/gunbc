@@ -381,7 +381,7 @@ mod tests {
         // Find gist create and verify it's required
         let gist_create = commands
             .iter()
-            .find(|c| c.subcommand == &["gist", "create"]);
+            .find(|c| c.subcommand == ["gist", "create"]);
         assert!(gist_create.is_some());
         assert!(gist_create.unwrap().required);
     }

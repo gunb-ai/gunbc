@@ -361,7 +361,7 @@ impl RunnerImage {
 
     /// Check if a tool is pre-installed on this runner.
     pub fn has_tool(&self, tool: &str) -> bool {
-        self.tools.iter().any(|t| *t == tool)
+        self.tools.contains(&tool)
     }
 
     /// Get all pre-installed tools.

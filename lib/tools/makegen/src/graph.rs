@@ -71,6 +71,7 @@ pub fn makegen_signature() -> WorkflowSignature {
 /// - `output_path`: ZeroOrOne (optional, defaults to "Makefile")
 /// - `request`: One (TransportRequest for file write)
 /// - `response`, `written_path`, `content`: One (transport outputs)
+#[allow(clippy::result_large_err)]
 pub fn build_makegen_graph() -> Result<Dag<MakegenGraphOp>, BuilderError> {
     let mut builder = DagBuilder::new();
 

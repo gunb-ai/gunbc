@@ -109,6 +109,7 @@ pub fn ci_workflow_permissions() -> Permissions {
 ///
 /// The Prep stage runs codegen to ensure all generated code exists.
 /// This is the "fractal unwind" pattern - CI unwinds all DAGs before executing.
+#[allow(clippy::result_large_err)]
 pub fn build_ci_graph() -> Result<Dag<CIOp>, BuilderError> {
     let mut builder = DagBuilder::new();
 

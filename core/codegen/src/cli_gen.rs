@@ -135,7 +135,7 @@ pub fn generate_cli_with_import(
     let final_output = generate_final_output(boundaries);
     let help_options = generate_help_options(entrypoints);
     
-    let import_line = custom_import.unwrap_or_else(|| "").to_string();
+    let import_line = custom_import.unwrap_or("").to_string();
     let default_import = format!("use {}::build_{}_graph;", crate_module, tool.tool_name);
     let actual_import = if import_line.is_empty() { default_import } else { import_line };
 
@@ -164,12 +164,10 @@ pub fn generate_cli_with_import(
                 tool.graph_builder, tool.graph_builder_args
             )
         }
+    } else if tool.graph_builder_args.is_empty() {
+        format!("{}()", tool.graph_builder)
     } else {
-        if tool.graph_builder_args.is_empty() {
-            format!("{}()", tool.graph_builder)
-        } else {
-            format!("{}({})", tool.graph_builder, tool.graph_builder_args)
-        }
+        format!("{}({})", tool.graph_builder, tool.graph_builder_args)
     };
 
     format!(
@@ -296,7 +294,7 @@ fn generate_arg_parsing(entrypoints: &[CliEntrypoint]) -> String {
         }
     }
     code.push_str("    let mut dry_run = false;\n");
-    code.push_str("\n");
+    code.push('\n');
     
     // Parse loop
     code.push_str("    let mut i = 1;\n");

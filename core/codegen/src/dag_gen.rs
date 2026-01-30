@@ -162,7 +162,7 @@ fn generate_graph_builder(tool: &ToolDef, dag: &DagDef) -> String {
     
     // Generate edge additions
     let edges = dag.edges.iter()
-        .map(|e| generate_edge_code(e))
+        .map(generate_edge_code)
         .collect::<Vec<_>>()
         .join("\n");
     
@@ -190,12 +190,12 @@ pub fn {fn_name}({args}) -> Dag<{enum_name}> {{
 /// Generate code for a single node.
 fn generate_node_code(node: &NodeDef, enum_name: &str) -> String {
     let inputs = node.inputs.iter()
-        .map(|p| generate_port_code(p))
+        .map(generate_port_code)
         .collect::<Vec<_>>()
         .join(", ");
     
     let outputs = node.outputs.iter()
-        .map(|p| generate_port_code(p))
+        .map(generate_port_code)
         .collect::<Vec<_>>()
         .join(", ");
     

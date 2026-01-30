@@ -262,10 +262,11 @@ fn compute_ordered_pairs<T>(dag: &Dag<T>) -> HashSet<(&NodeId, &NodeId)> {
         for &a in &node_ids {
             for &b in &node_ids {
                 for &c in &node_ids {
-                    if ordered.contains(&(a, b)) && ordered.contains(&(b, c)) {
-                        if ordered.insert((a, c)) {
-                            added = true;
-                        }
+                    if ordered.contains(&(a, b))
+                        && ordered.contains(&(b, c))
+                        && ordered.insert((a, c))
+                    {
+                        added = true;
                     }
                 }
             }

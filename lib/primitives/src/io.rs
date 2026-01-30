@@ -1,21 +1,7 @@
 //! I/O primitives - world interactions (boundaries).
 //!
-//! ## Architecture Note
-//!
-//! This module follows the **transport pattern**: pure "Prepare" ops produce
-//! `TransportRequest` values, which are then executed by `TransportOps::Execute`.
-//! This separation enables:
-//! - Centralized I/O interception for dry-run mode
-//! - Consistent mocking/testing
-//! - Policy enforcement at the transport layer
-//!
-//! **Preferred pattern:**
-//! - Use `PrepareFileReadOp`, `PrepareFileWriteOp`, `PrepareShellOp` (pure)
-//! - Execute via `TransportOps::Execute` (single I/O boundary)
-//!
-//! **Deprecated (direct I/O):**
-//! - `ReadFileOp`, `WriteFileOp`, `ExecuteOp` perform I/O directly and bypass
-//!   the transport layer. These are deprecated and will be removed in a future version.
+//! This module provides both direct I/O operations and pure "Prepare" ops
+//! that produce `TransportRequest` values for the transport layer.
 
 use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::transport::{FileRequest, HttpMethod, RestRequest, ShellRequest, TransportRequest};
@@ -26,14 +12,7 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-// =============================================================================
-// DEPRECATED: Direct I/O Operations (bypass transport layer)
-// =============================================================================
-
 /// Read a file from the filesystem.
-///
-/// **DEPRECATED**: Use `PrepareFileReadOp` + `TransportOps::Execute` instead.
-/// This op performs I/O directly, bypassing the transport layer.
 ///
 /// Inputs:
 /// - `path`: String path to the file
@@ -41,10 +20,6 @@ use std::process::Command;
 /// Outputs:
 /// - `content`: String contents of the file
 /// - `exists`: Bool indicating if the file exists
-#[deprecated(
-    since = "0.2.0",
-    note = "Use PrepareFileReadOp + TransportOps::Execute instead"
-)]
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ReadFileOp;
 
@@ -73,9 +48,6 @@ impl Executable for ReadFileOp {
 
 /// Write a file to the filesystem (boundary operation).
 ///
-/// **DEPRECATED**: Use `PrepareFileWriteOp` + `TransportOps::Execute` instead.
-/// This op performs I/O directly AND returns a TransportRequest (mixed model).
-///
 /// Inputs:
 /// - `path`: String path to write to
 /// - `content`: String content to write
@@ -84,10 +56,6 @@ impl Executable for ReadFileOp {
 /// - `written_path`: String path that was written
 /// - `success`: Bool indicating success
 /// - `request`: TransportRequest for transport layer
-#[deprecated(
-    since = "0.2.0",
-    note = "Use PrepareFileWriteOp + TransportOps::Execute instead"
-)]
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct WriteFileOp;
 
@@ -127,9 +95,6 @@ impl Executable for WriteFileOp {
 
 /// Execute a shell command (boundary operation).
 ///
-/// **DEPRECATED**: Use `PrepareShellOp` + `TransportOps::Execute` instead.
-/// This op performs I/O directly, bypassing the transport layer.
-///
 /// Inputs:
 /// - `command`: String command to execute
 /// - `args`: Optional StrList of arguments
@@ -140,14 +105,9 @@ impl Executable for WriteFileOp {
 /// - `stderr`: String stderr output
 /// - `exit_code`: Int exit code
 /// - `success`: Bool indicating exit_code == 0
-#[deprecated(
-    since = "0.2.0",
-    note = "Use PrepareShellOp + TransportOps::Execute instead"
-)]
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ExecuteOp;
 
-#[allow(deprecated)]
 #[allow(clippy::disallowed_methods)]
 impl Executable for ExecuteOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {

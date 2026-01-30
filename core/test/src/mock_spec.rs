@@ -211,7 +211,7 @@ impl InputConstraint {
                 if values.iter().any(|v| values_match(v, value)) {
                     Ok(())
                 } else {
-                    Err(format!("value not in allowed set"))
+                    Err("value not in allowed set".to_string())
                 }
             }
             InputConstraint::TypePattern(pattern) => {

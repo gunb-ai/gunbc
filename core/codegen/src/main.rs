@@ -120,14 +120,15 @@ fn run_cargo_build() -> io::Result<()> {
     if status.success() {
         Ok(())
     } else {
-        Err(io::Error::new(
-            io::ErrorKind::Other,
-            format!("cargo exited with status: {}", status),
-        ))
+        Err(io::Error::other(format!(
+            "cargo exited with status: {}",
+            status
+        )))
     }
 }
 
 /// Setup bin directory - symlink on Unix, copy on Windows, with fallback
+#[allow(clippy::disallowed_methods)] // Codegen main.rs is the bootstrapper, allowed to use fs ops
 fn setup_bin_directory() -> io::Result<()> {
     let bin_path = Path::new("bin");
     let target_path = Path::new("target/release");
@@ -144,7 +145,7 @@ fn setup_bin_directory() -> io::Result<()> {
     // Try symlink first (works on Unix and some Windows configurations)
     #[cfg(unix)]
     {
-        return std::os::unix::fs::symlink(target_path, bin_path);
+        std::os::unix::fs::symlink(target_path, bin_path)
     }
     
     // On Windows, try to create a directory junction, or fall back to documenting the location
@@ -165,6 +166,7 @@ fn setup_bin_directory() -> io::Result<()> {
 }
 
 /// Rollback: remove all generated artifacts
+#[allow(clippy::disallowed_methods)] // Codegen main.rs is the bootstrapper, allowed to use fs ops
 fn cmd_rollback(dry_run: bool) {
     println!("gunbc-codegen: rollback transaction");
     println!("  mode: {}", if dry_run { "dry-run" } else { "real" });
@@ -228,7 +230,7 @@ fn cmd_daggen(dry_run: bool) {
     let mut skipped = 0;
     
     for tool in &tools {
-        if let Some(code) = generate_graph_rs(&tool) {
+        if let Some(code) = generate_graph_rs(tool) {
             let tool_dir = Path::new(output_dir).join(&tool.meta.tool_name);
             let graph_path = tool_dir.join("graph.rs");
             

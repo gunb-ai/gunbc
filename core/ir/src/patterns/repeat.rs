@@ -94,20 +94,15 @@ pub enum BackoffStrategy {
 }
 
 /// Classifier for determining if a failure is retryable.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub enum FailureClassifier {
     /// Always retry on any failure
+    #[default]
     Always,
     /// Never retry (useful for testing)
     Never,
     /// Retry only on specific error patterns (stored as string patterns)
     OnPatterns(Vec<String>),
-}
-
-impl Default for FailureClassifier {
-    fn default() -> Self {
-        Self::Always
-    }
 }
 
 // ============================================================================

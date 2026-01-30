@@ -8,6 +8,9 @@
 //! ```rust,ignore
 //! use gunbc_ir::builder::DagBuilder;
 //! use gunbc_ir::{Node, Port};
+
+// Allow large error types - rich error context is valuable for debugging
+#![allow(clippy::result_large_err)]
 //!
 //! let mut builder = DagBuilder::new();
 //!

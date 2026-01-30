@@ -330,7 +330,7 @@ fn render_extra_target(tool: &ToolInfo, extra: &ExtraTarget) -> String {
     for cmd in &extra.post_commands {
         output.push_str(&format!("\t{}\n", cmd));
     }
-    output.push_str("\n");
+    output.push('\n');
 
     output
 }

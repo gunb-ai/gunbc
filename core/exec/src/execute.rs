@@ -26,20 +26,15 @@ use std::fmt;
 use std::time::Duration;
 
 /// Execution mode: real, dry-run, or simulate.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub enum ExecutionMode {
     /// Execute all operations normally
+    #[default]
     Real,
     /// Intercept boundary operations with mocks
     DryRun(BoundaryMocks),
     /// Simulate execution with timing and resource tracking
     Simulate(SimConfig),
-}
-
-impl Default for ExecutionMode {
-    fn default() -> Self {
-        ExecutionMode::Real
-    }
 }
 
 /// Configuration for simulation mode.
@@ -221,7 +216,44 @@ pub fn execute_with_mode<T: Executable + Clone>(
     let boundaries = detect_boundaries(&flat);
 
     // Execute the flat DAG
-    execute_flat(&flat, &boundaries, &mode)
+    execute_flat(&flat, &boundaries, &mode, None)
+}
+
+/// Execute a DAG with CI context for workflow command emission.
+///
+/// When a CI context is provided, each node execution is wrapped in
+/// collapsible groups, and errors/warnings are emitted as annotations.
+/// The CI context auto-detects the provider (GitHub Actions, GitLab CI, etc.).
+///
+/// # Example
+///
+/// ```ignore
+/// use gunbc_exec::{execute_with_ci, CiContext};
+///
+/// let mut ci = CiContext::detect();
+/// let log = execute_with_ci(&dag, &mut ci)?;
+/// ```
+pub fn execute_with_ci<T: Executable + Clone>(
+    dag: &Dag<T>,
+    ci: &mut crate::CiContext,
+) -> Result<ExecutionLog, ExecError> {
+    execute_with_mode_and_ci(dag, ExecutionMode::Real, ci)
+}
+
+/// Execute a DAG with both execution mode and CI context.
+pub fn execute_with_mode_and_ci<T: Executable + Clone>(
+    dag: &Dag<T>,
+    mode: ExecutionMode,
+    ci: &mut crate::CiContext,
+) -> Result<ExecutionLog, ExecError> {
+    // Lower sub-DAGs first
+    let flat = lower(dag).map_err(|e| ExecError::new(format!("lowering failed: {e}")))?;
+
+    // Detect boundaries
+    let boundaries = detect_boundaries(&flat);
+
+    // Execute the flat DAG with CI context
+    execute_flat(&flat, &boundaries, &mode, Some(ci))
 }
 
 /// Simulate execution of a DAG with timing and resource tracking.
@@ -241,8 +273,8 @@ pub fn simulate<T: Executable + Clone>(
     // Get topological order
     let order = topo_sort(&flat);
 
-    // Execute with simulation tracking
-    let log = execute_flat(&flat, &boundaries, &ExecutionMode::Simulate(config.clone()))?;
+    // Execute with simulation tracking (no CI context in simulation)
+    let log = execute_flat(&flat, &boundaries, &ExecutionMode::Simulate(config.clone()), None)?;
 
     // Compute simulation metrics
     let timeline = compute_timeline(&order, &config);
@@ -277,11 +309,8 @@ fn compute_timeline(order: &[NodeId], config: &SimConfig) -> Vec<(NodeId, Durati
 fn compute_critical_path<T>(dag: &Dag<T>, _config: &SimConfig) -> Vec<NodeId> {
     // Simple implementation: just return all nodes in topological order
     // A more sophisticated implementation would track actual dependencies
-    let order = topo_sort(dag);
-    
-    // Find the path with the longest total duration
     // For now, just return the topological order
-    order
+    topo_sort(dag)
 }
 
 /// Execute a flat (fully lowered) DAG.
@@ -289,6 +318,7 @@ fn execute_flat<T: Executable>(
     dag: &Dag<T>,
     _boundaries: &BoundaryInfo,  // Kept for future signature inference use
     mode: &ExecutionMode,
+    ci: Option<&mut crate::CiContext>,
 ) -> Result<ExecutionLog, ExecError> {
     let order = topo_sort(dag);
     let node_map: HashMap<&str, &Node<T>> = dag.nodes.iter().map(|n| (n.id.0.as_str(), n)).collect();
@@ -298,11 +328,20 @@ fn execute_flat<T: Executable>(
     
     // Track acquired tools to avoid re-acquiring
     let mut acquired_tools = AcquiredTools::new();
+    
+    // Wrap CI context in a cell for mutable access in the loop
+    // (Rust borrow checker limitation with Option<&mut T> in loops)
+    let mut ci_ctx = ci;
 
     for node_id in &order {
         let node = node_map
             .get(node_id.0.as_str())
             .ok_or_else(|| ExecError::new(format!("node '{}' not found", node_id.0)))?;
+        
+        // Start CI group for this node
+        if let Some(ref mut ci) = ci_ctx {
+            ci.start_group(&node_id.0, false);
+        }
 
         // Gather inputs from upstream edges
         let mut inputs: HashMap<String, Value> = HashMap::new();
@@ -361,14 +400,28 @@ fn execute_flat<T: Executable>(
                 // Execute normally
                 match &node.body {
                     NodeBody::Opaque(op) => {
-                        let outputs = op.execute(inputs)?;
-                        (outputs, false)
+                        match op.execute(inputs) {
+                            Ok(outputs) => (outputs, false),
+                            Err(e) => {
+                                // Emit CI error annotation if context available
+                                if let Some(ref mut ci) = ci_ctx {
+                                    ci.error(&format!("Node '{}' failed: {}", node_id.0, e), None);
+                                    ci.end_group(); // Close the group before returning error
+                                }
+                                return Err(e);
+                            }
+                        }
                     }
                     NodeBody::SubDag(_) => {
-                        return Err(ExecError::new(format!(
+                        let err_msg = format!(
                             "node '{}' is a SubDag — DAG must be lowered before execution",
                             node_id.0
-                        )));
+                        );
+                        if let Some(ref mut ci) = ci_ctx {
+                            ci.error(&err_msg, None);
+                            ci.end_group();
+                        }
+                        return Err(ExecError::new(err_msg));
                     }
                 }
             }
@@ -380,6 +433,11 @@ fn execute_flat<T: Executable>(
             outputs,
             was_intercepted,
         });
+        
+        // End CI group for this node
+        if let Some(ref mut ci) = ci_ctx {
+            ci.end_group();
+        }
     }
 
     Ok(ExecutionLog { entries })

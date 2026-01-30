@@ -45,7 +45,7 @@ impl Executable for CollectionOp {
 ///
 /// Outputs:
 /// - `output`: Transformed StrList
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub enum MapOp {
     /// Convert each string to uppercase
     ToUppercase,
@@ -58,13 +58,8 @@ pub enum MapOp {
     /// Apply a suffix to each string
     Suffix(String),
     /// Identity - pass through unchanged (for SubDag composition)
+    #[default]
     Identity,
-}
-
-impl Default for MapOp {
-    fn default() -> Self {
-        MapOp::Identity
-    }
 }
 
 impl Executable for MapOp {
@@ -99,7 +94,7 @@ impl Executable for MapOp {
 ///
 /// Outputs:
 /// - `output`: Filtered StrList
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub enum FilterOp {
     /// Keep strings containing the pattern
     Contains(String),
@@ -112,13 +107,8 @@ pub enum FilterOp {
     /// Keep strings matching exact value
     Equals(String),
     /// Keep all (identity filter)
+    #[default]
     All,
-}
-
-impl Default for FilterOp {
-    fn default() -> Self {
-        FilterOp::All
-    }
 }
 
 impl Executable for FilterOp {
@@ -163,11 +153,12 @@ impl Executable for FilterOp {
 ///
 /// Outputs:
 /// - `output`: Folded result
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub enum FoldOp {
     /// Concatenate all strings with separator
     Join(String),
     /// Count elements
+    #[default]
     Count,
     /// Sum (for numeric strings)
     Sum,
@@ -175,12 +166,6 @@ pub enum FoldOp {
     Min,
     /// Find maximum (lexicographic)
     Max,
-}
-
-impl Default for FoldOp {
-    fn default() -> Self {
-        FoldOp::Count
-    }
 }
 
 impl Executable for FoldOp {
@@ -225,9 +210,10 @@ impl Executable for FoldOp {
 ///
 /// Outputs:
 /// - `output`: Sorted StrList
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub enum SortOp {
     /// Sort ascending (lexicographic)
+    #[default]
     Ascending,
     /// Sort descending (lexicographic)
     Descending,
@@ -235,12 +221,6 @@ pub enum SortOp {
     ByLength,
     /// Reverse order (not really sorting, but useful)
     Reverse,
-}
-
-impl Default for SortOp {
-    fn default() -> Self {
-        SortOp::Ascending
-    }
 }
 
 impl Executable for SortOp {

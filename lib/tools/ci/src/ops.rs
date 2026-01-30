@@ -1,26 +1,18 @@
 //! CI operations.
 //!
-//! Demonstrates decomposition into primitives where possible.
 //! Command execution delegates to ExecuteOp primitive.
 //!
-//! The CI pipeline now includes a Prep stage that runs codegen
+//! The CI pipeline includes a Prep stage that runs codegen
 //! to ensure all generated code exists before building/testing.
 //!
 //! # BuildConfig Integration
 //!
 //! All build/test/lint commands are sourced from `BuildConfig` in the
 //! makegen registry. This ensures a single source of truth for commands.
-//!
-//! # Transport Pattern
-//!
-//! All command execution goes through `ExecuteOp`, which will be migrated
-//! to `PrepareShellOp` + `TransportOps::Execute` in a future refactor.
-//! This ensures consistent interception for dry-run mode.
 
 use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::Value;
 use gunbc_makegen::{BuildConfig, ToolRegistry};
-#[allow(deprecated)]
 use gunbc_primitives::ExecuteOp;
 use std::collections::HashMap;
 
