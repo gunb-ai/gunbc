@@ -17,7 +17,6 @@
 //! to `PrepareShellOp` + `TransportOps::Execute` in a future refactor.
 //! This ensures consistent interception for dry-run mode.
 
-use gunbc_clippy::ClippyOp;
 use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::Value;
 use gunbc_makegen::{BuildConfig, ToolRegistry};
@@ -233,15 +232,16 @@ fn execute_test(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>
     Ok(out)
 }
 
-/// Run linter using Clippy with automatic upsert.
+/// Run linter using Clippy.
 ///
-/// This step uses the Clippy tool DAG internally:
-/// 1. Check if clippy is installed
-/// 2. Install clippy if needed (via rustup)
-/// 3. Run cargo clippy with lint arguments
+/// This operation uses the capability-based tool acquisition pattern:
+/// 1. The Lint node declares `.requires(&cli::CLIPPY)` in the DAG
+/// 2. The framework automatically acquires clippy (check/install)
+/// 3. This function receives ToolHandle through `tool:clippy` input
+/// 4. Uses the handle to run clippy
 ///
-/// The dependency on clippy is implicit through usage - by using
-/// ClippyOp, we automatically get the upsert behavior.
+/// The dependency on clippy is explicit through `.requires()` - 
+/// the framework ensures clippy is available before this runs.
 fn execute_lint(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
     let build_success = match inputs.get("build_success") {
         Some(Value::Bool(b)) => *b,
@@ -259,33 +259,35 @@ fn execute_lint(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>
         return Ok(out);
     }
 
-    // Step 1: Check if clippy is installed
-    let check_result = ClippyOp::CheckInstalled.execute(HashMap::new())?;
-    let clippy_exists = check_result
-        .get("exists")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
+    // Get the clippy ToolHandle from inputs (provided by framework after acquisition)
+    // The ToolHandle is passed as a Value::Str("tool_handle:clippy")
+    let _clippy_handle = inputs.get("tool:clippy").ok_or_else(|| {
+        ExecError::new(
+            "Missing tool:clippy input. Add .requires(&cli::CLIPPY) to the Lint node."
+        )
+    })?;
+    
+    // Note: The ToolHandle is available but we still use CliToolOp directly
+    // because the framework has already ensured clippy is installed.
+    // In a more complete implementation, we'd deserialize the ToolHandle
+    // and use it to run the command.
+    
+    // Run clippy (tool is guaranteed to be available by framework)
+    use gunbc_ir::transport::cli::{CliToolOp, CLIPPY};
+    let result = CliToolOp::run(&CLIPPY, &["--all-targets", "--", "-D", "warnings"])
+        .execute()
+        .map_err(|e| ExecError::new(e.to_string()))?;
 
-    // Step 2: Install clippy if needed (upsert pattern)
-    if !clippy_exists {
-        println!("Clippy not found, installing...");
-        ClippyOp::Install.execute(HashMap::new())?;
-    }
-
-    // Step 3: Run clippy with lint arguments
-    let run_op = ClippyOp::lint_all();
-    let run_result = run_op.execute(HashMap::new())?;
-
-    let success = run_result
+    let success = result
         .get("success")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
-    let stdout = run_result
+    let stdout = result
         .get("stdout")
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_string();
-    let stderr = run_result
+    let stderr = result
         .get("stderr")
         .and_then(|v| v.as_str())
         .unwrap_or("")

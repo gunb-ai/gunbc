@@ -133,6 +133,10 @@ impl Executable for FsOp {
 ///     println!("Found: {}", file);
 /// }
 /// ```
+///
+/// Note: This is a utility function outside the DAG system. For DAG nodes
+/// that need git, use `node.requires(&cli::GIT)` instead.
+#[allow(clippy::disallowed_methods)]
 pub fn list_files(repo_path: &str) -> Result<Vec<String>, ExecError> {
     // Try git ls-files first
     let output = Command::new("git")

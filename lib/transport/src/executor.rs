@@ -348,6 +348,10 @@ fn execute_tcp(request: &TcpRequest) -> Result<TcpResponse, TransportError> {
 }
 
 /// Execute a shell command.
+///
+/// This is the I/O boundary - the official place where Command::new is used.
+/// All shell execution flows through this function.
+#[allow(clippy::disallowed_methods)]
 fn execute_shell(request: &ShellRequest) -> Result<ShellResponse, TransportError> {
     let mut cmd = Command::new(&request.command);
     cmd.args(&request.args);

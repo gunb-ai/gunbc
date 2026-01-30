@@ -189,7 +189,13 @@ pub fn infer_signature<T>(dag: &Dag<T>) -> WorkflowSignature {
 
     // Collect entrypoint ports as inputs
     // entrypoint_ports is Vec<(NodeId, PortName, TypeId)>
+    // Exclude tool ports (tool:*) - these are framework-provided, not user inputs
     for (node_id, port_name, _type_id) in &entrypoints.entrypoint_ports {
+        // Skip tool capability ports - they're provided by the framework, not users
+        if port_name.0.starts_with("tool:") {
+            continue;
+        }
+        
         if let Some(node) = dag.get_node(node_id) {
             if let Some(port) = node.inputs.iter().find(|p| &p.name == port_name) {
                 inputs.push(SignaturePort::new(

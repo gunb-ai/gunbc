@@ -24,6 +24,7 @@
 //! github_actions.rs           ← Service layer (uses github/)
 //! ```
 
+pub mod cli;
 pub mod file;
 pub mod gist;
 pub mod github;
@@ -46,6 +47,11 @@ pub use github_actions::{
 pub use http::{HttpMethod, HttpRequest, HttpResponse};
 pub use rest::{AuthMethod, RestRequest, RestResponse};
 pub use tcp::{TcpRequest, TcpResponse};
+pub use cli::{
+    build_cli_ensure, build_cli_upsert, CliToolDef, CliToolError, CliToolOp, ToolHandle,
+    // CLI Tool definitions (use these with node.requires())
+    CLIPPY as CLI_CLIPPY, RUSTFMT as CLI_RUSTFMT, CARGO as CLI_CARGO, GIT as CLI_GIT, GH as CLI_GH,
+};
 pub use tool::{
     check_all_satisfiable, default_platform_registry, default_tool_registry, is_satisfiable,
     plan_installation, InstallInputs, InstallOption, InstallPlan,

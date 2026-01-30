@@ -11,7 +11,6 @@ gunbc-exec = { path = "../../../core/exec" }
 gunbc-primitives = { path = "../../primitives" }
 gunbc-test = { path = "../../../core/test" }
 gunbc-makegen = { path = "../makegen" }
-gunbc-clippy = { path = "../clippy" }
 
 [dev-dependencies]
 gunbc-test = { path = "../../../core/test" }

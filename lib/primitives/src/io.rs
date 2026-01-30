@@ -147,6 +147,8 @@ impl Executable for WriteFileOp {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ExecuteOp;
 
+#[allow(deprecated)]
+#[allow(clippy::disallowed_methods)]
 impl Executable for ExecuteOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         let command = inputs
@@ -298,6 +300,10 @@ impl Executable for ListFilesOp {
 }
 
 /// List files implementation - tries git ls-files, falls back to recursive listing.
+///
+/// Note: This is a utility function. For DAG nodes that need git,
+/// use `node.requires(&cli::GIT)` instead.
+#[allow(clippy::disallowed_methods)]
 fn list_files_impl(repo_path: &str) -> Result<Vec<String>, ExecError> {
     // Try git ls-files first
     let output = Command::new("git")

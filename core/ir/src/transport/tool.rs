@@ -1,10 +1,27 @@
 //! CLI Tool definitions and registry.
 //!
-//! This module provides a unified way to define CLI tools and their installation
-//! options across different package managers. Tools are responsible for defining
-//! how they can be installed - package managers provide the upsert mechanics.
+//! This module provides `ToolDef` for platform-aware tool satisfiability checking.
+//! It is used to determine if a workflow's tool requirements can be satisfied
+//! given the available package managers on a platform.
 //!
-//! # Architecture
+//! # Two Tool Systems
+//!
+//! The codebase has two complementary tool systems:
+//!
+//! | System | Module | Purpose |
+//! |--------|--------|---------|
+//! | `ToolDef` | `transport/tool.rs` | Platform-aware satisfiability checking |
+//! | `CliToolDef` | `transport/cli.rs` | Runtime tool acquisition (`node.requires()`) |
+//!
+//! **For runtime tool acquisition, use `CliToolDef` with `.requires()`:**
+//!
+//! ```ignore
+//! use gunbc_ir::transport::cli;
+//! Node::opaque("lint", inputs, outputs, LintOp)
+//!     .requires(&cli::CLIPPY)  // Uses CliToolDef for runtime acquisition
+//! ```
+//!
+//! # Architecture (ToolDef)
 //!
 //! ```text
 //! Platform (ubuntu) → Available PMs [apt] → Tool satisfiability → InstallPlan
@@ -462,6 +479,10 @@ pub static APK: ToolDef = ToolDef {
 };
 
 /// cargo package manager (Rust).
+/// Cargo package manager (Rust).
+///
+/// For runtime tool acquisition, use `transport::cli::CARGO` with `.requires()`.
+/// This ToolDef is for platform-aware satisfiability checking.
 ///
 /// Note: cargo depends on rust being installed.
 pub static CARGO: ToolDef = ToolDef {
@@ -477,6 +498,9 @@ pub static CARGO: ToolDef = ToolDef {
 // ============================================================================
 
 /// Git version control.
+///
+/// For runtime tool acquisition, use `transport::cli::GIT` with `.requires()`.
+/// This ToolDef is for platform-aware satisfiability checking.
 pub static GIT: ToolDef = ToolDef {
     id: "git",
     command: "git",
@@ -518,6 +542,11 @@ pub static RUST: ToolDef = ToolDef {
 
 /// Clippy linter (Rust component).
 ///
+/// Clippy linter (Rust component).
+///
+/// For runtime tool acquisition, use `transport::cli::CLIPPY` with `.requires()`.
+/// This ToolDef is for platform-aware satisfiability checking.
+///
 /// Clippy is installed as a rustup component, not a standalone package.
 /// It's invoked via `cargo clippy`.
 pub static CLIPPY: ToolDef = ToolDef {
@@ -529,6 +558,9 @@ pub static CLIPPY: ToolDef = ToolDef {
 };
 
 /// Rustfmt formatter (Rust component).
+///
+/// For runtime tool acquisition, use `transport::cli::RUSTFMT` with `.requires()`.
+/// This ToolDef is for platform-aware satisfiability checking.
 ///
 /// Rustfmt is installed as a rustup component, not a standalone package.
 pub static RUSTFMT: ToolDef = ToolDef {

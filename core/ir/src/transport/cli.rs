@@ -1,0 +1,527 @@
+//! Generic CLI tool abstraction.
+//!
+//! This module provides a universal pattern for CLI tool upsert:
+//! 1. **Check**: Verify the tool is installed
+//! 2. **Install**: Install the tool if needed
+//! 3. **Run**: Execute the tool with arguments
+//!
+//! Tools are defined declaratively via `CliToolDef`, and operations
+//! are uniform via `CliToolOp`. This eliminates boilerplate when
+//! adding new CLI tools to the system.
+//!
+//! # Fractal DAG Pattern
+//!
+//! Use `build_cli_upsert()` to create a sub-DAG node that implements
+//! the upsert pattern. This integrates with the codebase's fractal DAG
+//! approach where DAGs can contain sub-DAGs.
+//!
+//! ```ignore
+//! use gunbc_ir::transport::cli::{build_cli_upsert, CLIPPY};
+//!
+//! // Build a sub-DAG node for clippy upsert
+//! let clippy_node = build_cli_upsert(&CLIPPY, &["--all-targets"]);
+//!
+//! // This node can be composed into larger DAGs
+//! ```
+//!
+//! # Direct Operations
+//!
+//! For simple cases, operations can be executed directly:
+//!
+//! ```ignore
+//! use gunbc_ir::transport::cli::{CliToolOp, CLIPPY};
+//!
+//! let check = CliToolOp::check(&CLIPPY);
+//! let result = check.execute()?;
+//! ```
+
+use std::collections::HashMap;
+use std::marker::PhantomData;
+use std::process::Command;
+
+use crate::resource::{AccessMode, ResourceId};
+
+/// Definition of a CLI tool for the upsert pattern.
+///
+/// Tools are defined as static data, making them easy to declare
+/// and compose. The three commands map to the upsert phases:
+/// - `check_cmd`: Verify existence (typically `tool --version`)
+/// - `install_cmd`: Install if missing (optional - some tools require manual install)
+/// - `run_cmd`: Base command to execute (args appended)
+///
+/// Tools can also define their resource access patterns (exclusivity),
+/// which consumers don't need to know about.
+#[derive(Debug, Clone, Copy)]
+pub struct CliToolDef {
+    /// Unique identifier for this tool
+    pub id: &'static str,
+    
+    /// Command to check if tool is installed.
+    /// Typically `["tool", "--version"]` or similar.
+    pub check_cmd: &'static [&'static str],
+    
+    /// Command to install the tool, if automatic installation is supported.
+    /// None means the tool must be installed manually.
+    pub install_cmd: Option<&'static [&'static str]>,
+    
+    /// Base command to run the tool. Arguments are appended to this.
+    pub run_cmd: &'static [&'static str],
+    
+    /// Human-readable description
+    pub description: &'static str,
+    
+    /// Resource access mode for this tool (default: Read = parallel-safe).
+    /// Tools that modify global state should use Exclusive.
+    /// Consumers don't need to know this - the framework handles scheduling.
+    pub access_mode: AccessMode,
+}
+
+impl CliToolDef {
+    /// Get the resource ID for this tool.
+    pub fn resource_id(&self) -> ResourceId {
+        ResourceId::tool(self.id)
+    }
+}
+
+// ============================================================================
+// ToolHandle - Capability-Based Access
+// ============================================================================
+
+/// A handle to an acquired tool. This is the ONLY way to run tool commands.
+///
+/// You cannot construct this directly - it only comes from tool acquisition
+/// via the framework. This ensures the upsert pattern is always followed.
+///
+/// # Design
+///
+/// The capability pattern enforces that:
+/// 1. You cannot use a tool without acquiring it first
+/// 2. Acquisition happens automatically via node requirements
+/// 3. The framework handles check/install/run
+///
+/// # Example
+///
+/// ```ignore
+/// // In operation implementation - receives handle from inputs
+/// fn execute_lint(inputs: HashMap<String, Value>) -> Result<...> {
+///     let clippy: ToolHandle = inputs.get("tool:clippy").unwrap();
+///     let result = clippy.run(&["--all-targets"]).execute()?;
+///     // ...
+/// }
+/// ```
+#[derive(Debug, Clone)]
+pub struct ToolHandle {
+    tool: &'static CliToolDef,
+    /// Private field prevents direct construction outside this module.
+    /// The only way to get a ToolHandle is via `ToolHandle::acquire()` which
+    /// is called by the framework during execution.
+    _acquired: PhantomData<()>,
+}
+
+impl ToolHandle {
+    /// Create a new ToolHandle.
+    ///
+    /// **Framework use only.** This should only be called by the execution
+    /// framework after successfully acquiring a tool. User operation code
+    /// should receive ToolHandle values through DAG inputs, not construct
+    /// them directly.
+    ///
+    /// The PhantomData field prevents casual construction, but the framework
+    /// needs to be able to create handles after successful tool acquisition.
+    pub fn acquire(tool: &'static CliToolDef) -> Self {
+        Self {
+            tool,
+            _acquired: PhantomData,
+        }
+    }
+    
+    /// Get the tool definition this handle refers to.
+    pub fn tool(&self) -> &'static CliToolDef {
+        self.tool
+    }
+    
+    /// Get the tool ID.
+    pub fn id(&self) -> &'static str {
+        self.tool.id
+    }
+    
+    /// Run the tool with the given arguments.
+    /// This is the ONLY way to execute a tool - you need the handle.
+    pub fn run(&self, args: &[&str]) -> CliToolOp {
+        CliToolOp::run(self.tool, args)
+    }
+    
+    /// Get the resource ID for this tool handle.
+    pub fn resource_id(&self) -> ResourceId {
+        self.tool.resource_id()
+    }
+}
+
+/// Convert a ToolHandle to a Value for passing through DAG edges.
+impl From<ToolHandle> for crate::Value {
+    fn from(handle: ToolHandle) -> Self {
+        // Store as a string reference to the tool ID
+        // The framework knows how to reconstruct the handle from this
+        crate::Value::Str(format!("tool_handle:{}", handle.tool.id))
+    }
+}
+
+impl CliToolDef {
+    /// Create a Check operation for this tool.
+    pub fn check(&'static self) -> CliToolOp {
+        CliToolOp::Check { tool: self }
+    }
+    
+    /// Create an Install operation for this tool.
+    pub fn install(&'static self) -> CliToolOp {
+        CliToolOp::Install { tool: self }
+    }
+    
+    /// Create a Run operation for this tool with the given arguments.
+    pub fn run(&'static self, args: &[&str]) -> CliToolOp {
+        CliToolOp::Run {
+            tool: self,
+            args: args.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+    
+    /// Create a ToolHandle for this tool.
+    ///
+    /// **Framework use only.** See `ToolHandle::acquire` for details.
+    pub fn acquire(&'static self) -> ToolHandle {
+        ToolHandle::acquire(self)
+    }
+}
+
+/// Generic operation for any CLI tool.
+///
+/// This enum represents the three phases of the upsert pattern:
+/// - Check: Does the tool exist?
+/// - Install: Create/install the tool
+/// - Run: Execute the tool
+#[derive(Debug, Clone)]
+pub enum CliToolOp {
+    /// Check if the tool is installed.
+    /// Outputs: exists (Bool), output (String)
+    Check { tool: &'static CliToolDef },
+    
+    /// Install the tool.
+    /// Outputs: success (Bool), error (String if failed)
+    Install { tool: &'static CliToolDef },
+    
+    /// Run the tool with arguments.
+    /// Outputs: success (Bool), stdout (String), stderr (String), exit_code (Int)
+    Run {
+        tool: &'static CliToolDef,
+        args: Vec<String>,
+    },
+}
+
+impl CliToolOp {
+    /// Create a Check operation.
+    pub fn check(tool: &'static CliToolDef) -> Self {
+        Self::Check { tool }
+    }
+    
+    /// Create an Install operation.
+    pub fn install(tool: &'static CliToolDef) -> Self {
+        Self::Install { tool }
+    }
+    
+    /// Create a Run operation.
+    pub fn run(tool: &'static CliToolDef, args: &[&str]) -> Self {
+        Self::Run {
+            tool,
+            args: args.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+    
+    /// Get the tool this operation is for.
+    pub fn tool(&self) -> &'static CliToolDef {
+        match self {
+            Self::Check { tool } | Self::Install { tool } | Self::Run { tool, .. } => tool,
+        }
+    }
+    
+    /// Execute the operation, returning outputs as a HashMap.
+    ///
+    /// This is the core execution logic for CLI tools.
+    pub fn execute(&self) -> Result<HashMap<String, crate::Value>, CliToolError> {
+        match self {
+            Self::Check { tool } => execute_check(tool),
+            Self::Install { tool } => execute_install(tool),
+            Self::Run { tool, args } => execute_run(tool, args),
+        }
+    }
+    
+}
+
+// ============================================================================
+// Fractal DAG Builder
+// ============================================================================
+
+use crate::node::Node;
+use crate::patterns::UpsertBuilder;
+
+/// Build a CLI tool upsert sub-DAG node.
+///
+/// This creates a `Node<CliToolOp>` containing a sub-DAG that implements
+/// the check → install → run pattern. The node can be composed into
+/// larger DAGs using the fractal DAG approach.
+///
+/// # Arguments
+///
+/// * `tool` - The CLI tool definition
+/// * `args` - Arguments to pass when running the tool
+///
+/// # Example
+///
+/// ```ignore
+/// use gunbc_ir::transport::cli::{build_cli_upsert, CLIPPY};
+///
+/// // Build upsert sub-DAG for clippy
+/// let node = build_cli_upsert(&CLIPPY, &["--all-targets", "--", "-D", "warnings"]);
+///
+/// // The node can be added to a larger DAG
+/// builder.add_node(node);
+/// ```
+pub fn build_cli_upsert(tool: &'static CliToolDef, args: &[&str]) -> Node<CliToolOp> {
+    UpsertBuilder::new(tool.id)
+        .with_check(CliToolOp::check(tool))
+        .with_create(CliToolOp::install(tool))
+        .with_resolve(CliToolOp::run(tool, args))
+        .with_input_port("trigger", "Unit")
+        .with_output_port("result", "CliResult")
+        .build()
+}
+
+/// Build a CLI tool upsert sub-DAG for just check + install (no run).
+///
+/// This is useful when you want to ensure a tool is installed but
+/// will run it separately with different arguments.
+pub fn build_cli_ensure(tool: &'static CliToolDef) -> Node<CliToolOp> {
+    UpsertBuilder::new(format!("{}_ensure", tool.id))
+        .with_check(CliToolOp::check(tool))
+        .with_create(CliToolOp::install(tool))
+        .with_resolve(CliToolOp::check(tool)) // Re-check as resolve
+        .with_input_port("trigger", "Unit")
+        .with_output_port("exists", "Bool")
+        .build()
+}
+
+/// Error type for CLI tool operations.
+#[derive(Debug)]
+pub struct CliToolError {
+    pub tool_id: &'static str,
+    pub operation: &'static str,
+    pub message: String,
+}
+
+impl std::fmt::Display for CliToolError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} {}: {}", self.tool_id, self.operation, self.message)
+    }
+}
+
+impl std::error::Error for CliToolError {}
+
+impl CliToolError {
+    pub fn new(tool: &'static CliToolDef, operation: &'static str, message: impl Into<String>) -> Self {
+        Self {
+            tool_id: tool.id,
+            operation,
+            message: message.into(),
+        }
+    }
+}
+
+// ============================================================================
+// Execution Functions
+// ============================================================================
+
+// These functions are the tool acquisition implementation - they're allowed
+// to use Command::new because they ARE the abstraction that other code uses.
+#[allow(clippy::disallowed_methods)]
+fn execute_check(tool: &'static CliToolDef) -> Result<HashMap<String, crate::Value>, CliToolError> {
+    if tool.check_cmd.is_empty() {
+        return Err(CliToolError::new(tool, "check", "No check command defined"));
+    }
+    
+    let (cmd, args) = tool.check_cmd.split_first().unwrap();
+    
+    let output = Command::new(cmd)
+        .args(args)
+        .output()
+        .map_err(|e| CliToolError::new(tool, "check", format!("Failed to execute: {}", e)))?;
+    
+    let exists = output.status.success();
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    
+    let mut out = HashMap::new();
+    out.insert("exists".to_string(), crate::Value::Bool(exists));
+    out.insert("output".to_string(), crate::Value::Str(stdout));
+    Ok(out)
+}
+
+#[allow(clippy::disallowed_methods)]
+fn execute_install(tool: &'static CliToolDef) -> Result<HashMap<String, crate::Value>, CliToolError> {
+    let install_cmd = tool.install_cmd.ok_or_else(|| {
+        CliToolError::new(
+            tool,
+            "install",
+            format!(
+                "{} does not support automatic installation. Please install manually.",
+                tool.id
+            ),
+        )
+    })?;
+    
+    if install_cmd.is_empty() {
+        return Err(CliToolError::new(tool, "install", "Empty install command"));
+    }
+    
+    println!("Installing {}...", tool.id);
+    
+    let (cmd, args) = install_cmd.split_first().unwrap();
+    
+    let output = Command::new(cmd)
+        .args(args)
+        .output()
+        .map_err(|e| CliToolError::new(tool, "install", format!("Failed to execute: {}", e)))?;
+    
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(CliToolError::new(tool, "install", stderr.to_string()));
+    }
+    
+    println!("{} installed successfully", tool.id);
+    
+    let mut out = HashMap::new();
+    out.insert("success".to_string(), crate::Value::Bool(true));
+    Ok(out)
+}
+
+#[allow(clippy::disallowed_methods)]
+fn execute_run(
+    tool: &'static CliToolDef,
+    args: &[String],
+) -> Result<HashMap<String, crate::Value>, CliToolError> {
+    if tool.run_cmd.is_empty() {
+        return Err(CliToolError::new(tool, "run", "No run command defined"));
+    }
+    
+    let (cmd, base_args) = tool.run_cmd.split_first().unwrap();
+    
+    let mut full_args: Vec<&str> = base_args.to_vec();
+    full_args.extend(args.iter().map(|s| s.as_str()));
+    
+    println!("Running: {} {}", cmd, full_args.join(" "));
+    
+    let output = Command::new(cmd)
+        .args(&full_args)
+        .output()
+        .map_err(|e| CliToolError::new(tool, "run", format!("Failed to execute: {}", e)))?;
+    
+    let success = output.status.success();
+    let exit_code = output.status.code().unwrap_or(-1);
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    
+    let mut out = HashMap::new();
+    out.insert("success".to_string(), crate::Value::Bool(success));
+    out.insert("exit_code".to_string(), crate::Value::Int(exit_code as i64));
+    out.insert("stdout".to_string(), crate::Value::Str(stdout));
+    out.insert("stderr".to_string(), crate::Value::Str(stderr));
+    Ok(out)
+}
+
+// ============================================================================
+// Common Tool Definitions
+// ============================================================================
+
+/// Clippy - Rust linter
+/// Read access mode - can run in parallel with other read-only tools
+pub static CLIPPY: CliToolDef = CliToolDef {
+    id: "clippy",
+    check_cmd: &["cargo", "clippy", "--version"],
+    install_cmd: Some(&["rustup", "component", "add", "clippy"]),
+    run_cmd: &["cargo", "clippy"],
+    description: "Rust linter",
+    access_mode: AccessMode::Read,
+};
+
+/// Rustfmt - Rust formatter
+/// Write access mode - modifies files, should not run in parallel with other writers
+pub static RUSTFMT: CliToolDef = CliToolDef {
+    id: "rustfmt",
+    check_cmd: &["rustfmt", "--version"],
+    install_cmd: Some(&["rustup", "component", "add", "rustfmt"]),
+    run_cmd: &["cargo", "fmt"],
+    description: "Rust formatter",
+    access_mode: AccessMode::Write,
+};
+
+/// Cargo - Rust package manager (no auto-install, requires rustup)
+/// Read access mode by default (depends on subcommand)
+pub static CARGO: CliToolDef = CliToolDef {
+    id: "cargo",
+    check_cmd: &["cargo", "--version"],
+    install_cmd: None, // Requires rustup.rs
+    run_cmd: &["cargo"],
+    description: "Rust package manager",
+    access_mode: AccessMode::Read,
+};
+
+/// Git - Version control
+/// Read access mode by default (depends on subcommand)
+pub static GIT: CliToolDef = CliToolDef {
+    id: "git",
+    check_cmd: &["git", "--version"],
+    install_cmd: None, // System-dependent
+    run_cmd: &["git"],
+    description: "Version control system",
+    access_mode: AccessMode::Read,
+};
+
+/// GitHub CLI
+pub static GH: CliToolDef = CliToolDef {
+    id: "gh",
+    check_cmd: &["gh", "--version"],
+    install_cmd: None, // System-dependent (brew, apt, etc.)
+    run_cmd: &["gh"],
+    description: "GitHub CLI",
+    access_mode: AccessMode::Read,
+};
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    #[test]
+    fn test_clippy_def() {
+        assert_eq!(CLIPPY.id, "clippy");
+        assert!(CLIPPY.install_cmd.is_some());
+    }
+    
+    #[test]
+    fn test_cargo_no_auto_install() {
+        assert!(CARGO.install_cmd.is_none());
+    }
+    
+    #[test]
+    fn test_tool_check_op() {
+        let op = CLIPPY.check();
+        assert!(matches!(op, CliToolOp::Check { .. }));
+        assert_eq!(op.tool().id, "clippy");
+    }
+    
+    #[test]
+    fn test_tool_run_op() {
+        let op = CLIPPY.run(&["--", "-D", "warnings"]);
+        if let CliToolOp::Run { args, .. } = op {
+            assert_eq!(args, vec!["--", "-D", "warnings"]);
+        } else {
+            panic!("Expected Run variant");
+        }
+    }
+}

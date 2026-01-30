@@ -1,12 +1,21 @@
 # Clippy configuration for gunbc
 #
-# This enforces the transport pattern by disallowing direct I/O operations
-# outside of approved crates. Only the following should use std::fs and Command:
-#   - lib/transport (the transport executor)
-#   - lib/primitives (deprecated ops, allowed for backwards compatibility)
-#   - core/codegen (bootstrapper, can't use transport)
+# This enforces two patterns:
 #
-# All other crates should use PrepareXxxOp + TransportOps::Execute
+# 1. TRANSPORT PATTERN: Direct I/O operations disallowed outside approved crates
+#    - lib/transport (the transport executor - I/O boundary)
+#    - lib/primitives (deprecated ops, allowed for backwards compatibility)
+#    - core/codegen (bootstrapper, can't use transport)
+#
+# 2. TOOL ACQUISITION PATTERN: Command::new disallowed except:
+#    - lib/transport/src/executor.rs (the I/O boundary)
+#    - core/ir/src/transport/cli.rs (tool acquisition implementation)
+#    - core/codegen/src/main.rs (bootstrapper)
+#
+# For CLI tools, use node.requires(&cli::TOOL) to declare dependencies.
+# The framework handles tool acquisition automatically.
+#
+# Exceptions use #[allow(clippy::disallowed_methods)] with a comment explaining why.
 
 disallowed-methods = [
     # Filesystem operations - use PrepareFileReadOp/PrepareFileWriteOp instead
@@ -18,6 +27,7 @@ disallowed-methods = [
     { path = "std::fs::remove_dir_all", reason = "Direct filesystem ops should be in transport layer" },
     { path = "std::fs::create_dir_all", reason = "Direct filesystem ops should be in transport layer" },
     
-    # Process execution - use PrepareShellOp instead
-    { path = "std::process::Command::new", reason = "Use PrepareShellOp + TransportOps::Execute for transport compliance" },
+    # Process execution - use node.requires(&cli::TOOL) for tool dependencies
+    # Direct Command::new should only be in transport executor and cli.rs
+    { path = "std::process::Command::new", reason = "Use node.requires(&cli::TOOL) for tool dependencies. Command::new only in transport executor." },
 ]

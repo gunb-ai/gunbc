@@ -17,6 +17,7 @@
 use crate::ops::CIOp;
 use gunbc_ir::{
     build::*, BuilderError, Cardinality, Dag, DagBuilder, Node, WorkflowSignature,
+    transport::cli,
     transport::github_actions::{
         checkout, merge_permissions, rust_toolchain, ubuntu_latest,
         Integration, Permissions, RunnerImage,
@@ -245,6 +246,7 @@ pub fn build_ci_graph() -> Result<Dag<CIOp>, BuilderError> {
     )?;
 
     // Node: Lint - generation 2 (parallel with test)
+    // Uses .requires() to declare clippy dependency - framework handles acquisition
     let lint = builder.add_node_after(
         Node::opaque(
             "lint",
@@ -256,7 +258,8 @@ pub fn build_ci_graph() -> Result<Dag<CIOp>, BuilderError> {
                 port("lint_stderr", "String"),
             ],
             CIOp::Lint,
-        ),
+        )
+        .requires(&cli::CLIPPY),  // Capability-based tool acquisition
         &build,
     )?;
 

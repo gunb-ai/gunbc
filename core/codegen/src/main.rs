@@ -108,6 +108,10 @@ fn cmd_commit(dry_run: bool) {
 }
 
 /// Run cargo build --release
+/// 
+/// Note: This is the bootstrapper - it can't use the transport pattern
+/// because it needs to build the transport layer first.
+#[allow(clippy::disallowed_methods)]
 fn run_cargo_build() -> io::Result<()> {
     let status = Command::new("cargo")
         .args(["build", "--release"])

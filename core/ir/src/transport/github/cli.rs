@@ -205,10 +205,15 @@ pub fn gh_api_request(endpoint: &str) -> ShellRequest {
 // Upsert Interface
 // ============================================================================
 
+// Note: These functions use Command::new directly because they ARE the gh CLI
+// abstraction. For new code, consider using cli::GH with node.requires().
+// Once migration is complete, these should delegate to CliToolOp.
+
 /// Check if gh CLI is installed.
 ///
 /// This is the "Check" phase of the upsert pattern.
 /// Returns true if `gh --version` exits successfully.
+#[allow(clippy::disallowed_methods)]
 pub fn is_gh_installed() -> bool {
     std::process::Command::new("gh")
         .arg("--version")
@@ -222,6 +227,7 @@ pub fn is_gh_installed() -> bool {
 /// Get the installed gh CLI version, if available.
 ///
 /// Returns None if gh is not installed or version cannot be parsed.
+#[allow(clippy::disallowed_methods)]
 pub fn gh_installed_version() -> Option<String> {
     let output = std::process::Command::new("gh")
         .arg("--version")
@@ -244,6 +250,7 @@ pub fn gh_installed_version() -> Option<String> {
 /// Check if gh CLI is authenticated.
 ///
 /// Runs `gh auth status` and checks for success.
+#[allow(clippy::disallowed_methods)]
 pub fn is_gh_authenticated() -> bool {
     std::process::Command::new("gh")
         .args(["auth", "status"])

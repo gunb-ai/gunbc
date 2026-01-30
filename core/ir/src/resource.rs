@@ -62,6 +62,14 @@ impl ResourceId {
     pub fn connection(name: impl Into<String>) -> Self {
         Self(format!("conn:{}", name.into()))
     }
+    
+    /// Create a tool resource ID.
+    ///
+    /// Used for CLI tool capability tracking. When a node requires a tool,
+    /// it creates a resource access with this ID.
+    pub fn tool(name: impl Into<String>) -> Self {
+        Self(format!("tool:{}", name.into()))
+    }
 }
 
 impl From<&str> for ResourceId {

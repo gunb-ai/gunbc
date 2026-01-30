@@ -53,6 +53,10 @@ impl Installer {
     }
 
     /// Check if a tool is installed by running the verify command.
+    /// 
+    /// Note: This is part of the tool installation infrastructure - it's allowed
+    /// to use Command::new because it's implementing the verify step.
+    #[allow(clippy::disallowed_methods)]
     pub fn is_installed(&self, verify_cmd: &str) -> bool {
         let parts: Vec<&str> = verify_cmd.split_whitespace().collect();
         if parts.is_empty() {

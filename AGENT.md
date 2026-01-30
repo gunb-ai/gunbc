@@ -102,6 +102,124 @@ If you can remove all metadata without changing behavior, you've correctly separ
 
 Instead of runtime checks, express constraints as types. Type validation can itself be a DAG (`Dag<TypeOp>`).
 
+### 6. Implicit Dependencies Through Structure
+
+**Dependencies should be expressed through usage, not explicit lists.** When you use something, you depend on it. The system should deduce dependencies from the graph structure rather than requiring manual bookkeeping.
+
+Bad:
+```rust
+// Explicit dependency list that must be kept in sync
+fn lint() {
+    REQUIRED_TOOLS.push("clippy");  // Easy to forget!
+    run_clippy();
+}
+```
+
+Good:
+```rust
+// Dependency is implicit through usage
+Node::opaque("lint", ..., LintOp)
+    .requires(&cli::CLIPPY)  // I need clippy → framework handles the rest
+```
+
+This principle applies broadly:
+- **Tool dependencies**: Using a tool = depending on it
+- **Data flow**: Connecting ports = depending on that data
+- **Resource access**: Accessing a resource = needing that resource
+
+---
+
+## E2E Design Philosophy Examples
+
+### Example 1: CI Lint depends on Clippy
+
+**Before** (explicit management):
+```rust
+// CI had to track all tool dependencies in a central list
+fn build_ci_graph() -> Dag<CIOp> {
+    // ... build DAG ...
+}
+
+fn get_required_tools() -> Vec<ToolDef> {
+    vec![CLIPPY, RUSTFMT, CARGO]  // Manual list, can drift from actual usage
+}
+
+fn run_ci() {
+    for tool in get_required_tools() {
+        ensure_installed(&tool);  // Upfront satisfiability check
+    }
+    execute(build_ci_graph());
+}
+```
+
+**After** (implicit through structure):
+```rust
+// Lint node declares what it needs, framework handles acquisition
+fn build_ci_graph() -> Dag<CIOp> {
+    // ...
+    let lint = Node::opaque("lint", inputs, outputs, CIOp::Lint)
+        .requires(&cli::CLIPPY);  // "I need clippy"
+    // ...
+}
+
+fn run_ci() {
+    execute(build_ci_graph());  // Framework sees .requires(), handles upsert automatically
+}
+```
+
+The dependency is co-located with the usage. No separate list to maintain.
+
+### Example 2: Boundary Detection (Structural Inference)
+
+**Bad approach** (annotation-based):
+```rust
+#[boundary]  // Annotation that could be forgotten or misplaced
+fn write_to_gist(content: String) -> Url { ... }
+```
+
+**Good approach** (structural):
+```rust
+// Boundaries are INFERRED from unconnected output ports
+// No annotation needed - if data leaves the DAG, it's a boundary
+let gist_node = Node::opaque(
+    "create_gist",
+    vec![port("content", "String")],
+    vec![port("url", "Url")],  // If nothing consumes this → boundary
+    CreateGistOp,
+);
+```
+
+The framework detects boundaries by analyzing graph structure, not by trusting annotations.
+
+### Example 3: Resource Conflicts (Structural Detection)
+
+**Bad approach** (manual conflict declaration):
+```rust
+fn lint() {
+    CONFLICTS_WITH.push("format");  // Must remember to declare
+    run_clippy();
+}
+```
+
+**Good approach** (resource-based):
+```rust
+// Tools declare their access patterns
+pub static CLIPPY: CliToolDef = CliToolDef {
+    // ...
+    access_mode: AccessMode::Read,  // Can run in parallel
+};
+
+pub static RUSTFMT: CliToolDef = CliToolDef {
+    // ...
+    access_mode: AccessMode::Write,  // Modifies files
+};
+
+// Framework detects conflicts from resource access patterns
+// Nodes using RUSTFMT won't run in parallel with each other
+```
+
+Conflicts are deduced from access patterns, not manually declared.
+
 ---
 
 ## Key Patterns
@@ -124,9 +242,52 @@ UpsertBuilder::new("install_tool")
     .build()
 ```
 
-### Tool Dependency Graph (Recently Implemented)
+### Capability-Based Tool Acquisition (Primary Pattern)
 
-Tools define how they can be installed. Package managers are also tools.
+CLI tools are acquired through a capability system that makes it **structurally impossible** to use a tool without acquiring it first.
+
+```rust
+// 1. Define tool (core/ir/src/transport/cli.rs)
+pub static CLIPPY: CliToolDef = CliToolDef {
+    id: "clippy",
+    check_cmd: &["cargo", "clippy", "--version"],
+    install_cmd: Some(&["rustup", "component", "add", "clippy"]),
+    run_cmd: &["cargo", "clippy"],
+    description: "Rust linter",
+    access_mode: AccessMode::Read,  // Tool defines its own exclusivity
+};
+
+// 2. Declare requirement (DAG definition)
+Node::opaque("lint", inputs, outputs, LintOp)
+    .requires(&cli::CLIPPY)  // Framework injects upsert sub-DAG
+
+// 3. Use capability (operation implementation)
+fn execute_lint(inputs: HashMap<String, Value>) -> Result<...> {
+    // ToolHandle provided by framework after acquisition
+    let _clippy = inputs.get("tool:clippy").unwrap();
+    
+    // Run clippy (tool guaranteed available)
+    CliToolOp::run(&cli::CLIPPY, &["--all-targets"]).execute()?
+}
+```
+
+**Key insight**: `ToolHandle` cannot be constructed directly — it only comes from acquisition. This means:
+
+- No way to bypass the upsert pattern
+- No `Command::new()` calls scattered through the codebase
+- Framework handles check/install/run automatically
+- Tool defines its own resource access patterns (exclusivity)
+
+**Consumer vs Tool Separation**:
+- Consumer (e.g., Lint node): Only asks "can I use clippy?" via `.requires()`
+- Tool (e.g., Clippy): Defines check/install commands AND access mode
+- Framework: Handles acquisition, scheduling, and resource conflict detection
+
+**Clippy Enforcement**: Direct `Command::new()` is disallowed by clippy.toml. Exceptions must use `#[allow(clippy::disallowed_methods)]` with documentation.
+
+### Tool Dependency Graph (For Planning/Satisfiability)
+
+Tools also define how they can be installed across platforms. This is the planning layer (separate from runtime acquisition above).
 
 ```rust
 // core/ir/src/transport/tool.rs
@@ -147,6 +308,8 @@ pub struct InstallOption {
 **Key insight**: No enum for install methods. Package manager IDs are strings. Tools provide inputs, PMs provide the upsert mechanics.
 
 **Satisfiability**: Given available PMs on a platform, check if required tools can be installed before running a workflow.
+
+**Two Systems**: `ToolDef` is for planning/satisfiability; `CliToolDef` is for runtime acquisition with `.requires()`. Use `CliToolDef` for new code.
 
 ---
 
@@ -187,7 +350,25 @@ Based on previous conversations:
 
 ## Common Tasks
 
-### Adding a New Tool
+### Adding a New CLI Tool
+
+**For runtime acquisition** (new preferred pattern):
+
+1. Define as `CliToolDef` in `core/ir/src/transport/cli.rs`:
+   ```rust
+   pub static RUFF: CliToolDef = CliToolDef {
+       id: "ruff",
+       check_cmd: &["ruff", "--version"],
+       install_cmd: Some(&["pip", "install", "ruff"]),
+       run_cmd: &["ruff"],
+       description: "Python linter",
+       access_mode: AccessMode::Read,  // Or Write/Exclusive if it modifies state
+   };
+   ```
+2. Add to the tool registry in `core/exec/src/execute.rs:get_tool_by_id()`
+3. Use in nodes via `.requires(&cli::RUFF)`
+
+**For planning/satisfiability** (platform-aware installation):
 
 1. Define as `ToolDef` constant (in `tool.rs` or contextual location like `github/cli.rs`)
 2. List install options with PM associations
@@ -254,7 +435,18 @@ cargo test -- --nocapture
 
 ## Recent Work (January 2026)
 
-### CLI Tool Dependency Graph
+### Capability-Based Tool Acquisition
+
+Implemented a capability system for CLI tool dependencies that makes it structurally impossible to use a tool without acquiring it:
+
+- `core/ir/src/transport/cli.rs` — `CliToolDef`, `ToolHandle`, execution functions
+- `core/ir/src/node.rs` — `.requires(&tool)` method on Node
+- `core/exec/src/execute.rs` — Automatic tool acquisition during execution
+- `core/ir/src/signature.rs` — Tool ports excluded from workflow signatures
+
+Key pattern: `Node::opaque(...).requires(&cli::CLIPPY)` declares dependency, framework acquires tool and provides `ToolHandle` through inputs.
+
+### CLI Tool Dependency Graph (Planning Layer)
 
 Implemented a unified system for CLI tool dependency management:
 
