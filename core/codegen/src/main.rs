@@ -411,13 +411,13 @@ fn generate_github_actions_template(config: &RenderConfig) -> String {
     yaml.push_str("            cargo-${{ runner.os }}-\n");
     yaml.push('\n');
     
-    // Build tool
-    yaml.push_str("      - name: Build CI Tool\n");
-    yaml.push_str(&format!("        run: cargo build --release -p {}\n\n", config.tool_binary));
+    // Codegen (generates main.rs files for tool binaries)
+    yaml.push_str("      - name: Generate CLI Code\n");
+    yaml.push_str("        run: cargo run -p gunbc-codegen --release -- codegen\n\n");
     
-    // Run full DAG (with step mode, the tool will emit groups for each step)
+    // Run CI (this builds and runs in one step - simpler than separate build + run)
     yaml.push_str("      - name: Run CI Pipeline\n");
-    yaml.push_str(&format!("        run: ./target/release/{}\n", config.tool_binary.replace('-', "_")));
+    yaml.push_str(&format!("        run: cargo run -p {} --release\n", config.tool_binary));
     
     yaml
 }
@@ -444,8 +444,7 @@ fn generate_gitlab_ci_template(config: &RenderConfig) -> String {
     
     // Stages
     yaml.push_str("stages:\n");
-    yaml.push_str("  - build\n");
-    yaml.push_str("  - run\n\n");
+    yaml.push_str("  - ci\n\n");
     
     // Cache
     yaml.push_str("cache:\n");
@@ -454,23 +453,12 @@ fn generate_gitlab_ci_template(config: &RenderConfig) -> String {
     yaml.push_str("    - .cargo/\n");
     yaml.push_str("    - target/\n\n");
     
-    // Build job
-    yaml.push_str("build:\n");
-    yaml.push_str("  stage: build\n");
-    yaml.push_str("  script:\n");
-    yaml.push_str(&format!("    - cargo build --release -p {}\n", config.tool_binary));
-    yaml.push_str("  artifacts:\n");
-    yaml.push_str("    paths:\n");
-    yaml.push_str(&format!("      - target/release/{}\n", config.tool_binary.replace('-', "_")));
-    yaml.push_str("    expire_in: 1 hour\n\n");
-    
-    // Run job
+    // CI job (codegen + run in one job - simpler pipeline)
     yaml.push_str(&format!("{}:\n", config.workflow_name));
-    yaml.push_str("  stage: run\n");
-    yaml.push_str("  needs:\n");
-    yaml.push_str("    - build\n");
+    yaml.push_str("  stage: ci\n");
     yaml.push_str("  script:\n");
-    yaml.push_str(&format!("    - ./target/release/{}\n", config.tool_binary.replace('-', "_")));
+    yaml.push_str("    - cargo run -p gunbc-codegen --release -- codegen\n");
+    yaml.push_str(&format!("    - cargo run -p {} --release\n", config.tool_binary));
     
     yaml
 }

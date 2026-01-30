@@ -7,8 +7,7 @@ variables:
   CARGO_TERM_COLOR: always
 
 stages:
-  - build
-  - run
+  - ci
 
 cache:
   key: cargo-${CI_COMMIT_REF_SLUG}
@@ -16,18 +15,8 @@ cache:
     - .cargo/
     - target/
 
-build:
-  stage: build
-  script:
-    - cargo build --release -p gunbc-ci
-  artifacts:
-    paths:
-      - target/release/gunbc_ci
-    expire_in: 1 hour
-
 ci:
-  stage: run
-  needs:
-    - build
+  stage: ci
   script:
-    - ./target/release/gunbc_ci
+    - cargo run -p gunbc-codegen --release -- codegen
+    - cargo run -p gunbc-ci --release
