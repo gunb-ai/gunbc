@@ -4,7 +4,7 @@
 //! The ops here are PURE (no I/O) - they prepare requests and parse responses.
 
 use gunbc_exec::{ExecError, Executable};
-use gunbc_ir::transport::{FileRequest, ShellRequest, TransportRequest, TransportResponse};
+use gunbc_ir::transport::{ShellRequest, TransportRequest, TransportResponse};
 use gunbc_ir::Value;
 use std::collections::HashMap;
 

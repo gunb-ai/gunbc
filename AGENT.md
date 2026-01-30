@@ -127,6 +127,38 @@ This principle applies broadly:
 - **Data flow**: Connecting ports = depending on that data
 - **Resource access**: Accessing a resource = needing that resource
 
+### 7. No Escape Hatches
+
+**The system cannot be bypassed. If a constraint exists, there is no way around it.**
+
+- No backdoors: If I/O must go through transport, there's no function to skip it
+- No special cases: "Just this once" exceptions don't exist
+- Compile-time enforcement: If something is banned, it won't compile — not just flagged
+
+Example: `execute_transport()` is not exported from `lib/transport`. You cannot call it from outside the crate.
+
+### 8. No Fallbacks
+
+**Operations either succeed or fail. There is no silent degradation.**
+
+- No silent defaults: Don't substitute default values when something is missing — fail
+- No "best effort": Either it worked or it didn't
+- Fail fast: Detect and report problems at the earliest possible point
+
+Bad: `config.unwrap_or_default()` — hides the real problem
+Good: `config?` — propagates the error to where it can be handled
+
+### 9. No Warnings
+
+**Errors are clear signals, not optional advisories. There are no "warnings" that can be ignored.**
+
+- Errors are errors: If something is wrong, the operation fails
+- No "informational" errors: Either it's a problem or it isn't
+- Clear failure modes: When something fails, the error explains what and where
+
+Bad: `eprintln!("Warning: name is empty")` — continues anyway
+Good: `return Err(ValidationError::EmptyName)` — cannot be ignored
+
 ---
 
 ## E2E Design Philosophy Examples

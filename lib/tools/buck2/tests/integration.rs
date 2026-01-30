@@ -3,7 +3,7 @@
 use gunbc_buck2::build_buck2_graph;
 use gunbc_exec::{execute_with_mode, BoundaryMocks, ExecutionMode};
 use gunbc_ir::transport::{FileOp, FileResponse, TransportResponse};
-use gunbc_ir::{detect_boundaries, Value};
+use gunbc_ir::Value;
 use gunbc_test::assert_boundary_mockable;
 
 /// Test that dry-run mode intercepts all transport boundaries.

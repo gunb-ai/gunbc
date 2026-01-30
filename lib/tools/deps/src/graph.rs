@@ -223,7 +223,7 @@ impl Mockable for DepsGraphOp {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gunbc_ir::{detect_boundaries, detect_entrypoints, infer_signature};
+    use gunbc_ir::{detect_boundaries, detect_entrypoints};
 
     #[test]
     fn test_graph_builds_successfully() {

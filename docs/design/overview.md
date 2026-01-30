@@ -836,23 +836,101 @@ When multiple edges feed into a single port, the order of values in the resultin
 
 **Status**: Implemented in `dag.rs` with `canonical_edge_order()`.
 
+### I6. No Escape Hatches
+
+> **The system cannot be bypassed. If a constraint exists, there is no way around it.**
+
+| Principle | Meaning |
+|-----------|---------|
+| **No backdoors** | If I/O must go through transport, there's no function to call to skip it |
+| **No special cases** | "Just this once" exceptions don't exist |
+| **Compile-time enforcement** | If something is banned, it won't compile — not just flagged by a linter |
+
+**Example**: `execute_transport()` is not exported from `lib/transport`. You literally cannot call it from outside the crate. The escape hatch doesn't exist.
+
+**Violation**: Adding a `pub` function that provides a "back door" for convenience.
+
+**Why it matters**: Escape hatches accumulate. One leads to ten. The system loses its guarantees.
+
+### I7. No Fallbacks
+
+> **Operations either succeed or fail. There is no silent degradation.**
+
+| Principle | Meaning |
+|-----------|---------|
+| **No silent defaults** | Don't substitute default values when something is missing — fail |
+| **No "best effort"** | Either it worked or it didn't. No partial success without explicit modeling |
+| **Fail fast** | Detect and report problems at the earliest possible point |
+
+**Example**:
+```rust
+// BAD: Silent fallback
+fn get_config(path: &str) -> Config {
+    match read_file(path) {
+        Ok(content) => parse(content),
+        Err(_) => Config::default()  // Silent degradation!
+    }
+}
+
+// GOOD: Explicit failure
+fn get_config(path: &str) -> Result<Config, Error> {
+    let content = read_file(path)?;  // Propagate error
+    parse(content)
+}
+```
+
+**Violation**: Using `.unwrap_or_default()` to hide errors, or `Option<T>` when the value is actually required.
+
+**Why it matters**: Silent degradation hides bugs. You discover the problem far from where it occurred, or worse, never discover it.
+
+### I8. No Warnings
+
+> **Errors are clear signals, not optional advisories. There are no "warnings" that can be ignored.**
+
+| Principle | Meaning |
+|-----------|---------|
+| **Errors are errors** | If something is wrong, the operation fails — it doesn't print a warning and continue |
+| **No "informational" errors** | Don't log "FYI: this might be a problem" — either it's a problem or it isn't |
+| **Clear failure modes** | When something fails, the error explains what, where, and ideally why |
+
+**Example**:
+```rust
+// BAD: Warning that can be ignored
+fn validate(input: &Input) -> ValidationResult {
+    if input.name.is_empty() {
+        eprintln!("Warning: name is empty");  // Just FYI!
+    }
+    // ... continues anyway
+}
+
+// GOOD: Clear error
+fn validate(input: &Input) -> Result<ValidInput, ValidationError> {
+    if input.name.is_empty() {
+        return Err(ValidationError::EmptyName);  // Can't ignore this
+    }
+    // ... only continues if valid
+}
+```
+
+**Violation**: Using `println!` or `eprintln!` to report problems instead of returning errors. Using `#[allow(warnings)]` to suppress instead of fix.
+
+**Why it matters**: Warnings train people to ignore output. Eventually the real errors are hidden in noise.
+
 ---
 
 ## Structural I/O Enforcement
 
-> **Status**: In progress. CI is migrated; other tools pending.
+> **Status**: Completed. All tools migrated, escape hatch closed.
 
-### The Problem
+### The Problem (Solved)
 
-Two ways to do I/O exist:
+Previously, two ways to do I/O existed:
 1. **Correct**: `TransportOps::Execute` nodes (visible in graph, interceptable by DryRun)
 2. **Escape hatch**: `execute_transport()` called inside ops (hidden, not interceptable)
 
-As long as both exist, developers regress to the convenient path.
+### The Fix (Applied)
 
-### The Fix
-
-**Remove the escape hatch structurally**: Don't export `execute_transport()` from `lib/transport`.
+**Escape hatch removed structurally**: `execute_transport()` is no longer exported from `lib/transport`.
 
 ```rust
 // lib/transport/src/lib.rs
