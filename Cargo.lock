@@ -85,9 +85,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "gunbc-clippy"
+version = "0.1.0"
+dependencies = [
+ "gunbc-exec",
+ "gunbc-ir",
+ "gunbc-test",
+]
+
+[[package]]
 name = "gunbc-codegen"
 version = "0.1.0"
 dependencies = [
+ "gunbc-clippy",
  "gunbc-ir",
 ]
 

@@ -274,21 +274,21 @@ pub fn ci_integrations_with_cache() -> Vec<Action> {
 
 - [ ] **Derive tool list from ToolDef** — instead of hardcoded `default_registry()`
 - [ ] **Generate help text** — from tool descriptions and entrypoints
-- [ ] **Add prep target generation** — ensure codegen/daggen run as needed
-- [ ] **Support multiple build systems** — BuildConfig already has cargo/buck2
+- [x] **Add prep target generation** — ensure codegen/daggen run as needed (exists in makegen)
+- [x] **Support multiple build systems** — BuildConfig already has cargo/buck2
 
 ### CI Improvements
 
-- [ ] **Add satisfiability check** — verify tools available before pipeline
-- [ ] **Generate ci.yml** — from WorkflowConfig
-- [ ] **Add caching** — cache cargo registry and target
-- [ ] **Generate CI deps.toml** — only tools not provided by runner
-- [ ] **Model Actions as typed entities** — with provides_tools, inputs, outputs
+- [x] **Add satisfiability check** — verify tools available before pipeline (`WorkflowConfig.check_satisfiability()`)
+- [x] **Generate ci.yml** — from WorkflowConfig (`WorkflowConfig.render()`)
+- [x] **Add caching** — cache cargo registry and target (`CacheConfig::rust()`)
+- [x] **Generate CI deps.toml** — only tools not provided by runner (`generate_deps_toml()`)
+- [x] **Model Actions as typed entities** — with provides_tools, inputs, outputs (`Integration` struct)
 
 ### Integration
 
-- [ ] **Connect runner tools to ToolDef** — ubuntu-latest provides git, cargo, etc.
-- [ ] **Validate CI config** — tools used match runner capabilities
+- [x] **Connect runner tools to ToolDef** — ubuntu-latest provides git, cargo, etc. (`RunnerImage.tools`)
+- [x] **Validate CI config** — tools used match runner capabilities (`check_satisfiability()`)
 - [ ] **Bootstrap validation** — ensure generated files match source of truth
 
 ## Notes

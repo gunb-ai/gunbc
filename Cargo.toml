@@ -23,8 +23,7 @@ members = [
     "lib/tools/deps",
     "lib/tools/ci",
     "lib/tools/bootstrap",
-    # NOTE: lib/tools/clippy and lib/tools/cargo removed - use cli::CLIPPY/CARGO
-    # with node.requires() instead for the capability-based tool pattern
+    "lib/tools/clippy",  # Config modeling + tool upsert (cli::CLIPPY for acquisition)
 ]
 
 [workspace.package]

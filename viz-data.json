@@ -501,13 +501,13 @@
           "classes": []
         },
         {
-          "id": "write_makefile",
-          "label": "write_makefile",
+          "id": "prepare_file_write",
+          "label": "prepare_file_write",
           "parent": null,
           "type": "opaque",
           "inputs": [
             {
-              "name": "makefile_content",
+              "name": "content",
               "type": "String",
               "is_entrypoint": false,
               "is_boundary": false
@@ -521,6 +521,39 @@
           ],
           "outputs": [
             {
+              "name": "request",
+              "type": "TransportRequest",
+              "is_entrypoint": false,
+              "is_boundary": false
+            }
+          ],
+          "is_boundary": false,
+          "is_entrypoint": true,
+          "classes": [
+            "entrypoint"
+          ]
+        },
+        {
+          "id": "execute_transport",
+          "label": "execute_transport",
+          "parent": null,
+          "type": "opaque",
+          "inputs": [
+            {
+              "name": "request",
+              "type": "TransportRequest",
+              "is_entrypoint": false,
+              "is_boundary": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "response",
+              "type": "TransportResponse",
+              "is_entrypoint": false,
+              "is_boundary": true
+            },
+            {
               "name": "written_path",
               "type": "String",
               "is_entrypoint": false,
@@ -531,19 +564,12 @@
               "type": "String",
               "is_entrypoint": false,
               "is_boundary": true
-            },
-            {
-              "name": "changed",
-              "type": "Bool",
-              "is_entrypoint": false,
-              "is_boundary": true
             }
           ],
           "is_boundary": true,
-          "is_entrypoint": true,
+          "is_entrypoint": false,
           "classes": [
-            "boundary",
-            "entrypoint"
+            "boundary"
           ]
         }
       ],
@@ -559,15 +585,23 @@
         {
           "id": "e1",
           "source": "render_makefile",
-          "target": "write_makefile",
+          "target": "prepare_file_write",
           "source_port": "makefile_content",
-          "target_port": "makefile_content",
+          "target_port": "content",
           "data_type": "String"
+        },
+        {
+          "id": "e2",
+          "source": "prepare_file_write",
+          "target": "execute_transport",
+          "source_port": "request",
+          "target_port": "request",
+          "data_type": "TransportRequest"
         }
       ],
       "meta": {
-        "node_count": 3,
-        "edge_count": 2,
+        "node_count": 4,
+        "edge_count": 3,
         "boundary_count": 2,
         "entrypoint_count": 1,
         "max_depth": 0
@@ -759,8 +793,8 @@
           ]
         },
         {
-          "id": "build",
-          "label": "build",
+          "id": "prep",
+          "label": "prep",
           "parent": null,
           "type": "opaque",
           "inputs": [
@@ -773,10 +807,55 @@
           ],
           "outputs": [
             {
+              "name": "prep_success",
+              "type": "Bool",
+              "is_entrypoint": false,
+              "is_boundary": false
+            },
+            {
+              "name": "codegen_ran",
+              "type": "Bool",
+              "is_entrypoint": false,
+              "is_boundary": true
+            },
+            {
+              "name": "prep_message",
+              "type": "String",
+              "is_entrypoint": false,
+              "is_boundary": true
+            }
+          ],
+          "is_boundary": true,
+          "is_entrypoint": false,
+          "classes": [
+            "boundary"
+          ]
+        },
+        {
+          "id": "build",
+          "label": "build",
+          "parent": null,
+          "type": "opaque",
+          "inputs": [
+            {
+              "name": "prep_success",
+              "type": "Bool",
+              "is_entrypoint": false,
+              "is_boundary": false
+            }
+          ],
+          "outputs": [
+            {
               "name": "build_success",
               "type": "Bool",
               "is_entrypoint": false,
               "is_boundary": false
+            },
+            {
+              "name": "build_skipped",
+              "type": "Bool",
+              "is_entrypoint": false,
+              "is_boundary": true
             },
             {
               "name": "build_stdout",
@@ -853,6 +932,12 @@
               "type": "Bool",
               "is_entrypoint": false,
               "is_boundary": false
+            },
+            {
+              "name": "tool:clippy",
+              "type": "ToolHandle",
+              "is_entrypoint": true,
+              "is_boundary": false
             }
           ],
           "outputs": [
@@ -882,9 +967,10 @@
             }
           ],
           "is_boundary": true,
-          "is_entrypoint": false,
+          "is_entrypoint": true,
           "classes": [
-            "boundary"
+            "boundary",
+            "entrypoint"
           ]
         },
         {
@@ -937,13 +1023,21 @@
         {
           "id": "e0",
           "source": "setup_deps",
-          "target": "build",
+          "target": "prep",
           "source_port": "deps_checked",
           "target_port": "deps_checked",
           "data_type": "Bool"
         },
         {
           "id": "e1",
+          "source": "prep",
+          "target": "build",
+          "source_port": "prep_success",
+          "target_port": "prep_success",
+          "data_type": "Bool"
+        },
+        {
+          "id": "e2",
           "source": "build",
           "target": "test",
           "source_port": "build_success",
@@ -951,7 +1045,7 @@
           "data_type": "Bool"
         },
         {
-          "id": "e2",
+          "id": "e3",
           "source": "build",
           "target": "lint",
           "source_port": "build_success",
@@ -959,7 +1053,7 @@
           "data_type": "Bool"
         },
         {
-          "id": "e3",
+          "id": "e4",
           "source": "build",
           "target": "report",
           "source_port": "build_success",
@@ -967,7 +1061,7 @@
           "data_type": "Bool"
         },
         {
-          "id": "e4",
+          "id": "e5",
           "source": "test",
           "target": "report",
           "source_port": "test_success",
@@ -975,7 +1069,7 @@
           "data_type": "Bool"
         },
         {
-          "id": "e5",
+          "id": "e6",
           "source": "lint",
           "target": "report",
           "source_port": "lint_success",
@@ -984,10 +1078,10 @@
         }
       ],
       "meta": {
-        "node_count": 5,
-        "edge_count": 6,
-        "boundary_count": 5,
-        "entrypoint_count": 0,
+        "node_count": 6,
+        "edge_count": 7,
+        "boundary_count": 6,
+        "entrypoint_count": 1,
         "max_depth": 0
       }
     },
@@ -1047,6 +1141,70 @@
           "classes": []
         },
         {
+          "id": "prepare_makefile_write",
+          "label": "prepare_makefile_write",
+          "parent": null,
+          "type": "opaque",
+          "inputs": [
+            {
+              "name": "content",
+              "type": "String",
+              "is_entrypoint": false,
+              "is_boundary": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "request",
+              "type": "TransportRequest",
+              "is_entrypoint": false,
+              "is_boundary": false
+            }
+          ],
+          "is_boundary": false,
+          "is_entrypoint": false,
+          "classes": []
+        },
+        {
+          "id": "execute_makefile_transport",
+          "label": "execute_makefile_transport",
+          "parent": null,
+          "type": "opaque",
+          "inputs": [
+            {
+              "name": "request",
+              "type": "TransportRequest",
+              "is_entrypoint": false,
+              "is_boundary": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "makefile_response",
+              "type": "TransportResponse",
+              "is_entrypoint": false,
+              "is_boundary": true
+            },
+            {
+              "name": "makefile_written_path",
+              "type": "String",
+              "is_entrypoint": false,
+              "is_boundary": true
+            },
+            {
+              "name": "makefile_content",
+              "type": "String",
+              "is_entrypoint": false,
+              "is_boundary": true
+            }
+          ],
+          "is_boundary": true,
+          "is_entrypoint": false,
+          "classes": [
+            "boundary"
+          ]
+        },
+        {
           "id": "generate_gitignore",
           "label": "generate_gitignore",
           "parent": null,
@@ -1072,19 +1230,13 @@
           "classes": []
         },
         {
-          "id": "write_files",
-          "label": "write_files",
+          "id": "prepare_gitignore_write",
+          "label": "prepare_gitignore_write",
           "parent": null,
           "type": "opaque",
           "inputs": [
             {
-              "name": "makefile_content",
-              "type": "String",
-              "is_entrypoint": false,
-              "is_boundary": false
-            },
-            {
-              "name": "gitignore_content",
+              "name": "content",
               "type": "String",
               "is_entrypoint": false,
               "is_boundary": false
@@ -1092,14 +1244,45 @@
           ],
           "outputs": [
             {
-              "name": "files_written",
-              "type": "StrList",
+              "name": "request",
+              "type": "TransportRequest",
+              "is_entrypoint": false,
+              "is_boundary": false
+            }
+          ],
+          "is_boundary": false,
+          "is_entrypoint": false,
+          "classes": []
+        },
+        {
+          "id": "execute_gitignore_transport",
+          "label": "execute_gitignore_transport",
+          "parent": null,
+          "type": "opaque",
+          "inputs": [
+            {
+              "name": "request",
+              "type": "TransportRequest",
+              "is_entrypoint": false,
+              "is_boundary": false
+            }
+          ],
+          "outputs": [
+            {
+              "name": "gitignore_response",
+              "type": "TransportResponse",
               "is_entrypoint": false,
               "is_boundary": true
             },
             {
-              "name": "write_count",
-              "type": "Int",
+              "name": "gitignore_written_path",
+              "type": "String",
+              "is_entrypoint": false,
+              "is_boundary": true
+            },
+            {
+              "name": "gitignore_content",
+              "type": "String",
               "is_entrypoint": false,
               "is_boundary": true
             }
@@ -1122,6 +1305,22 @@
         },
         {
           "id": "e1",
+          "source": "generate_makefile",
+          "target": "prepare_makefile_write",
+          "source_port": "makefile_content",
+          "target_port": "content",
+          "data_type": "String"
+        },
+        {
+          "id": "e2",
+          "source": "prepare_makefile_write",
+          "target": "execute_makefile_transport",
+          "source_port": "request",
+          "target_port": "request",
+          "data_type": "TransportRequest"
+        },
+        {
+          "id": "e3",
           "source": "scan_workspace",
           "target": "generate_gitignore",
           "source_port": "crate_names",
@@ -1129,26 +1328,26 @@
           "data_type": "StrList"
         },
         {
-          "id": "e2",
-          "source": "generate_makefile",
-          "target": "write_files",
-          "source_port": "makefile_content",
-          "target_port": "makefile_content",
+          "id": "e4",
+          "source": "generate_gitignore",
+          "target": "prepare_gitignore_write",
+          "source_port": "gitignore_content",
+          "target_port": "content",
           "data_type": "String"
         },
         {
-          "id": "e3",
-          "source": "generate_gitignore",
-          "target": "write_files",
-          "source_port": "gitignore_content",
-          "target_port": "gitignore_content",
-          "data_type": "String"
+          "id": "e5",
+          "source": "prepare_gitignore_write",
+          "target": "execute_gitignore_transport",
+          "source_port": "request",
+          "target_port": "request",
+          "data_type": "TransportRequest"
         }
       ],
       "meta": {
-        "node_count": 4,
-        "edge_count": 4,
-        "boundary_count": 2,
+        "node_count": 7,
+        "edge_count": 6,
+        "boundary_count": 3,
         "entrypoint_count": 0,
         "max_depth": 0
       }
@@ -1324,5 +1523,5 @@
       }
     }
   ],
-  "generated_at": "1769723053"
+  "generated_at": "1769790649"
 }

@@ -1,15 +1,15 @@
 # Clippy Modeling
 
-**Status**: Complete
+**Status**: Partially Complete
 **Date**: 2026-01-29
 
 ## Goal
 
 Model clippy as both:
 1. **A tool dependency** — clippy needs to be installed, verified, and can be upserted ✅ DONE
-2. **Configuration as code** — clippy.toml generated from `ClippyConfig` struct ✅ DONE
+2. **A meta-understanding** — how we USE clippy to enforce architectural constraints (transport pattern) ❌ NOT DONE
 
-This follows the fractal DAG pattern where tool crates define both tool operations AND their configuration.
+This follows the-gunbai pattern where tools are not just dependencies but have associated "understandings" — documentation of HOW they're configured and WHY.
 
 ## Current State
 
@@ -58,21 +58,12 @@ This follows the fractal DAG pattern where tool crates define both tool operatio
    - `build_cli_ensure(tool)` — Check + install without run
    - `ToolHandle` — Capability-based access (can't use tool without acquiring)
 
-9. **✅ `ClippyConfig` struct** (`lib/tools/clippy/src/config.rs`):
-   - `ClippyConfig` — Main config struct with disallowed_methods and crate_allowances
-   - `DisallowedMethod` — Individual method rule (path + reason)
-   - `CrateAllowance` — Crate bypass documentation
-   - `ClippyConfig::transport_pattern()` — Preset for transport pattern enforcement
-   - `generate_clippy_toml()` — Renders config to TOML format
-   - `ClippyConfigRenderer` — Implements `Renderable` for standard header
-
-10. **✅ Codegen integration** (`core/codegen/src/main.rs`):
-    - `cargo run -p gunbc-codegen -- clippy-toml` — Generates clippy.toml
-
 ### What's Still Missing
 
-1. **CI verification** — Verify clippy.toml matches generated version in CI pipeline
-2. **Lint allowances doc** — Generate docs/lint-allowances.md explaining crate exceptions
+1. **No ClippyConfig struct** — clippy.toml is manually maintained, not generated
+2. **No documentation of clippy configuration** — WHY these rules exist
+3. **No validation that clippy.toml is correct** — could drift from intent
+4. **No crate-level allowances documented** — some crates bypass rules
 
 ## Design
 
@@ -249,24 +240,20 @@ pub fn generate_lint_docs(config: &ClippyConfig) -> String {
 │                                                                         │
 └─────────────────────────────────────────────────────────────────────────┘
 
-### Implemented: Configuration Modeling
+### Not Implemented: Configuration Modeling
 
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                    ClippyConfig (IMPLEMENTED)                            │
+│                    ClippyConfig (NOT IMPLEMENTED)                        │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                         │
-│  lib/tools/clippy/src/config.rs                                         │
-│  ├── ClippyConfig                                                       │
-│  │   ├── disallowed_methods: Vec<DisallowedMethod>                      │
-│  │   ├── crate_allowances: Vec<CrateAllowance>                          │
-│  │   └── large_error_threshold: Option<u32>                             │
-│  │                                                                      │
-│  ├── ClippyConfig::transport_pattern()  → Preset config                 │
-│  ├── generate_clippy_toml()             → Render to TOML                │
-│  └── ClippyConfigRenderer               → Implements Renderable         │
+│  ClippyConfig                                                           │
+│  ├── disallowed_methods[]         → Generate clippy.toml                │
+│  │   ├── path                                                           │
+│  │   ├── reason                                                         │
+│  │   └── category                                                       │
+│  └── crate_allowances[]           → Generate lint-allowances.md         │
 │                                                                         │
-│  core/codegen/src/main.rs                                               │
-│  └── cmd_clippy_toml()                  → `codegen clippy-toml`         │
+│  gunbc_clippy_config()            → Source of truth in Rust             │
 │                                                                         │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
@@ -283,22 +270,12 @@ pub fn generate_lint_docs(config: &ClippyConfig) -> String {
 - [x] **Implement build_cli_upsert()** — Generic pattern for any CLI tool
 - [x] **Implement ToolHandle** — Capability-based tool access
 
-### Configuration Modeling (COMPLETE ✅)
+### Configuration Modeling (NOT STARTED)
 
-The config modeling lives in `lib/tools/clippy/` following the same pattern as other tool crates:
-
-| Crate | Config Type | Generated File |
-|-------|-------------|----------------|
-| `lib/tools/deps/` | `Manifest` | `deps.toml` |
-| `lib/tools/makegen/` | `BuildConfig` | `Makefile` |
-| `lib/tools/ci/` | `WorkflowConfig` | `ci.yml` |
-| `lib/tools/clippy/` | `ClippyConfig` ✅ | `clippy.toml` ✅ |
-
-Tasks:
-- [x] **Create ClippyConfig struct** — in `lib/tools/clippy/src/config.rs`
-- [x] **Implement ClippyConfig::transport_pattern()** — preset for transport pattern enforcement
-- [x] **Generate clippy.toml** — `generate_clippy_toml()` function
-- [x] **Add to codegen** — `cargo run -p gunbc-codegen -- clippy-toml`
+- [ ] **Create ClippyConfig struct** — model clippy.toml as data
+- [ ] **Implement gunbc_clippy_config()** — source of truth in Rust
+- [ ] **Generate clippy.toml** — from config (like deps.toml)
+- [ ] **Document crate allowances** — generate lint-allowances.md
 - [ ] **Add to CI** — verify clippy.toml matches generated version
 
 ### Note on InstallInputs.component

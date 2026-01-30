@@ -1,4 +1,4 @@
-//! CLI and DAG generator - generates main.rs, graph.rs, and CI YAML for all tools.
+//! CLI and DAG generator - generates main.rs, graph.rs, CI YAML, and config files.
 //!
 //! This is a transaction-based code generator:
 //! - `commit` (default): Generate CLIs, build binaries, create bin directory
@@ -6,6 +6,7 @@
 //! - `codegen`: Just generate CLIs (partial commit)
 //! - `daggen`: Generate graph.rs from declarative DAG definitions
 //! - `cigen`: Generate CI workflow YAML (GitHub Actions and GitLab CI)
+//! - `clippy-toml`: Generate clippy.toml from ClippyConfig
 //!
 //! Usage:
 //!   gunbc-codegen                    # same as 'commit'
@@ -14,6 +15,7 @@
 //!   gunbc-codegen codegen            # just generate CLIs
 //!   gunbc-codegen daggen             # generate graph.rs files
 //!   gunbc-codegen cigen              # generate CI YAML files
+//!   gunbc-codegen clippy-toml        # generate clippy.toml
 //!   gunbc-codegen codegen --dry-run  # preview codegen
 //!
 //! # Architecture Note
@@ -25,10 +27,12 @@
 //! Future improvement: Express codegen as a DAG executed by a minimal bootstrap
 //! executor that doesn't depend on the generated tools.
 
+use gunbc_clippy::ClippyConfigRenderer;
 use gunbc_codegen::{
     all_cleanable_outputs, all_tools, generate_cli_with_import, generate_graph_rs, FileWriter,
 };
 use gunbc_ir::transport::ci::{CiRenderer, GitHubActionsProvider, GitLabCiProvider, RenderConfig};
+use gunbc_ir::Renderable;
 use std::env;
 use std::fs;
 use std::io;
@@ -58,6 +62,7 @@ fn main() {
         "codegen" => cmd_codegen(dry_run),
         "daggen" => cmd_daggen(dry_run),
         "cigen" => cmd_cigen(dry_run),
+        "clippy-toml" => cmd_clippy_toml(dry_run),
         _ => {
             eprintln!("Unknown command: {}", command);
             eprintln!("Run 'gunbc-codegen --help' for usage");
@@ -325,6 +330,41 @@ fn cmd_cigen(dry_run: bool) {
     println!("Generated: 2 CI files");
 }
 
+/// Generate clippy.toml from ClippyConfig.
+///
+/// Uses the transport pattern preset which enforces:
+/// - Direct I/O operations must go through the transport layer
+/// - Process execution uses the tool acquisition pattern
+fn cmd_clippy_toml(dry_run: bool) {
+    println!("gunbc-codegen: clippy-toml");
+    println!("  mode: {}", if dry_run { "dry-run" } else { "real" });
+    println!();
+
+    let writer = FileWriter::new(dry_run);
+    let renderer = ClippyConfigRenderer::transport_pattern();
+    let content = renderer.render();
+
+    let clippy_path = Path::new("clippy.toml");
+
+    match writer.write(clippy_path, &content) {
+        Ok(result) => {
+            let status = if result.written {
+                if result.changed { "written" } else { "unchanged" }
+            } else {
+                "dry-run"
+            };
+            println!("  {} ({})", clippy_path.display(), status);
+        }
+        Err(e) => {
+            eprintln!("  ERROR: {}", e);
+            std::process::exit(1);
+        }
+    }
+
+    println!();
+    println!("Generated: clippy.toml");
+}
+
 /// Generate GitHub Actions YAML template.
 fn generate_github_actions_template(config: &RenderConfig) -> String {
     let mut yaml = String::new();
@@ -482,11 +522,12 @@ fn print_help() {
     println!("    gunbc-codegen [COMMAND] [OPTIONS]");
     println!();
     println!("COMMANDS:");
-    println!("    commit     Generate CLIs, build binaries, create symlink (default)");
-    println!("    rollback   Remove all generated artifacts (clean)");
-    println!("    codegen    Just generate CLIs (partial commit)");
-    println!("    daggen     Generate graph.rs from declarative DAG definitions");
-    println!("    cigen      Generate CI workflow YAML (GitHub Actions & GitLab CI)");
+    println!("    commit       Generate CLIs, build binaries, create symlink (default)");
+    println!("    rollback     Remove all generated artifacts (clean)");
+    println!("    codegen      Just generate CLIs (partial commit)");
+    println!("    daggen       Generate graph.rs from declarative DAG definitions");
+    println!("    cigen        Generate CI workflow YAML (GitHub Actions & GitLab CI)");
+    println!("    clippy-toml  Generate clippy.toml from ClippyConfig");
     println!();
     println!("OPTIONS:");
     println!("    -n, --dry-run    Preview changes without writing");
@@ -498,4 +539,5 @@ fn print_help() {
     println!("    gunbc-codegen codegen -n     # preview CLI generation");
     println!("    gunbc-codegen daggen         # generate graph.rs for tools with DAG defs");
     println!("    gunbc-codegen cigen          # generate CI YAML files");
+    println!("    gunbc-codegen clippy-toml    # generate clippy.toml config");
 }
