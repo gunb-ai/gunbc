@@ -260,6 +260,93 @@ impl Executable for PrepareDirectoryListOp {
     }
 }
 
+// ============================================================================
+// Embedded variants - for hardcoded paths/commands (no input ports needed)
+// ============================================================================
+
+/// Prepare a file exists check with embedded path (PURE - no I/O).
+///
+/// Use this when the path is known at graph construction time.
+/// For dynamic paths from upstream nodes, use `PrepareFileExistsOp` instead.
+///
+/// Outputs:
+/// - `request`: TransportRequest for transport layer
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmbeddedFileExistsOp {
+    pub path: String,
+}
+
+impl EmbeddedFileExistsOp {
+    pub fn new(path: &str) -> Self {
+        Self {
+            path: path.to_string(),
+        }
+    }
+}
+
+impl Executable for EmbeddedFileExistsOp {
+    fn execute(&self, _inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        let request = TransportRequest::File(FileRequest::exists(&self.path));
+
+        let mut out = HashMap::new();
+        out.insert("request".to_string(), Value::Request(request));
+        Ok(out)
+    }
+}
+
+/// Prepare a shell command with embedded command/args (PURE - no I/O).
+///
+/// Use this when the command is known at graph construction time.
+/// For dynamic commands from upstream nodes, use `PrepareShellOp` instead.
+///
+/// Outputs:
+/// - `request`: TransportRequest for transport layer
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmbeddedShellOp {
+    pub command: String,
+    pub args: Vec<String>,
+}
+
+impl EmbeddedShellOp {
+    pub fn new(command: &str, args: &[&str]) -> Self {
+        Self {
+            command: command.to_string(),
+            args: args.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    /// Create from a config-style command slice (first element is command, rest are args).
+    pub fn from_config(config_cmd: &[&str]) -> Self {
+        if config_cmd.is_empty() {
+            Self {
+                command: String::new(),
+                args: Vec::new(),
+            }
+        } else {
+            Self {
+                command: config_cmd[0].to_string(),
+                args: config_cmd[1..].iter().map(|s| s.to_string()).collect(),
+            }
+        }
+    }
+}
+
+impl Executable for EmbeddedShellOp {
+    fn execute(&self, _inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        let request = TransportRequest::Shell(ShellRequest {
+            command: self.command.clone(),
+            args: self.args.clone(),
+            cwd: None,
+            env: std::collections::HashMap::new(),
+            stdin: None,
+        });
+
+        let mut out = HashMap::new();
+        out.insert("request".to_string(), Value::Request(request));
+        Ok(out)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

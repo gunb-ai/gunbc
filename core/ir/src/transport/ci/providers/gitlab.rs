@@ -16,6 +16,7 @@
 //! from DAGs. Uses stages for parallelism and `needs` for dependencies.
 
 use crate::language::traits::comment::generated_header;
+use crate::language::NamingCase;
 use crate::transport::ci::command::{AnnotationLevel, WorkflowCommand};
 use crate::transport::ci::provider::CiProvider;
 use crate::transport::ci::render::{dag_to_shared_steps, CiRenderer, RenderConfig, SharedStep};
@@ -288,7 +289,7 @@ fn compute_stages(steps: &[SharedStep]) -> Vec<String> {
                 }
             }
             SharedStep::DagRun { tool_binary } => {
-                let stage = format!("{}-run", tool_binary.replace('-', "_"));
+                let stage = format!("{}-run", NamingCase::SnakeCase.apply(tool_binary));
                 if !stages.contains(&stage) {
                     stages.push(stage);
                 }
@@ -351,7 +352,7 @@ fn render_gitlab_job(step: &SharedStep, _config: &RenderConfig) -> String {
         }
 
         SharedStep::DagRun { tool_binary } => {
-            let stage_name = format!("{}-run", tool_binary.replace('-', "_"));
+            let stage_name = format!("{}-run", NamingCase::SnakeCase.apply(tool_binary));
             format!(
                 "{}:\n  stage: {}\n  script:\n    - {}\n\n",
                 stage_name, stage_name, tool_binary

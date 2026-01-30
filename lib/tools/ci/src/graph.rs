@@ -35,7 +35,6 @@
 use crate::ops::CIOp;
 use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::transport::cli::CliToolOp;
-use gunbc_ir::transport::{FileRequest, ShellRequest, TransportRequest};
 use gunbc_ir::{
     build::*, BuilderError, Cardinality, Dag, DagBuilder, Node, Value, WorkflowSignature,
     transport::github_actions::{
@@ -44,6 +43,8 @@ use gunbc_ir::{
     },
 };
 use gunbc_lib_transport::TransportOps;
+use gunbc_deps::DEFAULT_MANIFEST_FILENAME;
+use gunbc_primitives::EmbeddedFileExistsOp;
 use std::collections::HashMap;
 
 // ============================================================================
@@ -54,18 +55,15 @@ use std::collections::HashMap;
 ///
 /// This follows the MakegenGraphOp pattern:
 /// - `CI(CIOp)` - domain-specific pure operations
-/// - `PrepareFileExists` - local primitive for file existence checks (with embedded path)
-/// - `PrepareShell` - local primitive for shell command preparation
+/// - `PrepareFileExists` - embedded primitive for file existence checks (from gunbc-primitives)
 /// - `Transport` - boundary for actual I/O
 /// - `CliTool` - CLI tool operations (for SubDag integration)
 #[derive(Debug, Clone)]
 pub enum CIGraphOp {
     /// CI-specific pure operations
     CI(CIOp),
-    /// Prepare file exists check (pure - path embedded)
-    PrepareFileExists(PrepareFileExistsOp),
-    /// Prepare shell command (pure - outputs TransportRequest)
-    PrepareShell(PrepareShellOp),
+    /// Prepare file exists check (pure - path embedded, from primitives)
+    PrepareFileExists(EmbeddedFileExistsOp),
     /// Transport operations (boundary - actual I/O)
     Transport(TransportOps),
     /// CLI tool operations (for SubDag integration with clippy, etc.)
@@ -80,7 +78,6 @@ impl Executable for CIGraphOp {
         match self {
             CIGraphOp::CI(op) => op.execute(inputs),
             CIGraphOp::PrepareFileExists(op) => op.execute(inputs),
-            CIGraphOp::PrepareShell(op) => op.execute(inputs),
             CIGraphOp::Transport(op) => op.execute(inputs),
             CIGraphOp::CliTool(op) => {
                 // Check if we should skip execution
@@ -107,88 +104,6 @@ impl Executable for CIGraphOp {
                 Ok(out)
             }
         }
-    }
-}
-
-// ============================================================================
-// PrepareFileExistsOp - Pure file exists check preparation (with embedded path)
-// ============================================================================
-
-/// Pure operation to prepare a file exists check.
-///
-/// Unlike the generic primitive, this embeds the path for convenience in CI graphs.
-#[derive(Debug, Clone)]
-pub struct PrepareFileExistsOp {
-    pub path: String,
-}
-
-impl PrepareFileExistsOp {
-    pub fn new(path: &str) -> Self {
-        Self {
-            path: path.to_string(),
-        }
-    }
-}
-
-impl Executable for PrepareFileExistsOp {
-    fn execute(&self, _inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let request = TransportRequest::File(FileRequest::exists(&self.path));
-
-        let mut out = HashMap::new();
-        out.insert("request".to_string(), Value::Request(request));
-        Ok(out)
-    }
-}
-
-// ============================================================================
-// PrepareShellOp - Pure shell command preparation
-// ============================================================================
-
-/// Pure operation to prepare a shell command (no I/O).
-///
-/// This is a local primitive that outputs a `TransportRequest::Shell`.
-#[derive(Debug, Clone)]
-pub struct PrepareShellOp {
-    pub command: String,
-    pub args: Vec<String>,
-}
-
-impl PrepareShellOp {
-    pub fn new(command: &str, args: &[&str]) -> Self {
-        Self {
-            command: command.to_string(),
-            args: args.iter().map(|s| s.to_string()).collect(),
-        }
-    }
-
-    pub fn from_config(config_cmd: &[&str]) -> Self {
-        if config_cmd.is_empty() {
-            Self {
-                command: String::new(),
-                args: Vec::new(),
-            }
-        } else {
-            Self {
-                command: config_cmd[0].to_string(),
-                args: config_cmd[1..].iter().map(|s| s.to_string()).collect(),
-            }
-        }
-    }
-}
-
-impl Executable for PrepareShellOp {
-    fn execute(&self, _inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let request = TransportRequest::Shell(ShellRequest {
-            command: self.command.clone(),
-            args: self.args.clone(),
-            cwd: None,
-            env: HashMap::new(),
-            stdin: None,
-        });
-
-        let mut out = HashMap::new();
-        out.insert("request".to_string(), Value::Request(request));
-        Ok(out)
     }
 }
 
@@ -277,7 +192,7 @@ pub fn build_ci_graph() -> Result<Dag<CIGraphOp>, BuilderError> {
         "prepare_deps_exists",
         vec![],
         vec![port("request", "TransportRequest")],
-        CIGraphOp::PrepareFileExists(PrepareFileExistsOp::new("deps.toml")),
+        CIGraphOp::PrepareFileExists(EmbeddedFileExistsOp::new(DEFAULT_MANIFEST_FILENAME)),
     ))?;
 
     // Execute - transport boundary

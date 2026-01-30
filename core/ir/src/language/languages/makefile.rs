@@ -19,9 +19,15 @@ use crate::dag::{Dag, Port};
 use crate::node::Node;
 use crate::language::LanguageOp;
 
+/// Default Makefile filename - the canonical name for generated Makefiles.
+pub const DEFAULT_MAKEFILE_FILENAME: &str = "Makefile";
+
 /// Makefile format static configuration.
 pub struct MakefileConfig {
     pub id: &'static str,
+    /// The default filename for generated Makefiles.
+    pub default_filename: &'static str,
+    /// All file patterns that identify Makefiles.
     pub file_patterns: &'static [&'static str],
     pub comment_prefix: &'static str,
     pub indent: &'static str,
@@ -30,6 +36,7 @@ pub struct MakefileConfig {
 /// Static Makefile configuration.
 pub const MAKEFILE: MakefileConfig = MakefileConfig {
     id: "makefile",
+    default_filename: DEFAULT_MAKEFILE_FILENAME,
     file_patterns: &["Makefile", "*.mk", "GNUmakefile"],
     comment_prefix: "#",
     indent: "\t", // Makefiles require tabs!

@@ -54,7 +54,7 @@ pub use languages::{build_gitignore_subdag, build_makefile_subdag, build_rust_su
 // Re-exports - Static configurations
 pub use languages::{
     rust_type, GitignoreConfig, MakefileConfig, MakeTarget, RustConfig,
-    GITIGNORE, MAKEFILE, RUST,
+    DEFAULT_GITIGNORE_FILENAME, DEFAULT_MAKEFILE_FILENAME, GITIGNORE, MAKEFILE, RUST,
 };
 
 /// Operations within the Languages DAG.

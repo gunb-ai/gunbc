@@ -2,7 +2,8 @@
 
 use crate::analyze::{analyze_dag, DagAnalysis};
 use gunbc_ir::language::traits::comment::{generated_header, RUST_COMMENTS};
-use gunbc_ir::{CardinalityCase, Dag, Value};
+use gunbc_ir::language::NamingCase;
+use gunbc_ir::{Dag, Value};
 use gunbc_test::MockSpec;
 
 /// Configuration for test generation.
@@ -141,7 +142,7 @@ impl<'a, T> TestGenerator<'a, T> {
 
         // Individual boundary node tests with MockSpec values
         for boundary_node in &analysis.boundaries.boundary_nodes {
-            let test_name = format!("test_boundary_{}_mockable", boundary_node.0.replace('-', "_"));
+            let test_name = format!("test_boundary_{}_mockable", NamingCase::SnakeCase.apply(&boundary_node.0));
             let node_name = &boundary_node.0;
 
             code.push_str(&format!("/// Test that {} boundary can be mocked.\n", node_name));
@@ -181,58 +182,6 @@ impl<'a, T> TestGenerator<'a, T> {
                 node_name
             ));
             code.push_str("    assert!(entry.was_intercepted, \"boundary should be intercepted in dry-run\");\n");
-            code.push_str("}\n\n");
-        }
-
-        code
-    }
-
-    /// Generate composition tests.
-    ///
-    /// DEPRECATED: Type and cardinality compatibility are now verified at compile time
-    /// by validate_dag(). These tests are redundant.
-    #[allow(dead_code)]
-    fn generate_composition_tests(&self, analysis: &DagAnalysis, graph_builder_fn: &str) -> String {
-        let mut code = String::new();
-
-        code.push_str("// ============================================================================\n");
-        code.push_str("// Composition Tests\n");
-        code.push_str("// ============================================================================\n\n");
-
-        // Test that all edges are compatible
-        code.push_str("/// Test that all edge types are compatible.\n");
-        code.push_str("#[test]\n");
-        code.push_str("fn test_all_edges_compatible() {\n");
-        code.push_str(&format!("    let dag = {};\n", graph_builder_fn));
-        code.push_str("    let results = assert_types_compatible(&dag);\n");
-        code.push_str("    for result in &results {\n");
-        code.push_str("        assert!(result.is_compatible(), \"Edge {} should be compatible\", result.edge);\n");
-        code.push_str("    }\n");
-        code.push_str("}\n\n");
-
-        // Individual edge tests
-        for edge_info in &analysis.edge_types {
-            let test_name = format!(
-                "test_edge_{}_{}_to_{}_{}",
-                edge_info.from_node.replace('-', "_"),
-                edge_info.from_port.replace('-', "_"),
-                edge_info.to_node.replace('-', "_"),
-                edge_info.to_port.replace('-', "_")
-            );
-
-            code.push_str(&format!(
-                "/// Test edge {}.{} -> {}.{} type compatibility.\n",
-                edge_info.from_node, edge_info.from_port,
-                edge_info.to_node, edge_info.to_port
-            ));
-            code.push_str("#[test]\n");
-            code.push_str(&format!("fn {}() {{\n", test_name));
-            code.push_str(&format!("    // {} -> {}\n", edge_info.from_type, edge_info.to_type));
-            code.push_str(&format!(
-                "    assert!({}, \"Types {} and {} should be compatible\");\n",
-                edge_info.compatible,
-                edge_info.from_type, edge_info.to_type
-            ));
             code.push_str("}\n\n");
         }
 
@@ -408,74 +357,6 @@ impl<'a, T> TestGenerator<'a, T> {
                 code.push_str("}\n\n");
             }
         }
-
-        code
-    }
-
-    /// Generate cardinality tests for list ports.
-    ///
-    /// DEPRECATED: Cardinality compatibility is now verified at compile time
-    /// by validate_dag(). These tests are redundant.
-    #[allow(dead_code)]
-    fn generate_cardinality_tests(&self, analysis: &DagAnalysis, _graph_builder_fn: &str) -> String {
-        let mut code = String::new();
-
-        // Find ports that need cardinality tests (lists with multiple test cases)
-        let list_ports: Vec<_> = analysis
-            .port_cardinalities
-            .iter()
-            .filter(|p| p.needs_tests() && p.is_input)
-            .collect();
-
-        if list_ports.is_empty() {
-            return code;
-        }
-
-        code.push_str("// ============================================================================\n");
-        code.push_str("// Cardinality Tests\n");
-        code.push_str("// These tests verify behavior at cardinality boundaries (empty, one, many).\n");
-        code.push_str("// Actual test values should come from Mockable::cardinality_inputs().\n");
-        code.push_str("// ============================================================================\n\n");
-
-        // Generate a summary test that lists all ports with their cardinalities
-        code.push_str("/// Verify cardinality annotations on ports.\n");
-        code.push_str("#[test]\n");
-        code.push_str("fn test_port_cardinalities() {\n");
-        code.push_str("    // This test documents the expected cardinalities for list ports.\n");
-        code.push_str("    // Use Mockable::cardinality_inputs() on operations to get test values.\n");
-        
-        for port_info in &list_ports {
-            let cardinality_str = match port_info.cardinality {
-                gunbc_ir::Cardinality::Zero => "Zero",
-                gunbc_ir::Cardinality::One => "One",
-                gunbc_ir::Cardinality::ZeroOrOne => "ZeroOrOne",
-                gunbc_ir::Cardinality::ZeroOrMore => "ZeroOrMore",
-                gunbc_ir::Cardinality::OneOrMore => "OneOrMore",
-            };
-
-            let cases: Vec<&str> = port_info
-                .test_cases
-                .iter()
-                .map(|c| match c {
-                    CardinalityCase::Empty => "Empty",
-                    CardinalityCase::One => "One",
-                    CardinalityCase::Many => "Many",
-                })
-                .collect();
-
-            code.push_str(&format!(
-                "    // {}.{}: {} -> test cases: [{}]\n",
-                port_info.node_id,
-                port_info.port_name,
-                cardinality_str,
-                cases.join(", ")
-            ));
-        }
-
-        code.push_str("    \n");
-        code.push_str("    // To run actual cardinality tests, implement Mockable for your operations\n");
-        code.push_str("    // and call cardinality_inputs() to get the test values.\n");
-        code.push_str("}\n\n");
 
         code
     }

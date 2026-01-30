@@ -118,8 +118,8 @@ fn lint() {
 Good:
 ```rust
 // Dependency is implicit through usage
-Node::opaque("lint", ..., LintOp)
-    .requires(&cli::CLIPPY)  // I need clippy → framework handles the rest
+let mut node = Node::opaque("lint", ..., LintOp);
+node.requires_tools.push("clippy".to_string());  // Executor handles acquisition
 ```
 
 This principle applies broadly:
@@ -189,8 +189,8 @@ fn run_ci() {
 // Lint node declares what it needs, framework handles acquisition
 fn build_ci_graph() -> Dag<CIOp> {
     // ...
-    let lint = Node::opaque("lint", inputs, outputs, CIOp::Lint)
-        .requires(&cli::CLIPPY);  // "I need clippy"
+    let mut lint = Node::opaque("lint", inputs, outputs, CIOp::Lint);
+    lint.requires_tools.push("clippy".to_string());  // "I need clippy"
     // ...
 }
 
@@ -349,30 +349,29 @@ pub static CLIPPY: CliToolDef = CliToolDef {
 };
 
 // 2. Declare requirement (DAG definition)
-Node::opaque("lint", inputs, outputs, LintOp)
-    .requires(&cli::CLIPPY)  // Framework injects upsert sub-DAG
+let mut lint = Node::opaque("lint", inputs, outputs, LintOp);
+lint.requires_tools.push("clippy".to_string());  // Executor handles acquisition
 
 // 3. Use capability (operation implementation)
+// The executor runs check/install before execution if requires_tools is set
 fn execute_lint(inputs: HashMap<String, Value>) -> Result<...> {
-    // ToolHandle provided by framework after acquisition
-    let _clippy = inputs.get("tool:clippy").unwrap();
-    
-    // Run clippy (tool guaranteed available)
-    CliToolOp::run(&cli::CLIPPY, &["--all-targets"]).execute()?
+    // Tool is guaranteed available after acquisition
+    // Use PrepareShellOp → TransportOps::Execute pattern for tool invocation
+    // ...
 }
 ```
 
-**Key insight**: `ToolHandle` cannot be constructed directly — it only comes from acquisition. This means:
+**Key insight**: The executor handles tool acquisition automatically when `requires_tools` is set:
 
-- No way to bypass the upsert pattern
+- Executor runs check/install before node execution
 - No `Command::new()` calls scattered through the codebase
-- Framework handles check/install/run automatically
+- Tool definitions centralized in `cli.rs`
 - Tool defines its own resource access patterns (exclusivity)
 
 **Consumer vs Tool Separation**:
-- Consumer (e.g., Lint node): Only asks "can I use clippy?" via `.requires()`
+- Consumer (e.g., Lint node): Sets `requires_tools` to declare dependency
 - Tool (e.g., Clippy): Defines check/install commands AND access mode
-- Framework: Handles acquisition, scheduling, and resource conflict detection
+- Executor: Handles acquisition, scheduling, and resource conflict detection
 
 **Clippy Enforcement**: Direct `Command::new()` is disallowed by clippy.toml. Exceptions must use `#[allow(clippy::disallowed_methods)]` with documentation.
 
@@ -457,7 +456,7 @@ Based on previous conversations:
    };
    ```
 2. Add to the tool registry in `core/exec/src/execute.rs:get_tool_by_id()`
-3. Use in nodes via `.requires(&cli::RUFF)`
+3. Use in nodes via `node.requires_tools.push("ruff".to_string())`
 
 **For planning/satisfiability** (platform-aware installation):
 
@@ -552,14 +551,14 @@ cargo test -- --nocapture
 
 ### Capability-Based Tool Acquisition
 
-Implemented a capability system for CLI tool dependencies that makes it structurally impossible to use a tool without acquiring it:
+Implemented a capability system for CLI tool dependencies where tool acquisition is handled automatically by the executor:
 
 - `core/ir/src/transport/cli.rs` — `CliToolDef`, `ToolHandle`, execution functions
-- `core/ir/src/node.rs` — `.requires(&tool)` method on Node
+- `core/ir/src/node.rs` — `requires_tools` field on Node
 - `core/exec/src/execute.rs` — Automatic tool acquisition during execution
 - `core/ir/src/signature.rs` — Tool ports excluded from workflow signatures
 
-Key pattern: `Node::opaque(...).requires(&cli::CLIPPY)` declares dependency, framework acquires tool and provides `ToolHandle` through inputs.
+Key pattern: `node.requires_tools.push("clippy".to_string())` declares dependency, executor handles check/install before execution.
 
 ### CLI Tool Dependency Graph (Planning Layer)
 

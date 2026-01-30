@@ -203,9 +203,9 @@ impl Port {
 
     /// Create a port with an equality guard (internal use only).
     ///
-    /// This is used internally by Branch and other patterns for routing.
-    /// Not part of the public API — use explicit Branch patterns instead.
-    #[allow(dead_code)]
+    /// This is used internally for testing guarded ports.
+    /// Production code uses `guarded_with_cardinality` instead.
+    #[cfg(test)]
     pub(crate) fn guarded(
         name: impl Into<PortName>,
         type_id: impl Into<TypeId>,

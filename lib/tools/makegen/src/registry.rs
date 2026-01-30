@@ -8,6 +8,9 @@
 //! The `BuildConfig` struct is the single source of truth for all build/test/lint
 //! commands. This eliminates duplicate hardcoded commands across the codebase.
 
+use gunbc_deps::DEFAULT_MANIFEST_FILENAME;
+use gunbc_ir::DEFAULT_MAKEFILE_FILENAME;
+
 // ============================================================================
 // Build Configuration - Single source of truth for build commands
 // ============================================================================
@@ -368,11 +371,6 @@ pub struct MetaTarget {
     /// Dependencies for the fix variant (e.g., ["fmt-fix", "lint-fix"] for test-fix)
     /// These targets are run before the main command in the -fix variant
     pub fix_deps: Vec<&'static str>,
-    // Legacy fields kept for backward compatibility during transition
-    /// Shell command to run (deprecated: use config_field instead)
-    pub command: String,
-    /// Command for check variant (deprecated: use config_field instead)
-    pub check_command: Option<String>,
 }
 
 impl MetaTarget {
@@ -392,9 +390,6 @@ impl MetaTarget {
             has_check_variant: false,
             has_fix_variant: false,
             fix_deps: Vec::new(),
-            // Legacy: empty strings as placeholders
-            command: String::new(),
-            check_command: None,
         }
     }
 
@@ -611,7 +606,7 @@ impl ToolRegistry {
             ToolInfo::new("gunbc-makegen", "makegen", "Generate Makefile from tool registry")
                 .with_param(
                     EntrypointParam::new("output_path", "OUTPUT", "--output", "String")
-                        .with_default("Makefile"),
+                        .with_default(DEFAULT_MAKEFILE_FILENAME),
                 )
                 .with_declarative_dag(),
         );
@@ -621,7 +616,7 @@ impl ToolRegistry {
             ToolInfo::new("gunbc-deps", "deps", "Install tool dependencies")
                 .with_param(
                     EntrypointParam::new("manifest_path", "MANIFEST", "--manifest", "String")
-                        .with_default("deps.toml"),
+                        .with_default(DEFAULT_MANIFEST_FILENAME),
                 ),
         );
 

@@ -2,6 +2,7 @@
 //!
 //! This crate provides:
 //! - Declarative tool dependency specification via `deps.toml`
+//! - deps.toml generation from tool registry (owns the file)
 //! - Platform-agnostic installation (apt, brew, cargo, script, etc.)
 //! - Idempotent upsert pattern: Check → Create → Resolve
 //!
@@ -21,6 +22,11 @@
 //! packages = ["gh"]
 //! ```
 //!
+//! # Generated File Ownership
+//!
+//! This crate owns `deps.toml` generation via `build_deps_generate_graph()`.
+//! The filename is centralized in `DEFAULT_MANIFEST_FILENAME`.
+//!
 //! # Mock Specifications
 //!
 //! Mock specs are in `graph_mock.rs` for test generation.
@@ -36,9 +42,14 @@ pub mod upsert;
 #[cfg(test)]
 pub mod graph_mock;
 
-pub use graph::{build_deps_graph, deps_signature};
+pub use graph::{
+    build_deps_generate_graph, build_deps_graph, deps_generate_signature, deps_signature,
+};
 pub use installer::{InstallMethod, Installer};
-pub use manifest::{Dependency, DepsManifest, PlatformInstall};
+pub use manifest::{
+    Dependency, DepsManifest, ManifestConfig, PlatformInstall, DEFAULT_MANIFEST_FILENAME,
+    MANIFEST_CONFIG,
+};
 pub use ops::DepsOp;
 pub use platform::Platform;
 pub use tool_upsert::{

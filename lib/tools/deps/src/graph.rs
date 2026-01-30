@@ -1,15 +1,24 @@
 //! Graph builder for the deps tool.
 //!
+//! Two graphs are provided:
+//!
+//! ## Install Graph (`build_deps_graph`)
 //! All I/O happens through explicit `TransportOps::Execute` nodes:
 //! - LoadManifest: PrepareLoadManifest -> Execute -> ParseManifest
 //! - ExecuteInstalls: PrepareExecuteInstalls -> Execute -> ParseExecuteResult
+//!
+//! ## Generation Graph (`build_deps_generate_graph`)
+//! Generates deps.toml from the tool registry:
+//! - LoadToolRegistry -> RenderDepsToml -> PrepareFileWrite -> ExecuteTransport
 
+use crate::manifest::DEFAULT_MANIFEST_FILENAME;
 use crate::ops::DepsOp;
 use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::{
     build::*, BuilderError, Cardinality, Dag, DagBuilder, Node, Value, WorkflowSignature,
 };
 use gunbc_lib_transport::TransportOps;
+use gunbc_primitives::PrepareFileWriteOp;
 use std::collections::HashMap;
 
 /// Union type for deps graph operations.
@@ -19,6 +28,8 @@ use std::collections::HashMap;
 pub enum DepsGraphOp {
     /// Deps-specific operations (all PURE)
     Deps(DepsOp),
+    /// Prepare file write (primitive - PURE)
+    PrepareFileWrite(PrepareFileWriteOp),
     /// Transport operations (boundary - actual I/O)
     Transport(TransportOps),
 }
@@ -38,6 +49,7 @@ impl Executable for DepsGraphOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         match self {
             DepsGraphOp::Deps(op) => op.execute(inputs),
+            DepsGraphOp::PrepareFileWrite(op) => op.execute(inputs),
             DepsGraphOp::Transport(op) => op.execute(inputs),
         }
     }
@@ -205,6 +217,110 @@ pub fn build_deps_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
     Ok(builder.build())
 }
 
+// ============================================================================
+// deps.toml Generation Graph
+// ============================================================================
+
+/// Get the declared signature for the deps generate workflow.
+pub fn deps_generate_signature() -> WorkflowSignature {
+    WorkflowSignature::new()
+        // Inputs (entrypoints)
+        .with_input("output_path", "String", Cardinality::ZeroOrOne)
+        // Outputs from execute_transport (boundary)
+        .with_output("response", "TransportResponse", Cardinality::One)
+        .with_output("written_path", "String", Cardinality::One)
+        .with_output("content", "String", Cardinality::One)
+        // Informational outputs from load_tool_registry
+        .with_output("tool_count", "Int", Cardinality::One)
+        .with_output("tool_names", "StrList", Cardinality::OneOrMore)
+}
+
+/// Build the deps generate graph.
+///
+/// Pipeline (follows makegen pattern):
+/// ```text
+/// LoadToolRegistry -> RenderDepsToml -> PrepareFileWrite -> ExecuteTransport
+///      (deps)           (deps)           (primitive)         (transport)
+///                                           PURE              BOUNDARY
+/// ```
+///
+/// This graph generates deps.toml from the tool registry, owning the file's
+/// generation in the same way makegen owns Makefile generation.
+#[allow(clippy::result_large_err)]
+pub fn build_deps_generate_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
+    let mut builder = DagBuilder::new();
+
+    // Node: LoadToolRegistry (deps-specific) - generation 0
+    // No inputs (uses default registry)
+    // Outputs: tool metadata (informational)
+    let load_registry = builder.add_root_node(Node::opaque(
+        "load_tool_registry",
+        vec![],
+        vec![
+            scalar("tool_count", "Int"),
+            non_empty_list("tool_names", "StrList"),
+        ],
+        DepsGraphOp::Deps(DepsOp::LoadToolRegistry),
+    ))?;
+
+    // Node: RenderDepsToml (deps-specific) - generation 1
+    // No inputs (uses registry directly internally)
+    // Output: generated deps.toml content
+    let render_deps_toml = builder.add_node_after(
+        Node::opaque(
+            "render_deps_toml",
+            vec![],
+            vec![scalar("deps_toml_content", "String")],
+            DepsGraphOp::Deps(DepsOp::RenderDepsToml),
+        ),
+        &load_registry,
+    )?;
+
+    // Node: PrepareFileWrite (primitive) - generation 2
+    // Prepares the TransportRequest for file write
+    // Note: output_path defaults to DEFAULT_MANIFEST_FILENAME in execution
+    let prepare_write = builder.add_node_after(
+        Node::opaque(
+            "prepare_file_write",
+            vec![
+                scalar("content", "String"),
+                optional("output_path", "String"),
+            ],
+            vec![port("request", "TransportRequest")],
+            DepsGraphOp::PrepareFileWrite(PrepareFileWriteOp),
+        ),
+        &render_deps_toml,
+    )?;
+
+    // Node: ExecuteTransport (transport boundary) - generation 3
+    // Actually writes the file
+    let execute_transport = builder.add_node_after(
+        Node::opaque(
+            "execute_transport",
+            vec![port("request", "TransportRequest")],
+            vec![
+                port("response", "TransportResponse"),
+                port("written_path", "String"),
+                port("content", "String"),
+            ],
+            DepsGraphOp::Transport(TransportOps::Execute),
+        ),
+        &prepare_write,
+    )?;
+
+    // ========================================================================
+    // Wire up the pipeline
+    // ========================================================================
+
+    // RenderDepsToml -> PrepareFileWrite
+    builder.add_edge(render_deps_toml.out("deps_toml_content"), prepare_write.in_port("content"))?;
+
+    // PrepareFileWrite -> ExecuteTransport
+    builder.add_edge(prepare_write.out("request"), execute_transport.in_port("request"))?;
+
+    Ok(builder.build())
+}
+
 // Mockable implementation
 use gunbc_test::Mockable;
 
@@ -212,6 +328,20 @@ impl Mockable for DepsGraphOp {
     fn mock_outputs(&self) -> HashMap<String, Value> {
         match self {
             DepsGraphOp::Deps(op) => op.mock_outputs(),
+            DepsGraphOp::PrepareFileWrite(_) => {
+                // Manual mock for PrepareFileWriteOp
+                let mut out = HashMap::new();
+                out.insert(
+                    "request".to_string(),
+                    Value::Request(gunbc_ir::transport::TransportRequest::File(
+                        gunbc_ir::transport::FileRequest::write(
+                            DEFAULT_MANIFEST_FILENAME,
+                            "# mock deps.toml",
+                        ),
+                    )),
+                );
+                out
+            }
             DepsGraphOp::Transport(_) => {
                 let mut out = HashMap::new();
                 out.insert(

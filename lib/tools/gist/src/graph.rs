@@ -526,7 +526,6 @@ fn execute_collect_file_contents(
 ///     .with_output("contents", "StrList")
 ///     .build();
 /// ```
-#[allow(dead_code)]
 pub fn build_read_file_body_dag() -> Dag<GistGraphOp> {
     let mut dag = Dag::new();
 

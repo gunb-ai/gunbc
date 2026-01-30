@@ -1,8 +1,7 @@
 //! Node types for the DAG.
 
 use crate::dag::{Dag, Port};
-use crate::transport::cli::CliToolDef;
-use crate::types::{Cardinality, NodeId, PortName, TypeId};
+use crate::types::NodeId;
 use serde::{Deserialize, Serialize};
 
 /// A node in the DAG, generic over its operation type.
@@ -13,13 +12,13 @@ use serde::{Deserialize, Serialize};
 ///
 /// # Tool Requirements
 ///
-/// Nodes can declare tool requirements via `.requires()`. The framework
-/// automatically injects tool acquisition sub-DAGs and wires ToolHandle
-/// values to the node's inputs.
+/// Nodes can declare tool requirements via the `requires_tools` field.
+/// The executor automatically handles tool acquisition (check/install)
+/// before executing nodes with tool requirements.
 ///
 /// ```ignore
-/// Node::opaque("lint", inputs, outputs, LintOp)
-///     .requires(&cli::CLIPPY)  // Adds "tool:clippy" input port
+/// let mut node = Node::opaque("lint", inputs, outputs, LintOp);
+/// node.requires_tools.push("clippy".to_string());
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Node<T> {
@@ -70,59 +69,12 @@ impl<T> Node<T> {
         matches!(self.body, NodeBody::SubDag(_))
     }
     
-    /// Declare that this node requires a CLI tool.
-    ///
-    /// This adds the tool to the requirements list and creates an input port
-    /// for the tool handle. During lowering, the framework will:
-    /// 1. Inject a tool acquisition sub-DAG (upsert pattern)
-    /// 2. Wire the ToolHandle output to this node's tool input port
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// use gunbc_ir::transport::cli;
-    ///
-    /// Node::opaque("lint", inputs, outputs, LintOp)
-    ///     .requires(&cli::CLIPPY)
-    ///     .requires(&cli::RUSTFMT)  // Can require multiple tools
-    /// ```
-    ///
-    /// The node's operation will receive the tool handles via inputs:
-    ///
-    /// ```ignore
-    /// fn execute_lint(inputs: HashMap<String, Value>) -> Result<...> {
-    ///     let clippy = inputs.get("tool:clippy").unwrap();
-    ///     // ...
-    /// }
-    /// ```
-    pub fn requires(mut self, tool: &'static CliToolDef) -> Self {
-        let tool_id = tool.id.to_string();
-        
-        // Only add if not already required
-        if !self.requires_tools.contains(&tool_id) {
-            self.requires_tools.push(tool_id.clone());
-            
-            // Add an input port for the tool handle
-            let port_name = format!("tool:{}", tool.id);
-            self.inputs.push(Port {
-                name: PortName(port_name),
-                type_id: TypeId("ToolHandle".to_string()),
-                cardinality: Cardinality::One,
-                guard: None,
-            });
-        }
-        
-        self
-    }
-    
     /// Check if this node requires any tools.
+    ///
+    /// Tool requirements are set via `requires_tools.push("tool_id".to_string())`.
+    /// The executor handles tool acquisition automatically.
     pub fn has_tool_requirements(&self) -> bool {
         !self.requires_tools.is_empty()
-    }
-    
-    /// Get the list of required tool IDs.
-    pub fn required_tools(&self) -> &[String] {
-        &self.requires_tools
     }
 }
 

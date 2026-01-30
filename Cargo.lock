@@ -78,6 +78,7 @@ dependencies = [
 name = "gunbc-ci"
 version = "0.1.0"
 dependencies = [
+ "gunbc-deps",
  "gunbc-exec",
  "gunbc-ir",
  "gunbc-lib-transport",
@@ -113,6 +114,7 @@ dependencies = [
  "gunbc-primitives",
  "gunbc-test",
  "serde",
+ "serde_json",
  "toml",
 ]
 
@@ -181,6 +183,7 @@ name = "gunbc-makegen"
 version = "0.1.0"
 dependencies = [
  "gunbc-codegen",
+ "gunbc-deps",
  "gunbc-exec",
  "gunbc-ir",
  "gunbc-lib-transport",

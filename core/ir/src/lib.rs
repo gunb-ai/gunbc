@@ -89,5 +89,6 @@ pub use language::{
     build_languages_dag, detect_language_from_file, markdown_language_id,
     rust_type, NamingCase, LanguageOp,
     MakefileConfig, MakeTarget, RustConfig, GitignoreConfig,
+    DEFAULT_GITIGNORE_FILENAME, DEFAULT_MAKEFILE_FILENAME,
     MAKEFILE, RUST, GITIGNORE,
 };

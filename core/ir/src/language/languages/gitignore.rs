@@ -19,9 +19,15 @@ use crate::dag::{Dag, Port};
 use crate::node::Node;
 use crate::language::LanguageOp;
 
+/// Default gitignore filename - the canonical name for generated .gitignore files.
+pub const DEFAULT_GITIGNORE_FILENAME: &str = ".gitignore";
+
 /// Gitignore format static configuration.
 pub struct GitignoreConfig {
     pub id: &'static str,
+    /// The default filename for generated gitignore files.
+    pub default_filename: &'static str,
+    /// All file patterns that identify gitignore files.
     pub file_patterns: &'static [&'static str],
     pub comment_prefix: &'static str,
 }
@@ -29,6 +35,7 @@ pub struct GitignoreConfig {
 /// Static gitignore configuration.
 pub const GITIGNORE: GitignoreConfig = GitignoreConfig {
     id: "gitignore",
+    default_filename: DEFAULT_GITIGNORE_FILENAME,
     file_patterns: &[".gitignore", ".dockerignore"],
     comment_prefix: "#",
 };

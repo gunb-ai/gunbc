@@ -1,10 +1,55 @@
-//! Dependency manifest parsing.
+//! Dependency manifest parsing and configuration.
 
 use crate::platform::Platform;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
+
+// ============================================================================
+// Manifest Configuration (centralized constants)
+// ============================================================================
+
+/// Default manifest filename.
+pub const DEFAULT_MANIFEST_FILENAME: &str = "deps.toml";
+
+/// Manifest configuration - centralized location for manifest-related constants.
+///
+/// Use this instead of hardcoding "deps.toml" throughout the codebase.
+#[derive(Debug, Clone)]
+pub struct ManifestConfig {
+    /// The manifest filename (default: "deps.toml")
+    pub filename: &'static str,
+}
+
+impl Default for ManifestConfig {
+    fn default() -> Self {
+        Self {
+            filename: DEFAULT_MANIFEST_FILENAME,
+        }
+    }
+}
+
+impl ManifestConfig {
+    /// Get the default manifest configuration.
+    pub fn new() -> Self {
+        Self::default()
+    }
+    
+    /// Get the manifest filename.
+    pub fn filename(&self) -> &str {
+        self.filename
+    }
+}
+
+/// Global manifest config instance.
+pub static MANIFEST_CONFIG: ManifestConfig = ManifestConfig {
+    filename: DEFAULT_MANIFEST_FILENAME,
+};
+
+// ============================================================================
+// Manifest Data Structures
+// ============================================================================
 
 /// The deps.toml manifest.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

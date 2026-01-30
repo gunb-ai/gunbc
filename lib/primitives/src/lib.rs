@@ -39,8 +39,8 @@ pub use collection::{CollectionOp, FilterOp, FirstOp, FoldOp, LastOp, MapOp, Sor
 pub use control::{BranchOp, LoopOp};
 pub use data::{ConcatOp, ExtractOp, FormatOp, ParseOp, SplitOp};
 pub use io::{
-    HttpRequestOp, PrepareDirectoryListOp, PrepareFileExistsOp, PrepareFileReadOp,
-    PrepareFileWriteOp, PrepareShellOp,
+    EmbeddedFileExistsOp, EmbeddedShellOp, HttpRequestOp, PrepareDirectoryListOp,
+    PrepareFileExistsOp, PrepareFileReadOp, PrepareFileWriteOp, PrepareShellOp,
 };
 
 use gunbc_exec::{ExecError, Executable};
@@ -67,12 +67,16 @@ pub enum PrimitiveOp {
     Last(LastOp),
 
     // I/O primitives - Pure prepare ops (build TransportRequest, no I/O)
+    // Port-based variants (dynamic paths/commands from upstream nodes)
     PrepareFileRead(PrepareFileReadOp),
     PrepareFileWrite(PrepareFileWriteOp),
     PrepareFileExists(PrepareFileExistsOp),
     PrepareShell(PrepareShellOp),
     PrepareDirectoryList(PrepareDirectoryListOp),
     HttpRequest(HttpRequestOp),
+    // Embedded variants (hardcoded paths/commands, no input ports needed)
+    EmbeddedFileExists(EmbeddedFileExistsOp),
+    EmbeddedShell(EmbeddedShellOp),
 
     // Control primitives
     Loop(LoopOp),
@@ -97,13 +101,16 @@ impl Executable for PrimitiveOp {
             PrimitiveOp::First(op) => op.execute(inputs),
             PrimitiveOp::Last(op) => op.execute(inputs),
 
-            // I/O - Pure prepare ops
+            // I/O - Pure prepare ops (port-based)
             PrimitiveOp::PrepareFileRead(op) => op.execute(inputs),
             PrimitiveOp::PrepareFileWrite(op) => op.execute(inputs),
             PrimitiveOp::PrepareFileExists(op) => op.execute(inputs),
             PrimitiveOp::PrepareShell(op) => op.execute(inputs),
             PrimitiveOp::PrepareDirectoryList(op) => op.execute(inputs),
             PrimitiveOp::HttpRequest(op) => op.execute(inputs),
+            // I/O - Pure prepare ops (embedded)
+            PrimitiveOp::EmbeddedFileExists(op) => op.execute(inputs),
+            PrimitiveOp::EmbeddedShell(op) => op.execute(inputs),
 
             // Control
             PrimitiveOp::Loop(op) => op.execute(inputs),

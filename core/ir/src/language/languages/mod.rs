@@ -10,5 +10,9 @@ mod gitignore;
 mod makefile;
 
 pub use rust::{build_rust_subdag, rust_type, RustConfig, RUST};
-pub use gitignore::{build_gitignore_subdag, GitignoreConfig, GITIGNORE};
-pub use makefile::{build_makefile_subdag, MakefileConfig, MakeTarget, MAKEFILE};
+pub use gitignore::{
+    build_gitignore_subdag, GitignoreConfig, DEFAULT_GITIGNORE_FILENAME, GITIGNORE,
+};
+pub use makefile::{
+    build_makefile_subdag, MakefileConfig, MakeTarget, DEFAULT_MAKEFILE_FILENAME, MAKEFILE,
+};

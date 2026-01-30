@@ -10,7 +10,6 @@ members = [
     
     # Library crates (DAG op libraries)
     "lib/primitives",
-    # "lib/fs",  # DEPRECATED: Consolidated into lib/primitives
     "lib/gist-ops",
     "lib/markdown",
     "lib/transport",

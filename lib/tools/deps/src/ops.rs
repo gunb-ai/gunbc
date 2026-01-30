@@ -18,6 +18,17 @@ use std::collections::HashMap;
 #[derive(Debug, Clone)]
 pub enum DepsOp {
     // ========================================================================
+    // deps.toml Generation (ownership of deps.toml)
+    // ========================================================================
+    /// Load tool registry (PURE - returns tool definitions as JSON)
+    /// Outputs: tool_count, tool_names, tools_json
+    LoadToolRegistry,
+    /// Render deps.toml content from tool registry (PURE)
+    /// Inputs: tools_json: Json
+    /// Outputs: deps_toml_content: String
+    RenderDepsToml,
+
+    // ========================================================================
     // LoadManifest chain: PrepareLoadManifest -> Execute -> ParseManifest
     // ========================================================================
     /// Prepare file read request for manifest (PURE)
@@ -68,6 +79,9 @@ pub enum DepsOp {
 impl Executable for DepsOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         match self {
+            // deps.toml generation
+            DepsOp::LoadToolRegistry => execute_load_tool_registry(inputs),
+            DepsOp::RenderDepsToml => execute_render_deps_toml(inputs),
             // LoadManifest chain
             DepsOp::PrepareLoadManifest => execute_prepare_load_manifest(inputs),
             DepsOp::ParseManifest => execute_parse_manifest(inputs),
@@ -83,6 +97,46 @@ impl Executable for DepsOp {
             DepsOp::ParseInstall => execute_parse_install(inputs),
         }
     }
+}
+
+// ============================================================================
+// deps.toml Generation - LoadToolRegistry and RenderDepsToml
+// ============================================================================
+
+use crate::tool_upsert::generate_deps_toml_from_registry;
+
+/// Load tool registry and render deps.toml (PURE - no I/O).
+///
+/// Combines loading and rendering into one step since ToolDef isn't serializable.
+/// Returns tool metadata and rendered deps.toml content.
+fn execute_load_tool_registry(_inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+    use gunbc_ir::transport::tool::default_tool_registry;
+    
+    let registry = default_tool_registry();
+    let tools: Vec<_> = registry.all().collect();
+    
+    let tool_names: Vec<String> = tools.iter().map(|t| t.id.to_string()).collect();
+    let tool_count = tools.len() as i64;
+    
+    let mut out = HashMap::new();
+    out.insert("tool_count".to_string(), Value::Int(tool_count));
+    out.insert("tool_names".to_string(), Value::StrList(tool_names));
+    Ok(out)
+}
+
+/// Render deps.toml content from tool registry (PURE - no I/O).
+///
+/// Uses `generate_deps_toml_from_registry()` to render deps.toml from the
+/// default tool registry.
+///
+/// Outputs: deps_toml_content: String
+fn execute_render_deps_toml(_inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+    // Generate deps.toml content directly from registry
+    let content = generate_deps_toml_from_registry();
+    
+    let mut out = HashMap::new();
+    out.insert("deps_toml_content".to_string(), Value::Str(content));
+    Ok(out)
 }
 
 // ============================================================================
@@ -410,6 +464,28 @@ use gunbc_test::{CardinalityTestInput, ErrorTestCase, Mockable};
 impl Mockable for DepsOp {
     fn mock_outputs(&self) -> HashMap<String, Value> {
         match self {
+            // deps.toml generation ops
+            DepsOp::LoadToolRegistry => {
+                let mut out = HashMap::new();
+                out.insert("tool_count".to_string(), Value::Int(3));
+                out.insert(
+                    "tool_names".to_string(),
+                    Value::StrList(vec![
+                        "cargo".to_string(),
+                        "gh".to_string(),
+                        "git".to_string(),
+                    ]),
+                );
+                out
+            }
+            DepsOp::RenderDepsToml => {
+                let mut out = HashMap::new();
+                out.insert(
+                    "deps_toml_content".to_string(),
+                    Value::Str("# Generated deps.toml\n[[dependency]]\nname = \"mock\"\nverify = \"mock --version\"\n".to_string()),
+                );
+                out
+            }
             DepsOp::PrepareLoadManifest => {
                 let mut out = HashMap::new();
                 out.insert(
@@ -526,6 +602,9 @@ echo "Installing git..."
 
     fn cardinality_inputs(&self) -> Vec<CardinalityTestInput> {
         match self {
+            // deps.toml generation ops
+            DepsOp::LoadToolRegistry => vec![],
+            DepsOp::RenderDepsToml => vec![],
             DepsOp::PrepareLoadManifest => vec![],
             DepsOp::ParseManifest => vec![],
             DepsOp::GenerateScripts => vec![
@@ -561,6 +640,9 @@ echo "Installing git..."
 
     fn error_cases(&self) -> Vec<ErrorTestCase> {
         match self {
+            // deps.toml generation ops
+            DepsOp::LoadToolRegistry => vec![],
+            DepsOp::RenderDepsToml => vec![],
             DepsOp::PrepareLoadManifest => vec![],
             DepsOp::ParseManifest => vec![],
             DepsOp::GenerateScripts => vec![
