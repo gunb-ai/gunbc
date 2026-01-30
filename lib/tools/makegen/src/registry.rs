@@ -552,23 +552,6 @@ impl ToolRegistry {
             ToolInfo::new("gunbc-bootstrap", "bootstrap", "Generate Makefile and .gitignore"),
         );
 
-        // gunbc-viz
-        registry.register(
-            ToolInfo::new("gunbc-viz", "viz", "Generate DAG visualization data")
-                .with_param(
-                    EntrypointParam::new("output_path", "OUTPUT", "--output", "String")
-                        .with_default("viz-data.json"),
-                )
-                .with_extra_target(
-                    // Simple HTTP server - no Python escape hatches for browser opening
-                    // Users can open http://localhost:8080/viz.html manually
-                    ExtraTarget::new("serve", "Start HTTP server for viz (open http://localhost:8080/viz.html)")
-                        .with_command("@echo \"Serving at http://localhost:8080/viz.html\"")
-                        .with_command("@echo \"Press Ctrl+C to stop\"")
-                        .with_command("@python3 -m http.server 8080"),
-                ),
-        );
-
         // NOTE: prep tool has been removed - CI now handles all preparation
         // The prep functionality is consolidated into CI's Prep stage
 

@@ -350,30 +350,6 @@ pub fn all_tools() -> Vec<ToolDef> {
             ],
         ),
 
-        // gunbc-viz (uses DagBuilder - returns Result)
-        ToolDef::new(
-            "gunbc-viz",
-            "viz",
-            "Generate DAG visualization data",
-            "build_viz_graph",
-            "",
-        )
-        .returns_result()
-        .entrypoint(
-            CliEntrypoint::new("output_path", "String")
-                .short('o')
-                .default("viz-data.json")
-                .help("Output JSON file path"),
-        )
-        .output("viz-data.json")  // default output
-        .boundary(
-            "execute_transport",
-            vec![
-                ("written_path", "Value::Str(\"<DRY-RUN>\".to_string())"),
-                ("response", "Value::Response(gunbc_ir::transport::TransportResponse::File(gunbc_ir::transport::FileResponse::written(\"viz-data.json\")))"),
-            ],
-        ),
-
         // gunbc-makegen (uses DagBuilder - returns Result)
         ToolDef::new(
             "gunbc-makegen",

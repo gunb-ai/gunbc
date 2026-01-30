@@ -18,7 +18,6 @@ members = [
     # Tool compositions (higher-level DAG pipelines)
     "lib/tools/gist",
     "lib/tools/buck2",
-    "lib/tools/viz",
     "lib/tools/makegen",
     "lib/tools/deps",
     "lib/tools/ci",

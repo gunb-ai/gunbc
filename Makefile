@@ -3,7 +3,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help codegen ensure-codegen build clean test check clippy fmt fmt-check ci-yaml gist gist-dry buck2 buck2-dry makegen makegen-dry deps deps-dry ci ci-dry bootstrap bootstrap-dry viz viz-dry viz-serve
+.PHONY: help codegen ensure-codegen build clean test check clippy fmt fmt-check ci-yaml gist gist-dry buck2 buck2-dry makegen makegen-dry deps deps-dry ci ci-dry bootstrap bootstrap-dry
 
 # Ensure codegen has run (upsert pattern: check stamp -> run if missing)
 ensure-codegen:
@@ -46,8 +46,6 @@ help:
 	@echo "  deps [MANIFEST=deps.toml]  - Install tool dependencies"
 	@echo "  ci   - Run CI pipeline"
 	@echo "  bootstrap   - Generate Makefile and .gitignore"
-	@echo "  viz [OUTPUT=viz-data.json]  - Generate DAG visualization data"
-	@echo "  viz-serve  - Start HTTP server for viz (open http://localhost:8080/viz.html)"
 	@echo ""
 	@echo "Add -dry suffix for dry-run (e.g., make gist-dry)"
 
@@ -119,17 +117,4 @@ bootstrap: ensure-codegen
 
 bootstrap-dry: ensure-codegen
 	@cargo run -p gunbc-bootstrap -- --dry-run
-
-# gunbc-viz entrypoints: output_path (String)
-viz: ensure-codegen
-	@cargo run -p gunbc-viz -- $(if $(OUTPUT),--output $(OUTPUT))
-
-viz-dry: ensure-codegen
-	@cargo run -p gunbc-viz -- --dry-run $(if $(OUTPUT),--output $(OUTPUT))
-
-# viz-serve: Start HTTP server for viz (open http://localhost:8080/viz.html)
-viz-serve: viz
-	@echo "Serving at http://localhost:8080/viz.html"
-	@echo "Press Ctrl+C to stop"
-	@python3 -m http.server 8080
 
