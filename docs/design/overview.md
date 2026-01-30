@@ -747,12 +747,19 @@ These invariants define what makes a well-formed graph beyond structural validit
 
 | Node Type | Properties | Example |
 |-----------|------------|---------|
-| **Pure** | Given same inputs, produces same outputs. No I/O. | `ParseTomlOp`, `PrepareFileReadOp`, `ValidateOp` |
+| **Pure** | Given same inputs, produces same outputs. No I/O. | `ParseOp`, `PrepareFileReadOp`, `ExtractOp` |
 | **Transport Execute** | Takes `TransportRequest` input, produces `TransportResponse` output. The only I/O point. | `TransportOps::Execute` |
 
 **Violation**: An opaque node that calls `execute_transport()` internally. The I/O is hidden, making the node impure without being a proper Transport Execute node.
 
 **Why it matters**: Pure nodes can be memoized, parallelized, and reasoned about locally. Mixing I/O into pure nodes breaks these properties.
+
+**Target (Pure DAG Composition)**: Beyond "pure execute functions," the target is **primitives only** — all ops should be compositions of primitives from `lib/primitives/`, not custom `execute_*` functions. This enables:
+- Codegen validation (reject graphs with non-primitive ops)
+- Guaranteed interceptability (all primitives are known-pure)
+- Maximum reusability (no tool-specific boutique ops)
+
+See [Pure DAG Composition](#pure-dag-composition-target-architecture) for details.
 
 ### I2. Transport Boundary
 
@@ -831,6 +838,84 @@ When multiple edges feed into a single port, the order of values in the resultin
 **Canonical sort key**: `(from_node_id, from_port_name, edge_index)`
 
 **Status**: Implemented in `dag.rs` with `canonical_edge_order()`.
+
+---
+
+## Pure DAG Composition (Target Architecture)
+
+> **Status**: Target design. The goal is to eliminate all custom `execute_*` functions.
+
+### The Principle
+
+All workflow logic should be expressible as **compositions of primitives** in DAGs, not as custom Rust code inside ops. This means:
+
+1. **No custom execute functions** — Delete all `execute_*` functions in tool crates
+2. **Type coercion in compiler** — Handle `TransportResponse` → `Json` automatically
+3. **Control flow is structural** — Use `BranchBuilder`/`GuardOp` at DAG level, not inside nodes
+4. **Generic primitives only** — Use `FoldOp` with reducers, not boutique ops
+5. **Constants from files** — Use `PrepareFileReadOp`, not hardcoded templates
+
+### Available Primitives
+
+All tool logic should be expressible using these existing primitives (in `lib/primitives/`):
+
+| Category | Primitives | Purpose |
+|----------|------------|---------|
+| **Data** | `ParseOp`, `ExtractOp`, `FormatOp`, `ConcatOp`, `SplitOp` | Pure transforms |
+| **Collection** | `MapOp`, `FilterOp`, `FoldOp`, `SortOp`, `FirstOp`, `LastOp` | List operations |
+| **I/O Prepare** | `PrepareFileReadOp`, `PrepareFileWriteOp`, `PrepareFileExistsOp`, `PrepareShellOp`, `PrepareDirectoryListOp` | Build `TransportRequest` (pure) |
+| **Control** | `LoopOp`, `BranchOp`, `GuardOp`, `SequenceOp` | Control flow |
+
+### Compiler Type Coercion
+
+Instead of conversion primitives, the compiler should auto-coerce when safe:
+
+| From | To | Coercion |
+|------|----|---------| 
+| `TransportResponse` | `Json` | Extract structured data |
+| `ShellResponse` | `Json` | `{exit_code, stdout, stderr}` |
+| `FileResponse` | `Json` | `{content, exists}` |
+| `Json` | `String` | Serialize |
+| `StrList` | `Json` | Array |
+
+This eliminates the need for explicit conversion ops — if a node declares it wants `Json` and upstream produces `TransportResponse`, the compiler inserts the coercion.
+
+### Example: CI Build Stage
+
+**Before** (custom execute function):
+```rust
+fn execute_prepare_build_command(inputs) {
+    if !prep_success { return skip }  // Logic hidden in code
+    build_shell_request()
+}
+```
+
+**After** (pure DAG composition):
+```
+prep_success ──► GuardOp ──► PrepareShellOp("cargo", ["build"]) ──► Execute
+                   │
+                   │ (outputs Value::Skipped if false)
+                   ▼
+```
+
+The branching is **structural** (visible in the graph), not hidden in a function.
+
+### Benefits
+
+| Benefit | Why |
+|---------|-----|
+| **Testability** | Each primitive is unit-testable; composition is structural |
+| **Visibility** | All logic visible in graph structure |
+| **Reusability** | Primitives are generic; no tool-specific boutique ops |
+| **DryRun** | All I/O interceptable because it's explicit |
+| **Codegen validation** | Can reject graphs that don't use primitives |
+
+### Migration Path
+
+1. **Phase 1** (done for CI): Pure `execute_*` functions with explicit transport nodes
+2. **Phase 2** (target): No `execute_*` functions — pure DAG composition of primitives
+
+See `TODO/graph-level-transport.md` for implementation details.
 
 ---
 

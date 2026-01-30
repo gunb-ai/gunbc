@@ -1,6 +1,6 @@
 # DAG Elegance: Pure Nodes & Pattern Consolidation
 
-**Status**: In Progress
+**Status**: In Progress (Architecture Refinement)
 **Date**: 2026-01-30
 
 ## Goal
@@ -17,21 +17,45 @@ Bring the codebase into compliance with the **Graph Invariants** defined in [`do
 
 ---
 
+## Architecture Evolution
+
+### Phase 1: Pure Execute Functions (COMPLETED for CI)
+
+The CI tool was migrated to have pure `execute_*` functions with no hidden I/O:
+- `CIGraphOp` union type with explicit transport nodes
+- All ops decomposed into `Prepare*` → `TransportOps::Execute` → `Parse*` chains
+- No `execute_transport()` calls in `ops.rs`
+
+### Phase 2: Pure DAG Composition (NEW DIRECTION)
+
+**The Phase 1 approach still has custom code in `execute_*` functions.**
+
+The refined architecture goes further: **ban ALL custom `execute_*` code**.
+
+Key principles:
+1. **No custom execute functions** - All logic is primitives composed in DAGs
+2. **Type coercion in compiler** - Handle `TransportResponse` → `Json` automatically
+3. **Control flow is structural** - Use `BranchBuilder`/`GuardOp` at DAG level, not inside nodes
+4. **Generic primitives only** - Use `FoldOp(and)`, not boutique `AllOp`
+5. **Constants from files** - Use `PrepareFileReadOp`, not hardcoded templates
+
+See: `~/.cursor/plans/pure_node_enforcement_bf6bf5f3.plan.md`
+
+---
+
 ## Current State
 
 ### What's Done
 
 1. **Transport Compliance (I2)**: All I/O routes through `lib/transport` via `execute_transport()`. No direct `std::fs` or `Command::new` calls remain in tool crates.
 
-2. **CI Tool Migration (I1, I3)**: The CI tool has been fully migrated to the pure node pattern:
-   - `CIGraphOp` union type following `MakegenGraphOp` pattern
-   - All ops decomposed into `Prepare*` → `TransportOps::Execute` → `Parse*` chains
-   - No `execute_transport()` calls in `ops.rs`
-   - All I/O visible as explicit transport nodes in the graph
+2. **CI Tool Migration (I1, I3)**: The CI tool has pure `execute_*` functions with explicit transport nodes. **However**, this is now considered an intermediate step - the target is pure DAG composition with no custom code.
 
 ### What's Violated
 
 **I1, I3, I4** are still violated in remaining tools (gist, deps, buck2, bootstrap, makegen): I/O is hidden inside opaque nodes, not exposed in graph structure.
+
+**New violation identified**: Even "pure" `execute_*` functions are custom code that could be expressed as primitive compositions.
 
 ```
 Current (violates I1, I3):
@@ -297,9 +321,58 @@ After reconciliation, all nodes fall into these categories:
 
 ---
 
+---
+
+## Pure DAG Composition Architecture (Target State)
+
+### Available Primitives
+
+All tool logic should be expressible using these existing primitives:
+
+| Category | Primitives | Purpose |
+|----------|------------|---------|
+| **Data** | `ParseOp`, `ExtractOp`, `FormatOp`, `ConcatOp`, `SplitOp` | Pure transforms |
+| **Collection** | `MapOp`, `FilterOp`, `FoldOp`, `SortOp`, `FirstOp`, `LastOp` | List operations |
+| **I/O Prepare** | `PrepareFileReadOp`, `PrepareFileWriteOp`, `PrepareFileExistsOp`, `PrepareShellOp`, `PrepareDirectoryListOp` | Build `TransportRequest` (pure) |
+| **Control** | `LoopOp`, `BranchOp`, `GuardOp`, `SequenceOp` | Control flow |
+| **Patterns** | `BranchBuilder`, `IfBuilder`, `UpsertBuilder`, `LoopBuilder`, `AtomicBuilder`, `TransactionBuilder` | SubDAG composition |
+
+### Compiler Support Needed
+
+1. **Type Coercion**: Auto-convert when safe
+   - `TransportResponse` → `Json`
+   - `ShellResponse` → `{exit_code, stdout, stderr}`
+   - `FileResponse` → `{content, exists}`
+
+2. **Primitive-Only Validation**: Codegen rejects non-primitive ops
+
+### Example: CI Build Stage as Pure DAG
+
+```
+BEFORE (custom execute_prepare_build_command):
+fn execute_prepare_build_command(inputs) {
+    if !prep_success { return skip }  // Custom logic
+    build_shell_request()
+}
+
+AFTER (pure DAG composition):
+┌─────────────────────────────────────────────────────────────┐
+│ prep_success ──► GuardOp ──► PrepareShellOp("cargo build") │
+│                    │                    │                   │
+│                    │ (skipped if false) │                   │
+│                    ▼                    ▼                   │
+│              (Value::Skipped)    (TransportRequest)         │
+└─────────────────────────────────────────────────────────────┘
+```
+
+No custom code. Branching is structural (visible in DAG).
+
+---
+
 ## Related
 
 - [`docs/design/overview.md#graph-invariants`](../docs/design/overview.md#graph-invariants) - Canonical invariant definitions
 - [`TODONE/transport-compliance.md`](TODONE/transport-compliance.md) - Prerequisite work (I2 satisfied)
 - [`TODO/opaque-op-tool-mismatch.md`](opaque-op-tool-mismatch.md) - Related problem (tool deps hidden in ops)
 - [`core/ir/src/patterns/`](../core/ir/src/patterns/) - Existing pattern builders
+- `~/.cursor/plans/pure_node_enforcement_bf6bf5f3.plan.md` - Detailed implementation plan

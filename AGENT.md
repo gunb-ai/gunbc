@@ -544,6 +544,43 @@ This replaced the approach in `TODO.md` (trait-based with enums) with a data-dri
 - Satisfiability is checked before execution
 - deps.toml is generated from the registry
 
+### Pure DAG Composition Architecture (January 2026)
+
+The architecture is evolving toward **pure DAG composition** — banning all custom `execute_*` functions and expressing all logic as compositions of primitives.
+
+**Core principles:**
+
+1. **No custom execute functions** — All logic is primitives composed in DAGs, not custom Rust code in ops
+2. **Type coercion in compiler** — Handle `TransportResponse` → `Json` automatically, not via conversion primitives
+3. **Control flow is structural** — Use `BranchBuilder`/`GuardOp` at DAG level, not inside nodes
+4. **Generic primitives only** — Use `FoldOp(and)`, not boutique `AllOp`; use `FormatOp` with template, not `ReportOp`
+5. **Constants from files** — Use `PrepareFileReadOp("templates/x.template")`, not hardcoded strings
+
+**Available primitives** (in `lib/primitives/`):
+
+| Category | Primitives |
+|----------|------------|
+| Data | `ParseOp`, `ExtractOp`, `FormatOp`, `ConcatOp`, `SplitOp` |
+| Collection | `MapOp`, `FilterOp`, `FoldOp`, `SortOp`, `FirstOp`, `LastOp` |
+| I/O Prepare | `PrepareFileReadOp`, `PrepareFileWriteOp`, `PrepareFileExistsOp`, `PrepareShellOp`, `PrepareDirectoryListOp` |
+| Control | `LoopOp`, `BranchOp`, `GuardOp`, `SequenceOp` |
+
+**Example transformation:**
+
+```rust
+// BEFORE (custom execute function):
+fn execute_prepare_build_command(inputs) {
+    if !prep_success { return skip }  // Custom logic hidden in code
+    build_shell_request()
+}
+
+// AFTER (pure DAG composition):
+GuardOp(prep_success) -> PrepareShellOp("cargo", ["build"]) -> Execute
+// Branching is structural, visible in graph
+```
+
+**Status**: CI tool has been migrated to "pure execute_* functions" (Phase 1). Phase 2 (pure DAG composition with no custom code) is the target. See `TODO/graph-level-transport.md` for details.
+
 ### Bootstrap Pattern for CI (Self-Healing Codegen)
 
 Implemented a self-healing CI pipeline that handles the circular dependency between `gunbc-ci` and codegen:
