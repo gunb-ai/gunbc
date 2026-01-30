@@ -55,6 +55,7 @@ dependencies = [
  "gunbc-codegen",
  "gunbc-exec",
  "gunbc-ir",
+ "gunbc-lib-transport",
  "gunbc-primitives",
  "gunbc-test",
 ]
@@ -169,6 +170,7 @@ dependencies = [
  "gunbc-codegen",
  "gunbc-exec",
  "gunbc-ir",
+ "gunbc-lib-transport",
  "gunbc-primitives",
  "gunbc-test",
  "serde_json",

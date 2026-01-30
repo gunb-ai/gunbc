@@ -17,6 +17,14 @@
 //! 2. Primitives are composable via DAG edges
 //! 3. Cardinality is used for automatic test generation
 //! 4. Boundaries are clearly marked for dry-run interception
+//!
+//! # Note on I/O Operations
+//!
+//! The deprecated I/O ops (ReadFileOp, WriteFileOp, ExecuteOp) use direct I/O
+//! for backwards compatibility. New code should use PrepareXxxOp + TransportOps::Execute.
+
+// Deprecated I/O ops use direct filesystem/process access
+#![allow(clippy::disallowed_methods)]
 
 pub mod collection;
 pub mod control;
@@ -26,7 +34,13 @@ pub mod io;
 pub use collection::{CollectionOp, FilterOp, FirstOp, FoldOp, LastOp, MapOp, SortOp};
 pub use control::{BranchOp, LoopOp};
 pub use data::{ConcatOp, ExtractOp, FormatOp, ParseOp, SplitOp};
-pub use io::{ExecuteOp, HttpRequestOp, ListFilesOp, PrepareFileWriteOp, ReadFileOp, ReadFilesOp, WriteFileOp};
+pub use io::{
+    // Pure prepare ops (preferred - use with TransportOps::Execute)
+    PrepareDirectoryListOp, PrepareFileExistsOp, PrepareFileReadOp, PrepareFileWriteOp,
+    PrepareShellOp,
+    // Deprecated direct I/O ops (bypass transport layer)
+    ExecuteOp, HttpRequestOp, ListFilesOp, ReadFileOp, ReadFilesOp, WriteFileOp,
+};
 
 use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::Value;
@@ -51,12 +65,21 @@ pub enum PrimitiveOp {
     First(FirstOp),
     Last(LastOp),
 
-    // I/O primitives (boundaries)
+    // I/O primitives - Pure prepare ops (preferred)
+    PrepareFileRead(PrepareFileReadOp),
+    PrepareFileWrite(PrepareFileWriteOp),
+    PrepareFileExists(PrepareFileExistsOp),
+    PrepareShell(PrepareShellOp),
+    PrepareDirectoryList(PrepareDirectoryListOp),
+
+    // I/O primitives - Deprecated direct I/O (bypass transport)
+    #[deprecated(note = "Use PrepareFileRead + TransportOps::Execute")]
     ReadFile(ReadFileOp),
     ReadFiles(ReadFilesOp),
     ListFiles(ListFilesOp),
+    #[deprecated(note = "Use PrepareFileWrite + TransportOps::Execute")]
     WriteFile(WriteFileOp),
-    PrepareFileWrite(PrepareFileWriteOp),
+    #[deprecated(note = "Use PrepareShell + TransportOps::Execute")]
     Execute(ExecuteOp),
     HttpRequest(HttpRequestOp),
 
@@ -83,12 +106,21 @@ impl Executable for PrimitiveOp {
             PrimitiveOp::First(op) => op.execute(inputs),
             PrimitiveOp::Last(op) => op.execute(inputs),
 
-            // I/O
+            // I/O - Pure prepare ops
+            PrimitiveOp::PrepareFileRead(op) => op.execute(inputs),
+            PrimitiveOp::PrepareFileWrite(op) => op.execute(inputs),
+            PrimitiveOp::PrepareFileExists(op) => op.execute(inputs),
+            PrimitiveOp::PrepareShell(op) => op.execute(inputs),
+            PrimitiveOp::PrepareDirectoryList(op) => op.execute(inputs),
+
+            // I/O - Deprecated direct I/O
+            #[allow(deprecated)]
             PrimitiveOp::ReadFile(op) => op.execute(inputs),
             PrimitiveOp::ReadFiles(op) => op.execute(inputs),
             PrimitiveOp::ListFiles(op) => op.execute(inputs),
+            #[allow(deprecated)]
             PrimitiveOp::WriteFile(op) => op.execute(inputs),
-            PrimitiveOp::PrepareFileWrite(op) => op.execute(inputs),
+            #[allow(deprecated)]
             PrimitiveOp::Execute(op) => op.execute(inputs),
             PrimitiveOp::HttpRequest(op) => op.execute(inputs),
 

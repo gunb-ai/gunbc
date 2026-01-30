@@ -2,9 +2,11 @@
 //!
 //! This module provides convenience builders for GitHub Gist API requests,
 //! which can be converted to either REST or Shell transport requests.
+//!
+//! Built on the [`super::github`] platform layer for consistent GitHub interaction.
 
-use super::rest::RestRequest;
-use super::{ShellRequest, TransportRequest};
+use super::github::{api::github_rest_request, cli::gh_cli_request};
+use super::TransportRequest;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -65,7 +67,11 @@ impl GistRequest {
     /// Convert to a REST API request.
     ///
     /// Uses the GitHub Gist API: POST https://api.github.com/gists
+    /// Configuration (headers, auth, API version) comes from [`super::github::api`].
     pub fn to_rest_request(&self) -> TransportRequest {
+        use super::github::api::RestRequestExt;
+        use super::http::HttpMethod;
+
         let files_json: serde_json::Map<String, serde_json::Value> = self
             .files
             .iter()
@@ -86,11 +92,10 @@ impl GistRequest {
             body["description"] = serde_json::Value::String(desc.clone());
         }
 
-        let request = RestRequest::post("https://api.github.com/gists")
-            .json(body)
-            .header("Accept", "application/vnd.github+json")
-            .header("X-GitHub-Api-Version", "2022-11-28")
-            .auth_env("GITHUB_TOKEN");
+        // Use the shared GitHub REST request builder
+        let request = github_rest_request("/gists")
+            .method(HttpMethod::Post)
+            .json(body);
 
         TransportRequest::Rest(request)
     }
@@ -98,6 +103,7 @@ impl GistRequest {
     /// Convert to a shell request using the gh CLI.
     ///
     /// This is useful when a GitHub CLI is available and authenticated.
+    /// Configuration comes from [`super::github::cli`].
     pub fn to_shell_request(&self) -> TransportRequest {
         // Get the first file (gh CLI creates gist from a single file or stdin)
         let (filename, content) = self
@@ -107,10 +113,8 @@ impl GistRequest {
             .map(|(n, f)| (n.clone(), f.content.clone()))
             .unwrap_or_else(|| ("gist.txt".to_string(), String::new()));
 
-        let mut req = ShellRequest::new("gh")
-            .args(["gist", "create", "-f", &filename])
-            .arg("-") // Read from stdin
-            .stdin(content);
+        // Use the shared gh CLI request builder
+        let mut req = gh_cli_request(&["gist", "create", "-f", &filename, "-"]).stdin(content);
 
         if self.public {
             req = req.arg("--public");

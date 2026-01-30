@@ -1,0 +1,23 @@
+# Clippy configuration for gunbc
+#
+# This enforces the transport pattern by disallowing direct I/O operations
+# outside of approved crates. Only the following should use std::fs and Command:
+#   - lib/transport (the transport executor)
+#   - lib/primitives (deprecated ops, allowed for backwards compatibility)
+#   - core/codegen (bootstrapper, can't use transport)
+#
+# All other crates should use PrepareXxxOp + TransportOps::Execute
+
+disallowed-methods = [
+    # Filesystem operations - use PrepareFileReadOp/PrepareFileWriteOp instead
+    { path = "std::fs::read", reason = "Use PrepareFileReadOp + TransportOps::Execute for transport compliance" },
+    { path = "std::fs::read_to_string", reason = "Use PrepareFileReadOp + TransportOps::Execute for transport compliance" },
+    { path = "std::fs::write", reason = "Use PrepareFileWriteOp + TransportOps::Execute for transport compliance" },
+    { path = "std::fs::read_dir", reason = "Use PrepareDirectoryListOp + TransportOps::Execute for transport compliance" },
+    { path = "std::fs::remove_file", reason = "Direct filesystem ops should be in transport layer" },
+    { path = "std::fs::remove_dir_all", reason = "Direct filesystem ops should be in transport layer" },
+    { path = "std::fs::create_dir_all", reason = "Direct filesystem ops should be in transport layer" },
+    
+    # Process execution - use PrepareShellOp instead
+    { path = "std::process::Command::new", reason = "Use PrepareShellOp + TransportOps::Execute for transport compliance" },
+]

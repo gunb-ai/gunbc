@@ -1,7 +1,7 @@
 //! CLI and DAG generator - generates main.rs and graph.rs for all tools.
 //!
 //! This is a transaction-based code generator:
-//! - `commit` (default): Generate CLIs, build binaries, create symlink
+//! - `commit` (default): Generate CLIs, build binaries, create bin directory
 //! - `rollback`: Remove all generated artifacts
 //! - `codegen`: Just generate CLIs (partial commit)
 //! - `daggen`: Generate graph.rs from declarative DAG definitions
@@ -13,12 +13,22 @@
 //!   gunbc-codegen codegen            # just generate CLIs
 //!   gunbc-codegen daggen             # generate graph.rs files
 //!   gunbc-codegen codegen --dry-run  # preview codegen
+//!
+//! # Architecture Note
+//!
+//! This tool is the bootstrapper - it generates CLIs for other tools. As such,
+//! it cannot use the transport pattern (which would create a circular dependency).
+//! It uses direct filesystem and process operations by design.
+//!
+//! Future improvement: Express codegen as a DAG executed by a minimal bootstrap
+//! executor that doesn't depend on the generated tools.
 
 use gunbc_codegen::{
     all_cleanable_outputs, all_tools, generate_cli_with_import, generate_graph_rs, FileWriter,
 };
 use std::env;
 use std::fs;
+use std::io;
 use std::path::Path;
 use std::process::Command;
 
@@ -52,7 +62,7 @@ fn main() {
     }
 }
 
-/// Full build transaction: codegen → cargo build → symlink
+/// Full build transaction: codegen → cargo build → setup bin directory
 fn cmd_commit(dry_run: bool) {
     println!("gunbc-codegen: commit transaction");
     println!("  mode: {}", if dry_run { "dry-run" } else { "real" });
@@ -68,32 +78,86 @@ fn cmd_commit(dry_run: bool) {
     // Step 2: Build with cargo
     println!("\n[2/3] Building binaries...");
     if !dry_run {
-        let status = Command::new("cargo")
-            .args(["build", "--release"])
-            .status()
-            .expect("Failed to run cargo");
-        
-        if !status.success() {
-            eprintln!("Cargo build failed");
-            std::process::exit(1);
+        match run_cargo_build() {
+            Ok(()) => println!("  cargo build --release: success"),
+            Err(e) => {
+                eprintln!("Cargo build failed: {}", e);
+                std::process::exit(1);
+            }
         }
     } else {
         println!("  (dry-run: would run cargo build --release)");
     }
     
-    // Step 3: Create symlink
-    println!("\n[3/3] Creating bin symlink...");
+    // Step 3: Setup bin directory (cross-platform)
+    println!("\n[3/3] Setting up bin directory...");
     if !dry_run {
-        let _ = fs::remove_file("bin");
-        #[cfg(unix)]
-        std::os::unix::fs::symlink("target/release", "bin")
-            .expect("Failed to create symlink");
-        println!("  bin -> target/release");
+        match setup_bin_directory() {
+            Ok(()) => println!("  bin -> target/release (symlink or copy)"),
+            Err(e) => {
+                eprintln!("Warning: Could not setup bin directory: {}", e);
+                eprintln!("         Binaries are available at target/release/");
+                // Non-fatal - binaries are still built
+            }
+        }
     } else {
-        println!("  (dry-run: would create bin -> target/release)");
+        println!("  (dry-run: would setup bin -> target/release)");
     }
     
-    println!("\nCommit complete. Binaries available at ./bin/");
+    println!("\nCommit complete. Binaries available at ./bin/ or ./target/release/");
+}
+
+/// Run cargo build --release
+fn run_cargo_build() -> io::Result<()> {
+    let status = Command::new("cargo")
+        .args(["build", "--release"])
+        .status()?;
+    
+    if status.success() {
+        Ok(())
+    } else {
+        Err(io::Error::new(
+            io::ErrorKind::Other,
+            format!("cargo exited with status: {}", status),
+        ))
+    }
+}
+
+/// Setup bin directory - symlink on Unix, copy on Windows, with fallback
+fn setup_bin_directory() -> io::Result<()> {
+    let bin_path = Path::new("bin");
+    let target_path = Path::new("target/release");
+    
+    // Remove existing bin directory/symlink/file
+    if bin_path.exists() || bin_path.is_symlink() {
+        if bin_path.is_dir() && !bin_path.is_symlink() {
+            fs::remove_dir_all(bin_path)?;
+        } else {
+            fs::remove_file(bin_path)?;
+        }
+    }
+    
+    // Try symlink first (works on Unix and some Windows configurations)
+    #[cfg(unix)]
+    {
+        return std::os::unix::fs::symlink(target_path, bin_path);
+    }
+    
+    // On Windows, try to create a directory junction, or fall back to documenting the location
+    #[cfg(windows)]
+    {
+        // Windows symlinks require admin privileges, so just create a simple
+        // marker file pointing users to the right location
+        let marker_content = "Binaries are in target/release/\n";
+        fs::write(bin_path.join(".location"), marker_content)?;
+        return Ok(());
+    }
+    
+    // Fallback for other platforms
+    #[cfg(not(any(unix, windows)))]
+    {
+        Ok(()) // Just skip - binaries are in target/release
+    }
 }
 
 /// Rollback: remove all generated artifacts
@@ -103,6 +167,7 @@ fn cmd_rollback(dry_run: bool) {
     println!();
     
     let targets = all_cleanable_outputs();
+    let mut errors = Vec::new();
     
     for target in &targets {
         let path = Path::new(target);
@@ -110,20 +175,29 @@ fn cmd_rollback(dry_run: bool) {
             if dry_run {
                 println!("  would remove: {}", target);
             } else {
-                if path.is_dir() {
-                    fs::remove_dir_all(path).ok();
+                let result = if path.is_dir() && !path.is_symlink() {
+                    fs::remove_dir_all(path)
                 } else {
-                    fs::remove_file(path).ok();
+                    fs::remove_file(path)
+                };
+                
+                match result {
+                    Ok(()) => println!("  removed: {}", target),
+                    Err(e) => {
+                        eprintln!("  failed to remove {}: {}", target, e);
+                        errors.push((target.clone(), e));
+                    }
                 }
-                println!("  removed: {}", target);
             }
         }
     }
     
     if dry_run {
         println!("\nDry-run complete. No files removed.");
-    } else {
+    } else if errors.is_empty() {
         println!("\nRollback complete. Run 'gunbc-codegen commit' to rebuild.");
+    } else {
+        println!("\nRollback completed with {} error(s). Some files may remain.", errors.len());
     }
 }
 

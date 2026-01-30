@@ -1,25 +1,27 @@
 //! Makegen operations.
 //!
-//! Demonstrates decomposition into primitives where possible.
-//! File writing delegates to WriteFileOp primitive.
+//! This module contains pure makegen-specific operations.
+//! File writing is handled via the transport pattern:
+//! - `PrepareFileWriteOp` (primitive) creates the TransportRequest
+//! - `TransportOps::Execute` (boundary) performs actual I/O
 
 use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::Value;
-use gunbc_primitives::WriteFileOp;
 use std::collections::HashMap;
 
 use crate::registry::ToolRegistry;
 use crate::render::render_makefile;
 
 /// Operations for the makegen tool.
+///
+/// These are all pure operations - no direct I/O.
+/// I/O is handled via `PrepareFileWriteOp` + `TransportOps::Execute`.
 #[derive(Debug, Clone)]
 pub enum MakegenOp {
-    /// Load the tool registry
+    /// Load the tool registry (pure - reads static configuration)
     LoadRegistry,
-    /// Render Makefile content
+    /// Render Makefile content (pure - string generation)
     RenderMakefile,
-    /// Write Makefile to disk (boundary)
-    WriteMakefile,
 }
 
 impl Executable for MakegenOp {
@@ -27,7 +29,6 @@ impl Executable for MakegenOp {
         match self {
             MakegenOp::LoadRegistry => execute_load_registry(inputs),
             MakegenOp::RenderMakefile => execute_render_makefile(inputs),
-            MakegenOp::WriteMakefile => execute_write_makefile(inputs),
         }
     }
 }
@@ -75,38 +76,6 @@ fn execute_render_makefile(_inputs: HashMap<String, Value>) -> Result<HashMap<St
 
     let mut out = HashMap::new();
     out.insert("makefile_content".to_string(), Value::Str(content));
-    Ok(out)
-}
-
-/// Write the Makefile to disk using WriteFileOp primitive.
-fn execute_write_makefile(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-    let content = match inputs.get("makefile_content") {
-        Some(Value::Str(s)) => s.clone(),
-        _ => return Err(ExecError::new("missing or invalid 'makefile_content' input")),
-    };
-
-    let output_path = match inputs.get("output_path") {
-        Some(Value::Str(s)) => s.clone(),
-        _ => "Makefile".to_string(),
-    };
-
-    // Use WriteFileOp primitive
-    let mut write_inputs = HashMap::new();
-    write_inputs.insert("path".to_string(), Value::Str(output_path.clone()));
-    write_inputs.insert("content".to_string(), Value::Str(content.clone()));
-    
-    let write_result = WriteFileOp.execute(write_inputs)?;
-    
-    let written_path = write_result
-        .get("written_path")
-        .and_then(|v| v.as_str())
-        .unwrap_or(&output_path)
-        .to_string();
-
-    let mut out = HashMap::new();
-    out.insert("written_path".to_string(), Value::Str(written_path));
-    out.insert("content".to_string(), Value::Str(content));
-    out.insert("changed".to_string(), Value::Bool(true)); // WriteFileOp always writes
     Ok(out)
 }
 
@@ -164,16 +133,6 @@ buck2:
                 );
                 out
             }
-            MakegenOp::WriteMakefile => {
-                let mut out = HashMap::new();
-                out.insert("written_path".to_string(), Value::Str("Makefile".to_string()));
-                out.insert(
-                    "content".to_string(),
-                    Value::Str("# Mock Makefile content".to_string()),
-                );
-                out.insert("changed".to_string(), Value::Bool(true));
-                out
-            }
         }
     }
 
@@ -189,22 +148,6 @@ buck2:
             ],
             MakegenOp::RenderMakefile => vec![
                 // RenderMakefile doesn't require inputs currently
-            ],
-            MakegenOp::WriteMakefile => vec![
-                ErrorTestCase::new(
-                    "missing_makefile_content",
-                    HashMap::new(),
-                    "missing or invalid 'makefile_content' input",
-                ),
-                ErrorTestCase::new(
-                    "wrong_type_makefile_content",
-                    {
-                        let mut m = HashMap::new();
-                        m.insert("makefile_content".to_string(), Value::Int(123));
-                        m
-                    },
-                    "missing or invalid 'makefile_content' input",
-                ),
             ],
         }
     }

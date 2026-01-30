@@ -5,6 +5,15 @@
 //! - [`FileWriter`]: File writing with dry-run support
 //! - [`DagInfo`]: Combined boundary and entrypoint information
 //! - [`cli_gen`]: CLI generation from DAG entrypoints
+//!
+//! # Note
+//!
+//! This crate is the bootstrapper - it generates code for other tools.
+//! As such, it cannot use the transport pattern (circular dependency).
+//! It uses direct filesystem operations by design.
+
+// Codegen is the bootstrapper - can't use transport layer (circular dependency)
+#![allow(clippy::disallowed_methods)]
 
 pub mod cli_gen;
 pub mod dag_gen;

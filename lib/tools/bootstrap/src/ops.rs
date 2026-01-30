@@ -1,24 +1,31 @@
 //! Bootstrap operations.
 //!
-//! Demonstrates decomposition into primitives where possible.
-//! File writing delegates to WriteFileOp primitive.
+//! This module contains pure bootstrap-specific operations.
+//! File writing is handled via the transport pattern:
+//! - `PrepareFileWriteOp` (primitive) creates the TransportRequest
+//! - `TransportOps::Execute` (boundary) performs actual I/O
+//!
+//! NOTE: `ScanWorkspace` still uses direct fs operations internally.
+//! A future refactor could use PrepareShellOp + TransportOps::Execute
+//! with `find` or `ls` commands.
 
 use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::Value;
-use gunbc_primitives::WriteFileOp;
 use std::collections::HashMap;
 
 /// Operations for the bootstrap tool.
+///
+/// These are all pure operations - no direct I/O (except ScanWorkspace which
+/// is a read-only operation that could be migrated to transport pattern later).
+/// File writing is handled via `PrepareFileWriteOp` + `TransportOps::Execute`.
 #[derive(Debug, Clone)]
 pub enum BootstrapOp {
-    /// Scan workspace for crates
+    /// Scan workspace for crates (read-only, uses direct fs for now)
     ScanWorkspace,
-    /// Generate Makefile content
+    /// Generate Makefile content (pure - string generation)
     GenerateMakefile,
-    /// Generate .gitignore content
+    /// Generate .gitignore content (pure - string generation)
     GenerateGitignore,
-    /// Write all generated files (boundary)
-    WriteFiles,
 }
 
 impl Executable for BootstrapOp {
@@ -27,7 +34,6 @@ impl Executable for BootstrapOp {
             BootstrapOp::ScanWorkspace => execute_scan_workspace(inputs),
             BootstrapOp::GenerateMakefile => execute_generate_makefile(inputs),
             BootstrapOp::GenerateGitignore => execute_generate_gitignore(inputs),
-            BootstrapOp::WriteFiles => execute_write_files(inputs),
         }
     }
 }
@@ -167,40 +173,6 @@ Thumbs.db
     Ok(out)
 }
 
-/// Write all generated files using WriteFileOp primitive.
-fn execute_write_files(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-    let mut files_written = Vec::new();
-
-    // Write Makefile using primitive
-    if let Some(Value::Str(content)) = inputs.get("makefile_content") {
-        let mut write_inputs = HashMap::new();
-        write_inputs.insert("path".to_string(), Value::Str("Makefile".to_string()));
-        write_inputs.insert("content".to_string(), Value::Str(content.clone()));
-        WriteFileOp.execute(write_inputs)?;
-        files_written.push("Makefile".to_string());
-    }
-
-    // Write .gitignore using primitive
-    if let Some(Value::Str(content)) = inputs.get("gitignore_content") {
-        let mut write_inputs = HashMap::new();
-        write_inputs.insert("path".to_string(), Value::Str(".gitignore".to_string()));
-        write_inputs.insert("content".to_string(), Value::Str(content.clone()));
-        WriteFileOp.execute(write_inputs)?;
-        files_written.push(".gitignore".to_string());
-    }
-
-    let mut out = HashMap::new();
-    out.insert(
-        "files_written".to_string(),
-        Value::StrList(files_written.clone()),
-    );
-    out.insert(
-        "write_count".to_string(),
-        Value::Int(files_written.len() as i64),
-    );
-    Ok(out)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -253,12 +225,6 @@ impl Mockable for BootstrapOp {
             BootstrapOp::GenerateGitignore => {
                 let mut out = HashMap::new();
                 out.insert("gitignore_content".to_string(), Value::Str("# Mock .gitignore\n/target/".to_string()));
-                out
-            }
-            BootstrapOp::WriteFiles => {
-                let mut out = HashMap::new();
-                out.insert("files_written".to_string(), Value::StrList(vec!["Makefile".to_string(), ".gitignore".to_string()]));
-                out.insert("write_count".to_string(), Value::Int(2));
                 out
             }
         }

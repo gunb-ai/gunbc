@@ -5,19 +5,43 @@
 //! - File operations for filesystem I/O
 //! - TCP for raw network connections
 //! - Shell for command execution
+//! - GitHub platform (API + CLI)
+//! - GitHub Actions for CI/CD integration
 //!
 //! The key insight is that all world I/O can be modeled as request/response pairs,
 //! allowing business logic to remain pure while transport execution happens at
 //! well-defined boundaries.
+//!
+//! # GitHub Architecture
+//!
+//! ```text
+//! github/                     ← Platform layer
+//! ├── mod.rs (auth, versions)
+//! ├── api.rs (REST API)
+//! └── cli.rs (gh CLI)
+//!
+//! gist.rs                     ← Service layer (uses github/)
+//! github_actions.rs           ← Service layer (uses github/)
+//! ```
 
 pub mod file;
 pub mod gist;
+pub mod github;
+pub mod github_actions;
 pub mod http;
 pub mod rest;
 pub mod tcp;
 
 pub use file::{FileOp, FileRequest, FileResponse};
 pub use gist::GistRequest;
+pub use github::{
+    api::{github_rest_request, GitHubApi, GITHUB_API},
+    cli::{gh_cli_commands, gh_cli_request, is_gh_installed, GHCommand, GitHubCLI, GH_CLI},
+    GitHubAuth, GITHUB_API_VERSION, GITHUB_CONTRACT_VERSION, GH_CLI_MIN_VERSION,
+};
+pub use github_actions::{
+    merge_permissions, Integration, PermissionLevel, PermissionScope, Permissions, RunnerImage,
+};
 pub use http::{HttpMethod, HttpRequest, HttpResponse};
 pub use rest::{AuthMethod, RestRequest, RestResponse};
 pub use tcp::{TcpRequest, TcpResponse};

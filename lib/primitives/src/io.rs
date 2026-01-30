@@ -1,7 +1,21 @@
 //! I/O primitives - world interactions (boundaries).
 //!
-//! These operations interact with the outside world and are automatically
-//! identified as boundaries for dry-run interception.
+//! ## Architecture Note
+//!
+//! This module follows the **transport pattern**: pure "Prepare" ops produce
+//! `TransportRequest` values, which are then executed by `TransportOps::Execute`.
+//! This separation enables:
+//! - Centralized I/O interception for dry-run mode
+//! - Consistent mocking/testing
+//! - Policy enforcement at the transport layer
+//!
+//! **Preferred pattern:**
+//! - Use `PrepareFileReadOp`, `PrepareFileWriteOp`, `PrepareShellOp` (pure)
+//! - Execute via `TransportOps::Execute` (single I/O boundary)
+//!
+//! **Deprecated (direct I/O):**
+//! - `ReadFileOp`, `WriteFileOp`, `ExecuteOp` perform I/O directly and bypass
+//!   the transport layer. These are deprecated and will be removed in a future version.
 
 use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::transport::{FileRequest, HttpMethod, RestRequest, ShellRequest, TransportRequest};
@@ -12,7 +26,14 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
+// =============================================================================
+// DEPRECATED: Direct I/O Operations (bypass transport layer)
+// =============================================================================
+
 /// Read a file from the filesystem.
+///
+/// **DEPRECATED**: Use `PrepareFileReadOp` + `TransportOps::Execute` instead.
+/// This op performs I/O directly, bypassing the transport layer.
 ///
 /// Inputs:
 /// - `path`: String path to the file
@@ -20,6 +41,10 @@ use std::process::Command;
 /// Outputs:
 /// - `content`: String contents of the file
 /// - `exists`: Bool indicating if the file exists
+#[deprecated(
+    since = "0.2.0",
+    note = "Use PrepareFileReadOp + TransportOps::Execute instead"
+)]
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ReadFileOp;
 
@@ -48,7 +73,8 @@ impl Executable for ReadFileOp {
 
 /// Write a file to the filesystem (boundary operation).
 ///
-/// This is a boundary operation - it will be intercepted in dry-run mode.
+/// **DEPRECATED**: Use `PrepareFileWriteOp` + `TransportOps::Execute` instead.
+/// This op performs I/O directly AND returns a TransportRequest (mixed model).
 ///
 /// Inputs:
 /// - `path`: String path to write to
@@ -58,6 +84,10 @@ impl Executable for ReadFileOp {
 /// - `written_path`: String path that was written
 /// - `success`: Bool indicating success
 /// - `request`: TransportRequest for transport layer
+#[deprecated(
+    since = "0.2.0",
+    note = "Use PrepareFileWriteOp + TransportOps::Execute instead"
+)]
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct WriteFileOp;
 
@@ -97,7 +127,8 @@ impl Executable for WriteFileOp {
 
 /// Execute a shell command (boundary operation).
 ///
-/// This is a boundary operation - it will be intercepted in dry-run mode.
+/// **DEPRECATED**: Use `PrepareShellOp` + `TransportOps::Execute` instead.
+/// This op performs I/O directly, bypassing the transport layer.
 ///
 /// Inputs:
 /// - `command`: String command to execute
@@ -109,6 +140,10 @@ impl Executable for WriteFileOp {
 /// - `stderr`: String stderr output
 /// - `exit_code`: Int exit code
 /// - `success`: Bool indicating exit_code == 0
+#[deprecated(
+    since = "0.2.0",
+    note = "Use PrepareShellOp + TransportOps::Execute instead"
+)]
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ExecuteOp;
 
@@ -362,6 +397,10 @@ impl Executable for ReadFilesOp {
     }
 }
 
+// =============================================================================
+// PURE: Prepare Operations (transport pattern - preferred)
+// =============================================================================
+
 /// Prepare a file write request (PURE - no I/O).
 ///
 /// This separates the business logic (deciding what to write) from the
@@ -391,6 +430,149 @@ impl Executable for PrepareFileWriteOp {
             .ok_or_else(|| ExecError::new("missing or invalid 'content' string"))?;
 
         let request = TransportRequest::File(FileRequest::write(path, content));
+
+        let mut out = HashMap::new();
+        out.insert("request".to_string(), Value::Request(request));
+        Ok(out)
+    }
+}
+
+/// Prepare a file read request (PURE - no I/O).
+///
+/// This separates the business logic (deciding what to read) from the
+/// actual I/O (reading from disk). Use with TransportOps::Execute.
+///
+/// Inputs:
+/// - `path`: String path to read from
+///
+/// Outputs:
+/// - `request`: TransportRequest for transport layer
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct PrepareFileReadOp;
+
+impl Executable for PrepareFileReadOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        let path = inputs
+            .get("path")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ExecError::new("missing or invalid 'path' string"))?;
+
+        let request = TransportRequest::File(FileRequest::read(path));
+
+        let mut out = HashMap::new();
+        out.insert("request".to_string(), Value::Request(request));
+        Ok(out)
+    }
+}
+
+/// Prepare a file exists check request (PURE - no I/O).
+///
+/// Inputs:
+/// - `path`: String path to check
+///
+/// Outputs:
+/// - `request`: TransportRequest for transport layer
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct PrepareFileExistsOp;
+
+impl Executable for PrepareFileExistsOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        let path = inputs
+            .get("path")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ExecError::new("missing or invalid 'path' string"))?;
+
+        let request = TransportRequest::File(FileRequest::exists(path));
+
+        let mut out = HashMap::new();
+        out.insert("request".to_string(), Value::Request(request));
+        Ok(out)
+    }
+}
+
+/// Prepare a shell command request (PURE - no I/O).
+///
+/// This separates the business logic (deciding what command to run) from the
+/// actual I/O (executing the command). Use with TransportOps::Execute.
+///
+/// Inputs:
+/// - `command`: String command to execute
+/// - `args`: Optional StrList of arguments
+/// - `cwd`: Optional working directory
+///
+/// Outputs:
+/// - `request`: TransportRequest for transport layer
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct PrepareShellOp;
+
+impl Executable for PrepareShellOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        let command = inputs
+            .get("command")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ExecError::new("missing or invalid 'command' string"))?;
+
+        let args = inputs
+            .get("args")
+            .and_then(|v| v.as_str_list())
+            .unwrap_or_default();
+
+        let cwd = inputs.get("cwd").and_then(|v| v.as_str());
+
+        let request = TransportRequest::Shell(ShellRequest {
+            command: command.to_string(),
+            args,
+            cwd: cwd.map(|s| s.to_string()),
+            env: std::collections::HashMap::new(),
+            stdin: None,
+        });
+
+        let mut out = HashMap::new();
+        out.insert("request".to_string(), Value::Request(request));
+        Ok(out)
+    }
+}
+
+/// Prepare a directory listing request (PURE - no I/O).
+///
+/// This creates a shell request for `ls` or similar directory listing.
+/// Use with TransportOps::Execute.
+///
+/// Inputs:
+/// - `path`: String path to list (defaults to ".")
+/// - `recursive`: Optional Bool for recursive listing
+///
+/// Outputs:
+/// - `request`: TransportRequest for transport layer
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct PrepareDirectoryListOp;
+
+impl Executable for PrepareDirectoryListOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        let path = inputs
+            .get("path")
+            .and_then(|v| v.as_str())
+            .unwrap_or(".");
+
+        let recursive = inputs
+            .get("recursive")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        // Use find for recursive, ls for non-recursive
+        let (command, args) = if recursive {
+            ("find", vec![path.to_string(), "-type".to_string(), "f".to_string()])
+        } else {
+            ("ls", vec!["-1".to_string(), path.to_string()])
+        };
+
+        let request = TransportRequest::Shell(ShellRequest {
+            command: command.to_string(),
+            args,
+            cwd: None,
+            env: std::collections::HashMap::new(),
+            stdin: None,
+        });
 
         let mut out = HashMap::new();
         out.insert("request".to_string(), Value::Request(request));

@@ -10,13 +10,19 @@
 //!
 //! All build/test/lint commands are sourced from `BuildConfig` in the
 //! makegen registry. This ensures a single source of truth for commands.
+//!
+//! # Transport Pattern
+//!
+//! All command execution goes through `ExecuteOp`, which will be migrated
+//! to `PrepareShellOp` + `TransportOps::Execute` in a future refactor.
+//! This ensures consistent interception for dry-run mode.
 
 use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::Value;
 use gunbc_makegen::{BuildConfig, ToolRegistry};
+#[allow(deprecated)]
 use gunbc_primitives::ExecuteOp;
 use std::collections::HashMap;
-use std::process::Command;
 
 /// Run a command from BuildConfig, returning (success, stdout, stderr).
 fn run_config_command(command: &[&str]) -> Result<(bool, String, String), ExecError> {
@@ -117,6 +123,9 @@ fn execute_setup_deps(_inputs: HashMap<String, Value>) -> Result<HashMap<String,
 ///
 /// Uses `ToolRegistry::needs_codegen()` to check if codegen is needed,
 /// and `BuildConfig` to get the codegen command.
+///
+/// Now uses `run_config_command` (via ExecuteOp) for consistent
+/// interception in dry-run mode.
 fn execute_prep(_inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
     let registry = ToolRegistry::default_registry();
     let config = BuildConfig::cargo();
@@ -136,19 +145,16 @@ fn execute_prep(_inputs: HashMap<String, Value>) -> Result<HashMap<String, Value
 
     println!("Prep: Running codegen to generate CLIs...");
 
-    // Run codegen using BuildConfig command
-    let status = Command::new(config.codegen_command[0])
-        .args(&config.codegen_command[1..])
-        .status()
-        .map_err(|e| ExecError::new(format!("Failed to run codegen: {}", e)))?;
+    // Run codegen using BuildConfig command via ExecuteOp (consistent with build/test/lint)
+    let (success, _stdout, stderr) = run_config_command(&config.codegen_command)?;
 
-    if !status.success() {
+    if !success {
         let mut out = HashMap::new();
         out.insert("prep_success".to_string(), Value::Bool(false));
         out.insert("codegen_ran".to_string(), Value::Bool(true));
         out.insert(
             "prep_message".to_string(),
-            Value::Str("Codegen failed".to_string()),
+            Value::Str(format!("Codegen failed: {}", stderr)),
         );
         return Ok(out);
     }

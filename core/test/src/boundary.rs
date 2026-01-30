@@ -1,16 +1,24 @@
-//! Boundary test helpers.
+//! Transport interception test helpers.
 //!
-//! Boundary tests verify that a DAG's world-write boundaries can be mocked.
+//! These tests verify that a DAG's transport executor nodes can be mocked.
+//!
+//! # Transport Interception Model
+//!
+//! DryRun mode intercepts **transport execution nodes** - nodes that consume
+//! `TransportRequest` values. This follows the design principle:
+//!
+//! > "World I/O is performed only by transport executor nodes"
+//! > "DryRun intercepts transport execution nodes, not boundary outputs"
 
 use gunbc_exec::{execute_with_mode, BoundaryMocks, ExecutionMode};
-use gunbc_ir::{detect_boundaries, Dag, Value};
+use gunbc_ir::{Dag, Value};
 
-/// Result of a boundary test.
+/// Result of a transport interception test.
 #[derive(Debug)]
 pub struct BoundaryTestResult {
     /// Whether the test passed
     pub success: bool,
-    /// Boundary nodes that were tested
+    /// Transport executor nodes that were tested
     pub boundary_nodes: Vec<String>,
     /// Any error message
     pub error: Option<String>,
@@ -23,12 +31,25 @@ impl BoundaryTestResult {
     }
 }
 
-/// Assert that a DAG's boundaries can be mocked in dry-run mode.
+/// Find all transport executor nodes in a DAG.
+///
+/// A transport executor node is one that has an input with type "TransportRequest".
+fn find_transport_executors<T>(dag: &Dag<T>) -> Vec<String> {
+    dag.nodes
+        .iter()
+        .filter(|node| {
+            node.inputs.iter().any(|port| port.type_id.0 == "TransportRequest")
+        })
+        .map(|node| node.id.0.clone())
+        .collect()
+}
+
+/// Assert that a DAG's transport executors can be mocked in dry-run mode.
 ///
 /// This test verifies that:
-/// 1. The DAG has identifiable boundaries
+/// 1. The DAG has transport executor nodes
 /// 2. Executing in dry-run mode succeeds
-/// 3. All boundary nodes were intercepted
+/// 3. All transport executor nodes were intercepted
 ///
 /// # Example
 ///
@@ -41,25 +62,23 @@ pub fn assert_boundary_mockable<T: gunbc_exec::Executable + Clone>(
     dag: &Dag<T>,
     mocks: BoundaryMocks,
 ) -> BoundaryTestResult {
-    // Detect boundaries
-    let boundaries = detect_boundaries(dag);
+    // Find transport executor nodes
+    let transport_executors = find_transport_executors(dag);
 
-    if boundaries.boundary_nodes.is_empty() {
+    if transport_executors.is_empty() {
         return BoundaryTestResult {
             success: false,
             boundary_nodes: vec![],
-            error: Some("DAG has no boundaries — nothing to test".to_string()),
+            error: Some("DAG has no transport executor nodes — nothing to test".to_string()),
         };
     }
-
-    let boundary_nodes: Vec<String> = boundaries.boundary_nodes.iter().map(|n| n.0.clone()).collect();
 
     // Execute in dry-run mode
     match execute_with_mode(dag, ExecutionMode::DryRun(mocks)) {
         Ok(log) => {
-            // Verify all boundaries were intercepted
+            // Verify all transport executors were intercepted
             let mut all_intercepted = true;
-            for node_id in &boundary_nodes {
+            for node_id in &transport_executors {
                 if let Some(entry) = log.get(node_id) {
                     if !entry.was_intercepted {
                         all_intercepted = false;
@@ -70,20 +89,20 @@ pub fn assert_boundary_mockable<T: gunbc_exec::Executable + Clone>(
             if all_intercepted {
                 BoundaryTestResult {
                     success: true,
-                    boundary_nodes,
+                    boundary_nodes: transport_executors,
                     error: None,
                 }
             } else {
                 BoundaryTestResult {
                     success: false,
-                    boundary_nodes,
-                    error: Some("Not all boundary nodes were intercepted".to_string()),
+                    boundary_nodes: transport_executors,
+                    error: Some("Not all transport executor nodes were intercepted".to_string()),
                 }
             }
         }
         Err(e) => BoundaryTestResult {
             success: false,
-            boundary_nodes,
+            boundary_nodes: transport_executors,
             error: Some(format!("Execution failed: {}", e)),
         },
     }
@@ -113,26 +132,43 @@ mod tests {
     use gunbc_ir::Node;
 
     #[test]
-    fn test_boundary_mockable_passes() {
+    fn test_transport_executor_mockable_passes() {
+        // A transport executor node has TransportRequest input
         let mut dag: Dag<MockOp> = Dag::new();
         dag.add_node(Node::opaque(
-            "sink",
-            vec![],
-            vec![port("out", "S")],
-            MockOp::new("sink", [("out", Value::Str("real".to_string()))]),
+            "execute_transport",
+            vec![port("request", "TransportRequest")],  // This makes it a transport executor
+            vec![port("response", "TransportResponse")],
+            MockOp::new("execute_transport", [("response", Value::Str("real".to_string()))]),
         ));
 
         let result = assert_boundary_mockable(&dag, default_mocks());
         assert!(result.is_ok());
-        assert_eq!(result.boundary_nodes, vec!["sink"]);
+        assert_eq!(result.boundary_nodes, vec!["execute_transport"]);
     }
 
     #[test]
-    fn test_no_boundaries_fails() {
-        // Empty DAG has no boundaries
+    fn test_no_transport_executors_fails() {
+        // DAG with no transport executor nodes (no TransportRequest inputs)
+        let mut dag: Dag<MockOp> = Dag::new();
+        dag.add_node(Node::opaque(
+            "pure_node",
+            vec![port("input", "String")],
+            vec![port("output", "String")],
+            MockOp::new("pure_node", [("output", Value::Str("result".to_string()))]),
+        ));
+
+        let result = assert_boundary_mockable(&dag, default_mocks());
+        assert!(!result.is_ok());
+        assert!(result.error.unwrap().contains("no transport executor"));
+    }
+
+    #[test]
+    fn test_empty_dag_fails() {
+        // Empty DAG has no transport executors
         let dag: Dag<MockOp> = Dag::new();
         let result = assert_boundary_mockable(&dag, default_mocks());
         assert!(!result.is_ok());
-        assert!(result.error.unwrap().contains("no boundaries"));
+        assert!(result.error.unwrap().contains("no transport executor"));
     }
 }

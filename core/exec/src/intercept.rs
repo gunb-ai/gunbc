@@ -1,7 +1,14 @@
-//! Boundary interception for dry-run mode.
+//! Transport execution interception for dry-run mode.
 //!
-//! In dry-run mode, boundary nodes (those with unconnected outputs)
-//! have their execution intercepted and replaced with mock behavior.
+//! In dry-run mode, **transport execution nodes** (those that consume
+//! `TransportRequest` values) have their execution intercepted and replaced
+//! with mock behavior. This follows the design principle:
+//!
+//! > "World I/O is performed only by transport executor nodes"
+//! > "DryRun intercepts transport execution nodes, not boundary outputs"
+//!
+//! Note: The mocks are still called "BoundaryMocks" for backwards compatibility,
+//! but they apply to transport execution nodes, not boundary nodes.
 
 use gunbc_ir::{NodeId, PortName, Value};
 use std::collections::HashMap;

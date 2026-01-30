@@ -9,6 +9,15 @@
 //! - `TransportOps::Execute` is the boundary that does actual I/O
 //!
 //! In dry-run mode, the boundary is mocked to intercept I/O.
+//!
+//! # Note
+//!
+//! This is the ONLY crate (besides codegen and deprecated primitives) that
+//! should perform direct I/O operations via std::fs and std::process::Command.
+//! All other crates should use PrepareXxxOp + TransportOps::Execute.
+
+// This crate IS the transport layer - it's allowed to use direct I/O
+#![allow(clippy::disallowed_methods)]
 
 pub mod executor;
 pub mod ops;

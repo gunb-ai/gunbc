@@ -67,12 +67,13 @@ pub fn render_makefile_with_config(registry: &ToolRegistry, config: &BuildConfig
 fn render_core_targets(config: &BuildConfig) -> String {
     let mut output = String::new();
 
-    // Ensure codegen has run (upsert pattern: check -> create if missing)
-    output.push_str("# Ensure codegen has run (upsert pattern: check -> create if missing)\n");
+    // Ensure codegen has run (upsert pattern: check stamp file -> create if missing)
+    // Uses a dedicated stamp file instead of checking for a specific tool's output
+    output.push_str("# Ensure codegen has run (upsert pattern: check stamp -> run if missing)\n");
     output.push_str("ensure-codegen:\n");
-    output.push_str("\t@if [ ! -f buck-out/gen/bin/gist/main.rs ]; then \\\n");
+    output.push_str("\t@if [ ! -f buck-out/gen/.codegen-stamp ]; then \\\n");
     output.push_str(&format!(
-        "\t\t{}; \\\n",
+        "\t\t{} && touch buck-out/gen/.codegen-stamp; \\\n",
         config.codegen_command.join(" ")
     ));
     output.push_str("\tfi\n\n");

@@ -3,14 +3,22 @@
 //! This crate provides:
 //! - [`Executable`]: Trait for operations that can be executed
 //! - [`execute`]: Execute a DAG in real mode
-//! - [`execute_with_mode`]: Execute with dry-run interception at boundaries
+//! - [`execute_with_mode`]: Execute with dry-run interception at transport nodes
 //! - [`lower`]: Flatten sub-DAGs into a single flat DAG
 //!
-//! # Dry-Run via Boundary Interception
+//! # Dry-Run via Transport Interception
 //!
 //! Dry-run is not a flag threaded through operations. It's an execution mode
-//! that intercepts at boundaries (unconnected outputs). Boundary nodes get
-//! their operations replaced with mock implementations.
+//! that intercepts **transport execution nodes** - nodes that consume
+//! `TransportRequest` values. This follows the design principle:
+//!
+//! > "World I/O is performed only by transport executor nodes"
+//! > "DryRun intercepts transport execution nodes, not boundary outputs"
+//!
+//! This ensures:
+//! - Pure nodes always execute (they can't do I/O)
+//! - Transport executors are replaced with mocks
+//! - Boundaries are just interface definitions, not interception points
 
 pub mod error;
 pub mod execute;

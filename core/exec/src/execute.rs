@@ -1,4 +1,18 @@
 //! DAG execution with boundary interception and simulation.
+//!
+//! # DryRun Interception
+//!
+//! DryRun mode intercepts **transport execution nodes** - nodes that consume
+//! `TransportRequest` values. This is based on the design principle:
+//!
+//! > "World I/O is performed only by transport executor nodes"
+//! > "DryRun intercepts transport execution nodes, not boundary outputs"
+//!
+//! A node is considered a transport executor if:
+//! - It has an input port with type `TransportRequest`
+//!
+//! Boundary detection (`BoundaryInfo`) is still used for signature inference
+//! and workflow interface detection, but NOT for DryRun interception.
 
 use crate::error::ExecError;
 use crate::intercept::BoundaryMocks;
@@ -272,7 +286,7 @@ fn compute_critical_path<T>(dag: &Dag<T>, _config: &SimConfig) -> Vec<NodeId> {
 /// Execute a flat (fully lowered) DAG.
 fn execute_flat<T: Executable>(
     dag: &Dag<T>,
-    boundaries: &BoundaryInfo,
+    _boundaries: &BoundaryInfo,  // Kept for future signature inference use
     mode: &ExecutionMode,
 ) -> Result<ExecutionLog, ExecError> {
     let order = topo_sort(dag);
@@ -310,9 +324,11 @@ fn execute_flat<T: Executable>(
                 .collect();
             (outputs, false)
         } else {
-            // Check if this is a boundary node in dry-run or simulate mode
-            let is_boundary = boundaries.is_boundary_node(node_id);
-            let should_intercept = is_boundary && matches!(mode, ExecutionMode::DryRun(_) | ExecutionMode::Simulate(_));
+            // Check if this is a transport execution node (consumes TransportRequest)
+            // Transport execution nodes are intercepted in dry-run/simulate mode
+            // This follows the design principle: intercept where I/O happens, not boundaries
+            let is_transport_executor = is_transport_execution_node(node);
+            let should_intercept = is_transport_executor && matches!(mode, ExecutionMode::DryRun(_) | ExecutionMode::Simulate(_));
 
             if should_intercept {
                 // Intercept: use mock values for boundary outputs
@@ -376,6 +392,21 @@ fn should_skip_node<T>(node: &Node<T>, inputs: &HashMap<String, Value>) -> bool 
     false
 }
 
+/// Check if a node is a transport execution node.
+///
+/// A transport execution node is one that consumes `TransportRequest` values.
+/// These are the only nodes where actual I/O happens, and therefore the only
+/// nodes that should be intercepted in DryRun mode.
+///
+/// This is a structural check based on port types, aligning with the design
+/// principle: "impossibility by structure" - if a node doesn't consume a
+/// TransportRequest, it can't perform transport I/O.
+fn is_transport_execution_node<T>(node: &Node<T>) -> bool {
+    node.inputs.iter().any(|port| {
+        port.type_id.0 == "TransportRequest"
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -423,26 +454,28 @@ mod tests {
     }
 
     #[test]
-    fn test_dry_run_intercepts_boundary() {
+    fn test_dry_run_intercepts_transport_executor() {
+        // A transport executor node consumes TransportRequest
         let mut dag: Dag<Produce> = Dag::new();
         dag.add_node(Node::opaque(
-            "create_gist",
-            vec![],
-            vec![port("url", "String")],
-            Produce::new("url", Value::Str("real-url".to_string())),
+            "execute_transport",
+            // This input marks it as a transport executor - will be intercepted
+            vec![port("request", "TransportRequest")],
+            vec![port("response", "TransportResponse")],
+            Produce::new("response", Value::Str("real-response".to_string())),
         ));
 
-        // In dry-run mode, the boundary should be intercepted
+        // In dry-run mode, transport executor nodes should be intercepted
         let mut mocks = BoundaryMocks::new();
-        mocks.set_value("create_gist", "url", Value::Str("mock-url".to_string()));
+        mocks.set_value("execute_transport", "response", Value::Str("mock-response".to_string()));
 
         let log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).unwrap();
 
         assert_eq!(log.entries.len(), 1);
         assert!(log.entries[0].was_intercepted);
-        match &log.entries[0].outputs.get("url") {
-            Some(Value::Str(s)) => assert_eq!(s, "mock-url"),
-            _ => panic!("expected mock url"),
+        match &log.entries[0].outputs.get("response") {
+            Some(Value::Str(s)) => assert_eq!(s, "mock-response"),
+            _ => panic!("expected mock response"),
         }
     }
 
@@ -467,33 +500,38 @@ mod tests {
     }
 
     #[test]
-    fn test_non_boundary_not_intercepted() {
-        // A -> B pipeline: A is not a boundary (connected to B), B is a boundary
+    fn test_pure_node_not_intercepted() {
+        // Pure nodes (no TransportRequest input) should never be intercepted
+        // Only transport executor nodes should be intercepted
         let mut dag: Dag<Produce> = Dag::new();
+        
+        // Pure node - prepares a request but doesn't execute it
         dag.add_node(Node::opaque(
-            "A",
-            vec![],
-            vec![port("out", "S")],
-            Produce::new("out", Value::Str("from-A".to_string())),
+            "prepare",
+            vec![port("content", "String")],
+            vec![port("request", "TransportRequest")],
+            Produce::new("request", Value::Str("prepared-request".to_string())),
         ));
+        
+        // Transport executor - consumes the request (will be intercepted)
         dag.add_node(Node::opaque(
-            "B",
-            vec![port("in", "S")],
-            vec![port("out", "S")],
-            Produce::new("out", Value::Str("from-B".to_string())),
+            "execute",
+            vec![port("request", "TransportRequest")],  // This makes it a transport executor
+            vec![port("response", "TransportResponse")],
+            Produce::new("response", Value::Str("real-response".to_string())),
         ));
-        dag.add_edge(edge("A", "out", "B", "in"));
+        dag.add_edge(edge("prepare", "request", "execute", "request"));
 
         let mocks = BoundaryMocks::with_default(Value::Str("mocked".to_string()));
         let log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).unwrap();
 
-        // A is not a boundary — should execute normally
-        let a_entry = log.get("A").unwrap();
-        assert!(!a_entry.was_intercepted);
+        // prepare is NOT a transport executor — should execute normally
+        let prepare_entry = log.get("prepare").unwrap();
+        assert!(!prepare_entry.was_intercepted);
 
-        // B is a boundary — should be intercepted
-        let b_entry = log.get("B").unwrap();
-        assert!(b_entry.was_intercepted);
+        // execute IS a transport executor — should be intercepted
+        let execute_entry = log.get("execute").unwrap();
+        assert!(execute_entry.was_intercepted);
     }
 
     #[test]
@@ -533,23 +571,24 @@ mod tests {
 
     #[test]
     fn test_simulate_with_mocks() {
+        // Transport executor node (consumes TransportRequest) should be intercepted in simulation
         let mut dag: Dag<Produce> = Dag::new();
         dag.add_node(Node::opaque(
-            "boundary_node",
-            vec![],
+            "transport_node",
+            vec![port("request", "TransportRequest")],  // Makes it a transport executor
             vec![port("result", "String")],
             Produce::new("result", Value::Str("real-value".to_string())),
         ));
 
         let mut mocks = BoundaryMocks::new();
-        mocks.set_value("boundary_node", "result", Value::Str("simulated-value".to_string()));
+        mocks.set_value("transport_node", "result", Value::Str("simulated-value".to_string()));
 
         let config = SimConfig::new().with_mocks(mocks);
 
         let result = simulate(&dag, config).unwrap();
 
-        // Boundary should be intercepted with mock value
-        let entry = result.log.get("boundary_node").unwrap();
+        // Transport executor should be intercepted with mock value
+        let entry = result.log.get("transport_node").unwrap();
         assert!(entry.was_intercepted);
         assert_eq!(
             entry.outputs.get("result"),

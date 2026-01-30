@@ -5,10 +5,22 @@
 //! The CI pipeline includes a Prep stage that runs codegen to ensure
 //! all generated code exists before building and testing. This is the
 //! "fractal unwind" pattern - CI unwinds all DAGs before executing.
+//!
+//! # GitHub Actions Integration
+//!
+//! This module also provides typed workflow configuration via the
+//! [`ci_workflow_config`] function, which declares:
+//! - Which integrations (actions) the workflow uses
+//! - Required permissions (computed from integrations)
+//! - Target runner image
 
 use crate::ops::CIOp;
 use gunbc_ir::{
     build::*, BuilderError, Cardinality, Dag, DagBuilder, Node, WorkflowSignature,
+    transport::github_actions::{
+        checkout, merge_permissions, rust_toolchain, ubuntu_latest,
+        Integration, Permissions, RunnerImage,
+    },
 };
 
 /// Get the declared signature for the ci workflow.
@@ -31,6 +43,101 @@ pub fn ci_signature() -> WorkflowSignature {
         .with_output("lint_stderr", "String", Cardinality::One)
         .with_output("overall_success", "Bool", Cardinality::One)
         .with_output("report", "String", Cardinality::One)
+}
+
+// ============================================================================
+// GitHub Actions Workflow Configuration
+// ============================================================================
+
+/// GitHub Actions workflow configuration.
+///
+/// Contains all the metadata needed to generate a complete workflow YAML,
+/// with permissions automatically computed from declared integrations.
+#[derive(Debug, Clone)]
+pub struct WorkflowConfig {
+    /// Workflow name
+    pub name: &'static str,
+    /// Target runner image
+    pub runner: RunnerImage,
+    /// Integrations (actions) used by this workflow
+    pub integrations: Vec<Integration>,
+    /// Computed permissions from integrations
+    pub permissions: Permissions,
+}
+
+impl WorkflowConfig {
+    /// Create a new workflow configuration.
+    pub fn new(name: &'static str, runner: RunnerImage, integrations: Vec<Integration>) -> Self {
+        // Compute permissions from all integrations
+        let permission_sets: Vec<Permissions> = integrations
+            .iter()
+            .map(|i| i.required_permissions())
+            .collect();
+        let permissions = merge_permissions(&permission_sets);
+
+        Self {
+            name,
+            runner,
+            integrations,
+            permissions,
+        }
+    }
+
+    /// Check if this workflow has any special permissions.
+    pub fn has_permissions(&self) -> bool {
+        !self.permissions.is_empty()
+    }
+
+    /// Get all action references (uses: fields) for the workflow.
+    pub fn action_refs(&self) -> Vec<&'static str> {
+        self.integrations.iter().map(|i| i.uses).collect()
+    }
+}
+
+/// Get the integrations used by the CI workflow.
+///
+/// The CI workflow uses:
+/// - `actions/checkout@v4` - clone repository
+/// - `dtolnay/rust-toolchain@stable` - install Rust
+pub fn ci_integrations() -> Vec<Integration> {
+    vec![
+        checkout(),
+        rust_toolchain(),
+    ]
+}
+
+/// Get the complete workflow configuration for CI.
+///
+/// This returns a typed configuration object that can be used to:
+/// - Generate workflow YAML with correct permissions
+/// - Validate that runner has required tools
+/// - Document which actions are used
+///
+/// # Example
+///
+/// ```ignore
+/// let config = ci_workflow_config();
+/// 
+/// // Check permissions are minimal (contents:read only)
+/// assert!(config.permissions.get(&PermissionScope::Contents) == Some(&PermissionLevel::Read));
+///
+/// // Verify runner has cargo
+/// assert!(config.runner.has_tool("cargo"));
+/// ```
+pub fn ci_workflow_config() -> WorkflowConfig {
+    WorkflowConfig::new(
+        "CI",
+        ubuntu_latest(),
+        ci_integrations(),
+    )
+}
+
+/// Get the required permissions for the CI workflow.
+///
+/// This is a convenience function that returns just the permissions,
+/// computed from all integrations used by the workflow.
+pub fn ci_workflow_permissions() -> Permissions {
+    ci_workflow_config().permissions
 }
 
 /// Build the CI graph using DagBuilder.
@@ -156,6 +263,7 @@ pub fn build_ci_graph() -> Result<Dag<CIOp>, BuilderError> {
 mod tests {
     use super::*;
     use gunbc_ir::{detect_boundaries, infer_signature};
+    use gunbc_ir::transport::github_actions::{PermissionLevel, PermissionScope};
 
     #[test]
     fn test_graph_builds_successfully() {
@@ -206,5 +314,61 @@ mod tests {
         // No inputs, 15 boundary outputs (added prep outputs and build_skipped)
         assert_eq!(inferred.inputs.len(), 0);
         assert_eq!(inferred.outputs.len(), 15);
+    }
+
+    // ========================================================================
+    // GitHub Actions Workflow Configuration Tests
+    // ========================================================================
+
+    #[test]
+    fn test_ci_integrations() {
+        let integrations = ci_integrations();
+        
+        // Should have checkout and rust-toolchain
+        assert_eq!(integrations.len(), 2);
+        assert!(integrations.iter().any(|i| i.id == "checkout"));
+        assert!(integrations.iter().any(|i| i.id == "rust-toolchain"));
+    }
+
+    #[test]
+    fn test_ci_workflow_config() {
+        let config = ci_workflow_config();
+        
+        assert_eq!(config.name, "CI");
+        assert_eq!(config.runner.id, "ubuntu-latest");
+        assert_eq!(config.integrations.len(), 2);
+    }
+
+    #[test]
+    fn test_ci_workflow_permissions() {
+        let perms = ci_workflow_permissions();
+        
+        // Checkout requires contents:read
+        assert_eq!(
+            perms.get(&PermissionScope::Contents),
+            Some(&PermissionLevel::Read)
+        );
+        
+        // Should NOT have write permissions (minimal permissions)
+        assert!(perms.values().all(|level| *level != PermissionLevel::Write));
+    }
+
+    #[test]
+    fn test_ci_runner_has_required_tools() {
+        let config = ci_workflow_config();
+        
+        // CI needs cargo, git (provided by runner)
+        assert!(config.runner.has_tool("cargo"));
+        assert!(config.runner.has_tool("git"));
+        assert!(config.runner.has_tool("rustc"));
+    }
+
+    #[test]
+    fn test_workflow_config_action_refs() {
+        let config = ci_workflow_config();
+        let refs = config.action_refs();
+        
+        assert!(refs.contains(&"actions/checkout@v4"));
+        assert!(refs.contains(&"dtolnay/rust-toolchain@stable"));
     }
 }

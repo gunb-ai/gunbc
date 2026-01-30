@@ -1,47 +1,80 @@
 //! Graph builder for the makegen tool.
 //!
 //! Uses DagBuilder for compile-time cycle prevention and edge validation.
+//!
+//! This tool follows the transport pattern:
+//! - Pure ops prepare data and `TransportRequest` values
+//! - `TransportOps::Execute` is the single boundary that does actual I/O
 
 use crate::ops::MakegenOp;
+use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::{
-    build::*, BuilderError, Cardinality, Dag, DagBuilder, Node, WorkflowSignature,
+    build::*, BuilderError, Cardinality, Dag, DagBuilder, Node, Value, WorkflowSignature,
 };
+use gunbc_lib_transport::TransportOps;
+use gunbc_primitives::PrepareFileWriteOp;
+use std::collections::HashMap;
+
+/// The operation type for makegen graphs - a union of makegen ops, primitives, and transport.
+#[derive(Debug, Clone)]
+pub enum MakegenGraphOp {
+    /// Makegen-specific operations
+    Makegen(MakegenOp),
+    /// Prepare file write (primitive - PURE)
+    PrepareFileWrite(PrepareFileWriteOp),
+    /// Transport operations (boundary - actual I/O)
+    Transport(TransportOps),
+}
+
+impl Executable for MakegenGraphOp {
+    fn execute(
+        &self,
+        inputs: HashMap<String, Value>,
+    ) -> Result<HashMap<String, Value>, ExecError> {
+        match self {
+            MakegenGraphOp::Makegen(op) => op.execute(inputs),
+            MakegenGraphOp::PrepareFileWrite(op) => op.execute(inputs),
+            MakegenGraphOp::Transport(op) => op.execute(inputs),
+        }
+    }
+}
 
 /// Get the declared signature for the makegen workflow.
 pub fn makegen_signature() -> WorkflowSignature {
     WorkflowSignature::new()
         // Inputs (entrypoints)
         .with_input("output_path", "String", Cardinality::ZeroOrOne)
-        // Outputs - boundary outputs
-        .with_output("tool_count", "Int", Cardinality::One)
-        .with_output("tool_names", "StrList", Cardinality::OneOrMore)
+        // Outputs from execute_transport (boundary)
+        .with_output("response", "TransportResponse", Cardinality::One)
         .with_output("written_path", "String", Cardinality::One)
         .with_output("content", "String", Cardinality::One)
-        .with_output("changed", "Bool", Cardinality::One)
+        // Informational outputs from load_registry (secondary boundaries)
+        .with_output("tool_count", "Int", Cardinality::One)
+        .with_output("tool_names", "StrList", Cardinality::OneOrMore)
 }
 
 /// Build the makegen graph using DagBuilder.
 ///
-/// Pipeline:
+/// Pipeline (follows transport pattern like Buck2):
 /// ```text
-/// LoadRegistry -> RenderMakefile -> WriteMakefile
-///                                        ↓
-///                                   (boundary)
+/// LoadRegistry -> RenderMakefile -> PrepareFileWrite -> ExecuteTransport
+///    (makegen)      (makegen)         (primitive)        (transport)
+///                                        PURE              BOUNDARY
 /// ```
 ///
 /// # Port Cardinalities
 ///
-/// - `tool_count`: One (scalar integer)
-/// - `tool_names`: OneOrMore (at least one tool should exist)
+/// - `tool_count`: One (scalar integer) - informational, not connected
+/// - `tool_names`: OneOrMore (at least one tool should exist) - informational
 /// - `registry`: One (JSON registry object)
 /// - `makefile_content`: One (generated content)
 /// - `output_path`: ZeroOrOne (optional, defaults to "Makefile")
-/// - `written_path`, `content`: One (results)
-/// - `changed`: One (boolean flag)
-pub fn build_makegen_graph() -> Result<Dag<MakegenOp>, BuilderError> {
+/// - `request`: One (TransportRequest for file write)
+/// - `response`, `written_path`, `content`: One (transport outputs)
+pub fn build_makegen_graph() -> Result<Dag<MakegenGraphOp>, BuilderError> {
     let mut builder = DagBuilder::new();
 
-    // Node: LoadRegistry - generation 0
+    // Node: LoadRegistry (makegen-specific) - generation 0
     // No inputs (uses default registry)
     // Outputs: tool metadata and registry JSON
     let load_registry = builder.add_root_node(Node::opaque(
@@ -52,10 +85,10 @@ pub fn build_makegen_graph() -> Result<Dag<MakegenOp>, BuilderError> {
             non_empty_list("tool_names", "StrList"),
             scalar("registry", "Json"),
         ],
-        MakegenOp::LoadRegistry,
+        MakegenGraphOp::Makegen(MakegenOp::LoadRegistry),
     ))?;
 
-    // Node: RenderMakefile - generation 1
+    // Node: RenderMakefile (makegen-specific) - generation 1
     // Input: registry JSON
     // Output: generated Makefile content
     let render_makefile = builder.add_node_after(
@@ -63,34 +96,48 @@ pub fn build_makegen_graph() -> Result<Dag<MakegenOp>, BuilderError> {
             "render_makefile",
             vec![scalar("registry", "Json")],
             vec![scalar("makefile_content", "String")],
-            MakegenOp::RenderMakefile,
+            MakegenGraphOp::Makegen(MakegenOp::RenderMakefile),
         ),
         &load_registry,
     )?;
 
-    // Node: WriteMakefile (BOUNDARY - world write) - generation 2
+    // Node: PrepareFileWrite (primitive - PURE) - generation 2
     // Input: content and optional path
-    // Output: write results
-    let write_makefile = builder.add_node_after(
+    // Output: TransportRequest (no I/O happens here)
+    let prepare_file_write = builder.add_node_after(
         Node::opaque(
-            "write_makefile",
+            "prepare_file_write",
             vec![
-                scalar("makefile_content", "String"),
+                port("content", "String"),
                 optional("output_path", "String"),
             ],
-            vec![
-                scalar("written_path", "String"),
-                scalar("content", "String"),
-                scalar("changed", "Bool"),
-            ],
-            MakegenOp::WriteMakefile,
+            vec![port("request", "TransportRequest")],
+            MakegenGraphOp::PrepareFileWrite(PrepareFileWriteOp),
         ),
         &render_makefile,
     )?;
 
+    // Node: ExecuteTransport (transport - BOUNDARY) - generation 3
+    // Input: TransportRequest
+    // Output: TransportResponse + extracted fields (actual I/O happens here)
+    let execute_transport = builder.add_node_after(
+        Node::opaque(
+            "execute_transport",
+            vec![port("request", "TransportRequest")],
+            vec![
+                port("response", "TransportResponse"),
+                port("written_path", "String"),
+                port("content", "String"),
+            ],
+            MakegenGraphOp::Transport(TransportOps::Execute),
+        ),
+        &prepare_file_write,
+    )?;
+
     // Wire up the pipeline
     builder.add_edge(load_registry.out("registry"), render_makefile.in_port("registry"))?;
-    builder.add_edge(render_makefile.out("makefile_content"), write_makefile.in_port("makefile_content"))?;
+    builder.add_edge(render_makefile.out("makefile_content"), prepare_file_write.in_port("content"))?;
+    builder.add_edge(prepare_file_write.out("request"), execute_transport.in_port("request"))?;
 
     Ok(builder.build())
 }
@@ -103,20 +150,22 @@ mod tests {
     #[test]
     fn test_graph_builds_successfully() {
         let dag = build_makegen_graph().expect("graph should build");
-        assert_eq!(dag.nodes.len(), 3);
-        assert_eq!(dag.edges.len(), 2);
+        // 4 nodes: LoadRegistry, RenderMakefile, PrepareFileWrite, ExecuteTransport
+        assert_eq!(dag.nodes.len(), 4);
+        // 3 edges: registry->render, content->prepare, request->execute
+        assert_eq!(dag.edges.len(), 3);
     }
 
     #[test]
-    fn test_graph_has_boundary() {
+    fn test_graph_has_single_transport_boundary() {
         let dag = build_makegen_graph().expect("graph should build");
         let boundaries = detect_boundaries(&dag);
 
-        // WriteMakefile should be a boundary (world write)
-        assert!(boundaries.is_boundary_node(&"write_makefile".into()));
-        // load_registry also has unconnected outputs (tool_count, tool_names) 
-        // which are informational - that's fine, they're secondary boundaries
-        assert!(boundaries.boundary_nodes.len() >= 1);
+        // ExecuteTransport is the primary boundary (actual I/O)
+        assert!(boundaries.is_boundary_node(&"execute_transport".into()));
+        
+        // load_registry also has unconnected outputs (tool_count, tool_names)
+        // which are informational secondary boundaries - that's expected
     }
 
     #[test]
@@ -124,16 +173,26 @@ mod tests {
         let dag = build_makegen_graph().expect("graph should build");
         let entrypoints = detect_entrypoints(&dag);
 
-        // output_path is an entrypoint (input to write_makefile with no upstream)
-        assert!(entrypoints.is_entrypoint_port(&"write_makefile".into(), &"output_path".into()));
+        // output_path is an entrypoint (input to prepare_file_write with no upstream)
+        assert!(entrypoints.is_entrypoint_port(&"prepare_file_write".into(), &"output_path".into()));
     }
 
     #[test]
     fn test_graph_structure() {
         let dag = build_makegen_graph().expect("graph should build");
+        assert_eq!(dag.nodes.len(), 4);
+        assert_eq!(dag.edges.len(), 3);
+    }
 
-        assert_eq!(dag.nodes.len(), 3);
-        assert_eq!(dag.edges.len(), 2);
+    #[test]
+    fn test_intermediate_nodes_not_boundaries() {
+        let dag = build_makegen_graph().expect("graph should build");
+        let boundaries = detect_boundaries(&dag);
+
+        // PrepareFileWrite is NOT a boundary - it's pure
+        assert!(!boundaries.is_boundary_node(&"prepare_file_write".into()));
+        // RenderMakefile is NOT a boundary - all outputs connected
+        assert!(!boundaries.is_boundary_node(&"render_makefile".into()));
     }
 
     #[test]
@@ -148,8 +207,9 @@ mod tests {
         let dag = build_makegen_graph().expect("graph should build");
         let inferred = infer_signature(&dag);
         
-        // 1 input (output_path), 5 boundary outputs
+        // 1 input (output_path)
         assert_eq!(inferred.inputs.len(), 1);
+        // Boundary outputs: execute_transport (3) + load_registry informational (2)
         assert_eq!(inferred.outputs.len(), 5);
     }
 }
