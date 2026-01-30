@@ -242,6 +242,65 @@ UpsertBuilder::new("install_tool")
     .build()
 ```
 
+This pattern appears throughout the codebase:
+- **Tool acquisition**: Check if installed → install if missing (see Capability-Based Tool Acquisition)
+- **Codegen in CI**: Check if generated files exist → run codegen if missing (see Bootstrap Pattern)
+- **Dependency management**: Check dep status → install/update if needed
+
+### Bootstrap Pattern (Self-Healing CI)
+
+When a tool needs generated code to compile, but that tool is what generates the code, you have a **bootstrap problem**. The solution: give the bootstrap tool a handwritten entry point that uses the resource acquisition pattern internally.
+
+**The Problem**:
+```
+CI workflow → needs codegen → to build gunbc-ci → which runs codegen (circular!)
+```
+
+**The Solution** (`gunbc-ci`):
+```rust
+// lib/tools/ci/src/main.rs - HANDWRITTEN, not generated
+// This file exists specifically to break the bootstrap cycle
+
+fn main() {
+    let dag = build_ci_graph();
+    execute_with_mode(&dag, mode);  // prep node handles codegen
+}
+```
+
+The CI graph has a `prep` node that uses the **upsert pattern** for generated code:
+
+```rust
+// lib/tools/ci/src/ops.rs
+fn execute_prep(_inputs: HashMap<String, Value>) -> Result<...> {
+    // Check: do generated files exist?
+    if !registry.needs_codegen() {
+        return Ok(success_without_codegen);
+    }
+    
+    // Create: run codegen if missing
+    run_config_command(&config.codegen_command)?;
+    
+    Ok(success_with_codegen)
+}
+```
+
+**Key Files**:
+- `lib/tools/ci/src/main.rs` — Handwritten entry point (NOT in codegen registry)
+- `lib/tools/ci/src/ops.rs` — `execute_prep()` with upsert pattern
+- `lib/tools/makegen/src/registry.rs` — `needs_codegen()` check
+- `.github/workflows/ci.yml` — Just runs `cargo run -p gunbc-ci`
+
+**Why This Matters**:
+1. CI is **self-healing** — missing generated code is automatically created
+2. **No explicit codegen step** in workflows — the tool handles it
+3. **Fast path** when code exists — skips codegen entirely
+4. **Same pattern as tool acquisition** — check → create if needed
+
+**When to Use This Pattern**:
+- Bootstrap tools that generate code for other tools
+- Any tool that might run before its dependencies are generated
+- CI/CD pipelines that need to be robust to fresh checkouts
+
 ### Capability-Based Tool Acquisition (Primary Pattern)
 
 CLI tools are acquired through a capability system that makes it **structurally impossible** to use a tool without acquiring it first.
@@ -387,6 +446,30 @@ Based on previous conversations:
 2. Follow the `*Builder` pattern (see `UpsertBuilder`, `BranchBuilder`)
 3. Return a `Dag<T>` or `Node<T>` from `.build()`
 
+### Creating a Bootstrap Tool (Self-Healing)
+
+If your tool needs to run before generated code exists (like CI):
+
+1. **Don't add to codegen registry** — it won't be in `core/codegen/src/registry.rs`
+2. **Create handwritten `src/main.rs`** — minimal entry point that calls your graph builder
+3. **Add a prep node** that uses the upsert pattern:
+   ```rust
+   fn execute_prep(...) -> Result<...> {
+       if !needs_codegen() {
+           return Ok(skip);  // Fast path
+       }
+       run_codegen()?;  // Create if missing
+       Ok(success)
+   }
+   ```
+4. **Update `Cargo.toml`** to use `src/main.rs` instead of generated path:
+   ```toml
+   [[bin]]
+   path = "src/main.rs"  # NOT the generated buck-out path
+   ```
+
+See `lib/tools/ci/` for the canonical example of this pattern.
+
 ---
 
 ## Testing Conventions
@@ -460,3 +543,20 @@ This replaced the approach in `TODO.md` (trait-based with enums) with a data-dri
 - Platforms map to available PMs
 - Satisfiability is checked before execution
 - deps.toml is generated from the registry
+
+### Bootstrap Pattern for CI (Self-Healing Codegen)
+
+Implemented a self-healing CI pipeline that handles the circular dependency between `gunbc-ci` and codegen:
+
+- `lib/tools/ci/src/main.rs` — Handwritten entry point (breaks bootstrap cycle)
+- `lib/tools/ci/src/ops.rs` — `execute_prep()` uses upsert pattern for codegen
+- `core/codegen/src/main.rs` — `cigen` command generates CI YAML
+- `.github/workflows/ci.yml` — Generated workflow that just runs `cargo run -p gunbc-ci`
+
+**Key insight**: `gunbc-ci` is NOT in the codegen registry. It has a handwritten `main.rs` because it's the bootstrap tool that runs codegen for all other tools. The `prep` node checks if generated files exist and creates them if missing — same upsert pattern used for tool acquisition.
+
+**Pattern reference**: See "Bootstrap Pattern (Self-Healing CI)" in Key Patterns section above.
+
+**Related files**:
+- `TODO/ci-dag-rendering.md` — Design document for CI YAML generation
+- `core/ir/src/transport/ci/render.rs` — `CiRenderer` trait for multi-provider support

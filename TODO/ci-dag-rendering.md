@@ -274,3 +274,9 @@ fn load_step_inputs_from_env(node: &Node<CIOp>) -> HashMap<String, Value> {
 - Shared nodes (`SharedStep`) allow maximum code reuse
 - Step mode is opt-in via `ToolMeta.enable_step_mode`
 - YAML templates generated at codegen time, runtime DAG introspection for step mode
+- `gunbc-ci` uses the **Bootstrap Pattern** - handwritten main.rs with upsert for codegen
+
+## Related Documentation
+
+- `AGENT.md` — See "Bootstrap Pattern (Self-Healing CI)" for the design pattern
+- `AGENT.md` — See "Creating a Bootstrap Tool" for how to add similar tools
