@@ -5,6 +5,10 @@
 //! - Has --dry-run flag (automatic from boundary detection)
 //! - Executes the DAG with mode selection
 //! - Formats output based on execution log
+//!
+//! Uses the language module for Rust type mappings and naming conventions.
+
+use gunbc_ir::language::{rust_type as lang_rust_type, NamingCase};
 
 /// Metadata about a tool for CLI generation.
 #[derive(Debug, Clone)]
@@ -77,8 +81,10 @@ impl CliEntrypoint {
     }
 
     /// Convert port name to CLI flag name (snake_case to kebab-case).
+    ///
+    /// Uses the language module's `NamingCase::KebabCase` for consistent conversion.
     pub fn flag_name(&self) -> String {
-        self.port_name.replace('_', "-")
+        NamingCase::KebabCase.apply(&self.port_name)
     }
 
     /// Convert port name to Rust variable name.
@@ -87,14 +93,16 @@ impl CliEntrypoint {
     }
 
     /// Get the Rust type for this entrypoint.
-    pub fn rust_type(&self) -> &str {
-        match self.type_id.as_str() {
-            "String" => "String",
-            "Int" => "i64",
-            "Bool" => "bool",
-            "StrList" => "Vec<String>",
-            _ => "String", // Default to String
-        }
+    ///
+    /// Uses the language module's type system mapping for standard types,
+    /// with special handling for IR-specific type names like "StrList".
+    pub fn rust_type(&self) -> String {
+        // Map IR type names to abstract type names for language module
+        let abstract_type = match self.type_id.as_str() {
+            "StrList" => "List<String>",
+            other => other,
+        };
+        lang_rust_type(abstract_type)
     }
 
     /// Get the Value constructor for this type.
@@ -139,7 +147,8 @@ pub fn generate_cli_with_import(
         return generate_cli_with_step_mode(tool, entrypoints, boundaries, custom_import);
     }
     
-    let crate_module = tool.crate_name.replace('-', "_");
+    // Convert crate name (kebab-case) to module name (snake_case)
+    let crate_module = NamingCase::SnakeCase.apply(&tool.crate_name);
     let arg_parsing = generate_arg_parsing(entrypoints);
     let mock_setup = generate_mock_setup(boundaries);
     let print_inputs = generate_print_inputs(entrypoints);
@@ -486,7 +495,8 @@ fn generate_cli_with_step_mode(
     boundaries: &[CliBoundary],
     custom_import: Option<&str>,
 ) -> String {
-    let crate_module = tool.crate_name.replace('-', "_");
+    // Convert crate name (kebab-case) to module name (snake_case)
+    let crate_module = NamingCase::SnakeCase.apply(&tool.crate_name);
     let mock_setup = generate_mock_setup(boundaries);
     let success_check = generate_success_check(&tool.success_port);
     

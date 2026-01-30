@@ -318,6 +318,10 @@ impl Renderable for ClippyConfigRenderer {
         "cargo run -p gunbc-codegen -- clippy-toml"
     }
 
+    fn format_id(&self) -> &str {
+        "toml"
+    }
+
     fn render_content(&self) -> String {
         generate_clippy_toml(&self.config)
     }

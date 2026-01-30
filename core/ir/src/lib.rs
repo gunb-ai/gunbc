@@ -51,6 +51,7 @@ pub mod compose;
 pub mod contract;
 pub mod dag;
 pub mod entrypoint;
+pub mod language;
 pub mod node;
 pub mod patterns;
 pub mod render;
@@ -82,3 +83,11 @@ pub use type_registry::{TypeNotFoundError, TypeRegistry};
 pub use types::{Cardinality, CardinalityCase, CardinalityMismatch, NodeId, PortName, TypeId};
 pub use value::Value;
 pub use render::Renderable;
+
+// Re-exports from language module for common use
+pub use language::{
+    build_languages_dag, detect_language_from_file, markdown_language_id,
+    rust_type, NamingCase, LanguageOp,
+    MakefileConfig, MakeTarget, RustConfig, GitignoreConfig,
+    MAKEFILE, RUST, GITIGNORE,
+};

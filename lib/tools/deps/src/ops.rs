@@ -23,21 +23,46 @@ pub enum DepsOp {
     /// Prepare file read request for manifest (PURE)
     PrepareLoadManifest,
     /// Parse manifest file response (PURE)
+    /// Outputs: dep_count, dep_names, manifest_content (for GenerateScripts)
     ParseManifest,
 
     // ========================================================================
     // Pure domain logic
     // ========================================================================
     /// Generate install scripts (domain-specific logic, PURE)
+    /// Note: This now receives manifest_content as input instead of loading from file
     GenerateScripts,
 
     // ========================================================================
-    // ExecuteInstalls chain: PrepareExecuteInstalls -> Execute -> ParseExecuteResult
+    // ExecuteInstalls chain (batch): PrepareExecuteInstalls -> Execute -> ParseExecuteResult
+    // Note: This batches all installs into one script. For per-dependency
+    // observability, use the single-dependency ops below with LoopBuilder.
     // ========================================================================
     /// Prepare shell command for install script (PURE)
     PrepareExecuteInstalls,
     /// Parse execute result (PURE)
     ParseExecuteResult,
+
+    // ========================================================================
+    // Single-dependency operations (for LoopBuilder + UpsertBuilder integration)
+    // These can be composed into an Upsert pattern for each dependency.
+    // ========================================================================
+    /// Prepare check if dependency is installed (PURE)
+    /// Inputs: dep_info: DependencyInfo
+    /// Outputs: request: TransportRequest (verify command), dep_name: String
+    PrepareCheckInstalled,
+    /// Parse check result (PURE)
+    /// Inputs: response: TransportResponse, dep_name: String
+    /// Outputs: exists: Bool, dep_name: String
+    ParseCheckInstalled,
+    /// Prepare install command for dependency (PURE)
+    /// Inputs: dep_info: DependencyInfo, exists: Bool
+    /// Outputs: request: TransportRequest (install command), dep_name: String
+    PrepareInstall,
+    /// Parse install result (PURE)
+    /// Inputs: response: TransportResponse, dep_name: String
+    /// Outputs: installed: Bool, dep_name: String
+    ParseInstall,
 }
 
 impl Executable for DepsOp {
@@ -48,9 +73,14 @@ impl Executable for DepsOp {
             DepsOp::ParseManifest => execute_parse_manifest(inputs),
             // Pure domain logic
             DepsOp::GenerateScripts => execute_generate_scripts(inputs),
-            // ExecuteInstalls chain
+            // ExecuteInstalls chain (batch)
             DepsOp::PrepareExecuteInstalls => execute_prepare_execute_installs(inputs),
             DepsOp::ParseExecuteResult => execute_parse_execute_result(inputs),
+            // Single-dependency operations
+            DepsOp::PrepareCheckInstalled => execute_prepare_check_installed(inputs),
+            DepsOp::ParseCheckInstalled => execute_parse_check_installed(inputs),
+            DepsOp::PrepareInstall => execute_prepare_install(inputs),
+            DepsOp::ParseInstall => execute_parse_install(inputs),
         }
     }
 }
@@ -79,6 +109,8 @@ fn execute_prepare_load_manifest(inputs: HashMap<String, Value>) -> Result<HashM
 // ============================================================================
 
 /// Parse manifest file response (PURE - no I/O).
+///
+/// Outputs manifest_content for downstream GenerateScripts (avoiding re-load).
 fn execute_parse_manifest(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
     let response = inputs
         .get("response")
@@ -114,18 +146,26 @@ fn execute_parse_manifest(inputs: HashMap<String, Value>) -> Result<HashMap<Stri
     out.insert("dep_count".to_string(), Value::Int(manifest.dependency.len() as i64));
     out.insert("dep_names".to_string(), Value::StrList(dep_names));
     out.insert("manifest_path".to_string(), Value::Str(manifest_path.to_string()));
+    // Pass manifest content to downstream (avoiding file reload in GenerateScripts)
+    out.insert("manifest_content".to_string(), Value::Str(content));
     Ok(out)
 }
 
-/// Generate install scripts for all dependencies.
+/// Generate install scripts for all dependencies (PURE - no I/O).
+///
+/// This function is now truly pure - it receives manifest_content as input
+/// instead of loading from file. The manifest was already loaded via the
+/// PrepareLoadManifest -> Execute -> ParseManifest chain.
 fn execute_generate_scripts(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-    let manifest_path = match inputs.get("manifest_path") {
-        Some(Value::Str(s)) => s.clone(),
-        _ => "deps.toml".to_string(),
-    };
+    // Get manifest content from upstream (passed through graph, not file I/O)
+    let manifest_content = inputs
+        .get("manifest_content")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| ExecError::new("missing manifest_content input"))?;
 
-    let manifest = DepsManifest::load(&manifest_path)
-        .map_err(|e| ExecError::new(format!("failed to load manifest: {}", e)))?;
+    // Parse the manifest content (no file I/O)
+    let manifest = DepsManifest::parse(manifest_content)
+        .map_err(|e| ExecError::new(format!("failed to parse manifest: {}", e)))?;
 
     let installer = Installer::new();
     let mut scripts = Vec::new();
@@ -215,6 +255,152 @@ fn execute_parse_execute_result(inputs: HashMap<String, Value>) -> Result<HashMa
 }
 
 // ============================================================================
+// Single-dependency operations (for LoopBuilder + UpsertBuilder integration)
+// ============================================================================
+
+/// Prepare check if dependency is installed (PURE - no I/O).
+///
+/// This is part of the per-dependency Upsert pattern: Check -> Install -> Verify.
+/// Use with UpsertBuilder for idempotent dependency installation.
+///
+/// Inputs:
+/// - dep_name: String (the dependency name)
+/// - verify_cmd: String (command to verify installation)
+///
+/// Outputs:
+/// - request: TransportRequest (shell command for verify)
+/// - dep_name: String (pass through for correlation)
+fn execute_prepare_check_installed(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+    let dep_name = inputs
+        .get("dep_name")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| ExecError::new("missing dep_name input"))?;
+
+    let verify_cmd = inputs
+        .get("verify_cmd")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| ExecError::new("missing verify_cmd input"))?;
+
+    let request = TransportRequest::Shell(ShellRequest {
+        command: "sh".to_string(),
+        args: vec!["-c".to_string(), verify_cmd.to_string()],
+        cwd: None,
+        env: HashMap::new(),
+        stdin: None,
+    });
+
+    let mut out = HashMap::new();
+    out.insert("request".to_string(), Value::Request(request));
+    out.insert("dep_name".to_string(), Value::Str(dep_name.to_string()));
+    Ok(out)
+}
+
+/// Parse check result (PURE - no I/O).
+///
+/// Determines if a dependency is installed based on verify command exit code.
+///
+/// Inputs:
+/// - response: TransportResponse (from verify command)
+/// - dep_name: String (for correlation)
+///
+/// Outputs:
+/// - exists: Bool (true if installed)
+/// - dep_name: String (pass through)
+fn execute_parse_check_installed(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+    let response = inputs
+        .get("response")
+        .and_then(|v| v.as_response())
+        .ok_or_else(|| ExecError::new("missing or invalid 'response' input"))?;
+
+    let dep_name = inputs
+        .get("dep_name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown")
+        .to_string();
+
+    let exists = match response {
+        TransportResponse::Shell(shell) => shell.success(),
+        _ => false,
+    };
+
+    let mut out = HashMap::new();
+    out.insert("exists".to_string(), Value::Bool(exists));
+    out.insert("dep_name".to_string(), Value::Str(dep_name));
+    Ok(out)
+}
+
+/// Prepare install command for dependency (PURE - no I/O).
+///
+/// Part of the Upsert pattern. Guarded by exists == false.
+///
+/// Inputs:
+/// - dep_name: String
+/// - install_cmd: String (command to install)
+/// - exists: Bool (guard - only install if false)
+///
+/// Outputs:
+/// - request: TransportRequest (shell command for install)
+/// - dep_name: String (pass through)
+fn execute_prepare_install(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+    let dep_name = inputs
+        .get("dep_name")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| ExecError::new("missing dep_name input"))?;
+
+    let install_cmd = inputs
+        .get("install_cmd")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| ExecError::new("missing install_cmd input"))?;
+
+    let request = TransportRequest::Shell(ShellRequest {
+        command: "sh".to_string(),
+        args: vec!["-c".to_string(), install_cmd.to_string()],
+        cwd: None,
+        env: HashMap::new(),
+        stdin: None,
+    });
+
+    let mut out = HashMap::new();
+    out.insert("request".to_string(), Value::Request(request));
+    out.insert("dep_name".to_string(), Value::Str(dep_name.to_string()));
+    Ok(out)
+}
+
+/// Parse install result (PURE - no I/O).
+///
+/// Parses the result of an install command.
+///
+/// Inputs:
+/// - response: TransportResponse (from install command)
+/// - dep_name: String (for correlation)
+///
+/// Outputs:
+/// - installed: Bool (true if install succeeded)
+/// - dep_name: String (pass through)
+fn execute_parse_install(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+    let response = inputs
+        .get("response")
+        .and_then(|v| v.as_response())
+        .ok_or_else(|| ExecError::new("missing or invalid 'response' input"))?;
+
+    let dep_name = inputs
+        .get("dep_name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown")
+        .to_string();
+
+    let installed = match response {
+        TransportResponse::Shell(shell) => shell.success(),
+        _ => false,
+    };
+
+    let mut out = HashMap::new();
+    out.insert("installed".to_string(), Value::Bool(installed));
+    out.insert("dep_name".to_string(), Value::Str(dep_name));
+    Ok(out)
+}
+
+// ============================================================================
 // Mockable trait implementation
 // ============================================================================
 
@@ -241,6 +427,7 @@ impl Mockable for DepsOp {
                     Value::StrList(vec!["rust".to_string(), "git".to_string()]),
                 );
                 out.insert("manifest_path".to_string(), Value::Str("deps.toml".to_string()));
+                out.insert("manifest_content".to_string(), Value::Str("[[dependency]]\nname = \"mock\"".to_string()));
                 out
             }
             DepsOp::GenerateScripts => {
@@ -291,6 +478,49 @@ echo "Installing git..."
                 out.insert("stderr".to_string(), Value::Str("".to_string()));
                 out
             }
+            // Single-dependency operations
+            DepsOp::PrepareCheckInstalled => {
+                let mut out = HashMap::new();
+                out.insert(
+                    "request".to_string(),
+                    Value::Request(TransportRequest::Shell(ShellRequest {
+                        command: "sh".to_string(),
+                        args: vec!["-c".to_string(), "which mock-dep".to_string()],
+                        cwd: None,
+                        env: HashMap::new(),
+                        stdin: None,
+                    })),
+                );
+                out.insert("dep_name".to_string(), Value::Str("mock-dep".to_string()));
+                out
+            }
+            DepsOp::ParseCheckInstalled => {
+                let mut out = HashMap::new();
+                out.insert("exists".to_string(), Value::Bool(true));
+                out.insert("dep_name".to_string(), Value::Str("mock-dep".to_string()));
+                out
+            }
+            DepsOp::PrepareInstall => {
+                let mut out = HashMap::new();
+                out.insert(
+                    "request".to_string(),
+                    Value::Request(TransportRequest::Shell(ShellRequest {
+                        command: "sh".to_string(),
+                        args: vec!["-c".to_string(), "echo 'installing mock-dep'".to_string()],
+                        cwd: None,
+                        env: HashMap::new(),
+                        stdin: None,
+                    })),
+                );
+                out.insert("dep_name".to_string(), Value::Str("mock-dep".to_string()));
+                out
+            }
+            DepsOp::ParseInstall => {
+                let mut out = HashMap::new();
+                out.insert("installed".to_string(), Value::Bool(true));
+                out.insert("dep_name".to_string(), Value::Str("mock-dep".to_string()));
+                out
+            }
         }
     }
 
@@ -321,6 +551,11 @@ echo "Installing git..."
             ],
             DepsOp::PrepareExecuteInstalls => vec![],
             DepsOp::ParseExecuteResult => vec![],
+            // Single-dependency ops - no special cardinality tests
+            DepsOp::PrepareCheckInstalled => vec![],
+            DepsOp::ParseCheckInstalled => vec![],
+            DepsOp::PrepareInstall => vec![],
+            DepsOp::ParseInstall => vec![],
         }
     }
 
@@ -330,16 +565,9 @@ echo "Installing git..."
             DepsOp::ParseManifest => vec![],
             DepsOp::GenerateScripts => vec![
                 ErrorTestCase::new(
-                    "missing_manifest_file",
-                    {
-                        let mut m = HashMap::new();
-                        m.insert(
-                            "manifest_path".to_string(),
-                            Value::Str("/nonexistent/path/deps.toml".to_string()),
-                        );
-                        m
-                    },
-                    "failed to load manifest",
+                    "missing_manifest_content",
+                    HashMap::new(),  // No manifest_content provided
+                    "missing manifest_content input",
                 ),
             ],
             DepsOp::PrepareExecuteInstalls => vec![ErrorTestCase::new(
@@ -348,6 +576,19 @@ echo "Installing git..."
                 "missing install_script input",
             )],
             DepsOp::ParseExecuteResult => vec![],
+            // Single-dependency ops
+            DepsOp::PrepareCheckInstalled => vec![ErrorTestCase::new(
+                "missing_dep_name",
+                HashMap::new(),
+                "missing dep_name input",
+            )],
+            DepsOp::ParseCheckInstalled => vec![],
+            DepsOp::PrepareInstall => vec![ErrorTestCase::new(
+                "missing_dep_name",
+                HashMap::new(),
+                "missing dep_name input",
+            )],
+            DepsOp::ParseInstall => vec![],
         }
     }
 }
@@ -355,15 +596,10 @@ echo "Installing git..."
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::env;
-    use std::fs;
 
     #[test]
-    #[allow(clippy::disallowed_methods)] // Test needs direct fs access
-    fn test_generate_scripts_with_temp_manifest() {
-        let temp_dir = env::temp_dir();
-        let manifest_path = temp_dir.join("test-deps.toml");
-
+    fn test_generate_scripts_with_manifest_content() {
+        // Now tests the pure function that receives content, not a path
         let manifest_content = r#"
 [[dependency]]
 name = "echo"
@@ -382,25 +618,29 @@ method = "script"
 script = "echo 'installing echo'"
 "#;
 
-        fs::write(&manifest_path, manifest_content).unwrap();
-
         let mut inputs = HashMap::new();
         inputs.insert(
-            "manifest_path".to_string(),
-            Value::Str(manifest_path.display().to_string()),
+            "manifest_content".to_string(),
+            Value::Str(manifest_content.to_string()),
         );
 
         let result = execute_generate_scripts(inputs).unwrap();
 
-        // echo should be already installed
+        // echo should be already installed (since 'echo test' succeeds)
         match result.get("already_installed") {
             Some(Value::StrList(list)) => {
                 assert!(list.contains(&"echo".to_string()));
             }
             _ => panic!("expected already_installed list"),
         }
+    }
 
-        // Cleanup
-        let _ = fs::remove_file(&manifest_path);
+    #[test]
+    fn test_generate_scripts_missing_content() {
+        // Test that missing manifest_content fails with appropriate error
+        let inputs = HashMap::new();
+        let result = execute_generate_scripts(inputs);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("missing manifest_content"));
     }
 }

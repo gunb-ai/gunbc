@@ -193,6 +193,10 @@ impl Renderable for GitignoreRenderer<'_> {
         "make makegen"
     }
 
+    fn format_id(&self) -> &str {
+        "gitignore"
+    }
+
     fn render_content(&self) -> String {
         let mut output = String::new();
 

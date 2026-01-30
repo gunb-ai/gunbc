@@ -25,8 +25,8 @@
 //! Test Stage (parallel with Lint):
 //!   PrepareTestCommand -> Execute -> ParseTestResult
 //!
-//! Lint Stage:
-//!   PrepareLintCommand -> Execute -> ParseLintResult
+//! Lint Stage (uses ClippyUpsert SubDag):
+//!   ClippyUpsert (check -> install -> run)
 //!
 //! Report:
 //!   Report (pure)
@@ -34,6 +34,7 @@
 
 use crate::ops::CIOp;
 use gunbc_exec::{ExecError, Executable};
+use gunbc_ir::transport::cli::CliToolOp;
 use gunbc_ir::transport::{FileRequest, ShellRequest, TransportRequest};
 use gunbc_ir::{
     build::*, BuilderError, Cardinality, Dag, DagBuilder, Node, Value, WorkflowSignature,
@@ -56,6 +57,7 @@ use std::collections::HashMap;
 /// - `PrepareFileExists` - local primitive for file existence checks (with embedded path)
 /// - `PrepareShell` - local primitive for shell command preparation
 /// - `Transport` - boundary for actual I/O
+/// - `CliTool` - CLI tool operations (for SubDag integration)
 #[derive(Debug, Clone)]
 pub enum CIGraphOp {
     /// CI-specific pure operations
@@ -66,6 +68,8 @@ pub enum CIGraphOp {
     PrepareShell(PrepareShellOp),
     /// Transport operations (boundary - actual I/O)
     Transport(TransportOps),
+    /// CLI tool operations (for SubDag integration with clippy, etc.)
+    CliTool(CliToolOp),
 }
 
 impl Executable for CIGraphOp {
@@ -78,6 +82,30 @@ impl Executable for CIGraphOp {
             CIGraphOp::PrepareFileExists(op) => op.execute(inputs),
             CIGraphOp::PrepareShell(op) => op.execute(inputs),
             CIGraphOp::Transport(op) => op.execute(inputs),
+            CIGraphOp::CliTool(op) => {
+                // Check if we should skip execution
+                let skip = inputs
+                    .get("skip")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                
+                let mut out = HashMap::new();
+                
+                if skip {
+                    // Pass through skip flag, don't run the tool
+                    out.insert("skip".to_string(), Value::Bool(true));
+                    return Ok(out);
+                }
+                
+                // Run the tool
+                let result = op.execute()
+                    .map_err(|e| ExecError::new(format!("CLI tool error: {}", e)))?;
+                
+                // Copy tool outputs and add skip=false
+                out.extend(result);
+                out.insert("skip".to_string(), Value::Bool(false));
+                Ok(out)
+            }
         }
     }
 }
@@ -485,48 +513,57 @@ pub fn build_ci_graph() -> Result<Dag<CIGraphOp>, BuilderError> {
     )?;
 
     // ========================================================================
-    // Lint Stage (parallel with Test)
+    // Lint Stage (parallel with Test) - uses Clippy tool via requires_tools
     // ========================================================================
 
-    // PrepareLintCommand - pure
-    let prepare_lint = builder.add_node_after(
+    // PrepareClippyLint - pure gate for clippy execution
+    let prepare_clippy_lint = builder.add_node_after(
         Node::opaque(
-            "prepare_lint",
+            "prepare_clippy_lint",
             vec![port("build_success", "Bool")],
             vec![
-                optional("request", "TransportRequest"),
                 port("skip", "Bool"),
                 optional("skip_reason", "String"),
             ],
-            CIGraphOp::CI(CIOp::PrepareLintCommand),
+            CIGraphOp::CI(CIOp::PrepareClippyLint),
         ),
         &parse_build,
     )?;
 
-    // Execute lint - transport boundary
-    let execute_lint = builder.add_node_after(
-        Node::opaque(
-            "execute_lint",
-            vec![
-                optional("request", "TransportRequest"),
-                port("skip", "Bool"),
-            ],
-            vec![
-                optional("response", "TransportResponse"),
-                port("skip", "Bool"),
-                optional("skip_reason", "String"),
-            ],
-            CIGraphOp::Transport(TransportOps::Execute),
-        ),
-        &prepare_lint,
+    // ClippyLint - runs clippy with automatic tool acquisition
+    // The executor's requires_tools mechanism handles check/install automatically
+    let clippy_lint = builder.add_node_after(
+        {
+            let mut node = Node::opaque(
+                "clippy_lint",
+                vec![port("skip", "Bool")],
+                vec![
+                    optional("success", "Bool"),
+                    optional("stdout", "String"),
+                    optional("stderr", "String"),
+                    port("skip", "Bool"),
+                ],
+                CIGraphOp::CliTool(CliToolOp::run(
+                    &gunbc_ir::transport::cli::CLIPPY,
+                    &["--all-targets", "--", "-D", "warnings"],
+                )),
+            );
+            // Mark that this node requires the clippy tool
+            // The executor will automatically run check/install before execution
+            node.requires_tools.push("clippy".to_string());
+            node
+        },
+        &prepare_clippy_lint,
     )?;
 
-    // ParseLintResult - pure
+    // ParseClippyLintResult - pure parser for clippy outputs
     let parse_lint = builder.add_node_after(
         Node::opaque(
-            "parse_lint",
+            "parse_clippy_lint",
             vec![
-                optional("response", "TransportResponse"),
+                optional("success", "Bool"),
+                optional("stdout", "String"),
+                optional("stderr", "String"),
                 port("skip", "Bool"),
                 optional("skip_reason", "String"),
             ],
@@ -536,9 +573,9 @@ pub fn build_ci_graph() -> Result<Dag<CIGraphOp>, BuilderError> {
                 port("lint_stdout", "String"),
                 port("lint_stderr", "String"),
             ],
-            CIGraphOp::CI(CIOp::ParseLintResult),
+            CIGraphOp::CI(CIOp::ParseClippyLintResult),
         ),
-        &execute_lint,
+        &clippy_lint,
     )?;
 
     // ========================================================================
@@ -595,13 +632,15 @@ pub fn build_ci_graph() -> Result<Dag<CIGraphOp>, BuilderError> {
     builder.add_edge(execute_test.out("skip"), parse_test.in_port("skip"))?;
     builder.add_edge(prepare_test.out("skip_reason"), parse_test.in_port("skip_reason"))?;
 
-    // Lint stage (parallel with test, both depend on build)
-    builder.add_edge(parse_build.out("build_success"), prepare_lint.in_port("build_success"))?;
-    builder.add_edge(prepare_lint.out("request"), execute_lint.in_port("request"))?;
-    builder.add_edge(prepare_lint.out("skip"), execute_lint.in_port("skip"))?;
-    builder.add_edge(execute_lint.out("response"), parse_lint.in_port("response"))?;
-    builder.add_edge(execute_lint.out("skip"), parse_lint.in_port("skip"))?;
-    builder.add_edge(prepare_lint.out("skip_reason"), parse_lint.in_port("skip_reason"))?;
+    // Lint stage (parallel with test, both depend on build) - uses Clippy tool
+    builder.add_edge(parse_build.out("build_success"), prepare_clippy_lint.in_port("build_success"))?;
+    builder.add_edge(prepare_clippy_lint.out("skip"), clippy_lint.in_port("skip"))?;
+    // Wire clippy outputs to parse node
+    builder.add_edge(clippy_lint.out("success"), parse_lint.in_port("success"))?;
+    builder.add_edge(clippy_lint.out("stdout"), parse_lint.in_port("stdout"))?;
+    builder.add_edge(clippy_lint.out("stderr"), parse_lint.in_port("stderr"))?;
+    builder.add_edge(clippy_lint.out("skip"), parse_lint.in_port("skip"))?;
+    builder.add_edge(prepare_clippy_lint.out("skip_reason"), parse_lint.in_port("skip_reason"))?;
 
     // Report
     builder.add_edge(parse_build.out("build_success"), report.in_port("build_success"))?;
@@ -632,13 +671,30 @@ mod tests {
     fn test_graph_has_transport_nodes() {
         let dag = build_ci_graph().expect("graph should build");
         
-        // Count transport nodes
+        // Count transport nodes (execute_* for traditional transport, clippy_lint for CLI tool)
         let transport_nodes: Vec<_> = dag.nodes.iter()
-            .filter(|n| n.id.0.starts_with("execute_"))
+            .filter(|n| n.id.0.starts_with("execute_") || n.id.0 == "clippy_lint")
             .collect();
         
-        // Should have transport nodes for: deps_exists, codegen_exists, codegen, build, test, lint
-        assert!(transport_nodes.len() >= 5, "expected at least 5 transport nodes, got {}", transport_nodes.len());
+        // Should have nodes for: deps_exists, codegen_exists, codegen, build, test, clippy_lint
+        assert!(transport_nodes.len() >= 5, "expected at least 5 transport/tool nodes, got {}", transport_nodes.len());
+    }
+
+    #[test]
+    fn test_graph_has_clippy_lint_node() {
+        let dag = build_ci_graph().expect("graph should build");
+        
+        // Find clippy_lint node
+        let clippy_lint = dag.get_node(&"clippy_lint".into());
+        assert!(clippy_lint.is_some(), "clippy_lint node should exist");
+        
+        // Verify it requires the clippy tool
+        if let Some(node) = clippy_lint {
+            assert!(
+                node.requires_tools.contains(&"clippy".to_string()),
+                "clippy_lint should require clippy tool"
+            );
+        }
     }
 
     #[test]

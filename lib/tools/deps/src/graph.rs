@@ -23,6 +23,17 @@ pub enum DepsGraphOp {
     Transport(TransportOps),
 }
 
+/// Default implementation for DepsGraphOp.
+///
+/// This enables using DepsGraphOp with pattern builders like LoopBuilder and UpsertBuilder,
+/// which require `T: Default` for internal nodes.
+impl Default for DepsGraphOp {
+    fn default() -> Self {
+        // Default to transport execute - a safe no-op when properly guarded
+        DepsGraphOp::Transport(TransportOps::Execute)
+    }
+}
+
 impl Executable for DepsGraphOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         match self {
@@ -97,6 +108,7 @@ pub fn build_deps_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
                 scalar("dep_count", "Int"),
                 list("dep_names", "StrList"),
                 scalar("manifest_path", "String"),
+                scalar("manifest_content", "String"),  // Pass content to GenerateScripts
             ],
             DepsGraphOp::Deps(DepsOp::ParseManifest),
         ),
@@ -105,12 +117,13 @@ pub fn build_deps_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
 
     // ========================================================================
     // GenerateScripts (PURE domain logic)
+    // Now receives manifest_content instead of loading from file
     // ========================================================================
 
     let generate_scripts = builder.add_node_after(
         Node::opaque(
             "generate_scripts",
-            vec![scalar("manifest_path", "String")],
+            vec![scalar("manifest_content", "String")],  // Receives content, not path
             vec![
                 scalar("install_script", "String"),
                 list("already_installed", "StrList"),
@@ -180,8 +193,8 @@ pub fn build_deps_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
     builder.add_edge(execute_load.out("response"), parse_manifest.in_port("response"))?;
     builder.add_edge(prepare_load.out("manifest_path"), parse_manifest.in_port("manifest_path"))?;
 
-    // To GenerateScripts
-    builder.add_edge(parse_manifest.out("manifest_path"), generate_scripts.in_port("manifest_path"))?;
+    // To GenerateScripts (now receives manifest_content instead of path)
+    builder.add_edge(parse_manifest.out("manifest_content"), generate_scripts.in_port("manifest_content"))?;
 
     // ExecuteInstalls chain
     builder.add_edge(generate_scripts.out("install_script"), prepare_execute.in_port("install_script"))?;

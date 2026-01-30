@@ -16,6 +16,7 @@
 //! ```
 
 use gunbc_exec::{ExecError, Executable};
+use gunbc_ir::language::markdown_language_id;
 use gunbc_ir::Value;
 use std::collections::{BTreeMap, HashMap};
 
@@ -68,7 +69,8 @@ pub fn render_code_snapshot(contents: &BTreeMap<String, String>) -> String {
     markdown.push_str("# Code Snapshot\n\n");
 
     for (filename, content) in contents {
-        let lang = detect_language(filename);
+        // Use centralized language detection from the Languages DAG
+        let lang = markdown_language_id(filename);
 
         markdown.push_str(&format!("## `{}`\n\n", filename));
         markdown.push_str(&format!("```{}\n", lang));
@@ -85,44 +87,11 @@ pub fn render_code_snapshot(contents: &BTreeMap<String, String>) -> String {
 /// Detect programming language from file extension.
 ///
 /// Returns the language identifier for use in markdown fenced code blocks.
+///
+/// **Note**: This function now delegates to `gunbc_ir::language::markdown_language_id`
+/// which is the single source of truth for language detection in the codebase.
 pub fn detect_language(filename: &str) -> &'static str {
-    if filename.ends_with(".rs") {
-        "rust"
-    } else if filename.ends_with(".py") {
-        "python"
-    } else if filename.ends_with(".js") {
-        "javascript"
-    } else if filename.ends_with(".ts") {
-        "typescript"
-    } else if filename.ends_with(".go") {
-        "go"
-    } else if filename.ends_with(".md") {
-        "markdown"
-    } else if filename.ends_with(".toml") {
-        "toml"
-    } else if filename.ends_with(".json") {
-        "json"
-    } else if filename.ends_with(".yaml") || filename.ends_with(".yml") {
-        "yaml"
-    } else if filename.ends_with(".sh") || filename.ends_with(".bash") {
-        "bash"
-    } else if filename.ends_with(".c") || filename.ends_with(".h") {
-        "c"
-    } else if filename.ends_with(".cpp") || filename.ends_with(".hpp") {
-        "cpp"
-    } else if filename.ends_with(".java") {
-        "java"
-    } else if filename.ends_with(".rb") {
-        "ruby"
-    } else if filename.ends_with(".html") {
-        "html"
-    } else if filename.ends_with(".css") {
-        "css"
-    } else if filename.ends_with(".sql") {
-        "sql"
-    } else {
-        ""
-    }
+    markdown_language_id(filename)
 }
 
 // ============================================================================

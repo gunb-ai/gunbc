@@ -34,7 +34,10 @@ pub enum GistGraphOp {
     ParseListFiles,
 
     // ========================================================================
-    // ReadFiles chain: PrepareReadFiles -> Execute -> ParseReadFiles
+    // ReadFiles chain (batch): PrepareReadFiles -> Execute -> ParseReadFiles
+    // Note: This uses a batch approach for efficiency. A LoopBuilder-based
+    // approach with per-file reads would provide better observability at the
+    // cost of N shell calls instead of 1.
     // ========================================================================
     /// Prepare batch file read request (PURE - no I/O)
     /// Takes file list and repo_path, outputs shell command to read files
@@ -42,6 +45,20 @@ pub enum GistGraphOp {
     /// Parse batch file read response (PURE - no I/O)
     /// Takes shell response, outputs contents map
     ParseReadFiles,
+
+    // ========================================================================
+    // Single-file operations (for LoopBuilder integration)
+    // These can be used with LoopBuilder for per-file observability.
+    // ========================================================================
+    /// Prepare single file read request (PURE - no I/O)
+    /// Takes filename and repo_path, outputs shell command to read one file
+    PrepareReadFile,
+    /// Parse single file read response (PURE - no I/O)
+    /// Takes shell response, outputs filename and content
+    ParseReadFile,
+    /// Collect file results into a map (PURE - no I/O)
+    /// Takes list of (filename, content) pairs, outputs MapStrStr
+    CollectFileContents,
 
     // ========================================================================
     // Pure local ops
@@ -64,6 +81,19 @@ pub enum GistGraphOp {
     Transport(TransportOps),
 }
 
+/// Default implementation for GistGraphOp.
+///
+/// This enables using GistGraphOp with pattern builders like LoopBuilder,
+/// which require `T: Default` for internal nodes.
+///
+/// Default returns a no-op variant (Transport with Execute).
+impl Default for GistGraphOp {
+    fn default() -> Self {
+        // Default to a transport execute - a safe no-op when properly guarded
+        GistGraphOp::Transport(TransportOps::Execute)
+    }
+}
+
 impl Executable for GistGraphOp {
     fn execute(
         &self,
@@ -74,9 +104,14 @@ impl Executable for GistGraphOp {
             GistGraphOp::PrepareListFiles => execute_prepare_list_files(inputs),
             GistGraphOp::ParseListFiles => execute_parse_list_files(inputs),
 
-            // ReadFiles chain (pure)
+            // ReadFiles chain - batch (pure)
             GistGraphOp::PrepareReadFiles => execute_prepare_read_files(inputs),
             GistGraphOp::ParseReadFiles => execute_parse_read_files(inputs),
+
+            // Single-file operations (pure)
+            GistGraphOp::PrepareReadFile => execute_prepare_read_file(inputs),
+            GistGraphOp::ParseReadFile => execute_parse_read_file(inputs),
+            GistGraphOp::CollectFileContents => execute_collect_file_contents(inputs),
 
             // Pure local ops
             GistGraphOp::FilterByExtension { extensions } => {
@@ -328,6 +363,203 @@ fn execute_parse_read_files(
     let mut out = HashMap::new();
     out.insert("contents".to_string(), Value::MapStrStr(contents));
     Ok(out)
+}
+
+// ============================================================================
+// Single-file operations (for LoopBuilder integration)
+// ============================================================================
+
+/// Prepare single file read request (PURE - no I/O).
+///
+/// This is the per-file version of PrepareReadFiles, designed for use with
+/// LoopBuilder. Each iteration reads one file.
+///
+/// Inputs:
+/// - filename: the file to read
+/// - repo_path: optional base path (defaults to ".")
+///
+/// Outputs:
+/// - request: TransportRequest (shell command to read one file)
+/// - filename: pass through for correlation
+fn execute_prepare_read_file(
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    let filename = inputs
+        .get("filename")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| ExecError::new("missing or invalid 'filename' input"))?;
+
+    let repo_path = inputs
+        .get("repo_path")
+        .and_then(|v| v.as_str())
+        .unwrap_or(".");
+
+    // Build full path
+    let full_path = if repo_path == "." {
+        filename.to_string()
+    } else {
+        format!("{}/{}", repo_path, filename)
+    };
+
+    let request = TransportRequest::Shell(ShellRequest {
+        command: "cat".to_string(),
+        args: vec![full_path],
+        cwd: None,
+        env: HashMap::new(),
+        stdin: None,
+    });
+
+    let mut out = HashMap::new();
+    out.insert("request".to_string(), Value::Request(request));
+    out.insert("filename".to_string(), Value::Str(filename.to_string()));
+    Ok(out)
+}
+
+/// Parse single file read response (PURE - no I/O).
+///
+/// This is the per-file version of ParseReadFiles, designed for use with
+/// LoopBuilder. Each iteration parses one file's content.
+///
+/// Inputs:
+/// - response: TransportResponse from cat command
+/// - filename: the filename (for correlation)
+///
+/// Outputs:
+/// - filename: the original filename
+/// - content: the file content
+fn execute_parse_read_file(
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    let response = inputs
+        .get("response")
+        .and_then(|v| v.as_response())
+        .ok_or_else(|| ExecError::new("missing or invalid 'response' input"))?;
+
+    let filename = inputs
+        .get("filename")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| ExecError::new("missing or invalid 'filename' input"))?;
+
+    let content = match response {
+        TransportResponse::Shell(shell) => {
+            if shell.success() {
+                shell.stdout.clone()
+            } else {
+                // Return empty content on failure
+                String::new()
+            }
+        }
+        _ => return Err(ExecError::new("unexpected response type")),
+    };
+
+    let mut out = HashMap::new();
+    out.insert("filename".to_string(), Value::Str(filename.to_string()));
+    out.insert("content".to_string(), Value::Str(content));
+    Ok(out)
+}
+
+/// Collect file results into a map (PURE - no I/O).
+///
+/// This is a post-processing step for LoopBuilder output. It converts
+/// a list of (filename, content) pairs into a MapStrStr.
+///
+/// Inputs:
+/// - results: list of tuples (from LoopBuilder pack node)
+///
+/// Outputs:
+/// - contents: MapStrStr (filename -> content)
+fn execute_collect_file_contents(
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    // For now, this expects a list of filename/content pairs
+    // The actual format depends on how LoopBuilder outputs results
+    // This is a placeholder for when LoopBuilder integration is complete
+    let filenames = inputs
+        .get("filenames")
+        .and_then(|v| v.as_str_list())
+        .unwrap_or_default();
+    let contents_list = inputs
+        .get("contents_list")
+        .and_then(|v| v.as_str_list())
+        .unwrap_or_default();
+
+    let mut contents = BTreeMap::new();
+    for (filename, content) in filenames.iter().zip(contents_list.iter()) {
+        if !content.is_empty() {
+            contents.insert(filename.clone(), content.clone());
+        }
+    }
+
+    let mut out = HashMap::new();
+    out.insert("contents".to_string(), Value::MapStrStr(contents));
+    Ok(out)
+}
+
+// ============================================================================
+// LoopBuilder Integration (Future Enhancement)
+// ============================================================================
+
+/// Build a body DAG for single-file read (for LoopBuilder integration).
+///
+/// This creates a DAG that reads a single file:
+/// ```text
+/// PrepareReadFile -> Execute -> ParseReadFile
+/// ```
+///
+/// The DAG has:
+/// - Input: `filename: String` (from LoopBuilder's unpack node)
+/// - Output: `result: String` (content, for LoopBuilder's pack node)
+///
+/// # Note
+///
+/// This is provided for documentation and future use. The current graph
+/// uses the batch approach (PrepareReadFiles -> Execute -> ParseReadFiles)
+/// for efficiency (single shell call instead of N calls).
+///
+/// When LoopBuilder integration is needed, use this with:
+/// ```ignore
+/// let body = build_read_file_body_dag();
+/// let loop_node = LoopBuilder::new("read_files_loop")
+///     .with_input("files", "StrList", Cardinality::ZeroOrMore)
+///     .with_element("filename", "String")
+///     .with_body(body)
+///     .with_output("contents", "StrList")
+///     .build();
+/// ```
+#[allow(dead_code)]
+pub fn build_read_file_body_dag() -> Dag<GistGraphOp> {
+    let mut dag = Dag::new();
+
+    // PrepareReadFile node
+    dag.add_node(Node::opaque(
+        "prepare",
+        vec![port("filename", "String")],
+        vec![port("request", "TransportRequest"), port("filename", "String")],
+        GistGraphOp::PrepareReadFile,
+    ));
+
+    // Execute node
+    dag.add_node(Node::opaque(
+        "execute",
+        vec![port("request", "TransportRequest")],
+        vec![port("response", "TransportResponse")],
+        GistGraphOp::Transport(TransportOps::Execute),
+    ));
+
+    // ParseReadFile node
+    dag.add_node(Node::opaque(
+        "parse",
+        vec![port("response", "TransportResponse"), port("filename", "String")],
+        vec![port("filename", "String"), port("content", "String")],
+        GistGraphOp::ParseReadFile,
+    ));
+
+    // Wire the pipeline
+    dag.add_edge(gunbc_ir::Edge::new("prepare", "request", "execute", "request"));
+    dag.add_edge(gunbc_ir::Edge::new("execute", "response", "parse", "response"));
+    dag.add_edge(gunbc_ir::Edge::new("prepare", "filename", "parse", "filename"));
+
+    dag
 }
 
 /// Get the declared signature for the gist workflow.
@@ -599,6 +831,36 @@ impl Mockable for GistGraphOp {
                 out
             }
 
+            // Single-file operations
+            GistGraphOp::PrepareReadFile => {
+                let mut out = HashMap::new();
+                out.insert(
+                    "request".to_string(),
+                    Value::Request(TransportRequest::Shell(ShellRequest {
+                        command: "cat".to_string(),
+                        args: vec!["src/main.rs".to_string()],
+                        cwd: None,
+                        env: HashMap::new(),
+                        stdin: None,
+                    })),
+                );
+                out.insert("filename".to_string(), Value::Str("src/main.rs".to_string()));
+                out
+            }
+            GistGraphOp::ParseReadFile => {
+                let mut out = HashMap::new();
+                out.insert("filename".to_string(), Value::Str("src/main.rs".to_string()));
+                out.insert("content".to_string(), Value::Str("fn main() {}".to_string()));
+                out
+            }
+            GistGraphOp::CollectFileContents => {
+                let mut out = HashMap::new();
+                let mut contents = std::collections::BTreeMap::new();
+                contents.insert("src/main.rs".to_string(), "fn main() {}".to_string());
+                out.insert("contents".to_string(), Value::MapStrStr(contents));
+                out
+            }
+
             // Pure ops
             GistGraphOp::FilterByExtension { .. } => {
                 let mut out = HashMap::new();
@@ -761,5 +1023,29 @@ mod tests {
         assert_eq!(inferred.outputs.len(), 1);
         let output_names: Vec<_> = inferred.outputs.iter().map(|p| p.name.0.as_str()).collect();
         assert!(output_names.contains(&"url"));
+    }
+
+    #[test]
+    fn test_read_file_body_dag_structure() {
+        let dag = build_read_file_body_dag();
+
+        // Should have 3 nodes: prepare, execute, parse
+        assert_eq!(dag.nodes.len(), 3);
+
+        // Should have 3 edges
+        assert_eq!(dag.edges.len(), 3);
+
+        // Verify node existence
+        assert!(dag.get_node(&"prepare".into()).is_some());
+        assert!(dag.get_node(&"execute".into()).is_some());
+        assert!(dag.get_node(&"parse".into()).is_some());
+    }
+
+    #[test]
+    fn test_gist_graph_op_has_default() {
+        // GistGraphOp should implement Default for LoopBuilder compatibility
+        let default_op = GistGraphOp::default();
+        // Default is Transport(Execute)
+        assert!(matches!(default_op, GistGraphOp::Transport(_)));
     }
 }

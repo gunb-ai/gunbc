@@ -5,8 +5,11 @@
 //! - GraphOp enum
 //! - Executable impl
 //! - build_*_graph() function
+//!
+//! Uses the language module for naming conventions.
 
 use crate::registry::{DagDef, EdgeDef, NodeDef, PortDef, ToolDef};
+use gunbc_ir::language::NamingCase;
 use std::collections::HashSet;
 
 /// Generate a complete graph.rs file from a tool definition.
@@ -66,7 +69,7 @@ fn generate_imports(tool: &ToolDef, dag: &DagDef) -> String {
     // Add tool-specific imports if using local ops
     let has_local_ops = dag.nodes.iter().any(|n| n.op_crate.is_empty());
     if has_local_ops {
-        imports.push(format!("use crate::ops::{}Op;", capitalize(&tool.meta.tool_name)));
+        imports.push(format!("use crate::ops::{}Op;", NamingCase::PascalCase.apply(&tool.meta.tool_name)));
     }
     
     imports.join("\n")
@@ -74,7 +77,7 @@ fn generate_imports(tool: &ToolDef, dag: &DagDef) -> String {
 
 /// Generate the GraphOp enum that combines all operation types.
 fn generate_graph_op_enum(tool: &ToolDef, dag: &DagDef) -> String {
-    let enum_name = format!("{}GraphOp", capitalize(&tool.meta.tool_name));
+    let enum_name = format!("{}GraphOp", NamingCase::PascalCase.apply(&tool.meta.tool_name));
     
     // Collect unique operation types
     let mut variants = vec![];
@@ -85,7 +88,7 @@ fn generate_graph_op_enum(tool: &ToolDef, dag: &DagDef) -> String {
             "Primitive(PrimitiveOp)".to_string()
         } else if node.op_crate.is_empty() {
             // Local op
-            format!("Local({}Op)", capitalize(&tool.meta.tool_name))
+            format!("Local({}Op)", NamingCase::PascalCase.apply(&tool.meta.tool_name))
         } else {
             // External crate op
             format!("{}({})", node.op_type, node.op_type)
@@ -113,7 +116,7 @@ pub enum {enum_name} {{
 
 /// Generate the Executable impl for the GraphOp enum.
 fn generate_executable_impl(tool: &ToolDef, dag: &DagDef) -> String {
-    let enum_name = format!("{}GraphOp", capitalize(&tool.meta.tool_name));
+    let enum_name = format!("{}GraphOp", NamingCase::PascalCase.apply(&tool.meta.tool_name));
     
     // Collect unique match arms
     let mut arms = vec![];
@@ -152,7 +155,7 @@ fn generate_executable_impl(tool: &ToolDef, dag: &DagDef) -> String {
 /// Generate the build_*_graph() function.
 fn generate_graph_builder(tool: &ToolDef, dag: &DagDef) -> String {
     let fn_name = format!("build_{}_graph", tool.meta.tool_name);
-    let enum_name = format!("{}GraphOp", capitalize(&tool.meta.tool_name));
+    let enum_name = format!("{}GraphOp", NamingCase::PascalCase.apply(&tool.meta.tool_name));
     
     // Generate node additions
     let nodes = dag.nodes.iter()
@@ -241,15 +244,6 @@ fn generate_edge_code(edge: &EdgeDef) -> String {
     )
 }
 
-/// Capitalize the first letter of a string.
-fn capitalize(s: &str) -> String {
-    let mut chars = s.chars();
-    match chars.next() {
-        None => String::new(),
-        Some(c) => c.to_uppercase().chain(chars).collect(),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -268,10 +262,11 @@ mod tests {
     }
 
     #[test]
-    fn test_capitalize() {
-        assert_eq!(capitalize("makegen"), "Makegen");
-        assert_eq!(capitalize("buck2"), "Buck2");
-        assert_eq!(capitalize(""), "");
+    fn test_naming_case_pascal() {
+        // Verify language module's PascalCase works for type names
+        assert_eq!(NamingCase::PascalCase.apply("makegen"), "Makegen");
+        assert_eq!(NamingCase::PascalCase.apply("buck2"), "Buck2");
+        assert_eq!(NamingCase::PascalCase.apply(""), "");
     }
 
     #[test]

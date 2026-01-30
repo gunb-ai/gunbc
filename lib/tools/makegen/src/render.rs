@@ -2,11 +2,17 @@
 //!
 //! Uses `BuildConfig` as the single source of truth for all build commands.
 //! Implements the [`Renderable`] trait for standardized header generation.
+//!
+//! Uses `MAKEFILE.indent` from the language module for tab indentation.
 
 use crate::registry::{
     BuildConfig, EntrypointParam, ExtraTarget, MetaTarget, PrepLevel, ToolInfo, ToolRegistry,
 };
+use gunbc_ir::language::MAKEFILE;
 use gunbc_ir::Renderable;
+
+/// Makefile indentation (tab character). References `MAKEFILE.indent` for consistency.
+const INDENT: &str = MAKEFILE.indent;
 
 // ============================================================================
 // MakefileRenderer - Implements Renderable trait
@@ -43,6 +49,10 @@ impl Renderable for MakefileRenderer<'_> {
 
     fn regenerate_command(&self) -> &str {
         "make makegen"
+    }
+
+    fn format_id(&self) -> &str {
+        "makefile"
     }
 
     fn render_content(&self) -> String {
@@ -138,27 +148,27 @@ fn render_core_targets(config: &BuildConfig) -> String {
     // Uses a dedicated stamp file instead of checking for a specific tool's output
     output.push_str("# Ensure codegen has run (upsert pattern: check stamp -> run if missing)\n");
     output.push_str("ensure-codegen:\n");
-    output.push_str("\t@if [ ! -f buck-out/gen/.codegen-stamp ]; then \\\n");
+    output.push_str(&format!("{}@if [ ! -f buck-out/gen/.codegen-stamp ]; then \\\n", INDENT));
     output.push_str(&format!(
-        "\t\t{} && touch buck-out/gen/.codegen-stamp; \\\n",
-        config.codegen_command.join(" ")
+        "{}{}{} && touch buck-out/gen/.codegen-stamp; \\\n",
+        INDENT, INDENT, config.codegen_command.join(" ")
     ));
-    output.push_str("\tfi\n\n");
+    output.push_str(&format!("{}fi\n\n", INDENT));
 
     // Force regenerate CLIs from DAG entrypoints
     output.push_str("# Force regenerate CLIs from DAG entrypoints\n");
     output.push_str("codegen:\n");
-    output.push_str(&format!("\t{}\n\n", config.codegen_shell()));
+    output.push_str(&format!("{}{}\n\n", INDENT, config.codegen_shell()));
 
     // Full build transaction: codegen → cargo build → symlink
     output.push_str("# Full build transaction: codegen → cargo build → symlink\n");
     output.push_str("build: ensure-codegen\n");
-    output.push_str(&format!("\t{}\n\n", config.build_shell()));
+    output.push_str(&format!("{}{}\n\n", INDENT, config.build_shell()));
 
     // Rollback transaction: remove all generated artifacts
     output.push_str("# Rollback transaction: remove all generated artifacts\n");
     output.push_str("clean:\n");
-    output.push_str("\t@cargo run -p gunbc-codegen --release -- rollback\n\n");
+    output.push_str(&format!("{}@cargo run -p gunbc-codegen --release -- rollback\n\n", INDENT));
 
     output
 }
@@ -264,12 +274,12 @@ fn render_fix_alias_targets(config: &BuildConfig) -> String {
     // fmt-fix: alias for fmt (fmt IS the fix)
     output.push_str("# fmt-fix: apply formatting (alias for fmt)\n");
     output.push_str("fmt-fix:\n");
-    output.push_str(&format!("\t{}\n\n", config.fmt_shell()));
+    output.push_str(&format!("{}{}\n\n", INDENT, config.fmt_shell()));
 
     // lint-fix: run clippy with --fix
     output.push_str("# lint-fix: auto-fix lint issues where possible\n");
     output.push_str("lint-fix: ensure-codegen\n");
-    output.push_str(&format!("\t{}\n\n", config.lint_fix_shell()));
+    output.push_str(&format!("{}{}\n\n", INDENT, config.lint_fix_shell()));
 
     output
 }
@@ -289,7 +299,7 @@ fn render_meta_target(meta: &MetaTarget, config: &BuildConfig) -> String {
     let command = meta.get_command(config);
     output.push_str(&format!("# {}: {}\n", meta.name, meta.description));
     output.push_str(&format!("{}:{}\n", meta.name, dependency));
-    output.push_str(&format!("\t{}\n\n", command));
+    output.push_str(&format!("{}{}\n\n", INDENT, command));
 
     output
 }
@@ -307,7 +317,7 @@ fn render_meta_check_variant(meta: &MetaTarget, config: &BuildConfig) -> String 
         };
 
         output.push_str(&format!("{}-check:{}\n", meta.name, dependency));
-        output.push_str(&format!("\t{}\n\n", check_cmd));
+        output.push_str(&format!("{}{}\n\n", INDENT, check_cmd));
     }
 
     output
@@ -351,7 +361,7 @@ fn render_meta_fix_variant(meta: &MetaTarget, config: &BuildConfig) -> String {
 
     output.push_str(&format!("# {}-fix: auto-fix then verify\n", meta.name));
     output.push_str(&format!("{}-fix:{}\n", meta.name, deps_str));
-    output.push_str(&format!("\t{}\n\n", fix_cmd));
+    output.push_str(&format!("{}{}\n\n", INDENT, fix_cmd));
 
     output
 }

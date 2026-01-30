@@ -586,6 +586,10 @@ impl Renderable for WorkflowConfig {
         "make ci-yaml"
     }
 
+    fn format_id(&self) -> &str {
+        "yaml"
+    }
+
     fn render_content(&self) -> String {
         let mut yaml = String::new();
 

@@ -61,11 +61,15 @@ pub enum CIOp {
     /// Parse the test shell response (pure)
     ParseTestResult,
 
-    // ========== Lint stage ==========
-    /// Prepare the lint shell command (pure)
-    PrepareLintCommand,
-    /// Parse the lint shell response (pure)
-    ParseLintResult,
+    // ========== Lint stage (uses Clippy tool via requires_tools) ==========
+    /// Prepare clippy lint - check if we should skip based on build_success (pure)
+    /// Inputs: build_success: Bool
+    /// Outputs: skip: Bool, skip_reason: String (if skipping)
+    PrepareClippyLint,
+    /// Parse clippy lint result - convert CliToolOp outputs to CI format (pure)
+    /// Inputs: success: Bool, stdout: String, stderr: String, skip: Bool
+    /// Outputs: lint_success, lint_skipped, lint_stdout, lint_stderr
+    ParseClippyLintResult,
 
     // ========== Report stage (already pure) ==========
     /// Generate CI report (pure)
@@ -84,8 +88,8 @@ impl Executable for CIOp {
             CIOp::ParseBuildResult => execute_parse_build_result(inputs),
             CIOp::PrepareTestCommand => execute_prepare_test_command(inputs),
             CIOp::ParseTestResult => execute_parse_test_result(inputs),
-            CIOp::PrepareLintCommand => execute_prepare_lint_command(inputs),
-            CIOp::ParseLintResult => execute_parse_lint_result(inputs),
+            CIOp::PrepareClippyLint => execute_prepare_clippy_lint(inputs),
+            CIOp::ParseClippyLintResult => execute_parse_clippy_lint_result(inputs),
             CIOp::Report => execute_report(inputs),
         }
     }
@@ -373,11 +377,14 @@ fn execute_parse_test_result(inputs: HashMap<String, Value>) -> Result<HashMap<S
 }
 
 // ============================================================================
-// Lint Stage - Pure Operations
+// Lint Stage - Pure Operations (using Clippy SubDag)
 // ============================================================================
 
-/// Prepare the lint shell command (pure).
-fn execute_prepare_lint_command(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+/// Prepare clippy lint - check if we should skip based on build_success (pure).
+///
+/// This is the pre-gate for the Clippy tool execution. It checks if the build succeeded
+/// and either allows the lint or signals to skip.
+fn execute_prepare_clippy_lint(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
     let build_success = inputs
         .get("build_success")
         .and_then(|v| v.as_bool())
@@ -391,22 +398,15 @@ fn execute_prepare_lint_command(inputs: HashMap<String, Value>) -> Result<HashMa
         return Ok(out);
     }
 
-    let config = BuildConfig::cargo();
-    let request = TransportRequest::Shell(ShellRequest {
-        command: config.lint_command[0].to_string(),
-        args: config.lint_command[1..].iter().map(|s| s.to_string()).collect(),
-        cwd: None,
-        env: HashMap::new(),
-        stdin: None,
-    });
-
-    out.insert("request".to_string(), Value::Request(request));
     out.insert("skip".to_string(), Value::Bool(false));
     Ok(out)
 }
 
-/// Parse the lint shell response (pure).
-fn execute_parse_lint_result(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+/// Parse clippy lint result - convert CliToolOp outputs to CI format (pure).
+///
+/// This is the post-parse for the Clippy SubDag. It converts the clippy run
+/// outputs (success, stdout, stderr) to the expected CI format.
+fn execute_parse_clippy_lint_result(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
     let skip = inputs
         .get("skip")
         .and_then(|v| v.as_bool())
@@ -426,15 +426,23 @@ fn execute_parse_lint_result(inputs: HashMap<String, Value>) -> Result<HashMap<S
         return Ok(out);
     }
 
-    let response = inputs
-        .get("response")
-        .and_then(|v| v.as_response())
-        .ok_or_else(|| ExecError::new("missing response input"))?;
-
-    let (success, stdout, stderr) = match response {
-        TransportResponse::Shell(shell) => (shell.success(), shell.stdout.clone(), shell.stderr.clone()),
-        _ => return Err(ExecError::new("expected shell response")),
-    };
+    // Get outputs from the clippy SubDag (from the 'resolve' node which runs clippy)
+    let success = inputs
+        .get("success")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    
+    let stdout = inputs
+        .get("stdout")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    
+    let stderr = inputs
+        .get("stderr")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
 
     out.insert("lint_success".to_string(), Value::Bool(success));
     out.insert("lint_skipped".to_string(), Value::Bool(false));
@@ -576,21 +584,12 @@ impl Mockable for CIOp {
                 out.insert("test_stderr".to_string(), Value::Str(String::new()));
                 out
             }
-            CIOp::PrepareLintCommand => {
-                let config = BuildConfig::cargo();
-                let request = TransportRequest::Shell(ShellRequest {
-                    command: config.lint_command[0].to_string(),
-                    args: config.lint_command[1..].iter().map(|s| s.to_string()).collect(),
-                    cwd: None,
-                    env: HashMap::new(),
-                    stdin: None,
-                });
+            CIOp::PrepareClippyLint => {
                 let mut out = HashMap::new();
-                out.insert("request".to_string(), Value::Request(request));
                 out.insert("skip".to_string(), Value::Bool(false));
                 out
             }
-            CIOp::ParseLintResult => {
+            CIOp::ParseClippyLintResult => {
                 let mut out = HashMap::new();
                 out.insert("lint_success".to_string(), Value::Bool(true));
                 out.insert("lint_skipped".to_string(), Value::Bool(false));
