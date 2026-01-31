@@ -36,7 +36,8 @@ fn convert_gist_op(op: GistGraphOp) -> WorkspaceOp {
         | GistGraphOp::PrepareReadFile
         | GistGraphOp::ParseReadFile
         | GistGraphOp::CollectFileContents
-        | GistGraphOp::FilterByExtension { .. } => {
+        | GistGraphOp::FilterByExtension { .. }
+        | GistGraphOp::FilterDiffByExtension { .. } => {
             // These are gist-internal ops - use ParseGistResponse as placeholder
             WorkspaceOp::Gist(GistOps::ParseGistResponse)
         }

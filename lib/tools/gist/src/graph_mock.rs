@@ -82,6 +82,52 @@ pub fn gist_mock_spec_lease_expires() -> MockSpec {
         .resource_lease_expires("github:api_token", 5000)
 }
 
+/// Mock specification for the diff gist graph.
+///
+/// # Boundary Mocks
+///
+/// Transport boundary nodes:
+/// - `execute_diff`: Runs `git diff base...HEAD`
+/// - `execute_gist`: Creates the gist (world write)
+///
+/// # Input Expectations
+///
+/// The diff gist tool expects:
+/// - `repo_path`: Optional string (can be empty)
+/// - `base_ref`: Optional string (overrides build-time default)
+pub fn diff_gist_mock_spec() -> MockSpec {
+    MockSpec::new("diff_gist")
+        // Boundary: execute_diff outputs
+        .boundary(
+            "execute_diff",
+            "response",
+            Value::Json(serde_json::json!({
+                "exit_code": 0,
+                "stdout": "diff --git a/src/main.rs b/src/main.rs\n--- a/src/main.rs\n+++ b/src/main.rs\n@@ -1,3 +1,4 @@\n fn main() {\n+    println!(\"hello\");\n }\n",
+                "stderr": ""
+            })),
+        )
+        // Boundary: execute_gist outputs
+        .boundary(
+            "execute_gist",
+            "url",
+            Value::Str("https://gist.github.com/mock/diff123".into()),
+        )
+        .boundary(
+            "execute_gist",
+            "response",
+            Value::Json(serde_json::json!({
+                "id": "diff123",
+                "html_url": "https://gist.github.com/mock/diff123",
+                "files": {},
+                "public": false
+            })),
+        )
+        // Input expectations
+        .expects_input("repo_path", InputConstraint::Any)
+        .expects_input("base_ref", InputConstraint::Any)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -125,5 +171,37 @@ mod tests {
     fn test_resource_lock_present() {
         let spec = gist_mock_spec_with_fs_lock();
         assert!(spec.get_resource("fs:read").is_some());
+    }
+
+    #[test]
+    fn test_diff_mock_spec_has_boundaries() {
+        let spec = diff_gist_mock_spec();
+
+        // execute_diff boundary
+        assert!(spec.get_boundary_mock("execute_diff", "response").is_some());
+
+        // execute_gist boundary
+        assert!(spec.get_boundary_mock("execute_gist", "url").is_some());
+        assert!(spec.get_boundary_mock("execute_gist", "response").is_some());
+    }
+
+    #[test]
+    fn test_diff_mock_spec_url_is_valid() {
+        let spec = diff_gist_mock_spec();
+        let url = spec.get_boundary_mock("execute_gist", "url").unwrap();
+
+        if let Value::Str(s) = url {
+            assert!(s.starts_with("https://gist.github.com/"));
+        } else {
+            panic!("Expected string URL");
+        }
+    }
+
+    #[test]
+    fn test_diff_chain_validation_self() {
+        let spec = diff_gist_mock_spec();
+        let mapping = HashMap::new();
+        let result = validate_chain(&spec, &spec, &mapping);
+        assert!(result.is_ok());
     }
 }
