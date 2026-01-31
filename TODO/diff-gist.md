@@ -2,6 +2,7 @@
 
 **Status**: Draft
 **Date**: 2026-01-31
+**Depends on**: `TODO/git-transport-api.md` (Git transport interface)
 
 ## Goal
 
@@ -53,33 +54,27 @@ PrepareDiff → Execute → ParseDiff → FilterDiffFiles → RenderDiffSnapshot
 
 ### Node Details
 
-#### 1. PrepareDiff (PURE)
+#### 1. PrepareDiff (PURE) — via `GitOps::PrepareDiff`
 
-Builds the `git diff` TransportRequest.
+Uses the Git transport API (`TODO/git-transport-api.md`) rather than constructing raw shell strings. The `GitRequest::diff()` builder enforces deterministic output flags (`--no-ext-diff`, `--no-color`, `--src-prefix=a/`, `--dst-prefix=b/`, etc.) so parsing is stable across environments.
 
 ```rust
+/// Implemented as GitOps::PrepareDiff { base_ref }
+///
 /// Inputs:
 ///   - repo_path: String (optional, defaults to ".")
-///   - base_ref: String (optional, defaults to GitConfig.default_branch)
+///   - base_ref: String (optional, overrides build-time base_ref)
 ///
 /// Outputs:
 ///   - request: TransportRequest
 ///
-/// Shell command:
-///   git diff <base_ref>...HEAD
-fn execute_prepare_diff(inputs) -> Result<HashMap<String, Value>> {
-    let repo_path = inputs.get("repo_path").unwrap_or(".");
-    let base_ref = inputs.get("base_ref").unwrap_or("main");
-
-    // Use triple-dot diff: changes on HEAD since it diverged from base_ref.
-    // This is the "what does this branch add" view, not "what's different
-    // between the two branch tips right now" (which double-dot gives).
-    TransportRequest::Shell(ShellRequest {
-        command: "git",
-        args: ["diff", &format!("{}...HEAD", base_ref)],
-        cwd: Some(repo_path),
-    })
-}
+/// Internally calls:
+///   GitRequest::diff(base_ref).cwd(repo_path).to_shell_request()
+///
+/// Which produces (deterministic, environment-independent):
+///   git -c color.ui=never -c core.quotepath=false --no-pager
+///       diff --no-ext-diff --no-color --src-prefix=a/ --dst-prefix=b/
+///       --find-renames main...HEAD
 ```
 
 **Why `...` (triple-dot)?** `git diff main...HEAD` shows changes introduced on HEAD since it diverged from main. This is exactly "what this branch changed" — unaffected by commits that landed on main after the branch point. This matches what GitHub shows in a PR diff.
@@ -88,11 +83,13 @@ fn execute_prepare_diff(inputs) -> Result<HashMap<String, Value>> {
 
 Standard `TransportOps::Execute`. Interceptable by dry-run.
 
-#### 3. ParseDiff (PURE)
+#### 3. ParseDiff (PURE) — via `GitOps::ParseDiff`
 
-Parses the unified diff output into per-file chunks.
+Delegates to `git::parse_diff_chunks()` from the Git transport API. The parser is safe to rely on because `GitRequest::diff().to_shell_request()` enforces `--src-prefix=a/` and `--dst-prefix=b/`, guaranteeing stable `diff --git a/... b/...` headers regardless of user config.
 
 ```rust
+/// Implemented as GitOps::ParseDiff
+///
 /// Inputs:
 ///   - response: TransportResponse (unified diff output)
 ///
@@ -100,16 +97,9 @@ Parses the unified diff output into per-file chunks.
 ///   - diff_files: MapStrStr (filename → diff_chunk)
 ///   - stats: String (summary like "+42 -17 across 5 files")
 ///
-/// Parsing strategy:
-///   Split on `^diff --git a/... b/...` headers.
-///   Key = the b/ path (post-image filename).
-///   Value = the full diff chunk for that file (header + hunks).
-fn execute_parse_diff(inputs) -> Result<HashMap<String, Value>> {
-    // Split unified diff on "diff --git" headers
-    // Each chunk: "diff --git a/foo b/foo\n--- a/foo\n+++ b/foo\n@@ ... @@\n..."
-    // Key: extract "b/<path>" from the header → strip "b/" prefix
-    // Value: the entire chunk (preserves hunk context)
-}
+/// Internally calls:
+///   git::parse_diff_chunks(stdout)  → BTreeMap<String, String>
+///   git::diff_stats(&chunks)        → (additions, deletions, file_count)
 ```
 
 This naturally produces a `MapStrStr` — the same type that the current `ReadFiles` chain produces, making downstream nodes compatible.
@@ -205,15 +195,17 @@ pub fn diff_gist_signature() -> WorkflowSignature {
 pub enum GistGraphOp {
     // ... existing variants ...
 
-    // Diff chain: PrepareDiff -> Execute -> ParseDiff
-    /// Prepare git diff request (PURE - no I/O)
-    PrepareDiff { base_ref: String },
-    /// Parse unified diff into per-file chunks (PURE - no I/O)
-    ParseDiff,
+    // Git operations (via git-ops crate, see TODO/git-transport-api.md)
+    /// Git operations (PURE - builds requests, parses responses)
+    Git(GitOps),
+
+    // Diff-specific
     /// Filter diff map by extension (PURE - no I/O)
     FilterDiffByExtension { extensions: Vec<String> },
 }
 ```
+
+`GitOps::PrepareDiff` and `GitOps::ParseDiff` come from the `git-ops` crate. The same `Git(GitOps)` variant also replaces the existing inline `PrepareListFiles` / `ParseListFiles` in the snapshot graph.
 
 ### Where `base_ref` Comes From
 
@@ -352,7 +344,10 @@ The `MapStrStr` type already fits perfectly (filename → diff content). Adding 
 
 ## Related Files
 
+- `TODO/git-transport-api.md` — **Dependency**: Git transport interface (GitRequest, GitOps)
 - `core/ir/src/git.rs` — `GitConfig.default_branch` (source of `base_ref`)
+- `core/ir/src/transport/git.rs` — **New**: `GitRequest` builder + parsers
+- `lib/git-ops/src/lib.rs` — **New**: `GitOps` pure ops enum
 - `lib/tools/gist/src/graph.rs` — Current snapshot graph (pattern to follow)
 - `lib/gist-ops/src/lib.rs` — `GistOps` (reused as-is for gist creation)
 - `lib/markdown/src/lib.rs` — `MarkdownOp` (needs `RenderDiffSnapshot` variant)
