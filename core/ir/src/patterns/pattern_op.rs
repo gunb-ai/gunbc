@@ -38,9 +38,3 @@ pub enum PatternOp {
     /// Poll result collector.
     PollCollector { output_port: String },
 }
-
-impl From<PatternOp> for PatternOp {
-    fn from(op: PatternOp) -> Self {
-        op
-    }
-}

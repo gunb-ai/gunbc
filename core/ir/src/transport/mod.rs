@@ -57,7 +57,7 @@ pub use gist::GistRequest;
 pub use git::GitRequest;
 pub use github::{
     api::{github_rest_request, GitHubApi, GITHUB_API},
-    cli::{gh_cli_commands, gh_cli_request, is_gh_installed, GHCommand, GitHubCLI, GH_CLI},
+    cli::{gh_cli_commands, gh_cli_request, is_gh_installed, GHCommand},
     GitHubAuth, GITHUB_API_VERSION, GITHUB_CONTRACT_VERSION, GH_CLI_MIN_VERSION,
 };
 pub use github_actions::{

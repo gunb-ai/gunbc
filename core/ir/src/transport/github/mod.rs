@@ -21,7 +21,7 @@ pub mod cli;
 
 // Re-export for convenience
 pub use api::{github_rest_request, GitHubApi, GITHUB_API};
-pub use cli::{gh_cli_commands, gh_cli_request, is_gh_installed, GHCommand, GitHubCLI, GH_CLI};
+pub use cli::{gh_cli_commands, gh_cli_request, is_gh_installed, GHCommand, GH_TOOL};
 
 // ============================================================================
 // Version Constants (single source of truth)

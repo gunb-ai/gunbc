@@ -39,6 +39,3 @@ pub use graph::{
 pub use gunbc_lib_git_ops::GitOps;
 pub use gunbc_lib_gist_ops::GistOps;
 pub use gunbc_lib_markdown::MarkdownOp;
-
-// Legacy alias for backwards compatibility
-pub type GistOp = GistGraphOp;

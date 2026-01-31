@@ -100,19 +100,6 @@ pub enum GistGraphOp {
     Transport(TransportOps),
 }
 
-/// Default implementation for GistGraphOp.
-///
-/// Retained for legacy usage; pattern builders now require `T: From<PatternOp>`
-/// for internal nodes.
-///
-/// Default returns a no-op variant (Transport with Execute).
-impl Default for GistGraphOp {
-    fn default() -> Self {
-        // Default to a transport execute - a safe no-op when properly guarded
-        GistGraphOp::Transport(TransportOps::Execute)
-    }
-}
-
 impl Executable for GistGraphOp {
     fn execute(
         &self,
@@ -1212,12 +1199,5 @@ mod tests {
         assert!(dag.get_node(&"prepare".into()).is_some());
         assert!(dag.get_node(&"execute".into()).is_some());
         assert!(dag.get_node(&"parse".into()).is_some());
-    }
-
-    #[test]
-    fn test_gist_graph_op_has_default() {
-        // Default is retained for legacy usage (not required by pattern builders).
-        let default_op = GistGraphOp::default();
-        assert!(matches!(default_op, GistGraphOp::Transport(_)));
     }
 }

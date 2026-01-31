@@ -2,7 +2,6 @@
 //!
 //! Unified WorkspaceOp and fractal DAG composition.
 
-pub mod deprecated;
 pub mod ops;
 pub mod subdags;
 

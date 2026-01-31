@@ -34,16 +34,6 @@ pub enum DepsGraphOp {
     Transport(TransportOps),
 }
 
-/// Default implementation for DepsGraphOp.
-///
-/// Retained for legacy usage; pattern builders now require `T: From<PatternOp>` for internal nodes.
-impl Default for DepsGraphOp {
-    fn default() -> Self {
-        // Default to transport execute - a safe no-op when properly guarded
-        DepsGraphOp::Transport(TransportOps::Execute)
-    }
-}
-
 impl Executable for DepsGraphOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         match self {

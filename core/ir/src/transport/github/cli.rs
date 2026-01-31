@@ -26,7 +26,6 @@
 //! let req = gh_cli_request(&["gist", "create", "-f", "test.md"]);
 //! ```
 
-use super::GH_CLI_MIN_VERSION;
 use crate::transport::tool::{InstallInputs, InstallOption, ToolDef};
 use crate::transport::ShellRequest;
 
@@ -53,39 +52,6 @@ pub static GH_TOOL: ToolDef = ToolDef {
         },
     ],
     depends_on: &[],
-};
-
-// ============================================================================
-// Legacy Tool Definition (kept for backward compatibility)
-// ============================================================================
-
-/// GitHub CLI tool definition (legacy).
-///
-/// Contains all metadata needed to identify, verify, and document the gh CLI.
-/// For new code, prefer using `GH_TOOL` which integrates with the tool registry.
-#[derive(Debug, Clone)]
-pub struct GitHubCLI {
-    /// Unique identifier for this tool (used in deps.toml, etc.)
-    pub id: &'static str,
-    /// Command to invoke (usually "gh")
-    pub command: &'static str,
-    /// Minimum version required for our usage
-    pub min_version: &'static str,
-    /// Command to verify installation
-    pub verify_command: &'static str,
-    /// Documentation URL
-    pub docs_url: &'static str,
-}
-
-/// The gh CLI tool definition (legacy).
-///
-/// For new code, prefer using `GH_TOOL` which integrates with the tool registry.
-pub const GH_CLI: GitHubCLI = GitHubCLI {
-    id: "gh",
-    command: "gh",
-    min_version: GH_CLI_MIN_VERSION,
-    verify_command: "gh --version",
-    docs_url: "https://cli.github.com/manual/",
 };
 
 // ============================================================================
@@ -188,7 +154,7 @@ pub fn gh_cli_commands() -> Vec<GHCommand> {
 ///     .stdin("# My Gist Content");
 /// ```
 pub fn gh_cli_request(subcommand: &[&str]) -> ShellRequest {
-    ShellRequest::new(GH_CLI.command).args(subcommand.iter().map(|s| s.to_string()))
+    ShellRequest::new(GH_TOOL.command).args(subcommand.iter().map(|s| s.to_string()))
 }
 
 /// Build a shell request for gh auth status.
@@ -275,7 +241,7 @@ pub fn to_deps_toml_entry() -> String {
 name = "{}"
 verify = "{}"
 "#,
-        GH_CLI.id, GH_CLI.verify_command
+        GH_TOOL.id, GH_TOOL.verify
     );
 
     for (platform, method) in gh_install_methods() {
@@ -344,14 +310,6 @@ url = {:?}
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_gh_cli_definition() {
-        assert_eq!(GH_CLI.id, "gh");
-        assert_eq!(GH_CLI.command, "gh");
-        assert_eq!(GH_CLI.verify_command, "gh --version");
-        assert!(!GH_CLI.min_version.is_empty());
-    }
 
     #[test]
     fn test_gh_install_methods() {
