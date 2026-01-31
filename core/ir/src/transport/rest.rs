@@ -18,10 +18,16 @@ pub enum AuthMethod {
     Bearer(String),
     /// Basic authentication (username:password base64 encoded)
     Basic { username: String, password: String },
-    /// API key in header
+    /// API key in header (literal value)
     ApiKey { header: String, key: String },
-    /// Environment variable reference (resolved at execution time)
+    /// Environment variable resolved at execution time → `Authorization: Bearer {value}`.
     EnvVar(String),
+    /// Environment variable resolved at execution time → custom header.
+    ///
+    /// Like `EnvVar` but inserts the value into the specified header instead of
+    /// `Authorization: Bearer`. Used for APIs that authenticate via a custom
+    /// header (e.g., Anthropic's `x-api-key`).
+    EnvVarHeader { header: String, env_var: String },
 }
 
 impl fmt::Debug for AuthMethod {
@@ -36,6 +42,9 @@ impl fmt::Debug for AuthMethod {
                 write!(f, "AuthMethod::ApiKey {{ header: {header:?}, key: *** }}")
             }
             AuthMethod::EnvVar(var) => write!(f, "AuthMethod::EnvVar({var:?})"),
+            AuthMethod::EnvVarHeader { header, env_var } => {
+                write!(f, "AuthMethod::EnvVarHeader {{ header: {header:?}, env_var: {env_var:?} }}")
+            }
         }
     }
 }
@@ -48,6 +57,9 @@ impl fmt::Display for AuthMethod {
             AuthMethod::Basic { username, .. } => write!(f, "basic({username}, ***)"),
             AuthMethod::ApiKey { header, .. } => write!(f, "api-key({header}, ***)"),
             AuthMethod::EnvVar(var) => write!(f, "env({var})"),
+            AuthMethod::EnvVarHeader { header, env_var } => {
+                write!(f, "env-header({header}, {env_var})")
+            }
         }
     }
 }

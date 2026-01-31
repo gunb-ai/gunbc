@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 /// Environment variable name for the API key.
 ///
 /// Providers reference env vars by name; resolution happens at execution time
-/// through the existing `AuthMethod::EnvVar` mechanism.
+/// through `AuthMethod::EnvVar` (Bearer) or `AuthMethod::EnvVarHeader` (custom header).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ApiKeyEnvVar(pub String);
 

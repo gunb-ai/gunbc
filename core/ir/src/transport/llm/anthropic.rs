@@ -98,7 +98,7 @@ fn serialize_content(content: &MessageContent) -> serde_json::Value {
 ///
 /// Handles the Anthropic-specific format:
 /// - System messages as content block array (supports cache_control breakpoints)
-/// - Auth via `x-api-key` header (using `AuthMethod::ApiKey`)
+/// - Auth via `x-api-key` header (using `AuthMethod::EnvVarHeader`)
 /// - Required `anthropic-version` header
 /// - `max_tokens` is required (defaults to 4096 if not set)
 /// - Extended thinking via `thinking` param when configured
@@ -204,9 +204,9 @@ pub fn build_anthropic_request(chat: &ChatRequest) -> RestRequest {
         method: HttpMethod::Post,
         headers,
         body: Some(body),
-        auth: Some(AuthMethod::ApiKey {
+        auth: Some(AuthMethod::EnvVarHeader {
             header: "x-api-key".to_string(),
-            key: format!("${{{}}}", provider.api_key_env.0),
+            env_var: provider.api_key_env.0.clone(),
         }),
         query: Default::default(),
         timeout_ms: Some(120_000),

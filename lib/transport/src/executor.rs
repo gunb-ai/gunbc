@@ -93,6 +93,11 @@ fn execute_rest(request: &RestRequest) -> Result<RestResponse, TransportError> {
             gunbc_ir::transport::AuthMethod::ApiKey { header, key } => {
                 http_req.headers.insert(header.clone(), key.clone());
             }
+            gunbc_ir::transport::AuthMethod::EnvVarHeader { header, env_var } => {
+                if let Ok(value) = std::env::var(env_var) {
+                    http_req.headers.insert(header.clone(), value);
+                }
+            }
             gunbc_ir::transport::AuthMethod::None => {}
         }
     }
