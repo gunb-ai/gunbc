@@ -78,12 +78,32 @@ impl ProofObligation {
         self
     }
 
-    /// Whether this obligation needs a test.
+    /// Mark as statically proven INVALID (structural error).
+    ///
+    /// This is not "unknown" — the obligation is provably violated.
+    /// Codegen should surface this as an error, not generate a runtime test.
+    pub fn invalidate(mut self, reason: impl Into<String>) -> Self {
+        self.status = DischargeStatus::Invalid {
+            reason: reason.into(),
+        };
+        self
+    }
+
+    /// Whether this obligation needs a runtime test.
+    ///
+    /// Returns true for Unknown and RuntimeOnly.
+    /// Returns false for Verified (proven correct) and Invalid (proven wrong).
+    /// Invalid obligations are surfaced separately — they are errors, not tests.
     pub fn needs_test(&self) -> bool {
         matches!(
             self.status,
             DischargeStatus::Unknown | DischargeStatus::RuntimeOnly
         )
+    }
+
+    /// Whether this obligation is provably invalid.
+    pub fn is_invalid(&self) -> bool {
+        matches!(self.status, DischargeStatus::Invalid { .. })
     }
 }
 
@@ -129,15 +149,8 @@ pub enum Obligation {
         entailment: EntailmentStatus,
     },
 
-    /// Witness values are accepted by downstream contracts (L4 compat).
-    ///
-    /// Validates that mock/witness values used in testing are actually
-    /// accepted by the contracts they're meant to satisfy.
-    WitnessCompatibility {
-        node_id: NodeId,
-        port_name: PortName,
-        type_id: TypeId,
-    },
+    // NOTE: WitnessCompatibility (L4) removed — requires Tier 3 infrastructure
+    // (types-as-DAGs, witness generation). Will be re-added when witnesses exist.
 
     /// Node contract compliance: given valid inputs, outputs satisfy contracts.
     ///
@@ -211,10 +224,9 @@ pub enum Obligation {
         resource_port: String,
     },
 
-    /// Resource simulation: acquisition/timeout behavior.
-    ResourceSimulation {
-        resource_id: String,
-    },
+    // NOTE: ResourceSimulation removed — resource simulation tests are
+    // generated directly from MockSpec resource mocks in codegen, not from
+    // obligations. Will be re-added if resource simulation needs obligation tracking.
 }
 
 /// Status of predicate entailment checking.
@@ -246,6 +258,12 @@ pub enum ObligationSource {
 pub enum DischargeStatus {
     /// Statically verified — no test needed.
     Verified { proof: String },
+    /// Statically proven INVALID — this is a structural error, not "unknown".
+    ///
+    /// Invalid obligations are not tests waiting to be run — they are
+    /// errors that should be surfaced immediately. Codegen emits a
+    /// `#[test] #[should_panic]` or a compile_error-style message.
+    Invalid { reason: String },
     /// Cannot be determined statically — needs test.
     Unknown,
     /// Can only be verified at runtime by design — needs test.
@@ -264,9 +282,22 @@ pub struct ObligationSet {
 }
 
 impl ObligationSet {
-    /// Get only obligations that need tests (not statically discharged).
+    /// Get only obligations that need runtime tests (Unknown or RuntimeOnly).
     pub fn testable(&self) -> Vec<&ProofObligation> {
         self.all.iter().filter(|o| o.needs_test()).collect()
+    }
+
+    /// Get obligations that are provably invalid (structural errors).
+    ///
+    /// These should be surfaced as errors, not as tests. Codegen emits
+    /// a failing test with a crisp message for each invalid obligation.
+    pub fn invalids(&self) -> Vec<&ProofObligation> {
+        self.all.iter().filter(|o| o.is_invalid()).collect()
+    }
+
+    /// Whether any obligations are provably invalid.
+    pub fn has_invalids(&self) -> bool {
+        self.all.iter().any(|o| o.is_invalid())
     }
 
     /// Get obligations by bucket.
@@ -310,9 +341,11 @@ impl ObligationSet {
     /// Summary statistics.
     pub fn stats(&self) -> ObligationStats {
         let testable = self.testable();
+        let invalids = self.invalids();
         ObligationStats {
             total: self.all.len(),
-            discharged: self.all.len() - testable.len(),
+            discharged: self.all.iter().filter(|o| matches!(o.status, DischargeStatus::Verified { .. })).count(),
+            invalid: invalids.len(),
             testable: testable.len(),
             bucket_a: self.bucket_a().len(),
             bucket_b: self.bucket_b().len(),
@@ -327,6 +360,7 @@ impl ObligationSet {
 pub struct ObligationStats {
     pub total: usize,
     pub discharged: usize,
+    pub invalid: usize,
     pub testable: usize,
     pub bucket_a: usize,
     pub bucket_b: usize,
@@ -336,17 +370,32 @@ pub struct ObligationStats {
 
 impl std::fmt::Display for ObligationStats {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{} obligations ({} discharged, {} testable: A={}, B={}, C={}, D={})",
-            self.total,
-            self.discharged,
-            self.testable,
-            self.bucket_a,
-            self.bucket_b,
-            self.bucket_c,
-            self.bucket_d
-        )
+        if self.invalid > 0 {
+            write!(
+                f,
+                "{} obligations ({} discharged, {} INVALID, {} testable: A={}, B={}, C={}, D={})",
+                self.total,
+                self.discharged,
+                self.invalid,
+                self.testable,
+                self.bucket_a,
+                self.bucket_b,
+                self.bucket_c,
+                self.bucket_d
+            )
+        } else {
+            write!(
+                f,
+                "{} obligations ({} discharged, {} testable: A={}, B={}, C={}, D={})",
+                self.total,
+                self.discharged,
+                self.testable,
+                self.bucket_a,
+                self.bucket_b,
+                self.bucket_c,
+                self.bucket_d
+            )
+        }
     }
 }
 
@@ -468,16 +517,20 @@ fn collect_contract_obligations<T>(
                     edge.from_node.0, edge.from_port.0, edge.to_node.0, edge.to_port.0
                 );
 
-                let (reason, discharged) = match &entailment {
-                    EntailmentStatus::Verified => {
-                        (format!("Edge {}: predicate entailment verified", edge_label), true)
-                    }
-                    EntailmentStatus::Unknown { reason } => {
-                        (format!("Edge {}: predicate entailment unknown ({})", edge_label, reason), false)
-                    }
-                    EntailmentStatus::Invalid { reason } => {
-                        (format!("Edge {}: predicate entailment INVALID ({})", edge_label, reason), false)
-                    }
+                // Determine reason and discharge/invalidate status from entailment
+                let (reason, status) = match &entailment {
+                    EntailmentStatus::Verified => (
+                        format!("Edge {}: predicate entailment verified", edge_label),
+                        "verified",
+                    ),
+                    EntailmentStatus::Unknown { reason } => (
+                        format!("Edge {}: predicate entailment unknown ({})", edge_label, reason),
+                        "unknown",
+                    ),
+                    EntailmentStatus::Invalid { reason } => (
+                        format!("Edge {}: predicate entailment INVALID ({})", edge_label, reason),
+                        "invalid",
+                    ),
                 };
 
                 let obligation = ProofObligation::new(
@@ -490,14 +543,21 @@ fn collect_contract_obligations<T>(
                         to_type: tp.type_id.clone(),
                         entailment,
                     },
-                    reason,
+                    &reason,
                     ObligationSource::Contract,
                 );
 
-                if discharged {
-                    obligations.push(obligation.discharge("Predicate entailment statically verified"));
-                } else {
-                    obligations.push(obligation);
+                match status {
+                    "verified" => {
+                        obligations.push(obligation.discharge("Predicate entailment statically verified"));
+                    }
+                    "invalid" => {
+                        obligations.push(obligation.invalidate(reason));
+                    }
+                    _ => {
+                        // Unknown — needs runtime test
+                        obligations.push(obligation);
+                    }
                 }
             }
         }
@@ -640,17 +700,25 @@ fn collect_resource_obligations<T>(
                         .discharge("Edge exists to resource input"),
                     );
                 } else {
-                    obligations.push(ProofObligation::new(
-                        Obligation::ResourceInputConnected {
-                            node_id: node.id.clone(),
-                            port_name: port.name.clone(),
-                        },
-                        format!(
-                            "Resource input {}.{} has NO incoming edge — resource not provided",
+                    // Disconnected resource input is a static structural error.
+                    // No runtime test can help — the edge is simply missing.
+                    obligations.push(
+                        ProofObligation::new(
+                            Obligation::ResourceInputConnected {
+                                node_id: node.id.clone(),
+                                port_name: port.name.clone(),
+                            },
+                            format!(
+                                "Resource input {}.{} has NO incoming edge — resource not provided",
+                                node.id.0, port.name.0
+                            ),
+                            ObligationSource::ResourceModel,
+                        )
+                        .invalidate(format!(
+                            "Resource input {}.{} is disconnected",
                             node.id.0, port.name.0
-                        ),
-                        ObligationSource::ResourceModel,
-                    ));
+                        )),
+                    );
                 }
             }
         }
@@ -713,17 +781,25 @@ fn collect_resource_obligations<T>(
                         .discharge("Edge exists from resource output to consumer"),
                     );
                 } else {
-                    obligations.push(ProofObligation::new(
-                        Obligation::ResourceOrphan {
-                            node_id: node.id.clone(),
-                            port_name: port.name.clone(),
-                        },
-                        format!(
-                            "Resource output {}.{} is acquired but never consumed (orphan)",
+                    // Orphan resource is a static structural error.
+                    // Resource acquired but never consumed — wasted or leaked.
+                    obligations.push(
+                        ProofObligation::new(
+                            Obligation::ResourceOrphan {
+                                node_id: node.id.clone(),
+                                port_name: port.name.clone(),
+                            },
+                            format!(
+                                "Resource output {}.{} is acquired but never consumed (orphan)",
+                                node.id.0, port.name.0
+                            ),
+                            ObligationSource::ResourceModel,
+                        )
+                        .invalidate(format!(
+                            "Resource {}.{} is orphaned (no consumer edge)",
                             node.id.0, port.name.0
-                        ),
-                        ObligationSource::ResourceModel,
-                    ));
+                        )),
+                    );
                 }
             }
         }
@@ -744,16 +820,24 @@ fn collect_resource_obligations<T>(
                 .discharge("detect_conflicts returned empty"),
             );
         } else {
-            obligations.push(ProofObligation::new(
-                Obligation::ResourceConflictAbsence {
-                    conflicts: conflicts.clone(),
-                },
-                format!(
-                    "{} resource conflict(s) detected — DAG ordering may be insufficient",
+            // Detected conflicts are provable structural errors —
+            // parallel nodes access the same resource without ordering.
+            obligations.push(
+                ProofObligation::new(
+                    Obligation::ResourceConflictAbsence {
+                        conflicts: conflicts.clone(),
+                    },
+                    format!(
+                        "{} resource conflict(s) detected — DAG ordering may be insufficient",
+                        conflicts.len()
+                    ),
+                    ObligationSource::ResourceModel,
+                )
+                .invalidate(format!(
+                    "{} resource conflict(s): parallel nodes access same resource without ordering",
                     conflicts.len()
-                ),
-                ObligationSource::ResourceModel,
-            ));
+                )),
+            );
         }
     }
 
@@ -803,9 +887,21 @@ fn check_predicate_entailment(
         return EntailmentStatus::Verified;
     }
 
-    // "Any" type → verified (accepts anything)
-    if to_type.0 == "Any" || from_type.0 == "Any" {
+    // Target is "Any" → verified (target accepts anything)
+    if to_type.0 == "Any" {
         return EntailmentStatus::Verified;
+    }
+
+    // Source is "Any" but target is specific → Unknown.
+    // A value of type Any does NOT entail it satisfies a more specific
+    // target predicate/type. This must be tested empirically.
+    if from_type.0 == "Any" {
+        return EntailmentStatus::Unknown {
+            reason: format!(
+                "source is 'Any' but target '{}' has specific constraints",
+                to_type.0
+            ),
+        };
     }
 
     // If we have a registry, check contracts
@@ -996,7 +1092,7 @@ mod tests {
     }
 
     #[test]
-    fn test_disconnected_resource_obligation() {
+    fn test_disconnected_resource_is_invalid() {
         let mut dag: Dag<()> = Dag::new();
         dag.add_node(Node::opaque(
             "lint",
@@ -1008,17 +1104,21 @@ mod tests {
 
         let obligations = collect_obligations(&dag, None, None);
 
-        // Resource input connected should NOT be discharged
+        // Disconnected resource input is now Invalid (structural error),
+        // not Unknown (needs test). There's nothing to test — the edge is missing.
         let connected = obligations.all.iter().find(|o| matches!(
             &o.kind,
             Obligation::ResourceInputConnected { node_id, .. } if node_id.0 == "lint"
         ));
         assert!(connected.is_some());
-        assert!(connected.unwrap().needs_test()); // Not discharged
+        let connected = connected.unwrap();
+        assert!(connected.is_invalid(), "disconnected resource should be Invalid");
+        assert!(!connected.needs_test(), "Invalid obligations don't need runtime tests");
+        assert!(obligations.has_invalids());
     }
 
     #[test]
-    fn test_resource_conflict_obligations() {
+    fn test_resource_conflict_is_invalid() {
         let mut dag: Dag<()> = Dag::new();
         dag.add_node(Node::opaque("a", vec![], vec![], ()));
         dag.add_node(Node::opaque("b", vec![], vec![], ()));
@@ -1031,13 +1131,15 @@ mod tests {
 
         let obligations = collect_obligations(&dag, None, Some(&accesses));
 
-        // Should have a conflict obligation
+        // Conflict is a provable structural error, now Invalid
         let conflict = obligations.all.iter().find(|o| matches!(
             &o.kind,
             Obligation::ResourceConflictAbsence { conflicts } if !conflicts.is_empty()
         ));
         assert!(conflict.is_some());
-        assert!(conflict.unwrap().needs_test());
+        let conflict = conflict.unwrap();
+        assert!(conflict.is_invalid(), "resource conflict should be Invalid");
+        assert!(!conflict.needs_test(), "Invalid obligations don't need runtime tests");
     }
 
     #[test]
@@ -1061,7 +1163,7 @@ mod tests {
         let stats = obligations.stats();
 
         assert!(stats.total > 0);
-        assert!(stats.discharged + stats.testable == stats.total);
+        assert_eq!(stats.discharged + stats.invalid + stats.testable, stats.total);
     }
 
     #[test]
@@ -1075,13 +1177,25 @@ mod tests {
     }
 
     #[test]
-    fn test_entailment_any_type() {
+    fn test_entailment_target_any() {
+        // Target is Any → verified (accepts anything)
         let status = check_predicate_entailment(
             &TypeId("Url".into()),
             &TypeId("Any".into()),
             None,
         );
         assert!(matches!(status, EntailmentStatus::Verified));
+    }
+
+    #[test]
+    fn test_entailment_source_any_target_specific() {
+        // Source is Any, target is specific → Unknown (can't prove satisfaction)
+        let status = check_predicate_entailment(
+            &TypeId("Any".into()),
+            &TypeId("Url".into()),
+            None,
+        );
+        assert!(matches!(status, EntailmentStatus::Unknown { .. }));
     }
 
     #[test]

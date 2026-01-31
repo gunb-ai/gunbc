@@ -21,7 +21,7 @@
 //! Only obligations that are Unknown or RuntimeOnly produce tests.
 
 use crate::analyze::{analyze_dag, DagAnalysis};
-use crate::obligation::{collect_obligations, Obligation, ObligationSet};
+use crate::obligation::{collect_obligations, DischargeStatus, Obligation, ObligationSet};
 use gunbc_ir::language::traits::comment::{generated_header, RUST_COMMENTS};
 use gunbc_ir::language::NamingCase;
 use gunbc_ir::{Dag, Value};
@@ -164,6 +164,40 @@ impl<'a, T> TestGenerator<'a, T> {
             code.push_str("use gunbc_test::{ResourceAcquireResult, ResourceSimulation};\n");
         }
         code.push('\n');
+
+        // ===================================================================
+        // Invalid obligations — structural errors surfaced as failing tests
+        // ===================================================================
+        let invalids = obligations.invalids();
+        if !invalids.is_empty() {
+            code.push_str("// =========================================================================\n");
+            code.push_str("// INVALID OBLIGATIONS — structural errors detected during analysis\n");
+            code.push_str("//\n");
+            code.push_str("// These are NOT runtime tests. They surface provably wrong graph structure.\n");
+            code.push_str("// Fix the underlying issue rather than deleting these tests.\n");
+            code.push_str("// =========================================================================\n\n");
+
+            for (i, obligation) in invalids.iter().enumerate() {
+                let reason = match &obligation.status {
+                    DischargeStatus::Invalid { reason } => reason.as_str(),
+                    _ => "unknown",
+                };
+                code.push_str(&format!(
+                    "/// INVALID: {}\n",
+                    obligation.reason
+                ));
+                code.push_str("#[test]\n");
+                code.push_str(&format!(
+                    "fn test_invalid_obligation_{}() {{\n",
+                    i
+                ));
+                code.push_str(&format!(
+                    "    panic!(\"Structural error: {}\");\n",
+                    reason.replace('\"', "\\\"")
+                ));
+                code.push_str("}\n\n");
+            }
+        }
 
         // ===================================================================
         // Bucket A: Execution Semantics
