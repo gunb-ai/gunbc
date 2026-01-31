@@ -5,6 +5,61 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fmt;
 
+/// A string value that redacts its content in Display and Debug output.
+///
+/// Secrets flow through the DAG like normal values but are automatically
+/// redacted when logged, printed, or formatted. The inner value is only
+/// accessible via `expose()`, making accidental leakage structurally
+/// harder.
+///
+/// # Design
+///
+/// Secrets are normal I/O that get resolved (upserted/ensured) at
+/// execution time. Between DAG nodes they flow as values, but any
+/// logging or display shows `***` instead of the actual content.
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
+pub struct SecretString {
+    #[serde(rename = "secret")]
+    inner: String,
+}
+
+impl SecretString {
+    /// Create a new secret string.
+    pub fn new(value: impl Into<String>) -> Self {
+        Self {
+            inner: value.into(),
+        }
+    }
+
+    /// Expose the secret value. Use sparingly — only at I/O boundaries
+    /// where the actual value is needed (e.g., setting an HTTP header).
+    pub fn expose(&self) -> &str {
+        &self.inner
+    }
+
+    /// Length of the secret (safe to expose for diagnostics).
+    pub fn len(&self) -> usize {
+        self.inner.len()
+    }
+
+    /// Whether the secret is empty.
+    pub fn is_empty(&self) -> bool {
+        self.inner.is_empty()
+    }
+}
+
+impl fmt::Debug for SecretString {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "SecretString(***)")
+    }
+}
+
+impl fmt::Display for SecretString {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "***")
+    }
+}
+
 /// Runtime value flowing between nodes.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub enum Value {
@@ -27,6 +82,8 @@ pub enum Value {
     Request(TransportRequest),
     /// Transport response (from I/O operations)
     Response(TransportResponse),
+    /// Secret value (redacted in logs/display, exposed only at I/O boundaries)
+    Secret(SecretString),
     /// Node was skipped (guard evaluated to false)
     Skipped,
 }
@@ -110,6 +167,22 @@ impl Value {
             _ => None,
         }
     }
+
+    /// Check if this is a secret value.
+    pub fn is_secret(&self) -> bool {
+        matches!(self, Value::Secret(_))
+    }
+
+    /// Try to extract the secret string (exposed value).
+    ///
+    /// Returns `None` if the value is not a secret. Use sparingly —
+    /// the whole point of `Secret` is to avoid accidental exposure.
+    pub fn as_secret(&self) -> Option<&SecretString> {
+        match self {
+            Value::Secret(s) => Some(s),
+            _ => None,
+        }
+    }
 }
 
 impl fmt::Display for Value {
@@ -124,6 +197,7 @@ impl fmt::Display for Value {
             Value::Json(j) => write!(f, "{}", j),
             Value::Request(r) => write!(f, "<Request: {:?}>", std::mem::discriminant(r)),
             Value::Response(r) => write!(f, "<Response: {:?}>", std::mem::discriminant(r)),
+            Value::Secret(_) => write!(f, "***"),
             Value::Skipped => write!(f, "<SKIPPED>"),
         }
     }

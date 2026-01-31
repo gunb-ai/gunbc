@@ -378,6 +378,9 @@ fn value_to_rust_literal(value: &Value) -> String {
         Value::Json(json) => {
             format!("Value::Json(serde_json::json!({}))", json)
         }
+        Value::Secret(_) => {
+            "Value::Secret(gunbc_ir::SecretString::new(\"<MOCK_SECRET>\"))".to_string()
+        }
         _ => "Value::Str(\"<MOCK>\".to_string())".to_string(),
     }
 }
@@ -389,6 +392,9 @@ fn default_mock_for_type(type_id: &str) -> String {
         "Bool" => "Value::Bool(true)".to_string(),
         "Int" | "i64" | "i32" => "Value::Int(0)".to_string(),
         "StrList" => "Value::StrList(vec![\"<MOCK>\".to_string()])".to_string(),
+        "Secret" => {
+            "Value::Secret(gunbc_ir::SecretString::new(\"<MOCK_SECRET>\"))".to_string()
+        }
         "TransportResponse" => {
             "Value::Response(gunbc_ir::transport::TransportResponse::Shell(\
                 gunbc_ir::transport::ShellResponse { \

@@ -83,7 +83,7 @@ pub use transport::{TransportRequest, TransportResponse};
 pub use type_op::{BaseType, Coercion, Predicate, PredicateValue, TypeOp, WrapperKind};
 pub use type_registry::{TypeNotFoundError, TypeRegistry};
 pub use types::{Cardinality, CardinalityCase, CardinalityMismatch, NodeId, PortName, TypeId};
-pub use value::Value;
+pub use value::{SecretString, Value};
 pub use render::Renderable;
 
 // Re-exports from language module for common use
