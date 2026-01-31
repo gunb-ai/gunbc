@@ -31,6 +31,20 @@ impl Executable for TransportOps {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         match self {
             TransportOps::Execute => {
+                let skip = inputs
+                    .get("skip")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+
+                if skip {
+                    let mut out = HashMap::new();
+                    out.insert("skip".to_string(), Value::Bool(true));
+                    if let Some(reason) = inputs.get("skip_reason") {
+                        out.insert("skip_reason".to_string(), reason.clone());
+                    }
+                    return Ok(out);
+                }
+
                 let request = inputs
                     .get("request")
                     .and_then(|v| v.as_request())
@@ -57,6 +71,7 @@ impl Executable for TransportOps {
                 }
                 
                 out.insert("response".to_string(), Value::Response(response));
+                out.insert("skip".to_string(), Value::Bool(false));
                 Ok(out)
             }
         }
@@ -98,6 +113,17 @@ mod tests {
     }
 
     #[test]
+    fn test_transport_ops_skip_without_request() {
+        let mut inputs = HashMap::new();
+        inputs.insert("skip".to_string(), Value::Bool(true));
+
+        let result = TransportOps::Execute.execute(inputs).expect("skip should short-circuit");
+
+        assert_eq!(result.get("skip"), Some(&Value::Bool(true)));
+        assert!(result.get("response").is_none());
+    }
+
+    #[test]
     fn test_transport_ops_shell_outputs() {
         let request = TransportRequest::Shell(ShellRequest {
             command: "echo".to_string(),
@@ -113,6 +139,7 @@ mod tests {
         let result = TransportOps::Execute.execute(inputs).expect("transport should execute");
 
         assert_eq!(result.get("success"), Some(&Value::Bool(true)));
+        assert_eq!(result.get("skip"), Some(&Value::Bool(false)));
         let stdout = result
             .get("stdout")
             .and_then(|v| v.as_str())

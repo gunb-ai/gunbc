@@ -73,7 +73,7 @@ impl<T: Clone> LoopBuilder<T> {
     ///
     /// The body DAG should have:
     /// - An input port matching `element_port_name` with type `element_port_type`
-    /// - An output port named "result" (or configured via `with_element_output`)
+    /// - An output port named "result"
     pub fn with_body(mut self, dag: Dag<T>) -> Self {
         self.body_dag = Some(dag);
         self
@@ -151,11 +151,14 @@ impl<T: Clone> LoopBuilder<T> {
                 Port::with_cardinality("result", self.element_port_type.as_str(), self.input_cardinality),
                 Port::scalar("count", "Int"),
             ],
-            vec![Port::with_cardinality(
-                self.output_port_name.as_str(),
-                self.output_port_type.as_str(),
-                self.input_cardinality,
-            )],
+            vec![
+                Port::with_cardinality(
+                    self.output_port_name.as_str(),
+                    self.output_port_type.as_str(),
+                    self.input_cardinality,
+                ),
+                Port::scalar("iterations", "Int"),
+            ],
             T::default(),
         ));
 
