@@ -162,7 +162,7 @@ impl ClippyConfig {
             // Process execution - enforces I6
             .disallow(
                 "std::process::Command::new",
-                "I6: No escape hatches. Use node.requires(&cli::TOOL). Command::new only in transport executor.",
+                "I6: No escape hatches. Use env nodes + tool handles. Command::new only in transport executor.",
             )
             // Document approved crates (minimal exceptions)
             // Crate names follow the {PREFIX}-{component} pattern (see cargo::name)
