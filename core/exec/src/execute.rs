@@ -505,12 +505,19 @@ fn execute_flat<T: Executable>(
         };
 
         node_outputs.insert(node_id.0.clone(), outputs.clone());
-        entries.push(LogEntry {
+        let entry = LogEntry {
             node_id: node_id.0.clone(),
             outputs,
             was_intercepted,
-        });
-        
+        };
+
+        // Print node outputs inside the CI group so they appear in the
+        // collapsible section, not after all groups have closed.
+        if ci_ctx.is_some() {
+            print_log_entry(&entry);
+        }
+        entries.push(entry);
+
         // End CI group for this node
         if let Some(ref mut ci) = ci_ctx {
             ci.end_group();
@@ -518,6 +525,38 @@ fn execute_flat<T: Executable>(
     }
 
     Ok(ExecutionLog { entries })
+}
+
+/// Print a log entry's outputs to stdout.
+///
+/// Used inside CI groups so that node outputs appear within the
+/// collapsible section rather than in a flat summary after all groups.
+fn print_log_entry(entry: &LogEntry) {
+    for (port, value) in &entry.outputs {
+        match value {
+            Value::Str(s) => {
+                if port.ends_with("stderr") || port.ends_with("stdout") {
+                    if !s.is_empty() {
+                        println!("  {port}: {s}");
+                    }
+                } else if s.contains('\n') {
+                    // Multi-line values (reports, etc.) — print in full
+                    println!("  {port}: {s}");
+                } else if s.len() < 120 {
+                    println!("  {port}: {s}");
+                } else {
+                    println!("  {port}: {}...", &s[..80]);
+                }
+            }
+            Value::Int(i) => println!("  {port}: {i}"),
+            Value::Bool(b) => println!("  {port}: {b}"),
+            Value::StrList(list) => println!("  {port}: [{} items]", list.len()),
+            Value::MapStrStr(map) => println!("  {port}: {{{} entries}}", map.len()),
+            Value::Json(_) => println!("  {port}: <JSON>"),
+            Value::Skipped => {} // Don't print skipped outputs
+            _ => {}
+        }
+    }
 }
 
 /// Check whether a node should be skipped based on guard predicates.

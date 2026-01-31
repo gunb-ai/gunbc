@@ -577,9 +577,13 @@ impl WorkflowConfig {
     }
 }
 
+/// Composed generator name for WorkflowConfig.
+/// Must match `cargo::name("ci")` — verified by test.
+const CI_GENERATOR_NAME: &str = "gunbc-ci";
+
 impl Renderable for WorkflowConfig {
     fn generator_name(&self) -> &str {
-        "gunbc-ci"
+        CI_GENERATOR_NAME
     }
 
     fn regenerate_command(&self) -> &str {

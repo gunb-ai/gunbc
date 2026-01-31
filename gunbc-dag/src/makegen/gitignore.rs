@@ -12,6 +12,7 @@
 //! - `rationale`: Why these files are ignored
 
 use crate::makegen::registry::{BuildConfig, BuildSystem};
+use crate::makegen::render::MAKEGEN_NAME;
 use gunbc_ir::Renderable;
 
 // ============================================================================
@@ -186,7 +187,7 @@ impl<'a> GitignoreRenderer<'a> {
 
 impl Renderable for GitignoreRenderer<'_> {
     fn generator_name(&self) -> &str {
-        "gunbc-makegen"
+        MAKEGEN_NAME
     }
 
     fn regenerate_command(&self) -> &str {

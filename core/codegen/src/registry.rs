@@ -13,6 +13,7 @@
 //! Eventually, the entire graph.rs can be generated from these definitions.
 
 use crate::cli_gen::{CliBoundary, CliEntrypoint, ToolMeta};
+use gunbc_ir::cargo;
 
 // ============================================================================
 // DAG Definition Structures
@@ -288,7 +289,7 @@ pub fn all_tools() -> Vec<ToolDef> {
     vec![
         // gunbc-gist (uses DagBuilder - returns Result)
         ToolDef::new(
-            "gunbc-gist",
+            &cargo::name("gist"),
             "gist",
             "Create a GitHub gist from code files",
             "build_gist_graph",
@@ -321,7 +322,7 @@ pub fn all_tools() -> Vec<ToolDef> {
 
         // gunbc-buck2 (uses DagBuilder - returns Result)
         ToolDef::new(
-            "gunbc-buck2",
+            &cargo::name("buck2"),
             "buck2",
             "Generate BUCK file from Cargo.toml",
             "build_buck2_graph",
@@ -352,7 +353,7 @@ pub fn all_tools() -> Vec<ToolDef> {
 
         // gunbc-makegen (uses DagBuilder - returns Result)
         ToolDef::new(
-            "gunbc-makegen",
+            &cargo::name("makegen"),
             "makegen",
             "Generate Makefile from tool registry",
             "build_makegen_graph",
@@ -379,7 +380,7 @@ pub fn all_tools() -> Vec<ToolDef> {
 
         // gunbc-deps (uses DagBuilder - returns Result)
         ToolDef::new(
-            "gunbc-deps",
+            &cargo::name("deps"),
             "deps",
             "Install tool dependencies",
             "build_deps_graph",
@@ -408,7 +409,7 @@ pub fn all_tools() -> Vec<ToolDef> {
 
         // gunbc-bootstrap (uses DagBuilder - returns Result)
         ToolDef::new(
-            "gunbc-bootstrap",
+            &cargo::name("bootstrap"),
             "bootstrap",
             "Generate Makefile and .gitignore",
             "build_bootstrap_graph",

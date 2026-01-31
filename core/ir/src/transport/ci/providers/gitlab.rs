@@ -15,7 +15,6 @@
 //! This module also implements `CiRenderer` for generating GitLab CI YAML
 //! from DAGs. Uses stages for parallelism and `needs` for dependencies.
 
-use crate::language::traits::comment::generated_header;
 use crate::language::NamingCase;
 use crate::transport::ci::command::{AnnotationLevel, WorkflowCommand};
 use crate::transport::ci::provider::CiProvider;
@@ -222,8 +221,8 @@ impl CiRenderer for GitLabCiProvider {
 fn render_gitlab_ci(steps: &[SharedStep], config: &RenderConfig) -> String {
     let mut yaml = String::new();
 
-    // Header using language module's generated_header for consistency
-    yaml.push_str(&generated_header("gunbc-codegen", "make ci-yaml", "#"));
+    // Header from render config — generator name and regen command are set by the caller
+    yaml.push_str(&config.header("#"));
     yaml.push_str("\n\n");
 
     // Default image
@@ -288,8 +287,8 @@ fn compute_stages(steps: &[SharedStep]) -> Vec<String> {
                     stages.push(stage_name);
                 }
             }
-            SharedStep::DagRun { tool_binary } => {
-                let stage = format!("{}-run", NamingCase::SnakeCase.apply(tool_binary));
+            SharedStep::DagRun { tool } => {
+                let stage = format!("{}-run", NamingCase::SnakeCase.apply(&tool.binary));
                 if !stages.contains(&stage) {
                     stages.push(stage);
                 }
@@ -324,13 +323,13 @@ fn render_gitlab_job(step: &SharedStep, _config: &RenderConfig) -> String {
         }
 
         SharedStep::DagStep {
-            tool_binary,
+            tool,
             node_id,
             depends_on,
         } => {
             let mut yaml = format!(
                 "{}:\n  stage: {}\n  script:\n    - {} step {}\n",
-                node_id.0, node_id.0, tool_binary, node_id.0
+                node_id.0, node_id.0, tool.command(), node_id.0
             );
 
             // Add dependencies using `needs`
@@ -351,11 +350,11 @@ fn render_gitlab_job(step: &SharedStep, _config: &RenderConfig) -> String {
             yaml
         }
 
-        SharedStep::DagRun { tool_binary } => {
-            let stage_name = format!("{}-run", NamingCase::SnakeCase.apply(tool_binary));
+        SharedStep::DagRun { tool } => {
+            let stage_name = format!("{}-run", NamingCase::SnakeCase.apply(&tool.binary));
             format!(
                 "{}:\n  stage: {}\n  script:\n    - {}\n\n",
-                stage_name, stage_name, tool_binary
+                stage_name, stage_name, tool.command()
             )
         }
     }
@@ -364,6 +363,7 @@ fn render_gitlab_job(step: &SharedStep, _config: &RenderConfig) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cargo::CargoInvocation;
     use crate::transport::ci::command::FileLocation;
 
     fn test_provider() -> GitLabCiProvider {
@@ -474,17 +474,19 @@ mod tests {
         dag.add_edge(edge("build", "success", "test", "build_success"));
 
         let provider = test_provider();
-        let config = RenderConfig::new("ci", "gunbc-ci")
+        let tool = CargoInvocation::composed("ci", "dag");
+        let config = RenderConfig::new("ci", tool)
             .with_runner("rust:latest")
             .with_env("CARGO_TERM_COLOR", "always");
 
         let yaml = provider.render(&dag, &config);
 
+        let ci_name = crate::cargo::name("ci");
         // Check structure
         assert!(yaml.contains("image: rust:latest"));
         assert!(yaml.contains("stages:"));
-        assert!(yaml.contains("gunbc-ci step build"));
-        assert!(yaml.contains("gunbc-ci step test"));
+        assert!(yaml.contains(&format!("{ci_name} step build")));
+        assert!(yaml.contains(&format!("{ci_name} step test")));
         assert!(yaml.contains("needs:"));
         assert!(yaml.contains("CARGO_TERM_COLOR: \"always\""));
     }

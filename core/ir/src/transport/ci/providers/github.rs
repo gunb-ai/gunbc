@@ -14,7 +14,6 @@
 //! This module also implements `CiRenderer` for generating GitHub Actions YAML
 //! from DAGs. Each DAG node becomes a workflow step with proper dependencies.
 
-use crate::language::traits::comment::generated_header;
 use crate::transport::ci::command::{AnnotationLevel, WorkflowCommand};
 use crate::transport::ci::provider::CiProvider;
 use crate::transport::ci::render::{dag_to_shared_steps, CiRenderer, RenderConfig, SharedStep};
@@ -178,9 +177,9 @@ impl CiRenderer for GitHubActionsProvider {
 fn render_github_workflow(steps: &[SharedStep], config: &RenderConfig) -> String {
     let mut yaml = String::new();
 
-    // Header using language module's generated_header for consistency
-    yaml.push_str(&generated_header("gunbc-codegen", "make ci-yaml", "#"));
-    yaml.push_str(&format!("\nname: {}\n\n", config.workflow_name));
+    // Header from render config — generator name and regen command are set by the caller
+    yaml.push_str(&config.header("#"));
+    yaml.push_str(&format!("\n\nname: {}\n\n", config.workflow_name));
 
     // Triggers
     yaml.push_str("on:\n");
@@ -245,13 +244,13 @@ fn render_github_step(step: &SharedStep, _config: &RenderConfig) -> String {
         }
 
         SharedStep::DagStep {
-            tool_binary,
+            tool,
             node_id,
             depends_on,
         } => {
             let mut yaml = format!(
                 "      - name: {}\n        id: {}\n        run: {} step {}\n",
-                node_id.0, node_id.0, tool_binary, node_id.0
+                node_id.0, node_id.0, tool.command(), node_id.0
             );
 
             // Add environment variables for dependencies
@@ -271,10 +270,10 @@ fn render_github_step(step: &SharedStep, _config: &RenderConfig) -> String {
             yaml
         }
 
-        SharedStep::DagRun { tool_binary } => {
+        SharedStep::DagRun { tool } => {
             format!(
                 "      - name: Run {}\n        run: {}\n",
-                tool_binary, tool_binary
+                tool.binary, tool.command()
             )
         }
     }
@@ -283,6 +282,7 @@ fn render_github_step(step: &SharedStep, _config: &RenderConfig) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cargo::CargoInvocation;
     use crate::transport::ci::command::FileLocation;
 
     #[test]
@@ -368,18 +368,20 @@ mod tests {
         dag.add_edge(edge("build", "success", "test", "build_success"));
 
         let provider = GitHubActionsProvider;
-        let config = RenderConfig::new("ci", "gunbc-ci")
+        let tool = CargoInvocation::composed("ci", "dag");
+        let config = RenderConfig::new("ci", tool)
             .with_runner("ubuntu-latest")
             .with_env("CARGO_TERM_COLOR", "always");
 
         let yaml = provider.render(&dag, &config);
 
+        let ci_name = crate::cargo::name("ci");
         // Check structure
         assert!(yaml.contains("name: ci"));
         assert!(yaml.contains("runs-on: ubuntu-latest"));
         assert!(yaml.contains("uses: actions/checkout@v4"));
-        assert!(yaml.contains("gunbc-ci step build"));
-        assert!(yaml.contains("gunbc-ci step test"));
+        assert!(yaml.contains(&format!("{ci_name} step build")));
+        assert!(yaml.contains(&format!("{ci_name} step test")));
         assert!(yaml.contains("CARGO_TERM_COLOR: always"));
     }
 

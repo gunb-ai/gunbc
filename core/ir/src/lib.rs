@@ -47,6 +47,7 @@
 
 pub mod boundary;
 pub mod builder;
+pub mod cargo;
 pub mod compose;
 pub mod contract;
 pub mod dag;
@@ -77,6 +78,7 @@ pub use patterns::{
 pub use signature::{infer_signature, SignatureError, SignaturePort, WorkflowSignature};
 pub use contract::TypeContract;
 pub use resource::{AccessMode, ResourceAccess, ResourceConflict, ResourceId};
+pub use cargo::{CargoInvocation, PREFIX as CARGO_PREFIX};
 pub use transport::{TransportRequest, TransportResponse};
 pub use type_op::{BaseType, Coercion, Predicate, PredicateValue, TypeOp, WrapperKind};
 pub use type_registry::{TypeNotFoundError, TypeRegistry};

@@ -165,6 +165,7 @@ impl ClippyConfig {
                 "I6: No escape hatches. Use node.requires(&cli::TOOL). Command::new only in transport executor.",
             )
             // Document approved crates (minimal exceptions)
+            // Crate names follow the {PREFIX}-{component} pattern (see cargo::name)
             .allow_crate(
                 "gunbc-transport",
                 "IS the I/O boundary - the designated place for I/O",
@@ -309,13 +310,20 @@ impl ClippyConfigRenderer {
     }
 }
 
+/// Composed generator name for ClippyConfigRenderer.
+/// Must match `cargo::name("clippy")` — verified by test.
+const CLIPPY_GENERATOR_NAME: &str = "gunbc-clippy";
+/// Regenerate command — must be `&str` for [`Renderable`], verified by test
+/// to match `CargoInvocation::standalone("codegen").command() + " -- clippy-toml"`.
+const CLIPPY_REGENERATE_CMD: &str = "cargo run -p gunbc-codegen -- clippy-toml";
+
 impl Renderable for ClippyConfigRenderer {
     fn generator_name(&self) -> &str {
-        "gunbc-clippy"
+        CLIPPY_GENERATOR_NAME
     }
 
     fn regenerate_command(&self) -> &str {
-        "cargo run -p gunbc-codegen -- clippy-toml"
+        CLIPPY_REGENERATE_CMD
     }
 
     fn format_id(&self) -> &str {
@@ -419,5 +427,14 @@ mod tests {
 
         let content = renderer.render_content();
         assert!(content.contains("disallowed-methods"));
+    }
+
+    #[test]
+    fn test_regenerate_command_matches_composed() {
+        let expected = format!(
+            "{} -- clippy-toml",
+            gunbc_ir::CargoInvocation::standalone("codegen").command()
+        );
+        assert_eq!(CLIPPY_REGENERATE_CMD, expected);
     }
 }

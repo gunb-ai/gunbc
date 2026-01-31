@@ -47,7 +47,7 @@ fn execute_load_registry(_inputs: HashMap<String, Value>) -> Result<HashMap<Stri
     let registry_json = serde_json::json!({
         "tools": registry.tools.iter().map(|t| {
             serde_json::json!({
-                "crate_name": t.crate_name,
+                "binary_name": t.binary_name(),
                 "short_name": t.short_name,
                 "description": t.description,
                 "entrypoints": t.entrypoints.iter().map(|e| {
@@ -83,6 +83,7 @@ fn execute_render_makefile(_inputs: HashMap<String, Value>) -> Result<HashMap<St
 // Mockable trait implementation
 // ============================================================================
 
+use gunbc_ir::{cargo, CargoInvocation};
 use gunbc_test::{CardinalityTestInput, ErrorTestCase, Mockable};
 
 impl Mockable for MakegenOp {
@@ -103,32 +104,35 @@ impl Mockable for MakegenOp {
                     "registry".to_string(),
                     Value::Json(serde_json::json!({
                         "tools": [
-                            {"crate_name": "gunbc-gist", "short_name": "gist"},
-                            {"crate_name": "gunbc-deps", "short_name": "deps"},
-                            {"crate_name": "gunbc-buck2", "short_name": "buck2"},
+                            {"binary_name": cargo::name("gist"), "short_name": "gist"},
+                            {"binary_name": cargo::name("deps"), "short_name": "deps"},
+                            {"binary_name": cargo::name("buck2"), "short_name": "buck2"},
                         ]
                     })),
                 );
                 out
             }
             MakegenOp::RenderMakefile => {
+                let gist = CargoInvocation::standalone("gist").command();
+                let deps = CargoInvocation::standalone("deps").command();
+                let buck2 = CargoInvocation::standalone("buck2").command();
                 let mut out = HashMap::new();
                 out.insert(
                     "makefile_content".to_string(),
                     Value::Str(
-                        r#"# Generated Makefile
-.PHONY: gist deps buck2
-
-gist:
-	cargo run -p gunbc-gist
-
-deps:
-	cargo run -p gunbc-deps
-
-buck2:
-	cargo run -p gunbc-buck2
-"#
-                        .to_string(),
+                        format!(
+                            "# Generated Makefile\n\
+                            .PHONY: gist deps buck2\n\
+                            \n\
+                            gist:\n\
+                            \t{gist}\n\
+                            \n\
+                            deps:\n\
+                            \t{deps}\n\
+                            \n\
+                            buck2:\n\
+                            \t{buck2}\n"
+                        ),
                     ),
                 );
                 out

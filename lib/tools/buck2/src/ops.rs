@@ -224,7 +224,8 @@ fn execute_generate_targets(
     let mut buck_content = String::new();
 
     // Header using language module's generated_header for consistency
-    buck_content.push_str(&generated_header("gunbc-buck2", "gunbc-buck2", "#"));
+    let buck2_name = gunbc_ir::cargo::name("buck2");
+    buck_content.push_str(&generated_header(&buck2_name, &buck2_name, "#"));
     buck_content.push_str("\n\n");
     buck_content.push_str("load(\"@prelude//rust:defs.bzl\", \"rust_binary\", \"rust_library\")\n\n");
 

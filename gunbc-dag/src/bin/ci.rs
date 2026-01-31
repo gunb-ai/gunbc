@@ -16,6 +16,7 @@
 
 use gunbc_dag::build_ci_graph;
 use gunbc_exec::{execute_with_mode_and_ci, BoundaryMocks, CiContext, ExecutionMode};
+use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse, TransportResponse};
 use gunbc_ir::Value;
 use std::env;
 use std::process;
@@ -42,8 +43,65 @@ fn main() {
     // Set up execution mode
     let mode = if dry_run {
         let mut mocks = BoundaryMocks::new();
-        mocks.set_value("report", "overall_success", Value::Bool(true));
-        mocks.set_value("report", "report", Value::Str("<DRY-RUN>".to_string()));
+
+        // Transport execution nodes need properly-typed Response mocks.
+        // The default mock is Value::Str("<DRY-RUN>"), but downstream parse
+        // nodes call v.as_response() which only matches Value::Response.
+
+        // execute_deps_exists: file exists check for deps.toml
+        mocks.set_value("execute_deps_exists", "response", Value::Response(
+            TransportResponse::File(FileResponse {
+                path: "deps.toml".to_string(),
+                operation: FileOp::Exists,
+                success: true,
+                content: None,
+                exists: Some(false),
+                error: None,
+            })
+        ));
+
+        // execute_codegen_exists: file exists check for buck-out/gen/bin
+        mocks.set_value("execute_codegen_exists", "response", Value::Response(
+            TransportResponse::File(FileResponse {
+                path: "buck-out/gen/bin".to_string(),
+                operation: FileOp::Exists,
+                success: true,
+                content: None,
+                exists: Some(true), // Pretend codegen already exists
+                error: None,
+            })
+        ));
+
+        // execute_codegen: shell command (skipped when codegen exists)
+        mocks.set_value("execute_codegen", "response", Value::Response(
+            TransportResponse::Shell(ShellResponse {
+                exit_code: 0,
+                stdout: String::new(),
+                stderr: String::new(),
+            })
+        ));
+        mocks.set_value("execute_codegen", "skip", Value::Bool(true));
+
+        // execute_build: shell command for cargo build
+        mocks.set_value("execute_build", "response", Value::Response(
+            TransportResponse::Shell(ShellResponse {
+                exit_code: 0,
+                stdout: "<DRY-RUN>".to_string(),
+                stderr: String::new(),
+            })
+        ));
+        mocks.set_value("execute_build", "skip", Value::Bool(false));
+
+        // execute_test: shell command for cargo test
+        mocks.set_value("execute_test", "response", Value::Response(
+            TransportResponse::Shell(ShellResponse {
+                exit_code: 0,
+                stdout: "<DRY-RUN>".to_string(),
+                stderr: String::new(),
+            })
+        ));
+        mocks.set_value("execute_test", "skip", Value::Bool(false));
+
         ExecutionMode::DryRun(mocks)
     } else {
         ExecutionMode::Real
@@ -56,7 +114,7 @@ fn main() {
     let mut ci = CiContext::detect();
     
     // Print header
-    println!("gunbc-ci");
+    println!("{}", gunbc_ir::cargo::name("ci"));
     println!("  mode: {}", if dry_run { "dry-run" } else { "real" });
     // Show CI provider if detected (not "plain")
     if ci.provider_id() != "plain" {
@@ -64,19 +122,11 @@ fn main() {
     }
     println!();
     
-    // Execute the CI pipeline with CI context for step visibility
+    // Execute the CI pipeline with CI context for step visibility.
+    // Node outputs are printed inside their CI groups by the executor,
+    // so we only need to check the final result here.
     match execute_with_mode_and_ci(&dag, mode, &mut ci) {
         Ok(log) => {
-            // Print summary (outside of groups)
-            for entry in &log.entries {
-                let marker = if entry.was_intercepted { " [DRY-RUN]" } else { "" };
-                println!("[{}]{}", entry.node_id, marker);
-                
-                for (port, value) in &entry.outputs {
-                    print_value(port, value);
-                }
-            }
-            
             // Check overall_success and exit with appropriate code
             for entry in &log.entries {
                 if let Some(Value::Bool(false)) = entry.outputs.get("overall_success") {
@@ -91,34 +141,12 @@ fn main() {
     }
 }
 
-fn print_value(port: &str, value: &Value) {
-    match value {
-        Value::Str(s) => {
-            if port.ends_with("stderr") || port.ends_with("stdout") {
-                // Don't truncate stderr/stdout - we want to see full output
-                if !s.is_empty() {
-                    println!("  {}: {}", port, s);
-                }
-            } else if s.len() < 80 {
-                println!("  {}: {}", port, s);
-            } else {
-                println!("  {}: {}...", port, &s[..60.min(s.len())]);
-            }
-        }
-        Value::Int(i) => println!("  {}: {}", port, i),
-        Value::Bool(b) => println!("  {}: {}", port, b),
-        Value::StrList(list) => println!("  {}: [{} items]", port, list.len()),
-        Value::MapStrStr(map) => println!("  {}: {{{} entries}}", port, map.len()),
-        Value::Json(_) => println!("  {}: <JSON>", port),
-        _ => {}
-    }
-}
-
 fn print_help() {
-    println!("gunbc-ci - CI orchestration tool");
+    let name = gunbc_ir::cargo::name("ci");
+    println!("{name} - CI orchestration tool");
     println!();
     println!("USAGE:");
-    println!("    gunbc-ci [OPTIONS]");
+    println!("    {name} [OPTIONS]");
     println!();
     println!("OPTIONS:");
     println!("    -n, --dry-run    Don't perform actual I/O");
