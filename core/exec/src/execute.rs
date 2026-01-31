@@ -434,17 +434,7 @@ fn execute_flat<T: Executable>(
         
         // Acquire any required tools (capability-based pattern)
         // This runs the upsert (check/install) and adds ToolHandle to inputs.
-        // Skip acquisition when a node override is present — the node's outputs
-        // will be replaced wholesale, so running real tool checks/installs is
-        // wasted I/O that can fail in CI or mutate the environment.
-        let has_node_override = match mode {
-            ExecutionMode::DryRun(ref m) => m.get_node_override(&node_id.0).is_some(),
-            ExecutionMode::Simulate(ref config) => {
-                config.boundary_mocks.get_node_override(&node_id.0).is_some()
-            }
-            _ => false,
-        };
-        if node.has_tool_requirements() && !has_node_override {
+        if node.has_tool_requirements() {
             acquire_node_tools(node, &mut acquired_tools, &mut inputs)?;
         }
 
@@ -460,18 +450,6 @@ fn execute_flat<T: Executable>(
                 .collect();
             (outputs, false)
         } else {
-            // Check for explicit node override first (for non-transport I/O nodes).
-            // Node overrides force-mock a node regardless of its port types,
-            // used by flow tests to mock CLI tool operations etc.
-            let node_override = match mode {
-                ExecutionMode::DryRun(ref m) => m.get_node_override(&node_id.0),
-                ExecutionMode::Simulate(ref config) => config.boundary_mocks.get_node_override(&node_id.0),
-                _ => None,
-            };
-
-            if let Some(override_outputs) = node_override {
-                (override_outputs.clone(), true)
-            } else {
             // Check if this is a transport execution node (consumes TransportRequest)
             // Transport execution nodes are intercepted in dry-run/simulate mode
             // This follows the design principle: intercept where I/O happens, not boundaries
@@ -523,7 +501,6 @@ fn execute_flat<T: Executable>(
                         return Err(ExecError::new(err_msg));
                     }
                 }
-            }
             }
         };
 

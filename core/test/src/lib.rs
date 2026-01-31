@@ -46,7 +46,7 @@ pub use composition::{assert_types_compatible, TypeCompatibility};
 pub use mock::{MockBehavior, MockOp, ScriptedDagBuilder};
 pub use mock_spec::{
     validate_chain, BoundaryMock, ChainError, ChainValidationResult, ExpectedOutput,
-    InputConstraint, InputExpectation, MockSpec, NodeOverride, ResourceAcquireResult,
+    InputConstraint, InputExpectation, MockSpec, ResourceAcquireResult,
     ResourceBehavior, ResourceMocks, ResourceSimulation, ResourceType, TransportMock,
 };
 pub use mockable::{
