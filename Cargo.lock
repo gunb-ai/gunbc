@@ -90,9 +90,11 @@ dependencies = [
  "gunbc-gist",
  "gunbc-ir",
  "gunbc-lib-gist-ops",
+ "gunbc-lib-llm-ops",
  "gunbc-lib-transport",
  "gunbc-primitives",
  "gunbc-test",
+ "gunbc-testgen",
  "serde_json",
 ]
 
@@ -157,6 +159,7 @@ version = "0.1.0"
 dependencies = [
  "gunbc-exec",
  "gunbc-ir",
+ "gunbc-lib-transport",
  "gunbc-test",
  "serde_json",
 ]

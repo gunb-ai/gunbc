@@ -26,6 +26,9 @@
 //! ```
 
 pub mod cache;
+pub mod graph;
+
+pub mod graph_mock;
 
 use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::transport::llm::{self, ChatMessage, ChatRequest, Role};
@@ -540,4 +543,44 @@ mod tests {
         let err = code_review_request("unknown", "test", "code", "").unwrap_err();
         assert!(err.contains("unknown provider"));
     }
+}
+
+// ============================================================================
+// Generated Tests (from `make testgen`)
+// ============================================================================
+
+#[cfg(test)]
+mod generated_tests {
+    #![allow(unused_imports)]
+    fn mock_spec() -> gunbc_test::MockSpec {
+        crate::graph_mock::openai_mock_spec()
+    }
+    include!("generated_tests.rs");
+}
+
+#[cfg(test)]
+mod generated_tests_anthropic {
+    #![allow(unused_imports)]
+    fn mock_spec() -> gunbc_test::MockSpec {
+        crate::graph_mock::anthropic_mock_spec()
+    }
+    include!("generated_tests_anthropic.rs");
+}
+
+#[cfg(test)]
+mod generated_tests_code_review {
+    #![allow(unused_imports)]
+    fn mock_spec() -> gunbc_test::MockSpec {
+        crate::graph_mock::code_review_mock_spec()
+    }
+    include!("generated_tests_code_review.rs");
+}
+
+#[cfg(test)]
+mod generated_tests_secrets {
+    #![allow(unused_imports)]
+    fn mock_spec() -> gunbc_test::MockSpec {
+        crate::graph_mock::secret_api_key_mock_spec()
+    }
+    include!("generated_tests_secrets.rs");
 }

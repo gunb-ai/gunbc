@@ -10,7 +10,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help codegen ensure-codegen build clean fmt-fix lint-fix test test-fix check check-fix clippy clippy-fix fmt fmt-check ci-yaml gist gist-dry buck2 buck2-dry makegen makegen-dry deps deps-dry ci ci-dry bootstrap bootstrap-dry
+.PHONY: help codegen ensure-codegen build clean fmt-fix lint-fix test test-fix check check-fix clippy clippy-fix fmt fmt-check ci-yaml gist gist-dry buck2 buck2-dry makegen makegen-dry deps deps-dry ci ci-dry bootstrap bootstrap-dry testgen testgen-dry
 
 # Ensure codegen has run (upsert pattern: check stamp -> run if missing)
 ensure-codegen:
@@ -60,6 +60,8 @@ help:
 	@echo "  deps [MANIFEST=deps.toml]  - Install tool dependencies"
 	@echo "  ci   - Run CI pipeline"
 	@echo "  bootstrap   - Generate Makefile and .gitignore"
+	@echo ""
+	@echo "  testgen  - Generate tests from DAG structures and MockSpecs"
 	@echo ""
 	@echo "Add -dry suffix for dry-run (e.g., make gist-dry)"
 
@@ -151,4 +153,11 @@ bootstrap: ensure-codegen
 
 bootstrap-dry: ensure-codegen
 	@cargo run -p gunbc-dag --bin gunbc-bootstrap -- --dry-run
+
+# gunbc-testgen: Generate tests from DAG structures and MockSpecs
+testgen:
+	@cargo run -p gunbc-dag --bin gunbc-testgen --
+
+testgen-dry:
+	@cargo run -p gunbc-dag --bin gunbc-testgen -- --dry-run
 

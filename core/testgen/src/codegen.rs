@@ -276,7 +276,7 @@ impl<'a, T> TestGenerator<'a, T> {
         for resource in &spec.resource_mocks.resources {
             let test_name = format!(
                 "test_resource_{}_acquire",
-                resource.resource_id.replace([':', '-'], "_")
+                resource.resource_id.replace([':', '-', '.', '/'], "_").to_lowercase()
             );
 
             let resource_type = match &resource.resource_type {
@@ -333,7 +333,7 @@ impl<'a, T> TestGenerator<'a, T> {
             if let gunbc_test::ResourceType::Lease { duration_ms } = resource.resource_type {
                 let timeout_test = format!(
                     "test_resource_{}_timeout",
-                    resource.resource_id.replace([':', '-'], "_")
+                    resource.resource_id.replace([':', '-', '.', '/'], "_").to_lowercase()
                 );
                 code.push_str(&format!(
                     "/// Test resource '{}' lease expiration after {}ms.\n",
