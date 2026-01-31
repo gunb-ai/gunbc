@@ -9,11 +9,6 @@
 //! PrepareChatRequest (pure) → TransportOps::Execute (I/O) → ParseChatResponse (pure)
 //! ```
 //!
-//! # Caching
-//!
-//! Response caching is available via the [`cache`] module. Each provider has
-//! its own cache namespace, keyed by (provider, model, messages, params).
-//!
 //! # Example
 //!
 //! ```ignore
@@ -25,7 +20,6 @@
 //! // 3. ParseChatResponse extracts content from the provider-specific response
 //! ```
 
-pub mod cache;
 pub mod graph;
 
 pub mod graph_mock;
