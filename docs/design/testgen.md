@@ -13,10 +13,66 @@ The system has properties that enable automatic test generation:
 2. **I/O is isolated** — only transport executor nodes do I/O
 3. **Everything is a graph** — structure is analyzable at build time
 4. **Types are explicit** — ports declare types and cardinalities
-5. **Resources are declared** — nodes declare what they acquire
+5. **Resources flow as capabilities** — declared via input ports, passed via edges
 
 These properties mean we can **derive tests from graph structure**, not require
 manual test specifications.
+
+---
+
+## Unified Resource Model
+
+All resources follow the **capability grant pattern**: they are acquired by an
+owner node and flow downstream via explicit edges. This makes resource needs
+visible in graph structure.
+
+### Resource Types
+
+| Type | Description | Example |
+|------|-------------|---------|
+| `ToolHandle` | Acquired tool binary | clippy, cargo, buck2 |
+| `Lock` | Exclusive access | `cargo:build` (one build at a time) |
+| `Lease` | Time-bounded access | API rate limit window |
+| `SharedLock` | Concurrent read access | Read-only file access |
+| `Budget` | Spend limit / ledger | API call quota, money |
+
+### Pattern
+
+```
+env_node ──resource:X──▶ consumer_node ──resource:X──▶ sub_consumer
+   │                          │
+   │ (acquires)               │ (uses, may pass down)
+```
+
+1. **Owner node** acquires the resource (I/O boundary)
+2. **Consumer node** declares need via input port: `port("resource:X", "Lock")`
+3. **Edge** connects owner to consumer
+4. **Subtree** can pass resource further down
+
+### Benefits
+
+- **Visible in graph** — resource dependencies are edges, not hidden
+- **DryRun intercepts owner** — mock resources naturally
+- **Structural tests** — verify all resource inputs have edges
+- **Scoped access** — only nodes in the subtree can use the resource
+
+### Budgets (Future)
+
+Budgets represent finite resources like API quotas or money:
+
+```rust
+// Conceptual - exact design TBD
+Budget {
+    limit: 1000,           // total allowed
+    ledger: LedgerHandle,  // tracks spend
+    lease: LeaseHandle,    // time-bounded access
+}
+```
+
+A node receiving a budget can spend from it and pass the (reduced) budget
+downstream. The ledger tracks cumulative spend. Tests can verify:
+- Budget flows to nodes that need it
+- Spend stays within limits (via mock ledger)
 
 ---
 
@@ -110,46 +166,80 @@ fn test_handles_empty_collections() {
 
 #### Resource Tests
 
+Resources follow the capability grant model — they're declared as input ports
+and flow via edges. This makes resource tests **structural** (analyzable from
+graph alone) rather than requiring runtime tracking.
+
 | Test | What it verifies |
 |------|------------------|
-| **Resources actually used** | Declared resources are accessed |
-| **Skipped nodes don't acquire** | `skip=true` → no resource acquisition |
-| **Resources released** | All acquired resources are released |
-| **Contention handling** | Nodes handle failed acquisition gracefully |
+| **Resource inputs have edges** | Every `resource:*` / `tool:*` input has an incoming edge |
+| **Resource owner exists** | The edge source is a valid resource provider |
+| **No orphan resources** | Resources acquired by owner are consumed by someone |
+| **Contention handling** | Nodes handle failed acquisition gracefully (DryRun) |
 
 ```rust
 #[test]
-fn test_resources_actually_used() {
+fn test_all_resource_inputs_have_edges() {
     let dag = build_ci_graph().unwrap();
 
     for node in &dag.nodes {
-        for resource in node.declared_resources() {
-            let log = execute_node_isolated(&dag, &node);
+        for port in &node.inputs {
+            let is_resource = port.name.0.starts_with("resource:")
+                           || port.name.0.starts_with("tool:");
+            if is_resource {
+                assert!(
+                    dag.has_edge_to(&node.id, &port.name),
+                    "node {} declares {} but no edge provides it",
+                    node.id, port.name
+                );
+            }
+        }
+    }
+}
 
+#[test]
+fn test_resource_owners_are_env_nodes() {
+    let dag = build_ci_graph().unwrap();
+
+    for edge in &dag.edges {
+        let is_resource = edge.source.port.0.starts_with("resource:")
+                       || edge.source.port.0.starts_with("tool:");
+        if is_resource {
+            let source_node = dag.get_node(&edge.source.node).unwrap();
             assert!(
-                log.resource_accessed(&resource),
-                "node {} declares resource {} but never uses it",
-                node.id, resource
+                is_resource_owner(source_node),
+                "resource {} provided by {} which is not a resource owner",
+                edge.source.port, edge.source.node
             );
         }
     }
 }
 
 #[test]
-fn test_skipped_nodes_dont_acquire_resources() {
+fn test_resource_contention_handling() {
     let dag = build_ci_graph().unwrap();
 
-    for node in nodes_with_skip_input(&dag) {
-        let log = execute_node_with(&node, inputs! { "skip" => true });
+    // For each resource, test that consumer handles acquisition failure
+    for resource in find_resources(&dag) {
+        let mocks = contend_resource(&dag, &resource);
+        let log = dryrun_with(&dag, mocks);
 
+        // Workflow should complete (graceful degradation) or fail cleanly
         assert!(
-            log.resources_acquired().is_empty(),
-            "node {} acquired resources despite being skipped",
-            node.id
+            log.completed() || log.has_clean_failure(),
+            "resource contention for {} caused ungraceful failure",
+            resource
         );
     }
 }
 ```
+
+**Note:** The old tests "resources actually used" and "skipped nodes don't
+acquire" required runtime tracking of resource acquisition. With the capability
+grant model, resource needs are **structural** — if a node has a `tool:clippy`
+input port, it declared that need. Whether it *uses* the capability when
+skipped is an implementation detail of the node, not testable from graph
+structure alone.
 
 #### Type Tests
 
@@ -421,108 +511,130 @@ For a typical DAG with:
 - 5 transport executors (T=5)
 - 3 resources (R=3)
 - 10 pure nodes (N=10)
-- 15 input ports (P=15)
-- 4 skippable nodes (S=4)
 - 8 edges (E=8)
 - 3 Many-cardinality inputs (M=3)
 - 2 Optional inputs (O=2)
-- 2 leased resources (L=2)
 
-| Test Class | Count | Formula |
-|------------|-------|---------|
-| Graph builds | 1 | |
-| DryRun completes | 1 | |
-| Transports intercepted | 1 | |
-| Pure nodes executed | 1 | |
-| Edge cardinality | 8 | E |
-| Output matches declared | 15 | P |
-| Empty collection handling | 3 | M |
-| Large collection handling | 3 | M |
-| Optional input presence | 4 | O × 2 |
-| Resources actually used | 3 | R |
-| Skipped nodes don't acquire | 4 | S |
-| Resources released | 1 | |
-| Contention handling | 3 | R |
-| Lease timeout | 2 | L |
-| Type coercions | ~2 | C |
-| Boundary values | ~30 | P × ~2 |
-| Idempotency | 10 | N |
-| Determinism | 10 | N |
-| Success path | 1 | |
-| Individual failures | 5 | T |
-| Skip propagation | 5 | T |
-| Integration (success) | 1 | |
-| Integration (failures) | 5 | T |
-| **Total** | **~120** | |
+### Tier 1: Implementable Today (no new infrastructure)
 
-**~120 tests automatically generated with zero manual MockSpec.**
+| Test Class | Count | Value |
+|------------|-------|-------|
+| Graph builds | 1 | High |
+| DryRun completes | 1 | High |
+| Transports intercepted | 1 | Medium |
+| Pure nodes executed | 1 | Medium |
+| Resource inputs have edges | 1 | High |
+| Resource owners are valid | 1 | High |
+| Success path | 1 | High |
+| Individual failures | T | High |
+| Skip propagation | T | High |
+| Resource contention | R | Medium |
+| **Subtotal** | **~15** | |
+
+### Tier 2: Needs Infrastructure
+
+| Test Class | Count | Requires |
+|------------|-------|----------|
+| Output matches declared cardinality | P | Runtime cardinality tracking |
+| Empty/large collection handling | M×2 | `execute_node_isolated()` |
+| Optional input presence | O×2 | `execute_node_isolated()` |
+| Boundary values | P×~3 | Smart mock generation |
+| Idempotency | N | `execute_node_isolated()` |
+| Type coercions | C | Coercion detection |
+| **Subtotal** | **~50** | |
+
+### Tier 3: Compile-Time (already enforced)
+
+| Test Class | Notes |
+|------------|-------|
+| Edge cardinality compatibility | `DagBuilder::add_edge` enforces |
+| Type compatibility | Compile-time via port types |
+| Cycle detection | `DagBuilder` enforces |
+
+**Realistic near-term: ~15 tests per DAG with zero manual MockSpec.**
+
+With infrastructure investment (node isolation, smart mocks): ~65 tests.
 
 ---
 
-## What Still Needs User Input
+## What's Structural vs What Needs Annotation
 
-Some tests require semantic knowledge the graph doesn't encode:
+### Structural (derivable from graph)
 
-| Need | Example |
-|------|---------|
-| Custom success criteria | "success means file was created" |
-| Business rule verification | "if A fails, B and C should be skipped but D should still run" |
-| Non-convention outputs | success indicator not named `*_success` |
+| Property | How we know |
+|----------|-------------|
+| Transport executors | Input port has type `TransportRequest` |
+| Tool consumers | Input port has type `ToolHandle` |
+| Resource consumers | Input port name starts with `resource:` or `tool:` |
+| Success outputs | Output port name matches `*_success` (convention) |
+| Skip outputs | Output port name is `skip` |
+| Downstream nodes | Follow edges from a given node |
+| Pure vs I/O nodes | No `TransportRequest` input = pure |
 
-For these, users can optionally provide `MockSpec` with `expected_outputs`.
-But this is **opt-in enrichment**, not required for basic coverage.
+### Needs User Input
+
+| Need | Example | When Required |
+|------|---------|---------------|
+| Custom success criteria | "success means file was created" | Non-convention outputs |
+| Specific skip rules | "if A fails, B skips but C runs" | Complex skip logic |
+| Expected output values | `report.overall_success == true` | Value assertions beyond Bool |
+| Resource semantics | "cargo:build is exclusive" | Resource type info |
+
+For custom scenarios, users can optionally provide `MockSpec` with
+`expected_outputs`. But **basic structural coverage requires zero user input**.
 
 ---
 
 ## Implementation Phases
 
-### Phase 1: Auto-Mock Infrastructure
+### Phase 1: Core Infrastructure (Tier 1 tests)
+
+Enables ~15 tests per DAG with no manual MockSpec.
 
 - [ ] `auto_mocks_from_types(dag)` — generate valid mocks from port types
 - [ ] `find_transport_executors(dag)` — identify nodes to intercept
 - [ ] `find_pure_nodes(dag)` — identify nodes that execute
-- [ ] `valid_inputs(node)` — generate type-appropriate inputs for a node
-- [ ] `execute_node_isolated(node, inputs)` — run single node
+- [ ] `find_resource_ports(dag)` — find `resource:*` and `tool:*` inputs
+- [ ] `success_mocks(dag)` — all transports succeed (exit_code: 0)
+- [ ] `fail_at(dag, node)` — one transport fails
+- [ ] `contend_resource(dag, resource)` — simulate resource contention
 
 ### Phase 2: Structural Tests
 
-- [ ] Generate Level 0 tests for all DAGs
-- [ ] DryRun smoke, transport interception, pure node execution
+- [ ] DryRun smoke test
+- [ ] Transport interception test
+- [ ] Pure node execution test
+- [ ] Resource inputs have edges test
+- [ ] Resource owners are valid env nodes test
 
-### Phase 3: Cardinality Tests
-
-- [ ] `get_cardinality(dag, port)` — extract cardinality from port
-- [ ] `find_coercing_edges(dag)` — edges with type coercion
-- [ ] Generate cardinality compatibility tests
-- [ ] Generate empty/large collection tests
-- [ ] Generate optional input tests
-
-### Phase 4: Resource Tests
-
-- [ ] Track resource access in execution log
-- [ ] Generate "resources actually used" tests
-- [ ] Generate "skipped nodes don't acquire" tests
-- [ ] Generate contention handling tests
-
-### Phase 5: Property Tests
-
-- [ ] Generate idempotency tests
-- [ ] Generate determinism tests
-- [ ] Generate boundary value tests
-
-### Phase 6: Convention-Based Flow Tests
+### Phase 3: Convention-Based Flow Tests
 
 - [ ] `find_success_outputs(dag)` — ports named `*_success`
-- [ ] `success_mocks(dag)` — all transports succeed
-- [ ] `fail_at(dag, node)` — one transport fails
-- [ ] Generate success path test
-- [ ] Generate per-transport failure tests
-- [ ] Generate skip propagation tests
+- [ ] `downstream_of(dag, node)` — find nodes downstream of a given node
+- [ ] Success path test
+- [ ] Per-transport failure tests (auto-generated for each transport)
+- [ ] Skip propagation tests
+- [ ] Resource contention tests
 
-### Phase 7: Integration Tests
+### Phase 4: Node Isolation Infrastructure (Tier 2 tests)
 
-- [ ] Generate full workflow integration tests
-- [ ] Generate failure-mode integration tests
+Enables ~50 additional tests but requires significant infrastructure.
+
+- [ ] `execute_node_isolated(node, inputs)` — run single node outside DAG
+- [ ] `valid_inputs(node)` — generate type-appropriate inputs for any node
+- [ ] Smart mock generation for complex types (`TransportResponse`, etc.)
+
+### Phase 5: Property Tests (requires Phase 4)
+
+- [ ] Idempotency tests
+- [ ] Optional input presence tests
+- [ ] Empty/large collection handling tests
+- [ ] Boundary value tests
+
+### Phase 6: Integration Tests
+
+- [ ] Full workflow integration tests (success path)
+- [ ] Failure-mode integration tests (one per transport)
 
 ---
 
@@ -554,6 +666,8 @@ fn mock_value_for_type(type_id: &str) -> Value {
         "TransportResponse" => Value::Response(TransportResponse::Shell(
             ShellResponse { exit_code: 0, stdout: "<mock>".into(), stderr: "".into() }
         )),
+        "ToolHandle" => Value::ToolHandle(ToolHandle::mock("mock-tool")),
+        "Lock" => Value::Lock(LockHandle::mock("mock-lock")),
         _ => Value::Str("<mock>".into()),
     }
 }
@@ -562,7 +676,15 @@ fn mock_value_for_type(type_id: &str) -> Value {
 fn auto_mocks_from_types(dag: &Dag) -> BoundaryMocks {
     let mut mocks = BoundaryMocks::new();
 
+    // Mock transport executors
     for node in find_transport_executors(dag) {
+        for port in &node.outputs {
+            mocks.set_value(&node.id, &port.name, mock_value_for_type(&port.type_id));
+        }
+    }
+
+    // Mock resource/tool providers (env nodes)
+    for node in find_resource_owners(dag) {
         for port in &node.outputs {
             mocks.set_value(&node.id, &port.name, mock_value_for_type(&port.type_id));
         }
@@ -574,14 +696,55 @@ fn auto_mocks_from_types(dag: &Dag) -> BoundaryMocks {
 /// Find nodes that consume TransportRequest (transport executors)
 fn find_transport_executors(dag: &Dag) -> Vec<&Node> {
     dag.nodes.iter()
-        .filter(|n| n.inputs.iter().any(|p| p.type_id == "TransportRequest"))
+        .filter(|n| n.inputs.iter().any(|p| p.type_id.0 == "TransportRequest"))
         .collect()
 }
 
-/// Find nodes that don't consume TransportRequest (pure nodes)
-fn find_pure_nodes(dag: &Dag) -> Vec<&Node> {
+/// Find nodes that consume ToolHandle (tool consumers)
+fn find_tool_consumers(dag: &Dag) -> Vec<&Node> {
     dag.nodes.iter()
-        .filter(|n| !n.inputs.iter().any(|p| p.type_id == "TransportRequest"))
+        .filter(|n| n.inputs.iter().any(|p| p.type_id.0 == "ToolHandle"))
+        .collect()
+}
+
+/// Find nodes that output resources (env/owner nodes)
+fn find_resource_owners(dag: &Dag) -> Vec<&Node> {
+    dag.nodes.iter()
+        .filter(|n| n.outputs.iter().any(|p| {
+            p.name.0.starts_with("resource:") ||
+            p.name.0.starts_with("tool:") ||
+            p.type_id.0 == "ToolHandle" ||
+            p.type_id.0 == "Lock"
+        }))
+        .collect()
+}
+
+/// Find nodes that don't do I/O (pure nodes)
+fn find_pure_nodes(dag: &Dag) -> Vec<&Node> {
+    let transport = find_transport_executors(dag);
+    let tool_consumers = find_tool_consumers(dag);
+    let resource_owners = find_resource_owners(dag);
+
+    dag.nodes.iter()
+        .filter(|n| !transport.contains(n)
+                 && !tool_consumers.contains(n)
+                 && !resource_owners.contains(n))
+        .collect()
+}
+
+/// Find all resource input ports in the DAG
+fn find_resource_ports(dag: &Dag) -> Vec<(&NodeId, &PortName)> {
+    dag.nodes.iter()
+        .flat_map(|n| n.inputs.iter().map(move |p| (&n.id, &p.name)))
+        .filter(|(_, p)| p.0.starts_with("resource:") || p.0.starts_with("tool:"))
+        .collect()
+}
+
+/// Find outputs named *_success (convention for success indicators)
+fn find_success_outputs(dag: &Dag) -> Vec<(&NodeId, &PortName)> {
+    dag.nodes.iter()
+        .flat_map(|n| n.outputs.iter().map(move |p| (&n.id, &p.name)))
+        .filter(|(_, p)| p.0.ends_with("_success") || p.0 == "success")
         .collect()
 }
 
@@ -602,6 +765,24 @@ fn fail_at(dag: &Dag, node_id: &str) -> BoundaryMocks {
             stderr: "mock failure".into(),
         })
     ));
+
+    mocks
+}
+
+/// Generate mocks where a resource is contended (acquisition fails)
+fn contend_resource(dag: &Dag, resource: &str) -> BoundaryMocks {
+    let mut mocks = success_mocks(dag);
+
+    // Find the owner of this resource and mock it as contended
+    for node in find_resource_owners(dag) {
+        for port in &node.outputs {
+            if port.name.0 == resource {
+                mocks.set_value(&node.id, &port.name, Value::ResourceContended(
+                    format!("{} is held by another process", resource)
+                ));
+            }
+        }
+    }
 
     mocks
 }
