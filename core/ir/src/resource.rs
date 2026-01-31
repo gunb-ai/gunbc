@@ -70,6 +70,29 @@ impl ResourceId {
     pub fn tool(name: impl Into<String>) -> Self {
         Self(format!("tool:{}", name.into()))
     }
+
+    /// Create a cloud resource ID.
+    ///
+    /// Format: `cloud:{provider}:{scope}:{kind}/{name}`
+    ///
+    /// Used for tracking access to cloud resources (buckets, IAM roles, etc.).
+    pub fn cloud(provider: &str, scope: &str, kind: &str, name: &str) -> Self {
+        Self(format!("cloud:{provider}:{scope}:{kind}/{name}"))
+    }
+
+    /// Create a cloud resource ID from a [`CloudResource`](crate::transport::cloud::CloudResource).
+    pub fn from_cloud_resource(resource: &crate::transport::cloud::CloudResource) -> Self {
+        Self(resource.resource_id())
+    }
+
+    /// Create a secret resource ID.
+    ///
+    /// Format: `secret:{name}`
+    ///
+    /// Used for tracking access to secrets (read/write).
+    pub fn secret(name: impl Into<String>) -> Self {
+        Self(format!("secret:{}", name.into()))
+    }
 }
 
 impl From<&str> for ResourceId {
@@ -360,6 +383,18 @@ mod tests {
 
         let conn = ResourceId::connection("db");
         assert!(conn.0.starts_with("conn:"));
+    }
+
+    #[test]
+    fn test_cloud_resource_id() {
+        let cloud = ResourceId::cloud("gcp", "my-project", "storage_bucket", "my-bucket");
+        assert_eq!(cloud.0, "cloud:gcp:my-project:storage_bucket/my-bucket");
+    }
+
+    #[test]
+    fn test_secret_resource_id() {
+        let secret = ResourceId::secret("db-password");
+        assert_eq!(secret.0, "secret:db-password");
     }
 
     #[test]

@@ -309,6 +309,22 @@ pub fn upload_artifact() -> Integration {
     })
 }
 
+/// AWS OIDC federation - authenticate to AWS via OIDC.
+///
+/// Uses: aws-actions/configure-aws-credentials@v4
+/// Requires: id-token:write
+pub fn aws_oidc_credentials() -> Integration {
+    Integration::new(
+        "aws-oidc",
+        "aws-actions/configure-aws-credentials@v4",
+        "Authenticate to AWS via OIDC federation",
+    )
+    .with_permissions(permissions! {
+        PermissionScope::IdToken => PermissionLevel::Write,
+    })
+    .with_provides_tools(vec!["aws"])
+}
+
 /// All known integrations.
 pub fn all_integrations() -> Vec<Integration> {
     vec![
@@ -317,8 +333,99 @@ pub fn all_integrations() -> Vec<Integration> {
         rust_toolchain(),
         ghcr_push(),
         gcp_workload_identity(),
+        aws_oidc_credentials(),
         upload_artifact(),
     ]
+}
+
+// ============================================================================
+// GitHub Secret Declaration
+// ============================================================================
+
+/// A GitHub Actions secret required by a workflow.
+///
+/// This represents a secret that must be configured in the GitHub repository
+/// settings (Settings → Secrets → Actions) for the workflow to function.
+///
+/// Secrets are referenced in workflow YAML as `${{ secrets.NAME }}`.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct GitHubSecret {
+    /// Secret name as it appears in GitHub settings.
+    pub name: String,
+    /// Human-readable description of what this secret contains.
+    pub description: String,
+    /// Whether this secret is required (vs. optional with fallback).
+    pub required: bool,
+}
+
+impl GitHubSecret {
+    /// Create a required GitHub Actions secret.
+    pub fn required(name: impl Into<String>, description: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            description: description.into(),
+            required: true,
+        }
+    }
+
+    /// Create an optional GitHub Actions secret.
+    pub fn optional(name: impl Into<String>, description: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            description: description.into(),
+            required: false,
+        }
+    }
+
+    /// Get the workflow expression for this secret.
+    ///
+    /// Returns `${{ secrets.NAME }}`.
+    pub fn expression(&self) -> String {
+        format!("${{{{ secrets.{} }}}}", self.name)
+    }
+}
+
+/// Standard GitHub secrets for common cloud integrations.
+pub mod github_secrets {
+    use super::GitHubSecret;
+
+    /// GCP Workload Identity Provider resource name.
+    ///
+    /// Value: `projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/POOL/providers/PROVIDER`
+    pub fn gcp_wif_provider() -> GitHubSecret {
+        GitHubSecret::required(
+            "GCP_WIF_PROVIDER",
+            "GCP Workload Identity Provider resource name",
+        )
+    }
+
+    /// GCP Service Account email for WIF impersonation.
+    ///
+    /// Value: `sa-name@project-id.iam.gserviceaccount.com`
+    pub fn gcp_wif_service_account() -> GitHubSecret {
+        GitHubSecret::required(
+            "GCP_WIF_SERVICE_ACCOUNT",
+            "GCP Service Account email for WIF",
+        )
+    }
+
+    /// AWS IAM Role ARN for OIDC federation.
+    ///
+    /// Value: `arn:aws:iam::ACCOUNT_ID:role/ROLE_NAME`
+    pub fn aws_oidc_role_arn() -> GitHubSecret {
+        GitHubSecret::required(
+            "AWS_OIDC_ROLE_ARN",
+            "AWS IAM Role ARN for OIDC federation",
+        )
+    }
+
+    /// AWS region for OIDC authentication.
+    pub fn aws_region() -> GitHubSecret {
+        GitHubSecret::optional(
+            "AWS_REGION",
+            "AWS region (defaults to us-east-1)",
+        )
+    }
 }
 
 // ============================================================================
@@ -507,6 +614,8 @@ pub struct WorkflowConfig {
     pub permissions: Permissions,
     /// Command to run in the CI step
     pub run_command: String,
+    /// GitHub Actions secrets required by this workflow.
+    pub required_secrets: Vec<GitHubSecret>,
 }
 
 impl WorkflowConfig {
@@ -527,12 +636,19 @@ impl WorkflowConfig {
             integrations,
             permissions,
             run_command: String::new(),
+            required_secrets: Vec::new(),
         }
     }
 
     /// Set the run command for the CI step.
     pub fn with_run_command(mut self, cmd: impl Into<String>) -> Self {
         self.run_command = cmd.into();
+        self
+    }
+
+    /// Set the required GitHub Actions secrets.
+    pub fn with_secrets(mut self, secrets: Vec<GitHubSecret>) -> Self {
+        self.required_secrets = secrets;
         self
     }
 
@@ -828,5 +944,87 @@ mod tests {
         let result = config.check_satisfiability(&["cargo", "nonexistent"]);
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), vec!["nonexistent"]);
+    }
+
+    // ========================================================================
+    // AWS OIDC Integration Tests
+    // ========================================================================
+
+    #[test]
+    fn test_aws_oidc_integration() {
+        let aws = aws_oidc_credentials();
+        assert_eq!(aws.id, "aws-oidc");
+        assert_eq!(aws.uses, "aws-actions/configure-aws-credentials@v4");
+
+        let perms = aws.required_permissions();
+        assert_eq!(
+            perms.get(&PermissionScope::IdToken),
+            Some(&PermissionLevel::Write),
+        );
+
+        // Should provide aws CLI tool
+        assert!(aws.provides_tools().contains(&"aws"));
+    }
+
+    #[test]
+    fn test_all_integrations_includes_aws_oidc() {
+        let integrations = all_integrations();
+        assert!(integrations.iter().any(|i| i.id == "aws-oidc"));
+    }
+
+    // ========================================================================
+    // GitHub Secret Tests
+    // ========================================================================
+
+    #[test]
+    fn test_github_secret_required() {
+        let secret = GitHubSecret::required("MY_TOKEN", "A test token");
+        assert_eq!(secret.name, "MY_TOKEN");
+        assert!(secret.required);
+        assert_eq!(secret.expression(), "${{ secrets.MY_TOKEN }}");
+    }
+
+    #[test]
+    fn test_github_secret_optional() {
+        let secret = GitHubSecret::optional("OPTIONAL_KEY", "An optional key");
+        assert!(!secret.required);
+    }
+
+    #[test]
+    fn test_standard_gcp_secrets() {
+        let provider = github_secrets::gcp_wif_provider();
+        assert_eq!(provider.name, "GCP_WIF_PROVIDER");
+        assert!(provider.required);
+
+        let sa = github_secrets::gcp_wif_service_account();
+        assert_eq!(sa.name, "GCP_WIF_SERVICE_ACCOUNT");
+        assert!(sa.required);
+    }
+
+    #[test]
+    fn test_standard_aws_secrets() {
+        let role = github_secrets::aws_oidc_role_arn();
+        assert_eq!(role.name, "AWS_OIDC_ROLE_ARN");
+        assert!(role.required);
+
+        let region = github_secrets::aws_region();
+        assert_eq!(region.name, "AWS_REGION");
+        assert!(!region.required);
+    }
+
+    #[test]
+    fn test_workflow_config_with_secrets() {
+        let config = WorkflowConfig::new(
+            "Deploy",
+            ubuntu_latest(),
+            vec![checkout(), gcp_workload_identity()],
+        )
+        .with_secrets(vec![
+            github_secrets::gcp_wif_provider(),
+            github_secrets::gcp_wif_service_account(),
+        ]);
+
+        assert_eq!(config.required_secrets.len(), 2);
+        assert!(config.required_secrets.iter().any(|s| s.name == "GCP_WIF_PROVIDER"));
     }
 }

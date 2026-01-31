@@ -8,6 +8,8 @@
 //! - GitHub platform (API + CLI)
 //! - GitHub Actions for CI/CD integration
 //! - CI provider abstraction for workflow commands
+//! - Cloud resource management (GCP, AWS) with upsert patterns
+//! - Secret references and federation (OIDC-based keyless auth)
 //!
 //! The key insight is that all world I/O can be modeled as request/response pairs,
 //! allowing business logic to remain pure while transport execution happens at
@@ -33,12 +35,14 @@
 
 pub mod ci;
 pub mod cli;
+pub mod cloud;
 pub mod file;
 pub mod gist;
 pub mod github;
 pub mod github_actions;
 pub mod http;
 pub mod rest;
+pub mod secret;
 pub mod tcp;
 pub mod tool;
 
@@ -50,7 +54,8 @@ pub use github::{
     GitHubAuth, GITHUB_API_VERSION, GITHUB_CONTRACT_VERSION, GH_CLI_MIN_VERSION,
 };
 pub use github_actions::{
-    merge_permissions, Integration, PermissionLevel, PermissionScope, Permissions, RunnerImage,
+    merge_permissions, aws_oidc_credentials, github_secrets, GitHubSecret,
+    Integration, PermissionLevel, PermissionScope, Permissions, RunnerImage,
     WorkflowConfig,
 };
 pub use http::{HttpMethod, HttpRequest, HttpResponse};
@@ -77,6 +82,12 @@ pub use ci::{
     detect_provider, is_ci, AnnotationLevel, CiProvider, FileLocation, GitHubActionsProvider,
     GitLabCiProvider, GitLabRunner, PlainTextProvider, Runner, WorkflowCommand,
 };
+pub use cloud::{
+    CloudProvider, CloudResource, CloudResourceState, CloudUpsertResult,
+    gcp::{GcpProject, GcpResource, GcpWifConfig},
+    aws::{AwsAccount, AwsOidcConfig, AwsResource},
+};
+pub use secret::{SecretFederation, SecretRef, SecretRequirements, SecretSource};
 
 use serde::{Deserialize, Serialize};
 

@@ -7,6 +7,7 @@ pub mod bootstrap;
 pub mod buck2;
 pub mod ci;
 pub mod clippy;
+pub mod cloud;
 pub mod deps;
 pub mod gist;
 pub mod languages;
@@ -25,6 +26,7 @@ use gunbc_ir::Dag;
 /// ```text
 /// Workspace DAG
 /// ├── makegen SubDag (Makefile generation)
+/// ├── cloud_upsert SubDag (cloud resource provisioning)
 /// ├── languages SubDag
 /// │   ├── rust
 /// │   ├── makefile
@@ -45,6 +47,9 @@ pub fn build_workspace_dag() -> Dag<WorkspaceOp> {
     dag.add_node(ci::build_ci_subdag());
     dag.add_node(gist::build_gist_rust_subdag());
 
+    // Cloud resource upsert SubDag
+    dag.add_node(cloud::build_cloud_upsert_subdag());
+
     // Language SubDag (already fractal)
     dag.add_node(languages::build_languages_subdag());
 
@@ -59,7 +64,7 @@ mod tests {
     fn test_workspace_dag_structure() {
         let dag = build_workspace_dag();
 
-        // Should have all tool subdags plus languages
+        // Should have all tool subdags plus languages and cloud
         let node_ids: Vec<_> = dag.nodes.iter().map(|n| n.id.0.as_str()).collect();
         assert!(node_ids.contains(&"makegen"));
         assert!(node_ids.contains(&"clippy"));
@@ -69,6 +74,7 @@ mod tests {
         assert!(node_ids.contains(&"buck2"));
         assert!(node_ids.contains(&"ci"));
         assert!(node_ids.contains(&"gist"));
+        assert!(node_ids.contains(&"cloud_upsert"));
         assert!(node_ids.contains(&"languages"));
     }
 

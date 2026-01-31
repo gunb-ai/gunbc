@@ -23,6 +23,28 @@ use gunbc_ir::LanguageOp;
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::PrimitiveOp;
 
+/// Cloud resource operations.
+///
+/// Pure operations for cloud resource management (GCP, AWS).
+/// Actual I/O happens at TransportOps::Execute boundaries.
+#[derive(Debug, Clone)]
+pub enum CloudOp {
+    /// Prepare a shell command to check if a cloud resource exists.
+    PrepareCheckResource,
+    /// Parse the result of a resource existence check.
+    ParseCheckResult,
+    /// Prepare a shell command to create a cloud resource.
+    PrepareCreateResource,
+    /// Parse the result of a resource creation.
+    ParseCreateResult,
+    /// Prepare a shell command to verify a cloud resource exists (resolve).
+    PrepareResolveResource,
+    /// Parse the resolve result and return the resource handle.
+    ParseResolveResult,
+    /// Load cloud resource configuration.
+    LoadCloudConfig,
+}
+
 /// Unified operation enum for the workspace DAG.
 ///
 /// All tool, language, primitive, and transport operations are wrapped
@@ -31,6 +53,7 @@ use gunbc_primitives::PrimitiveOp;
 /// # Categories
 ///
 /// - **Domain ops**: Tool-specific pure operations (Ci, Deps, Makegen, etc.)
+/// - **Cloud ops**: Cloud resource upsert operations (GCP, AWS)
 /// - **Language ops**: Language/format characteristics (from Languages DAG)
 /// - **Primitive ops**: Reusable pure operations (parsing, file prep, etc.)
 /// - **Transport ops**: I/O boundary operations
@@ -53,6 +76,8 @@ pub enum WorkspaceOp {
     Buck2(Buck2Op),
     /// Clippy/CLI tool operations
     Clippy(CliToolOp),
+    /// Cloud resource upsert operations (GCP, AWS)
+    Cloud(CloudOp),
 
     // ========================================================================
     // Language Ops (from Languages DAG)
@@ -90,6 +115,12 @@ impl Executable for WorkspaceOp {
             WorkspaceOp::Clippy(op) => op
                 .execute()
                 .map_err(|e| ExecError::new(format!("CliToolOp error: {}", e))),
+            // Cloud ops are pure data transformations
+            WorkspaceOp::Cloud(_op) => {
+                // CloudOp nodes build/parse shell commands for cloud CLIs.
+                // Execution is delegated to TransportOps::Execute nodes.
+                Ok(inputs)
+            }
             // Language ops
             WorkspaceOp::Language(_op) => {
                 // LanguageOp nodes are mostly config nodes - return empty for now
@@ -146,6 +177,12 @@ impl From<Buck2Op> for WorkspaceOp {
 impl From<CliToolOp> for WorkspaceOp {
     fn from(op: CliToolOp) -> Self {
         WorkspaceOp::Clippy(op)
+    }
+}
+
+impl From<CloudOp> for WorkspaceOp {
+    fn from(op: CloudOp) -> Self {
+        WorkspaceOp::Cloud(op)
     }
 }
 
