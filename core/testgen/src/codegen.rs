@@ -763,12 +763,12 @@ impl<'a, T> TestGenerator<'a, T> {
                             "    // WARNING: guard port '{}'.{} has no incoming edge.\n",
                             node_id.0, guard_port.0
                         ));
-                        code.push_str(&format!(
-                            "    // The node will always skip (missing input → skip).\n"
-                        ));
-                        code.push_str(&format!(
-                            "    let log = execute_with_mode(&dag, ExecutionMode::DryRun(default_mocks()))\n"
-                        ));
+                        code.push_str(
+                            "    // The node will always skip (missing input → skip).\n",
+                        );
+                        code.push_str(
+                            "    let log = execute_with_mode(&dag, ExecutionMode::DryRun(default_mocks()))\n",
+                        );
                         code.push_str(
                             "        .expect(\"execution should not crash\");\n",
                         );
