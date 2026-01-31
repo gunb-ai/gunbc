@@ -539,6 +539,9 @@ fn print_log_entry(entry: &LogEntry) {
                     if !s.is_empty() {
                         println!("  {port}: {s}");
                     }
+                } else if s.contains('\n') {
+                    // Multi-line values (reports, etc.) — print in full
+                    println!("  {port}: {s}");
                 } else if s.len() < 120 {
                     println!("  {port}: {s}");
                 } else {

@@ -154,7 +154,7 @@ pub fn ci_workflow_config() -> WorkflowConfig {
         ubuntu_latest(),
         ci_integrations(),
     )
-    .with_run_command(&format!("|\n          {codegen_cmd} -- codegen\n          {ci_cmd} -- run"))
+    .with_run_command(format!("|\n          {codegen_cmd} -- codegen\n          {ci_cmd} -- run"))
 }
 
 /// Get the required permissions for the CI workflow.
@@ -506,6 +506,9 @@ pub fn build_ci_graph() -> Result<Dag<CIGraphOp>, BuilderError> {
                 port("build_success", "Bool"),
                 port("test_success", "Bool"),
                 port("lint_success", "Bool"),
+                optional("build_stderr", "String"),
+                optional("test_stderr", "String"),
+                optional("lint_stderr", "String"),
             ],
             vec![
                 port("overall_success", "Bool"),
@@ -559,10 +562,13 @@ pub fn build_ci_graph() -> Result<Dag<CIGraphOp>, BuilderError> {
     builder.add_edge(clippy_lint.out("skip"), parse_lint.in_port("skip"))?;
     builder.add_edge(prepare_clippy_lint.out("skip_reason"), parse_lint.in_port("skip_reason"))?;
 
-    // Report
+    // Report - success flags and stderr for failure details
     builder.add_edge(parse_build.out("build_success"), report.in_port("build_success"))?;
     builder.add_edge(parse_test.out("test_success"), report.in_port("test_success"))?;
     builder.add_edge(parse_lint.out("lint_success"), report.in_port("lint_success"))?;
+    builder.add_edge(parse_build.out("build_stderr"), report.in_port("build_stderr"))?;
+    builder.add_edge(parse_test.out("test_stderr"), report.in_port("test_stderr"))?;
+    builder.add_edge(parse_lint.out("lint_stderr"), report.in_port("lint_stderr"))?;
 
     Ok(builder.build())
 }

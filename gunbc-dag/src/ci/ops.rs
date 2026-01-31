@@ -459,6 +459,10 @@ fn execute_parse_clippy_lint_result(inputs: HashMap<String, Value>) -> Result<Ha
 // ============================================================================
 
 /// Generate CI report (pure).
+///
+/// When a stage fails, its stderr is included below the summary so
+/// developers can see what went wrong without expanding individual
+/// CI groups.
 fn execute_report(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
     let build_success = inputs
         .get("build_success")
@@ -477,21 +481,43 @@ fn execute_report(inputs: HashMap<String, Value>) -> Result<HashMap<String, Valu
 
     let overall_success = build_success && test_success && lint_success;
 
-    let report = format!(
-        r#"
-CI Report
-=========
-Build: {}
-Test:  {}
-Lint:  {}
----------
-Overall: {}
-"#,
+    let mut report = format!(
+        "\nCI Report\n\
+         =========\n\
+         Build: {}\n\
+         Test:  {}\n\
+         Lint:  {}\n\
+         ---------\n\
+         Overall: {}\n",
         if build_success { "PASS" } else { "FAIL" },
         if test_success { "PASS" } else { "FAIL" },
         if lint_success { "PASS" } else { "FAIL" },
         if overall_success { "SUCCESS" } else { "FAILURE" }
     );
+
+    // Append stderr for any failed stage
+    if !overall_success {
+        let failures: Vec<(&str, &str)> = [
+            ("Build", "build_stderr"),
+            ("Test", "test_stderr"),
+            ("Lint", "lint_stderr"),
+        ]
+        .iter()
+        .zip([build_success, test_success, lint_success])
+        .filter(|(_, success)| !success)
+        .map(|((label, key), _)| (*label, *key))
+        .collect();
+
+        for (label, key) in failures {
+            let stderr = inputs
+                .get(key)
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            if !stderr.is_empty() {
+                report.push_str(&format!("\n--- {label} stderr ---\n{stderr}\n"));
+            }
+        }
+    }
 
     let mut out = HashMap::new();
     out.insert("overall_success".to_string(), Value::Bool(overall_success));
