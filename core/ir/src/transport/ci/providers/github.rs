@@ -181,33 +181,34 @@ fn render_github_workflow(steps: &[SharedStep], config: &RenderConfig) -> String
     yaml.push_str(&config.header("#"));
     yaml.push_str(&format!("\n\nname: {}\n\n", config.workflow_name));
 
-    // Triggers
+    // Triggers — derived from git config
     yaml.push_str("on:\n");
     yaml.push_str("  push:\n");
     yaml.push_str("    branches:\n");
-    for branch in &config.branches {
+    for branch in config.git.ci_branches() {
         yaml.push_str(&format!("      - {}\n", branch));
     }
     yaml.push_str("  pull_request:\n");
     yaml.push_str("    branches:\n");
-    for branch in &config.branches {
+    for branch in config.git.ci_branches() {
         yaml.push_str(&format!("      - {}\n", branch));
     }
     yaml.push('\n');
 
-    // Environment variables
-    if !config.env.is_empty() {
+    // Environment variables — derived from cargo env + manual overrides
+    let all_env = config.all_env();
+    if !all_env.is_empty() {
         yaml.push_str("env:\n");
-        for (key, value) in &config.env {
+        for (key, value) in &all_env {
             yaml.push_str(&format!("  {}: {}\n", key, value));
         }
         yaml.push('\n');
     }
 
-    // Jobs
+    // Jobs — runner from the provider's image catalog
     yaml.push_str("jobs:\n");
     yaml.push_str(&format!("  {}:\n", config.workflow_name));
-    yaml.push_str(&format!("    runs-on: {}\n", config.runner));
+    yaml.push_str(&format!("    runs-on: {}\n", config.runner.id));
     yaml.push_str("    steps:\n");
 
     // Render each step
@@ -369,9 +370,13 @@ mod tests {
 
         let provider = GitHubActionsProvider;
         let tool = CargoInvocation::composed("ci", "dag");
+        let cargo_env = crate::cargo::CargoEnv {
+            term_color: crate::cargo::TermColor::Always,
+            warnings: crate::cargo::Warnings::Deny,
+        };
         let config = RenderConfig::new("ci", tool)
-            .with_runner("ubuntu-latest")
-            .with_env("CARGO_TERM_COLOR", "always");
+            .with_runner(ubuntu_latest())
+            .with_cargo_env(cargo_env);
 
         let yaml = provider.render(&dag, &config);
 
@@ -383,6 +388,7 @@ mod tests {
         assert!(yaml.contains(&format!("{ci_name} step build")));
         assert!(yaml.contains(&format!("{ci_name} step test")));
         assert!(yaml.contains("CARGO_TERM_COLOR: always"));
+        assert!(yaml.contains("RUSTFLAGS: -D warnings"));
     }
 
     #[test]

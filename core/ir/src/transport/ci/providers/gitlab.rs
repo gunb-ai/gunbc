@@ -225,13 +225,14 @@ fn render_gitlab_ci(steps: &[SharedStep], config: &RenderConfig) -> String {
     yaml.push_str(&config.header("#"));
     yaml.push_str("\n\n");
 
-    // Default image
-    yaml.push_str(&format!("image: {}\n\n", config.runner));
+    // Default image — uses runner image ID
+    yaml.push_str(&format!("image: {}\n\n", config.runner.id));
 
-    // Variables
-    if !config.env.is_empty() {
+    // Variables — derived from cargo env + manual overrides
+    let all_env = config.all_env();
+    if !all_env.is_empty() {
         yaml.push_str("variables:\n");
-        for (key, value) in &config.env {
+        for (key, value) in &all_env {
             yaml.push_str(&format!("  {}: \"{}\"\n", key, value));
         }
         yaml.push('\n');
@@ -475,15 +476,19 @@ mod tests {
 
         let provider = test_provider();
         let tool = CargoInvocation::composed("ci", "dag");
+        let cargo_env = crate::cargo::CargoEnv {
+            term_color: crate::cargo::TermColor::Always,
+            warnings: crate::cargo::Warnings::Default,
+        };
         let config = RenderConfig::new("ci", tool)
-            .with_runner("rust:latest")
-            .with_env("CARGO_TERM_COLOR", "always");
+            .with_runner(crate::transport::github_actions::ubuntu_latest())
+            .with_cargo_env(cargo_env);
 
         let yaml = provider.render(&dag, &config);
 
         let ci_name = crate::cargo::name("ci");
         // Check structure
-        assert!(yaml.contains("image: rust:latest"));
+        assert!(yaml.contains("image: ubuntu-latest"));
         assert!(yaml.contains("stages:"));
         assert!(yaml.contains(&format!("{ci_name} step build")));
         assert!(yaml.contains(&format!("{ci_name} step test")));

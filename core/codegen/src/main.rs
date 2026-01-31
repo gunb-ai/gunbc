@@ -287,15 +287,19 @@ fn cmd_cigen(dry_run: bool) {
     // gunbc-ci is special - it has a handwritten main.rs that handles codegen internally
     let codegen = gunbc_ir::CargoInvocation::standalone("codegen");
     let tool = gunbc_ir::CargoInvocation::composed("ci", "dag");
+    // Repo-level cargo config: colored output + warnings-as-errors
+    let cargo_env = gunbc_ir::CargoEnv {
+        term_color: gunbc_ir::TermColor::Always,
+        warnings: gunbc_ir::Warnings::Deny,
+    };
     let config = RenderConfig::new("ci", tool)
         .with_generator(
             &codegen.binary,
             &format!("{} -- cigen", codegen.command()),
         )
-        .with_runner("ubuntu-latest")
-        .with_env("CARGO_TERM_COLOR", "always")
-        .with_env("RUSTFLAGS", "-D warnings")
-        .with_branches(vec!["main"]);
+        .with_runner(gunbc_ir::transport::github_actions::ubuntu_latest())
+        .with_cargo_env(cargo_env)
+        .with_git(gunbc_ir::GitConfig::default());
     
     // Generate GitHub Actions YAML
     let ci_yaml = generate_github_actions_template(&config);
@@ -379,34 +383,34 @@ fn generate_github_actions_template(config: &RenderConfig) -> String {
     yaml.push_str(&config.header("#"));
     yaml.push_str(&format!("\n\nname: {}\n\n", config.workflow_name));
     
-    // Triggers
+    // Triggers — derived from git config
     yaml.push_str("on:\n");
     yaml.push_str("  push:\n");
     yaml.push_str("    branches:\n");
-    for branch in &config.branches {
+    for branch in config.git.ci_branches() {
         yaml.push_str(&format!("      - {}\n", branch));
     }
     yaml.push_str("  pull_request:\n");
     yaml.push_str("    branches:\n");
-    for branch in &config.branches {
+    for branch in config.git.ci_branches() {
         yaml.push_str(&format!("      - {}\n", branch));
     }
     yaml.push('\n');
-    
-    // Environment
-    yaml.push_str("env:\n");
-    yaml.push_str("  CARGO_TERM_COLOR: always\n");
-    for (key, value) in &config.env {
-        if key != "CARGO_TERM_COLOR" {
+
+    // Environment — derived from cargo env + manual overrides
+    let all_env = config.all_env();
+    if !all_env.is_empty() {
+        yaml.push_str("env:\n");
+        for (key, value) in &all_env {
             yaml.push_str(&format!("  {}: {}\n", key, value));
         }
+        yaml.push('\n');
     }
-    yaml.push('\n');
-    
-    // Job
+
+    // Job — runner from the provider's image catalog
     yaml.push_str("jobs:\n");
     yaml.push_str(&format!("  {}:\n", config.workflow_name));
-    yaml.push_str(&format!("    runs-on: {}\n", config.runner));
+    yaml.push_str(&format!("    runs-on: {}\n", config.runner.id));
     yaml.push_str("    steps:\n");
     yaml.push_str("      - name: Checkout\n");
     yaml.push_str("        uses: actions/checkout@v4\n");
@@ -451,18 +455,18 @@ fn generate_gitlab_ci_template(config: &RenderConfig) -> String {
     yaml.push_str(&config.header("#"));
     yaml.push_str("\n\n");
     
-    // Image
+    // Image — runner from the provider's image catalog
     yaml.push_str("image: rust:latest\n\n");
-    
-    // Variables
-    yaml.push_str("variables:\n");
-    yaml.push_str("  CARGO_TERM_COLOR: always\n");
-    for (key, value) in &config.env {
-        if key != "CARGO_TERM_COLOR" {
+
+    // Variables — derived from cargo env + manual overrides
+    let all_env = config.all_env();
+    if !all_env.is_empty() {
+        yaml.push_str("variables:\n");
+        for (key, value) in &all_env {
             yaml.push_str(&format!("  {}: \"{}\"\n", key, value));
         }
+        yaml.push('\n');
     }
-    yaml.push('\n');
     
     // Stages
     yaml.push_str("stages:\n");

@@ -13,7 +13,7 @@
 //! ```
 
 use gunbc_exec::{ExecError, Executable};
-use gunbc_ir::transport::{FileRequest, ShellRequest, TransportRequest, TransportResponse};
+use gunbc_ir::transport::{FileRequest, TransportRequest, TransportResponse};
 use gunbc_ir::Value;
 use crate::makegen::BuildConfig;
 use std::collections::HashMap;
@@ -180,14 +180,7 @@ fn execute_prepare_codegen_command(inputs: HashMap<String, Value>) -> Result<Has
     }
 
     let config = BuildConfig::cargo();
-    let args: Vec<String> = config.codegen_command[1..].iter().map(|s| s.to_string()).collect();
-    let request = TransportRequest::Shell(ShellRequest {
-        command: config.codegen_command[0].to_string(),
-        args,
-        cwd: None,
-        env: HashMap::new(),
-        stdin: None,
-    });
+    let request = TransportRequest::Shell(config.codegen.to_shell_request());
 
     out.insert("request".to_string(), Value::Request(request));
     out.insert("skip".to_string(), Value::Bool(false));
@@ -255,14 +248,7 @@ fn execute_prepare_build_command(inputs: HashMap<String, Value>) -> Result<HashM
     }
 
     let config = BuildConfig::cargo();
-    let args: Vec<String> = config.build_command[1..].iter().map(|s| s.to_string()).collect();
-    let request = TransportRequest::Shell(ShellRequest {
-        command: config.build_command[0].to_string(),
-        args,
-        cwd: None,
-        env: HashMap::new(),
-        stdin: None,
-    });
+    let request = TransportRequest::Shell(config.build.to_shell_request());
 
     out.insert("request".to_string(), Value::Request(request));
     out.insert("skip".to_string(), Value::Bool(false));
@@ -327,14 +313,7 @@ fn execute_prepare_test_command(inputs: HashMap<String, Value>) -> Result<HashMa
     }
 
     let config = BuildConfig::cargo();
-    let args: Vec<String> = config.test_command[1..].iter().map(|s| s.to_string()).collect();
-    let request = TransportRequest::Shell(ShellRequest {
-        command: config.test_command[0].to_string(),
-        args,
-        cwd: None,
-        env: HashMap::new(),
-        stdin: None,
-    });
+    let request = TransportRequest::Shell(config.test.to_shell_request());
 
     out.insert("request".to_string(), Value::Request(request));
     out.insert("skip".to_string(), Value::Bool(false));
@@ -571,14 +550,7 @@ impl Mockable for CIOp {
             }
             CIOp::PrepareBuildCommand => {
                 let config = BuildConfig::cargo();
-                let args: Vec<String> = config.build_command[1..].iter().map(|s| s.to_string()).collect();
-                let request = TransportRequest::Shell(ShellRequest {
-                    command: config.build_command[0].to_string(),
-                    args,
-                    cwd: None,
-                    env: HashMap::new(),
-                    stdin: None,
-                });
+                let request = TransportRequest::Shell(config.build.to_shell_request());
                 let mut out = HashMap::new();
                 out.insert("request".to_string(), Value::Request(request));
                 out.insert("skip".to_string(), Value::Bool(false));
@@ -594,14 +566,7 @@ impl Mockable for CIOp {
             }
             CIOp::PrepareTestCommand => {
                 let config = BuildConfig::cargo();
-                let args: Vec<String> = config.test_command[1..].iter().map(|s| s.to_string()).collect();
-                let request = TransportRequest::Shell(ShellRequest {
-                    command: config.test_command[0].to_string(),
-                    args,
-                    cwd: None,
-                    env: HashMap::new(),
-                    stdin: None,
-                });
+                let request = TransportRequest::Shell(config.test.to_shell_request());
                 let mut out = HashMap::new();
                 out.insert("request".to_string(), Value::Request(request));
                 out.insert("skip".to_string(), Value::Bool(false));

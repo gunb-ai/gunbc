@@ -156,7 +156,7 @@ fn render_core_targets(config: &BuildConfig) -> String {
     output.push_str(&format!("{}@if [ ! -f buck-out/gen/.codegen-stamp ]; then \\\n", INDENT));
     output.push_str(&format!(
         "{}{}{} && touch buck-out/gen/.codegen-stamp; \\\n",
-        INDENT, INDENT, config.codegen_command.join(" ")
+        INDENT, INDENT, config.codegen.to_shell()
     ));
     output.push_str(&format!("{}fi\n\n", INDENT));
 

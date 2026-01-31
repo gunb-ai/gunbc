@@ -28,8 +28,10 @@
 //! 3. **Step granularity**: Each DAG node becomes a CI step for visibility
 //! 4. **Data passing**: Node outputs become step outputs (GitHub) or artifacts (GitLab)
 
-use crate::cargo::CargoInvocation;
+use crate::cargo::{CargoEnv, CargoInvocation};
+use crate::git::GitConfig;
 use crate::language::traits::comment::generated_header;
+use crate::transport::github_actions::RunnerImage;
 use crate::{Dag, NodeId};
 use std::collections::HashMap;
 
@@ -62,7 +64,7 @@ pub trait CiRenderer {
 }
 
 /// Configuration for CI YAML rendering.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct RenderConfig {
     /// Name of the workflow/pipeline.
     pub workflow_name: String,
@@ -78,23 +80,47 @@ pub struct RenderConfig {
     /// Used in the "DO NOT EDIT - regenerate with:" header.
     pub regenerate_command: String,
 
-    /// Runner/image to use (e.g., "ubuntu-latest", "saas-linux-small-amd64").
-    pub runner: String,
+    /// Runner image to use. Selected from the provider's catalog
+    /// (e.g., `github_actions::ubuntu_latest()`).
+    pub runner: RunnerImage,
 
     /// Whether to use step mode (each node as separate CI step).
     pub step_mode: bool,
 
-    /// Additional environment variables to set.
+    /// Cargo environment configuration (term color, warnings policy).
+    /// The rendering layer derives env vars from this model.
+    pub cargo_env: CargoEnv,
+
+    /// Additional non-cargo environment variables.
     pub env: HashMap<String, String>,
 
     /// Checkout action/config (provider-specific).
     pub checkout: Option<CheckoutConfig>,
 
-    /// Branches to trigger on (for push/PR).
-    pub branches: Vec<String>,
+    /// Git configuration (default branch, branching strategy).
+    /// CI triggers are derived from this model.
+    pub git: GitConfig,
 
     /// Caching configuration.
     pub cache: Option<CacheConfig>,
+}
+
+impl Default for RenderConfig {
+    fn default() -> Self {
+        Self {
+            workflow_name: String::new(),
+            tool: CargoInvocation::default(),
+            generator_name: String::new(),
+            regenerate_command: String::new(),
+            runner: crate::transport::github_actions::ubuntu_latest(),
+            step_mode: true,
+            cargo_env: CargoEnv::default(),
+            env: HashMap::new(),
+            checkout: Some(CheckoutConfig::default()),
+            git: GitConfig::default(),
+            cache: None,
+        }
+    }
 }
 
 impl RenderConfig {
@@ -103,14 +129,7 @@ impl RenderConfig {
         Self {
             workflow_name: workflow_name.to_string(),
             tool,
-            generator_name: String::new(),
-            regenerate_command: String::new(),
-            runner: "ubuntu-latest".to_string(),
-            step_mode: true,
-            env: HashMap::new(),
-            checkout: Some(CheckoutConfig::default()),
-            branches: vec!["main".to_string()],
-            cache: None,
+            ..Self::default()
         }
     }
 
@@ -135,9 +154,9 @@ impl RenderConfig {
         generated_header(&self.generator_name, &self.regenerate_command, comment_prefix)
     }
 
-    /// Set the runner.
-    pub fn with_runner(mut self, runner: &str) -> Self {
-        self.runner = runner.to_string();
+    /// Set the runner image (selected from the provider's catalog).
+    pub fn with_runner(mut self, runner: RunnerImage) -> Self {
+        self.runner = runner;
         self
     }
 
@@ -147,15 +166,21 @@ impl RenderConfig {
         self
     }
 
-    /// Add an environment variable.
+    /// Set cargo environment configuration.
+    pub fn with_cargo_env(mut self, cargo_env: CargoEnv) -> Self {
+        self.cargo_env = cargo_env;
+        self
+    }
+
+    /// Add a non-cargo environment variable.
     pub fn with_env(mut self, key: &str, value: &str) -> Self {
         self.env.insert(key.to_string(), value.to_string());
         self
     }
 
-    /// Set branches to trigger on.
-    pub fn with_branches(mut self, branches: Vec<&str>) -> Self {
-        self.branches = branches.into_iter().map(String::from).collect();
+    /// Set git configuration (default branch, branching strategy).
+    pub fn with_git(mut self, git: GitConfig) -> Self {
+        self.git = git;
         self
     }
 
@@ -163,6 +188,21 @@ impl RenderConfig {
     pub fn with_cache(mut self, cache: CacheConfig) -> Self {
         self.cache = Some(cache);
         self
+    }
+
+    /// Build the complete set of environment variables for CI rendering.
+    ///
+    /// Merges cargo-derived env vars with any manually-added env vars.
+    /// Cargo env takes precedence for keys it owns (CARGO_TERM_COLOR, RUSTFLAGS).
+    pub fn all_env(&self) -> Vec<(String, String)> {
+        let mut result: Vec<(String, String)> = self.cargo_env.to_env_map();
+        for (k, v) in &self.env {
+            // Don't duplicate keys that cargo_env already provides
+            if !result.iter().any(|(rk, _)| rk == k) {
+                result.push((k.clone(), v.clone()));
+            }
+        }
+        result
     }
 }
 
@@ -372,14 +412,24 @@ mod tests {
 
     #[test]
     fn test_render_config_builder() {
-        let tool = CargoInvocation::composed("ci", "dag");
-        let config = RenderConfig::new("ci", tool)
-            .with_runner("ubuntu-22.04")
-            .with_env("CARGO_TERM_COLOR", "always")
-            .with_branches(vec!["main", "develop"]);
+        use crate::cargo::{TermColor, Warnings};
+        use crate::transport::github_actions::ubuntu_22_04;
 
-        assert_eq!(config.runner, "ubuntu-22.04");
-        assert_eq!(config.env.get("CARGO_TERM_COLOR"), Some(&"always".to_string()));
-        assert_eq!(config.branches, vec!["main", "develop"]);
+        let tool = CargoInvocation::composed("ci", "dag");
+        let cargo_env = CargoEnv {
+            term_color: TermColor::Always,
+            warnings: Warnings::Deny,
+        };
+        let config = RenderConfig::new("ci", tool)
+            .with_runner(ubuntu_22_04())
+            .with_cargo_env(cargo_env)
+            .with_git(GitConfig::new("develop"));
+
+        assert_eq!(config.runner.id, "ubuntu-22.04");
+        assert_eq!(config.git.default_branch, "develop");
+
+        let env = config.all_env();
+        assert!(env.contains(&("CARGO_TERM_COLOR".to_string(), "always".to_string())));
+        assert!(env.contains(&("RUSTFLAGS".to_string(), "-D warnings".to_string())));
     }
 }
