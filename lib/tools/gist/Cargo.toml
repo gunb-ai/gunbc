@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 description = "Gist generation tool built on gunbc"
+default-run = "gunbc-gist"
 
 [dependencies]
 gunbc-ir = { path = "../../../core/ir" }
