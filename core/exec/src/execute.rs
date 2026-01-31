@@ -2,14 +2,18 @@
 //!
 //! # DryRun Interception
 //!
-//! DryRun mode intercepts **transport execution nodes** - nodes that consume
-//! `TransportRequest` values. This is based on the design principle:
+//! DryRun mode intercepts **transport execution nodes** (nodes that consume
+//! `TransportRequest` values) and **tool environment nodes** (nodes that
+//! produce `ToolHandle` outputs). This is based on the design principle:
 //!
 //! > "World I/O is performed only by transport executor nodes"
 //! > "DryRun intercepts transport execution nodes, not boundary outputs"
 //!
 //! A node is considered a transport executor if:
 //! - It has an input port with type `TransportRequest`
+//!
+//! A node is considered a tool environment node if:
+//! - It has an output port with type `ToolHandle`
 //!
 //! Boundary detection (`BoundaryInfo`) is still used for signature inference
 //! and workflow interface detection, but NOT for DryRun interception.
@@ -20,6 +24,7 @@ use crate::lower::lower;
 use crate::topo::topo_sort;
 use crate::Executable;
 use gunbc_ir::{detect_boundaries, BoundaryInfo, Dag, Node, NodeBody, NodeId, Value};
+use gunbc_ir::transport::cli::{get_tool_by_id, ToolHandle};
 use std::collections::HashMap;
 use std::fmt;
 use std::time::Duration;
@@ -441,11 +446,25 @@ fn execute_flat<T: Executable>(
                 .collect();
             (outputs, false)
         } else {
+            // Check for explicit node override first (for non-transport I/O nodes).
+            // Node overrides force-mock a node regardless of its port types,
+            // used by flow tests to mock CLI tool operations etc.
+            let node_override = match mode {
+                ExecutionMode::DryRun(ref m) => m.get_node_override(&node_id.0),
+                ExecutionMode::Simulate(ref config) => config.boundary_mocks.get_node_override(&node_id.0),
+                _ => None,
+            };
+
+            if let Some(override_outputs) = node_override {
+                (override_outputs.clone(), true)
+            } else {
             // Check if this is a transport execution node (consumes TransportRequest)
-            // Transport execution nodes are intercepted in dry-run/simulate mode
-            // This follows the design principle: intercept where I/O happens, not boundaries
+            // or a tool environment node (emits ToolHandle).
+            // These are intercepted in dry-run/simulate mode.
             let is_transport_executor = is_transport_execution_node(node);
-            let should_intercept = is_transport_executor && matches!(mode, ExecutionMode::DryRun(_) | ExecutionMode::Simulate(_));
+            let is_tool_env = is_tool_env_node(node);
+            let should_intercept = (is_transport_executor || is_tool_env)
+                && matches!(mode, ExecutionMode::DryRun(_) | ExecutionMode::Simulate(_));
 
             if should_intercept {
                 // Intercept: use mock values for boundary outputs
@@ -455,14 +474,17 @@ fn execute_flat<T: Executable>(
                     _ => unreachable!(),
                 };
 
-                let outputs: HashMap<String, Value> = node
-                    .outputs
-                    .iter()
-                    .map(|p| {
-                        let mock = mocks.get_mock(node_id, &p.name);
-                        (p.name.0.clone(), mock.value.clone())
-                    })
-                    .collect();
+                let outputs = if is_tool_env {
+                    mock_tool_env_outputs(node, mocks)?
+                } else {
+                    node.outputs
+                        .iter()
+                        .map(|p| {
+                            let mock = mocks.get_mock(node_id, &p.name);
+                            (p.name.0.clone(), mock.value.clone())
+                        })
+                        .collect()
+                };
                 (outputs, true)
             } else {
                 // Execute normally
@@ -492,6 +514,7 @@ fn execute_flat<T: Executable>(
                         return Err(ExecError::new(err_msg));
                     }
                 }
+            }
             }
         };
 
@@ -597,6 +620,47 @@ fn is_transport_execution_node<T>(node: &Node<T>) -> bool {
     node.inputs.iter().any(|port| {
         port.type_id.0 == "TransportRequest"
     })
+}
+
+/// Check if a node is a tool environment boundary.
+///
+/// Tool environment nodes emit `ToolHandle` outputs and are intercepted in DryRun.
+fn is_tool_env_node<T>(node: &Node<T>) -> bool {
+    node.outputs.iter().any(|port| {
+        port.type_id.0 == "ToolHandle"
+    })
+}
+
+/// Build mock outputs for a tool environment node.
+fn mock_tool_env_outputs<T>(
+    node: &Node<T>,
+    mocks: &BoundaryMocks,
+) -> Result<HashMap<String, Value>, ExecError> {
+    let mut outputs = HashMap::new();
+
+    for port in &node.outputs {
+        // Respect explicit mocks if present
+        if mocks.has_mock(&node.id, &port.name) {
+            let mock = mocks.get_mock(&node.id, &port.name);
+            outputs.insert(port.name.0.clone(), mock.value.clone());
+            continue;
+        }
+
+        if let Some(tool_id) = port.name.0.strip_prefix("tool:") {
+            let tool = get_tool_by_id(tool_id).ok_or_else(|| {
+                ExecError::new(format!(
+                    "Unknown tool '{}' for env node '{}'",
+                    tool_id, node.id.0
+                ))
+            })?;
+            outputs.insert(port.name.0.clone(), ToolHandle::mock(tool).into());
+        } else {
+            let mock = mocks.get_mock(&node.id, &port.name);
+            outputs.insert(port.name.0.clone(), mock.value.clone());
+        }
+    }
+
+    Ok(outputs)
 }
 
 #[cfg(test)]

@@ -113,16 +113,21 @@ fn main() {
 /// All testgen targets in the project.
 fn all_targets() -> Vec<TestgenTarget> {
     vec![
-        // gunbc-dag internal DAGs
-        // NOTE: boundary_tests disabled until testgen supports entrypoint input mocking
-        // (dry-run only intercepts transport executors; pure nodes still need inputs)
+        // gunbc-dag internal DAGs — flow tests enabled (Phase 1)
+        // These DAGs have no external inputs and can run DryRun today.
+        // Chain tests (self-consistency) replaced by flow verification.
         TestgenTarget {
             name: "bootstrap",
             output_path: "gunbc-dag/src/bootstrap/generated_tests.rs",
             generate: || {
                 let dag = gunbc_dag::build_bootstrap_graph().unwrap();
                 let spec = gunbc_dag::bootstrap::graph_mock::bootstrap_mock_spec();
-                let config = TestConfig { boundary_tests: false, ..TestConfig::default() };
+                let config = TestConfig {
+                    boundary_tests: false,
+                    chain_tests: false,
+                    flow_tests: true,
+                    ..TestConfig::default()
+                };
                 TestGenerator::new(&dag)
                     .with_config(config)
                     .with_mock_spec(spec)
@@ -135,7 +140,12 @@ fn all_targets() -> Vec<TestgenTarget> {
             generate: || {
                 let dag = gunbc_dag::build_ci_graph().unwrap();
                 let spec = gunbc_dag::ci::graph_mock::ci_mock_spec();
-                let config = TestConfig { boundary_tests: false, ..TestConfig::default() };
+                let config = TestConfig {
+                    boundary_tests: false,
+                    chain_tests: false,
+                    flow_tests: true,
+                    ..TestConfig::default()
+                };
                 TestGenerator::new(&dag)
                     .with_config(config)
                     .with_mock_spec(spec)
@@ -148,7 +158,12 @@ fn all_targets() -> Vec<TestgenTarget> {
             generate: || {
                 let dag = gunbc_dag::build_makegen_graph().unwrap();
                 let spec = gunbc_dag::makegen::graph_mock::makegen_mock_spec();
-                let config = TestConfig { boundary_tests: false, ..TestConfig::default() };
+                let config = TestConfig {
+                    boundary_tests: false,
+                    chain_tests: false,
+                    flow_tests: true,
+                    ..TestConfig::default()
+                };
                 TestGenerator::new(&dag)
                     .with_config(config)
                     .with_mock_spec(spec)

@@ -6,23 +6,34 @@
 use gunbc_exec::{execute_with_mode, BoundaryMocks, ExecutionMode};
 use gunbc_ir::{detect_boundaries, Cardinality, Value};
 use gunbc_test::{assert_boundary_mockable, assert_types_compatible, default_mocks};
-use gunbc_test::{validate_chain, MockSpec, InputConstraint};
 use gunbc_test::{ResourceAcquireResult, ResourceSimulation};
 
 // ============================================================================
-// Chain Validation Tests
-// These tests verify that mock outputs satisfy downstream input expectations.
+// Flow Verification Tests
+// These tests execute the full DAG in DryRun mode with mocked transport
+// responses, verifying that pure node logic produces expected outputs.
 // ============================================================================
 
-/// Test that this tool's mock spec is self-consistent.
+/// Flow verification: ci scenario.
+///
+/// Builds the DAG, injects mocked transport responses via DryRun,
+/// and verifies that the pure node chain produces expected terminal outputs.
 #[test]
-fn test_mock_spec_self_consistent() {
+fn test_flow_ci() {
+    let dag = crate::build_ci_graph().unwrap();
     let spec = mock_spec();
-    // Verify all boundary mocks are present
-    assert!(spec.get_boundary_mock("report", "overall_success").is_some(), 
-        "MockSpec should have boundary mock for report.overall_success");
-    assert!(spec.get_boundary_mock("report", "report").is_some(), 
-        "MockSpec should have boundary mock for report.report");
+    let mocks = spec.to_boundary_mocks();
+    let log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks))
+        .expect("DryRun execution should succeed");
+
+    // Verify report.overall_success
+    let entry = log.get("report").expect("node 'report' should be in execution log");
+    assert_eq!(
+        entry.outputs.get("overall_success").expect("port 'overall_success' should exist on 'report'"),
+        &Value::Bool(true),
+        "flow verification: report.overall_success mismatch"
+    );
+
 }
 
 // ============================================================================
