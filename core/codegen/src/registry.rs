@@ -293,9 +293,10 @@ pub fn all_tools() -> Vec<ToolDef> {
             "gist",
             "Create a GitHub gist from code files",
             "build_gist_graph",
-            "extensions.clone(), public",
+            "GistMode::Snapshot, extensions.clone(), public",
         )
         .returns_result()
+        .import("use gunbc_gist::{build_gist_graph, GistMode};")
         .entrypoint(
             CliEntrypoint::new("repo_path", "String")
                 .short('r')
@@ -313,12 +314,70 @@ pub fn all_tools() -> Vec<ToolDef> {
                 .help("Make gist public"),
         )
         .boundary(
-            "execute_transport",
+            "execute_list_files",
+            vec![
+                ("response", "Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: \"src/main.rs\\n\".to_string(), stderr: String::new() }))"),
+            ],
+        )
+        .boundary(
+            "execute_read_files",
+            vec![
+                ("response", "Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: \"===GUNBC_FILE:src/main.rs===\\nfn main() {}\\n\".to_string(), stderr: String::new() }))"),
+            ],
+        )
+        .boundary(
+            "execute_gist",
             vec![
                 ("url", "Value::Str(\"<DRY-RUN: gist URL>\".to_string())"),
                 ("response", "Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: String::new(), stderr: String::new() }))"),
             ],
         ), // gist creates a remote gist, no local output
+
+        // gunbc-gist-diff (diff mode variant - same package, different binary)
+        ToolDef::new(
+            &cargo::name("gist"),
+            "gist-diff",
+            "Create a GitHub gist from branch diff",
+            "build_gist_graph",
+            "GistMode::Diff { base_ref: base_ref.clone() }, extensions.clone(), public",
+        )
+        .returns_result()
+        .import("use gunbc_gist::{build_gist_graph, GistMode};")
+        .entrypoint(
+            CliEntrypoint::new("repo_path", "String")
+                .short('r')
+                .default(".")
+                .help("Repository path to scan"),
+        )
+        .entrypoint(
+            CliEntrypoint::new("base_ref", "String")
+                .short('b')
+                .default("main")
+                .help("Base branch for diff"),
+        )
+        .entrypoint(
+            CliEntrypoint::new("extensions", "StrList")
+                .short('e')
+                .help("File extensions to include (can be repeated)"),
+        )
+        .entrypoint(
+            CliEntrypoint::new("public", "Bool")
+                .short('p')
+                .help("Make gist public"),
+        )
+        .boundary(
+            "execute_diff",
+            vec![
+                ("response", "Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: \"diff --git a/src/main.rs b/src/main.rs\\n--- a/src/main.rs\\n+++ b/src/main.rs\\n@@ -1 +1,2 @@\\n fn main() {}\\n+// changed\\n\".to_string(), stderr: String::new() }))"),
+            ],
+        )
+        .boundary(
+            "execute_gist",
+            vec![
+                ("url", "Value::Str(\"<DRY-RUN: gist URL>\".to_string())"),
+                ("response", "Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: String::new(), stderr: String::new() }))"),
+            ],
+        ), // gist-diff creates a remote gist from branch diff
 
         // gunbc-buck2 (uses DagBuilder - returns Result)
         ToolDef::new(

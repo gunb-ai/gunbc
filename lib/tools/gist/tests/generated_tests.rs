@@ -6,7 +6,7 @@
 //! - Edge type compatibility (are connections type-safe?)
 
 use gunbc_exec::{execute_with_mode, BoundaryMocks, ExecutionMode};
-use gunbc_gist::build_gist_graph;
+use gunbc_gist::{build_gist_graph, GistMode};
 use gunbc_ir::{detect_boundaries, Value};
 use gunbc_test::{assert_boundary_mockable, assert_types_compatible};
 
@@ -17,7 +17,7 @@ use gunbc_test::{assert_boundary_mockable, assert_types_compatible};
 /// Test that all boundaries can be mocked.
 #[test]
 fn test_boundaries_mockable() {
-    let dag = build_gist_graph(vec![], false).expect("Failed to build gist graph");
+    let dag = build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
 
     // Need proper typed mocks for all transport boundaries
     let mut mocks = BoundaryMocks::new();
@@ -72,7 +72,7 @@ fn test_boundaries_mockable() {
 /// Test that parse_gist_response boundary can be mocked.
 #[test]
 fn test_boundary_parse_gist_response_mockable() {
-    let dag = build_gist_graph(vec![], false).expect("Failed to build gist graph");
+    let dag = build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
     let boundaries = detect_boundaries(&dag);
     // parse_gist_response is the terminal node (boundary)
     assert!(
@@ -134,7 +134,7 @@ fn test_boundary_parse_gist_response_mockable() {
 /// Test that prepare_gist_request is NOT a boundary (pure logic).
 #[test]
 fn test_prepare_gist_request_not_boundary() {
-    let dag = build_gist_graph(vec![], false).expect("Failed to build gist graph");
+    let dag = build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
     let boundaries = detect_boundaries(&dag);
     assert!(
         !boundaries.is_boundary_node(&"prepare_gist_request".into()),
@@ -149,7 +149,7 @@ fn test_prepare_gist_request_not_boundary() {
 /// Test that all edge types are compatible.
 #[test]
 fn test_all_edges_compatible() {
-    let dag = build_gist_graph(vec![], false).expect("Failed to build gist graph");
+    let dag = build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
     let results = assert_types_compatible(&dag);
     for result in &results {
         assert!(
@@ -163,7 +163,7 @@ fn test_all_edges_compatible() {
 /// Test edge prepare_list_files.request -> execute_list_files.request type compatibility.
 #[test]
 fn test_edge_prepare_list_to_execute_list() {
-    let dag = build_gist_graph(vec![], false).expect("Failed to build gist graph");
+    let dag = build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
     // TransportRequest -> TransportRequest: verified by edge existence in graph
     assert!(dag.edges.iter().any(|e| e.from_node.0 == "prepare_list_files" && e.to_node.0 == "execute_list_files"));
 }
@@ -171,31 +171,24 @@ fn test_edge_prepare_list_to_execute_list() {
 /// Test edge execute_list_files.response -> parse_list_files.response type compatibility.
 #[test]
 fn test_edge_execute_list_to_parse_list() {
-    let dag = build_gist_graph(vec![], false).expect("Failed to build gist graph");
+    let dag = build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
     // TransportResponse -> TransportResponse: verified by edge existence in graph
     assert!(dag.edges.iter().any(|e| e.from_node.0 == "execute_list_files" && e.to_node.0 == "parse_list_files"));
 }
 
-/// Test edge parse_list_files.files -> filter_files.files type compatibility.
+/// Test edge parse_list_files.files -> prepare_read_files.files type compatibility.
+/// (filter_files node was removed — extensions are pushed into git pathspecs)
 #[test]
-fn test_edge_parse_list_files_to_filter_files() {
-    let dag = build_gist_graph(vec![], false).expect("Failed to build gist graph");
+fn test_edge_parse_list_files_to_prepare_read_files() {
+    let dag = build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
     // StrList -> StrList: verified by edge existence in graph
-    assert!(dag.edges.iter().any(|e| e.from_node.0 == "parse_list_files" && e.to_node.0 == "filter_files"));
-}
-
-/// Test edge filter_files.files -> prepare_read_files.files type compatibility.
-#[test]
-fn test_edge_filter_files_to_prepare_read_files() {
-    let dag = build_gist_graph(vec![], false).expect("Failed to build gist graph");
-    // StrList -> StrList: verified by edge existence in graph
-    assert!(dag.edges.iter().any(|e| e.from_node.0 == "filter_files" && e.to_node.0 == "prepare_read_files"));
+    assert!(dag.edges.iter().any(|e| e.from_node.0 == "parse_list_files" && e.to_node.0 == "prepare_read_files"));
 }
 
 /// Test edge prepare_read_files.request -> execute_read_files.request type compatibility.
 #[test]
 fn test_edge_prepare_read_to_execute_read() {
-    let dag = build_gist_graph(vec![], false).expect("Failed to build gist graph");
+    let dag = build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
     // TransportRequest -> TransportRequest: verified by edge existence in graph
     assert!(dag.edges.iter().any(|e| e.from_node.0 == "prepare_read_files" && e.to_node.0 == "execute_read_files"));
 }
@@ -203,7 +196,7 @@ fn test_edge_prepare_read_to_execute_read() {
 /// Test edge execute_read_files.response -> parse_read_files.response type compatibility.
 #[test]
 fn test_edge_execute_read_to_parse_read() {
-    let dag = build_gist_graph(vec![], false).expect("Failed to build gist graph");
+    let dag = build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
     // TransportResponse -> TransportResponse: verified by edge existence in graph
     assert!(dag.edges.iter().any(|e| e.from_node.0 == "execute_read_files" && e.to_node.0 == "parse_read_files"));
 }
@@ -211,7 +204,7 @@ fn test_edge_execute_read_to_parse_read() {
 /// Test edge parse_read_files.contents -> render_markdown.contents type compatibility.
 #[test]
 fn test_edge_parse_read_to_render_markdown() {
-    let dag = build_gist_graph(vec![], false).expect("Failed to build gist graph");
+    let dag = build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
     // MapStrStr -> MapStrStr: verified by edge existence in graph
     assert!(dag.edges.iter().any(|e| e.from_node.0 == "parse_read_files" && e.to_node.0 == "render_markdown"));
 }
@@ -219,7 +212,7 @@ fn test_edge_parse_read_to_render_markdown() {
 /// Test edge render_markdown.markdown -> prepare_gist_request.markdown type compatibility.
 #[test]
 fn test_edge_render_markdown_markdown_to_prepare_gist_request_markdown() {
-    let dag = build_gist_graph(vec![], false).expect("Failed to build gist graph");
+    let dag = build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
     // String -> String: verified by edge existence in graph
     assert!(dag.edges.iter().any(|e| e.from_node.0 == "render_markdown" && e.to_node.0 == "prepare_gist_request"));
 }
@@ -227,7 +220,7 @@ fn test_edge_render_markdown_markdown_to_prepare_gist_request_markdown() {
 /// Test edge prepare_gist_request.request -> execute_gist.request type compatibility.
 #[test]
 fn test_edge_prepare_gist_request_to_execute_gist() {
-    let dag = build_gist_graph(vec![], false).expect("Failed to build gist graph");
+    let dag = build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
     // TransportRequest -> TransportRequest: verified by edge existence in graph
     assert!(dag.edges.iter().any(|e| e.from_node.0 == "prepare_gist_request" && e.to_node.0 == "execute_gist"));
 }
@@ -235,7 +228,7 @@ fn test_edge_prepare_gist_request_to_execute_gist() {
 /// Test edge execute_gist.response -> parse_gist_response.response type compatibility.
 #[test]
 fn test_edge_execute_gist_to_parse_gist_response() {
-    let dag = build_gist_graph(vec![], false).expect("Failed to build gist graph");
+    let dag = build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
     // TransportResponse -> TransportResponse: verified by edge existence in graph
     assert!(dag.edges.iter().any(|e| e.from_node.0 == "execute_gist" && e.to_node.0 == "parse_gist_response"));
 }

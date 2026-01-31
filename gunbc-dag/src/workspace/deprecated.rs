@@ -9,6 +9,7 @@
 
 use crate::workspace::subdags::{bootstrap, buck2, ci, clippy, deps, gist, makegen};
 use crate::workspace::WorkspaceOp;
+use gunbc_gist::GistMode;
 use gunbc_ir::{BuilderError, Dag, NodeBody};
 
 /// Extract inner DAG from a SubDag node.
@@ -88,7 +89,7 @@ pub fn build_ci_graph() -> Dag<WorkspaceOp> {
 /// **Deprecated**: Use `build_gist_subdag()` instead.
 #[deprecated(since = "0.2.0", note = "Use build_gist_subdag() instead")]
 pub fn build_gist_graph(extensions: Vec<String>, create_gist: bool) -> Dag<WorkspaceOp> {
-    extract_inner_dag(gist::build_gist_subdag(extensions, create_gist))
+    extract_inner_dag(gist::build_gist_subdag(GistMode::Snapshot, extensions, create_gist))
 }
 
 /// Build the default gist rust graph (deprecated).

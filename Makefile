@@ -10,7 +10,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help codegen ensure-codegen build clean fmt-fix lint-fix test test-fix check check-fix clippy clippy-fix fmt fmt-check ci-yaml gist gist-dry buck2 buck2-dry makegen makegen-dry deps deps-dry ci ci-dry bootstrap bootstrap-dry testgen testgen-dry
+.PHONY: help codegen ensure-codegen build clean fmt-fix lint-fix test test-fix check check-fix clippy clippy-fix fmt fmt-check ci-yaml gist gist-dry gist-diff gist-diff-dry buck2 buck2-dry makegen makegen-dry deps deps-dry ci ci-dry bootstrap bootstrap-dry
 
 # Ensure codegen has run (upsert pattern: check stamp -> run if missing)
 ensure-codegen:
@@ -55,13 +55,12 @@ help:
 	@echo ""
 	@echo "Tools:"
 	@echo "  gist [REPO=.] [EXT=...]  - Create a GitHub gist from code files"
+	@echo "  gist-diff [REPO=.] [BASE=main] [EXT=...]  - Create a GitHub gist from branch diff"
 	@echo "  buck2 [INPUT=Cargo.toml] [OUTPUT=BUCK]  - Generate BUCK file from Cargo.toml"
 	@echo "  makegen [OUTPUT=Makefile]  - Generate Makefile from tool registry"
 	@echo "  deps [MANIFEST=deps.toml]  - Install tool dependencies"
 	@echo "  ci   - Run CI pipeline"
 	@echo "  bootstrap   - Generate Makefile and .gitignore"
-	@echo ""
-	@echo "  testgen  - Generate tests from DAG structures and MockSpecs"
 	@echo ""
 	@echo "Add -dry suffix for dry-run (e.g., make gist-dry)"
 
@@ -119,6 +118,13 @@ gist: ensure-codegen
 gist-dry: ensure-codegen
 	@cargo run -p gunbc-gist -- --dry-run $(if $(REPO),--repo $(REPO)) $(if $(EXT),-e $(EXT))
 
+# gunbc-gist-diff entrypoints: repo_path (String), base_ref (String), extensions (String)
+gist-diff: ensure-codegen
+	@cargo run -p gunbc-gist --bin gunbc-gist-diff -- $(if $(REPO),--repo $(REPO)) $(if $(BASE),--base $(BASE)) $(if $(EXT),-e $(EXT))
+
+gist-diff-dry: ensure-codegen
+	@cargo run -p gunbc-gist --bin gunbc-gist-diff -- --dry-run $(if $(REPO),--repo $(REPO)) $(if $(BASE),--base $(BASE)) $(if $(EXT),-e $(EXT))
+
 # gunbc-buck2 entrypoints: cargo_toml_path (String), output_path (String)
 buck2: ensure-codegen
 	@cargo run -p gunbc-buck2 -- $(if $(INPUT),--input $(INPUT)) $(if $(OUTPUT),--output $(OUTPUT))
@@ -153,11 +159,4 @@ bootstrap: ensure-codegen
 
 bootstrap-dry: ensure-codegen
 	@cargo run -p gunbc-dag --bin gunbc-bootstrap -- --dry-run
-
-# gunbc-testgen: Generate tests from DAG structures and MockSpecs
-testgen:
-	@cargo run -p gunbc-dag --bin gunbc-testgen --
-
-testgen-dry:
-	@cargo run -p gunbc-dag --bin gunbc-testgen -- --dry-run
 

@@ -36,6 +36,12 @@ Capture acute pattern issues found in the audit and document why they have not b
    - SubDag interface matching (parent ports -> inner entrypoints/boundaries) is only enforced during lowering.
    - No builder-time or test-time validation for these contracts today.
 
+7. **TransportOps::Execute missing skip handling** (fixed)
+   - `TransportOps::Execute` unconditionally required a `request` input without checking the `skip` flag.
+   - When `PrepareTestCommand` set `skip=true` (due to build failure) and omitted the optional `request`, `execute_test` crashed: `missing or invalid 'request' input`.
+   - Root cause: the skip-aware port pattern (`request?` + `skip: Bool`) was wired in the CI graph but never implemented in `TransportOps::Execute`. The existing `CIGraphOp::CliTool` handled it correctly — `TransportOps` was missed.
+   - Fixed in `lib/transport/src/ops.rs`: check `skip` before reading `request`, return early with `{skip: true}` when skipped.
+
 ### Root Cause for Non-Discovery
 
 - **No lowering tests for patterns**: pattern unit tests only check node/edge counts and guards; they never call `lower()`.
@@ -43,6 +49,7 @@ Capture acute pattern issues found in the audit and document why they have not b
 - **Limited execution coverage**: patterns may not be exercised in real workflows yet, so lowering is not triggered.
 - **Config-only fields**: Repeat/While/Poll settings are stored but never wired, so tests don’t observe them.
 - **Doc/API drift**: docs can reference methods that were never implemented.
+- **Skip pattern not tested end-to-end**: the `skip` port pattern was wired at graph level but no test exercised the `build_success=false` path through `execute_test`, so `TransportOps::Execute` was never called with a missing `request`.
 
 ## Tasks
 

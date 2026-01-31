@@ -1,0 +1,13 @@
+[package]
+name = "gunbc-lib-git-ops"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Git operations library for gunbc DAGs"
+
+[dependencies]
+gunbc-ir = { path = "../../core/ir" }
+gunbc-exec = { path = "../../core/exec" }
+
+[dev-dependencies]
+gunbc-test = { path = "../../core/test" }

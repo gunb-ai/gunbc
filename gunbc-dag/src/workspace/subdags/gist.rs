@@ -3,7 +3,7 @@
 //! Wraps the gist tool as a SubDag node using WorkspaceOp.
 
 use crate::workspace::WorkspaceOp;
-use gunbc_gist::{build_gist_graph, GistGraphOp, GistOps};
+use gunbc_gist::{build_gist_graph, GistGraphOp, GistMode, GistOps};
 use gunbc_ir::{Dag, Node, Port};
 
 /// Convert a Node<GistGraphOp> to Node<WorkspaceOp>.
@@ -29,14 +29,12 @@ fn convert_gist_op(op: GistGraphOp) -> WorkspaceOp {
         // Gist-specific ops - wrap in Gist variant with a placeholder
         // Note: GistOps only has PrepareRequest and ParseGistResponse
         // The internal graph ops don't have direct WorkspaceOp equivalents
-        GistGraphOp::PrepareListFiles
-        | GistGraphOp::ParseListFiles
+        GistGraphOp::Git(_)
         | GistGraphOp::PrepareReadFiles
         | GistGraphOp::ParseReadFiles
         | GistGraphOp::PrepareReadFile
         | GistGraphOp::ParseReadFile
-        | GistGraphOp::CollectFileContents
-        | GistGraphOp::FilterByExtension { .. } => {
+        | GistGraphOp::CollectFileContents => {
             // These are gist-internal ops - use ParseGistResponse as placeholder
             WorkspaceOp::Gist(GistOps::ParseGistResponse)
         }
@@ -64,6 +62,7 @@ fn convert_gist_dag(dag: Dag<GistGraphOp>) -> Dag<WorkspaceOp> {
 ///
 /// # Arguments
 ///
+/// * `mode` - Content acquisition mode (snapshot or diff)
 /// * `extensions` - File extensions to include (e.g., `vec![".rs", ".md"]`)
 /// * `create_gist` - Whether to actually create the gist
 ///
@@ -71,17 +70,29 @@ fn convert_gist_dag(dag: Dag<GistGraphOp>) -> Dag<WorkspaceOp> {
 ///
 /// Inputs:
 /// - `repo_path`: String (optional) - Path to repository
+/// - `base_ref`: String (optional, diff mode only) - Base branch for diff
 ///
 /// Outputs:
 /// - `markdown`: String - Generated markdown content
 /// - `gist_url`: String (optional) - URL of created gist
-pub fn build_gist_subdag(extensions: Vec<String>, create_gist: bool) -> Node<WorkspaceOp> {
-    let original = build_gist_graph(extensions, create_gist).expect("Gist graph should build");
+pub fn build_gist_subdag(
+    mode: GistMode,
+    extensions: Vec<String>,
+    create_gist: bool,
+) -> Node<WorkspaceOp> {
+    let is_diff = matches!(mode, GistMode::Diff { .. });
+    let original = build_gist_graph(mode, extensions, create_gist)
+        .expect("Gist graph should build");
     let converted_dag = convert_gist_dag(original);
+
+    let mut inputs = vec![Port::optional("repo_path", "String")];
+    if is_diff {
+        inputs.push(Port::optional("base_ref", "String"));
+    }
 
     Node::subdag(
         "gist",
-        vec![Port::optional("repo_path", "String")],
+        inputs,
         vec![
             Port::scalar("markdown", "String"),
             Port::optional("gist_url", "String"),
@@ -90,9 +101,9 @@ pub fn build_gist_subdag(extensions: Vec<String>, create_gist: bool) -> Node<Wor
     )
 }
 
-/// Build a default gist SubDag for Rust files.
+/// Build a default gist SubDag for Rust files (snapshot mode).
 pub fn build_gist_rust_subdag() -> Node<WorkspaceOp> {
-    build_gist_subdag(vec![".rs".to_string()], false)
+    build_gist_subdag(GistMode::Snapshot, vec![".rs".to_string()], false)
 }
 
 #[cfg(test)]
