@@ -46,6 +46,14 @@ pub struct GitRequest {
     pub subcommand: GitSubcommand,
     /// Working directory for the git command.
     pub cwd: Option<String>,
+    /// Pathspec patterns for filtering (appended after `--`).
+    ///
+    /// Both `ls-files` and `diff` support pathspecs:
+    /// - `git ls-files -- '*.rs'`
+    /// - `git diff main...HEAD -- '*.rs' 'src/'`
+    ///
+    /// Empty means no filtering (all files).
+    pub pathspecs: Vec<String>,
 }
 
 /// Git subcommands supported by the transport API.
@@ -99,6 +107,7 @@ impl GitRequest {
         Self {
             subcommand: GitSubcommand::LsFiles,
             cwd: None,
+            pathspecs: Vec::new(),
         }
     }
 
@@ -109,6 +118,7 @@ impl GitRequest {
                 base_ref: base_ref.into(),
             },
             cwd: None,
+            pathspecs: Vec::new(),
         }
     }
 
@@ -119,6 +129,7 @@ impl GitRequest {
                 base_ref: base_ref.into(),
             },
             cwd: None,
+            pathspecs: Vec::new(),
         }
     }
 
@@ -127,6 +138,7 @@ impl GitRequest {
         Self {
             subcommand: GitSubcommand::CurrentBranch,
             cwd: None,
+            pathspecs: Vec::new(),
         }
     }
 
@@ -137,6 +149,7 @@ impl GitRequest {
                 base_ref: base_ref.into(),
             },
             cwd: None,
+            pathspecs: Vec::new(),
         }
     }
 
@@ -147,6 +160,35 @@ impl GitRequest {
     /// Set working directory for the git command.
     pub fn cwd(mut self, path: impl Into<String>) -> Self {
         self.cwd = Some(path.into());
+        self
+    }
+
+    /// Add pathspec patterns for filtering.
+    ///
+    /// Appended after `--` in the git command. Supports glob patterns:
+    /// - `"*.rs"` — match `.rs` files in current directory
+    /// - `":(glob)**/*.rs"` — match `.rs` files recursively
+    /// - `"src/"` — match everything under `src/`
+    ///
+    /// For extension filtering, converts extensions like `".rs"` to
+    /// recursive glob patterns `":(glob)**/*.rs"`.
+    pub fn pathspecs(mut self, specs: impl IntoIterator<Item = impl Into<String>>) -> Self {
+        self.pathspecs = specs.into_iter().map(|s| s.into()).collect();
+        self
+    }
+
+    /// Add pathspec patterns from file extensions (e.g., `[".rs", ".toml"]`).
+    ///
+    /// Converts each extension to a recursive glob: `".rs"` → `":(glob)**/*.rs"`.
+    pub fn extensions(mut self, exts: impl IntoIterator<Item = impl AsRef<str>>) -> Self {
+        self.pathspecs = exts
+            .into_iter()
+            .map(|ext| {
+                let e = ext.as_ref();
+                let e = e.strip_prefix('.').unwrap_or(e);
+                format!(":(glob)**/*.{}", e)
+            })
+            .collect();
         self
     }
 
@@ -193,6 +235,14 @@ impl GitRequest {
             }
             GitSubcommand::MergeBase { base_ref } => {
                 req = req.arg("merge-base").arg(base_ref.as_str()).arg("HEAD");
+            }
+        }
+
+        // Append pathspecs after `--` if any
+        if !self.pathspecs.is_empty() {
+            req = req.arg("--");
+            for spec in &self.pathspecs {
+                req = req.arg(spec.as_str());
             }
         }
 
@@ -453,6 +503,64 @@ mod tests {
                 assert!(shell.args.contains(&"merge-base".to_string()));
                 assert!(shell.args.contains(&"develop".to_string()));
                 assert!(shell.args.contains(&"HEAD".to_string()));
+            }
+            _ => panic!("expected Shell request"),
+        }
+    }
+
+    #[test]
+    fn test_ls_files_with_pathspecs() {
+        let req = GitRequest::ls_files()
+            .pathspecs(["*.rs", "src/"])
+            .to_shell_request();
+
+        match req {
+            TransportRequest::Shell(shell) => {
+                let joined = shell.args.join(" ");
+                assert!(joined.contains("-- *.rs src/"));
+            }
+            _ => panic!("expected Shell request"),
+        }
+    }
+
+    #[test]
+    fn test_diff_with_extensions() {
+        let req = GitRequest::diff("main")
+            .extensions([".rs", ".toml"])
+            .to_shell_request();
+
+        match req {
+            TransportRequest::Shell(shell) => {
+                let joined = shell.args.join(" ");
+                assert!(joined.contains("-- :(glob)**/*.rs :(glob)**/*.toml"));
+            }
+            _ => panic!("expected Shell request"),
+        }
+    }
+
+    #[test]
+    fn test_no_pathspecs_no_separator() {
+        let req = GitRequest::ls_files().to_shell_request();
+
+        match req {
+            TransportRequest::Shell(shell) => {
+                assert!(!shell.args.contains(&"--".to_string()));
+            }
+            _ => panic!("expected Shell request"),
+        }
+    }
+
+    #[test]
+    fn test_extensions_strips_dot() {
+        let req = GitRequest::diff("main")
+            .extensions(["rs", ".py"])
+            .to_shell_request();
+
+        match req {
+            TransportRequest::Shell(shell) => {
+                let joined = shell.args.join(" ");
+                assert!(joined.contains(":(glob)**/*.rs"));
+                assert!(joined.contains(":(glob)**/*.py"));
             }
             _ => panic!("expected Shell request"),
         }

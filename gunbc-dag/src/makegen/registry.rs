@@ -757,12 +757,29 @@ impl ToolRegistry {
             meta_targets: default_meta_targets(),
         };
 
-        // gunbc-gist: standalone package
+        // gunbc-gist: standalone package (snapshot mode)
         registry.register(
             ToolInfo::standalone("gist", "Create a GitHub gist from code files")
                 .with_param(
                     EntrypointParam::new("repo_path", "REPO", "--repo", "String")
                         .with_default("."),
+                )
+                .with_param(
+                    EntrypointParam::new("extensions", "EXT", "-e", "String")
+                        .repeatable(),
+                ),
+        );
+
+        // gunbc-gist-diff: diff mode variant (binary in gunbc-gist package)
+        registry.register(
+            ToolInfo::composed("gist-diff", "gist", "Create a GitHub gist from branch diff")
+                .with_param(
+                    EntrypointParam::new("repo_path", "REPO", "--repo", "String")
+                        .with_default("."),
+                )
+                .with_param(
+                    EntrypointParam::new("base_ref", "BASE", "--base", "String")
+                        .with_default("main"),
                 )
                 .with_param(
                     EntrypointParam::new("extensions", "EXT", "-e", "String")

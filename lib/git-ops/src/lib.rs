@@ -34,7 +34,11 @@ pub enum GitOps {
     // ls-files chain
     // ========================================================================
     /// Build a `git ls-files` request (PURE)
-    PrepareLsFiles,
+    PrepareLsFiles {
+        /// File extensions to filter by (empty = all files).
+        /// Converted to pathspec globs: `".rs"` → `":(glob)**/*.rs"`.
+        extensions: Vec<String>,
+    },
     /// Parse ls-files response into file list (PURE)
     ParseLsFiles,
 
@@ -45,6 +49,8 @@ pub enum GitOps {
     PrepareDiff {
         /// Default base ref (can be overridden at runtime via `base_ref` input)
         base_ref: String,
+        /// File extensions to filter by (empty = all files).
+        extensions: Vec<String>,
     },
     /// Parse unified diff into per-file chunks (PURE)
     ParseDiff,
@@ -56,6 +62,8 @@ pub enum GitOps {
     PrepareDiffNameOnly {
         /// Default base ref (can be overridden at runtime via `base_ref` input)
         base_ref: String,
+        /// File extensions to filter by (empty = all files).
+        extensions: Vec<String>,
     },
     /// Parse diff name-only response into file list (PURE)
     ParseDiffNameOnly,
@@ -75,13 +83,16 @@ impl Executable for GitOps {
             // ================================================================
             // ls-files
             // ================================================================
-            GitOps::PrepareLsFiles => {
+            GitOps::PrepareLsFiles { extensions } => {
                 let repo_path = inputs
                     .get("repo_path")
                     .and_then(|v| v.as_str())
                     .unwrap_or(".");
 
                 let mut req = GitRequest::ls_files();
+                if !extensions.is_empty() {
+                    req = req.extensions(extensions.iter().map(|s| s.as_str()));
+                }
                 if repo_path != "." {
                     req = req.cwd(repo_path);
                 }
@@ -117,7 +128,7 @@ impl Executable for GitOps {
             // ================================================================
             // diff
             // ================================================================
-            GitOps::PrepareDiff { base_ref } => {
+            GitOps::PrepareDiff { base_ref, extensions } => {
                 let repo_path = inputs
                     .get("repo_path")
                     .and_then(|v| v.as_str())
@@ -130,6 +141,9 @@ impl Executable for GitOps {
                     .unwrap_or(base_ref.as_str());
 
                 let mut req = GitRequest::diff(effective_ref);
+                if !extensions.is_empty() {
+                    req = req.extensions(extensions.iter().map(|s| s.as_str()));
+                }
                 if repo_path != "." {
                     req = req.cwd(repo_path);
                 }
@@ -165,7 +179,7 @@ impl Executable for GitOps {
             // ================================================================
             // diff --name-only
             // ================================================================
-            GitOps::PrepareDiffNameOnly { base_ref } => {
+            GitOps::PrepareDiffNameOnly { base_ref, extensions } => {
                 let repo_path = inputs
                     .get("repo_path")
                     .and_then(|v| v.as_str())
@@ -177,6 +191,9 @@ impl Executable for GitOps {
                     .unwrap_or(base_ref.as_str());
 
                 let mut req = GitRequest::diff_name_only(effective_ref);
+                if !extensions.is_empty() {
+                    req = req.extensions(extensions.iter().map(|s| s.as_str()));
+                }
                 if repo_path != "." {
                     req = req.cwd(repo_path);
                 }
@@ -278,7 +295,7 @@ mod tests {
     #[test]
     fn test_prepare_ls_files_default() {
         let inputs = HashMap::new();
-        let result = GitOps::PrepareLsFiles.execute(inputs).unwrap();
+        let result = GitOps::PrepareLsFiles { extensions: vec![] }.execute(inputs).unwrap();
 
         let request = result.get("request").unwrap();
         match request {
@@ -296,7 +313,7 @@ mod tests {
         let mut inputs = HashMap::new();
         inputs.insert("repo_path".to_string(), Value::Str("/my/repo".to_string()));
 
-        let result = GitOps::PrepareLsFiles.execute(inputs).unwrap();
+        let result = GitOps::PrepareLsFiles { extensions: vec![] }.execute(inputs).unwrap();
         let request = result.get("request").unwrap();
         match request {
             Value::Request(TransportRequest::Shell(req)) => {
@@ -345,6 +362,7 @@ mod tests {
         let inputs = HashMap::new();
         let op = GitOps::PrepareDiff {
             base_ref: "main".to_string(),
+            extensions: vec![],
         };
         let result = op.execute(inputs).unwrap();
 
@@ -367,6 +385,7 @@ mod tests {
 
         let op = GitOps::PrepareDiff {
             base_ref: "main".to_string(),
+            extensions: vec![],
         };
         let result = op.execute(inputs).unwrap();
 

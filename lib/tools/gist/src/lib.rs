@@ -1,22 +1,25 @@
 //! gunbc-gist: Gist generation tool built on gunbc.
 //!
-//! This tool demonstrates gunbc's primitive-based architecture.
-//! It composes primitives and library ops:
+//! This tool composes library ops into a single parameterized graph:
 //!
-//! - `gunbc_primitives` for file operations (ListFiles, ReadFiles)
-//! - `gunbc_lib_markdown` for markdown generation
-//! - `gunbc_lib_gist_ops` for gist-specific operations
+//! - `gunbc_lib_git_ops` for git operations (ls-files, diff)
+//! - `gunbc_lib_markdown` for markdown rendering
+//! - `gunbc_lib_gist_ops` for gist creation
 //!
-//! The graph wires these ops together into a pipeline:
+//! The graph mode is selected at build time via [`GistMode`]:
 //!
+//! **Snapshot** (`make gist`):
 //! ```text
-//! ListFiles -> FilterByExtension -> ReadFiles -> RenderCodeSnapshot -> PrepareRequest -> ExecuteTransport
-//! (primitive)    (local)         (primitive)      (markdown)           (gist)           (transport)
+//! ls-files → Execute → parse → read-files → Execute → parse → render → gist
 //! ```
 //!
-//! The last step (ExecuteTransport) is a boundary — it has no downstream edges,
-//! so it's automatically identified as a world-write. In dry-run mode,
-//! it gets intercepted and returns a mock URL.
+//! **Diff** (`make gist-diff`):
+//! ```text
+//! git-diff → Execute → parse-diff → render-diff → gist
+//! ```
+//!
+//! Extension filtering is pushed into git via pathspecs, not separate filter nodes.
+//! All I/O happens through `TransportOps::Execute` boundary nodes.
 //!
 //! # Mock Specifications
 //!
@@ -27,10 +30,9 @@ pub mod graph;
 #[cfg(test)]
 pub mod graph_mock;
 
-// Re-export for backwards compatibility
+// Re-export public API
 pub use graph::{
-    build_diff_gist_graph, build_gist_graph, build_read_file_body_dag, diff_gist_signature,
-    gist_signature, GistGraphOp,
+    build_gist_graph, build_read_file_body_dag, gist_signature, GistGraphOp, GistMode,
 };
 
 // Re-export the library ops for convenience
