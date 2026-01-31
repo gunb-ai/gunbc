@@ -504,6 +504,16 @@ fn execute_flat<T: Executable>(
             }
         };
 
+        // Mask any secret values in CI context so that CI runners
+        // (GitHub Actions, GitLab CI) redact them from all output.
+        if let Some(ref mut ci) = ci_ctx {
+            for value in outputs.values() {
+                if let Value::Secret(s) = value {
+                    ci.mask(s.expose());
+                }
+            }
+        }
+
         node_outputs.insert(node_id.0.clone(), outputs.clone());
         let entry = LogEntry {
             node_id: node_id.0.clone(),
@@ -531,9 +541,16 @@ fn execute_flat<T: Executable>(
 ///
 /// Used inside CI groups so that node outputs appear within the
 /// collapsible section rather than in a flat summary after all groups.
+///
+/// Secret values are always redacted — they print as `***` regardless
+/// of context. This is the last line of defense against credential leaks.
 fn print_log_entry(entry: &LogEntry) {
     for (port, value) in &entry.outputs {
         match value {
+            Value::Secret(_) => {
+                // Always redact secrets — never print actual values
+                println!("  {port}: ***");
+            }
             Value::Str(s) => {
                 if port.ends_with("stderr") || port.ends_with("stdout") {
                     if !s.is_empty() {

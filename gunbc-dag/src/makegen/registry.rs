@@ -9,8 +9,11 @@
 //! commands. This eliminates duplicate hardcoded commands across the codebase.
 
 use gunbc_deps::DEFAULT_MANIFEST_FILENAME;
+use gunbc_ir::cargo::{CargoCommand, Subcommand, Warnings};
+use gunbc_ir::transport::ShellRequest;
 use gunbc_ir::CargoInvocation;
 use gunbc_ir::DEFAULT_MAKEFILE_FILENAME;
+use std::collections::HashMap;
 
 // ============================================================================
 // Build Configuration - Single source of truth for build commands
@@ -25,121 +28,209 @@ pub enum BuildSystem {
     Buck2,
 }
 
+/// A build command that can be either a structured cargo command or a raw
+/// shell command (for non-cargo build tools like buck2).
+///
+/// `Cargo` variants carry full semantic information (subcommand, flags,
+/// warning policy) and render themselves via [`CargoCommand`]. `Shell`
+/// variants are opaque command vectors for tools outside the cargo model.
+#[derive(Debug, Clone)]
+pub enum BuildCommand {
+    /// A structured cargo command with full semantic rendering.
+    Cargo(CargoCommand),
+    /// A raw shell command (for non-cargo tools like buck2).
+    Shell(Vec<String>),
+}
+
+impl BuildCommand {
+    /// Render as a shell command string.
+    pub fn to_shell(&self) -> String {
+        match self {
+            BuildCommand::Cargo(cmd) => cmd.to_shell(),
+            BuildCommand::Shell(parts) => parts.join(" "),
+        }
+    }
+
+    /// Convert to a `ShellRequest` for transport execution.
+    pub fn to_shell_request(&self) -> ShellRequest {
+        match self {
+            BuildCommand::Cargo(cmd) => cmd.to_shell_request(),
+            BuildCommand::Shell(parts) => {
+                let (command, args) = parts.split_first().expect("empty command");
+                ShellRequest {
+                    command: command.clone(),
+                    args: args.to_vec(),
+                    cwd: None,
+                    env: HashMap::new(),
+                    stdin: None,
+                }
+            }
+        }
+    }
+}
+
 /// Unified build system configuration.
 /// Single source of truth for build/test/lint operations.
 ///
-/// Command vectors use `String` to support composed binary names
-/// via [`cargo::name`].
+/// Commands are modeled as [`BuildCommand`] values — either structured
+/// [`CargoCommand`] values (for cargo-based builds) or raw shell commands
+/// (for non-cargo tools like buck2). The warning policy is applied to all
+/// cargo compilation subcommands.
 #[derive(Debug, Clone)]
 pub struct BuildConfig {
     /// Build system (cargo, buck2)
     pub build_system: BuildSystem,
+    /// Repo-level warning policy (applied to all compilation commands).
+    pub warnings: Warnings,
     /// Command to run codegen
-    pub codegen_command: Vec<String>,
+    pub codegen: BuildCommand,
     /// Command to run daggen
-    pub daggen_command: Vec<String>,
+    pub daggen: BuildCommand,
     /// Command to build all targets
-    pub build_command: Vec<String>,
+    pub build: BuildCommand,
     /// Command to run tests
-    pub test_command: Vec<String>,
+    pub test: BuildCommand,
     /// Command to run linter
-    pub lint_command: Vec<String>,
+    pub lint: BuildCommand,
     /// Command to auto-fix lint issues (cargo clippy --fix)
-    pub lint_fix_command: Vec<String>,
+    pub lint_fix: BuildCommand,
     /// Command to format code
-    pub fmt_command: Vec<String>,
+    pub fmt: BuildCommand,
     /// Command to check formatting
-    pub fmt_check_command: Vec<String>,
+    pub fmt_check: BuildCommand,
     /// Command to type-check without full build
-    pub check_command: Vec<String>,
+    pub check: BuildCommand,
     /// Command to generate CI YAML
-    pub ci_yaml_command: Vec<String>,
-}
-
-/// Helper to convert a list of &str into Vec<String>.
-fn strs(parts: &[&str]) -> Vec<String> {
-    parts.iter().map(|s| s.to_string()).collect()
+    pub ci_yaml: BuildCommand,
 }
 
 impl BuildConfig {
     /// Default cargo-based build config.
+    ///
+    /// Warning policy is `Deny` — all warnings are promoted to errors.
+    /// This is the repo's standard policy for both CI and local builds.
     pub fn cargo() -> Self {
-        let codegen = CargoInvocation::standalone("codegen");
+        let w = Warnings::Deny;
+        let codegen_inv = CargoInvocation::standalone("codegen");
+        let c = |cmd: CargoCommand| BuildCommand::Cargo(cmd);
         Self {
             build_system: BuildSystem::Cargo,
-            codegen_command: codegen.run_with_args(&["--release", "--", "codegen"]),
-            daggen_command: codegen.run_with_args(&["--release", "--", "daggen"]),
-            build_command: strs(&["cargo", "build", "--all-targets"]),
-            test_command: strs(&["cargo", "test"]),
-            lint_command: strs(&["cargo", "clippy", "--all-targets", "--", "-D", "warnings"]),
-            lint_fix_command: strs(&["cargo", "clippy", "--fix", "--workspace", "--allow-dirty", "--allow-staged", "--", "-D", "warnings"]),
-            fmt_command: strs(&["cargo", "fmt"]),
-            fmt_check_command: strs(&["cargo", "fmt", "--", "--check"]),
-            check_command: strs(&["cargo", "check", "--all-targets"]),
-            ci_yaml_command: codegen.run_with_args(&["--release", "--", "cigen"]),
+            warnings: w,
+            codegen: c(CargoCommand::new(Subcommand::Run(codegen_inv.clone()))
+                .release()
+                .trailing_arg("codegen")),
+            daggen: c(CargoCommand::new(Subcommand::Run(codegen_inv.clone()))
+                .release()
+                .trailing_arg("daggen")),
+            build: c(CargoCommand::new(Subcommand::Build)
+                .all_targets()
+                .warnings(w)),
+            test: c(CargoCommand::new(Subcommand::Test)
+                .warnings(w)),
+            lint: c(CargoCommand::new(Subcommand::Clippy)
+                .all_targets()
+                .warnings(w)),
+            lint_fix: c(CargoCommand::new(Subcommand::Clippy)
+                .flag("--fix")
+                .flag("--workspace")
+                .flag("--allow-dirty")
+                .flag("--allow-staged")
+                .warnings(w)),
+            fmt: c(CargoCommand::new(Subcommand::Fmt)),
+            fmt_check: c(CargoCommand::new(Subcommand::Fmt)
+                .trailing_arg("--check")),
+            check: c(CargoCommand::new(Subcommand::Check)
+                .all_targets()
+                .warnings(w)),
+            ci_yaml: c(CargoCommand::new(Subcommand::Run(codegen_inv))
+                .release()
+                .trailing_arg("cigen")),
         }
     }
 
     /// Buck2-based build config (for future use).
+    ///
+    /// Uses `BuildCommand::Shell` for buck2-native commands (build, test, lint, check)
+    /// and `BuildCommand::Cargo` for commands that still use cargo (codegen, fmt).
     pub fn buck2() -> Self {
-        let codegen = CargoInvocation::standalone("codegen");
+        let w = Warnings::Deny;
+        let codegen_inv = CargoInvocation::standalone("codegen");
+        let c = |cmd: CargoCommand| BuildCommand::Cargo(cmd);
+        let sh = |parts: &[&str]| BuildCommand::Shell(parts.iter().map(|s| s.to_string()).collect());
         Self {
             build_system: BuildSystem::Buck2,
-            codegen_command: codegen.run_with_args(&["--release", "--", "codegen"]),
-            daggen_command: codegen.run_with_args(&["--release", "--", "daggen"]),
-            build_command: strs(&["buck2", "build", "//..."]),
-            test_command: strs(&["buck2", "test", "//..."]),
-            lint_command: strs(&["buck2", "run", "//tools:clippy"]),
-            lint_fix_command: strs(&["cargo", "clippy", "--fix", "--workspace", "--allow-dirty", "--allow-staged", "--", "-D", "warnings"]),
-            fmt_command: strs(&["cargo", "fmt"]), // fmt stays cargo
-            fmt_check_command: strs(&["cargo", "fmt", "--", "--check"]),
-            check_command: strs(&["buck2", "build", "//..."]), // buck2 check is same as build
-            ci_yaml_command: codegen.run_with_args(&["--release", "--", "cigen"]),
+            warnings: w,
+            codegen: c(CargoCommand::new(Subcommand::Run(codegen_inv.clone()))
+                .release()
+                .trailing_arg("codegen")),
+            daggen: c(CargoCommand::new(Subcommand::Run(codegen_inv.clone()))
+                .release()
+                .trailing_arg("daggen")),
+            // Buck2-native commands
+            build: sh(&["buck2", "build", "//..."]),
+            test: sh(&["buck2", "test", "//..."]),
+            lint: sh(&["buck2", "run", "//tools:clippy"]),
+            // lint-fix still uses cargo (buck2 doesn't have an equivalent)
+            lint_fix: c(CargoCommand::new(Subcommand::Clippy)
+                .flag("--fix")
+                .flag("--workspace")
+                .flag("--allow-dirty")
+                .flag("--allow-staged")
+                .warnings(w)),
+            // fmt stays cargo (buck2 delegates to cargo fmt)
+            fmt: c(CargoCommand::new(Subcommand::Fmt)),
+            fmt_check: c(CargoCommand::new(Subcommand::Fmt)
+                .trailing_arg("--check")),
+            check: sh(&["buck2", "build", "//..."]),
+            ci_yaml: c(CargoCommand::new(Subcommand::Run(codegen_inv))
+                .release()
+                .trailing_arg("cigen")),
         }
     }
 
-    /// Get the command as a shell string (for Makefile generation).
+    /// Get the codegen command as a shell string (for Makefile generation).
     pub fn codegen_shell(&self) -> String {
-        format!("@{}", self.codegen_command.join(" "))
+        format!("@{}", self.codegen.to_shell())
     }
 
     /// Get the build command as a shell string.
     pub fn build_shell(&self) -> String {
-        format!("@{}", self.build_command.join(" "))
+        format!("@{}", self.build.to_shell())
     }
 
     /// Get the test command as a shell string.
     pub fn test_shell(&self) -> String {
-        format!("@{}", self.test_command.join(" "))
+        format!("@{}", self.test.to_shell())
     }
 
     /// Get the lint command as a shell string.
     pub fn lint_shell(&self) -> String {
-        format!("@{}", self.lint_command.join(" "))
+        format!("@{}", self.lint.to_shell())
     }
 
     /// Get the lint-fix command as a shell string.
     pub fn lint_fix_shell(&self) -> String {
-        format!("@{}", self.lint_fix_command.join(" "))
+        format!("@{}", self.lint_fix.to_shell())
     }
 
     /// Get the fmt command as a shell string.
     pub fn fmt_shell(&self) -> String {
-        format!("@{}", self.fmt_command.join(" "))
+        format!("@{}", self.fmt.to_shell())
     }
 
     /// Get the fmt-check command as a shell string.
     pub fn fmt_check_shell(&self) -> String {
-        format!("@{}", self.fmt_check_command.join(" "))
+        format!("@{}", self.fmt_check.to_shell())
     }
 
     /// Get the check command as a shell string.
     pub fn check_shell(&self) -> String {
-        format!("@{}", self.check_command.join(" "))
+        format!("@{}", self.check.to_shell())
     }
 
+    /// Get the CI YAML generation command as a shell string.
     pub fn ci_yaml_shell(&self) -> String {
-        format!("@{}", self.ci_yaml_command.join(" "))
+        format!("@{}", self.ci_yaml.to_shell())
     }
 }
 
@@ -740,15 +831,16 @@ mod tests {
     fn test_build_config_cargo() {
         let config = BuildConfig::cargo();
         assert_eq!(config.build_system, BuildSystem::Cargo);
-        assert!(config.build_command.iter().any(|s| s == "cargo"));
-        assert!(config.test_command.iter().any(|s| s == "test"));
+        assert_eq!(config.warnings, Warnings::Deny);
+        assert!(config.build.to_shell().contains("cargo build"));
+        assert!(config.test.to_shell().contains("cargo test"));
     }
 
     #[test]
     fn test_build_config_buck2() {
         let config = BuildConfig::buck2();
         assert_eq!(config.build_system, BuildSystem::Buck2);
-        assert!(config.build_command.iter().any(|s| s == "buck2"));
+        assert!(config.build.to_shell().contains("buck2 build"));
     }
 
     #[test]

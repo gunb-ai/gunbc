@@ -5,7 +5,6 @@
 pub mod graph;
 pub mod ops;
 
-#[cfg(test)]
 pub mod graph_mock;
 
 pub use graph::{
@@ -15,3 +14,12 @@ pub use graph::{
 pub use gunbc_primitives::EmbeddedFileExistsOp;
 pub use gunbc_ir::transport::github_actions::WorkflowConfig;
 pub use ops::CIOp;
+
+#[cfg(test)]
+mod generated_tests {
+    #![allow(unused_imports)]
+    fn mock_spec() -> gunbc_test::MockSpec {
+        crate::ci::graph_mock::ci_mock_spec()
+    }
+    include!("generated_tests.rs");
+}

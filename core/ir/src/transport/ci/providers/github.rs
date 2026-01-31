@@ -175,42 +175,29 @@ impl CiRenderer for GitHubActionsProvider {
 
 /// Render a GitHub Actions workflow from shared steps.
 fn render_github_workflow(steps: &[SharedStep], config: &RenderConfig) -> String {
+    use crate::transport::ci::yaml_block;
+
     let mut yaml = String::new();
 
-    // Header from render config — generator name and regen command are set by the caller
     yaml.push_str(&config.header("#"));
     yaml.push_str(&format!("\n\nname: {}\n\n", config.workflow_name));
 
-    // Triggers
-    yaml.push_str("on:\n");
-    yaml.push_str("  push:\n");
-    yaml.push_str("    branches:\n");
-    for branch in &config.branches {
-        yaml.push_str(&format!("      - {}\n", branch));
-    }
+    // Triggers — derived from git config
+    let branches = config.git.ci_branches();
+    yaml.push_str("on:\n  push:\n");
+    yaml_block(&mut yaml, "    branches:", &branches, |b| format!("      - {}", b));
     yaml.push_str("  pull_request:\n");
-    yaml.push_str("    branches:\n");
-    for branch in &config.branches {
-        yaml.push_str(&format!("      - {}\n", branch));
-    }
-    yaml.push('\n');
+    yaml_block(&mut yaml, "    branches:", &branches, |b| format!("      - {}", b));
 
-    // Environment variables
-    if !config.env.is_empty() {
-        yaml.push_str("env:\n");
-        for (key, value) in &config.env {
-            yaml.push_str(&format!("  {}: {}\n", key, value));
-        }
-        yaml.push('\n');
-    }
+    // Environment — derived from cargo env + manual overrides
+    yaml_block(&mut yaml, "env:", &config.all_env(), |(k, v)| format!("  {}: {}", k, v));
 
-    // Jobs
-    yaml.push_str("jobs:\n");
-    yaml.push_str(&format!("  {}:\n", config.workflow_name));
-    yaml.push_str(&format!("    runs-on: {}\n", config.runner));
-    yaml.push_str("    steps:\n");
+    // Job
+    yaml.push_str(&format!(
+        "jobs:\n  {}:\n    runs-on: {}\n    steps:\n",
+        config.workflow_name, config.runner.id,
+    ));
 
-    // Render each step
     for step in steps {
         yaml.push_str(&render_github_step(step, config));
     }
@@ -370,8 +357,8 @@ mod tests {
         let provider = GitHubActionsProvider;
         let tool = CargoInvocation::composed("ci", "dag");
         let config = RenderConfig::new("ci", tool)
-            .with_runner("ubuntu-latest")
-            .with_env("CARGO_TERM_COLOR", "always");
+            .with_runner(ubuntu_latest())
+            .with_cargo_env(crate::cargo::CargoEnv::ci());
 
         let yaml = provider.render(&dag, &config);
 
@@ -383,6 +370,7 @@ mod tests {
         assert!(yaml.contains(&format!("{ci_name} step build")));
         assert!(yaml.contains(&format!("{ci_name} step test")));
         assert!(yaml.contains("CARGO_TERM_COLOR: always"));
+        assert!(yaml.contains("RUSTFLAGS: -D warnings"));
     }
 
     #[test]

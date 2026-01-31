@@ -52,6 +52,7 @@ pub mod compose;
 pub mod contract;
 pub mod dag;
 pub mod entrypoint;
+pub mod git;
 pub mod language;
 pub mod node;
 pub mod patterns;
@@ -78,12 +79,16 @@ pub use patterns::{
 pub use signature::{infer_signature, SignatureError, SignaturePort, WorkflowSignature};
 pub use contract::TypeContract;
 pub use resource::{AccessMode, ResourceAccess, ResourceConflict, ResourceId};
-pub use cargo::{CargoInvocation, PREFIX as CARGO_PREFIX};
+pub use cargo::{
+    CargoCommand, CargoEnv, CargoInvocation, Subcommand, TermColor, Warnings,
+    PREFIX as CARGO_PREFIX,
+};
+pub use git::GitConfig;
 pub use transport::{TransportRequest, TransportResponse};
 pub use type_op::{BaseType, Coercion, Predicate, PredicateValue, TypeOp, WrapperKind};
 pub use type_registry::{TypeNotFoundError, TypeRegistry};
 pub use types::{Cardinality, CardinalityCase, CardinalityMismatch, NodeId, PortName, TypeId};
-pub use value::Value;
+pub use value::{SecretString, Value};
 pub use render::Renderable;
 
 // Re-exports from language module for common use

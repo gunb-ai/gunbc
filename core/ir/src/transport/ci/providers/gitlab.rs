@@ -219,35 +219,19 @@ impl CiRenderer for GitLabCiProvider {
 
 /// Render a GitLab CI configuration from shared steps.
 fn render_gitlab_ci(steps: &[SharedStep], config: &RenderConfig) -> String {
+    use crate::transport::ci::yaml_block;
+
     let mut yaml = String::new();
 
-    // Header from render config — generator name and regen command are set by the caller
     yaml.push_str(&config.header("#"));
-    yaml.push_str("\n\n");
+    yaml.push_str(&format!("\n\nimage: {}\n\n", config.runner.id));
 
-    // Default image
-    yaml.push_str(&format!("image: {}\n\n", config.runner));
+    // Variables — derived from cargo env + manual overrides
+    yaml_block(&mut yaml, "variables:", &config.all_env(), |(k, v)| format!("  {}: \"{}\"", k, v));
 
-    // Variables
-    if !config.env.is_empty() {
-        yaml.push_str("variables:\n");
-        for (key, value) in &config.env {
-            yaml.push_str(&format!("  {}: \"{}\"\n", key, value));
-        }
-        yaml.push('\n');
-    }
+    // Stages — computed from DAG structure
+    yaml_block(&mut yaml, "stages:", &compute_stages(steps), |s| format!("  - {}", s));
 
-    // Compute stages from DAG structure
-    let stages = compute_stages(steps);
-    if !stages.is_empty() {
-        yaml.push_str("stages:\n");
-        for stage in &stages {
-            yaml.push_str(&format!("  - {}\n", stage));
-        }
-        yaml.push('\n');
-    }
-
-    // Render each job
     for step in steps {
         yaml.push_str(&render_gitlab_job(step, config));
     }
@@ -475,15 +459,19 @@ mod tests {
 
         let provider = test_provider();
         let tool = CargoInvocation::composed("ci", "dag");
+        let cargo_env = crate::cargo::CargoEnv {
+            term_color: crate::cargo::TermColor::Always,
+            warnings: crate::cargo::Warnings::Default,
+        };
         let config = RenderConfig::new("ci", tool)
-            .with_runner("rust:latest")
-            .with_env("CARGO_TERM_COLOR", "always");
+            .with_runner(crate::transport::github_actions::ubuntu_latest())
+            .with_cargo_env(cargo_env);
 
         let yaml = provider.render(&dag, &config);
 
         let ci_name = crate::cargo::name("ci");
         // Check structure
-        assert!(yaml.contains("image: rust:latest"));
+        assert!(yaml.contains("image: ubuntu-latest"));
         assert!(yaml.contains("stages:"));
         assert!(yaml.contains(&format!("{ci_name} step build")));
         assert!(yaml.contains(&format!("{ci_name} step test")));

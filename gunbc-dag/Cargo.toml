@@ -22,6 +22,10 @@ gunbc-deps = { path = "../lib/tools/deps" }
 gunbc-gist = { path = "../lib/tools/gist" }
 gunbc-buck2 = { path = "../lib/tools/buck2" }
 gunbc-clippy = { path = "../lib/tools/clippy" }
+gunbc-lib-llm-ops = { path = "../lib/llm-ops" }
+
+# Test generation
+gunbc-testgen = { path = "../core/testgen" }
 
 serde_json = { workspace = true }
 
@@ -43,3 +47,7 @@ path = "src/bin/bootstrap.rs"
 [[bin]]
 name = "gunbc-dag-viz"
 path = "src/bin/dag-viz.rs"
+
+[[bin]]
+name = "gunbc-testgen"
+path = "src/bin/testgen.rs"

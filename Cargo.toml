@@ -11,6 +11,7 @@ members = [
     # Library crates (DAG op libraries)
     "lib/primitives",
     "lib/gist-ops",
+    "lib/llm-ops",
     "lib/markdown",
     "lib/transport",
     

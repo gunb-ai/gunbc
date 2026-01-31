@@ -68,11 +68,12 @@ impl<'a, T> TestGenerator<'a, T> {
         let analysis = analyze_dag(self.dag);
         let mut code = String::new();
 
-        // Module header using language module's generated_header
-        let doc_prefix = RUST_COMMENTS.doc_prefix.unwrap_or("//!");
-        code.push_str(&format!("{} Generated tests for {} DAG.\n", doc_prefix, module_name));
-        code.push_str(&format!("{}\n", doc_prefix));
-        code.push_str(&generated_header(&gunbc_ir::cargo::name("testgen"), "make testgen", doc_prefix));
+        // Module header - use line comments (not doc comments) since these files
+        // are include!()'d into modules and doc comments would attach to `use` items.
+        let prefix = RUST_COMMENTS.line_prefix;
+        code.push_str(&format!("{} Generated tests for {} DAG.\n", prefix, module_name));
+        code.push_str(&format!("{}\n", prefix));
+        code.push_str(&generated_header(&gunbc_ir::cargo::name("testgen"), "make testgen", prefix));
         code.push_str("\n\n");
 
         // Imports
@@ -276,7 +277,7 @@ impl<'a, T> TestGenerator<'a, T> {
         for resource in &spec.resource_mocks.resources {
             let test_name = format!(
                 "test_resource_{}_acquire",
-                resource.resource_id.replace([':', '-'], "_")
+                sanitize_resource_id(&resource.resource_id)
             );
 
             let resource_type = match &resource.resource_type {
@@ -333,7 +334,7 @@ impl<'a, T> TestGenerator<'a, T> {
             if let gunbc_test::ResourceType::Lease { duration_ms } = resource.resource_type {
                 let timeout_test = format!(
                     "test_resource_{}_timeout",
-                    resource.resource_id.replace([':', '-'], "_")
+                    sanitize_resource_id(&resource.resource_id)
                 );
                 code.push_str(&format!(
                     "/// Test resource '{}' lease expiration after {}ms.\n",
@@ -362,6 +363,36 @@ impl<'a, T> TestGenerator<'a, T> {
     }
 }
 
+/// Sanitize a resource ID into a valid snake_case Rust identifier.
+///
+/// Replaces non-alphanumeric characters with `_`, lowercases, and collapses
+/// consecutive underscores (e.g. `fs:.gitignore` → `fs_gitignore`).
+fn sanitize_resource_id(id: &str) -> String {
+    let raw: String = id
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .collect();
+    // Collapse runs of underscores and strip leading/trailing underscores
+    let mut result = String::with_capacity(raw.len());
+    let mut prev_underscore = true; // treat start as underscore to strip leading _
+    for c in raw.chars() {
+        if c == '_' {
+            if !prev_underscore {
+                result.push('_');
+            }
+            prev_underscore = true;
+        } else {
+            result.push(c.to_ascii_lowercase());
+            prev_underscore = false;
+        }
+    }
+    // Strip trailing underscore
+    if result.ends_with('_') {
+        result.pop();
+    }
+    result
+}
+
 /// Convert a Value to a Rust literal string.
 fn value_to_rust_literal(value: &Value) -> String {
     match value {
@@ -378,6 +409,9 @@ fn value_to_rust_literal(value: &Value) -> String {
         Value::Json(json) => {
             format!("Value::Json(serde_json::json!({}))", json)
         }
+        Value::Secret(_) => {
+            "Value::Secret(gunbc_ir::SecretString::new(\"<MOCK_SECRET>\"))".to_string()
+        }
         _ => "Value::Str(\"<MOCK>\".to_string())".to_string(),
     }
 }
@@ -389,6 +423,9 @@ fn default_mock_for_type(type_id: &str) -> String {
         "Bool" => "Value::Bool(true)".to_string(),
         "Int" | "i64" | "i32" => "Value::Int(0)".to_string(),
         "StrList" => "Value::StrList(vec![\"<MOCK>\".to_string()])".to_string(),
+        "Secret" => {
+            "Value::Secret(gunbc_ir::SecretString::new(\"<MOCK_SECRET>\"))".to_string()
+        }
         "TransportResponse" => {
             "Value::Response(gunbc_ir::transport::TransportResponse::Shell(\
                 gunbc_ir::transport::ShellResponse { \

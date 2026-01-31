@@ -3,9 +3,14 @@
 use super::http::HttpMethod;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fmt;
 
 /// Authentication method for REST APIs.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+///
+/// Debug and Display output redacts credential values to prevent
+/// accidental leakage in logs. Only the auth variant and non-sensitive
+/// metadata (header names, env var names) are shown.
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub enum AuthMethod {
     /// No authentication
     None,
@@ -13,10 +18,50 @@ pub enum AuthMethod {
     Bearer(String),
     /// Basic authentication (username:password base64 encoded)
     Basic { username: String, password: String },
-    /// API key in header
+    /// API key in header (literal value)
     ApiKey { header: String, key: String },
-    /// Environment variable reference (resolved at execution time)
+    /// Environment variable resolved at execution time → `Authorization: Bearer {value}`.
     EnvVar(String),
+    /// Environment variable resolved at execution time → custom header.
+    ///
+    /// Like `EnvVar` but inserts the value into the specified header instead of
+    /// `Authorization: Bearer`. Used for APIs that authenticate via a custom
+    /// header (e.g., Anthropic's `x-api-key`).
+    EnvVarHeader { header: String, env_var: String },
+}
+
+impl fmt::Debug for AuthMethod {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AuthMethod::None => write!(f, "AuthMethod::None"),
+            AuthMethod::Bearer(_) => write!(f, "AuthMethod::Bearer(***)"),
+            AuthMethod::Basic { username, .. } => {
+                write!(f, "AuthMethod::Basic {{ username: {username:?}, password: *** }}")
+            }
+            AuthMethod::ApiKey { header, .. } => {
+                write!(f, "AuthMethod::ApiKey {{ header: {header:?}, key: *** }}")
+            }
+            AuthMethod::EnvVar(var) => write!(f, "AuthMethod::EnvVar({var:?})"),
+            AuthMethod::EnvVarHeader { header, env_var } => {
+                write!(f, "AuthMethod::EnvVarHeader {{ header: {header:?}, env_var: {env_var:?} }}")
+            }
+        }
+    }
+}
+
+impl fmt::Display for AuthMethod {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AuthMethod::None => write!(f, "none"),
+            AuthMethod::Bearer(_) => write!(f, "bearer(***)"),
+            AuthMethod::Basic { username, .. } => write!(f, "basic({username}, ***)"),
+            AuthMethod::ApiKey { header, .. } => write!(f, "api-key({header}, ***)"),
+            AuthMethod::EnvVar(var) => write!(f, "env({var})"),
+            AuthMethod::EnvVarHeader { header, env_var } => {
+                write!(f, "env-header({header}, {env_var})")
+            }
+        }
+    }
 }
 
 /// REST API request.
