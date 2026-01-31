@@ -15,7 +15,6 @@
 //! This module also implements `CiRenderer` for generating GitLab CI YAML
 //! from DAGs. Uses stages for parallelism and `needs` for dependencies.
 
-use crate::language::traits::comment::generated_header;
 use crate::language::NamingCase;
 use crate::transport::ci::command::{AnnotationLevel, WorkflowCommand};
 use crate::transport::ci::provider::CiProvider;
@@ -222,8 +221,8 @@ impl CiRenderer for GitLabCiProvider {
 fn render_gitlab_ci(steps: &[SharedStep], config: &RenderConfig) -> String {
     let mut yaml = String::new();
 
-    // Header using language module's generated_header for consistency
-    yaml.push_str(&generated_header(&crate::cargo::name("codegen"), "make ci-yaml", "#"));
+    // Header from render config — generator name and regen command are set by the caller
+    yaml.push_str(&config.header("#"));
     yaml.push_str("\n\n");
 
     // Default image

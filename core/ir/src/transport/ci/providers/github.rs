@@ -14,7 +14,6 @@
 //! This module also implements `CiRenderer` for generating GitHub Actions YAML
 //! from DAGs. Each DAG node becomes a workflow step with proper dependencies.
 
-use crate::language::traits::comment::generated_header;
 use crate::transport::ci::command::{AnnotationLevel, WorkflowCommand};
 use crate::transport::ci::provider::CiProvider;
 use crate::transport::ci::render::{dag_to_shared_steps, CiRenderer, RenderConfig, SharedStep};
@@ -178,9 +177,9 @@ impl CiRenderer for GitHubActionsProvider {
 fn render_github_workflow(steps: &[SharedStep], config: &RenderConfig) -> String {
     let mut yaml = String::new();
 
-    // Header using language module's generated_header for consistency
-    yaml.push_str(&generated_header(&crate::cargo::name("codegen"), "make ci-yaml", "#"));
-    yaml.push_str(&format!("\nname: {}\n\n", config.workflow_name));
+    // Header from render config — generator name and regen command are set by the caller
+    yaml.push_str(&config.header("#"));
+    yaml.push_str(&format!("\n\nname: {}\n\n", config.workflow_name));
 
     // Triggers
     yaml.push_str("on:\n");
