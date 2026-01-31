@@ -446,24 +446,14 @@ fn execute_flat<T: Executable>(
                 .collect();
             (outputs, false)
         } else {
-            // Check for explicit node override first (for non-transport I/O nodes).
-            // Node overrides force-mock a node regardless of its port types,
-            // used by flow tests to mock CLI tool operations etc.
-            let node_override = match mode {
-                ExecutionMode::DryRun(ref m) => m.get_node_override(&node_id.0),
-                ExecutionMode::Simulate(ref config) => config.boundary_mocks.get_node_override(&node_id.0),
-                _ => None,
-            };
-
-            if let Some(override_outputs) = node_override {
-                (override_outputs.clone(), true)
-            } else {
-            // Check if this is a transport execution node (consumes TransportRequest)
-            // or a tool environment node (emits ToolHandle).
-            // These are intercepted in dry-run/simulate mode.
+            // Check if this is a transport execution node (consumes TransportRequest),
+            // a tool environment node (emits ToolHandle), or a tool consumer node
+            // (consumes ToolHandle). These are intercepted in dry-run/simulate mode
+            // because they perform I/O or would try to use mock tool paths.
             let is_transport_executor = is_transport_execution_node(node);
             let is_tool_env = is_tool_env_node(node);
-            let should_intercept = (is_transport_executor || is_tool_env)
+            let is_tool_consumer = consumes_tool_handle(node);
+            let should_intercept = (is_transport_executor || is_tool_env || is_tool_consumer)
                 && matches!(mode, ExecutionMode::DryRun(_) | ExecutionMode::Simulate(_));
 
             if should_intercept {
@@ -514,7 +504,6 @@ fn execute_flat<T: Executable>(
                         return Err(ExecError::new(err_msg));
                     }
                 }
-            }
             }
         };
 
@@ -627,6 +616,16 @@ fn is_transport_execution_node<T>(node: &Node<T>) -> bool {
 /// Tool environment nodes emit `ToolHandle` outputs and are intercepted in DryRun.
 fn is_tool_env_node<T>(node: &Node<T>) -> bool {
     node.outputs.iter().any(|port| {
+        port.type_id.0 == "ToolHandle"
+    })
+}
+
+/// Check if a node consumes a ToolHandle input.
+///
+/// Nodes that consume ToolHandles (like CLI tool runners) should be intercepted
+/// in DryRun mode because they would otherwise try to execute with a mock path.
+fn consumes_tool_handle<T>(node: &Node<T>) -> bool {
+    node.inputs.iter().any(|port| {
         port.type_id.0 == "ToolHandle"
     })
 }

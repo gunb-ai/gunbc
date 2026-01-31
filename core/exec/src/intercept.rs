@@ -42,9 +42,6 @@ pub struct BoundaryMocks {
     mocks: HashMap<(String, String), BoundaryMock>,
     /// Default mock to use when no specific mock is defined
     default_mock: BoundaryMock,
-    /// Override all outputs for specific nodes (regardless of transport executor status).
-    /// Used by flow tests to mock non-transport I/O nodes (e.g., CLI tool ops).
-    node_overrides: HashMap<String, HashMap<String, Value>>,
 }
 
 impl BoundaryMocks {
@@ -101,23 +98,6 @@ impl BoundaryMocks {
         mocks
     }
 
-    /// Override all outputs for a specific node.
-    ///
-    /// Unlike transport executor interception (which is structural), node overrides
-    /// force-mock any node regardless of its port types. This is used by flow tests
-    /// to mock non-transport I/O nodes like CLI tool operations.
-    pub fn set_node_override(
-        &mut self,
-        node_id: impl Into<String>,
-        outputs: HashMap<String, Value>,
-    ) {
-        self.node_overrides.insert(node_id.into(), outputs);
-    }
-
-    /// Get the override outputs for a node, if any.
-    pub fn get_node_override(&self, node_id: &str) -> Option<&HashMap<String, Value>> {
-        self.node_overrides.get(node_id)
-    }
 }
 
 #[cfg(test)]

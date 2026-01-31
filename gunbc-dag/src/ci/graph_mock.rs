@@ -88,13 +88,11 @@ pub fn ci_mock_spec() -> MockSpec {
         )
         .transport_mock("execute_test", "skip", Value::Bool(false))
         .transport_mock("execute_test", "skip_reason", Value::Str(String::new()))
-        // -- Lint: clippy_lint is a CliToolOp (not transport), needs node override
-        .node_override("clippy_lint", vec![
-            ("success", Value::Bool(true)),
-            ("stdout", Value::Str(String::new())),
-            ("stderr", Value::Str(String::new())),
-            ("skip", Value::Bool(false)),
-        ])
+        // -- Clippy lint: succeeds (intercepted because it consumes ToolHandle)
+        .transport_mock("clippy_lint", "success", Value::Bool(true))
+        .transport_mock("clippy_lint", "stdout", Value::Str("Checking gunbc v0.1.0\n    Finished dev".into()))
+        .transport_mock("clippy_lint", "stderr", Value::Str(String::new()))
+        .transport_mock("clippy_lint", "skip", Value::Bool(false))
         // Expected outputs: verified after DryRun execution
         .expected_output("report", "overall_success", Value::Bool(true))
 }

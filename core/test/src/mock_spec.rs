@@ -55,9 +55,6 @@ pub struct MockSpec {
     /// After DryRun execution, these are verified against actual outputs.
     pub expected_outputs: Vec<ExpectedOutput>,
 
-    /// Override outputs for non-transport I/O nodes (e.g., CLI tool ops).
-    /// These force-mock nodes that aren't transport executors but still do I/O.
-    pub node_overrides: Vec<NodeOverride>,
 }
 
 impl MockSpec {
@@ -70,7 +67,6 @@ impl MockSpec {
             resource_mocks: ResourceMocks::new(),
             transport_mocks: Vec::new(),
             expected_outputs: Vec::new(),
-            node_overrides: Vec::new(),
         }
     }
 
@@ -156,35 +152,13 @@ impl MockSpec {
         self
     }
 
-    /// Add a node override (force-mock a non-transport I/O node).
-    pub fn node_override(
-        mut self,
-        node: impl Into<String>,
-        outputs: Vec<(impl Into<String>, Value)>,
-    ) -> Self {
-        self.node_overrides.push(NodeOverride {
-            node: node.into(),
-            outputs: outputs.into_iter().map(|(k, v)| (k.into(), v)).collect(),
-        });
-        self
-    }
-
     /// Convert this MockSpec into BoundaryMocks suitable for `execute_with_mode`.
     ///
-    /// Maps transport_mocks to port-level mocks and node_overrides to
-    /// full-node overrides in the resulting BoundaryMocks.
+    /// Maps transport_mocks to port-level mocks in the resulting BoundaryMocks.
     pub fn to_boundary_mocks(&self) -> BoundaryMocks {
         let mut mocks = BoundaryMocks::new();
         for tm in &self.transport_mocks {
             mocks.set_value(&tm.node, &tm.port, tm.value.clone());
-        }
-        for no in &self.node_overrides {
-            let outputs: HashMap<String, Value> = no
-                .outputs
-                .iter()
-                .map(|(k, v)| (k.clone(), v.clone()))
-                .collect();
-            mocks.set_node_override(&no.node, outputs);
         }
         mocks
     }
@@ -252,15 +226,6 @@ pub struct ExpectedOutput {
     pub port: String,
     /// Expected value
     pub expected: Value,
-}
-
-/// An override for a non-transport I/O node (force-mocked in DryRun).
-#[derive(Debug, Clone)]
-pub struct NodeOverride {
-    /// Node ID to override (e.g., "clippy_lint")
-    pub node: String,
-    /// Output port → value pairs
-    pub outputs: Vec<(String, Value)>,
 }
 
 /// An expectation about input from upstream.
