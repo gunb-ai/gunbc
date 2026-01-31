@@ -249,6 +249,14 @@ pub struct CargoEnv {
 }
 
 impl CargoEnv {
+    /// Standard CI configuration: colored output + warnings-as-errors.
+    pub fn ci() -> Self {
+        Self {
+            term_color: TermColor::Always,
+            warnings: Warnings::Deny,
+        }
+    }
+
     /// Build the environment variable map for CI/shell contexts.
     ///
     /// Returns all cargo-related env vars that should be set. The rendering
@@ -604,10 +612,7 @@ mod tests {
 
     #[test]
     fn test_cargo_env_ci() {
-        let env = CargoEnv {
-            term_color: TermColor::Always,
-            warnings: Warnings::Deny,
-        };
+        let env = CargoEnv::ci();
         let map = env.to_env_map();
         assert!(map.contains(&("CARGO_TERM_COLOR".to_string(), "always".to_string())));
         assert!(map.contains(&("RUSTFLAGS".to_string(), "-D warnings".to_string())));

@@ -31,7 +31,9 @@ use gunbc_clippy::ClippyConfigRenderer;
 use gunbc_codegen::{
     all_cleanable_outputs, all_tools, generate_cli_with_import, generate_graph_rs, FileWriter,
 };
-use gunbc_ir::transport::ci::{CiRenderer, GitHubActionsProvider, GitLabCiProvider, RenderConfig};
+use gunbc_ir::transport::ci::{
+    yaml_block, CacheConfig, CiRenderer, GitHubActionsProvider, GitLabCiProvider, RenderConfig,
+};
 use gunbc_ir::Renderable;
 use std::env;
 use std::fs;
@@ -287,58 +289,39 @@ fn cmd_cigen(dry_run: bool) {
     // gunbc-ci is special - it has a handwritten main.rs that handles codegen internally
     let codegen = gunbc_ir::CargoInvocation::standalone("codegen");
     let tool = gunbc_ir::CargoInvocation::composed("ci", "dag");
-    // Repo-level cargo config: colored output + warnings-as-errors
-    let cargo_env = gunbc_ir::CargoEnv {
-        term_color: gunbc_ir::TermColor::Always,
-        warnings: gunbc_ir::Warnings::Deny,
-    };
     let config = RenderConfig::new("ci", tool)
         .with_generator(
             &codegen.binary,
             &format!("{} -- cigen", codegen.command()),
         )
         .with_runner(gunbc_ir::transport::github_actions::ubuntu_latest())
-        .with_cargo_env(cargo_env)
-        .with_git(gunbc_ir::GitConfig::default());
-    
-    // Generate GitHub Actions YAML
-    let ci_yaml = generate_github_actions_template(&config);
-    let github_path = github_provider.output_path("ci");
-    
-    match writer.write(Path::new(&github_path), &ci_yaml) {
-        Ok(result) => {
-            let status = if result.written {
-                if result.changed { "written" } else { "unchanged" }
-            } else {
-                "dry-run"
-            };
-            println!("  [ci] {} ({})", github_path, status);
-        }
-        Err(e) => {
-            eprintln!("  [ci] GitHub Actions ERROR: {}", e);
-        }
-    }
-    
-    // Generate GitLab CI YAML
-    let gitlab_yaml = generate_gitlab_ci_template(&config);
-    let gitlab_path = gitlab_provider.output_path("ci");
-    
-    match writer.write(Path::new(&gitlab_path), &gitlab_yaml) {
-        Ok(result) => {
-            let status = if result.written {
-                if result.changed { "written" } else { "unchanged" }
-            } else {
-                "dry-run"
-            };
-            println!("  [ci] {} ({})", gitlab_path, status);
-        }
-        Err(e) => {
-            eprintln!("  [ci] GitLab CI ERROR: {}", e);
+        .with_cargo_env(gunbc_ir::CargoEnv::ci())
+        .with_git(gunbc_ir::GitConfig::default())
+        .with_cache(CacheConfig::rust());
+
+    let outputs: Vec<(&str, String, String)> = vec![
+        ("GitHub Actions", generate_github_actions_template(&config), github_provider.output_path("ci")),
+        ("GitLab CI", generate_gitlab_ci_template(&config), gitlab_provider.output_path("ci")),
+    ];
+
+    for (label, yaml, path) in &outputs {
+        match writer.write(Path::new(path), yaml) {
+            Ok(result) => {
+                let status = if result.written {
+                    if result.changed { "written" } else { "unchanged" }
+                } else {
+                    "dry-run"
+                };
+                println!("  [ci] {} ({})", path, status);
+            }
+            Err(e) => {
+                eprintln!("  [ci] {} ERROR: {}", label, e);
+            }
         }
     }
-    
+
     println!();
-    println!("Generated: 2 CI files");
+    println!("Generated: {} CI files", outputs.len());
 }
 
 /// Generate clippy.toml from ClippyConfig.
@@ -376,24 +359,10 @@ fn cmd_clippy_toml(dry_run: bool) {
     println!("Generated: clippy.toml");
 }
 
-/// Emit a YAML block only if `items` is non-empty.
-///
-/// Writes `header\n`, then each formatted item as a line, then a trailing blank line.
-/// Skips entirely when `items` is empty.
-fn yaml_block<T>(yaml: &mut String, header: &str, items: &[T], fmt: impl Fn(&T) -> String) {
-    if items.is_empty() {
-        return;
-    }
-    yaml.push_str(header);
-    yaml.push('\n');
-    for item in items {
-        yaml.push_str(&fmt(item));
-        yaml.push('\n');
-    }
-    yaml.push('\n');
-}
-
 /// Generate GitHub Actions YAML template.
+///
+/// Renders checkout, cache, and steps from `RenderConfig` model types
+/// rather than hardcoding them in the template.
 fn generate_github_actions_template(config: &RenderConfig) -> String {
     let mut yaml = String::new();
 
@@ -402,8 +371,7 @@ fn generate_github_actions_template(config: &RenderConfig) -> String {
 
     // Triggers — derived from git config
     let branches = config.git.ci_branches();
-    yaml.push_str("on:\n");
-    yaml.push_str("  push:\n");
+    yaml.push_str("on:\n  push:\n");
     yaml_block(&mut yaml, "    branches:", &branches, |b| format!("      - {}", b));
     yaml.push_str("  pull_request:\n");
     yaml_block(&mut yaml, "    branches:", &branches, |b| format!("      - {}", b));
@@ -411,44 +379,38 @@ fn generate_github_actions_template(config: &RenderConfig) -> String {
     // Environment — derived from cargo env + manual overrides
     yaml_block(&mut yaml, "env:", &config.all_env(), |(k, v)| format!("  {}: {}", k, v));
 
-    // Job — runner from the provider's image catalog
-    yaml.push_str("jobs:\n");
-    yaml.push_str(&format!("  {}:\n", config.workflow_name));
-    yaml.push_str(&format!("    runs-on: {}\n", config.runner.id));
-    yaml.push_str("    steps:\n");
-    yaml.push_str("      - name: Checkout\n");
-    yaml.push_str("        uses: actions/checkout@v4\n");
-    yaml.push_str("        with:\n");
-    yaml.push_str("          fetch-depth: 1\n");
-    yaml.push('\n');
-    
+    // Job
+    yaml.push_str(&format!(
+        "jobs:\n  {}:\n    runs-on: {}\n    steps:\n",
+        config.workflow_name, config.runner.id,
+    ));
+
+    // Checkout (from config model)
+    if let Some(checkout) = &config.checkout {
+        yaml.push_str("      - name: Checkout\n        uses: actions/checkout@v4\n");
+        if let Some(depth) = checkout.fetch_depth {
+            yaml.push_str(&format!("        with:\n          fetch-depth: {}\n", depth));
+        }
+        yaml.push('\n');
+    }
+
     // Rust toolchain
-    yaml.push_str("      - name: Setup Rust\n");
-    yaml.push_str("        uses: dtolnay/rust-toolchain@stable\n");
-    yaml.push('\n');
-    
-    // Cache
-    yaml.push_str("      - name: Cache Cargo\n");
-    yaml.push_str("        uses: actions/cache@v4\n");
-    yaml.push_str("        with:\n");
-    yaml.push_str("          path: |\n");
-    yaml.push_str("            ~/.cargo/bin/\n");
-    yaml.push_str("            ~/.cargo/registry/index/\n");
-    yaml.push_str("            ~/.cargo/registry/cache/\n");
-    yaml.push_str("            ~/.cargo/git/db/\n");
-    yaml.push_str("            target/\n");
-    yaml.push_str("          key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}\n");
-    yaml.push_str("          restore-keys: |\n");
-    yaml.push_str("            cargo-${{ runner.os }}-\n");
-    yaml.push('\n');
-    
+    yaml.push_str("      - name: Setup Rust\n        uses: dtolnay/rust-toolchain@stable\n\n");
+
+    // Cache (from config model)
+    if let Some(cache) = &config.cache {
+        yaml.push_str("      - name: Cache Cargo\n        uses: actions/cache@v4\n        with:\n");
+        yaml_block(&mut yaml, "          path: |", &cache.paths, |p| format!("            {}", p));
+        yaml.push_str(&format!("          key: {}\n", cache.key));
+        yaml_block(&mut yaml, "          restore-keys: |", &cache.restore_keys, |k| format!("            {}", k));
+    }
+
     // Run CI Pipeline
-    // gunbc-ci has a handwritten main.rs that handles codegen internally via the prep node.
-    // The prep node uses the resource acquisition (upsert) pattern: check if generated
-    // files exist, generate them if not. This makes CI self-healing.
-    yaml.push_str("      - name: Run CI Pipeline\n");
-    yaml.push_str(&format!("        run: {} --release\n", config.tool.command()));
-    
+    yaml.push_str(&format!(
+        "      - name: Run CI Pipeline\n        run: {} --release\n",
+        config.tool.command(),
+    ));
+
     yaml
 }
 
@@ -457,31 +419,22 @@ fn generate_gitlab_ci_template(config: &RenderConfig) -> String {
     let mut yaml = String::new();
 
     yaml.push_str(&config.header("#"));
-    yaml.push_str("\n\n");
-    
-    // Image — runner from the provider's image catalog
-    yaml.push_str("image: rust:latest\n\n");
+    yaml.push_str("\n\nimage: rust:latest\n\n");
 
     // Variables — derived from cargo env + manual overrides
     yaml_block(&mut yaml, "variables:", &config.all_env(), |(k, v)| format!("  {}: \"{}\"", k, v));
-    
-    // Stages
-    yaml.push_str("stages:\n");
-    yaml.push_str("  - ci\n\n");
-    
-    // Cache
-    yaml.push_str("cache:\n");
-    yaml.push_str("  key: cargo-${CI_COMMIT_REF_SLUG}\n");
-    yaml.push_str("  paths:\n");
-    yaml.push_str("    - .cargo/\n");
-    yaml.push_str("    - target/\n\n");
-    
-    // CI job - gunbc-ci handles codegen internally via the prep node
-    yaml.push_str(&format!("{}:\n", config.workflow_name));
-    yaml.push_str("  stage: ci\n");
-    yaml.push_str("  script:\n");
-    yaml.push_str(&format!("    - {} --release\n", config.tool.command()));
-    
+
+    yaml.push_str("stages:\n  - ci\n\n");
+
+    // Cache — GitLab uses CI_COMMIT_REF_SLUG and relative paths
+    yaml.push_str("cache:\n  key: cargo-${CI_COMMIT_REF_SLUG}\n  paths:\n    - .cargo/\n    - target/\n\n");
+
+    // CI job
+    yaml.push_str(&format!(
+        "{}:\n  stage: ci\n  script:\n    - {} --release\n",
+        config.workflow_name, config.tool.command(),
+    ));
+
     yaml
 }
 

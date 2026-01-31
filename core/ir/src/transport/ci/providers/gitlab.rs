@@ -219,36 +219,19 @@ impl CiRenderer for GitLabCiProvider {
 
 /// Render a GitLab CI configuration from shared steps.
 fn render_gitlab_ci(steps: &[SharedStep], config: &RenderConfig) -> String {
+    use crate::transport::ci::yaml_block;
+
     let mut yaml = String::new();
 
-    // Header from render config — generator name and regen command are set by the caller
     yaml.push_str(&config.header("#"));
-    yaml.push_str("\n\n");
-
-    // Default image — uses runner image ID
-    yaml.push_str(&format!("image: {}\n\n", config.runner.id));
+    yaml.push_str(&format!("\n\nimage: {}\n\n", config.runner.id));
 
     // Variables — derived from cargo env + manual overrides
-    let all_env = config.all_env();
-    if !all_env.is_empty() {
-        yaml.push_str("variables:\n");
-        for (key, value) in &all_env {
-            yaml.push_str(&format!("  {}: \"{}\"\n", key, value));
-        }
-        yaml.push('\n');
-    }
+    yaml_block(&mut yaml, "variables:", &config.all_env(), |(k, v)| format!("  {}: \"{}\"", k, v));
 
-    // Compute stages from DAG structure
-    let stages = compute_stages(steps);
-    if !stages.is_empty() {
-        yaml.push_str("stages:\n");
-        for stage in &stages {
-            yaml.push_str(&format!("  - {}\n", stage));
-        }
-        yaml.push('\n');
-    }
+    // Stages — computed from DAG structure
+    yaml_block(&mut yaml, "stages:", &compute_stages(steps), |s| format!("  - {}", s));
 
-    // Render each job
     for step in steps {
         yaml.push_str(&render_gitlab_job(step, config));
     }

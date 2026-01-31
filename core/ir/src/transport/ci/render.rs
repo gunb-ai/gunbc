@@ -206,6 +206,28 @@ impl RenderConfig {
     }
 }
 
+// ============================================================================
+// YAML Rendering Utilities
+// ============================================================================
+
+/// Emit a YAML block only if `items` is non-empty.
+///
+/// Writes `header\n`, then each formatted item as a line, then a trailing blank line.
+/// Skips entirely when `items` is empty. This is the standard pattern for
+/// YAML sections like `env:`, `variables:`, `branches:`, `stages:`, etc.
+pub fn yaml_block<T>(yaml: &mut String, header: &str, items: &[T], fmt: impl Fn(&T) -> String) {
+    if items.is_empty() {
+        return;
+    }
+    yaml.push_str(header);
+    yaml.push('\n');
+    for item in items {
+        yaml.push_str(&fmt(item));
+        yaml.push('\n');
+    }
+    yaml.push('\n');
+}
+
 /// Checkout configuration.
 #[derive(Debug, Clone)]
 pub struct CheckoutConfig {
@@ -412,17 +434,12 @@ mod tests {
 
     #[test]
     fn test_render_config_builder() {
-        use crate::cargo::{TermColor, Warnings};
         use crate::transport::github_actions::ubuntu_22_04;
 
         let tool = CargoInvocation::composed("ci", "dag");
-        let cargo_env = CargoEnv {
-            term_color: TermColor::Always,
-            warnings: Warnings::Deny,
-        };
         let config = RenderConfig::new("ci", tool)
             .with_runner(ubuntu_22_04())
-            .with_cargo_env(cargo_env)
+            .with_cargo_env(CargoEnv::ci())
             .with_git(GitConfig::new("develop"));
 
         assert_eq!(config.runner.id, "ubuntu-22.04");
