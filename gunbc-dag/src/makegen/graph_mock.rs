@@ -5,6 +5,7 @@
 //! - What input constraints upstream must satisfy
 //! - Resource simulations for file system operations
 
+use gunbc_ir::transport::{ShellResponse, TransportResponse};
 use gunbc_ir::{CargoInvocation, Value};
 use gunbc_test::{InputConstraint, MockSpec};
 
@@ -39,6 +40,29 @@ pub fn makegen_mock_spec() -> MockSpec {
         .expects_input("output_path", InputConstraint::Any)
         // Resource: file write lock
         .resource_lock("fs:Makefile")
+        // Transport mocks: values returned by intercepted transport executor node
+        .transport_mock(
+            "execute_transport",
+            "response",
+            Value::Response(TransportResponse::Shell(ShellResponse {
+                exit_code: 0,
+                stdout: String::new(),
+                stderr: String::new(),
+            })),
+        )
+        .transport_mock(
+            "execute_transport",
+            "written_path",
+            Value::Str("Makefile".into()),
+        )
+        .transport_mock(
+            "execute_transport",
+            "content",
+            Value::Str("<mock-written>".into()),
+        )
+        // Expected outputs: load_registry is a pure root node with boundary outputs
+        // tool_count verifies the registry loaded correctly
+        .expected_output("load_registry", "tool_count", Value::Int(6))
 }
 
 /// Mock spec for testing no-change scenario.

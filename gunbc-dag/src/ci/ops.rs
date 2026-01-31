@@ -61,7 +61,7 @@ pub enum CIOp {
     /// Parse the test shell response (pure)
     ParseTestResult,
 
-    // ========== Lint stage (uses Clippy tool via requires_tools) ==========
+    // ========== Lint stage (receives tool handle from env node) ==========
     /// Prepare clippy lint - check if we should skip based on build_success (pure)
     /// Inputs: build_success: Bool
     /// Outputs: skip: Bool, skip_reason: String (if skipping)

@@ -4,6 +4,7 @@
 //! - What mock values boundary nodes provide
 //! - Resource simulations for CI operations
 
+use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse, TransportResponse};
 use gunbc_ir::Value;
 use gunbc_test::MockSpec;
 
@@ -33,6 +34,67 @@ pub fn ci_mock_spec() -> MockSpec {
         .resource_lock("cargo:build")
         .resource_lock("cargo:test")
         .resource_lock("cargo:clippy")
+        // Transport mocks: values returned by intercepted transport executor nodes
+        // -- SetupDeps: deps.toml exists
+        .transport_mock(
+            "execute_deps_exists",
+            "response",
+            Value::Response(TransportResponse::File(FileResponse {
+                path: "deps.toml".into(),
+                operation: FileOp::Exists,
+                success: true,
+                content: None,
+                exists: Some(true),
+                error: None,
+            })),
+        )
+        // -- Prep: codegen output already exists
+        .transport_mock(
+            "execute_codegen_exists",
+            "response",
+            Value::Response(TransportResponse::File(FileResponse {
+                path: "buck-out/gen/bin".into(),
+                operation: FileOp::Exists,
+                success: true,
+                content: None,
+                exists: Some(true),
+                error: None,
+            })),
+        )
+        // -- Codegen: skipped (already exists)
+        .transport_mock("execute_codegen", "response", Value::Skipped)
+        .transport_mock("execute_codegen", "skip", Value::Bool(true))
+        // -- Build: succeeds
+        .transport_mock(
+            "execute_build",
+            "response",
+            Value::Response(TransportResponse::Shell(ShellResponse {
+                exit_code: 0,
+                stdout: "Compiling gunbc v0.1.0\n    Finished dev target(s)".into(),
+                stderr: String::new(),
+            })),
+        )
+        .transport_mock("execute_build", "skip", Value::Bool(false))
+        .transport_mock("execute_build", "skip_reason", Value::Str(String::new()))
+        // -- Test: succeeds
+        .transport_mock(
+            "execute_test",
+            "response",
+            Value::Response(TransportResponse::Shell(ShellResponse {
+                exit_code: 0,
+                stdout: "running 42 tests\ntest result: ok. 42 passed".into(),
+                stderr: String::new(),
+            })),
+        )
+        .transport_mock("execute_test", "skip", Value::Bool(false))
+        .transport_mock("execute_test", "skip_reason", Value::Str(String::new()))
+        // -- Clippy lint: succeeds (intercepted because it consumes ToolHandle)
+        .transport_mock("clippy_lint", "success", Value::Bool(true))
+        .transport_mock("clippy_lint", "stdout", Value::Str("Checking gunbc v0.1.0\n    Finished dev".into()))
+        .transport_mock("clippy_lint", "stderr", Value::Str(String::new()))
+        .transport_mock("clippy_lint", "skip", Value::Bool(false))
+        // Expected outputs: verified after DryRun execution
+        .expected_output("report", "overall_success", Value::Bool(true))
 }
 
 /// Mock spec for testing CI failure.

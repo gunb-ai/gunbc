@@ -140,7 +140,7 @@ impl<T: Clone> UpsertBuilder<T> {
                     Guard::Eq(Value::Bool(false)),
                 ),
             ],
-            vec![Port::scalar("created", "Bool")],
+            vec![],
             create_op,
         ));
 
@@ -159,10 +159,7 @@ impl<T: Clone> UpsertBuilder<T> {
         Node::subdag(
             self.name.as_str(),
             vec![Port::scalar(self.input_port_name.as_str(), self.input_port_type.as_str())],
-            vec![
-                Port::scalar(self.output_port_name.as_str(), self.output_port_type.as_str()),
-                Port::scalar("was_created", "Bool"),
-            ],
+            vec![Port::scalar(self.output_port_name.as_str(), self.output_port_type.as_str())],
             dag,
         )
     }
@@ -206,9 +203,8 @@ mod tests {
         assert_eq!(node.inputs.len(), 1);
         assert_eq!(node.inputs[0].name.0, "resource_id");
 
-        assert_eq!(node.outputs.len(), 2);
+        assert_eq!(node.outputs.len(), 1);
         assert_eq!(node.outputs[0].name.0, "handle");
-        assert_eq!(node.outputs[1].name.0, "was_created");
     }
 
     #[test]

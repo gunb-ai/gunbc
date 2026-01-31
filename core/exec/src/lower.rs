@@ -121,7 +121,6 @@ pub fn lower<T: Clone>(dag: &Dag<T>) -> Result<Dag<T>, LowerError> {
                         inputs: sub_node.inputs.clone(),
                         outputs: sub_node.outputs.clone(),
                         body: sub_node.body.clone(),
-                        requires_tools: sub_node.requires_tools.clone(),
                     };
                     result.add_node(prefixed_node);
                 }

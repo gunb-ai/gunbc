@@ -6,23 +6,34 @@
 use gunbc_exec::{execute_with_mode, BoundaryMocks, ExecutionMode};
 use gunbc_ir::{detect_boundaries, Cardinality, Value};
 use gunbc_test::{assert_boundary_mockable, assert_types_compatible, default_mocks};
-use gunbc_test::{validate_chain, MockSpec, InputConstraint};
 use gunbc_test::{ResourceAcquireResult, ResourceSimulation};
 
 // ============================================================================
-// Chain Validation Tests
-// These tests verify that mock outputs satisfy downstream input expectations.
+// Flow Verification Tests
+// These tests execute the full DAG in DryRun mode with mocked transport
+// responses, verifying that pure node logic produces expected outputs.
 // ============================================================================
 
-/// Test that this tool's mock spec is self-consistent.
+/// Flow verification: bootstrap scenario.
+///
+/// Builds the DAG, injects mocked transport responses via DryRun,
+/// and verifies that the pure node chain produces expected terminal outputs.
 #[test]
-fn test_mock_spec_self_consistent() {
+fn test_flow_bootstrap() {
+    let dag = crate::build_bootstrap_graph().unwrap();
     let spec = mock_spec();
-    // Verify all boundary mocks are present
-    assert!(spec.get_boundary_mock("write_files", "files_written").is_some(), 
-        "MockSpec should have boundary mock for write_files.files_written");
-    assert!(spec.get_boundary_mock("write_files", "write_count").is_some(), 
-        "MockSpec should have boundary mock for write_files.write_count");
+    let mocks = spec.to_boundary_mocks();
+    let log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks))
+        .expect("DryRun execution should succeed");
+
+    // Verify parse_scan_result.crate_count
+    let entry = log.get("parse_scan_result").expect("node 'parse_scan_result' should be in execution log");
+    assert_eq!(
+        entry.outputs.get("crate_count").expect("port 'crate_count' should exist on 'parse_scan_result'"),
+        &Value::Int(2),
+        "flow verification: parse_scan_result.crate_count mismatch"
+    );
+
 }
 
 // ============================================================================

@@ -148,7 +148,6 @@ impl<'a, T> ScriptedDagBuilder<'a, T> {
                 inputs: node.inputs.clone(),
                 outputs: node.outputs.clone(),
                 body,
-                requires_tools: node.requires_tools.clone(),
             });
         }
 

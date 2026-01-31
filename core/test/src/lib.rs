@@ -45,9 +45,9 @@ pub use boundary::{assert_boundary_mockable, default_mocks, mocks_with_values, B
 pub use composition::{assert_types_compatible, TypeCompatibility};
 pub use mock::{MockBehavior, MockOp, ScriptedDagBuilder};
 pub use mock_spec::{
-    validate_chain, BoundaryMock, ChainError, ChainValidationResult, InputConstraint,
-    InputExpectation, MockSpec, ResourceAcquireResult, ResourceBehavior, ResourceMocks,
-    ResourceSimulation, ResourceType,
+    validate_chain, BoundaryMock, ChainError, ChainValidationResult, ExpectedOutput,
+    InputConstraint, InputExpectation, MockSpec, ResourceAcquireResult,
+    ResourceBehavior, ResourceMocks, ResourceSimulation, ResourceType, TransportMock,
 };
 pub use mockable::{
     CardinalityTestInput, ErrorTestCase, ExpectedBehavior, Mockable,
