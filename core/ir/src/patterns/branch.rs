@@ -26,6 +26,7 @@
 
 use crate::dag::{Dag, Edge, Guard, Port};
 use crate::node::Node;
+use crate::patterns::PatternOp;
 use crate::types::Cardinality;
 use crate::value::Value;
 
@@ -111,7 +112,7 @@ impl<T: Clone> BranchBuilder<T> {
     /// Panics if both branches are not set.
     pub fn build(self) -> Node<T>
     where
-        T: Default,
+        T: From<PatternOp>,
     {
         let true_dag = self.true_dag.expect("true branch DAG is required");
         let false_dag = self.false_dag.expect("false branch DAG is required");
@@ -161,7 +162,9 @@ impl<T: Clone> BranchBuilder<T> {
                 Port::scalar(self.output_port_name.as_str(), self.output_port_type.as_str()),
                 Port::scalar("branch_taken", "String"),
             ],
-            T::default(),
+            T::from(PatternOp::BranchMerge {
+                output_port: self.output_port_name.clone(),
+            }),
         ));
 
         // Wire branches to merge
@@ -277,8 +280,7 @@ mod tests {
     use super::*;
     use crate::node::NodeBody;
 
-    #[derive(Debug, Clone, Default)]
-    struct TestOp;
+    type TestOp = PatternOp;
 
     #[test]
     fn test_branch_builder_creates_subdag() {

@@ -32,6 +32,7 @@ pub mod error;
 pub mod execute;
 pub mod intercept;
 pub mod lower;
+pub mod pattern_op;
 pub mod topo;
 
 pub use ci_context::CiContext;

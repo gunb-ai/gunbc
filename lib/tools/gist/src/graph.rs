@@ -102,8 +102,8 @@ pub enum GistGraphOp {
 
 /// Default implementation for GistGraphOp.
 ///
-/// This enables using GistGraphOp with pattern builders like LoopBuilder,
-/// which require `T: Default` for internal nodes.
+/// Retained for legacy usage; pattern builders now require `T: From<PatternOp>`
+/// for internal nodes.
 ///
 /// Default returns a no-op variant (Transport with Execute).
 impl Default for GistGraphOp {
@@ -1216,6 +1216,7 @@ mod tests {
 
     #[test]
     fn test_gist_graph_op_has_default() {
+        // Default is retained for legacy usage (not required by pattern builders).
         let default_op = GistGraphOp::default();
         assert!(matches!(default_op, GistGraphOp::Transport(_)));
     }

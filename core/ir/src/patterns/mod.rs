@@ -29,6 +29,7 @@
 pub mod atomic;
 pub mod branch;
 pub mod loop_pattern;
+pub mod pattern_op;
 pub mod repeat;
 pub mod transaction;
 pub mod upsert;
@@ -36,6 +37,7 @@ pub mod upsert;
 pub use atomic::AtomicBuilder;
 pub use branch::BranchBuilder;
 pub use loop_pattern::LoopBuilder;
+pub use pattern_op::PatternOp;
 pub use repeat::{BackoffStrategy, FailureClassifier, PollBuilder, RepeatPolicy, RetryBuilder, WhileBuilder};
 pub use transaction::TransactionBuilder;
 pub use upsert::UpsertBuilder;

@@ -36,8 +36,7 @@ pub enum DepsGraphOp {
 
 /// Default implementation for DepsGraphOp.
 ///
-/// This enables using DepsGraphOp with pattern builders like LoopBuilder and UpsertBuilder,
-/// which require `T: Default` for internal nodes.
+/// Retained for legacy usage; pattern builders now require `T: From<PatternOp>` for internal nodes.
 impl Default for DepsGraphOp {
     fn default() -> Self {
         // Default to transport execute - a safe no-op when properly guarded

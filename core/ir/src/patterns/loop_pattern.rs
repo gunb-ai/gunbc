@@ -23,6 +23,7 @@
 
 use crate::dag::{Dag, Edge, Port};
 use crate::node::Node;
+use crate::patterns::PatternOp;
 use crate::types::Cardinality;
 
 /// Builder for the loop pattern.
@@ -113,7 +114,7 @@ impl<T: Clone> LoopBuilder<T> {
     /// interprets as "apply body to each element".
     pub fn build(self) -> Node<T>
     where
-        T: Default,
+        T: From<PatternOp>,
     {
         let body_dag = self.body_dag.expect("body DAG is required");
 
@@ -136,7 +137,10 @@ impl<T: Clone> LoopBuilder<T> {
                 Port::scalar("index", "Int"),
                 Port::scalar("count", "Int"),
             ],
-            T::default(),
+            T::from(PatternOp::LoopUnpack {
+                input_port: self.input_port_name.clone(),
+                element_port: self.element_port_name.clone(),
+            }),
         ));
 
         // Body subdag: processes each element
@@ -159,7 +163,9 @@ impl<T: Clone> LoopBuilder<T> {
                 ),
                 Port::scalar("iterations", "Int"),
             ],
-            T::default(),
+            T::from(PatternOp::LoopPack {
+                output_port: self.output_port_name.clone(),
+            }),
         ));
 
         // Wire the internal nodes
@@ -193,8 +199,7 @@ mod tests {
     use super::*;
     use crate::node::NodeBody;
 
-    #[derive(Debug, Clone, Default)]
-    struct TestOp;
+    type TestOp = PatternOp;
 
     #[test]
     fn test_loop_builder_creates_subdag() {

@@ -56,8 +56,8 @@ Capture acute pattern issues found in the audit and document why they have not b
 - [x] Fix Upsert: add `was_created` boundary output (or remove it from the outer interface).
 - [x] Fix Loop: add `iterations` boundary output (or remove it from the outer interface).
 - [x] Decide and implement Loop element-output typing (add `with_element_output` or update docs and behavior).
-- [ ] Wire Repeat/While/Poll configuration into internal ops, or remove unused fields.
-- [ ] Define and enforce a contract for internal pattern ops (avoid implicit `T::default()` semantics or formalize it).
+- [x] Wire Repeat/While/Poll configuration into internal ops, or remove unused fields.
+- [x] Define and enforce a contract for internal pattern ops (avoid implicit `T::default()` semantics or formalize it).
 - [ ] Add SubDag interface validation in `gunbc-ir` and run it from builders/testgen/exec.
 - [ ] Add pattern tests that run `lower()` (or equivalent validation) to catch interface mismatches early.
 
@@ -67,3 +67,4 @@ Capture acute pattern issues found in the audit and document why they have not b
 - A small IR-level validator would make this consistent across testgen, builder usage, and exec.
 - Loop element-output typing remains fixed to the element input type for now; docs were updated accordingly.
 - Upsert no longer exposes `was_created`; the create node has no outputs.
+- Pattern internal nodes now use `PatternOp` (via `From<PatternOp>`) instead of `T::default()`; Repeat/While/Poll config is embedded in those ops.

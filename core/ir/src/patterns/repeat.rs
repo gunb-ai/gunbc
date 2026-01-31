@@ -13,6 +13,7 @@
 
 use crate::dag::{Dag, Edge, Port};
 use crate::node::Node;
+use crate::patterns::PatternOp;
 use std::time::Duration;
 
 // ============================================================================
@@ -183,7 +184,7 @@ impl<T: Clone> RetryBuilder<T> {
     /// Build the retry pattern as a SubDag node.
     pub fn build(self) -> Node<T>
     where
-        T: Default,
+        T: From<PatternOp>,
     {
         let body_dag = self.body_dag.expect("body DAG is required");
 
@@ -201,7 +202,11 @@ impl<T: Clone> RetryBuilder<T> {
                 Port::scalar("attempt", "Int"),
                 Port::scalar("should_retry", "Bool"),
             ],
-            T::default(),
+            T::from(PatternOp::RetryController {
+                input_port: self.input_port_name.clone(),
+                policy: self.policy.clone(),
+                classifier: self.classifier.clone(),
+            }),
         ));
 
         // Body subdag
@@ -228,7 +233,9 @@ impl<T: Clone> RetryBuilder<T> {
                 Port::scalar("attempts_made", "Int"),
                 Port::optional("final_error", "Error"),
             ],
-            T::default(),
+            T::from(PatternOp::RetryCollector {
+                output_port: self.output_port_name.clone(),
+            }),
         ));
 
         // Wire internal nodes
@@ -328,7 +335,7 @@ impl<T: Clone> WhileBuilder<T> {
     /// Build the while pattern as a SubDag node.
     pub fn build(self) -> Node<T>
     where
-        T: Default,
+        T: From<PatternOp>,
     {
         let condition_dag = self.condition_dag.expect("condition DAG is required");
         let body_dag = self.body_dag.expect("body DAG is required");
@@ -342,7 +349,9 @@ impl<T: Clone> WhileBuilder<T> {
             "init",
             vec![Port::scalar(self.state_port_name.as_str(), state_type)],
             vec![Port::scalar("state_out", state_type)],
-            T::default(),
+            T::from(PatternOp::WhileInit {
+                input_port: self.state_port_name.clone(),
+            }),
         ));
 
         // Condition subdag
@@ -375,7 +384,9 @@ impl<T: Clone> WhileBuilder<T> {
                 Port::scalar("final_state", state_type),
                 Port::scalar("iterations", "Int"),
             ],
-            T::default(),
+            T::from(PatternOp::WhileController {
+                max_iterations: self.max_iterations,
+            }),
         ));
 
         // Wire internal nodes
@@ -476,7 +487,7 @@ impl<T: Clone> PollBuilder<T> {
     /// Build the poll pattern as a SubDag node.
     pub fn build(self) -> Node<T>
     where
-        T: Default,
+        T: From<PatternOp>,
     {
         let body_dag = self.body_dag.expect("body DAG is required");
 
@@ -491,7 +502,11 @@ impl<T: Clone> PollBuilder<T> {
                 Port::scalar("poll_count", "Int"),
                 Port::scalar("elapsed_ms", "Int"),
             ],
-            T::default(),
+            T::from(PatternOp::PollTimer {
+                input_port: self.input_port_name.clone(),
+                interval: self.interval,
+                timeout: self.timeout,
+            }),
         ));
 
         // Body subdag
@@ -520,7 +535,9 @@ impl<T: Clone> PollBuilder<T> {
                 Port::scalar("polls", "Int"),
                 Port::scalar("elapsed_ms", "Int"),
             ],
-            T::default(),
+            T::from(PatternOp::PollCollector {
+                output_port: self.output_port_name.clone(),
+            }),
         ));
 
         // Wire internal nodes
@@ -550,8 +567,7 @@ mod tests {
     use super::*;
     use crate::node::NodeBody;
 
-    #[derive(Debug, Clone, Default)]
-    struct TestOp;
+    type TestOp = PatternOp;
 
     // ============ Retry Tests ============
 

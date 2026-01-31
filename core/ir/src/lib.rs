@@ -74,7 +74,7 @@ pub use entrypoint::{detect_entrypoints, EntrypointInfo};
 pub use node::{Node, NodeBody};
 pub use patterns::{
     AtomicBuilder, BackoffStrategy, FailureClassifier, PollBuilder, RepeatPolicy, RetryBuilder,
-    TransactionBuilder, UpsertBuilder, WhileBuilder,
+    TransactionBuilder, UpsertBuilder, WhileBuilder, PatternOp,
 };
 pub use signature::{infer_signature, SignatureError, SignaturePort, WorkflowSignature};
 pub use contract::TypeContract;
