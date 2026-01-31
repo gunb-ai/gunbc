@@ -4,6 +4,7 @@
 //! - What mock values boundary nodes provide
 //! - Resource simulations for file system operations
 
+use gunbc_ir::transport::{ShellResponse, TransportResponse};
 use gunbc_ir::Value;
 use gunbc_test::MockSpec;
 
@@ -38,6 +39,56 @@ pub fn bootstrap_mock_spec() -> MockSpec {
         // Resources: file locks for both outputs
         .resource_lock("fs:Makefile")
         .resource_lock("fs:.gitignore")
+        // Transport mocks: values returned by intercepted transport executor nodes
+        .transport_mock(
+            "execute_scan_workspace",
+            "response",
+            Value::Response(TransportResponse::Shell(ShellResponse {
+                exit_code: 0,
+                stdout: "crates/bar\ncrates/foo\n".to_string(),
+                stderr: String::new(),
+            })),
+        )
+        .transport_mock(
+            "execute_makefile_transport",
+            "makefile_response",
+            Value::Response(TransportResponse::Shell(ShellResponse {
+                exit_code: 0,
+                stdout: String::new(),
+                stderr: String::new(),
+            })),
+        )
+        .transport_mock(
+            "execute_makefile_transport",
+            "makefile_written_path",
+            Value::Str("Makefile".into()),
+        )
+        .transport_mock(
+            "execute_makefile_transport",
+            "makefile_content",
+            Value::Str("<mock>".into()),
+        )
+        .transport_mock(
+            "execute_gitignore_transport",
+            "gitignore_response",
+            Value::Response(TransportResponse::Shell(ShellResponse {
+                exit_code: 0,
+                stdout: String::new(),
+                stderr: String::new(),
+            })),
+        )
+        .transport_mock(
+            "execute_gitignore_transport",
+            "gitignore_written_path",
+            Value::Str(".gitignore".into()),
+        )
+        .transport_mock(
+            "execute_gitignore_transport",
+            "gitignore_content",
+            Value::Str("<mock>".into()),
+        )
+        // Expected outputs: verified after DryRun execution
+        .expected_output("parse_scan_result", "crate_count", Value::Int(2))
 }
 
 /// Mock spec for testing single file write.

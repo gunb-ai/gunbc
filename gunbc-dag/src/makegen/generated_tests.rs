@@ -6,33 +6,34 @@
 use gunbc_exec::{execute_with_mode, BoundaryMocks, ExecutionMode};
 use gunbc_ir::{detect_boundaries, Cardinality, Value};
 use gunbc_test::{assert_boundary_mockable, assert_types_compatible, default_mocks};
-use gunbc_test::{validate_chain, MockSpec, InputConstraint};
 use gunbc_test::{ResourceAcquireResult, ResourceSimulation};
 
 // ============================================================================
-// Chain Validation Tests
-// These tests verify that mock outputs satisfy downstream input expectations.
+// Flow Verification Tests
+// These tests execute the full DAG in DryRun mode with mocked transport
+// responses, verifying that pure node logic produces expected outputs.
 // ============================================================================
 
-/// Test that this tool's mock spec is self-consistent.
+/// Flow verification: makegen scenario.
+///
+/// Builds the DAG, injects mocked transport responses via DryRun,
+/// and verifies that the pure node chain produces expected terminal outputs.
 #[test]
-fn test_mock_spec_self_consistent() {
+fn test_flow_makegen() {
+    let dag = crate::build_makegen_graph().unwrap();
     let spec = mock_spec();
-    // Verify all boundary mocks are present
-    assert!(spec.get_boundary_mock("write_makefile", "written_path").is_some(), 
-        "MockSpec should have boundary mock for write_makefile.written_path");
-    assert!(spec.get_boundary_mock("write_makefile", "content").is_some(), 
-        "MockSpec should have boundary mock for write_makefile.content");
-    assert!(spec.get_boundary_mock("write_makefile", "changed").is_some(), 
-        "MockSpec should have boundary mock for write_makefile.changed");
-}
+    let mocks = spec.to_boundary_mocks();
+    let log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks))
+        .expect("DryRun execution should succeed");
 
-/// Test that input expectations are documented.
-#[test]
-fn test_input_expectations_documented() {
-    let spec = mock_spec();
-    // Port 'output_path' expects: Any
-    assert_eq!(spec.input_expectations.len(), 1);
+    // Verify load_registry.tool_count
+    let entry = log.get("load_registry").expect("node 'load_registry' should be in execution log");
+    assert_eq!(
+        entry.outputs.get("tool_count").expect("port 'tool_count' should exist on 'load_registry'"),
+        &Value::Int(6),
+        "flow verification: load_registry.tool_count mismatch"
+    );
+
 }
 
 // ============================================================================
