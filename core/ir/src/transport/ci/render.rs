@@ -28,6 +28,7 @@
 //! 3. **Step granularity**: Each DAG node becomes a CI step for visibility
 //! 4. **Data passing**: Node outputs become step outputs (GitHub) or artifacts (GitLab)
 
+use crate::cargo::CargoInvocation;
 use crate::{Dag, NodeId};
 use std::collections::HashMap;
 
@@ -65,13 +66,8 @@ pub struct RenderConfig {
     /// Name of the workflow/pipeline.
     pub workflow_name: String,
 
-    /// The CLI tool binary name (e.g., "gunbc-ci").
-    pub tool_binary: String,
-
-    /// The package name if the binary lives in a different package (e.g., "gunbc-dag").
-    /// When set, cargo commands use `-p <tool_package> --bin <tool_binary>`.
-    /// When None, cargo commands use `-p <tool_binary>`.
-    pub tool_package: Option<String>,
+    /// How to invoke the CI tool binary via cargo.
+    pub tool: CargoInvocation,
 
     /// Runner/image to use (e.g., "ubuntu-latest", "saas-linux-small-amd64").
     pub runner: String,
@@ -94,34 +90,16 @@ pub struct RenderConfig {
 
 impl RenderConfig {
     /// Create a new render config with defaults.
-    pub fn new(workflow_name: &str, tool_binary: &str) -> Self {
+    pub fn new(workflow_name: &str, tool: CargoInvocation) -> Self {
         Self {
             workflow_name: workflow_name.to_string(),
-            tool_binary: tool_binary.to_string(),
-            tool_package: None,
+            tool,
             runner: "ubuntu-latest".to_string(),
             step_mode: true,
             env: HashMap::new(),
             checkout: Some(CheckoutConfig::default()),
             branches: vec!["main".to_string()],
             cache: None,
-        }
-    }
-
-    /// Set the package name when the binary lives in a different package.
-    pub fn with_package(mut self, package: &str) -> Self {
-        self.tool_package = Some(package.to_string());
-        self
-    }
-
-    /// Get the `cargo run` command for this tool.
-    ///
-    /// Returns `cargo run -p <package> --bin <binary>` when tool_package is set,
-    /// or `cargo run -p <binary>` when the binary is in its own package.
-    pub fn cargo_run_command(&self) -> String {
-        match &self.tool_package {
-            Some(pkg) => format!("cargo run -p {} --bin {}", pkg, self.tool_binary),
-            None => format!("cargo run -p {}", self.tool_binary),
         }
     }
 
@@ -218,12 +196,12 @@ pub enum SharedStep {
     Run { name: String, command: String },
     /// Run a DAG tool in step mode.
     DagStep {
-        tool_binary: String,
+        tool: CargoInvocation,
         node_id: NodeId,
         depends_on: Vec<NodeId>,
     },
     /// Run a DAG tool (full execution).
-    DagRun { tool_binary: String },
+    DagRun { tool: CargoInvocation },
 }
 
 impl SharedStep {
@@ -241,19 +219,17 @@ impl SharedStep {
     }
 
     /// Create a DAG step execution.
-    pub fn dag_step(tool_binary: &str, node_id: impl Into<NodeId>, depends_on: Vec<NodeId>) -> Self {
+    pub fn dag_step(tool: CargoInvocation, node_id: impl Into<NodeId>, depends_on: Vec<NodeId>) -> Self {
         Self::DagStep {
-            tool_binary: tool_binary.to_string(),
+            tool,
             node_id: node_id.into(),
             depends_on,
         }
     }
 
     /// Create a full DAG execution.
-    pub fn dag_run(tool_binary: &str) -> Self {
-        Self::DagRun {
-            tool_binary: tool_binary.to_string(),
-        }
+    pub fn dag_run(tool: CargoInvocation) -> Self {
+        Self::DagRun { tool }
     }
 }
 
@@ -282,11 +258,11 @@ pub fn dag_to_shared_steps<T>(dag: &Dag<T>, config: &RenderConfig) -> Vec<Shared
 
         for node in &dag.nodes {
             let deps = depends_on.get(&node.id).cloned().unwrap_or_default();
-            steps.push(SharedStep::dag_step(&config.tool_binary, node.id.clone(), deps));
+            steps.push(SharedStep::dag_step(config.tool.clone(), node.id.clone(), deps));
         }
     } else {
         // 3. Single step: run the full DAG
-        steps.push(SharedStep::dag_run(&config.tool_binary));
+        steps.push(SharedStep::dag_run(config.tool.clone()));
     }
 
     steps
@@ -333,7 +309,8 @@ mod tests {
     #[test]
     fn test_dag_to_shared_steps_step_mode() {
         let dag = test_dag();
-        let config = RenderConfig::new("ci", "gunbc-ci");
+        let tool = CargoInvocation::in_package("gunbc-ci", "gunbc-dag");
+        let config = RenderConfig::new("ci", tool);
         let steps = dag_to_shared_steps(&dag, &config);
 
         // Should have: checkout + 3 DAG nodes
@@ -351,7 +328,8 @@ mod tests {
     #[test]
     fn test_dag_to_shared_steps_single_mode() {
         let dag = test_dag();
-        let config = RenderConfig::new("ci", "gunbc-ci").without_step_mode();
+        let tool = CargoInvocation::in_package("gunbc-ci", "gunbc-dag");
+        let config = RenderConfig::new("ci", tool).without_step_mode();
         let steps = dag_to_shared_steps(&dag, &config);
 
         // Should have: checkout + 1 full DAG run
@@ -362,7 +340,8 @@ mod tests {
 
     #[test]
     fn test_render_config_builder() {
-        let config = RenderConfig::new("ci", "gunbc-ci")
+        let tool = CargoInvocation::in_package("gunbc-ci", "gunbc-dag");
+        let config = RenderConfig::new("ci", tool)
             .with_runner("ubuntu-22.04")
             .with_env("CARGO_TERM_COLOR", "always")
             .with_branches(vec!["main", "develop"]);

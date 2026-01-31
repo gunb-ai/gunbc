@@ -392,13 +392,13 @@ fn render_tool_target(tool: &ToolInfo) -> String {
         .map(|p| format!("{} ({})", p.port_name, p.type_hint))
         .collect::<Vec<_>>()
         .join(", ");
-    output.push_str(&format!("# {} entrypoints: {}\n", tool.crate_name, port_list));
+    output.push_str(&format!("# {} entrypoints: {}\n", tool.binary_name(), port_list));
 
     // Target with ensure-codegen dependency
     output.push_str(&format!("{}: ensure-codegen\n", tool.short_name));
     output.push_str(&format!(
         "\t@cargo run {} --{}",
-        tool.cargo_run_args(),
+        tool.invocation.args(),
         render_cli_args(&tool.entrypoints)
     ));
     output.push_str("\n\n");
@@ -413,7 +413,7 @@ fn render_dry_run_target(tool: &ToolInfo) -> String {
     output.push_str(&format!("{}-dry: ensure-codegen\n", tool.short_name));
     output.push_str(&format!(
         "\t@cargo run {} -- --dry-run{}",
-        tool.cargo_run_args(),
+        tool.invocation.args(),
         render_cli_args(&tool.entrypoints)
     ));
     output.push_str("\n\n");

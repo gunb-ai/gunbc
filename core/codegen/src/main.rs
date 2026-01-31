@@ -285,8 +285,8 @@ fn cmd_cigen(dry_run: bool) {
     
     // Generate CI YAML for gunbc-ci
     // gunbc-ci is special - it has a handwritten main.rs that handles codegen internally
-    let config = RenderConfig::new("ci", "gunbc-ci")
-        .with_package("gunbc-dag")
+    let tool = gunbc_ir::CargoInvocation::in_package("gunbc-ci", "gunbc-dag");
+    let config = RenderConfig::new("ci", tool)
         .with_runner("ubuntu-latest")
         .with_env("CARGO_TERM_COLOR", "always")
         .with_branches(vec!["main"]);
@@ -434,7 +434,7 @@ fn generate_github_actions_template(config: &RenderConfig) -> String {
     // The prep node uses the resource acquisition (upsert) pattern: check if generated
     // files exist, generate them if not. This makes CI self-healing.
     yaml.push_str("      - name: Run CI Pipeline\n");
-    yaml.push_str(&format!("        run: {} --release\n", config.cargo_run_command()));
+    yaml.push_str(&format!("        run: {} --release\n", config.tool.command()));
     
     yaml
 }
@@ -474,7 +474,7 @@ fn generate_gitlab_ci_template(config: &RenderConfig) -> String {
     yaml.push_str(&format!("{}:\n", config.workflow_name));
     yaml.push_str("  stage: ci\n");
     yaml.push_str("  script:\n");
-    yaml.push_str(&format!("    - {} --release\n", config.cargo_run_command()));
+    yaml.push_str(&format!("    - {} --release\n", config.tool.command()));
     
     yaml
 }

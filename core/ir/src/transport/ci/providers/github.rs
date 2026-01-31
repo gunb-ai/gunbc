@@ -245,13 +245,13 @@ fn render_github_step(step: &SharedStep, _config: &RenderConfig) -> String {
         }
 
         SharedStep::DagStep {
-            tool_binary,
+            tool,
             node_id,
             depends_on,
         } => {
             let mut yaml = format!(
                 "      - name: {}\n        id: {}\n        run: {} step {}\n",
-                node_id.0, node_id.0, tool_binary, node_id.0
+                node_id.0, node_id.0, tool.command(), node_id.0
             );
 
             // Add environment variables for dependencies
@@ -271,10 +271,10 @@ fn render_github_step(step: &SharedStep, _config: &RenderConfig) -> String {
             yaml
         }
 
-        SharedStep::DagRun { tool_binary } => {
+        SharedStep::DagRun { tool } => {
             format!(
                 "      - name: Run {}\n        run: {}\n",
-                tool_binary, tool_binary
+                tool.binary, tool.command()
             )
         }
     }
@@ -283,6 +283,7 @@ fn render_github_step(step: &SharedStep, _config: &RenderConfig) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cargo::CargoInvocation;
     use crate::transport::ci::command::FileLocation;
 
     #[test]
@@ -368,7 +369,8 @@ mod tests {
         dag.add_edge(edge("build", "success", "test", "build_success"));
 
         let provider = GitHubActionsProvider;
-        let config = RenderConfig::new("ci", "gunbc-ci")
+        let tool = CargoInvocation::in_package("gunbc-ci", "gunbc-dag");
+        let config = RenderConfig::new("ci", tool)
             .with_runner("ubuntu-latest")
             .with_env("CARGO_TERM_COLOR", "always");
 

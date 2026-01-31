@@ -47,7 +47,7 @@ fn execute_load_registry(_inputs: HashMap<String, Value>) -> Result<HashMap<Stri
     let registry_json = serde_json::json!({
         "tools": registry.tools.iter().map(|t| {
             serde_json::json!({
-                "crate_name": t.crate_name,
+                "binary_name": t.binary_name(),
                 "short_name": t.short_name,
                 "description": t.description,
                 "entrypoints": t.entrypoints.iter().map(|e| {
@@ -103,9 +103,9 @@ impl Mockable for MakegenOp {
                     "registry".to_string(),
                     Value::Json(serde_json::json!({
                         "tools": [
-                            {"crate_name": "gunbc-gist", "short_name": "gist"},
-                            {"crate_name": "gunbc-deps", "short_name": "deps"},
-                            {"crate_name": "gunbc-buck2", "short_name": "buck2"},
+                            {"binary_name": "gunbc-gist", "short_name": "gist"},
+                            {"binary_name": "gunbc-deps", "short_name": "deps"},
+                            {"binary_name": "gunbc-buck2", "short_name": "buck2"},
                         ]
                     })),
                 );
