@@ -533,51 +533,50 @@ fn collect_scenario_obligations<T>(dag: &Dag<T>, obligations: &mut Vec<ProofObli
         .map(|n| &n.id)
         .collect();
 
-    if transport_executors.is_empty() {
-        return;
-    }
-
-    // C.1: All transports succeed scenario
-    obligations.push(ProofObligation::runtime(
-        Obligation::AllTransportsSucceed,
-        "Happy path: all transports succeed, workflow reaches terminal outputs",
-        ObligationSource::Structure,
-    ));
-
-    // C.2: Single transport failure scenarios (N tests, not 2^N)
-    for node_id in &transport_executors {
+    // C.1-C.3 only apply when there are transport executors
+    if !transport_executors.is_empty() {
+        // C.1: All transports succeed scenario
         obligations.push(ProofObligation::runtime(
-            Obligation::SingleTransportFailure {
-                node_id: (*node_id).clone(),
-            },
-            format!(
-                "Failure at '{}': verify failure propagation semantics",
-                node_id.0
-            ),
+            Obligation::AllTransportsSucceed,
+            "Happy path: all transports succeed, workflow reaches terminal outputs",
             ObligationSource::Structure,
         ));
-    }
 
-    // C.3: Skip-path propagation — for each transport executor that has
-    // downstream nodes, verify skip propagation when it fails.
-    for node_id in &transport_executors {
-        // Check if this node has downstream nodes
-        let has_downstream = dag
-            .edges
-            .iter()
-            .any(|e| &e.from_node == *node_id);
-
-        if has_downstream {
+        // C.2: Single transport failure scenarios (N tests, not 2^N)
+        for node_id in &transport_executors {
             obligations.push(ProofObligation::runtime(
-                Obligation::SkipPathPropagation {
-                    trigger_node: (*node_id).clone(),
+                Obligation::SingleTransportFailure {
+                    node_id: (*node_id).clone(),
                 },
                 format!(
-                    "Skip propagation: when '{}' fails, downstream nodes handle correctly",
+                    "Failure at '{}': verify failure propagation semantics",
                     node_id.0
                 ),
                 ObligationSource::Structure,
             ));
+        }
+
+        // C.3: Skip-path propagation — for each transport executor that has
+        // downstream nodes, verify skip propagation when it fails.
+        for node_id in &transport_executors {
+            // Check if this node has downstream nodes
+            let has_downstream = dag
+                .edges
+                .iter()
+                .any(|e| &e.from_node == *node_id);
+
+            if has_downstream {
+                obligations.push(ProofObligation::runtime(
+                    Obligation::SkipPathPropagation {
+                        trigger_node: (*node_id).clone(),
+                    },
+                    format!(
+                        "Skip propagation: when '{}' fails, downstream nodes handle correctly",
+                        node_id.0
+                    ),
+                    ObligationSource::Structure,
+                ));
+            }
         }
     }
 

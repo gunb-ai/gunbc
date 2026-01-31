@@ -313,14 +313,18 @@ zero manual MockSpec.
 - [x] `check_predicate_entailment()` — L3 entailment checking (conservative)
 - [x] Bucket A codegen: DryRun completion, transport interception
 - [x] Bucket C codegen: all-succeed, single-failure scenarios
+- [x] Bucket C codegen: skip-path propagation (inject `Value::Skipped`, verify downstream)
+- [x] Bucket C codegen: guard branch coverage (Bool guards: two-scenario test, non-Bool: structured comments)
 - [x] Bucket D codegen: resource connectivity, conflict absence, simulation
 - [x] Obligation summary in generated test header
 - [x] Anti-tautology filtering (only Unknown/RuntimeOnly → tests)
+- [x] Guard obligations decoupled from transport presence (C.4 always emitted)
+- [x] `build::guarded()` helper for creating guarded ports in tests
 
 ### Next Steps
 
-- [ ] Scenario enumerator: generate N+K scenarios (fail each boundary, toggle each guard bool)
 - [ ] Per-node execution harness using `execute_single_node` with baseline-derived inputs
+- [ ] Guard branch tests for non-Bool types (requires per-node isolation / Tier 1)
 - [ ] Tool/resource acquisition instrumentation + ordering fix (skip → no tool acquire)
 - [ ] Contract-tower witnesses for true boundary fuzzing (L3/L4)
 - [ ] Per-type boundary strategy registry for edge case generation

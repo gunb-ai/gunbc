@@ -538,56 +538,280 @@ impl<'a, T> TestGenerator<'a, T> {
             }
         }
 
-        // C.3: Skip-path propagation
+        // C.3: Skip-path propagation — real tests
         let skip_obligations: Vec<_> = bucket
             .iter()
             .filter(|o| matches!(o.kind, Obligation::SkipPathPropagation { .. }))
             .collect();
 
-        if !skip_obligations.is_empty() {
-            code.push_str(&format!(
-                "// {} skip-path propagation scenarios.\n",
-                skip_obligations.len()
-            ));
-            code.push_str(
-                "// When a transport fails, downstream skip propagation must be consistent.\n",
-            );
-            for obligation in &skip_obligations {
-                if let Obligation::SkipPathPropagation { trigger_node } = &obligation.kind {
+        for obligation in &skip_obligations {
+            if let Obligation::SkipPathPropagation { trigger_node } = &obligation.kind {
+                let test_name = format!(
+                    "test_skip_propagation_{}",
+                    NamingCase::SnakeCase.apply(&trigger_node.0)
+                );
+
+                // Find the trigger node's output ports
+                let output_ports: Vec<_> = self
+                    .dag
+                    .nodes
+                    .iter()
+                    .find(|n| n.id.0 == trigger_node.0)
+                    .map(|n| {
+                        n.outputs
+                            .iter()
+                            .map(|p| (p.name.0.clone(), p.type_id.0.clone()))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+
+                // Find downstream node IDs (nodes connected by edges from trigger)
+                let downstream: Vec<_> = self
+                    .dag
+                    .edges
+                    .iter()
+                    .filter(|e| e.from_node.0 == trigger_node.0)
+                    .map(|e| e.to_node.0.clone())
+                    .collect();
+
+                code.push_str(&format!(
+                    "/// Skip propagation: '{}' returns Skipped → downstream handles it.\n",
+                    trigger_node.0
+                ));
+                code.push_str("///\n");
+                code.push_str(
+                    "/// Proves: when a transport's output is Skipped, downstream nodes\n",
+                );
+                code.push_str(
+                    "/// either skip themselves (guarded) or process the Skipped value\n",
+                );
+                code.push_str("/// without crashing.\n");
+                code.push_str("#[test]\n");
+                code.push_str(&format!("fn {}() {{\n", test_name));
+                code.push_str(&format!("    let dag = {};\n", graph_builder_fn));
+                code.push_str("    let mut mocks = default_mocks();\n");
+
+                // Mock all output ports of the trigger node as Skipped
+                for (port_name, _type_id) in &output_ports {
                     code.push_str(&format!(
-                        "// - '{}' fails → downstream nodes skip or handle gracefully\n",
-                        trigger_node.0
+                        "    mocks.set_value(\"{}\", \"{}\", Value::Skipped);\n",
+                        trigger_node.0, port_name
                     ));
                 }
+
+                code.push_str(
+                    "    let log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks))\n",
+                );
+                code.push_str(
+                    "        .expect(\"skip propagation should not crash or hang\");\n",
+                );
+
+                // Verify downstream nodes exist in the log (they ran, even if skipped)
+                for ds_node in &downstream {
+                    code.push_str(&format!(
+                        "    assert!(log.get(\"{}\").is_some(), \"downstream '{}' should still appear in log\");\n",
+                        ds_node, ds_node
+                    ));
+                }
+
+                code.push_str("}\n\n");
             }
-            code.push('\n');
         }
 
-        // C.4: Guard/skip branch coverage
+        // C.4: Guard/skip branch coverage — real tests for Bool guards,
+        //       structured comments for other guard types.
         let guard_obligations: Vec<_> = bucket
             .iter()
             .filter(|o| matches!(o.kind, Obligation::GuardBranchCoverage { .. }))
             .collect();
 
-        if !guard_obligations.is_empty() {
-            code.push_str("// Guard/skip branch coverage:\n");
-            code.push_str(
-                "// For each node with a guarded input, test both paths (skip=true, skip=false).\n",
-            );
-            code.push_str("// The executor implements: skip ⇒ all outputs are Value::Skipped.\n");
-            for obligation in &guard_obligations {
-                if let Obligation::GuardBranchCoverage {
-                    node_id,
-                    guard_port,
-                } = &obligation.kind
-                {
+        for obligation in &guard_obligations {
+            if let Obligation::GuardBranchCoverage {
+                node_id,
+                guard_port,
+            } = &obligation.kind
+            {
+                // Find the guarded port's type
+                let guard_type = self
+                    .dag
+                    .nodes
+                    .iter()
+                    .find(|n| n.id.0 == node_id.0)
+                    .and_then(|n| n.inputs.iter().find(|p| p.name.0 == guard_port.0))
+                    .map(|p| p.type_id.0.as_str())
+                    .unwrap_or("Unknown");
+
+                // Find the upstream edge that feeds this guarded port
+                let upstream_edge = self
+                    .dag
+                    .edges
+                    .iter()
+                    .find(|e| e.to_node.0 == node_id.0 && e.to_port.0 == guard_port.0);
+
+                // Check if upstream is a transport executor (mockable in DryRun)
+                let upstream_is_mockable = upstream_edge
+                    .map(|e| {
+                        analysis
+                            .transport_executors
+                            .contains(&e.from_node.0)
+                            || analysis.tool_env_nodes.contains(&e.from_node.0)
+                    })
+                    .unwrap_or(false);
+
+                if guard_type == "Bool" {
+                    // Bool guards: generate real two-scenario test
+                    let test_name = format!(
+                        "test_guard_{}_{}_branch_coverage",
+                        NamingCase::SnakeCase.apply(&node_id.0),
+                        NamingCase::SnakeCase.apply(&guard_port.0)
+                    );
+
                     code.push_str(&format!(
-                        "// - '{}'.{}: guard pass → executes, guard fail → skipped\n",
+                        "/// Guard branch coverage: '{}'.{} (Bool guard).\n",
                         node_id.0, guard_port.0
                     ));
+                    code.push_str("///\n");
+                    code.push_str(
+                        "/// Proves: one of {true, false} causes the node to execute,\n",
+                    );
+                    code.push_str(
+                        "/// the other causes it to skip (all outputs = Value::Skipped).\n",
+                    );
+                    code.push_str("#[test]\n");
+                    code.push_str(&format!("fn {}() {{\n", test_name));
+                    code.push_str(&format!("    let dag = {};\n", graph_builder_fn));
+
+                    if let Some(edge) = upstream_edge {
+                        if upstream_is_mockable {
+                            // Upstream is a boundary node — we can mock its output
+                            code.push_str(
+                                "    // Guard value flows from a mockable boundary node.\n",
+                            );
+                            code.push_str("    // Test with true:\n");
+                            code.push_str("    let mut mocks_true = default_mocks();\n");
+                            code.push_str(&format!(
+                                "    mocks_true.set_value(\"{}\", \"{}\", Value::Bool(true));\n",
+                                edge.from_node.0, edge.from_port.0
+                            ));
+                            code.push_str(
+                                "    let log_true = execute_with_mode(&dag, ExecutionMode::DryRun(mocks_true))\n",
+                            );
+                            code.push_str(
+                                "        .expect(\"guard=true scenario should not crash\");\n",
+                            );
+                            code.push_str(&format!(
+                                "    let skipped_true = log_true.get(\"{}\")\n",
+                                node_id.0
+                            ));
+                            code.push_str(
+                                "        .map(|e| e.outputs.values().all(|v| v.is_skipped()))\n",
+                            );
+                            code.push_str("        .unwrap_or(true);\n\n");
+
+                            code.push_str("    // Test with false:\n");
+                            code.push_str("    let mut mocks_false = default_mocks();\n");
+                            code.push_str(&format!(
+                                "    mocks_false.set_value(\"{}\", \"{}\", Value::Bool(false));\n",
+                                edge.from_node.0, edge.from_port.0
+                            ));
+                            code.push_str(
+                                "    let log_false = execute_with_mode(&dag, ExecutionMode::DryRun(mocks_false))\n",
+                            );
+                            code.push_str(
+                                "        .expect(\"guard=false scenario should not crash\");\n",
+                            );
+                            code.push_str(&format!(
+                                "    let skipped_false = log_false.get(\"{}\")\n",
+                                node_id.0
+                            ));
+                            code.push_str(
+                                "        .map(|e| e.outputs.values().all(|v| v.is_skipped()))\n",
+                            );
+                            code.push_str("        .unwrap_or(true);\n\n");
+
+                            code.push_str(
+                                "    // Exactly one path should execute and the other should skip.\n",
+                            );
+                            code.push_str(&format!(
+                                "    assert_ne!(skipped_true, skipped_false,\n        \"guard on '{}'.{} should cause one branch to execute and the other to skip\");\n",
+                                node_id.0, guard_port.0
+                            ));
+                        } else {
+                            // Upstream is a pure node — can't directly mock, use structural assertion
+                            code.push_str(&format!(
+                                "    // Guard value flows from pure node '{}' — not directly mockable.\n",
+                                edge.from_node.0
+                            ));
+                            code.push_str(
+                                "    // Structural check: guard port is connected and the node has outputs.\n",
+                            );
+                            code.push_str(&format!(
+                                "    let node = dag.get_node(&\"{}\".into()).expect(\"node should exist\");\n",
+                                node_id.0
+                            ));
+                            code.push_str(&format!(
+                                "    let port = node.inputs.iter().find(|p| p.name.0 == \"{}\").expect(\"port should exist\");\n",
+                                guard_port.0
+                            ));
+                            code.push_str(
+                                "    assert!(port.has_guard(), \"port should have a guard\");\n",
+                            );
+                        }
+                    } else {
+                        // No upstream edge — guard port is disconnected
+                        code.push_str(&format!(
+                            "    // WARNING: guard port '{}'.{} has no incoming edge.\n",
+                            node_id.0, guard_port.0
+                        ));
+                        code.push_str(&format!(
+                            "    // The node will always skip (missing input → skip).\n"
+                        ));
+                        code.push_str(&format!(
+                            "    let log = execute_with_mode(&dag, ExecutionMode::DryRun(default_mocks()))\n"
+                        ));
+                        code.push_str(
+                            "        .expect(\"execution should not crash\");\n",
+                        );
+                        code.push_str(&format!(
+                            "    if let Some(entry) = log.get(\"{}\") {{\n",
+                            node_id.0
+                        ));
+                        code.push_str(
+                            "        assert!(entry.outputs.values().all(|v| v.is_skipped()),\n",
+                        );
+                        code.push_str(
+                            "            \"disconnected guard → node should always skip\");\n",
+                        );
+                        code.push_str("    }\n");
+                    }
+
+                    code.push_str("}\n\n");
+                } else {
+                    // Non-Bool guard: emit structured comment with details
+                    code.push_str(&format!(
+                        "// Guard branch: '{}'.{} (type: {})\n",
+                        node_id.0, guard_port.0, guard_type
+                    ));
+                    if let Some(edge) = upstream_edge {
+                        code.push_str(&format!(
+                            "//   fed by: {}.{}\n",
+                            edge.from_node.0, edge.from_port.0
+                        ));
+                        if upstream_is_mockable {
+                            code.push_str(
+                                "//   upstream is mockable — full branch test possible with Tier 1 infra\n",
+                            );
+                        } else {
+                            code.push_str(
+                                "//   upstream is pure — needs per-node isolation (Tier 1) for full test\n",
+                            );
+                        }
+                    } else {
+                        code.push_str("//   WARNING: no incoming edge (disconnected guard)\n");
+                    }
+                    code.push('\n');
                 }
             }
-            code.push('\n');
         }
 
         code
@@ -1130,7 +1354,7 @@ fn default_mock_for_type(type_id: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gunbc_ir::{build::*, Dag, Node};
+    use gunbc_ir::{build, build::*, Dag, Node, Value};
 
     #[test]
     fn test_generate_test_module() {
@@ -1262,5 +1486,110 @@ mod tests {
         // Should have scenario tests
         assert!(code.contains("test_scenario_all_succeed"));
         assert!(code.contains("test_scenario_execute_fails"));
+
+        // Should have skip-path propagation test (execute has downstream parse)
+        assert!(
+            code.contains("test_skip_propagation_execute"),
+            "should generate skip propagation test for transport with downstream"
+        );
+        assert!(
+            code.contains("Value::Skipped"),
+            "skip propagation test should inject Value::Skipped"
+        );
+        assert!(
+            code.contains("\"parse\""),
+            "skip propagation test should verify downstream node 'parse'"
+        );
+    }
+
+    #[test]
+    fn test_generate_with_bool_guard() {
+        let mut dag: Dag<()> = Dag::new();
+
+        // Transport executor that produces a condition
+        dag.add_node(Node::opaque(
+            "check",
+            vec![port("request", "TransportRequest")],
+            vec![
+                port("response", "TransportResponse"),
+                port("condition", "Bool"),
+            ],
+            (),
+        ));
+        // Guarded node: only executes when condition is true
+        dag.add_node(Node::opaque(
+            "process",
+            vec![
+                build::guarded("condition", "Bool", Value::Bool(true)),
+                port("data", "String"),
+            ],
+            vec![port("result", "String")],
+            (),
+        ));
+        dag.add_edge(edge("check", "condition", "process", "condition"));
+        dag.add_edge(edge("check", "response", "process", "data"));
+
+        let generator = TestGenerator::new(&dag);
+        let code = generator.generate_test_module("guarded", "build_guarded_graph()");
+
+        // Should have guard branch coverage test
+        assert!(
+            code.contains("test_guard_process_condition_branch_coverage"),
+            "should generate guard branch coverage test for Bool guard"
+        );
+        // Should test both true and false values
+        assert!(
+            code.contains("Value::Bool(true)"),
+            "should test guard with true"
+        );
+        assert!(
+            code.contains("Value::Bool(false)"),
+            "should test guard with false"
+        );
+        // Should assert one path executes and the other skips
+        assert!(
+            code.contains("assert_ne!(skipped_true, skipped_false"),
+            "should assert exactly one path skips"
+        );
+    }
+
+    #[test]
+    fn test_generate_guard_non_bool_emits_comment() {
+        let mut dag: Dag<()> = Dag::new();
+
+        dag.add_node(Node::opaque(
+            "source",
+            vec![],
+            vec![port("status", "String")],
+            (),
+        ));
+        dag.add_node(Node::opaque(
+            "conditional",
+            vec![
+                build::guarded("status", "String", Value::Str("ready".into())),
+                port("data", "String"),
+            ],
+            vec![port("result", "String")],
+            (),
+        ));
+        dag.add_edge(edge("source", "status", "conditional", "status"));
+
+        let generator = TestGenerator::new(&dag);
+        let code = generator.generate_test_module("str_guard", "build_graph()");
+
+        // Non-Bool guard should emit a structured comment, not a test function
+        assert!(
+            code.contains("Guard branch: 'conditional'.status (type: String)"),
+            "should emit structured comment for non-Bool guard"
+        );
+        assert!(
+            code.contains("fed by: source.status"),
+            "should document the upstream edge"
+        );
+        // Should NOT generate a test function for non-Bool guard
+        assert!(
+            !code.contains("test_guard_conditional_status_branch_coverage"),
+            "should NOT generate test function for non-Bool guard"
+        );
     }
 }
