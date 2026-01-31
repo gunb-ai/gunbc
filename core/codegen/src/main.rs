@@ -285,7 +285,7 @@ fn cmd_cigen(dry_run: bool) {
     
     // Generate CI YAML for gunbc-ci
     // gunbc-ci is special - it has a handwritten main.rs that handles codegen internally
-    let tool = gunbc_ir::CargoInvocation::in_package("gunbc-ci", "gunbc-dag");
+    let tool = gunbc_ir::CargoInvocation::composed("ci", "dag");
     let config = RenderConfig::new("ci", tool)
         .with_runner("ubuntu-latest")
         .with_env("CARGO_TERM_COLOR", "always")

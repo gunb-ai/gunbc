@@ -9,6 +9,7 @@
 //! commands. This eliminates duplicate hardcoded commands across the codebase.
 
 use gunbc_deps::DEFAULT_MANIFEST_FILENAME;
+use gunbc_ir::cargo;
 use gunbc_ir::DEFAULT_MAKEFILE_FILENAME;
 
 // ============================================================================
@@ -26,64 +27,74 @@ pub enum BuildSystem {
 
 /// Unified build system configuration.
 /// Single source of truth for build/test/lint operations.
+///
+/// Command vectors use `String` to support composed binary names
+/// via [`cargo::name`].
 #[derive(Debug, Clone)]
 pub struct BuildConfig {
     /// Build system (cargo, buck2)
     pub build_system: BuildSystem,
     /// Command to run codegen
-    pub codegen_command: Vec<&'static str>,
+    pub codegen_command: Vec<String>,
     /// Command to run daggen
-    pub daggen_command: Vec<&'static str>,
+    pub daggen_command: Vec<String>,
     /// Command to build all targets
-    pub build_command: Vec<&'static str>,
+    pub build_command: Vec<String>,
     /// Command to run tests
-    pub test_command: Vec<&'static str>,
+    pub test_command: Vec<String>,
     /// Command to run linter
-    pub lint_command: Vec<&'static str>,
+    pub lint_command: Vec<String>,
     /// Command to auto-fix lint issues (cargo clippy --fix)
-    pub lint_fix_command: Vec<&'static str>,
+    pub lint_fix_command: Vec<String>,
     /// Command to format code
-    pub fmt_command: Vec<&'static str>,
+    pub fmt_command: Vec<String>,
     /// Command to check formatting
-    pub fmt_check_command: Vec<&'static str>,
+    pub fmt_check_command: Vec<String>,
     /// Command to type-check without full build
-    pub check_command: Vec<&'static str>,
+    pub check_command: Vec<String>,
     /// Command to generate CI YAML
-    pub ci_yaml_command: Vec<&'static str>,
+    pub ci_yaml_command: Vec<String>,
+}
+
+/// Helper to convert a list of &str into Vec<String>.
+fn strs(parts: &[&str]) -> Vec<String> {
+    parts.iter().map(|s| s.to_string()).collect()
 }
 
 impl BuildConfig {
     /// Default cargo-based build config.
     pub fn cargo() -> Self {
+        let codegen = cargo::name("codegen");
         Self {
             build_system: BuildSystem::Cargo,
-            codegen_command: vec!["cargo", "run", "-p", "gunbc-codegen", "--release", "--", "codegen"],
-            daggen_command: vec!["cargo", "run", "-p", "gunbc-codegen", "--release", "--", "daggen"],
-            build_command: vec!["cargo", "build", "--all-targets"],
-            test_command: vec!["cargo", "test"],
-            lint_command: vec!["cargo", "clippy", "--all-targets", "--", "-D", "warnings"],
-            lint_fix_command: vec!["cargo", "clippy", "--fix", "--workspace", "--allow-dirty", "--allow-staged", "--", "-D", "warnings"],
-            fmt_command: vec!["cargo", "fmt"],
-            fmt_check_command: vec!["cargo", "fmt", "--", "--check"],
-            check_command: vec!["cargo", "check", "--all-targets"],
-            ci_yaml_command: vec!["cargo", "run", "-p", "gunbc-codegen", "--release", "--", "cigen"],
+            codegen_command: strs(&["cargo", "run", "-p", &codegen, "--release", "--", "codegen"]),
+            daggen_command: strs(&["cargo", "run", "-p", &codegen, "--release", "--", "daggen"]),
+            build_command: strs(&["cargo", "build", "--all-targets"]),
+            test_command: strs(&["cargo", "test"]),
+            lint_command: strs(&["cargo", "clippy", "--all-targets", "--", "-D", "warnings"]),
+            lint_fix_command: strs(&["cargo", "clippy", "--fix", "--workspace", "--allow-dirty", "--allow-staged", "--", "-D", "warnings"]),
+            fmt_command: strs(&["cargo", "fmt"]),
+            fmt_check_command: strs(&["cargo", "fmt", "--", "--check"]),
+            check_command: strs(&["cargo", "check", "--all-targets"]),
+            ci_yaml_command: strs(&["cargo", "run", "-p", &codegen, "--release", "--", "cigen"]),
         }
     }
 
     /// Buck2-based build config (for future use).
     pub fn buck2() -> Self {
+        let codegen = cargo::name("codegen");
         Self {
             build_system: BuildSystem::Buck2,
-            codegen_command: vec!["cargo", "run", "-p", "gunbc-codegen", "--release", "--", "codegen"],
-            daggen_command: vec!["cargo", "run", "-p", "gunbc-codegen", "--release", "--", "daggen"],
-            build_command: vec!["buck2", "build", "//..."],
-            test_command: vec!["buck2", "test", "//..."],
-            lint_command: vec!["buck2", "run", "//tools:clippy"],
-            lint_fix_command: vec!["cargo", "clippy", "--fix", "--workspace", "--allow-dirty", "--allow-staged", "--", "-D", "warnings"],
-            fmt_command: vec!["cargo", "fmt"], // fmt stays cargo
-            fmt_check_command: vec!["cargo", "fmt", "--", "--check"],
-            check_command: vec!["buck2", "build", "//..."], // buck2 check is same as build
-            ci_yaml_command: vec!["cargo", "run", "-p", "gunbc-codegen", "--release", "--", "cigen"],
+            codegen_command: strs(&["cargo", "run", "-p", &codegen, "--release", "--", "codegen"]),
+            daggen_command: strs(&["cargo", "run", "-p", &codegen, "--release", "--", "daggen"]),
+            build_command: strs(&["buck2", "build", "//..."]),
+            test_command: strs(&["buck2", "test", "//..."]),
+            lint_command: strs(&["buck2", "run", "//tools:clippy"]),
+            lint_fix_command: strs(&["cargo", "clippy", "--fix", "--workspace", "--allow-dirty", "--allow-staged", "--", "-D", "warnings"]),
+            fmt_command: strs(&["cargo", "fmt"]), // fmt stays cargo
+            fmt_check_command: strs(&["cargo", "fmt", "--", "--check"]),
+            check_command: strs(&["buck2", "build", "//..."]), // buck2 check is same as build
+            ci_yaml_command: strs(&["cargo", "run", "-p", &codegen, "--release", "--", "cigen"]),
         }
     }
 
@@ -171,6 +182,8 @@ pub struct ExtraTarget {
 
 impl ToolInfo {
     /// Create a tool in its own package (e.g., `cargo run -p gunbc-gist`).
+    ///
+    /// Prefer [`Self::standalone`] which composes the binary name from a component.
     pub fn new(
         binary: impl Into<String>,
         short_name: impl Into<String>,
@@ -188,6 +201,8 @@ impl ToolInfo {
 
     /// Create a tool that's a binary inside another package
     /// (e.g., `cargo run -p gunbc-dag --bin gunbc-ci`).
+    ///
+    /// Prefer [`Self::composed`] which composes both names from components.
     pub fn in_package(
         binary: impl Into<String>,
         package: impl Into<String>,
@@ -197,6 +212,59 @@ impl ToolInfo {
         Self {
             invocation: gunbc_ir::CargoInvocation::in_package(binary, package),
             short_name: short_name.into(),
+            description: description.into(),
+            entrypoints: Vec::new(),
+            extra_targets: Vec::new(),
+            has_declarative_dag: false,
+        }
+    }
+
+    /// Create a standalone tool from its component name.
+    ///
+    /// The binary name is composed as `{PREFIX}-{component}`, and the
+    /// component is used as the short name for make targets.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// ToolInfo::standalone("gist", "Create a GitHub gist")
+    /// // binary: "gunbc-gist", short_name: "gist"
+    /// ```
+    pub fn standalone(
+        component: &str,
+        description: impl Into<String>,
+    ) -> Self {
+        Self {
+            invocation: gunbc_ir::CargoInvocation::standalone(component),
+            short_name: component.to_string(),
+            description: description.into(),
+            entrypoints: Vec::new(),
+            extra_targets: Vec::new(),
+            has_declarative_dag: false,
+        }
+    }
+
+    /// Create a tool that lives inside another package, both composed
+    /// from component names.
+    ///
+    /// The binary is `{PREFIX}-{component}`, the package is
+    /// `{PREFIX}-{package_component}`, and the component is used as
+    /// the short name.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// ToolInfo::composed("ci", "dag", "Run CI pipeline")
+    /// // binary: "gunbc-ci", package: "gunbc-dag", short_name: "ci"
+    /// ```
+    pub fn composed(
+        component: &str,
+        package_component: &str,
+        description: impl Into<String>,
+    ) -> Self {
+        Self {
+            invocation: gunbc_ir::CargoInvocation::composed(component, package_component),
+            short_name: component.to_string(),
             description: description.into(),
             entrypoints: Vec::new(),
             extra_targets: Vec::new(),
@@ -598,9 +666,9 @@ impl ToolRegistry {
             meta_targets: default_meta_targets(),
         };
 
-        // gunbc-gist
+        // gunbc-gist: standalone package
         registry.register(
-            ToolInfo::new("gunbc-gist", "gist", "Create a GitHub gist from code files")
+            ToolInfo::standalone("gist", "Create a GitHub gist from code files")
                 .with_param(
                     EntrypointParam::new("repo_path", "REPO", "--repo", "String")
                         .with_default("."),
@@ -611,9 +679,9 @@ impl ToolRegistry {
                 ),
         );
 
-        // gunbc-buck2
+        // gunbc-buck2: standalone package
         registry.register(
-            ToolInfo::new("gunbc-buck2", "buck2", "Generate BUCK file from Cargo.toml")
+            ToolInfo::standalone("buck2", "Generate BUCK file from Cargo.toml")
                 .with_param(
                     EntrypointParam::new("cargo_toml_path", "INPUT", "--input", "String")
                         .with_default("Cargo.toml"),
@@ -624,10 +692,9 @@ impl ToolRegistry {
                 ),
         );
 
-        // gunbc-makegen (self!) - has declarative DAG
-        // Binary lives in gunbc-dag package
+        // gunbc-makegen: binary in gunbc-dag package (has declarative DAG)
         registry.register(
-            ToolInfo::in_package("gunbc-makegen", "gunbc-dag", "makegen", "Generate Makefile from tool registry")
+            ToolInfo::composed("makegen", "dag", "Generate Makefile from tool registry")
                 .with_param(
                     EntrypointParam::new("output_path", "OUTPUT", "--output", "String")
                         .with_default(DEFAULT_MAKEFILE_FILENAME),
@@ -635,23 +702,23 @@ impl ToolRegistry {
                 .with_declarative_dag(),
         );
 
-        // gunbc-deps
+        // gunbc-deps: standalone package
         registry.register(
-            ToolInfo::new("gunbc-deps", "deps", "Install tool dependencies")
+            ToolInfo::standalone("deps", "Install tool dependencies")
                 .with_param(
                     EntrypointParam::new("manifest_path", "MANIFEST", "--manifest", "String")
                         .with_default(DEFAULT_MANIFEST_FILENAME),
                 ),
         );
 
-        // gunbc-ci — binary lives in gunbc-dag package
+        // gunbc-ci: binary in gunbc-dag package
         registry.register(
-            ToolInfo::in_package("gunbc-ci", "gunbc-dag", "ci", "Run CI pipeline"),
+            ToolInfo::composed("ci", "dag", "Run CI pipeline"),
         );
 
-        // gunbc-bootstrap — binary lives in gunbc-dag package
+        // gunbc-bootstrap: binary in gunbc-dag package
         registry.register(
-            ToolInfo::in_package("gunbc-bootstrap", "gunbc-dag", "bootstrap", "Generate Makefile and .gitignore"),
+            ToolInfo::composed("bootstrap", "dag", "Generate Makefile and .gitignore"),
         );
 
         // NOTE: prep tool has been removed - CI now handles all preparation
@@ -673,15 +740,15 @@ mod tests {
     fn test_build_config_cargo() {
         let config = BuildConfig::cargo();
         assert_eq!(config.build_system, BuildSystem::Cargo);
-        assert!(config.build_command.contains(&"cargo"));
-        assert!(config.test_command.contains(&"test"));
+        assert!(config.build_command.iter().any(|s| s == "cargo"));
+        assert!(config.test_command.iter().any(|s| s == "test"));
     }
 
     #[test]
     fn test_build_config_buck2() {
         let config = BuildConfig::buck2();
         assert_eq!(config.build_system, BuildSystem::Buck2);
-        assert!(config.build_command.contains(&"buck2"));
+        assert!(config.build_command.iter().any(|s| s == "buck2"));
     }
 
     #[test]

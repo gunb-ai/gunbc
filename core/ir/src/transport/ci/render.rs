@@ -309,7 +309,7 @@ mod tests {
     #[test]
     fn test_dag_to_shared_steps_step_mode() {
         let dag = test_dag();
-        let tool = CargoInvocation::in_package("gunbc-ci", "gunbc-dag");
+        let tool = CargoInvocation::composed("ci", "dag");
         let config = RenderConfig::new("ci", tool);
         let steps = dag_to_shared_steps(&dag, &config);
 
@@ -328,7 +328,7 @@ mod tests {
     #[test]
     fn test_dag_to_shared_steps_single_mode() {
         let dag = test_dag();
-        let tool = CargoInvocation::in_package("gunbc-ci", "gunbc-dag");
+        let tool = CargoInvocation::composed("ci", "dag");
         let config = RenderConfig::new("ci", tool).without_step_mode();
         let steps = dag_to_shared_steps(&dag, &config);
 
@@ -340,7 +340,7 @@ mod tests {
 
     #[test]
     fn test_render_config_builder() {
-        let tool = CargoInvocation::in_package("gunbc-ci", "gunbc-dag");
+        let tool = CargoInvocation::composed("ci", "dag");
         let config = RenderConfig::new("ci", tool)
             .with_runner("ubuntu-22.04")
             .with_env("CARGO_TERM_COLOR", "always")

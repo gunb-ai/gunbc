@@ -56,7 +56,7 @@ fn main() {
     let mut ci = CiContext::detect();
     
     // Print header
-    println!("gunbc-ci");
+    println!("{}", gunbc_ir::cargo::name("ci"));
     println!("  mode: {}", if dry_run { "dry-run" } else { "real" });
     // Show CI provider if detected (not "plain")
     if ci.provider_id() != "plain" {
@@ -115,10 +115,11 @@ fn print_value(port: &str, value: &Value) {
 }
 
 fn print_help() {
-    println!("gunbc-ci - CI orchestration tool");
+    let name = gunbc_ir::cargo::name("ci");
+    println!("{name} - CI orchestration tool");
     println!();
     println!("USAGE:");
-    println!("    gunbc-ci [OPTIONS]");
+    println!("    {name} [OPTIONS]");
     println!();
     println!("OPTIONS:");
     println!("    -n, --dry-run    Don't perform actual I/O");

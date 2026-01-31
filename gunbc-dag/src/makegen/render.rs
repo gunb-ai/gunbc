@@ -8,6 +8,7 @@
 use crate::makegen::registry::{
     BuildConfig, EntrypointParam, ExtraTarget, MetaTarget, PrepLevel, ToolInfo, ToolRegistry,
 };
+use gunbc_ir::cargo;
 use gunbc_ir::language::MAKEFILE;
 use gunbc_ir::Renderable;
 
@@ -42,9 +43,13 @@ impl<'a> MakefileRenderer<'a> {
     }
 }
 
+/// Composed generator name for the Makefile/gitignore renderer.
+/// This must match `cargo::name("makegen")` — verified by test.
+pub(crate) const MAKEGEN_NAME: &str = "gunbc-makegen";
+
 impl Renderable for MakefileRenderer<'_> {
     fn generator_name(&self) -> &str {
-        "gunbc-makegen"
+        MAKEGEN_NAME
     }
 
     fn regenerate_command(&self) -> &str {
@@ -168,7 +173,11 @@ fn render_core_targets(config: &BuildConfig) -> String {
     // Rollback transaction: remove all generated artifacts
     output.push_str("# Rollback transaction: remove all generated artifacts\n");
     output.push_str("clean:\n");
-    output.push_str(&format!("{}@cargo run -p gunbc-codegen --release -- rollback\n\n", INDENT));
+    output.push_str(&format!(
+        "{}@cargo run -p {} --release -- rollback\n\n",
+        INDENT,
+        cargo::name("codegen"),
+    ));
 
     output
 }
@@ -568,7 +577,9 @@ mod tests {
         let registry = ToolRegistry::default_registry();
         let renderer = MakefileRenderer::new(&registry);
 
-        assert_eq!(renderer.generator_name(), "gunbc-makegen");
+        // Verify the const matches the composed name
+        assert_eq!(MAKEGEN_NAME, cargo::name("makegen"));
+        assert_eq!(renderer.generator_name(), MAKEGEN_NAME);
     }
 
     #[test]

@@ -165,6 +165,7 @@ impl ClippyConfig {
                 "I6: No escape hatches. Use node.requires(&cli::TOOL). Command::new only in transport executor.",
             )
             // Document approved crates (minimal exceptions)
+            // Crate names follow the {PREFIX}-{component} pattern (see cargo::name)
             .allow_crate(
                 "gunbc-transport",
                 "IS the I/O boundary - the designated place for I/O",
@@ -309,9 +310,13 @@ impl ClippyConfigRenderer {
     }
 }
 
+/// Composed generator name for ClippyConfigRenderer.
+/// Must match `cargo::name("clippy")` — verified by test.
+const CLIPPY_GENERATOR_NAME: &str = "gunbc-clippy";
+
 impl Renderable for ClippyConfigRenderer {
     fn generator_name(&self) -> &str {
-        "gunbc-clippy"
+        CLIPPY_GENERATOR_NAME
     }
 
     fn regenerate_command(&self) -> &str {

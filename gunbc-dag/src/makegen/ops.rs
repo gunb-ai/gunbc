@@ -83,6 +83,7 @@ fn execute_render_makefile(_inputs: HashMap<String, Value>) -> Result<HashMap<St
 // Mockable trait implementation
 // ============================================================================
 
+use gunbc_ir::cargo;
 use gunbc_test::{CardinalityTestInput, ErrorTestCase, Mockable};
 
 impl Mockable for MakegenOp {
@@ -103,32 +104,35 @@ impl Mockable for MakegenOp {
                     "registry".to_string(),
                     Value::Json(serde_json::json!({
                         "tools": [
-                            {"binary_name": "gunbc-gist", "short_name": "gist"},
-                            {"binary_name": "gunbc-deps", "short_name": "deps"},
-                            {"binary_name": "gunbc-buck2", "short_name": "buck2"},
+                            {"binary_name": cargo::name("gist"), "short_name": "gist"},
+                            {"binary_name": cargo::name("deps"), "short_name": "deps"},
+                            {"binary_name": cargo::name("buck2"), "short_name": "buck2"},
                         ]
                     })),
                 );
                 out
             }
             MakegenOp::RenderMakefile => {
+                let gist = cargo::name("gist");
+                let deps = cargo::name("deps");
+                let buck2 = cargo::name("buck2");
                 let mut out = HashMap::new();
                 out.insert(
                     "makefile_content".to_string(),
                     Value::Str(
-                        r#"# Generated Makefile
-.PHONY: gist deps buck2
-
-gist:
-	cargo run -p gunbc-gist
-
-deps:
-	cargo run -p gunbc-deps
-
-buck2:
-	cargo run -p gunbc-buck2
-"#
-                        .to_string(),
+                        format!(
+                            "# Generated Makefile\n\
+                            .PHONY: gist deps buck2\n\
+                            \n\
+                            gist:\n\
+                            \tcargo run -p {gist}\n\
+                            \n\
+                            deps:\n\
+                            \tcargo run -p {deps}\n\
+                            \n\
+                            buck2:\n\
+                            \tcargo run -p {buck2}\n"
+                        ),
                     ),
                 );
                 out

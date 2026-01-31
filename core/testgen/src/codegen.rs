@@ -72,7 +72,7 @@ impl<'a, T> TestGenerator<'a, T> {
         let doc_prefix = RUST_COMMENTS.doc_prefix.unwrap_or("//!");
         code.push_str(&format!("{} Generated tests for {} DAG.\n", doc_prefix, module_name));
         code.push_str(&format!("{}\n", doc_prefix));
-        code.push_str(&generated_header("gunbc-testgen", "make testgen", doc_prefix));
+        code.push_str(&generated_header(&gunbc_ir::cargo::name("testgen"), "make testgen", doc_prefix));
         code.push_str("\n\n");
 
         // Imports

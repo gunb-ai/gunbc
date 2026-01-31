@@ -223,7 +223,7 @@ fn render_gitlab_ci(steps: &[SharedStep], config: &RenderConfig) -> String {
     let mut yaml = String::new();
 
     // Header using language module's generated_header for consistency
-    yaml.push_str(&generated_header("gunbc-codegen", "make ci-yaml", "#"));
+    yaml.push_str(&generated_header(&crate::cargo::name("codegen"), "make ci-yaml", "#"));
     yaml.push_str("\n\n");
 
     // Default image
@@ -475,18 +475,19 @@ mod tests {
         dag.add_edge(edge("build", "success", "test", "build_success"));
 
         let provider = test_provider();
-        let tool = CargoInvocation::in_package("gunbc-ci", "gunbc-dag");
+        let tool = CargoInvocation::composed("ci", "dag");
         let config = RenderConfig::new("ci", tool)
             .with_runner("rust:latest")
             .with_env("CARGO_TERM_COLOR", "always");
 
         let yaml = provider.render(&dag, &config);
 
+        let ci_name = crate::cargo::name("ci");
         // Check structure
         assert!(yaml.contains("image: rust:latest"));
         assert!(yaml.contains("stages:"));
-        assert!(yaml.contains("gunbc-ci step build"));
-        assert!(yaml.contains("gunbc-ci step test"));
+        assert!(yaml.contains(&format!("{ci_name} step build")));
+        assert!(yaml.contains(&format!("{ci_name} step test")));
         assert!(yaml.contains("needs:"));
         assert!(yaml.contains("CARGO_TERM_COLOR: \"always\""));
     }
