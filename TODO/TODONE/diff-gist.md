@@ -1,8 +1,9 @@
 # Diff Gist: Branch Diff Snapshot
 
-**Status**: Draft
+**Status**: Done
 **Date**: 2026-01-31
-**Depends on**: `TODO/git-transport-api.md` (Git transport interface)
+**Completed**: 2026-01-31
+**Depends on**: `TODONE/git-transport-api.md` (Git transport interface)
 
 ## Goal
 
@@ -299,26 +300,26 @@ PrepareDiff → Execute → ParseDiff → FilterDiffByExt → RenderDiffSnapshot
 
 ### Phase 1: Core Diff Pipeline
 
-- [ ] Add `PrepareDiff` op + `execute_prepare_diff` to `GistGraphOp`
-- [ ] Add `ParseDiff` op + `execute_parse_diff` (unified diff → `MapStrStr`)
-- [ ] Add `FilterDiffByExtension` op (filter `MapStrStr` keys by extension)
-- [ ] Add `MarkdownOp::RenderDiffSnapshot` to `lib/markdown/`
-- [ ] Add `build_diff_gist_graph()` graph builder
-- [ ] Add `diff_gist_signature()` workflow signature
-- [ ] Add unit tests for each new op (pure functions are trivially testable)
+- [x] Add `PrepareDiff` op + `execute_prepare_diff` to `GistGraphOp` (via `Git(GitOps::PrepareDiff)`)
+- [x] Add `ParseDiff` op + `execute_parse_diff` (via `Git(GitOps::ParseDiff)`)
+- [x] Add `FilterDiffByExtension` op (filter `MapStrStr` keys by extension)
+- [x] Add `MarkdownOp::RenderDiffSnapshot` to `lib/markdown/`
+- [x] Add `build_diff_gist_graph()` graph builder
+- [x] Add `diff_gist_signature()` workflow signature
+- [x] Add unit tests for each new op (pure functions are trivially testable)
 
 ### Phase 2: Integration
 
-- [ ] Add mock specs for diff graph (`graph_mock.rs`)
-- [ ] Add binary entrypoint or CLI flag to invoke diff mode
-- [ ] Wire `GitConfig.default_branch` as the default `base_ref`
-- [ ] Add integration test: build graph, validate signature, dry-run
+- [x] Add mock specs for diff graph (`graph_mock.rs`)
+- [ ] Add binary entrypoint or CLI flag to invoke diff mode (future: depends on CLI design)
+- [ ] Wire `GitConfig.default_branch` as the default `base_ref` (future: needs RepoConfig)
+- [x] Add integration test: build graph, validate signature, dry-run
 
 ### Phase 3: Polish
 
-- [ ] Handle empty diff gracefully (render "No changes between X and HEAD")
-- [ ] Add `--stat` summary line to rendered markdown (insertions/deletions)
-- [ ] Consider adding `--name-only` pre-check to skip diff when no files match filter
+- [x] Handle empty diff gracefully (render "No changes between X and HEAD")
+- [x] Add `--stat` summary line to rendered markdown (insertions/deletions)
+- [ ] Consider adding `--name-only` pre-check to skip diff when no files match filter (optional optimization)
 - [ ] Document in AGENT.md or README
 
 ## Design Decisions

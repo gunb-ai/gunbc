@@ -1,7 +1,8 @@
 # Git Transport API: Hermetic Git Operations
 
-**Status**: Draft
+**Status**: Done
 **Date**: 2026-01-31
+**Completed**: 2026-01-31
 
 ## Goal
 
@@ -439,35 +440,35 @@ Only **one production call site** and **one parser** to migrate. All other git r
 
 ### Phase 1: GitRequest builder + parsers (`core/ir`)
 
-- [ ] Create `core/ir/src/transport/git.rs`
-- [ ] Implement `GitRequest` struct with `GitSubcommand` enum
-- [ ] Implement `to_shell_request()` with deterministic global flags
-- [ ] Implement fluent builder methods (`ls_files()`, `diff()`, etc.)
-- [ ] Implement response parsers (`parse_ls_files`, `parse_diff_chunks`, etc.)
-- [ ] Add `pub mod git` to `core/ir/src/transport/mod.rs`
-- [ ] Add re-export: `pub use git::GitRequest`
-- [ ] Unit tests for each subcommand's shell translation
-- [ ] Unit tests for each parser
+- [x] Create `core/ir/src/transport/git.rs`
+- [x] Implement `GitRequest` struct with `GitSubcommand` enum
+- [x] Implement `to_shell_request()` with deterministic global flags
+- [x] Implement fluent builder methods (`ls_files()`, `diff()`, etc.)
+- [x] Implement response parsers (`parse_ls_files`, `parse_diff_chunks`, etc.)
+- [x] Add `pub mod git` to `core/ir/src/transport/mod.rs`
+- [x] Add re-export: `pub use git::GitRequest`
+- [x] Unit tests for each subcommand's shell translation
+- [x] Unit tests for each parser
 
 ### Phase 2: GitOps crate (`lib/git-ops`)
 
-- [ ] Create `lib/git-ops/` crate with `Cargo.toml`
-- [ ] Implement `GitOps` enum with Prepare/Parse variants
-- [ ] Implement `Executable for GitOps`
-- [ ] Unit tests for each op (pure, so trivially testable)
+- [x] Create `lib/git-ops/` crate with `Cargo.toml`
+- [x] Implement `GitOps` enum with Prepare/Parse variants
+- [x] Implement `Executable for GitOps`
+- [x] Unit tests for each op (pure, so trivially testable)
 
 ### Phase 3: Migrate gist tool
 
-- [ ] Add `Git(GitOps)` variant to `GistGraphOp`
-- [ ] Replace inline `execute_prepare_list_files` with `GitOps::PrepareLsFiles`
-- [ ] Replace inline `execute_parse_list_files` with `GitOps::ParseLsFiles`
-- [ ] Verify mock specs still work (transport boundary unchanged)
-- [ ] Remove dead code (old inline implementations)
+- [x] Add `Git(GitOps)` variant to `GistGraphOp`
+- [x] Replace inline `execute_prepare_list_files` with `GitOps::PrepareLsFiles`
+- [x] Replace inline `execute_parse_list_files` with `GitOps::ParseLsFiles`
+- [x] Verify mock specs still work (transport boundary unchanged)
+- [x] Remove dead code (old inline implementations)
 
 ### Phase 4: Wire into diff gist
 
-- [ ] Use `GitOps::PrepareDiff` + `GitOps::ParseDiff` in `build_diff_gist_graph()`
-- [ ] (See `TODO/diff-gist.md` for the full diff gist pipeline)
+- [x] Use `GitOps::PrepareDiff` + `GitOps::ParseDiff` in `build_diff_gist_graph()`
+- [x] (See `TODO/diff-gist.md` for the full diff gist pipeline)
 
 ## Design Decisions
 
