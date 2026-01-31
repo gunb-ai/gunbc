@@ -40,4 +40,4 @@ jobs:
             cargo-${{ runner.os }}-
 
       - name: Run CI Pipeline
-        run: cargo run -p gunbc-ci --release
+        run: cargo run -p gunbc-dag --bin gunbc-ci --release

@@ -146,6 +146,10 @@ pub fn default_build_config() -> BuildConfig {
 pub struct ToolInfo {
     /// Crate name (e.g., "gunbc-gist")
     pub crate_name: String,
+    /// Package name if the binary lives in a different package (e.g., "gunbc-dag").
+    /// When set, cargo commands use `-p <package_name> --bin <crate_name>`.
+    /// When None, cargo commands use `-p <crate_name>`.
+    pub package_name: Option<String>,
     /// Short name for make target (e.g., "gist")
     pub short_name: String,
     /// Description for help text
@@ -178,11 +182,33 @@ impl ToolInfo {
     ) -> Self {
         Self {
             crate_name: crate_name.into(),
+            package_name: None,
             short_name: short_name.into(),
             description: description.into(),
             entrypoints: Vec::new(),
             extra_targets: Vec::new(),
             has_declarative_dag: false,
+        }
+    }
+
+    /// Set the package name when the binary lives in a different package.
+    ///
+    /// For binaries defined as `[[bin]]` in another crate's Cargo.toml,
+    /// this produces `cargo run -p <package> --bin <crate_name>` instead of
+    /// `cargo run -p <crate_name>`.
+    pub fn with_package(mut self, package: impl Into<String>) -> Self {
+        self.package_name = Some(package.into());
+        self
+    }
+
+    /// Get the cargo run arguments for this tool.
+    ///
+    /// Returns `-p <package> --bin <crate_name>` when package_name is set,
+    /// or `-p <crate_name>` when the binary is in its own package.
+    pub fn cargo_run_args(&self) -> String {
+        match &self.package_name {
+            Some(pkg) => format!("-p {} --bin {}", pkg, self.crate_name),
+            None => format!("-p {}", self.crate_name),
         }
     }
 
@@ -602,8 +628,10 @@ impl ToolRegistry {
         );
 
         // gunbc-makegen (self!) - has declarative DAG
+        // Binary lives in gunbc-dag package
         registry.register(
             ToolInfo::new("gunbc-makegen", "makegen", "Generate Makefile from tool registry")
+                .with_package("gunbc-dag")
                 .with_param(
                     EntrypointParam::new("output_path", "OUTPUT", "--output", "String")
                         .with_default(DEFAULT_MAKEFILE_FILENAME),
@@ -621,13 +649,17 @@ impl ToolRegistry {
         );
 
         // gunbc-ci
+        // Binary lives in gunbc-dag package
         registry.register(
-            ToolInfo::new("gunbc-ci", "ci", "Run CI pipeline"),
+            ToolInfo::new("gunbc-ci", "ci", "Run CI pipeline")
+                .with_package("gunbc-dag"),
         );
 
         // gunbc-bootstrap
+        // Binary lives in gunbc-dag package
         registry.register(
-            ToolInfo::new("gunbc-bootstrap", "bootstrap", "Generate Makefile and .gitignore"),
+            ToolInfo::new("gunbc-bootstrap", "bootstrap", "Generate Makefile and .gitignore")
+                .with_package("gunbc-dag"),
         );
 
         // NOTE: prep tool has been removed - CI now handles all preparation

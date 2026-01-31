@@ -68,6 +68,11 @@ pub struct RenderConfig {
     /// The CLI tool binary name (e.g., "gunbc-ci").
     pub tool_binary: String,
 
+    /// The package name if the binary lives in a different package (e.g., "gunbc-dag").
+    /// When set, cargo commands use `-p <tool_package> --bin <tool_binary>`.
+    /// When None, cargo commands use `-p <tool_binary>`.
+    pub tool_package: Option<String>,
+
     /// Runner/image to use (e.g., "ubuntu-latest", "saas-linux-small-amd64").
     pub runner: String,
 
@@ -93,12 +98,30 @@ impl RenderConfig {
         Self {
             workflow_name: workflow_name.to_string(),
             tool_binary: tool_binary.to_string(),
+            tool_package: None,
             runner: "ubuntu-latest".to_string(),
             step_mode: true,
             env: HashMap::new(),
             checkout: Some(CheckoutConfig::default()),
             branches: vec!["main".to_string()],
             cache: None,
+        }
+    }
+
+    /// Set the package name when the binary lives in a different package.
+    pub fn with_package(mut self, package: &str) -> Self {
+        self.tool_package = Some(package.to_string());
+        self
+    }
+
+    /// Get the `cargo run` command for this tool.
+    ///
+    /// Returns `cargo run -p <package> --bin <binary>` when tool_package is set,
+    /// or `cargo run -p <binary>` when the binary is in its own package.
+    pub fn cargo_run_command(&self) -> String {
+        match &self.tool_package {
+            Some(pkg) => format!("cargo run -p {} --bin {}", pkg, self.tool_binary),
+            None => format!("cargo run -p {}", self.tool_binary),
         }
     }
 

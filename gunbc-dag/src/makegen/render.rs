@@ -397,8 +397,8 @@ fn render_tool_target(tool: &ToolInfo) -> String {
     // Target with ensure-codegen dependency
     output.push_str(&format!("{}: ensure-codegen\n", tool.short_name));
     output.push_str(&format!(
-        "\t@cargo run -p {} --{}",
-        tool.crate_name,
+        "\t@cargo run {} --{}",
+        tool.cargo_run_args(),
         render_cli_args(&tool.entrypoints)
     ));
     output.push_str("\n\n");
@@ -412,8 +412,8 @@ fn render_dry_run_target(tool: &ToolInfo) -> String {
 
     output.push_str(&format!("{}-dry: ensure-codegen\n", tool.short_name));
     output.push_str(&format!(
-        "\t@cargo run -p {} -- --dry-run{}",
-        tool.crate_name,
+        "\t@cargo run {} -- --dry-run{}",
+        tool.cargo_run_args(),
         render_cli_args(&tool.entrypoints)
     ));
     output.push_str("\n\n");
