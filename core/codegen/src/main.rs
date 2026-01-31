@@ -294,6 +294,7 @@ fn cmd_cigen(dry_run: bool) {
         )
         .with_runner("ubuntu-latest")
         .with_env("CARGO_TERM_COLOR", "always")
+        .with_env("RUSTFLAGS", "-D warnings")
         .with_branches(vec!["main"]);
     
     // Generate GitHub Actions YAML

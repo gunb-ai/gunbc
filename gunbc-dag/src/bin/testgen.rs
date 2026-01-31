@@ -23,6 +23,8 @@ struct TestgenTarget {
     generate: fn() -> String,
 }
 
+// Code generator — needs direct filesystem access (same exemption as gunbc-codegen).
+#[allow(clippy::disallowed_methods)]
 fn main() {
     let args: Vec<String> = env::args().collect();
 

@@ -133,7 +133,7 @@ fn execute_prepare_chat_request(
 
     // Convert to REST request via provider-specific builder
     let rest_request = llm::build_chat_request(&provider_id, &chat)
-        .map_err(|e| ExecError::new(e))?;
+        .map_err(ExecError::new)?;
 
     let mut out = HashMap::new();
     out.insert(
@@ -168,7 +168,7 @@ fn execute_parse_chat_response(
     };
 
     let chat_response = llm::parse_chat_response(provider_id, rest_response)
-        .map_err(|e| ExecError::new(e))?;
+        .map_err(ExecError::new)?;
 
     let mut out = HashMap::new();
     out.insert("content".to_string(), Value::Str(chat_response.content));
