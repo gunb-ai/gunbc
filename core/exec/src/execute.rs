@@ -19,9 +19,8 @@ use crate::intercept::BoundaryMocks;
 use crate::lower::lower;
 use crate::topo::topo_sort;
 use crate::Executable;
-use gunbc_ir::transport::cli::{CliToolDef, CliToolOp, ToolHandle};
 use gunbc_ir::{detect_boundaries, BoundaryInfo, Dag, Node, NodeBody, NodeId, Value};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fmt;
 use std::time::Duration;
 
@@ -402,10 +401,7 @@ fn execute_flat<T: Executable>(
 
     let mut node_outputs: HashMap<String, HashMap<String, Value>> = HashMap::new();
     let mut entries = Vec::new();
-    
-    // Track acquired tools to avoid re-acquiring
-    let mut acquired_tools = AcquiredTools::new();
-    
+
     // Wrap CI context in a cell for mutable access in the loop
     // (Rust borrow checker limitation with Option<&mut T> in loops)
     let mut ci_ctx = ci;
@@ -414,13 +410,14 @@ fn execute_flat<T: Executable>(
         let node = node_map
             .get(node_id.0.as_str())
             .ok_or_else(|| ExecError::new(format!("node '{}' not found", node_id.0)))?;
-        
+
         // Start CI group for this node
         if let Some(ref mut ci) = ci_ctx {
             ci.start_group(&node_id.0, false);
         }
 
         // Gather inputs from upstream edges
+        // Tool handles flow through edges like any other value
         let mut inputs: HashMap<String, Value> = HashMap::new();
         for edge in &dag.edges {
             if edge.to_node == *node_id {
@@ -430,12 +427,6 @@ fn execute_flat<T: Executable>(
                     }
                 }
             }
-        }
-        
-        // Acquire any required tools (capability-based pattern)
-        // This runs the upsert (check/install) and adds ToolHandle to inputs
-        if node.has_tool_requirements() {
-            acquire_node_tools(node, &mut acquired_tools, &mut inputs)?;
         }
 
         // Check guards
@@ -606,124 +597,6 @@ fn is_transport_execution_node<T>(node: &Node<T>) -> bool {
     node.inputs.iter().any(|port| {
         port.type_id.0 == "TransportRequest"
     })
-}
-
-// ============================================================================
-// Tool Acquisition
-// ============================================================================
-
-/// Registry of known CLI tool definitions by ID.
-/// This allows looking up tools from the requires_tools string IDs.
-fn get_tool_by_id(tool_id: &str) -> Option<&'static CliToolDef> {
-    use gunbc_ir::transport::cli;
-    match tool_id {
-        "clippy" => Some(&cli::CLIPPY),
-        "rustfmt" => Some(&cli::RUSTFMT),
-        "cargo" => Some(&cli::CARGO),
-        "git" => Some(&cli::GIT),
-        "gh" => Some(&cli::GH),
-        _ => None,
-    }
-}
-
-/// Acquired tools cache - tracks which tools have been successfully acquired.
-/// This avoids re-running upsert for tools that are already available.
-struct AcquiredTools {
-    /// Set of tool IDs that have been successfully acquired
-    acquired: HashSet<String>,
-}
-
-impl AcquiredTools {
-    fn new() -> Self {
-        Self {
-            acquired: HashSet::new(),
-        }
-    }
-    
-    /// Check if a tool has already been acquired.
-    fn is_acquired(&self, tool_id: &str) -> bool {
-        self.acquired.contains(tool_id)
-    }
-    
-    /// Mark a tool as acquired.
-    fn mark_acquired(&mut self, tool_id: &str) {
-        self.acquired.insert(tool_id.to_string());
-    }
-}
-
-/// Acquire a tool using the upsert pattern: check, install if needed.
-///
-/// Returns a ToolHandle if successful, or an error if acquisition fails.
-fn acquire_tool(tool: &'static CliToolDef) -> Result<ToolHandle, ExecError> {
-    // Step 1: Check if tool is installed
-    let check_result = CliToolOp::check(tool)
-        .execute()
-        .map_err(|e| ExecError::new(format!("Failed to check tool '{}': {}", tool.id, e)))?;
-    
-    let exists = check_result
-        .get("exists")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-    
-    // Step 2: Install if needed
-    if !exists {
-        println!("Tool '{}' not found, installing...", tool.id);
-        CliToolOp::install(tool)
-            .execute()
-            .map_err(|e| ExecError::new(format!("Failed to install tool '{}': {}", tool.id, e)))?;
-        println!("Tool '{}' installed successfully", tool.id);
-    }
-    
-    // Step 3: Return the handle (this is the capability)
-    Ok(ToolHandle::acquire(tool))
-}
-
-/// Acquire all tools required by a node.
-///
-/// This implements the capability-based tool acquisition pattern:
-/// 1. For each required tool, run the upsert pattern (check/install)
-/// 2. Create ToolHandle values for each acquired tool
-/// 3. Add ToolHandle values to the node's inputs
-///
-/// Uses a cache to avoid re-acquiring tools that are already available.
-fn acquire_node_tools<T>(
-    node: &Node<T>,
-    acquired_tools: &mut AcquiredTools,
-    inputs: &mut HashMap<String, Value>,
-) -> Result<(), ExecError> {
-    for tool_id in &node.requires_tools {
-        // Skip if already acquired
-        if acquired_tools.is_acquired(tool_id) {
-            // Add existing handle to inputs
-            if let Some(tool) = get_tool_by_id(tool_id) {
-                let handle = ToolHandle::acquire(tool);
-                let port_name = format!("tool:{}", tool_id);
-                inputs.insert(port_name, handle.into());
-            }
-            continue;
-        }
-        
-        // Look up the tool definition
-        let tool = get_tool_by_id(tool_id).ok_or_else(|| {
-            ExecError::new(format!(
-                "Unknown tool '{}' required by node '{}'. \
-                 Add it to get_tool_by_id() in execute.rs",
-                tool_id, node.id.0
-            ))
-        })?;
-        
-        // Acquire the tool (upsert pattern)
-        let handle = acquire_tool(tool)?;
-        
-        // Mark as acquired
-        acquired_tools.mark_acquired(tool_id);
-        
-        // Add handle to inputs
-        let port_name = format!("tool:{}", tool_id);
-        inputs.insert(port_name, handle.into());
-    }
-    
-    Ok(())
 }
 
 #[cfg(test)]

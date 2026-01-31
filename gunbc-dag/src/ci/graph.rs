@@ -32,6 +32,7 @@
 //!   Report (pure)
 //! ```
 
+use crate::ci::env::EnvOp;
 use crate::ci::ops::CIOp;
 use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::transport::cli::CliToolOp;
@@ -58,6 +59,7 @@ use std::collections::HashMap;
 /// - `PrepareFileExists` - embedded primitive for file existence checks (from gunbc-primitives)
 /// - `Transport` - boundary for actual I/O
 /// - `CliTool` - CLI tool operations (for SubDag integration)
+/// - `Env` - environment node that provides tools to downstream nodes
 #[derive(Debug, Clone)]
 pub enum CIGraphOp {
     /// CI-specific pure operations
@@ -68,6 +70,8 @@ pub enum CIGraphOp {
     Transport(TransportOps),
     /// CLI tool operations (for SubDag integration with clippy, etc.)
     CliTool(CliToolOp),
+    /// Environment node that provides tools via upsert (I/O boundary)
+    Env(EnvOp),
 }
 
 impl Executable for CIGraphOp {
@@ -79,6 +83,7 @@ impl Executable for CIGraphOp {
             CIGraphOp::CI(op) => op.execute(inputs),
             CIGraphOp::PrepareFileExists(op) => op.execute(inputs),
             CIGraphOp::Transport(op) => op.execute(inputs),
+            CIGraphOp::Env(op) => op.execute(inputs),
             CIGraphOp::CliTool(op) => {
                 // Check if we should skip execution
                 let skip = inputs
@@ -184,6 +189,20 @@ pub fn ci_workflow_permissions() -> Permissions {
 #[allow(clippy::result_large_err)]
 pub fn build_ci_graph() -> Result<Dag<CIGraphOp>, BuilderError> {
     let mut builder = DagBuilder::new();
+
+    // ========================================================================
+    // Environment Node: Provides tools to downstream nodes
+    // ========================================================================
+
+    // The env node is the I/O boundary for tool acquisition.
+    // It upserts (check/install) each tool and emits ToolHandles.
+    // In DryRun mode, this node is intercepted with mock handles.
+    let env = builder.add_root_node(Node::opaque(
+        "runner_env",
+        vec![],
+        vec![port("tool:clippy", "ToolHandle")],
+        CIGraphOp::Env(EnvOp::new(vec!["clippy"])),
+    ))?;
 
     // ========================================================================
     // SetupDeps Stage: Check if deps.toml exists
@@ -430,7 +449,7 @@ pub fn build_ci_graph() -> Result<Dag<CIGraphOp>, BuilderError> {
     )?;
 
     // ========================================================================
-    // Lint Stage (parallel with Test) - uses Clippy tool via requires_tools
+    // Lint Stage (parallel with Test) - receives tool handle from env node
     // ========================================================================
 
     // PrepareClippyLint - pure gate for clippy execution
@@ -447,29 +466,26 @@ pub fn build_ci_graph() -> Result<Dag<CIGraphOp>, BuilderError> {
         &parse_build,
     )?;
 
-    // ClippyLint - runs clippy with automatic tool acquisition
-    // The executor's requires_tools mechanism handles check/install automatically
+    // ClippyLint - runs clippy with tool handle from env node
+    // The tool:clippy input comes from the runner_env node via an edge
     let clippy_lint = builder.add_node_after(
-        {
-            let mut node = Node::opaque(
-                "clippy_lint",
-                vec![port("skip", "Bool")],
-                vec![
-                    optional("success", "Bool"),
-                    optional("stdout", "String"),
-                    optional("stderr", "String"),
-                    port("skip", "Bool"),
-                ],
-                CIGraphOp::CliTool(CliToolOp::run(
-                    &gunbc_ir::transport::cli::CLIPPY,
-                    &["--all-targets", "--", "-D", "warnings"],
-                )),
-            );
-            // Mark that this node requires the clippy tool
-            // The executor will automatically run check/install before execution
-            node.requires_tools.push("clippy".to_string());
-            node
-        },
+        Node::opaque(
+            "clippy_lint",
+            vec![
+                port("skip", "Bool"),
+                port("tool:clippy", "ToolHandle"),  // Receives handle from env node
+            ],
+            vec![
+                optional("success", "Bool"),
+                optional("stdout", "String"),
+                optional("stderr", "String"),
+                port("skip", "Bool"),
+            ],
+            CIGraphOp::CliTool(CliToolOp::run(
+                &gunbc_ir::transport::cli::CLIPPY,
+                &["--all-targets", "--", "-D", "warnings"],
+            )),
+        ),
         &prepare_clippy_lint,
     )?;
 
@@ -553,6 +569,8 @@ pub fn build_ci_graph() -> Result<Dag<CIGraphOp>, BuilderError> {
     builder.add_edge(prepare_test.out("skip_reason"), parse_test.in_port("skip_reason"))?;
 
     // Lint stage (parallel with test, both depend on build) - uses Clippy tool
+    // Tool handle flows from runner_env -> clippy_lint
+    builder.add_edge(env.out("tool:clippy"), clippy_lint.in_port("tool:clippy"))?;
     builder.add_edge(parse_build.out("build_success"), prepare_clippy_lint.in_port("build_success"))?;
     builder.add_edge(prepare_clippy_lint.out("skip"), clippy_lint.in_port("skip"))?;
     // Wire clippy outputs to parse node
@@ -606,16 +624,16 @@ mod tests {
     #[test]
     fn test_graph_has_clippy_lint_node() {
         let dag = build_ci_graph().expect("graph should build");
-        
+
         // Find clippy_lint node
         let clippy_lint = dag.get_node(&"clippy_lint".into());
         assert!(clippy_lint.is_some(), "clippy_lint node should exist");
-        
-        // Verify it requires the clippy tool
+
+        // Verify it has a tool:clippy input port (receives handle from env node)
         if let Some(node) = clippy_lint {
             assert!(
-                node.requires_tools.contains(&"clippy".to_string()),
-                "clippy_lint should require clippy tool"
+                node.inputs.iter().any(|p| p.name.0 == "tool:clippy"),
+                "clippy_lint should have tool:clippy input port"
             );
         }
     }

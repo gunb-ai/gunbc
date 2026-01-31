@@ -343,14 +343,12 @@ mod tests {
             inputs: vec![],
             outputs: vec![port("success", "Bool")],
             body: NodeBody::Opaque(DummyOp),
-            requires_tools: vec![],
         });
         dag.add_node(Node {
             id: "test".into(),
             inputs: vec![port("build_success", "Bool")],
             outputs: vec![port("success", "Bool")],
             body: NodeBody::Opaque(DummyOp),
-            requires_tools: vec![],
         });
         dag.add_edge(edge("build", "success", "test", "build_success"));
 

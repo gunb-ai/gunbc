@@ -25,7 +25,6 @@ fn convert_language_node(node: Node<LanguageOp>) -> Node<WorkspaceOp> {
                 gunbc_ir::NodeBody::SubDag(convert_language_dag(dag))
             }
         },
-        requires_tools: node.requires_tools,
     }
 }
 
