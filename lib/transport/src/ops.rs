@@ -120,7 +120,7 @@ mod tests {
         let result = TransportOps::Execute.execute(inputs).expect("skip should short-circuit");
 
         assert_eq!(result.get("skip"), Some(&Value::Bool(true)));
-        assert!(result.get("response").is_none());
+        assert!(!result.contains_key("response"));
     }
 
     #[test]
