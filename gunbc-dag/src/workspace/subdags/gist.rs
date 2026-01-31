@@ -30,8 +30,7 @@ fn convert_gist_op(op: GistGraphOp) -> WorkspaceOp {
         // Gist-specific ops - wrap in Gist variant with a placeholder
         // Note: GistOps only has PrepareRequest and ParseGistResponse
         // The internal graph ops don't have direct WorkspaceOp equivalents
-        GistGraphOp::PrepareListFiles
-        | GistGraphOp::ParseListFiles
+        GistGraphOp::Git(_)
         | GistGraphOp::PrepareReadFiles
         | GistGraphOp::ParseReadFiles
         | GistGraphOp::PrepareReadFile

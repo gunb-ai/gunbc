@@ -15,6 +15,7 @@ use gunbc_ir::transport::{ShellRequest, TransportRequest, TransportResponse};
 use gunbc_ir::{
     build::*, BuilderError, Cardinality, Dag, DagBuilder, Node, Value, WorkflowSignature,
 };
+use gunbc_lib_git_ops::GitOps;
 use gunbc_lib_gist_ops::GistOps;
 use gunbc_lib_markdown::MarkdownOp;
 use gunbc_lib_transport::TransportOps;
@@ -26,12 +27,10 @@ use std::collections::{BTreeMap, HashMap};
 #[derive(Debug, Clone)]
 pub enum GistGraphOp {
     // ========================================================================
-    // ListFiles chain: PrepareListFiles -> Execute -> ParseListFiles
+    // Git operations (via git-ops crate)
     // ========================================================================
-    /// Prepare git ls-files request (PURE - no I/O)
-    PrepareListFiles,
-    /// Parse list files response to file list (PURE - no I/O)
-    ParseListFiles,
+    /// Git operations (PURE - builds requests, parses responses)
+    Git(GitOps),
 
     // ========================================================================
     // ReadFiles chain (batch): PrepareReadFiles -> Execute -> ParseReadFiles
@@ -100,9 +99,8 @@ impl Executable for GistGraphOp {
         inputs: HashMap<String, Value>,
     ) -> Result<HashMap<String, Value>, ExecError> {
         match self {
-            // ListFiles chain (pure)
-            GistGraphOp::PrepareListFiles => execute_prepare_list_files(inputs),
-            GistGraphOp::ParseListFiles => execute_parse_list_files(inputs),
+            // Git operations (delegated to git-ops crate)
+            GistGraphOp::Git(op) => op.execute(inputs),
 
             // ReadFiles chain - batch (pure)
             GistGraphOp::PrepareReadFiles => execute_prepare_read_files(inputs),
@@ -142,85 +140,6 @@ impl Executable for GistGraphOp {
             GistGraphOp::Transport(op) => op.execute(inputs),
         }
     }
-}
-
-// ============================================================================
-// PrepareListFiles - PURE (builds TransportRequest)
-// ============================================================================
-
-/// Prepare git ls-files request (PURE - no I/O).
-///
-/// Inputs:
-/// - repo_path: optional path to scan (defaults to ".")
-///
-/// Outputs:
-/// - request: TransportRequest for git ls-files
-fn execute_prepare_list_files(
-    inputs: HashMap<String, Value>,
-) -> Result<HashMap<String, Value>, ExecError> {
-    let repo_path = inputs
-        .get("repo_path")
-        .and_then(|v| v.as_str())
-        .unwrap_or(".");
-
-    let request = TransportRequest::Shell(ShellRequest {
-        command: "git".to_string(),
-        args: vec![
-            "ls-files".to_string(),
-            "--cached".to_string(),
-            "--others".to_string(),
-            "--exclude-standard".to_string(),
-        ],
-        cwd: Some(repo_path.to_string()),
-        env: HashMap::new(),
-        stdin: None,
-    });
-
-    let mut out = HashMap::new();
-    out.insert("request".to_string(), Value::Request(request));
-    Ok(out)
-}
-
-// ============================================================================
-// ParseListFiles - PURE (parses TransportResponse)
-// ============================================================================
-
-/// Parse list files response to file list (PURE - no I/O).
-///
-/// Inputs:
-/// - response: TransportResponse from git ls-files
-///
-/// Outputs:
-/// - files: list of file paths
-fn execute_parse_list_files(
-    inputs: HashMap<String, Value>,
-) -> Result<HashMap<String, Value>, ExecError> {
-    let response = inputs
-        .get("response")
-        .and_then(|v| v.as_response())
-        .ok_or_else(|| ExecError::new("missing or invalid 'response' input"))?;
-
-    let files = match response {
-        TransportResponse::Shell(shell) => {
-            if shell.success() {
-                shell
-                    .stdout
-                    .lines()
-                    .filter(|l| !l.is_empty())
-                    .map(|l| l.to_string())
-                    .collect()
-            } else {
-                // Return empty list on failure (could be non-git repo)
-                // In future, could use BranchBuilder for fallback to find
-                Vec::new()
-            }
-        }
-        _ => return Err(ExecError::new("unexpected response type")),
-    };
-
-    let mut out = HashMap::new();
-    out.insert("files".to_string(), Value::StrList(files));
-    Ok(out)
 }
 
 // ============================================================================
@@ -598,15 +517,15 @@ pub fn build_gist_graph(
     let mut builder = DagBuilder::new();
 
     // ========================================================================
-    // ListFiles chain: PrepareListFiles -> Execute -> ParseListFiles
+    // ListFiles chain: GitOps::PrepareLsFiles -> Execute -> GitOps::ParseLsFiles
     // ========================================================================
 
-    // Node: PrepareListFiles (PURE - builds TransportRequest)
+    // Node: PrepareLsFiles (PURE - builds TransportRequest via GitRequest)
     let prepare_list_files = builder.add_root_node(Node::opaque(
         "prepare_list_files",
         vec![optional("repo_path", "String")],
         vec![port("request", "TransportRequest")],
-        GistGraphOp::PrepareListFiles,
+        GistGraphOp::Git(GitOps::PrepareLsFiles),
     ))?;
 
     // Node: Execute list files (BOUNDARY - actual I/O)
@@ -620,13 +539,13 @@ pub fn build_gist_graph(
         &prepare_list_files,
     )?;
 
-    // Node: ParseListFiles (PURE - parses response to file list)
+    // Node: ParseLsFiles (PURE - parses response to file list)
     let parse_list_files = builder.add_node_after(
         Node::opaque(
             "parse_list_files",
             vec![port("response", "TransportResponse")],
             vec![list("files", "StrList")],
-            GistGraphOp::ParseListFiles,
+            GistGraphOp::Git(GitOps::ParseLsFiles),
         ),
         &execute_list_files,
     )?;
@@ -783,28 +702,66 @@ use gunbc_test::Mockable;
 impl Mockable for GistGraphOp {
     fn mock_outputs(&self) -> HashMap<String, Value> {
         match self {
-            // ListFiles chain
-            GistGraphOp::PrepareListFiles => {
-                let mut out = HashMap::new();
-                out.insert(
-                    "request".to_string(),
-                    Value::Request(TransportRequest::Shell(ShellRequest {
-                        command: "git".to_string(),
-                        args: vec!["ls-files".to_string()],
-                        cwd: Some(".".to_string()),
-                        env: HashMap::new(),
-                        stdin: None,
-                    })),
-                );
-                out
-            }
-            GistGraphOp::ParseListFiles => {
-                let mut out = HashMap::new();
-                out.insert(
-                    "files".to_string(),
-                    Value::StrList(vec!["src/main.rs".to_string(), "README.md".to_string()]),
-                );
-                out
+            // Git operations (delegated)
+            GistGraphOp::Git(op) => {
+                // Return appropriate mock outputs based on the git op variant
+                match op {
+                    GitOps::PrepareLsFiles => {
+                        let request = gunbc_ir::transport::git::GitRequest::ls_files()
+                            .to_shell_request();
+                        let mut out = HashMap::new();
+                        out.insert("request".to_string(), Value::Request(request));
+                        out
+                    }
+                    GitOps::ParseLsFiles => {
+                        let mut out = HashMap::new();
+                        out.insert(
+                            "files".to_string(),
+                            Value::StrList(vec![
+                                "src/main.rs".to_string(),
+                                "README.md".to_string(),
+                            ]),
+                        );
+                        out
+                    }
+                    GitOps::PrepareDiff { .. } | GitOps::PrepareDiffNameOnly { .. }
+                    | GitOps::PrepareCurrentBranch => {
+                        let mut out = HashMap::new();
+                        out.insert(
+                            "request".to_string(),
+                            Value::Request(TransportRequest::Shell(ShellRequest {
+                                command: "git".to_string(),
+                                args: vec!["mock".to_string()],
+                                cwd: None,
+                                env: HashMap::new(),
+                                stdin: None,
+                            })),
+                        );
+                        out
+                    }
+                    GitOps::ParseDiff => {
+                        let mut out = HashMap::new();
+                        out.insert(
+                            "diff_files".to_string(),
+                            Value::MapStrStr(std::collections::BTreeMap::new()),
+                        );
+                        out.insert(
+                            "stats".to_string(),
+                            Value::Str("+0 -0 across 0 files".to_string()),
+                        );
+                        out
+                    }
+                    GitOps::ParseDiffNameOnly => {
+                        let mut out = HashMap::new();
+                        out.insert("files".to_string(), Value::StrList(vec![]));
+                        out
+                    }
+                    GitOps::ParseCurrentBranch => {
+                        let mut out = HashMap::new();
+                        out.insert("branch".to_string(), Value::Str("main".to_string()));
+                        out
+                    }
+                }
             }
 
             // ReadFiles chain

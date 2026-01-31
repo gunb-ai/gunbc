@@ -23,6 +23,7 @@
 //! └── cli.rs (gh CLI)
 //!
 //! gist.rs                     ← Service layer (uses github/)
+//! git.rs                      ← Service layer (deterministic git commands)
 //! github_actions.rs           ← Service layer (uses github/)
 //!
 //! ci/                         ← CI provider abstraction
@@ -42,6 +43,7 @@ pub mod ci;
 pub mod cli;
 pub mod file;
 pub mod gist;
+pub mod git;
 pub mod github;
 pub mod github_actions;
 pub mod http;
@@ -52,6 +54,7 @@ pub mod tool;
 
 pub use file::{FileOp, FileRequest, FileResponse};
 pub use gist::GistRequest;
+pub use git::GitRequest;
 pub use github::{
     api::{github_rest_request, GitHubApi, GITHUB_API},
     cli::{gh_cli_commands, gh_cli_request, is_gh_installed, GHCommand, GitHubCLI, GH_CLI},

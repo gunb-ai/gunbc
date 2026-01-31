@@ -127,6 +127,7 @@ dependencies = [
  "gunbc-exec",
  "gunbc-ir",
  "gunbc-lib-gist-ops",
+ "gunbc-lib-git-ops",
  "gunbc-lib-markdown",
  "gunbc-lib-transport",
  "gunbc-primitives",
@@ -150,6 +151,15 @@ dependencies = [
  "gunbc-exec",
  "gunbc-ir",
  "gunbc-lib-transport",
+ "gunbc-test",
+]
+
+[[package]]
+name = "gunbc-lib-git-ops"
+version = "0.1.0"
+dependencies = [
+ "gunbc-exec",
+ "gunbc-ir",
  "gunbc-test",
 ]
 

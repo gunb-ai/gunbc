@@ -31,6 +31,7 @@ pub mod graph_mock;
 pub use graph::{build_gist_graph, build_read_file_body_dag, gist_signature, GistGraphOp};
 
 // Re-export the library ops for convenience
+pub use gunbc_lib_git_ops::GitOps;
 pub use gunbc_lib_gist_ops::GistOps;
 pub use gunbc_lib_markdown::MarkdownOp;
 
