@@ -125,6 +125,37 @@ impl CargoInvocation {
     pub fn command(&self) -> String {
         format!("cargo run {}", self.args())
     }
+
+    /// Get the cargo run command as individual string parts.
+    ///
+    /// Returns `["cargo", "run", "-p", package, "--bin", binary]` or
+    /// `["cargo", "run", "-p", binary]`.
+    pub fn command_parts(&self) -> Vec<String> {
+        let mut parts = vec!["cargo".to_string(), "run".to_string()];
+        match &self.package {
+            Some(pkg) => {
+                parts.push("-p".to_string());
+                parts.push(pkg.clone());
+                parts.push("--bin".to_string());
+                parts.push(self.binary.clone());
+            }
+            None => {
+                parts.push("-p".to_string());
+                parts.push(self.binary.clone());
+            }
+        }
+        parts
+    }
+
+    /// Get the cargo run command parts followed by additional arguments.
+    ///
+    /// Convenience for building command vectors like
+    /// `["cargo", "run", "-p", "gunbc-codegen", "--release", "--", "codegen"]`.
+    pub fn run_with_args(&self, extra: &[&str]) -> Vec<String> {
+        let mut parts = self.command_parts();
+        parts.extend(extra.iter().map(|s| s.to_string()));
+        parts
+    }
 }
 
 #[cfg(test)]
@@ -168,5 +199,32 @@ mod tests {
         let inv = CargoInvocation::in_package("gunbc-ci", "gunbc-dag");
         assert_eq!(inv.args(), "-p gunbc-dag --bin gunbc-ci");
         assert_eq!(inv.command(), "cargo run -p gunbc-dag --bin gunbc-ci");
+    }
+
+    #[test]
+    fn test_command_parts_standalone() {
+        let inv = CargoInvocation::standalone("gist");
+        assert_eq!(
+            inv.command_parts(),
+            vec!["cargo", "run", "-p", "gunbc-gist"]
+        );
+    }
+
+    #[test]
+    fn test_command_parts_composed() {
+        let inv = CargoInvocation::composed("ci", "dag");
+        assert_eq!(
+            inv.command_parts(),
+            vec!["cargo", "run", "-p", "gunbc-dag", "--bin", "gunbc-ci"]
+        );
+    }
+
+    #[test]
+    fn test_run_with_args() {
+        let inv = CargoInvocation::standalone("codegen");
+        assert_eq!(
+            inv.run_with_args(&["--release", "--", "codegen"]),
+            vec!["cargo", "run", "-p", "gunbc-codegen", "--release", "--", "codegen"]
+        );
     }
 }

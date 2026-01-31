@@ -83,7 +83,7 @@ fn execute_render_makefile(_inputs: HashMap<String, Value>) -> Result<HashMap<St
 // Mockable trait implementation
 // ============================================================================
 
-use gunbc_ir::cargo;
+use gunbc_ir::{cargo, CargoInvocation};
 use gunbc_test::{CardinalityTestInput, ErrorTestCase, Mockable};
 
 impl Mockable for MakegenOp {
@@ -113,9 +113,9 @@ impl Mockable for MakegenOp {
                 out
             }
             MakegenOp::RenderMakefile => {
-                let gist = cargo::name("gist");
-                let deps = cargo::name("deps");
-                let buck2 = cargo::name("buck2");
+                let gist = CargoInvocation::standalone("gist").command();
+                let deps = CargoInvocation::standalone("deps").command();
+                let buck2 = CargoInvocation::standalone("buck2").command();
                 let mut out = HashMap::new();
                 out.insert(
                     "makefile_content".to_string(),
@@ -125,13 +125,13 @@ impl Mockable for MakegenOp {
                             .PHONY: gist deps buck2\n\
                             \n\
                             gist:\n\
-                            \tcargo run -p {gist}\n\
+                            \t{gist}\n\
                             \n\
                             deps:\n\
-                            \tcargo run -p {deps}\n\
+                            \t{deps}\n\
                             \n\
                             buck2:\n\
-                            \tcargo run -p {buck2}\n"
+                            \t{buck2}\n"
                         ),
                     ),
                 );

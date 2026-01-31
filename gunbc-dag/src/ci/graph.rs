@@ -147,12 +147,14 @@ pub fn ci_integrations() -> Vec<Integration> {
 
 /// Get the complete workflow configuration for CI.
 pub fn ci_workflow_config() -> WorkflowConfig {
+    let codegen_cmd = gunbc_ir::CargoInvocation::standalone("codegen").command();
+    let ci_cmd = gunbc_ir::CargoInvocation::composed("ci", "dag").command();
     WorkflowConfig::new(
         "CI",
         ubuntu_latest(),
         ci_integrations(),
     )
-    .with_run_command("|\n          cargo run -p gunbc-codegen -- codegen\n          cargo run -p gunbc-ci -- run")
+    .with_run_command(&format!("|\n          {codegen_cmd} -- codegen\n          {ci_cmd} -- run"))
 }
 
 /// Get the required permissions for the CI workflow.

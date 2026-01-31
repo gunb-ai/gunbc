@@ -8,7 +8,7 @@
 use crate::makegen::registry::{
     BuildConfig, EntrypointParam, ExtraTarget, MetaTarget, PrepLevel, ToolInfo, ToolRegistry,
 };
-use gunbc_ir::cargo;
+use gunbc_ir::CargoInvocation;
 use gunbc_ir::language::MAKEFILE;
 use gunbc_ir::Renderable;
 
@@ -174,9 +174,9 @@ fn render_core_targets(config: &BuildConfig) -> String {
     output.push_str("# Rollback transaction: remove all generated artifacts\n");
     output.push_str("clean:\n");
     output.push_str(&format!(
-        "{}@cargo run -p {} --release -- rollback\n\n",
+        "{}@{} --release -- rollback\n\n",
         INDENT,
-        cargo::name("codegen"),
+        CargoInvocation::standalone("codegen").command(),
     ));
 
     output
@@ -406,8 +406,8 @@ fn render_tool_target(tool: &ToolInfo) -> String {
     // Target with ensure-codegen dependency
     output.push_str(&format!("{}: ensure-codegen\n", tool.short_name));
     output.push_str(&format!(
-        "\t@cargo run {} --{}",
-        tool.invocation.args(),
+        "\t@{} --{}",
+        tool.invocation.command(),
         render_cli_args(&tool.entrypoints)
     ));
     output.push_str("\n\n");
@@ -421,8 +421,8 @@ fn render_dry_run_target(tool: &ToolInfo) -> String {
 
     output.push_str(&format!("{}-dry: ensure-codegen\n", tool.short_name));
     output.push_str(&format!(
-        "\t@cargo run {} -- --dry-run{}",
-        tool.invocation.args(),
+        "\t@{} -- --dry-run{}",
+        tool.invocation.command(),
         render_cli_args(&tool.entrypoints)
     ));
     output.push_str("\n\n");
@@ -469,6 +469,7 @@ fn render_cli_args(params: &[EntrypointParam]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gunbc_ir::cargo;
 
     #[test]
     fn test_render_makefile_has_header() {

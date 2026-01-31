@@ -9,7 +9,7 @@
 //! commands. This eliminates duplicate hardcoded commands across the codebase.
 
 use gunbc_deps::DEFAULT_MANIFEST_FILENAME;
-use gunbc_ir::cargo;
+use gunbc_ir::CargoInvocation;
 use gunbc_ir::DEFAULT_MAKEFILE_FILENAME;
 
 // ============================================================================
@@ -64,11 +64,11 @@ fn strs(parts: &[&str]) -> Vec<String> {
 impl BuildConfig {
     /// Default cargo-based build config.
     pub fn cargo() -> Self {
-        let codegen = cargo::name("codegen");
+        let codegen = CargoInvocation::standalone("codegen");
         Self {
             build_system: BuildSystem::Cargo,
-            codegen_command: strs(&["cargo", "run", "-p", &codegen, "--release", "--", "codegen"]),
-            daggen_command: strs(&["cargo", "run", "-p", &codegen, "--release", "--", "daggen"]),
+            codegen_command: codegen.run_with_args(&["--release", "--", "codegen"]),
+            daggen_command: codegen.run_with_args(&["--release", "--", "daggen"]),
             build_command: strs(&["cargo", "build", "--all-targets"]),
             test_command: strs(&["cargo", "test"]),
             lint_command: strs(&["cargo", "clippy", "--all-targets", "--", "-D", "warnings"]),
@@ -76,17 +76,17 @@ impl BuildConfig {
             fmt_command: strs(&["cargo", "fmt"]),
             fmt_check_command: strs(&["cargo", "fmt", "--", "--check"]),
             check_command: strs(&["cargo", "check", "--all-targets"]),
-            ci_yaml_command: strs(&["cargo", "run", "-p", &codegen, "--release", "--", "cigen"]),
+            ci_yaml_command: codegen.run_with_args(&["--release", "--", "cigen"]),
         }
     }
 
     /// Buck2-based build config (for future use).
     pub fn buck2() -> Self {
-        let codegen = cargo::name("codegen");
+        let codegen = CargoInvocation::standalone("codegen");
         Self {
             build_system: BuildSystem::Buck2,
-            codegen_command: strs(&["cargo", "run", "-p", &codegen, "--release", "--", "codegen"]),
-            daggen_command: strs(&["cargo", "run", "-p", &codegen, "--release", "--", "daggen"]),
+            codegen_command: codegen.run_with_args(&["--release", "--", "codegen"]),
+            daggen_command: codegen.run_with_args(&["--release", "--", "daggen"]),
             build_command: strs(&["buck2", "build", "//..."]),
             test_command: strs(&["buck2", "test", "//..."]),
             lint_command: strs(&["buck2", "run", "//tools:clippy"]),
@@ -94,7 +94,7 @@ impl BuildConfig {
             fmt_command: strs(&["cargo", "fmt"]), // fmt stays cargo
             fmt_check_command: strs(&["cargo", "fmt", "--", "--check"]),
             check_command: strs(&["buck2", "build", "//..."]), // buck2 check is same as build
-            ci_yaml_command: strs(&["cargo", "run", "-p", &codegen, "--release", "--", "cigen"]),
+            ci_yaml_command: codegen.run_with_args(&["--release", "--", "cigen"]),
         }
     }
 
