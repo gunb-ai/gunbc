@@ -328,3 +328,25 @@ zero manual MockSpec.
 - [ ] Tool/resource acquisition instrumentation + ordering fix (skip → no tool acquire)
 - [ ] Contract-tower witnesses for true boundary fuzzing (L3/L4)
 - [ ] Per-type boundary strategy registry for edge case generation
+
+### Known Issues / Follow-ups
+
+- [ ] `types_compatible()` in `gunbc-test/composition.rs` treats `Any` as universally
+      compatible at L2 (line 38). This is correct for wiring validation, but means
+      L3 entailment checking is the *only* thing preventing `Any → ConstrainedType`
+      edges from silently passing. If L3 is ever bypassed or disabled, these edges
+      would go untested. Consider: should `types_compatible` return a
+      `CompatibilityResult` with a warning for `Any` source?
+- [ ] Hard-stop mode for Invalid obligations: optionally refuse to generate the
+      normal test suite when `has_invalids()` is true (emit `compile_error!` or
+      a single failing test that lists all invalids). Currently, invalid tests
+      appear alongside normal tests.
+- [ ] SubDag interface validation as an IR-level validator (`validate_subdag_interfaces`)
+      that testgen can call. Currently only checked during `lower()` (too late).
+      See DAG Pattern Audit findings 1, 2, 6.
+- [ ] Pattern config observability: Repeat/While/Poll config fields (retry policy,
+      classifier, max_iterations, interval/timeout) are stored but never lowered into
+      IR structure. Testgen can't verify them until config is IR-observable.
+- [ ] `T::default()` contract gap: pattern internals depend on `T::default()` for
+      merge/unpack/controller ops with no trait-level contract. Needs `T: PatternInternalOps`
+      or equivalent — not a testgen problem but affects test correctness.
