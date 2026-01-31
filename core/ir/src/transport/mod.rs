@@ -8,6 +8,7 @@
 //! - GitHub platform (API + CLI)
 //! - GitHub Actions for CI/CD integration
 //! - CI provider abstraction for workflow commands
+//! - Cloud resource management (GCP, AWS)
 //!
 //! The key insight is that all world I/O can be modeled as request/response pairs,
 //! allowing business logic to remain pure while transport execution happens at
@@ -29,10 +30,17 @@
 //! ├── provider.rs (CiProvider trait)
 //! ├── runner.rs (Runner trait)
 //! └── providers/ (GitHub, GitLab, Plain)
+//!
+//! cloud/                      ← Cloud resource management
+//! ├── mod.rs (CloudProvider, ResourceHandle, etc.)
+//! ├── gcp/ (Service Account, Secret Manager, Workload Identity)
+//! ├── aws/ (IAM Role, Secrets Manager, Parameter Store)
+//! └── secrets/ (Secret references, Workload Identity Federation)
 //! ```
 
 pub mod ci;
 pub mod cli;
+pub mod cloud;
 pub mod file;
 pub mod gist;
 pub mod github;
@@ -76,6 +84,30 @@ pub use github::cli::GH_TOOL;
 pub use ci::{
     detect_provider, is_ci, AnnotationLevel, CiProvider, FileLocation, GitHubActionsProvider,
     GitLabCiProvider, GitLabRunner, PlainTextProvider, Runner, WorkflowCommand,
+};
+pub use cloud::{
+    // Core types
+    CloudCredential, CloudProvider, CheckResult, CreateResult, ResourceHandle, ResourceOp, ResourceState,
+    // GCP
+    gcp::{
+        GcpCredential, GcpLocation, GcpResourceType, ResourceName as GcpResourceName,
+        ServiceAccountDef, SecretDef as GcpSecretDef, WorkloadIdentityPoolDef, WorkloadIdentityProviderDef,
+        IamBinding, IamMember, IamResource, RoleDef as GcpRoleDef,
+    },
+    // AWS
+    aws::{
+        AwsCredential, AwsRegion, AwsResourceType, Arn,
+        IamRoleDef, IamPolicyDef, TrustPolicy, ManagedPolicies,
+        AwsSecretDef, ParameterDef,
+    },
+    // Secrets
+    secrets::{
+        SecretRef, SecretSource, SecretVersion, WorkloadIdentityConfig,
+        GcpWorkloadIdentity, AwsWebIdentity, WebIdentityTokenSource,
+        GitHubSecretsRequirements, GitHubSecretDef, SecretScope,
+    },
+    // CLI tools
+    GCLOUD, AWS_CLI, AZ_CLI,
 };
 
 use serde::{Deserialize, Serialize};
