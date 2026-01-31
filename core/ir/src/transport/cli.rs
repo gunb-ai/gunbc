@@ -37,6 +37,7 @@
 
 use std::collections::HashMap;
 use std::marker::PhantomData;
+use std::path::PathBuf;
 use std::process::Command;
 
 use crate::resource::{AccessMode, ResourceId};
@@ -96,8 +97,8 @@ impl CliToolDef {
 ///
 /// The capability pattern enforces that:
 /// 1. You cannot use a tool without acquiring it first
-/// 2. Acquisition happens automatically via node requirements
-/// 3. The framework handles check/install/run
+/// 2. Acquisition happens via an environment node that provides resources
+/// 3. The handle carries the resolved path to the tool binary
 ///
 /// # Example
 ///
@@ -112,45 +113,60 @@ impl CliToolDef {
 #[derive(Debug, Clone)]
 pub struct ToolHandle {
     tool: &'static CliToolDef,
+    /// Resolved path to the tool binary (e.g., "/usr/bin/cargo").
+    /// For mocked handles, this may be a placeholder path.
+    path: PathBuf,
     /// Private field prevents direct construction outside this module.
-    /// The only way to get a ToolHandle is via `ToolHandle::acquire()` which
-    /// is called by the framework during execution.
     _acquired: PhantomData<()>,
 }
 
 impl ToolHandle {
-    /// Create a new ToolHandle.
+    /// Create a new ToolHandle with a resolved path.
     ///
     /// **Framework use only.** This should only be called by the execution
-    /// framework after successfully acquiring a tool. User operation code
-    /// should receive ToolHandle values through DAG inputs, not construct
-    /// them directly.
-    ///
-    /// The PhantomData field prevents casual construction, but the framework
-    /// needs to be able to create handles after successful tool acquisition.
-    pub fn acquire(tool: &'static CliToolDef) -> Self {
+    /// framework (specifically, the environment node) after successfully
+    /// acquiring a tool. User operation code should receive ToolHandle
+    /// values through DAG inputs, not construct them directly.
+    pub fn acquire(tool: &'static CliToolDef, path: impl Into<PathBuf>) -> Self {
         Self {
             tool,
+            path: path.into(),
             _acquired: PhantomData,
         }
     }
-    
+
+    /// Create a mock ToolHandle for testing/DryRun mode.
+    ///
+    /// The path will be `/mock/{tool_id}` to make it obvious this is not real.
+    pub fn mock(tool: &'static CliToolDef) -> Self {
+        Self {
+            tool,
+            path: PathBuf::from(format!("/mock/{}", tool.id)),
+            _acquired: PhantomData,
+        }
+    }
+
     /// Get the tool definition this handle refers to.
     pub fn tool(&self) -> &'static CliToolDef {
         self.tool
     }
-    
+
     /// Get the tool ID.
     pub fn id(&self) -> &'static str {
         self.tool.id
     }
-    
+
+    /// Get the resolved path to the tool binary.
+    pub fn path(&self) -> &PathBuf {
+        &self.path
+    }
+
     /// Run the tool with the given arguments.
     /// This is the ONLY way to execute a tool - you need the handle.
     pub fn run(&self, args: &[&str]) -> CliToolOp {
         CliToolOp::run(self.tool, args)
     }
-    
+
     /// Get the resource ID for this tool handle.
     pub fn resource_id(&self) -> ResourceId {
         self.tool.resource_id()
@@ -160,10 +176,129 @@ impl ToolHandle {
 /// Convert a ToolHandle to a Value for passing through DAG edges.
 impl From<ToolHandle> for crate::Value {
     fn from(handle: ToolHandle) -> Self {
-        // Store as a string reference to the tool ID
-        // The framework knows how to reconstruct the handle from this
-        crate::Value::Str(format!("tool_handle:{}", handle.tool.id))
+        // Encode as "tool_handle:{id}:{path}" for reconstruction
+        crate::Value::Str(format!(
+            "tool_handle:{}:{}",
+            handle.tool.id,
+            handle.path.display()
+        ))
     }
+}
+
+/// Error when parsing a ToolHandle from a Value.
+#[derive(Debug)]
+pub struct ToolHandleParseError {
+    pub message: String,
+}
+
+impl std::fmt::Display for ToolHandleParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "ToolHandle parse error: {}", self.message)
+    }
+}
+
+impl std::error::Error for ToolHandleParseError {}
+
+/// Try to reconstruct a ToolHandle from a Value.
+///
+/// The Value must be a string in the format "tool_handle:{id}:{path}".
+/// The tool ID must match a known static tool definition.
+impl TryFrom<&crate::Value> for ToolHandle {
+    type Error = ToolHandleParseError;
+
+    fn try_from(value: &crate::Value) -> Result<Self, Self::Error> {
+        let s = match value {
+            crate::Value::Str(s) => s,
+            _ => {
+                return Err(ToolHandleParseError {
+                    message: "Expected string value".to_string(),
+                })
+            }
+        };
+
+        let parts: Vec<&str> = s.splitn(3, ':').collect();
+        if parts.len() != 3 || parts[0] != "tool_handle" {
+            return Err(ToolHandleParseError {
+                message: format!("Invalid format: expected 'tool_handle:id:path', got '{}'", s),
+            });
+        }
+
+        let tool_id = parts[1];
+        let path = PathBuf::from(parts[2]);
+
+        // Look up the static tool definition
+        let tool = get_tool_by_id(tool_id).ok_or_else(|| ToolHandleParseError {
+            message: format!("Unknown tool ID: {}", tool_id),
+        })?;
+
+        Ok(ToolHandle {
+            tool,
+            path,
+            _acquired: PhantomData,
+        })
+    }
+}
+
+/// Look up a tool definition by ID.
+///
+/// Returns the static tool definition if found.
+pub fn get_tool_by_id(id: &str) -> Option<&'static CliToolDef> {
+    match id {
+        "clippy" => Some(&CLIPPY),
+        "rustfmt" => Some(&RUSTFMT),
+        "cargo" => Some(&CARGO),
+        "git" => Some(&GIT),
+        "gh" => Some(&GH),
+        _ => None,
+    }
+}
+
+/// Resolve the path to a tool binary using `which`.
+///
+/// Returns the full path to the binary if found on PATH.
+#[allow(clippy::disallowed_methods)]
+pub fn resolve_tool_path(tool: &'static CliToolDef) -> Result<PathBuf, CliToolError> {
+    let binary = tool.binary_name().ok_or_else(|| {
+        CliToolError::new(tool, "resolve", "No binary name defined")
+    })?;
+
+    // Use `which` command to find the binary
+    let output = Command::new("which")
+        .arg(binary)
+        .output()
+        .map_err(|e| CliToolError::new(tool, "resolve", format!("Failed to run which: {}", e)))?;
+
+    if !output.status.success() {
+        return Err(CliToolError::new(
+            tool,
+            "resolve",
+            format!("Binary '{}' not found on PATH", binary),
+        ));
+    }
+
+    let path_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    Ok(PathBuf::from(path_str))
+}
+
+/// Upsert a tool: check if installed, install if needed, return resolved path.
+///
+/// This is the main entry point for tool acquisition in the environment node.
+#[allow(clippy::disallowed_methods)]
+pub fn upsert_tool(tool: &'static CliToolDef) -> Result<PathBuf, CliToolError> {
+    // Step 1: Check if tool exists
+    let check_result = execute_check(tool)?;
+    let exists = check_result
+        .get("exists")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    // Step 2: Install if needed
+    if !exists {
+        execute_install(tool)?;
+    }
+
+    // Step 3: Resolve and return the path
+    resolve_tool_path(tool)
 }
 
 impl CliToolDef {
@@ -171,12 +306,12 @@ impl CliToolDef {
     pub fn check(&'static self) -> CliToolOp {
         CliToolOp::Check { tool: self }
     }
-    
+
     /// Create an Install operation for this tool.
     pub fn install(&'static self) -> CliToolOp {
         CliToolOp::Install { tool: self }
     }
-    
+
     /// Create a Run operation for this tool with the given arguments.
     pub fn run(&'static self, args: &[&str]) -> CliToolOp {
         CliToolOp::Run {
@@ -184,12 +319,24 @@ impl CliToolDef {
             args: args.iter().map(|s| s.to_string()).collect(),
         }
     }
-    
-    /// Create a ToolHandle for this tool.
+
+    /// Create a ToolHandle for this tool with a resolved path.
     ///
     /// **Framework use only.** See `ToolHandle::acquire` for details.
-    pub fn acquire(&'static self) -> ToolHandle {
-        ToolHandle::acquire(self)
+    pub fn acquire(&'static self, path: impl Into<PathBuf>) -> ToolHandle {
+        ToolHandle::acquire(self, path)
+    }
+
+    /// Create a mock ToolHandle for this tool.
+    ///
+    /// **Testing/DryRun use only.**
+    pub fn mock(&'static self) -> ToolHandle {
+        ToolHandle::mock(self)
+    }
+
+    /// Get the binary name for this tool (first element of run_cmd).
+    pub fn binary_name(&self) -> Option<&'static str> {
+        self.run_cmd.first().copied()
     }
 }
 
@@ -251,6 +398,34 @@ impl CliToolOp {
             Self::Check { tool } => execute_check(tool),
             Self::Install { tool } => execute_install(tool),
             Self::Run { tool, args } => execute_run(tool, args),
+        }
+    }
+
+    /// Execute the operation using a ToolHandle (for Run ops).
+    ///
+    /// For `Run`, this uses the resolved path from the handle instead of the
+    /// tool's configured binary name. For `Check`/`Install`, it falls back to
+    /// the standard execution logic.
+    pub fn execute_with_handle(
+        &self,
+        handle: &ToolHandle,
+    ) -> Result<HashMap<String, crate::Value>, CliToolError> {
+        match self {
+            Self::Run { tool, args } => {
+                if handle.id() != tool.id {
+                    return Err(CliToolError::new(
+                        tool,
+                        "run",
+                        format!(
+                            "Tool handle '{}' does not match expected '{}'",
+                            handle.id(),
+                            tool.id
+                        ),
+                    ));
+                }
+                execute_run_with_path(tool, args, handle.path())
+            }
+            _ => self.execute(),
         }
     }
     
@@ -427,6 +602,45 @@ fn execute_run(
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
     
+    let mut out = HashMap::new();
+    out.insert("success".to_string(), crate::Value::Bool(success));
+    out.insert("exit_code".to_string(), crate::Value::Int(exit_code as i64));
+    out.insert("stdout".to_string(), crate::Value::Str(stdout));
+    out.insert("stderr".to_string(), crate::Value::Str(stderr));
+    Ok(out)
+}
+
+/// Execute a tool run using a resolved binary path.
+#[allow(clippy::disallowed_methods)]
+pub fn execute_run_with_path(
+    tool: &'static CliToolDef,
+    args: &[String],
+    path: &PathBuf,
+) -> Result<HashMap<String, crate::Value>, CliToolError> {
+    if tool.run_cmd.is_empty() {
+        return Err(CliToolError::new(tool, "run", "No run command defined"));
+    }
+
+    let base_args = &tool.run_cmd[1..];
+    let mut full_args: Vec<String> = base_args.iter().map(|s| s.to_string()).collect();
+    full_args.extend_from_slice(args);
+
+    let output = Command::new(path)
+        .args(&full_args)
+        .output()
+        .map_err(|e| {
+            CliToolError::new(
+                tool,
+                "run",
+                format!("Failed to execute '{}': {}", path.display(), e),
+            )
+        })?;
+
+    let success = output.status.success();
+    let exit_code = output.status.code().unwrap_or(-1);
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
     let mut out = HashMap::new();
     out.insert("success".to_string(), crate::Value::Bool(success));
     out.insert("exit_code".to_string(), crate::Value::Int(exit_code as i64));

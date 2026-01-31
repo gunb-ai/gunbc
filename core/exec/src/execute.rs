@@ -2,14 +2,18 @@
 //!
 //! # DryRun Interception
 //!
-//! DryRun mode intercepts **transport execution nodes** - nodes that consume
-//! `TransportRequest` values. This is based on the design principle:
+//! DryRun mode intercepts **transport execution nodes** (nodes that consume
+//! `TransportRequest` values) and **tool environment nodes** (nodes that
+//! produce `ToolHandle` outputs). This is based on the design principle:
 //!
 //! > "World I/O is performed only by transport executor nodes"
 //! > "DryRun intercepts transport execution nodes, not boundary outputs"
 //!
 //! A node is considered a transport executor if:
 //! - It has an input port with type `TransportRequest`
+//!
+//! A node is considered a tool environment node if:
+//! - It has an output port with type `ToolHandle`
 //!
 //! Boundary detection (`BoundaryInfo`) is still used for signature inference
 //! and workflow interface detection, but NOT for DryRun interception.
@@ -19,9 +23,9 @@ use crate::intercept::BoundaryMocks;
 use crate::lower::lower;
 use crate::topo::topo_sort;
 use crate::Executable;
-use gunbc_ir::transport::cli::{CliToolDef, CliToolOp, ToolHandle};
 use gunbc_ir::{detect_boundaries, BoundaryInfo, Dag, Node, NodeBody, NodeId, Value};
-use std::collections::{HashMap, HashSet};
+use gunbc_ir::transport::cli::{get_tool_by_id, ToolHandle};
+use std::collections::HashMap;
 use std::fmt;
 use std::time::Duration;
 
@@ -402,10 +406,7 @@ fn execute_flat<T: Executable>(
 
     let mut node_outputs: HashMap<String, HashMap<String, Value>> = HashMap::new();
     let mut entries = Vec::new();
-    
-    // Track acquired tools to avoid re-acquiring
-    let mut acquired_tools = AcquiredTools::new();
-    
+
     // Wrap CI context in a cell for mutable access in the loop
     // (Rust borrow checker limitation with Option<&mut T> in loops)
     let mut ci_ctx = ci;
@@ -414,13 +415,14 @@ fn execute_flat<T: Executable>(
         let node = node_map
             .get(node_id.0.as_str())
             .ok_or_else(|| ExecError::new(format!("node '{}' not found", node_id.0)))?;
-        
+
         // Start CI group for this node
         if let Some(ref mut ci) = ci_ctx {
             ci.start_group(&node_id.0, false);
         }
 
         // Gather inputs from upstream edges
+        // Tool handles flow through edges like any other value
         let mut inputs: HashMap<String, Value> = HashMap::new();
         for edge in &dag.edges {
             if edge.to_node == *node_id {
@@ -430,22 +432,6 @@ fn execute_flat<T: Executable>(
                     }
                 }
             }
-        }
-        
-        // Acquire any required tools (capability-based pattern)
-        // This runs the upsert (check/install) and adds ToolHandle to inputs.
-        // Skip acquisition when a node override is present — the node's outputs
-        // will be replaced wholesale, so running real tool checks/installs is
-        // wasted I/O that can fail in CI or mutate the environment.
-        let has_node_override = match mode {
-            ExecutionMode::DryRun(ref m) => m.get_node_override(&node_id.0).is_some(),
-            ExecutionMode::Simulate(ref config) => {
-                config.boundary_mocks.get_node_override(&node_id.0).is_some()
-            }
-            _ => false,
-        };
-        if node.has_tool_requirements() && !has_node_override {
-            acquire_node_tools(node, &mut acquired_tools, &mut inputs)?;
         }
 
         // Check guards
@@ -460,23 +446,15 @@ fn execute_flat<T: Executable>(
                 .collect();
             (outputs, false)
         } else {
-            // Check for explicit node override first (for non-transport I/O nodes).
-            // Node overrides force-mock a node regardless of its port types,
-            // used by flow tests to mock CLI tool operations etc.
-            let node_override = match mode {
-                ExecutionMode::DryRun(ref m) => m.get_node_override(&node_id.0),
-                ExecutionMode::Simulate(ref config) => config.boundary_mocks.get_node_override(&node_id.0),
-                _ => None,
-            };
-
-            if let Some(override_outputs) = node_override {
-                (override_outputs.clone(), true)
-            } else {
-            // Check if this is a transport execution node (consumes TransportRequest)
-            // Transport execution nodes are intercepted in dry-run/simulate mode
-            // This follows the design principle: intercept where I/O happens, not boundaries
+            // Check if this is a transport execution node (consumes TransportRequest),
+            // a tool environment node (emits ToolHandle), or a tool consumer node
+            // (consumes ToolHandle). These are intercepted in dry-run/simulate mode
+            // because they perform I/O or would try to use mock tool paths.
             let is_transport_executor = is_transport_execution_node(node);
-            let should_intercept = is_transport_executor && matches!(mode, ExecutionMode::DryRun(_) | ExecutionMode::Simulate(_));
+            let is_tool_env = is_tool_env_node(node);
+            let is_tool_consumer = consumes_tool_handle(node);
+            let should_intercept = (is_transport_executor || is_tool_env || is_tool_consumer)
+                && matches!(mode, ExecutionMode::DryRun(_) | ExecutionMode::Simulate(_));
 
             if should_intercept {
                 // Intercept: use mock values for boundary outputs
@@ -486,14 +464,17 @@ fn execute_flat<T: Executable>(
                     _ => unreachable!(),
                 };
 
-                let outputs: HashMap<String, Value> = node
-                    .outputs
-                    .iter()
-                    .map(|p| {
-                        let mock = mocks.get_mock(node_id, &p.name);
-                        (p.name.0.clone(), mock.value.clone())
-                    })
-                    .collect();
+                let outputs = if is_tool_env {
+                    mock_tool_env_outputs(node, mocks)?
+                } else {
+                    node.outputs
+                        .iter()
+                        .map(|p| {
+                            let mock = mocks.get_mock(node_id, &p.name);
+                            (p.name.0.clone(), mock.value.clone())
+                        })
+                        .collect()
+                };
                 (outputs, true)
             } else {
                 // Execute normally
@@ -523,7 +504,6 @@ fn execute_flat<T: Executable>(
                         return Err(ExecError::new(err_msg));
                     }
                 }
-            }
             }
         };
 
@@ -631,122 +611,55 @@ fn is_transport_execution_node<T>(node: &Node<T>) -> bool {
     })
 }
 
-// ============================================================================
-// Tool Acquisition
-// ============================================================================
-
-/// Registry of known CLI tool definitions by ID.
-/// This allows looking up tools from the requires_tools string IDs.
-fn get_tool_by_id(tool_id: &str) -> Option<&'static CliToolDef> {
-    use gunbc_ir::transport::cli;
-    match tool_id {
-        "clippy" => Some(&cli::CLIPPY),
-        "rustfmt" => Some(&cli::RUSTFMT),
-        "cargo" => Some(&cli::CARGO),
-        "git" => Some(&cli::GIT),
-        "gh" => Some(&cli::GH),
-        _ => None,
-    }
-}
-
-/// Acquired tools cache - tracks which tools have been successfully acquired.
-/// This avoids re-running upsert for tools that are already available.
-struct AcquiredTools {
-    /// Set of tool IDs that have been successfully acquired
-    acquired: HashSet<String>,
-}
-
-impl AcquiredTools {
-    fn new() -> Self {
-        Self {
-            acquired: HashSet::new(),
-        }
-    }
-    
-    /// Check if a tool has already been acquired.
-    fn is_acquired(&self, tool_id: &str) -> bool {
-        self.acquired.contains(tool_id)
-    }
-    
-    /// Mark a tool as acquired.
-    fn mark_acquired(&mut self, tool_id: &str) {
-        self.acquired.insert(tool_id.to_string());
-    }
-}
-
-/// Acquire a tool using the upsert pattern: check, install if needed.
+/// Check if a node is a tool environment boundary.
 ///
-/// Returns a ToolHandle if successful, or an error if acquisition fails.
-fn acquire_tool(tool: &'static CliToolDef) -> Result<ToolHandle, ExecError> {
-    // Step 1: Check if tool is installed
-    let check_result = CliToolOp::check(tool)
-        .execute()
-        .map_err(|e| ExecError::new(format!("Failed to check tool '{}': {}", tool.id, e)))?;
-    
-    let exists = check_result
-        .get("exists")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-    
-    // Step 2: Install if needed
-    if !exists {
-        println!("Tool '{}' not found, installing...", tool.id);
-        CliToolOp::install(tool)
-            .execute()
-            .map_err(|e| ExecError::new(format!("Failed to install tool '{}': {}", tool.id, e)))?;
-        println!("Tool '{}' installed successfully", tool.id);
-    }
-    
-    // Step 3: Return the handle (this is the capability)
-    Ok(ToolHandle::acquire(tool))
+/// Tool environment nodes emit `ToolHandle` outputs and are intercepted in DryRun.
+fn is_tool_env_node<T>(node: &Node<T>) -> bool {
+    node.outputs.iter().any(|port| {
+        port.type_id.0 == "ToolHandle"
+    })
 }
 
-/// Acquire all tools required by a node.
+/// Check if a node consumes a ToolHandle input.
 ///
-/// This implements the capability-based tool acquisition pattern:
-/// 1. For each required tool, run the upsert pattern (check/install)
-/// 2. Create ToolHandle values for each acquired tool
-/// 3. Add ToolHandle values to the node's inputs
-///
-/// Uses a cache to avoid re-acquiring tools that are already available.
-fn acquire_node_tools<T>(
+/// Nodes that consume ToolHandles (like CLI tool runners) should be intercepted
+/// in DryRun mode because they would otherwise try to execute with a mock path.
+fn consumes_tool_handle<T>(node: &Node<T>) -> bool {
+    node.inputs.iter().any(|port| {
+        port.type_id.0 == "ToolHandle"
+    })
+}
+
+/// Build mock outputs for a tool environment node.
+fn mock_tool_env_outputs<T>(
     node: &Node<T>,
-    acquired_tools: &mut AcquiredTools,
-    inputs: &mut HashMap<String, Value>,
-) -> Result<(), ExecError> {
-    for tool_id in &node.requires_tools {
-        // Skip if already acquired
-        if acquired_tools.is_acquired(tool_id) {
-            // Add existing handle to inputs
-            if let Some(tool) = get_tool_by_id(tool_id) {
-                let handle = ToolHandle::acquire(tool);
-                let port_name = format!("tool:{}", tool_id);
-                inputs.insert(port_name, handle.into());
-            }
+    mocks: &BoundaryMocks,
+) -> Result<HashMap<String, Value>, ExecError> {
+    let mut outputs = HashMap::new();
+
+    for port in &node.outputs {
+        // Respect explicit mocks if present
+        if mocks.has_mock(&node.id, &port.name) {
+            let mock = mocks.get_mock(&node.id, &port.name);
+            outputs.insert(port.name.0.clone(), mock.value.clone());
             continue;
         }
-        
-        // Look up the tool definition
-        let tool = get_tool_by_id(tool_id).ok_or_else(|| {
-            ExecError::new(format!(
-                "Unknown tool '{}' required by node '{}'. \
-                 Add it to get_tool_by_id() in execute.rs",
-                tool_id, node.id.0
-            ))
-        })?;
-        
-        // Acquire the tool (upsert pattern)
-        let handle = acquire_tool(tool)?;
-        
-        // Mark as acquired
-        acquired_tools.mark_acquired(tool_id);
-        
-        // Add handle to inputs
-        let port_name = format!("tool:{}", tool_id);
-        inputs.insert(port_name, handle.into());
+
+        if let Some(tool_id) = port.name.0.strip_prefix("tool:") {
+            let tool = get_tool_by_id(tool_id).ok_or_else(|| {
+                ExecError::new(format!(
+                    "Unknown tool '{}' for env node '{}'",
+                    tool_id, node.id.0
+                ))
+            })?;
+            outputs.insert(port.name.0.clone(), ToolHandle::mock(tool).into());
+        } else {
+            let mock = mocks.get_mock(&node.id, &port.name);
+            outputs.insert(port.name.0.clone(), mock.value.clone());
+        }
     }
-    
-    Ok(())
+
+    Ok(outputs)
 }
 
 #[cfg(test)]

@@ -5,9 +5,9 @@
 //! # Transport Pattern (following MakegenGraphOp)
 //!
 //! This module follows the "every node is pure" principle:
-//! - `CIGraphOp` is a union of pure CI ops, primitives, and transport
-//! - All I/O happens through explicit `TransportOps::Execute` nodes
-//! - DryRun can intercept all transport nodes
+//! - `CIGraphOp` is a union of pure CI ops, primitives, transport, and env ops
+//! - I/O happens through explicit `TransportOps::Execute` nodes and the env node
+//! - DryRun can intercept transport nodes and env tool acquisition
 //!
 //! # Pipeline Structure
 //!
@@ -25,16 +25,17 @@
 //! Test Stage (parallel with Lint):
 //!   PrepareTestCommand -> Execute -> ParseTestResult
 //!
-//! Lint Stage (uses ClippyUpsert SubDag):
-//!   ClippyUpsert (check -> install -> run)
+//! Lint Stage:
+//!   PrepareClippyLint -> ClippyLint (uses ToolHandle from env) -> ParseClippyLint
 //!
 //! Report:
 //!   Report (pure)
 //! ```
 
+use crate::ci::env::EnvOp;
 use crate::ci::ops::CIOp;
 use gunbc_exec::{ExecError, Executable};
-use gunbc_ir::transport::cli::CliToolOp;
+use gunbc_ir::transport::cli::{CliToolOp, ToolHandle};
 use gunbc_ir::{
     build::*, BuilderError, Cardinality, Dag, DagBuilder, Node, Value, WorkflowSignature,
     transport::github_actions::{
@@ -58,6 +59,7 @@ use std::collections::HashMap;
 /// - `PrepareFileExists` - embedded primitive for file existence checks (from gunbc-primitives)
 /// - `Transport` - boundary for actual I/O
 /// - `CliTool` - CLI tool operations (for SubDag integration)
+/// - `Env` - environment node that provides tools to downstream nodes
 #[derive(Debug, Clone)]
 pub enum CIGraphOp {
     /// CI-specific pure operations
@@ -68,6 +70,8 @@ pub enum CIGraphOp {
     Transport(TransportOps),
     /// CLI tool operations (for SubDag integration with clippy, etc.)
     CliTool(CliToolOp),
+    /// Environment node that provides tools via upsert (I/O boundary)
+    Env(EnvOp),
 }
 
 impl Executable for CIGraphOp {
@@ -79,6 +83,7 @@ impl Executable for CIGraphOp {
             CIGraphOp::CI(op) => op.execute(inputs),
             CIGraphOp::PrepareFileExists(op) => op.execute(inputs),
             CIGraphOp::Transport(op) => op.execute(inputs),
+            CIGraphOp::Env(op) => op.execute(inputs),
             CIGraphOp::CliTool(op) => {
                 // Check if we should skip execution
                 let skip = inputs
@@ -94,9 +99,20 @@ impl Executable for CIGraphOp {
                     return Ok(out);
                 }
                 
-                // Run the tool
-                let result = op.execute()
-                    .map_err(|e| ExecError::new(format!("CLI tool error: {}", e)))?;
+                // Run the tool (prefer tool handle if provided)
+                let result = if let CliToolOp::Run { tool, .. } = op {
+                    let port_name = format!("tool:{}", tool.id);
+                    let handle_val = inputs.get(&port_name).ok_or_else(|| {
+                        ExecError::new(format!("missing required tool handle input '{port_name}'"))
+                    })?;
+                    let handle = ToolHandle::try_from(handle_val)
+                        .map_err(|e| ExecError::new(e.to_string()))?;
+                    op.execute_with_handle(&handle)
+                        .map_err(|e| ExecError::new(format!("CLI tool error: {}", e)))?
+                } else {
+                    op.execute()
+                        .map_err(|e| ExecError::new(format!("CLI tool error: {}", e)))?
+                };
                 
                 // Copy tool outputs and add skip=false
                 out.extend(result);
@@ -184,6 +200,20 @@ pub fn ci_workflow_permissions() -> Permissions {
 #[allow(clippy::result_large_err)]
 pub fn build_ci_graph() -> Result<Dag<CIGraphOp>, BuilderError> {
     let mut builder = DagBuilder::new();
+
+    // ========================================================================
+    // Environment Node: Provides tools to downstream nodes
+    // ========================================================================
+
+    // The env node is the I/O boundary for tool acquisition.
+    // It upserts (check/install) each tool and emits ToolHandles.
+    // In DryRun mode, this node is intercepted with mock handles.
+    let env = builder.add_root_node(Node::opaque(
+        "runner_env",
+        vec![],
+        vec![port("tool:clippy", "ToolHandle")],
+        CIGraphOp::Env(EnvOp::new(vec!["clippy"])),
+    ))?;
 
     // ========================================================================
     // SetupDeps Stage: Check if deps.toml exists
@@ -430,7 +460,7 @@ pub fn build_ci_graph() -> Result<Dag<CIGraphOp>, BuilderError> {
     )?;
 
     // ========================================================================
-    // Lint Stage (parallel with Test) - uses Clippy tool via requires_tools
+    // Lint Stage (parallel with Test) - receives tool handle from env node
     // ========================================================================
 
     // PrepareClippyLint - pure gate for clippy execution
@@ -447,29 +477,26 @@ pub fn build_ci_graph() -> Result<Dag<CIGraphOp>, BuilderError> {
         &parse_build,
     )?;
 
-    // ClippyLint - runs clippy with automatic tool acquisition
-    // The executor's requires_tools mechanism handles check/install automatically
+    // ClippyLint - runs clippy with tool handle from env node
+    // The tool:clippy input comes from the runner_env node via an edge
     let clippy_lint = builder.add_node_after(
-        {
-            let mut node = Node::opaque(
-                "clippy_lint",
-                vec![port("skip", "Bool")],
-                vec![
-                    optional("success", "Bool"),
-                    optional("stdout", "String"),
-                    optional("stderr", "String"),
-                    port("skip", "Bool"),
-                ],
-                CIGraphOp::CliTool(CliToolOp::run(
-                    &gunbc_ir::transport::cli::CLIPPY,
-                    &["--all-targets", "--", "-D", "warnings"],
-                )),
-            );
-            // Mark that this node requires the clippy tool
-            // The executor will automatically run check/install before execution
-            node.requires_tools.push("clippy".to_string());
-            node
-        },
+        Node::opaque(
+            "clippy_lint",
+            vec![
+                port("skip", "Bool"),
+                port("tool:clippy", "ToolHandle"),  // Receives handle from env node
+            ],
+            vec![
+                optional("success", "Bool"),
+                optional("stdout", "String"),
+                optional("stderr", "String"),
+                port("skip", "Bool"),
+            ],
+            CIGraphOp::CliTool(CliToolOp::run(
+                &gunbc_ir::transport::cli::CLIPPY,
+                &["--all-targets", "--", "-D", "warnings"],
+            )),
+        ),
         &prepare_clippy_lint,
     )?;
 
@@ -553,6 +580,8 @@ pub fn build_ci_graph() -> Result<Dag<CIGraphOp>, BuilderError> {
     builder.add_edge(prepare_test.out("skip_reason"), parse_test.in_port("skip_reason"))?;
 
     // Lint stage (parallel with test, both depend on build) - uses Clippy tool
+    // Tool handle flows from runner_env -> clippy_lint
+    builder.add_edge(env.out("tool:clippy"), clippy_lint.in_port("tool:clippy"))?;
     builder.add_edge(parse_build.out("build_success"), prepare_clippy_lint.in_port("build_success"))?;
     builder.add_edge(prepare_clippy_lint.out("skip"), clippy_lint.in_port("skip"))?;
     // Wire clippy outputs to parse node
@@ -596,27 +625,27 @@ mod tests {
         
         // Count transport nodes (execute_* for traditional transport, clippy_lint for CLI tool)
         let transport_nodes: Vec<_> = dag.nodes.iter()
-            .filter(|n| n.id.0.starts_with("execute_") || n.id.0 == "clippy_lint")
+            .filter(|n| n.id.0.starts_with("execute_") || n.id.0 == "clippy_lint" || n.id.0 == "runner_env")
             .collect();
         
-        // Should have nodes for: deps_exists, codegen_exists, codegen, build, test, clippy_lint
-        assert!(transport_nodes.len() >= 5, "expected at least 5 transport/tool nodes, got {}", transport_nodes.len());
+        // Should have nodes for: deps_exists, codegen_exists, codegen, build, test, clippy_lint, runner_env
+        assert!(transport_nodes.len() >= 6, "expected at least 6 transport/tool nodes, got {}", transport_nodes.len());
     }
 
     #[test]
     fn test_graph_has_clippy_lint_node() {
         let dag = build_ci_graph().expect("graph should build");
-        
+
         // Find clippy_lint node
         let clippy_lint = dag.get_node(&"clippy_lint".into());
         assert!(clippy_lint.is_some(), "clippy_lint node should exist");
-        
-        // Verify it requires the clippy tool
+
+        // Verify it has a tool:clippy input port (receives handle from env node)
         if let Some(node) = clippy_lint {
-            assert!(
-                node.requires_tools.contains(&"clippy".to_string()),
-                "clippy_lint should require clippy tool"
-            );
+            let has_tool_input = node.inputs.iter().any(|p| {
+                p.name.0 == "tool:clippy" && p.type_id.0 == "ToolHandle"
+            });
+            assert!(has_tool_input, "clippy_lint should have tool:clippy ToolHandle input");
         }
     }
 

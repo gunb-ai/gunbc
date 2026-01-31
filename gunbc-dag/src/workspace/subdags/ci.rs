@@ -20,7 +20,6 @@ fn convert_ci_node(node: Node<CIGraphOp>) -> Node<WorkspaceOp> {
                 gunbc_ir::NodeBody::SubDag(convert_ci_dag(dag))
             }
         },
-        requires_tools: node.requires_tools,
     }
 }
 
@@ -33,6 +32,7 @@ fn convert_ci_op(op: CIGraphOp) -> WorkspaceOp {
         }
         CIGraphOp::Transport(t) => WorkspaceOp::Transport(t),
         CIGraphOp::CliTool(cli) => WorkspaceOp::Clippy(cli),
+        CIGraphOp::Env(env) => WorkspaceOp::Env(env),
     }
 }
 
