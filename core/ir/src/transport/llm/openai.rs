@@ -1,68 +1,124 @@
-//! OpenAI chat completion API conversions.
+//! OpenAI Chat Completions API conversions.
 //!
 //! Pure functions that convert between gunbc chat types and
 //! OpenAI-specific REST request/response formats.
 //!
 //! # API Reference
 //!
-//! OpenAI chat completions:
+//! OpenAI Chat Completions API:
 //! - Endpoint: POST /v1/chat/completions
-//! - Auth: Bearer token via Authorization header
-//! - Request body: { model, messages: [{role, content}], temperature?, max_tokens?, stop? }
-//! - Response body: { choices: [{message: {content}, finish_reason}], model, usage }
+//! - Auth: Bearer token (Authorization header)
+//! - Request body: { model, messages, temperature?, max_completion_tokens?, reasoning_effort? }
+//! - Response body: { choices: [{message, finish_reason}], usage }
+//!
+//! # Prompt Caching
+//!
+//! OpenAI applies automatic prefix caching for identical prefixes >= 1024 tokens.
+//! No API changes needed; place static content (system prompt, examples) first
+//! for best cache hit rate. Cached tokens cost 50% of input price.
+//! Response includes `usage.prompt_tokens_details.cached_tokens`.
+//! Ref: <https://platform.openai.com/docs/guides/prompt-caching>
+//!
+//! # Reasoning Models
+//!
+//! Reasoning models (o1, o3, o4-mini) use the `reasoning_effort` parameter:
+//! - `reasoning_effort`: "low" | "medium" | "high" (default: "medium")
+//! - Uses `max_completion_tokens` instead of `max_tokens` to include reasoning tokens
+//! - Chat Completions does NOT support reasoning summaries (use Responses API for that)
+//!
+//! Ref: <https://platform.openai.com/docs/guides/reasoning>
+//!
+//! # Note on the Responses API
+//!
+//! For reasoning models, the Responses API (`/v1/responses`) is recommended over
+//! Chat Completions. It supports reasoning summaries, persisted reasoning between
+//! tool calls, and built-in tools. See `openai_responses.rs` for that endpoint.
 
-use super::chat::{ChatRequest, ChatResponse, FinishReason, Usage};
+use super::chat::{
+    ChatRequest, ChatResponse, FinishReason, MessageContent, ThinkingConfig, Usage,
+};
 use super::provider::openai_provider;
 use crate::transport::http::HttpMethod;
 use crate::transport::rest::{AuthMethod, RestRequest, RestResponse};
 
-/// Build an OpenAI-compatible REST request from a chat request.
+/// Build an OpenAI Chat Completions API request from a chat request.
 ///
-/// This is a PURE function - no I/O. The resulting `RestRequest` should be
-/// executed via `TransportOps::Execute`.
+/// This is a PURE function - no I/O.
 ///
-/// Auth uses `AuthMethod::EnvVar` so the actual API key is resolved at
-/// execution time, not embedded in the request.
+/// Handles OpenAI-specific format:
+/// - System messages stay in the messages array (unlike Anthropic)
+/// - Auth via Bearer token
+/// - Reasoning models use `max_completion_tokens` and `reasoning_effort`
+/// - Content blocks with cache hints are flattened to strings (OpenAI caching
+///   is automatic; no API-level cache control)
 pub fn build_openai_request(chat: &ChatRequest) -> RestRequest {
     let provider = openai_provider();
 
-    let mut body = serde_json::json!({
-        "model": chat.model,
-        "messages": chat.messages.iter().map(|m| {
+    let messages: Vec<serde_json::Value> = chat
+        .messages
+        .iter()
+        .map(|m| {
             serde_json::json!({
                 "role": m.role.as_str(),
-                "content": m.content,
+                "content": content_to_string(&m.content),
             })
-        }).collect::<Vec<_>>(),
+        })
+        .collect();
+
+    let has_reasoning = matches!(chat.thinking, Some(ThinkingConfig::OpenAI { .. }));
+
+    let mut body = serde_json::json!({
+        "model": chat.model,
+        "messages": messages,
     });
+
+    // Reasoning models use max_completion_tokens (includes reasoning tokens)
+    if let Some(max) = chat.max_tokens {
+        if has_reasoning {
+            body["max_completion_tokens"] = serde_json::json!(max);
+        } else {
+            body["max_tokens"] = serde_json::json!(max);
+        }
+    }
 
     if let Some(temp) = chat.temperature {
         body["temperature"] = serde_json::json!(temp);
-    }
-    if let Some(max) = chat.max_tokens {
-        body["max_tokens"] = serde_json::json!(max);
     }
     if !chat.stop.is_empty() {
         body["stop"] = serde_json::json!(chat.stop);
     }
 
+    // Reasoning effort for o1/o3/o4-mini
+    if let Some(ThinkingConfig::OpenAI { effort, .. }) = &chat.thinking {
+        body["reasoning_effort"] = serde_json::json!(effort.as_str());
+    }
+
+    let mut headers = std::collections::HashMap::new();
+    headers.insert("Content-Type".to_string(), "application/json".to_string());
+
     RestRequest {
         url: provider.chat_url(),
         method: HttpMethod::Post,
-        headers: [("Content-Type".to_string(), "application/json".to_string())]
-            .into_iter()
-            .collect(),
+        headers,
         body: Some(body),
-        auth: Some(AuthMethod::EnvVar(provider.api_key_env.0)),
+        auth: Some(AuthMethod::EnvVar(provider.api_key_env.0.clone())),
         query: Default::default(),
         timeout_ms: Some(120_000),
     }
 }
 
-/// Parse an OpenAI chat completion response.
+/// Flatten message content to a plain string for the OpenAI Chat Completions API.
 ///
-/// Extracts the assistant's message content, finish reason, and usage
-/// from the OpenAI response JSON format.
+/// OpenAI Chat Completions expects string content. Content blocks are
+/// concatenated; cache hints are silently ignored (caching is automatic).
+fn content_to_string(content: &MessageContent) -> String {
+    content.text()
+}
+
+/// Parse an OpenAI Chat Completions API response.
+///
+/// Extracts the assistant message content, finish reason, and token usage.
+/// Includes cached_tokens and reasoning_tokens from detailed usage when present.
 ///
 /// Returns `Err` if the response body doesn't match the expected format.
 pub fn parse_openai_response(response: &RestResponse) -> Result<ChatResponse, String> {
@@ -94,12 +150,6 @@ pub fn parse_openai_response(response: &RestResponse) -> Result<ChatResponse, St
         .unwrap_or("")
         .to_string();
 
-    let finish_reason = first
-        .get("finish_reason")
-        .and_then(|r| r.as_str())
-        .map(FinishReason::from_openai)
-        .unwrap_or(FinishReason::Stop);
-
     let model = response
         .body
         .get("model")
@@ -107,18 +157,41 @@ pub fn parse_openai_response(response: &RestResponse) -> Result<ChatResponse, St
         .unwrap_or("unknown")
         .to_string();
 
+    let finish_reason = first
+        .get("finish_reason")
+        .and_then(|r| r.as_str())
+        .map(FinishReason::from_openai)
+        .unwrap_or(FinishReason::Stop);
+
     let usage = response
         .body
         .get("usage")
-        .map(|u| Usage {
-            input_tokens: u
-                .get("prompt_tokens")
-                .and_then(|t| t.as_u64())
-                .unwrap_or(0),
-            output_tokens: u
-                .get("completion_tokens")
-                .and_then(|t| t.as_u64())
-                .unwrap_or(0),
+        .map(|u| {
+            // Detailed token breakdown (if present)
+            let cached_tokens = u
+                .get("prompt_tokens_details")
+                .and_then(|d| d.get("cached_tokens"))
+                .and_then(|t| t.as_u64());
+
+            let reasoning_tokens = u
+                .get("completion_tokens_details")
+                .and_then(|d| d.get("reasoning_tokens"))
+                .and_then(|t| t.as_u64());
+
+            Usage {
+                input_tokens: u
+                    .get("prompt_tokens")
+                    .and_then(|t| t.as_u64())
+                    .unwrap_or(0),
+                output_tokens: u
+                    .get("completion_tokens")
+                    .and_then(|t| t.as_u64())
+                    .unwrap_or(0),
+                cache_creation_input_tokens: None,
+                cache_read_input_tokens: None,
+                cached_tokens,
+                reasoning_tokens,
+            }
         })
         .unwrap_or_default();
 
@@ -127,6 +200,8 @@ pub fn parse_openai_response(response: &RestResponse) -> Result<ChatResponse, St
         model,
         finish_reason,
         usage,
+        thinking: None, // Chat Completions doesn't expose reasoning text
+        content_blocks: Vec::new(),
     })
 }
 
@@ -149,7 +224,9 @@ pub fn build_openai_compatible_request(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use super::super::chat::ChatMessage;
+    use crate::transport::llm::chat::{
+        ChatMessage, ContentBlock, ReasoningEffort, ReasoningSummary,
+    };
 
     fn sample_request() -> ChatRequest {
         ChatRequest::new(
@@ -196,6 +273,43 @@ mod tests {
     }
 
     #[test]
+    fn test_build_openai_request_reasoning() {
+        let req = build_openai_request(
+            &ChatRequest::new("o3", vec![ChatMessage::user("Reason about this.")])
+                .max_tokens(8000)
+                .thinking(ThinkingConfig::openai_with_summary(
+                    ReasoningEffort::High,
+                    ReasoningSummary::Concise,
+                )),
+        );
+
+        let body = req.body.unwrap();
+        // Should use max_completion_tokens for reasoning models
+        assert!(body.get("max_tokens").is_none());
+        assert_eq!(body["max_completion_tokens"], 8000);
+        assert_eq!(body["reasoning_effort"], "high");
+    }
+
+    #[test]
+    fn test_build_openai_request_content_blocks_flattened() {
+        let req = build_openai_request(&ChatRequest::new(
+            "gpt-4o",
+            vec![
+                ChatMessage::system_blocks(vec![
+                    ContentBlock::text("Part 1"),
+                    ContentBlock::text("Part 2"),
+                ]),
+                ChatMessage::user("Hello"),
+            ],
+        ));
+
+        let body = req.body.unwrap();
+        let messages = body["messages"].as_array().unwrap();
+        // Content blocks flattened to concatenated string
+        assert_eq!(messages[0]["content"], "Part 1Part 2");
+    }
+
+    #[test]
     fn test_parse_openai_response_success() {
         let response = RestResponse::ok(serde_json::json!({
             "id": "chatcmpl-abc123",
@@ -223,6 +337,36 @@ mod tests {
         assert_eq!(chat.usage.input_tokens, 25);
         assert_eq!(chat.usage.output_tokens, 10);
         assert_eq!(chat.usage.total(), 35);
+        assert!(chat.thinking.is_none());
+    }
+
+    #[test]
+    fn test_parse_openai_response_with_cache_and_reasoning_tokens() {
+        let response = RestResponse::ok(serde_json::json!({
+            "model": "o3",
+            "choices": [{
+                "message": { "role": "assistant", "content": "Result" },
+                "finish_reason": "stop"
+            }],
+            "usage": {
+                "prompt_tokens": 500,
+                "completion_tokens": 1200,
+                "total_tokens": 1700,
+                "prompt_tokens_details": {
+                    "cached_tokens": 400
+                },
+                "completion_tokens_details": {
+                    "reasoning_tokens": 900
+                }
+            }
+        }));
+
+        let chat = parse_openai_response(&response).unwrap();
+        assert_eq!(chat.usage.input_tokens, 500);
+        assert_eq!(chat.usage.output_tokens, 1200);
+        assert_eq!(chat.usage.cached_tokens, Some(400));
+        assert_eq!(chat.usage.reasoning_tokens, Some(900));
+        assert!(chat.usage.cache_creation_input_tokens.is_none());
     }
 
     #[test]
@@ -243,7 +387,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_openai_response_length_finish() {
+    fn test_parse_openai_response_length() {
         let response = RestResponse::ok(serde_json::json!({
             "model": "gpt-4o",
             "choices": [{

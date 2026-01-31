@@ -33,17 +33,20 @@ pub enum LlmAuthStyle {
 ///
 /// Data-driven struct that describes how to interact with an LLM API.
 /// Provider-specific request building and response parsing are handled
-/// by the conversion functions in openai.rs / anthropic.rs.
+/// by the conversion functions in openai.rs / anthropic.rs / openai_responses.rs.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LlmProvider {
     /// Provider identifier (e.g., "openai", "anthropic").
     pub id: String,
     /// Human-readable name (e.g., "OpenAI", "Anthropic").
     pub name: String,
-    /// Base URL for the chat completion endpoint.
+    /// Base URL for the API.
     pub api_base: String,
-    /// Chat completions endpoint path.
+    /// Chat completions endpoint path (e.g., "/v1/chat/completions", "/v1/messages").
     pub chat_endpoint: String,
+    /// Responses API endpoint path, if supported (e.g., "/v1/responses").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub responses_endpoint: Option<String>,
     /// Authentication style.
     pub auth_style: LlmAuthStyle,
     /// Environment variable containing the API key.
@@ -58,15 +61,25 @@ impl LlmProvider {
     pub fn chat_url(&self) -> String {
         format!("{}{}", self.api_base, self.chat_endpoint)
     }
+
+    /// Full URL for the responses API endpoint, if supported.
+    pub fn responses_url(&self) -> Option<String> {
+        self.responses_endpoint
+            .as_ref()
+            .map(|ep| format!("{}{}", self.api_base, ep))
+    }
 }
 
 /// OpenAI provider definition.
+///
+/// Supports both Chat Completions and Responses API endpoints.
 pub fn openai_provider() -> LlmProvider {
     LlmProvider {
         id: "openai".to_string(),
         name: "OpenAI".to_string(),
         api_base: "https://api.openai.com".to_string(),
         chat_endpoint: "/v1/chat/completions".to_string(),
+        responses_endpoint: Some("/v1/responses".to_string()),
         auth_style: LlmAuthStyle::BearerToken,
         api_key_env: ApiKeyEnvVar("OPENAI_API_KEY".to_string()),
         extra_headers: vec![],
@@ -80,6 +93,7 @@ pub fn anthropic_provider() -> LlmProvider {
         name: "Anthropic".to_string(),
         api_base: "https://api.anthropic.com".to_string(),
         chat_endpoint: "/v1/messages".to_string(),
+        responses_endpoint: None,
         auth_style: LlmAuthStyle::CustomHeader {
             header: "x-api-key".to_string(),
         },

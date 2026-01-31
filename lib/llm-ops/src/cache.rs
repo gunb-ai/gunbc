@@ -44,7 +44,7 @@ impl CacheKey {
         parts.push(format!("model:{}", request.model));
 
         for msg in &request.messages {
-            parts.push(format!("msg:{}:{}", msg.role, msg.content));
+            parts.push(format!("msg:{}:{}", msg.role, msg.text()));
         }
 
         if let Some(t) = request.temperature {
@@ -262,7 +262,10 @@ mod tests {
             usage: Usage {
                 input_tokens: 10,
                 output_tokens: 5,
+                ..Default::default()
             },
+            thinking: None,
+            content_blocks: Vec::new(),
         }
     }
 

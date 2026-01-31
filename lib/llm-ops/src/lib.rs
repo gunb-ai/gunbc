@@ -31,7 +31,7 @@ pub mod graph;
 pub mod graph_mock;
 
 use gunbc_exec::{ExecError, Executable};
-use gunbc_ir::transport::llm::{self, ChatMessage, ChatRequest, Role};
+use gunbc_ir::transport::llm::{self, ChatMessage, ChatRequest, MessageContent, Role};
 use gunbc_ir::transport::{TransportRequest, TransportResponse};
 use gunbc_ir::Value;
 use std::collections::HashMap;
@@ -223,7 +223,7 @@ fn parse_messages_from_json(
 
                 messages.push(ChatMessage {
                     role,
-                    content: content.to_string(),
+                    content: MessageContent::Text(content.to_string()),
                 });
             }
             Ok(messages)
@@ -496,7 +496,7 @@ mod tests {
         let messages = parse_messages_from_json(&json).unwrap();
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0].role, Role::User);
-        assert_eq!(messages[0].content, "Hello!");
+        assert_eq!(messages[0].text(), "Hello!");
     }
 
     #[test]
@@ -515,7 +515,7 @@ mod tests {
         assert_eq!(req.model, "gpt-4o");
         assert_eq!(req.messages.len(), 2);
         assert_eq!(req.messages[0].role, Role::System);
-        assert!(req.messages[1].content.contains("fn add"));
+        assert!(req.messages[1].text().contains("fn add"));
         assert_eq!(req.temperature, Some(0.3));
     }
 
@@ -524,7 +524,7 @@ mod tests {
         let req =
             code_review_request("anthropic", "claude-sonnet-4-20250514", "x = 1", "Python code").unwrap();
 
-        assert!(req.messages[1].content.contains("Python code"));
+        assert!(req.messages[1].text().contains("Python code"));
     }
 
     #[test]
@@ -534,7 +534,7 @@ mod tests {
                 .unwrap();
 
         assert_eq!(req.messages.len(), 2);
-        assert!(req.messages[0].content.contains("Rust"));
+        assert!(req.messages[0].text().contains("Rust"));
         assert_eq!(req.temperature, Some(0.2));
     }
 

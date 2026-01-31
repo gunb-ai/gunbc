@@ -1,45 +1,62 @@
 //! LLM provider integration types.
 //!
-//! This module provides a unified interface for interacting with LLM chat
-//! completion APIs (OpenAI, Anthropic, and OpenAI-compatible providers).
+//! This module provides a unified interface for interacting with LLM APIs:
+//! - **OpenAI Chat Completions** (`/v1/chat/completions`)
+//! - **OpenAI Responses** (`/v1/responses`) — recommended for reasoning models
+//! - **Anthropic Messages** (`/v1/messages`)
 //!
 //! # Architecture
 //!
 //! Following the transport pattern: Prepare (pure) -> Execute (boundary) -> Parse (pure)
 //!
-//! - **Chat types** (`chat.rs`): Unified `ChatRequest`/`ChatResponse` types
+//! - **Chat types** (`chat.rs`): Unified `ChatRequest`/`ChatResponse` types with
+//!   content blocks, cache hints, and thinking/reasoning configuration
 //! - **Provider definitions** (`provider.rs`): Data-driven provider structs
-//! - **OpenAI conversions** (`openai.rs`): `ChatRequest` -> `RestRequest` and back
-//! - **Anthropic conversions** (`anthropic.rs`): `ChatRequest` -> `RestRequest` and back
+//! - **OpenAI Chat Completions** (`openai.rs`): Standard chat completion endpoint
+//! - **OpenAI Responses** (`openai_responses.rs`): Responses API with reasoning summaries
+//! - **Anthropic** (`anthropic.rs`): Messages API with prompt caching and extended thinking
 //!
 //! # Usage
 //!
 //! ```ignore
-//! use gunbc_ir::transport::llm::{ChatRequest, ChatMessage, build_chat_request, parse_chat_response};
+//! use gunbc_ir::transport::llm::*;
 //!
-//! // Build a chat request
+//! // Simple chat completion
 //! let chat = ChatRequest::new("gpt-4o", vec![
 //!     ChatMessage::system("You are a code reviewer."),
 //!     ChatMessage::user("Review this function."),
 //! ]).temperature(0.3);
-//!
-//! // Convert to REST request (pure - no I/O)
 //! let rest_request = build_chat_request("openai", &chat).unwrap();
 //!
-//! // Execute via TransportOps::Execute (I/O boundary)
-//! // let rest_response = execute_transport(rest_request);
+//! // Reasoning model via Responses API
+//! let chat = ChatRequest::new("o3", vec![
+//!     ChatMessage::user("Solve this problem."),
+//! ]).thinking(ThinkingConfig::openai_with_summary(
+//!     ReasoningEffort::High, ReasoningSummary::Concise,
+//! ));
+//! let rest_request = build_responses_request("openai", &chat).unwrap();
 //!
-//! // Parse response (pure - no I/O)
-//! // let chat_response = parse_chat_response("openai", &rest_response).unwrap();
+//! // Anthropic with caching and extended thinking
+//! let chat = ChatRequest::new("claude-sonnet-4-5", vec![
+//!     ChatMessage::system_blocks(vec![
+//!         ContentBlock::text("Long context...").with_cache(CacheControl::ephemeral()),
+//!     ]),
+//!     ChatMessage::user("Analyze this."),
+//! ]).max_tokens(16000).thinking(ThinkingConfig::anthropic(10000));
+//! let rest_request = build_chat_request("anthropic", &chat).unwrap();
 //! ```
 
 pub mod anthropic;
 pub mod chat;
 pub mod mock;
 pub mod openai;
+pub mod openai_responses;
 pub mod provider;
 
-pub use chat::{ChatMessage, ChatRequest, ChatResponse, FinishReason, Role, Usage};
+pub use chat::{
+    CacheControl, CacheType, ChatMessage, ChatRequest, ChatResponse, ContentBlock, FinishReason,
+    MessageContent, ReasoningEffort, ReasoningSummary, ResponseBlock, Role, ThinkingConfig, Usage,
+};
 pub use provider::{
     anthropic_provider, builtin_provider_ids, openai_provider, provider_by_id, ApiKeyEnvVar,
     LlmAuthStyle, LlmProvider,
@@ -47,10 +64,13 @@ pub use provider::{
 
 use crate::transport::rest::{RestRequest, RestResponse};
 
-/// Build a REST request for the given provider from a chat request.
+/// Build a REST request for the Chat Completions / Messages endpoint.
 ///
-/// This is the main entry point for preparing LLM requests. It dispatches
-/// to the appropriate provider-specific builder based on the provider ID.
+/// Dispatches to the appropriate provider-specific builder:
+/// - `"openai"` → OpenAI Chat Completions (`/v1/chat/completions`)
+/// - `"anthropic"` → Anthropic Messages (`/v1/messages`)
+///
+/// For OpenAI reasoning models with summaries, use `build_responses_request` instead.
 ///
 /// # Errors
 ///
@@ -63,10 +83,31 @@ pub fn build_chat_request(provider_id: &str, chat: &ChatRequest) -> Result<RestR
     }
 }
 
-/// Parse a REST response from the given provider into a chat response.
+/// Build a REST request for the OpenAI Responses API (`/v1/responses`).
 ///
-/// Dispatches to the appropriate provider-specific parser based on the
-/// provider ID.
+/// The Responses API is recommended for reasoning models (o1, o3, o4-mini)
+/// because it supports reasoning summaries, persisted reasoning between tool
+/// calls, and better cache utilization.
+///
+/// # Errors
+///
+/// Returns `Err` if the provider doesn't support the Responses API.
+pub fn build_responses_request(
+    provider_id: &str,
+    chat: &ChatRequest,
+) -> Result<RestRequest, String> {
+    match provider_id {
+        "openai" => Ok(openai_responses::build_openai_responses_request(chat)),
+        _ => Err(format!(
+            "provider '{}' does not support the Responses API",
+            provider_id
+        )),
+    }
+}
+
+/// Parse a REST response from the Chat Completions / Messages endpoint.
+///
+/// Dispatches to the appropriate provider-specific parser.
 ///
 /// # Errors
 ///
@@ -80,6 +121,25 @@ pub fn parse_chat_response(
         "openai" => openai::parse_openai_response(response),
         "anthropic" => anthropic::parse_anthropic_response(response),
         _ => Err(format!("unknown LLM provider: '{}'", provider_id)),
+    }
+}
+
+/// Parse a REST response from the OpenAI Responses API.
+///
+/// # Errors
+///
+/// Returns `Err` if the provider doesn't support the Responses API or the
+/// response cannot be parsed.
+pub fn parse_responses_response(
+    provider_id: &str,
+    response: &RestResponse,
+) -> Result<ChatResponse, String> {
+    match provider_id {
+        "openai" => openai_responses::parse_openai_responses_response(response),
+        _ => Err(format!(
+            "provider '{}' does not support the Responses API",
+            provider_id
+        )),
     }
 }
 
