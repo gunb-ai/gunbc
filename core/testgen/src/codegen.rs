@@ -19,6 +19,8 @@ pub struct TestConfig {
     pub chain_tests: bool,
     /// Generate resource simulation tests (verifies lock/lease behavior)
     pub resource_tests: bool,
+    /// Generate flow verification tests (DryRun the full DAG, verify terminal outputs)
+    pub flow_tests: bool,
     /// Test module visibility
     pub visibility: String,
 }
@@ -29,6 +31,7 @@ impl Default for TestConfig {
             boundary_tests: true,
             chain_tests: true,
             resource_tests: true,
+            flow_tests: false,
             visibility: "pub".to_string(),
         }
     }
@@ -80,7 +83,7 @@ impl<'a, T> TestGenerator<'a, T> {
         code.push_str("use gunbc_exec::{execute_with_mode, BoundaryMocks, ExecutionMode};\n");
         code.push_str("use gunbc_ir::{detect_boundaries, Cardinality, Value};\n");
         code.push_str("use gunbc_test::{assert_boundary_mockable, assert_types_compatible, default_mocks};\n");
-        
+
         if self.config.chain_tests && self.mock_spec.is_some() {
             code.push_str("use gunbc_test::{validate_chain, MockSpec, InputConstraint};\n");
         }
@@ -88,6 +91,11 @@ impl<'a, T> TestGenerator<'a, T> {
             code.push_str("use gunbc_test::{ResourceAcquireResult, ResourceSimulation};\n");
         }
         code.push('\n');
+
+        // Flow verification tests (DryRun full DAG, verify terminal outputs)
+        if self.config.flow_tests {
+            code.push_str(&self.generate_flow_tests(&analysis, graph_builder_fn));
+        }
 
         // Boundary tests (verify dry-run interception works at runtime)
         if self.config.boundary_tests {
@@ -122,6 +130,68 @@ impl<'a, T> TestGenerator<'a, T> {
         
         // Fall back to type-based defaults
         default_mock_for_type(type_id)
+    }
+
+    /// Generate flow verification tests.
+    ///
+    /// Flow tests build the DAG, inject mocked transport responses via DryRun,
+    /// execute the full pure node chain, and verify terminal node outputs.
+    fn generate_flow_tests(&self, _analysis: &DagAnalysis, graph_builder_fn: &str) -> String {
+        let mut code = String::new();
+
+        let Some(spec) = &self.mock_spec else {
+            return code;
+        };
+
+        if !spec.has_flow_test_data() {
+            return code;
+        }
+
+        code.push_str("// ============================================================================\n");
+        code.push_str("// Flow Verification Tests\n");
+        code.push_str("// These tests execute the full DAG in DryRun mode with mocked transport\n");
+        code.push_str("// responses, verifying that pure node logic produces expected outputs.\n");
+        code.push_str("// ============================================================================\n\n");
+
+        let test_name = format!(
+            "test_flow_{}",
+            NamingCase::SnakeCase.apply(&spec.name)
+        );
+
+        code.push_str(&format!("/// Flow verification: {} scenario.\n", spec.name));
+        code.push_str("///\n");
+        code.push_str("/// Builds the DAG, injects mocked transport responses via DryRun,\n");
+        code.push_str("/// and verifies that the pure node chain produces expected terminal outputs.\n");
+        code.push_str("#[test]\n");
+        code.push_str(&format!("fn {}() {{\n", test_name));
+        code.push_str(&format!("    let dag = {};\n", graph_builder_fn));
+        code.push_str("    let spec = mock_spec();\n");
+        code.push_str("    let mocks = spec.to_boundary_mocks();\n");
+        code.push_str("    let log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks))\n");
+        code.push_str("        .expect(\"DryRun execution should succeed\");\n");
+        code.push('\n');
+
+        // Generate assertions for each expected output
+        for eo in &spec.expected_outputs {
+            code.push_str(&format!(
+                "    // Verify {}.{}\n",
+                eo.node, eo.port
+            ));
+            code.push_str(&format!(
+                "    let entry = log.get(\"{}\").expect(\"node '{}' should be in execution log\");\n",
+                eo.node, eo.node
+            ));
+            code.push_str(&format!(
+                "    assert_eq!(\n        entry.outputs.get(\"{}\").expect(\"port '{}' should exist on '{}'\"),\n        &{},\n        \"flow verification: {}.{} mismatch\"\n    );\n",
+                eo.port, eo.port, eo.node,
+                value_to_rust_literal(&eo.expected),
+                eo.node, eo.port
+            ));
+            code.push('\n');
+        }
+
+        code.push_str("}\n\n");
+        code
     }
 
     /// Generate boundary tests.

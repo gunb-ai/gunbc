@@ -450,6 +450,18 @@ fn execute_flat<T: Executable>(
                 .collect();
             (outputs, false)
         } else {
+            // Check for explicit node override first (for non-transport I/O nodes).
+            // Node overrides force-mock a node regardless of its port types,
+            // used by flow tests to mock CLI tool operations etc.
+            let node_override = match mode {
+                ExecutionMode::DryRun(ref m) => m.get_node_override(&node_id.0),
+                ExecutionMode::Simulate(ref config) => config.boundary_mocks.get_node_override(&node_id.0),
+                _ => None,
+            };
+
+            if let Some(override_outputs) = node_override {
+                (override_outputs.clone(), true)
+            } else {
             // Check if this is a transport execution node (consumes TransportRequest)
             // Transport execution nodes are intercepted in dry-run/simulate mode
             // This follows the design principle: intercept where I/O happens, not boundaries
@@ -501,6 +513,7 @@ fn execute_flat<T: Executable>(
                         return Err(ExecError::new(err_msg));
                     }
                 }
+            }
             }
         };
 

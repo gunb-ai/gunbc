@@ -28,6 +28,7 @@
 //! }
 //! ```
 
+use gunbc_exec::BoundaryMocks;
 use gunbc_ir::Value;
 use std::collections::HashMap;
 
@@ -36,15 +37,27 @@ use std::collections::HashMap;
 pub struct MockSpec {
     /// Name of the tool/DAG this spec is for
     pub name: String,
-    
+
     /// Mock values for boundary nodes (world writes)
     pub boundary_mocks: Vec<BoundaryMock>,
-    
+
     /// Expected input constraints from upstream
     pub input_expectations: Vec<InputExpectation>,
-    
+
     /// Resource simulations for testing resource acquisition
     pub resource_mocks: ResourceMocks,
+
+    /// Mock values for transport executor nodes (injected via DryRun).
+    /// These are the values that intercepted transport nodes return.
+    pub transport_mocks: Vec<TransportMock>,
+
+    /// Expected outputs at terminal/boundary nodes (for flow test assertions).
+    /// After DryRun execution, these are verified against actual outputs.
+    pub expected_outputs: Vec<ExpectedOutput>,
+
+    /// Override outputs for non-transport I/O nodes (e.g., CLI tool ops).
+    /// These force-mock nodes that aren't transport executors but still do I/O.
+    pub node_overrides: Vec<NodeOverride>,
 }
 
 impl MockSpec {
@@ -55,6 +68,9 @@ impl MockSpec {
             boundary_mocks: Vec::new(),
             input_expectations: Vec::new(),
             resource_mocks: ResourceMocks::new(),
+            transport_mocks: Vec::new(),
+            expected_outputs: Vec::new(),
+            node_overrides: Vec::new(),
         }
     }
 
@@ -110,6 +126,74 @@ impl MockSpec {
         self
     }
 
+    /// Add a transport mock (value returned by an intercepted transport executor node).
+    pub fn transport_mock(
+        mut self,
+        node: impl Into<String>,
+        port: impl Into<String>,
+        value: Value,
+    ) -> Self {
+        self.transport_mocks.push(TransportMock {
+            node: node.into(),
+            port: port.into(),
+            value,
+        });
+        self
+    }
+
+    /// Add an expected output (assertion for flow test verification).
+    pub fn expected_output(
+        mut self,
+        node: impl Into<String>,
+        port: impl Into<String>,
+        expected: Value,
+    ) -> Self {
+        self.expected_outputs.push(ExpectedOutput {
+            node: node.into(),
+            port: port.into(),
+            expected,
+        });
+        self
+    }
+
+    /// Add a node override (force-mock a non-transport I/O node).
+    pub fn node_override(
+        mut self,
+        node: impl Into<String>,
+        outputs: Vec<(impl Into<String>, Value)>,
+    ) -> Self {
+        self.node_overrides.push(NodeOverride {
+            node: node.into(),
+            outputs: outputs.into_iter().map(|(k, v)| (k.into(), v)).collect(),
+        });
+        self
+    }
+
+    /// Convert this MockSpec into BoundaryMocks suitable for `execute_with_mode`.
+    ///
+    /// Maps transport_mocks to port-level mocks and node_overrides to
+    /// full-node overrides in the resulting BoundaryMocks.
+    pub fn to_boundary_mocks(&self) -> BoundaryMocks {
+        let mut mocks = BoundaryMocks::new();
+        for tm in &self.transport_mocks {
+            mocks.set_value(&tm.node, &tm.port, tm.value.clone());
+        }
+        for no in &self.node_overrides {
+            let outputs: HashMap<String, Value> = no
+                .outputs
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect();
+            mocks.set_node_override(&no.node, outputs);
+        }
+        mocks
+    }
+
+    /// Check whether this spec has flow test data (transport mocks or expected outputs).
+    pub fn has_flow_test_data(&self) -> bool {
+        !self.transport_mocks.is_empty() || !self.expected_outputs.is_empty()
+    }
+
     /// Get mock value for a specific boundary port.
     pub fn get_boundary_mock(&self, node: &str, port: &str) -> Option<&Value> {
         self.boundary_mocks
@@ -146,6 +230,37 @@ pub struct BoundaryMock {
     pub port: String,
     /// Mock value to return
     pub value: Value,
+}
+
+/// A mock value for a transport executor node (injected via DryRun interception).
+#[derive(Debug, Clone)]
+pub struct TransportMock {
+    /// Transport executor node ID (e.g., "execute_build")
+    pub node: String,
+    /// Output port name (e.g., "response")
+    pub port: String,
+    /// Mock value to return for this port
+    pub value: Value,
+}
+
+/// An expected output at a terminal/boundary node (for flow test assertions).
+#[derive(Debug, Clone)]
+pub struct ExpectedOutput {
+    /// Node ID to check (e.g., "report")
+    pub node: String,
+    /// Output port name (e.g., "overall_success")
+    pub port: String,
+    /// Expected value
+    pub expected: Value,
+}
+
+/// An override for a non-transport I/O node (force-mocked in DryRun).
+#[derive(Debug, Clone)]
+pub struct NodeOverride {
+    /// Node ID to override (e.g., "clippy_lint")
+    pub node: String,
+    /// Output port → value pairs
+    pub outputs: Vec<(String, Value)>,
 }
 
 /// An expectation about input from upstream.
