@@ -8,6 +8,7 @@
 //! - GitHub platform (API + CLI)
 //! - GitHub Actions for CI/CD integration
 //! - CI provider abstraction for workflow commands
+//! - LLM provider integration (OpenAI, Anthropic)
 //!
 //! The key insight is that all world I/O can be modeled as request/response pairs,
 //! allowing business logic to remain pure while transport execution happens at
@@ -29,6 +30,12 @@
 //! ├── provider.rs (CiProvider trait)
 //! ├── runner.rs (Runner trait)
 //! └── providers/ (GitHub, GitLab, Plain)
+//!
+//! llm/                         ← LLM provider abstraction
+//! ├── chat.rs (ChatMessage, ChatRequest, ChatResponse)
+//! ├── provider.rs (LlmProvider, provider registry)
+//! ├── openai.rs (OpenAI conversions)
+//! └── anthropic.rs (Anthropic conversions)
 //! ```
 
 pub mod ci;
@@ -38,6 +45,7 @@ pub mod gist;
 pub mod github;
 pub mod github_actions;
 pub mod http;
+pub mod llm;
 pub mod rest;
 pub mod tcp;
 pub mod tool;
@@ -76,6 +84,12 @@ pub use github::cli::GH_TOOL;
 pub use ci::{
     detect_provider, is_ci, AnnotationLevel, CiProvider, FileLocation, GitHubActionsProvider,
     GitLabCiProvider, GitLabRunner, PlainTextProvider, Runner, WorkflowCommand,
+};
+pub use llm::{
+    build_chat_request, parse_chat_response,
+    anthropic_provider, openai_provider, provider_by_id, builtin_provider_ids,
+    ChatMessage, ChatRequest, ChatResponse, FinishReason, Role, Usage,
+    LlmProvider, LlmAuthStyle, ApiKeyEnvVar,
 };
 
 use serde::{Deserialize, Serialize};

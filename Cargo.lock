@@ -152,6 +152,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "gunbc-lib-llm-ops"
+version = "0.1.0"
+dependencies = [
+ "gunbc-exec",
+ "gunbc-ir",
+ "gunbc-test",
+ "serde_json",
+]
+
+[[package]]
 name = "gunbc-lib-markdown"
 version = "0.1.0"
 dependencies = [

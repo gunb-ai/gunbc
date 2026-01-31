@@ -1,0 +1,14 @@
+[package]
+name = "gunbc-lib-llm-ops"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "LLM operations library for gunbc DAGs"
+
+[dependencies]
+gunbc-ir = { path = "../../core/ir" }
+gunbc-exec = { path = "../../core/exec" }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+gunbc-test = { path = "../../core/test" }
