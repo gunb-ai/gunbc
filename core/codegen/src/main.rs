@@ -376,36 +376,40 @@ fn cmd_clippy_toml(dry_run: bool) {
     println!("Generated: clippy.toml");
 }
 
+/// Emit a YAML block only if `items` is non-empty.
+///
+/// Writes `header\n`, then each formatted item as a line, then a trailing blank line.
+/// Skips entirely when `items` is empty.
+fn yaml_block<T>(yaml: &mut String, header: &str, items: &[T], fmt: impl Fn(&T) -> String) {
+    if items.is_empty() {
+        return;
+    }
+    yaml.push_str(header);
+    yaml.push('\n');
+    for item in items {
+        yaml.push_str(&fmt(item));
+        yaml.push('\n');
+    }
+    yaml.push('\n');
+}
+
 /// Generate GitHub Actions YAML template.
 fn generate_github_actions_template(config: &RenderConfig) -> String {
     let mut yaml = String::new();
 
     yaml.push_str(&config.header("#"));
     yaml.push_str(&format!("\n\nname: {}\n\n", config.workflow_name));
-    
+
     // Triggers — derived from git config
+    let branches = config.git.ci_branches();
     yaml.push_str("on:\n");
     yaml.push_str("  push:\n");
-    yaml.push_str("    branches:\n");
-    for branch in config.git.ci_branches() {
-        yaml.push_str(&format!("      - {}\n", branch));
-    }
+    yaml_block(&mut yaml, "    branches:", &branches, |b| format!("      - {}", b));
     yaml.push_str("  pull_request:\n");
-    yaml.push_str("    branches:\n");
-    for branch in config.git.ci_branches() {
-        yaml.push_str(&format!("      - {}\n", branch));
-    }
-    yaml.push('\n');
+    yaml_block(&mut yaml, "    branches:", &branches, |b| format!("      - {}", b));
 
     // Environment — derived from cargo env + manual overrides
-    let all_env = config.all_env();
-    if !all_env.is_empty() {
-        yaml.push_str("env:\n");
-        for (key, value) in &all_env {
-            yaml.push_str(&format!("  {}: {}\n", key, value));
-        }
-        yaml.push('\n');
-    }
+    yaml_block(&mut yaml, "env:", &config.all_env(), |(k, v)| format!("  {}: {}", k, v));
 
     // Job — runner from the provider's image catalog
     yaml.push_str("jobs:\n");
@@ -459,14 +463,7 @@ fn generate_gitlab_ci_template(config: &RenderConfig) -> String {
     yaml.push_str("image: rust:latest\n\n");
 
     // Variables — derived from cargo env + manual overrides
-    let all_env = config.all_env();
-    if !all_env.is_empty() {
-        yaml.push_str("variables:\n");
-        for (key, value) in &all_env {
-            yaml.push_str(&format!("  {}: \"{}\"\n", key, value));
-        }
-        yaml.push('\n');
-    }
+    yaml_block(&mut yaml, "variables:", &config.all_env(), |(k, v)| format!("  {}: \"{}\"", k, v));
     
     // Stages
     yaml.push_str("stages:\n");
