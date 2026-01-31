@@ -433,8 +433,18 @@ fn execute_flat<T: Executable>(
         }
         
         // Acquire any required tools (capability-based pattern)
-        // This runs the upsert (check/install) and adds ToolHandle to inputs
-        if node.has_tool_requirements() {
+        // This runs the upsert (check/install) and adds ToolHandle to inputs.
+        // Skip acquisition when a node override is present — the node's outputs
+        // will be replaced wholesale, so running real tool checks/installs is
+        // wasted I/O that can fail in CI or mutate the environment.
+        let has_node_override = match mode {
+            ExecutionMode::DryRun(ref m) => m.get_node_override(&node_id.0).is_some(),
+            ExecutionMode::Simulate(ref config) => {
+                config.boundary_mocks.get_node_override(&node_id.0).is_some()
+            }
+            _ => false,
+        };
+        if node.has_tool_requirements() && !has_node_override {
             acquire_node_tools(node, &mut acquired_tools, &mut inputs)?;
         }
 
