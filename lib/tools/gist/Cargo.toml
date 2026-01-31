@@ -22,3 +22,7 @@ serde_json = { workspace = true }
 [[bin]]
 name = "gunbc-gist"
 path = "../../../buck-out/gen/bin/gist/main.rs"
+
+[[bin]]
+name = "gunbc-gist-diff"
+path = "../../../buck-out/gen/bin/gist-diff/main.rs"
