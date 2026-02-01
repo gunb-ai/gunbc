@@ -13,46 +13,70 @@ These phases compose into larger workflows (Requirements → Design → Implemen
 
 ---
 
-## Design Principles: Transport Classification & Scope Purity
+## Design Principles: Boundary Terminology & Transport Classification
 
 This section reconciles with AGENT.md ("Nodes are Pure, Boundaries are Structural") and SPEC.md (§2.7 "No side channels", §6 "Node Contract").
 
-### Transport Classification: Query vs Command
+### Boundary Terminology (Two Distinct Concepts)
 
-Not all I/O is equal. We distinguish:
+gunbc has **two kinds of boundaries** that must not be conflated:
 
-| Class | Nature | Where Allowed | Examples |
-|-------|--------|---------------|----------|
-| **Query** | Read-like, no world mutation | Inside DAGs | LLM calls, file reads, git diff, HTTP GET |
-| **Command** | Write-like, mutates state | DAG boundaries only | File writes, git commit, apply patch, HTTP POST with side effects |
-
-**Rationale**: A Query is "observation" — it doesn't change the world, so the DAG remains **reasoning-focused**. A Command is "action" — it mutates state and should happen only after the DAG has decided what to do.
+| Term | Definition | How Detected | Purpose |
+|------|------------|--------------|---------|
+| **Transport Boundary** | Node that executes `TransportOps::Execute*` | By op type | Where I/O happens; DryRun intercepts here |
+| **Workflow Boundary** | Unconnected output port | By graph structure | DAG interface; signature for composition |
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                        DAG Execution Model                          │
+│                          Example DAG                                │
 │                                                                     │
-│   ┌─────────────────────────────────────────────────────────────┐  │
-│   │              Reasoning Zone (Queries OK)                    │  │
-│   │                                                             │  │
-│   │   Pure nodes + Query transport (LLM, reads)                │  │
-│   │   Produces: Decision / Intent / Plan                        │  │
-│   └─────────────────────────────────────────────────────────────┘  │
-│                              │                                      │
-│                              ▼                                      │
-│   ┌─────────────────────────────────────────────────────────────┐  │
-│   │              Action Zone (Commands)                         │  │
-│   │                                                             │  │
-│   │   File writes, commits, patches applied                     │  │
-│   │   Executes the intent produced above                        │  │
-│   └─────────────────────────────────────────────────────────────┘  │
+│   ┌─────────────┐     ┌─────────────┐     ┌─────────────┐          │
+│   │ Prepare     │────▶│ Execute     │────▶│ Parse       │          │
+│   │ (pure)      │     │ (TRANSPORT  │     │ (pure)      │          │
+│   └─────────────┘     │  BOUNDARY)  │     └──────┬──────┘          │
+│                       └─────────────┘            │                  │
+│                                                  ▼                  │
+│                                           ┌───────────┐            │
+│                                           │ output    │ (WORKFLOW  │
+│                                           │ (unconnected) BOUNDARY)│
+│                                           └───────────┘            │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-**Alignment with existing principles**:
-- AGENT.md §4: "Nodes are Pure, Boundaries are Structural" — Queries are "less impure" than Commands
-- AGENT.md §7: "No Escape Hatches" — Commands can't bypass DAG boundaries
-- SPEC.md §6: "Port honesty" — Commands must flow through declared output ports
+### Transport Classification: Query / Journal / Command (Structural)
+
+Transport is classified by **typed execute ops**, not flags. This makes enforcement structural.
+
+| Class | Execute Op | Scope | Examples |
+|-------|------------|-------|----------|
+| **Query** | `TransportOps::ExecuteQuery` | Read external state | LLM calls, file reads, git diff, HTTP GET |
+| **Journal** | `TransportOps::ExecuteJournal` | Write tool-owned cache/state | Checkpoints, session state, response cache |
+| **Command** | `TransportOps::ExecuteCommand` | Mutate user artifacts / external systems | File writes, git commit, apply patch |
+
+**Why three categories?**
+- `cargo test` writes to `target/` but we consider it "query-like" — it's tool-owned state
+- Durability checkpoints write to `~/.gunbc/` — also tool-owned, not user artifacts
+- Only Commands mutate things the user controls
+
+**Structural enforcement** (leverages existing `AccessMode` precedent):
+
+```rust
+/// Transport execute operations — typed for structural enforcement
+pub enum TransportOps {
+    /// Read-only access to external state
+    ExecuteQuery,
+
+    /// Write to tool-owned cache/journal (durability, caching)
+    /// Does NOT mutate user-controlled artifacts
+    ExecuteJournal,
+
+    /// Mutate user-controlled artifacts or external systems
+    /// Only allowed at workflow boundaries
+    ExecuteCommand,
+}
+```
+
+**The rule**: A SubDag can be verified to contain "no `ExecuteCommand` nodes" — that's what makes ReviewPhase structurally query-only.
 
 ### Scope Purity: SubDag Encapsulation
 
@@ -67,7 +91,7 @@ that bypasses edges is a contract violation."
 Applied to SubDags:
 
 1. **Inputs**: SubDag internals see only what's passed through entrypoints
-2. **Outputs**: Results leave only through declared boundaries
+2. **Outputs**: Results leave only through declared workflow boundaries
 3. **No leakage**: Inner nodes cannot reference sibling nodes in parent DAG
 4. **Resolution order**: SubDag must fully resolve before parent sees outputs
 
@@ -85,18 +109,19 @@ Applied to SubDags:
 └───────────────────────────────────────────────────────────────┘
 ```
 
-**Implication for ReviewPhase**: The parent doesn't know ReviewPhase uses an LLM internally. It only sees: `(artifact, rubric) → (findings, verdict)`.
+**Implication for ReviewPhase**: The parent doesn't know ReviewPhase uses an LLM internally. It only sees: `(artifact, rubric) → (findings, verdict, next_step)`.
 
 ### How This Applies to Our Phases
 
-| Phase | Transport Type | Reasoning |
-|-------|----------------|-----------|
+| Phase | Transport Types Allowed | Reasoning |
+|-------|-------------------------|-----------|
 | **ReviewPhase** | Query only | LLM calls observe code, don't mutate it. Output is data (findings), not action. |
-| **ImplementationPhase** | Query internally, Command at boundary | Codex queries produce artifacts. Applying artifacts is a Command. |
+| **ImplementationPhase** | Query + Journal | Codex queries produce artifacts. Checkpoints use Journal. Applying artifacts happens outside. |
+| **TestPhase** | Query + Journal | Running tests observes behavior. Test caching uses Journal. |
 | **CommitPhase** | Command | Git commit mutates the repository. |
-| **TestPhase** | Query | Running tests observes behavior, doesn't mutate code. |
+| **ApplyPhase** | Command | File writes, patch application. |
 
-**The pattern**: Phases that "decide" use Queries. Phases that "act" use Commands. Most DAGs should be reasoning-heavy, with Commands concentrated at the edges.
+**The pattern**: Phases that "decide" use Query (+ Journal for durability). Phases that "act" use Command. Commands are concentrated at workflow boundaries.
 
 ---
 
@@ -590,7 +615,7 @@ pub struct Rubric {
     /// What aspects to evaluate
     pub criteria: Vec<Criterion>,
 
-    /// Severity thresholds
+    /// Level thresholds for auto-fail
     pub fail_on: FailureCondition,
 
     /// Domain-specific instructions
@@ -608,7 +633,7 @@ pub struct Criterion {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum FailureCondition {
     /// Fail if any finding of this severity or higher
-    OnSeverity(Severity),
+    OnLevel(FindingLevel),
     /// Fail if score below threshold
     OnScore(f32),
     /// Never auto-fail, always advisory
@@ -621,19 +646,30 @@ pub struct ReviewResult {
     pub findings: Vec<Finding>,
     pub verdict: Verdict,
     pub summary: String,
-    pub score: Option<f32>,        // 0.0-1.0 if scored
     pub reviewer: ReviewerType,
+    pub next_step: NextStep,       // What to do next (fractal loop input)
+}
+
+/// Canonical "what to do next" — enables fractal loop shape
+/// Every review produces this, making the loop invariant:
+///   state → ReviewPhase → NextStep → Branch(should_iterate) → (ImplementPhase or Done)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NextStep {
+    pub should_iterate: bool,
+    pub suggested_task: Option<String>,   // Prompt for Codex follow-up
+    pub blocking_findings: Vec<String>,   // Finding IDs that block progress
+    pub stopping_reason: Option<String>,  // Why we stopped (if !should_iterate)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Finding {
     pub id: String,
-    pub severity: Severity,
+    pub level: FindingLevel,
     pub category: String,          // Maps to Criterion.name
     pub location: Option<Location>,
     pub message: String,
     pub suggestion: Option<String>,
-    pub confidence: f32,           // 0.0-1.0
+    pub evidence: Vec<String>,     // What led to this finding (line refs, patterns matched)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -652,12 +688,12 @@ pub enum Verdict {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum Severity {
-    Info,       // Informational only
-    Suggestion, // Nice to have
-    Warning,    // Should address
-    Error,      // Must fix
-    Critical,   // Blocking
+/// Finding severity levels (avoids "Warning" to align with "No Warnings" principle)
+pub enum FindingLevel {
+    Info,       // Informational, no action needed
+    Nit,        // Minor style/preference issue
+    Concern,    // Should address, but not blocking
+    Blocker,    // Must fix before proceeding
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -713,7 +749,7 @@ impl Rubric {
                     ],
                 },
             ],
-            fail_on: FailureCondition::OnSeverity(Severity::Error),
+            fail_on: FailureCondition::OnLevel(FindingLevel::Blocker),
             domain_prompt: None,
         }
     }
@@ -775,7 +811,7 @@ impl Rubric {
                     examples: vec![],
                 },
             ],
-            fail_on: FailureCondition::OnSeverity(Severity::Warning),
+            fail_on: FailureCondition::OnLevel(FindingLevel::Concern),
             domain_prompt: None,
         }
     }
@@ -837,6 +873,8 @@ pub enum ReviewOps {
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                            ReviewPhase SubDag                               │
 │                                                                             │
+│  NOTE: Reuses lib/llm-ops chat subdag — don't re-implement the LLM chain!  │
+│                                                                             │
 │  Entrypoints:                                                               │
 │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐                       │
 │  │ artifact │ │  rubric  │ │ context  │ │  config  │                       │
@@ -851,22 +889,14 @@ pub enum ReviewOps {
 │              └────────────┬────────────┘                                   │
 │                           │                                                 │
 │                           ▼                                                 │
-│              ┌─────────────────────────┐                                   │
-│              │  PrepareChatRequest     │ ◀── PURE: build transport req     │
-│              │  (LlmOps)               │                                   │
-│              └────────────┬────────────┘                                   │
-│                           │                                                 │
-│                           ▼                                                 │
-│              ┌─────────────────────────┐                                   │
-│              │  Execute                │ ◀── I/O BOUNDARY                  │
-│              │  (TransportOps)         │                                   │
-│              └────────────┬────────────┘                                   │
-│                           │                                                 │
-│                           ▼                                                 │
-│              ┌─────────────────────────┐                                   │
-│              │  ParseChatResponse      │ ◀── PURE: extract content         │
-│              │  (LlmOps)               │                                   │
-│              └────────────┬────────────┘                                   │
+│              ┌─────────────────────────────────────────────────┐           │
+│              │     EMBED: lib/llm-ops chat_completion subdag   │           │
+│              │  ┌─────────────────────────────────────────┐   │           │
+│              │  │ PrepareChatRequest → ExecuteQuery →     │   │           │
+│              │  │ ParseChatResponse                       │   │           │
+│              │  └─────────────────────────────────────────┘   │           │
+│              │  (reuse existing graph, don't redefine)        │           │
+│              └────────────┬────────────────────────────────────┘           │
 │                           │                                                 │
 │                           ▼                                                 │
 │              ┌─────────────────────────┐                                   │
@@ -876,14 +906,14 @@ pub enum ReviewOps {
 │                           │                                                 │
 │                           ▼                                                 │
 │              ┌─────────────────────────┐                                   │
-│              │  DetermineVerdict       │ ◀── PURE: pass/fail decision      │
+│              │  DetermineVerdict       │ ◀── PURE: verdict + next_step     │
 │              │  (ReviewOps)            │                                   │
 │              └────────────┬────────────┘                                   │
 │                           │                                                 │
-│  Boundaries:              ▼                                                 │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐                                    │
-│  │ findings │ │ verdict  │ │ summary  │                                    │
-│  └──────────┘ └──────────┘ └──────────┘                                    │
+│  Workflow Boundaries:     ▼                                                 │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌───────────┐                      │
+│  │ findings │ │ verdict  │ │ summary  │ │ next_step │                      │
+│  └──────────┘ └──────────┘ └──────────┘ └───────────┘                      │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -1017,41 +1047,89 @@ pub fn build_implement_and_review(
 - [ ] Consider updating AGENT.md with Query/Command principle
 - [ ] Consider updating SPEC.md §6 (Node Contract) with transport classification
 
-### Phase 1: Core Types & Operations
+### V0: Minimal Useful Pipeline (First Target)
 
-- [ ] Define `ImplementationSession` and related types in `lib/codex/src/types.rs`
-- [ ] Define `Artifact`, `Rubric`, `ReviewResult` in `lib/review/src/types.rs`
-- [ ] Implement `ImplementationOps` with `Executable` trait (Query operations)
-- [ ] Implement `ReviewOps` with `Executable` trait (Query operations)
-- [ ] Define `ApplyOps` for Command operations (file writes, commits)
+**Goal**: Review current branch diff + optional cargo checks → JSON report
 
-### Phase 2: Durability Infrastructure
+**What already exists** (reuse, don't rebuild):
+- ✅ `GitOps::PrepareDiff` / `ParseDiff` — get diff context
+- ✅ `LlmOps::PrepareChatRequest` / `ParseChatResponse` — LLM invocation
+- ✅ `CargoOp::check` / `CargoOp::test` — cargo tooling
+- ✅ `TransportOps::Execute` — I/O boundary
+- ✅ Pattern builders: `UpsertBuilder`, `LoopBuilder`, `BranchBuilder`
 
-- [ ] Implement step-level checkpoint storage
+**V0 flow**:
+```
+1. GitOps::PrepareDiff → ExecuteQuery → GitOps::ParseDiff
+2. (Optional) CargoOp::check/test/clippy
+3. ReviewOps::PrepareReviewPrompt(diff + tool_outputs + rubric)
+4. [lib/llm-ops chat subdag]  ← reuse existing
+5. ReviewOps::ParseReviewResponse → DetermineVerdict
+6. Output: JSON ReviewResult with findings, verdict, next_step
+```
+
+**What to build for V0**:
+- [ ] `lib/review/` crate with types (`Artifact`, `Rubric`, `Finding`, `ReviewResult`, `NextStep`)
+- [ ] `ReviewOps::PrepareReviewPrompt` — assemble prompt from artifact + rubric
+- [ ] `ReviewOps::ParseReviewResponse` — parse LLM response into findings
+- [ ] `ReviewOps::DetermineVerdict` — compute verdict and next_step
+- [ ] Simple CLI: `gunbc review --diff HEAD~1` → prints JSON
+
+**V0 explicitly does NOT include**:
+- Durability / checkpointing
+- Codex CLI integration
+- Multi-turn conversations
+- Apply/commit commands
+
+---
+
+### V1: Codex Follow-up Loop
+
+After V0 works:
+- [ ] ReviewResult.next_step.suggested_task feeds into Codex
+- [ ] ImplementationPhase runs Codex CLI (Query), outputs patch artifact
+- [ ] ReviewPhase reviews the patch
+- [ ] Iterate until verdict.pass or max iterations
+- [ ] **Keep "apply patch" as explicit Command** (separate from reasoning loop)
+
+---
+
+### Full Implementation Phases
+
+#### Phase 1: Core Types (V0 blocker)
+
+- [ ] Create `lib/review/` crate
+- [ ] Define types: `Artifact`, `Rubric`, `Finding`, `FindingLevel`, `ReviewResult`, `NextStep`, `Verdict`
+- [ ] Implement `ReviewOps` with `Executable` trait
+- [ ] Wire up `ReviewPhaseBuilder` using existing patterns
+
+#### Phase 2: Transport Classification (architectural)
+
+- [ ] Add `ExecuteQuery` / `ExecuteJournal` / `ExecuteCommand` variants to `TransportOps`
+- [ ] Update executor to handle new variants
+- [ ] Add SubDag validation: "contains no ExecuteCommand nodes"
+
+#### Phase 3: ImplementationPhase (V1)
+
+- [ ] Create `lib/codex/` crate
+- [ ] Define types: `ImplementationSession`, `StepRecord`, `ConversationState`
+- [ ] Implement `ImplementationOps`
+- [ ] Integrate Codex CLI invocation (Query transport)
+- [ ] Add Journal transport for session state persistence
+
+#### Phase 4: Durability (V1+)
+
+- [ ] Implement `ExecuteJournal` for checkpoint storage
 - [ ] Implement `CheckStepDone` / `RecordStep` operations
 - [ ] Add content-addressed step ID computation
-- [ ] Test crash recovery with simulated failures
+- [ ] Test crash recovery
 
-### Phase 3: ReviewPhase SubDag
+#### Phase 5: Composition & CLI
 
-- [ ] Build `ReviewPhaseBuilder`
-- [ ] Implement predefined rubrics (code, design, test)
-- [ ] Add multi-source review with `MergeResults`
-- [ ] Generate mock specs for testing
-
-### Phase 4: ImplementationPhase SubDag
-
-- [ ] Build `ImplementationPhaseBuilder`
-- [ ] Integrate Codex CLI invocation
-- [ ] Implement conversation state tracking
-- [ ] Add artifact extraction from Codex responses
-
-### Phase 5: Composition & CLI
-
-- [ ] Build `ImplementAndReviewBuilder`
-- [ ] Add `gunbc implement` command
-- [ ] Add `gunbc review` command
-- [ ] Add `--resume` support for interrupted sessions
+- [ ] Build `ImplementAndReviewBuilder` (composes V0 + V1)
+- [ ] Add `gunbc review` command (V0)
+- [ ] Add `gunbc implement` command (V1)
+- [ ] Add `--resume` support
 
 ---
 
