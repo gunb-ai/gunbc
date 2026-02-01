@@ -26,11 +26,19 @@ gunbc workflows are pure dataflow graphs whose only interaction with the outside
 
 **Invariant**: Reasoning phases are hermetic — they produce *artifacts* (patches, findings) but don't apply them. Action phases are explicit and separate.
 
-## Transport Risk Classification
+## Transport Classification: Two Orthogonal Axes
 
-Risk is assessed per-transport by domain and scope, not just read/write ownership. For V0/V1: fermi-style categories (low/medium/high/extreme). Future: `TransportMeta { risk, domain, scope }` for policy enforcement.
+**I/O type** (read/write) — for purity, testing, DryRun mocking:
+- **Read**: file reads, git diff, LLM calls, HTTP GET
+- **Write**: file writes, git commit, cache updates
 
-**Ownership model** (Query/Journal/Command) is in appendix — useful for structural enforcement but not the primary classification axis.
+**Risk level** (fermi-style) — for safety/interest:
+- **Low**: temp cache, tool-owned state
+- **Medium**: LLM calls (cost, latency)
+- **High**: repo mutation, external API calls
+- **Extreme**: credential access, destructive ops
+
+These are orthogonal: a cache write is low-risk but still a write (matters for purity). A credential read is high-risk but still a read. DryRun intercepts by I/O type; policy enforcement uses risk level.
 
 ## ReviewPhase: Reconciliation + Candidate Repairs
 
