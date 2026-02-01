@@ -621,141 +621,27 @@ pub struct Location {
 
 ## Part 4: Review Cycle (Orchestration)
 
-### The Three-Phase Review Pattern
+### What Orchestration Does
 
-Reviews happen in stages, each with different criteria. This is orchestration, not ReviewPhase's concern.
+ReviewPhase is pure reconciliation. The **Review Cycle** is orchestration that:
+- Decides which criteria to run (fully configurable)
+- Decides whether to iterate on findings
+- Decides when to stop
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         Review Cycle                                    │
-│                                                                         │
-│  Stage 1: COHERENCE                                                     │
-│  "Does it make sense?"                                                  │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │ • Is it internally consistent?                                  │   │
-│  │ • Does the logic flow?                                          │   │
-│  │ • Are there contradictions?                                     │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│                              │                                          │
-│                    findings → iterate or proceed                        │
-│                              ▼                                          │
-│  Stage 2: QUALITY                                                       │
-│  "Is it well-crafted?"                                                  │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │ • Is it clean and readable?                                     │   │
-│  │ • Are there bugs or issues?                                     │   │
-│  │ • Does it follow conventions?                                   │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│                              │                                          │
-│                    findings → iterate or proceed                        │
-│                              ▼                                          │
-│  Stage 3: WISDOM (optional)                                             │
-│  "Is it the right approach?"                                            │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │ • Is this the best way to solve the problem?                    │   │
-│  │ • Are there better patterns?                                    │   │
-│  │ • Will this scale / maintain well?                              │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│                              │                                          │
-│                    findings → iterate or done                           │
-└─────────────────────────────────────────────────────────────────────────┘
-```
+No hardcoded stages or order — criteria are user-defined.
 
-### Predefined Criteria
-
-```rust
-impl Criteria {
-    /// Stage 1: Does it make sense?
-    pub fn coherence() -> Self {
-        Self {
-            name: "coherence".into(),
-            description: "Internal consistency and logical flow".into(),
-            checks: vec![
-                Check {
-                    id: "no_contradictions".into(),
-                    question: "Are there any internal contradictions?".into(),
-                    examples: vec![],
-                },
-                Check {
-                    id: "logic_flow".into(),
-                    question: "Does the logic flow make sense?".into(),
-                    examples: vec![],
-                },
-                Check {
-                    id: "completeness".into(),
-                    question: "Is anything obviously missing?".into(),
-                    examples: vec![],
-                },
-            ],
-        }
-    }
-
-    /// Stage 2: Is it well-crafted?
-    pub fn quality() -> Self {
-        Self {
-            name: "quality".into(),
-            description: "Correctness, cleanliness, and craftsmanship".into(),
-            checks: vec![
-                Check {
-                    id: "correctness".into(),
-                    question: "Are there bugs or logical errors?".into(),
-                    examples: vec!["Off-by-one".into(), "Null dereference".into()],
-                },
-                Check {
-                    id: "clarity".into(),
-                    question: "Is the code/content clear and readable?".into(),
-                    examples: vec![],
-                },
-                Check {
-                    id: "conventions".into(),
-                    question: "Does it follow established patterns?".into(),
-                    examples: vec![],
-                },
-            ],
-        }
-    }
-
-    /// Stage 3: Is it the right approach?
-    pub fn wisdom() -> Self {
-        Self {
-            name: "wisdom".into(),
-            description: "Strategic fit and long-term thinking".into(),
-            checks: vec![
-                Check {
-                    id: "approach".into(),
-                    question: "Is this the right approach to the problem?".into(),
-                    examples: vec![],
-                },
-                Check {
-                    id: "alternatives".into(),
-                    question: "Are there simpler or better alternatives?".into(),
-                    examples: vec![],
-                },
-                Check {
-                    id: "maintainability".into(),
-                    question: "Will this be easy to maintain and extend?".into(),
-                    examples: vec![],
-                },
-            ],
-        }
-    }
-}
-```
-
-### Orchestration Logic
-
-The orchestration layer (not ReviewPhase) handles:
+### Orchestration Types
 
 ```rust
 /// Orchestration decides what to do with findings
 pub struct ReviewCycleConfig {
-    /// Which criteria to apply, in order
-    pub stages: Vec<Criteria>,
+    /// Which criteria to apply (order is configurable, not mandated)
+    pub criteria: Vec<Criteria>,
 
     /// How to decide whether to iterate
     pub iterate_policy: IteratePolicy,
 
-    /// Maximum iterations per stage
+    /// Maximum iterations per criteria
     pub max_iterations: u32,
 }
 
@@ -770,7 +656,7 @@ pub enum IteratePolicy {
 
 /// What the orchestration layer produces
 pub struct CycleResult {
-    /// All findings from all stages
+    /// All findings from all criteria runs
     pub all_findings: Vec<(String, Vec<Finding>)>,  // (criteria_name, findings)
 
     /// Final decision
@@ -778,7 +664,7 @@ pub struct CycleResult {
 }
 
 pub enum CycleOutcome {
-    /// All stages passed (no findings, or findings were fixed)
+    /// All criteria passed (no findings, or findings were fixed)
     Complete,
     /// Stopped iterating (max iterations or no more fixes)
     Stabilized { remaining_findings: usize },
@@ -790,9 +676,9 @@ pub enum CycleOutcome {
 ### Why This Separation Matters
 
 1. **ReviewPhase stays pure**: `(artifact, criteria) → findings` — nothing more
-2. **Different review "types" = different criteria**: security review is just `Criteria::security()`
+2. **Criteria are user-defined**: security, style, correctness — whatever you configure
 3. **Orchestration is explicit**: decisions about iterating, blocking, etc. are visible
-4. **Composable**: can run single criteria or full cycle, orchestration's choice
+4. **Order is flexible**: sequential usually makes sense (hard to discuss design when basic correctness fails), but not enforced
 
 ### ReviewOps
 
@@ -932,12 +818,12 @@ Compose ImplementationPhase + Review Cycle (orchestration) into a complete workf
 │                                ▼                                            │
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
 │  │                  Review Cycle (Orchestration)                       │   │
-│  │  stages: [Coherence, Quality, Wisdom]                               │   │
+│  │  criteria: [configured by caller]                                   │   │
 │  │                                                                     │   │
-│  │  For each artifact, for each stage:                                 │   │
+│  │  For each artifact, for each configured criteria:                   │   │
 │  │  ┌─────────────────────────────────────────────────────────────┐   │   │
 │  │  │                    ReviewPhase                              │   │   │
-│  │  │  criteria: Criteria::quality()                              │   │   │
+│  │  │  criteria: <from config>                                    │   │   │
 │  │  │  outputs: (findings, summary)                               │   │   │
 │  │  └─────────────────────────────────────────────────────────────┘   │   │
 │  │  If findings → iterate (apply fix, re-review) or proceed            │   │
@@ -978,7 +864,7 @@ pub fn build_implement_and_review(
 
     // Phase 2: Review cycle (orchestration handles iteration)
     let review_cycle = ReviewCycleBuilder::new()
-        .with_stages(cycle_config.stages)
+        .with_criteria(cycle_config.criteria)
         .with_iterate_policy(cycle_config.iterate_policy)
         .with_max_iterations(cycle_config.max_iterations)
         .build()?;
@@ -1052,7 +938,7 @@ pub fn build_implement_and_review(
 ### V1: Review Cycle + Codex Integration
 
 After V0 works:
-- [ ] Add Review Cycle orchestration (Coherence → Quality → Wisdom stages)
+- [ ] Add Review Cycle orchestration (configurable criteria)
 - [ ] For findings with `suggested_fix`, feed back into Codex
 - [ ] ImplementationPhase runs Codex CLI (Query), outputs patch artifact
 - [ ] ReviewPhase reviews the patch with same criteria
