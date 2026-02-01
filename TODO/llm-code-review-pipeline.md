@@ -43,90 +43,15 @@ gunbc has **two kinds of boundaries** that must not be conflated:
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-### Transport Classification: Query / Journal / Command (Structural)
-
-Transport is classified by **typed execute ops**, not flags. This makes enforcement structural.
-
-| Class | Execute Op | Scope | Examples |
-|-------|------------|-------|----------|
-| **Query** | `TransportOps::ExecuteQuery` | Read external state | LLM calls, file reads, git diff, HTTP GET |
-| **Journal** | `TransportOps::ExecuteJournal` | Write tool-owned cache/state | Checkpoints, session state, response cache |
-| **Command** | `TransportOps::ExecuteCommand` | Mutate user artifacts / external systems | File writes, git commit, apply patch |
-
-**Why three categories?**
-- `cargo test` writes to `target/` but we consider it "query-like" — it's tool-owned state
-- Durability checkpoints write to `~/.gunbc/` — also tool-owned, not user artifacts
-- Only Commands mutate things the user controls
-
-**Structural enforcement** (leverages existing `AccessMode` precedent):
-
-```rust
-/// Transport execute operations — typed for structural enforcement
-pub enum TransportOps {
-    /// Read-only access to external state
-    ExecuteQuery,
-
-    /// Write to tool-owned cache/journal (durability, caching)
-    /// Does NOT mutate user-controlled artifacts
-    ExecuteJournal,
-
-    /// Mutate user-controlled artifacts or external systems
-    /// Only allowed at workflow boundaries
-    ExecuteCommand,
-}
-```
-
-**The rule**: A SubDag can be verified to contain "no `ExecuteCommand` nodes" — that's what makes ReviewPhase structurally query-only.
-
-### Effect Capabilities (Future Consideration)
+### Transport Classification (Future Consideration)
 
 **Current state**: The repo uses read/write as the primary discrimination axis. This is convenient for testing and reasoning about purity — it's easy to say "this phase only reads" — but it's not structurally fundamental.
 
 **The honest framing**: Read/write isn't the real concern. We care more about *some* reads (secrets, credentials) than *some* writes (temp caches). The actual concern is **risk/interest** — what do we need to track for testing, isolation, and safety?
 
-**For now**: Query/Journal/Command at the structural level (which `TransportOps` variants exist) is sufficient. DryRun mode intercepts transport boundaries for mocking.
+**For V0/V1**: Use fermi-style risk categories (low/medium/high/extreme) rather than structural read/write classification. The Query/Journal/Command model below is a placeholder for future work when we have concrete use cases.
 
-**As the project advances**: We'll likely need domain-specific risk profiles. Writes can structure their own risk categories (e.g., "repo mutation" vs "cache update" vs "credential storage"). The current read/write split is a placeholder for that richer model.
-
-### Journal Scope Contract
-
-Journal is "tool-owned state" — but without enforcement, it becomes "Command in disguise." Define allowed roots:
-
-```rust
-/// Journal writes are constrained to these paths
-pub struct JournalScope {
-    /// Allowed filesystem roots (e.g., ["~/.gunbc/", "$TMPDIR/gunbc-"])
-    pub allowed_paths: Vec<PathBuf>,
-    /// Resource IDs for locking/concurrency
-    pub resource_ids: Vec<String>,
-}
-```
-
-The executor enforces: `ExecuteJournal` can only write within `allowed_paths`. Writes outside → contract violation.
-
-### DryRun Modes
-
-With Query/Journal/Command, DryRun becomes explicit:
-
-```rust
-pub enum DryRunMode {
-    /// Intercept ALL transport (Query/Journal/Command) — pure mock
-    Strict,
-    /// Allow Query, optionally allow Journal, block Command
-    Safe { allow_journal: bool },
-    /// No interception — real execution
-    Off,
-}
-```
-
-| Mode | Query | Journal | Command |
-|------|-------|---------|---------|
-| **Strict** | mock | mock | mock |
-| **Safe(journal=true)** | allow | allow | mock |
-| **Safe(journal=false)** | allow | mock | mock |
-| **Off** | allow | allow | allow |
-
-This makes "preview runs" and tests explicit about what's being exercised.
+**See**: [Appendix: Transport Classification Details](#appendix-transport-classification-details) for the full Query/Journal/Command design if needed later.
 
 ### Scope Purity: SubDag Encapsulation
 
@@ -163,24 +88,15 @@ Applied to SubDags:
 
 ### How This Applies to Our Phases
 
-| Phase | Transport Types Allowed | Reasoning |
-|-------|-------------------------|-----------|
-| **ReviewPhase** | Query only | LLM calls observe code, don't mutate it. Output is data (findings), not action. |
-| **ImplementationPhase** | Query + Journal | Codex queries produce artifacts. Checkpoints use Journal. Applying artifacts happens outside. |
-| **TestPhase** | Query + Journal | Running tests observes behavior. Test caching uses Journal. |
-| **CommitPhase** | Command | Git commit mutates the repository. |
-| **ApplyPhase** | Command | File writes, patch application. |
+| Phase | Risk Level | Reasoning |
+|-------|------------|-----------|
+| **ReviewPhase** | Low | LLM calls observe code, don't mutate it. Output is data (findings), not action. |
+| **ImplementationPhase** | Medium | Codex queries produce artifacts. Durability writes are tool-owned. User artifacts are not mutated. |
+| **TestPhase** | Medium | Running tests observes behavior. May write to tool-owned caches. |
+| **CommitPhase** | High | Git commit mutates the repository. |
+| **ApplyPhase** | High | File writes, patch application. |
 
-**The pattern**: Phases that "decide" use Query (+ Journal for durability). Phases that "act" use Command. Commands are concentrated at workflow boundaries.
-
-**Phase-level validation** (enforced by builder/executor):
-
-| Phase | Validation Rule |
-|-------|-----------------|
-| **ReviewPhase** | No `ExecuteCommand`, no `ExecuteJournal` |
-| **ImplementationPhase** | No `ExecuteCommand` |
-| **TestPhase** | No `ExecuteCommand` |
-| **ApplyPhase** | `ExecuteCommand` allowed |
+**The pattern**: Phases that "decide" are low/medium risk. Phases that "act" are high risk. High-risk operations are concentrated at workflow boundaries.
 
 ---
 
@@ -1037,9 +953,9 @@ pub fn build_implement_and_review(
 
 ### Phase 0: Core Architecture (if generalizing)
 
-- [ ] Consider adding Query/Command transport classification to `core/ir/src/transport/`
-- [ ] Consider updating AGENT.md with Query/Command principle
-- [ ] Consider updating SPEC.md §6 (Node Contract) with transport classification
+- [ ] Consider adding risk categories to transport operations (fermi-style: low/medium/high/extreme)
+- [ ] Consider updating AGENT.md with risk classification principle
+- [ ] (Future) Consider Query/Command structural classification — see appendix
 
 ### V0: Minimal Useful Pipeline (First Target)
 
@@ -1054,7 +970,7 @@ pub fn build_implement_and_review(
 
 **V0 flow**:
 ```
-1. GitOps::PrepareDiff → ExecuteQuery → GitOps::ParseDiff
+1. GitOps::PrepareDiff → Execute → GitOps::ParseDiff
 2. (Optional) CargoOp::check/test/clippy
 3. ReviewOps::PrepareReviewPrompt(diff + tool_outputs + criteria)
 4. [lib/llm-ops chat subdag]  ← reuse existing
@@ -1106,16 +1022,11 @@ After V0 works:
 - [ ] Implement `ReviewOps` with `Executable` trait
 - [ ] Wire up `ReviewPhaseBuilder` using existing patterns
 
-#### Phase 2: Transport Classification (architectural)
+#### Phase 2: Risk Classification (future)
 
-- [ ] Add `ExecuteQuery` / `ExecuteJournal` / `ExecuteCommand` variants to `TransportOps`
-- [ ] Add `JournalScope` contract (allowed paths, resource IDs)
-- [ ] Add `DryRunMode` enum (Strict / Safe / Off)
-- [ ] Update executor to handle new variants + enforce Journal scope
-- [ ] Add phase-level validation:
-  - ReviewPhase: no ExecuteCommand, no ExecuteJournal
-  - ImplementationPhase: no ExecuteCommand
-- [ ] (Future) Domain-specific risk profiles — defer until we have concrete use cases
+- [ ] Define fermi-style risk categories (low/medium/high/extreme)
+- [ ] Add risk annotation to transport operations
+- [ ] (Future) Consider Query/Journal/Command structural classification if needed — see appendix
 
 #### Phase 3: ImplementationPhase (V1)
 
@@ -1176,3 +1087,68 @@ After V0 works:
 - **CLI Tools**: `core/ir/src/transport/cli.rs` — CliToolDef, CliToolOp
 - **LLM Ops**: `lib/llm-ops/src/` — existing chat completion patterns
 - **Git Ops**: `lib/git-ops/src/` — diff, branch operations
+
+---
+
+## Appendix: Transport Classification Details
+
+**Status**: Future consideration. Preserved here for reference when we have concrete use cases.
+
+**Background conversation**: The repo uses read/write as the primary discrimination axis. This is convenient for testing and reasoning about purity, but it's not structurally fundamental. Read/write isn't the real concern — we care more about *some* reads (secrets, credentials) than *some* writes (temp caches). The actual concern is **risk/interest**. We'll likely need domain-specific risk profiles. Writes can structure their own risk categories (e.g., "repo mutation" vs "cache update" vs "credential storage"). The current read/write split is a placeholder for that richer model.
+
+### Query / Journal / Command Classification
+
+Transport classified by typed execute ops, not flags:
+
+| Class | Execute Op | Scope | Examples |
+|-------|------------|-------|----------|
+| **Query** | `ExecuteQuery` | Read external state | LLM calls, file reads, git diff, HTTP GET |
+| **Journal** | `ExecuteJournal` | Write tool-owned cache/state | Checkpoints, session state, response cache |
+| **Command** | `ExecuteCommand` | Mutate user artifacts / external systems | File writes, git commit, apply patch |
+
+```rust
+pub enum TransportOps {
+    ExecuteQuery,
+    ExecuteJournal,
+    ExecuteCommand,
+}
+```
+
+### Journal Scope Contract
+
+Journal is "tool-owned state" — but without enforcement, it becomes "Command in disguise."
+
+```rust
+pub struct JournalScope {
+    pub allowed_paths: Vec<PathBuf>,  // e.g., ["~/.gunbc/", "$TMPDIR/gunbc-"]
+    pub resource_ids: Vec<String>,
+}
+```
+
+Executor enforces: `ExecuteJournal` can only write within `allowed_paths`.
+
+### DryRun Modes
+
+```rust
+pub enum DryRunMode {
+    Strict,                        // mock all
+    Safe { allow_journal: bool },  // allow Query, optionally Journal, block Command
+    Off,                           // real execution
+}
+```
+
+| Mode | Query | Journal | Command |
+|------|-------|---------|---------|
+| **Strict** | mock | mock | mock |
+| **Safe(journal=true)** | allow | allow | mock |
+| **Safe(journal=false)** | allow | mock | mock |
+| **Off** | allow | allow | allow |
+
+### Phase-level Validation (if using this model)
+
+| Phase | Validation Rule |
+|-------|-----------------|
+| **ReviewPhase** | No `ExecuteCommand`, no `ExecuteJournal` |
+| **ImplementationPhase** | No `ExecuteCommand` |
+| **TestPhase** | No `ExecuteCommand` |
+| **ApplyPhase** | `ExecuteCommand` allowed |
