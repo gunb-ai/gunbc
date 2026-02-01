@@ -78,30 +78,15 @@ pub enum TransportOps {
 
 **The rule**: A SubDag can be verified to contain "no `ExecuteCommand` nodes" — that's what makes ReviewPhase structurally query-only.
 
-### Effect Capabilities (Runtime Enforcement)
+### Effect Capabilities (Future Consideration)
 
-Query/Journal/Command is the user-facing abstraction. Underneath, implement as a finer-grained **effect capability** system for runtime verification:
+**Current state**: The repo uses read/write as the primary discrimination axis. This is convenient for testing and reasoning about purity — it's easy to say "this phase only reads" — but it's not structurally fundamental.
 
-```rust
-enum Effect {
-    ReadRepo,           // Read tracked files, git state
-    WriteRepo,          // Write tracked files, git index, commits
-    SpawnProcess,       // Fork external processes
-    WriteTemp,          // Write to $TMPDIR, target/, .cache/
-    WriteUserState,     // Write to ~/.gunbc, ~/.codex, caches
-    Network,            // HTTP calls, LLM APIs
-}
-```
+**The honest framing**: Read/write isn't the real concern. We care more about *some* reads (secrets, credentials) than *some* writes (temp caches). The actual concern is **risk/interest** — what do we need to track for testing, isolation, and safety?
 
-This maps to our classifications:
+**For now**: Query/Journal/Command at the structural level (which `TransportOps` variants exist) is sufficient. DryRun mode intercepts transport boundaries for mocking.
 
-| Classification | Allowed Effects |
-|----------------|-----------------|
-| **Query** | `ReadRepo + SpawnProcess + WriteTemp + Network` |
-| **Journal** | `WriteUserState` (durable checkpoints) |
-| **Command** | `WriteRepo` |
-
-**Why this matters**: The runtime can *prove* "no WriteRepo occurred" instead of hoping. Running tests in a hermetic workspace (git worktree to temp dir) lets them write build artifacts without violating "no repo mutation".
+**As the project advances**: We'll likely need domain-specific risk profiles. Writes can structure their own risk categories (e.g., "repo mutation" vs "cache update" vs "credential storage"). The current read/write split is a placeholder for that richer model.
 
 ### Scope Purity: SubDag Encapsulation
 
@@ -1069,9 +1054,9 @@ After V0 works:
 #### Phase 2: Transport Classification (architectural)
 
 - [ ] Add `ExecuteQuery` / `ExecuteJournal` / `ExecuteCommand` variants to `TransportOps`
-- [ ] Add `Effect` enum for runtime enforcement (ReadRepo, WriteRepo, SpawnProcess, etc.)
 - [ ] Update executor to handle new variants
 - [ ] Add SubDag validation: "contains no ExecuteCommand nodes"
+- [ ] (Future) Domain-specific risk profiles — defer until we have concrete use cases
 
 #### Phase 3: ImplementationPhase (V1)
 
