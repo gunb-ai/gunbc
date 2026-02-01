@@ -17,6 +17,8 @@ These phases compose into larger workflows (Requirements → Design → Implemen
 
 This section reconciles with AGENT.md ("Nodes are Pure, Boundaries are Structural") and SPEC.md (§2.7 "No side channels", §6 "Node Contract").
 
+> **North Star**: gunbc workflows are pure dataflow graphs whose only interaction with the outside world occurs at explicit transport nodes. Transport operations are classified by risk level (low/medium/high/extreme) to enable static validation (e.g., "review contains no high-risk ops") and runtime interception (DryRun). Composition happens through interface boundaries (unconnected ports). Higher-level workflows are built by composing subdags, concentrating mutation inside explicit **action phases** while keeping **reasoning phases** hermetic and replayable.
+
 ### Boundary Terminology (Two Distinct Concepts)
 
 gunbc has **two kinds of boundaries** that must not be conflated:
@@ -24,7 +26,7 @@ gunbc has **two kinds of boundaries** that must not be conflated:
 | Term | Definition | How Detected | Purpose |
 |------|------------|--------------|---------|
 | **Transport Boundary** | Node that executes `TransportOps::Execute*` | By op type | Where I/O happens; DryRun intercepts here |
-| **Workflow Boundary** | Unconnected output port | By graph structure | DAG interface; signature for composition |
+| **Interface Boundary** | Unconnected output port | By graph structure | DAG composition interface |
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -37,21 +39,36 @@ gunbc has **two kinds of boundaries** that must not be conflated:
 │                       └─────────────┘            │                  │
 │                                                  ▼                  │
 │                                           ┌───────────┐            │
-│                                           │ output    │ (WORKFLOW  │
+│                                           │ output    │ (INTERFACE │
 │                                           │ (unconnected) BOUNDARY)│
 │                                           └───────────┘            │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-### Transport Classification (Future Consideration)
-
-**Current state**: The repo uses read/write as the primary discrimination axis. This is convenient for testing and reasoning about purity — it's easy to say "this phase only reads" — but it's not structurally fundamental.
+### Transport Classification
 
 **The honest framing**: Read/write isn't the real concern. We care more about *some* reads (secrets, credentials) than *some* writes (temp caches). The actual concern is **risk/interest** — what do we need to track for testing, isolation, and safety?
 
-**For V0/V1**: Use fermi-style risk categories (low/medium/high/extreme) rather than structural read/write classification. The Query/Journal/Command model below is a placeholder for future work when we have concrete use cases.
+**Ownership vs Security**: The appendix describes a Query/Journal/Command model. That's an **ownership classification** (who controls what's being read/written), not a security classification. A "Query" can still exfiltrate secrets; a "Journal" can still persist sensitive data; a "Query-like" CLI command can execute arbitrary code.
 
-**See**: [Appendix: Transport Classification Details](#appendix-transport-classification-details) for the full Query/Journal/Command design if needed later.
+**For V0/V1**: Use fermi-style risk categories (low/medium/high/extreme) rather than structural read/write classification. Risk is assessed per-transport based on domain and scope, not just ownership.
+
+**Future-proofing**: Even if not enforced in V0, transport ops should carry metadata for later policy:
+
+```rust
+/// Metadata for risk assessment (V1+)
+pub struct TransportMeta {
+    pub risk: RiskLevel,             // Low | Medium | High | Extreme
+    pub domain: TransportDomain,     // Git | Cargo | LLM | FS | HTTP | ...
+    pub scope: TransportScope,       // RepoPath(...) | ToolHome(...) | NetworkHost(...)
+}
+
+pub enum RiskLevel { Low, Medium, High, Extreme }
+```
+
+Later "risk profiles" become a policy over `(risk, domain, scope)` instead of invasive refactoring.
+
+**See**: [Appendix: Transport Classification Details](#appendix-transport-classification-details) for the full Query/Journal/Command ownership model if needed later.
 
 ### Scope Purity: SubDag Encapsulation
 
@@ -66,7 +83,7 @@ that bypasses edges is a contract violation."
 Applied to SubDags:
 
 1. **Inputs**: SubDag internals see only what's passed through entrypoints
-2. **Outputs**: Results leave only through declared workflow boundaries
+2. **Outputs**: Results leave only through declared interface boundaries
 3. **No leakage**: Inner nodes cannot reference sibling nodes in parent DAG
 4. **Resolution order**: SubDag must fully resolve before parent sees outputs
 
@@ -86,17 +103,21 @@ Applied to SubDags:
 
 **Implication for ReviewPhase**: The parent doesn't know ReviewPhase uses an LLM internally. It only sees: `(artifact, criteria) → findings`.
 
-### How This Applies to Our Phases
+### Phase Taxonomy: Reasoning vs Action
 
-| Phase | Risk Level | Reasoning |
-|-------|------------|-----------|
-| **ReviewPhase** | Low | LLM calls observe code, don't mutate it. Output is data (findings), not action. |
-| **ImplementationPhase** | Medium | Codex queries produce artifacts. Durability writes are tool-owned. User artifacts are not mutated. |
-| **TestPhase** | Medium | Running tests observes behavior. May write to tool-owned caches. |
-| **CommitPhase** | High | Git commit mutates the repository. |
-| **ApplyPhase** | High | File writes, patch application. |
+Phases are classified by whether they **decide** or **act**:
 
-**The pattern**: Phases that "decide" are low/medium risk. Phases that "act" are high risk. High-risk operations are concentrated at workflow boundaries.
+| Phase | Type | Risk Level | Reasoning |
+|-------|------|------------|-----------|
+| **ReviewPhase** | Reasoning | Low | LLM calls observe code, don't mutate it. Output is data (findings), not action. |
+| **ImplementationPhase** | Reasoning | Medium | Codex queries produce artifacts (patches). Durability writes are tool-owned. User artifacts are not mutated. |
+| **TestPhase** | Reasoning | Medium | Running tests observes behavior. May write to tool-owned caches. |
+| **ApplyPhase** | Action | High | File writes, patch application. Mutates user artifacts. |
+| **CommitPhase** | Action | High | Git commit mutates the repository. |
+
+**The invariant**: High-risk mutation (Action Phases) only occurs in explicitly designated action subdags. Reasoning phases are hermetic and replayable — they produce *artifacts* (patches, plans, findings) but don't apply them.
+
+**Static validation**: A reasoning phase subdag can be verified to contain no high-risk transport ops. This makes "ReviewPhase is read-only" a structural property, not just a naming convention.
 
 ---
 
@@ -168,9 +189,11 @@ For this iteration, we're building:
 ### Design Goals
 
 1. **Durability**: Survive crashes, resume seamlessly
-2. **Statelessness**: All state flows through DAG edges (no hidden state)
+2. **No implicit state**: All dependencies are explicit as either (a) DAG edges, or (b) declared transport accesses (including journal/checkpoint reads)
 3. **Idempotency**: Re-running from start skips completed work
-4. **Query/Command separation**: Codex invocations are Queries; file mutations are Commands at the boundary
+4. **Reasoning/Action separation**: Codex invocations produce artifacts (patches); applying them is a separate Action Phase
+
+**Codex invariant**: ImplementationPhase must invoke Codex in a mode that **cannot mutate user artifacts**. Any file changes must be emitted as artifacts (patches) and applied only by ApplyPhase. (Enforce via sandbox, read-only mount, or Codex flags that output patches without applying.)
 
 ### The Challenge: Codex is Stateful
 
@@ -179,35 +202,36 @@ Codex CLI maintains conversation state. Our challenge is to:
 - Persist it durably for crash recovery
 - Resume without duplicating work or losing context
 
-### Query/Command Boundary in Implementation
+### Reasoning/Action Boundary in Implementation
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                    ImplementationPhase                              │
+│                    ImplementationPhase (Reasoning)                   │
 │                                                                     │
 │  ┌───────────────────────────────────────────────────────────────┐ │
-│  │                 REASONING ZONE (Queries)                      │ │
+│  │                 REASONING ZONE (Low/Medium Risk)              │ │
 │  │                                                               │ │
 │  │  GatherContext ──▶ CodexInvoke ──▶ ParseResponse ──▶ Decide  │ │
-│  │  (file reads)      (LLM query)     (pure)           (pure)   │ │
+│  │  (file reads)      (LLM call)      (pure)           (pure)   │ │
 │  │                                                               │ │
 │  │  Output: Artifacts (proposed changes, not yet applied)        │ │
 │  └───────────────────────────────────────────────────────────────┘ │
 │                              │                                      │
 │                              ▼                                      │
 │  ┌───────────────────────────────────────────────────────────────┐ │
-│  │                 ACTION ZONE (Commands)                        │ │
+│  │                 ACTION ZONE (High Risk) — SEPARATE PHASE      │ │
 │  │                                                               │ │
-│  │  ApplyArtifacts ──▶ WriteFiles                                │ │
-│  │  (at DAG boundary, after reasoning completes)                 │ │
+│  │  ApplyArtifacts ──▶ WriteFiles (ApplyPhase, not here)        │ │
+│  │  (explicit action phase, after reasoning completes)          │ │
 │  └───────────────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-The key insight: **Codex invocation is a Query** (asking "what should I do?"). **Applying the changes is a Command** (doing it). This separation means we can:
+The key insight: **Codex invocation is Reasoning** (asking "what should I do?" → produces patch artifacts). **Applying the changes is Action** (doing it → separate phase). This separation means we can:
 - Test the reasoning without mutating files
 - Review proposed changes before applying
 - Roll back decisions without undoing file mutations
+- DryRun the entire reasoning phase with no side effects
 
 ### Session State Model
 
@@ -215,8 +239,11 @@ The key insight: **Codex invocation is a Query** (asking "what should I do?"). *
 /// Complete state of a Codex implementation session
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImplementationSession {
-    /// Unique session identifier (content-addressed)
+    /// Unique session identity (UUID/random) — for parallel sessions of same task
     pub session_id: String,
+
+    /// Content hash of task inputs — for dedup/resume matching
+    pub task_id: String,
 
     /// The task being implemented
     pub task: ImplementationTask,
@@ -233,6 +260,12 @@ pub struct ImplementationSession {
     /// Session lifecycle
     pub status: SessionStatus,
 }
+
+// session_id vs task_id:
+// - session_id: random UUID (identity) — allows parallel sessions for same task
+// - task_id: content hash (dedup key) — identifies "same task" for resume/lookup
+// This prevents: (a) collision when two developers run same task, (b) accidental
+// resume of unrelated session, (c) inability to have parallel experiments
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImplementationTask {
@@ -360,6 +393,12 @@ fn step_id(step_type: &StepType, inputs: &HashMap<String, Value>) -> String {
 - Same inputs → same step ID → skip if already done
 - Changed inputs (e.g., new context) → new step ID → re-execute
 - No manual invalidation needed
+
+**World state inputs**: A step is cacheable only relative to a declared **input snapshot** of the world state it depends on. Step inputs should include:
+- `GatherContext`: `git HEAD` (or diff hash) + list of files read
+- `CargoOp::test`: tool version (cargo + rustc), relevant env vars, manifest path
+- LLM steps: model name + fingerprint, system prompt hash, temperature/seed
+Otherwise caching becomes incorrect when the repo or environment changes.
 
 ### Crash Recovery Flow
 
@@ -529,20 +568,20 @@ impl Default for CodexConfig {
 
 ## Part 3: ReviewPhase (Pure Reconciliation)
 
-### Design Principle: Review = Reconciliation
+### Design Principle: Review = Reconciliation + Candidate Repairs
 
-**ReviewPhase is maximally simple**: given an artifact and criteria, report where the artifact diverges from the criteria. That's it.
+**ReviewPhase is maximally simple**: given an artifact and criteria, report where the artifact diverges from the criteria, and optionally propose candidate repairs. That's it.
 
 - **No verdict** — that's orchestration
 - **No severity levels** — either it diverges or it doesn't
-- **No "what to do next"** — that's orchestration
-- **No opinions** — just reconciliation
+- **No decisions** — that's orchestration (whether to apply, iterate, block)
+- **Candidate repairs, not commands** — proposals are data; orchestration chooses whether to apply
 
 ```
-ReviewPhase: (artifact, criteria) → findings
+ReviewPhase: (artifact, criteria) → (findings, candidate_remediations)
 ```
 
-The reviewer doesn't decide what happens with findings. Different criteria produce different findings. The orchestration layer decides what to do.
+The reviewer doesn't decide what happens with findings or whether repairs are applied. Different criteria produce different findings. The orchestration layer decides what to do.
 
 ### Core Types
 
@@ -590,13 +629,21 @@ pub struct Check {
     pub examples: Vec<String>,     // Example violations (optional)
 }
 
-/// Review output = pure reconciliation
+/// Review output = pure reconciliation + candidate repairs
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReviewOutput {
-    pub criteria_name: String,     // Which criteria was applied
-    pub findings: Vec<Finding>,    // Where artifact diverges from criteria
-    pub remediation: RemediationPlan, // Structured tasks to fix findings
-    pub summary: String,           // Natural language summary
+    pub criteria_name: String,            // Which criteria was applied
+    pub source: String,                   // Provenance: "llm:gpt-4o", "cargo:clippy", etc.
+    pub findings: Vec<Finding>,           // Where artifact diverges from criteria
+    pub candidate_remediations: Option<CandidateRemediations>, // Optional repair proposals
+    pub summary: String,                  // Natural language summary
+}
+
+/// Container for merging multiple reviews (same artifact, different criteria/sources)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReviewBundle {
+    pub artifact_id: String,              // Hash of artifact being reviewed
+    pub reviews: Vec<ReviewOutput>,       // Each has criteria_name + source
 }
 
 /// Finding = divergence from criteria
@@ -604,43 +651,44 @@ pub struct ReviewOutput {
 pub struct Finding {
     /// Stable identity for merging/dedup (hash of canonical fields)
     pub id: String,
-    pub check_id: String,          // Which Check this relates to
+    pub check_id: String,                 // Which Check this relates to
     pub location: Option<Location>,
-    pub observation: String,       // What was found
-    /// Example way to satisfy criteria (part of reconciliation, not "next step advice")
-    pub remediation_hint: Option<String>,
-    /// Provenance for MultiReview merging (e.g., "llm:gpt-4o", "cargo:clippy")
-    pub source: String,
+    /// Stable canonical key for cross-iteration matching (reviewer-provided)
+    /// Should NOT include line numbers; should include symbol/file/invariant
+    pub issue_key: String,
+    pub observation: String,              // What was found (may vary in wording)
+    /// Example way to satisfy criteria (candidate, not command)
+    pub candidate_fix: Option<String>,
 }
 
-/// Stable finding ID = hash of canonical fields
-fn finding_id(check_id: &str, location: &Option<Location>, observation: &str) -> String {
+/// Stable finding ID = hash of (check_id, location context, issue_key)
+/// Using issue_key instead of observation text for stability across LLM wording changes
+fn finding_id(check_id: &str, location: &Option<Location>, issue_key: &str) -> String {
     let mut hasher = blake3::Hasher::new();
     hasher.update(check_id.as_bytes());
     if let Some(loc) = location {
+        // For diffs: include hunk context, not line numbers
         hasher.update(&serde_json::to_vec(loc).unwrap());
     }
-    // Normalize: strip numbers, collapse whitespace
-    let normalized = observation.split_whitespace().collect::<Vec<_>>().join(" ");
-    hasher.update(normalized.as_bytes());
+    hasher.update(issue_key.as_bytes());
     hasher.finalize().to_hex()[..16].to_string()
 }
 
-/// Structured remediation output (makes the loop truly fractal)
+/// Candidate repairs (proposals, not commands)
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RemediationPlan {
-    pub goals: Vec<String>,              // Acceptance criteria
-    pub tasks: Vec<RemediationTask>,     // Concrete edits
-    pub constraints: Vec<String>,        // "do not change public API", etc.
+pub struct CandidateRemediations {
+    pub goals: Vec<String>,               // Acceptance criteria
+    pub tasks: Vec<CandidateTask>,        // Proposed edits
+    pub constraints: Vec<String>,         // "do not change public API", etc.
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RemediationTask {
-    pub finding_id: String,              // Links to Finding.id
+pub struct CandidateTask {
+    pub finding_id: String,               // Links to Finding.id
     pub file: Option<String>,
-    pub intent: String,                  // What to change
-    pub suggested_patch: Option<String>, // Optional diff snippet
-    pub validation: Vec<String>,         // Commands or checks to pass
+    pub intent: String,                   // What to change
+    pub candidate_patch: Option<String>,  // Optional diff snippet (proposal)
+    pub validation: Vec<String>,          // Commands or checks to pass
 }
 
 /// Location in source — handles both files and diffs
@@ -672,7 +720,7 @@ pub enum DiffSide {
 }
 ```
 
-**Note**: No `FindingLevel`, no `Verdict`, no `NextStep`. Those belong in orchestration. RemediationPlan is pure data — orchestration decides whether to execute it.
+**Note**: No `FindingLevel`, no `Verdict`, no `NextStep`. Those belong in orchestration. `CandidateRemediations` is pure data (proposals) — orchestration decides whether to execute them.
 
 ---
 
@@ -703,7 +751,7 @@ pub struct ReviewCycleConfig {
 }
 
 pub enum IteratePolicy {
-    /// Iterate if any findings have remediation_hint
+    /// Iterate if any findings have candidate_fix
     OnRemediableFindings,
     /// Iterate on any findings (not just those with hints)
     OnAnyFindings,
@@ -981,13 +1029,13 @@ pub fn build_implement_and_review(
 **What to build for V0**:
 - [ ] `lib/review/` crate with types:
   - `Artifact`, `Criteria`, `Check`
-  - `Finding` (hash-based `id`, `source` provenance, `remediation_hint`), `Location` (with `DiffSide`)
-  - `ReviewOutput`, `RemediationPlan`, `RemediationTask`
+  - `Finding` (hash-based `id`, `issue_key`, `candidate_fix`), `Location` (with `DiffSide`)
+  - `ReviewOutput`, `ReviewBundle`, `CandidateRemediations`, `CandidateTask`
 - [ ] `ReviewOps::PrepareReviewPrompt` — assemble prompt from artifact + criteria
 - [ ] `ReviewOps::ParseReviewResponse` — parse LLM response into findings + remediation plan
 - [ ] Simple CLI: `gunbc review --diff HEAD~1` → prints JSON
 
-**Note**: V0 does NOT include orchestration (Review Cycle) — just single-criteria review. RemediationPlan is output but not executed.
+**Note**: V0 does NOT include orchestration (Review Cycle) — just single-criteria review. `CandidateRemediations` is output but not executed.
 
 **V0 explicitly does NOT include**:
 - Durability / checkpointing
@@ -995,13 +1043,20 @@ pub fn build_implement_and_review(
 - Multi-turn conversations
 - Apply/commit commands
 
+**V0 Crispness Checklist** (acceptance criteria for architecture alignment):
+- [ ] **Structural**: The `ReviewPhase` subdag validates as "contains no high-risk transport ops" (recursively)
+- [ ] **Behavioral**: DryRun can run the entire V0 graph without touching the repo
+- [ ] **Output contract**: Review output is machine-parseable JSON with schema version
+- [ ] **Provenance**: Each finding indicates `(check_id, location?, observation)` and optional `candidate_fix`
+- [ ] **Stable IDs**: Findings have stable-ish IDs via `issue_key`; merging is possible
+
 ---
 
 ### V1: Review Cycle + Codex Integration
 
 After V0 works:
 - [ ] Add Review Cycle orchestration (configurable criteria)
-- [ ] For findings with `suggested_fix`, feed back into Codex
+- [ ] For findings with `candidate_fix`, feed back into Codex
 - [ ] ImplementationPhase runs Codex CLI (Query), outputs patch artifact
 - [ ] ReviewPhase reviews the patch with same criteria
 - [ ] Iterate until no findings or max iterations
@@ -1017,7 +1072,7 @@ After V0 works:
 - [ ] Define types:
   - `Artifact`, `Criteria`, `Check`
   - `Finding` (hash-based id, `source` provenance, `remediation_hint`), `Location` (with `DiffSide`)
-  - `ReviewOutput`, `RemediationPlan`, `RemediationTask`
+  - `ReviewOutput`, `ReviewBundle`, `CandidateRemediations`, `CandidateTask`
 - [ ] Define orchestration types: `ReviewCycleConfig`, `IteratePolicy`, `CycleResult`, `CycleOutcome`
 - [ ] Implement `ReviewOps` with `Executable` trait
 - [ ] Wire up `ReviewPhaseBuilder` using existing patterns
@@ -1092,11 +1147,13 @@ After V0 works:
 
 ## Appendix: Transport Classification Details
 
-**Status**: Future consideration. Preserved here for reference when we have concrete use cases.
+**Status**: Future consideration. This is an **ownership classification** model (who controls what's being read/written), not a security classification. Preserved here for reference when we have concrete use cases.
 
 **Background conversation**: The repo uses read/write as the primary discrimination axis. This is convenient for testing and reasoning about purity, but it's not structurally fundamental. Read/write isn't the real concern — we care more about *some* reads (secrets, credentials) than *some* writes (temp caches). The actual concern is **risk/interest**. We'll likely need domain-specific risk profiles. Writes can structure their own risk categories (e.g., "repo mutation" vs "cache update" vs "credential storage"). The current read/write split is a placeholder for that richer model.
 
-### Query / Journal / Command Classification
+**When to use this model**: If you need structural enforcement ("this subdag contains no Commands") beyond risk-level annotation. The main document uses fermi-style risk levels (low/medium/high/extreme) which are sufficient for V0/V1.
+
+### Query / Journal / Command Classification (Ownership Model)
 
 Transport classified by typed execute ops, not flags:
 
