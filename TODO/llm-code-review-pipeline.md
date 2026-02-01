@@ -13,6 +13,93 @@ These phases compose into larger workflows (Requirements → Design → Implemen
 
 ---
 
+## Design Principles: Transport Classification & Scope Purity
+
+This section reconciles with AGENT.md ("Nodes are Pure, Boundaries are Structural") and SPEC.md (§2.7 "No side channels", §6 "Node Contract").
+
+### Transport Classification: Query vs Command
+
+Not all I/O is equal. We distinguish:
+
+| Class | Nature | Where Allowed | Examples |
+|-------|--------|---------------|----------|
+| **Query** | Read-like, no world mutation | Inside DAGs | LLM calls, file reads, git diff, HTTP GET |
+| **Command** | Write-like, mutates state | DAG boundaries only | File writes, git commit, apply patch, HTTP POST with side effects |
+
+**Rationale**: A Query is "observation" — it doesn't change the world, so the DAG remains **reasoning-focused**. A Command is "action" — it mutates state and should happen only after the DAG has decided what to do.
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                        DAG Execution Model                          │
+│                                                                     │
+│   ┌─────────────────────────────────────────────────────────────┐  │
+│   │              Reasoning Zone (Queries OK)                    │  │
+│   │                                                             │  │
+│   │   Pure nodes + Query transport (LLM, reads)                │  │
+│   │   Produces: Decision / Intent / Plan                        │  │
+│   └─────────────────────────────────────────────────────────────┘  │
+│                              │                                      │
+│                              ▼                                      │
+│   ┌─────────────────────────────────────────────────────────────┐  │
+│   │              Action Zone (Commands)                         │  │
+│   │                                                             │  │
+│   │   File writes, commits, patches applied                     │  │
+│   │   Executes the intent produced above                        │  │
+│   └─────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**Alignment with existing principles**:
+- AGENT.md §4: "Nodes are Pure, Boundaries are Structural" — Queries are "less impure" than Commands
+- AGENT.md §7: "No Escape Hatches" — Commands can't bypass DAG boundaries
+- SPEC.md §6: "Port honesty" — Commands must flow through declared output ports
+
+### Scope Purity: SubDag Encapsulation
+
+A SubDag is **hermetic** — its internal nodes cannot reach outside:
+
+```
+SPEC.md §2.7: "An opaque node's observable effects on the graph are
+limited to its declared output ports. Any communication between nodes
+that bypasses edges is a contract violation."
+```
+
+Applied to SubDags:
+
+1. **Inputs**: SubDag internals see only what's passed through entrypoints
+2. **Outputs**: Results leave only through declared boundaries
+3. **No leakage**: Inner nodes cannot reference sibling nodes in parent DAG
+4. **Resolution order**: SubDag must fully resolve before parent sees outputs
+
+```
+┌─────────────────────── Parent DAG ───────────────────────────┐
+│                                                               │
+│   ┌─────────┐         ┌─────────────────────────────┐        │
+│   │ NodeA   │────────▶│       SubDag (Review)       │        │
+│   └─────────┘   in    │                             │   out  │
+│                ──────▶│  [inner nodes isolated]     │───────▶│
+│   ┌─────────┐         │                             │        │
+│   │ NodeB   │    ✗    │  Cannot see NodeA or NodeB  │        │
+│   └─────────┘  ──────▶│  directly, only via inputs  │        │
+│                       └─────────────────────────────┘        │
+└───────────────────────────────────────────────────────────────┘
+```
+
+**Implication for ReviewPhase**: The parent doesn't know ReviewPhase uses an LLM internally. It only sees: `(artifact, rubric) → (findings, verdict)`.
+
+### How This Applies to Our Phases
+
+| Phase | Transport Type | Reasoning |
+|-------|----------------|-----------|
+| **ReviewPhase** | Query only | LLM calls observe code, don't mutate it. Output is data (findings), not action. |
+| **ImplementationPhase** | Query internally, Command at boundary | Codex queries produce artifacts. Applying artifacts is a Command. |
+| **CommitPhase** | Command | Git commit mutates the repository. |
+| **TestPhase** | Query | Running tests observes behavior, doesn't mutate code. |
+
+**The pattern**: Phases that "decide" use Queries. Phases that "act" use Commands. Most DAGs should be reasoning-heavy, with Commands concentrated at the edges.
+
+---
+
 ## Part 1: Fractal Workflow Architecture
 
 ### The Meta-Workflow
@@ -83,6 +170,7 @@ For this iteration, we're building:
 1. **Durability**: Survive crashes, resume seamlessly
 2. **Statelessness**: All state flows through DAG edges (no hidden state)
 3. **Idempotency**: Re-running from start skips completed work
+4. **Query/Command separation**: Codex invocations are Queries; file mutations are Commands at the boundary
 
 ### The Challenge: Codex is Stateful
 
@@ -90,6 +178,36 @@ Codex CLI maintains conversation state. Our challenge is to:
 - Model this state explicitly in the DAG
 - Persist it durably for crash recovery
 - Resume without duplicating work or losing context
+
+### Query/Command Boundary in Implementation
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                    ImplementationPhase                              │
+│                                                                     │
+│  ┌───────────────────────────────────────────────────────────────┐ │
+│  │                 REASONING ZONE (Queries)                      │ │
+│  │                                                               │ │
+│  │  GatherContext ──▶ CodexInvoke ──▶ ParseResponse ──▶ Decide  │ │
+│  │  (file reads)      (LLM query)     (pure)           (pure)   │ │
+│  │                                                               │ │
+│  │  Output: Artifacts (proposed changes, not yet applied)        │ │
+│  └───────────────────────────────────────────────────────────────┘ │
+│                              │                                      │
+│                              ▼                                      │
+│  ┌───────────────────────────────────────────────────────────────┐ │
+│  │                 ACTION ZONE (Commands)                        │ │
+│  │                                                               │ │
+│  │  ApplyArtifacts ──▶ WriteFiles                                │ │
+│  │  (at DAG boundary, after reasoning completes)                 │ │
+│  └───────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+The key insight: **Codex invocation is a Query** (asking "what should I do?"). **Applying the changes is a Command** (doing it). This separation means we can:
+- Test the reasoning without mutating files
+- Review proposed changes before applying
+- Roll back decisions without undoing file mutations
 
 ### Session State Model
 
@@ -893,12 +1011,19 @@ pub fn build_implement_and_review(
 
 ## Implementation Tasks
 
+### Phase 0: Core Architecture (if generalizing)
+
+- [ ] Consider adding Query/Command transport classification to `core/ir/src/transport/`
+- [ ] Consider updating AGENT.md with Query/Command principle
+- [ ] Consider updating SPEC.md §6 (Node Contract) with transport classification
+
 ### Phase 1: Core Types & Operations
 
 - [ ] Define `ImplementationSession` and related types in `lib/codex/src/types.rs`
 - [ ] Define `Artifact`, `Rubric`, `ReviewResult` in `lib/review/src/types.rs`
-- [ ] Implement `ImplementationOps` with `Executable` trait
-- [ ] Implement `ReviewOps` with `Executable` trait
+- [ ] Implement `ImplementationOps` with `Executable` trait (Query operations)
+- [ ] Implement `ReviewOps` with `Executable` trait (Query operations)
+- [ ] Define `ApplyOps` for Command operations (file writes, commits)
 
 ### Phase 2: Durability Infrastructure
 
