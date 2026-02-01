@@ -109,7 +109,7 @@ Applied to SubDags:
 └───────────────────────────────────────────────────────────────┘
 ```
 
-**Implication for ReviewPhase**: The parent doesn't know ReviewPhase uses an LLM internally. It only sees: `(artifact, rubric) → (findings, verdict, next_step)`.
+**Implication for ReviewPhase**: The parent doesn't know ReviewPhase uses an LLM internally. It only sees: `(artifact, criteria) → findings`.
 
 ### How This Applies to Our Phases
 
@@ -527,55 +527,22 @@ impl Default for CodexConfig {
 
 ---
 
-## Part 3: ReviewPhase (General-Purpose)
+## Part 3: ReviewPhase (Pure Reconciliation)
 
-### Design Goals
+### Design Principle: Review = Reconciliation
 
-1. **Reusability**: Same ReviewPhase works for code, designs, tests, docs
-2. **Modularity**: ReviewPhase is a self-contained SubDag
-3. **Composability**: Easily plugs into any workflow point
+**ReviewPhase is maximally simple**: given an artifact and criteria, report where the artifact diverges from the criteria. That's it.
 
-### Abstraction: Artifact + Rubric → Findings
-
-The key insight is that **all reviews share the same shape**:
+- **No verdict** — that's orchestration
+- **No severity levels** — either it diverges or it doesn't
+- **No "what to do next"** — that's orchestration
+- **No opinions** — just reconciliation
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                        ReviewPhase (Generic)                            │
-│                                                                         │
-│  Inputs:                                                                │
-│  ┌────────────────┐  ┌────────────────┐  ┌────────────────────────┐   │
-│  │   artifact     │  │    rubric      │  │  context (optional)    │   │
-│  │  (what)        │  │  (criteria)    │  │  (background info)     │   │
-│  └───────┬────────┘  └───────┬────────┘  └───────────┬────────────┘   │
-│          │                   │                       │                 │
-│          └───────────────────┴───────────────────────┘                 │
-│                              │                                         │
-│                              ▼                                         │
-│                    ┌─────────────────┐                                 │
-│                    │  PrepareReview  │                                 │
-│                    │  (build prompt) │                                 │
-│                    └────────┬────────┘                                 │
-│                             │                                          │
-│                             ▼                                          │
-│                    ┌─────────────────┐                                 │
-│                    │  ExecuteReview  │  ◀── LLM / Human / Automated   │
-│                    │  (I/O boundary) │                                 │
-│                    └────────┬────────┘                                 │
-│                             │                                          │
-│                             ▼                                          │
-│                    ┌─────────────────┐                                 │
-│                    │  ParseFindings  │                                 │
-│                    │  (extract)      │                                 │
-│                    └────────┬────────┘                                 │
-│                             │                                          │
-│  Outputs:                   ▼                                          │
-│  ┌────────────────┐  ┌────────────────┐  ┌────────────────────────┐   │
-│  │   findings     │  │    verdict     │  │  suggestions           │   │
-│  │  (issues)      │  │  (pass/fail)   │  │  (improvements)        │   │
-│  └────────────────┘  └────────────────┘  └────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────────────┘
+ReviewPhase: (artifact, criteria) → findings
 ```
+
+The reviewer doesn't decide what happens with findings. Different criteria produce different findings. The orchestration layer decides what to do.
 
 ### Core Types
 
@@ -593,83 +560,51 @@ pub enum Artifact {
     /// Design document
     Design {
         content: String,
-        format: DocFormat,  // Markdown, PlainText, Structured
+        format: DocFormat,
     },
-    /// Test results or test code
+    /// Test results
     TestOutput {
         stdout: String,
         stderr: String,
         exit_code: i32,
-        test_count: Option<TestCounts>,
     },
-    /// Generic text artifact
+    /// Generic content
     Text {
         content: String,
-        artifact_type: String,  // e.g., "commit_message", "pr_description"
+        artifact_type: String,
     },
 }
 
-/// Review criteria
+/// Criteria = what to check for
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Rubric {
-    /// What aspects to evaluate
-    pub criteria: Vec<Criterion>,
-
-    /// Level thresholds for auto-fail
-    pub fail_on: FailureCondition,
-
-    /// Domain-specific instructions
-    pub domain_prompt: Option<String>,
+pub struct Criteria {
+    pub name: String,              // e.g., "coherence", "quality", "security"
+    pub description: String,       // What this criteria is about
+    pub checks: Vec<Check>,        // Specific things to verify
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Criterion {
-    pub name: String,           // e.g., "correctness", "security"
-    pub description: String,    // What to look for
-    pub weight: f32,            // Importance (0.0-1.0)
-    pub examples: Vec<String>,  // Example issues
+pub struct Check {
+    pub id: String,                // Unique identifier
+    pub question: String,          // What to ask about the artifact
+    pub examples: Vec<String>,     // Example violations (optional)
 }
 
+/// Review output = pure reconciliation
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum FailureCondition {
-    /// Fail if any finding of this severity or higher
-    OnLevel(FindingLevel),
-    /// Fail if score below threshold
-    OnScore(f32),
-    /// Never auto-fail, always advisory
-    Advisory,
+pub struct ReviewOutput {
+    pub criteria_name: String,     // Which criteria was applied
+    pub findings: Vec<Finding>,    // Where artifact diverges from criteria
+    pub summary: String,           // Natural language summary
 }
 
-/// Review output
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ReviewResult {
-    pub findings: Vec<Finding>,
-    pub verdict: Verdict,
-    pub summary: String,
-    pub reviewer: ReviewerType,
-    pub next_step: NextStep,       // What to do next (fractal loop input)
-}
-
-/// Canonical "what to do next" — enables fractal loop shape
-/// Every review produces this, making the loop invariant:
-///   state → ReviewPhase → NextStep → Branch(should_iterate) → (ImplementPhase or Done)
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct NextStep {
-    pub should_iterate: bool,
-    pub suggested_task: Option<String>,   // Prompt for Codex follow-up
-    pub blocking_findings: Vec<String>,   // Finding IDs that block progress
-    pub stopping_reason: Option<String>,  // Why we stopped (if !should_iterate)
-}
-
+/// Finding = divergence from criteria
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Finding {
-    pub id: String,
-    pub level: FindingLevel,
-    pub category: String,          // Maps to Criterion.name
+    pub check_id: String,          // Which Check this relates to
     pub location: Option<Location>,
-    pub message: String,
-    pub suggestion: Option<String>,
-    pub evidence: Vec<String>,     // What led to this finding (line refs, patterns matched)
+    pub observation: String,       // What was found
+    pub suggested_fix: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -677,157 +612,198 @@ pub struct Location {
     pub file: Option<String>,
     pub line_start: Option<u32>,
     pub line_end: Option<u32>,
-    pub column: Option<u32>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum Verdict {
-    Pass,
-    Fail { blocking_findings: Vec<String> },  // Finding IDs
-    NeedsWork { suggested_changes: u32 },
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-/// Finding severity levels (avoids "Warning" to align with "No Warnings" principle)
-pub enum FindingLevel {
-    Info,       // Informational, no action needed
-    Nit,        // Minor style/preference issue
-    Concern,    // Should address, but not blocking
-    Blocker,    // Must fix before proceeding
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum ReviewerType {
-    Llm { model: String },
-    Automated { tool: String },  // e.g., "clippy", "eslint"
-    Human { reviewer: String },
 }
 ```
 
-### Predefined Rubrics
+**Note**: No `FindingLevel`, no `Verdict`, no `NextStep`. Those belong in orchestration.
+
+---
+
+## Part 4: Review Cycle (Orchestration)
+
+### The Three-Phase Review Pattern
+
+Reviews happen in stages, each with different criteria. This is orchestration, not ReviewPhase's concern.
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         Review Cycle                                    │
+│                                                                         │
+│  Stage 1: COHERENCE                                                     │
+│  "Does it make sense?"                                                  │
+│  ┌─────────────────────────────────────────────────────────────────┐   │
+│  │ • Is it internally consistent?                                  │   │
+│  │ • Does the logic flow?                                          │   │
+│  │ • Are there contradictions?                                     │   │
+│  └─────────────────────────────────────────────────────────────────┘   │
+│                              │                                          │
+│                    findings → iterate or proceed                        │
+│                              ▼                                          │
+│  Stage 2: QUALITY                                                       │
+│  "Is it well-crafted?"                                                  │
+│  ┌─────────────────────────────────────────────────────────────────┐   │
+│  │ • Is it clean and readable?                                     │   │
+│  │ • Are there bugs or issues?                                     │   │
+│  │ • Does it follow conventions?                                   │   │
+│  └─────────────────────────────────────────────────────────────────┘   │
+│                              │                                          │
+│                    findings → iterate or proceed                        │
+│                              ▼                                          │
+│  Stage 3: WISDOM (optional)                                             │
+│  "Is it the right approach?"                                            │
+│  ┌─────────────────────────────────────────────────────────────────┐   │
+│  │ • Is this the best way to solve the problem?                    │   │
+│  │ • Are there better patterns?                                    │   │
+│  │ • Will this scale / maintain well?                              │   │
+│  └─────────────────────────────────────────────────────────────────┘   │
+│                              │                                          │
+│                    findings → iterate or done                           │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### Predefined Criteria
 
 ```rust
-impl Rubric {
-    /// Standard code review rubric
-    pub fn code_review() -> Self {
+impl Criteria {
+    /// Stage 1: Does it make sense?
+    pub fn coherence() -> Self {
         Self {
-            criteria: vec![
-                Criterion {
-                    name: "correctness".into(),
-                    description: "Logic errors, bugs, edge cases".into(),
-                    weight: 1.0,
-                    examples: vec![
-                        "Off-by-one error".into(),
-                        "Null pointer dereference".into(),
-                    ],
+            name: "coherence".into(),
+            description: "Internal consistency and logical flow".into(),
+            checks: vec![
+                Check {
+                    id: "no_contradictions".into(),
+                    question: "Are there any internal contradictions?".into(),
+                    examples: vec![],
                 },
-                Criterion {
-                    name: "security".into(),
-                    description: "Vulnerabilities, unsafe practices".into(),
-                    weight: 1.0,
-                    examples: vec![
-                        "SQL injection".into(),
-                        "Hardcoded secrets".into(),
-                    ],
+                Check {
+                    id: "logic_flow".into(),
+                    question: "Does the logic flow make sense?".into(),
+                    examples: vec![],
                 },
-                Criterion {
-                    name: "performance".into(),
-                    description: "Inefficiencies, scaling issues".into(),
-                    weight: 0.7,
-                    examples: vec![
-                        "N+1 query".into(),
-                        "Unnecessary allocation in loop".into(),
-                    ],
-                },
-                Criterion {
-                    name: "maintainability".into(),
-                    description: "Readability, structure, naming".into(),
-                    weight: 0.5,
-                    examples: vec![
-                        "Unclear variable name".into(),
-                        "Function too long".into(),
-                    ],
+                Check {
+                    id: "completeness".into(),
+                    question: "Is anything obviously missing?".into(),
+                    examples: vec![],
                 },
             ],
-            fail_on: FailureCondition::OnLevel(FindingLevel::Blocker),
-            domain_prompt: None,
         }
     }
 
-    /// Design document review rubric
-    pub fn design_review() -> Self {
+    /// Stage 2: Is it well-crafted?
+    pub fn quality() -> Self {
         Self {
-            criteria: vec![
-                Criterion {
-                    name: "completeness".into(),
-                    description: "All necessary sections present".into(),
-                    weight: 1.0,
+            name: "quality".into(),
+            description: "Correctness, cleanliness, and craftsmanship".into(),
+            checks: vec![
+                Check {
+                    id: "correctness".into(),
+                    question: "Are there bugs or logical errors?".into(),
+                    examples: vec!["Off-by-one".into(), "Null dereference".into()],
+                },
+                Check {
+                    id: "clarity".into(),
+                    question: "Is the code/content clear and readable?".into(),
                     examples: vec![],
                 },
-                Criterion {
-                    name: "clarity".into(),
-                    description: "Clear, unambiguous language".into(),
-                    weight: 0.8,
-                    examples: vec![],
-                },
-                Criterion {
-                    name: "feasibility".into(),
-                    description: "Technically achievable".into(),
-                    weight: 1.0,
-                    examples: vec![],
-                },
-                Criterion {
-                    name: "consistency".into(),
-                    description: "No contradictions".into(),
-                    weight: 0.9,
+                Check {
+                    id: "conventions".into(),
+                    question: "Does it follow established patterns?".into(),
                     examples: vec![],
                 },
             ],
-            fail_on: FailureCondition::Advisory,
-            domain_prompt: None,
         }
     }
 
-    /// Test coverage/quality review
-    pub fn test_review() -> Self {
+    /// Stage 3: Is it the right approach?
+    pub fn wisdom() -> Self {
         Self {
-            criteria: vec![
-                Criterion {
-                    name: "coverage".into(),
-                    description: "Key paths tested".into(),
-                    weight: 1.0,
+            name: "wisdom".into(),
+            description: "Strategic fit and long-term thinking".into(),
+            checks: vec![
+                Check {
+                    id: "approach".into(),
+                    question: "Is this the right approach to the problem?".into(),
                     examples: vec![],
                 },
-                Criterion {
-                    name: "edge_cases".into(),
-                    description: "Boundary conditions handled".into(),
-                    weight: 0.9,
+                Check {
+                    id: "alternatives".into(),
+                    question: "Are there simpler or better alternatives?".into(),
                     examples: vec![],
                 },
-                Criterion {
-                    name: "clarity".into(),
-                    description: "Test intent is clear".into(),
-                    weight: 0.6,
+                Check {
+                    id: "maintainability".into(),
+                    question: "Will this be easy to maintain and extend?".into(),
                     examples: vec![],
                 },
             ],
-            fail_on: FailureCondition::OnLevel(FindingLevel::Concern),
-            domain_prompt: None,
         }
     }
 }
 ```
+
+### Orchestration Logic
+
+The orchestration layer (not ReviewPhase) handles:
+
+```rust
+/// Orchestration decides what to do with findings
+pub struct ReviewCycleConfig {
+    /// Which criteria to apply, in order
+    pub stages: Vec<Criteria>,
+
+    /// How to decide whether to iterate
+    pub iterate_policy: IteratePolicy,
+
+    /// Maximum iterations per stage
+    pub max_iterations: u32,
+}
+
+pub enum IteratePolicy {
+    /// Iterate if any findings have suggested_fix
+    OnFixableFinding,
+    /// Never auto-iterate, always proceed
+    AlwaysProceed,
+    /// Custom logic
+    Custom(fn(&[Finding]) -> bool),
+}
+
+/// What the orchestration layer produces
+pub struct CycleResult {
+    /// All findings from all stages
+    pub all_findings: Vec<(String, Vec<Finding>)>,  // (criteria_name, findings)
+
+    /// Final decision
+    pub outcome: CycleOutcome,
+}
+
+pub enum CycleOutcome {
+    /// All stages passed (no findings, or findings were fixed)
+    Complete,
+    /// Stopped iterating (max iterations or no more fixes)
+    Stabilized { remaining_findings: usize },
+    /// Needs human decision
+    NeedsHuman { reason: String },
+}
+```
+
+### Why This Separation Matters
+
+1. **ReviewPhase stays pure**: `(artifact, criteria) → findings` — nothing more
+2. **Different review "types" = different criteria**: security review is just `Criteria::security()`
+3. **Orchestration is explicit**: decisions about iterating, blocking, etc. are visible
+4. **Composable**: can run single criteria or full cycle, orchestration's choice
 
 ### ReviewOps
 
 ```rust
 #[derive(Debug, Clone)]
 pub enum ReviewOps {
-    /// Build review prompt from artifact + rubric
+    /// Build review prompt from artifact + criteria
     ///
     /// Inputs:
     /// - `artifact`: Artifact
-    /// - `rubric`: Rubric
+    /// - `criteria`: Criteria
     /// - `context`: Option<String>
     ///
     /// Outputs:
@@ -839,33 +815,24 @@ pub enum ReviewOps {
     ///
     /// Inputs:
     /// - `response`: String (LLM output)
-    /// - `rubric`: Rubric (for category mapping)
+    /// - `criteria`: Criteria (for check_id mapping)
     ///
     /// Outputs:
-    /// - `result`: ReviewResult
+    /// - `output`: ReviewOutput
     ParseReviewResponse,
-
-    /// Determine verdict from findings
-    ///
-    /// Inputs:
-    /// - `findings`: Vec<Finding>
-    /// - `fail_condition`: FailureCondition
-    ///
-    /// Outputs:
-    /// - `verdict`: Verdict
-    /// - `blocking_count`: Int
-    DetermineVerdict,
 
     /// Merge findings from multiple review sources
     ///
     /// Inputs:
-    /// - `results`: Vec<ReviewResult>
+    /// - `outputs`: Vec<ReviewOutput>
     ///
     /// Outputs:
-    /// - `merged`: ReviewResult
-    MergeResults,
+    /// - `merged`: ReviewOutput
+    MergeOutputs,
 }
 ```
+
+**Note**: No `DetermineVerdict` in ReviewOps — that's orchestration (see Part 4).
 
 ### ReviewPhase DAG
 
@@ -877,7 +844,7 @@ pub enum ReviewOps {
 │                                                                             │
 │  Entrypoints:                                                               │
 │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐                       │
-│  │ artifact │ │  rubric  │ │ context  │ │  config  │                       │
+│  │ artifact │ │ criteria │ │ context  │ │  config  │                       │
 │  └────┬─────┘ └────┬─────┘ └────┬─────┘ └────┬─────┘                       │
 │       │            │            │            │                              │
 │       └────────────┴────────────┴────────────┘                              │
@@ -904,16 +871,13 @@ pub enum ReviewOps {
 │              │  (ReviewOps)            │                                   │
 │              └────────────┬────────────┘                                   │
 │                           │                                                 │
-│                           ▼                                                 │
-│              ┌─────────────────────────┐                                   │
-│              │  DetermineVerdict       │ ◀── PURE: verdict + next_step     │
-│              │  (ReviewOps)            │                                   │
-│              └────────────┬────────────┘                                   │
-│                           │                                                 │
 │  Workflow Boundaries:     ▼                                                 │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌───────────┐                      │
-│  │ findings │ │ verdict  │ │ summary  │ │ next_step │                      │
-│  └──────────┘ └──────────┘ └──────────┘ └───────────┘                      │
+│  ┌───────────────┐ ┌──────────┐                                            │
+│  │   findings    │ │ summary  │                                            │
+│  │ Vec<Finding>  │ │  String  │                                            │
+│  └───────────────┘ └──────────┘                                            │
+│                                                                             │
+│  NOTE: No verdict, no next_step — that's orchestration (Part 4)            │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -926,7 +890,7 @@ For comprehensive review, run multiple reviewers in parallel:
 │                      MultiReview (Parallel + Merge)                         │
 │                                                                             │
 │            ┌─────────────────────────────────────────────┐                 │
-│            │              artifact + rubric              │                 │
+│            │             artifact + criteria             │                 │
 │            └─────────┬───────────────┬──────────────┬────┘                 │
 │                      │               │              │                       │
 │            ┌─────────▼─────┐ ┌───────▼───────┐ ┌────▼────────┐            │
@@ -937,23 +901,23 @@ For comprehensive review, run multiple reviewers in parallel:
 │                    └─────────────────┴────────────────┘                    │
 │                                      │                                     │
 │                           ┌──────────▼──────────┐                          │
-│                           │    MergeResults     │                          │
+│                           │    MergeOutputs     │                          │
 │                           │    (ReviewOps)      │                          │
 │                           └──────────┬──────────┘                          │
 │                                      │                                     │
 │                              ┌───────▼───────┐                             │
-│                              │ unified result│                             │
+│                              │ unified output│                             │
 │                              └───────────────┘                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Part 4: Composition Example
+## Part 5: Composition Example
 
 ### Implement-and-Review Workflow
 
-Compose ImplementationPhase + ReviewPhase into a complete workflow:
+Compose ImplementationPhase + Review Cycle (orchestration) into a complete workflow:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -967,24 +931,27 @@ Compose ImplementationPhase + ReviewPhase into a complete workflow:
 │                                │ artifacts: Vec<Artifact>                   │
 │                                ▼                                            │
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │                       LoopBuilder                                   │   │
-│  │  (review each artifact)                                             │   │
+│  │                  Review Cycle (Orchestration)                       │   │
+│  │  stages: [Coherence, Quality, Wisdom]                               │   │
 │  │                                                                     │   │
+│  │  For each artifact, for each stage:                                 │   │
 │  │  ┌─────────────────────────────────────────────────────────────┐   │   │
 │  │  │                    ReviewPhase                              │   │   │
-│  │  │  rubric: Rubric::code_review()                              │   │   │
+│  │  │  criteria: Criteria::quality()                              │   │   │
+│  │  │  outputs: (findings, summary)                               │   │   │
 │  │  └─────────────────────────────────────────────────────────────┘   │   │
+│  │  If findings → iterate (apply fix, re-review) or proceed            │   │
 │  └─────────────────────────────┬───────────────────────────────────────┘   │
 │                                │                                            │
-│                                │ review_results: Vec<ReviewResult>          │
+│                                │ cycle_result: CycleResult                  │
 │                                ▼                                            │
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
 │  │                       BranchBuilder                                 │   │
-│  │  condition: all_passed(review_results)                              │   │
+│  │  condition: cycle_result.outcome == Complete                        │   │
 │  │                                                                     │   │
 │  │  ┌─────────────────┐              ┌─────────────────┐              │   │
-│  │  │ True: Complete  │              │ False: Iterate  │              │   │
-│  │  │ → output result │              │ → back to Impl  │              │   │
+│  │  │ True: Complete  │              │ False: Stabilized│              │   │
+│  │  │ → apply changes │              │ → human decides  │              │   │
 │  │  └─────────────────┘              └─────────────────┘              │   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────────────────┘
@@ -996,38 +963,36 @@ Compose ImplementationPhase + ReviewPhase into a complete workflow:
 /// Build a complete implement-and-review workflow
 pub fn build_implement_and_review(
     task: ImplementationTask,
-    rubric: Rubric,
-    config: WorkflowConfig,
+    cycle_config: ReviewCycleConfig,
+    workflow_config: WorkflowConfig,
 ) -> Result<Dag<WorkflowOps>, BuilderError> {
     let mut builder = DagBuilder::new("implement-and-review");
 
     // Phase 1: Implementation
     let impl_phase = ImplementationPhaseBuilder::new()
         .with_task(task)
-        .with_durability(config.storage_path.clone())
+        .with_durability(workflow_config.storage_path.clone())
         .build()?;
 
     let impl_node = builder.add_subdag("implement", impl_phase)?;
 
-    // Phase 2: Review each artifact
-    let review_phase = ReviewPhaseBuilder::new()
-        .with_rubric(rubric)
+    // Phase 2: Review cycle (orchestration handles iteration)
+    let review_cycle = ReviewCycleBuilder::new()
+        .with_stages(cycle_config.stages)
+        .with_iterate_policy(cycle_config.iterate_policy)
+        .with_max_iterations(cycle_config.max_iterations)
         .build()?;
 
-    let review_loop = LoopBuilder::new("review-artifacts")
-        .with_body(review_phase)
-        .build()?;
+    let review_node = builder.add_subdag_after("review-cycle", review_cycle, &impl_node)?;
+    builder.connect(impl_node.output("artifacts"), review_node.input("artifacts"))?;
 
-    let review_node = builder.add_subdag_after("review", review_loop, &impl_node)?;
-    builder.connect(impl_node.output("artifacts"), review_node.input("items"))?;
-
-    // Phase 3: Check verdict and potentially loop back
+    // Phase 3: Handle cycle outcome
     let check_node = builder.add_node_after(
-        "check-verdict",
-        WorkflowOps::CheckAllPassed,
+        "handle-outcome",
+        WorkflowOps::HandleCycleOutcome,
         &review_node,
     )?;
-    builder.connect(review_node.output("results"), check_node.input("results"))?;
+    builder.connect(review_node.output("cycle_result"), check_node.input("result"))?;
 
     // Set boundaries
     builder.mark_entrypoint("task", impl_node.input("task"))?;
@@ -1062,18 +1027,19 @@ pub fn build_implement_and_review(
 ```
 1. GitOps::PrepareDiff → ExecuteQuery → GitOps::ParseDiff
 2. (Optional) CargoOp::check/test/clippy
-3. ReviewOps::PrepareReviewPrompt(diff + tool_outputs + rubric)
+3. ReviewOps::PrepareReviewPrompt(diff + tool_outputs + criteria)
 4. [lib/llm-ops chat subdag]  ← reuse existing
-5. ReviewOps::ParseReviewResponse → DetermineVerdict
-6. Output: JSON ReviewResult with findings, verdict, next_step
+5. ReviewOps::ParseReviewResponse
+6. Output: JSON ReviewOutput with findings, summary
 ```
 
 **What to build for V0**:
-- [ ] `lib/review/` crate with types (`Artifact`, `Rubric`, `Finding`, `ReviewResult`, `NextStep`)
-- [ ] `ReviewOps::PrepareReviewPrompt` — assemble prompt from artifact + rubric
+- [ ] `lib/review/` crate with types (`Artifact`, `Criteria`, `Check`, `Finding`, `ReviewOutput`)
+- [ ] `ReviewOps::PrepareReviewPrompt` — assemble prompt from artifact + criteria
 - [ ] `ReviewOps::ParseReviewResponse` — parse LLM response into findings
-- [ ] `ReviewOps::DetermineVerdict` — compute verdict and next_step
 - [ ] Simple CLI: `gunbc review --diff HEAD~1` → prints JSON
+
+**Note**: V0 does NOT include orchestration (Review Cycle) — just single-criteria review.
 
 **V0 explicitly does NOT include**:
 - Durability / checkpointing
@@ -1083,13 +1049,14 @@ pub fn build_implement_and_review(
 
 ---
 
-### V1: Codex Follow-up Loop
+### V1: Review Cycle + Codex Integration
 
 After V0 works:
-- [ ] ReviewResult.next_step.suggested_task feeds into Codex
+- [ ] Add Review Cycle orchestration (Coherence → Quality → Wisdom stages)
+- [ ] For findings with `suggested_fix`, feed back into Codex
 - [ ] ImplementationPhase runs Codex CLI (Query), outputs patch artifact
-- [ ] ReviewPhase reviews the patch
-- [ ] Iterate until verdict.pass or max iterations
+- [ ] ReviewPhase reviews the patch with same criteria
+- [ ] Iterate until no findings or max iterations
 - [ ] **Keep "apply patch" as explicit Command** (separate from reasoning loop)
 
 ---
@@ -1099,7 +1066,8 @@ After V0 works:
 #### Phase 1: Core Types (V0 blocker)
 
 - [ ] Create `lib/review/` crate
-- [ ] Define types: `Artifact`, `Rubric`, `Finding`, `FindingLevel`, `ReviewResult`, `NextStep`, `Verdict`
+- [ ] Define types: `Artifact`, `Criteria`, `Check`, `Finding`, `Location`, `ReviewOutput`
+- [ ] Define orchestration types: `ReviewCycleConfig`, `IteratePolicy`, `CycleResult`, `CycleOutcome`
 - [ ] Implement `ReviewOps` with `Executable` trait
 - [ ] Wire up `ReviewPhaseBuilder` using existing patterns
 
