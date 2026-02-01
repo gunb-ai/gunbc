@@ -78,6 +78,31 @@ pub enum TransportOps {
 
 **The rule**: A SubDag can be verified to contain "no `ExecuteCommand` nodes" — that's what makes ReviewPhase structurally query-only.
 
+### Effect Capabilities (Runtime Enforcement)
+
+Query/Journal/Command is the user-facing abstraction. Underneath, implement as a finer-grained **effect capability** system for runtime verification:
+
+```rust
+enum Effect {
+    ReadRepo,           // Read tracked files, git state
+    WriteRepo,          // Write tracked files, git index, commits
+    SpawnProcess,       // Fork external processes
+    WriteTemp,          // Write to $TMPDIR, target/, .cache/
+    WriteUserState,     // Write to ~/.gunbc, ~/.codex, caches
+    Network,            // HTTP calls, LLM APIs
+}
+```
+
+This maps to our classifications:
+
+| Classification | Allowed Effects |
+|----------------|-----------------|
+| **Query** | `ReadRepo + SpawnProcess + WriteTemp + Network` |
+| **Journal** | `WriteUserState` (durable checkpoints) |
+| **Command** | `WriteRepo` |
+
+**Why this matters**: The runtime can *prove* "no WriteRepo occurred" instead of hoping. Running tests in a hermetic workspace (git worktree to temp dir) lets them write build artifacts without violating "no repo mutation".
+
 ### Scope Purity: SubDag Encapsulation
 
 A SubDag is **hermetic** — its internal nodes cannot reach outside:
@@ -273,21 +298,45 @@ pub struct StepRecord {
     pub step_type: StepType,
     pub completed_at: u64,               // Unix timestamp
     pub outputs: HashMap<String, Value>, // Step outputs for downstream
+    pub cache_policy: CachePolicy,       // When to rerun this step
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum StepType {
     GatherContext,
     CodexInvocation { turn: u32 },
+    ReviewInvocation,
     ApplyChanges,
     Checkpoint,
 }
 
+/// LLMs are nondeterministic — need explicit cache policy
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum CachePolicy {
+    /// Never rerun if step_id exists (crash recovery)
+    Immutable,
+    /// Always rerun, ignore cache
+    Refresh,
+    /// Rerun if cached result is older than duration
+    RefreshIfOlderThan(u64),  // millis
+    /// Rerun if model version changed
+    RefreshIfModelChanged { model_fingerprint: String },
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConversationState {
-    pub messages: Vec<Message>,
+    /// Use Codex's native session ID — don't duplicate conversation state
+    /// Resume via: `codex resume <id>` or `codex exec resume <id>`
+    pub codex_session_id: Option<String>,
+    pub mode: CodexMode,
     pub turn_count: u32,
-    pub codex_session_file: Option<String>, // Codex's own session file if applicable
+    pub last_prompt_hash: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum CodexMode {
+    Interactive,  // `codex` — human-in-the-loop
+    Exec,         // `codex exec` — non-interactive
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -595,27 +644,81 @@ pub struct Check {
 pub struct ReviewOutput {
     pub criteria_name: String,     // Which criteria was applied
     pub findings: Vec<Finding>,    // Where artifact diverges from criteria
+    pub remediation: RemediationPlan, // Structured tasks to fix findings
     pub summary: String,           // Natural language summary
 }
 
 /// Finding = divergence from criteria
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Finding {
+    /// Stable identity for merging/dedup (hash of canonical fields)
+    pub id: String,
     pub check_id: String,          // Which Check this relates to
     pub location: Option<Location>,
     pub observation: String,       // What was found
     pub suggested_fix: Option<String>,
 }
 
+/// Stable finding ID = hash of canonical fields
+fn finding_id(check_id: &str, location: &Option<Location>, observation: &str) -> String {
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(check_id.as_bytes());
+    if let Some(loc) = location {
+        hasher.update(&serde_json::to_vec(loc).unwrap());
+    }
+    // Normalize: strip numbers, collapse whitespace
+    let normalized = observation.split_whitespace().collect::<Vec<_>>().join(" ");
+    hasher.update(normalized.as_bytes());
+    hasher.finalize().to_hex()[..16].to_string()
+}
+
+/// Structured remediation output (makes the loop truly fractal)
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Location {
+pub struct RemediationPlan {
+    pub goals: Vec<String>,              // Acceptance criteria
+    pub tasks: Vec<RemediationTask>,     // Concrete edits
+    pub constraints: Vec<String>,        // "do not change public API", etc.
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RemediationTask {
+    pub finding_id: String,              // Links to Finding.id
     pub file: Option<String>,
-    pub line_start: Option<u32>,
-    pub line_end: Option<u32>,
+    pub intent: String,                  // What to change
+    pub suggested_patch: Option<String>, // Optional diff snippet
+    pub validation: Vec<String>,         // Commands or checks to pass
+}
+
+/// Location in source — handles both files and diffs
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Location {
+    /// Position in a file
+    FileLine {
+        file: String,
+        line: u32,
+    },
+    /// Span in a file
+    Span {
+        file: String,
+        start: u32,
+        end: u32,
+    },
+    /// Position in a diff (need to distinguish old vs new)
+    DiffLine {
+        file: String,
+        line: u32,
+        side: DiffSide,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum DiffSide {
+    Old,  // Line in the removed version
+    New,  // Line in the added version
 }
 ```
 
-**Note**: No `FindingLevel`, no `Verdict`, no `NextStep`. Those belong in orchestration.
+**Note**: No `FindingLevel`, no `Verdict`, no `NextStep`. Those belong in orchestration. RemediationPlan is pure data — orchestration decides whether to execute it.
 
 ---
 
@@ -920,12 +1023,15 @@ pub fn build_implement_and_review(
 ```
 
 **What to build for V0**:
-- [ ] `lib/review/` crate with types (`Artifact`, `Criteria`, `Check`, `Finding`, `ReviewOutput`)
+- [ ] `lib/review/` crate with types:
+  - `Artifact`, `Criteria`, `Check`
+  - `Finding` (with hash-based `id`), `Location` (with `DiffSide`)
+  - `ReviewOutput`, `RemediationPlan`, `RemediationTask`
 - [ ] `ReviewOps::PrepareReviewPrompt` — assemble prompt from artifact + criteria
-- [ ] `ReviewOps::ParseReviewResponse` — parse LLM response into findings
+- [ ] `ReviewOps::ParseReviewResponse` — parse LLM response into findings + remediation plan
 - [ ] Simple CLI: `gunbc review --diff HEAD~1` → prints JSON
 
-**Note**: V0 does NOT include orchestration (Review Cycle) — just single-criteria review.
+**Note**: V0 does NOT include orchestration (Review Cycle) — just single-criteria review. RemediationPlan is output but not executed.
 
 **V0 explicitly does NOT include**:
 - Durability / checkpointing
@@ -952,7 +1058,10 @@ After V0 works:
 #### Phase 1: Core Types (V0 blocker)
 
 - [ ] Create `lib/review/` crate
-- [ ] Define types: `Artifact`, `Criteria`, `Check`, `Finding`, `Location`, `ReviewOutput`
+- [ ] Define types:
+  - `Artifact`, `Criteria`, `Check`
+  - `Finding` (hash-based id), `Location` (with `DiffSide`)
+  - `ReviewOutput`, `RemediationPlan`, `RemediationTask`
 - [ ] Define orchestration types: `ReviewCycleConfig`, `IteratePolicy`, `CycleResult`, `CycleOutcome`
 - [ ] Implement `ReviewOps` with `Executable` trait
 - [ ] Wire up `ReviewPhaseBuilder` using existing patterns
@@ -960,21 +1069,23 @@ After V0 works:
 #### Phase 2: Transport Classification (architectural)
 
 - [ ] Add `ExecuteQuery` / `ExecuteJournal` / `ExecuteCommand` variants to `TransportOps`
+- [ ] Add `Effect` enum for runtime enforcement (ReadRepo, WriteRepo, SpawnProcess, etc.)
 - [ ] Update executor to handle new variants
 - [ ] Add SubDag validation: "contains no ExecuteCommand nodes"
 
 #### Phase 3: ImplementationPhase (V1)
 
 - [ ] Create `lib/codex/` crate
-- [ ] Define types: `ImplementationSession`, `StepRecord`, `ConversationState`
+- [ ] Define types: `ImplementationSession`, `StepRecord`, `ConversationState`, `CodexMode`
+- [ ] Add `CachePolicy` for nondeterministic LLM steps
 - [ ] Implement `ImplementationOps`
-- [ ] Integrate Codex CLI invocation (Query transport)
+- [ ] Integrate Codex CLI via `codex_session_id` + native resume (`codex resume <id>`)
 - [ ] Add Journal transport for session state persistence
 
 #### Phase 4: Durability (V1+)
 
 - [ ] Implement `ExecuteJournal` for checkpoint storage
-- [ ] Implement `CheckStepDone` / `RecordStep` operations
+- [ ] Implement `CheckStepDone` / `RecordStep` operations with `CachePolicy` support
 - [ ] Add content-addressed step ID computation
 - [ ] Test crash recovery
 
@@ -989,7 +1100,11 @@ After V0 works:
 
 ## Open Questions
 
-1. **Codex session files**: Does Codex CLI have its own session persistence? If so, how do we coordinate?
+1. ~~**Codex session files**~~: **Resolved** — Codex CLI has native session persistence:
+   - Interactive: `codex resume [SESSION_ID]`
+   - Non-interactive: `codex exec resume <SESSION_ID>`
+   - State stored under `CODEX_HOME` (default `~/.codex`)
+   - **Strategy**: Store `codex_session_id` as pointer, use native resume
 
 2. **Multi-file implementation**: When Codex generates changes across many files, should we review:
    - All files together (single review)?
