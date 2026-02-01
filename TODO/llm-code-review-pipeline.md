@@ -88,6 +88,46 @@ pub enum TransportOps {
 
 **As the project advances**: We'll likely need domain-specific risk profiles. Writes can structure their own risk categories (e.g., "repo mutation" vs "cache update" vs "credential storage"). The current read/write split is a placeholder for that richer model.
 
+### Journal Scope Contract
+
+Journal is "tool-owned state" — but without enforcement, it becomes "Command in disguise." Define allowed roots:
+
+```rust
+/// Journal writes are constrained to these paths
+pub struct JournalScope {
+    /// Allowed filesystem roots (e.g., ["~/.gunbc/", "$TMPDIR/gunbc-"])
+    pub allowed_paths: Vec<PathBuf>,
+    /// Resource IDs for locking/concurrency
+    pub resource_ids: Vec<String>,
+}
+```
+
+The executor enforces: `ExecuteJournal` can only write within `allowed_paths`. Writes outside → contract violation.
+
+### DryRun Modes
+
+With Query/Journal/Command, DryRun becomes explicit:
+
+```rust
+pub enum DryRunMode {
+    /// Intercept ALL transport (Query/Journal/Command) — pure mock
+    Strict,
+    /// Allow Query, optionally allow Journal, block Command
+    Safe { allow_journal: bool },
+    /// No interception — real execution
+    Off,
+}
+```
+
+| Mode | Query | Journal | Command |
+|------|-------|---------|---------|
+| **Strict** | mock | mock | mock |
+| **Safe(journal=true)** | allow | allow | mock |
+| **Safe(journal=false)** | allow | mock | mock |
+| **Off** | allow | allow | allow |
+
+This makes "preview runs" and tests explicit about what's being exercised.
+
 ### Scope Purity: SubDag Encapsulation
 
 A SubDag is **hermetic** — its internal nodes cannot reach outside:
@@ -132,6 +172,15 @@ Applied to SubDags:
 | **ApplyPhase** | Command | File writes, patch application. |
 
 **The pattern**: Phases that "decide" use Query (+ Journal for durability). Phases that "act" use Command. Commands are concentrated at workflow boundaries.
+
+**Phase-level validation** (enforced by builder/executor):
+
+| Phase | Validation Rule |
+|-------|-----------------|
+| **ReviewPhase** | No `ExecuteCommand`, no `ExecuteJournal` |
+| **ImplementationPhase** | No `ExecuteCommand` |
+| **TestPhase** | No `ExecuteCommand` |
+| **ApplyPhase** | `ExecuteCommand` allowed |
 
 ---
 
@@ -291,7 +340,8 @@ pub enum StepType {
     GatherContext,
     CodexInvocation { turn: u32 },
     ReviewInvocation,
-    ApplyChanges,
+    /// Prepare patch/plan (Query-only) — actual apply is a Command phase outside
+    PrepareArtifacts,
     Checkpoint,
 }
 
@@ -641,7 +691,10 @@ pub struct Finding {
     pub check_id: String,          // Which Check this relates to
     pub location: Option<Location>,
     pub observation: String,       // What was found
-    pub suggested_fix: Option<String>,
+    /// Example way to satisfy criteria (part of reconciliation, not "next step advice")
+    pub remediation_hint: Option<String>,
+    /// Provenance for MultiReview merging (e.g., "llm:gpt-4o", "cargo:clippy")
+    pub source: String,
 }
 
 /// Stable finding ID = hash of canonical fields
@@ -734,8 +787,10 @@ pub struct ReviewCycleConfig {
 }
 
 pub enum IteratePolicy {
-    /// Iterate if any findings have suggested_fix
-    OnFixableFinding,
+    /// Iterate if any findings have remediation_hint
+    OnRemediableFindings,
+    /// Iterate on any findings (not just those with hints)
+    OnAnyFindings,
     /// Never auto-iterate, always proceed
     AlwaysProceed,
     /// Custom logic
@@ -1010,7 +1065,7 @@ pub fn build_implement_and_review(
 **What to build for V0**:
 - [ ] `lib/review/` crate with types:
   - `Artifact`, `Criteria`, `Check`
-  - `Finding` (with hash-based `id`), `Location` (with `DiffSide`)
+  - `Finding` (hash-based `id`, `source` provenance, `remediation_hint`), `Location` (with `DiffSide`)
   - `ReviewOutput`, `RemediationPlan`, `RemediationTask`
 - [ ] `ReviewOps::PrepareReviewPrompt` — assemble prompt from artifact + criteria
 - [ ] `ReviewOps::ParseReviewResponse` — parse LLM response into findings + remediation plan
@@ -1045,7 +1100,7 @@ After V0 works:
 - [ ] Create `lib/review/` crate
 - [ ] Define types:
   - `Artifact`, `Criteria`, `Check`
-  - `Finding` (hash-based id), `Location` (with `DiffSide`)
+  - `Finding` (hash-based id, `source` provenance, `remediation_hint`), `Location` (with `DiffSide`)
   - `ReviewOutput`, `RemediationPlan`, `RemediationTask`
 - [ ] Define orchestration types: `ReviewCycleConfig`, `IteratePolicy`, `CycleResult`, `CycleOutcome`
 - [ ] Implement `ReviewOps` with `Executable` trait
@@ -1054,8 +1109,12 @@ After V0 works:
 #### Phase 2: Transport Classification (architectural)
 
 - [ ] Add `ExecuteQuery` / `ExecuteJournal` / `ExecuteCommand` variants to `TransportOps`
-- [ ] Update executor to handle new variants
-- [ ] Add SubDag validation: "contains no ExecuteCommand nodes"
+- [ ] Add `JournalScope` contract (allowed paths, resource IDs)
+- [ ] Add `DryRunMode` enum (Strict / Safe / Off)
+- [ ] Update executor to handle new variants + enforce Journal scope
+- [ ] Add phase-level validation:
+  - ReviewPhase: no ExecuteCommand, no ExecuteJournal
+  - ImplementationPhase: no ExecuteCommand
 - [ ] (Future) Domain-specific risk profiles — defer until we have concrete use cases
 
 #### Phase 3: ImplementationPhase (V1)
