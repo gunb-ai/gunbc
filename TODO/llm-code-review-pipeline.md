@@ -16,29 +16,28 @@ gunbc workflows are pure dataflow graphs whose only interaction with the outside
 
 ## Phase Taxonomy
 
-| Phase | Type | Risk | Notes |
-|-------|------|------|-------|
-| **ReviewPhase** | Reasoning | Low | Produces findings, not mutations |
-| **ImplementationPhase** | Reasoning | Medium | Produces patch artifacts, doesn't apply them |
-| **TestPhase** | Reasoning | Medium | Observes behavior |
-| **ApplyPhase** | Action | High | Mutates user artifacts |
-| **CommitPhase** | Action | High | Mutates repository |
+| Phase | Type | I/O | Notes |
+|-------|------|-----|-------|
+| **ReviewPhase** | Reasoning | Read-only | Produces findings, not mutations |
+| **ImplementationPhase** | Reasoning | Read-only | Produces patch artifacts, doesn't apply them |
+| **TestPhase** | Reasoning | Read-only | Observes behavior |
+| **ApplyPhase** | Action | Write | Mutates user artifacts |
+| **CommitPhase** | Action | Write | Mutates repository |
 
-**Invariant**: Reasoning phases are hermetic — they produce *artifacts* (patches, findings) but don't apply them. Action phases are explicit and separate.
+**Invariant**: Reasoning phases are read-only — they produce *artifacts* (patches, findings) but don't apply them. Action phases do writes and are explicit/separate.
 
-## Transport Classification: Two Orthogonal Axes
+## Transport Classification
 
-**I/O type** (read/write) — for purity, testing, DryRun mocking:
+**I/O type** (read/write) — intrinsic, stable domain knowledge:
 - **Read**: file reads, git diff, LLM calls, HTTP GET
 - **Write**: file writes, git commit, cache updates
 
-**Risk level** (fermi-style) — for safety/interest:
-- **Low**: temp cache, tool-owned state
-- **Medium**: LLM calls (cost, latency)
-- **High**: repo mutation, external API calls
-- **Extreme**: credential access, destructive ops
+This is the core model. DryRun intercepts by I/O type. Purity reasoning uses I/O type.
 
-These are orthogonal: a cache write is low-risk but still a write (matters for purity). A credential read is high-risk but still a read. DryRun intercepts by I/O type; policy enforcement uses risk level.
+**Risk modeling** — separate concern, context-dependent:
+- Same write: low-risk in test, extreme-risk in prod
+- Risk depends on environment, what's being accessed, policies
+- Will model separately when we have concrete use cases
 
 ## ReviewPhase: Reconciliation + Candidate Repairs
 
@@ -67,7 +66,7 @@ GitOps::PrepareDiff → Execute → ReviewOps::PreparePrompt → LLM → ParseRe
 ```
 
 **V0 Crispness Checklist**:
-- [ ] ReviewPhase subdag contains no high-risk transport ops
+- [ ] ReviewPhase subdag is read-only (no write ops)
 - [ ] DryRun can run entire graph without touching repo
 - [ ] Output is machine-parseable JSON with schema version
 - [ ] Findings have stable IDs via `issue_key`
