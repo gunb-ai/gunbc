@@ -429,6 +429,19 @@ pub mod build {
     pub fn edge_indexed(from_node: &str, from_port: &str, to_node: &str, to_port: &str, index: usize) -> Edge {
         Edge::with_index(from_node, from_port, to_node, to_port, index)
     }
+
+    /// Create a guarded port (guard = Eq(expected)).
+    ///
+    /// The executor skips the node when `check_guard(value)` returns false.
+    /// Useful for testing guard/skip branch coverage.
+    pub fn guarded(name: &str, type_id: &str, expected: Value) -> Port {
+        Port {
+            name: name.into(),
+            type_id: type_id.into(),
+            cardinality: Cardinality::One,
+            guard: Some(Guard::Eq(expected)),
+        }
+    }
 }
 
 #[cfg(test)]

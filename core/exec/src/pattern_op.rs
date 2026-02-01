@@ -70,7 +70,7 @@ impl Executable for PatternOp {
                     ExecError::new(format!("missing '{}' input", input_port))
                 })?;
 
-                let last_error_present = inputs.get("last_error").is_some();
+                let last_error_present = inputs.contains_key("last_error");
                 let should_retry = last_error_present && policy.max_attempts > 1;
 
                 let mut out = HashMap::new();

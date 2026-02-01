@@ -1,6 +1,15 @@
 //! DAG analysis for test generation.
+//!
+//! Two-layer analysis:
+//! 1. **Structural analysis** (`DagAnalysis`): edges, ports, boundaries — raw facts.
+//! 2. **Obligation collection** (`ObligationSet`): proof obligations derived from
+//!    the structure + contract tower. Only obligations not discharged statically
+//!    produce tests.
 
-use gunbc_ir::{detect_boundaries, BoundaryInfo, Cardinality, CardinalityCase, Dag, TypeId};
+use gunbc_ir::resource::ResourceAccess;
+use gunbc_ir::{detect_boundaries, BoundaryInfo, Cardinality, CardinalityCase, Dag, TypeId, TypeRegistry};
+
+use crate::obligation::{collect_obligations, ObligationSet};
 
 /// Analysis of a DAG for test generation.
 #[derive(Debug)]
@@ -15,6 +24,14 @@ pub struct DagAnalysis {
     pub node_count: usize,
     /// Total number of edges
     pub edge_count: usize,
+    /// Transport executor node IDs
+    pub transport_executors: Vec<String>,
+    /// Tool environment node IDs (emit ToolHandle)
+    pub tool_env_nodes: Vec<String>,
+    /// Nodes with guarded inputs (node_id, port_name)
+    pub guarded_nodes: Vec<(String, String)>,
+    /// Pure node IDs (no transport, no tool I/O)
+    pub pure_nodes: Vec<String>,
 }
 
 /// Information about an edge's types.
@@ -53,11 +70,15 @@ impl PortCardinalityInfo {
     }
 }
 
-/// Analyze a DAG for test generation.
+/// Analyze a DAG for test generation (structural analysis only).
 pub fn analyze_dag<T>(dag: &Dag<T>) -> DagAnalysis {
     let boundaries = detect_boundaries(dag);
     let edge_types = analyze_edges(dag);
     let port_cardinalities = analyze_port_cardinalities(dag);
+    let transport_executors = find_transport_executors(dag);
+    let tool_env_nodes = find_tool_env_nodes(dag);
+    let guarded_nodes = find_guarded_nodes(dag);
+    let pure_nodes = find_pure_nodes(dag, &transport_executors, &tool_env_nodes);
 
     DagAnalysis {
         boundaries,
@@ -65,7 +86,83 @@ pub fn analyze_dag<T>(dag: &Dag<T>) -> DagAnalysis {
         port_cardinalities,
         node_count: dag.nodes.len(),
         edge_count: dag.edges.len(),
+        transport_executors,
+        tool_env_nodes,
+        guarded_nodes,
+        pure_nodes,
     }
+}
+
+/// Full analysis: structural + obligation collection.
+///
+/// This is the main entry point for test generation. It analyzes the DAG
+/// structure and collects proof obligations, producing everything needed
+/// to generate tests.
+pub fn analyze_dag_with_obligations<T>(
+    dag: &Dag<T>,
+    registry: Option<&TypeRegistry>,
+    resource_accesses: Option<&[ResourceAccess]>,
+) -> (DagAnalysis, ObligationSet) {
+    let analysis = analyze_dag(dag);
+    let obligations = collect_obligations(dag, registry, resource_accesses);
+    (analysis, obligations)
+}
+
+/// Find transport executor nodes (consume TransportRequest).
+fn find_transport_executors<T>(dag: &Dag<T>) -> Vec<String> {
+    dag.nodes
+        .iter()
+        .filter(|n| {
+            n.inputs
+                .iter()
+                .any(|p| p.type_id.0 == "TransportRequest")
+        })
+        .map(|n| n.id.0.clone())
+        .collect()
+}
+
+/// Find tool environment nodes (emit ToolHandle).
+fn find_tool_env_nodes<T>(dag: &Dag<T>) -> Vec<String> {
+    dag.nodes
+        .iter()
+        .filter(|n| {
+            n.outputs
+                .iter()
+                .any(|p| p.type_id.0 == "ToolHandle")
+        })
+        .map(|n| n.id.0.clone())
+        .collect()
+}
+
+/// Find nodes with guarded inputs.
+fn find_guarded_nodes<T>(dag: &Dag<T>) -> Vec<(String, String)> {
+    let mut result = Vec::new();
+    for node in &dag.nodes {
+        for port in &node.inputs {
+            if port.has_guard() {
+                result.push((node.id.0.clone(), port.name.0.clone()));
+            }
+        }
+    }
+    result
+}
+
+/// Find pure nodes (not transport executors, not tool env, not tool consumers).
+fn find_pure_nodes<T>(
+    dag: &Dag<T>,
+    transport_executors: &[String],
+    tool_env_nodes: &[String],
+) -> Vec<String> {
+    dag.nodes
+        .iter()
+        .filter(|n| {
+            let id = &n.id.0;
+            !transport_executors.contains(id)
+                && !tool_env_nodes.contains(id)
+                && !n.inputs.iter().any(|p| p.type_id.0 == "ToolHandle")
+        })
+        .map(|n| n.id.0.clone())
+        .collect()
 }
 
 /// Analyze port cardinalities in a DAG.
@@ -115,7 +212,7 @@ fn analyze_edges<T>(dag: &Dag<T>) -> Vec<EdgeTypeInfo> {
 
             if let (Some(fp), Some(tp)) = (from_port, to_port) {
                 let compatible = types_compatible(&fp.type_id, &tp.type_id);
-                
+
                 results.push(EdgeTypeInfo {
                     from_node: edge.from_node.0.clone(),
                     from_port: edge.from_port.0.clone(),
@@ -155,5 +252,76 @@ mod tests {
         assert_eq!(analysis.edge_count, 1);
         assert_eq!(analysis.boundaries.boundary_nodes.len(), 1);
         assert!(analysis.edge_types[0].compatible);
+    }
+
+    #[test]
+    fn test_analyze_transport_detection() {
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque(
+            "prepare",
+            vec![],
+            vec![port("request", "TransportRequest")],
+            (),
+        ));
+        dag.add_node(Node::opaque(
+            "execute",
+            vec![port("request", "TransportRequest")],
+            vec![port("response", "TransportResponse")],
+            (),
+        ));
+        dag.add_edge(edge("prepare", "request", "execute", "request"));
+
+        let analysis = analyze_dag(&dag);
+
+        assert_eq!(analysis.transport_executors, vec!["execute"]);
+        assert!(analysis.pure_nodes.contains(&"prepare".to_string()));
+        assert!(!analysis.pure_nodes.contains(&"execute".to_string()));
+    }
+
+    #[test]
+    fn test_analyze_tool_env_detection() {
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque(
+            "env",
+            vec![],
+            vec![port("tool:clippy", "ToolHandle")],
+            (),
+        ));
+        dag.add_node(Node::opaque(
+            "lint",
+            vec![port("tool:clippy", "ToolHandle")],
+            vec![port("result", "String")],
+            (),
+        ));
+        dag.add_edge(edge("env", "tool:clippy", "lint", "tool:clippy"));
+
+        let analysis = analyze_dag(&dag);
+
+        assert_eq!(analysis.tool_env_nodes, vec!["env"]);
+        // lint consumes ToolHandle → not pure
+        assert!(!analysis.pure_nodes.contains(&"lint".to_string()));
+    }
+
+    #[test]
+    fn test_analyze_with_obligations() {
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque(
+            "a",
+            vec![],
+            vec![port("out", "String")],
+            (),
+        ));
+        dag.add_node(Node::opaque(
+            "b",
+            vec![port("in", "String")],
+            vec![port("result", "String")],
+            (),
+        ));
+        dag.add_edge(edge("a", "out", "b", "in"));
+
+        let (analysis, obligations) = analyze_dag_with_obligations(&dag, None, None);
+
+        assert_eq!(analysis.node_count, 2);
+        assert!(obligations.stats().total > 0);
     }
 }
