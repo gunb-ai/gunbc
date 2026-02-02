@@ -102,6 +102,10 @@ pub struct BuildConfig {
     pub check: BuildCommand,
     /// Command to generate CI YAML
     pub ci_yaml: BuildCommand,
+    /// Command to regenerate tests from DAGs
+    pub testgen: BuildCommand,
+    /// Command to check if generated tests are stale
+    pub testgen_check: BuildCommand,
 }
 
 impl BuildConfig {
@@ -142,9 +146,14 @@ impl BuildConfig {
             check: c(CargoCommand::new(Subcommand::Check)
                 .all_targets()
                 .warnings(w)),
-            ci_yaml: c(CargoCommand::new(Subcommand::Run(codegen_inv))
+            ci_yaml: c(CargoCommand::new(Subcommand::Run(codegen_inv.clone()))
                 .release()
                 .trailing_arg("cigen")),
+            testgen: c(CargoCommand::new(Subcommand::Run(CargoInvocation::in_package("gunbc-testgen", "gunbc-dag")))
+                .release()),
+            testgen_check: c(CargoCommand::new(Subcommand::Run(CargoInvocation::in_package("gunbc-testgen", "gunbc-dag")))
+                .release()
+                .trailing_arg("--check")),
         }
     }
 
@@ -182,9 +191,15 @@ impl BuildConfig {
             fmt_check: c(CargoCommand::new(Subcommand::Fmt)
                 .trailing_arg("--check")),
             check: sh(&["buck2", "build", "//..."]),
-            ci_yaml: c(CargoCommand::new(Subcommand::Run(codegen_inv))
+            ci_yaml: c(CargoCommand::new(Subcommand::Run(codegen_inv.clone()))
                 .release()
                 .trailing_arg("cigen")),
+            // testgen uses cargo (no buck2 equivalent yet)
+            testgen: c(CargoCommand::new(Subcommand::Run(CargoInvocation::in_package("gunbc-testgen", "gunbc-dag")))
+                .release()),
+            testgen_check: c(CargoCommand::new(Subcommand::Run(CargoInvocation::in_package("gunbc-testgen", "gunbc-dag")))
+                .release()
+                .trailing_arg("--check")),
         }
     }
 
@@ -231,6 +246,16 @@ impl BuildConfig {
     /// Get the CI YAML generation command as a shell string.
     pub fn ci_yaml_shell(&self) -> String {
         format!("@{}", self.ci_yaml.to_shell())
+    }
+
+    /// Get the testgen command as a shell string.
+    pub fn testgen_shell(&self) -> String {
+        format!("@{}", self.testgen.to_shell())
+    }
+
+    /// Get the testgen-check command as a shell string.
+    pub fn testgen_check_shell(&self) -> String {
+        format!("@{}", self.testgen_check.to_shell())
     }
 }
 
