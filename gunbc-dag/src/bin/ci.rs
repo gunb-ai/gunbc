@@ -127,6 +127,14 @@ fn main() {
     // so we only need to check the final result here.
     match execute_with_mode_and_ci(&dag, mode, &mut ci) {
         Ok(log) => {
+            // Print the report outside of any CI group so it's not auto-collapsed.
+            // This makes the final summary visible without requiring expansion.
+            for entry in &log.entries {
+                if let Some(Value::Str(report)) = entry.outputs.get("report") {
+                    println!("{}", report);
+                }
+            }
+
             // Check overall_success and exit with appropriate code
             for entry in &log.entries {
                 if let Some(Value::Bool(false)) = entry.outputs.get("overall_success") {

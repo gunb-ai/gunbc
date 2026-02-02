@@ -78,12 +78,12 @@ impl BlobSource {
             SourceSpec::Inline { .. } => ResourceId::new("blob:inline"),
             SourceSpec::File { path } => ResourceId::file(path.to_string_lossy()),
             SourceSpec::GitBlob { ref_, path } => {
-                ResourceId::new(&format!("blob:git:{}:{}", ref_, path))
+                ResourceId::new(format!("blob:git:{}:{}", ref_, path))
             }
             SourceSpec::S3 { bucket, key, .. } => {
-                ResourceId::new(&format!("blob:s3:{}/{}", bucket, key))
+                ResourceId::new(format!("blob:s3:{}/{}", bucket, key))
             }
-            SourceSpec::Http { url, .. } => ResourceId::new(&format!("blob:http:{}", url)),
+            SourceSpec::Http { url, .. } => ResourceId::new(format!("blob:http:{}", url)),
         }
     }
 
@@ -330,7 +330,7 @@ impl Executable for BlobOps {
                     .ok_or_else(|| ExecError::new("missing or invalid 'source' input"))?;
 
                 let source: BlobSource = serde_json::from_value(source_json.clone())
-                    .map_err(|e| ExecError::new(&format!("invalid source: {}", e)))?;
+                    .map_err(|e| ExecError::new(format!("invalid source: {}", e)))?;
 
                 let mut out = HashMap::new();
 
@@ -387,7 +387,7 @@ impl Executable for BlobOps {
                     .ok_or_else(|| ExecError::new("missing or invalid 'source' input"))?;
 
                 let source: BlobSource = serde_json::from_value(source_json.clone())
-                    .map_err(|e| ExecError::new(&format!("invalid source: {}", e)))?;
+                    .map_err(|e| ExecError::new(format!("invalid source: {}", e)))?;
 
                 let response = inputs
                     .get("response")
@@ -399,7 +399,7 @@ impl Executable for BlobOps {
                         if file_resp.operation == FileOp::Read =>
                     {
                         file_resp.content.clone().ok_or_else(|| {
-                            ExecError::new(&format!(
+                            ExecError::new(format!(
                                 "file read failed: {}",
                                 file_resp.error.as_deref().unwrap_or("unknown error")
                             ))
@@ -407,7 +407,7 @@ impl Executable for BlobOps {
                     }
                     TransportResponse::Shell(shell) => {
                         if !shell.success() {
-                            return Err(ExecError::new(&format!(
+                            return Err(ExecError::new(format!(
                                 "fetch failed: {}",
                                 shell.stderr
                             )));

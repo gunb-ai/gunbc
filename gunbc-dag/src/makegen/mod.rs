@@ -22,8 +22,5 @@ pub use render::{render_makefile, render_makefile_with_config};
 #[cfg(test)]
 mod generated_tests {
     #![allow(unused_imports)]
-    fn mock_spec() -> gunbc_test::MockSpec {
-        crate::makegen::graph_mock::makegen_mock_spec()
-    }
     include!("generated_tests.rs");
 }

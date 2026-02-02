@@ -89,6 +89,8 @@ pub struct TestGenerator<'a, T> {
     dag: &'a Dag<T>,
     config: TestConfig,
     mock_spec: Option<MockSpec>,
+    /// Function path to call for MockSpec (e.g., "crate::ci::graph_mock::ci_mock_spec()")
+    mock_spec_fn: Option<String>,
 }
 
 impl<'a, T> TestGenerator<'a, T> {
@@ -98,6 +100,7 @@ impl<'a, T> TestGenerator<'a, T> {
             dag,
             config: TestConfig::default(),
             mock_spec: None,
+            mock_spec_fn: None,
         }
     }
 
@@ -110,6 +113,15 @@ impl<'a, T> TestGenerator<'a, T> {
     /// Set the mock specification for realistic mock values.
     pub fn with_mock_spec(mut self, spec: MockSpec) -> Self {
         self.mock_spec = Some(spec);
+        self
+    }
+
+    /// Set the mock spec function path (e.g., "crate::ci::graph_mock::ci_mock_spec()").
+    ///
+    /// This is used to generate a `mock_spec()` helper function in the test module
+    /// that calls the specified function to get the MockSpec at test time.
+    pub fn with_mock_spec_fn(mut self, path: impl Into<String>) -> Self {
+        self.mock_spec_fn = Some(path.into());
         self
     }
 
@@ -184,12 +196,20 @@ impl<'a, T> TestGenerator<'a, T> {
         // Imports
         code.push_str("use gunbc_exec::{execute_with_mode, BoundaryMocks, ExecutionMode};\n");
         code.push_str("use gunbc_ir::{detect_boundaries, Cardinality, Value};\n");
-        code.push_str(
-            "use gunbc_test::{assert_boundary_mockable, assert_types_compatible, default_mocks};\n",
-        );
+
+        // Import MockSpec if we have a mock_spec_fn (need it for helper function)
+        if self.mock_spec_fn.is_some() {
+            code.push_str(
+                "use gunbc_test::{assert_boundary_mockable, assert_types_compatible, MockSpec};\n",
+            );
+        } else {
+            code.push_str(
+                "use gunbc_test::{assert_boundary_mockable, assert_types_compatible, default_mocks};\n",
+            );
+        }
 
         if self.config.chain_tests && self.mock_spec.is_some() {
-            code.push_str("use gunbc_test::{validate_chain, MockSpec, InputConstraint};\n");
+            code.push_str("use gunbc_test::{validate_chain, InputConstraint};\n");
         }
         if self.config.resource_tests
             && self
@@ -200,6 +220,14 @@ impl<'a, T> TestGenerator<'a, T> {
             code.push_str("use gunbc_test::{ResourceAcquireResult, ResourceSimulation};\n");
         }
         code.push('\n');
+
+        // Generate mock_spec() helper function if we have a mock_spec_fn path
+        if let Some(mock_spec_fn) = &self.mock_spec_fn {
+            code.push_str("/// Get the MockSpec for this DAG.\n");
+            code.push_str("fn mock_spec() -> MockSpec {\n");
+            code.push_str(&format!("    {}\n", mock_spec_fn));
+            code.push_str("}\n\n");
+        }
 
         // ===================================================================
         // Invalid obligations — structural errors surfaced as failing tests
@@ -331,6 +359,11 @@ impl<'a, T> TestGenerator<'a, T> {
             .iter()
             .any(|o| matches!(o.kind, Obligation::DryRunCompletion))
         {
+            let mocks_expr = if self.mock_spec_fn.is_some() {
+                "mock_spec().to_boundary_mocks()"
+            } else {
+                "default_mocks()"
+            };
             code.push_str("/// DryRun execution completes without crash.\n");
             code.push_str("///\n");
             code.push_str("/// This is the minimal smoke test: build the DAG, run it in DryRun\n");
@@ -338,9 +371,10 @@ impl<'a, T> TestGenerator<'a, T> {
             code.push_str("#[test]\n");
             code.push_str("fn test_dryrun_completion() {\n");
             code.push_str(&format!("    let dag = {};\n", graph_builder_fn));
-            code.push_str(
-                "    let log = execute_with_mode(&dag, ExecutionMode::DryRun(default_mocks()))\n",
-            );
+            code.push_str(&format!(
+                "    let log = execute_with_mode(&dag, ExecutionMode::DryRun({}))\n",
+                mocks_expr
+            ));
             code.push_str("        .expect(\"DryRun execution should complete without crash\");\n");
             code.push_str("    assert!(!log.entries.is_empty(), \"execution should produce log entries\");\n");
             code.push_str("}\n\n");
@@ -353,6 +387,11 @@ impl<'a, T> TestGenerator<'a, T> {
             .collect();
 
         if !transport_obligations.is_empty() {
+            let mocks_expr = if self.mock_spec_fn.is_some() {
+                "mock_spec().to_boundary_mocks()"
+            } else {
+                "default_mocks()"
+            };
             code.push_str("/// All transport executors are intercepted in DryRun.\n");
             code.push_str("///\n");
             code.push_str(
@@ -362,7 +401,10 @@ impl<'a, T> TestGenerator<'a, T> {
             code.push_str("#[test]\n");
             code.push_str("fn test_transport_interception() {\n");
             code.push_str(&format!("    let dag = {};\n", graph_builder_fn));
-            code.push_str("    let result = assert_boundary_mockable(&dag, default_mocks());\n");
+            code.push_str(&format!(
+                "    let result = assert_boundary_mockable(&dag, {});\n",
+                mocks_expr
+            ));
             code.push_str(
                 "    assert!(result.is_ok(), \"All transports should be interceptable: {:?}\", result.error);\n",
             );
@@ -532,12 +574,18 @@ impl<'a, T> TestGenerator<'a, T> {
             code.push_str(
                 "/// Proves: workflow reaches terminal outputs with all transports mocked as success.\n",
             );
+            let mocks_expr = if self.mock_spec_fn.is_some() {
+                "mock_spec().to_boundary_mocks()"
+            } else {
+                "default_mocks()"
+            };
             code.push_str("#[test]\n");
             code.push_str("fn test_scenario_all_succeed() {\n");
             code.push_str(&format!("    let dag = {};\n", graph_builder_fn));
-            code.push_str(
-                "    let log = execute_with_mode(&dag, ExecutionMode::DryRun(default_mocks()))\n",
-            );
+            code.push_str(&format!(
+                "    let log = execute_with_mode(&dag, ExecutionMode::DryRun({}))\n",
+                mocks_expr
+            ));
             code.push_str("        .expect(\"all-succeed scenario should complete\");\n");
 
             // Verify all transport executors were intercepted
@@ -666,7 +714,11 @@ impl<'a, T> TestGenerator<'a, T> {
                 code.push_str("#[test]\n");
                 code.push_str(&format!("fn {}() {{\n", test_name));
                 code.push_str(&format!("    let dag = {};\n", graph_builder_fn));
-                code.push_str("    let mut mocks = default_mocks();\n");
+                if self.mock_spec_fn.is_some() {
+                    code.push_str("    let mut mocks = mock_spec().to_boundary_mocks();\n");
+                } else {
+                    code.push_str("    let mut mocks = default_mocks();\n");
+                }
 
                 // Mock all output ports of the trigger node as Skipped
                 for (port_name, _type_id) in &output_ports {
@@ -764,8 +816,13 @@ impl<'a, T> TestGenerator<'a, T> {
                             code.push_str(
                                 "    // Guard value flows from a mockable boundary node.\n",
                             );
+                            let mocks_init = if self.mock_spec_fn.is_some() {
+                                "mock_spec().to_boundary_mocks()"
+                            } else {
+                                "default_mocks()"
+                            };
                             code.push_str("    // Test with true:\n");
-                            code.push_str("    let mut mocks_true = default_mocks();\n");
+                            code.push_str(&format!("    let mut mocks_true = {};\n", mocks_init));
                             code.push_str(&format!(
                                 "    mocks_true.set_value(\"{}\", \"{}\", Value::Bool(true));\n",
                                 edge.from_node.0, edge.from_port.0
@@ -786,7 +843,7 @@ impl<'a, T> TestGenerator<'a, T> {
                             code.push_str("        .unwrap_or(true);\n\n");
 
                             code.push_str("    // Test with false:\n");
-                            code.push_str("    let mut mocks_false = default_mocks();\n");
+                            code.push_str(&format!("    let mut mocks_false = {};\n", mocks_init));
                             code.push_str(&format!(
                                 "    mocks_false.set_value(\"{}\", \"{}\", Value::Bool(false));\n",
                                 edge.from_node.0, edge.from_port.0
@@ -843,9 +900,15 @@ impl<'a, T> TestGenerator<'a, T> {
                         code.push_str(
                             "    // The node will always skip (missing input → skip).\n",
                         );
-                        code.push_str(
-                            "    let log = execute_with_mode(&dag, ExecutionMode::DryRun(default_mocks()))\n",
-                        );
+                        let mocks_expr = if self.mock_spec_fn.is_some() {
+                            "mock_spec().to_boundary_mocks()"
+                        } else {
+                            "default_mocks()"
+                        };
+                        code.push_str(&format!(
+                            "    let log = execute_with_mode(&dag, ExecutionMode::DryRun({}))\n",
+                            mocks_expr
+                        ));
                         code.push_str(
                             "        .expect(\"execution should not crash\");\n",
                         );
@@ -1207,11 +1270,19 @@ impl<'a, T> TestGenerator<'a, T> {
         );
 
         // Overall boundary test
+        let mocks_expr = if self.mock_spec_fn.is_some() {
+            "mock_spec().to_boundary_mocks()"
+        } else {
+            "default_mocks()"
+        };
         code.push_str("/// Test that all boundaries can be mocked.\n");
         code.push_str("#[test]\n");
         code.push_str("fn test_boundaries_mockable() {\n");
         code.push_str(&format!("    let dag = {};\n", graph_builder_fn));
-        code.push_str("    let result = assert_boundary_mockable(&dag, default_mocks());\n");
+        code.push_str(&format!(
+            "    let result = assert_boundary_mockable(&dag, {});\n",
+            mocks_expr
+        ));
         code.push_str(
             "    assert!(result.is_ok(), \"Boundaries should be mockable: {:?}\", result.error);\n",
         );

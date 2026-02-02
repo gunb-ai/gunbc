@@ -656,7 +656,7 @@ mod tests {
         );
         inputs.insert(
             "criteria".to_string(),
-            Value::Json(serde_json::to_value(&test_criteria()).unwrap()),
+            Value::Json(serde_json::to_value(test_criteria()).unwrap()),
         );
 
         let result = ReviewOps::PrepareReviewPrompt.execute(inputs).unwrap();
@@ -676,7 +676,7 @@ mod tests {
         inputs.insert("artifact".to_string(), Value::Str("code".to_string()));
         inputs.insert(
             "criteria".to_string(),
-            Value::Json(serde_json::to_value(&test_criteria()).unwrap()),
+            Value::Json(serde_json::to_value(test_criteria()).unwrap()),
         );
         inputs.insert(
             "context".to_string(),
@@ -708,7 +708,7 @@ mod tests {
         inputs.insert("answer".to_string(), Value::Str(response.to_string()));
         inputs.insert(
             "criteria".to_string(),
-            Value::Json(serde_json::to_value(&test_criteria()).unwrap()),
+            Value::Json(serde_json::to_value(test_criteria()).unwrap()),
         );
 
         let result = ReviewOps::ParseReviewResponse.execute(inputs).unwrap();
@@ -720,7 +720,7 @@ mod tests {
         assert_eq!(output.findings.len(), 1);
         assert_eq!(output.findings[0].check_id, "sql-injection");
         assert_eq!(output.findings[0].issue_key, "user_query_concat");
-        assert!(output.findings[0].id.len() > 0);
+        assert!(!output.findings[0].id.is_empty());
         assert_eq!(output.summary, "Found 1 SQL injection vulnerability");
     }
 
@@ -747,7 +747,7 @@ Please fix these issues."#;
         inputs.insert("answer".to_string(), Value::Str(response.to_string()));
         inputs.insert(
             "criteria".to_string(),
-            Value::Json(serde_json::to_value(&test_criteria()).unwrap()),
+            Value::Json(serde_json::to_value(test_criteria()).unwrap()),
         );
 
         let result = ReviewOps::ParseReviewResponse.execute(inputs).unwrap();
@@ -777,7 +777,7 @@ Please fix these issues."#;
         inputs.insert("answer".to_string(), Value::Str(response.to_string()));
         inputs.insert(
             "criteria".to_string(),
-            Value::Json(serde_json::to_value(&test_criteria()).unwrap()),
+            Value::Json(serde_json::to_value(test_criteria()).unwrap()),
         );
 
         let result = ReviewOps::ParseReviewResponse.execute(inputs).unwrap();
@@ -826,7 +826,7 @@ Please fix these issues."#;
         let mut inputs = HashMap::new();
         inputs.insert(
             "outputs".to_string(),
-            Value::Json(serde_json::to_value(&vec![output1, output2]).unwrap()),
+            Value::Json(serde_json::to_value(vec![output1, output2]).unwrap()),
         );
 
         let result = ReviewOps::MergeOutputs.execute(inputs).unwrap();
@@ -871,7 +871,7 @@ Please fix these issues."#;
         let mut inputs = HashMap::new();
         inputs.insert(
             "outputs".to_string(),
-            Value::Json(serde_json::to_value(&vec![output1, output2]).unwrap()),
+            Value::Json(serde_json::to_value(vec![output1, output2]).unwrap()),
         );
 
         let result = ReviewOps::MergeOutputs.execute(inputs).unwrap();

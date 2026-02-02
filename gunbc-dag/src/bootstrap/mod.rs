@@ -13,8 +13,5 @@ pub use ops::BootstrapOp;
 #[cfg(test)]
 mod generated_tests {
     #![allow(unused_imports)]
-    fn mock_spec() -> gunbc_test::MockSpec {
-        crate::bootstrap::graph_mock::bootstrap_mock_spec()
-    }
     include!("generated_tests.rs");
 }

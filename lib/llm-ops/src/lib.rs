@@ -832,35 +832,23 @@ mod tests {
 #[cfg(test)]
 mod generated_tests {
     #![allow(unused_imports)]
-    fn mock_spec() -> gunbc_test::MockSpec {
-        crate::graph_mock::openai_mock_spec()
-    }
     include!("generated_tests.rs");
 }
 
 #[cfg(test)]
 mod generated_tests_anthropic {
     #![allow(unused_imports)]
-    fn mock_spec() -> gunbc_test::MockSpec {
-        crate::graph_mock::anthropic_mock_spec()
-    }
     include!("generated_tests_anthropic.rs");
 }
 
 #[cfg(test)]
 mod generated_tests_code_review {
     #![allow(unused_imports)]
-    fn mock_spec() -> gunbc_test::MockSpec {
-        crate::graph_mock::code_review_mock_spec()
-    }
     include!("generated_tests_code_review.rs");
 }
 
 #[cfg(test)]
 mod generated_tests_secrets {
     #![allow(unused_imports)]
-    fn mock_spec() -> gunbc_test::MockSpec {
-        crate::graph_mock::secret_api_key_mock_spec()
-    }
     include!("generated_tests_secrets.rs");
 }

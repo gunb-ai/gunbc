@@ -13,7 +13,7 @@ use gunbc_testgen::{TestConfig, TestGenerator};
 use std::collections::HashMap;
 use std::env;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process;
 
 /// Execution mode for testgen.
@@ -135,6 +135,7 @@ fn generate_bootstrap(config: &TestgenTargetDef) -> String {
     TestGenerator::new(&dag)
         .with_config(test_config)
         .with_mock_spec(spec)
+        .with_mock_spec_fn(&config.mock_spec_path)
         .generate_test_module(&config.module_name, &config.dag_builder_call)
 }
 
@@ -150,6 +151,7 @@ fn generate_ci(config: &TestgenTargetDef) -> String {
     TestGenerator::new(&dag)
         .with_config(test_config)
         .with_mock_spec(spec)
+        .with_mock_spec_fn(&config.mock_spec_path)
         .generate_test_module(&config.module_name, &config.dag_builder_call)
 }
 
@@ -165,6 +167,7 @@ fn generate_makegen(config: &TestgenTargetDef) -> String {
     TestGenerator::new(&dag)
         .with_config(test_config)
         .with_mock_spec(spec)
+        .with_mock_spec_fn(&config.mock_spec_path)
         .generate_test_module(&config.module_name, &config.dag_builder_call)
 }
 
@@ -180,6 +183,7 @@ fn generate_llm_openai(config: &TestgenTargetDef) -> String {
     TestGenerator::new(&dag)
         .with_config(test_config)
         .with_mock_spec(spec)
+        .with_mock_spec_fn(&config.mock_spec_path)
         .generate_test_module(&config.module_name, &config.dag_builder_call)
 }
 
@@ -195,6 +199,7 @@ fn generate_llm_anthropic(config: &TestgenTargetDef) -> String {
     TestGenerator::new(&dag)
         .with_config(test_config)
         .with_mock_spec(spec)
+        .with_mock_spec_fn(&config.mock_spec_path)
         .generate_test_module(&config.module_name, &config.dag_builder_call)
 }
 
@@ -210,6 +215,7 @@ fn generate_llm_code_review(config: &TestgenTargetDef) -> String {
     TestGenerator::new(&dag)
         .with_config(test_config)
         .with_mock_spec(spec)
+        .with_mock_spec_fn(&config.mock_spec_path)
         .generate_test_module(&config.module_name, &config.dag_builder_call)
 }
 
@@ -225,6 +231,7 @@ fn generate_llm_secrets(config: &TestgenTargetDef) -> String {
     TestGenerator::new(&dag)
         .with_config(test_config)
         .with_mock_spec(spec)
+        .with_mock_spec_fn(&config.mock_spec_path)
         .generate_test_module(&config.module_name, &config.dag_builder_call)
 }
 
@@ -234,7 +241,7 @@ fn generate_llm_secrets(config: &TestgenTargetDef) -> String {
 
 /// Generate and write test files.
 #[allow(clippy::disallowed_methods)]
-fn run_generate(targets: &[TestgenTarget], output_dir: &PathBuf) {
+fn run_generate(targets: &[TestgenTarget], output_dir: &Path) {
     let mut generated = 0;
     let mut errors = 0;
 
@@ -288,7 +295,7 @@ fn run_generate(targets: &[TestgenTarget], output_dir: &PathBuf) {
 
 /// Check if generated files are stale.
 #[allow(clippy::disallowed_methods)]
-fn run_check(targets: &[TestgenTarget], output_dir: &PathBuf) {
+fn run_check(targets: &[TestgenTarget], output_dir: &Path) {
     let mut ok = 0;
     let mut stale = 0;
     let mut missing = 0;
@@ -348,7 +355,7 @@ fn run_check(targets: &[TestgenTarget], output_dir: &PathBuf) {
 }
 
 /// Dry run - show what would be generated.
-fn run_dry_run(targets: &[TestgenTarget], output_dir: &PathBuf) {
+fn run_dry_run(targets: &[TestgenTarget], output_dir: &Path) {
     for target in targets {
         let code = (target.generate)(&target.config);
         let output_path = output_dir.join(&target.config.output_path);

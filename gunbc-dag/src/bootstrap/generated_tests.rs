@@ -7,8 +7,13 @@
 
 use gunbc_exec::{execute_with_mode, BoundaryMocks, ExecutionMode};
 use gunbc_ir::{detect_boundaries, Cardinality, Value};
-use gunbc_test::{assert_boundary_mockable, assert_types_compatible, default_mocks};
+use gunbc_test::{assert_boundary_mockable, assert_types_compatible, MockSpec};
 use gunbc_test::{ResourceAcquireResult, ResourceSimulation};
+
+/// Get the MockSpec for this DAG.
+fn mock_spec() -> MockSpec {
+    crate::bootstrap::graph_mock::bootstrap_mock_spec()
+}
 
 // ============================================================================
 // Bucket A: Execution Semantics
@@ -22,7 +27,7 @@ use gunbc_test::{ResourceAcquireResult, ResourceSimulation};
 #[test]
 fn test_dryrun_completion() {
     let dag = crate::build_bootstrap_graph().unwrap();
-    let log = execute_with_mode(&dag, ExecutionMode::DryRun(default_mocks()))
+    let log = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks()))
         .expect("DryRun execution should complete without crash");
     assert!(!log.entries.is_empty(), "execution should produce log entries");
 }
@@ -34,7 +39,7 @@ fn test_dryrun_completion() {
 #[test]
 fn test_transport_interception() {
     let dag = crate::build_bootstrap_graph().unwrap();
-    let result = assert_boundary_mockable(&dag, default_mocks());
+    let result = assert_boundary_mockable(&dag, mock_spec().to_boundary_mocks());
     assert!(result.is_ok(), "All transports should be interceptable: {:?}", result.error);
     assert!(result.boundary_nodes.iter().any(|n| n == "execute_scan_workspace"),
         "transport executor 'execute_scan_workspace' should be in intercepted list");
@@ -81,7 +86,7 @@ fn test_transport_interception() {
 #[test]
 fn test_scenario_all_succeed() {
     let dag = crate::build_bootstrap_graph().unwrap();
-    let log = execute_with_mode(&dag, ExecutionMode::DryRun(default_mocks()))
+    let log = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks()))
         .expect("all-succeed scenario should complete");
     let entry = log.get("execute_scan_workspace").expect("'execute_scan_workspace' should be in log");
     assert!(entry.was_intercepted, "'execute_scan_workspace' should be intercepted in DryRun");
@@ -146,7 +151,7 @@ fn test_scenario_execute_gitignore_transport_fails() {
 #[test]
 fn test_skip_propagation_execute_scan_workspace() {
     let dag = crate::build_bootstrap_graph().unwrap();
-    let mut mocks = default_mocks();
+    let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_scan_workspace", "response", Value::Skipped);
     let log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks))
         .expect("skip propagation should not crash or hang");
