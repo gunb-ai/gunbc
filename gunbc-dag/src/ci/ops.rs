@@ -536,15 +536,20 @@ fn execute_report(inputs: HashMap<String, Value>) -> Result<HashMap<String, Valu
     }
 
     if !test_success {
-        // For tests, extract the "failures:" section from stdout - that's where
+        // For tests, try to extract the "failures:" section from stdout - that's where
         // the actual test names and panic messages are (stderr just says "test failed")
         let stdout = inputs
             .get("test_stdout")
             .and_then(|v| v.as_str())
             .unwrap_or("");
 
+        // Try to extract just the failures section for cleaner output
         if let Some(failures_section) = extract_test_failures(stdout) {
             report.push_str(&format!("\n--- Test failures ---\n{failures_section}\n"));
+        } else if !stdout.is_empty() {
+            // Fallback: show full stdout if we couldn't extract failures section
+            // (this handles different cargo test output formats)
+            report.push_str(&format!("\n--- Test stdout ---\n{stdout}\n"));
         }
 
         let stderr = inputs
@@ -575,13 +580,18 @@ fn execute_report(inputs: HashMap<String, Value>) -> Result<HashMap<String, Valu
 /// Extract the "failures:" section from cargo test output.
 /// This includes the failure list and any panic messages.
 fn extract_test_failures(stdout: &str) -> Option<String> {
-    // Look for the "failures:" line that lists failed test names
-    let failures_start = stdout.find("\nfailures:\n")?;
-    let section = &stdout[failures_start + 1..]; // skip the leading newline
+    // Look for "failures:" line - can appear with or without leading newline
+    let failures_marker = "failures:\n";
+    let failures_pos = stdout.find(failures_marker)?;
+
+    // Get the section after "failures:\n"
+    let section_start = failures_pos + failures_marker.len();
+    let section = &stdout[section_start..];
 
     // Find the end - either "test result:" or end of string
     let end = section
         .find("\ntest result:")
+        .or_else(|| section.find("test result:"))
         .unwrap_or(section.len());
 
     let failures_section = section[..end].trim();
@@ -589,7 +599,8 @@ fn extract_test_failures(stdout: &str) -> Option<String> {
     if failures_section.is_empty() {
         None
     } else {
-        Some(failures_section.to_string())
+        // Include the "failures:" header for context
+        Some(format!("failures:\n{failures_section}"))
     }
 }
 
