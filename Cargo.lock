@@ -145,6 +145,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "gunbc-lib-blob"
+version = "0.1.0"
+dependencies = [
+ "gunbc-exec",
+ "gunbc-ir",
+ "gunbc-lib-transport",
+ "gunbc-test",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "gunbc-lib-gist-ops"
 version = "0.1.0"
 dependencies = [
