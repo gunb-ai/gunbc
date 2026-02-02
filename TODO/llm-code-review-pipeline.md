@@ -530,126 +530,107 @@ pub struct CandidateTask {
 
 ## Appendix B: Content Blob Abstraction
 
-### Resource Stack
+### Alignment with Existing Patterns
 
-All acquisitions share a common base, with layers adding structure:
+The blob abstraction aligns with existing resource patterns in the codebase:
+
+| Pattern | Existing Example | Blob Equivalent |
+|---------|------------------|-----------------|
+| **Prepare/Parse** | `GistOps`, `GitOps`, `LlmOps` | `BlobOps::PrepareAcquire/ParseAcquire` |
+| **Upsert** | `CliToolOp` (Check→Create→Resolve) | `BlobOps` (Check cache→Fetch→Return) |
+| **Capability handle** | `ToolHandle` (sealed, requires acquisition) | `BlobHandle` (sealed, requires acquisition) |
+| **Access modes** | `ResourceId + AccessMode` | Same - blobs are `Read` access |
+| **Declarative def** | `CliToolDef` | `BlobSource` |
+
+### Resource Acquisition (Unified)
+
+All resources follow the same pattern (see `core/ir/src/patterns/upsert.rs`):
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  Layer 3: ReviewBlob                                        │
-│  Structured review content (knows schema, can be assessed)  │
-├─────────────────────────────────────────────────────────────┤
-│  Layer 2: Blob                                              │
-│  Raw data + metadata (file, git, s3, http, inline)          │
-├─────────────────────────────────────────────────────────────┤
-│  Layer 1: Resource                                          │
-│  Base acquisition (tools, blobs, locks all use this)        │
+│  Check (exists/cached?)                                     │
+│       ↓ exists=false                                        │
+│  Acquire (fetch/install)                                    │
+│       ↓                                                     │
+│  Resolve (return handle)                                    │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-Each layer builds on the one below:
+| Resource | Check | Acquire | Handle |
+|----------|-------|---------|--------|
+| **Tool** | `check_cmd` runs | `install_cmd` runs | `ToolHandle` |
+| **Blob** | cache lookup by hash | fetch from source | `BlobHandle` |
+| **Lock** | lock available? | acquire lock | `LockHandle` |
 
-| Layer | Input | Output | Purpose |
-|-------|-------|--------|---------|
-| **Resource** | params | handle | Generic acquisition pattern |
-| **Blob** | source | data + meta | Raw content with caching info |
-| **ReviewBlob** | blob + schema | structured content | Review-ready, schema-aware |
-
----
-
-### Layer 1: Resource (`core/resource/`)
-
-Base acquisition pattern shared by all resource types:
-
-```rust
-pub trait Resource {
-    type Params;
-    type Handle;
-
-    fn prepare(params: &Self::Params) -> TransportRequest;
-    fn parse(response: TransportResponse, params: &Self::Params) -> Self::Handle;
-}
-```
-
-```
-[PrepareAcquire] → [TransportOps::Execute] → [ParseAcquire]
-     (params)            (I/O boundary)          (handle)
-```
-
-| Resource Type | Params | Handle | Notes |
-|---------------|--------|--------|-------|
-| **Tool** | name, version? | ToolHandle | Infinite, from environment |
-| **Blob** | BlobSource | Blob | Read-only content |
-| **Lock** | name, scope | LockHandle | Exclusive access (future) |
-
----
-
-### Layer 2: Blob (`lib/blob/`)
-
-A Resource that provides data content:
+### BlobOps (aligned with CliToolOp)
 
 ```rust
 pub enum BlobOps {
-    /// Build acquisition request
-    PrepareAcquire,
-    /// Parse response into Blob
-    ParseAcquire,
-    /// Get metadata only (no content fetch)
-    PrepareMeta,
-    ParseMeta,
+    /// Check if blob is cached (like CliToolOp check phase)
+    PrepareCheckCached,
+    ParseCheckCached,    // → exists: Bool
+
+    /// Fetch blob from source (like CliToolOp install phase)
+    PrepareFetch,
+    ParseFetch,          // → BlobHandle
+
+    /// Convenience: full upsert in one subdag (uses UpsertBuilder)
+    Acquire,             // → BlobHandle
+}
+
+/// Declarative blob definition (like CliToolDef)
+pub struct BlobSource {
+    pub source: SourceSpec,
+    pub access_mode: AccessMode,  // Always Read for blobs
+    pub cache_key: Option<String>, // For cache lookup
+}
+
+pub enum SourceSpec {
+    Inline { data: String },
+    File { path: PathBuf },
+    GitBlob { ref_: String, path: String },
+    S3 { bucket: String, key: String },
+    Http { url: String },
+}
+
+/// Capability-based handle (like ToolHandle)
+pub struct BlobHandle {
+    id: BlobId,
+    _sealed: PhantomData<()>,  // Prevents construction without acquisition
+}
+
+impl BlobHandle {
+    pub fn data(&self) -> &str { ... }
+    pub fn meta(&self) -> &BlobMeta { ... }
 }
 ```
 
-#### PrepareAcquire
+### Blob as ResourceId
 
-| Port | Direction | Type | Cardinality | Description |
-|------|-----------|------|-------------|-------------|
-| `source` | input | `Json` | One | BlobSource specification |
-| `request` | output | `Request` | One | Transport request |
-
-**I/O**: Pure
-
-#### ParseAcquire
-
-| Port | Direction | Type | Cardinality | Description |
-|------|-----------|------|-------------|-------------|
-| `response` | input | `Response` | One | Transport response |
-| `source` | input | `Json` | One | Original source (for metadata) |
-| `blob` | output | `Json` | One | ContentBlob with data + meta |
-
-**I/O**: Pure
-
-#### Blob Types
+Blobs integrate with existing `ResourceId` for conflict detection:
 
 ```rust
-/// Where to get blob content from (Layer 2 params)
-pub enum BlobSource {
-    /// Direct inline content (no I/O needed)
-    Inline {
-        data: String,
-        content_type: Option<String>,
-    },
-
-    /// Local filesystem
-    File { path: PathBuf },
-
-    /// Git object at ref
-    GitBlob { ref_: String, path: String },
-
-    /// S3-compatible storage
-    S3 { bucket: String, key: String, region: Option<String> },
-
-    /// HTTP GET
-    Http { url: String, headers: Option<HashMap<String, String>> },
+// From core/ir/src/resource.rs
+impl BlobSource {
+    pub fn resource_id(&self) -> ResourceId {
+        match &self.source {
+            SourceSpec::File { path } => ResourceId::file(path),
+            SourceSpec::GitBlob { ref_, path } => ResourceId::file(path), // or git-specific
+            SourceSpec::S3 { bucket, key } => ResourceId::new(&format!("s3:{}/{}", bucket, key)),
+            SourceSpec::Http { url } => ResourceId::new(&format!("http:{}", url)),
+            SourceSpec::Inline { .. } => ResourceId::new("inline"), // No conflict possible
+        }
+    }
 }
+```
 
-/// Acquired blob (Layer 2 handle)
-pub struct Blob {
-    pub source: BlobSource,
-    pub data: String,       // Content as string (bytes later)
-    pub meta: BlobMeta,
-}
+All blobs have `AccessMode::Read` - safe for parallel access.
 
+---
+
+### BlobMeta
+
+```rust
 pub struct BlobMeta {
     pub size: usize,
     pub hash: Option<String>,   // SHA256 for caching/dedup
