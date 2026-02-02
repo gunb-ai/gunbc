@@ -180,4 +180,303 @@ Add `gunbc review` command.
 
 ---
 
-*See git history for detailed type definitions from earlier design iterations.*
+## Appendix A: DAG Modules & Interfaces
+
+### Module Dependency Graph
+
+```
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│  lib/review │────▶│ lib/llm-ops │────▶│lib/transport│
+└─────────────┘     └─────────────┘     └─────────────┘
+       │                   │                   │
+       │            ┌──────┴──────┐            │
+       └───────────▶│ lib/git-ops │────────────┘
+                    └─────────────┘
+```
+
+All modules depend on `core/ir` (DAG, Value, Port) and `core/exec` (Executable trait).
+
+---
+
+### ReviewOps (`lib/review/ops.rs`)
+
+```rust
+pub enum ReviewOps {
+    /// Build prompt from artifact + criteria
+    PrepareReviewPrompt {
+        /// Prompt template with placeholders
+        template: String,
+    },
+
+    /// Parse LLM response into structured findings
+    ParseReviewResponse,
+
+    /// Merge multiple ReviewOutputs into ReviewBundle
+    MergeOutputs,
+
+    /// Generate stable finding ID from issue_key
+    HashFinding,
+}
+```
+
+#### PrepareReviewPrompt
+
+| Port | Direction | Type | Cardinality | Description |
+|------|-----------|------|-------------|-------------|
+| `artifact` | input | `Str` | One | Code/design content to review |
+| `criteria` | input | `Json` | One | Criteria definition |
+| `context` | input | `Str` | ZeroOrOne | Optional extra context |
+| `prompt` | output | `Str` | One | Formatted prompt for LLM |
+| `system` | output | `Str` | One | System prompt |
+
+**I/O**: Pure (read-only transform)
+
+#### ParseReviewResponse
+
+| Port | Direction | Type | Cardinality | Description |
+|------|-----------|------|-------------|-------------|
+| `response` | input | `Str` | One | Raw LLM response text |
+| `criteria` | input | `Json` | One | For check_id resolution |
+| `output` | output | `Json` | One | `ReviewOutput` as JSON |
+| `errors` | output | `StrList` | ZeroOrMore | Parse errors/warnings |
+
+**I/O**: Pure (read-only transform)
+
+#### MergeOutputs
+
+| Port | Direction | Type | Cardinality | Description |
+|------|-----------|------|-------------|-------------|
+| `outputs` | input | `Json` | OneOrMore | List of ReviewOutput |
+| `bundle` | output | `Json` | One | Merged ReviewBundle |
+| `conflicts` | output | `Json` | ZeroOrMore | Finding ID conflicts |
+
+**I/O**: Pure (read-only transform)
+
+#### HashFinding
+
+| Port | Direction | Type | Cardinality | Description |
+|------|-----------|------|-------------|-------------|
+| `issue_key` | input | `Str` | One | Reviewer-provided stable key |
+| `check_id` | input | `Str` | One | Which check this finding is for |
+| `finding_id` | output | `Str` | One | Stable hash ID |
+
+**I/O**: Pure (deterministic hash)
+
+---
+
+### Existing Ops (Reference)
+
+#### GitOps (`lib/git-ops/`)
+
+| Op | Inputs | Outputs | I/O |
+|----|--------|---------|-----|
+| `PrepareDiff` | `ref: Str` | `request: Request` | Pure |
+| `ParseDiff` | `response: Response` | `diff: Str, stats: Json` | Pure |
+| `PrepareLsFiles` | `ext: Str?` | `request: Request` | Pure |
+| `ParseLsFiles` | `response: Response` | `files: StrList` | Pure |
+
+#### LlmOps (`lib/llm-ops/`)
+
+| Op | Inputs | Outputs | I/O |
+|----|--------|---------|-----|
+| `PrepareChatRequest` | `messages: Json, model: Str, ...` | `request: Request` | Pure |
+| `ParseChatResponse` | `response: Response` | `content: Str, usage: Json` | Pure |
+
+#### TransportOps (`lib/transport/`)
+
+| Op | Inputs | Outputs | I/O |
+|----|--------|---------|-----|
+| `Execute` | `request: Request` | `response: Response` | **BOUNDARY** |
+
+---
+
+### ReviewPhase DAG Structure
+
+```
+ENTRYPOINTS (unconnected inputs):
+  ├── artifact: Str (One)
+  ├── criteria: Json (One)
+  └── config: Json (ZeroOrOne)
+
+INTERNAL FLOW:
+  ┌──────────────────────────────────────────────────────────────┐
+  │                                                              │
+  │  [PrepareReviewPrompt] ──prompt──▶ [PrepareChatRequest]     │
+  │         │                                  │                 │
+  │         └────system────────────────────────┤                 │
+  │                                            ▼                 │
+  │                                   [TransportOps::Execute]    │
+  │                                            │                 │
+  │                                            ▼                 │
+  │                                   [ParseChatResponse]        │
+  │                                            │                 │
+  │                                            ▼                 │
+  │  [ParseReviewResponse] ◀───response────────┘                │
+  │         │                                                    │
+  │         ├──output───▶ [findings port]                       │
+  │         └──errors───▶ [errors port]                         │
+  │                                                              │
+  └──────────────────────────────────────────────────────────────┘
+
+INTERFACE BOUNDARIES (unconnected outputs):
+  ├── findings: Json (One) - ReviewOutput
+  └── errors: StrList (ZeroOrMore) - Parse errors
+```
+
+**I/O Classification**:
+- Internal: All pure except one `TransportOps::Execute` (LLM call)
+- Phase overall: Read-only (LLM call is a read in our classification)
+
+---
+
+### DiffReviewPhase DAG Structure
+
+Composes GitOps + ReviewPhase:
+
+```
+ENTRYPOINTS:
+  ├── ref: Str (One) - e.g., "HEAD~1", "main"
+  ├── criteria: Json (One)
+  └── config: Json (ZeroOrOne)
+
+INTERNAL FLOW:
+  ┌──────────────────────────────────────────────────────────────┐
+  │                                                              │
+  │  [PrepareDiff] ──request──▶ [Execute] ──▶ [ParseDiff]       │
+  │        ▲                                      │              │
+  │        │                                      ▼              │
+  │      ref                            diff ──▶ [ReviewPhase]   │
+  │                                              (subdag)        │
+  │                                                  │           │
+  │                                                  ▼           │
+  │                                            [findings]        │
+  │                                                              │
+  └──────────────────────────────────────────────────────────────┘
+
+INTERFACE BOUNDARIES:
+  ├── findings: Json (One)
+  └── summary: Str (ZeroOrOne)
+```
+
+**I/O Classification**:
+- Two `TransportOps::Execute` calls: git diff (read), LLM (read)
+- Phase overall: Read-only
+
+---
+
+### MultiSourceReviewPhase DAG Structure
+
+Merges LLM + cargo check + clippy:
+
+```
+ENTRYPOINTS:
+  ├── artifact: Str (One)
+  ├── criteria: Json (One)
+  └── tool_config: Json (ZeroOrOne)
+
+INTERNAL FLOW (parallel fan-out, merge):
+  ┌────────────────────────────────────────────────────────────────┐
+  │                                                                │
+  │                    ┌──▶ [ReviewPhase] ──────┐                 │
+  │                    │     (LLM review)       │                 │
+  │                    │                        ▼                 │
+  │  artifact ─────────┼──▶ [CargoCheck] ──▶ [MergeOutputs]      │
+  │                    │     (subdag)           ▲                 │
+  │                    │                        │                 │
+  │                    └──▶ [Clippy] ───────────┘                 │
+  │                          (subdag)                             │
+  │                                                               │
+  └────────────────────────────────────────────────────────────────┘
+
+INTERFACE BOUNDARIES:
+  ├── bundle: Json (One) - ReviewBundle with all findings
+  └── conflicts: Json (ZeroOrMore) - ID conflicts between sources
+```
+
+**I/O Classification**:
+- Multiple reads: LLM, cargo check, clippy
+- Phase overall: Read-only
+
+---
+
+### Resource Access Declarations
+
+For parallel execution planning:
+
+| Operation | Resource | Access |
+|-----------|----------|--------|
+| `PrepareReviewPrompt` | (none) | - |
+| `ParseReviewResponse` | (none) | - |
+| `TransportOps::Execute(LLM)` | `llm:$provider` | Read |
+| `TransportOps::Execute(Shell:git)` | `repo:$path` | Read |
+| `TransportOps::Execute(Shell:cargo)` | `repo:$path`, `cargo:registry` | Read |
+
+All ReviewPhase operations are read-only, enabling safe parallelization.
+
+---
+
+### Type Definitions (Value Representations)
+
+```rust
+// Carried as Value::Json in the DAG
+
+pub struct Criteria {
+    pub name: String,
+    pub description: String,
+    pub checks: Vec<Check>,
+}
+
+pub struct Check {
+    pub id: String,
+    pub question: String,
+    pub examples: Vec<String>,
+}
+
+pub struct Finding {
+    pub id: String,           // Stable hash from issue_key + check_id
+    pub check_id: String,
+    pub issue_key: String,    // Reviewer-provided, no line numbers
+    pub location: Location,
+    pub observation: String,
+    pub candidate_fix: Option<String>,
+}
+
+pub enum Location {
+    FileLine { file: String, line: u32 },
+    Span { file: String, start: u32, end: u32 },
+    DiffLine { side: DiffSide, line: u32 },
+    Unlocated,
+}
+
+pub struct ReviewOutput {
+    pub schema_version: String,
+    pub criteria_name: String,
+    pub source: String,       // "llm", "clippy", "cargo-check"
+    pub findings: Vec<Finding>,
+    pub candidate_remediations: Option<CandidateRemediations>,
+    pub summary: String,
+}
+
+pub struct ReviewBundle {
+    pub outputs: Vec<ReviewOutput>,
+    pub merged_findings: Vec<Finding>,  // Deduped by id
+}
+
+pub struct CandidateRemediations {
+    pub goals: Vec<String>,
+    pub constraints: Vec<String>,
+    pub tasks: Vec<CandidateTask>,
+}
+
+pub struct CandidateTask {
+    pub finding_id: String,
+    pub file: String,
+    pub intent: String,
+    pub candidate_patch: Option<String>,
+    pub validation: Option<String>,
+}
+```
+
+---
+
+*See git history for earlier design iterations.*
