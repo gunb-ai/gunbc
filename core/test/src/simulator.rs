@@ -43,6 +43,7 @@ use std::sync::Arc;
 
 /// A simulator that can generate and validate values.
 #[derive(Clone)]
+#[allow(clippy::type_complexity)]
 pub struct Simulator {
     /// Human-readable description
     pub description: String,
@@ -151,7 +152,7 @@ impl Simulator {
                     .duration_since(UNIX_EPOCH)
                     .unwrap()
                     .as_nanos();
-                Value::Bool(seed % 2 == 0)
+                Value::Bool(seed.is_multiple_of(2))
             })
             .with_validator(|v| match v {
                 Value::Bool(_) => Ok(()),
