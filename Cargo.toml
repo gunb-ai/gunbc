@@ -14,6 +14,7 @@ members = [
     "lib/git-ops",
     "lib/gist-ops",
     "lib/llm-ops",
+    "lib/review",
     "lib/markdown",
     "lib/transport",
     
