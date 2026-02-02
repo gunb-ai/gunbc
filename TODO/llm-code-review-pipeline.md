@@ -89,28 +89,28 @@ GitOps::PrepareDiff → Execute → ReviewOps::PreparePrompt → LLM → ParseRe
 Create `lib/review/` crate with domain types.
 
 **TODO 1.1: Artifact types**
-- [ ] `Artifact` enum (Code, Design, TestOutput, Text variants)
-- [ ] `DocFormat` enum for design docs
+- [x] `Artifact` enum (Code, Design, TestOutput, Text variants)
+- [x] `DocFormat` enum for design docs
 
 **TODO 1.2: Criteria types**
-- [ ] `Criteria` struct (name, description, checks)
-- [ ] `Check` struct (id, question, examples)
+- [x] `Criteria` struct (name, description, checks)
+- [x] `Check` struct (id, question, examples)
 
 **TODO 1.3: Finding types**
-- [ ] `Finding` struct (id, check_id, location, issue_key, observation, candidate_fix)
-- [ ] `Location` enum (FileLine, Span, DiffLine with DiffSide)
-- [ ] `finding_id()` hash function using issue_key
+- [x] `Finding` struct (id, check_id, location, issue_key, observation, candidate_fix)
+- [x] `Location` enum (FileLine, Span, DiffLine with DiffSide)
+- [x] `finding_id()` hash function using issue_key
 
 **TODO 1.4: Output types**
-- [ ] `ReviewOutput` struct (criteria_name, source, findings, candidate_remediations, summary)
-- [ ] `ReviewBundle` struct for multi-source merging
-- [ ] `CandidateRemediations` struct (goals, tasks, constraints)
-- [ ] `CandidateTask` struct (finding_id, file, intent, candidate_patch, validation)
+- [x] `ReviewOutput` struct (criteria_name, source, findings, candidate_remediations, summary)
+- [x] `ReviewBundle` struct for multi-source merging
+- [x] `CandidateRemediations` struct (goals, tasks, constraints)
+- [x] `CandidateTask` struct (finding_id, file, intent, candidate_patch, validation)
 
 **TODO 1.5: JSON schema**
-- [ ] Derive Serialize/Deserialize for all types
-- [ ] Add schema version field to ReviewOutput
-- [ ] Basic validation tests
+- [x] Derive Serialize/Deserialize for all types
+- [x] Add schema version field to ReviewOutput
+- [x] Basic validation tests
 
 ---
 
