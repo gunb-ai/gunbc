@@ -8,3 +8,4 @@ description = "Test infrastructure for gunbc: boundary mocks and composition tes
 [dependencies]
 gunbc-ir = { path = "../ir" }
 gunbc-exec = { path = "../exec" }
+serde_json = "1"

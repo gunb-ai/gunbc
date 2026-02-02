@@ -40,6 +40,7 @@ pub mod composition;
 pub mod mock;
 pub mod mock_spec;
 pub mod mockable;
+pub mod simulator;
 
 pub use boundary::{assert_boundary_mockable, default_mocks, mocks_with_values, BoundaryTestResult};
 pub use composition::{assert_types_compatible, TypeCompatibility};
@@ -53,3 +54,4 @@ pub use mock_spec::{
 pub use mockable::{
     CardinalityTestInput, ErrorTestCase, ExpectedBehavior, Mockable,
 };
+pub use simulator::{IoContract, Simulator};

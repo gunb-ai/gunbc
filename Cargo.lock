@@ -286,6 +286,7 @@ version = "0.1.0"
 dependencies = [
  "gunbc-exec",
  "gunbc-ir",
+ "serde_json",
 ]
 
 [[package]]
