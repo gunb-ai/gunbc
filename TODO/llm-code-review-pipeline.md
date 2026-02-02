@@ -479,4 +479,214 @@ pub struct CandidateTask {
 
 ---
 
+## Appendix B: Content Blob Abstraction
+
+### Unified Acquisition Pattern
+
+All DAG resources follow the same acquisition pattern:
+
+```
+[PrepareAcquire] → [TransportOps::Execute] → [ParseAcquire]
+     (params)            (I/O boundary)          (handle)
+```
+
+| Resource Type | Params | Handle | Notes |
+|---------------|--------|--------|-------|
+| **Tool** | name, version? | ToolHandle | Infinite, from environment |
+| **Blob** | source | ContentBlob | Read-only content |
+| **Lock** | name, scope | LockHandle | Exclusive access (future) |
+
+The acquisition layer is uniform - only the params differ.
+
+---
+
+### BlobOps (`lib/blob/ops.rs`)
+
+```rust
+pub enum BlobOps {
+    /// Build acquisition request for content blob
+    PrepareAcquire,
+
+    /// Parse response into ContentBlob
+    ParseAcquire,
+
+    /// Extract data as string (convenience)
+    ExtractData,
+
+    /// Get metadata without full content
+    PrepareMeta,
+    ParseMeta,
+}
+```
+
+#### PrepareAcquire
+
+| Port | Direction | Type | Cardinality | Description |
+|------|-----------|------|-------------|-------------|
+| `source` | input | `Json` | One | ContentSource specification |
+| `request` | output | `Request` | One | Transport request |
+
+**I/O**: Pure
+
+#### ParseAcquire
+
+| Port | Direction | Type | Cardinality | Description |
+|------|-----------|------|-------------|-------------|
+| `response` | input | `Response` | One | Transport response |
+| `source` | input | `Json` | One | Original source (for metadata) |
+| `blob` | output | `Json` | One | ContentBlob with data + meta |
+
+**I/O**: Pure
+
+---
+
+### Content Types
+
+```rust
+/// Where to get content from
+pub enum ContentSource {
+    /// Direct inline content (no acquisition needed)
+    Inline {
+        data: String,
+        content_type: Option<String>,
+    },
+
+    /// Local filesystem
+    File {
+        path: PathBuf,
+    },
+
+    /// Git object (blob at ref)
+    GitBlob {
+        ref_: String,      // "HEAD", "main", commit SHA
+        path: String,      // path within repo
+    },
+
+    /// S3-compatible storage
+    S3 {
+        bucket: String,
+        key: String,
+        region: Option<String>,
+    },
+
+    /// HTTP GET
+    Http {
+        url: String,
+        headers: Option<HashMap<String, String>>,
+    },
+}
+
+/// Acquired content with metadata
+pub struct ContentBlob {
+    pub source: ContentSource,
+    pub data: String,           // Content as string (bytes later)
+    pub meta: BlobMeta,
+}
+
+pub struct BlobMeta {
+    pub size: usize,
+    pub hash: Option<String>,   // SHA256 for caching/dedup
+    pub content_type: Option<String>,
+    pub etag: Option<String>,   // For HTTP/S3 caching
+}
+```
+
+---
+
+### Acquisition Flow Examples
+
+**File blob:**
+```
+ContentSource::File { path: "src/main.rs" }
+    ↓
+[PrepareAcquire] → Request::File(FileRequest::Read { path })
+    ↓
+[Execute] → Response::File(FileResponse { content, ... })
+    ↓
+[ParseAcquire] → ContentBlob { data: content, meta: { size, hash } }
+```
+
+**Git blob:**
+```
+ContentSource::GitBlob { ref_: "HEAD", path: "src/main.rs" }
+    ↓
+[PrepareAcquire] → Request::Shell("git show HEAD:src/main.rs")
+    ↓
+[Execute] → Response::Shell { stdout, ... }
+    ↓
+[ParseAcquire] → ContentBlob { data: stdout, meta: { hash: git_hash } }
+```
+
+**S3 blob:**
+```
+ContentSource::S3 { bucket: "my-bucket", key: "data/input.json" }
+    ↓
+[PrepareAcquire] → Request::Http(GET s3://...)
+    ↓
+[Execute] → Response::Http { body, headers, ... }
+    ↓
+[ParseAcquire] → ContentBlob { data: body, meta: { etag, size } }
+```
+
+**Inline (no acquisition):**
+```
+ContentSource::Inline { data: "..." }
+    ↓
+[PrepareAcquire] → (passthrough, no Execute needed)
+    ↓
+ContentBlob { data: "...", meta: { size, hash } }
+```
+
+---
+
+### Updated Module Dependency Graph
+
+```
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│  lib/review │────▶│ lib/llm-ops │────▶│lib/transport│
+└─────────────┘     └─────────────┘     └─────────────┘
+       │                   │                   ▲
+       │            ┌──────┴──────┐            │
+       │            │ lib/git-ops │────────────┤
+       │            └─────────────┘            │
+       │                                       │
+       └───────────▶┌─────────────┐────────────┘
+                    │  lib/blob   │
+                    └─────────────┘
+```
+
+---
+
+### Updated ReviewPhase with Blob Input
+
+```
+ENTRYPOINTS:
+  ├── source: Json (One) - ContentSource
+  ├── criteria: Json (One)
+  └── config: Json (ZeroOrOne)
+
+INTERNAL FLOW:
+  ┌──────────────────────────────────────────────────────────────┐
+  │                                                              │
+  │  [PrepareAcquire] ──req──▶ [Execute] ──▶ [ParseAcquire]     │
+  │                                               │              │
+  │                                               ▼              │
+  │  [PrepareReviewPrompt] ◀────blob.data─────────┘             │
+  │         │                                                    │
+  │         ├──prompt──▶ [LLM subdag] ──▶ [ParseReviewResponse] │
+  │         └──system──┘                          │              │
+  │                                               ▼              │
+  │                                         [findings]           │
+  │                                                              │
+  └──────────────────────────────────────────────────────────────┘
+
+INTERFACE BOUNDARIES:
+  ├── findings: Json (One) - ReviewOutput
+  └── blob_meta: Json (One) - BlobMeta (for caching)
+```
+
+Now ReviewPhase takes a `ContentSource` and handles acquisition uniformly.
+
+---
+
 *See git history for earlier design iterations.*
