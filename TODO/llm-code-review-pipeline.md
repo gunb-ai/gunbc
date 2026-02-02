@@ -481,9 +481,46 @@ pub struct CandidateTask {
 
 ## Appendix B: Content Blob Abstraction
 
-### Unified Acquisition Pattern
+### Resource Stack
 
-All DAG resources follow the same acquisition pattern:
+All acquisitions share a common base, with layers adding structure:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Layer 3: ReviewBlob                                        │
+│  Structured review content (knows schema, can be assessed)  │
+├─────────────────────────────────────────────────────────────┤
+│  Layer 2: Blob                                              │
+│  Raw data + metadata (file, git, s3, http, inline)          │
+├─────────────────────────────────────────────────────────────┤
+│  Layer 1: Resource                                          │
+│  Base acquisition (tools, blobs, locks all use this)        │
+└─────────────────────────────────────────────────────────────┘
+```
+
+Each layer builds on the one below:
+
+| Layer | Input | Output | Purpose |
+|-------|-------|--------|---------|
+| **Resource** | params | handle | Generic acquisition pattern |
+| **Blob** | source | data + meta | Raw content with caching info |
+| **ReviewBlob** | blob + schema | structured content | Review-ready, schema-aware |
+
+---
+
+### Layer 1: Resource (`core/resource/`)
+
+Base acquisition pattern shared by all resource types:
+
+```rust
+pub trait Resource {
+    type Params;
+    type Handle;
+
+    fn prepare(params: &Self::Params) -> TransportRequest;
+    fn parse(response: TransportResponse, params: &Self::Params) -> Self::Handle;
+}
+```
 
 ```
 [PrepareAcquire] → [TransportOps::Execute] → [ParseAcquire]
@@ -493,27 +530,22 @@ All DAG resources follow the same acquisition pattern:
 | Resource Type | Params | Handle | Notes |
 |---------------|--------|--------|-------|
 | **Tool** | name, version? | ToolHandle | Infinite, from environment |
-| **Blob** | source | ContentBlob | Read-only content |
+| **Blob** | BlobSource | Blob | Read-only content |
 | **Lock** | name, scope | LockHandle | Exclusive access (future) |
-
-The acquisition layer is uniform - only the params differ.
 
 ---
 
-### BlobOps (`lib/blob/ops.rs`)
+### Layer 2: Blob (`lib/blob/`)
+
+A Resource that provides data content:
 
 ```rust
 pub enum BlobOps {
-    /// Build acquisition request for content blob
+    /// Build acquisition request
     PrepareAcquire,
-
-    /// Parse response into ContentBlob
+    /// Parse response into Blob
     ParseAcquire,
-
-    /// Extract data as string (convenience)
-    ExtractData,
-
-    /// Get metadata without full content
+    /// Get metadata only (no content fetch)
     PrepareMeta,
     ParseMeta,
 }
@@ -523,7 +555,7 @@ pub enum BlobOps {
 
 | Port | Direction | Type | Cardinality | Description |
 |------|-----------|------|-------------|-------------|
-| `source` | input | `Json` | One | ContentSource specification |
+| `source` | input | `Json` | One | BlobSource specification |
 | `request` | output | `Request` | One | Transport request |
 
 **I/O**: Pure
@@ -538,48 +570,34 @@ pub enum BlobOps {
 
 **I/O**: Pure
 
----
-
-### Content Types
+#### Blob Types
 
 ```rust
-/// Where to get content from
-pub enum ContentSource {
-    /// Direct inline content (no acquisition needed)
+/// Where to get blob content from (Layer 2 params)
+pub enum BlobSource {
+    /// Direct inline content (no I/O needed)
     Inline {
         data: String,
         content_type: Option<String>,
     },
 
     /// Local filesystem
-    File {
-        path: PathBuf,
-    },
+    File { path: PathBuf },
 
-    /// Git object (blob at ref)
-    GitBlob {
-        ref_: String,      // "HEAD", "main", commit SHA
-        path: String,      // path within repo
-    },
+    /// Git object at ref
+    GitBlob { ref_: String, path: String },
 
     /// S3-compatible storage
-    S3 {
-        bucket: String,
-        key: String,
-        region: Option<String>,
-    },
+    S3 { bucket: String, key: String, region: Option<String> },
 
     /// HTTP GET
-    Http {
-        url: String,
-        headers: Option<HashMap<String, String>>,
-    },
+    Http { url: String, headers: Option<HashMap<String, String>> },
 }
 
-/// Acquired content with metadata
-pub struct ContentBlob {
-    pub source: ContentSource,
-    pub data: String,           // Content as string (bytes later)
+/// Acquired blob (Layer 2 handle)
+pub struct Blob {
+    pub source: BlobSource,
+    pub data: String,       // Content as string (bytes later)
     pub meta: BlobMeta,
 }
 
@@ -593,48 +611,116 @@ pub struct BlobMeta {
 
 ---
 
-### Acquisition Flow Examples
+### Layer 3: ReviewBlob (`lib/review/blob.rs`)
 
-**File blob:**
-```
-ContentSource::File { path: "src/main.rs" }
-    ↓
-[PrepareAcquire] → Request::File(FileRequest::Read { path })
-    ↓
-[Execute] → Response::File(FileResponse { content, ... })
-    ↓
-[ParseAcquire] → ContentBlob { data: content, meta: { size, hash } }
-```
+A Blob with review-specific structure:
 
-**Git blob:**
-```
-ContentSource::GitBlob { ref_: "HEAD", path: "src/main.rs" }
-    ↓
-[PrepareAcquire] → Request::Shell("git show HEAD:src/main.rs")
-    ↓
-[Execute] → Response::Shell { stdout, ... }
-    ↓
-[ParseAcquire] → ContentBlob { data: stdout, meta: { hash: git_hash } }
+```rust
+pub enum ReviewBlobOps {
+    /// Wrap a Blob with schema information
+    WrapBlob,
+    /// Extract content in review-ready format
+    PrepareForReview,
+}
 ```
 
-**S3 blob:**
-```
-ContentSource::S3 { bucket: "my-bucket", key: "data/input.json" }
-    ↓
-[PrepareAcquire] → Request::Http(GET s3://...)
-    ↓
-[Execute] → Response::Http { body, headers, ... }
-    ↓
-[ParseAcquire] → ContentBlob { data: body, meta: { etag, size } }
+#### WrapBlob
+
+| Port | Direction | Type | Cardinality | Description |
+|------|-----------|------|-------------|-------------|
+| `blob` | input | `Json` | One | Raw Blob from Layer 2 |
+| `schema` | input | `Json` | One | ContentSchema (how to interpret) |
+| `review_blob` | output | `Json` | One | ReviewBlob ready for assessment |
+
+**I/O**: Pure
+
+#### ReviewBlob Types
+
+```rust
+/// How to interpret blob content for review
+pub enum ContentSchema {
+    /// Source code with language hint
+    Code { language: Option<String> },
+
+    /// Structured diff (unified format)
+    Diff { base_ref: Option<String> },
+
+    /// Design document
+    Design { format: DocFormat },
+
+    /// Test output / logs
+    TestOutput { format: OutputFormat },
+
+    /// Freeform text
+    Text,
+}
+
+pub enum DocFormat { Markdown, PlainText, Html }
+pub enum OutputFormat { TestRunner, BuildLog, Structured }
+
+/// Blob with review context (Layer 3 handle)
+pub struct ReviewBlob {
+    pub blob: Blob,              // Underlying data
+    pub schema: ContentSchema,   // How to interpret
+    pub extracted: ExtractedContent, // Pre-processed for review
+}
+
+/// Content extracted based on schema
+pub enum ExtractedContent {
+    Code {
+        language: String,
+        lines: Vec<String>,
+        // Future: AST, symbols, etc.
+    },
+    Diff {
+        hunks: Vec<DiffHunk>,
+        files_changed: Vec<String>,
+    },
+    Design {
+        sections: Vec<Section>,
+    },
+    Text {
+        content: String,
+    },
+}
 ```
 
-**Inline (no acquisition):**
+---
+
+### Full Stack Example
+
 ```
-ContentSource::Inline { data: "..." }
-    ↓
-[PrepareAcquire] → (passthrough, no Execute needed)
-    ↓
-ContentBlob { data: "...", meta: { size, hash } }
+User wants to review a git diff:
+
+1. Resource layer:
+   BlobSource::GitBlob { ref_: "HEAD~1..HEAD", path: "." }
+       ↓
+   [PrepareAcquire] → Request::Shell("git diff HEAD~1..HEAD")
+       ↓
+   [Execute] → Response::Shell { stdout: "diff --git..." }
+       ↓
+   [ParseAcquire] → Blob { data: "diff --git...", meta: {...} }
+
+2. Blob layer: ✓ (output of step 1)
+
+3. ReviewBlob layer:
+   Blob + ContentSchema::Diff { base_ref: "HEAD~1" }
+       ↓
+   [WrapBlob] → ReviewBlob {
+       blob: Blob { ... },
+       schema: Diff { ... },
+       extracted: ExtractedContent::Diff {
+           hunks: [...],
+           files_changed: ["src/main.rs", ...]
+       }
+   }
+
+4. Review layer:
+   ReviewBlob + Criteria
+       ↓
+   [PrepareReviewPrompt] → prompt with structured diff context
+       ↓
+   [LLM] → findings
 ```
 
 ---
@@ -642,50 +728,81 @@ ContentBlob { data: "...", meta: { size, hash } }
 ### Updated Module Dependency Graph
 
 ```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│  lib/review │────▶│ lib/llm-ops │────▶│lib/transport│
-└─────────────┘     └─────────────┘     └─────────────┘
-       │                   │                   ▲
-       │            ┌──────┴──────┐            │
-       │            │ lib/git-ops │────────────┤
-       │            └─────────────┘            │
-       │                                       │
-       └───────────▶┌─────────────┐────────────┘
-                    │  lib/blob   │
-                    └─────────────┘
+┌───────────────────────────────────────────────────────────────┐
+│                        lib/review                             │
+│  (ReviewBlob, ReviewOps, Criteria, Finding)                   │
+└───────────────────────────────────────────────────────────────┘
+                              │
+           ┌──────────────────┼──────────────────┐
+           ▼                  ▼                  ▼
+┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
+│    lib/blob     │  │   lib/llm-ops   │  │   lib/git-ops   │
+│  (Blob, BlobOps)│  │ (PrepareChatReq)│  │  (PrepareDiff)  │
+└─────────────────┘  └─────────────────┘  └─────────────────┘
+           │                  │                  │
+           └──────────────────┼──────────────────┘
+                              ▼
+                 ┌─────────────────────────┐
+                 │    core/resource        │
+                 │  (Resource trait)       │
+                 └─────────────────────────┘
+                              │
+                              ▼
+                 ┌─────────────────────────┐
+                 │    lib/transport        │
+                 │  (TransportOps::Execute)│
+                 └─────────────────────────┘
 ```
 
 ---
 
-### Updated ReviewPhase with Blob Input
+### Updated ReviewPhase DAG (with stack)
 
 ```
 ENTRYPOINTS:
-  ├── source: Json (One) - ContentSource
-  ├── criteria: Json (One)
+  ├── source: Json (One) - BlobSource
+  ├── schema: Json (One) - ContentSchema
+  ├── criteria: Json (One) - Criteria
   └── config: Json (ZeroOrOne)
 
 INTERNAL FLOW:
-  ┌──────────────────────────────────────────────────────────────┐
-  │                                                              │
-  │  [PrepareAcquire] ──req──▶ [Execute] ──▶ [ParseAcquire]     │
-  │                                               │              │
-  │                                               ▼              │
-  │  [PrepareReviewPrompt] ◀────blob.data─────────┘             │
-  │         │                                                    │
-  │         ├──prompt──▶ [LLM subdag] ──▶ [ParseReviewResponse] │
-  │         └──system──┘                          │              │
-  │                                               ▼              │
-  │                                         [findings]           │
-  │                                                              │
-  └──────────────────────────────────────────────────────────────┘
+  ┌────────────────────────────────────────────────────────────────┐
+  │                                                                │
+  │  Layer 1-2: Blob Acquisition                                   │
+  │  ┌──────────────────────────────────────────────────────────┐  │
+  │  │ [PrepareAcquire] ──req──▶ [Execute] ──▶ [ParseAcquire]  │  │
+  │  │                                               │          │  │
+  │  │                                               ▼          │  │
+  │  │                                             Blob         │  │
+  │  └──────────────────────────────────────────────────────────┘  │
+  │                                                  │              │
+  │  Layer 3: ReviewBlob                             ▼              │
+  │  ┌──────────────────────────────────────────────────────────┐  │
+  │  │ [WrapBlob] ◀──── Blob + schema                          │  │
+  │  │      │                                                   │  │
+  │  │      ▼                                                   │  │
+  │  │  ReviewBlob (with ExtractedContent)                      │  │
+  │  └──────────────────────────────────────────────────────────┘  │
+  │                                                  │              │
+  │  Layer 4: Review                                 ▼              │
+  │  ┌──────────────────────────────────────────────────────────┐  │
+  │  │ [PrepareReviewPrompt] ◀──── ReviewBlob + criteria       │  │
+  │  │        │                                                 │  │
+  │  │        ├──prompt──▶ [LLM subdag] ──▶ [ParseResponse]    │  │
+  │  │        └──system──┘                        │             │  │
+  │  │                                            ▼             │  │
+  │  │                                      ReviewOutput        │  │
+  │  └──────────────────────────────────────────────────────────┘  │
+  │                                                                │
+  └────────────────────────────────────────────────────────────────┘
 
 INTERFACE BOUNDARIES:
   ├── findings: Json (One) - ReviewOutput
-  └── blob_meta: Json (One) - BlobMeta (for caching)
+  ├── blob_meta: Json (One) - BlobMeta (for caching)
+  └── extracted: Json (One) - ExtractedContent (for downstream)
 ```
 
-Now ReviewPhase takes a `ContentSource` and handles acquisition uniformly.
+Each layer is independently testable and reusable.
 
 ---
 
