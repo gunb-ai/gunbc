@@ -611,198 +611,108 @@ pub struct BlobMeta {
 
 ---
 
-### Layer 3: ReviewBlob (`lib/review/blob.rs`)
+### Generic LLM Query (`lib/llm-ops/`)
 
-A Blob with review-specific structure:
+A simple primitive: content + question → answer
 
 ```rust
-pub enum ReviewBlobOps {
-    /// Wrap a Blob with schema information
-    WrapBlob,
-    /// Extract content in review-ready format
-    PrepareForReview,
+pub enum LlmQueryOps {
+    /// Build a query from content and question
+    PrepareQuery,
+    /// Parse structured response
+    ParseQuery,
 }
 ```
 
-#### WrapBlob
+#### PrepareQuery
 
 | Port | Direction | Type | Cardinality | Description |
 |------|-----------|------|-------------|-------------|
-| `blob` | input | `Json` | One | Raw Blob from Layer 2 |
-| `schema` | input | `Json` | One | ContentSchema (how to interpret) |
-| `review_blob` | output | `Json` | One | ReviewBlob ready for assessment |
+| `content` | input | `Str` | One | Content to query (blob.data) |
+| `question` | input | `Str` | One | What to ask about the content |
+| `schema` | input | `Json` | ZeroOrOne | Expected response structure |
+| `request` | output | `Request` | One | LLM request |
 
 **I/O**: Pure
 
-#### ReviewBlob Types
+#### ParseQuery
 
-```rust
-/// How to interpret blob content for review
-pub enum ContentSchema {
-    /// Source code with language hint
-    Code { language: Option<String> },
+| Port | Direction | Type | Cardinality | Description |
+|------|-----------|------|-------------|-------------|
+| `response` | input | `Response` | One | LLM response |
+| `schema` | input | `Json` | ZeroOrOne | For validation |
+| `answer` | output | `Json` | One | Parsed answer |
+| `raw` | output | `Str` | One | Raw response text |
 
-    /// Structured diff (unified format)
-    Diff { base_ref: Option<String> },
+**I/O**: Pure
 
-    /// Design document
-    Design { format: DocFormat },
+---
 
-    /// Test output / logs
-    TestOutput { format: OutputFormat },
+### How Review Uses This
 
-    /// Freeform text
-    Text,
-}
+Review is just LLM query with review-specific criteria:
 
-pub enum DocFormat { Markdown, PlainText, Html }
-pub enum OutputFormat { TestRunner, BuildLog, Structured }
+```
+Blob.data + Criteria → LlmQuery → ReviewOutput
+```
 
-/// Blob with review context (Layer 3 handle)
-pub struct ReviewBlob {
-    pub blob: Blob,              // Underlying data
-    pub schema: ContentSchema,   // How to interpret
-    pub extracted: ExtractedContent, // Pre-processed for review
-}
+The review layer:
+1. Takes a Blob (any content)
+2. Builds a question from Criteria (the review-specific part)
+3. Uses generic LlmQuery
+4. Parses response into ReviewOutput (findings, etc.)
 
-/// Content extracted based on schema
-pub enum ExtractedContent {
-    Code {
-        language: String,
-        lines: Vec<String>,
-        // Future: AST, symbols, etc.
-    },
-    Diff {
-        hunks: Vec<DiffHunk>,
-        files_changed: Vec<String>,
-    },
-    Design {
-        sections: Vec<Section>,
-    },
-    Text {
-        content: String,
-    },
-}
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Review (lib/review/)                                       │
+│  Knows: criteria → question, response → findings            │
+├─────────────────────────────────────────────────────────────┤
+│  LlmQuery (lib/llm-ops/)                                    │
+│  Generic: content + question → answer                       │
+├─────────────────────────────────────────────────────────────┤
+│  Blob (lib/blob/)                                           │
+│  Generic: source → data + meta                              │
+├─────────────────────────────────────────────────────────────┤
+│  Resource (core/resource/)                                  │
+│  Generic: params → handle                                   │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-### Full Stack Example
-
-```
-User wants to review a git diff:
-
-1. Resource layer:
-   BlobSource::GitBlob { ref_: "HEAD~1..HEAD", path: "." }
-       ↓
-   [PrepareAcquire] → Request::Shell("git diff HEAD~1..HEAD")
-       ↓
-   [Execute] → Response::Shell { stdout: "diff --git..." }
-       ↓
-   [ParseAcquire] → Blob { data: "diff --git...", meta: {...} }
-
-2. Blob layer: ✓ (output of step 1)
-
-3. ReviewBlob layer:
-   Blob + ContentSchema::Diff { base_ref: "HEAD~1" }
-       ↓
-   [WrapBlob] → ReviewBlob {
-       blob: Blob { ... },
-       schema: Diff { ... },
-       extracted: ExtractedContent::Diff {
-           hunks: [...],
-           files_changed: ["src/main.rs", ...]
-       }
-   }
-
-4. Review layer:
-   ReviewBlob + Criteria
-       ↓
-   [PrepareReviewPrompt] → prompt with structured diff context
-       ↓
-   [LLM] → findings
-```
-
----
-
-### Updated Module Dependency Graph
-
-```
-┌───────────────────────────────────────────────────────────────┐
-│                        lib/review                             │
-│  (ReviewBlob, ReviewOps, Criteria, Finding)                   │
-└───────────────────────────────────────────────────────────────┘
-                              │
-           ┌──────────────────┼──────────────────┐
-           ▼                  ▼                  ▼
-┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
-│    lib/blob     │  │   lib/llm-ops   │  │   lib/git-ops   │
-│  (Blob, BlobOps)│  │ (PrepareChatReq)│  │  (PrepareDiff)  │
-└─────────────────┘  └─────────────────┘  └─────────────────┘
-           │                  │                  │
-           └──────────────────┼──────────────────┘
-                              ▼
-                 ┌─────────────────────────┐
-                 │    core/resource        │
-                 │  (Resource trait)       │
-                 └─────────────────────────┘
-                              │
-                              ▼
-                 ┌─────────────────────────┐
-                 │    lib/transport        │
-                 │  (TransportOps::Execute)│
-                 └─────────────────────────┘
-```
-
----
-
-### Updated ReviewPhase DAG (with stack)
+### Simplified ReviewPhase DAG
 
 ```
 ENTRYPOINTS:
   ├── source: Json (One) - BlobSource
-  ├── schema: Json (One) - ContentSchema
   ├── criteria: Json (One) - Criteria
   └── config: Json (ZeroOrOne)
 
 INTERNAL FLOW:
   ┌────────────────────────────────────────────────────────────────┐
   │                                                                │
-  │  Layer 1-2: Blob Acquisition                                   │
-  │  ┌──────────────────────────────────────────────────────────┐  │
-  │  │ [PrepareAcquire] ──req──▶ [Execute] ──▶ [ParseAcquire]  │  │
-  │  │                                               │          │  │
-  │  │                                               ▼          │  │
-  │  │                                             Blob         │  │
-  │  └──────────────────────────────────────────────────────────┘  │
-  │                                                  │              │
-  │  Layer 3: ReviewBlob                             ▼              │
-  │  ┌──────────────────────────────────────────────────────────┐  │
-  │  │ [WrapBlob] ◀──── Blob + schema                          │  │
-  │  │      │                                                   │  │
-  │  │      ▼                                                   │  │
-  │  │  ReviewBlob (with ExtractedContent)                      │  │
-  │  └──────────────────────────────────────────────────────────┘  │
-  │                                                  │              │
-  │  Layer 4: Review                                 ▼              │
-  │  ┌──────────────────────────────────────────────────────────┐  │
-  │  │ [PrepareReviewPrompt] ◀──── ReviewBlob + criteria       │  │
-  │  │        │                                                 │  │
-  │  │        ├──prompt──▶ [LLM subdag] ──▶ [ParseResponse]    │  │
-  │  │        └──system──┘                        │             │  │
-  │  │                                            ▼             │  │
-  │  │                                      ReviewOutput        │  │
-  │  └──────────────────────────────────────────────────────────┘  │
+  │  [BlobOps::PrepareAcquire] ──▶ [Execute] ──▶ [ParseAcquire]   │
+  │                                                   │            │
+  │                                                   ▼            │
+  │  [ReviewOps::BuildQuestion] ◀─── blob.data + criteria         │
+  │         │                                                      │
+  │         ▼                                                      │
+  │  [LlmQueryOps::PrepareQuery] ──▶ [Execute] ──▶ [ParseQuery]   │
+  │                                                   │            │
+  │                                                   ▼            │
+  │  [ReviewOps::ParseFindings] ◀─── answer                       │
+  │         │                                                      │
+  │         ▼                                                      │
+  │    ReviewOutput                                                │
   │                                                                │
   └────────────────────────────────────────────────────────────────┘
 
 INTERFACE BOUNDARIES:
   ├── findings: Json (One) - ReviewOutput
-  ├── blob_meta: Json (One) - BlobMeta (for caching)
-  └── extracted: Json (One) - ExtractedContent (for downstream)
+  └── blob_meta: Json (One) - BlobMeta (for caching)
 ```
 
-Each layer is independently testable and reusable.
+Each layer is generic and reusable. Review just adds the domain knowledge of what questions to ask and how to interpret answers.
 
 ---
 
