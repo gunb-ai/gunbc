@@ -42,6 +42,7 @@ use gunbc_test::MockSpec;
 /// - Scenario coverage (success + per-transport failure + guard toggles)
 /// - Resource hygiene (connectivity, ownership, conflicts)
 /// - Resource simulation (MockSpec-based acquisition/timeout)
+/// - Node I/O example tests (when MockSpec has node_examples)
 #[derive(Debug, Clone)]
 pub struct TestConfig {
     /// Generate Bucket A tests (execution semantics)
@@ -58,6 +59,8 @@ pub struct TestConfig {
     pub chain_tests: bool,
     /// Generate flow verification tests (DryRun full DAG, verify terminal outputs)
     pub flow_tests: bool,
+    /// Generate per-node I/O example tests (from MockSpec.node_examples)
+    pub example_tests: bool,
     /// Test module visibility
     pub visibility: String,
 }
@@ -72,6 +75,7 @@ impl Default for TestConfig {
             boundary_tests: true,
             chain_tests: true,
             flow_tests: false,
+            example_tests: true,
             visibility: "pub".to_string(),
         }
     }
@@ -285,6 +289,13 @@ impl<'a, T> TestGenerator<'a, T> {
 
         if self.config.flow_tests {
             code.push_str(&self.generate_flow_tests(&analysis, graph_builder_fn));
+        }
+
+        // ===================================================================
+        // Node I/O Example Tests (from MockSpec.node_examples)
+        // ===================================================================
+        if self.config.example_tests {
+            code.push_str(&self.generate_node_example_tests(graph_builder_fn));
         }
 
         code
@@ -1340,6 +1351,121 @@ impl<'a, T> TestGenerator<'a, T> {
 
         code
     }
+
+    // =======================================================================
+    // Node I/O Example Tests
+    // =======================================================================
+
+    /// Generate tests from MockSpec.node_examples.
+    ///
+    /// Each NodeExample produces a test that:
+    /// 1. Executes the single node with the given inputs
+    /// 2. Asserts outputs match the expected matchers
+    fn generate_node_example_tests(&self, graph_builder_fn: &str) -> String {
+        let mut code = String::new();
+
+        let Some(spec) = &self.mock_spec else {
+            return code;
+        };
+
+        if spec.node_examples.is_empty() {
+            return code;
+        }
+
+        code.push_str(
+            "// ============================================================================\n",
+        );
+        code.push_str("// Node I/O Example Tests\n");
+        code.push_str(
+            "// These tests verify individual node behavior against specified examples.\n",
+        );
+        code.push_str(
+            "// Each test executes a single node with given inputs and checks outputs.\n",
+        );
+        code.push_str(
+            "// ============================================================================\n\n",
+        );
+
+        for (idx, example) in spec.node_examples.iter().enumerate() {
+            let test_name = if let Some(desc) = &example.description {
+                // Sanitize description to valid Rust identifier
+                let sanitized_desc: String = desc
+                    .chars()
+                    .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+                    .collect::<String>()
+                    .to_lowercase();
+                format!(
+                    "test_example_{}_{}",
+                    NamingCase::SnakeCase.apply(&example.node_id),
+                    sanitized_desc
+                )
+            } else {
+                format!(
+                    "test_example_{}_{}",
+                    NamingCase::SnakeCase.apply(&example.node_id),
+                    idx
+                )
+            };
+
+            // Doc comment
+            if let Some(desc) = &example.description {
+                code.push_str(&format!("/// Node example: {} - {}\n", example.node_id, desc));
+            } else {
+                code.push_str(&format!(
+                    "/// Node example: {} (example {})\n",
+                    example.node_id, idx
+                ));
+            }
+            code.push_str("///\n");
+            code.push_str(&format!(
+                "/// Tests that node '{}' produces expected outputs for given inputs.\n",
+                example.node_id
+            ));
+            code.push_str("#[test]\n");
+            code.push_str(&format!("fn {}() {{\n", test_name));
+            code.push_str(&format!("    let dag = {};\n", graph_builder_fn));
+            code.push_str("    let mut inputs = std::collections::HashMap::new();\n");
+
+            // Set up inputs
+            for (port, value) in &example.inputs {
+                code.push_str(&format!(
+                    "    inputs.insert(\"{}\".to_string(), {});\n",
+                    port,
+                    value_to_rust_literal(value)
+                ));
+            }
+
+            // Execute single node
+            code.push_str(&format!(
+                "    let outputs = gunbc_exec::execute_single_node(&dag, \"{}\", inputs, gunbc_exec::ExecutionMode::Real)\n",
+                example.node_id
+            ));
+            code.push_str(&format!(
+                "        .expect(\"node '{}' should execute successfully\");\n\n",
+                example.node_id
+            ));
+
+            // Assert outputs
+            for (port, matcher) in &example.outputs {
+                code.push_str(&format!("    // Check output port '{}'\n", port));
+                code.push_str(&format!(
+                    "    let output_{} = outputs.get(\"{}\").expect(\"output port '{}' should exist\");\n",
+                    NamingCase::SnakeCase.apply(port), port, port
+                ));
+
+                // Generate assertion based on matcher type
+                let check_code = matcher.to_check_code(&format!(
+                    "output_{}",
+                    NamingCase::SnakeCase.apply(port)
+                ));
+                code.push_str(&format!("    {}\n", check_code));
+            }
+
+            code.push_str("}\n\n");
+        }
+
+        code
+    }
 }
 
 /// Sanitize a resource ID into a valid snake_case Rust identifier.
@@ -1707,5 +1833,128 @@ mod tests {
 
         // Should generate tests without panicking
         assert!(code.contains("test_boundaries_mockable"));
+    }
+
+    #[test]
+    fn test_generate_with_node_examples() {
+        use gunbc_test::{NodeExample, OutputMatcher};
+
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque(
+            "prepare",
+            vec![port("input", "String")],
+            vec![port("output", "String")],
+            (),
+        ));
+        dag.add_node(Node::opaque(
+            "process",
+            vec![port("data", "String")],
+            vec![port("result", "String")],
+            (),
+        ));
+        dag.add_edge(edge("prepare", "output", "process", "data"));
+
+        // Create examples for testing node I/O
+        let example = NodeExample::new("prepare")
+            .input("input", Value::Str("test input".into()))
+            .output("output", OutputMatcher::non_empty())
+            .description("basic input processing");
+
+        let spec = MockSpec::new("test")
+            .boundary("process", "result", Value::Str("test_output".into()))
+            .node_example(example);
+
+        let generator = TestGenerator::new(&dag).with_mock_spec(spec);
+        let code = generator.generate_test_module("example", "build_example_graph()");
+
+        // Should have node example tests section
+        assert!(
+            code.contains("Node I/O Example Tests"),
+            "should have example tests section header"
+        );
+
+        // Should generate test function (description sanitized to snake_case)
+        assert!(
+            code.contains("test_example_prepare_basic_input_processing"),
+            "should generate test with description-based name: {}", code
+        );
+
+        // Should use execute_single_node
+        assert!(
+            code.contains("execute_single_node"),
+            "should use execute_single_node to run individual node"
+        );
+
+        // Should have input setup
+        assert!(
+            code.contains("inputs.insert"),
+            "should set up inputs from example"
+        );
+
+        // Should have output assertion
+        assert!(
+            code.contains("is_empty"),
+            "should have non_empty assertion check"
+        );
+    }
+
+    #[test]
+    fn test_generate_with_exact_matcher() {
+        use gunbc_test::{NodeExample, OutputMatcher};
+
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque(
+            "echo",
+            vec![port("input", "String")],
+            vec![port("output", "String")],
+            (),
+        ));
+
+        let example = NodeExample::new("echo")
+            .input("input", Value::Str("hello".into()))
+            .output("output", OutputMatcher::exact(Value::Str("hello".into())));
+
+        let spec = MockSpec::new("test")
+            .boundary("echo", "output", Value::Str("hello".into()))
+            .node_example(example);
+
+        let generator = TestGenerator::new(&dag).with_mock_spec(spec);
+        let code = generator.generate_test_module("exact", "build_exact_graph()");
+
+        // Should have exact assertion
+        assert!(
+            code.contains("assert_eq!"),
+            "should have exact match assertion"
+        );
+    }
+
+    #[test]
+    fn test_generate_with_contains_matcher() {
+        use gunbc_test::{NodeExample, OutputMatcher};
+
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque(
+            "format",
+            vec![port("data", "String")],
+            vec![port("message", "String")],
+            (),
+        ));
+
+        let example = NodeExample::new("format")
+            .input("data", Value::Str("world".into()))
+            .output("message", OutputMatcher::contains("hello"));
+
+        let spec = MockSpec::new("test")
+            .boundary("format", "message", Value::Str("hello world".into()))
+            .node_example(example);
+
+        let generator = TestGenerator::new(&dag).with_mock_spec(spec);
+        let code = generator.generate_test_module("contains", "build_contains_graph()");
+
+        // Should have contains assertion
+        assert!(
+            code.contains("contains(\"hello\")"),
+            "should have contains check in assertion"
+        );
     }
 }
