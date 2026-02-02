@@ -416,9 +416,12 @@ fn execute_flat<T: Executable>(
             .get(node_id.0.as_str())
             .ok_or_else(|| ExecError::new(format!("node '{}' not found", node_id.0)))?;
 
-        // Start CI group for this node
-        if let Some(ref mut ci) = ci_ctx {
-            ci.start_group(&node_id.0, false);
+        // Start CI group for this node (skip for "report" so it's not collapsed)
+        let use_group = node_id.0 != "report";
+        if use_group {
+            if let Some(ref mut ci) = ci_ctx {
+                ci.start_group(&node_id.0, false);
+            }
         }
 
         // Gather inputs from upstream edges
@@ -486,7 +489,9 @@ fn execute_flat<T: Executable>(
                                 // Emit CI error annotation if context available
                                 if let Some(ref mut ci) = ci_ctx {
                                     ci.error(&format!("Node '{}' failed: {}", node_id.0, e), None);
-                                    ci.end_group(); // Close the group before returning error
+                                    if use_group {
+                                        ci.end_group(); // Close the group before returning error
+                                    }
                                 }
                                 return Err(e);
                             }
@@ -499,7 +504,9 @@ fn execute_flat<T: Executable>(
                         );
                         if let Some(ref mut ci) = ci_ctx {
                             ci.error(&err_msg, None);
-                            ci.end_group();
+                            if use_group {
+                                ci.end_group();
+                            }
                         }
                         return Err(ExecError::new(err_msg));
                     }
@@ -531,9 +538,11 @@ fn execute_flat<T: Executable>(
         }
         entries.push(entry);
 
-        // End CI group for this node
-        if let Some(ref mut ci) = ci_ctx {
-            ci.end_group();
+        // End CI group for this node (skip for "report" since we didn't start one)
+        if use_group {
+            if let Some(ref mut ci) = ci_ctx {
+                ci.end_group();
+            }
         }
     }
 
