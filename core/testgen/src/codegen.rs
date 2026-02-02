@@ -113,10 +113,42 @@ impl<'a, T> TestGenerator<'a, T> {
     ///
     /// This is the main entry point. It:
     /// 1. Analyzes the DAG structure
-    /// 2. Collects proof obligations
-    /// 3. Generates tests for undischarged obligations
+    /// 2. Validates MockSpec requirement (panics if missing for DAGs with transports)
+    /// 3. Collects proof obligations
+    /// 4. Generates tests for undischarged obligations
+    ///
+    /// # Panics
+    ///
+    /// Panics if the DAG has transport executor nodes but no MockSpec was provided.
+    /// This ensures that test generation fails early with a clear message rather than
+    /// producing incomplete tests.
     pub fn generate_test_module(&self, module_name: &str, graph_builder_fn: &str) -> String {
         let analysis = analyze_dag(self.dag);
+
+        // Validate MockSpec requirement for DAGs with transport nodes
+        if !analysis.transport_executors.is_empty() && self.mock_spec.is_none() {
+            panic!(
+                "MockSpec required: DAG '{}' has {} transport executor node(s) ({}) but no MockSpec was provided.\n\
+                 \n\
+                 To fix this, create a MockSpec and pass it to TestGenerator:\n\
+                 \n\
+                 ```rust\n\
+                 let spec = MockSpec::new(\"{}\")\n\
+                     .boundary(\"<transport_node>\", \"response\", mock_response());\n\
+                 \n\
+                 TestGenerator::new(&dag)\n\
+                     .with_mock_spec(spec)\n\
+                     .generate_test_module(...)\n\
+                 ```\n\
+                 \n\
+                 Transport nodes require mocks to specify what values they return during testing.",
+                module_name,
+                analysis.transport_executors.len(),
+                analysis.transport_executors.join(", "),
+                module_name
+            );
+        }
+
         let obligations = collect_obligations(self.dag, None, None);
         let mut code = String::new();
 
@@ -1511,7 +1543,11 @@ mod tests {
         dag.add_edge(edge("prepare", "request", "execute", "request"));
         dag.add_edge(edge("execute", "response", "parse", "response"));
 
-        let generator = TestGenerator::new(&dag);
+        // MockSpec required for DAGs with transport executors
+        let spec = MockSpec::new("example")
+            .boundary("execute", "response", Value::Str("<MOCK_RESPONSE>".into()));
+
+        let generator = TestGenerator::new(&dag).with_mock_spec(spec);
         let code = generator.generate_test_module("example", "build_example_graph()");
 
         // Should have transport interception test
@@ -1563,7 +1599,12 @@ mod tests {
         dag.add_edge(edge("check", "condition", "process", "condition"));
         dag.add_edge(edge("check", "response", "process", "data"));
 
-        let generator = TestGenerator::new(&dag);
+        // MockSpec required for DAGs with transport executors
+        let spec = MockSpec::new("guarded")
+            .boundary("check", "response", Value::Str("<MOCK>".into()))
+            .boundary("check", "condition", Value::Bool(true));
+
+        let generator = TestGenerator::new(&dag).with_mock_spec(spec);
         let code = generator.generate_test_module("guarded", "build_guarded_graph()");
 
         // Should have guard branch coverage test
@@ -1625,5 +1666,46 @@ mod tests {
             !code.contains("test_guard_conditional_status_branch_coverage"),
             "should NOT generate test function for non-Bool guard"
         );
+    }
+
+    #[test]
+    #[should_panic(expected = "MockSpec required")]
+    fn test_mockspec_required_for_transport_dags() {
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque(
+            "execute",
+            vec![port("request", "TransportRequest")],
+            vec![port("response", "TransportResponse")],
+            (),
+        ));
+
+        // No MockSpec provided - should panic
+        let generator = TestGenerator::new(&dag);
+        let _ = generator.generate_test_module("test", "build_test_graph()");
+    }
+
+    #[test]
+    fn test_no_mockspec_required_for_pure_dags() {
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque(
+            "source",
+            vec![],
+            vec![port("out", "String")],
+            (),
+        ));
+        dag.add_node(Node::opaque(
+            "sink",
+            vec![port("in", "String")],
+            vec![port("result", "String")],
+            (),
+        ));
+        dag.add_edge(edge("source", "out", "sink", "in"));
+
+        // No MockSpec needed for pure DAGs (no transport nodes)
+        let generator = TestGenerator::new(&dag);
+        let code = generator.generate_test_module("pure", "build_pure_graph()");
+
+        // Should generate tests without panicking
+        assert!(code.contains("test_boundaries_mockable"));
     }
 }
