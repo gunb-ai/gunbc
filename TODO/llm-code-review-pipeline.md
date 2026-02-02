@@ -82,6 +82,55 @@ GitOps::PrepareDiff → Execute → ReviewOps::PreparePrompt → LLM → ParseRe
 
 ---
 
+## Concurrent Design Tracks
+
+These abstractions need to be designed together - changes in one affect the others:
+
+### Track 1: Resource Abstraction (`core/resource/`)
+- [ ] `Resource` trait: `prepare(params) → request`, `parse(response) → handle`
+- [ ] Unified acquisition pattern for tools, blobs, locks
+- [ ] How does this interact with existing `TransportOps`?
+- [ ] Caching/memoization at resource level?
+
+### Track 2: Blob Abstraction (`lib/blob/`)
+- [ ] `BlobSource` enum: Inline, File, GitBlob, S3, Http
+- [ ] `Blob` struct: source + data + meta
+- [ ] `BlobMeta`: size, hash, etag for caching
+- [ ] How do blobs flow through DAG edges?
+- [ ] Blob as Value variant vs Json serialization?
+
+### Track 3: LLM Query Abstraction (`lib/llm-ops/`)
+- [ ] `LlmQueryOps`: PrepareQuery, ParseQuery
+- [ ] content + question + schema? → answer
+- [ ] Relationship to existing `PrepareChatRequest`/`ParseChatResponse`
+- [ ] Structured output schemas (JSON mode, tool use, etc.)
+
+### Track 4: Review Domain (`lib/review/`)
+- [ ] `ReviewOps`: BuildQuestion, ParseFindings
+- [ ] Criteria → question formatting
+- [ ] Answer → findings parsing
+- [ ] How findings flow back for remediation
+
+### Track 5: DAG Composition
+- [ ] How do phases compose as subdags?
+- [ ] Entrypoint/boundary detection with new abstractions
+- [ ] DryRun interception points
+- [ ] Parallel execution with resource access declarations
+
+### Track 6: Transport & I/O
+- [ ] Read vs Write classification
+- [ ] How Resource trait integrates with TransportOps::Execute
+- [ ] Inline sources (no I/O needed) - special case?
+
+### Open Questions
+
+1. **Blob as first-class Value?** Should `Value::Blob(Blob)` exist, or always serialize to Json?
+2. **Resource caching** - at what layer? Transport? Resource? Blob?
+3. **Schema validation** - where does LLM response validation happen?
+4. **Review output as blob** - can findings be stored/passed as blobs for further processing?
+
+---
+
 ## Implementation Plan
 
 ### Section 1: Core Types (`lib/review/`)
