@@ -20,8 +20,5 @@ pub use ops::CIOp;
 #[cfg(test)]
 mod generated_tests {
     #![allow(unused_imports)]
-    fn mock_spec() -> gunbc_test::MockSpec {
-        crate::ci::graph_mock::ci_mock_spec()
-    }
     include!("generated_tests.rs");
 }

@@ -1,0 +1,19 @@
+[package]
+name = "gunbc-lib-review"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Code review types and operations for gunbc DAGs"
+
+[dependencies]
+gunbc-ir = { path = "../../core/ir" }
+gunbc-exec = { path = "../../core/exec" }
+gunbc-lib-blob = { path = "../blob" }
+gunbc-lib-llm-ops = { path = "../llm-ops" }
+gunbc-lib-transport = { path = "../transport" }
+serde.workspace = true
+serde_json.workspace = true
+sha2 = "0.10"
+
+[dev-dependencies]
+gunbc-test = { path = "../../core/test" }

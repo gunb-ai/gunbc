@@ -63,6 +63,36 @@ pub enum LlmOps {
     /// - `input_tokens`: i64 - tokens in the prompt
     /// - `output_tokens`: i64 - tokens in the completion
     ParseChatResponse,
+
+    // ========================================================================
+    // Simple request/response (string in → string out)
+    // ========================================================================
+
+    /// Prepare a simple LLM request: content + question → request.
+    ///
+    /// This is a convenience wrapper that builds a single-turn chat request.
+    ///
+    /// Inputs:
+    /// - `content`: String - the content/context to analyze
+    /// - `question`: String - what to ask about the content
+    /// - `provider`: String - provider ID (e.g., "openai", "anthropic")
+    /// - `model`: String - model identifier
+    /// - `system_prompt` (optional): String - system instructions
+    ///
+    /// Outputs:
+    /// - `request`: TransportRequest (Rest)
+    /// - `provider`: String - echoed for use in ParseSimpleResponse
+    PrepareSimpleRequest,
+
+    /// Parse a simple LLM response: response → answer string.
+    ///
+    /// Inputs:
+    /// - `provider`: String - provider ID
+    /// - `response`: TransportResponse (Rest)
+    ///
+    /// Outputs:
+    /// - `answer`: String - the generated text
+    ParseSimpleResponse,
 }
 
 impl Executable for LlmOps {
@@ -70,6 +100,8 @@ impl Executable for LlmOps {
         match self {
             LlmOps::PrepareChatRequest => execute_prepare_chat_request(inputs),
             LlmOps::ParseChatResponse => execute_parse_chat_response(inputs),
+            LlmOps::PrepareSimpleRequest => execute_prepare_simple_request(inputs),
+            LlmOps::ParseSimpleResponse => execute_parse_simple_response(inputs),
         }
     }
 }
@@ -142,6 +174,17 @@ fn execute_prepare_chat_request(
 fn execute_parse_chat_response(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
+    // Handle skipped response (upstream transport was skipped)
+    if matches!(inputs.get("response"), Some(Value::Skipped)) {
+        let mut out = HashMap::new();
+        out.insert("content".to_string(), Value::Skipped);
+        out.insert("model".to_string(), Value::Skipped);
+        out.insert("finish_reason".to_string(), Value::Skipped);
+        out.insert("input_tokens".to_string(), Value::Skipped);
+        out.insert("output_tokens".to_string(), Value::Skipped);
+        return Ok(out);
+    }
+
     let provider_id = inputs
         .get("provider")
         .and_then(|v| v.as_str())
@@ -179,6 +222,104 @@ fn execute_parse_chat_response(
         "output_tokens".to_string(),
         Value::Int(chat_response.usage.output_tokens as i64),
     );
+    Ok(out)
+}
+
+/// Build a simple request from content + question.
+///
+/// String in → String out convenience wrapper.
+fn execute_prepare_simple_request(
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    let provider_id = inputs
+        .get("provider")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| ExecError::new("missing or invalid 'provider' input"))?
+        .to_string();
+
+    let model = inputs
+        .get("model")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| ExecError::new("missing or invalid 'model' input"))?;
+
+    let content = inputs
+        .get("content")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| ExecError::new("missing or invalid 'content' input"))?;
+
+    let question = inputs
+        .get("question")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| ExecError::new("missing or invalid 'question' input"))?;
+
+    // Build the user message combining content and question
+    let user_message = format!(
+        "Given the following content:\n\n{}\n\n{}",
+        content, question
+    );
+
+    let mut messages = Vec::new();
+
+    // Optional system prompt
+    if let Some(system_prompt) = inputs.get("system_prompt").and_then(|v| v.as_str()) {
+        if !system_prompt.is_empty() {
+            messages.push(ChatMessage::system(system_prompt));
+        }
+    }
+
+    messages.push(ChatMessage::user(user_message));
+
+    // Build the chat request
+    let chat = ChatRequest::new(model, messages);
+
+    // Convert to REST request
+    let rest_request =
+        llm::build_chat_request(&provider_id, &chat).map_err(ExecError::new)?;
+
+    let mut out = HashMap::new();
+    out.insert(
+        "request".to_string(),
+        Value::Request(TransportRequest::Rest(rest_request)),
+    );
+    out.insert("provider".to_string(), Value::Str(provider_id));
+    Ok(out)
+}
+
+/// Parse a simple response: just extract the answer string.
+fn execute_parse_simple_response(
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    // Handle skipped response (upstream transport was skipped)
+    if matches!(inputs.get("response"), Some(Value::Skipped)) {
+        let mut out = HashMap::new();
+        out.insert("answer".to_string(), Value::Skipped);
+        return Ok(out);
+    }
+
+    let provider_id = inputs
+        .get("provider")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| ExecError::new("missing or invalid 'provider' input"))?;
+
+    let response = inputs
+        .get("response")
+        .and_then(|v| v.as_response())
+        .ok_or_else(|| ExecError::new("missing or invalid 'response' input"))?;
+
+    let rest_response = match response {
+        TransportResponse::Rest(r) => r,
+        _ => {
+            return Err(ExecError::new(
+                "expected REST response from LLM API, got different transport type",
+            ))
+        }
+    };
+
+    let chat_response =
+        llm::parse_chat_response(provider_id, rest_response).map_err(ExecError::new)?;
+
+    let mut out = HashMap::new();
+    out.insert("answer".to_string(), Value::Str(chat_response.content));
     Ok(out)
 }
 
@@ -537,6 +678,169 @@ mod tests {
         let err = code_review_request("unknown", "test", "code", "").unwrap_err();
         assert!(err.contains("unknown provider"));
     }
+
+    // ========================================================================
+    // Simple request/response tests
+    // ========================================================================
+
+    #[test]
+    fn test_prepare_simple_request() {
+        let mut inputs = HashMap::new();
+        inputs.insert("provider".to_string(), Value::Str("openai".to_string()));
+        inputs.insert("model".to_string(), Value::Str("gpt-4o".to_string()));
+        inputs.insert(
+            "content".to_string(),
+            Value::Str("fn add(a: i32, b: i32) -> i32 { a + b }".to_string()),
+        );
+        inputs.insert(
+            "question".to_string(),
+            Value::Str("What does this function do?".to_string()),
+        );
+
+        let result = LlmOps::PrepareSimpleRequest.execute(inputs).unwrap();
+
+        assert!(result.contains_key("request"));
+        assert_eq!(
+            result.get("provider"),
+            Some(&Value::Str("openai".to_string()))
+        );
+
+        match result.get("request") {
+            Some(Value::Request(TransportRequest::Rest(req))) => {
+                assert_eq!(req.url, "https://api.openai.com/v1/chat/completions");
+                let body = req.body.as_ref().unwrap();
+                let messages = body["messages"].as_array().unwrap();
+                // Should have one user message combining content and question
+                assert_eq!(messages.len(), 1);
+                let msg = &messages[0];
+                assert_eq!(msg["role"], "user");
+                let content = msg["content"].as_str().unwrap();
+                assert!(content.contains("fn add"));
+                assert!(content.contains("What does this function do?"));
+            }
+            _ => panic!("expected REST request"),
+        }
+    }
+
+    #[test]
+    fn test_prepare_simple_request_with_system_prompt() {
+        let mut inputs = HashMap::new();
+        inputs.insert("provider".to_string(), Value::Str("anthropic".to_string()));
+        inputs.insert(
+            "model".to_string(),
+            Value::Str("claude-sonnet-4-20250514".to_string()),
+        );
+        inputs.insert("content".to_string(), Value::Str("some code".to_string()));
+        inputs.insert(
+            "question".to_string(),
+            Value::Str("Review this".to_string()),
+        );
+        inputs.insert(
+            "system_prompt".to_string(),
+            Value::Str("You are a code reviewer.".to_string()),
+        );
+
+        let result = LlmOps::PrepareSimpleRequest.execute(inputs).unwrap();
+
+        match result.get("request") {
+            Some(Value::Request(TransportRequest::Rest(req))) => {
+                let body = req.body.as_ref().unwrap();
+                // Anthropic puts system prompt in 'system' field
+                assert_eq!(body["system"], "You are a code reviewer.");
+            }
+            _ => panic!("expected REST request"),
+        }
+    }
+
+    #[test]
+    fn test_prepare_simple_request_missing_content() {
+        let mut inputs = HashMap::new();
+        inputs.insert("provider".to_string(), Value::Str("openai".to_string()));
+        inputs.insert("model".to_string(), Value::Str("gpt-4o".to_string()));
+        inputs.insert(
+            "question".to_string(),
+            Value::Str("What is this?".to_string()),
+        );
+        // Missing 'content'
+
+        let err = LlmOps::PrepareSimpleRequest.execute(inputs).unwrap_err();
+        assert!(err.0.contains("content"));
+    }
+
+    #[test]
+    fn test_prepare_simple_request_missing_question() {
+        let mut inputs = HashMap::new();
+        inputs.insert("provider".to_string(), Value::Str("openai".to_string()));
+        inputs.insert("model".to_string(), Value::Str("gpt-4o".to_string()));
+        inputs.insert("content".to_string(), Value::Str("some code".to_string()));
+        // Missing 'question'
+
+        let err = LlmOps::PrepareSimpleRequest.execute(inputs).unwrap_err();
+        assert!(err.0.contains("question"));
+    }
+
+    #[test]
+    fn test_parse_simple_response_openai() {
+        let response = TransportResponse::Rest(
+            gunbc_ir::transport::RestResponse::ok(serde_json::json!({
+                "model": "gpt-4o",
+                "choices": [{
+                    "message": {"role": "assistant", "content": "This function adds two integers."},
+                    "finish_reason": "stop"
+                }],
+                "usage": {"prompt_tokens": 20, "completion_tokens": 10, "total_tokens": 30}
+            })),
+        );
+
+        let mut inputs = HashMap::new();
+        inputs.insert("provider".to_string(), Value::Str("openai".to_string()));
+        inputs.insert("response".to_string(), Value::Response(response));
+
+        let result = LlmOps::ParseSimpleResponse.execute(inputs).unwrap();
+
+        // Simple response only returns 'answer'
+        assert_eq!(
+            result.get("answer"),
+            Some(&Value::Str("This function adds two integers.".to_string()))
+        );
+        // Should not include other fields like 'content', 'model', 'input_tokens'
+        assert!(!result.contains_key("content"));
+        assert!(!result.contains_key("model"));
+        assert!(!result.contains_key("input_tokens"));
+    }
+
+    #[test]
+    fn test_parse_simple_response_anthropic() {
+        let response = TransportResponse::Rest(
+            gunbc_ir::transport::RestResponse::ok(serde_json::json!({
+                "content": [{"type": "text", "text": "The function returns the sum."}],
+                "model": "claude-sonnet-4-20250514",
+                "stop_reason": "end_turn",
+                "usage": {"input_tokens": 15, "output_tokens": 8}
+            })),
+        );
+
+        let mut inputs = HashMap::new();
+        inputs.insert("provider".to_string(), Value::Str("anthropic".to_string()));
+        inputs.insert("response".to_string(), Value::Response(response));
+
+        let result = LlmOps::ParseSimpleResponse.execute(inputs).unwrap();
+
+        assert_eq!(
+            result.get("answer"),
+            Some(&Value::Str("The function returns the sum.".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_parse_simple_response_missing_response() {
+        let mut inputs = HashMap::new();
+        inputs.insert("provider".to_string(), Value::Str("openai".to_string()));
+        // Missing 'response'
+
+        let err = LlmOps::ParseSimpleResponse.execute(inputs).unwrap_err();
+        assert!(err.0.contains("response"));
+    }
 }
 
 // ============================================================================
@@ -546,35 +850,23 @@ mod tests {
 #[cfg(test)]
 mod generated_tests {
     #![allow(unused_imports)]
-    fn mock_spec() -> gunbc_test::MockSpec {
-        crate::graph_mock::openai_mock_spec()
-    }
     include!("generated_tests.rs");
 }
 
 #[cfg(test)]
 mod generated_tests_anthropic {
     #![allow(unused_imports)]
-    fn mock_spec() -> gunbc_test::MockSpec {
-        crate::graph_mock::anthropic_mock_spec()
-    }
     include!("generated_tests_anthropic.rs");
 }
 
 #[cfg(test)]
 mod generated_tests_code_review {
     #![allow(unused_imports)]
-    fn mock_spec() -> gunbc_test::MockSpec {
-        crate::graph_mock::code_review_mock_spec()
-    }
     include!("generated_tests_code_review.rs");
 }
 
 #[cfg(test)]
 mod generated_tests_secrets {
     #![allow(unused_imports)]
-    fn mock_spec() -> gunbc_test::MockSpec {
-        crate::graph_mock::secret_api_key_mock_spec()
-    }
     include!("generated_tests_secrets.rs");
 }

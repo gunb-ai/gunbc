@@ -416,9 +416,12 @@ fn execute_flat<T: Executable>(
             .get(node_id.0.as_str())
             .ok_or_else(|| ExecError::new(format!("node '{}' not found", node_id.0)))?;
 
-        // Start CI group for this node
-        if let Some(ref mut ci) = ci_ctx {
-            ci.start_group(&node_id.0, false);
+        // Start CI group for this node (skip for "report" so it's not collapsed)
+        let use_group = node_id.0 != "report";
+        if use_group {
+            if let Some(ref mut ci) = ci_ctx {
+                ci.start_group(&node_id.0, false);
+            }
         }
 
         // Gather inputs from upstream edges
@@ -429,6 +432,19 @@ fn execute_flat<T: Executable>(
                 if let Some(upstream) = node_outputs.get(&edge.from_node.0) {
                     if let Some(val) = upstream.get(&edge.from_port.0) {
                         inputs.insert(edge.to_port.0.clone(), val.clone());
+                    }
+                }
+            }
+        }
+
+        // Inject input mocks for dangling input ports (DAG entry points)
+        // This allows testing DAGs in isolation even when they expect external inputs
+        if let ExecutionMode::DryRun(ref mocks) | ExecutionMode::Simulate(SimConfig { boundary_mocks: ref mocks, .. }) = mode {
+            for port in &node.inputs {
+                if !inputs.contains_key(&port.name.0) {
+                    // This port has no incoming edge - check for input mock
+                    if let Some(mock_value) = mocks.get_input(&node.id.0, &port.name.0) {
+                        inputs.insert(port.name.0.clone(), mock_value.clone());
                     }
                 }
             }
@@ -486,7 +502,9 @@ fn execute_flat<T: Executable>(
                                 // Emit CI error annotation if context available
                                 if let Some(ref mut ci) = ci_ctx {
                                     ci.error(&format!("Node '{}' failed: {}", node_id.0, e), None);
-                                    ci.end_group(); // Close the group before returning error
+                                    if use_group {
+                                        ci.end_group(); // Close the group before returning error
+                                    }
                                 }
                                 return Err(e);
                             }
@@ -499,7 +517,9 @@ fn execute_flat<T: Executable>(
                         );
                         if let Some(ref mut ci) = ci_ctx {
                             ci.error(&err_msg, None);
-                            ci.end_group();
+                            if use_group {
+                                ci.end_group();
+                            }
                         }
                         return Err(ExecError::new(err_msg));
                     }
@@ -531,9 +551,11 @@ fn execute_flat<T: Executable>(
         }
         entries.push(entry);
 
-        // End CI group for this node
-        if let Some(ref mut ci) = ci_ctx {
-            ci.end_group();
+        // End CI group for this node (skip for "report" since we didn't start one)
+        if use_group {
+            if let Some(ref mut ci) = ci_ctx {
+                ci.end_group();
+            }
         }
     }
 

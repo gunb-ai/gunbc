@@ -10,7 +10,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help codegen ensure-codegen build clean fmt-fix lint-fix test test-fix check check-fix clippy clippy-fix fmt fmt-check ci-yaml gist gist-dry gist-diff gist-diff-dry buck2 buck2-dry makegen makegen-dry deps deps-dry ci ci-dry bootstrap bootstrap-dry
+.PHONY: help codegen ensure-codegen build clean testgen testgen-check fmt-fix lint-fix test test-fix check check-fix clippy clippy-fix fmt fmt-check ci-yaml gist gist-dry gist-diff gist-diff-dry buck2 buck2-dry makegen makegen-dry deps deps-dry ci ci-dry bootstrap bootstrap-dry
 
 # Ensure codegen has run (upsert pattern: check stamp -> run if missing)
 ensure-codegen:
@@ -30,6 +30,14 @@ build: ensure-codegen
 clean:
 	@cargo run -p gunbc-codegen --release -- rollback
 
+# Regenerate tests from DAG structures and MockSpecs
+testgen:
+	@cargo run -p gunbc-dag --bin gunbc-testgen --release
+
+# Check if generated tests are stale (fails if regeneration needed)
+testgen-check:
+	@cargo run -p gunbc-dag --bin gunbc-testgen --release -- --check
+
 help:
 	@echo "gunbc tools - generated Makefile"
 	@echo ""
@@ -41,6 +49,8 @@ help:
 	@echo "  build    - Commit: codegen → cargo build"
 	@echo "  clean    - Rollback: remove all generated artifacts"
 	@echo "  codegen  - Partial commit: just generate CLIs"
+	@echo "  testgen  - Regenerate tests from DAG structures"
+	@echo "  testgen-check  - Check if generated tests are stale"
 	@echo ""
 	@echo "Development:"
 	@echo "  test  - Run all tests"

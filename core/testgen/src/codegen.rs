@@ -42,6 +42,7 @@ use gunbc_test::MockSpec;
 /// - Scenario coverage (success + per-transport failure + guard toggles)
 /// - Resource hygiene (connectivity, ownership, conflicts)
 /// - Resource simulation (MockSpec-based acquisition/timeout)
+/// - Node I/O example tests (when MockSpec has node_examples)
 #[derive(Debug, Clone)]
 pub struct TestConfig {
     /// Generate Bucket A tests (execution semantics)
@@ -58,6 +59,8 @@ pub struct TestConfig {
     pub chain_tests: bool,
     /// Generate flow verification tests (DryRun full DAG, verify terminal outputs)
     pub flow_tests: bool,
+    /// Generate per-node I/O example tests (from MockSpec.node_examples)
+    pub example_tests: bool,
     /// Test module visibility
     pub visibility: String,
 }
@@ -72,6 +75,7 @@ impl Default for TestConfig {
             boundary_tests: true,
             chain_tests: true,
             flow_tests: false,
+            example_tests: true,
             visibility: "pub".to_string(),
         }
     }
@@ -85,6 +89,8 @@ pub struct TestGenerator<'a, T> {
     dag: &'a Dag<T>,
     config: TestConfig,
     mock_spec: Option<MockSpec>,
+    /// Function path to call for MockSpec (e.g., "crate::ci::graph_mock::ci_mock_spec()")
+    mock_spec_fn: Option<String>,
 }
 
 impl<'a, T> TestGenerator<'a, T> {
@@ -94,6 +100,7 @@ impl<'a, T> TestGenerator<'a, T> {
             dag,
             config: TestConfig::default(),
             mock_spec: None,
+            mock_spec_fn: None,
         }
     }
 
@@ -109,14 +116,55 @@ impl<'a, T> TestGenerator<'a, T> {
         self
     }
 
+    /// Set the mock spec function path (e.g., "crate::ci::graph_mock::ci_mock_spec()").
+    ///
+    /// This is used to generate a `mock_spec()` helper function in the test module
+    /// that calls the specified function to get the MockSpec at test time.
+    pub fn with_mock_spec_fn(mut self, path: impl Into<String>) -> Self {
+        self.mock_spec_fn = Some(path.into());
+        self
+    }
+
     /// Generate the test module code.
     ///
     /// This is the main entry point. It:
     /// 1. Analyzes the DAG structure
-    /// 2. Collects proof obligations
-    /// 3. Generates tests for undischarged obligations
+    /// 2. Validates MockSpec requirement (panics if missing for DAGs with transports)
+    /// 3. Collects proof obligations
+    /// 4. Generates tests for undischarged obligations
+    ///
+    /// # Panics
+    ///
+    /// Panics if the DAG has transport executor nodes but no MockSpec was provided.
+    /// This ensures that test generation fails early with a clear message rather than
+    /// producing incomplete tests.
     pub fn generate_test_module(&self, module_name: &str, graph_builder_fn: &str) -> String {
         let analysis = analyze_dag(self.dag);
+
+        // Validate MockSpec requirement for DAGs with transport nodes
+        if !analysis.transport_executors.is_empty() && self.mock_spec.is_none() {
+            panic!(
+                "MockSpec required: DAG '{}' has {} transport executor node(s) ({}) but no MockSpec was provided.\n\
+                 \n\
+                 To fix this, create a MockSpec and pass it to TestGenerator:\n\
+                 \n\
+                 ```rust\n\
+                 let spec = MockSpec::new(\"{}\")\n\
+                     .boundary(\"<transport_node>\", \"response\", mock_response());\n\
+                 \n\
+                 TestGenerator::new(&dag)\n\
+                     .with_mock_spec(spec)\n\
+                     .generate_test_module(...)\n\
+                 ```\n\
+                 \n\
+                 Transport nodes require mocks to specify what values they return during testing.",
+                module_name,
+                analysis.transport_executors.len(),
+                analysis.transport_executors.join(", "),
+                module_name
+            );
+        }
+
         let obligations = collect_obligations(self.dag, None, None);
         let mut code = String::new();
 
@@ -148,12 +196,20 @@ impl<'a, T> TestGenerator<'a, T> {
         // Imports
         code.push_str("use gunbc_exec::{execute_with_mode, BoundaryMocks, ExecutionMode};\n");
         code.push_str("use gunbc_ir::{detect_boundaries, Cardinality, Value};\n");
-        code.push_str(
-            "use gunbc_test::{assert_boundary_mockable, assert_types_compatible, default_mocks};\n",
-        );
+
+        // Import MockSpec if we have a mock_spec_fn (need it for helper function)
+        if self.mock_spec_fn.is_some() {
+            code.push_str(
+                "use gunbc_test::{assert_boundary_mockable, assert_types_compatible, MockSpec};\n",
+            );
+        } else {
+            code.push_str(
+                "use gunbc_test::{assert_boundary_mockable, assert_types_compatible, default_mocks};\n",
+            );
+        }
 
         if self.config.chain_tests && self.mock_spec.is_some() {
-            code.push_str("use gunbc_test::{validate_chain, MockSpec, InputConstraint};\n");
+            code.push_str("use gunbc_test::{validate_chain, InputConstraint};\n");
         }
         if self.config.resource_tests
             && self
@@ -164,6 +220,14 @@ impl<'a, T> TestGenerator<'a, T> {
             code.push_str("use gunbc_test::{ResourceAcquireResult, ResourceSimulation};\n");
         }
         code.push('\n');
+
+        // Generate mock_spec() helper function if we have a mock_spec_fn path
+        if let Some(mock_spec_fn) = &self.mock_spec_fn {
+            code.push_str("/// Get the MockSpec for this DAG.\n");
+            code.push_str("fn mock_spec() -> MockSpec {\n");
+            code.push_str(&format!("    {}\n", mock_spec_fn));
+            code.push_str("}\n\n");
+        }
 
         // ===================================================================
         // Invalid obligations — structural errors surfaced as failing tests
@@ -255,6 +319,13 @@ impl<'a, T> TestGenerator<'a, T> {
             code.push_str(&self.generate_flow_tests(&analysis, graph_builder_fn));
         }
 
+        // ===================================================================
+        // Node I/O Example Tests (from MockSpec.node_examples)
+        // ===================================================================
+        if self.config.example_tests {
+            code.push_str(&self.generate_node_example_tests(graph_builder_fn));
+        }
+
         code
     }
 
@@ -288,6 +359,11 @@ impl<'a, T> TestGenerator<'a, T> {
             .iter()
             .any(|o| matches!(o.kind, Obligation::DryRunCompletion))
         {
+            let mocks_expr = if self.mock_spec_fn.is_some() {
+                "mock_spec().to_boundary_mocks()"
+            } else {
+                "default_mocks()"
+            };
             code.push_str("/// DryRun execution completes without crash.\n");
             code.push_str("///\n");
             code.push_str("/// This is the minimal smoke test: build the DAG, run it in DryRun\n");
@@ -295,9 +371,10 @@ impl<'a, T> TestGenerator<'a, T> {
             code.push_str("#[test]\n");
             code.push_str("fn test_dryrun_completion() {\n");
             code.push_str(&format!("    let dag = {};\n", graph_builder_fn));
-            code.push_str(
-                "    let log = execute_with_mode(&dag, ExecutionMode::DryRun(default_mocks()))\n",
-            );
+            code.push_str(&format!(
+                "    let log = execute_with_mode(&dag, ExecutionMode::DryRun({}))\n",
+                mocks_expr
+            ));
             code.push_str("        .expect(\"DryRun execution should complete without crash\");\n");
             code.push_str("    assert!(!log.entries.is_empty(), \"execution should produce log entries\");\n");
             code.push_str("}\n\n");
@@ -310,6 +387,11 @@ impl<'a, T> TestGenerator<'a, T> {
             .collect();
 
         if !transport_obligations.is_empty() {
+            let mocks_expr = if self.mock_spec_fn.is_some() {
+                "mock_spec().to_boundary_mocks()"
+            } else {
+                "default_mocks()"
+            };
             code.push_str("/// All transport executors are intercepted in DryRun.\n");
             code.push_str("///\n");
             code.push_str(
@@ -319,7 +401,10 @@ impl<'a, T> TestGenerator<'a, T> {
             code.push_str("#[test]\n");
             code.push_str("fn test_transport_interception() {\n");
             code.push_str(&format!("    let dag = {};\n", graph_builder_fn));
-            code.push_str("    let result = assert_boundary_mockable(&dag, default_mocks());\n");
+            code.push_str(&format!(
+                "    let result = assert_boundary_mockable(&dag, {});\n",
+                mocks_expr
+            ));
             code.push_str(
                 "    assert!(result.is_ok(), \"All transports should be interceptable: {:?}\", result.error);\n",
             );
@@ -489,12 +574,18 @@ impl<'a, T> TestGenerator<'a, T> {
             code.push_str(
                 "/// Proves: workflow reaches terminal outputs with all transports mocked as success.\n",
             );
+            let mocks_expr = if self.mock_spec_fn.is_some() {
+                "mock_spec().to_boundary_mocks()"
+            } else {
+                "default_mocks()"
+            };
             code.push_str("#[test]\n");
             code.push_str("fn test_scenario_all_succeed() {\n");
             code.push_str(&format!("    let dag = {};\n", graph_builder_fn));
-            code.push_str(
-                "    let log = execute_with_mode(&dag, ExecutionMode::DryRun(default_mocks()))\n",
-            );
+            code.push_str(&format!(
+                "    let log = execute_with_mode(&dag, ExecutionMode::DryRun({}))\n",
+                mocks_expr
+            ));
             code.push_str("        .expect(\"all-succeed scenario should complete\");\n");
 
             // Verify all transport executors were intercepted
@@ -623,7 +714,11 @@ impl<'a, T> TestGenerator<'a, T> {
                 code.push_str("#[test]\n");
                 code.push_str(&format!("fn {}() {{\n", test_name));
                 code.push_str(&format!("    let dag = {};\n", graph_builder_fn));
-                code.push_str("    let mut mocks = default_mocks();\n");
+                if self.mock_spec_fn.is_some() {
+                    code.push_str("    let mut mocks = mock_spec().to_boundary_mocks();\n");
+                } else {
+                    code.push_str("    let mut mocks = default_mocks();\n");
+                }
 
                 // Mock all output ports of the trigger node as Skipped
                 for (port_name, _type_id) in &output_ports {
@@ -721,8 +816,13 @@ impl<'a, T> TestGenerator<'a, T> {
                             code.push_str(
                                 "    // Guard value flows from a mockable boundary node.\n",
                             );
+                            let mocks_init = if self.mock_spec_fn.is_some() {
+                                "mock_spec().to_boundary_mocks()"
+                            } else {
+                                "default_mocks()"
+                            };
                             code.push_str("    // Test with true:\n");
-                            code.push_str("    let mut mocks_true = default_mocks();\n");
+                            code.push_str(&format!("    let mut mocks_true = {};\n", mocks_init));
                             code.push_str(&format!(
                                 "    mocks_true.set_value(\"{}\", \"{}\", Value::Bool(true));\n",
                                 edge.from_node.0, edge.from_port.0
@@ -743,7 +843,7 @@ impl<'a, T> TestGenerator<'a, T> {
                             code.push_str("        .unwrap_or(true);\n\n");
 
                             code.push_str("    // Test with false:\n");
-                            code.push_str("    let mut mocks_false = default_mocks();\n");
+                            code.push_str(&format!("    let mut mocks_false = {};\n", mocks_init));
                             code.push_str(&format!(
                                 "    mocks_false.set_value(\"{}\", \"{}\", Value::Bool(false));\n",
                                 edge.from_node.0, edge.from_port.0
@@ -800,9 +900,15 @@ impl<'a, T> TestGenerator<'a, T> {
                         code.push_str(
                             "    // The node will always skip (missing input → skip).\n",
                         );
-                        code.push_str(
-                            "    let log = execute_with_mode(&dag, ExecutionMode::DryRun(default_mocks()))\n",
-                        );
+                        let mocks_expr = if self.mock_spec_fn.is_some() {
+                            "mock_spec().to_boundary_mocks()"
+                        } else {
+                            "default_mocks()"
+                        };
+                        code.push_str(&format!(
+                            "    let log = execute_with_mode(&dag, ExecutionMode::DryRun({}))\n",
+                            mocks_expr
+                        ));
                         code.push_str(
                             "        .expect(\"execution should not crash\");\n",
                         );
@@ -1164,11 +1270,19 @@ impl<'a, T> TestGenerator<'a, T> {
         );
 
         // Overall boundary test
+        let mocks_expr = if self.mock_spec_fn.is_some() {
+            "mock_spec().to_boundary_mocks()"
+        } else {
+            "default_mocks()"
+        };
         code.push_str("/// Test that all boundaries can be mocked.\n");
         code.push_str("#[test]\n");
         code.push_str("fn test_boundaries_mockable() {\n");
         code.push_str(&format!("    let dag = {};\n", graph_builder_fn));
-        code.push_str("    let result = assert_boundary_mockable(&dag, default_mocks());\n");
+        code.push_str(&format!(
+            "    let result = assert_boundary_mockable(&dag, {});\n",
+            mocks_expr
+        ));
         code.push_str(
             "    assert!(result.is_ok(), \"Boundaries should be mockable: {:?}\", result.error);\n",
         );
@@ -1303,6 +1417,121 @@ impl<'a, T> TestGenerator<'a, T> {
                 "    assert_eq!(spec.input_expectations.len(), {});\n",
                 spec.input_expectations.len()
             ));
+            code.push_str("}\n\n");
+        }
+
+        code
+    }
+
+    // =======================================================================
+    // Node I/O Example Tests
+    // =======================================================================
+
+    /// Generate tests from MockSpec.node_examples.
+    ///
+    /// Each NodeExample produces a test that:
+    /// 1. Executes the single node with the given inputs
+    /// 2. Asserts outputs match the expected matchers
+    fn generate_node_example_tests(&self, graph_builder_fn: &str) -> String {
+        let mut code = String::new();
+
+        let Some(spec) = &self.mock_spec else {
+            return code;
+        };
+
+        if spec.node_examples.is_empty() {
+            return code;
+        }
+
+        code.push_str(
+            "// ============================================================================\n",
+        );
+        code.push_str("// Node I/O Example Tests\n");
+        code.push_str(
+            "// These tests verify individual node behavior against specified examples.\n",
+        );
+        code.push_str(
+            "// Each test executes a single node with given inputs and checks outputs.\n",
+        );
+        code.push_str(
+            "// ============================================================================\n\n",
+        );
+
+        for (idx, example) in spec.node_examples.iter().enumerate() {
+            let test_name = if let Some(desc) = &example.description {
+                // Sanitize description to valid Rust identifier
+                let sanitized_desc: String = desc
+                    .chars()
+                    .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+                    .collect::<String>()
+                    .to_lowercase();
+                format!(
+                    "test_example_{}_{}",
+                    NamingCase::SnakeCase.apply(&example.node_id),
+                    sanitized_desc
+                )
+            } else {
+                format!(
+                    "test_example_{}_{}",
+                    NamingCase::SnakeCase.apply(&example.node_id),
+                    idx
+                )
+            };
+
+            // Doc comment
+            if let Some(desc) = &example.description {
+                code.push_str(&format!("/// Node example: {} - {}\n", example.node_id, desc));
+            } else {
+                code.push_str(&format!(
+                    "/// Node example: {} (example {})\n",
+                    example.node_id, idx
+                ));
+            }
+            code.push_str("///\n");
+            code.push_str(&format!(
+                "/// Tests that node '{}' produces expected outputs for given inputs.\n",
+                example.node_id
+            ));
+            code.push_str("#[test]\n");
+            code.push_str(&format!("fn {}() {{\n", test_name));
+            code.push_str(&format!("    let dag = {};\n", graph_builder_fn));
+            code.push_str("    let mut inputs = std::collections::HashMap::new();\n");
+
+            // Set up inputs
+            for (port, value) in &example.inputs {
+                code.push_str(&format!(
+                    "    inputs.insert(\"{}\".to_string(), {});\n",
+                    port,
+                    value_to_rust_literal(value)
+                ));
+            }
+
+            // Execute single node
+            code.push_str(&format!(
+                "    let outputs = gunbc_exec::execute_single_node(&dag, \"{}\", inputs, gunbc_exec::ExecutionMode::Real)\n",
+                example.node_id
+            ));
+            code.push_str(&format!(
+                "        .expect(\"node '{}' should execute successfully\");\n\n",
+                example.node_id
+            ));
+
+            // Assert outputs
+            for (port, matcher) in &example.outputs {
+                code.push_str(&format!("    // Check output port '{}'\n", port));
+                code.push_str(&format!(
+                    "    let output_{} = outputs.get(\"{}\").expect(\"output port '{}' should exist\");\n",
+                    NamingCase::SnakeCase.apply(port), port, port
+                ));
+
+                // Generate assertion based on matcher type
+                let check_code = matcher.to_check_code(&format!(
+                    "output_{}",
+                    NamingCase::SnakeCase.apply(port)
+                ));
+                code.push_str(&format!("    {}\n", check_code));
+            }
+
             code.push_str("}\n\n");
         }
 
@@ -1511,7 +1740,11 @@ mod tests {
         dag.add_edge(edge("prepare", "request", "execute", "request"));
         dag.add_edge(edge("execute", "response", "parse", "response"));
 
-        let generator = TestGenerator::new(&dag);
+        // MockSpec required for DAGs with transport executors
+        let spec = MockSpec::new("example")
+            .boundary("execute", "response", Value::Str("<MOCK_RESPONSE>".into()));
+
+        let generator = TestGenerator::new(&dag).with_mock_spec(spec);
         let code = generator.generate_test_module("example", "build_example_graph()");
 
         // Should have transport interception test
@@ -1563,7 +1796,12 @@ mod tests {
         dag.add_edge(edge("check", "condition", "process", "condition"));
         dag.add_edge(edge("check", "response", "process", "data"));
 
-        let generator = TestGenerator::new(&dag);
+        // MockSpec required for DAGs with transport executors
+        let spec = MockSpec::new("guarded")
+            .boundary("check", "response", Value::Str("<MOCK>".into()))
+            .boundary("check", "condition", Value::Bool(true));
+
+        let generator = TestGenerator::new(&dag).with_mock_spec(spec);
         let code = generator.generate_test_module("guarded", "build_guarded_graph()");
 
         // Should have guard branch coverage test
@@ -1624,6 +1862,170 @@ mod tests {
         assert!(
             !code.contains("test_guard_conditional_status_branch_coverage"),
             "should NOT generate test function for non-Bool guard"
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "MockSpec required")]
+    fn test_mockspec_required_for_transport_dags() {
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque(
+            "execute",
+            vec![port("request", "TransportRequest")],
+            vec![port("response", "TransportResponse")],
+            (),
+        ));
+
+        // No MockSpec provided - should panic
+        let generator = TestGenerator::new(&dag);
+        let _ = generator.generate_test_module("test", "build_test_graph()");
+    }
+
+    #[test]
+    fn test_no_mockspec_required_for_pure_dags() {
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque(
+            "source",
+            vec![],
+            vec![port("out", "String")],
+            (),
+        ));
+        dag.add_node(Node::opaque(
+            "sink",
+            vec![port("in", "String")],
+            vec![port("result", "String")],
+            (),
+        ));
+        dag.add_edge(edge("source", "out", "sink", "in"));
+
+        // No MockSpec needed for pure DAGs (no transport nodes)
+        let generator = TestGenerator::new(&dag);
+        let code = generator.generate_test_module("pure", "build_pure_graph()");
+
+        // Should generate tests without panicking
+        assert!(code.contains("test_boundaries_mockable"));
+    }
+
+    #[test]
+    fn test_generate_with_node_examples() {
+        use gunbc_test::{NodeExample, OutputMatcher};
+
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque(
+            "prepare",
+            vec![port("input", "String")],
+            vec![port("output", "String")],
+            (),
+        ));
+        dag.add_node(Node::opaque(
+            "process",
+            vec![port("data", "String")],
+            vec![port("result", "String")],
+            (),
+        ));
+        dag.add_edge(edge("prepare", "output", "process", "data"));
+
+        // Create examples for testing node I/O
+        let example = NodeExample::new("prepare")
+            .input("input", Value::Str("test input".into()))
+            .output("output", OutputMatcher::non_empty())
+            .description("basic input processing");
+
+        let spec = MockSpec::new("test")
+            .boundary("process", "result", Value::Str("test_output".into()))
+            .node_example(example);
+
+        let generator = TestGenerator::new(&dag).with_mock_spec(spec);
+        let code = generator.generate_test_module("example", "build_example_graph()");
+
+        // Should have node example tests section
+        assert!(
+            code.contains("Node I/O Example Tests"),
+            "should have example tests section header"
+        );
+
+        // Should generate test function (description sanitized to snake_case)
+        assert!(
+            code.contains("test_example_prepare_basic_input_processing"),
+            "should generate test with description-based name: {}", code
+        );
+
+        // Should use execute_single_node
+        assert!(
+            code.contains("execute_single_node"),
+            "should use execute_single_node to run individual node"
+        );
+
+        // Should have input setup
+        assert!(
+            code.contains("inputs.insert"),
+            "should set up inputs from example"
+        );
+
+        // Should have output assertion
+        assert!(
+            code.contains("is_empty"),
+            "should have non_empty assertion check"
+        );
+    }
+
+    #[test]
+    fn test_generate_with_exact_matcher() {
+        use gunbc_test::{NodeExample, OutputMatcher};
+
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque(
+            "echo",
+            vec![port("input", "String")],
+            vec![port("output", "String")],
+            (),
+        ));
+
+        let example = NodeExample::new("echo")
+            .input("input", Value::Str("hello".into()))
+            .output("output", OutputMatcher::exact(Value::Str("hello".into())));
+
+        let spec = MockSpec::new("test")
+            .boundary("echo", "output", Value::Str("hello".into()))
+            .node_example(example);
+
+        let generator = TestGenerator::new(&dag).with_mock_spec(spec);
+        let code = generator.generate_test_module("exact", "build_exact_graph()");
+
+        // Should have exact assertion
+        assert!(
+            code.contains("assert_eq!"),
+            "should have exact match assertion"
+        );
+    }
+
+    #[test]
+    fn test_generate_with_contains_matcher() {
+        use gunbc_test::{NodeExample, OutputMatcher};
+
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque(
+            "format",
+            vec![port("data", "String")],
+            vec![port("message", "String")],
+            (),
+        ));
+
+        let example = NodeExample::new("format")
+            .input("data", Value::Str("world".into()))
+            .output("message", OutputMatcher::contains("hello"));
+
+        let spec = MockSpec::new("test")
+            .boundary("format", "message", Value::Str("hello world".into()))
+            .node_example(example);
+
+        let generator = TestGenerator::new(&dag).with_mock_spec(spec);
+        let code = generator.generate_test_module("contains", "build_contains_graph()");
+
+        // Should have contains assertion
+        assert!(
+            code.contains("contains(\"hello\")"),
+            "should have contains check in assertion"
         );
     }
 }

@@ -102,7 +102,7 @@ fn render_makefile_content(registry: &ToolRegistry, config: &BuildConfig) -> Str
     output.push_str(".DEFAULT_GOAL := help\n\n");
 
     // Phony targets - include core targets, meta targets, and tool targets
-    output.push_str(".PHONY: help codegen ensure-codegen build clean fmt-fix lint-fix");
+    output.push_str(".PHONY: help codegen ensure-codegen build clean testgen testgen-check fmt-fix lint-fix");
 
     // Add meta targets (with check and fix variants)
     for meta in &registry.meta_targets {
@@ -179,6 +179,16 @@ fn render_core_targets(config: &BuildConfig) -> String {
         CargoInvocation::standalone("codegen").command(),
     ));
 
+    // Testgen: regenerate tests from DAGs
+    output.push_str("# Regenerate tests from DAG structures and MockSpecs\n");
+    output.push_str("testgen:\n");
+    output.push_str(&format!("{}{}\n\n", INDENT, config.testgen_shell()));
+
+    // Testgen check: verify generated tests are not stale
+    output.push_str("# Check if generated tests are stale (fails if regeneration needed)\n");
+    output.push_str("testgen-check:\n");
+    output.push_str(&format!("{}{}\n\n", INDENT, config.testgen_check_shell()));
+
     output
 }
 
@@ -199,6 +209,8 @@ fn render_help_target(registry: &ToolRegistry) -> String {
     output.push_str("\t@echo \"  build    - Commit: codegen → cargo build\"\n");
     output.push_str("\t@echo \"  clean    - Rollback: remove all generated artifacts\"\n");
     output.push_str("\t@echo \"  codegen  - Partial commit: just generate CLIs\"\n");
+    output.push_str("\t@echo \"  testgen  - Regenerate tests from DAG structures\"\n");
+    output.push_str("\t@echo \"  testgen-check  - Check if generated tests are stale\"\n");
     output.push_str("\t@echo \"\"\n");
     
     // Meta targets section
@@ -544,6 +556,22 @@ mod tests {
         assert!(makefile.contains("Build transactions:"));
         assert!(makefile.contains("Development:"));
         assert!(makefile.contains("Tools:"));
+    }
+
+    #[test]
+    fn test_render_makefile_has_testgen_targets() {
+        let registry = ToolRegistry::default_registry();
+        let makefile = render_makefile(&registry);
+
+        // Testgen targets in core section
+        assert!(makefile.contains("testgen:"), "should have testgen target");
+        assert!(makefile.contains("testgen-check:"), "should have testgen-check target");
+
+        // Testgen in help
+        assert!(makefile.contains("testgen  - Regenerate tests"), "help should mention testgen");
+
+        // Testgen in .PHONY
+        assert!(makefile.contains("testgen testgen-check"), "should be in .PHONY");
     }
 
     #[test]

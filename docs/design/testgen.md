@@ -350,3 +350,194 @@ zero manual MockSpec.
 - [ ] `T::default()` contract gap: pattern internals depend on `T::default()` for
       merge/unpack/controller ops with no trait-level contract. Needs `T: PatternInternalOps`
       or equivalent — not a testgen problem but affects test correctness.
+
+---
+
+## Recent Additions (2026-02)
+
+### MockSpec Requirement
+
+DAGs with transport nodes now **require** a MockSpec. The testgen panics if a DAG
+has transport executors but no MockSpec is provided:
+
+```rust
+// In TestGenerator::generate_test_module()
+if !analysis.transport_executors.is_empty() && self.mock_spec.is_none() {
+    panic!("DAG '{}' has transport nodes but no MockSpec provided", module_name);
+}
+```
+
+This ensures all transport boundaries have proper mock values defined.
+
+### NodeExample / OutputMatcher
+
+Per-node I/O specification for generating example-based tests:
+
+```rust
+pub struct NodeExample {
+    pub node_id: String,
+    pub inputs: HashMap<String, Value>,
+    pub outputs: HashMap<String, OutputMatcher>,
+    pub description: Option<String>,
+}
+
+pub enum OutputMatcher {
+    Exact(Value),           // Exact equality
+    Contains(String),       // String contains substring
+    NonEmpty,               // Non-empty string/list
+    Satisfies { predicate } // Custom predicate
+    Any,                    // Any value OK
+}
+```
+
+Usage in MockSpec:
+
+```rust
+MockSpec::new("llm")
+    .node_example(
+        NodeExample::new("prepare")
+            .input("question", Value::Str("What is 2+2?".into()))
+            .output("system_prompt", OutputMatcher::non_empty())
+            .output("messages", OutputMatcher::contains("2+2"))
+            .description("basic arithmetic question")
+    )
+```
+
+### Testgen Registry Auto-Discovery
+
+DAGs are registered centrally in `core/codegen/src/registry.rs`:
+
+```rust
+pub struct TestgenTargetDef {
+    pub name: String,              // "ci", "bootstrap", "llm-openai"
+    pub output_path: String,       // "gunbc-dag/src/ci/generated_tests.rs"
+    pub module_name: String,       // "ci_generated_tests"
+    pub mock_spec_path: String,    // "crate::ci::graph_mock::ci_mock_spec()"
+    pub dag_builder_call: String,  // "crate::build_ci_graph().unwrap()"
+    pub boundary_tests: bool,
+    pub chain_tests: bool,
+    pub flow_tests: bool,
+}
+
+pub fn all_testgen_dags() -> Vec<TestgenTargetDef> { ... }
+```
+
+The testgen binary reads from this registry:
+
+```bash
+cargo run -p gunbc-dag --bin testgen -- --help
+# Shows: REGISTERED DAGS: bootstrap, ci, makegen, llm-openai, ...
+```
+
+### Makefile Integration
+
+```makefile
+testgen:
+    cargo run -p gunbc-dag --bin testgen --release
+
+testgen-check:
+    cargo run -p gunbc-dag --bin testgen --release -- --check
+```
+
+Staleness detection via content hash in generated file header:
+
+```rust
+// Generated tests for ci_generated_tests DAG.
+// DO NOT EDIT - regenerate with: make testgen
+// Content hash: 0x1a2b3c4d...
+```
+
+### Flow Verification Tests
+
+When `flow_tests: true`, generates end-to-end tests using MockSpec terminal outputs:
+
+```rust
+#[test]
+fn test_flow_ci() {
+    let dag = crate::build_ci_graph().unwrap();
+    let mocks = mock_spec().to_boundary_mocks();
+    let log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks))
+        .expect("DryRun execution should succeed");
+
+    // Verify terminal outputs from MockSpec
+    let entry = log.get("report").expect("node 'report' should be in log");
+    assert_eq!(
+        entry.outputs.get("overall_success"),
+        &Value::Bool(true),
+        "flow verification: report.overall_success mismatch"
+    );
+}
+```
+
+---
+
+## Simulator: Property-Based I/O Testing
+
+The `Simulator` type enables property-based testing with constrained random inputs
+and output range validation.
+
+### Core Types
+
+```rust
+pub struct Simulator {
+    pub description: String,
+    generator: Option<Arc<dyn Fn() -> Value>>,   // Generate random valid values
+    validator: Option<Arc<dyn Fn(&Value) -> Result<(), String>>>, // Check value in range
+}
+
+pub struct IoContract {
+    pub name: String,
+    pub input: HashMap<String, Simulator>,   // Input generators
+    pub output: HashMap<String, Simulator>,  // Output validators
+}
+```
+
+### Built-in Simulators
+
+| Simulator | Description |
+|-----------|-------------|
+| `non_empty_string()` | Random non-empty string |
+| `boolean()` | Random bool |
+| `exit_code()` | Random 0-255 |
+| `success_exit_code()` | Always 0 |
+| `failure_exit_code()` | Random 1-255 |
+| `int_range(min, max)` | Random int in range |
+| `json_object()` | Random JSON object |
+| `one_of(values)` | Random from allowed set |
+| `any()` | Any value (no constraint) |
+
+### Usage Pattern
+
+```rust
+// Define I/O contract for a node
+let contract = IoContract::new("parse_exit_code")
+    .input("exit_code", Simulator::exit_code())     // Generate 0-255
+    .output("success", Simulator::boolean());        // Output must be bool
+
+// Property test: for all valid inputs, outputs satisfy contract
+for _ in 0..100 {
+    let inputs = contract.generate_inputs();
+    let outputs = execute_single_node("parse_exit_code", inputs);
+    assert!(contract.validate_outputs(&outputs).is_ok());
+}
+```
+
+### Integration with MockSpec (Planned)
+
+```rust
+MockSpec::new("ci")
+    .node_contract("parse_build",
+        IoContract::new("parse_build")
+            .input("response", Simulator::shell_response())
+            .output("success", Simulator::boolean())
+            .output("exit_code", Simulator::exit_code())
+    )
+```
+
+### Next Steps for Simulators
+
+- [ ] Add `shell_response()` and `transport_response()` simulators
+- [ ] Add `node_contract()` method to MockSpec
+- [ ] Generate property tests from IoContracts in testgen
+- [ ] Support "paired" simulators (output depends on input characteristics)
+- [ ] Shrinking for counterexample minimization

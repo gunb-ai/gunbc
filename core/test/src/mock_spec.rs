@@ -55,6 +55,13 @@ pub struct MockSpec {
     /// After DryRun execution, these are verified against actual outputs.
     pub expected_outputs: Vec<ExpectedOutput>,
 
+    /// Per-node I/O examples for generating unit tests.
+    /// Each example specifies inputs and expected outputs for a single node.
+    pub node_examples: Vec<NodeExample>,
+
+    /// Mock values for DAG entry inputs (dangling input ports with no upstream edge).
+    /// These values are injected when testing a DAG in isolation.
+    pub input_mocks: Vec<InputMock>,
 }
 
 impl MockSpec {
@@ -67,6 +74,8 @@ impl MockSpec {
             resource_mocks: ResourceMocks::new(),
             transport_mocks: Vec::new(),
             expected_outputs: Vec::new(),
+            node_examples: Vec::new(),
+            input_mocks: Vec::new(),
         }
     }
 
@@ -152,13 +161,46 @@ impl MockSpec {
         self
     }
 
+    /// Add a node I/O example for generating unit tests.
+    ///
+    /// Node examples are used by testgen to create per-node unit tests that
+    /// verify: given these inputs, the node produces outputs matching these matchers.
+    pub fn node_example(mut self, example: NodeExample) -> Self {
+        self.node_examples.push(example);
+        self
+    }
+
+    /// Add an input mock for a DAG entry point (dangling input port).
+    ///
+    /// Use this when a node has an input port with no incoming edge.
+    /// The mock value will be injected as if it came from an upstream node.
+    pub fn input_mock(
+        mut self,
+        node: impl Into<String>,
+        port: impl Into<String>,
+        value: Value,
+    ) -> Self {
+        self.input_mocks.push(InputMock {
+            node: node.into(),
+            port: port.into(),
+            value,
+        });
+        self
+    }
+
     /// Convert this MockSpec into BoundaryMocks suitable for `execute_with_mode`.
     ///
-    /// Maps transport_mocks to port-level mocks in the resulting BoundaryMocks.
+    /// Maps transport_mocks to port-level output mocks and input_mocks to
+    /// port-level input mocks (for DAG entry points) in the resulting BoundaryMocks.
     pub fn to_boundary_mocks(&self) -> BoundaryMocks {
         let mut mocks = BoundaryMocks::new();
+        // Transport mocks for output interception
         for tm in &self.transport_mocks {
             mocks.set_value(&tm.node, &tm.port, tm.value.clone());
+        }
+        // Input mocks for DAG entry point injection
+        for im in &self.input_mocks {
+            mocks.set_input(&im.node, &im.port, im.value.clone());
         }
         mocks
     }
@@ -214,6 +256,17 @@ pub struct TransportMock {
     /// Output port name (e.g., "response")
     pub port: String,
     /// Mock value to return for this port
+    pub value: Value,
+}
+
+/// A mock value for a DAG entry input (dangling input port with no upstream edge).
+#[derive(Debug, Clone)]
+pub struct InputMock {
+    /// Node ID that has the dangling input (e.g., "prepare")
+    pub node: String,
+    /// Input port name (e.g., "provider")
+    pub port: String,
+    /// Mock value to inject for this input
     pub value: Value,
 }
 
@@ -568,6 +621,207 @@ pub enum ChainError {
     },
 }
 
+// ============================================================================
+// Node Examples (DAG definition = test specification)
+// ============================================================================
+
+/// An I/O example for a node, used to generate unit tests.
+///
+/// Each example specifies inputs to provide and expected outputs.
+/// TestGenerator uses these to generate tests that:
+/// 1. Execute the node with the given inputs
+/// 2. Assert outputs match the expected matchers
+///
+/// # Example
+///
+/// ```ignore
+/// let example = NodeExample::new("prepare_prompt")
+///     .input("artifact", Value::Str("fn foo() {}".into()))
+///     .input("criteria", Value::Json(security_criteria()))
+///     .output("question", OutputMatcher::contains("security"))
+///     .output("system_prompt", OutputMatcher::non_empty());
+/// ```
+#[derive(Debug, Clone)]
+pub struct NodeExample {
+    /// Node ID this example is for
+    pub node_id: String,
+    /// Input values to provide
+    pub inputs: HashMap<String, Value>,
+    /// Expected outputs with matchers
+    pub outputs: HashMap<String, OutputMatcher>,
+    /// Optional description for the test
+    pub description: Option<String>,
+}
+
+impl NodeExample {
+    /// Create a new example for a node.
+    pub fn new(node_id: impl Into<String>) -> Self {
+        Self {
+            node_id: node_id.into(),
+            inputs: HashMap::new(),
+            outputs: HashMap::new(),
+            description: None,
+        }
+    }
+
+    /// Add an input value.
+    pub fn input(mut self, port: impl Into<String>, value: Value) -> Self {
+        self.inputs.insert(port.into(), value);
+        self
+    }
+
+    /// Add an expected output with a matcher.
+    pub fn output(mut self, port: impl Into<String>, matcher: OutputMatcher) -> Self {
+        self.outputs.insert(port.into(), matcher);
+        self
+    }
+
+    /// Add a description for the generated test.
+    pub fn description(mut self, desc: impl Into<String>) -> Self {
+        self.description = Some(desc.into());
+        self
+    }
+}
+
+/// Matcher for expected output values.
+///
+/// OutputMatcher provides flexible ways to assert on node outputs:
+/// - Exact: value must equal expected exactly
+/// - Contains: string output must contain substring
+/// - NonEmpty: value must be non-empty (strings, lists)
+/// - Satisfies: custom predicate function
+#[derive(Clone)]
+pub enum OutputMatcher {
+    /// Output must equal this value exactly
+    Exact(Value),
+    /// Output string must contain this substring
+    Contains(String),
+    /// Output must be non-empty
+    NonEmpty,
+    /// Output must satisfy a custom predicate
+    Satisfies {
+        description: String,
+        predicate: fn(&Value) -> bool,
+    },
+    /// Any value is acceptable
+    Any,
+}
+
+impl std::fmt::Debug for OutputMatcher {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            OutputMatcher::Exact(v) => write!(f, "Exact({:?})", v),
+            OutputMatcher::Contains(s) => write!(f, "Contains(\"{}\")", s),
+            OutputMatcher::NonEmpty => write!(f, "NonEmpty"),
+            OutputMatcher::Satisfies { description, .. } => {
+                write!(f, "Satisfies({})", description)
+            }
+            OutputMatcher::Any => write!(f, "Any"),
+        }
+    }
+}
+
+impl OutputMatcher {
+    /// Create an exact match.
+    pub fn exact(value: Value) -> Self {
+        Self::Exact(value)
+    }
+
+    /// Create a contains match for strings.
+    pub fn contains(substring: impl Into<String>) -> Self {
+        Self::Contains(substring.into())
+    }
+
+    /// Create a non-empty match.
+    pub fn non_empty() -> Self {
+        Self::NonEmpty
+    }
+
+    /// Create a custom predicate match.
+    pub fn satisfies(description: impl Into<String>, predicate: fn(&Value) -> bool) -> Self {
+        Self::Satisfies {
+            description: description.into(),
+            predicate,
+        }
+    }
+
+    /// Check if a value matches this matcher.
+    pub fn check(&self, value: &Value) -> Result<(), String> {
+        match self {
+            OutputMatcher::Exact(expected) => {
+                if values_match(expected, value) {
+                    Ok(())
+                } else {
+                    Err(format!("expected {:?}, got {:?}", expected, value))
+                }
+            }
+            OutputMatcher::Contains(substring) => match value {
+                Value::Str(s) if s.contains(substring) => Ok(()),
+                Value::Str(s) => Err(format!("string doesn't contain '{}': {:?}", substring, s)),
+                _ => Err(format!("expected String, got {:?}", value)),
+            },
+            OutputMatcher::NonEmpty => match value {
+                Value::Str(s) if !s.is_empty() => Ok(()),
+                Value::Str(_) => Err("expected non-empty string".into()),
+                Value::StrList(v) if !v.is_empty() => Ok(()),
+                Value::StrList(_) => Err("expected non-empty list".into()),
+                _ => Ok(()), // Other types considered non-empty
+            },
+            OutputMatcher::Satisfies { description, predicate } => {
+                if predicate(value) {
+                    Ok(())
+                } else {
+                    Err(format!("failed: {}", description))
+                }
+            }
+            OutputMatcher::Any => Ok(()),
+        }
+    }
+
+    /// Convert to Rust code for generated tests.
+    pub fn to_check_code(&self, value_expr: &str) -> String {
+        match self {
+            OutputMatcher::Exact(expected) => {
+                format!(
+                    "assert_eq!({}, {}, \"expected exact value\")",
+                    value_expr,
+                    value_to_code(expected)
+                )
+            }
+            OutputMatcher::Contains(substring) => {
+                format!(
+                    "assert!({}.as_str().map(|s| s.contains(\"{}\")).unwrap_or(false), \"expected to contain '{}'\", {})",
+                    value_expr, substring.replace('\"', "\\\""), substring.replace('\"', "\\\""), value_expr
+                )
+            }
+            OutputMatcher::NonEmpty => {
+                format!(
+                    "assert!(!{}.as_str().map(|s| s.is_empty()).unwrap_or(false), \"expected non-empty\")",
+                    value_expr
+                )
+            }
+            OutputMatcher::Satisfies { description, .. } => {
+                // For custom predicates, we can only emit a comment
+                format!("// Custom assertion: {}", description)
+            }
+            OutputMatcher::Any => {
+                format!("// Any value accepted for {}", value_expr)
+            }
+        }
+    }
+}
+
+/// Convert a Value to Rust code.
+fn value_to_code(value: &Value) -> String {
+    match value {
+        Value::Unit => "Value::Unit".to_string(),
+        Value::Bool(b) => format!("Value::Bool({})", b),
+        Value::Str(s) => format!("Value::Str(\"{}\".to_string())", s.replace('\"', "\\\"")),
+        Value::Int(i) => format!("Value::Int({})", i),
+        _ => "/* complex value */".to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -630,5 +884,103 @@ mod tests {
 
         let result = validate_chain(&upstream, &downstream, &mapping);
         assert!(!result.is_ok());
+    }
+
+    // ========================================================================
+    // NodeExample and OutputMatcher tests
+    // ========================================================================
+
+    #[test]
+    fn test_output_matcher_exact() {
+        let matcher = OutputMatcher::exact(Value::Str("hello".into()));
+
+        assert!(matcher.check(&Value::Str("hello".into())).is_ok());
+        assert!(matcher.check(&Value::Str("world".into())).is_err());
+        assert!(matcher.check(&Value::Int(42)).is_err());
+    }
+
+    #[test]
+    fn test_output_matcher_contains() {
+        let matcher = OutputMatcher::contains("world");
+
+        assert!(matcher.check(&Value::Str("hello world".into())).is_ok());
+        assert!(matcher.check(&Value::Str("world peace".into())).is_ok());
+        assert!(matcher.check(&Value::Str("hello".into())).is_err());
+        assert!(matcher.check(&Value::Int(42)).is_err());
+    }
+
+    #[test]
+    fn test_output_matcher_non_empty() {
+        let matcher = OutputMatcher::non_empty();
+
+        assert!(matcher.check(&Value::Str("hello".into())).is_ok());
+        assert!(matcher.check(&Value::Str("".into())).is_err());
+        assert!(matcher.check(&Value::StrList(vec!["a".into()])).is_ok());
+        assert!(matcher.check(&Value::StrList(vec![])).is_err());
+        // Other types are considered non-empty
+        assert!(matcher.check(&Value::Int(0)).is_ok());
+    }
+
+    #[test]
+    fn test_output_matcher_satisfies() {
+        let matcher = OutputMatcher::satisfies("is positive", |v| {
+            matches!(v, Value::Int(n) if *n > 0)
+        });
+
+        assert!(matcher.check(&Value::Int(42)).is_ok());
+        assert!(matcher.check(&Value::Int(-1)).is_err());
+    }
+
+    #[test]
+    fn test_output_matcher_any() {
+        let matcher = OutputMatcher::Any;
+
+        assert!(matcher.check(&Value::Str("anything".into())).is_ok());
+        assert!(matcher.check(&Value::Int(42)).is_ok());
+        assert!(matcher.check(&Value::Unit).is_ok());
+    }
+
+    #[test]
+    fn test_node_example_builder() {
+        let example = NodeExample::new("prepare_prompt")
+            .input("artifact", Value::Str("fn foo() {}".into()))
+            .input("criteria", Value::Str("security".into()))
+            .output("question", OutputMatcher::contains("security"))
+            .output("system_prompt", OutputMatcher::non_empty())
+            .description("Test with security criteria");
+
+        assert_eq!(example.node_id, "prepare_prompt");
+        assert_eq!(example.inputs.len(), 2);
+        assert_eq!(example.outputs.len(), 2);
+        assert_eq!(example.description, Some("Test with security criteria".to_string()));
+    }
+
+    #[test]
+    fn test_mock_spec_with_node_examples() {
+        let example = NodeExample::new("parse")
+            .input("response", Value::Str("{\"content\": \"test\"}".into()))
+            .output("content", OutputMatcher::exact(Value::Str("test".into())));
+
+        let spec = MockSpec::new("test_dag")
+            .transport_mock("execute", "response", Value::Str("ok".into()))
+            .node_example(example);
+
+        assert_eq!(spec.node_examples.len(), 1);
+        assert_eq!(spec.node_examples[0].node_id, "parse");
+    }
+
+    #[test]
+    fn test_output_matcher_to_check_code() {
+        let exact = OutputMatcher::exact(Value::Str("hello".into()));
+        let code = exact.to_check_code("output");
+        assert!(code.contains("assert_eq!"));
+
+        let contains = OutputMatcher::contains("world");
+        let code = contains.to_check_code("output");
+        assert!(code.contains("contains"));
+
+        let non_empty = OutputMatcher::non_empty();
+        let code = non_empty.to_check_code("output");
+        assert!(code.contains("is_empty"));
     }
 }

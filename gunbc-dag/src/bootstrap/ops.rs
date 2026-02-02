@@ -75,6 +75,14 @@ fn execute_prepare_scan_workspace(_inputs: HashMap<String, Value>) -> Result<Has
 
 /// Parse scan result (PURE - no I/O).
 fn execute_parse_scan_result(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+    // Handle skipped response (upstream transport was skipped)
+    if matches!(inputs.get("response"), Some(Value::Skipped)) {
+        let mut out = HashMap::new();
+        out.insert("crate_count".to_string(), Value::Skipped);
+        out.insert("crate_names".to_string(), Value::Skipped);
+        return Ok(out);
+    }
+
     let response = inputs
         .get("response")
         .and_then(|v| v.as_response())

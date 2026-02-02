@@ -124,7 +124,7 @@ fn main() {
     
     // Execute the CI pipeline with CI context for step visibility.
     // Node outputs are printed inside their CI groups by the executor,
-    // so we only need to check the final result here.
+    // except for the "report" node which prints directly (no group).
     match execute_with_mode_and_ci(&dag, mode, &mut ci) {
         Ok(log) => {
             // Check overall_success and exit with appropriate code
