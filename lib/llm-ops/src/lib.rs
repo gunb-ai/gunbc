@@ -174,6 +174,17 @@ fn execute_prepare_chat_request(
 fn execute_parse_chat_response(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
+    // Handle skipped response (upstream transport was skipped)
+    if matches!(inputs.get("response"), Some(Value::Skipped)) {
+        let mut out = HashMap::new();
+        out.insert("content".to_string(), Value::Skipped);
+        out.insert("model".to_string(), Value::Skipped);
+        out.insert("finish_reason".to_string(), Value::Skipped);
+        out.insert("input_tokens".to_string(), Value::Skipped);
+        out.insert("output_tokens".to_string(), Value::Skipped);
+        return Ok(out);
+    }
+
     let provider_id = inputs
         .get("provider")
         .and_then(|v| v.as_str())
@@ -278,6 +289,13 @@ fn execute_prepare_simple_request(
 fn execute_parse_simple_response(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
+    // Handle skipped response (upstream transport was skipped)
+    if matches!(inputs.get("response"), Some(Value::Skipped)) {
+        let mut out = HashMap::new();
+        out.insert("answer".to_string(), Value::Skipped);
+        return Ok(out);
+    }
+
     let provider_id = inputs
         .get("provider")
         .and_then(|v| v.as_str())

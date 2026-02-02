@@ -8,6 +8,10 @@
 //! > "World I/O is performed only by transport executor nodes"
 //! > "DryRun intercepts transport execution nodes, not boundary outputs"
 //!
+//! Additionally, **DAG entry inputs** (input ports with no incoming edges)
+//! can be mocked via `input_mocks`. This allows testing DAGs that expect
+//! external inputs when run in isolation.
+//!
 //! Note: The mocks are still called "BoundaryMocks" for backwards compatibility,
 //! but they apply to transport execution nodes, not boundary nodes.
 
@@ -35,11 +39,13 @@ impl Default for BoundaryMock {
     }
 }
 
-/// Collection of mocks for all boundary ports.
+/// Collection of mocks for boundary ports and DAG entry inputs.
 #[derive(Debug, Clone, Default)]
 pub struct BoundaryMocks {
-    /// Map from (node_id, port_name) to mock behavior
+    /// Map from (node_id, port_name) to mock behavior for outputs
     mocks: HashMap<(String, String), BoundaryMock>,
+    /// Map from (node_id, port_name) to mock value for inputs (DAG entry points)
+    input_mocks: HashMap<(String, String), Value>,
     /// Default mock to use when no specific mock is defined
     default_mock: BoundaryMock,
 }
@@ -49,7 +55,7 @@ impl BoundaryMocks {
         Self::default()
     }
 
-    /// Set a specific mock for a boundary port.
+    /// Set a specific mock for a boundary port (output interception).
     pub fn set_mock(
         &mut self,
         node_id: impl Into<String>,
@@ -59,7 +65,7 @@ impl BoundaryMocks {
         self.mocks.insert((node_id.into(), port_name.into()), mock);
     }
 
-    /// Set a mock value directly for a boundary port.
+    /// Set a mock value directly for a boundary port (output interception).
     pub fn set_value(
         &mut self,
         node_id: impl Into<String>,
@@ -67,6 +73,31 @@ impl BoundaryMocks {
         value: Value,
     ) {
         self.set_mock(node_id, port_name, BoundaryMock::new(value));
+    }
+
+    /// Set a mock value for a DAG entry input (input injection).
+    ///
+    /// Use this when a node has an input port with no incoming edge.
+    /// The mock value will be injected as if it came from an upstream node.
+    pub fn set_input(
+        &mut self,
+        node_id: impl Into<String>,
+        port_name: impl Into<String>,
+        value: Value,
+    ) {
+        self.input_mocks.insert((node_id.into(), port_name.into()), value);
+    }
+
+    /// Get the mock value for a DAG entry input, if defined.
+    pub fn get_input(&self, node_id: &str, port_name: &str) -> Option<&Value> {
+        let key = (node_id.to_string(), port_name.to_string());
+        self.input_mocks.get(&key)
+    }
+
+    /// Check if an input mock is defined for a specific port.
+    pub fn has_input(&self, node_id: &str, port_name: &str) -> bool {
+        let key = (node_id.to_string(), port_name.to_string());
+        self.input_mocks.contains_key(&key)
     }
 
     /// Get the mock for a boundary port, using the default if not set.

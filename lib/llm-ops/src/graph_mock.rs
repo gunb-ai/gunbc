@@ -34,7 +34,19 @@ pub fn openai_mock_spec() -> MockSpec {
     let response = mock::mock_openai_response("The code looks good. No issues found.");
 
     MockSpec::new("llm-openai")
-        // Boundary: execute (transport) outputs
+        // Input mocks for DAG entry points (dangling inputs on prepare node)
+        .input_mock("prepare", "provider", Value::Str("openai".into()))
+        .input_mock("prepare", "model", Value::Str("gpt-4o".into()))
+        .input_mock("prepare", "messages", Value::Json(serde_json::json!([
+            {"role": "user", "content": "Review this code: fn main() {}"}
+        ])))
+        // Transport mock: execute node response (DryRun interception)
+        .transport_mock(
+            "execute",
+            "response",
+            Value::Response(gunbc_ir::transport::TransportResponse::Rest(response.clone())),
+        )
+        // Boundary: execute (transport) outputs (for documentation/chain validation)
         .boundary(
             "execute",
             "response",
@@ -75,7 +87,19 @@ pub fn anthropic_mock_spec() -> MockSpec {
     );
 
     MockSpec::new("llm-anthropic")
-        // Boundary: execute (transport) outputs
+        // Input mocks for DAG entry points (dangling inputs on prepare node)
+        .input_mock("prepare", "provider", Value::Str("anthropic".into()))
+        .input_mock("prepare", "model", Value::Str("claude-sonnet-4-20250514".into()))
+        .input_mock("prepare", "messages", Value::Json(serde_json::json!([
+            {"role": "user", "content": "Review this function for edge cases"}
+        ])))
+        // Transport mock: execute node response (DryRun interception)
+        .transport_mock(
+            "execute",
+            "response",
+            Value::Response(gunbc_ir::transport::TransportResponse::Rest(response.clone())),
+        )
+        // Boundary: execute (transport) outputs (for documentation/chain validation)
         .boundary(
             "execute",
             "response",
@@ -127,6 +151,19 @@ Overall: The code is clean and well-structured. Minor fixes recommended.";
     let response = mock::mock_openai_response_full(review_content, "gpt-4o", "stop", 150, 85);
 
     MockSpec::new("llm-code-review")
+        // Input mocks for DAG entry points
+        .input_mock("prepare", "provider", Value::Str("openai".into()))
+        .input_mock("prepare", "model", Value::Str("gpt-4o".into()))
+        .input_mock("prepare", "messages", Value::Json(serde_json::json!([
+            {"role": "system", "content": "You are a code reviewer. Review the following code."},
+            {"role": "user", "content": "fn main() { let x = Some(1); x.unwrap(); }"}
+        ])))
+        // Transport mock: execute node response
+        .transport_mock(
+            "execute",
+            "response",
+            Value::Response(gunbc_ir::transport::TransportResponse::Rest(response.clone())),
+        )
         .boundary(
             "execute",
             "response",
@@ -151,7 +188,21 @@ Overall: The code is clean and well-structured. Minor fixes recommended.";
 /// Models the secret resolution pattern: the API key flows as a
 /// `Value::Secret` and gets resolved at the transport boundary.
 pub fn secret_api_key_mock_spec() -> MockSpec {
+    let response = mock::mock_openai_response("Response with secret auth.");
+
     MockSpec::new("llm-secrets")
+        // Input mocks for DAG entry points
+        .input_mock("prepare", "provider", Value::Str("openai".into()))
+        .input_mock("prepare", "model", Value::Str("gpt-4o".into()))
+        .input_mock("prepare", "messages", Value::Json(serde_json::json!([
+            {"role": "user", "content": "Hello with auth"}
+        ])))
+        // Transport mock: execute node response
+        .transport_mock(
+            "execute",
+            "response",
+            Value::Response(gunbc_ir::transport::TransportResponse::Rest(response.clone())),
+        )
         .boundary(
             "resolve_api_key",
             "api_key",
@@ -160,9 +211,7 @@ pub fn secret_api_key_mock_spec() -> MockSpec {
         .boundary(
             "execute",
             "response",
-            Value::Response(gunbc_ir::transport::TransportResponse::Rest(
-                mock::mock_openai_response("Response with secret auth."),
-            )),
+            Value::Response(gunbc_ir::transport::TransportResponse::Rest(response)),
         )
         .boundary(
             "parse",
@@ -188,6 +237,18 @@ pub fn rate_limited_mock_spec() -> MockSpec {
     );
 
     MockSpec::new("llm-rate-limited")
+        // Input mocks for DAG entry points
+        .input_mock("prepare", "provider", Value::Str("openai".into()))
+        .input_mock("prepare", "model", Value::Str("gpt-4o".into()))
+        .input_mock("prepare", "messages", Value::Json(serde_json::json!([
+            {"role": "user", "content": "This request will be rate limited"}
+        ])))
+        // Transport mock: execute node returns error response
+        .transport_mock(
+            "execute",
+            "response",
+            Value::Response(gunbc_ir::transport::TransportResponse::Rest(error_response.clone())),
+        )
         .boundary(
             "execute",
             "response",

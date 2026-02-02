@@ -58,6 +58,10 @@ pub struct MockSpec {
     /// Per-node I/O examples for generating unit tests.
     /// Each example specifies inputs and expected outputs for a single node.
     pub node_examples: Vec<NodeExample>,
+
+    /// Mock values for DAG entry inputs (dangling input ports with no upstream edge).
+    /// These values are injected when testing a DAG in isolation.
+    pub input_mocks: Vec<InputMock>,
 }
 
 impl MockSpec {
@@ -71,6 +75,7 @@ impl MockSpec {
             transport_mocks: Vec::new(),
             expected_outputs: Vec::new(),
             node_examples: Vec::new(),
+            input_mocks: Vec::new(),
         }
     }
 
@@ -165,13 +170,37 @@ impl MockSpec {
         self
     }
 
+    /// Add an input mock for a DAG entry point (dangling input port).
+    ///
+    /// Use this when a node has an input port with no incoming edge.
+    /// The mock value will be injected as if it came from an upstream node.
+    pub fn input_mock(
+        mut self,
+        node: impl Into<String>,
+        port: impl Into<String>,
+        value: Value,
+    ) -> Self {
+        self.input_mocks.push(InputMock {
+            node: node.into(),
+            port: port.into(),
+            value,
+        });
+        self
+    }
+
     /// Convert this MockSpec into BoundaryMocks suitable for `execute_with_mode`.
     ///
-    /// Maps transport_mocks to port-level mocks in the resulting BoundaryMocks.
+    /// Maps transport_mocks to port-level output mocks and input_mocks to
+    /// port-level input mocks (for DAG entry points) in the resulting BoundaryMocks.
     pub fn to_boundary_mocks(&self) -> BoundaryMocks {
         let mut mocks = BoundaryMocks::new();
+        // Transport mocks for output interception
         for tm in &self.transport_mocks {
             mocks.set_value(&tm.node, &tm.port, tm.value.clone());
+        }
+        // Input mocks for DAG entry point injection
+        for im in &self.input_mocks {
+            mocks.set_input(&im.node, &im.port, im.value.clone());
         }
         mocks
     }
@@ -227,6 +256,17 @@ pub struct TransportMock {
     /// Output port name (e.g., "response")
     pub port: String,
     /// Mock value to return for this port
+    pub value: Value,
+}
+
+/// A mock value for a DAG entry input (dangling input port with no upstream edge).
+#[derive(Debug, Clone)]
+pub struct InputMock {
+    /// Node ID that has the dangling input (e.g., "prepare")
+    pub node: String,
+    /// Input port name (e.g., "provider")
+    pub port: String,
+    /// Mock value to inject for this input
     pub value: Value,
 }
 

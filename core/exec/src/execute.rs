@@ -437,6 +437,19 @@ fn execute_flat<T: Executable>(
             }
         }
 
+        // Inject input mocks for dangling input ports (DAG entry points)
+        // This allows testing DAGs in isolation even when they expect external inputs
+        if let ExecutionMode::DryRun(ref mocks) | ExecutionMode::Simulate(SimConfig { boundary_mocks: ref mocks, .. }) = mode {
+            for port in &node.inputs {
+                if !inputs.contains_key(&port.name.0) {
+                    // This port has no incoming edge - check for input mock
+                    if let Some(mock_value) = mocks.get_input(&node.id.0, &port.name.0) {
+                        inputs.insert(port.name.0.clone(), mock_value.clone());
+                    }
+                }
+            }
+        }
+
         // Check guards
         let skip = should_skip_node(node, &inputs);
 
