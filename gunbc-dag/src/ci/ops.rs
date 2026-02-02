@@ -101,10 +101,20 @@ impl Executable for CIOp {
 
 /// Parse the deps.toml exists check result (pure).
 fn execute_parse_deps_exists(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+    // Handle skipped response (upstream transport was skipped)
+    if matches!(inputs.get("response"), Some(Value::Skipped)) {
+        let mut out = HashMap::new();
+        out.insert("deps_exists".to_string(), Value::Skipped);
+        out.insert("deps_checked".to_string(), Value::Skipped);
+        out.insert("deps_installed".to_string(), Value::Skipped);
+        out.insert("message".to_string(), Value::Skipped);
+        return Ok(out);
+    }
+
     let response = inputs
         .get("response")
         .and_then(|v| v.as_response())
-        .ok_or_else(|| ExecError::new("missing response input"))?;
+        .ok_or_else(|| ExecError::new("missing or invalid 'response' input"))?;
 
     let deps_exists = match response {
         TransportResponse::File(file_resp) => file_resp.exists.unwrap_or(false),
@@ -141,6 +151,16 @@ fn execute_prepare_codegen_exists_check(_inputs: HashMap<String, Value>) -> Resu
 
 /// Parse the codegen exists check result (pure).
 fn execute_parse_codegen_exists(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+    // Handle skipped response (upstream transport was skipped)
+    if matches!(inputs.get("response"), Some(Value::Skipped)) {
+        let mut out = HashMap::new();
+        out.insert("codegen_needed".to_string(), Value::Skipped);
+        out.insert("prep_success".to_string(), Value::Skipped);
+        out.insert("codegen_ran".to_string(), Value::Skipped);
+        out.insert("prep_message".to_string(), Value::Skipped);
+        return Ok(out);
+    }
+
     let response = inputs
         .get("response")
         .and_then(|v| v.as_response())
@@ -153,14 +173,14 @@ fn execute_parse_codegen_exists(inputs: HashMap<String, Value>) -> Result<HashMa
 
     let mut out = HashMap::new();
     out.insert("codegen_needed".to_string(), Value::Bool(!codegen_exists));
-    
+
     // If codegen exists, prep is already successful
     if codegen_exists {
         out.insert("prep_success".to_string(), Value::Bool(true));
         out.insert("codegen_ran".to_string(), Value::Bool(false));
         out.insert("prep_message".to_string(), Value::Str("Generated code already exists".to_string()));
     }
-    
+
     Ok(out)
 }
 
@@ -189,6 +209,15 @@ fn execute_prepare_codegen_command(inputs: HashMap<String, Value>) -> Result<Has
 
 /// Parse the codegen shell response (pure).
 fn execute_parse_codegen_result(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+    // Handle skipped response (upstream transport was skipped)
+    if matches!(inputs.get("response"), Some(Value::Skipped)) {
+        let mut out = HashMap::new();
+        out.insert("prep_success".to_string(), Value::Skipped);
+        out.insert("codegen_ran".to_string(), Value::Skipped);
+        out.insert("prep_message".to_string(), Value::Skipped);
+        return Ok(out);
+    }
+
     // Check if codegen was skipped
     let skip = inputs
         .get("skip")
@@ -217,14 +246,14 @@ fn execute_parse_codegen_result(inputs: HashMap<String, Value>) -> Result<HashMa
 
     out.insert("prep_success".to_string(), Value::Bool(success));
     out.insert("codegen_ran".to_string(), Value::Bool(true));
-    
+
     let message = if success {
         "Codegen completed successfully".to_string()
     } else {
         format!("Codegen failed: {}", stderr)
     };
     out.insert("prep_message".to_string(), Value::Str(message));
-    
+
     Ok(out)
 }
 
@@ -257,6 +286,16 @@ fn execute_prepare_build_command(inputs: HashMap<String, Value>) -> Result<HashM
 
 /// Parse the build shell response (pure).
 fn execute_parse_build_result(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+    // Handle skipped response (upstream transport was skipped)
+    if matches!(inputs.get("response"), Some(Value::Skipped)) {
+        let mut out = HashMap::new();
+        out.insert("build_success".to_string(), Value::Skipped);
+        out.insert("build_skipped".to_string(), Value::Skipped);
+        out.insert("build_stdout".to_string(), Value::Skipped);
+        out.insert("build_stderr".to_string(), Value::Skipped);
+        return Ok(out);
+    }
+
     let skip = inputs
         .get("skip")
         .and_then(|v| v.as_bool())
@@ -322,6 +361,16 @@ fn execute_prepare_test_command(inputs: HashMap<String, Value>) -> Result<HashMa
 
 /// Parse the test shell response (pure).
 fn execute_parse_test_result(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+    // Handle skipped response (upstream transport was skipped)
+    if matches!(inputs.get("response"), Some(Value::Skipped)) {
+        let mut out = HashMap::new();
+        out.insert("test_success".to_string(), Value::Skipped);
+        out.insert("test_skipped".to_string(), Value::Skipped);
+        out.insert("test_stdout".to_string(), Value::Skipped);
+        out.insert("test_stderr".to_string(), Value::Skipped);
+        return Ok(out);
+    }
+
     let skip = inputs
         .get("skip")
         .and_then(|v| v.as_bool())
@@ -441,7 +490,8 @@ fn execute_parse_clippy_lint_result(inputs: HashMap<String, Value>) -> Result<Ha
 ///
 /// When a stage fails, its stderr is included below the summary so
 /// developers can see what went wrong without expanding individual
-/// CI groups.
+/// CI groups. For test failures, the "failures:" section from stdout
+/// is also extracted and shown.
 fn execute_report(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
     let build_success = inputs
         .get("build_success")
@@ -474,27 +524,45 @@ fn execute_report(inputs: HashMap<String, Value>) -> Result<HashMap<String, Valu
         if overall_success { "SUCCESS" } else { "FAILURE" }
     );
 
-    // Append stderr for any failed stage
-    if !overall_success {
-        let failures: Vec<(&str, &str)> = [
-            ("Build", "build_stderr"),
-            ("Test", "test_stderr"),
-            ("Lint", "lint_stderr"),
-        ]
-        .iter()
-        .zip([build_success, test_success, lint_success])
-        .filter(|(_, success)| !success)
-        .map(|((label, key), _)| (*label, *key))
-        .collect();
+    // Append failure details for any failed stage
+    if !build_success {
+        let stderr = inputs
+            .get("build_stderr")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        if !stderr.is_empty() {
+            report.push_str(&format!("\n--- Build stderr ---\n{stderr}\n"));
+        }
+    }
 
-        for (label, key) in failures {
-            let stderr = inputs
-                .get(key)
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-            if !stderr.is_empty() {
-                report.push_str(&format!("\n--- {label} stderr ---\n{stderr}\n"));
-            }
+    if !test_success {
+        // For tests, extract the "failures:" section from stdout - that's where
+        // the actual test names and panic messages are (stderr just says "test failed")
+        let stdout = inputs
+            .get("test_stdout")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+
+        if let Some(failures_section) = extract_test_failures(stdout) {
+            report.push_str(&format!("\n--- Test failures ---\n{failures_section}\n"));
+        }
+
+        let stderr = inputs
+            .get("test_stderr")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        if !stderr.is_empty() {
+            report.push_str(&format!("\n--- Test stderr ---\n{stderr}\n"));
+        }
+    }
+
+    if !lint_success {
+        let stderr = inputs
+            .get("lint_stderr")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        if !stderr.is_empty() {
+            report.push_str(&format!("\n--- Lint stderr ---\n{stderr}\n"));
         }
     }
 
@@ -502,6 +570,27 @@ fn execute_report(inputs: HashMap<String, Value>) -> Result<HashMap<String, Valu
     out.insert("overall_success".to_string(), Value::Bool(overall_success));
     out.insert("report".to_string(), Value::Str(report));
     Ok(out)
+}
+
+/// Extract the "failures:" section from cargo test output.
+/// This includes the failure list and any panic messages.
+fn extract_test_failures(stdout: &str) -> Option<String> {
+    // Look for the "failures:" line that lists failed test names
+    let failures_start = stdout.find("\nfailures:\n")?;
+    let section = &stdout[failures_start + 1..]; // skip the leading newline
+
+    // Find the end - either "test result:" or end of string
+    let end = section
+        .find("\ntest result:")
+        .unwrap_or(section.len());
+
+    let failures_section = section[..end].trim();
+
+    if failures_section.is_empty() {
+        None
+    } else {
+        Some(failures_section.to_string())
+    }
 }
 
 // ============================================================================
