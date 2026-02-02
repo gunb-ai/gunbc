@@ -133,99 +133,146 @@ These abstractions need to be designed together - changes in one affect the othe
 
 ## Implementation Plan
 
-### Section 1: Core Types (`lib/review/`)
+Organized by concurrent design track. Each track can be worked on in parallel, but changes affect other tracks.
 
-Create `lib/review/` crate with domain types.
+---
 
-**TODO 1.1: Artifact types**
-- [ ] `Artifact` enum (Code, Design, TestOutput, Text variants)
-- [ ] `DocFormat` enum for design docs
+### Track 1: Resource Abstraction (`core/resource/`)
 
-**TODO 1.2: Criteria types**
+Unify acquisition pattern across tools, blobs, locks.
+
+**TODO 1.1: Resource trait**
+- [ ] Define `Resource` trait with `Params` and `Handle` associated types
+- [ ] `prepare(params) → TransportRequest`
+- [ ] `parse(response, params) → Handle`
+- [ ] Align with existing `CliToolOp` pattern
+
+**TODO 1.2: Integrate with UpsertBuilder**
+- [ ] Verify `UpsertBuilder` works for Check → Acquire → Resolve pattern
+- [ ] Add `ResourceUpsert` convenience that uses `UpsertBuilder`
+- [ ] Test with existing `CliToolOp` as reference
+
+**TODO 1.3: ResourceId integration**
+- [ ] Ensure all resources can produce `ResourceId`
+- [ ] Verify `AccessMode` conflict detection works
+- [ ] Add tests for parallel resource access
+
+---
+
+### Track 2: Blob Abstraction (`lib/blob/`)
+
+Content acquisition aligned with tool acquisition.
+
+**TODO 2.1: BlobSource types**
+- [ ] `SourceSpec` enum: Inline, File, GitBlob, S3, Http
+- [ ] `BlobSource` struct with `source`, `access_mode`, `cache_key`
+- [ ] `BlobSource::resource_id()` for conflict detection
+
+**TODO 2.2: BlobOps**
+- [ ] `PrepareCheckCached` / `ParseCheckCached` (cache lookup)
+- [ ] `PrepareFetch` / `ParseFetch` (fetch from source)
+- [ ] `Acquire` convenience (full upsert via `UpsertBuilder`)
+- [ ] Implement `Executable` trait
+
+**TODO 2.3: BlobHandle**
+- [ ] Sealed handle (like `ToolHandle` with `PhantomData`)
+- [ ] `data()` and `meta()` accessors
+- [ ] `BlobMeta`: size, hash, content_type, etag
+
+**TODO 2.4: Value integration**
+- [ ] Decide: `Value::Blob(BlobHandle)` vs JSON serialization
+- [ ] Test blob flow through DAG edges
+
+---
+
+### Track 3: LLM Query Abstraction (`lib/llm-ops/`)
+
+Generic content + question → answer primitive.
+
+**TODO 3.1: LlmQueryOps**
+- [ ] `PrepareQuery`: content + question + schema? → request
+- [ ] `ParseQuery`: response + schema? → answer + raw
+- [ ] Implement `Executable` trait
+- [ ] Relationship to existing `PrepareChatRequest`/`ParseChatResponse`
+
+**TODO 3.2: Structured output**
+- [ ] JSON mode support (provider-specific)
+- [ ] Schema validation in `ParseQuery`
+- [ ] Error handling for malformed responses
+
+---
+
+### Track 4: Review Domain (`lib/review/`)
+
+Review-specific types and operations.
+
+**TODO 4.1: Core types**
 - [ ] `Criteria` struct (name, description, checks)
 - [ ] `Check` struct (id, question, examples)
+- [ ] `Finding` struct (id, check_id, issue_key, location, observation, candidate_fix)
+- [ ] `Location` enum (FileLine, Span, DiffLine, Unlocated)
+- [ ] `ReviewOutput` struct (schema_version, criteria_name, source, findings, summary)
+- [ ] `ReviewBundle` for multi-source merging
 
-**TODO 1.3: Finding types**
-- [ ] `Finding` struct (id, check_id, location, issue_key, observation, candidate_fix)
-- [ ] `Location` enum (FileLine, Span, DiffLine with DiffSide)
-- [ ] `finding_id()` hash function using issue_key
+**TODO 4.2: ReviewOps**
+- [ ] `BuildQuestion`: criteria → question string (for LlmQuery)
+- [ ] `ParseFindings`: answer → ReviewOutput
+- [ ] `MergeOutputs`: Vec<ReviewOutput> → ReviewBundle
+- [ ] `HashFinding`: issue_key + check_id → stable finding_id
+- [ ] Implement `Executable` trait
 
-**TODO 1.4: Output types**
-- [ ] `ReviewOutput` struct (criteria_name, source, findings, candidate_remediations, summary)
-- [ ] `ReviewBundle` struct for multi-source merging
-- [ ] `CandidateRemediations` struct (goals, tasks, constraints)
-- [ ] `CandidateTask` struct (finding_id, file, intent, candidate_patch, validation)
-
-**TODO 1.5: JSON schema**
+**TODO 4.3: JSON schema**
 - [ ] Derive Serialize/Deserialize for all types
-- [ ] Add schema version field to ReviewOutput
-- [ ] Basic validation tests
+- [ ] Schema version field
+- [ ] Validation tests
 
 ---
 
-### Section 2: ReviewOps (`lib/review/ops.rs`)
+### Track 5: DAG Composition (`lib/review/dag.rs`)
 
-Implement `ReviewOps` enum with `Executable` trait.
+Wire up phases as composable subdags.
 
-**TODO 2.1: PrepareReviewPrompt**
-- [ ] `ReviewOps::PrepareReviewPrompt` variant
-- [ ] Input: artifact, criteria, optional context
-- [ ] Output: prompt string, system_prompt string
-- [ ] Prompt template that instructs LLM to output structured findings
+**TODO 5.1: ReviewPhase builder**
+- [ ] Entrypoints: source (BlobSource), criteria, config
+- [ ] Internal: BlobOps::Acquire → ReviewOps::BuildQuestion → LlmQueryOps → ParseFindings
+- [ ] Interface boundaries: findings, blob_meta
 
-**TODO 2.2: ParseReviewResponse**
-- [ ] `ReviewOps::ParseReviewResponse` variant
-- [ ] Input: LLM response string, criteria (for check_id mapping)
-- [ ] Output: `ReviewOutput`
-- [ ] Parse JSON from LLM response, generate finding IDs
+**TODO 5.2: DiffReviewPhase builder**
+- [ ] Composes GitOps::PrepareDiff → ReviewPhase
+- [ ] Input: git ref, criteria
+- [ ] Output: ReviewOutput
 
-**TODO 2.3: MergeOutputs**
-- [ ] `ReviewOps::MergeOutputs` variant
-- [ ] Input: `Vec<ReviewOutput>`
-- [ ] Output: `ReviewBundle`
-- [ ] Dedup findings by id
+**TODO 5.3: MultiSourceReviewPhase builder**
+- [ ] Parallel fan-out: LLM + cargo check + clippy
+- [ ] MergeOutputs for dedup
+- [ ] Output: ReviewBundle
 
----
-
-### Section 3: DAG Wiring (`lib/review/dag.rs`)
-
-Wire up ReviewPhase subdag using existing primitives.
-
-**TODO 3.1: Review existing primitives**
-- [ ] Understand `GitOps::PrepareDiff` / `ParseDiff` in `lib/git-ops/`
-- [ ] Understand `LlmOps::PrepareChatRequest` / `ParseChatResponse` in `lib/llm-ops/`
-- [ ] Understand `TransportOps::Execute` pattern
-
-**TODO 3.2: ReviewPhase builder**
-- [ ] `ReviewPhaseBuilder` struct
-- [ ] Entrypoints: artifact, criteria, config
-- [ ] Internal flow: PreparePrompt → LLM subdag → ParseResponse
-- [ ] Interface boundaries: findings, summary
-
-**TODO 3.3: DiffReview convenience builder**
-- [ ] Combines GitOps::PrepareDiff → ReviewPhase
-- [ ] Input: git ref (e.g., "HEAD~1"), criteria
-- [ ] Output: ReviewOutput as JSON
+**TODO 5.4: DryRun support**
+- [ ] Verify all TransportOps::Execute intercepted
+- [ ] Mock responses for testing
+- [ ] No side effects in DryRun mode
 
 ---
 
-### Section 4: CLI Integration
+### Track 6: CLI Integration
 
 Add `gunbc review` command.
 
-**TODO 4.1: CLI command**
+**TODO 6.1: CLI command**
 - [ ] `gunbc review --diff <ref>` subcommand
 - [ ] Load criteria from config or use default
 - [ ] Output JSON to stdout
+- [ ] `--dry-run` flag
 
-**TODO 4.2: Default criteria**
+**TODO 6.2: Default criteria**
 - [ ] Ship basic "code review" criteria
 - [ ] Configurable via `~/.gunbc/review.toml` or similar
 
-**TODO 4.3: Integration test**
+**TODO 6.3: Integration tests**
 - [ ] Test against sample diff
 - [ ] Verify JSON output schema
 - [ ] DryRun mode test (no actual LLM calls)
+- [ ] Test blob caching behavior
 
 ---
 
