@@ -7,6 +7,7 @@ description = "Shared code generation utilities for gunbc"
 
 [dependencies]
 gunbc-ir = { path = "../ir" }
+gunbc-test = { path = "../test" }
 gunbc-clippy = { path = "../../lib/tools/clippy" }
 
 [[bin]]

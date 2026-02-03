@@ -20,6 +20,7 @@ fn convert_ci_node(node: Node<CIGraphOp>) -> Node<WorkspaceOp> {
                 gunbc_ir::NodeBody::SubDag(convert_ci_dag(dag))
             }
         },
+        examples: Vec::new(),
     }
 }
 

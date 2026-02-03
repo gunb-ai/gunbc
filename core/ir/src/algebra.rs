@@ -201,15 +201,19 @@ mod tests {
 
     #[test]
     fn test_join_via_trait() {
-        use crate::algebra::JoinSemilattice;
-        let result = Cardinality::ONE.join(Cardinality::ZERO_OR_ONE);
+        let result = <Cardinality as JoinSemilattice>::join(
+            Cardinality::ONE,
+            Cardinality::ZERO_OR_ONE,
+        );
         assert_eq!(result, Cardinality::ZERO_OR_ONE);
     }
 
     #[test]
     fn test_meet_via_trait() {
-        use crate::algebra::MeetSemilattice;
-        let result = Cardinality::ZERO_OR_ONE.meet(Cardinality::ONE_OR_MORE);
+        let result = <Cardinality as MeetSemilattice>::meet(
+            Cardinality::ZERO_OR_ONE,
+            Cardinality::ONE_OR_MORE,
+        );
         assert_eq!(result, Some(Cardinality::ONE));
     }
 

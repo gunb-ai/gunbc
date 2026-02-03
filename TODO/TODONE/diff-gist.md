@@ -182,9 +182,9 @@ pub fn build_diff_gist_graph(
 ```rust
 pub fn diff_gist_signature() -> WorkflowSignature {
     WorkflowSignature::new()
-        .with_input("repo_path", "String", Cardinality::ZeroOrOne)
-        .with_input("base_ref", "String", Cardinality::ZeroOrOne)
-        .with_output("url", "String", Cardinality::One)
+        .with_input("repo_path", "String", Cardinality::ZERO_OR_ONE)
+        .with_input("base_ref", "String", Cardinality::ZERO_OR_ONE)
+        .with_output("url", "String", Cardinality::ONE)
 }
 ```
 

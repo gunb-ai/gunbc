@@ -1,6 +1,6 @@
-//! gunbc-testgen: Test generation from proof obligations.
+//! Test generation from proof obligations.
 //!
-//! This crate generates test code from DAG structures using the
+//! Generates test code from DAG structures using the
 //! **proof obligation** model:
 //!
 //! 1. Analyze the DAG to collect proof obligations
@@ -19,17 +19,6 @@
 //! | **B** | Contract obligations (L3 entailment, node compliance) |
 //! | **C** | Scenario coverage (success/failure paths, guard branches) |
 //! | **D** | Resource hygiene (connectivity, ownership, conflicts) |
-//!
-//! # Usage
-//!
-//! ```ignore
-//! use gunbc_testgen::{TestGenerator, TestConfig};
-//!
-//! let generator = TestGenerator::new(&dag)
-//!     .with_config(TestConfig::default());
-//!
-//! let code = generator.generate_test_module("gist_tests", "build_gist_graph()");
-//! ```
 
 pub mod analyze;
 pub mod codegen;

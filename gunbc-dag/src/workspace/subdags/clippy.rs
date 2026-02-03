@@ -21,6 +21,7 @@ fn convert_clippy_node(node: Node<CliToolOp>) -> Node<WorkspaceOp> {
                 gunbc_ir::NodeBody::SubDag(convert_clippy_dag(dag))
             }
         },
+        examples: Vec::new(),
     }
 }
 

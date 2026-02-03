@@ -8,12 +8,13 @@
 //!     cargo run -p gunbc-dag --bin gunbc-testgen -- --check
 //!     cargo run -p gunbc-dag --bin gunbc-testgen -- --output-dir /path/to/output
 
-use gunbc_codegen::{all_testgen_dags, TestgenTargetDef};
-use gunbc_testgen::{TestConfig, TestGenerator};
-use std::collections::HashMap;
+use gunbc_codegen::testgen::{TestConfig, TestGenerator};
+use gunbc_codegen::{FileWriter, TestgenTargetDef};
+use gunbc_exec::Executable;
+use gunbc_ir::Dag;
+use gunbc_test::MockSpec;
 use std::env;
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process;
 
 /// Execution mode for testgen.
@@ -27,13 +28,137 @@ enum Mode {
     DryRun,
 }
 
-/// A test generation target with the actual DAG builder.
+/// A test generation target: config metadata + a function that builds DAG and MockSpec.
 struct TestgenTarget {
-    /// Configuration from the registry
+    /// Configuration from the registry (output path, module name, etc.)
     config: TestgenTargetDef,
     /// Function to generate the test code
     generate: fn(&TestgenTargetDef) -> String,
 }
+
+// ============================================================================
+// Target Registration
+//
+// Single registration site: add new DAGs here.
+// Each expression is written once — the macro both calls it (for testgen)
+// and stringifies it (for the generated test code).
+// ============================================================================
+
+/// Define a testgen target with zero duplication.
+///
+/// The `dag` and `mock` expressions are written once. The macro:
+/// 1. Calls them directly (testgen executes them to analyze the DAG)
+/// 2. Stringifies them and replaces the crate prefix with `crate::`
+///    (generated test files live inside the target crate)
+macro_rules! target {
+    (
+        $name:expr, $output:expr, $module:expr,
+        $krate:expr,
+        dag: $dag:expr,
+        mock: $mock:expr
+        $(, $config:ident)*
+    ) => {
+        TestgenTarget {
+            config: TestgenTargetDef::new($name, $output, $module)
+                .dag_builder(&to_crate_path(stringify!($dag), $krate))
+                .mock_spec(&to_crate_path(stringify!($mock), $krate))
+                $(.$config())*,
+            generate: |c| generate_target(c, $dag, $mock),
+        }
+    };
+}
+
+/// Replace an external crate name with `crate::` for generated test code.
+///
+/// Generated test files live inside the target crate (e.g., gunbc-dag),
+/// so `gunbc_dag::foo()` becomes `crate::foo()` in the emitted code.
+fn to_crate_path(stringified: &str, krate: &str) -> String {
+    let prefix = format!("{}::", krate);
+    stringified.replacen(&prefix, "crate::", 1)
+}
+
+/// Build all testgen targets.
+///
+/// Adding a new target: add a `target!()` entry below.
+/// The DAG builder and MockSpec expressions are each written once.
+fn build_targets() -> Vec<TestgenTarget> {
+    vec![
+        // ====================================================================
+        // Internal gunbc-dag DAGs (flow tests enabled)
+        // ====================================================================
+        target!("bootstrap", "gunbc-dag/src/bootstrap/generated_tests.rs", "bootstrap_generated_tests",
+            "gunbc_dag",
+            dag: gunbc_dag::build_bootstrap_graph().unwrap(),
+            mock: gunbc_dag::bootstrap::graph_mock::bootstrap_mock_spec(),
+            flow_tests
+        ),
+        target!("ci", "gunbc-dag/src/ci/generated_tests.rs", "ci_generated_tests",
+            "gunbc_dag",
+            dag: gunbc_dag::build_ci_graph().unwrap(),
+            mock: gunbc_dag::ci::graph_mock::ci_mock_spec(),
+            flow_tests
+        ),
+        target!("makegen", "gunbc-dag/src/makegen/generated_tests.rs", "makegen_generated_tests",
+            "gunbc_dag",
+            dag: gunbc_dag::build_makegen_graph().unwrap(),
+            mock: gunbc_dag::makegen::graph_mock::makegen_mock_spec(),
+            flow_tests
+        ),
+        // ====================================================================
+        // Library DAGs (composable sub-DAGs)
+        // ====================================================================
+        target!("llm-openai", "lib/llm-ops/src/generated_tests.rs", "llm_openai_generated_tests",
+            "gunbc_lib_llm_ops",
+            dag: gunbc_lib_llm_ops::graph::build_chat_completion_graph(),
+            mock: gunbc_lib_llm_ops::graph_mock::openai_mock_spec(),
+            no_boundary_tests
+        ),
+        target!("llm-anthropic", "lib/llm-ops/src/generated_tests_anthropic.rs", "llm_anthropic_generated_tests",
+            "gunbc_lib_llm_ops",
+            dag: gunbc_lib_llm_ops::graph::build_chat_completion_graph(),
+            mock: gunbc_lib_llm_ops::graph_mock::anthropic_mock_spec(),
+            no_boundary_tests
+        ),
+        target!("llm-code-review", "lib/llm-ops/src/generated_tests_code_review.rs", "llm_code_review_generated_tests",
+            "gunbc_lib_llm_ops",
+            dag: gunbc_lib_llm_ops::graph::build_chat_completion_graph(),
+            mock: gunbc_lib_llm_ops::graph_mock::code_review_mock_spec(),
+            no_boundary_tests
+        ),
+        target!("llm-secrets", "lib/llm-ops/src/generated_tests_secrets.rs", "llm_secrets_generated_tests",
+            "gunbc_lib_llm_ops",
+            dag: gunbc_lib_llm_ops::graph::build_chat_completion_graph(),
+            mock: gunbc_lib_llm_ops::graph_mock::secret_api_key_mock_spec(),
+            no_boundary_tests
+        ),
+    ]
+}
+
+/// Generic test generation: builds test code from a DAG + MockSpec + config.
+///
+/// This is the single codegen path — all targets use this function.
+/// Per-target variation is only in which DAG and MockSpec are provided.
+fn generate_target<T: Executable + Clone>(
+    config: &TestgenTargetDef,
+    dag: Dag<T>,
+    spec: MockSpec,
+) -> String {
+    let test_config = TestConfig {
+        boundary_tests: config.boundary_tests,
+        chain_tests: config.chain_tests,
+        flow_tests: config.flow_tests,
+        ..TestConfig::default()
+    };
+    TestGenerator::new(&dag)
+        .with_config(test_config)
+        .with_mock_spec(spec)
+        .with_mock_spec_fn(&config.mock_spec_path)
+        .generate_test_module(&config.module_name, &config.dag_builder_call)
+}
+
+// ============================================================================
+// Main
+// ============================================================================
 
 // Code generator — needs direct filesystem access (same exemption as gunbc-codegen).
 #[allow(clippy::disallowed_methods)]
@@ -74,306 +199,90 @@ fn main() {
     println!("  mode: {}", mode_str);
     println!();
 
-    let targets = build_targets_from_registry();
+    let targets = build_targets();
+    // Check mode is read-only (like dry-run) — we only compare, never write.
+    let writer = FileWriter::new(mode != Mode::Generate);
 
-    match mode {
-        Mode::Generate => run_generate(&targets, &output_dir),
-        Mode::Check => run_check(&targets, &output_dir),
-        Mode::DryRun => run_dry_run(&targets, &output_dir),
-    }
-}
-
-/// Build targets by combining registry metadata with actual DAG builders.
-fn build_targets_from_registry() -> Vec<TestgenTarget> {
-    // Map of target name -> DAG builder function
-    let builders: HashMap<&str, fn(&TestgenTargetDef) -> String> = [
-        // Internal gunbc-dag DAGs
-        ("bootstrap", generate_bootstrap as fn(&TestgenTargetDef) -> String),
-        ("ci", generate_ci as fn(&TestgenTargetDef) -> String),
-        ("makegen", generate_makegen as fn(&TestgenTargetDef) -> String),
-        // Library DAGs
-        ("llm-openai", generate_llm_openai as fn(&TestgenTargetDef) -> String),
-        ("llm-anthropic", generate_llm_anthropic as fn(&TestgenTargetDef) -> String),
-        ("llm-code-review", generate_llm_code_review as fn(&TestgenTargetDef) -> String),
-        ("llm-secrets", generate_llm_secrets as fn(&TestgenTargetDef) -> String),
-    ]
-    .into_iter()
-    .collect();
-
-    // Build targets from registry, matching with builders
-    all_testgen_dags()
-        .into_iter()
-        .filter_map(|config| {
-            let name = config.name.as_str();
-            if let Some(&generate) = builders.get(name) {
-                Some(TestgenTarget { config, generate })
-            } else {
-                eprintln!(
-                    "warning: no builder registered for testgen target '{}'",
-                    name
-                );
-                None
-            }
-        })
-        .collect()
-}
-
-// ============================================================================
-// DAG Builder Functions
-// These call the actual DAG builders and generate test code.
-// ============================================================================
-
-fn generate_bootstrap(config: &TestgenTargetDef) -> String {
-    let dag = gunbc_dag::build_bootstrap_graph().unwrap();
-    let spec = gunbc_dag::bootstrap::graph_mock::bootstrap_mock_spec();
-    let test_config = TestConfig {
-        boundary_tests: config.boundary_tests,
-        chain_tests: config.chain_tests,
-        flow_tests: config.flow_tests,
-        ..TestConfig::default()
-    };
-    TestGenerator::new(&dag)
-        .with_config(test_config)
-        .with_mock_spec(spec)
-        .with_mock_spec_fn(&config.mock_spec_path)
-        .generate_test_module(&config.module_name, &config.dag_builder_call)
-}
-
-fn generate_ci(config: &TestgenTargetDef) -> String {
-    let dag = gunbc_dag::build_ci_graph().unwrap();
-    let spec = gunbc_dag::ci::graph_mock::ci_mock_spec();
-    let test_config = TestConfig {
-        boundary_tests: config.boundary_tests,
-        chain_tests: config.chain_tests,
-        flow_tests: config.flow_tests,
-        ..TestConfig::default()
-    };
-    TestGenerator::new(&dag)
-        .with_config(test_config)
-        .with_mock_spec(spec)
-        .with_mock_spec_fn(&config.mock_spec_path)
-        .generate_test_module(&config.module_name, &config.dag_builder_call)
-}
-
-fn generate_makegen(config: &TestgenTargetDef) -> String {
-    let dag = gunbc_dag::build_makegen_graph().unwrap();
-    let spec = gunbc_dag::makegen::graph_mock::makegen_mock_spec();
-    let test_config = TestConfig {
-        boundary_tests: config.boundary_tests,
-        chain_tests: config.chain_tests,
-        flow_tests: config.flow_tests,
-        ..TestConfig::default()
-    };
-    TestGenerator::new(&dag)
-        .with_config(test_config)
-        .with_mock_spec(spec)
-        .with_mock_spec_fn(&config.mock_spec_path)
-        .generate_test_module(&config.module_name, &config.dag_builder_call)
-}
-
-fn generate_llm_openai(config: &TestgenTargetDef) -> String {
-    let dag = gunbc_lib_llm_ops::graph::build_chat_completion_graph();
-    let spec = gunbc_lib_llm_ops::graph_mock::openai_mock_spec();
-    let test_config = TestConfig {
-        boundary_tests: config.boundary_tests,
-        chain_tests: config.chain_tests,
-        flow_tests: config.flow_tests,
-        ..TestConfig::default()
-    };
-    TestGenerator::new(&dag)
-        .with_config(test_config)
-        .with_mock_spec(spec)
-        .with_mock_spec_fn(&config.mock_spec_path)
-        .generate_test_module(&config.module_name, &config.dag_builder_call)
-}
-
-fn generate_llm_anthropic(config: &TestgenTargetDef) -> String {
-    let dag = gunbc_lib_llm_ops::graph::build_chat_completion_graph();
-    let spec = gunbc_lib_llm_ops::graph_mock::anthropic_mock_spec();
-    let test_config = TestConfig {
-        boundary_tests: config.boundary_tests,
-        chain_tests: config.chain_tests,
-        flow_tests: config.flow_tests,
-        ..TestConfig::default()
-    };
-    TestGenerator::new(&dag)
-        .with_config(test_config)
-        .with_mock_spec(spec)
-        .with_mock_spec_fn(&config.mock_spec_path)
-        .generate_test_module(&config.module_name, &config.dag_builder_call)
-}
-
-fn generate_llm_code_review(config: &TestgenTargetDef) -> String {
-    let dag = gunbc_lib_llm_ops::graph::build_chat_completion_graph();
-    let spec = gunbc_lib_llm_ops::graph_mock::code_review_mock_spec();
-    let test_config = TestConfig {
-        boundary_tests: config.boundary_tests,
-        chain_tests: config.chain_tests,
-        flow_tests: config.flow_tests,
-        ..TestConfig::default()
-    };
-    TestGenerator::new(&dag)
-        .with_config(test_config)
-        .with_mock_spec(spec)
-        .with_mock_spec_fn(&config.mock_spec_path)
-        .generate_test_module(&config.module_name, &config.dag_builder_call)
-}
-
-fn generate_llm_secrets(config: &TestgenTargetDef) -> String {
-    let dag = gunbc_lib_llm_ops::graph::build_chat_completion_graph();
-    let spec = gunbc_lib_llm_ops::graph_mock::secret_api_key_mock_spec();
-    let test_config = TestConfig {
-        boundary_tests: config.boundary_tests,
-        chain_tests: config.chain_tests,
-        flow_tests: config.flow_tests,
-        ..TestConfig::default()
-    };
-    TestGenerator::new(&dag)
-        .with_config(test_config)
-        .with_mock_spec(spec)
-        .with_mock_spec_fn(&config.mock_spec_path)
-        .generate_test_module(&config.module_name, &config.dag_builder_call)
-}
-
-// ============================================================================
-// Execution Functions
-// ============================================================================
-
-/// Generate and write test files.
-#[allow(clippy::disallowed_methods)]
-fn run_generate(targets: &[TestgenTarget], output_dir: &Path) {
-    let mut generated = 0;
-    let mut errors = 0;
-
-    for target in targets {
-        let code = (target.generate)(&target.config);
-        let output_path = output_dir.join(&target.config.output_path);
-
-        // Ensure parent directory exists
-        if let Some(parent) = output_path.parent() {
-            if let Err(e) = fs::create_dir_all(parent) {
-                eprintln!(
-                    "[{}] error creating dir {}: {}",
-                    target.config.name,
-                    parent.display(),
-                    e
-                );
-                errors += 1;
-                continue;
-            }
-        }
-
-        match fs::write(&output_path, &code) {
-            Ok(_) => {
-                println!(
-                    "[{}] wrote {} ({} bytes)",
-                    target.config.name,
-                    output_path.display(),
-                    code.len()
-                );
-                generated += 1;
-            }
-            Err(e) => {
-                eprintln!(
-                    "[{}] error writing {}: {}",
-                    target.config.name,
-                    output_path.display(),
-                    e
-                );
-                errors += 1;
-            }
-        }
-    }
-
-    println!();
-    println!("generated: {} files, {} errors", generated, errors);
-
-    if errors > 0 {
-        process::exit(1);
-    }
-}
-
-/// Check if generated files are stale.
-#[allow(clippy::disallowed_methods)]
-fn run_check(targets: &[TestgenTarget], output_dir: &Path) {
     let mut ok = 0;
     let mut stale = 0;
-    let mut missing = 0;
+    let mut errors = 0;
     let mut stale_files = Vec::new();
 
-    for target in targets {
-        let expected = (target.generate)(&target.config);
+    for target in &targets {
+        let code = (target.generate)(&target.config);
         let output_path = output_dir.join(&target.config.output_path);
 
-        match fs::read_to_string(&output_path) {
-            Ok(actual) => {
-                if actual == expected {
-                    println!("[{}] ✓ up to date", target.config.name);
+        match writer.write(&output_path, &code) {
+            Ok(result) => {
+                if mode == Mode::Check {
+                    // Check mode: report stale/ok without writing
+                    if result.changed {
+                        println!("[{}] ✗ STALE - needs regeneration", target.config.name);
+                        stale += 1;
+                        stale_files.push(target.config.output_path.clone());
+                    } else {
+                        println!("[{}] ✓ up to date", target.config.name);
+                        ok += 1;
+                    }
+                } else if result.written {
+                    println!(
+                        "[{}] wrote {} ({} bytes)",
+                        target.config.name,
+                        output_path.display(),
+                        code.len()
+                    );
                     ok += 1;
                 } else {
-                    println!("[{}] ✗ STALE - needs regeneration", target.config.name);
-                    stale += 1;
-                    stale_files.push(target.config.output_path.clone());
+                    // Dry-run
+                    println!(
+                        "[{}] would write to: {}",
+                        target.config.name,
+                        output_path.display()
+                    );
+                    println!("  {} bytes, {} lines", code.len(), code.lines().count());
+                    ok += 1;
                 }
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                println!(
-                    "[{}] ✗ MISSING - {}",
-                    target.config.name,
-                    output_path.display()
-                );
-                missing += 1;
-                stale_files.push(target.config.output_path.clone());
             }
             Err(e) => {
                 eprintln!(
-                    "[{}] error reading {}: {}",
+                    "[{}] error: {}: {}",
                     target.config.name,
                     output_path.display(),
                     e
                 );
-                stale += 1;
-                stale_files.push(target.config.output_path.clone());
+                errors += 1;
             }
         }
     }
 
     println!();
-    println!(
-        "check complete: {} ok, {} stale, {} missing",
-        ok, stale, missing
-    );
 
-    if stale > 0 || missing > 0 {
-        println!();
-        println!("Generated tests are out of date. Run `make testgen` to regenerate:");
-        for file in &stale_files {
-            println!("  {}", file);
+    match mode {
+        Mode::Generate => {
+            println!("generated: {} files, {} errors", ok, errors);
         }
+        Mode::Check => {
+            println!("check complete: {} ok, {} stale", ok, stale);
+            if stale > 0 {
+                println!();
+                println!("Generated tests are out of date. Run `make testgen` to regenerate:");
+                for file in &stale_files {
+                    println!("  {}", file);
+                }
+            }
+        }
+        Mode::DryRun => {
+            println!("dry-run complete: {} targets", targets.len());
+        }
+    }
+
+    if errors > 0 || stale > 0 {
         process::exit(1);
     }
-}
-
-/// Dry run - show what would be generated.
-fn run_dry_run(targets: &[TestgenTarget], output_dir: &Path) {
-    for target in targets {
-        let code = (target.generate)(&target.config);
-        let output_path = output_dir.join(&target.config.output_path);
-
-        println!(
-            "[{}] would write to: {}",
-            target.config.name,
-            output_path.display()
-        );
-        println!("  {} bytes, {} lines", code.len(), code.lines().count());
-    }
-
-    println!();
-    println!("dry-run complete: {} targets", targets.len());
 }
 
 fn print_help() {
-    let dags = all_testgen_dags();
+    let targets = build_targets();
 
     println!("testgen - Generate tests from DAG structures and MockSpecs");
     println!();
@@ -391,8 +300,8 @@ fn print_help() {
     println!("    --check     Verify existing files match what would be generated (fails if stale)");
     println!("    --dry-run   Show what would be generated without writing");
     println!();
-    println!("REGISTERED DAGS ({} targets from registry):", dags.len());
-    for dag in &dags {
-        println!("  {}: {}", dag.name, dag.output_path);
+    println!("REGISTERED DAGS ({} targets):", targets.len());
+    for target in &targets {
+        println!("  {}: {}", target.config.name, target.config.output_path);
     }
 }

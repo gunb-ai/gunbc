@@ -24,9 +24,6 @@ gunbc-buck2 = { path = "../lib/tools/buck2" }
 gunbc-clippy = { path = "../lib/tools/clippy" }
 gunbc-lib-llm-ops = { path = "../lib/llm-ops" }
 
-# Test generation
-gunbc-testgen = { path = "../core/testgen" }
-
 serde_json = { workspace = true }
 
 [dev-dependencies]

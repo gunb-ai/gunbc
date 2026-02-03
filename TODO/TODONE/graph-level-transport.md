@@ -192,9 +192,9 @@ let install_dep = UpsertBuilder::new("install_dep")
 
 // Loop over all dependencies:
 let install_all = LoopBuilder::new("install_all")
-    .with_input("deps", Cardinality::ZeroOrMore)
+    .with_input("deps", Cardinality::ZERO_OR_MORE)
     .with_body(install_dep)  // The Upsert sub-DAG
-    .with_output("results", Cardinality::ZeroOrMore)
+    .with_output("results", Cardinality::ZERO_OR_MORE)
     .build();
 ```
 
