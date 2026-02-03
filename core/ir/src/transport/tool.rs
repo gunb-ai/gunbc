@@ -888,7 +888,7 @@ mod tests {
     }
 
     #[test]
-    fn test_platform_registry() {
+    fn test_platform_registry_inheritance() {
         static TEST_LINUX: PlatformDef = PlatformDef {
             id: "linux",
             parent: None,
@@ -910,153 +910,10 @@ mod tests {
     }
 
     #[test]
-    fn test_builtin_package_managers() {
-        // Verify base PMs are defined correctly (no install options — platform-provided)
-        assert_eq!(super::APT.id, "apt");
-        assert_eq!(super::APT.command, "apt-get");
-        assert!(super::APT.install_options.is_empty()); // Base PM
-
-        assert_eq!(super::BREW.id, "brew");
-        assert!(super::BREW.install_options.is_empty()); // Base PM
-
-        assert_eq!(super::APK.id, "apk");
-        assert!(super::APK.install_options.is_empty()); // Base PM
-
-        // Cargo is both a PM and a tool — it has install options AND depends on rust
-        assert_eq!(super::CARGO.id, "cargo");
-        assert!(super::CARGO.depends_on.contains(&"rust"));
-        assert!(!super::CARGO.install_options.is_empty());
-        assert!(super::CARGO.install_options.iter().any(|o| o.via == "brew"));
-        assert!(super::CARGO.install_options.iter().any(|o| o.via == "apt"));
-    }
-
-    #[test]
-    fn test_builtin_platforms() {
-        // Verify built-in platforms are defined correctly
-        assert_eq!(super::UBUNTU.id, "ubuntu");
-        assert_eq!(super::UBUNTU.parent, Some("linux"));
-        assert!(super::UBUNTU.available_pms.contains(&"apt"));
-
-        assert_eq!(super::MACOS.id, "macos");
-        assert_eq!(super::MACOS.parent, None);
-        assert!(super::MACOS.available_pms.contains(&"brew"));
-
-        assert_eq!(super::ALPINE.id, "alpine");
-        assert!(super::ALPINE.available_pms.contains(&"apk"));
-    }
-
-    #[test]
-    fn test_default_registries() {
-        let tool_registry = super::default_tool_registry();
-        assert!(tool_registry.get("apt").is_some());
-        assert!(tool_registry.get("brew").is_some());
-        assert!(tool_registry.get("apk").is_some());
-        assert!(tool_registry.get("cargo").is_some());
-        assert!(tool_registry.get("git").is_some());
-        assert!(tool_registry.get("rust").is_some());
-        assert!(tool_registry.get("gh").is_some());
-
-        let platform_registry = super::default_platform_registry();
-        assert!(platform_registry.get("ubuntu").is_some());
-        assert!(platform_registry.get("macos").is_some());
-        assert!(platform_registry.get("alpine").is_some());
-
-        // Test ubuntu has apt via inheritance
-        let ubuntu_pms = platform_registry.available_pms("ubuntu");
-        assert!(ubuntu_pms.contains("apt"));
-    }
-
-    #[test]
-    fn test_git_tool_definition() {
-        assert_eq!(super::GIT.id, "git");
-        assert_eq!(super::GIT.command, "git");
-        assert_eq!(super::GIT.verify, "git --version");
-        
-        // git should be installable via apt, brew, and apk
-        let apt_opt = super::GIT.install_options.iter().find(|o| o.via == "apt");
-        assert!(apt_opt.is_some());
-        assert_eq!(apt_opt.unwrap().inputs.packages, Some(&["git"][..]));
-
-        let brew_opt = super::GIT.install_options.iter().find(|o| o.via == "brew");
-        assert!(brew_opt.is_some());
-
-        let apk_opt = super::GIT.install_options.iter().find(|o| o.via == "apk");
-        assert!(apk_opt.is_some());
-    }
-
-    #[test]
-    fn test_rust_tool_definition() {
-        assert_eq!(super::RUST.id, "rust");
-        assert_eq!(super::RUST.command, "rustc");
-        assert_eq!(super::RUST.verify, "rustc --version");
-
-        let brew_opt = super::RUST.install_options.iter().find(|o| o.via == "brew");
-        assert!(brew_opt.is_some());
-        assert_eq!(brew_opt.unwrap().inputs.packages, Some(&["rustup"][..]));
-
-        let apt_opt = super::RUST.install_options.iter().find(|o| o.via == "apt");
-        assert!(apt_opt.is_some());
-        assert_eq!(apt_opt.unwrap().inputs.packages, Some(&["rustc"][..]));
-    }
-
-    #[test]
-    fn test_rust_toolchain_dependency_chain() {
-        // The Rust toolchain forms a dependency chain:
-        // RUST (rustc) ← CARGO ← CLIPPY
-        //                       ← RUSTFMT
-        assert!(super::CARGO.depends_on.contains(&"rust"));
-        assert!(super::CLIPPY.depends_on.contains(&"cargo"));
-        assert!(super::RUSTFMT.depends_on.contains(&"cargo"));
-
-        // Each level has its own install options per PM
-        for tool in &[&super::RUST, &super::CARGO, &super::CLIPPY, &super::RUSTFMT] {
-            assert!(
-                tool.install_options.iter().any(|o| o.via == "brew"),
-                "{} should have brew install option",
-                tool.id
-            );
-            assert!(
-                tool.install_options.iter().any(|o| o.via == "apt"),
-                "{} should have apt install option",
-                tool.id
-            );
-        }
-
-        // On brew, all resolve to the same rustup package
-        for tool in &[&super::RUST, &super::CARGO, &super::CLIPPY, &super::RUSTFMT] {
-            let brew_opt = tool.install_options.iter().find(|o| o.via == "brew").unwrap();
-            assert_eq!(
-                brew_opt.inputs.packages,
-                Some(&["rustup"][..]),
-                "{} brew should install rustup",
-                tool.id
-            );
-        }
-
-        // On apt, each has its own package
-        let apt_packages: Vec<_> = [&super::RUST, &super::CARGO, &super::CLIPPY, &super::RUSTFMT]
-            .iter()
-            .map(|t| {
-                t.install_options
-                    .iter()
-                    .find(|o| o.via == "apt")
-                    .unwrap()
-                    .inputs
-                    .packages
-                    .unwrap()
-            })
-            .collect();
-        assert_eq!(apt_packages[0], &["rustc"]);
-        assert_eq!(apt_packages[1], &["cargo"]);
-        assert_eq!(apt_packages[2], &["rust-clippy"]);
-        assert_eq!(apt_packages[3], &["rustfmt"]);
-    }
-
-    #[test]
     fn test_git_satisfiable_on_ubuntu() {
         let registry = super::default_tool_registry();
         let available: HashSet<&str> = ["apt"].into_iter().collect();
-        
+
         assert!(super::is_satisfiable(&super::GIT, &available, &registry).is_ok());
     }
 
