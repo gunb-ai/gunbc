@@ -273,6 +273,19 @@ pub enum ReviewOps {
     /// Outputs:
     /// - `artifact`: String - formatted diff text suitable for LLM review
     FormatDiffArtifact,
+
+    /// Wrap a single Json value in a one-element array.
+    ///
+    /// MergeOutputs expects `Vec<ReviewOutput>` (a JSON array), but a single
+    /// review source produces one `ReviewOutput` object. This op bridges
+    /// the type mismatch.
+    ///
+    /// Inputs:
+    /// - `item`: Json - a single JSON value
+    ///
+    /// Outputs:
+    /// - `array`: Json - `[item]`
+    WrapArray,
 }
 
 impl Executable for ReviewOps {
@@ -284,6 +297,7 @@ impl Executable for ReviewOps {
             ReviewOps::MergeOutputs => execute_merge_outputs(inputs),
             ReviewOps::HashFinding => execute_hash_finding(inputs),
             ReviewOps::FormatDiffArtifact => execute_format_diff_artifact(inputs),
+            ReviewOps::WrapArray => execute_wrap_array(inputs),
         }
     }
 }
@@ -521,6 +535,21 @@ fn execute_format_diff_artifact(
 
     let mut out = HashMap::new();
     out.insert("artifact".to_string(), Value::Str(artifact));
+    Ok(out)
+}
+
+fn execute_wrap_array(
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    let item = inputs
+        .get("item")
+        .and_then(|v| v.as_json())
+        .ok_or_else(|| ExecError::new("missing or invalid 'item' input"))?;
+
+    let array = serde_json::Value::Array(vec![item.clone()]);
+
+    let mut out = HashMap::new();
+    out.insert("array".to_string(), Value::Json(array));
     Ok(out)
 }
 

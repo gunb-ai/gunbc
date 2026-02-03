@@ -668,6 +668,19 @@ pub fn build_multi_source_review_graph_with(
     ));
 
     // ========================================================================
+    // Wrap single output into array for MergeOutputs
+    // ========================================================================
+
+    // MergeOutputs expects Vec<ReviewOutput> (JSON array), but each review
+    // source produces a single ReviewOutput object. WrapArray bridges this.
+    dag.add_node(Node::opaque(
+        "wrap_output",
+        vec![port("item", "Json")],
+        vec![port("array", "Json")],
+        ReviewGraphOp::Review(ReviewOps::WrapArray),
+    ));
+
+    // ========================================================================
     // Merge (combines sources)
     // ========================================================================
 
@@ -699,8 +712,9 @@ pub fn build_multi_source_review_graph_with(
     dag.add_edge(edge("prepare_llm", "provider", "parse_llm", "provider"));
     dag.add_edge(edge("parse_llm", "answer", "parse_response", "answer"));
 
-    // Review output → merge
-    dag.add_edge(edge("parse_response", "output", "merge", "outputs"));
+    // Review output → wrap into array → merge
+    dag.add_edge(edge("parse_response", "output", "wrap_output", "item"));
+    dag.add_edge(edge("wrap_output", "array", "merge", "outputs"));
 
     dag
 }
@@ -905,9 +919,9 @@ mod tests {
     #[test]
     fn test_multi_source_review_graph_structure() {
         let dag = build_multi_source_review_graph();
-        // 7 nodes: config, prepare_prompt, prepare_llm, execute_llm,
-        //          parse_llm, parse_response, merge
-        assert_eq!(dag.nodes.len(), 7);
+        // 8 nodes: config, prepare_prompt, prepare_llm, execute_llm,
+        //          parse_llm, parse_response, wrap_output, merge
+        assert_eq!(dag.nodes.len(), 8);
     }
 
     #[test]
