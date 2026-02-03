@@ -1,0 +1,50 @@
+# TODO_hacks
+#
+# Known consolidation debt and implicit dependencies that should be
+# made structural. Items here are "works but fragile" — they won't
+# break today but will bite when something gets renamed/moved.
+
+## DAG builder functions referenced as strings
+
+The codegen registry stores graph builder names as strings:
+
+    ToolDef::new(..., "build_makegen_graph", "")
+
+Then testgen.rs hardcodes the actual function calls separately. Renaming
+a builder function won't trigger a compile error — it silently breaks at
+runtime. Should use function pointers or a trait-based dispatch instead.
+
+Files:
+  - core/codegen/src/registry.rs  (graph_builder field on ToolDef)
+  - gunbc-dag/src/bin/testgen.rs  (hardcoded calls to builder functions)
+
+## "buck-out/gen" hardcoded in 4+ locations
+
+The output directory appears as a literal string in multiple files. If the
+output dir ever changes, these won't update together. Should be a single
+constant in gunbc-ir or similar.
+
+Files:
+  - core/codegen/src/main.rs       ("buck-out/gen/bin", "buck-out/gen/lib")
+  - gunbc-dag/src/makegen/render.rs ("buck-out/gen/.codegen-stamp")
+  - gunbc-dag/src/ci/ops.rs        ("buck-out/gen/bin" existence check)
+  - core/codegen/src/registry.rs   ("buck-out/" in core_outputs())
+
+## Codegen source tracking directories are static
+
+The Makefile's CODEGEN_SOURCES variable tracks core/codegen/src and
+core/ir/src, but this list is hardcoded in render.rs. If codegen gains
+a new source dependency (e.g. a new core/lang/src crate), the stamp
+won't track it and stale artifacts won't trigger rebuilds.
+
+Files:
+  - gunbc-dag/src/makegen/render.rs (line ~156, hardcoded find paths)
+
+## Meta-target dependency strings not verified
+
+Meta-targets reference other targets by name ("testgen-check", "fmt-fix",
+"lint-fix") as hardcoded strings. Renaming or removing a target won't
+cause a compile error — just a broken Makefile at runtime.
+
+Files:
+  - gunbc-dag/src/makegen/registry.rs (default_meta_targets(), fix_deps)
