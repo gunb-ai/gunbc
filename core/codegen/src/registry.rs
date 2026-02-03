@@ -552,7 +552,9 @@ pub fn all_tools() -> Vec<ToolDef> {
         //
         // Provider, model, and criteria are pipeline config (baked into DAG via
         // LoadPipelineConfig node), NOT CLI flags.
-        // TODO: base_ref should come from repo branching model config.
+        // The CLI default for base_ref mirrors ReviewPipelineConfig::default_branch.
+        // The graph builder's config is the source of truth; this CLI default is
+        // only a fallback for when no config override is provided.
         ToolDef::new(
             "gunbc-lib-review",
             "review",

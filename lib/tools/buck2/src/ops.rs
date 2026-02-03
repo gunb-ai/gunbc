@@ -188,14 +188,12 @@ fn extract_version(spec: &serde_json::Value) -> String {
     }
 }
 
-/// Check if a file exists.
+/// Check if a workspace member is a binary crate.
 ///
-/// TODO: This should be done via transport in the graph, not hidden here.
-/// For now, stub to assume library crate (return false for main.rs check).
-fn file_exists(_path: &Path) -> bool {
-    // STUB: This hidden I/O is problematic. In a proper implementation,
-    // file existence checks should be explicit transport nodes in the graph.
-    // For now, assume library crate (no main.rs).
+/// Currently assumes all members are library crates. To detect binaries,
+/// add an upstream transport node using `FileRequest::exists("src/main.rs")`
+/// per member and pass the results as an input port (e.g., `binary_members: StrList`).
+fn is_binary_crate(_member_path: &Path) -> bool {
     false
 }
 
@@ -238,10 +236,10 @@ fn execute_generate_targets(
             .unwrap_or(member)
             .replace(['-', '/'], "_");
 
-        // Determine if it's a binary or library (would be: Branch based on file exists)
+        // Determine if it's a binary or library.
+        // See is_binary_crate doc for how to extend with transport-based detection.
         let member_path = Path::new(member);
-        let has_main = file_exists(&member_path.join("src/main.rs"))
-            || file_exists(&Path::new(".").join(member).join("src/main.rs"));
+        let has_main = is_binary_crate(member_path);
 
         // Generate target (would be: Format with template)
         if has_main {

@@ -187,17 +187,31 @@ pub struct ReviewPipelineConfig {
     pub model: String,
     /// Review criteria to apply.
     pub criteria: Criteria,
+    /// Default branch for diff operations (e.g., "main", "master", "develop").
+    ///
+    /// Sourced from `GitConfig::default_branch` — the single source of truth
+    /// for the repo's branching model. The graph builder uses this instead of
+    /// hardcoding a branch name.
+    #[serde(default = "default_branch")]
+    pub default_branch: String,
+}
+
+fn default_branch() -> String {
+    "main".to_string()
 }
 
 impl ReviewPipelineConfig {
     /// Default pipeline config for gunbc's own repo.
     ///
-    /// TODO: Eventually load from repo config (e.g., `gunbc.toml`).
+    /// For repo-specific config, construct a `ReviewPipelineConfig` directly
+    /// or deserialize from a config file (e.g., `gunbc.toml`). The
+    /// `default_branch` field defaults to `"main"` via `GitConfig::default()`.
     pub fn gunbc_default() -> Self {
         Self {
             provider: "openai".to_string(),
             model: "gpt-4o".to_string(),
             criteria: crate::graph_mock::default_criteria(),
+            default_branch: "main".to_string(),
         }
     }
 }

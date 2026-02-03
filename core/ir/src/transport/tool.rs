@@ -531,7 +531,13 @@ pub static RUST: ToolDef = ToolDef {
             via: "brew",
             inputs: InstallInputs::packages(&["rustup"]),
         },
-        // TODO: apt has rustc package but rustup is preferred
+        // apt provides rustc directly; rustup is preferred for toolchain
+        // management but isn't universally packaged. The rustc package
+        // satisfies the "rustc --version" verify check.
+        InstallOption {
+            via: "apt",
+            inputs: InstallInputs::packages(&["rustc"]),
+        },
     ],
     depends_on: &[],
 };
@@ -984,12 +990,11 @@ mod tests {
     }
 
     #[test]
-    fn test_rust_not_satisfiable_on_ubuntu_only_apt() {
+    fn test_rust_satisfiable_on_ubuntu_with_apt() {
         let registry = super::default_tool_registry();
         let available: HashSet<&str> = ["apt"].into_iter().collect();
-        
-        // rust only has brew install option, so not satisfiable with just apt
-        let result = super::is_satisfiable(&super::RUST, &available, &registry);
-        assert!(result.is_err());
+
+        // apt provides the rustc package, satisfying the tool requirement
+        assert!(super::is_satisfiable(&super::RUST, &available, &registry).is_ok());
     }
 }

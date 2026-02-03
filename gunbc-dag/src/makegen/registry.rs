@@ -770,16 +770,14 @@ impl ToolRegistry {
 
     /// Check if any codegen is needed.
     ///
-    /// BUILD-TIME EXCEPTION: This function previously checked the filesystem directly.
-    /// Since we've closed the execute_transport escape hatch, this check would need
-    /// to be part of a DAG execution. For now, we always return true (assume codegen needed).
+    /// Returns true if the registry contains tools that require code generation.
+    /// This is a conservative check — it does not verify whether generated files
+    /// are stale, only whether the registry has anything to generate.
     ///
-    /// TODO: Properly integrate this check into a build DAG or use a separate
-    /// build-time mechanism.
+    /// For staleness checking at runtime, the CI graph uses transport-based file
+    /// existence checks (see `CIOp::PrepareCodegenExistsCheck`).
     pub fn needs_codegen(&self) -> bool {
-        // STUB: Always return true until we have proper build-time file checking
-        // This means codegen will always run, which is safe but potentially redundant.
-        true
+        !self.tools.is_empty()
     }
 
     /// Check if any daggen is needed.

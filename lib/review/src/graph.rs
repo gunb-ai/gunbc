@@ -380,6 +380,8 @@ pub fn build_diff_review_graph_with(
 ) -> Dag<ReviewGraphOp> {
     let mut dag = Dag::new();
 
+    let default_branch = config.default_branch.clone();
+
     // ========================================================================
     // Pipeline Config (zero-input node, emits constants)
     // ========================================================================
@@ -400,8 +402,8 @@ pub fn build_diff_review_graph_with(
     // ========================================================================
 
     // PrepareDiff - builds git diff request.
-    // base_ref default is baked into the op; the optional port allows CLI override.
-    // TODO: base_ref default should come from repo branching model config.
+    // base_ref default comes from pipeline config (GitConfig::default_branch);
+    // the optional port allows CLI override.
     dag.add_node(Node::opaque(
         "prepare_diff",
         vec![
@@ -410,7 +412,7 @@ pub fn build_diff_review_graph_with(
         ],
         vec![port("request", "TransportRequest")],
         ReviewGraphOp::Git(GitOps::PrepareDiff {
-            base_ref: "main".to_string(),
+            base_ref: default_branch,
             extensions: vec![],
         }),
     ));
@@ -896,6 +898,7 @@ mod tests {
             provider: "anthropic".to_string(),
             model: "claude-sonnet-4-20250514".to_string(),
             criteria: crate::graph_mock::default_criteria(),
+            default_branch: "develop".to_string(),
         };
         let dag = build_diff_review_graph_with(config);
         assert_eq!(dag.nodes.len(), 10);
