@@ -12,15 +12,25 @@ produce walls of text that scroll off screen.
 
 ## Architecture
 
-    ┌─────────────────────────────────────────────────┐
-    │  Layer 4: Renderers (terminal, CI, web future)  │
-    ├─────────────────────────────────────────────────┤
-    │  Layer 3: DagProgress (renderer-agnostic state) │
-    ├─────────────────────────────────────────────────┤
-    │  Layer 2: Frame loop + ProgressObserver         │
-    ├─────────────────────────────────────────────────┤
-    │  Layer 1: Symbol system (core/ir visual vocab)  │
-    └─────────────────────────────────────────────────┘
+Three layers of "graph", plus rendering:
+
+    Dag<T>  ──→  DagLayout  ──→  rendered output
+    (topology)   (spatial)       (characters/pixels)
+                     ↑
+                  Viewport
+                  (constraints)
+
+    ┌─────────────────────────────────────────────────────┐
+    │  Layer 5: Renderers (terminal, CI, web future)      │
+    ├─────────────────────────────────────────────────────┤
+    │  Layer 4: DagLayout + Viewport (spatial mapping)    │
+    ├─────────────────────────────────────────────────────┤
+    │  Layer 3: DagProgress (renderer-agnostic state)     │
+    ├─────────────────────────────────────────────────────┤
+    │  Layer 2: Frame loop + ProgressObserver             │
+    ├─────────────────────────────────────────────────────┤
+    │  Layer 1: Symbol system (core/ir visual vocab)      │
+    └─────────────────────────────────────────────────────┘
 
 Integrates with existing infrastructure:
 - `Renderable` trait (core/ir/src/render.rs) — generated file headers
@@ -227,7 +237,161 @@ Files: core/exec/src/progress.rs (DagProgress, NodeProgress, EdgeProgress)
 
 ---------------------------------------------------------------------
 
-## Layer 4: Renderers
+## Layer 4: DagLayout + Viewport (spatial mapping)
+
+The visual structure that sits between the logical DAG and rendered output.
+This is the answer to "how does topology become pixels/characters?" — and
+it's reusable across terminal, web, and any future renderer.
+
+### Viewport — bounded rendering region
+
+```rust
+/// A bounded region to render into. Every renderer provides one.
+struct Viewport {
+    width: u16,           // Columns (terminal) or pixels (web)
+    height: u16,          // Rows (terminal) or pixels (web)
+    unit: ViewportUnit,   // What width/height measure
+}
+
+enum ViewportUnit {
+    Chars,    // Terminal: character cells
+    Pixels,   // Web: CSS pixels
+}
+```
+
+How each renderer creates a Viewport:
+- **Terminal**: query terminal size (width × height in char cells); update
+  on SIGWINCH (resize). Falls back to 80×24 if not a TTY.
+- **CI**: Viewport { width: 120, height: u16::MAX, unit: Chars } — wide,
+  unbounded height (logs scroll forever, no cursor-up)
+- **Web**: container element dimensions in pixels; update on resize observer
+
+The Viewport is the constraint input to DagLayout. When the viewport
+changes (terminal resize, browser window drag), the layout recomputes.
+
+### DagLayout — spatial mapping from topology
+
+DagLayout is a derived structure: `Dag<T>` + `Viewport` → positions.
+It knows nothing about symbols, colors, or animation — just spatial
+coordinates for nodes and edge paths.
+
+```rust
+/// Spatial layout of a DAG within a viewport.
+/// Derived from topology + constraints. Recomputed on viewport change.
+struct DagLayout {
+    viewport: Viewport,
+    nodes: HashMap<NodeId, NodeLayout>,
+    edges: Vec<EdgeLayout>,
+    levels: Vec<Vec<NodeId>>,     // Nodes grouped by topo level
+    total_rows: u16,              // Actual height used
+    total_cols: u16,              // Actual width used
+    overflow: OverflowState,      // What got truncated/collapsed
+}
+
+struct NodeLayout {
+    id: NodeId,
+    row: u16,             // Vertical position (level → row mapping)
+    col: u16,             // Horizontal position within level band
+    label_width: u16,     // Display width of node label
+    is_collapsed: bool,   // True if viewport forced collapse
+}
+
+struct EdgeLayout {
+    from: NodeId,
+    to: NodeId,
+    path: Vec<(u16, u16)>,  // (row, col) waypoints for edge routing
+    orientation: EdgeOrientation,
+}
+
+enum EdgeOrientation {
+    Horizontal,    // Same-level: ──── between nodes
+    Vertical,      // Cross-level: │ downward
+    Bend,          // Corner: └── or ┌──
+}
+```
+
+### Level computation (reuses DagBuilder's generation concept)
+
+DagBuilder already computes generations during construction, but discards
+them at build(). DagLayout recomputes them from the topo order:
+
+```rust
+fn compute_levels(topo_order: &[NodeId], edges: &[Edge]) -> Vec<Vec<NodeId>> {
+    // level[node] = max(level[predecessor] + 1)
+    // Group by level → each level is a row of parallel nodes
+}
+```
+
+### Viewport-constrained layout
+
+The layout adapts to viewport constraints — this is the key part that
+makes it work for real terminals and not just idealized mockups.
+
+```rust
+/// What to do when the DAG doesn't fit in the viewport.
+enum OverflowStrategy {
+    /// Collapse low-priority nodes. Show completed nodes as a count
+    /// ("3 done"), expand only running/failed/pending nodes.
+    Collapse,
+
+    /// Truncate: show first N levels that fit, add "... +M more" footer.
+    Truncate,
+
+    /// Scroll: focus viewport on the "active region" (nodes near the
+    /// currently executing node), shift as execution progresses.
+    Scroll { focus: NodeId },
+}
+
+struct OverflowState {
+    strategy: OverflowStrategy,
+    collapsed_nodes: Vec<NodeId>,   // Nodes hidden by collapse
+    visible_levels: Range<usize>,   // Which levels are shown
+}
+```
+
+Concrete scenarios:
+
+**Too many parallel nodes** (e.g., 15 nodes at the same level, 80-col terminal):
+- Each node needs ~20 cols (symbol + label + spacing)
+- 80 cols fits ~4 nodes side-by-side
+- Strategy: show top 3 by priority (running > failed > pending > completed),
+  collapse the rest to "... +12 done ✅"
+
+**Too many levels** (deep pipeline, short terminal):
+- Scroll strategy: center viewport on active level
+- Show 2-3 levels before and after the running node
+- Header: "... 4 levels done" / Footer: "... 6 levels ahead"
+
+**Terminal resize**:
+- SIGWINCH → new Viewport → recompute DagLayout → re-render
+- Same DagProgress state, just different spatial mapping
+
+**CI / pipe** (unbounded height):
+- Never collapse or truncate — just emit all levels
+- No cursor-up (append-only mode)
+
+### Diamond / parallel branch layout
+
+Diamonds fall out naturally from the level computation: nodes at the same
+level are parallel. The layout places them side-by-side within their level
+band, constrained by viewport width:
+
+```
+  ● build ──┬── ● test ──┬── ○ report    (3 levels, width fits)
+             │            │
+             └── ● lint ──┘
+```
+
+Fan-out/fan-in uses ConnectorTee (├/┬) and ConnectorCorner (└/┘) from the
+symbol system. Edge routing finds shortest paths through the grid, avoiding
+node overlap. See Appendix B for full mockups.
+
+Files: core/ir/src/layout.rs (NEW: Viewport, DagLayout, compute_levels,
+       overflow logic) — lives in core/ir because it's renderer-agnostic
+
+---------------------------------------------------------------------
+
+## Layer 5: Renderers
 
 ### Render modes (orthogonal to encoding tier)
 
@@ -245,36 +409,11 @@ Carriage-return based (`\r` + `\x1b[{N}A` cursor-up). Zero dependencies.
 Falls back to append-only when piped (not a TTY).
 
 The terminal renderer implements FrameLoop:
-- `update()`: processes observer events, advances animations (dynamic mode)
-- `render()`: builds display lines from layout + symbols, writes to stdout
+- `update()`: processes observer events, advances animations, handles resize
+- `render()`: walks DagLayout positions, writes symbols at each coordinate
 
-Layout: leveled from topo order, left-to-right, wrapping at terminal width.
-See Appendix B for visual mockups.
-
-### Diamond / parallel branch layout
-
-DagBuilder already tracks "generations" (topological levels) — nodes at the
-same generation are parallel. `compute_levels()` (~10 lines) extracts this
-from the topo order. Diamonds render as side-by-side branches:
-
-```
-  ● build ──┬── ● test ──┬── ○ report
-             │            │
-             └── ● lint ──┘
-```
-
-The level-grouping algorithm:
-1. Compute `level[node] = max(level[predecessor] + 1)` over topo order
-2. Group nodes by level → each level is a horizontal "band"
-3. Nodes in the same band render side-by-side (parallel)
-4. Use ConnectorTee (├/┬) and ConnectorCorner (└) for fan-out/fan-in
-
-This naturally handles the CI graph's real diamond (build → test + lint →
-report) and any future parallel DAG shapes. See Appendix B for mockups.
-
-### Dynamic mode
-
-Purely a rendering concern — same DagProgress data model.
+The renderer doesn't compute layout — it receives a DagLayout and paints
+symbols into it. If the viewport changes, it requests a new layout.
 
 ### Unified animation model
 
@@ -285,8 +424,6 @@ determines what the frame content is.
 
 ```rust
 /// Single animation state, shared by ALL animation types.
-/// Spinners, wavefronts, morphs, and automaton patterns are
-/// all frame sequences — they differ only in frame content.
 struct Animation {
     frames: Vec<String>,     // Frame content (from SubDag Frame nodes)
     current: usize,          // Current frame index
@@ -321,12 +458,12 @@ transitions, catches up when execution is fast. See Appendix C.
 ### CI renderer
 
 CiProgressObserver wraps CiContext — formalizes existing ad-hoc callbacks.
-Uses ASCII tier. Maps SemanticColor to CI annotation levels.
+Uses ASCII tier. Viewport: 120 cols, unbounded height, append-only.
 
 ### Web renderer (future, deferred)
 
-DagProgress has Serialize → JSON/SSE to browser → Mermaid + style classes.
-Zero changes to Layers 1-3 needed.
+DagProgress has Serialize → JSON/SSE to browser. Viewport from container
+element. Zero changes to Layers 1-4 needed.
 
 ---------------------------------------------------------------------
 
@@ -341,10 +478,14 @@ Zero changes to Layers 1-3 needed.
 | Symbol system      | Parallels language SubDag module | Yes   |
 | DagProgress        | New state machine (different from ExecutionLog) | Yes |
 | FrameLoop          | New (no existing frame concept)  | Yes   |
+| Viewport           | New (no rendering region concept) | Yes   |
+| DagLayout          | Recomputes DagBuilder generations from topo order | Yes |
 
 Key principle: no new types where existing ones suffice. DagSnapshot uses
 Edge directly. Observer formalizes what CiContext already does ad-hoc.
-Symbol system follows exact same patterns as language module.
+Symbol system follows exact same patterns as language module. DagLayout
+reuses the generation/level concept from DagBuilder (just recomputed from
+topo order since Dag<T> doesn't persist it).
 
 ---------------------------------------------------------------------
 
@@ -353,12 +494,15 @@ Symbol system follows exact same patterns as language module.
 1. **Symbol system** — core/ir/src/symbols.rs: types, STANDARD set, tests
 2. **Observer + snapshot** — core/exec/src/progress.rs: trait, DagSnapshot,
    OutputSummary; wire into execute_flat()
-3. **Frame loop** — FrameLoop trait, FramePolicy enum, synchronous driver
-4. **Terminal renderer** — standard mode: layout, carriage-return, emoji default
-5. **Dynamic mode** — wavefront, morph, cellular automaton, adaptive timing
-6. **CI integration** — CiProgressObserver wrapping CiContext
-7. **Polish** — spinner animation, compact mode, TTY detection
-8. **Web** (future) — JSON serialization, SSE endpoint, browser renderer
+3. **Viewport + DagLayout** — core/ir/src/layout.rs: Viewport, DagLayout,
+   compute_levels, overflow strategies, diamond/parallel placement
+4. **Frame loop** — FrameLoop trait, FramePolicy enum, synchronous driver
+5. **Terminal renderer** — standard mode: carriage-return, emoji default,
+   Viewport from terminal size, SIGWINCH handling
+6. **Dynamic mode** — wavefront, morph, cellular automaton, adaptive timing
+7. **CI integration** — CiProgressObserver wrapping CiContext, unbounded viewport
+8. **Polish** — spinner animation, compact mode, TTY detection
+9. **Web** (future) — JSON serialization, SSE endpoint, browser renderer
 
 ---------------------------------------------------------------------
 
@@ -380,6 +524,12 @@ Symbol system follows exact same patterns as language module.
   Adaptive (best of both) — renderer picks based on context
 - **DagProgress separate from ExecutionLog**: live state machine vs post-hoc
   record; different concerns, don't couple them
+- **Viewport as explicit type**: every renderer must provide one; layout
+  adapts to constraints rather than assuming infinite space
+- **DagLayout in core/ir not renderer crate**: it's a spatial projection of
+  topology, not a rendering concern; any renderer can consume it
+- **Three overflow strategies**: Collapse (priority-based hiding), Truncate
+  (level cutoff), Scroll (focus tracking) — layout picks based on context
 
 =====================================================================
 
