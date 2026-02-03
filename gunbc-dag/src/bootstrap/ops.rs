@@ -107,7 +107,7 @@ fn execute_parse_scan_result(inputs: HashMap<String, Value>) -> Result<HashMap<S
 
     OutputMap::new()
         .int("crate_count", crate_names.len() as i64)
-        .value("crate_names", Value::str_list(crate_names))
+        .str_list("crate_names", crate_names)
         .ok()
 }
 
@@ -166,7 +166,7 @@ impl Mockable for BootstrapOp {
             BootstrapOp::ParseScanResult => {
                 OutputMap::new()
                     .int("crate_count", 5)
-                    .value("crate_names", Value::str_list(vec!["lib-a".to_string(), "lib-b".to_string()]))
+                    .str_list("crate_names", vec!["lib-a".to_string(), "lib-b".to_string()])
                     .build()
             }
             BootstrapOp::GenerateMakefile => {

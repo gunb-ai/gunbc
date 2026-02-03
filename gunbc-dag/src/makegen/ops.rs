@@ -63,7 +63,7 @@ fn execute_load_registry(_inputs: HashMap<String, Value>) -> Result<HashMap<Stri
 
     OutputMap::new()
         .int("tool_count", registry.tools.len() as i64)
-        .value("tool_names", Value::str_list(tool_names))
+        .str_list("tool_names", tool_names)
         .json("registry", registry_json)
         .ok()
 }
@@ -91,11 +91,11 @@ impl Mockable for MakegenOp {
             MakegenOp::LoadRegistry => {
                 OutputMap::new()
                     .int("tool_count", 3)
-                    .value("tool_names", Value::str_list(vec![
+                    .str_list("tool_names", vec![
                         "gist".to_string(),
                         "deps".to_string(),
                         "buck2".to_string(),
-                    ]))
+                    ])
                     .json("registry", serde_json::json!({
                         "tools": [
                             {"binary_name": cargo::name("gist"), "short_name": "gist"},

@@ -34,9 +34,9 @@ impl Executable for LoopOp {
         let indices: Vec<String> = (0..list.len()).map(|i| i.to_string()).collect();
 
         OutputMap::new()
-            .value("items", Value::str_list(list))
+            .str_list("items", list)
             .int("count", count)
-            .value("indices", Value::str_list(indices))
+            .str_list("indices", indices)
             .ok()
     }
 }

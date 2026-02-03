@@ -157,7 +157,7 @@ impl Executable for SplitOp {
 
         let parts: Vec<String> = input.split(delimiter).map(|s| s.to_string()).collect();
 
-        OutputMap::new().value("output", Value::str_list(parts)).ok()
+        OutputMap::new().str_list("output", parts).ok()
     }
 }
 

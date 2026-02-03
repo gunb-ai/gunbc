@@ -109,8 +109,7 @@ impl Executable for CIGraphOp {
                 };
                 
                 // Copy tool outputs and add skip=false
-                let mut out = HashMap::new();
-                out.extend(result);
+                let mut out = result;
                 out.insert("skip".to_string(), Value::Bool(false));
                 Ok(out)
             }

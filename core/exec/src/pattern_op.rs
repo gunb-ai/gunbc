@@ -34,7 +34,7 @@ impl Executable for PatternOp {
                 let count = list.len() as i64;
 
                 OutputMap::new()
-                    .value(element_port, Value::str_list(list))
+                    .str_list(element_port, list)
                     .int("index", 0)
                     .int("count", count)
                     .ok()
@@ -48,7 +48,7 @@ impl Executable for PatternOp {
                     .unwrap_or(list.len() as i64);
 
                 OutputMap::new()
-                    .value(output_port, Value::str_list(list))
+                    .str_list(output_port, list)
                     .int("iterations", count)
                     .ok()
             }

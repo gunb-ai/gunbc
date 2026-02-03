@@ -156,8 +156,8 @@ fn execute_extract_deps(inputs: HashMap<String, Value>) -> Result<HashMap<String
     }
 
     OutputMap::new()
-        .value("members", Value::str_list(members))
-        .value("deps", Value::str_map(deps))
+        .str_list("members", members)
+        .map_str_str("deps", deps)
         .ok()
 }
 
@@ -285,8 +285,8 @@ impl Mockable for Buck2Op {
             }
             Buck2Op::ExtractDeps => {
                 OutputMap::new()
-                    .value("members", Value::str_list(vec!["foo".to_string()]))
-                    .value("deps", Value::str_map(BTreeMap::new()))
+                    .str_list("members", vec!["foo".to_string()])
+                    .map_str_str("deps", BTreeMap::new())
                     .build()
             }
             Buck2Op::GenerateBuckTargets => {

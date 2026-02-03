@@ -75,7 +75,7 @@ impl Executable for MapOp {
             MapOp::Identity => list.clone(),
         };
 
-        OutputMap::new().value("output", Value::str_list(result)).ok()
+        OutputMap::new().str_list("output", result).ok()
     }
 }
 
@@ -129,7 +129,7 @@ impl Executable for FilterOp {
 
         let count = result.len() as i64;
         OutputMap::new()
-            .value("output", Value::str_list(result))
+            .str_list("output", result)
             .int("count", count)
             .ok()
     }
@@ -224,7 +224,7 @@ impl Executable for SortOp {
             SortOp::Reverse => result.reverse(),
         }
 
-        OutputMap::new().value("output", Value::str_list(result)).ok()
+        OutputMap::new().str_list("output", result).ok()
     }
 }
 

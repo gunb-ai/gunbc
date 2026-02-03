@@ -109,7 +109,7 @@ impl Executable for GitOps {
                     Vec::new()
                 };
 
-                OutputMap::new().value("files", Value::str_list(files)).ok()
+                OutputMap::new().str_list("files", files).ok()
             }
 
             // ================================================================
@@ -141,7 +141,7 @@ impl Executable for GitOps {
                 let (adds, dels, count) = git::diff_stats(&chunks);
 
                 OutputMap::new()
-                    .value("diff_files", Value::str_map(chunks))
+                    .map_str_str("diff_files", chunks)
                     .str("stats", format!("+{} -{} across {} files", adds, dels, count))
                     .ok()
             }
@@ -176,7 +176,7 @@ impl Executable for GitOps {
                     Vec::new()
                 };
 
-                OutputMap::new().value("files", Value::str_list(files)).ok()
+                OutputMap::new().str_list("files", files).ok()
             }
 
             // ================================================================

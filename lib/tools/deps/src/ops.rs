@@ -124,7 +124,7 @@ fn execute_load_tool_registry(_inputs: HashMap<String, Value>) -> Result<HashMap
 
     OutputMap::new()
         .int("tool_count", tool_count)
-        .value("tool_names", Value::str_list(tool_names))
+        .str_list("tool_names", tool_names)
         .ok()
 }
 
@@ -188,7 +188,7 @@ fn execute_parse_manifest(inputs: HashMap<String, Value>) -> Result<HashMap<Stri
 
     OutputMap::new()
         .int("dep_count", manifest.dependency.len() as i64)
-        .value("dep_names", Value::str_list(dep_names))
+        .str_list("dep_names", dep_names)
         .str("manifest_path", manifest_path)
         // Pass manifest content to downstream (avoiding file reload in GenerateScripts)
         .str("manifest_content", content)
@@ -233,8 +233,8 @@ fn execute_generate_scripts(inputs: HashMap<String, Value>) -> Result<HashMap<St
 
     OutputMap::new()
         .str("install_script", combined_script)
-        .value("already_installed", Value::str_list(already_installed))
-        .value("needs_install", Value::str_list(needs_install))
+        .str_list("already_installed", already_installed)
+        .str_list("needs_install", needs_install)
         .str("platform", installer.platform().name().to_string())
         .ok()
 }
@@ -412,13 +412,13 @@ impl Mockable for DepsOp {
             DepsOp::LoadToolRegistry => {
                 OutputMap::new()
                     .int("tool_count", 3)
-                    .value(
+                    .str_list(
                         "tool_names",
-                        Value::str_list(vec![
+                        vec![
                             "cargo".to_string(),
                             "gh".to_string(),
                             "git".to_string(),
-                        ]),
+                        ],
                     )
                     .build()
             }
@@ -442,9 +442,9 @@ impl Mockable for DepsOp {
             DepsOp::ParseManifest => {
                 OutputMap::new()
                     .int("dep_count", 2)
-                    .value(
+                    .str_list(
                         "dep_names",
-                        Value::str_list(vec!["rust".to_string(), "git".to_string()]),
+                        vec!["rust".to_string(), "git".to_string()],
                     )
                     .str("manifest_path", "deps.toml")
                     .str("manifest_content", "[[dependency]]\nname = \"mock\"")
@@ -460,13 +460,13 @@ echo "Installing rust..."
 echo "Installing git..."
 "#,
                     )
-                    .value(
+                    .str_list(
                         "already_installed",
-                        Value::str_list(vec!["git".to_string()]),
+                        vec!["git".to_string()],
                     )
-                    .value(
+                    .str_list(
                         "needs_install",
-                        Value::str_list(vec!["rust".to_string()]),
+                        vec!["rust".to_string()],
                     )
                     .str("platform", "linux")
                     .build()

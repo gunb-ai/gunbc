@@ -255,7 +255,7 @@ fn execute_parse_read_files(
         }
     }
 
-    OutputMap::new().value("contents", Value::str_map(contents)).ok()
+    OutputMap::new().map_str_str("contents", contents).ok()
 }
 
 // ============================================================================
@@ -360,7 +360,7 @@ fn execute_collect_file_contents(
         }
     }
 
-    OutputMap::new().value("contents", Value::str_map(contents)).ok()
+    OutputMap::new().map_str_str("contents", contents).ok()
 }
 
 // ============================================================================
@@ -741,10 +741,10 @@ impl Mockable for GistGraphOp {
                     }
                     GitOps::ParseLsFiles => {
                         OutputMap::new()
-                            .value("files", Value::str_list(vec![
+                            .str_list("files", vec![
                                 "src/main.rs".to_string(),
                                 "README.md".to_string(),
-                            ]))
+                            ])
                             .build()
                     }
                     GitOps::PrepareDiff { .. } | GitOps::PrepareDiffNameOnly { .. }
@@ -761,12 +761,12 @@ impl Mockable for GistGraphOp {
                     }
                     GitOps::ParseDiff => {
                         OutputMap::new()
-                            .value("diff_files", Value::str_map(std::collections::BTreeMap::new()))
+                            .map_str_str("diff_files", std::collections::BTreeMap::new())
                             .str("stats", "+0 -0 across 0 files")
                             .build()
                     }
                     GitOps::ParseDiffNameOnly => {
-                        OutputMap::new().value("files", Value::str_list(vec![])).build()
+                        OutputMap::new().str_list("files", vec![]).build()
                     }
                     GitOps::ParseCurrentBranch => {
                         OutputMap::new().str("branch", "main").build()
@@ -789,7 +789,7 @@ impl Mockable for GistGraphOp {
             GistGraphOp::ParseReadFiles => {
                 let mut contents = std::collections::BTreeMap::new();
                 contents.insert("src/main.rs".to_string(), "fn main() {}".to_string());
-                OutputMap::new().value("contents", Value::str_map(contents)).build()
+                OutputMap::new().map_str_str("contents", contents).build()
             }
 
             // Single-file operations
@@ -814,7 +814,7 @@ impl Mockable for GistGraphOp {
             GistGraphOp::CollectFileContents => {
                 let mut contents = std::collections::BTreeMap::new();
                 contents.insert("src/main.rs".to_string(), "fn main() {}".to_string());
-                OutputMap::new().value("contents", Value::str_map(contents)).build()
+                OutputMap::new().map_str_str("contents", contents).build()
             }
 
             // Pure ops
