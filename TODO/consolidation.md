@@ -202,6 +202,190 @@ These are already generic and in the right location:
 
 ---
 
+## 5. Test Pattern Retrospective
+
+**885 manually written tests surveyed** across the codebase.
+All are purely in-memory — zero real I/O in any test today.
+
+### Pattern 1: Function Unit Tests (HashMap → execute → assert)
+
+The most common pattern. Build a `HashMap<String, Value>` of inputs,
+call the op's `execute()`, assert specific output ports.
+
+**Where**: `gunbc-dag/src/ci/ops.rs`, `gunbc-dag/src/bootstrap/ops.rs`,
+`lib/llm-ops/src/ops.rs`, every `ops.rs` file.
+
+```rust
+let mut inputs = HashMap::new();
+inputs.insert("response".into(), Value::Str(json_string));
+let outputs = op.execute(&inputs)?;
+assert_eq!(outputs.get("build_success"), Some(&Value::Bool(true)));
+```
+
+**Consolidation opportunity**: This is exactly what `NodeExample` now
+automates via testgen. Once Tier 1 infra (`execute_single_node`)
+is stable, many of these hand-written tests become redundant with
+their generated equivalents. Keep hand-written tests only for
+edge cases not expressible as `NodeExample`.
+
+### Pattern 2: Graph Structure Tests (static DAG properties)
+
+Tests that verify node counts, boundary lists, entrypoints,
+transport ports, and edge connectivity — without executing the DAG.
+
+**Where**: `gunbc-dag/src/ci/graph.rs`, `gunbc-dag/src/makegen/graph.rs`,
+`lib/tools/gist/src/graph.rs`.
+
+```rust
+let dag = build_ci_graph()?;
+assert_eq!(dag.nodes.len(), 15);
+assert!(dag.has_node("prepare_build"));
+let boundaries = detect_boundaries(&dag);
+assert!(boundaries.transport_nodes.contains(&"execute_transport"));
+```
+
+**Consolidation opportunity**: Testgen's Bucket A already covers
+boundary detection and transport interception. Remaining structural
+tests (node counts, specific node existence) are fragile — they
+break whenever the graph changes. Consider replacing with
+property-based checks (e.g., "all pure nodes have examples")
+rather than hard-coded counts.
+
+### Pattern 3: Signature Validation (validate + infer)
+
+Tests that verify type signature consistency at the port level:
+validate a node's signature, then infer types from connected edges.
+
+**Where**: `gunbc-dag/src/makegen/graph.rs`, `core/ir/src/dag.rs`.
+
+```rust
+let sig = node.signature();
+assert!(sig.validate().is_ok());
+let inferred = sig.infer_from(&connected_edges);
+assert!(inferred.is_compatible_with(&sig));
+```
+
+**Consolidation opportunity**: Testgen proves type compatibility by
+construction (see header comment in generated files). These tests
+are mostly redundant once testgen covers the DAG. Keep only for
+testing the signature validation API itself (in `core/ir`).
+
+### Pattern 4: Mode-Based Testing (enum variant parameterization)
+
+Tests that exercise different modes/configurations of the same graph,
+verifying structural differences.
+
+**Where**: `lib/tools/gist/src/graph.rs` (Snapshot vs Diff mode).
+
+```rust
+let snapshot_dag = build_gist_graph(GistMode::Snapshot)?;
+let diff_dag = build_gist_graph(GistMode::Diff)?;
+assert!(diff_dag.has_node("git_diff"));
+assert!(!snapshot_dag.has_node("git_diff"));
+```
+
+**Consolidation opportunity**: Testgen currently generates one test
+suite per MockSpec/DAG pair. Mode-parameterized DAGs need one
+MockSpec per mode. This is already handled (gist has separate
+MockSpecs) but could be formalized as a pattern in the testgen
+framework.
+
+### Pattern 5: Execution Mode Testing (DryRun with BoundaryMocks)
+
+Integration-style tests that execute the full DAG in DryRun mode
+with mocked transport responses, verifying execution flow.
+
+**Where**: `lib/tools/gist/tests/integration.rs`,
+`lib/tools/buck2/tests/integration.rs`.
+
+```rust
+let dag = build_gist_graph(GistMode::Snapshot)?;
+let mocks = gist_mock_spec().to_boundary_mocks();
+let log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks))?;
+assert!(log.get("create_gist").unwrap().was_intercepted);
+```
+
+**Consolidation opportunity**: This is exactly testgen Bucket A + C.
+These hand-written integration tests are now fully subsumed by
+generated tests. Once testgen covers all DAGs, these files can be
+deleted or reduced to edge-case-only suites.
+
+---
+
+## 6. Integration Test Gap Analysis
+
+**Current state**: All 885 tests are in-memory. Zero tests exercise
+real external boundaries. The transport abstraction layer ensures
+correctness of the DAG logic, but the transport executor itself
+(`lib/transport/src/executor.rs`) is untested against real systems.
+
+### External Boundaries
+
+| Boundary | Transport Type | Real Executor | Test Coverage | Gap |
+|----------|---------------|---------------|---------------|-----|
+| Filesystem (read/write/delete) | `TransportRequest::File` | `std::fs::*` | None | High |
+| Shell commands | `TransportRequest::Shell` | `Command::new()` | None | High |
+| Git CLI | `TransportRequest::Shell` (via git.rs) | `git` binary | None | Medium |
+| GitHub CLI (gh) | `TransportRequest::Shell` (via gist.rs) | `gh` binary | None | Medium |
+| HTTP/TCP | `TransportRequest::Http` | `TcpStream` | None | Low* |
+| Cargo/Clippy/Rustfmt | CLI tool abstraction | `cargo`/`rustfmt` | None | Medium |
+
+*HTTP transport is marked as not production-ready in the code.
+
+### Fermi Sizing for Integration Tests
+
+| Test Suite | Size | Duration Est. | What It Tests | Dependencies |
+|------------|------|---------------|---------------|--------------|
+| **Filesystem ops** | XS | <1s | Read/write/delete/mkdir in temp dirs | tmpdir only |
+| **Shell execution** | XS | <1s | Command spawn, stdout/stderr capture, exit codes | `/bin/echo`, `/bin/false` |
+| **Git operations** | S | 1-5s | ls-files, diff, branch, merge-base against temp repo | `git` binary, temp repo |
+| **CLI tool resolution** | S | 1-5s | `which`, tool version checks, upsert pattern | System PATH |
+| **Cargo build/test/clippy** | XL | 30-120s | Full cargo workflow on a fixture crate | `cargo`, `rustc`, `clippy` |
+| **GitHub gist (gh CLI)** | L | 5-30s | Create/list gists via `gh` | `gh` binary, GitHub auth |
+| **GitHub gist (REST API)** | M | 2-10s | POST to api.github.com | Network, GitHub token |
+| **HTTP transport** | S | 1-5s | TCP connect, raw HTTP, response parsing | Local test server |
+
+### Proposed Test Organization
+
+```
+make test              # Unit + generated tests (in-memory, <30s)
+make test-integration  # XS + S integration tests (filesystem, git, shell, <10s)
+make test-external     # M + L + XL tests (network, auth, cargo builds)
+```
+
+**XS/S tests** (filesystem, shell, git) can run in CI on every commit.
+They only need standard system tools and temp directories.
+
+**M/L/XL tests** (GitHub API, cargo builds) should run on a schedule
+or manual trigger. They require auth tokens and are slow.
+
+### Priority Order
+
+1. **Filesystem ops (XS)** — Highest value, lowest cost. The executor's
+   `execute_file()` does real `fs::write()`, `fs::read_to_string()`,
+   etc. A temp-dir-based test suite covers all 6 file operations.
+
+2. **Shell execution (XS)** — Second highest value. Verify
+   `execute_shell()` handles stdout, stderr, exit codes, working
+   directory, and environment variables correctly.
+
+3. **Git operations (S)** — Third priority. Create a temp git repo,
+   exercise all `GitRequest` variants, verify deterministic flags
+   produce parseable output.
+
+4. **CLI tool resolution (S)** — Verify `resolve_tool_path()` and
+   `upsert_tool()` against real system PATH.
+
+5. **Cargo workflows (XL)** — Low priority for now. The CI DAG
+   already runs cargo in production. Integration tests would
+   duplicate what CI itself does.
+
+6. **GitHub operations (L/M)** — Lowest priority. Requires auth
+   and creates real resources. Consider a mock GitHub API server
+   instead.
+
+---
+
 ## Tasks
 
 - [ ] Extract `hash_finding_id` to `lib/primitives` as `StableHashOp`
@@ -211,6 +395,14 @@ These are already generic and in the right location:
 - [ ] Design rendering DAG for CI workflow generation (when adding second provider)
 - [ ] Consider `ToolGraphOp<D>` generic wrapper (dag-pattern-ux.md Phase 4)
 - [ ] Split `MergeOutputs` dedup from cardinality handling (blocked on engine work)
+- [ ] Review hand-written tests for redundancy with testgen (Pattern 1, 5)
+- [ ] Remove fragile node-count assertions from graph structure tests (Pattern 2)
+- [ ] Add XS integration tests: filesystem ops in temp dirs
+- [ ] Add XS integration tests: shell execution (stdout, stderr, exit codes)
+- [ ] Add S integration tests: git operations against temp repo
+- [ ] Add S integration tests: CLI tool resolution via system PATH
+- [ ] Add `make test-integration` target for XS/S tests
+- [ ] Add `make test-external` target for M/L/XL tests (scheduled CI)
 
 ## Notes
 
@@ -223,3 +415,8 @@ These are already generic and in the right location:
 - `Renderable` trait is a good foundation. Rendering DAGs would use
   ops that implement `Executable`, with `Renderable` for the final
   output formatting step.
+- Test retrospective: 885 tests, all in-memory. Transport executor
+  (`lib/transport/src/executor.rs`) is the untested boundary.
+  Filesystem and shell XS tests are the highest-value additions.
+- Testgen already subsumes most hand-written integration tests
+  (Pattern 5). Focus hand-written tests on edge cases only.
