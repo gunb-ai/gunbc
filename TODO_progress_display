@@ -489,20 +489,322 @@ topo order since Dag<T> doesn't persist it).
 
 ---------------------------------------------------------------------
 
-## Implementation phases
+## Implementation and testing
 
-1. **Symbol system** — core/ir/src/symbols.rs: types, STANDARD set, tests
-2. **Observer + snapshot** — core/exec/src/progress.rs: trait, DagSnapshot,
-   OutputSummary; wire into execute_flat()
-3. **Viewport + DagLayout** — core/ir/src/layout.rs: Viewport, DagLayout,
-   compute_levels, overflow strategies, diamond/parallel placement
-4. **Frame loop** — FrameLoop trait, FramePolicy enum, synchronous driver
-5. **Terminal renderer** — standard mode: carriage-return, emoji default,
-   Viewport from terminal size, SIGWINCH handling
-6. **Dynamic mode** — wavefront, morph, cellular automaton, adaptive timing
-7. **CI integration** — CiProgressObserver wrapping CiContext, unbounded viewport
-8. **Polish** — spinner animation, compact mode, TTY detection
-9. **Web** (future) — JSON serialization, SSE endpoint, browser renderer
+### What we get for free from existing infrastructure
+
+**SimConfig + SimulationResult** (execute.rs:45-144):
+- Already has per-node timing: `timing: HashMap<NodeId, Duration>`
+- Already produces `timeline: Vec<(NodeId, Duration, Duration)>` (start, dur)
+- This IS a progress replay script — feed timeline into DagProgress and
+  you get deterministic state transitions to test against
+
+**execute_flat() hook point** (execute.rs:398-563):
+- Single loop over topo order, already has CI observer inline
+- Adding ProgressObserver is same shape: one more `Option<&mut dyn T>`
+- Hook points already exist: before node (start_group), after node
+  (end_group), on error (ci.error) — just generalize to trait
+
+**testgen proof obligation model** (core/codegen/src/testgen/):
+- Already generates tests from Dag + MockSpec for every registered DAG
+- "flow_tests" flag runs full DAG with mocks and asserts terminal output
+- Extend: new obligation bucket for progress display state transitions
+- Extend: new test category for rendered frame snapshots
+
+**MockSpec + DryRun** (core/test/src/mock_spec.rs):
+- Every DAG already has a MockSpec (bootstrap, CI, makegen, LLM ops)
+- DryRun gives deterministic execution — reproducible snapshots
+- No new mocks needed: same boundary mocks drive progress display tests
+
+**SimConfig timing** (execute.rs:66-69):
+- Already has `with_timing(node_id, duration)` builder
+- Combine with ProgressObserver for timed state transition tests
+- testgen can generate SimConfig from the same DAG analysis it already does
+
+### Concrete implementation steps
+
+#### Phase 1: Symbol system (core/ir/src/symbols.rs)
+
+New file. Pure types, no dependencies beyond core/ir.
+
+```rust
+// Types: Tier, SemanticColor, SymbolId, Symbol, SymbolSet
+// Static: STANDARD (the default SymbolSet)
+// Functions: resolve(SymbolId, Tier) -> &str
+//            color_ansi(SemanticColor) -> &str
+```
+
+Tests: unit tests in the module. TestGenerator doesn't need to know about
+symbols — they're a leaf dependency with no DAG execution involvement.
+
+    cargo test -p gunbc-ir -- symbols
+
+#### Phase 2: Observer + wiring (core/exec/src/progress.rs)
+
+New file in core/exec. The key integration point.
+
+```rust
+// Types: ProgressObserver trait, DagSnapshot, OutputSummary, FieldKind
+// Integration: execute_flat() gains Option<&mut dyn ProgressObserver>
+```
+
+**Wiring into execute_flat()** — minimal diff:
+
+```rust
+// Current signature:
+fn execute_flat<T: Executable>(
+    dag: &Dag<T>, boundaries: &BoundaryInfo,
+    mode: &ExecutionMode, ci: Option<&mut CiContext>,
+) -> Result<ExecutionLog, ExecError>
+
+// New signature (additive, not breaking):
+fn execute_flat<T: Executable>(
+    dag: &Dag<T>, boundaries: &BoundaryInfo,
+    mode: &ExecutionMode, ci: Option<&mut CiContext>,
+    progress: Option<&mut dyn ProgressObserver>,  // NEW
+) -> Result<ExecutionLog, ExecError>
+```
+
+Hook points inside the existing loop (execute.rs:414-560):
+- Before loop: `progress.on_dag_start(&snapshot)`
+- Line 422 (start_group): `progress.on_node_start(&node_id)`
+- Line 500 (Ok outputs): `progress.on_node_complete(&node_id, summary)`
+- Line 501 (Err): `progress.on_node_failed(&node_id, &e.to_string())`
+- Line 457 (skip): `progress.on_node_skipped(&node_id)`
+- Line 494 (intercepted): `progress.on_node_intercepted(&node_id, summary)`
+- After loop: `progress.on_dag_complete(elapsed)`
+
+Public API additions (parallel to existing execute_with_ci):
+```rust
+pub fn execute_with_progress<T: Executable + Clone>(
+    dag: &Dag<T>,
+    progress: &mut dyn ProgressObserver,
+) -> Result<ExecutionLog, ExecError>
+```
+
+Tests: **testgen gives us this for free.** Every registered DAG already
+has a MockSpec. We add a `RecordingObserver` (collects events into a Vec)
+and generate tests that assert:
+- Correct event sequence (matches topo order)
+- Every node gets exactly one terminal event (complete/failed/skipped)
+- on_dag_start fires before any on_node_*, on_dag_complete fires last
+- DagSnapshot.edges match the actual DAG edges
+- OutputSummary.fields match the MockSpec expected outputs
+
+```rust
+// New testgen bucket — generated automatically for every DAG:
+#[test]
+fn test_progress_event_sequence() {
+    let dag = crate::build_bootstrap_graph().unwrap();
+    let spec = crate::bootstrap::graph_mock::bootstrap_mock_spec();
+    let mut observer = RecordingObserver::new();
+    let _log = execute_with_progress_and_mode(
+        &dag, ExecutionMode::DryRun(spec.to_boundary_mocks()),
+        &mut observer,
+    ).unwrap();
+    // Assert event sequence matches topo order
+    assert_eq!(observer.node_starts(), topo_sort(&lower(&dag).unwrap()));
+    // Assert all nodes reach terminal state
+    assert!(observer.all_terminal());
+}
+```
+
+testgen generates this for bootstrap, CI, makegen, and all LLM DAGs —
+6+ DAGs tested with zero manual test writing.
+
+    cargo test -p gunbc-exec -- progress
+
+#### Phase 3: DagProgress state machine (core/exec/src/progress.rs)
+
+DagProgress implements ProgressObserver — it's a concrete observer that
+maintains the state machine. Pure state transitions, no I/O.
+
+```rust
+impl ProgressObserver for DagProgress {
+    fn on_node_start(&mut self, id: &NodeId) {
+        self.nodes.get_mut(id).unwrap().state = NodeState::Running;
+        self.phase = DagPhase::Running { current_node: id.clone() };
+    }
+    fn on_node_complete(&mut self, id: &NodeId, summary: OutputSummary) {
+        self.nodes.get_mut(id).unwrap().state = NodeState::Completed;
+        // Power flow: edges from this node → Flowing
+        for edge in &self.snapshot.edges {
+            if edge.from_node == *id {
+                self.edges.get_mut(&(edge.from_node.clone(), edge.to_node.clone()))
+                    .unwrap().state = EdgeState::Flowing;
+            }
+        }
+    }
+    // ... etc
+}
+```
+
+Tests: **SimConfig timeline gives us replay tests for free.**
+
+```rust
+// testgen generates per-DAG state transition tests:
+#[test]
+fn test_progress_state_transitions() {
+    let dag = crate::build_ci_graph().unwrap();
+    let spec = crate::ci::graph_mock::ci_mock_spec();
+    let mut progress = DagProgress::from_dag(&lower(&dag).unwrap());
+    let _log = execute_with_progress_and_mode(
+        &dag, ExecutionMode::DryRun(spec.to_boundary_mocks()),
+        &mut progress,
+    ).unwrap();
+    // All nodes completed (DryRun succeeds with mocks)
+    assert!(progress.nodes.values().all(|n| n.state == NodeState::Completed));
+    // All edges done
+    assert!(progress.edges.values().all(|e| e.state == EdgeState::Done));
+    // DAG phase is Completed
+    assert!(matches!(progress.phase, DagPhase::Completed { .. }));
+}
+```
+
+    cargo test -p gunbc-exec -- progress::state
+
+#### Phase 4: Viewport + DagLayout (core/ir/src/layout.rs)
+
+New file in core/ir. Pure functions: topology + constraints → positions.
+No execution dependency — just Dag<T> + Viewport → DagLayout.
+
+```rust
+pub fn compute_layout<T>(dag: &Dag<T>, viewport: &Viewport) -> DagLayout
+```
+
+Tests: **testgen gives us layout tests for every registered DAG.**
+Each DAG has known topology → known level structure → verifiable layout.
+
+```rust
+// testgen generates per-DAG layout tests:
+#[test]
+fn test_layout_bootstrap_fits_80x24() {
+    let dag = crate::build_bootstrap_graph().unwrap();
+    let flat = lower(&dag).unwrap();
+    let vp = Viewport { width: 80, height: 24, unit: ViewportUnit::Chars };
+    let layout = compute_layout(&flat, &vp);
+    // All visible nodes within viewport bounds
+    for node in layout.nodes.values().filter(|n| !n.is_collapsed) {
+        assert!(node.col + node.label_width <= vp.width);
+        assert!(node.row <= vp.height);
+    }
+}
+
+#[test]
+fn test_layout_ci_diamond_parallel() {
+    let dag = crate::build_ci_graph().unwrap();
+    let flat = lower(&dag).unwrap();
+    let vp = Viewport { width: 120, height: 40, unit: ViewportUnit::Chars };
+    let layout = compute_layout(&flat, &vp);
+    // CI graph has a diamond: test + lint are at the same level
+    let test_level = layout.nodes.get(&NodeId::from("prepare_test")).unwrap().row;
+    let lint_level = layout.nodes.get(&NodeId::from("prepare_clippy_lint")).unwrap().row;
+    assert_eq!(test_level, lint_level); // Parallel nodes at same row
+}
+```
+
+Manual unit tests for edge cases: overflow, collapse, scroll, resize.
+
+    cargo test -p gunbc-ir -- layout
+
+#### Phase 5: Frame loop + terminal renderer
+
+This is where we first see output. The renderer consumes DagLayout +
+DagProgress + SymbolSet and writes to a `Write` target (not hardcoded
+to stdout — testable with a buffer).
+
+```rust
+struct TerminalRenderer<W: Write> {
+    output: W,           // stdout in prod, Vec<u8> in tests
+    symbol_set: SymbolSet,
+    tier: Tier,
+    mode: RenderMode,
+    layout: DagLayout,
+}
+
+impl<W: Write> FrameLoop for TerminalRenderer<W> {
+    fn render(&mut self, progress: &DagProgress) { ... }
+}
+```
+
+Tests: **snapshot tests.** Render to a buffer, compare against golden files.
+testgen generates snapshot tests for each registered DAG:
+
+```rust
+// testgen generates rendered snapshot tests:
+#[test]
+fn test_render_bootstrap_completed_emoji() {
+    let dag = crate::build_bootstrap_graph().unwrap();
+    let spec = crate::bootstrap::graph_mock::bootstrap_mock_spec();
+    // Run to completion with progress tracking
+    let mut progress = DagProgress::from_dag(&lower(&dag).unwrap());
+    let _log = execute_with_progress_and_mode(&dag, mode, &mut progress).unwrap();
+    // Render final state
+    let mut buf = Vec::new();
+    let vp = Viewport { width: 80, height: 24, unit: ViewportUnit::Chars };
+    let layout = compute_layout(&lower(&dag).unwrap(), &vp);
+    let mut renderer = TerminalRenderer::new(&mut buf, STANDARD, Tier::Emoji, layout);
+    renderer.render(&progress);
+    let output = String::from_utf8(buf).unwrap();
+    // Snapshot comparison (insta or manual golden file)
+    assert_snapshot!("bootstrap_completed_emoji", &output);
+}
+```
+
+    cargo test -p gunbc-dag -- render::snapshot
+
+#### Phase 6: Wire into CLI binaries
+
+The smallest integration — bootstrap binary as first target:
+
+```rust
+// bootstrap.rs — current:
+match execute_with_mode(&dag, mode) {
+    Ok(log) => { for entry in &log.entries { ... } }
+}
+
+// bootstrap.rs — with progress display:
+let mut progress = DagProgress::from_dag(&lower(&dag).unwrap());
+let vp = Viewport::from_terminal();  // query terminal size
+let layout = compute_layout(&lower(&dag).unwrap(), &vp);
+let mut renderer = TerminalRenderer::new(io::stdout(), STANDARD, Tier::Emoji, layout);
+
+match execute_with_progress_and_mode(&dag, mode, &mut progress) {
+    Ok(log) => {
+        renderer.render(&progress);  // Final frame
+    }
+}
+```
+
+CI binary follows the same pattern but with ASCII tier and unbounded viewport.
+
+### testgen integration summary
+
+New TestConfig flag:
+
+```rust
+pub struct TestConfig {
+    // ... existing flags ...
+    pub progress_tests: bool,  // NEW — generate progress display tests
+}
+```
+
+When `progress_tests` is true, testgen generates for each DAG:
+
+| Test                              | What it verifies                    | Free from        |
+|-----------------------------------|-------------------------------------|-------------------|
+| test_progress_event_sequence      | Observer events match topo order    | MockSpec + DryRun |
+| test_progress_all_terminal        | Every node reaches terminal state   | MockSpec + DryRun |
+| test_progress_state_transitions   | DagProgress state machine correct   | MockSpec + DryRun |
+| test_progress_edge_flow           | Edges follow power-flow rules       | MockSpec + DryRun |
+| test_layout_fits_viewport         | All nodes within bounds             | DAG topology      |
+| test_layout_parallel_levels       | Diamond nodes at same row           | DAG topology      |
+| test_render_completed_snapshot    | Rendered output matches golden file | MockSpec + DryRun |
+| test_render_midpoint_snapshot     | Mid-execution frame looks right     | SimConfig timing  |
+
+That's 8 tests × 6 DAGs = ~48 generated tests with zero manual writing.
+The SimConfig timeline replay tests are the most interesting — they let
+us snapshot the display at arbitrary execution points.
 
 ---------------------------------------------------------------------
 
