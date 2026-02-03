@@ -315,74 +315,104 @@ deleted or reduced to edge-case-only suites.
 ## 6. Integration Test Gap Analysis
 
 **Current state**: All 885 tests are in-memory. Zero tests exercise
-real external boundaries. The transport abstraction layer ensures
-correctness of the DAG logic, but the transport executor itself
-(`lib/transport/src/executor.rs`) is untested against real systems.
+real transport execution. The transport abstraction layer ensures
+correctness of DAG logic, but `lib/transport/src/executor.rs`
+is untested against real systems.
 
-### External Boundaries
+### Test Categories (derived from `TransportRequest` variants)
 
-| Boundary | Transport Type | Real Executor | Test Coverage | Gap |
-|----------|---------------|---------------|---------------|-----|
-| Filesystem (read/write/delete) | `TransportRequest::File` | `std::fs::*` | None | High |
-| Shell commands | `TransportRequest::Shell` | `Command::new()` | None | High |
-| Git CLI | `TransportRequest::Shell` (via git.rs) | `git` binary | None | Medium |
-| GitHub CLI (gh) | `TransportRequest::Shell` (via gist.rs) | `gh` binary | None | Medium |
-| HTTP/TCP | `TransportRequest::Http` | `TcpStream` | None | Low* |
-| Cargo/Clippy/Rustfmt | CLI tool abstraction | `cargo`/`rustfmt` | None | Medium |
-
-*HTTP transport is marked as not production-ready in the code.
-
-### Fermi Sizing for Integration Tests
-
-| Test Suite | Size | Duration Est. | What It Tests | Dependencies |
-|------------|------|---------------|---------------|--------------|
-| **Filesystem ops** | XS | <1s | Read/write/delete/mkdir in temp dirs | tmpdir only |
-| **Shell execution** | XS | <1s | Command spawn, stdout/stderr capture, exit codes | `/bin/echo`, `/bin/false` |
-| **Git operations** | S | 1-5s | ls-files, diff, branch, merge-base against temp repo | `git` binary, temp repo |
-| **CLI tool resolution** | S | 1-5s | `which`, tool version checks, upsert pattern | System PATH |
-| **Cargo build/test/clippy** | XL | 30-120s | Full cargo workflow on a fixture crate | `cargo`, `rustc`, `clippy` |
-| **GitHub gist (gh CLI)** | L | 5-30s | Create/list gists via `gh` | `gh` binary, GitHub auth |
-| **GitHub gist (REST API)** | M | 2-10s | POST to api.github.com | Network, GitHub token |
-| **HTTP transport** | S | 1-5s | TCP connect, raw HTTP, response parsing | Local test server |
-
-### Proposed Test Organization
+Categories are structural — derived from the transport type system,
+not arbitrary sizing. Every DAG node that wraps `TransportOps::Execute`
+consumes a `TransportRequest`. The variant determines the category.
 
 ```
-make test              # Unit + generated tests (in-memory, <30s)
-make test-integration  # XS + S integration tests (filesystem, git, shell, <10s)
-make test-external     # M + L + XL tests (network, auth, cargo builds)
+make test              # In-memory: unit + generated (DryRun, mocked boundaries)
+make test-integration  # Hermetic: real TransportRequest::{File, Shell}
+make test-external     # Non-hermetic: real TransportRequest::{Rest, Http, Tcp}
 ```
 
-**XS/S tests** (filesystem, shell, git) can run in CI on every commit.
-They only need standard system tools and temp directories.
+#### `test-integration` — Hermetic transport ops
 
-**M/L/XL tests** (GitHub API, cargo builds) should run on a schedule
-or manual trigger. They require auth tokens and are slow.
+Tests that execute real transport but require only the local machine.
+No network, no auth tokens, no external services. Safe to run on
+every CI commit.
 
-### Priority Order
+| TransportRequest variant | What executes | Test fixtures needed |
+|--------------------------|---------------|---------------------|
+| `File` (Read/Write/Delete/Exists/CreateDir/Append) | `std::fs::*` via `execute_file()` | `tempdir` |
+| `Shell` with local tools | `Command::new()` via `execute_shell()` | System PATH |
 
-1. **Filesystem ops (XS)** — Highest value, lowest cost. The executor's
-   `execute_file()` does real `fs::write()`, `fs::read_to_string()`,
-   etc. A temp-dir-based test suite covers all 6 file operations.
+Concrete test suites:
 
-2. **Shell execution (XS)** — Second highest value. Verify
-   `execute_shell()` handles stdout, stderr, exit codes, working
-   directory, and environment variables correctly.
+| Suite | Transport | What It Covers |
+|-------|-----------|----------------|
+| **File executor** | `File` | All 6 `FileOp` variants against temp dirs |
+| **Shell executor** | `Shell` | stdout, stderr, exit codes, env vars, working dir |
+| **Git transport** | `Shell` (via `git.rs`) | All `GitRequest` variants against temp repo. Verifies deterministic flags (`color.ui=never`, `core.quotepath=false`, etc.) produce parseable output |
+| **CLI tool resolution** | `Shell` | `resolve_tool_path()`, `upsert_tool()`, version checks |
+| **Cargo/Clippy/Rustfmt** | `Shell` (via `cli.rs`) | Tool execution through `CliTool` abstraction. Slow (~XL) but hermetic — could gate behind `--features slow-integration` |
 
-3. **Git operations (S)** — Third priority. Create a temp git repo,
-   exercise all `GitRequest` variants, verify deterministic flags
-   produce parseable output.
+#### `test-external` — Non-hermetic transport ops
 
-4. **CLI tool resolution (S)** — Verify `resolve_tool_path()` and
-   `upsert_tool()` against real system PATH.
+Tests that require network access, auth tokens, or create real
+external resources. Run on schedule or manual trigger only.
 
-5. **Cargo workflows (XL)** — Low priority for now. The CI DAG
-   already runs cargo in production. Integration tests would
-   duplicate what CI itself does.
+| TransportRequest variant | What executes | Why non-hermetic |
+|--------------------------|---------------|------------------|
+| `Rest` | HTTP + auth via `execute_rest()` | Requires API endpoints + `AuthMethod` credentials |
+| `Http` | `TcpStream` via `execute_http()` | Requires network host (currently stubbed to localhost-only) |
+| `Tcp` | `TcpStream` via `execute_tcp()` | Requires network connectivity |
 
-6. **GitHub operations (L/M)** — Lowest priority. Requires auth
-   and creates real resources. Consider a mock GitHub API server
-   instead.
+Concrete test suites:
+
+| Suite | Transport | What It Covers |
+|-------|-----------|----------------|
+| **GitHub gist (REST)** | `Rest` | POST to `api.github.com/gists`, auth via `AuthMethod::EnvVar` |
+| **GitHub gist (gh CLI)** | `Shell` (non-hermetic*) | `gh gist create`, requires `gh auth` |
+| **LLM API calls** | `Rest` | OpenAI/Anthropic endpoints, `AuthMethod::EnvVarHeader` |
+| **HTTP transport** | `Http` | Raw HTTP against local test server (could be hermetic with fixture server) |
+
+*`gh gist create` uses `Shell` transport but is non-hermetic because
+it creates real GitHub resources and requires auth. The category
+is determined by the operation's hermeticity, not just the variant.
+
+### Boundary Summary
+
+| Boundary | Transport | Category | Coverage Today | Gap |
+|----------|-----------|----------|---------------|-----|
+| Filesystem | `File` | integration | None | High |
+| Shell execution | `Shell` | integration | None | High |
+| Git CLI | `Shell` | integration | None | Medium |
+| CLI tool resolution | `Shell` | integration | None | Medium |
+| Cargo/Clippy/Rustfmt | `Shell` | integration | None | Low* |
+| GitHub API | `Rest` | external | None | Medium |
+| GitHub CLI (gh) | `Shell` | external | None | Medium |
+| LLM APIs | `Rest` | external | None | Low |
+| Raw HTTP | `Http` | external | None | Low** |
+| Raw TCP | `Tcp` | external | None | Low |
+
+*Cargo tests are hermetic but slow (~XL). Lower priority because
+the CI DAG exercises these in production.
+**HTTP transport is currently stubbed to localhost-only in executor.
+
+### Priority
+
+1. **File executor** (integration) — Highest value, lowest cost.
+   6 `FileOp` variants, temp dirs, instant.
+
+2. **Shell executor** (integration) — Second highest. Verify
+   `execute_shell()` handles stdout/stderr/exit codes correctly.
+
+3. **Git transport** (integration) — Temp repo, exercise all
+   `GitRequest` variants, verify deterministic flag output.
+
+4. **CLI tool resolution** (integration) — `which`-based path
+   resolution, version checks, upsert pattern.
+
+5. **GitHub REST** (external) — When auth infrastructure exists.
+
+6. **Cargo/Clippy** (integration, gated) — Behind feature flag
+   due to compilation time.
 
 ---
 
@@ -397,12 +427,12 @@ or manual trigger. They require auth tokens and are slow.
 - [ ] Split `MergeOutputs` dedup from cardinality handling (blocked on engine work)
 - [ ] Review hand-written tests for redundancy with testgen (Pattern 1, 5)
 - [ ] Remove fragile node-count assertions from graph structure tests (Pattern 2)
-- [ ] Add XS integration tests: filesystem ops in temp dirs
-- [ ] Add XS integration tests: shell execution (stdout, stderr, exit codes)
-- [ ] Add S integration tests: git operations against temp repo
-- [ ] Add S integration tests: CLI tool resolution via system PATH
-- [ ] Add `make test-integration` target for XS/S tests
-- [ ] Add `make test-external` target for M/L/XL tests (scheduled CI)
+- [ ] Add integration tests: `File` transport executor (all 6 FileOp variants)
+- [ ] Add integration tests: `Shell` transport executor (stdout, stderr, exit codes)
+- [ ] Add integration tests: Git transport (`GitRequest` variants against temp repo)
+- [ ] Add integration tests: CLI tool resolution (`resolve_tool_path`, `upsert_tool`)
+- [ ] Add `make test-integration` target (hermetic transport tests)
+- [ ] Add `make test-external` target (non-hermetic transport tests, scheduled CI)
 
 ## Notes
 
@@ -415,8 +445,13 @@ or manual trigger. They require auth tokens and are slow.
 - `Renderable` trait is a good foundation. Rendering DAGs would use
   ops that implement `Executable`, with `Renderable` for the final
   output formatting step.
+- Test categories are structural: derived from `TransportRequest`
+  variant, not arbitrary time estimates. integration = hermetic
+  transport (`File`, `Shell`), external = non-hermetic (`Rest`,
+  `Http`, `Tcp`). Edge case: `Shell` commands that hit the network
+  (e.g., `gh gist create`) belong in external despite the variant.
 - Test retrospective: 885 tests, all in-memory. Transport executor
   (`lib/transport/src/executor.rs`) is the untested boundary.
-  Filesystem and shell XS tests are the highest-value additions.
+  `File` and `Shell` integration tests are the highest-value additions.
 - Testgen already subsumes most hand-written integration tests
   (Pattern 5). Focus hand-written tests on edge cases only.
