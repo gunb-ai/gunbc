@@ -197,6 +197,10 @@ pub struct ToolDef {
     pub dag: Option<DagDef>,
     /// Testgen configuration (if this tool should have generated tests)
     pub testgen: Option<TestgenTargetDef>,
+    /// Cargo invocation for running this tool.
+    /// When set, the tool gets a Makefile target automatically.
+    /// When None, the tool has no runnable binary (e.g., library-only or not wired up yet).
+    pub invocation: Option<cargo::CargoInvocation>,
 }
 
 /// Configuration for test generation.
@@ -287,6 +291,7 @@ impl ToolDef {
             outputs: vec![],
             dag: None,
             testgen: None,
+            invocation: None,
         }
     }
 
@@ -308,6 +313,16 @@ impl ToolDef {
     /// for better CI visibility (each DAG node can be a separate CI step).
     pub fn enable_step_mode(mut self) -> Self {
         self.meta.enable_step_mode = true;
+        self
+    }
+
+    /// Set the cargo invocation for running this tool.
+    ///
+    /// When set, the makegen registry will automatically create a Makefile
+    /// target for this tool. This is the canonical way to say "this tool
+    /// has a runnable binary invoked via cargo".
+    pub fn invocation(mut self, inv: cargo::CargoInvocation) -> Self {
+        self.invocation = Some(inv);
         self
     }
 
@@ -374,17 +389,20 @@ pub fn all_tools() -> Vec<ToolDef> {
             "GistMode::Snapshot, extensions.clone(), public",
         )
         .returns_result()
+        .invocation(cargo::CargoInvocation::standalone("gist"))
         .import("use gunbc_gist::{build_gist_graph, GistMode};")
         .entrypoint(
             CliEntrypoint::new("repo_path", "String")
                 .short('r')
                 .default(".")
-                .help("Repository path to scan"),
+                .help("Repository path to scan")
+                .make_var("REPO"),
         )
         .entrypoint(
             CliEntrypoint::new("extensions", "List")
                 .short('e')
-                .help("File extensions to include (can be repeated)"),
+                .help("File extensions to include (can be repeated)")
+                .make_var("EXT"),
         )
         .entrypoint(
             CliEntrypoint::new("public", "Bool")
@@ -420,23 +438,27 @@ pub fn all_tools() -> Vec<ToolDef> {
             "GistMode::Diff { base_ref: base_ref.clone() }, extensions.clone(), public",
         )
         .returns_result()
+        .invocation(cargo::CargoInvocation::composed("gist-diff", "gist"))
         .import("use gunbc_gist::{build_gist_graph, GistMode};")
         .entrypoint(
             CliEntrypoint::new("repo_path", "String")
                 .short('r')
                 .default(".")
-                .help("Repository path to scan"),
+                .help("Repository path to scan")
+                .make_var("REPO"),
         )
         .entrypoint(
             CliEntrypoint::new("base_ref", "String")
                 .short('b')
                 .default("main")
-                .help("Base branch for diff"),
+                .help("Base branch for diff")
+                .make_var("BASE"),
         )
         .entrypoint(
             CliEntrypoint::new("extensions", "List")
                 .short('e')
-                .help("File extensions to include (can be repeated)"),
+                .help("File extensions to include (can be repeated)")
+                .make_var("EXT"),
         )
         .entrypoint(
             CliEntrypoint::new("public", "Bool")
@@ -466,17 +488,20 @@ pub fn all_tools() -> Vec<ToolDef> {
             "",
         )
         .returns_result()
+        .invocation(cargo::CargoInvocation::standalone("buck2"))
         .entrypoint(
             CliEntrypoint::new("cargo_toml_path", "String")
                 .short('i')
                 .default("Cargo.toml")
-                .help("Path to Cargo.toml"),
+                .help("Path to Cargo.toml")
+                .make_var("INPUT"),
         )
         .entrypoint(
             CliEntrypoint::new("output_path", "String")
                 .short('o')
                 .default("BUCK")
-                .help("Output BUCK file path"),
+                .help("Output BUCK file path")
+                .make_var("OUTPUT"),
         )
         .output("BUCK")  // default output
         .boundary(
@@ -497,6 +522,7 @@ pub fn all_tools() -> Vec<ToolDef> {
             "",
         )
         .returns_result()
+        .invocation(cargo::CargoInvocation::composed("makegen", "dag"))
         .import("use gunbc_makegen::build_makegen_graph;")
         // Declarative DAG definition (POC for graph generation)
         .dag(makegen_dag())
@@ -514,7 +540,8 @@ pub fn all_tools() -> Vec<ToolDef> {
             CliEntrypoint::new("output_path", "String")
                 .short('o')
                 .default("Makefile")
-                .help("Output Makefile path"),
+                .help("Output Makefile path")
+                .make_var("OUTPUT"),
         )
         .boundary(
             "write_makefile",
@@ -534,12 +561,14 @@ pub fn all_tools() -> Vec<ToolDef> {
             "",
         )
         .returns_result()
+        .invocation(cargo::CargoInvocation::standalone("deps"))
         .import("use gunbc_deps::build_deps_graph;")
         .entrypoint(
             CliEntrypoint::new("manifest_path", "String")
                 .short('m')
                 .default("deps.toml")
-                .help("Path to deps.toml manifest"),
+                .help("Path to deps.toml manifest")
+                .make_var("MANIFEST"),
         )
         .boundary(
             "execute_installs",
@@ -595,6 +624,7 @@ pub fn all_tools() -> Vec<ToolDef> {
             "",
         )
         .returns_result()
+        .invocation(cargo::CargoInvocation::composed("bootstrap", "dag"))
         .import("use gunbc_bootstrap::build_bootstrap_graph;")
         .testgen(
             TestgenTargetDef::new(

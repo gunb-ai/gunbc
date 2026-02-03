@@ -46,6 +46,10 @@ pub struct CliEntrypoint {
     pub default_value: Option<String>,
     /// Help text
     pub help: String,
+    /// Make variable name (e.g., "REPO" for repo_path).
+    /// When set, this entrypoint is exposed as a Make variable in the generated
+    /// Makefile. Entrypoints without make_var are CLI-only (not in Makefile).
+    pub make_var: Option<String>,
 }
 
 impl CliEntrypoint {
@@ -59,6 +63,7 @@ impl CliEntrypoint {
             short_flag: None,
             default_value: None,
             help,
+            make_var: None,
         }
     }
 
@@ -77,6 +82,16 @@ impl CliEntrypoint {
     /// Set help text.
     pub fn help(mut self, text: impl Into<String>) -> Self {
         self.help = text.into();
+        self
+    }
+
+    /// Set Make variable name for Makefile generation.
+    ///
+    /// When set, this entrypoint is exposed as a Make variable in the generated
+    /// Makefile (e.g., `make gist REPO=.`). Entrypoints without a make_var
+    /// are CLI-only and won't appear as Makefile variables.
+    pub fn make_var(mut self, var: impl Into<String>) -> Self {
+        self.make_var = Some(var.into());
         self
     }
 

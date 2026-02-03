@@ -10,7 +10,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help codegen ensure-codegen build clean testgen testgen-check fmt-fix lint-fix test test-fix check check-fix clippy clippy-fix fmt fmt-check ci-yaml gist gist-dry gist-diff gist-diff-dry buck2 buck2-dry makegen makegen-dry deps deps-dry ci ci-dry bootstrap bootstrap-dry
+.PHONY: help codegen ensure-codegen build clean testgen testgen-check fmt-fix lint-fix test test-fix check check-fix clippy clippy-fix fmt fmt-check ci-yaml gist gist-dry gist-diff gist-diff-dry buck2 buck2-dry makegen makegen-dry deps deps-dry bootstrap bootstrap-dry ci ci-dry
 
 # Codegen source tracking: rebuild generated files when sources change
 CODEGEN_SOURCES := $(shell find core/codegen/src core/ir/src -name '*.rs' 2>/dev/null)
@@ -75,8 +75,8 @@ help:
 	@echo "  buck2 [INPUT=Cargo.toml] [OUTPUT=BUCK]  - Generate BUCK file from Cargo.toml"
 	@echo "  makegen [OUTPUT=Makefile]  - Generate Makefile from tool registry"
 	@echo "  deps [MANIFEST=deps.toml]  - Install tool dependencies"
-	@echo "  ci   - Run CI pipeline"
 	@echo "  bootstrap   - Generate Makefile and .gitignore"
+	@echo "  ci   - Run CI pipeline"
 	@echo ""
 	@echo "Add -dry suffix for dry-run (e.g., make gist-dry)"
 
@@ -127,47 +127,40 @@ fmt-check:
 ci-yaml:
 	@cargo run -p gunbc-codegen --release -- cigen
 
-# gunbc-gist entrypoints: repo_path (String), extensions (String)
+# gunbc-gist entrypoints: repo_path (String), extensions (List)
 gist: ensure-codegen
-	@cargo run -p gunbc-gist -- $(if $(REPO),--repo $(REPO)) $(if $(EXT),-e $(EXT))
+	@cargo run -p gunbc-gist -- $(if $(REPO),--repo-path $(REPO)) $(if $(EXT),--extensions $(EXT))
 
 gist-dry: ensure-codegen
-	@cargo run -p gunbc-gist -- --dry-run $(if $(REPO),--repo $(REPO)) $(if $(EXT),-e $(EXT))
+	@cargo run -p gunbc-gist -- --dry-run $(if $(REPO),--repo-path $(REPO)) $(if $(EXT),--extensions $(EXT))
 
-# gunbc-gist-diff entrypoints: repo_path (String), base_ref (String), extensions (String)
+# gunbc-gist-diff entrypoints: repo_path (String), base_ref (String), extensions (List)
 gist-diff: ensure-codegen
-	@cargo run -p gunbc-gist --bin gunbc-gist-diff -- $(if $(REPO),--repo $(REPO)) $(if $(BASE),--base $(BASE)) $(if $(EXT),-e $(EXT))
+	@cargo run -p gunbc-gist --bin gunbc-gist-diff -- $(if $(REPO),--repo-path $(REPO)) $(if $(BASE),--base-ref $(BASE)) $(if $(EXT),--extensions $(EXT))
 
 gist-diff-dry: ensure-codegen
-	@cargo run -p gunbc-gist --bin gunbc-gist-diff -- --dry-run $(if $(REPO),--repo $(REPO)) $(if $(BASE),--base $(BASE)) $(if $(EXT),-e $(EXT))
+	@cargo run -p gunbc-gist --bin gunbc-gist-diff -- --dry-run $(if $(REPO),--repo-path $(REPO)) $(if $(BASE),--base-ref $(BASE)) $(if $(EXT),--extensions $(EXT))
 
 # gunbc-buck2 entrypoints: cargo_toml_path (String), output_path (String)
 buck2: ensure-codegen
-	@cargo run -p gunbc-buck2 -- $(if $(INPUT),--input $(INPUT)) $(if $(OUTPUT),--output $(OUTPUT))
+	@cargo run -p gunbc-buck2 -- $(if $(INPUT),--cargo-toml-path $(INPUT)) $(if $(OUTPUT),--output-path $(OUTPUT))
 
 buck2-dry: ensure-codegen
-	@cargo run -p gunbc-buck2 -- --dry-run $(if $(INPUT),--input $(INPUT)) $(if $(OUTPUT),--output $(OUTPUT))
+	@cargo run -p gunbc-buck2 -- --dry-run $(if $(INPUT),--cargo-toml-path $(INPUT)) $(if $(OUTPUT),--output-path $(OUTPUT))
 
 # gunbc-makegen entrypoints: output_path (String)
 makegen: ensure-codegen
-	@cargo run -p gunbc-dag --bin gunbc-makegen -- $(if $(OUTPUT),--output $(OUTPUT))
+	@cargo run -p gunbc-dag --bin gunbc-makegen -- $(if $(OUTPUT),--output-path $(OUTPUT))
 
 makegen-dry: ensure-codegen
-	@cargo run -p gunbc-dag --bin gunbc-makegen -- --dry-run $(if $(OUTPUT),--output $(OUTPUT))
+	@cargo run -p gunbc-dag --bin gunbc-makegen -- --dry-run $(if $(OUTPUT),--output-path $(OUTPUT))
 
 # gunbc-deps entrypoints: manifest_path (String)
 deps: ensure-codegen
-	@cargo run -p gunbc-deps -- $(if $(MANIFEST),--manifest $(MANIFEST))
+	@cargo run -p gunbc-deps -- $(if $(MANIFEST),--manifest-path $(MANIFEST))
 
 deps-dry: ensure-codegen
-	@cargo run -p gunbc-deps -- --dry-run $(if $(MANIFEST),--manifest $(MANIFEST))
-
-# gunbc-ci entrypoints: 
-ci: ensure-codegen
-	@cargo run -p gunbc-dag --bin gunbc-ci --
-
-ci-dry: ensure-codegen
-	@cargo run -p gunbc-dag --bin gunbc-ci -- --dry-run
+	@cargo run -p gunbc-deps -- --dry-run $(if $(MANIFEST),--manifest-path $(MANIFEST))
 
 # gunbc-bootstrap entrypoints: 
 bootstrap: ensure-codegen
@@ -175,4 +168,11 @@ bootstrap: ensure-codegen
 
 bootstrap-dry: ensure-codegen
 	@cargo run -p gunbc-dag --bin gunbc-bootstrap -- --dry-run
+
+# gunbc-ci entrypoints: 
+ci: ensure-codegen
+	@cargo run -p gunbc-dag --bin gunbc-ci --
+
+ci-dry: ensure-codegen
+	@cargo run -p gunbc-dag --bin gunbc-ci -- --dry-run
 

@@ -1,18 +1,20 @@
 //! Tool registry for makegen.
 //!
-//! Defines what tools exist and their entrypoint parameters.
-//! Also defines meta targets (test, check, fmt, clippy) that compose with prep.
-//! 
+//! Tool targets are derived from the codegen registry (`all_tools()`) — adding
+//! a tool with `.invocation()` there automatically gives it a Makefile target.
+//! Only tools that can't be in codegen (like `ci`, which is the bootstrap tool)
+//! are registered manually here.
+//!
+//! Meta targets (test, check, fmt, clippy) compose with prep levels.
+//!
 //! # BuildConfig
-//! 
+//!
 //! The `BuildConfig` struct is the single source of truth for all build/test/lint
 //! commands. This eliminates duplicate hardcoded commands across the codebase.
 
-use gunbc_deps::DEFAULT_MANIFEST_FILENAME;
 use gunbc_ir::cargo::{CargoCommand, Subcommand, Warnings};
 use gunbc_ir::transport::ShellRequest;
 use gunbc_ir::CargoInvocation;
-use gunbc_ir::DEFAULT_MAKEFILE_FILENAME;
 use std::collections::HashMap;
 
 // ============================================================================
@@ -386,6 +388,40 @@ impl ToolInfo {
             extra_targets: Vec::new(),
             has_declarative_dag: false,
         }
+    }
+
+    /// Create a ToolInfo from a codegen ToolDef.
+    ///
+    /// Returns `None` if the tool has no invocation (no runnable binary).
+    /// Entrypoints with `make_var` set are converted to `EntrypointParam`s;
+    /// CLI-only entrypoints (no make_var) are omitted from the Makefile.
+    pub fn from_tool_def(def: &gunbc_codegen::registry::ToolDef) -> Option<Self> {
+        let invocation = def.invocation.as_ref()?;
+        let mut info = Self {
+            invocation: invocation.clone(),
+            short_name: def.meta.tool_name.clone(),
+            description: def.meta.description.clone(),
+            entrypoints: Vec::new(),
+            extra_targets: Vec::new(),
+            has_declarative_dag: def.has_dag(),
+        };
+
+        // Convert entrypoints that have make_var set
+        for ep in &def.entrypoints {
+            if let Some(ref make_var) = ep.make_var {
+                info.entrypoints.push(EntrypointParam {
+                    port_name: ep.port_name.clone(),
+                    make_var: make_var.clone(),
+                    // Use the actual CLI flag name (matches generated CLI)
+                    cli_flag: format!("--{}", ep.flag_name()),
+                    type_hint: ep.type_id.clone(),
+                    default: ep.default_value.clone(),
+                    repeatable: ep.type_id == "List",
+                });
+            }
+        }
+
+        Some(info)
     }
 
     /// The binary name (e.g., "gunbc-ci").
@@ -790,86 +826,34 @@ impl ToolRegistry {
     }
 
     /// Build the default registry with all known gunbc tools.
+    ///
+    /// Tool targets are derived from the codegen registry's `all_tools()`.
+    /// Tools with a `CargoInvocation` set automatically get Makefile targets.
+    /// Entrypoints with `make_var` set become Make variables.
+    ///
+    /// This eliminates manual dual-registration: adding a tool to the codegen
+    /// registry with `.invocation()` is sufficient for it to appear in the
+    /// Makefile. Only tools that can't be in the codegen registry (like `ci`,
+    /// which has a handwritten main.rs) are added manually here.
     pub fn default_registry() -> Self {
         let mut registry = Self {
             tools: Vec::new(),
             meta_targets: default_meta_targets(),
         };
 
-        // gunbc-gist: standalone package (snapshot mode)
-        registry.register(
-            ToolInfo::standalone("gist", "Create a GitHub gist from code files")
-                .with_param(
-                    EntrypointParam::new("repo_path", "REPO", "--repo", "String")
-                        .with_default("."),
-                )
-                .with_param(
-                    EntrypointParam::new("extensions", "EXT", "-e", "String")
-                        .repeatable(),
-                ),
-        );
+        // Derive tool targets from the codegen registry (single source of truth).
+        for tool_def in gunbc_codegen::registry::all_tools() {
+            if let Some(tool_info) = ToolInfo::from_tool_def(&tool_def) {
+                registry.register(tool_info);
+            }
+        }
 
-        // gunbc-gist-diff: diff mode variant (binary in gunbc-gist package)
-        registry.register(
-            ToolInfo::composed("gist-diff", "gist", "Create a GitHub gist from branch diff")
-                .with_param(
-                    EntrypointParam::new("repo_path", "REPO", "--repo", "String")
-                        .with_default("."),
-                )
-                .with_param(
-                    EntrypointParam::new("base_ref", "BASE", "--base", "String")
-                        .with_default("main"),
-                )
-                .with_param(
-                    EntrypointParam::new("extensions", "EXT", "-e", "String")
-                        .repeatable(),
-                ),
-        );
-
-        // gunbc-buck2: standalone package
-        registry.register(
-            ToolInfo::standalone("buck2", "Generate BUCK file from Cargo.toml")
-                .with_param(
-                    EntrypointParam::new("cargo_toml_path", "INPUT", "--input", "String")
-                        .with_default("Cargo.toml"),
-                )
-                .with_param(
-                    EntrypointParam::new("output_path", "OUTPUT", "--output", "String")
-                        .with_default("BUCK"),
-                ),
-        );
-
-        // gunbc-makegen: binary in gunbc-dag package (has declarative DAG)
-        registry.register(
-            ToolInfo::composed("makegen", "dag", "Generate Makefile from tool registry")
-                .with_param(
-                    EntrypointParam::new("output_path", "OUTPUT", "--output", "String")
-                        .with_default(DEFAULT_MAKEFILE_FILENAME),
-                )
-                .with_declarative_dag(),
-        );
-
-        // gunbc-deps: standalone package
-        registry.register(
-            ToolInfo::standalone("deps", "Install tool dependencies")
-                .with_param(
-                    EntrypointParam::new("manifest_path", "MANIFEST", "--manifest", "String")
-                        .with_default(DEFAULT_MANIFEST_FILENAME),
-                ),
-        );
-
-        // gunbc-ci: binary in gunbc-dag package
+        // Manual additions: tools not in the codegen registry.
+        // ci has a handwritten main.rs — it's the bootstrap tool that runs
+        // codegen for other tools, so it can't depend on generated code.
         registry.register(
             ToolInfo::composed("ci", "dag", "Run CI pipeline"),
         );
-
-        // gunbc-bootstrap: binary in gunbc-dag package
-        registry.register(
-            ToolInfo::composed("bootstrap", "dag", "Generate Makefile and .gitignore"),
-        );
-
-        // NOTE: prep tool has been removed - CI now handles all preparation
-        // The prep functionality is consolidated into CI's Prep stage
 
         registry
     }
@@ -1055,5 +1039,95 @@ mod tests {
         let config = BuildConfig::cargo();
         assert!(config.lint_fix_shell().contains("--fix"));
         assert!(config.lint_fix_shell().contains("--allow-dirty"));
+    }
+
+    // ========================================================================
+    // Registry Derivation Tests (single source of truth)
+    // ========================================================================
+
+    #[test]
+    fn test_registry_derived_from_codegen() {
+        let registry = ToolRegistry::default_registry();
+        let codegen_tools = gunbc_codegen::registry::all_tools();
+
+        // Every codegen tool with an invocation must appear in the makegen registry
+        for tool_def in &codegen_tools {
+            if tool_def.invocation.is_some() {
+                let found = registry
+                    .tools
+                    .iter()
+                    .any(|t| t.short_name == tool_def.meta.tool_name);
+                assert!(
+                    found,
+                    "Tool '{}' has invocation in codegen but missing from makegen registry",
+                    tool_def.meta.tool_name
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_registry_entrypoints_match_codegen() {
+        let registry = ToolRegistry::default_registry();
+        let codegen_tools = gunbc_codegen::registry::all_tools();
+
+        for tool_def in &codegen_tools {
+            if tool_def.invocation.is_none() {
+                continue;
+            }
+            let tool_info = registry
+                .tools
+                .iter()
+                .find(|t| t.short_name == tool_def.meta.tool_name)
+                .unwrap();
+
+            // Count entrypoints with make_var in codegen
+            let codegen_make_params: Vec<_> = tool_def
+                .entrypoints
+                .iter()
+                .filter(|ep| ep.make_var.is_some())
+                .collect();
+
+            assert_eq!(
+                tool_info.entrypoints.len(),
+                codegen_make_params.len(),
+                "Tool '{}': makegen has {} params, codegen has {} with make_var",
+                tool_def.meta.tool_name,
+                tool_info.entrypoints.len(),
+                codegen_make_params.len()
+            );
+
+            // Verify CLI flags match generated CLI flag names
+            for (info_param, codegen_ep) in tool_info.entrypoints.iter().zip(codegen_make_params.iter()) {
+                assert_eq!(
+                    info_param.cli_flag,
+                    format!("--{}", codegen_ep.flag_name()),
+                    "Tool '{}' param '{}': Makefile flag doesn't match generated CLI flag",
+                    tool_def.meta.tool_name,
+                    info_param.port_name
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_tools_without_invocation_excluded() {
+        let registry = ToolRegistry::default_registry();
+        let codegen_tools = gunbc_codegen::registry::all_tools();
+
+        // Tools without invocation should NOT appear (unless manually added)
+        for tool_def in &codegen_tools {
+            if tool_def.invocation.is_none() {
+                let found = registry
+                    .tools
+                    .iter()
+                    .any(|t| t.short_name == tool_def.meta.tool_name);
+                assert!(
+                    !found,
+                    "Tool '{}' has no invocation but appeared in makegen registry",
+                    tool_def.meta.tool_name
+                );
+            }
+        }
     }
 }
