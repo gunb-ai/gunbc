@@ -120,7 +120,7 @@ impl Cardinality {
     }
 
     fn max_at_least(&self, n: u32) -> bool {
-        self.max.map_or(true, |m| m >= n)
+        self.max.is_none_or(|m| m >= n)
     }
 
     // =========================================================================
