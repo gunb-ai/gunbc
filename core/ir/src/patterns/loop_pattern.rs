@@ -36,9 +36,9 @@ use crate::types::Cardinality;
 ///
 /// ```ignore
 /// let loop_node = LoopBuilder::new("process_files")
-///     .with_input("files", "StrList")
+///     .with_input("files", "List")
 ///     .with_body(body_dag)
-///     .with_output("processed", "StrList")
+///     .with_output("processed", "List")
 ///     .build();
 /// ```
 pub struct LoopBuilder<T> {
@@ -61,12 +61,12 @@ impl<T: Clone> LoopBuilder<T> {
             name: name.into(),
             body_dag: None,
             input_port_name: "input".to_string(),
-            input_port_type: "StrList".to_string(),
+            input_port_type: "List".to_string(),
             input_cardinality: Cardinality::ZERO_OR_MORE,
             element_port_name: "element".to_string(),
             element_port_type: "String".to_string(),
             output_port_name: "output".to_string(),
-            output_port_type: "StrList".to_string(),
+            output_port_type: "List".to_string(),
         }
     }
 
@@ -233,7 +233,7 @@ mod tests {
     #[test]
     fn test_loop_preserves_cardinality() {
         let node = LoopBuilder::new("test")
-            .with_input("items", "StrList", Cardinality::ONE_OR_MORE)
+            .with_input("items", "List", Cardinality::ONE_OR_MORE)
             .with_body(make_loop_body())
             .build();
 

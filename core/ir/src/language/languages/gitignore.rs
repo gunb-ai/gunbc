@@ -48,13 +48,13 @@ pub const GITIGNORE: GitignoreConfig = GitignoreConfig {
 /// # I/O Contract
 ///
 /// Inputs:
-/// - `patterns`: StrList - Gitignore patterns to render
-/// - `files`: StrList (optional) - Files to check for ignore
+/// - `patterns`: List - Gitignore patterns to render
+/// - `files`: List (optional) - Files to check for ignore
 ///
 /// Outputs:
 /// - `id`: String - Format ID ("gitignore")
 /// - `content`: String - Rendered .gitignore content
-/// - `ignored`: StrList (optional) - Files that would be ignored
+/// - `ignored`: List (optional) - Files that would be ignored
 pub fn build_gitignore_subdag() -> Node<LanguageOp> {
     let mut inner = Dag::new();
 
@@ -64,7 +64,7 @@ pub fn build_gitignore_subdag() -> Node<LanguageOp> {
         vec![],
         vec![
             Port::scalar("id", "String"),
-            Port::scalar("file_patterns", "StrList"),
+            Port::scalar("file_patterns", "List"),
             Port::scalar("comment_prefix", "String"),
         ],
         LanguageOp::GitignoreConfig,
@@ -73,7 +73,7 @@ pub fn build_gitignore_subdag() -> Node<LanguageOp> {
     // Render patterns to content
     inner.add_node(Node::opaque(
         "render",
-        vec![Port::scalar("patterns", "StrList")],
+        vec![Port::scalar("patterns", "List")],
         vec![Port::scalar("content", "String")],
         LanguageOp::GitignoreRender,
     ));

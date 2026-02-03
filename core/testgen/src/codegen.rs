@@ -1574,12 +1574,13 @@ fn value_to_rust_literal(value: &Value) -> String {
             s.replace('\"', "\\\"")
         ),
         Value::Int(i) => format!("Value::Int({})", i),
-        Value::StrList(list) => {
+        Value::List(list) => {
             let items: Vec<String> = list
                 .iter()
+                .filter_map(|v| v.as_str())
                 .map(|s| format!("\"{}\".to_string()", s.replace('\"', "\\\"")))
                 .collect();
-            format!("Value::StrList(vec![{}])", items.join(", "))
+            format!("Value::str_list(vec![{}])", items.join(", "))
         }
         Value::Json(json) => {
             format!("Value::Json(serde_json::json!({}))", json)
@@ -1597,7 +1598,7 @@ fn default_mock_for_type(type_id: &str) -> String {
         "String" => "Value::Str(\"<MOCK>\".to_string())".to_string(),
         "Bool" => "Value::Bool(true)".to_string(),
         "Int" | "i64" | "i32" => "Value::Int(0)".to_string(),
-        "StrList" => "Value::StrList(vec![\"<MOCK>\".to_string()])".to_string(),
+        "List" => "Value::str_list(vec![\"<MOCK>\".to_string()])".to_string(),
         "Secret" => {
             "Value::Secret(gunbc_ir::SecretString::new(\"<MOCK_SECRET>\"))".to_string()
         }

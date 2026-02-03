@@ -50,7 +50,7 @@ pub fn makegen_signature() -> WorkflowSignature {
         .with_output("content", "String", Cardinality::ONE)
         // Informational outputs from load_registry (secondary boundaries)
         .with_output("tool_count", "Int", Cardinality::ONE)
-        .with_output("tool_names", "StrList", Cardinality::ONE_OR_MORE)
+        .with_output("tool_names", "List", Cardinality::ONE_OR_MORE)
 }
 
 /// Build the makegen graph using DagBuilder.
@@ -83,7 +83,7 @@ pub fn build_makegen_graph() -> Result<Dag<MakegenGraphOp>, BuilderError> {
         vec![],
         vec![
             scalar("tool_count", "Int"),
-            non_empty_list("tool_names", "StrList"),
+            non_empty_list("tool_names", "List"),
             scalar("registry", "Json"),
         ],
         MakegenGraphOp::Makegen(MakegenOp::LoadRegistry),

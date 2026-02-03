@@ -6,10 +6,10 @@
 //!
 //! Inputs:
 //! - `pattern`: String - Glob pattern (e.g., "*.rs", "**/test/*")
-//! - `files`: StrList - Files to match against
+//! - `files`: List - Files to match against
 //!
 //! Outputs:
-//! - `matched`: StrList - Files matching the pattern
+//! - `matched`: List - Files matching the pattern
 //! - `negated`: Bool - Is this a negation pattern (starts with !)
 
 use crate::dag::{Dag, Port};
@@ -44,10 +44,10 @@ pub fn build_glob_subdag() -> Node<LanguageOp> {
         "glob_match",
         vec![
             Port::scalar("pattern", "String"),
-            Port::scalar("files", "StrList"),
+            Port::scalar("files", "List"),
         ],
         vec![
-            Port::scalar("matched", "StrList"),
+            Port::scalar("matched", "List"),
             Port::scalar("negated", "Bool"),
         ],
         LanguageOp::GlobMatch,

@@ -1,4 +1,21 @@
 //! Runtime values flowing through the DAG.
+//!
+//! Values are built from compositional layers:
+//!
+//! | Layer      | Variant         | Description                          |
+//! |------------|-----------------|--------------------------------------|
+//! | Unit       | `Unit`          | No data (signal only)                |
+//! | Scalar     | `Bool`, `Int`   | Primitive scalars                    |
+//! | String     | `Str`           | Character sequences                  |
+//! | Collection | `List`, `Map`   | Homogeneous list / string-keyed map  |
+//! | Dynamic    | `Json`          | Arbitrary structured data            |
+//! | Transport  | `Request/Response` | I/O boundary values               |
+//! | Security   | `Secret`        | Redacted strings                     |
+//! | Control    | `Skipped`       | Guard-skipped nodes                  |
+//!
+//! Compound types like "list of strings" or "map from string to int" are
+//! expressed by nesting: `Value::List(vec![Value::Str(...)])`. There are
+//! no special-case variants for specific element types.
 
 use crate::transport::{TransportRequest, TransportResponse};
 use serde::{Deserialize, Serialize};
@@ -61,6 +78,10 @@ impl fmt::Display for SecretString {
 }
 
 /// Runtime value flowing between nodes.
+///
+/// Values compose from primitive layers through generic containers.
+/// `List` and `Map` hold `Value` elements, so any nesting is expressible:
+/// `List<Str>`, `Map<Str, Int>`, `List<List<Bool>>`, etc.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub enum Value {
     /// Unit value (no data)
@@ -72,11 +93,11 @@ pub enum Value {
     Str(String),
     /// Integer
     Int(i64),
-    /// List of strings
-    StrList(Vec<String>),
-    /// Map from string to string
-    MapStrStr(BTreeMap<String, String>),
-    /// JSON value (for complex data)
+    /// Homogeneous list of values
+    List(Vec<Value>),
+    /// String-keyed map of values
+    Map(BTreeMap<String, Value>),
+    /// JSON value (for complex/dynamic data)
     Json(serde_json::Value),
     /// Transport request (for I/O operations)
     Request(TransportRequest),
@@ -89,6 +110,34 @@ pub enum Value {
 }
 
 impl Value {
+    // =========================================================================
+    // Construction helpers (convenience for common compound types)
+    // =========================================================================
+
+    /// Create a list of strings.
+    ///
+    /// This is the compositional replacement for the old `StrList` variant.
+    /// Equivalent to `Value::List(strings.into_iter().map(Value::Str).collect())`.
+    pub fn str_list(strings: Vec<String>) -> Self {
+        Value::List(strings.into_iter().map(Value::Str).collect())
+    }
+
+    /// Create a string-keyed map with string values.
+    ///
+    /// This is the compositional replacement for the old `MapStrStr` variant.
+    /// Equivalent to `Value::Map(map.into_iter().map(|(k, v)| (k, Value::Str(v))).collect())`.
+    pub fn str_map(map: BTreeMap<String, String>) -> Self {
+        Value::Map(
+            map.into_iter()
+                .map(|(k, v)| (k, Value::Str(v)))
+                .collect(),
+        )
+    }
+
+    // =========================================================================
+    // Type predicates
+    // =========================================================================
+
     /// Check if this value represents a skipped node.
     pub fn is_skipped(&self) -> bool {
         matches!(self, Value::Skipped)
@@ -103,6 +152,15 @@ impl Value {
     pub fn is_response(&self) -> bool {
         matches!(self, Value::Response(_))
     }
+
+    /// Check if this is a secret value.
+    pub fn is_secret(&self) -> bool {
+        matches!(self, Value::Secret(_))
+    }
+
+    // =========================================================================
+    // Scalar extraction
+    // =========================================================================
 
     /// Try to extract a boolean.
     pub fn as_bool(&self) -> Option<bool> {
@@ -136,21 +194,77 @@ impl Value {
         }
     }
 
-    /// Try to extract a string list.
+    // =========================================================================
+    // Collection extraction (generic)
+    // =========================================================================
+
+    /// Try to extract a list of values.
+    pub fn as_list(&self) -> Option<&[Value]> {
+        match self {
+            Value::List(v) => Some(v),
+            _ => None,
+        }
+    }
+
+    /// Try to extract a map of values.
+    pub fn as_map(&self) -> Option<&BTreeMap<String, Value>> {
+        match self {
+            Value::Map(m) => Some(m),
+            _ => None,
+        }
+    }
+
+    // =========================================================================
+    // Typed collection extraction (validates element types)
+    // =========================================================================
+
+    /// Try to extract a list of strings.
+    ///
+    /// Returns `Some` only if the value is a `List` where every element
+    /// is a `Str`. Returns `None` for non-list values or lists containing
+    /// non-string elements.
     pub fn as_str_list(&self) -> Option<Vec<String>> {
         match self {
-            Value::StrList(v) => Some(v.clone()),
+            Value::List(items) => {
+                let mut result = Vec::with_capacity(items.len());
+                for item in items {
+                    match item {
+                        Value::Str(s) => result.push(s.clone()),
+                        _ => return None,
+                    }
+                }
+                Some(result)
+            }
             _ => None,
         }
     }
 
     /// Try to extract a map from string to string.
+    ///
+    /// Returns `Some` only if the value is a `Map` where every value
+    /// is a `Str`. Returns `None` for non-map values or maps containing
+    /// non-string values.
     pub fn as_map_str_str(&self) -> Option<BTreeMap<String, String>> {
         match self {
-            Value::MapStrStr(m) => Some(m.clone()),
+            Value::Map(map) => {
+                let mut result = BTreeMap::new();
+                for (k, v) in map {
+                    match v {
+                        Value::Str(s) => {
+                            result.insert(k.clone(), s.clone());
+                        }
+                        _ => return None,
+                    }
+                }
+                Some(result)
+            }
             _ => None,
         }
     }
+
+    // =========================================================================
+    // Transport extraction
+    // =========================================================================
 
     /// Try to extract a transport request.
     pub fn as_request(&self) -> Option<TransportRequest> {
@@ -166,11 +280,6 @@ impl Value {
             Value::Response(r) => Some(r),
             _ => None,
         }
-    }
-
-    /// Check if this is a secret value.
-    pub fn is_secret(&self) -> bool {
-        matches!(self, Value::Secret(_))
     }
 
     /// Try to extract the secret string (exposed value).
@@ -192,8 +301,8 @@ impl fmt::Display for Value {
             Value::Bool(b) => write!(f, "{b}"),
             Value::Str(s) => write!(f, "{s}"),
             Value::Int(i) => write!(f, "{i}"),
-            Value::StrList(v) => write!(f, "[{} items]", v.len()),
-            Value::MapStrStr(m) => write!(f, "{{{} entries}}", m.len()),
+            Value::List(v) => write!(f, "[{} items]", v.len()),
+            Value::Map(m) => write!(f, "{{{} entries}}", m.len()),
             Value::Json(j) => write!(f, "{}", j),
             Value::Request(r) => write!(f, "<Request: {:?}>", std::mem::discriminant(r)),
             Value::Response(r) => write!(f, "<Response: {:?}>", std::mem::discriminant(r)),

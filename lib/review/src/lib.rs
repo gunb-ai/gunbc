@@ -272,7 +272,7 @@ pub enum ReviewOps {
     /// Format a diff_files map into a single artifact string for review.
     ///
     /// Inputs:
-    /// - `diff_files`: MapStrStr - map of filename → unified diff chunk
+    /// - `diff_files`: Map - map of filename → unified diff chunk
     ///
     /// Outputs:
     /// - `artifact`: String - formatted diff text suitable for LLM review
@@ -1182,7 +1182,7 @@ Please fix these issues."#;
         let mut inputs = HashMap::new();
         inputs.insert(
             "diff_files".to_string(),
-            Value::MapStrStr(diff_files),
+            Value::str_map(diff_files),
         );
 
         let result = ReviewOps::FormatDiffArtifact.execute(inputs).unwrap();
@@ -1200,7 +1200,7 @@ Please fix these issues."#;
         let mut inputs = HashMap::new();
         inputs.insert(
             "diff_files".to_string(),
-            Value::MapStrStr(BTreeMap::new()),
+            Value::Map(BTreeMap::new()),
         );
 
         let result = ReviewOps::FormatDiffArtifact.execute(inputs).unwrap();

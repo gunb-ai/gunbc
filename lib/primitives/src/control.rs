@@ -16,13 +16,13 @@ use std::collections::HashMap;
 /// where the body is a built-in transformation.
 ///
 /// Inputs:
-/// - `input`: StrList to iterate over
+/// - `input`: List to iterate over
 /// - `index`: Optional starting index (default: 0)
 ///
 /// Outputs:
-/// - `items`: StrList (same as input, for chaining)
+/// - `items`: List (same as input, for chaining)
 /// - `count`: Int number of items
-/// - `indices`: StrList of index strings ["0", "1", "2", ...]
+/// - `indices`: List of index strings ["0", "1", "2", ...]
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct LoopOp;
 
@@ -36,9 +36,9 @@ impl Executable for LoopOp {
         let indices: Vec<String> = (0..list.len()).map(|i| i.to_string()).collect();
 
         let mut out = HashMap::new();
-        out.insert("items".to_string(), Value::StrList(list.clone()));
+        out.insert("items".to_string(), Value::str_list(list.clone()));
         out.insert("count".to_string(), Value::Int(list.len() as i64));
-        out.insert("indices".to_string(), Value::StrList(indices));
+        out.insert("indices".to_string(), Value::str_list(indices));
         Ok(out)
     }
 }
@@ -179,14 +179,14 @@ mod tests {
         let mut inputs = HashMap::new();
         inputs.insert(
             "input".to_string(),
-            Value::StrList(vec!["a".to_string(), "b".to_string(), "c".to_string()]),
+            Value::str_list(vec!["a".to_string(), "b".to_string(), "c".to_string()]),
         );
 
         let result = op.execute(inputs).unwrap();
         assert_eq!(result.get("count"), Some(&Value::Int(3)));
         assert_eq!(
             result.get("indices"),
-            Some(&Value::StrList(vec![
+            Some(&Value::str_list(vec![
                 "0".to_string(),
                 "1".to_string(),
                 "2".to_string()

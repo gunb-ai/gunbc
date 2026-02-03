@@ -40,7 +40,7 @@ pub fn build_toml_subdag() -> Node<LanguageOp> {
         vec![
             Port::scalar("id", "String"),
             Port::scalar("name", "String"),
-            Port::scalar("extensions", "StrList"),
+            Port::scalar("extensions", "List"),
             Port::scalar("comment_prefix", "String"),
         ],
         LanguageOp::TomlConfig,

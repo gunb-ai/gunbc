@@ -42,7 +42,7 @@ pub fn build_css_subdag() -> Node<LanguageOp> {
         vec![
             Port::scalar("id", "String"),
             Port::scalar("name", "String"),
-            Port::scalar("extensions", "StrList"),
+            Port::scalar("extensions", "List"),
             Port::scalar("comment_open", "String"),
             Port::scalar("comment_close", "String"),
         ],

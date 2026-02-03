@@ -257,8 +257,8 @@ mod tests {
         let port = PortDef::optional("input", "String");
         assert_eq!(generate_port_code(&port), "optional(\"input\", \"String\")");
         
-        let port = PortDef::list("items", "StrList");
-        assert_eq!(generate_port_code(&port), "list(\"items\", \"StrList\")");
+        let port = PortDef::list("items", "List");
+        assert_eq!(generate_port_code(&port), "list(\"items\", \"List\")");
     }
 
     #[test]

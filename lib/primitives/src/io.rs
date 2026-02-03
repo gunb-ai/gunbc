@@ -25,7 +25,7 @@ use std::collections::HashMap;
 /// - `url`: String URL
 /// - `method`: String HTTP method (GET, POST, etc.)
 /// - `body`: Optional String body
-/// - `headers`: Optional MapStrStr of headers
+/// - `headers`: Optional Map of headers
 ///
 /// Outputs:
 /// - `request`: TransportRequest for transport layer
@@ -174,7 +174,7 @@ impl Executable for PrepareFileExistsOp {
 ///
 /// Inputs:
 /// - `command`: String command to execute
-/// - `args`: Optional StrList of arguments
+/// - `args`: Optional List of arguments
 /// - `cwd`: Optional working directory
 ///
 /// Outputs:
@@ -389,7 +389,7 @@ mod tests {
         inputs.insert("command".to_string(), Value::Str("echo".to_string()));
         inputs.insert(
             "args".to_string(),
-            Value::StrList(vec!["hello".to_string()]),
+            Value::str_list(vec!["hello".to_string()]),
         );
 
         let result = op.execute(inputs).unwrap();

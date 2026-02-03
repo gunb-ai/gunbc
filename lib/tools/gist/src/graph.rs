@@ -82,7 +82,7 @@ pub enum GistGraphOp {
     /// Takes shell response, outputs filename and content
     ParseReadFile,
     /// Collect file results into a map (PURE - no I/O)
-    /// Takes list of (filename, content) pairs, outputs MapStrStr
+    /// Takes list of (filename, content) pairs, outputs Map
     CollectFileContents,
 
     // ========================================================================
@@ -266,7 +266,7 @@ fn execute_parse_read_files(
     }
 
     let mut out = HashMap::new();
-    out.insert("contents".to_string(), Value::MapStrStr(contents));
+    out.insert("contents".to_string(), Value::str_map(contents));
     Ok(out)
 }
 
@@ -366,13 +366,13 @@ fn execute_parse_read_file(
 /// Collect file results into a map (PURE - no I/O).
 ///
 /// This is a post-processing step for LoopBuilder output. It converts
-/// a list of (filename, content) pairs into a MapStrStr.
+/// a list of (filename, content) pairs into a Map.
 ///
 /// Inputs:
 /// - results: list of tuples (from LoopBuilder pack node)
 ///
 /// Outputs:
-/// - contents: MapStrStr (filename -> content)
+/// - contents: Map (filename -> content)
 fn execute_collect_file_contents(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
@@ -396,7 +396,7 @@ fn execute_collect_file_contents(
     }
 
     let mut out = HashMap::new();
-    out.insert("contents".to_string(), Value::MapStrStr(contents));
+    out.insert("contents".to_string(), Value::str_map(contents));
     Ok(out)
 }
 
@@ -425,10 +425,10 @@ fn execute_collect_file_contents(
 /// ```ignore
 /// let body = build_read_file_body_dag();
 /// let loop_node = LoopBuilder::new("read_files_loop")
-///     .with_input("files", "StrList", Cardinality::ZERO_OR_MORE)
+///     .with_input("files", "List", Cardinality::ZERO_OR_MORE)
 ///     .with_element("filename", "String")
 ///     .with_body(body)
-///     .with_output("contents", "StrList")
+///     .with_output("contents", "List")
 ///     .build();
 /// ```
 pub fn build_read_file_body_dag() -> Dag<GistGraphOp> {
@@ -606,7 +606,7 @@ fn build_snapshot_acquire(
         Node::opaque(
             "parse_list_files",
             vec![port("response", "TransportResponse")],
-            vec![list("files", "StrList")],
+            vec![list("files", "List")],
             GistGraphOp::Git(GitOps::ParseLsFiles),
         ),
         &execute_list_files,
@@ -616,7 +616,7 @@ fn build_snapshot_acquire(
     let prepare_read_files = builder.add_node_after(
         Node::opaque(
             "prepare_read_files",
-            vec![list("files", "StrList"), optional("repo_path", "String")],
+            vec![list("files", "List"), optional("repo_path", "String")],
             vec![port("request", "TransportRequest")],
             GistGraphOp::PrepareReadFiles,
         ),
@@ -639,7 +639,7 @@ fn build_snapshot_acquire(
         Node::opaque(
             "parse_read_files",
             vec![port("response", "TransportResponse")],
-            vec![list("contents", "MapStrStr")],
+            vec![list("contents", "Map")],
             GistGraphOp::ParseReadFiles,
         ),
         &execute_read_files,
@@ -649,7 +649,7 @@ fn build_snapshot_acquire(
     let render_markdown = builder.add_node_after(
         Node::opaque(
             "render_markdown",
-            vec![list("contents", "MapStrStr")],
+            vec![list("contents", "Map")],
             vec![scalar("markdown", "String")],
             GistGraphOp::Markdown(MarkdownOp::RenderCodeSnapshot),
         ),
@@ -718,7 +718,7 @@ fn build_diff_acquire(
             "parse_diff",
             vec![port("response", "TransportResponse")],
             vec![
-                list("diff_files", "MapStrStr"),
+                list("diff_files", "Map"),
                 scalar("stats", "String"),
             ],
             GistGraphOp::Git(GitOps::ParseDiff),
@@ -731,7 +731,7 @@ fn build_diff_acquire(
         Node::opaque(
             "render_markdown",
             vec![
-                list("diff_files", "MapStrStr"),
+                list("diff_files", "Map"),
                 optional("stats", "String"),
             ],
             vec![scalar("markdown", "String")],
@@ -782,7 +782,7 @@ impl Mockable for GistGraphOp {
                         let mut out = HashMap::new();
                         out.insert(
                             "files".to_string(),
-                            Value::StrList(vec![
+                            Value::str_list(vec![
                                 "src/main.rs".to_string(),
                                 "README.md".to_string(),
                             ]),
@@ -808,7 +808,7 @@ impl Mockable for GistGraphOp {
                         let mut out = HashMap::new();
                         out.insert(
                             "diff_files".to_string(),
-                            Value::MapStrStr(std::collections::BTreeMap::new()),
+                            Value::Map(std::collections::BTreeMap::new()),
                         );
                         out.insert(
                             "stats".to_string(),
@@ -818,7 +818,7 @@ impl Mockable for GistGraphOp {
                     }
                     GitOps::ParseDiffNameOnly => {
                         let mut out = HashMap::new();
-                        out.insert("files".to_string(), Value::StrList(vec![]));
+                        out.insert("files".to_string(), Value::str_list(vec![]));
                         out
                     }
                     GitOps::ParseCurrentBranch => {
@@ -848,7 +848,7 @@ impl Mockable for GistGraphOp {
                 let mut out = HashMap::new();
                 let mut contents = std::collections::BTreeMap::new();
                 contents.insert("src/main.rs".to_string(), "fn main() {}".to_string());
-                out.insert("contents".to_string(), Value::MapStrStr(contents));
+                out.insert("contents".to_string(), Value::str_map(contents));
                 out
             }
 
@@ -878,7 +878,7 @@ impl Mockable for GistGraphOp {
                 let mut out = HashMap::new();
                 let mut contents = std::collections::BTreeMap::new();
                 contents.insert("src/main.rs".to_string(), "fn main() {}".to_string());
-                out.insert("contents".to_string(), Value::MapStrStr(contents));
+                out.insert("contents".to_string(), Value::str_map(contents));
                 out
             }
 

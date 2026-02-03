@@ -592,8 +592,8 @@ fn print_log_entry(entry: &LogEntry) {
             }
             Value::Int(i) => println!("  {port}: {i}"),
             Value::Bool(b) => println!("  {port}: {b}"),
-            Value::StrList(list) => println!("  {port}: [{} items]", list.len()),
-            Value::MapStrStr(map) => println!("  {port}: {{{} entries}}", map.len()),
+            Value::List(list) => println!("  {port}: [{} items]", list.len()),
+            Value::Map(map) => println!("  {port}: {{{} entries}}", map.len()),
             Value::Json(_) => println!("  {port}: <JSON>"),
             Value::Skipped => {} // Don't print skipped outputs
             _ => {}

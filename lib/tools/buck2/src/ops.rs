@@ -128,7 +128,7 @@ fn execute_extract_deps(inputs: HashMap<String, Value>) -> Result<HashMap<String
     let members_result = ExtractOp.execute(extract_inputs)?;
 
     let members: Vec<String> = match members_result.get("output") {
-        Some(Value::StrList(list)) => list.clone(),
+        Some(val) if val.as_str_list().is_some() => val.as_str_list().unwrap(),
         Some(Value::Json(arr)) if arr.is_array() => arr
             .as_array()
             .unwrap()
@@ -169,8 +169,8 @@ fn execute_extract_deps(inputs: HashMap<String, Value>) -> Result<HashMap<String
     }
 
     let mut out = HashMap::new();
-    out.insert("members".to_string(), Value::StrList(members));
-    out.insert("deps".to_string(), Value::MapStrStr(deps));
+    out.insert("members".to_string(), Value::str_list(members));
+    out.insert("deps".to_string(), Value::str_map(deps));
     Ok(out)
 }
 
@@ -211,15 +211,13 @@ fn file_exists(_path: &Path) -> bool {
 fn execute_generate_targets(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    let members = match inputs.get("members") {
-        Some(Value::StrList(list)) => list.clone(),
-        _ => vec![],
-    };
+    let members = inputs.get("members")
+        .and_then(|v| v.as_str_list())
+        .unwrap_or_default();
 
-    let _deps = match inputs.get("deps") {
-        Some(Value::MapStrStr(map)) => map.clone(),
-        _ => BTreeMap::new(),
-    };
+    let _deps = inputs.get("deps")
+        .and_then(|v| v.as_map_str_str())
+        .unwrap_or_default();
 
     let mut buck_content = String::new();
 
@@ -308,8 +306,8 @@ impl Mockable for Buck2Op {
             }
             Buck2Op::ExtractDeps => {
                 let mut out = HashMap::new();
-                out.insert("members".to_string(), Value::StrList(vec!["foo".to_string()]));
-                out.insert("deps".to_string(), Value::MapStrStr(std::collections::BTreeMap::new()));
+                out.insert("members".to_string(), Value::str_list(vec!["foo".to_string()]));
+                out.insert("deps".to_string(), Value::Map(std::collections::BTreeMap::new()));
                 out
             }
             Buck2Op::GenerateBuckTargets => {
@@ -341,16 +339,16 @@ mod tests {
 
         let result = execute_extract_deps(inputs).unwrap();
 
-        match result.get("members") {
-            Some(Value::StrList(members)) => {
+        match result.get("members").and_then(|v| v.as_str_list()) {
+            Some(members) => {
                 assert_eq!(members.len(), 2);
                 assert!(members.contains(&"crates/foo".to_string()));
             }
             _ => panic!("expected members list"),
         }
 
-        match result.get("deps") {
-            Some(Value::MapStrStr(deps)) => {
+        match result.get("deps").and_then(|v| v.as_map_str_str()) {
+            Some(deps) => {
                 assert_eq!(deps.get("serde"), Some(&"1.0".to_string()));
             }
             _ => panic!("expected deps map"),
@@ -362,9 +360,9 @@ mod tests {
         let mut inputs = HashMap::new();
         inputs.insert(
             "members".to_string(),
-            Value::StrList(vec!["crates/foo".to_string()]),
+            Value::str_list(vec!["crates/foo".to_string()]),
         );
-        inputs.insert("deps".to_string(), Value::MapStrStr(BTreeMap::new()));
+        inputs.insert("deps".to_string(), Value::Map(BTreeMap::new()));
 
         let result = execute_generate_targets(inputs).unwrap();
 

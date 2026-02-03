@@ -74,7 +74,7 @@ pub fn build_buck2_subdag() -> Node<WorkspaceOp> {
             Node::opaque(
                 "extract_deps",
                 vec![port("cargo_toml", "Json")],
-                vec![port("members", "StrList"), port("deps", "MapStrStr")],
+                vec![port("members", "List"), port("deps", "Map")],
                 WorkspaceOp::Buck2(Buck2Op::ExtractDeps),
             ),
             &parse_cargo_toml,
@@ -86,7 +86,7 @@ pub fn build_buck2_subdag() -> Node<WorkspaceOp> {
         .add_node_after(
             Node::opaque(
                 "generate_targets",
-                vec![port("members", "StrList"), port("deps", "MapStrStr")],
+                vec![port("members", "List"), port("deps", "Map")],
                 vec![port("buck_content", "String")],
                 WorkspaceOp::Buck2(Buck2Op::GenerateBuckTargets),
             ),

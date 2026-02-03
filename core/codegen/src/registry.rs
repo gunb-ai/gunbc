@@ -24,7 +24,7 @@ use gunbc_ir::cargo;
 pub struct PortDef {
     /// Port name
     pub name: String,
-    /// Type identifier (e.g., "String", "StrList", "Json")
+    /// Type identifier (e.g., "String", "List", "Json")
     pub type_id: String,
     /// Cardinality ("One", "ZeroOrOne", "ZeroOrMore", "OneOrMore")
     pub cardinality: String,
@@ -400,7 +400,7 @@ pub fn all_tools() -> Vec<ToolDef> {
                 .help("Repository path to scan"),
         )
         .entrypoint(
-            CliEntrypoint::new("extensions", "StrList")
+            CliEntrypoint::new("extensions", "List")
                 .short('e')
                 .help("File extensions to include (can be repeated)"),
         )
@@ -452,7 +452,7 @@ pub fn all_tools() -> Vec<ToolDef> {
                 .help("Base branch for diff"),
         )
         .entrypoint(
-            CliEntrypoint::new("extensions", "StrList")
+            CliEntrypoint::new("extensions", "List")
                 .short('e')
                 .help("File extensions to include (can be repeated)"),
         )
@@ -665,7 +665,7 @@ fn makegen_dag() -> DagDef {
         .node(
             NodeDef::new("load_registry")
                 .output(PortDef::scalar("tool_count", "Int"))
-                .output(PortDef::list_nonempty("tool_names", "StrList"))
+                .output(PortDef::list_nonempty("tool_names", "List"))
                 .output(PortDef::scalar("registry", "Json"))
                 .op("", "MakegenOp", "MakegenOp::LoadRegistry")
         )
