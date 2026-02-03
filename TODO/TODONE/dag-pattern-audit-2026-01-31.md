@@ -1,7 +1,8 @@
 # DAG Pattern Audit Findings
 
-**Status**: Draft
+**Status**: Done
 **Date**: 2026-01-31
+**Completed**: 2026-02-03
 
 ## Goal
 
@@ -58,8 +59,8 @@ Capture acute pattern issues found in the audit and document why they have not b
 - [x] Decide and implement Loop element-output typing (add `with_element_output` or update docs and behavior).
 - [x] Wire Repeat/While/Poll configuration into internal ops, or remove unused fields.
 - [x] Define and enforce a contract for internal pattern ops (avoid implicit `T::default()` semantics or formalize it).
-- [ ] Add SubDag interface validation in `gunbc-ir` and run it from builders/testgen/exec.
-- [ ] Add pattern tests that run `lower()` (or equivalent validation) to catch interface mismatches early.
+- [x] Add SubDag interface validation in `gunbc-ir` and run it from builders/testgen/exec.
+- [x] Add pattern tests that run `lower()` (or equivalent validation) to catch interface mismatches early.
 
 ## Notes
 
@@ -68,3 +69,5 @@ Capture acute pattern issues found in the audit and document why they have not b
 - Loop element-output typing remains fixed to the element input type for now; docs were updated accordingly.
 - Upsert no longer exposes `was_created`; the create node has no outputs.
 - Pattern internal nodes now use `PatternOp` (via `From<PatternOp>`) instead of `T::default()`; Repeat/While/Poll config is embedded in those ops.
+- `validate_subdag_interfaces()` added in `core/ir/src/validate.rs`: checks name and type matching for SubDag input→entrypoint and output→boundary ports, with recursive nested validation and multi-error collection.
+- Interface validation tests added to all 6 pattern files (branch, loop, upsert, retry, while, poll, atomic, transaction) confirming every builder produces SubDags with correct interfaces.

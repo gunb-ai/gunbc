@@ -145,18 +145,7 @@ impl<T: Clone> TransactionBuilder<T> {
         ));
 
         // Body node: the main operations (as a nested subdag)
-        dag.add_node(Node::subdag(
-            "body",
-            vec![
-                Port::scalar("txn_id", "String"),
-                Port::scalar(self.input_port_name.as_str(), self.input_port_type.as_str()),
-            ],
-            vec![
-                Port::scalar("success", "Bool"),
-                Port::scalar(self.output_port_name.as_str(), self.output_port_type.as_str()),
-            ],
-            body_dag,
-        ));
+        dag.add_node(Node::subdag("body", body_dag));
 
         // Commit node: guarded by success == true
         dag.add_node(Node::opaque(
@@ -208,15 +197,7 @@ impl<T: Clone> TransactionBuilder<T> {
         dag.add_edge(Edge::new("begin", "txn_id", "rollback", "txn_id"));
 
         // Create the outer node with the subdag
-        Node::subdag(
-            self.name.as_str(),
-            vec![Port::scalar(self.input_port_name.as_str(), self.input_port_type.as_str())],
-            vec![
-                Port::scalar(self.output_port_name.as_str(), self.output_port_type.as_str()),
-                Port::scalar("committed", "Bool"),
-            ],
-            dag,
-        )
+        Node::subdag(self.name.as_str(), dag)
     }
 }
 
@@ -271,7 +252,11 @@ mod tests {
 
         // Check inputs/outputs
         assert_eq!(node.inputs.len(), 1);
-        assert_eq!(node.outputs.len(), 2);
+        assert!(node.inputs.iter().any(|p| p.name.0 == "input"));
+        // Outputs: committed, output, rolled_back (all inner boundaries)
+        assert!(node.outputs.iter().any(|p| p.name.0 == "output"));
+        assert!(node.outputs.iter().any(|p| p.name.0 == "committed"));
+        assert!(node.outputs.iter().any(|p| p.name.0 == "rolled_back"));
     }
 
     #[test]
@@ -306,5 +291,25 @@ mod tests {
             }
             _ => panic!("Expected SubDag"),
         }
+    }
+
+    // ============ Interface Validation Tests ============
+
+    #[test]
+    fn test_transaction_interface_validates() {
+        use crate::validate::validate_subdag_interfaces;
+
+        let node = TransactionBuilder::new("txn")
+            .with_begin(TestOp::Begin)
+            .with_body(empty_body_dag())
+            .with_commit(TestOp::Commit)
+            .with_rollback(TestOp::Rollback)
+            .build();
+
+        let mut dag: Dag<TestOp> = Dag::new();
+        dag.add_node(node);
+
+        let errors = validate_subdag_interfaces(&dag);
+        assert!(errors.is_empty(), "transaction interface errors: {:?}", errors);
     }
 }

@@ -66,18 +66,6 @@ pub fn build_html_subdag() -> Node<LanguageOp> {
 
     Node::subdag(
         "html",
-        vec![
-            Port::optional("title", "String"),
-            Port::optional("head", "String"),
-            Port::optional("body", "String"),
-        ],
-        vec![
-            Port::scalar("id", "String"),
-            Port::scalar("extensions", "StrList"),
-            Port::scalar("comment_open", "String"),
-            Port::scalar("comment_close", "String"),
-            Port::optional("document", "String"),
-        ],
         inner,
     )
 }

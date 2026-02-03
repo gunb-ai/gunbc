@@ -5,7 +5,7 @@
 use crate::workspace::WorkspaceOp;
 use crate::bootstrap::BootstrapOp;
 use gunbc_ir::build::*;
-use gunbc_ir::{DagBuilder, Node, Port};
+use gunbc_ir::{DagBuilder, Node};
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::PrepareFileWriteOp;
 
@@ -211,16 +211,6 @@ pub fn build_bootstrap_subdag() -> Node<WorkspaceOp> {
 
     Node::subdag(
         "bootstrap",
-        vec![], // No inputs
-        vec![
-            Port::scalar("makefile_response", "TransportResponse"),
-            Port::scalar("makefile_written_path", "String"),
-            Port::scalar("makefile_content", "String"),
-            Port::scalar("gitignore_response", "TransportResponse"),
-            Port::scalar("gitignore_written_path", "String"),
-            Port::scalar("gitignore_content", "String"),
-            Port::scalar("crate_count", "Int"),
-        ],
         inner_dag,
     )
 }

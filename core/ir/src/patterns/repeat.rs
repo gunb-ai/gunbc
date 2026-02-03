@@ -210,15 +210,7 @@ impl<T: Clone> RetryBuilder<T> {
         ));
 
         // Body subdag
-        dag.add_node(Node::subdag(
-            "body",
-            vec![Port::scalar("input", self.input_port_type.as_str())],
-            vec![
-                Port::optional("result", self.output_port_type.as_str()),
-                Port::optional("error", "Error"),
-            ],
-            body_dag,
-        ));
+        dag.add_node(Node::subdag("body", body_dag));
 
         // Result collector: captures success or final failure
         dag.add_node(Node::opaque(
@@ -245,16 +237,7 @@ impl<T: Clone> RetryBuilder<T> {
         dag.add_edge(Edge::new("body", "error", "collector", "error"));
 
         // Create outer node
-        Node::subdag(
-            self.name.as_str(),
-            vec![Port::scalar(self.input_port_name.as_str(), self.input_port_type.as_str())],
-            vec![
-                Port::scalar(self.output_port_name.as_str(), self.output_port_type.as_str()),
-                Port::scalar("attempts_made", "Int"),
-                Port::optional("final_error", "Error"),
-            ],
-            dag,
-        )
+        Node::subdag(self.name.as_str(), dag)
     }
 }
 
@@ -355,23 +338,10 @@ impl<T: Clone> WhileBuilder<T> {
         ));
 
         // Condition subdag
-        dag.add_node(Node::subdag(
-            "condition",
-            vec![Port::scalar("state", state_type)],
-            vec![Port::scalar("continue", "Bool")],
-            condition_dag,
-        ));
+        dag.add_node(Node::subdag("condition", condition_dag));
 
         // Body subdag
-        dag.add_node(Node::subdag(
-            "body",
-            vec![
-                Port::scalar("state", state_type),
-                Port::scalar("iteration", "Int"),
-            ],
-            vec![Port::scalar("next_state", state_type)],
-            body_dag,
-        ));
+        dag.add_node(Node::subdag("body", body_dag));
 
         // Iteration controller
         dag.add_node(Node::opaque(
@@ -396,15 +366,7 @@ impl<T: Clone> WhileBuilder<T> {
         dag.add_edge(Edge::new("body", "next_state", "controller", "next_state"));
 
         // Create outer node
-        Node::subdag(
-            self.name.as_str(),
-            vec![Port::scalar(self.state_port_name.as_str(), state_type)],
-            vec![
-                Port::scalar("final_state", state_type),
-                Port::scalar("iterations", "Int"),
-            ],
-            dag,
-        )
+        Node::subdag(self.name.as_str(), dag)
     }
 }
 
@@ -510,15 +472,7 @@ impl<T: Clone> PollBuilder<T> {
         ));
 
         // Body subdag
-        dag.add_node(Node::subdag(
-            "body",
-            vec![Port::scalar("input", self.input_port_type.as_str())],
-            vec![
-                Port::optional("result", self.output_port_type.as_str()),
-                Port::scalar("success", "Bool"),
-            ],
-            body_dag,
-        ));
+        dag.add_node(Node::subdag("body", body_dag));
 
         // Collector: captures result or timeout
         dag.add_node(Node::opaque(
@@ -548,17 +502,7 @@ impl<T: Clone> PollBuilder<T> {
         dag.add_edge(Edge::new("body", "success", "collector", "success"));
 
         // Create outer node
-        Node::subdag(
-            self.name.as_str(),
-            vec![Port::scalar(self.input_port_name.as_str(), self.input_port_type.as_str())],
-            vec![
-                Port::optional(self.output_port_name.as_str(), self.output_port_type.as_str()),
-                Port::scalar("success", "Bool"),
-                Port::scalar("polls", "Int"),
-                Port::scalar("elapsed_ms", "Int"),
-            ],
-            dag,
-        )
+        Node::subdag(self.name.as_str(), dag)
     }
 }
 
@@ -726,5 +670,106 @@ mod tests {
         assert!(output_names.contains(&"success"));
         assert!(output_names.contains(&"polls"));
         assert!(output_names.contains(&"elapsed_ms"));
+    }
+
+    // ============ Interface Validation Tests ============
+
+    fn make_retry_body() -> Dag<TestOp> {
+        let mut dag = Dag::new();
+        dag.add_node(Node::opaque(
+            "op",
+            vec![Port::scalar("input", "Any")],
+            vec![
+                Port::optional("result", "Any"),
+                Port::optional("error", "Error"),
+            ],
+            PatternOp::RetryCollector { output_port: "result".into() },
+        ));
+        dag
+    }
+
+    #[test]
+    fn test_retry_interface_validates() {
+        use crate::validate::validate_subdag_interfaces;
+
+        let node = RetryBuilder::new("retry")
+            .with_body(make_retry_body())
+            .build();
+
+        let mut dag: Dag<TestOp> = Dag::new();
+        dag.add_node(node);
+
+        let errors = validate_subdag_interfaces(&dag);
+        assert!(errors.is_empty(), "retry interface errors: {:?}", errors);
+    }
+
+    fn make_while_condition() -> Dag<TestOp> {
+        let mut dag = Dag::new();
+        dag.add_node(Node::opaque(
+            "check",
+            vec![Port::scalar("state", "Unit")],
+            vec![Port::scalar("continue", "Bool")],
+            PatternOp::WhileController { max_iterations: None },
+        ));
+        dag
+    }
+
+    fn make_while_body() -> Dag<TestOp> {
+        let mut dag = Dag::new();
+        dag.add_node(Node::opaque(
+            "step",
+            vec![
+                Port::scalar("state", "Unit"),
+                Port::scalar("iteration", "Int"),
+            ],
+            vec![Port::scalar("next_state", "Unit")],
+            PatternOp::WhileInit { input_port: "state".into() },
+        ));
+        dag
+    }
+
+    #[test]
+    fn test_while_interface_validates() {
+        use crate::validate::validate_subdag_interfaces;
+
+        let node = WhileBuilder::new("while")
+            .with_condition(make_while_condition())
+            .with_body(make_while_body())
+            .build();
+
+        let mut dag: Dag<TestOp> = Dag::new();
+        dag.add_node(node);
+
+        let errors = validate_subdag_interfaces(&dag);
+        assert!(errors.is_empty(), "while interface errors: {:?}", errors);
+    }
+
+    fn make_poll_body() -> Dag<TestOp> {
+        let mut dag = Dag::new();
+        dag.add_node(Node::opaque(
+            "check",
+            vec![Port::scalar("input", "Any")],
+            vec![
+                Port::optional("result", "Any"),
+                Port::scalar("success", "Bool"),
+            ],
+            PatternOp::PollCollector { output_port: "result".into() },
+        ));
+        dag
+    }
+
+    #[test]
+    fn test_poll_interface_validates() {
+        use crate::validate::validate_subdag_interfaces;
+
+        let node = PollBuilder::new("poll")
+            .with_body(make_poll_body())
+            .build();
+
+        let mut dag: Dag<TestOp> = Dag::new();
+        dag.add_node(node);
+
+        let errors = validate_subdag_interfaces(&dag);
+        assert!(errors.is_empty(), "poll interface errors: {:?}", errors);
     }
 }

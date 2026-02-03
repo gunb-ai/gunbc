@@ -120,36 +120,22 @@ impl<T: Clone> BranchBuilder<T> {
         let mut dag = Dag::new();
 
         // True branch: guarded by condition == true
-        dag.add_node(Node::subdag(
-            "true_branch",
-            vec![
-                Port::scalar(self.input_port_name.as_str(), self.input_port_type.as_str()),
-                Port::guarded_with_cardinality(
+        dag.add_node(
+            Node::subdag("true_branch", true_dag)
+                .with_input_guard(
                     self.condition_port_name.as_str(),
-                    "Bool",
-                    Cardinality::One,
                     Guard::Eq(Value::Bool(true)),
                 ),
-            ],
-            vec![Port::scalar("result", self.output_port_type.as_str())],
-            true_dag,
-        ));
+        );
 
         // False branch: guarded by condition == false
-        dag.add_node(Node::subdag(
-            "false_branch",
-            vec![
-                Port::scalar(self.input_port_name.as_str(), self.input_port_type.as_str()),
-                Port::guarded_with_cardinality(
+        dag.add_node(
+            Node::subdag("false_branch", false_dag)
+                .with_input_guard(
                     self.condition_port_name.as_str(),
-                    "Bool",
-                    Cardinality::One,
                     Guard::Eq(Value::Bool(false)),
                 ),
-            ],
-            vec![Port::scalar("result", self.output_port_type.as_str())],
-            false_dag,
-        ));
+        );
 
         // Merge node: collects result from whichever branch executed
         dag.add_node(Node::opaque(
@@ -172,18 +158,7 @@ impl<T: Clone> BranchBuilder<T> {
         dag.add_edge(Edge::new("false_branch", "result", "merge", "false_result"));
 
         // Create outer node
-        Node::subdag(
-            self.name.as_str(),
-            vec![
-                Port::scalar(self.condition_port_name.as_str(), "Bool"),
-                Port::scalar(self.input_port_name.as_str(), self.input_port_type.as_str()),
-            ],
-            vec![
-                Port::scalar(self.output_port_name.as_str(), self.output_port_type.as_str()),
-                Port::scalar("branch_taken", "String"),
-            ],
-            dag,
-        )
+        Node::subdag(self.name.as_str(), dag)
     }
 }
 
@@ -247,31 +222,20 @@ impl<T: Clone> IfBuilder<T> {
         let mut dag = Dag::new();
 
         // Then branch: guarded by condition == true
-        dag.add_node(Node::subdag(
-            "then_branch",
-            vec![
-                Port::scalar(self.input_port_name.as_str(), self.input_port_type.as_str()),
-                Port::guarded_with_cardinality(
+        dag.add_node(
+            Node::subdag("then_branch", then_dag)
+                .with_input_guard(
                     self.condition_port_name.as_str(),
-                    "Bool",
-                    Cardinality::One,
                     Guard::Eq(Value::Bool(true)),
                 ),
-            ],
-            vec![Port::scalar(self.output_port_name.as_str(), self.output_port_type.as_str())],
-            then_dag,
-        ));
+        );
 
-        // Create outer node
-        Node::subdag(
-            self.name.as_str(),
-            vec![
-                Port::scalar(self.condition_port_name.as_str(), "Bool"),
-                Port::scalar(self.input_port_name.as_str(), self.input_port_type.as_str()),
-            ],
-            vec![Port::optional(self.output_port_name.as_str(), self.output_port_type.as_str())],
-            dag,
-        )
+        // Create outer node — output is optional because condition may be false
+        Node::subdag(self.name.as_str(), dag)
+            .with_output_cardinality(
+                self.output_port_name.as_str(),
+                Cardinality::ZeroOrOne,
+            )
     }
 }
 
@@ -282,38 +246,58 @@ mod tests {
 
     type TestOp = PatternOp;
 
+    fn make_branch_body() -> Dag<TestOp> {
+        let mut dag = Dag::new();
+        dag.add_node(Node::opaque(
+            "op",
+            vec![
+                Port::scalar("input", "String"),
+                Port::scalar("condition", "Bool"),
+            ],
+            vec![Port::scalar("result", "String")],
+            PatternOp::BranchMerge { output_port: "result".into() },
+        ));
+        dag
+    }
+
+    fn make_if_body() -> Dag<TestOp> {
+        let mut dag = Dag::new();
+        dag.add_node(Node::opaque(
+            "op",
+            vec![
+                Port::scalar("input", "String"),
+                Port::scalar("condition", "Bool"),
+            ],
+            vec![Port::scalar("output", "String")],
+            PatternOp::BranchMerge { output_port: "output".into() },
+        ));
+        dag
+    }
+
     #[test]
     fn test_branch_builder_creates_subdag() {
-        let true_dag: Dag<TestOp> = Dag::new();
-        let false_dag: Dag<TestOp> = Dag::new();
-
         let node = BranchBuilder::new("test_branch")
-            .with_true_branch(true_dag)
-            .with_false_branch(false_dag)
+            .with_true_branch(make_branch_body())
+            .with_false_branch(make_branch_body())
             .build();
 
         assert_eq!(node.id.0, "test_branch");
         assert!(node.is_subdag());
 
-        // Check inputs
-        assert_eq!(node.inputs.len(), 2);
-        assert_eq!(node.inputs[0].name.0, "condition");
-        assert_eq!(node.inputs[1].name.0, "input");
+        // Inputs are sorted alphabetically: condition, input
+        assert!(node.inputs.iter().any(|p| p.name.0 == "condition"));
+        assert!(node.inputs.iter().any(|p| p.name.0 == "input"));
 
-        // Check outputs
-        assert_eq!(node.outputs.len(), 2);
-        assert_eq!(node.outputs[0].name.0, "output");
-        assert_eq!(node.outputs[1].name.0, "branch_taken");
+        // Outputs: branch_taken, output (sorted)
+        assert!(node.outputs.iter().any(|p| p.name.0 == "output"));
+        assert!(node.outputs.iter().any(|p| p.name.0 == "branch_taken"));
     }
 
     #[test]
     fn test_branch_subdag_structure() {
-        let true_dag: Dag<TestOp> = Dag::new();
-        let false_dag: Dag<TestOp> = Dag::new();
-
         let node = BranchBuilder::new("test")
-            .with_true_branch(true_dag)
-            .with_false_branch(false_dag)
+            .with_true_branch(make_branch_body())
+            .with_false_branch(make_branch_body())
             .build();
 
         match &node.body {
@@ -342,16 +326,57 @@ mod tests {
 
     #[test]
     fn test_if_builder() {
-        let then_dag: Dag<TestOp> = Dag::new();
-
         let node = IfBuilder::new("test_if")
-            .with_then(then_dag)
+            .with_then(make_if_body())
             .build();
 
         assert_eq!(node.id.0, "test_if");
         assert!(node.is_subdag());
 
         // Output should be optional (may be skipped)
-        assert_eq!(node.outputs[0].cardinality, Cardinality::ZeroOrOne);
+        let output = node.outputs.iter().find(|p| p.name.0 == "output").unwrap();
+        assert_eq!(output.cardinality, Cardinality::ZeroOrOne);
+    }
+
+    #[test]
+    fn test_branch_interface_validates() {
+        use crate::validate::validate_subdag_interfaces;
+
+        let node = BranchBuilder::new("branch")
+            .with_true_branch(make_branch_body())
+            .with_false_branch(make_branch_body())
+            .build();
+
+        let mut dag: Dag<TestOp> = Dag::new();
+        dag.add_node(node);
+
+        let errors = validate_subdag_interfaces(&dag);
+        assert!(errors.is_empty(), "branch interface errors: {:?}", errors);
+    }
+
+    #[test]
+    fn test_if_interface_validates() {
+        use crate::validate::validate_subdag_interfaces;
+
+        let mut then_dag: Dag<TestOp> = Dag::new();
+        then_dag.add_node(Node::opaque(
+            "op",
+            vec![
+                Port::scalar("input", "String"),
+                Port::scalar("condition", "Bool"),
+            ],
+            vec![Port::scalar("output", "String")],
+            PatternOp::BranchMerge { output_port: "output".into() },
+        ));
+
+        let node = IfBuilder::new("test_if")
+            .with_then(then_dag)
+            .build();
+
+        let mut dag: Dag<TestOp> = Dag::new();
+        dag.add_node(node);
+
+        let errors = validate_subdag_interfaces(&dag);
+        assert!(errors.is_empty(), "if interface errors: {:?}", errors);
     }
 }

@@ -75,8 +75,7 @@ pub fn build_languages_subdag() -> Node<WorkspaceOp> {
     // Wrap as SubDag with explicit interface
     Node::subdag(
         "languages",
-        vec![], // No inputs - pure model
-        vec![], // No outputs - accessed via child SubDags
+        // No outputs - accessed via child SubDags
         inner,
     )
 }
