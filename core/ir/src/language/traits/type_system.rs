@@ -99,14 +99,6 @@ pub fn build_type_system_mapping_subdag() -> Node<LanguageOp> {
     // Create the SubDag node with interface
     Node::subdag(
         "type_system",
-        vec![
-            Port::scalar("abstract_type", "String"),
-            Port::scalar("language", "String"),
-        ],
-        vec![
-            Port::scalar("concrete_type", "String"),
-            Port::scalar("optional_wrapper", "String"),
-        ],
         inner,
     )
 }

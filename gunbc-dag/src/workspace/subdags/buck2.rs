@@ -5,7 +5,7 @@
 use crate::workspace::WorkspaceOp;
 use gunbc_buck2::Buck2Op;
 use gunbc_ir::build::*;
-use gunbc_ir::{DagBuilder, Node, Port};
+use gunbc_ir::{DagBuilder, Node};
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::PrepareFileWriteOp;
 
@@ -174,15 +174,6 @@ pub fn build_buck2_subdag() -> Node<WorkspaceOp> {
 
     Node::subdag(
         "buck2",
-        vec![
-            Port::scalar("cargo_toml_path", "String"),
-            Port::scalar("output_path", "String"),
-        ],
-        vec![
-            Port::scalar("response", "TransportResponse"),
-            Port::scalar("written_path", "String"),
-            Port::scalar("content", "String"),
-        ],
         inner_dag,
     )
 }

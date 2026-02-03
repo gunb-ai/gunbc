@@ -56,14 +56,6 @@ pub fn build_glob_subdag() -> Node<LanguageOp> {
     // Create the SubDag node with interface
     Node::subdag(
         "glob",
-        vec![
-            Port::scalar("pattern", "String"),
-            Port::scalar("files", "StrList"),
-        ],
-        vec![
-            Port::scalar("matched", "StrList"),
-            Port::scalar("negated", "Bool"),
-        ],
         inner,
     )
 }
@@ -148,15 +140,15 @@ mod tests {
     fn test_glob_subdag_interface() {
         let node = build_glob_subdag();
 
-        // Check inputs
+        // Check inputs (inferred from inner DAG entrypoints)
         assert_eq!(node.inputs.len(), 2);
-        assert_eq!(node.inputs[0].name.0, "pattern");
-        assert_eq!(node.inputs[1].name.0, "files");
+        assert!(node.inputs.iter().any(|p| p.name.0 == "pattern"));
+        assert!(node.inputs.iter().any(|p| p.name.0 == "files"));
 
-        // Check outputs
+        // Check outputs (inferred from inner DAG boundaries)
         assert_eq!(node.outputs.len(), 2);
-        assert_eq!(node.outputs[0].name.0, "matched");
-        assert_eq!(node.outputs[1].name.0, "negated");
+        assert!(node.outputs.iter().any(|p| p.name.0 == "matched"));
+        assert!(node.outputs.iter().any(|p| p.name.0 == "negated"));
     }
 
     #[test]

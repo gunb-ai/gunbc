@@ -195,8 +195,6 @@ pub fn optional(inner_type: Dag<TypeOp>) -> Dag<TypeOp> {
     // Inner type validation (as SubDag)
     dag.add_node(Node::subdag(
         "inner_type",
-        vec![Port::optional("in", "Any")],
-        vec![Port::optional("out", "Any")],
         inner_type,
     ));
 
@@ -222,8 +220,6 @@ pub fn list(element_type: Dag<TypeOp>) -> Dag<TypeOp> {
     // Element type validation (as SubDag, applied to each element)
     dag.add_node(Node::subdag(
         "element_type",
-        vec![Port::list("in", "Any")],
-        vec![Port::list("out", "Any")],
         element_type,
     ));
 
@@ -255,8 +251,6 @@ pub fn non_empty_list(element_type: Dag<TypeOp>) -> Dag<TypeOp> {
     // Element type validation (as SubDag)
     dag.add_node(Node::subdag(
         "element_type",
-        vec![Port::non_empty_list("in", "Any")],
-        vec![Port::non_empty_list("out", "Any")],
         element_type,
     ));
 

@@ -48,12 +48,6 @@ pub fn build_yaml_subdag() -> Node<LanguageOp> {
 
     Node::subdag(
         "yaml",
-        vec![],
-        vec![
-            Port::scalar("id", "String"),
-            Port::scalar("extensions", "StrList"),
-            Port::scalar("comment_prefix", "String"),
-        ],
         inner,
     )
 }

@@ -63,11 +63,6 @@ pub fn build_variable_syntax_subdag() -> Node<LanguageOp> {
     // Create the SubDag node with interface
     Node::subdag(
         "variable_syntax",
-        vec![
-            Port::scalar("template", "String"),
-            Port::scalar("variables", "MapStrStr"),
-        ],
-        vec![Port::scalar("expanded", "String")],
         inner,
     )
 }

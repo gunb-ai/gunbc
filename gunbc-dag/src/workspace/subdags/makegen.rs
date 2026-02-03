@@ -4,7 +4,7 @@
 
 use crate::workspace::WorkspaceOp;
 use gunbc_ir::build::*;
-use gunbc_ir::{DagBuilder, Node, Port};
+use gunbc_ir::{DagBuilder, Node};
 use gunbc_lib_transport::TransportOps;
 use crate::makegen::MakegenOp;
 use gunbc_primitives::PrepareFileWriteOp;
@@ -112,16 +112,6 @@ pub fn build_makegen_subdag() -> Node<WorkspaceOp> {
     // Wrap as SubDag with explicit I/O interface
     Node::subdag(
         "makegen",
-        // Inputs (entrypoints)
-        vec![Port::optional("output_path", "String")],
-        // Outputs (boundaries)
-        vec![
-            Port::scalar("response", "TransportResponse"),
-            Port::scalar("written_path", "String"),
-            Port::scalar("content", "String"),
-            Port::scalar("tool_count", "Int"),
-            Port::list("tool_names", "StrList"),
-        ],
         inner_dag,
     )
 }

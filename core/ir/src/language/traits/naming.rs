@@ -82,12 +82,6 @@ pub fn build_naming_conventions_subdag() -> Node<LanguageOp> {
     // Create the SubDag node with interface
     Node::subdag(
         "naming",
-        vec![
-            Port::scalar("name", "String"),
-            Port::optional("source_case", "String"),
-            Port::scalar("target_case", "String"),
-        ],
-        vec![Port::scalar("converted", "String")],
         inner,
     )
 }
@@ -135,15 +129,14 @@ mod tests {
     fn test_naming_subdag_interface() {
         let node = build_naming_conventions_subdag();
 
-        // Check inputs
-        assert_eq!(node.inputs.len(), 3);
-        assert_eq!(node.inputs[0].name.0, "name");
-        assert_eq!(node.inputs[1].name.0, "source_case");
-        assert_eq!(node.inputs[2].name.0, "target_case");
+        // Check inputs (inferred from inner DAG entrypoints)
+        assert_eq!(node.inputs.len(), 2);
+        assert!(node.inputs.iter().any(|p| p.name.0 == "name"));
+        assert!(node.inputs.iter().any(|p| p.name.0 == "target_case"));
 
-        // Check outputs
+        // Check outputs (inferred from inner DAG boundaries)
         assert_eq!(node.outputs.len(), 1);
-        assert_eq!(node.outputs[0].name.0, "converted");
+        assert!(node.outputs.iter().any(|p| p.name.0 == "converted"));
     }
 
     #[test]

@@ -86,14 +86,6 @@ pub fn build_makefile_subdag() -> Node<LanguageOp> {
     // Create the SubDag node with interface
     Node::subdag(
         "makefile",
-        vec![
-            Port::scalar("targets", "Json"),
-            Port::optional("variables", "MapStrStr"),
-        ],
-        vec![
-            Port::scalar("id", "String"),
-            Port::scalar("content", "String"),
-        ],
         inner,
     )
 }

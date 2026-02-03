@@ -66,16 +66,6 @@ pub fn build_turing_complete_subdag() -> Node<LanguageOp> {
     // Create the SubDag node with interface
     Node::subdag(
         "turing_complete",
-        vec![
-            Port::optional("abstract_type", "String"),
-            Port::optional("name", "String"),
-            Port::scalar("language", "String"),
-        ],
-        vec![
-            Port::optional("concrete_type", "String"),
-            Port::optional("converted_name", "String"),
-            Port::scalar("has_type_system", "Bool"),
-        ],
         inner,
     )
 }
