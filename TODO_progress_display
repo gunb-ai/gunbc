@@ -6,8 +6,10 @@
 # that shows nodes lighting up as execution progresses — think SimCity
 # (2013) power grid flowing through infrastructure.
 #
-# Architecture: renderer-agnostic data model + pluggable display backends
-# (terminal first, web later — same underlying state).
+# Architecture:
+#   1. Glyph system in core/ir (visual vocabulary for the whole codebase)
+#   2. Renderer-agnostic progress data model
+#   3. Carriage-return terminal renderer (+ future web renderer)
 
 ## Problem
 
@@ -29,57 +31,270 @@ This is functional but:
 - No visual relationship between nodes (edges are invisible)
 - Long pipelines produce walls of text that scroll off screen
 
-## Design: Three-layer architecture
+## Four-layer architecture
 
     ┌─────────────────────────────────────────────────────┐
-    │  Layer 3: Renderers (terminal, web, CI)             │
-    │  - TerminalRenderer: ANSI TUI with live updates     │
-    │  - WebRenderer: JSON/SSE stream for browser UI      │
-    │  - CiRenderer: existing CI group/annotation output  │
+    │  Layer 4: Renderers (terminal, web, CI)             │
+    │  - Carriage-return terminal display (emoji default)  │
+    │  - Web: JSON/SSE for browser SVG rendering          │
+    │  - CI: existing group/annotation output              │
     ├─────────────────────────────────────────────────────┤
-    │  Layer 2: DagProgress (renderer-agnostic state)     │
+    │  Layer 3: DagProgress (renderer-agnostic state)     │
     │  - NodeState, EdgeState, timing, output summaries   │
     │  - Snapshot-based: renderers poll or subscribe       │
     ├─────────────────────────────────────────────────────┤
-    │  Layer 1: ProgressObserver (execution hook)         │
+    │  Layer 2: ProgressObserver (execution hook)         │
     │  - Plugs into execute_flat() loop                   │
     │  - Emits events: NodeStarted, NodeCompleted, etc.   │
+    ├─────────────────────────────────────────────────────┤
+    │  Layer 1: Glyph System (core/ir — visual vocabulary)│
+    │  - GlyphId, Glyph, GlyphSet, Tier, SemanticColor   │
+    │  - Shared by ALL display code across the codebase   │
     └─────────────────────────────────────────────────────┘
 
-## Layer 1: ProgressObserver trait
+---------------------------------------------------------------------
+
+## Layer 1: Glyph System (core/ir/src/glyph.rs)
+
+A DAG-modeled vocabulary of visual symbols for the entire codebase.
+Lives in core/ir because it's foundational — any crate that does
+display work should reference these semantic IDs rather than
+hardcoding emoji or Unicode strings.
+
+### Encoding Tiers
+
+Every glyph has three representations, from richest to most constrained:
+
+    | Tier    | Example          | Use Case                              |
+    |---------|------------------|---------------------------------------|
+    | Emoji   | 🟢 ⚡ 🔴          | Modern terminals, web, Slack/Discord  |
+    | Unicode | ● ◐ ✗ ═══        | Any Unicode-capable terminal          |
+    | ASCII   | [x] [~] [!] ---  | Fallback, CI logs, pipes              |
+
+Since we control the environment, the Emoji tier is the default.
+Renderers pick their tier at construction time.
+
+```rust
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum Tier {
+    Emoji,    // Default — full color emoji
+    Unicode,  // Monochrome Unicode symbols
+    Ascii,    // Pure ASCII fallback
+}
+```
+
+### Semantic Color
+
+Colors are meaning-based, not raw RGB/ANSI. Renderers map these to
+actual colors based on their environment (ANSI codes, CSS classes, etc.).
+
+```rust
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum SemanticColor {
+    Default,   // Neutral
+    Success,   // Green — completion, "power on"
+    Warning,   // Yellow — in-progress, attention
+    Error,     // Red — failure, critical
+    Info,      // Blue/cyan — metadata, dry-run
+    Dim,       // Gray — inactive, pending, not-yet-reached
+    Active,    // Bright/highlighted — currently executing
+    Accent,    // Flow, energy, data movement
+}
+```
+
+### GlyphId — semantic identifiers
+
+Code references these IDs; the actual visual representation comes from
+the GlyphSet at render time. Categories mirror DAG concepts:
+
+```rust
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum GlyphId {
+    // === Node States ===
+    NodePending,       // Not yet reached in execution order
+    NodeRunning,       // Currently executing
+    NodeCompleted,     // Finished successfully
+    NodeFailed,        // Finished with error
+    NodeSkipped,       // Guard predicate false
+    NodeIntercepted,   // Dry-run mock
+
+    // === Edge States ===
+    EdgeIdle,          // No data flowed yet
+    EdgeFlowing,       // Data in transit (the "power flow" moment)
+    EdgeDone,          // Data delivered and consumed
+    EdgeDead,          // Source was skipped, will never flow
+
+    // === DAG Phases ===
+    DagNotStarted,
+    DagRunning,
+    DagCompleted,
+    DagFailed,
+
+    // === Structural (graph topology) ===
+    ConnectorHorizontal,  // ── or --
+    ConnectorVertical,    // │ or |
+    ConnectorCorner,      // └ or `
+    ConnectorTee,         // ├ or |
+    ConnectorCross,       // ┼ or +
+    Arrow,                // → or ->
+    BoundaryMarker,       // Transport/I/O boundary node
+
+    // === Outcome (generic result indicators) ===
+    Success,
+    Failure,
+    Warning,
+    Info,
+
+    // === Progress / Animation ===
+    Spinner0,   // Animation frame 0
+    Spinner1,   // Animation frame 1
+    Spinner2,   // Animation frame 2
+    Spinner3,   // Animation frame 3
+
+    // === Data Summary ===
+    DataList,    // Collection in output summary
+    DataMap,     // Dictionary in output summary
+    DataSecret,  // Redacted value
+    DataUrl,     // Link
+    DataTimer,   // Elapsed time
+}
+```
+
+### Glyph — multi-tier visual symbol
+
+```rust
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Glyph {
+    pub id: GlyphId,
+    pub emoji: &'static str,
+    pub unicode: &'static str,
+    pub ascii: &'static str,
+    pub color: SemanticColor,
+}
+
+impl Glyph {
+    pub const fn new(
+        id: GlyphId,
+        emoji: &'static str,
+        unicode: &'static str,
+        ascii: &'static str,
+        color: SemanticColor,
+    ) -> Self { ... }
+
+    /// Render this glyph at the given encoding tier.
+    pub fn render(&self, tier: Tier) -> &str { ... }
+
+    /// Approximate display width in terminal columns for the given tier.
+    pub fn display_width(&self, tier: Tier) -> usize { ... }
+}
+```
+
+### GlyphSet — themed collection
+
+A complete set of glyphs — the "font" or "theme" for visual output.
+Different GlyphSets provide different aesthetics with the same semantic IDs.
+
+```rust
+pub struct GlyphSet {
+    pub name: &'static str,
+    pub default_tier: Tier,
+    glyphs: &'static [Glyph],
+}
+
+impl GlyphSet {
+    pub fn get(&self, id: GlyphId) -> &Glyph { ... }
+    pub fn render(&self, id: GlyphId) -> &str { ... }
+    pub fn render_at(&self, id: GlyphId, tier: Tier) -> &str { ... }
+    pub fn spinner_frames(&self, tier: Tier) -> [&str; 4] { ... }
+}
+```
+
+### Standard GlyphSet
+
+The default visual vocabulary. Every GlyphId must be present (enforced
+by tests).
+
+    | GlyphId          | Emoji | Unicode | ASCII | Color   |
+    |------------------|-------|---------|-------|---------|
+    | NodePending      | ⏳    | ○       | [ ]   | Dim     |
+    | NodeRunning      | 🔄    | ◐       | [~]   | Active  |
+    | NodeCompleted    | ✅    | ●       | [x]   | Success |
+    | NodeFailed       | ❌    | ✗       | [!]   | Error   |
+    | NodeSkipped      | ⏭️    | ◌       | [-]   | Dim     |
+    | NodeIntercepted  | 🔮    | ◇       | [m]   | Info    |
+    | EdgeIdle         | ─     | ─       | -     | Dim     |
+    | EdgeFlowing      | ⚡    | ═       | =     | Accent  |
+    | EdgeDone         | ─     | ─       | -     | Success |
+    | EdgeDead         | ┄     | ┄       | .     | Dim     |
+    | DagNotStarted    | 🔲    | □       | [ ]   | Dim     |
+    | DagRunning       | 🚀    | ▶       | [>]   | Active  |
+    | DagCompleted     | 🏁    | ■       | [X]   | Success |
+    | DagFailed        | 💥    | ■       | [!]   | Error   |
+    | BoundaryMarker   | 🌐    | ◈       | [B]   | Info    |
+    | Success          | ✅    | ✓       | OK    | Success |
+    | Failure          | ❌    | ✗       | FAIL  | Error   |
+    | Warning          | ⚠️    | ⚠       | WARN  | Warning |
+    | Info             | ℹ️    | ℹ       | INFO  | Info    |
+    | Spinner0..3      | 🌑🌒🌓🌔 | ◐◓◑◒  | \|/-\  | Active |
+    | DataList         | 📋    | ≡       | [L]   | Default |
+    | DataMap          | 🗂️    | ⊞       | [M]   | Default |
+    | DataSecret       | 🔒    | ▪       | [*]   | Warning |
+    | DataUrl          | 🔗    | ↗       | [U]   | Info    |
+    | DataTimer        | ⏱️    | ⏱       | [T]   | Dim     |
+
+### Display width utilities
+
+Approximate terminal column widths for each tier. Needed by layout
+algorithms to compute proper alignment:
+
+- ASCII: len() — each char is 1 column
+- Unicode: heuristic — most symbols 1 col, CJK 2 col
+- Emoji: heuristic — base emoji 2 cols, modifiers 0 cols
+
+### State-to-glyph bridge functions
+
+Convenience functions that map execution state names to GlyphIds.
+These are the bridge between Layer 2 (progress state machine) and
+Layer 1 (glyph vocabulary):
+
+```rust
+pub fn node_state_glyph(state: &str) -> GlyphId { ... }
+pub fn edge_state_glyph(state: &str) -> GlyphId { ... }
+pub fn dag_phase_glyph(phase: &str) -> GlyphId { ... }
+```
+
+### Why in core/ir?
+
+The glyph module belongs in core/ir (not in a renderer crate) because:
+- It's a vocabulary, not a rendering engine — any crate can use it
+- The language module already models format-specific visual concerns
+  (comment syntax, naming conventions) in core/ir
+- CI context, error messages, and future tools will all want consistent
+  glyph references without depending on a renderer crate
+- GlyphId + GlyphSet follow the same pattern as TypeId + TypeRegistry
+
+Files:
+  - core/ir/src/glyph.rs      (NEW: Tier, SemanticColor, GlyphId, Glyph,
+                                GlyphSet, STANDARD set, width utilities,
+                                state-to-glyph bridge functions)
+  - core/ir/src/lib.rs         (add: pub mod glyph; re-exports)
+
+---------------------------------------------------------------------
+
+## Layer 2: ProgressObserver trait
 
 Plugs into the existing execute_flat() loop in core/exec/src/execute.rs.
 The current loop already processes nodes in topo order — we just need
 callbacks at the right points.
 
 ```rust
-/// Observer for DAG execution progress.
-///
-/// Called by the executor at key points during DAG execution.
-/// Implementations control what happens with progress information:
-/// terminal display, web streaming, logging, etc.
 pub trait ProgressObserver: Send {
-    /// Called once before execution begins with the full DAG topology.
-    /// The observer uses this to build its internal layout/graph.
     fn on_dag_start(&mut self, snapshot: &DagSnapshot);
-
-    /// Called when a node begins execution.
     fn on_node_start(&mut self, node_id: &NodeId);
-
-    /// Called when a node completes successfully.
-    /// `summary` contains a compact representation of outputs (not raw values).
     fn on_node_complete(&mut self, node_id: &NodeId, summary: OutputSummary);
-
-    /// Called when a node fails.
     fn on_node_failed(&mut self, node_id: &NodeId, error: &str);
-
-    /// Called when a node is skipped (guard predicate failed).
     fn on_node_skipped(&mut self, node_id: &NodeId);
-
-    /// Called when a node is intercepted (dry-run mock).
     fn on_node_intercepted(&mut self, node_id: &NodeId, summary: OutputSummary);
-
-    /// Called once after all nodes have been processed.
     fn on_dag_complete(&mut self, elapsed: Duration);
 }
 ```
@@ -87,12 +302,9 @@ pub trait ProgressObserver: Send {
 ### DagSnapshot — topology for layout
 
 ```rust
-/// Static DAG topology snapshot for renderers to build layouts from.
-/// This is the "shape" of the graph, not the execution state.
 pub struct DagSnapshot {
     pub nodes: Vec<NodeInfo>,
     pub edges: Vec<EdgeInfo>,
-    /// Topological order (execution sequence for sequential mode)
     pub topo_order: Vec<NodeId>,
 }
 
@@ -100,9 +312,7 @@ pub struct NodeInfo {
     pub id: NodeId,
     pub input_ports: Vec<PortName>,
     pub output_ports: Vec<PortName>,
-    /// Whether this node is a transport executor (I/O boundary)
     pub is_boundary: bool,
-    /// Display label (may differ from id for sub-DAG lowered nodes)
     pub label: String,
 }
 
@@ -117,8 +327,6 @@ pub struct EdgeInfo {
 ### OutputSummary — compact output representation
 
 ```rust
-/// Compact summary of node outputs for display.
-/// Raw values are NOT stored — just enough for a status line.
 pub struct OutputSummary {
     pub fields: Vec<FieldSummary>,
     pub elapsed: Duration,
@@ -131,21 +339,20 @@ pub struct FieldSummary {
 }
 
 pub enum FieldKind {
-    Scalar,       // "hello world"
-    Number,       // "42"
-    Boolean,      // "true"
-    List(usize),  // "[234 items]"
-    Map(usize),   // "{12 entries}"
-    Secret,       // "***"
-    Url,          // clickable in terminal
-    Empty,        // ""
+    Scalar,
+    Number,
+    Boolean,
+    List(usize),
+    Map(usize),
+    Secret,
+    Url,
+    Empty,
 }
 ```
 
 ### Integration point in execute_flat()
 
-The change to execute_flat() is minimal — just add observer calls
-around the existing node execution:
+Minimal change — add observer calls around existing node execution:
 
 ```rust
 fn execute_flat<T: Executable>(
@@ -157,7 +364,6 @@ fn execute_flat<T: Executable>(
 ) -> Result<ExecutionLog, ExecError> {
     let order = topo_sort(dag);
 
-    // NEW: notify observer of DAG topology
     if let Some(ref mut obs) = observer {
         obs.on_dag_start(&build_snapshot(dag, &order));
     }
@@ -165,14 +371,12 @@ fn execute_flat<T: Executable>(
     let start = Instant::now();
 
     for node_id in &order {
-        // NEW: notify observer
         if let Some(ref mut obs) = observer {
             obs.on_node_start(node_id);
         }
 
         // ... existing execution logic ...
 
-        // NEW: notify observer of result
         if let Some(ref mut obs) = observer {
             match &result {
                 Ok(outputs) if was_intercepted =>
@@ -185,7 +389,6 @@ fn execute_flat<T: Executable>(
         }
     }
 
-    // NEW: notify observer of completion
     if let Some(ref mut obs) = observer {
         obs.on_dag_complete(start.elapsed());
     }
@@ -195,20 +398,18 @@ fn execute_flat<T: Executable>(
 ```
 
 Files:
-  - core/exec/src/execute.rs    (add observer parameter + callbacks)
-  - core/exec/src/lib.rs        (re-export ProgressObserver, DagSnapshot)
-  - core/exec/src/progress.rs   (NEW: ProgressObserver trait + types)
+  - core/exec/src/progress.rs  (NEW: ProgressObserver trait + types)
+  - core/exec/src/execute.rs   (add observer parameter + callbacks)
+  - core/exec/src/lib.rs       (re-export ProgressObserver, DagSnapshot)
 
-## Layer 2: DagProgress state machine
+---------------------------------------------------------------------
+
+## Layer 3: DagProgress state machine
 
 Renderer-agnostic state that any display backend can consume.
 This is the "model" — it knows nothing about terminals or HTML.
 
 ```rust
-/// Live state of a DAG execution.
-///
-/// Built from ProgressObserver events. Renderers read this to know
-/// what to display. Can be serialized to JSON for web transport.
 #[derive(Debug, Clone, Serialize)]
 pub struct DagProgress {
     pub nodes: HashMap<NodeId, NodeProgress>,
@@ -226,50 +427,22 @@ pub enum DagPhase {
     Failed { node: NodeId, error: String },
 }
 
-#[derive(Debug, Clone, Serialize)]
-pub struct NodeProgress {
-    pub id: NodeId,
-    pub label: String,
-    pub state: NodeState,
-    pub is_boundary: bool,
-    pub summary: Option<OutputSummary>,
-    pub elapsed: Option<Duration>,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum NodeState {
-    /// Not yet reached in topo order
     Pending,
-    /// Currently executing
     Running,
-    /// Finished successfully
     Completed,
-    /// Finished with error
     Failed,
-    /// Guard predicate skipped this node
     Skipped,
-    /// Intercepted by dry-run mock
     Intercepted,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum EdgeState {
-    /// No data has flowed yet
     Idle,
-    /// Source node completed — data is "flowing" to target
-    /// (visual: animated pulse/highlight)
     Flowing,
-    /// Target node consumed the data — edge is done
     Done,
-    /// Source was skipped — edge will never carry data
     Dead,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct EdgeProgress {
-    pub from: NodeId,
-    pub to: NodeId,
-    pub state: EdgeState,
 }
 ```
 
@@ -286,65 +459,140 @@ The SimCity power-grid effect comes from edge state transitions:
     N. Last node done: DAG=Completed
 
 The "Flowing" state is the key visual moment — it represents data
-traveling along the edge. A renderer can show this as:
-  - Terminal: brief color pulse on the edge character (─ → ═ → ─)
-  - Web: CSS animation along the SVG path
+traveling along the edge. A renderer shows this using the glyph system:
+  - Terminal: EdgeFlowing glyph (⚡ emoji, ═ unicode, = ascii)
+  - Web: CSS animation on SVG path triggered by EdgeState::Flowing
   - CI: no visual effect (just log output)
 
 Files:
   - core/exec/src/progress.rs  (DagProgress, NodeProgress, EdgeProgress)
 
-## Layer 3: Terminal Renderer
+---------------------------------------------------------------------
 
-### Approach: lightweight ANSI, not full TUI framework
+## Layer 4: Terminal Renderer (carriage-return based)
 
-A full TUI framework (ratatui) would be heavyweight for what is
-essentially a progress display. Instead, use direct ANSI escape codes
-with a layout engine that computes character positions from the DAG
-topology.
+### Approach: carriage return + ANSI, not a TUI framework
 
-Rationale:
-- No external dependency (ratatui = ~15 crates in the dep tree)
-- Output is a rectangular character buffer, easy to reason about
-- Can print final state as static text after execution completes
-- Works in any terminal that supports ANSI (which is all of them)
+The renderer uses `\r` (carriage return) to overwrite terminal lines
+in place. For multi-line display, it uses ANSI cursor-up (`\x1b[A`)
+to move back to the top of the display area and rewrite. This gives
+a live-updating display without any TUI framework dependency.
 
-If we later want interactivity (scrolling, clicking nodes), we can
-upgrade to ratatui — but the DagProgress model stays the same.
+The glyph system's Emoji tier is the default — modern emojis make
+the display visually striking. We control the environment so
+compatibility is not a constraint.
 
-### Visual design
+### Visual design (emoji tier)
 
 ```
-  gist-diff pipeline                               elapsed: 1.2s
-  ─────────────────────────────────────────────────────────────────
+  🚀 gist-diff                                        ⏱️  1.2s
+  ─────────────────────────────────────────────────────────────
 
-  ● read_files ──────── ● parse_read_files ──────── ● render_markdown
-    ✓ 0.02s               ✓ 0.1s  {234 entries}      ✓ 0.05s
-                                        │
-                                        ▼
-                           ● prepare_gist_request ── ● execute_gist
-                             ✓ 0.01s                   ◐ running...
+  ✅ read_files ──⚡── ✅ parse_read_files ──⚡── ✅ render_markdown
+     0.02s              0.1s  📋 234 items        0.05s
+                                    │
+                                    ⚡
+                                    │
+                        ✅ prepare_gist_request ──⚡── 🔄 execute_gist
+                           0.01s                        🌒 running...
                                                            │
-                                                           ▼
-                                                  ● parse_gist_response
-                                                    ○ pending
+                                                           ⏳
+                                                           │
+                                                   ⏳ parse_gist_response
+                                                      pending
 ```
 
-### Node glyphs
+After completion:
 
-    ○  Pending     (dim/gray)
-    ◐  Running     (yellow, may animate ◐◑◒◓)
-    ●  Completed   (green)
-    ✗  Failed      (red)
-    ◌  Skipped     (dim, strikethrough)
-    ◇  Intercepted (cyan, dry-run)
+```
+  🏁 gist-diff                                        ⏱️  2.4s
+  ─────────────────────────────────────────────────────────────
 
-### Edge glyphs
+  ✅ read_files ──── ✅ parse_read_files ──── ✅ render_markdown
+     0.02s              0.1s  📋 234 items       0.05s
+                                    │
+                                    │
+                        ✅ prepare_gist_request ──── ✅ execute_gist
+                           0.01s                       0.8s
+                                                           │
+                                                           │
+                                                   ✅ parse_gist_response
+                                                      🔗 https://gist.github.com/...
+```
 
-    ──  Idle     (dim gray)
-    ══  Flowing  (bright white/yellow pulse)
-    ──  Done     (green)
-    ╌╌  Dead     (dim, dashed)
+### Visual design (unicode tier — fallback)
+
+```
+  ▶ gist-diff                                          ⏱ 1.2s
+  ─────────────────────────────────────────────────────────────
+
+  ● read_files ══ ● parse_read_files ══ ● render_markdown
+    0.02s            0.1s  ≡ 234 items     0.05s
+                                │
+                                ║
+                    ● prepare_gist_request ══ ◐ execute_gist
+                      0.01s                     running...
+                                                    │
+                                                    ─
+                                            ○ parse_gist_response
+                                              pending
+```
+
+### Visual design (ascii tier — CI/pipe fallback)
+
+```
+  [>] gist-diff                                        [T] 1.2s
+  -----------------------------------------------------------------
+
+  [x] read_files -- [x] parse_read_files -- [x] render_markdown
+      0.02s            0.1s  [L] 234 items     0.05s
+                                  |
+                                  =
+                      [x] prepare_gist_request == [~] execute_gist
+                          0.01s                      running...
+                                                        |
+                                                        -
+                                              [ ] parse_gist_response
+                                                  pending
+```
+
+### Carriage-return rendering loop
+
+```rust
+pub struct TerminalRenderer {
+    layout: DagLayout,       // Computed from DagSnapshot
+    glyphs: &'static GlyphSet,
+    tier: Tier,              // Which encoding to use
+    width: u16,              // Terminal width
+    line_count: usize,       // Lines in current display (for cursor-up)
+}
+
+impl TerminalRenderer {
+    fn render_frame(&mut self) {
+        // Move cursor back to top of display area
+        if self.line_count > 0 {
+            // \x1b[{N}A = cursor up N lines, \r = carriage return
+            print!("\x1b[{}A\r", self.line_count);
+        }
+
+        // Build display lines
+        let lines = self.layout.render_lines(&self.glyphs, self.tier);
+        self.line_count = lines.len();
+
+        // Print each line, clearing to end of line (\x1b[K) to
+        // handle variable-width content cleanly
+        for line in &lines {
+            println!("{}\x1b[K", line);
+        }
+    }
+}
+```
+
+The key insight: `\r` + cursor-up rewrites the same screen area on
+every state change. Between node executions, the terminal shows the
+updated DAG with the current node's glyph changing from ⏳→🔄→✅.
+When execution completes, the final state stays on screen as static
+text.
 
 ### Layout algorithm
 
@@ -354,118 +602,35 @@ Leveled layout based on topological distance from root:
     2. Assign each node a "level" = max distance from any root
     3. Within each level, order nodes by topo index
     4. Render left-to-right, wrapping at terminal width
-    5. Draw edges as horizontal (same level) or vertical (cross-level)
+    5. Draw edges using glyph system connectors:
+       - Same-level: ConnectorHorizontal between nodes
+       - Cross-level: ConnectorVertical + ConnectorCorner
 
-For small DAGs (≤10 nodes), a single-line horizontal layout works:
+For small DAGs (≤8 nodes), single-line horizontal layout:
 
-    ● A ── ● B ── ● C ── ● D
+    ✅ A ──── ✅ B ──── 🔄 C ──── ⏳ D
 
-For larger DAGs, use multi-row with vertical connections:
+For larger DAGs, multi-row with vertical connections:
 
-    ● A ──┬── ● B ── ● D ──┬── ● F
-          │                 │
-          └── ● C ──────────┘
-                    │
-                    └── ● E
+    ✅ A ──┬── ✅ B ──── ✅ D ──┬── ⏳ F
+           │                    │
+           └── ✅ C ────────────┘
+                       │
+                       └── 🔄 E
 
-### Rendering loop
+### Why carriage return (not a TUI framework)?
 
-```rust
-pub struct TerminalRenderer {
-    /// Layout computed from DagSnapshot
-    layout: DagLayout,
-    /// Current frame buffer (character grid)
-    buffer: TermBuffer,
-    /// Terminal dimensions
-    width: u16,
-    height: u16,
-    /// Whether we're in "live" mode (with cursor movement)
-    /// or "static" mode (just print lines)
-    live: bool,
-}
+- Zero dependencies — just print/println with ANSI escape sequences
+- Works perfectly for our use case: a fixed-size display that updates
+  between synchronous node executions
+- The display is not interactive — no scrolling, input, or mouse
+- When piped (not a TTY), falls back to progressive line output
+  (no cursor movement, just append)
+- If interactivity is ever needed, the DagProgress model works with
+  any renderer — swap in a TUI framework later without changing the
+  data layer
 
-impl ProgressObserver for TerminalRenderer {
-    fn on_dag_start(&mut self, snapshot: &DagSnapshot) {
-        self.layout = compute_layout(snapshot, self.width);
-        self.render_frame();
-    }
-
-    fn on_node_start(&mut self, node_id: &NodeId) {
-        self.layout.set_state(node_id, NodeState::Running);
-        self.render_frame();
-    }
-
-    fn on_node_complete(&mut self, node_id: &NodeId, summary: OutputSummary) {
-        self.layout.set_state(node_id, NodeState::Completed);
-        self.layout.set_summary(node_id, summary);
-        // Transition outgoing edges to Flowing
-        self.layout.flow_edges_from(node_id);
-        self.render_frame();
-    }
-
-    fn on_dag_complete(&mut self, elapsed: Duration) {
-        // Print final static summary (no cursor movement)
-        self.print_final_summary(elapsed);
-    }
-}
-
-impl TerminalRenderer {
-    fn render_frame(&mut self) {
-        if self.live {
-            // Move cursor to top of display area and redraw
-            print!("\x1b[{}A", self.buffer.height);
-            self.buffer.clear();
-            self.draw_dag();
-            self.buffer.flush();
-        } else {
-            // Static mode: just print current state
-            self.draw_dag();
-            self.buffer.flush();
-        }
-    }
-}
-```
-
-### TermBuffer — minimal character grid
-
-```rust
-/// Rectangular character buffer with ANSI color support.
-/// No external deps — just String manipulation.
-pub struct TermBuffer {
-    cells: Vec<Vec<Cell>>,
-    width: usize,
-    height: usize,
-}
-
-pub struct Cell {
-    ch: char,
-    fg: Color,
-    bold: bool,
-    dim: bool,
-}
-
-pub enum Color {
-    Default,
-    Red,
-    Green,
-    Yellow,
-    Blue,
-    Cyan,
-    White,
-    Gray,
-}
-```
-
-Files:
-  - NEW crate: core/progress/           (or lib/progress/)
-    - src/lib.rs                         (re-exports)
-    - src/observer.rs                    (ProgressObserver trait)
-    - src/model.rs                       (DagProgress state machine)
-    - src/summary.rs                     (OutputSummary, FieldSummary)
-    - src/terminal/mod.rs                (TerminalRenderer)
-    - src/terminal/layout.rs             (DAG layout algorithm)
-    - src/terminal/buffer.rs             (TermBuffer, Cell, Color)
-    - src/terminal/glyphs.rs             (node/edge glyph constants)
+---------------------------------------------------------------------
 
 ## Web renderer (future, design only)
 
@@ -474,95 +639,158 @@ Same DagProgress model, different display:
     1. Serialize DagProgress to JSON
     2. Stream via SSE (server-sent events) or WebSocket
     3. Browser renders with SVG/Canvas
-    4. CSS animations for "Flowing" edge state
-    5. Click nodes to expand OutputSummary
+    4. Glyph system's emoji tier maps directly to web display
+    5. CSS animations triggered by EdgeState::Flowing
+    6. Click nodes to expand OutputSummary
 
-The key insight: because DagProgress derives Serialize, the web
-renderer is just `serde_json::to_string(&progress)` piped to a
-connection. No new data model needed.
+Because DagProgress derives Serialize, the web renderer is just
+`serde_json::to_string(&progress)` piped to a connection.
+No new data model needed.
+
+---------------------------------------------------------------------
 
 ## Implementation plan
 
-### Phase 1: Data model + observer (core/exec changes)
+### Phase 1: Glyph system (core/ir)
 
-1. Add core/exec/src/progress.rs with:
+1. Add core/ir/src/glyph.rs with:
+   - Tier enum (Emoji, Unicode, Ascii)
+   - SemanticColor enum
+   - GlyphId enum (all semantic identifiers)
+   - Glyph struct (multi-tier representations + color)
+   - GlyphSet struct (themed collection with lookup)
+   - STANDARD static GlyphSet (the default visual vocabulary)
+   - Display width utilities (unicode_display_width, emoji_display_width)
+   - State-to-glyph bridge functions (node_state_glyph, etc.)
+   - Full test suite: completeness, serde roundtrip, width correctness
+
+2. Wire into core/ir/src/lib.rs:
+   - pub mod glyph
+   - Re-export key types: GlyphId, Glyph, GlyphSet, Tier, SemanticColor, STANDARD
+
+### Phase 2: Progress data model + observer (core/exec)
+
+3. Add core/exec/src/progress.rs with:
    - ProgressObserver trait
    - DagSnapshot, NodeInfo, EdgeInfo
    - OutputSummary, FieldSummary, FieldKind
    - DagProgress, NodeProgress, EdgeProgress state types
    - NodeState, EdgeState enums
 
-2. Add observer parameter to execute_flat() (Option<&mut dyn ProgressObserver>)
-   - Wire up on_dag_start, on_node_start, on_node_complete, etc.
+4. Add observer parameter to execute_flat():
+   - Option<&mut dyn ProgressObserver>
+   - Wire up all callbacks
    - Keep existing CI context + print_log_entry behavior as-is
    - Add execute_with_progress() public API
 
-3. Add summarize() function that converts HashMap<String, Value>
-   into OutputSummary (reuse logic from print_log_entry)
+5. Add summarize() function:
+   - Converts HashMap<String, Value> into OutputSummary
+   - Reuse logic from existing print_log_entry()
 
-### Phase 2: Terminal renderer (new crate)
+### Phase 3: Terminal renderer (new crate or module)
 
-4. Create core/progress/ crate with workspace dependency on gunbc-exec
+6. Create renderer (core/progress/ crate or lib/progress/):
+   - Depends on gunbc-ir (for glyph system) and gunbc-exec (for observer)
 
-5. Implement layout algorithm:
+7. Implement layout algorithm:
    - Level assignment from topo order
    - Horizontal packing within terminal width
-   - Edge routing (horizontal + vertical segments)
+   - Edge routing using glyph system connectors
+   - Display width calculations via Glyph::display_width()
 
-6. Implement TermBuffer (character grid with ANSI colors)
+8. Implement carriage-return renderer:
+   - Uses \r + \x1b[{N}A to rewrite display area
+   - Clears line remainders with \x1b[K
+   - Falls back to append-only when not a TTY (isatty check)
+   - Uses glyph system for all visual symbols (never hardcoded chars)
 
-7. Implement TerminalRenderer as ProgressObserver:
-   - Live mode: cursor-based redraw
-   - Static mode: progressive line output
-   - Detect terminal capability (isatty, width)
-
-8. Integrate into gunbc-dag binary entry points:
+9. Integrate into gunbc-dag binary entry points:
    - Add --progress flag (default: on for TTY, off for pipe)
    - Replace raw println! output with observer-driven display
 
-### Phase 3: Polish + animation
+### Phase 4: Polish + animation
 
-9. Add spinner animation for Running nodes (◐◑◒◓ cycle)
-10. Add edge flow animation (brief highlight pulse)
-11. Add elapsed time display per node and total
-12. Add compact mode for large DAGs (collapse completed nodes)
-13. Handle terminal resize (SIGWINCH)
+10. Spinner animation for Running nodes:
+    - Cycle through GlyphSet::spinner_frames() (🌑🌒🌓🌔)
+    - Timer-based: advance frame every ~200ms between node completions
 
-### Phase 4: Web renderer (future)
+11. Edge flow pulse:
+    - Brief EdgeFlowing glyph display when source completes
+    - Transition to EdgeDone when target starts
 
-14. Add JSON serialization for DagProgress
-15. Add SSE/WebSocket streaming endpoint
-16. Browser-side SVG renderer
-17. CSS animation for edge flow
+12. Summary display:
+    - Elapsed time per node using DataTimer glyph
+    - Collection counts using DataList/DataMap glyphs
+    - URLs using DataUrl glyph (may be clickable via OSC 8)
+    - Secrets always show DataSecret glyph
+
+13. Compact mode for large DAGs:
+    - Collapse completed nodes to single line
+    - Expand running/failed nodes with full detail
+
+### Phase 5: Web renderer (future)
+
+14. JSON serialization for DagProgress (already has Serialize)
+15. SSE/WebSocket streaming endpoint
+16. Browser-side SVG renderer consuming DagProgress JSON
+17. CSS animations triggered by EdgeState transitions
+
+---------------------------------------------------------------------
 
 ## Design decisions
 
-### Why not ratatui?
+### Why a glyph system in core/ir?
 
-ratatui is excellent for interactive TUIs but adds ~15 transitive
-dependencies. Our use case is a progress display, not an interactive
-app — we don't need scrolling, input handling, mouse events, or
-widgets. A 200-line TermBuffer gives us everything we need.
+The language module already models format-specific visual concerns
+(comment syntax, naming conventions) in core/ir. Glyphs follow the
+same pattern: semantic identifiers that map to visual representations.
 
-If we later want interactivity (e.g., click a node to see its full
-output), ratatui becomes the right choice. The DagProgress model
-works with either approach — renderers are swappable.
+Without this, every display site would hardcode its own emoji/unicode
+strings. With it, there's a single source of truth for "what does
+completion look like" — and that source is composable data, not
+scattered string literals.
+
+The pattern mirrors TypeId/TypeRegistry:
+- GlyphId ↔ TypeId (semantic identity)
+- Glyph ↔ type DAG (concrete definition)
+- GlyphSet ↔ TypeRegistry (collection + lookup)
+
+### Why three encoding tiers?
+
+We control the environment and emoji is the default. But:
+- Unicode tier is useful for terminals with emoji rendering issues
+  or for contexts where emoji width is unpredictable (some terminals
+  render emoji as 1 column, some as 2)
+- ASCII tier is needed for CI logs, pipe output, and any context
+  where Unicode might garble (rare, but real)
+- Having all three means the glyph system is useful to any future
+  display code, not just our current terminal
+
+### Why carriage return instead of a TUI framework?
+
+Our display is a fixed-size progress indicator that updates between
+synchronous node executions. It doesn't need:
+- Scrolling or paging
+- Keyboard/mouse input
+- Widget layout negotiation
+- Event loops or async rendering
+
+Carriage return + cursor-up gives us exactly what we need:
+- Rewrite the same screen area on every state change
+- Zero runtime dependencies
+- Final state stays on screen as static text
+- Falls back gracefully to progressive output when piped
 
 ### Why observer pattern instead of channel?
 
-Channels (mpsc) enable async rendering on a separate thread, which
-matters for animation smoothness. But execution is currently
-synchronous and single-threaded. Adding a channel + render thread
-is premature complexity.
-
-The observer pattern is simpler:
+Execution is synchronous and single-threaded. Adding a channel + render
+thread is premature complexity. The observer pattern is simpler:
 - Synchronous: render happens between node executions
 - No threading: no Arc/Mutex, no channel setup
 - Easy to test: mock observer records events
 
-When/if execution becomes concurrent (parallel node execution),
-switch to a channel-based approach. The ProgressObserver trait
-stays the same — just the impl changes.
+When/if execution becomes concurrent, switch to channel-based.
+The ProgressObserver trait stays the same.
 
 ### Why Serialize on DagProgress?
 
@@ -573,8 +801,8 @@ Web renderer needs JSON. But even before that, Serialize enables:
 
 ### Why not modify ExecutionLog?
 
-ExecutionLog is a post-hoc record. DagProgress is a live state
-machine. They serve different purposes:
+ExecutionLog is a post-hoc record. DagProgress is a live state machine.
+They serve different purposes:
 - ExecutionLog: "what happened" (for downstream code, assertions)
 - DagProgress: "what's happening now" (for humans watching)
 
