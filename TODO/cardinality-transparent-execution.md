@@ -5,97 +5,363 @@
 
 ## Goal
 
-Make cardinality transparent to ops. Today, ops like `MergeOutputs` must
-defensively handle null/object/array because the execution engine ignores
-cardinality. The engine should handle cardinality the way a for-loop does:
-null/0 items skip, 1 item executes once, N items execute N times. Ops never
-think about it.
+Two things:
 
-This also means cardinality becomes a first-class part of the type algebra,
-enabling the compiler to infer safe coercions across edges without manual
-bridging nodes.
+1. Make cardinality transparent to ops — the engine handles null/scalar/list
+   automatically, so ops never think about cardinality.
+2. Model cardinality as a real type, not an enum — composable, testable,
+   with derived algebra instead of hand-written truth tables.
 
 ## Problem Statement
 
-### What exists
+### The enum problem
 
-The IR has a well-defined cardinality model:
+Today `Cardinality` is an enum with 5 variants:
 
-```
-Zero        ∅       signal-only, no data
-One         {x}     scalar (default)
-ZeroOrOne   {x}?    optional
-ZeroOrMore  {x}*    list (Kleene star)
-OneOrMore   {x}+    non-empty list (Kleene plus)
+```rust
+pub enum Cardinality { Zero, One, ZeroOrOne, ZeroOrMore, OneOrMore }
 ```
 
-Build-time infrastructure:
+This is a label, not a model. `satisfies()` is a 25-case match someone
+typed by hand. Adding a new cardinality (e.g., `ExactlyTwo`, `TwoOrMore`,
+`[3, 7]`) requires adding match arms to every function. The boolean
+queries (`allows_empty`, `allows_many`, etc.) are also hand-written
+per-variant.
 
-- `Cardinality::satisfies()` — compatibility check with full matrix
+Enums encode *names*. We need to encode *structure*.
+
+### The engine problem
+
+The execution engine (`execute.rs:429-434`) gathers inputs with
+`HashMap::insert` — last-writer-wins. It has no concept of cardinality
+at runtime. Ops like `MergeOutputs` must defensively normalize
+null/object/array themselves. Every merge-like op repeats this.
+
+### What exists (build-time only)
+
+- `Cardinality::satisfies()` — compatibility check (25-case match)
 - `Port::list()`, `Port::optional()`, etc. — constructors
-- `TypeContract` / contract tower — L1 is cardinality
-- `type_lib` containers — `Optional<T>`, `List<T>`, `NonEmptyList<T>`
+- Contract tower — L1 is cardinality
 - Type registry infers cardinality from type structure
 - Builder validates cardinality on `add_edge()`
 - Canonical edge ordering for deterministic fan-in
 
-### What's missing
+All compile-time. The runtime ignores it.
 
-The execution engine (`execute.rs:429-434`) gathers inputs with
-`HashMap::insert` — last-writer-wins. It has no concept of cardinality at
-runtime:
+## Design
+
+### Part 1: Cardinality as a real model
+
+#### The interval representation
+
+A cardinality is a closed interval `[min, max]` on ℕ ∪ {∞}:
 
 ```rust
-// Current: cardinality-blind
-for edge in &dag.edges {
-    if edge.to_node == *node_id {
-        if let Some(val) = upstream.get(&edge.from_port.0) {
-            inputs.insert(edge.to_port.0.clone(), val.clone());
-            //     ^^^^^^ overwrites on fan-in
+/// Cardinality as a bounded interval on the natural numbers.
+///
+/// This is a real model, not an enum. All operations (satisfies, join,
+/// meet, product, coerce) derive from interval arithmetic. Named
+/// cardinalities are constants, not variants.
+///
+/// # Mathematical basis
+///
+/// A cardinality `[min, max]` represents the set of valid multiplicities.
+/// `[1, 1]` means "exactly one value". `[0, ∞)` means "any number of
+/// values". This is the same concept as regex quantifiers: `{min,max}`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct Cardinality {
+    /// Minimum number of values (inclusive).
+    pub min: u32,
+    /// Maximum number of values (inclusive). `None` = unbounded.
+    pub max: Option<u32>,
+}
+```
+
+#### Named constants (not variants)
+
+```rust
+impl Cardinality {
+    /// ∅ — signal-only, no data.
+    pub const ZERO: Self = Self { min: 0, max: Some(0) };
+
+    /// {x} — exactly one (scalar). Default for most ports.
+    pub const ONE: Self = Self { min: 1, max: Some(1) };
+
+    /// {x}? — optional (zero or one).
+    pub const ZERO_OR_ONE: Self = Self { min: 0, max: Some(1) };
+
+    /// {x}* — Kleene star (zero or more, list).
+    pub const ZERO_OR_MORE: Self = Self { min: 0, max: None };
+
+    /// {x}+ — Kleene plus (one or more, non-empty list).
+    pub const ONE_OR_MORE: Self = Self { min: 1, max: None };
+}
+```
+
+These replace the 5 enum variants. But now `Cardinality::new(2, Some(5))`
+is also valid without any code changes.
+
+#### Derived queries (not hand-written)
+
+```rust
+impl Cardinality {
+    pub fn allows_empty(&self) -> bool { self.min == 0 }
+    pub fn allows_one(&self) -> bool { self.max_at_least(1) }
+    pub fn allows_many(&self) -> bool { self.max_at_least(2) }
+    pub fn requires_one(&self) -> bool { self.min >= 1 }
+    pub fn is_bounded(&self) -> bool { self.max.is_some() }
+    pub fn is_scalar(&self) -> bool { self.min == 1 && self.max == Some(1) }
+    pub fn is_list(&self) -> bool { self.allows_many() }
+
+    fn max_at_least(&self, n: u32) -> bool {
+        self.max.map_or(true, |m| m >= n)
+    }
+}
+```
+
+No match statements. Each query is a predicate on bounds.
+
+#### Derived satisfaction (not a truth table)
+
+```rust
+impl Cardinality {
+    /// Can every value this cardinality produces be accepted by `target`?
+    ///
+    /// This is subset containment: self ⊆ target.
+    /// `[1,1]` satisfies `[0,∞)` because {1} ⊆ {0,1,2,...}.
+    /// `[0,∞)` does NOT satisfy `[1,1]` because 0 ∉ {1}.
+    pub fn satisfies(&self, target: Cardinality) -> bool {
+        self.min >= target.min && self.max_leq(target.max)
+    }
+
+    fn max_leq(&self, target_max: Option<u32>) -> bool {
+        match (self.max, target_max) {
+            (_, None) => true,               // target is unbounded, anything fits
+            (None, Some(_)) => false,         // we're unbounded, target is bounded
+            (Some(a), Some(b)) => a <= b,     // both bounded, compare
         }
     }
 }
 ```
 
-Consequences:
+One function. No 25-case match. Correct for any `[min, max]` pair, not
+just the 5 named ones.
 
-1. **Fan-in is broken** — multiple edges to one port = last writer wins
-2. **Ops do their own cardinality handling** — `MergeOutputs` manually
-   normalizes null/object/array. Every merge-like op will repeat this.
-3. **No auto-coercion** — `One` → `ZeroOrMore` requires manual wrapper
-   nodes (we just removed `WrapArray` by making the op defensive, but
-   that pushes the problem into op implementations)
-4. **No map semantics** — a scalar op receiving a list can't automatically
-   execute per-element
-
-### The deeper issue
-
-Cardinality is defined at the type level but not enforced at the value
-level. The engine treats all values as scalars regardless of port
-cardinality. Types are epistemic (we know the cardinality from the type
-structure) but the runtime doesn't use that knowledge.
-
-## Design
-
-### Principle: Cardinality as transparent iteration
-
-The execution engine should treat cardinality like a for-loop:
-
-| Input cardinality | Behavior |
-|-------------------|----------|
-| null / missing    | Skip (0 iterations) |
-| scalar (One)      | Execute once |
-| array (N items)   | Execute N times, collect outputs |
-
-This is analogous to SQL's implicit set operations, APL's rank
-polymorphism, or shell `xargs` behavior.
-
-### Track 1: Cardinality-aware input gathering
-
-Replace `HashMap::insert` with cardinality-aware collection:
+#### Lattice algebra
 
 ```rust
-// Proposed: cardinality-aware
+impl Cardinality {
+    /// Join (least upper bound): union of possibilities.
+    ///
+    /// "What cardinality can hold values from either self or other?"
+    /// [1,1] ∨ [0,1] = [0,1]  — either scalar or optional → optional
+    /// [1,1] ∨ [1,∞) = [1,∞)  — either one or many → one-or-more
+    /// [0,1] ∨ [1,∞) = [0,∞)  — either optional or non-empty → any
+    pub fn join(self, other: Cardinality) -> Cardinality {
+        Cardinality {
+            min: self.min.min(other.min),
+            max: match (self.max, other.max) {
+                (None, _) | (_, None) => None,
+                (Some(a), Some(b)) => Some(a.max(b)),
+            },
+        }
+    }
+
+    /// Meet (greatest lower bound): intersection of constraints.
+    ///
+    /// "What cardinality satisfies both self and other?"
+    /// [0,1] ∧ [1,∞) = [1,1]  — must be optional AND non-empty → exactly one
+    /// [0,∞) ∧ [1,1] = [1,1]  — any AND scalar → scalar
+    ///
+    /// Returns None if the intersection is empty (min > max).
+    pub fn meet(self, other: Cardinality) -> Option<Cardinality> {
+        let min = self.min.max(other.min);
+        let max = match (self.max, other.max) {
+            (None, x) | (x, None) => x,
+            (Some(a), Some(b)) => Some(a.min(b)),
+        };
+        // Check if interval is valid (min <= max)
+        match max {
+            Some(m) if min > m => None,  // empty intersection
+            _ => Some(Cardinality { min, max }),
+        }
+    }
+
+    /// Product: cardinality of nested iteration.
+    ///
+    /// If outer produces [a,b] items each containing [c,d] items,
+    /// the flattened result has [a*c, b*d] items.
+    ///
+    /// [1,∞) × [1,1] = [1,∞)   — many scalars → many
+    /// [0,∞) × [1,∞) = [0,∞)   — optional many × non-empty → any
+    /// [1,1] × [1,1] = [1,1]    — one scalar → one scalar
+    pub fn product(self, other: Cardinality) -> Cardinality {
+        Cardinality {
+            min: self.min.saturating_mul(other.min),
+            max: match (self.max, other.max) {
+                (Some(0), _) | (_, Some(0)) => Some(0),
+                (None, _) | (_, None) => None,
+                (Some(a), Some(b)) => a.checked_mul(b),  // None on overflow → unbounded
+            },
+        }
+    }
+
+    /// Can self be safely coerced to target without data loss?
+    ///
+    /// Unlike satisfies() (which checks subset containment), this checks
+    /// whether there exists a lossless injection self ↪ target.
+    ///
+    /// [1,1] → [0,∞): yes (wrap in [x])
+    /// [0,∞) → [1,1]: no (might lose elements or fail on empty)
+    /// [0,1] → [0,∞): yes (None→[], Some(x)→[x])
+    pub fn can_coerce_to(self, target: Cardinality) -> bool {
+        if self.satisfies(target) {
+            return true;  // already compatible, trivial coercion
+        }
+        // Safe widening: we can always embed into a larger container.
+        // [1,1] ↪ [0,∞) by wrapping as [x].
+        // This works when target.min <= self.min (target accepts fewer)
+        // and target.max >= self.max (target accepts more).
+        // The only unsafe direction is narrowing (target stricter than self).
+        target.min <= self.min && self.max_leq(target.max)
+    }
+}
+```
+
+#### Properties you can test
+
+Because these are arithmetic, not case analysis, you get property-based
+tests for free:
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    fn arb_cardinality() -> impl Strategy<Value = Cardinality> {
+        (0u32..10, prop::option::of(0u32..10)).prop_map(|(min, max)| {
+            let max = max.map(|m| m.max(min));  // ensure valid interval
+            Cardinality { min, max }
+        })
+    }
+
+    proptest! {
+        // Reflexivity: everything satisfies itself
+        #[test]
+        fn satisfies_reflexive(c in arb_cardinality()) {
+            prop_assert!(c.satisfies(c));
+        }
+
+        // Transitivity: if a satisfies b and b satisfies c, then a satisfies c
+        #[test]
+        fn satisfies_transitive(
+            a in arb_cardinality(),
+            b in arb_cardinality(),
+            c in arb_cardinality()
+        ) {
+            if a.satisfies(b) && b.satisfies(c) {
+                prop_assert!(a.satisfies(c));
+            }
+        }
+
+        // Join is commutative
+        #[test]
+        fn join_commutative(a in arb_cardinality(), b in arb_cardinality()) {
+            prop_assert_eq!(a.join(b), b.join(a));
+        }
+
+        // Join is upper bound: a.join(b) accepts both a and b
+        #[test]
+        fn join_is_upper_bound(a in arb_cardinality(), b in arb_cardinality()) {
+            prop_assert!(a.satisfies(a.join(b)));
+            prop_assert!(b.satisfies(a.join(b)));
+        }
+
+        // Meet is commutative
+        #[test]
+        fn meet_commutative(a in arb_cardinality(), b in arb_cardinality()) {
+            prop_assert_eq!(a.meet(b), b.meet(a));
+        }
+
+        // Meet is lower bound: meet(a,b) satisfies both a and b
+        #[test]
+        fn meet_is_lower_bound(a in arb_cardinality(), b in arb_cardinality()) {
+            if let Some(m) = a.meet(b) {
+                prop_assert!(m.satisfies(a));
+                prop_assert!(m.satisfies(b));
+            }
+        }
+
+        // Product with ONE is identity
+        #[test]
+        fn product_identity(c in arb_cardinality()) {
+            prop_assert_eq!(c.product(Cardinality::ONE), c);
+            prop_assert_eq!(Cardinality::ONE.product(c), c);
+        }
+    }
+}
+```
+
+The enum version can't do this — you'd be testing a lookup table against
+itself. With the interval model you're testing algebraic laws.
+
+#### Serde compatibility
+
+The named constants can serialize to friendly names for backward compat:
+
+```rust
+impl Serialize for Cardinality {
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        match *self {
+            Self::ZERO => s.serialize_str("Zero"),
+            Self::ONE => s.serialize_str("One"),
+            Self::ZERO_OR_ONE => s.serialize_str("ZeroOrOne"),
+            Self::ZERO_OR_MORE => s.serialize_str("ZeroOrMore"),
+            Self::ONE_OR_MORE => s.serialize_str("OneOrMore"),
+            _ => {
+                // Non-standard cardinality: serialize as {min, max}
+                let mut map = s.serialize_map(Some(2))?;
+                map.serialize_entry("min", &self.min)?;
+                map.serialize_entry("max", &self.max)?;
+                map.end()
+            }
+        }
+    }
+}
+```
+
+Deserialization accepts both the string names and the `{min, max}` form.
+
+#### Display
+
+```rust
+impl fmt::Display for Cardinality {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match (self.min, self.max) {
+            (0, Some(0)) => write!(f, "0"),
+            (1, Some(1)) => write!(f, "1"),
+            (n, Some(m)) if n == m => write!(f, "{}", n),
+            (n, Some(m)) => write!(f, "{}..{}", n, m),
+            (0, None) => write!(f, "0..*"),
+            (n, None) => write!(f, "{}..*", n),
+        }
+    }
+}
+```
+
+Again, no enum match — works for any `[min, max]`.
+
+### Part 2: Cardinality-transparent execution
+
+Once cardinality is a real model, the engine can use it.
+
+#### Track A: Cardinality-aware input gathering
+
+Replace `HashMap::insert` with cardinality-aware collection in
+`execute.rs`:
+
+```rust
 let mut inputs: HashMap<String, Value> = HashMap::new();
 let mut fan_in: HashMap<String, Vec<Value>> = HashMap::new();
 
@@ -103,176 +369,27 @@ for edge in canonical_edge_order(&dag.edges) {
     if edge.to_node == *node_id {
         let port = node.input_port(&edge.to_port);
         if let Some(val) = upstream.get(&edge.from_port.0) {
-            if port.cardinality.allows_many() {
-                // List port: collect into array
+            if port.cardinality.is_list() {
                 fan_in.entry(edge.to_port.0.clone())
                     .or_default()
                     .push(val.clone());
             } else {
-                // Scalar port: single value (error on duplicate)
                 inputs.insert(edge.to_port.0.clone(), val.clone());
             }
         }
     }
 }
 
-// Merge fan-in collections into inputs as Value::Json arrays
 for (port_name, values) in fan_in {
     inputs.insert(port_name, Value::from_list(values));
 }
 ```
 
-Key decisions:
-- List ports (`ZeroOrMore`, `OneOrMore`) collect fan-in into arrays
-- Scalar ports (`One`) error on duplicate edges (instead of silent overwrite)
-- `ZeroOrOne` ports accept 0 or 1 values
-- Edge ordering follows `canonical_edge_order()` (already implemented)
+- List ports collect fan-in into `Value::List`
+- Scalar ports take single values (error on duplicate)
+- Edge ordering follows `canonical_edge_order()` (already exists)
 
-### Track 2: Cardinality algebra
-
-Add algebraic operations to `Cardinality` for type inference:
-
-```rust
-impl Cardinality {
-    /// Lattice join (least upper bound).
-    /// What cardinality can hold values from either input?
-    ///
-    /// One ∨ ZeroOrOne = ZeroOrOne
-    /// One ∨ OneOrMore = OneOrMore
-    /// ZeroOrOne ∨ OneOrMore = ZeroOrMore
-    pub fn join(self, other: Cardinality) -> Cardinality { ... }
-
-    /// Lattice meet (greatest lower bound).
-    /// What cardinality satisfies both constraints?
-    pub fn meet(self, other: Cardinality) -> Cardinality { ... }
-
-    /// Product: cardinality of nested iteration.
-    /// If outer has N items each containing M items, result has N*M.
-    ///
-    /// One × One = One
-    /// OneOrMore × One = OneOrMore
-    /// ZeroOrMore × OneOrMore = ZeroOrMore
-    pub fn product(self, other: Cardinality) -> Cardinality { ... }
-
-    /// Can self be safely coerced to target?
-    /// Unlike satisfies(), this answers "is there a lossless coercion?"
-    ///
-    /// One → ZeroOrMore: yes (wrap in single-element list)
-    /// ZeroOrMore → One: no (might be 0 or N)
-    /// ZeroOrOne → ZeroOrMore: yes (None→[], Some(x)→[x])
-    pub fn can_coerce_to(self, target: Cardinality) -> bool { ... }
-}
-```
-
-The lattice structure:
-
-```
-        ZeroOrMore
-       /          \
-  ZeroOrOne    OneOrMore
-       \          /
-          One
-           |
-          Zero
-```
-
-`join` goes up, `meet` goes down. This is a bounded lattice with
-`Zero` as bottom and `ZeroOrMore` as top.
-
-### Track 3: Safe coercion inference (compiler pass)
-
-A compiler pass that inserts coercion nodes when cardinality mismatches
-are safe:
-
-```rust
-/// Compiler pass: insert cardinality coercions where safe.
-fn insert_cardinality_coercions(dag: &mut Dag<T>) {
-    for edge in &dag.edges {
-        let from_card = output_port_cardinality(edge);
-        let to_card = input_port_cardinality(edge);
-
-        if from_card.satisfies(to_card) {
-            continue; // already compatible
-        }
-
-        if from_card.can_coerce_to(to_card) {
-            // Insert coercion node:
-            // One → ZeroOrMore: wrap scalar in [scalar]
-            // ZeroOrOne → ZeroOrMore: None→[], Some(x)→[x]
-            // One → OneOrMore: wrap scalar in [scalar]
-            insert_coercion_node(dag, edge, from_card, to_card);
-        }
-        // If can't coerce, leave as build error (already caught by builder)
-    }
-}
-```
-
-Safe coercions (lossless, no information destroyed):
-
-| From | To | Coercion |
-|------|----|----------|
-| One → ZeroOrMore | `x` → `[x]` | wrap |
-| One → OneOrMore | `x` → `[x]` | wrap |
-| One → ZeroOrOne | `x` → `Some(x)` | trivial (already satisfied) |
-| ZeroOrOne → ZeroOrMore | `None` → `[]`, `Some(x)` → `[x]` | option-to-list |
-| OneOrMore → ZeroOrMore | identity | trivial (already satisfied) |
-
-Unsafe coercions (lossy, never auto-inferred):
-
-| From | To | Why unsafe |
-|------|----|------------|
-| ZeroOrMore → One | might be 0 or N | data loss |
-| ZeroOrMore → OneOrMore | might be 0 | might fail |
-| OneOrMore → One | might be N | which one? |
-| ZeroOrOne → One | might be 0 | might fail |
-
-### Track 4: Map semantics (auto-iteration)
-
-When a scalar op receives a list input, the engine automatically maps:
-
-```rust
-// If node expects One but receives ZeroOrMore on a port,
-// execute the node once per element, collect outputs.
-fn execute_with_map(
-    node: &Node,
-    inputs: &HashMap<String, Value>,
-) -> Result<HashMap<String, Value>, ExecError> {
-    // Find list-typed inputs on scalar ports
-    let map_port = find_map_candidate(node, inputs);
-
-    match map_port {
-        None => node.execute(inputs),  // normal scalar execution
-        Some((port_name, items)) => {
-            // Map: execute once per item, collect outputs
-            let mut collected: HashMap<String, Vec<Value>> = HashMap::new();
-            for item in items {
-                let mut iteration_inputs = inputs.clone();
-                iteration_inputs.insert(port_name.clone(), item);
-                let outputs = node.execute(&iteration_inputs)?;
-                for (k, v) in outputs {
-                    collected.entry(k).or_default().push(v);
-                }
-            }
-            // Wrap collected outputs as lists
-            Ok(collected.into_iter()
-                .map(|(k, vs)| (k, Value::from_list(vs)))
-                .collect())
-        }
-    }
-}
-```
-
-This is the "for-loop" semantics: cardinality propagates through the graph.
-A scalar op in a list context becomes a map operation.
-
-**Scope consideration**: Track 4 is powerful but complex. It changes
-execution semantics fundamentally. Consider implementing tracks 1-3 first,
-and Track 4 as a separate phase with explicit opt-in (e.g., a node flag
-or port annotation).
-
-### Track 5: Value representation
-
-`Value` needs a list variant to carry collected fan-in values:
+#### Track B: Value::List variant
 
 ```rust
 pub enum Value {
@@ -282,17 +399,11 @@ pub enum Value {
     Bool(bool),
     Int(i64),
     Skipped,
-    // New:
-    List(Vec<Value>),  // Ordered collection of values
+    List(Vec<Value>),  // new
 }
 
 impl Value {
-    /// Wrap a scalar value in a single-element list.
-    pub fn wrap_list(self) -> Value {
-        Value::List(vec![self])
-    }
-
-    /// Coerce to list: null→[], scalar→[scalar], list→list.
+    /// Coerce to list: Skipped→[], scalar→[scalar], List→List.
     pub fn to_list(self) -> Vec<Value> {
         match self {
             Value::Skipped => vec![],
@@ -303,90 +414,132 @@ impl Value {
 }
 ```
 
-This mirrors the cardinality algebra at the value level.
+#### Track C: Safe coercion compiler pass
 
-## Relationship to existing work
-
-### Contract tower (L1-L4)
-
-Cardinality is already L1 in the contract tower. This design makes L1
-*operational* — the engine respects it, not just the compiler.
-
-### `satisfies()` vs `can_coerce_to()`
-
-`satisfies()` answers "is this statically safe?" (compile-time gate).
-`can_coerce_to()` answers "can we bridge this safely?" (compiler
-inference). They're complementary:
-
-- `satisfies()` = subtyping (A ⊆ B)
-- `can_coerce_to()` = safe injection (A ↪ B)
-
-A satisfying relationship needs no coercion. A coercible relationship
-needs a node inserted. An unsatisfiable+uncoercible relationship is a
-build error.
-
-### MergeOutputs pattern
-
-With tracks 1-3, `MergeOutputs` simplifies:
+Uses `can_coerce_to()` to insert bridging where safe:
 
 ```rust
-// Before: defensive deserialization in every merge-like op
-let outputs: Vec<ReviewOutput> = match inputs.get("outputs")... {
-    None => vec![],
-    Some(j) if j.is_null() => vec![],
-    Some(j) if j.is_array() => ...,
-    Some(j) if j.is_object() => vec![...],
-};
-
-// After: engine guarantees list input on list port
-let outputs: Vec<ReviewOutput> = inputs.get("outputs")
-    .unwrap()  // engine guarantees presence for required ports
-    .as_list() // engine guarantees list shape for list ports
-    ...;
+fn insert_cardinality_coercions(dag: &mut Dag<T>) {
+    for edge in &dag.edges {
+        let from = output_port_cardinality(edge);
+        let to = input_port_cardinality(edge);
+        if !from.satisfies(to) && from.can_coerce_to(to) {
+            insert_coercion_node(dag, edge, from, to);
+        }
+    }
+}
 ```
 
-### Epistemic types and fungible inference
+Because `can_coerce_to` is interval arithmetic, this works for any
+cardinality pair — not just the 5 named ones.
 
-Types are defined by what we know about them (contract tower levels).
-Cardinality is one axis of that knowledge. Because we know cardinality
-structurally (from `WrapperKind` in type DAGs), we can compute safe
-coercions without runtime checks. The algebra (join, meet, product)
-lets us compose cardinality knowledge across edges — this is what makes
-inference "fungible" (interchangeable, composable).
+#### Track D: Map semantics (auto-iteration)
+
+When a scalar op receives a list, execute per-element and collect. This
+is the "for-loop" model.
+
+Scope TBD — this changes execution semantics fundamentally. Consider
+explicit opt-in vs. implicit (APL-style).
+
+### Part 3: Cardinality as fundamental to all types
+
+Today, cardinality is L1 in the contract tower but detached from the
+type itself. The goal is to make every type carry its cardinality
+structurally, so the engine/compiler can reason about it without
+separate lookups.
+
+This means `Port` doesn't need a separate `cardinality` field — it's
+part of the type. The type registry doesn't need `infer_cardinality()` —
+the type already knows. The contract tower's L1 isn't extracted, it's
+intrinsic.
+
+How this interacts with the type DAG (`Dag<TypeOp>`):
+
+```
+Current:  TypeOp::Wrap(List) wraps an inner type → infer ZeroOrMore
+Proposed: The type itself carries Cardinality { min: 0, max: None }
+
+Current:  Port { type_id: "String", cardinality: One }
+Proposed: Port { type_id: TypeWithCardinality("String", [1,1]) }
+          or equivalently: type_id carries cardinality intrinsically
+```
+
+This is a larger refactor. The interval model is a prerequisite — you
+need the real model before you can embed it in types. Sequence:
+
+1. Replace enum with struct (Part 1)
+2. Engine uses cardinality (Part 2)
+3. Embed cardinality in types (Part 3)
+
+## Migration
+
+### Backward compatibility
+
+The 5 named constants (`ONE`, `ZERO_OR_MORE`, etc.) cover all current
+usage. Existing code that writes `Cardinality::One` becomes
+`Cardinality::ONE`. The `satisfies()` call sites don't change — same
+method name, same semantics, but now it's one line of arithmetic instead
+of 25 match arms.
+
+### Migration steps
+
+1. Add `Cardinality` struct alongside existing enum (shadow type)
+2. Verify all 25 satisfaction cases pass with interval arithmetic
+3. Verify lattice laws with property tests
+4. Swap the real type, update call sites (`One` → `ONE`, etc.)
+5. Remove the enum
+6. Add `Value::List`
+7. Update execution engine input gathering
+8. Add coercion compiler pass
+
+### What changes per crate
+
+| Crate | Changes |
+|-------|---------|
+| `core/ir` | Replace enum, add algebra, update Port/Signature |
+| `core/exec` | Cardinality-aware input gathering, Value::List |
+| `core/testgen` | Use `test_cases()` (interface unchanged) |
+| `core/codegen` | Minimal — uses Port which carries cardinality |
+| `lib/*` | `Cardinality::One` → `Cardinality::ONE` (mechanical) |
 
 ## Tasks
 
-- [ ] Track 1: Cardinality-aware input gathering in execute.rs
-- [ ] Track 5: Add `Value::List` variant
-- [ ] Track 2: Cardinality algebra (join, meet, product, can_coerce_to)
-- [ ] Track 3: Compiler pass for safe coercion insertion
-- [ ] Track 4: Map semantics (auto-iteration) — scope TBD
+- [ ] Implement `Cardinality` struct with interval representation
+- [ ] Implement derived queries (allows_empty, is_list, etc.)
+- [ ] Implement `satisfies()` as interval containment
+- [ ] Implement lattice algebra (join, meet, product)
+- [ ] Implement `can_coerce_to()`
+- [ ] Property-based tests for algebraic laws
+- [ ] Serde compat (named strings + {min, max} fallback)
+- [ ] Add `Value::List` variant
+- [ ] Cardinality-aware input gathering in execute.rs
+- [ ] Coercion compiler pass
+- [ ] Map semantics design (Track D scope decision)
+- [ ] Embed cardinality in type system (Part 3)
+- [ ] Migrate call sites (One → ONE, etc.)
 - [ ] Migrate `MergeOutputs` to use engine-guaranteed list inputs
-- [ ] Migrate other ops that do defensive cardinality handling
-- [ ] Update testgen to generate cardinality edge cases
 
 ## Notes
 
-- Track 5 (Value::List) should land first — it's the runtime
-  representation that tracks 1 and 3 depend on.
-- Track 1 is the highest-impact change: it fixes fan-in and makes list
-  ports actually work.
-- Track 2 is pure algebra — no runtime changes, can land independently.
-- Track 3 depends on Track 2 (needs `can_coerce_to`).
-- Track 4 is a larger design decision. Auto-mapping changes how graphs
-  compose. Consider whether it should be implicit (APL-style) or require
-  explicit annotation (SQL-style GROUP BY / UNNEST).
-- The cardinality lattice is bounded (Zero bottom, ZeroOrMore top), which
-  means join and meet are always defined — no partial order issues.
+- The interval model is strictly more expressive: `[2, 5]` just works.
+  The enum can't express it without a new variant + match arms everywhere.
+- `satisfies()` as interval containment is O(1) with no branching on
+  variant count. The enum version is O(variants²).
+- The lattice laws (commutativity, associativity, absorption) are
+  provable from interval arithmetic. With the enum they're just hoped-for.
+- Product distributes over join: `a × (b ∨ c) = (a × b) ∨ (a × c)`.
+  This falls out naturally from min/max arithmetic.
+- The `Cardinality` struct models the same thing as regex quantifiers
+  `{min,max}`. This is well-understood theory.
 
 ## Related Files
 
-- `core/ir/src/types.rs` — Cardinality enum, satisfies()
-- `core/ir/src/contract.rs` — Contract tower, L1 extraction
-- `core/ir/src/type_lib.rs` — Container types, cardinality inference
-- `core/ir/src/type_registry.rs` — Type-driven cardinality inference
+- `core/ir/src/types.rs` — current Cardinality enum (to be replaced)
+- `core/ir/src/contract.rs` — contract tower, L1 extraction
+- `core/ir/src/type_lib.rs` — container types, cardinality inference
+- `core/ir/src/type_registry.rs` — type-driven cardinality inference
 - `core/ir/src/dag.rs` — Port, canonical_edge_order, fan_in_ports
 - `core/ir/src/builder.rs` — add_edge cardinality validation
-- `core/exec/src/execute.rs` — Input gathering (lines 429-438)
+- `core/exec/src/execute.rs` — input gathering (lines 429-438)
 - `core/ir/src/value.rs` — Value enum (needs List variant)
 - `lib/review/src/lib.rs` — MergeOutputs (current defensive pattern)
