@@ -12,23 +12,29 @@
 
 .PHONY: help codegen ensure-codegen build clean testgen testgen-check fmt-fix lint-fix test test-fix check check-fix clippy clippy-fix fmt fmt-check ci-yaml gist gist-dry gist-diff gist-diff-dry buck2 buck2-dry makegen makegen-dry deps deps-dry ci ci-dry bootstrap bootstrap-dry
 
-# Ensure codegen has run (upsert pattern: check stamp -> run if missing)
-ensure-codegen:
-	@if [ ! -f buck-out/gen/.codegen-stamp ]; then \
-		cargo run -p gunbc-codegen --release -- codegen && touch buck-out/gen/.codegen-stamp; \
-	fi
+# Codegen source tracking: rebuild generated files when sources change
+CODEGEN_SOURCES := $(shell find core/codegen/src core/ir/src -name '*.rs' 2>/dev/null)
+
+# Stamp file tracks codegen freshness - rebuilds when sources change
+buck-out/gen/.codegen-stamp: $(CODEGEN_SOURCES)
+	@mkdir -p buck-out/gen && cargo run -p gunbc-codegen --release -- codegen && touch buck-out/gen/.codegen-stamp
+
+# Ensure codegen is up-to-date (upsert: create if missing, update if stale)
+ensure-codegen: buck-out/gen/.codegen-stamp
 
 # Force regenerate CLIs from DAG entrypoints
 codegen:
 	@cargo run -p gunbc-codegen --release -- codegen
+	@mkdir -p buck-out/gen && touch buck-out/gen/.codegen-stamp
 
-# Full build transaction: codegen → cargo build → symlink
-build: ensure-codegen
+# Full build transaction: codegen → testgen → cargo build
+build: ensure-codegen testgen
 	@cargo build --all-targets
 
 # Rollback transaction: remove all generated artifacts
 clean:
 	@cargo run -p gunbc-codegen --release -- rollback
+	@rm -f buck-out/gen/.codegen-stamp
 
 # Regenerate tests from DAG structures and MockSpecs
 testgen:
@@ -87,7 +93,7 @@ lint-fix: ensure-codegen
 	@cargo clippy --fix --workspace --allow-dirty --allow-staged -- -D warnings
 
 # test: Run all tests
-test: build
+test: build testgen-check
 	@cargo test
 
 # test-fix: auto-fix then verify

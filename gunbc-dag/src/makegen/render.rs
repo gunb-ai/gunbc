@@ -149,21 +149,31 @@ fn render_makefile_content(registry: &ToolRegistry, config: &BuildConfig) -> Str
 fn render_core_targets(config: &BuildConfig) -> String {
     let mut output = String::new();
 
-    // Ensure codegen has run (upsert pattern: check stamp file -> create if missing)
-    // Uses a dedicated stamp file instead of checking for a specific tool's output
-    output.push_str("# Ensure codegen has run (upsert pattern: check stamp -> run if missing)\n");
-    output.push_str("ensure-codegen:\n");
-    output.push_str(&format!("{}@if [ ! -f buck-out/gen/.codegen-stamp ]; then \\\n", INDENT));
-    output.push_str(&format!(
-        "{}{}{} && touch buck-out/gen/.codegen-stamp; \\\n",
-        INDENT, INDENT, config.codegen.to_shell()
-    ));
-    output.push_str(&format!("{}fi\n\n", INDENT));
+    // Codegen source tracking: find all Rust sources that affect generated output.
+    // When any source in core/codegen or core/ir changes, the stamp becomes stale
+    // and Make will re-run codegen before building any dependent target.
+    output.push_str("# Codegen source tracking: rebuild generated files when sources change\n");
+    output.push_str("CODEGEN_SOURCES := $(shell find core/codegen/src core/ir/src -name '*.rs' 2>/dev/null)\n\n");
 
-    // Force regenerate CLIs from DAG entrypoints
+    // Stamp file as a real Make target with source dependencies.
+    // Make compares timestamps: if any source is newer than the stamp, codegen runs.
+    output.push_str("# Stamp file tracks codegen freshness - rebuilds when sources change\n");
+    output.push_str("buck-out/gen/.codegen-stamp: $(CODEGEN_SOURCES)\n");
+    output.push_str(&format!(
+        "{}@mkdir -p buck-out/gen && {} && touch buck-out/gen/.codegen-stamp\n\n",
+        INDENT, config.codegen.to_shell()
+    ));
+
+    // Ensure codegen is up-to-date (convenience alias for stamp dependency).
+    // Phony so Make always checks, but the real work is in the stamp target.
+    output.push_str("# Ensure codegen is up-to-date (upsert: create if missing, update if stale)\n");
+    output.push_str("ensure-codegen: buck-out/gen/.codegen-stamp\n\n");
+
+    // Force regenerate CLIs from DAG entrypoints (also updates stamp)
     output.push_str("# Force regenerate CLIs from DAG entrypoints\n");
     output.push_str("codegen:\n");
-    output.push_str(&format!("{}{}\n\n", INDENT, config.codegen_shell()));
+    output.push_str(&format!("{}{}\n", INDENT, config.codegen_shell()));
+    output.push_str(&format!("{}@mkdir -p buck-out/gen && touch buck-out/gen/.codegen-stamp\n\n", INDENT));
 
     // Full build transaction: codegen → testgen → cargo build → symlink
     output.push_str("# Full build transaction: codegen → testgen → cargo build\n");
@@ -174,10 +184,11 @@ fn render_core_targets(config: &BuildConfig) -> String {
     output.push_str("# Rollback transaction: remove all generated artifacts\n");
     output.push_str("clean:\n");
     output.push_str(&format!(
-        "{}@{} --release -- rollback\n\n",
+        "{}@{} --release -- rollback\n",
         INDENT,
         CargoInvocation::standalone("codegen").command(),
     ));
+    output.push_str(&format!("{}@rm -f buck-out/gen/.codegen-stamp\n\n", INDENT));
 
     // Testgen: regenerate tests from DAGs
     output.push_str("# Regenerate tests from DAG structures and MockSpecs\n");
@@ -529,6 +540,46 @@ mod tests {
         assert!(makefile.contains("codegen:"));
         assert!(makefile.contains("build: ensure-codegen testgen"));
         assert!(makefile.contains("clean:"));
+    }
+
+    #[test]
+    fn test_render_makefile_codegen_source_tracking() {
+        let registry = ToolRegistry::default_registry();
+        let makefile = render_makefile(&registry);
+
+        // Should track codegen and IR sources for staleness detection
+        assert!(
+            makefile.contains("CODEGEN_SOURCES"),
+            "should define CODEGEN_SOURCES variable"
+        );
+        assert!(
+            makefile.contains("$(shell find core/codegen/src core/ir/src -name '*.rs'"),
+            "should find .rs files in codegen and IR source dirs"
+        );
+
+        // Stamp file should depend on source files
+        assert!(
+            makefile.contains("buck-out/gen/.codegen-stamp: $(CODEGEN_SOURCES)"),
+            "stamp should depend on CODEGEN_SOURCES"
+        );
+
+        // ensure-codegen should depend on stamp (not use shell if-check)
+        assert!(
+            makefile.contains("ensure-codegen: buck-out/gen/.codegen-stamp"),
+            "ensure-codegen should depend on stamp file target"
+        );
+
+        // Force codegen should also update stamp
+        assert!(
+            makefile.contains("touch buck-out/gen/.codegen-stamp"),
+            "codegen should touch stamp after regenerating"
+        );
+
+        // Clean should remove stamp
+        assert!(
+            makefile.contains("rm -f buck-out/gen/.codegen-stamp"),
+            "clean should remove stamp file"
+        );
     }
 
     #[test]
