@@ -599,16 +599,64 @@ pub fn core_outputs() -> Vec<&'static str> {
     ]
 }
 
-/// Collect testgen targets from all tools that have testgen configured.
+/// All testgen targets — tools and libraries alike.
 ///
-/// This is for Makefile/CI generation — so they can auto-discover which
-/// tools produce generated tests. The actual test generation is driven by
-/// the `target!()` macro in `gunbc-dag/src/bin/testgen.rs`.
-pub fn tool_testgen_targets() -> Vec<TestgenTargetDef> {
-    all_tools()
+/// Tools get their testgen config from `ToolDef.testgen`.
+/// Library DAGs are registered directly here.
+///
+/// This is the single list for Makefile/CI generation to auto-discover
+/// which DAGs produce generated tests. The actual test generation is
+/// driven by the `target!()` macro in `gunbc-dag/src/bin/testgen.rs`.
+pub fn all_testgen_targets() -> Vec<TestgenTargetDef> {
+    let mut targets: Vec<TestgenTargetDef> = all_tools()
         .into_iter()
         .filter_map(|t| t.testgen)
-        .collect()
+        .collect();
+
+    // Library DAGs (not tools — no ToolDef, just testgen targets)
+    targets.extend(library_testgen_targets());
+
+    targets
+}
+
+/// Testgen targets for library DAGs (composable sub-DAGs that aren't standalone tools).
+///
+/// llm-ops has one DAG builder tested with four different MockSpecs.
+fn library_testgen_targets() -> Vec<TestgenTargetDef> {
+    vec![
+        TestgenTargetDef::new(
+            "llm-openai",
+            "lib/llm-ops/src/generated_tests.rs",
+            "llm_openai_generated_tests",
+        )
+        .dag_builder("crate::graph::build_chat_completion_graph()")
+        .mock_spec("crate::graph_mock::openai_mock_spec()")
+        .no_boundary_tests(),
+        TestgenTargetDef::new(
+            "llm-anthropic",
+            "lib/llm-ops/src/generated_tests_anthropic.rs",
+            "llm_anthropic_generated_tests",
+        )
+        .dag_builder("crate::graph::build_chat_completion_graph()")
+        .mock_spec("crate::graph_mock::anthropic_mock_spec()")
+        .no_boundary_tests(),
+        TestgenTargetDef::new(
+            "llm-code-review",
+            "lib/llm-ops/src/generated_tests_code_review.rs",
+            "llm_code_review_generated_tests",
+        )
+        .dag_builder("crate::graph::build_chat_completion_graph()")
+        .mock_spec("crate::graph_mock::code_review_mock_spec()")
+        .no_boundary_tests(),
+        TestgenTargetDef::new(
+            "llm-secrets",
+            "lib/llm-ops/src/generated_tests_secrets.rs",
+            "llm_secrets_generated_tests",
+        )
+        .dag_builder("crate::graph::build_chat_completion_graph()")
+        .mock_spec("crate::graph_mock::secret_api_key_mock_spec()")
+        .no_boundary_tests(),
+    ]
 }
 
 /// Get all cleanable artifacts from tools and core.

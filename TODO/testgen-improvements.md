@@ -259,16 +259,11 @@ generation can derive testgen targets automatically.
 
 - [x] Added `.testgen(TestgenTargetDef)` to bootstrap and makegen in `all_tools()`
 - [x] These configs are metadata-only (no function references)
-- [x] Added `tool_testgen_targets()` to collect testgen configs from all tools
-- [ ] Makefile generation reads `ToolDef.testgen` to auto-generate targets
+- [x] Added `all_testgen_targets()` — single list combining tool + library targets
+- [x] Library DAGs (llm-ops, 4 MockSpec variants) registered via `library_testgen_targets()`
+- [ ] Makefile generation reads `all_testgen_targets()` to auto-generate targets
 - [ ] CI generation reads it to know what to check
 - [x] testgen.rs remains the authority for actual generation (via `target!()`)
-
-**TODO 6.4: Registry for non-tool DAGs**
-- [ ] Library DAGs (llm-ops) need a `LibraryDagDef` or similar
-- [ ] Multi-mock: llm-ops has 4 MockSpec variants for 1 DAG builder
-- [ ] `all_testgen_dags()` collects from ToolDef.testgen + LibraryDagDef
-- [ ] Makefile/CI derive targets from this combined list
 
 **Design note — why two sites are unavoidable:**
 
