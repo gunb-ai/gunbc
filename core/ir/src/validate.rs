@@ -238,28 +238,28 @@ fn validate_single_subdag<T>(
     // Inverse check: inner entrypoints not exposed on parent
     let mut seen_entrypoint_names = std::collections::HashSet::new();
     for (_, name, _) in &entrypoints.entrypoint_ports {
-        if seen_entrypoint_names.insert(name.clone()) {
-            if !parent_node.inputs.iter().any(|p| p.name == *name) {
-                errors.push(SubDagError::UnexposedEntrypoint {
-                    node: parent_node.id.clone(),
-                    inner_port: name.clone(),
-                    parent_inputs: parent_node.inputs.iter().map(|p| p.name.clone()).collect(),
-                });
-            }
+        if seen_entrypoint_names.insert(name.clone())
+            && !parent_node.inputs.iter().any(|p| p.name == *name)
+        {
+            errors.push(SubDagError::UnexposedEntrypoint {
+                node: parent_node.id.clone(),
+                inner_port: name.clone(),
+                parent_inputs: parent_node.inputs.iter().map(|p| p.name.clone()).collect(),
+            });
         }
     }
 
     // Inverse check: inner boundaries not exposed on parent
     let mut seen_boundary_names = std::collections::HashSet::new();
     for (_, name) in &boundaries.boundary_ports {
-        if seen_boundary_names.insert(name.clone()) {
-            if !parent_node.outputs.iter().any(|p| p.name == *name) {
-                errors.push(SubDagError::UnexposedBoundary {
-                    node: parent_node.id.clone(),
-                    inner_port: name.clone(),
-                    parent_outputs: parent_node.outputs.iter().map(|p| p.name.clone()).collect(),
-                });
-            }
+        if seen_boundary_names.insert(name.clone())
+            && !parent_node.outputs.iter().any(|p| p.name == *name)
+        {
+            errors.push(SubDagError::UnexposedBoundary {
+                node: parent_node.id.clone(),
+                inner_port: name.clone(),
+                parent_outputs: parent_node.outputs.iter().map(|p| p.name.clone()).collect(),
+            });
         }
     }
 }
