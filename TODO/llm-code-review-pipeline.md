@@ -1,6 +1,6 @@
 # LLM Code Review Pipeline
 
-**Status**: Design
+**Status**: Tracks 2-6 implemented; Track 1 (Resource trait) still design
 **Date**: 2026-02-01
 
 ## North Star
@@ -92,35 +92,36 @@ These abstractions need to be designed together - changes in one affect the othe
 - [ ] How does this interact with existing `TransportOps`?
 - [ ] Caching/memoization at resource level?
 
-### Track 2: Blob Abstraction (`lib/blob/`)
-- [ ] `BlobSource` enum: Inline, File, GitBlob, S3, Http
-- [ ] `Blob` struct: source + data + meta
-- [ ] `BlobMeta`: size, hash, etag for caching
-- [ ] How do blobs flow through DAG edges?
-- [ ] Blob as Value variant vs Json serialization?
+### Track 2: Blob Abstraction (`lib/blob/`) — DONE
+- [x] `BlobSource` enum: Inline, File, GitBlob, S3, Http
+- [x] `Blob` struct: source + data + meta
+- [x] `BlobMeta`: size, hash, etag for caching
+- [x] How do blobs flow through DAG edges? → Json serialization via encode/decode
+- [x] Blob as Value variant vs Json serialization? → Json (BlobHandle.encode/decode)
 
-### Track 3: LLM Query Abstraction (`lib/llm-ops/`)
-- [ ] `LlmQueryOps`: PrepareQuery, ParseQuery
-- [ ] content + question + schema? → answer
-- [ ] Relationship to existing `PrepareChatRequest`/`ParseChatResponse`
-- [ ] Structured output schemas (JSON mode, tool use, etc.)
+### Track 3: LLM Query Abstraction (`lib/llm-ops/`) — DONE
+- [x] `LlmQueryOps`: PrepareSimpleRequest, ParseSimpleResponse
+- [x] content + question → answer
+- [x] Relationship to existing `PrepareChatRequest`/`ParseChatResponse` → higher-level wrapper
+- [ ] Structured output schemas (JSON mode, tool use, etc.) — future
 
-### Track 4: Review Domain (`lib/review/`)
-- [ ] `ReviewOps`: BuildQuestion, ParseFindings
-- [ ] Criteria → question formatting
-- [ ] Answer → findings parsing
-- [ ] How findings flow back for remediation
+### Track 4: Review Domain (`lib/review/`) — DONE
+- [x] `ReviewOps`: PrepareReviewPrompt, ParseReviewResponse, MergeOutputs, HashFinding, FormatDiffArtifact
+- [x] Criteria → question formatting
+- [x] Answer → findings parsing
+- [x] How findings flow back for remediation → CandidateRemediations type
 
-### Track 5: DAG Composition
-- [ ] How do phases compose as subdags?
-- [ ] Entrypoint/boundary detection with new abstractions
-- [ ] DryRun interception points
-- [ ] Parallel execution with resource access declarations
+### Track 5: DAG Composition — DONE
+- [x] ReviewPhase, InlineReview, DiffReviewPhase, MultiSourceReviewPhase builders
+- [x] Entrypoint/boundary detection with new abstractions
+- [x] DryRun interception via MockSpec (graph_mock.rs)
+- [ ] Parallel execution with resource access declarations — future
 
-### Track 6: Transport & I/O
-- [ ] Read vs Write classification
-- [ ] How Resource trait integrates with TransportOps::Execute
-- [ ] Inline sources (no I/O needed) - special case?
+### Track 6: CLI Integration — DONE
+- [x] `gunbc review` registered in codegen registry (--base-ref, --provider, --model, --dry-run)
+- [x] Default review criteria (correctness, security, performance, clarity)
+- [ ] Read vs Write classification — future (all review ops are read-only)
+- [ ] Integration tests against sample diff — future
 
 ### Open Questions
 

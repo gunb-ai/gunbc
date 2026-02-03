@@ -250,6 +250,7 @@ dependencies = [
  "gunbc-exec",
  "gunbc-ir",
  "gunbc-lib-blob",
+ "gunbc-lib-git-ops",
  "gunbc-lib-llm-ops",
  "gunbc-lib-transport",
  "gunbc-test",

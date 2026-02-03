@@ -21,6 +21,7 @@
 //! ```
 
 pub mod graph;
+pub mod graph_mock;
 
 use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::Value;
@@ -170,6 +171,38 @@ pub struct CandidateTask {
 }
 
 // ============================================================================
+// Pipeline Configuration
+// ============================================================================
+
+/// Build-time configuration for a review pipeline.
+///
+/// These values are baked into the DAG at construction time (like `GistMode`
+/// or `GistOps::PrepareRequest { public }`). They are NOT CLI flags — the
+/// pipeline owns these decisions.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReviewPipelineConfig {
+    /// LLM provider (e.g., "openai", "anthropic").
+    pub provider: String,
+    /// LLM model identifier (e.g., "gpt-4o", "claude-sonnet-4-20250514").
+    pub model: String,
+    /// Review criteria to apply.
+    pub criteria: Criteria,
+}
+
+impl ReviewPipelineConfig {
+    /// Default pipeline config for gunbc's own repo.
+    ///
+    /// TODO: Eventually load from repo config (e.g., `gunbc.toml`).
+    pub fn gunbc_default() -> Self {
+        Self {
+            provider: "openai".to_string(),
+            model: "gpt-4o".to_string(),
+            criteria: crate::graph_mock::default_criteria(),
+        }
+    }
+}
+
+// ============================================================================
 // ReviewOps
 // ============================================================================
 
@@ -178,6 +211,17 @@ pub struct CandidateTask {
 /// All operations are PURE - no I/O.
 #[derive(Debug, Clone)]
 pub enum ReviewOps {
+    /// Emit pipeline configuration as port values (zero-input config node).
+    ///
+    /// Follows the same pattern as `EnvOp::Ci` in the CI pipeline — a node
+    /// with no inputs that outputs build-time constants.
+    ///
+    /// Outputs:
+    /// - `provider`: String — LLM provider ID
+    /// - `model`: String — LLM model identifier
+    /// - `criteria`: Json — Criteria definition
+    LoadPipelineConfig(ReviewPipelineConfig),
+
     /// Build a review prompt from artifact and criteria.
     ///
     /// Inputs:
@@ -203,8 +247,12 @@ pub enum ReviewOps {
 
     /// Merge multiple ReviewOutputs into a ReviewBundle.
     ///
+    /// Accepts any cardinality: null/missing (0 sources), a single
+    /// ReviewOutput object (1 source), or an array of them (N sources).
+    /// Review sources can wire directly to merge without wrapper nodes.
+    ///
     /// Inputs:
-    /// - `outputs`: Json - array of ReviewOutput objects
+    /// - `outputs`: Json - null, single ReviewOutput, or array of them
     ///
     /// Outputs:
     /// - `bundle`: Json - merged ReviewBundle
@@ -220,15 +268,26 @@ pub enum ReviewOps {
     /// Outputs:
     /// - `finding_id`: String - stable hash ID
     HashFinding,
+
+    /// Format a diff_files map into a single artifact string for review.
+    ///
+    /// Inputs:
+    /// - `diff_files`: MapStrStr - map of filename → unified diff chunk
+    ///
+    /// Outputs:
+    /// - `artifact`: String - formatted diff text suitable for LLM review
+    FormatDiffArtifact,
 }
 
 impl Executable for ReviewOps {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         match self {
+            ReviewOps::LoadPipelineConfig(config) => execute_load_pipeline_config(config),
             ReviewOps::PrepareReviewPrompt => execute_prepare_review_prompt(inputs),
             ReviewOps::ParseReviewResponse => execute_parse_review_response(inputs),
             ReviewOps::MergeOutputs => execute_merge_outputs(inputs),
             ReviewOps::HashFinding => execute_hash_finding(inputs),
+            ReviewOps::FormatDiffArtifact => execute_format_diff_artifact(inputs),
         }
     }
 }
@@ -236,6 +295,19 @@ impl Executable for ReviewOps {
 // ============================================================================
 // Operation Implementations
 // ============================================================================
+
+fn execute_load_pipeline_config(
+    config: &ReviewPipelineConfig,
+) -> Result<HashMap<String, Value>, ExecError> {
+    let criteria_json = serde_json::to_value(&config.criteria)
+        .map_err(|e| ExecError::new(format!("failed to serialize criteria: {}", e)))?;
+
+    let mut out = HashMap::new();
+    out.insert("provider".to_string(), Value::Str(config.provider.clone()));
+    out.insert("model".to_string(), Value::Str(config.model.clone()));
+    out.insert("criteria".to_string(), Value::Json(criteria_json));
+    Ok(out)
+}
 
 fn execute_prepare_review_prompt(
     inputs: HashMap<String, Value>,
@@ -366,13 +438,19 @@ fn execute_parse_review_response(
 fn execute_merge_outputs(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    let outputs_json = inputs
-        .get("outputs")
-        .and_then(|v| v.as_json())
-        .ok_or_else(|| ExecError::new("missing or invalid 'outputs' input"))?;
-
-    let outputs: Vec<ReviewOutput> = serde_json::from_value(outputs_json.clone())
-        .map_err(|e| ExecError::new(format!("invalid 'outputs' JSON: {}", e)))?;
+    // Accept any cardinality: null/missing → 0, object → 1, array → N.
+    let outputs: Vec<ReviewOutput> = match inputs.get("outputs").and_then(|v| v.as_json()) {
+        None => vec![],
+        Some(j) if j.is_null() => vec![],
+        Some(j) if j.is_array() => serde_json::from_value(j.clone())
+            .map_err(|e| ExecError::new(format!("invalid 'outputs' array: {}", e)))?,
+        Some(j) if j.is_object() => {
+            let single: ReviewOutput = serde_json::from_value(j.clone())
+                .map_err(|e| ExecError::new(format!("invalid 'outputs' object: {}", e)))?;
+            vec![single]
+        }
+        Some(_) => return Err(ExecError::new("'outputs' must be null, a JSON object, or array")),
+    };
 
     // Merge findings, deduplicating by ID
     let mut seen_ids: HashMap<String, usize> = HashMap::new();
@@ -428,6 +506,31 @@ fn execute_hash_finding(
 
     let mut out = HashMap::new();
     out.insert("finding_id".to_string(), Value::Str(finding_id));
+    Ok(out)
+}
+
+fn execute_format_diff_artifact(
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    let diff_files = inputs
+        .get("diff_files")
+        .and_then(|v| v.as_map_str_str())
+        .ok_or_else(|| ExecError::new("missing or invalid 'diff_files' input"))?;
+
+    // Format each file's diff into a readable artifact
+    let mut parts = Vec::new();
+    for (file, diff_chunk) in &diff_files {
+        parts.push(format!("--- {}\n{}", file, diff_chunk));
+    }
+
+    let artifact = if parts.is_empty() {
+        "(no changes)".to_string()
+    } else {
+        parts.join("\n\n")
+    };
+
+    let mut out = HashMap::new();
+    out.insert("artifact".to_string(), Value::Str(artifact));
     Ok(out)
 }
 
@@ -840,6 +943,72 @@ Please fix these issues."#;
     }
 
     #[test]
+    fn test_merge_outputs_single_object() {
+        // MergeOutputs should accept a single ReviewOutput (not wrapped in array)
+        let output = ReviewOutput {
+            schema_version: "0.1.0".to_string(),
+            criteria_name: "security".to_string(),
+            source: "llm".to_string(),
+            findings: vec![Finding {
+                id: "abc123".to_string(),
+                check_id: "sql-injection".to_string(),
+                issue_key: "test1".to_string(),
+                location: Location::Unlocated,
+                observation: "Issue 1".to_string(),
+                candidate_fix: None,
+            }],
+            candidate_remediations: None,
+            summary: "LLM review".to_string(),
+        };
+
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "outputs".to_string(),
+            Value::Json(serde_json::to_value(&output).unwrap()),
+        );
+
+        let result = ReviewOps::MergeOutputs.execute(inputs).unwrap();
+
+        let bundle: ReviewBundle =
+            serde_json::from_value(result.get("bundle").unwrap().as_json().unwrap().clone())
+                .unwrap();
+
+        assert_eq!(bundle.outputs.len(), 1);
+        assert_eq!(bundle.merged_findings.len(), 1);
+        assert_eq!(bundle.outputs[0].source, "llm");
+    }
+
+    #[test]
+    fn test_merge_outputs_null() {
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "outputs".to_string(),
+            Value::Json(serde_json::Value::Null),
+        );
+
+        let result = ReviewOps::MergeOutputs.execute(inputs).unwrap();
+        let bundle: ReviewBundle =
+            serde_json::from_value(result.get("bundle").unwrap().as_json().unwrap().clone())
+                .unwrap();
+
+        assert_eq!(bundle.outputs.len(), 0);
+        assert_eq!(bundle.merged_findings.len(), 0);
+    }
+
+    #[test]
+    fn test_merge_outputs_missing() {
+        let inputs = HashMap::new();
+
+        let result = ReviewOps::MergeOutputs.execute(inputs).unwrap();
+        let bundle: ReviewBundle =
+            serde_json::from_value(result.get("bundle").unwrap().as_json().unwrap().clone())
+                .unwrap();
+
+        assert_eq!(bundle.outputs.len(), 0);
+        assert_eq!(bundle.merged_findings.len(), 0);
+    }
+
+    #[test]
     fn test_merge_outputs_with_conflict() {
         let finding = Finding {
             id: "same-id".to_string(),
@@ -994,5 +1163,48 @@ Please fix these issues."#;
     fn test_review_output_schema_version() {
         let output = ReviewOutput::new("test".to_string(), "llm".to_string());
         assert_eq!(output.schema_version, ReviewOutput::SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn test_format_diff_artifact() {
+        use std::collections::BTreeMap;
+
+        let mut diff_files = BTreeMap::new();
+        diff_files.insert(
+            "src/main.rs".to_string(),
+            "@@ -1,3 +1,4 @@\n fn main() {\n+    println!(\"hello\");\n }".to_string(),
+        );
+        diff_files.insert(
+            "src/lib.rs".to_string(),
+            "@@ -1 +1,2 @@\n pub fn foo() {}\n+pub fn bar() {}".to_string(),
+        );
+
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "diff_files".to_string(),
+            Value::MapStrStr(diff_files),
+        );
+
+        let result = ReviewOps::FormatDiffArtifact.execute(inputs).unwrap();
+        let artifact = result.get("artifact").unwrap().as_str().unwrap();
+
+        assert!(artifact.contains("src/main.rs"));
+        assert!(artifact.contains("src/lib.rs"));
+        assert!(artifact.contains("println!"));
+    }
+
+    #[test]
+    fn test_format_diff_artifact_empty() {
+        use std::collections::BTreeMap;
+
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "diff_files".to_string(),
+            Value::MapStrStr(BTreeMap::new()),
+        );
+
+        let result = ReviewOps::FormatDiffArtifact.execute(inputs).unwrap();
+        let artifact = result.get("artifact").unwrap().as_str().unwrap();
+        assert_eq!(artifact, "(no changes)");
     }
 }
