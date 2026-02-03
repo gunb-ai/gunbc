@@ -793,7 +793,7 @@ fn makegen_dag() -> DagDef {
         .node(
             NodeDef::new("load_registry")
                 .output(PortDef::scalar("tool_count", "Int"))
-                .output(PortDef::list_nonempty("tool_names", "List"))
+                .output(PortDef::list_nonempty("tool_names", "String"))
                 .output(PortDef::scalar("registry", "Json"))
                 .op("", "MakegenOp", "MakegenOp::LoadRegistry")
         )
