@@ -28,6 +28,18 @@ pub enum SubDagError {
         port: PortName,
         available: Vec<PortName>,
     },
+    /// Inner entrypoint has no matching parent input port.
+    UnexposedEntrypoint {
+        node: NodeId,
+        inner_port: PortName,
+        parent_inputs: Vec<PortName>,
+    },
+    /// Inner boundary has no matching parent output port.
+    UnexposedBoundary {
+        node: NodeId,
+        inner_port: PortName,
+        parent_outputs: Vec<PortName>,
+    },
     /// Type mismatch between parent port and inner port.
     TypeMismatch {
         node: NodeId,
@@ -76,6 +88,22 @@ impl fmt::Display for SubDagError {
                     "SubDag '{}': output port '{}' has no matching boundary in inner DAG (available: [{}])",
                     node, port,
                     available.iter().map(|p| p.0.as_str()).collect::<Vec<_>>().join(", ")
+                )
+            }
+            SubDagError::UnexposedEntrypoint { node, inner_port, parent_inputs } => {
+                write!(
+                    f,
+                    "SubDag '{}': inner entrypoint '{}' has no matching parent input port (parent inputs: [{}])",
+                    node, inner_port,
+                    parent_inputs.iter().map(|p| p.0.as_str()).collect::<Vec<_>>().join(", ")
+                )
+            }
+            SubDagError::UnexposedBoundary { node, inner_port, parent_outputs } => {
+                write!(
+                    f,
+                    "SubDag '{}': inner boundary '{}' has no matching parent output port (parent outputs: [{}])",
+                    node, inner_port,
+                    parent_outputs.iter().map(|p| p.0.as_str()).collect::<Vec<_>>().join(", ")
                 )
             }
             SubDagError::TypeMismatch { node, port, direction, parent_type, inner_type } => {
@@ -206,6 +234,34 @@ fn validate_single_subdag<T>(
             }
         }
     }
+
+    // Inverse check: inner entrypoints not exposed on parent
+    let mut seen_entrypoint_names = std::collections::HashSet::new();
+    for (_, name, _) in &entrypoints.entrypoint_ports {
+        if seen_entrypoint_names.insert(name.clone()) {
+            if !parent_node.inputs.iter().any(|p| p.name == *name) {
+                errors.push(SubDagError::UnexposedEntrypoint {
+                    node: parent_node.id.clone(),
+                    inner_port: name.clone(),
+                    parent_inputs: parent_node.inputs.iter().map(|p| p.name.clone()).collect(),
+                });
+            }
+        }
+    }
+
+    // Inverse check: inner boundaries not exposed on parent
+    let mut seen_boundary_names = std::collections::HashSet::new();
+    for (_, name) in &boundaries.boundary_ports {
+        if seen_boundary_names.insert(name.clone()) {
+            if !parent_node.outputs.iter().any(|p| p.name == *name) {
+                errors.push(SubDagError::UnexposedBoundary {
+                    node: parent_node.id.clone(),
+                    inner_port: name.clone(),
+                    parent_outputs: parent_node.outputs.iter().map(|p| p.name.clone()).collect(),
+                });
+            }
+        }
+    }
 }
 
 fn check_type_match(
@@ -304,8 +360,10 @@ mod tests {
         dag.add_node(bad_node);
 
         let errors = validate_subdag_interfaces(&dag);
-        assert_eq!(errors.len(), 1);
-        assert!(matches!(&errors[0], SubDagError::NoInnerEntrypoint { port, .. } if port.0 == "data"));
+        // 2 errors: parent "data" not in inner + inner "config" not on parent
+        assert_eq!(errors.len(), 2, "expected 2 errors, got: {:?}", errors);
+        assert!(errors.iter().any(|e| matches!(e, SubDagError::NoInnerEntrypoint { port, .. } if port.0 == "data")));
+        assert!(errors.iter().any(|e| matches!(e, SubDagError::UnexposedEntrypoint { inner_port, .. } if inner_port.0 == "config")));
     }
 
     #[test]
@@ -330,8 +388,10 @@ mod tests {
         dag.add_node(bad_node);
 
         let errors = validate_subdag_interfaces(&dag);
-        assert_eq!(errors.len(), 1);
-        assert!(matches!(&errors[0], SubDagError::NoInnerBoundary { port, .. } if port.0 == "result"));
+        // 2 errors: parent "result" not in inner + inner "output" not on parent
+        assert_eq!(errors.len(), 2, "expected 2 errors, got: {:?}", errors);
+        assert!(errors.iter().any(|e| matches!(e, SubDagError::NoInnerBoundary { port, .. } if port.0 == "result")));
+        assert!(errors.iter().any(|e| matches!(e, SubDagError::UnexposedBoundary { inner_port, .. } if inner_port.0 == "output")));
     }
 
     #[test]
@@ -517,6 +577,66 @@ mod tests {
 
         let errors = validate_subdag_interfaces(&dag);
         assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn test_unexposed_entrypoint_detected() {
+        // Inner DAG has entrypoints that the parent doesn't expose
+        let mut inner: Dag<()> = Dag::new();
+        inner.add_node(Node::opaque(
+            "worker",
+            vec![port("data", "String"), port("config", "String")],
+            vec![port("result", "String")],
+            (),
+        ));
+
+        // Parent only exposes "data", missing "config"
+        let bad_node = Node {
+            id: NodeId::new("wrapper"),
+            inputs: vec![port("data", "String")],
+            outputs: vec![port("result", "String")],
+            body: NodeBody::SubDag(inner),
+        };
+
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(bad_node);
+
+        let errors = validate_subdag_interfaces(&dag);
+        assert_eq!(errors.len(), 1, "expected 1 error, got: {:?}", errors);
+        assert!(matches!(
+            &errors[0],
+            SubDagError::UnexposedEntrypoint { inner_port, .. } if inner_port.0 == "config"
+        ));
+    }
+
+    #[test]
+    fn test_unexposed_boundary_detected() {
+        // Inner DAG has boundaries that the parent doesn't expose
+        let mut inner: Dag<()> = Dag::new();
+        inner.add_node(Node::opaque(
+            "worker",
+            vec![port("data", "String")],
+            vec![port("result", "String"), port("log", "String")],
+            (),
+        ));
+
+        // Parent only exposes "result", missing "log"
+        let bad_node = Node {
+            id: NodeId::new("wrapper"),
+            inputs: vec![port("data", "String")],
+            outputs: vec![port("result", "String")],
+            body: NodeBody::SubDag(inner),
+        };
+
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(bad_node);
+
+        let errors = validate_subdag_interfaces(&dag);
+        assert_eq!(errors.len(), 1, "expected 1 error, got: {:?}", errors);
+        assert!(matches!(
+            &errors[0],
+            SubDagError::UnexposedBoundary { inner_port, .. } if inner_port.0 == "log"
+        ));
     }
 
     #[test]
