@@ -13,6 +13,7 @@
 use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::{build::*, Dag, Node, Value};
 use gunbc_lib_blob::BlobOps;
+use gunbc_lib_git_ops::GitOps;
 use gunbc_lib_llm_ops::LlmOps;
 use gunbc_lib_transport::TransportOps;
 use std::collections::HashMap;
@@ -30,6 +31,8 @@ use crate::ReviewOps;
 pub enum ReviewGraphOp {
     /// Blob acquisition operations (PURE)
     Blob(BlobOps),
+    /// Git operations (PURE)
+    Git(GitOps),
     /// Review-specific operations (PURE)
     Review(ReviewOps),
     /// LLM chat operations (PURE)
@@ -42,6 +45,7 @@ impl Executable for ReviewGraphOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         match self {
             ReviewGraphOp::Blob(op) => op.execute(inputs),
+            ReviewGraphOp::Git(op) => op.execute(inputs),
             ReviewGraphOp::Review(op) => op.execute(inputs),
             ReviewGraphOp::Llm(op) => op.execute(inputs),
             ReviewGraphOp::Transport(op) => op.execute(inputs),
@@ -326,6 +330,342 @@ pub fn build_inline_review_graph() -> Dag<ReviewGraphOp> {
 }
 
 // ============================================================================
+// DiffReviewPhase DAG Builder (Track 5.2)
+// ============================================================================
+
+/// Build a DiffReviewPhase DAG.
+///
+/// Composes GitOps::PrepareDiff → Execute → ParseDiff with an inline
+/// review phase. Reviews the unified diff of the current branch against
+/// a base ref.
+///
+/// ## Entrypoints (unconnected inputs):
+/// - `prepare_diff.base_ref` (optional): String — base ref, defaults to "main"
+/// - `prepare_diff.repo_path` (optional): String — repo path, defaults to "."
+/// - `prepare_prompt.criteria`: Json — Criteria definition
+/// - `prepare_llm.provider`: String — LLM provider ID
+/// - `prepare_llm.model`: String — LLM model identifier
+///
+/// ## Boundaries (unconnected outputs):
+/// - `parse_response.output`: Json — ReviewOutput
+/// - `parse_response.errors`: Json — Parse errors array
+/// - `parse_diff.stats`: String — Diff statistics
+///
+/// ## Internal Flow:
+/// ```text
+/// prepare_diff → [execute_diff] → parse_diff
+///                                     ↓ (diff_text)
+///                              prepare_prompt
+///                                     ↓
+///                              prepare_llm → [execute_llm] → parse_llm
+///                                                                ↓
+///                                                         parse_response
+/// ```
+///
+/// I/O Classification:
+/// - Two TransportOps::Execute calls: git diff (read), LLM (read)
+/// - Phase overall: Read-only
+pub fn build_diff_review_graph() -> Dag<ReviewGraphOp> {
+    build_diff_review_graph_with("main", &[])
+}
+
+/// Build a DiffReviewPhase DAG with a custom default base ref and extensions.
+pub fn build_diff_review_graph_with(
+    default_base_ref: &str,
+    extensions: &[String],
+) -> Dag<ReviewGraphOp> {
+    let mut dag = Dag::new();
+
+    // ========================================================================
+    // Git Diff Acquisition
+    // ========================================================================
+
+    // Node 1: PrepareDiff - builds git diff request
+    dag.add_node(Node::opaque(
+        "prepare_diff",
+        vec![
+            optional("base_ref", "String"),
+            optional("repo_path", "String"),
+        ],
+        vec![port("request", "TransportRequest")],
+        ReviewGraphOp::Git(GitOps::PrepareDiff {
+            base_ref: default_base_ref.to_string(),
+            extensions: extensions.to_vec(),
+        }),
+    ));
+
+    // Node 2: Execute git diff (I/O boundary)
+    dag.add_node(Node::opaque(
+        "execute_diff",
+        vec![port("request", "TransportRequest")],
+        vec![port("response", "TransportResponse")],
+        ReviewGraphOp::Transport(TransportOps::Execute),
+    ));
+
+    // Node 3: ParseDiff - extracts diff content
+    dag.add_node(Node::opaque(
+        "parse_diff",
+        vec![port("response", "TransportResponse")],
+        vec![
+            port("diff_files", "MapStrStr"),
+            port("stats", "String"),
+        ],
+        ReviewGraphOp::Git(GitOps::ParseDiff),
+    ));
+
+    // ========================================================================
+    // Diff → Artifact Formatting
+    // ========================================================================
+
+    // Node 4: FormatDiffArtifact - formats diff_files map into a single string
+    // for the review prompt. This is a pure transform.
+    dag.add_node(Node::opaque(
+        "format_artifact",
+        vec![port("diff_files", "MapStrStr")],
+        vec![port("artifact", "String")],
+        ReviewGraphOp::Review(ReviewOps::FormatDiffArtifact),
+    ));
+
+    // ========================================================================
+    // Review Prompt Building
+    // ========================================================================
+
+    // Node 5: PrepareReviewPrompt
+    dag.add_node(Node::opaque(
+        "prepare_prompt",
+        vec![
+            port("artifact", "String"),
+            port("criteria", "Json"),
+            optional("context", "String"),
+        ],
+        vec![
+            port("question", "String"),
+            port("system_prompt", "String"),
+        ],
+        ReviewGraphOp::Review(ReviewOps::PrepareReviewPrompt),
+    ));
+
+    // ========================================================================
+    // LLM Interaction
+    // ========================================================================
+
+    // Node 6: PrepareSimpleRequest
+    dag.add_node(Node::opaque(
+        "prepare_llm",
+        vec![
+            port("content", "String"),
+            port("question", "String"),
+            port("provider", "String"),
+            port("model", "String"),
+            optional("system_prompt", "String"),
+        ],
+        vec![
+            port("request", "TransportRequest"),
+            port("provider", "String"),
+        ],
+        ReviewGraphOp::Llm(LlmOps::PrepareSimpleRequest),
+    ));
+
+    // Node 7: Execute LLM call (I/O boundary)
+    dag.add_node(Node::opaque(
+        "execute_llm",
+        vec![port("request", "TransportRequest")],
+        vec![port("response", "TransportResponse")],
+        ReviewGraphOp::Transport(TransportOps::Execute),
+    ));
+
+    // Node 8: ParseSimpleResponse
+    dag.add_node(Node::opaque(
+        "parse_llm",
+        vec![
+            port("provider", "String"),
+            port("response", "TransportResponse"),
+        ],
+        vec![port("answer", "String")],
+        ReviewGraphOp::Llm(LlmOps::ParseSimpleResponse),
+    ));
+
+    // ========================================================================
+    // Review Response Parsing
+    // ========================================================================
+
+    // Node 9: ParseReviewResponse
+    dag.add_node(Node::opaque(
+        "parse_response",
+        vec![
+            port("answer", "String"),
+            port("criteria", "Json"),
+        ],
+        vec![
+            port("output", "Json"),
+            port("errors", "Json"),
+        ],
+        ReviewGraphOp::Review(ReviewOps::ParseReviewResponse),
+    ));
+
+    // ========================================================================
+    // Edges
+    // ========================================================================
+
+    // Git diff flow
+    dag.add_edge(edge("prepare_diff", "request", "execute_diff", "request"));
+    dag.add_edge(edge("execute_diff", "response", "parse_diff", "response"));
+
+    // Diff → artifact formatting
+    dag.add_edge(edge("parse_diff", "diff_files", "format_artifact", "diff_files"));
+
+    // Artifact → review prompt
+    dag.add_edge(edge("format_artifact", "artifact", "prepare_prompt", "artifact"));
+
+    // Artifact → LLM content (the diff text is what we send to the LLM)
+    dag.add_edge(edge("format_artifact", "artifact", "prepare_llm", "content"));
+
+    // LLM flow
+    dag.add_edge(edge("prepare_prompt", "question", "prepare_llm", "question"));
+    dag.add_edge(edge("prepare_prompt", "system_prompt", "prepare_llm", "system_prompt"));
+    dag.add_edge(edge("prepare_llm", "request", "execute_llm", "request"));
+    dag.add_edge(edge("execute_llm", "response", "parse_llm", "response"));
+    dag.add_edge(edge("prepare_llm", "provider", "parse_llm", "provider"));
+
+    // Response parsing
+    dag.add_edge(edge("parse_llm", "answer", "parse_response", "answer"));
+    // criteria flows to both prepare_prompt and parse_response (entrypoint)
+
+    dag
+}
+
+// ============================================================================
+// MultiSourceReviewPhase DAG Builder (Track 5.3)
+// ============================================================================
+
+/// Build a MultiSourceReviewPhase DAG.
+///
+/// Performs a review using LLM analysis, then merges outputs.
+/// This is designed to be extended with additional review sources
+/// (cargo check, clippy) as separate sub-DAGs in the future.
+///
+/// ## Entrypoints (unconnected inputs):
+/// - `prepare_prompt.artifact`: String — content to review
+/// - `prepare_prompt.criteria`: Json — Criteria definition
+/// - `prepare_llm.provider`: String — LLM provider ID
+/// - `prepare_llm.model`: String — LLM model identifier
+///
+/// ## Boundaries (unconnected outputs):
+/// - `merge.bundle`: Json — ReviewBundle with merged findings
+/// - `merge.conflicts`: Json — Finding ID conflicts
+///
+/// ## Internal Flow:
+/// ```text
+///                  ┌──▶ [LLM Review] ──────┐
+///  artifact ───────┤                        ▼
+///                  └──(future sources)──▶ [MergeOutputs]
+/// ```
+pub fn build_multi_source_review_graph() -> Dag<ReviewGraphOp> {
+    let mut dag = Dag::new();
+
+    // ========================================================================
+    // LLM Review Source (source 1)
+    // ========================================================================
+
+    // Node 1: PrepareReviewPrompt
+    dag.add_node(Node::opaque(
+        "prepare_prompt",
+        vec![
+            port("artifact", "String"),
+            port("criteria", "Json"),
+            optional("context", "String"),
+        ],
+        vec![
+            port("question", "String"),
+            port("system_prompt", "String"),
+        ],
+        ReviewGraphOp::Review(ReviewOps::PrepareReviewPrompt),
+    ));
+
+    // Node 2: PrepareSimpleRequest
+    dag.add_node(Node::opaque(
+        "prepare_llm",
+        vec![
+            port("content", "String"),
+            port("question", "String"),
+            port("provider", "String"),
+            port("model", "String"),
+            optional("system_prompt", "String"),
+        ],
+        vec![
+            port("request", "TransportRequest"),
+            port("provider", "String"),
+        ],
+        ReviewGraphOp::Llm(LlmOps::PrepareSimpleRequest),
+    ));
+
+    // Node 3: Execute LLM (I/O boundary)
+    dag.add_node(Node::opaque(
+        "execute_llm",
+        vec![port("request", "TransportRequest")],
+        vec![port("response", "TransportResponse")],
+        ReviewGraphOp::Transport(TransportOps::Execute),
+    ));
+
+    // Node 4: ParseSimpleResponse
+    dag.add_node(Node::opaque(
+        "parse_llm",
+        vec![
+            port("provider", "String"),
+            port("response", "TransportResponse"),
+        ],
+        vec![port("answer", "String")],
+        ReviewGraphOp::Llm(LlmOps::ParseSimpleResponse),
+    ));
+
+    // Node 5: ParseReviewResponse
+    dag.add_node(Node::opaque(
+        "parse_response",
+        vec![
+            port("answer", "String"),
+            port("criteria", "Json"),
+        ],
+        vec![
+            port("output", "Json"),
+            port("errors", "Json"),
+        ],
+        ReviewGraphOp::Review(ReviewOps::ParseReviewResponse),
+    ));
+
+    // ========================================================================
+    // Merge (combines sources)
+    // ========================================================================
+
+    // Node 6: MergeOutputs - merges all review outputs into a bundle
+    dag.add_node(Node::opaque(
+        "merge",
+        vec![port("outputs", "Json")],
+        vec![
+            port("bundle", "Json"),
+            port("conflicts", "Json"),
+        ],
+        ReviewGraphOp::Review(ReviewOps::MergeOutputs),
+    ));
+
+    // ========================================================================
+    // Edges
+    // ========================================================================
+
+    // LLM review flow
+    dag.add_edge(edge("prepare_prompt", "question", "prepare_llm", "question"));
+    dag.add_edge(edge("prepare_prompt", "system_prompt", "prepare_llm", "system_prompt"));
+    dag.add_edge(edge("prepare_llm", "request", "execute_llm", "request"));
+    dag.add_edge(edge("execute_llm", "response", "parse_llm", "response"));
+    dag.add_edge(edge("prepare_llm", "provider", "parse_llm", "provider"));
+    dag.add_edge(edge("parse_llm", "answer", "parse_response", "answer"));
+
+    // Review output → merge
+    dag.add_edge(edge("parse_response", "output", "merge", "outputs"));
+
+    dag
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 
@@ -423,6 +763,7 @@ mod tests {
         // Test that all ops can be executed (basic smoke test)
         let ops = vec![
             ReviewGraphOp::Blob(BlobOps::PrepareFetch),
+            ReviewGraphOp::Git(GitOps::ParseDiff),
             ReviewGraphOp::Review(ReviewOps::HashFinding),
             ReviewGraphOp::Llm(LlmOps::PrepareSimpleRequest),
             ReviewGraphOp::Transport(TransportOps::Execute),
@@ -434,5 +775,114 @@ mod tests {
             let result = op.execute(HashMap::new());
             assert!(result.is_err(), "should fail with empty inputs");
         }
+    }
+
+    // ========================================================================
+    // DiffReviewPhase tests
+    // ========================================================================
+
+    #[test]
+    fn test_diff_review_graph_structure() {
+        let dag = build_diff_review_graph();
+        // 9 nodes: prepare_diff, execute_diff, parse_diff, format_artifact,
+        //          prepare_prompt, prepare_llm, execute_llm, parse_llm, parse_response
+        assert_eq!(dag.nodes.len(), 9);
+    }
+
+    #[test]
+    fn test_diff_review_graph_boundaries() {
+        let dag = build_diff_review_graph();
+        let boundaries = detect_boundaries(&dag);
+
+        assert!(
+            boundaries.is_boundary_node(&"parse_response".into()),
+            "parse_response should be a boundary"
+        );
+
+        // stats from parse_diff is also an unconnected output
+        assert!(
+            boundaries.is_boundary_node(&"parse_diff".into()),
+            "parse_diff.stats should be a boundary"
+        );
+    }
+
+    #[test]
+    fn test_diff_review_graph_entrypoints() {
+        let dag = build_diff_review_graph();
+        let entrypoints = detect_entrypoints(&dag);
+
+        // prepare_diff has base_ref, repo_path as entrypoints (optional)
+        assert!(
+            entrypoints.is_entrypoint_node(&"prepare_diff".into()),
+            "prepare_diff should have entrypoints"
+        );
+
+        // prepare_prompt.criteria is an entrypoint
+        assert!(
+            entrypoints.is_entrypoint_node(&"prepare_prompt".into()),
+            "prepare_prompt should have entrypoints"
+        );
+
+        // prepare_llm has provider/model as entrypoints
+        assert!(
+            entrypoints.is_entrypoint_node(&"prepare_llm".into()),
+            "prepare_llm should have entrypoints"
+        );
+    }
+
+    #[test]
+    fn test_diff_review_graph_has_two_transport_boundaries() {
+        let dag = build_diff_review_graph();
+        let transport_nodes: Vec<_> = dag
+            .nodes
+            .iter()
+            .filter(|n| matches!(n.body, gunbc_ir::NodeBody::Opaque(ReviewGraphOp::Transport(_))))
+            .collect();
+        assert_eq!(transport_nodes.len(), 2, "should have execute_diff and execute_llm");
+    }
+
+    #[test]
+    fn test_diff_review_graph_with_custom_ref() {
+        let dag = build_diff_review_graph_with("develop", &["rs".to_string()]);
+        assert_eq!(dag.nodes.len(), 9);
+    }
+
+    // ========================================================================
+    // MultiSourceReviewPhase tests
+    // ========================================================================
+
+    #[test]
+    fn test_multi_source_review_graph_structure() {
+        let dag = build_multi_source_review_graph();
+        // 6 nodes: prepare_prompt, prepare_llm, execute_llm, parse_llm,
+        //          parse_response, merge
+        assert_eq!(dag.nodes.len(), 6);
+    }
+
+    #[test]
+    fn test_multi_source_review_graph_boundaries() {
+        let dag = build_multi_source_review_graph();
+        let boundaries = detect_boundaries(&dag);
+
+        assert!(
+            boundaries.is_boundary_node(&"merge".into()),
+            "merge should be a boundary (bundle + conflicts outputs)"
+        );
+    }
+
+    #[test]
+    fn test_multi_source_review_graph_entrypoints() {
+        let dag = build_multi_source_review_graph();
+        let entrypoints = detect_entrypoints(&dag);
+
+        assert!(
+            entrypoints.is_entrypoint_node(&"prepare_prompt".into()),
+            "prepare_prompt should have entrypoints (artifact, criteria)"
+        );
+
+        assert!(
+            entrypoints.is_entrypoint_node(&"prepare_llm".into()),
+            "prepare_llm should have entrypoints (provider, model, content)"
+        );
     }
 }

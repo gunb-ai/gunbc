@@ -21,6 +21,7 @@
 //! ```
 
 pub mod graph;
+pub mod graph_mock;
 
 use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::Value;
@@ -220,6 +221,15 @@ pub enum ReviewOps {
     /// Outputs:
     /// - `finding_id`: String - stable hash ID
     HashFinding,
+
+    /// Format a diff_files map into a single artifact string for review.
+    ///
+    /// Inputs:
+    /// - `diff_files`: MapStrStr - map of filename → unified diff chunk
+    ///
+    /// Outputs:
+    /// - `artifact`: String - formatted diff text suitable for LLM review
+    FormatDiffArtifact,
 }
 
 impl Executable for ReviewOps {
@@ -229,6 +239,7 @@ impl Executable for ReviewOps {
             ReviewOps::ParseReviewResponse => execute_parse_review_response(inputs),
             ReviewOps::MergeOutputs => execute_merge_outputs(inputs),
             ReviewOps::HashFinding => execute_hash_finding(inputs),
+            ReviewOps::FormatDiffArtifact => execute_format_diff_artifact(inputs),
         }
     }
 }
@@ -428,6 +439,31 @@ fn execute_hash_finding(
 
     let mut out = HashMap::new();
     out.insert("finding_id".to_string(), Value::Str(finding_id));
+    Ok(out)
+}
+
+fn execute_format_diff_artifact(
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    let diff_files = inputs
+        .get("diff_files")
+        .and_then(|v| v.as_map_str_str())
+        .ok_or_else(|| ExecError::new("missing or invalid 'diff_files' input"))?;
+
+    // Format each file's diff into a readable artifact
+    let mut parts = Vec::new();
+    for (file, diff_chunk) in &diff_files {
+        parts.push(format!("--- {}\n{}", file, diff_chunk));
+    }
+
+    let artifact = if parts.is_empty() {
+        "(no changes)".to_string()
+    } else {
+        parts.join("\n\n")
+    };
+
+    let mut out = HashMap::new();
+    out.insert("artifact".to_string(), Value::Str(artifact));
     Ok(out)
 }
 
@@ -994,5 +1030,48 @@ Please fix these issues."#;
     fn test_review_output_schema_version() {
         let output = ReviewOutput::new("test".to_string(), "llm".to_string());
         assert_eq!(output.schema_version, ReviewOutput::SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn test_format_diff_artifact() {
+        use std::collections::BTreeMap;
+
+        let mut diff_files = BTreeMap::new();
+        diff_files.insert(
+            "src/main.rs".to_string(),
+            "@@ -1,3 +1,4 @@\n fn main() {\n+    println!(\"hello\");\n }".to_string(),
+        );
+        diff_files.insert(
+            "src/lib.rs".to_string(),
+            "@@ -1 +1,2 @@\n pub fn foo() {}\n+pub fn bar() {}".to_string(),
+        );
+
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "diff_files".to_string(),
+            Value::MapStrStr(diff_files),
+        );
+
+        let result = ReviewOps::FormatDiffArtifact.execute(inputs).unwrap();
+        let artifact = result.get("artifact").unwrap().as_str().unwrap();
+
+        assert!(artifact.contains("src/main.rs"));
+        assert!(artifact.contains("src/lib.rs"));
+        assert!(artifact.contains("println!"));
+    }
+
+    #[test]
+    fn test_format_diff_artifact_empty() {
+        use std::collections::BTreeMap;
+
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "diff_files".to_string(),
+            Value::MapStrStr(BTreeMap::new()),
+        );
+
+        let result = ReviewOps::FormatDiffArtifact.execute(inputs).unwrap();
+        let artifact = result.get("artifact").unwrap().as_str().unwrap();
+        assert_eq!(artifact, "(no changes)");
     }
 }

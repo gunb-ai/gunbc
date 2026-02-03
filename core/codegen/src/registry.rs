@@ -557,6 +557,51 @@ pub fn all_tools() -> Vec<ToolDef> {
             ],
         ),
 
+        // gunbc-review (diff review using LLM — uses DagBuilder)
+        ToolDef::new(
+            "gunbc-lib-review",
+            "review",
+            "Review code changes using LLM analysis",
+            "build_diff_review_graph_with",
+            "&base_ref, &extensions",
+        )
+        .import("use gunbc_lib_review::graph::{build_diff_review_graph_with};")
+        .entrypoint(
+            CliEntrypoint::new("base_ref", "String")
+                .short('b')
+                .default("main")
+                .help("Base branch for diff (default: main)"),
+        )
+        .entrypoint(
+            CliEntrypoint::new("extensions", "StrList")
+                .short('e')
+                .help("File extensions to include (can be repeated)"),
+        )
+        .entrypoint(
+            CliEntrypoint::new("provider", "String")
+                .short('P')
+                .default("openai")
+                .help("LLM provider (openai, anthropic)"),
+        )
+        .entrypoint(
+            CliEntrypoint::new("model", "String")
+                .short('m')
+                .default("gpt-4o")
+                .help("LLM model identifier"),
+        )
+        .boundary(
+            "execute_diff",
+            vec![
+                ("response", "Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: \"diff --git a/src/main.rs b/src/main.rs\\n--- a/src/main.rs\\n+++ b/src/main.rs\\n@@ -1 +1,2 @@\\n fn main() {}\\n+// changed\\n\".to_string(), stderr: String::new() }))"),
+            ],
+        )
+        .boundary(
+            "execute_llm",
+            vec![
+                ("response", "Value::Response(gunbc_ir::transport::TransportResponse::Rest(gunbc_ir::transport::llm::mock::mock_openai_response(\"{\\\"findings\\\": [], \\\"summary\\\": \\\"No issues found.\\\"}\")))"),
+            ],
+        ),
+
         // NOTE: gunbc-ci is NOT in this registry.
         // It has a handwritten main.rs because it's the bootstrap tool that
         // runs codegen for other tools. It cannot depend on generated code.
@@ -744,6 +789,25 @@ pub fn all_testgen_dags() -> Vec<TestgenTargetDef> {
         )
         .dag_builder("crate::graph::build_chat_completion_graph()")
         .mock_spec("crate::graph_mock::secret_api_key_mock_spec()")
+        .no_boundary_tests(),
+        // ====================================================================
+        // Review DAGs
+        // ====================================================================
+        TestgenTargetDef::new(
+            "review-diff",
+            "lib/review/src/generated_tests_diff.rs",
+            "review_diff_generated_tests",
+        )
+        .dag_builder("crate::graph::build_diff_review_graph()")
+        .mock_spec("crate::graph_mock::diff_review_mock_spec()")
+        .no_boundary_tests(),
+        TestgenTargetDef::new(
+            "review-inline",
+            "lib/review/src/generated_tests_inline.rs",
+            "review_inline_generated_tests",
+        )
+        .dag_builder("crate::graph::build_inline_review_graph()")
+        .mock_spec("crate::graph_mock::inline_review_mock_spec()")
         .no_boundary_tests(),
     ]
 }
