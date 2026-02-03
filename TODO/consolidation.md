@@ -319,81 +319,137 @@ real transport execution. The transport abstraction layer ensures
 correctness of DAG logic, but `lib/transport/src/executor.rs`
 is untested against real systems.
 
-### Test Categories (derived from `TransportRequest` variants)
+### Design Problem: `TransportRequest` doesn't encode hermeticity
 
-Categories are structural — derived from the transport type system,
-not arbitrary sizing. Every DAG node that wraps `TransportOps::Execute`
-consumes a `TransportRequest`. The variant determines the category.
+We want test categories derived from the transport type system:
+**integration** (hermetic, local-only) vs **external** (non-hermetic,
+network/auth). But `TransportRequest` variant alone doesn't determine
+this.
+
+**The problem is `Shell`.** Higher-level domain types know whether
+they're hermetic, but that information is erased when they convert
+to `TransportRequest::Shell`:
+
+```
+GitRequest::LsFiles.to_shell_request()    → Shell { command: "git", ... }   // hermetic
+GistRequest::new().to_shell_request()     → Shell { command: "gh", ... }    // non-hermetic
+CargoCommand::Build.to_shell_request()    → ShellRequest { command: "cargo" } // hermetic
+```
+
+After conversion, these are indistinguishable at the transport layer.
+`ShellRequest` has no field indicating hermeticity. The executor
+sees `Shell(ShellRequest { command, args, ... })` and has no way
+to know whether it hits the network.
+
+**Where hermeticity actually lives:**
+
+| Producer type | File | Hermetic? |
+|---------------|------|-----------|
+| `GitRequest` | `core/ir/src/transport/git.rs` | Yes — local repo only |
+| `CargoCommand` | `core/ir/src/cargo.rs` | Yes — local build system |
+| `CliToolOp::Check/Install` | `core/ir/src/transport/cli.rs` | Yes — local PATH |
+| `GistRequest` (shell) | `core/ir/src/transport/gist.rs` | **No** — `gh gist create` hits GitHub |
+| `GistRequest` (REST) | `core/ir/src/transport/gist.rs` | **No** — `api.github.com` |
+| `RestRequest` (LLM) | `core/ir/src/transport/rest.rs` | **No** — OpenAI/Anthropic APIs |
+
+Hermeticity is a property of the **producer**, not the **transport
+variant**. `File` is always hermetic. `Rest`/`Http`/`Tcp` are always
+non-hermetic. `Shell` is mixed — depends on what produced it.
+
+**Options to fix (not blocking, but worth designing):**
+
+1. **Add `hermetic: bool` to `ShellRequest`** — Simple, set by
+   producers. Executor can assert/filter on it. Downside: ad-hoc
+   boolean, easy to get wrong.
+
+2. **Split `Shell` variant** — `TransportRequest::LocalShell` vs
+   `TransportRequest::NetworkShell`. Type-safe but changes the enum
+   everywhere.
+
+3. **Annotate at the DAG node level** — Add hermeticity metadata
+   to the node that wraps `TransportOps::Execute`, not to the
+   request itself. The node knows its producer. This aligns with
+   how testgen already classifies nodes (boundary detection).
+
+4. **Derive from producer before conversion** — Test categorization
+   happens at the domain type level (`GitRequest`, `GistRequest`),
+   not at the `TransportRequest` level. Tests import domain types
+   directly and never go through the executor's dispatch.
+
+**Current workaround**: Test categories use a manually maintained
+mapping. The tables below classify by **producer type**, not by
+`TransportRequest` variant, because the variant is insufficient.
+
+### Test Categories
 
 ```
 make test              # In-memory: unit + generated (DryRun, mocked boundaries)
-make test-integration  # Hermetic: real TransportRequest::{File, Shell}
-make test-external     # Non-hermetic: real TransportRequest::{Rest, Http, Tcp}
+make test-integration  # Hermetic transport producers (File, local Shell)
+make test-external     # Non-hermetic transport producers (Rest, Http, Tcp, network Shell)
 ```
 
-#### `test-integration` — Hermetic transport ops
+#### `test-integration` — Hermetic transport producers
 
 Tests that execute real transport but require only the local machine.
 No network, no auth tokens, no external services. Safe to run on
 every CI commit.
 
-| TransportRequest variant | What executes | Test fixtures needed |
-|--------------------------|---------------|---------------------|
-| `File` (Read/Write/Delete/Exists/CreateDir/Append) | `std::fs::*` via `execute_file()` | `tempdir` |
-| `Shell` with local tools | `Command::new()` via `execute_shell()` | System PATH |
+Classified by **producer type** (not `TransportRequest` variant):
+
+| Producer | Transport variant | What executes | Fixtures needed |
+|----------|-------------------|---------------|-----------------|
+| `FileRequest` | `File` | `std::fs::*` via `execute_file()` | `tempdir` |
+| (raw shell) | `Shell` | `Command::new()` via `execute_shell()` | System PATH |
+| `GitRequest` | `Shell` | `git` binary with deterministic flags | `tempdir` + `git init` |
+| `CliToolOp` | `Shell` | `which`, tool version checks | System PATH |
+| `CargoCommand` | `Shell` | `cargo build/test/clippy` | `cargo`, slow (XL) |
 
 Concrete test suites:
 
-| Suite | Transport | What It Covers |
-|-------|-----------|----------------|
-| **File executor** | `File` | All 6 `FileOp` variants against temp dirs |
-| **Shell executor** | `Shell` | stdout, stderr, exit codes, env vars, working dir |
-| **Git transport** | `Shell` (via `git.rs`) | All `GitRequest` variants against temp repo. Verifies deterministic flags (`color.ui=never`, `core.quotepath=false`, etc.) produce parseable output |
-| **CLI tool resolution** | `Shell` | `resolve_tool_path()`, `upsert_tool()`, version checks |
-| **Cargo/Clippy/Rustfmt** | `Shell` (via `cli.rs`) | Tool execution through `CliTool` abstraction. Slow (~XL) but hermetic — could gate behind `--features slow-integration` |
+| Suite | Producer | What It Covers |
+|-------|----------|----------------|
+| **File executor** | `FileRequest` | All 6 `FileOp` variants against temp dirs |
+| **Shell executor** | raw `ShellRequest` | stdout, stderr, exit codes, env vars, working dir |
+| **Git transport** | `GitRequest` | All variants against temp repo; deterministic flags produce parseable output |
+| **CLI tool resolution** | `CliToolOp` | `resolve_tool_path()`, `upsert_tool()`, version checks |
+| **Cargo workflows** | `CargoCommand` | Build/test/clippy via `CliTool` abstraction. Slow — gate behind `--features slow-integration` |
 
-#### `test-external` — Non-hermetic transport ops
+#### `test-external` — Non-hermetic transport producers
 
 Tests that require network access, auth tokens, or create real
 external resources. Run on schedule or manual trigger only.
 
-| TransportRequest variant | What executes | Why non-hermetic |
-|--------------------------|---------------|------------------|
-| `Rest` | HTTP + auth via `execute_rest()` | Requires API endpoints + `AuthMethod` credentials |
-| `Http` | `TcpStream` via `execute_http()` | Requires network host (currently stubbed to localhost-only) |
-| `Tcp` | `TcpStream` via `execute_tcp()` | Requires network connectivity |
+| Producer | Transport variant | Why non-hermetic |
+|----------|-------------------|------------------|
+| `RestRequest` (GitHub) | `Rest` | Requires `AuthMethod` credentials, hits `api.github.com` |
+| `RestRequest` (LLM) | `Rest` | Requires API keys, hits OpenAI/Anthropic endpoints |
+| `GistRequest` (shell) | `Shell` | `gh gist create` requires `gh auth`, creates real resources |
+| `HttpRequest` | `Http` | Raw HTTP to remote hosts (currently stubbed to localhost-only) |
+| `TcpRequest` | `Tcp` | Raw TCP, requires network connectivity |
 
 Concrete test suites:
 
-| Suite | Transport | What It Covers |
-|-------|-----------|----------------|
-| **GitHub gist (REST)** | `Rest` | POST to `api.github.com/gists`, auth via `AuthMethod::EnvVar` |
-| **GitHub gist (gh CLI)** | `Shell` (non-hermetic*) | `gh gist create`, requires `gh auth` |
-| **LLM API calls** | `Rest` | OpenAI/Anthropic endpoints, `AuthMethod::EnvVarHeader` |
-| **HTTP transport** | `Http` | Raw HTTP against local test server (could be hermetic with fixture server) |
-
-*`gh gist create` uses `Shell` transport but is non-hermetic because
-it creates real GitHub resources and requires auth. The category
-is determined by the operation's hermeticity, not just the variant.
+| Suite | Producer | What It Covers |
+|-------|----------|----------------|
+| **GitHub gist (REST)** | `GistRequest` | POST to `api.github.com/gists` |
+| **GitHub gist (gh CLI)** | `GistRequest` | `gh gist create` via shell |
+| **LLM API calls** | `RestRequest` | OpenAI/Anthropic endpoints |
+| **HTTP transport** | `HttpRequest` | Raw HTTP (could become hermetic with fixture server) |
 
 ### Boundary Summary
 
-| Boundary | Transport | Category | Coverage Today | Gap |
-|----------|-----------|----------|---------------|-----|
-| Filesystem | `File` | integration | None | High |
-| Shell execution | `Shell` | integration | None | High |
-| Git CLI | `Shell` | integration | None | Medium |
-| CLI tool resolution | `Shell` | integration | None | Medium |
-| Cargo/Clippy/Rustfmt | `Shell` | integration | None | Low* |
-| GitHub API | `Rest` | external | None | Medium |
-| GitHub CLI (gh) | `Shell` | external | None | Medium |
-| LLM APIs | `Rest` | external | None | Low |
-| Raw HTTP | `Http` | external | None | Low** |
-| Raw TCP | `Tcp` | external | None | Low |
-
-*Cargo tests are hermetic but slow (~XL). Lower priority because
-the CI DAG exercises these in production.
-**HTTP transport is currently stubbed to localhost-only in executor.
+| Boundary | Producer | Variant | Category | Coverage | Gap |
+|----------|----------|---------|----------|----------|-----|
+| Filesystem | `FileRequest` | `File` | integration | None | High |
+| Shell execution | raw `ShellRequest` | `Shell` | integration | None | High |
+| Git CLI | `GitRequest` | `Shell` | integration | None | Medium |
+| CLI tool resolution | `CliToolOp` | `Shell` | integration | None | Medium |
+| Cargo/Clippy/Rustfmt | `CargoCommand` | `Shell` | integration | None | Low |
+| GitHub API | `RestRequest` | `Rest` | external | None | Medium |
+| GitHub CLI (gh) | `GistRequest` | `Shell` | external | None | Medium |
+| LLM APIs | `RestRequest` | `Rest` | external | None | Low |
+| Raw HTTP | `HttpRequest` | `Http` | external | None | Low |
+| Raw TCP | `TcpRequest` | `Tcp` | external | None | Low |
 
 ### Priority
 
@@ -427,6 +483,7 @@ the CI DAG exercises these in production.
 - [ ] Split `MergeOutputs` dedup from cardinality handling (blocked on engine work)
 - [ ] Review hand-written tests for redundancy with testgen (Pattern 1, 5)
 - [ ] Remove fragile node-count assertions from graph structure tests (Pattern 2)
+- [ ] Design hermeticity annotation for `Shell` transport (see §6 design problem)
 - [ ] Add integration tests: `File` transport executor (all 6 FileOp variants)
 - [ ] Add integration tests: `Shell` transport executor (stdout, stderr, exit codes)
 - [ ] Add integration tests: Git transport (`GitRequest` variants against temp repo)
@@ -445,11 +502,11 @@ the CI DAG exercises these in production.
 - `Renderable` trait is a good foundation. Rendering DAGs would use
   ops that implement `Executable`, with `Renderable` for the final
   output formatting step.
-- Test categories are structural: derived from `TransportRequest`
-  variant, not arbitrary time estimates. integration = hermetic
-  transport (`File`, `Shell`), external = non-hermetic (`Rest`,
-  `Http`, `Tcp`). Edge case: `Shell` commands that hit the network
-  (e.g., `gh gist create`) belong in external despite the variant.
+- Hermeticity is a producer-level property, not a transport-level
+  property. `Shell` is overloaded: `GitRequest` → hermetic,
+  `GistRequest` → non-hermetic, both produce identical `ShellRequest`.
+  Test categories must be derived from the producer type, not the
+  `TransportRequest` variant. This is a design gap in the type system.
 - Test retrospective: 885 tests, all in-memory. Transport executor
   (`lib/transport/src/executor.rs`) is the untested boundary.
   `File` and `Shell` integration tests are the highest-value additions.
