@@ -1,7 +1,8 @@
 # Testgen Improvements
 
-**Status**: TODO
+**Status**: In Progress
 **Date**: 2026-02-02
+**Updated**: 2026-02-03
 
 ## Problem Statement
 
@@ -24,23 +25,29 @@ When you define a DAG node, you also specify its I/O contract. Testgen generates
 // Current: you define DAG, then separately write unit tests
 dag.add_node(Node::opaque("prepare_prompt", inputs, outputs, ReviewOps::PrepareReviewPrompt));
 
-// Desired: I/O examples are part of the node definition
-dag.add_node(Node::opaque("prepare_prompt", inputs, outputs, ReviewOps::PrepareReviewPrompt)
-    .with_example(
-        inputs! { "artifact" => "fn foo() {}", "criteria" => security_criteria() },
-        outputs! { "question" => contains("security"), "system_prompt" => non_empty() },
-    )
-);
+// Desired: I/O examples are part of the mock spec
+let spec = MockSpec::new("review")
+    .node_example(
+        NodeExample::new("prepare_prompt")
+            .input("artifact", Value::Str("fn foo() {}".into()))
+            .input("criteria", Value::Str("security".into()))
+            .output("question", OutputMatcher::contains("security"))
+            .output("system_prompt", OutputMatcher::non_empty())
+    );
 ```
 
 Then testgen generates:
 ```rust
 #[test]
-fn test_prepare_prompt_example_0() {
-    let inputs = hashmap! { "artifact" => "fn foo() {}", "criteria" => ... };
-    let result = ReviewOps::PrepareReviewPrompt.execute(inputs).unwrap();
-    assert!(result["question"].as_str().unwrap().contains("security"));
-    assert!(!result["system_prompt"].as_str().unwrap().is_empty());
+fn test_example_prepare_prompt_0() {
+    let dag = build_review_graph();
+    let mut inputs = std::collections::HashMap::new();
+    inputs.insert("artifact".to_string(), Value::Str("fn foo() {}".into()));
+    inputs.insert("criteria".to_string(), Value::Str("security".into()));
+    let outputs = gunbc_exec::execute_single_node(&dag, "prepare_prompt", inputs, ExecutionMode::Real)
+        .expect("node 'prepare_prompt' should execute successfully");
+    assert!(outputs.get("question").unwrap().as_str().map(|s| s.contains("security")).unwrap_or(false));
+    assert!(!outputs.get("system_prompt").unwrap().as_str().map(|s| s.is_empty()).unwrap_or(false));
 }
 ```
 
@@ -52,9 +59,11 @@ fn test_prepare_prompt_example_0() {
 |---|---|---|
 | **What** | Mock response (external I/O) | Expected output (computed) |
 | **Why** | Can't run real I/O in tests | Verify business logic |
-| **How** | `MockSpec::boundary()` | `Node::with_example()` |
+| **How** | `MockSpec::boundary()` | `MockSpec::node_example()` |
 
 Both should be **required**, not optional.
+
+**Design decision**: Examples live on `MockSpec` (via `.node_example()`) rather than on `Node` directly. This keeps `Node<T>` generic and free of test concerns, while `MockSpec` already serves as the test specification.
 
 ## Implementation Plan
 
@@ -95,6 +104,7 @@ pub struct NodeExample {
     pub description: Option<String>,
 }
 ```
+- *Implemented*: `core/test/src/mock_spec.rs:644-708`
 
 **TODO 2.2: Extend Node builder** ✅
 - [x] Added `examples: Vec<NodeIoExample>` field to `Node<T>` (serde skip if empty)
@@ -118,7 +128,7 @@ pub struct NodeExample {
 - [x] `make test` depends on `testgen-check` — fails if generated tests are stale
 - [x] Error message directs user to run `make testgen`
 
-### Phase 4: Stop Committing Generated Tests
+### Phase 4: Generated Test Strategy
 
 **TODO 4.1: Add to .gitignore** ✅
 - [x] Added `TESTGEN_CATEGORY` to gitignore generation: `**/generated_tests*.rs`
@@ -283,17 +293,15 @@ functions live in the tool crates.
 
 ## Open Questions
 
-1. **Commit or not?** Generated tests as source vs build artifact
-   - Pro commit: visible in PR diffs, works without build step
-   - Pro .gitignore: no stale tests, cleaner history
+1. ~~**Commit or not?**~~ → Commit with staleness checks (decided above)
 
-2. **Auto-discover vs manifest?** How to find DAGs
+2. **Auto-discover vs manifest?** How to find DAGs (TODO 1.3)
    - Auto-discover: magic, might miss some
    - Manifest: explicit, more work
+   - Current: hardcoded builder map — works but doesn't scale
 
-3. **Example syntax?** How verbose should `with_example()` be?
-   - Macro-based: `inputs! { ... }` - concise but magic
-   - Builder: `.input("foo", val).output("bar", matcher)` - verbose but clear
+3. ~~**Example syntax?**~~ → Builder pattern on `NodeExample` (decided)
+   - `NodeExample::new("node").input("port", val).output("port", matcher).description("...")`
 
 4. **Inheritance?** If DAG A embeds DAG B as subdag, do B's examples run?
    - Probably yes - verify subdags work in context
@@ -302,10 +310,15 @@ functions live in the tool crates.
 
 After implementation:
 
-1. **Can't forget tests** - testgen auto-discovers DAGs, fails if no MockSpec
-2. **Can't have stale tests** - staleness check in `make test`
-3. **I/O is tested** - node examples generate unit tests
-4. **Minimal ceremony** - just add `.with_example()` to node, tests appear
+1. **Can't forget tests** - ~~testgen auto-discovers DAGs~~ (TODO 1.3 remaining), fails if no MockSpec ✅
+2. **Can't have stale tests** - staleness check in `make test` ✅
+3. **I/O is tested** - node examples generate unit tests ✅
+4. **Minimal ceremony** - just add `.node_example()` to MockSpec, tests appear ✅
+
+## Remaining Work
+
+- **TODO 1.3**: Auto-discover DAGs (eliminate hardcoded builder map)
+- **Add node_examples to existing MockSpecs** — the infrastructure exists but no MockSpecs currently use `node_example()` yet. Add examples to bootstrap, CI, makegen, and LLM MockSpecs.
 
 ## References
 
@@ -314,3 +327,4 @@ After implementation:
 - MockSpec: `core/test/src/mock_spec.rs`
 - Obligation model: `core/codegen/src/testgen/obligation.rs`
 - Tool registry: `core/codegen/src/registry.rs`
+- MetaTarget extra_deps: `gunbc-dag/src/makegen/registry.rs`
