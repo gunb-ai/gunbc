@@ -42,9 +42,5 @@ name = "gunbc-bootstrap"
 path = "src/bin/bootstrap.rs"
 
 [[bin]]
-name = "gunbc-dag-viz"
-path = "src/bin/dag-viz.rs"
-
-[[bin]]
 name = "gunbc-testgen"
 path = "src/bin/testgen.rs"
