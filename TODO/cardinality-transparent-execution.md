@@ -502,6 +502,136 @@ of 25 match arms.
 | `core/codegen` | Minimal — uses Port which carries cardinality |
 | `lib/*` | `Cardinality::One` → `Cardinality::ONE` (mechanical) |
 
+## Impact on test generation
+
+### Current state
+
+Testgen *collects* cardinality but doesn't use it:
+
+- `analyze_port_cardinalities()` extracts `PortCardinalityInfo` with
+  `test_cases: Vec<CardinalityCase>` for every port
+- `CardinalityTestInput` and `Mockable::cardinality_inputs()` exist in
+  `core/test/src/mockable.rs`
+- **But `codegen.rs` ignores `port_cardinalities` entirely** — the
+  analysis parameter is prefixed with `_` (unused)
+- Only `deps/ops.rs` implements `cardinality_inputs()` non-trivially;
+  `makegen/ops.rs` returns `vec![]`
+
+The rationale is "proven by construction": the builder validates
+cardinality on `add_edge()`, so testing it is tautological.
+
+### Why that's insufficient
+
+The builder catches *static* mismatches. It can't catch *runtime*
+cardinality divergence:
+
+1. **Guarded/skipped nodes**: A `One` port receives `Skipped` when its
+   upstream is guard-skipped. The builder can't know this at build time.
+2. **Fan-in last-writer-wins**: Multiple edges to one port silently
+   overwrite. The builder allows fan-in to list ports but the engine
+   doesn't collect — so the declared cardinality is a lie.
+3. **Defensive deserialization**: Ops like `MergeOutputs` must handle
+   null/object/array because the engine doesn't enforce port cardinality.
+   This is exactly the bug we hit — the graph was valid, but runtime
+   values didn't match.
+
+"Proven by construction" only proves the *graph* is valid. It doesn't
+prove *execution* respects cardinality.
+
+### What the interval model unlocks
+
+**1. Boundary-value test generation from intervals**
+
+The enum generates coarse test cases: `Empty`, `One`, `Many`. An
+interval `[2, 5]` generates boundary cases: `{2, 3, 5}` — min, min+1,
+max. This is standard boundary-value analysis but derived from the model
+instead of hand-written:
+
+```rust
+impl Cardinality {
+    pub fn test_cases(&self) -> Vec<u32> {
+        let mut cases = vec![self.min];
+        if self.min > 0 {
+            cases.push(self.min - 1);  // below min (should fail/skip)
+        }
+        if let Some(max) = self.max {
+            cases.push(max);
+            if max > self.min {
+                cases.push(self.min + 1);  // just above min
+            }
+            cases.push(max + 1);  // above max (should fail/skip)
+        } else {
+            // Unbounded: test with min, min+1, and a "large" value
+            cases.push(self.min + 1);
+            cases.push(self.min + 10);
+        }
+        cases.sort();
+        cases.dedup();
+        cases
+    }
+}
+```
+
+This replaces the hand-written `Empty/One/Many` enum with computed
+boundary values. Any cardinality — including `[2, 5]` — gets meaningful
+test cases automatically.
+
+**2. Cardinality as a proof obligation**
+
+Today, cardinality isn't in the obligation model (`obligation.rs`). With
+the interval model, we can add a new obligation class:
+
+```
+Obligation: "port X on node Y handles cardinality [min, max]"
+Discharge:
+  - [min=0]: test with 0 inputs → node skips or returns empty
+  - [min=1]: test with 1 input → node executes once
+  - [max=N]: test with N inputs → node executes N times
+  - [max+1]: test with N+1 inputs → rejected or handled gracefully
+```
+
+This is not tautological — it tests *runtime behavior*, not graph
+validity. The builder proves the graph wiring is valid. The obligation
+proves the op *handles* the cardinality it declared.
+
+**3. Coercion coverage**
+
+The coercion compiler pass (Track C) introduces bridging nodes. These
+are generated code — they need tests. For each coercion `[a,b] → [c,d]`:
+
+- Input at boundary values of `[a,b]`
+- Verify output satisfies `[c,d]`
+- Property: `coerce(x).cardinality.satisfies(target)` for all valid `x`
+
+With the interval model, this is a property test. With the enum, you'd
+hand-write cases.
+
+**4. Fan-in collection testing**
+
+Once the engine collects fan-in into `Value::List` (Track A), testgen
+should verify:
+
+- 0 edges to list port → empty list
+- 1 edge to list port → single-element list
+- N edges to list port → N-element list (in canonical order)
+- 1 edge to scalar port → value
+- 2 edges to scalar port → error (not silent overwrite)
+
+These are engine-level tests, not op-level. The interval model makes the
+expected behavior derivable from port declarations.
+
+**5. Catching real failures**
+
+Concrete failure classes this would catch:
+
+| Failure | How caught |
+|---------|------------|
+| MergeOutputs null/object/array mismatch | Boundary test: 0 inputs to list port |
+| Fan-in silent overwrite | Test: 2 edges to scalar port → error |
+| Guarded node produces Skipped for required port | Test: 0 inputs to `[1,1]` port |
+| Coercion node wraps incorrectly | Property: output satisfies target cardinality |
+| Op assumes scalar but port is list | Obligation: test with Many → must handle |
+
 ## Tasks
 
 - [ ] Implement `Cardinality` struct with interval representation
@@ -518,6 +648,10 @@ of 25 match arms.
 - [ ] Embed cardinality in type system (Part 3)
 - [ ] Migrate call sites (One → ONE, etc.)
 - [ ] Migrate `MergeOutputs` to use engine-guaranteed list inputs
+- [ ] Replace `CardinalityCase` enum with computed boundary values
+- [ ] Add cardinality obligations to testgen obligation model
+- [ ] Wire `port_cardinalities` into codegen (currently unused/underscore)
+- [ ] Generate coercion coverage tests for compiler pass output
 
 ## Notes
 
@@ -543,3 +677,7 @@ of 25 match arms.
 - `core/exec/src/execute.rs` — input gathering (lines 429-438)
 - `core/ir/src/value.rs` — Value enum (needs List variant)
 - `lib/review/src/lib.rs` — MergeOutputs (current defensive pattern)
+- `core/testgen/src/analyze.rs` — collects PortCardinalityInfo (unused downstream)
+- `core/testgen/src/codegen.rs` — ignores port_cardinalities (underscore param)
+- `core/testgen/src/obligation.rs` — obligation model (no cardinality obligations)
+- `core/test/src/mockable.rs` — CardinalityTestInput, Mockable trait
