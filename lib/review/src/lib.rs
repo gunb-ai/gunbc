@@ -171,6 +171,38 @@ pub struct CandidateTask {
 }
 
 // ============================================================================
+// Pipeline Configuration
+// ============================================================================
+
+/// Build-time configuration for a review pipeline.
+///
+/// These values are baked into the DAG at construction time (like `GistMode`
+/// or `GistOps::PrepareRequest { public }`). They are NOT CLI flags — the
+/// pipeline owns these decisions.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReviewPipelineConfig {
+    /// LLM provider (e.g., "openai", "anthropic").
+    pub provider: String,
+    /// LLM model identifier (e.g., "gpt-4o", "claude-sonnet-4-20250514").
+    pub model: String,
+    /// Review criteria to apply.
+    pub criteria: Criteria,
+}
+
+impl ReviewPipelineConfig {
+    /// Default pipeline config for gunbc's own repo.
+    ///
+    /// TODO: Eventually load from repo config (e.g., `gunbc.toml`).
+    pub fn gunbc_default() -> Self {
+        Self {
+            provider: "openai".to_string(),
+            model: "gpt-4o".to_string(),
+            criteria: crate::graph_mock::default_criteria(),
+        }
+    }
+}
+
+// ============================================================================
 // ReviewOps
 // ============================================================================
 
@@ -179,6 +211,17 @@ pub struct CandidateTask {
 /// All operations are PURE - no I/O.
 #[derive(Debug, Clone)]
 pub enum ReviewOps {
+    /// Emit pipeline configuration as port values (zero-input config node).
+    ///
+    /// Follows the same pattern as `EnvOp::Ci` in the CI pipeline — a node
+    /// with no inputs that outputs build-time constants.
+    ///
+    /// Outputs:
+    /// - `provider`: String — LLM provider ID
+    /// - `model`: String — LLM model identifier
+    /// - `criteria`: Json — Criteria definition
+    LoadPipelineConfig(ReviewPipelineConfig),
+
     /// Build a review prompt from artifact and criteria.
     ///
     /// Inputs:
@@ -235,6 +278,7 @@ pub enum ReviewOps {
 impl Executable for ReviewOps {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         match self {
+            ReviewOps::LoadPipelineConfig(config) => execute_load_pipeline_config(config),
             ReviewOps::PrepareReviewPrompt => execute_prepare_review_prompt(inputs),
             ReviewOps::ParseReviewResponse => execute_parse_review_response(inputs),
             ReviewOps::MergeOutputs => execute_merge_outputs(inputs),
@@ -247,6 +291,19 @@ impl Executable for ReviewOps {
 // ============================================================================
 // Operation Implementations
 // ============================================================================
+
+fn execute_load_pipeline_config(
+    config: &ReviewPipelineConfig,
+) -> Result<HashMap<String, Value>, ExecError> {
+    let criteria_json = serde_json::to_value(&config.criteria)
+        .map_err(|e| ExecError::new(format!("failed to serialize criteria: {}", e)))?;
+
+    let mut out = HashMap::new();
+    out.insert("provider".to_string(), Value::Str(config.provider.clone()));
+    out.insert("model".to_string(), Value::Str(config.model.clone()));
+    out.insert("criteria".to_string(), Value::Json(criteria_json));
+    Ok(out)
+}
 
 fn execute_prepare_review_prompt(
     inputs: HashMap<String, Value>,

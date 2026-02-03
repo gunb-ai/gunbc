@@ -18,7 +18,7 @@ use gunbc_lib_llm_ops::LlmOps;
 use gunbc_lib_transport::TransportOps;
 use std::collections::HashMap;
 
-use crate::ReviewOps;
+use crate::{ReviewOps, ReviewPipelineConfig};
 
 // ============================================================================
 // Unified Operation Type
@@ -333,18 +333,26 @@ pub fn build_inline_review_graph() -> Dag<ReviewGraphOp> {
 // DiffReviewPhase DAG Builder (Track 5.2)
 // ============================================================================
 
+/// Build a DiffReviewPhase DAG with default pipeline config.
+///
+/// Uses `ReviewPipelineConfig::gunbc_default()` for provider, model, and criteria.
+/// See [`build_diff_review_graph_with`] for full documentation.
+pub fn build_diff_review_graph() -> Dag<ReviewGraphOp> {
+    build_diff_review_graph_with(ReviewPipelineConfig::gunbc_default())
+}
+
 /// Build a DiffReviewPhase DAG.
 ///
 /// Composes GitOps::PrepareDiff → Execute → ParseDiff with an inline
 /// review phase. Reviews the unified diff of the current branch against
 /// a base ref.
 ///
+/// Provider, model, and criteria are baked into the DAG via a
+/// `LoadPipelineConfig` node — they are pipeline decisions, not CLI flags.
+///
 /// ## Entrypoints (unconnected inputs):
-/// - `prepare_diff.base_ref` (optional): String — base ref, defaults to "main"
-/// - `prepare_diff.repo_path` (optional): String — repo path, defaults to "."
-/// - `prepare_prompt.criteria`: Json — Criteria definition
-/// - `prepare_llm.provider`: String — LLM provider ID
-/// - `prepare_llm.model`: String — LLM model identifier
+/// - `prepare_diff.base_ref` (optional): String — base ref override
+/// - `prepare_diff.repo_path` (optional): String — repo path override
 ///
 /// ## Boundaries (unconnected outputs):
 /// - `parse_response.output`: Json — ReviewOutput
@@ -353,34 +361,47 @@ pub fn build_inline_review_graph() -> Dag<ReviewGraphOp> {
 ///
 /// ## Internal Flow:
 /// ```text
-/// prepare_diff → [execute_diff] → parse_diff
-///                                     ↓ (diff_text)
-///                              prepare_prompt
+/// [config] ──provider,model,criteria──┐
 ///                                     ↓
-///                              prepare_llm → [execute_llm] → parse_llm
-///                                                                ↓
-///                                                         parse_response
+/// prepare_diff → [execute_diff] → parse_diff → format_artifact
+///                                                    ↓
+///                                             prepare_prompt
+///                                                    ↓
+///                                             prepare_llm → [execute_llm] → parse_llm
+///                                                                               ↓
+///                                                                        parse_response
 /// ```
 ///
 /// I/O Classification:
 /// - Two TransportOps::Execute calls: git diff (read), LLM (read)
 /// - Phase overall: Read-only
-pub fn build_diff_review_graph() -> Dag<ReviewGraphOp> {
-    build_diff_review_graph_with("main", &[])
-}
-
-/// Build a DiffReviewPhase DAG with a custom default base ref and extensions.
 pub fn build_diff_review_graph_with(
-    default_base_ref: &str,
-    extensions: &[String],
+    config: ReviewPipelineConfig,
 ) -> Dag<ReviewGraphOp> {
     let mut dag = Dag::new();
+
+    // ========================================================================
+    // Pipeline Config (zero-input node, emits constants)
+    // ========================================================================
+
+    dag.add_node(Node::opaque(
+        "config",
+        vec![],
+        vec![
+            port("provider", "String"),
+            port("model", "String"),
+            port("criteria", "Json"),
+        ],
+        ReviewGraphOp::Review(ReviewOps::LoadPipelineConfig(config)),
+    ));
 
     // ========================================================================
     // Git Diff Acquisition
     // ========================================================================
 
-    // Node 1: PrepareDiff - builds git diff request
+    // PrepareDiff - builds git diff request.
+    // base_ref default is baked into the op; the optional port allows CLI override.
+    // TODO: base_ref default should come from repo branching model config.
     dag.add_node(Node::opaque(
         "prepare_diff",
         vec![
@@ -389,12 +410,12 @@ pub fn build_diff_review_graph_with(
         ],
         vec![port("request", "TransportRequest")],
         ReviewGraphOp::Git(GitOps::PrepareDiff {
-            base_ref: default_base_ref.to_string(),
-            extensions: extensions.to_vec(),
+            base_ref: "main".to_string(),
+            extensions: vec![],
         }),
     ));
 
-    // Node 2: Execute git diff (I/O boundary)
+    // Execute git diff (I/O boundary)
     dag.add_node(Node::opaque(
         "execute_diff",
         vec![port("request", "TransportRequest")],
@@ -402,7 +423,7 @@ pub fn build_diff_review_graph_with(
         ReviewGraphOp::Transport(TransportOps::Execute),
     ));
 
-    // Node 3: ParseDiff - extracts diff content
+    // ParseDiff - extracts diff content
     dag.add_node(Node::opaque(
         "parse_diff",
         vec![port("response", "TransportResponse")],
@@ -417,8 +438,6 @@ pub fn build_diff_review_graph_with(
     // Diff → Artifact Formatting
     // ========================================================================
 
-    // Node 4: FormatDiffArtifact - formats diff_files map into a single string
-    // for the review prompt. This is a pure transform.
     dag.add_node(Node::opaque(
         "format_artifact",
         vec![port("diff_files", "MapStrStr")],
@@ -430,7 +449,6 @@ pub fn build_diff_review_graph_with(
     // Review Prompt Building
     // ========================================================================
 
-    // Node 5: PrepareReviewPrompt
     dag.add_node(Node::opaque(
         "prepare_prompt",
         vec![
@@ -449,7 +467,6 @@ pub fn build_diff_review_graph_with(
     // LLM Interaction
     // ========================================================================
 
-    // Node 6: PrepareSimpleRequest
     dag.add_node(Node::opaque(
         "prepare_llm",
         vec![
@@ -466,7 +483,6 @@ pub fn build_diff_review_graph_with(
         ReviewGraphOp::Llm(LlmOps::PrepareSimpleRequest),
     ));
 
-    // Node 7: Execute LLM call (I/O boundary)
     dag.add_node(Node::opaque(
         "execute_llm",
         vec![port("request", "TransportRequest")],
@@ -474,7 +490,6 @@ pub fn build_diff_review_graph_with(
         ReviewGraphOp::Transport(TransportOps::Execute),
     ));
 
-    // Node 8: ParseSimpleResponse
     dag.add_node(Node::opaque(
         "parse_llm",
         vec![
@@ -489,7 +504,6 @@ pub fn build_diff_review_graph_with(
     // Review Response Parsing
     // ========================================================================
 
-    // Node 9: ParseReviewResponse
     dag.add_node(Node::opaque(
         "parse_response",
         vec![
@@ -507,6 +521,12 @@ pub fn build_diff_review_graph_with(
     // Edges
     // ========================================================================
 
+    // Config → downstream consumers
+    dag.add_edge(edge("config", "provider", "prepare_llm", "provider"));
+    dag.add_edge(edge("config", "model", "prepare_llm", "model"));
+    dag.add_edge(edge("config", "criteria", "prepare_prompt", "criteria"));
+    dag.add_edge(edge("config", "criteria", "parse_response", "criteria"));
+
     // Git diff flow
     dag.add_edge(edge("prepare_diff", "request", "execute_diff", "request"));
     dag.add_edge(edge("execute_diff", "response", "parse_diff", "response"));
@@ -514,10 +534,8 @@ pub fn build_diff_review_graph_with(
     // Diff → artifact formatting
     dag.add_edge(edge("parse_diff", "diff_files", "format_artifact", "diff_files"));
 
-    // Artifact → review prompt
+    // Artifact → review prompt + LLM content
     dag.add_edge(edge("format_artifact", "artifact", "prepare_prompt", "artifact"));
-
-    // Artifact → LLM content (the diff text is what we send to the LLM)
     dag.add_edge(edge("format_artifact", "artifact", "prepare_llm", "content"));
 
     // LLM flow
@@ -529,7 +547,6 @@ pub fn build_diff_review_graph_with(
 
     // Response parsing
     dag.add_edge(edge("parse_llm", "answer", "parse_response", "answer"));
-    // criteria flows to both prepare_prompt and parse_response (entrypoint)
 
     dag
 }
@@ -544,11 +561,10 @@ pub fn build_diff_review_graph_with(
 /// This is designed to be extended with additional review sources
 /// (cargo check, clippy) as separate sub-DAGs in the future.
 ///
+/// Provider, model, and criteria are baked in via `LoadPipelineConfig`.
+///
 /// ## Entrypoints (unconnected inputs):
 /// - `prepare_prompt.artifact`: String — content to review
-/// - `prepare_prompt.criteria`: Json — Criteria definition
-/// - `prepare_llm.provider`: String — LLM provider ID
-/// - `prepare_llm.model`: String — LLM model identifier
 ///
 /// ## Boundaries (unconnected outputs):
 /// - `merge.bundle`: Json — ReviewBundle with merged findings
@@ -556,18 +572,41 @@ pub fn build_diff_review_graph_with(
 ///
 /// ## Internal Flow:
 /// ```text
+/// [config] ──provider,model,criteria──┐
+///                                     ↓
 ///                  ┌──▶ [LLM Review] ──────┐
 ///  artifact ───────┤                        ▼
 ///                  └──(future sources)──▶ [MergeOutputs]
 /// ```
 pub fn build_multi_source_review_graph() -> Dag<ReviewGraphOp> {
+    build_multi_source_review_graph_with(ReviewPipelineConfig::gunbc_default())
+}
+
+/// Build a MultiSourceReviewPhase DAG with explicit pipeline config.
+pub fn build_multi_source_review_graph_with(
+    config: ReviewPipelineConfig,
+) -> Dag<ReviewGraphOp> {
     let mut dag = Dag::new();
+
+    // ========================================================================
+    // Pipeline Config
+    // ========================================================================
+
+    dag.add_node(Node::opaque(
+        "config",
+        vec![],
+        vec![
+            port("provider", "String"),
+            port("model", "String"),
+            port("criteria", "Json"),
+        ],
+        ReviewGraphOp::Review(ReviewOps::LoadPipelineConfig(config)),
+    ));
 
     // ========================================================================
     // LLM Review Source (source 1)
     // ========================================================================
 
-    // Node 1: PrepareReviewPrompt
     dag.add_node(Node::opaque(
         "prepare_prompt",
         vec![
@@ -582,7 +621,6 @@ pub fn build_multi_source_review_graph() -> Dag<ReviewGraphOp> {
         ReviewGraphOp::Review(ReviewOps::PrepareReviewPrompt),
     ));
 
-    // Node 2: PrepareSimpleRequest
     dag.add_node(Node::opaque(
         "prepare_llm",
         vec![
@@ -599,7 +637,6 @@ pub fn build_multi_source_review_graph() -> Dag<ReviewGraphOp> {
         ReviewGraphOp::Llm(LlmOps::PrepareSimpleRequest),
     ));
 
-    // Node 3: Execute LLM (I/O boundary)
     dag.add_node(Node::opaque(
         "execute_llm",
         vec![port("request", "TransportRequest")],
@@ -607,7 +644,6 @@ pub fn build_multi_source_review_graph() -> Dag<ReviewGraphOp> {
         ReviewGraphOp::Transport(TransportOps::Execute),
     ));
 
-    // Node 4: ParseSimpleResponse
     dag.add_node(Node::opaque(
         "parse_llm",
         vec![
@@ -618,7 +654,6 @@ pub fn build_multi_source_review_graph() -> Dag<ReviewGraphOp> {
         ReviewGraphOp::Llm(LlmOps::ParseSimpleResponse),
     ));
 
-    // Node 5: ParseReviewResponse
     dag.add_node(Node::opaque(
         "parse_response",
         vec![
@@ -636,7 +671,6 @@ pub fn build_multi_source_review_graph() -> Dag<ReviewGraphOp> {
     // Merge (combines sources)
     // ========================================================================
 
-    // Node 6: MergeOutputs - merges all review outputs into a bundle
     dag.add_node(Node::opaque(
         "merge",
         vec![port("outputs", "Json")],
@@ -650,6 +684,12 @@ pub fn build_multi_source_review_graph() -> Dag<ReviewGraphOp> {
     // ========================================================================
     // Edges
     // ========================================================================
+
+    // Config → downstream consumers
+    dag.add_edge(edge("config", "provider", "prepare_llm", "provider"));
+    dag.add_edge(edge("config", "model", "prepare_llm", "model"));
+    dag.add_edge(edge("config", "criteria", "prepare_prompt", "criteria"));
+    dag.add_edge(edge("config", "criteria", "parse_response", "criteria"));
 
     // LLM review flow
     dag.add_edge(edge("prepare_prompt", "question", "prepare_llm", "question"));
@@ -784,9 +824,10 @@ mod tests {
     #[test]
     fn test_diff_review_graph_structure() {
         let dag = build_diff_review_graph();
-        // 9 nodes: prepare_diff, execute_diff, parse_diff, format_artifact,
-        //          prepare_prompt, prepare_llm, execute_llm, parse_llm, parse_response
-        assert_eq!(dag.nodes.len(), 9);
+        // 10 nodes: config, prepare_diff, execute_diff, parse_diff,
+        //           format_artifact, prepare_prompt, prepare_llm,
+        //           execute_llm, parse_llm, parse_response
+        assert_eq!(dag.nodes.len(), 10);
     }
 
     #[test]
@@ -817,16 +858,21 @@ mod tests {
             "prepare_diff should have entrypoints"
         );
 
-        // prepare_prompt.criteria is an entrypoint
+        // provider, model are NOT entrypoints — config node provides them
         assert!(
-            entrypoints.is_entrypoint_node(&"prepare_prompt".into()),
-            "prepare_prompt should have entrypoints"
+            !entrypoints.is_entrypoint_node(&"prepare_llm".into()),
+            "prepare_llm should NOT have entrypoints (config provides provider/model)"
         );
 
-        // prepare_llm has provider/model as entrypoints
+        // prepare_prompt.context is optional and unconnected → entrypoint.
+        // But criteria is NOT an entrypoint (comes from config node).
         assert!(
-            entrypoints.is_entrypoint_node(&"prepare_llm".into()),
-            "prepare_llm should have entrypoints"
+            !entrypoints.is_entrypoint_port(&"prepare_prompt".into(), &"criteria".into()),
+            "criteria should NOT be an entrypoint (config provides it)"
+        );
+        assert!(
+            entrypoints.is_entrypoint_port(&"prepare_prompt".into(), &"context".into()),
+            "context should still be an entrypoint (optional, unconnected)"
         );
     }
 
@@ -842,9 +888,14 @@ mod tests {
     }
 
     #[test]
-    fn test_diff_review_graph_with_custom_ref() {
-        let dag = build_diff_review_graph_with("develop", &["rs".to_string()]);
-        assert_eq!(dag.nodes.len(), 9);
+    fn test_diff_review_graph_with_custom_config() {
+        let config = ReviewPipelineConfig {
+            provider: "anthropic".to_string(),
+            model: "claude-sonnet-4-20250514".to_string(),
+            criteria: crate::graph_mock::default_criteria(),
+        };
+        let dag = build_diff_review_graph_with(config);
+        assert_eq!(dag.nodes.len(), 10);
     }
 
     // ========================================================================
@@ -854,9 +905,9 @@ mod tests {
     #[test]
     fn test_multi_source_review_graph_structure() {
         let dag = build_multi_source_review_graph();
-        // 6 nodes: prepare_prompt, prepare_llm, execute_llm, parse_llm,
-        //          parse_response, merge
-        assert_eq!(dag.nodes.len(), 6);
+        // 7 nodes: config, prepare_prompt, prepare_llm, execute_llm,
+        //          parse_llm, parse_response, merge
+        assert_eq!(dag.nodes.len(), 7);
     }
 
     #[test]
@@ -875,14 +926,16 @@ mod tests {
         let dag = build_multi_source_review_graph();
         let entrypoints = detect_entrypoints(&dag);
 
+        // Only artifact on prepare_prompt is an entrypoint (criteria comes from config)
         assert!(
             entrypoints.is_entrypoint_node(&"prepare_prompt".into()),
-            "prepare_prompt should have entrypoints (artifact, criteria)"
+            "prepare_prompt should have entrypoints (artifact)"
         );
 
+        // provider/model/content on prepare_llm — only content is an entrypoint
         assert!(
             entrypoints.is_entrypoint_node(&"prepare_llm".into()),
-            "prepare_llm should have entrypoints (provider, model, content)"
+            "prepare_llm should have content as entrypoint"
         );
     }
 }

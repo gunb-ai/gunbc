@@ -84,7 +84,8 @@ pub fn inline_review_mock_spec() -> MockSpec {
     let criteria = default_criteria();
 
     MockSpec::new("review-inline")
-        // Input mocks for entrypoints
+        // Input mocks for entrypoints (inline graph has NO config node —
+        // it's the low-level building block)
         .input_mock(
             "prepare_prompt",
             "artifact",
@@ -180,17 +181,9 @@ diff --git a/src/main.rs b/src/main.rs
 
     let llm_answer = serde_json::to_string_pretty(&review_json).unwrap();
     let llm_response = mock::mock_openai_response(&llm_answer);
-    let criteria = default_criteria();
 
     MockSpec::new("review-diff")
-        // Input mocks for entrypoints (optional ports have defaults in the op)
-        .input_mock(
-            "prepare_prompt",
-            "criteria",
-            Value::Json(serde_json::to_value(&criteria).unwrap()),
-        )
-        .input_mock("prepare_llm", "provider", Value::Str("openai".into()))
-        .input_mock("prepare_llm", "model", Value::Str("gpt-4o".into()))
+        // provider, model, criteria come from config node — no input mocks needed
         // Transport mock: git diff execute
         .transport_mock(
             "execute_diff",
@@ -238,9 +231,6 @@ diff --git a/src/main.rs b/src/main.rs
             "stats",
             Value::Str("+2 -0 across 1 files".into()),
         )
-        .expects_input("criteria", InputConstraint::NonEmpty)
-        .expects_input("provider", InputConstraint::NonEmpty)
-        .expects_input("model", InputConstraint::NonEmpty)
 }
 
 // ============================================================================

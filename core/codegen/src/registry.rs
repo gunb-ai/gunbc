@@ -557,37 +557,24 @@ pub fn all_tools() -> Vec<ToolDef> {
             ],
         ),
 
-        // gunbc-review (diff review using LLM — uses DagBuilder)
+        // gunbc-review (diff review using LLM)
+        //
+        // Provider, model, and criteria are pipeline config (baked into DAG via
+        // LoadPipelineConfig node), NOT CLI flags.
+        // TODO: base_ref should come from repo branching model config.
         ToolDef::new(
             "gunbc-lib-review",
             "review",
             "Review code changes using LLM analysis",
-            "build_diff_review_graph_with",
-            "&base_ref, &extensions",
+            "build_diff_review_graph",
+            "",
         )
-        .import("use gunbc_lib_review::graph::{build_diff_review_graph_with};")
+        .import("use gunbc_lib_review::graph::build_diff_review_graph;")
         .entrypoint(
             CliEntrypoint::new("base_ref", "String")
                 .short('b')
                 .default("main")
                 .help("Base branch for diff (default: main)"),
-        )
-        .entrypoint(
-            CliEntrypoint::new("extensions", "StrList")
-                .short('e')
-                .help("File extensions to include (can be repeated)"),
-        )
-        .entrypoint(
-            CliEntrypoint::new("provider", "String")
-                .short('P')
-                .default("openai")
-                .help("LLM provider (openai, anthropic)"),
-        )
-        .entrypoint(
-            CliEntrypoint::new("model", "String")
-                .short('m')
-                .default("gpt-4o")
-                .help("LLM model identifier"),
         )
         .boundary(
             "execute_diff",
