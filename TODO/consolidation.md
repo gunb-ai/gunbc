@@ -568,33 +568,209 @@ Concrete test suites:
 
 ---
 
+## 9. Executable boilerplate across ops
+
+Patterns repeated in every `Executable::execute` implementation.
+These are the highest-impact consolidation targets by occurrence count.
+
+### Input extraction — 80 occurrences across 18 files
+
+**Pattern**: Every op manually extracts inputs with identical
+error-handling boilerplate:
+
+```rust
+let x = inputs.get("x")
+    .and_then(|v| v.as_str())
+    .ok_or_else(|| ExecError::new("missing or invalid 'x' input"))?;
+```
+
+70 "missing or invalid" error messages, 80 `.ok_or_else(|| ExecError::new`
+calls across the codebase. The heaviest files:
+- `lib/tools/deps/src/ops.rs` (9)
+- `lib/llm-ops/src/lib.rs` (10)
+- `lib/primitives/src/data.rs` (7)
+- `lib/review/src/lib.rs` (7)
+- `lib/primitives/src/collection.rs` (6)
+- `core/exec/src/pattern_op.rs` (6)
+
+**Proposed**: Helper functions on the input map:
+
+```rust
+// In core/exec or core/ir
+pub fn require_str(inputs: &HashMap<String, Value>, key: &str) -> Result<&str, ExecError>;
+pub fn require_json(inputs: &HashMap<String, Value>, key: &str) -> Result<&Value, ExecError>;
+pub fn optional_str(inputs: &HashMap<String, Value>, key: &str) -> Option<&str>;
+```
+
+These compose: `let x = require_str(inputs, "x")?;` replaces
+3 chained method calls. Error messages become consistent automatically.
+
+### Output map construction — 164 occurrences across 24 files
+
+**Pattern**: Every op builds its output HashMap manually:
+
+```rust
+let mut out = HashMap::new();
+out.insert("key".to_string(), Value::Str(content.to_string()));
+out.insert("other".to_string(), Value::Bool(true));
+Ok(out)
+```
+
+164 `let mut out = HashMap::new()` across 24 files. The heaviest:
+- `gunbc-dag/src/ci/ops.rs` (29)
+- `lib/tools/deps/src/ops.rs` (22)
+- `lib/tools/gist/src/graph.rs` (20)
+- `core/exec/src/pattern_op.rs` (9)
+
+**Proposed**: Builder or helper macro:
+
+```rust
+// Option A: builder
+OutputMap::new()
+    .str("key", content)
+    .bool("other", true)
+    .build()
+
+// Option B: macro
+outputs! {
+    "key" => Value::Str(content.to_string()),
+    "other" => Value::Bool(true),
+}
+```
+
+### Response type matching — 51 occurrences across 17 files
+
+**Pattern**: Parse ops extract the response variant with identical
+match + error fallback:
+
+```rust
+match response {
+    TransportResponse::Shell(shell) => { /* use shell.stdout */ }
+    _ => return Err(ExecError::new("unexpected response type")),
+}
+```
+
+51 `TransportResponse::Shell(` matches, 11 "unexpected response type"
+errors. No convenience methods exist on `TransportResponse`.
+
+**Proposed**: Add typed extraction methods:
+
+```rust
+impl TransportResponse {
+    pub fn require_shell(&self) -> Result<&ShellResponse, ExecError>;
+    pub fn require_rest(&self) -> Result<&RestResponse, ExecError>;
+    pub fn require_file(&self) -> Result<&FileResponse, ExecError>;
+}
+```
+
+Each returns a consistent error. Callers become:
+`let shell = response.require_shell()?;`
+
+---
+
+## 10. ShellRequest construction — 20 occurrences across 6 files
+
+**Where**: `lib/blob/`, `lib/tools/deps/`, `lib/tools/gist/`,
+`lib/primitives/src/io.rs`, `gunbc-dag/src/bootstrap/`
+
+**Problem**: Raw struct construction with repeated field patterns:
+
+```rust
+TransportRequest::Shell(ShellRequest {
+    command: "git".to_string(),
+    args: vec!["diff".to_string(), ...],
+    cwd: Some(repo_path.to_string()),
+    env: HashMap::new(),
+    stdin: None,
+})
+```
+
+Some transports have builders (`GitRequest::to_shell_request`,
+`CargoCommand::to_shell_request`) but most callers construct raw.
+
+**Proposed**: Builder on `ShellRequest`:
+
+```rust
+ShellRequest::new("git")
+    .args(["diff", &base_ref])
+    .cwd(repo_path)
+    .into_transport_request()
+```
+
+Consumers: blob fetch, deps ops, gist ops, bootstrap ops, io primitives.
+
+---
+
+## 11. MockSpec test boilerplate — 8 graph_mock.rs files
+
+**Where**: Every crate with a DAG defines a `graph_mock.rs` with
+near-identical MockSpec construction and boundary assertion tests.
+
+**Files**: `lib/review/`, `lib/llm-ops/`, `lib/tools/gist/`,
+`lib/tools/buck2/`, `lib/tools/deps/`, `gunbc-dag/src/*/`
+
+**Pattern**: Each file has:
+1. A `xxx_mock_spec()` function building MockSpec chains
+2. Tests asserting boundaries exist: `assert!(spec.get_boundary_mock("node", "port").is_some())`
+3. Tests asserting mock specs are complete
+
+The boundary assertion tests are nearly copy-paste across files.
+
+**Proposed**: Parameterized test helper:
+
+```rust
+/// Assert all expected boundaries exist in a MockSpec.
+pub fn assert_boundaries(spec: &MockSpec, expected: &[(&str, &str)]) {
+    for (node, port) in expected {
+        assert!(spec.get_boundary_mock(node, port).is_some(),
+            "missing boundary mock for {}.{}", node, port);
+    }
+}
+```
+
+This could live in `core/test/` alongside existing test infrastructure.
+
+---
+
 ## Tasks
 
+### High priority (widespread, low effort)
+- [ ] Add `require_str`, `require_json`, `optional_str` input helpers (80 call sites)
+- [ ] Add `OutputMap` builder or `outputs!` macro (164 call sites)
+- [ ] Add `TransportResponse::require_shell/rest/file` methods (51 call sites)
+
+### Medium priority
+- [ ] Add `ShellRequest::new().args().cwd()` builder (20 call sites)
+- [ ] Add `assert_boundaries` test helper to `core/test` (8 files)
 - [ ] Extract `hash_finding_id` to `lib/primitives` as `StableHashOp`
 - [ ] Unify blob hash with review hash (both should use SHA256)
 - [ ] Extract `FormatDiffArtifact` to `lib/primitives` as `FormatMapOp`
-- [ ] Design rendering DAG for Makefile generation (when adding Justfile)
-- [ ] Design rendering DAG for CI workflow generation (when adding second provider)
+
+### Lower priority / blocked
 - [ ] Consider `ToolGraphOp<D>` generic wrapper (dag-pattern-ux.md Phase 4)
 - [ ] Split `MergeOutputs` dedup from cardinality handling (blocked on engine work)
-- [ ] Review hand-written tests for redundancy with testgen (Pattern 1, 5)
-- [ ] Remove fragile node-count assertions from graph structure tests (Pattern 2)
+- [ ] Design rendering DAG for Makefile generation (when adding Justfile)
+- [ ] Design rendering DAG for CI workflow generation (when adding second provider)
+- [ ] Review hand-written tests for redundancy with testgen (Pattern 1, 5) — §7
+- [ ] Remove fragile node-count assertions from graph structure tests (Pattern 2) — §7
 - [ ] Eliminate `type_id == "List"` dual encoding (see §5, incremental migration)
 - [ ] Replace string-based builder references with enum keys (see §6)
 - [ ] Extract `buck-out/gen` to a single constant (see §6, 16 occurrences)
 - [ ] Fix CODEGEN_SOURCES hardcoded path list (see §6)
 - [ ] Design hermeticity annotation for `Shell` transport (see §8 design problem)
-- [ ] Add integration tests: `File` transport executor (all 6 FileOp variants)
-- [ ] Add integration tests: `Shell` transport executor (stdout, stderr, exit codes)
-- [ ] Add integration tests: Git transport (`GitRequest` variants against temp repo)
-- [ ] Add integration tests: CLI tool resolution (`resolve_tool_path`, `upsert_tool`)
-- [ ] Add `make test-integration` target (hermetic transport tests)
-- [ ] Add `make test-external` target (non-hermetic transport tests, scheduled CI)
+- [ ] Add integration tests: `File` transport executor (all 6 FileOp variants) — §8
+- [ ] Add integration tests: `Shell` transport executor (stdout, stderr, exit codes) — §8
+- [ ] Add integration tests: Git transport (`GitRequest` variants against temp repo) — §8
+- [ ] Add integration tests: CLI tool resolution (`resolve_tool_path`, `upsert_tool`) — §8
+- [ ] Add `make test-integration` target (hermetic transport tests) — §8
+- [ ] Add `make test-external` target (non-hermetic transport tests, scheduled CI) — §8
 
 ## Notes
 
 - "Extract when second consumer appears" — don't prematurely abstract.
   The first consumer defines the interface, the second validates it.
+- The section 5 items (input/output/response helpers) are different:
+  they already have 18-24 consumers. These are safe to extract now.
 - Rendering DAGs are high value but not urgent. The current functions
   are pure and testable. DAGs add composability and interceptability.
 - The cardinality design doc subsumes the MergeOutputs generalization.
