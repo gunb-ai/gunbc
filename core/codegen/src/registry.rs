@@ -499,6 +499,16 @@ pub fn all_tools() -> Vec<ToolDef> {
         .import("use gunbc_makegen::build_makegen_graph;")
         // Declarative DAG definition (POC for graph generation)
         .dag(makegen_dag())
+        .testgen(
+            TestgenTargetDef::new(
+                "makegen",
+                "gunbc-dag/src/makegen/generated_tests.rs",
+                "makegen_generated_tests",
+            )
+            .dag_builder("crate::build_makegen_graph().unwrap()")
+            .mock_spec("crate::makegen::graph_mock::makegen_mock_spec()")
+            .flow_tests(),
+        )
         .entrypoint(
             CliEntrypoint::new("output_path", "String")
                 .short('o')
@@ -553,6 +563,16 @@ pub fn all_tools() -> Vec<ToolDef> {
         )
         .returns_result()
         .import("use gunbc_bootstrap::build_bootstrap_graph;")
+        .testgen(
+            TestgenTargetDef::new(
+                "bootstrap",
+                "gunbc-dag/src/bootstrap/generated_tests.rs",
+                "bootstrap_generated_tests",
+            )
+            .dag_builder("crate::build_bootstrap_graph().unwrap()")
+            .mock_spec("crate::bootstrap::graph_mock::bootstrap_mock_spec()")
+            .flow_tests(),
+        )
         .boundary(
             "write_makefile",
             vec![
@@ -577,6 +597,18 @@ pub fn core_outputs() -> Vec<&'static str> {
         "target/",        // cargo build output
         "bin",            // symlink to target/release
     ]
+}
+
+/// Collect testgen targets from all tools that have testgen configured.
+///
+/// This is for Makefile/CI generation — so they can auto-discover which
+/// tools produce generated tests. The actual test generation is driven by
+/// the `target!()` macro in `gunbc-dag/src/bin/testgen.rs`.
+pub fn tool_testgen_targets() -> Vec<TestgenTargetDef> {
+    all_tools()
+        .into_iter()
+        .filter_map(|t| t.testgen)
+        .collect()
 }
 
 /// Get all cleanable artifacts from tools and core.

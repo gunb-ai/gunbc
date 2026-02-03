@@ -247,42 +247,44 @@ gunbc-codegen ──→ gunbc-ir
 - [x] Binary stays in `gunbc-dag/src/bin/testgen.rs` (needs DAG builder references)
 - [ ] Future: could become `gunbc-codegen testgen` subcommand if circular dep is resolved
 
-**TODO 6.3: Wire registry to test generation**
-- [ ] Add `.testgen(TestgenTargetDef::new(...))` to each tool in `all_tools()`
-- [ ] Add `all_testgen_dags()` back — but now populated from ToolDef + library DAGs
-- [ ] Convention: derive output_path and module_name from tool metadata
-  - `"{crate_path}/src/{module}/generated_tests.rs"` or similar
-- [ ] `all_testgen_targets()` returns real data (currently returns empty)
+**TODO 6.3: Wire registry to test generation** ✅
+
+The circular dep means the registry can't hold actual function references to
+DAG builders. The `target!()` macro already achieves single-site registration
+in testgen.rs — each expression is written once, the string form is derived
+via `stringify!`. Adding a registry layer would reintroduce two-site duplication.
+
+What the registry CAN do: advertise which tools have testgen, so Makefile/CI
+generation can derive testgen targets automatically.
+
+- [x] Added `.testgen(TestgenTargetDef)` to bootstrap and makegen in `all_tools()`
+- [x] These configs are metadata-only (no function references)
+- [x] Added `tool_testgen_targets()` to collect testgen configs from all tools
+- [ ] Makefile generation reads `ToolDef.testgen` to auto-generate targets
+- [ ] CI generation reads it to know what to check
+- [x] testgen.rs remains the authority for actual generation (via `target!()`)
 
 **TODO 6.4: Registry for non-tool DAGs**
-- [ ] Library DAGs (llm-ops) aren't tools — need a parallel registry type
-- [ ] Option A: `LibraryDagDef` — same testgen fields, no CLI entrypoints
-- [ ] Option B: Broaden `ToolDef` to cover non-CLI DAGs (`is_tool: bool`)
-- [ ] Either way: single `all_testgen_dags()` returns everything
-- [ ] Multi-mock pattern: llm-ops has 4 MockSpec variants for 1 DAG builder —
-  registry must support N testgen targets per DAG
+- [ ] Library DAGs (llm-ops) need a `LibraryDagDef` or similar
+- [ ] Multi-mock: llm-ops has 4 MockSpec variants for 1 DAG builder
+- [ ] `all_testgen_dags()` collects from ToolDef.testgen + LibraryDagDef
+- [ ] Makefile/CI derive targets from this combined list
 
-**TODO 6.5: Codegen owns DAG builder references**
-- [ ] Since codegen binary now lives in gunbc-dag (or depends on it), it can
-  hold actual function references — no more string expressions
-- [ ] Alternatively: codegen generates the target list as a .rs file that
-  `gunbc-dag` includes (same pattern as CLI main.rs generation)
-- [ ] The `target!()` macro stays for any manually-registered targets
-- [ ] Goal: adding a new DAG = one `.testgen(...)` call on its `ToolDef`
+**Design note — why two sites are unavoidable:**
 
-**Open design questions for Phase 6:**
-- **Circular dep**: codegen binary currently lives in `core/codegen`. If it
-  needs to call `gunbc_dag::build_bootstrap_graph()`, it would need to depend
-  on `gunbc-dag` — which depends on codegen (circular). Two solutions:
-  (a) codegen generates a target list .rs file that gunbc-dag includes, OR
-  (b) the testgen subcommand stays as a binary in gunbc-dag but uses codegen's
-  library (current pattern, just with testgen modules merged into codegen lib).
-  **Option (b) is simpler** — the binary stays where it is, but its logic
-  shrinks to just `build_targets()` since everything else lives in codegen.
-- **Bootstrap ordering**: Codegen must run before testgen. Currently `make build`
-  already ensures `ensure-codegen testgen` ordering — this extends naturally.
-- **Depends on**: None of Phases 1-5 are prerequisites. This is an orthogonal
-  infrastructure improvement.
+The `target!()` macro in testgen.rs IS the single-site registration for test
+generation. It holds both the metadata (via stringify) and the actual function
+call. The registry can't replace it because:
+
+1. `gunbc-codegen` can't depend on `gunbc-dag` (circular dependency)
+2. Function references can't be stored as data in the registry
+3. `stringify!` derives the string form from the expression, eliminating manual
+   string duplication
+
+The registry's role is to advertise testgen targets to OTHER consumers (Makefile,
+CI), not to drive testgen itself. This is the same pattern as ToolDef.boundaries —
+the registry stores CLI boundary metadata for codegen, while the actual DAG builder
+functions live in the tool crates.
 
 ## Open Questions
 
@@ -312,7 +314,8 @@ After implementation:
 
 ## References
 
-- Current testgen: `core/testgen/`
-- Current targets: `gunbc-dag/src/bin/testgen.rs`
+- Testgen module: `core/codegen/src/testgen/`
+- Testgen binary: `gunbc-dag/src/bin/testgen.rs`
 - MockSpec: `core/test/src/mock_spec.rs`
-- Obligation model: `core/testgen/src/obligation.rs`
+- Obligation model: `core/codegen/src/testgen/obligation.rs`
+- Tool registry: `core/codegen/src/registry.rs`

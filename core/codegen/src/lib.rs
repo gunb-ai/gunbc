@@ -6,7 +6,7 @@
 //! - [`DagInfo`]: Combined boundary and entrypoint information
 //! - [`cli_gen`]: CLI generation from DAG entrypoints
 //! - [`testgen`]: Test generation from proof obligations
-//! - [`Renderable`]: Trait for types that can be rendered to generated files
+//! - [`tool_testgen_targets`]: Collect testgen targets from tool registry
 //!
 //! # Note
 //!
@@ -28,8 +28,8 @@ pub use cli_gen::{generate_cli, generate_cli_with_import, CliBoundary, CliEntryp
 pub use dag_gen::generate_graph_rs;
 pub use file_writer::{FileWriter, WriteResult};
 pub use registry::{
-    all_cleanable_outputs, all_tools, core_outputs, DagDef, EdgeDef, NodeDef, PortDef,
-    TestgenTargetDef, ToolDef,
+    all_cleanable_outputs, all_tools, core_outputs, tool_testgen_targets, DagDef, EdgeDef, NodeDef,
+    PortDef, TestgenTargetDef, ToolDef,
 };
 pub use template::Template;
 
