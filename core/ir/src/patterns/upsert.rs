@@ -250,4 +250,23 @@ mod tests {
         assert_eq!(node.outputs[0].name.0, "install_path");
         assert_eq!(node.outputs[0].type_id.0, "Path");
     }
+
+    // ============ Interface Validation Tests ============
+
+    #[test]
+    fn test_upsert_interface_validates() {
+        use crate::validate::validate_subdag_interfaces;
+
+        let node = UpsertBuilder::new("upsert")
+            .with_check(TestOp::Check)
+            .with_create(TestOp::Create)
+            .with_resolve(TestOp::Resolve)
+            .build();
+
+        let mut dag: Dag<TestOp> = Dag::new();
+        dag.add_node(node);
+
+        let errors = validate_subdag_interfaces(&dag);
+        assert!(errors.is_empty(), "upsert interface errors: {:?}", errors);
+    }
 }

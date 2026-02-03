@@ -293,4 +293,38 @@ mod tests {
         assert_eq!(node.outputs[0].name.0, "result");
         assert_eq!(node.outputs[0].type_id.0, "Bool");
     }
+
+    // ============ Interface Validation Tests ============
+
+    #[test]
+    fn test_atomic_operation_only_interface_validates() {
+        use crate::validate::validate_subdag_interfaces;
+
+        let node = AtomicBuilder::new("atomic")
+            .with_operation(TestOp::Operation)
+            .build();
+
+        let mut dag: Dag<TestOp> = Dag::new();
+        dag.add_node(node);
+
+        let errors = validate_subdag_interfaces(&dag);
+        assert!(errors.is_empty(), "atomic (op-only) interface errors: {:?}", errors);
+    }
+
+    #[test]
+    fn test_atomic_full_interface_validates() {
+        use crate::validate::validate_subdag_interfaces;
+
+        let node = AtomicBuilder::new("atomic")
+            .with_precondition(TestOp::Precondition)
+            .with_operation(TestOp::Operation)
+            .with_postcondition(TestOp::Postcondition)
+            .build();
+
+        let mut dag: Dag<TestOp> = Dag::new();
+        dag.add_node(node);
+
+        let errors = validate_subdag_interfaces(&dag);
+        assert!(errors.is_empty(), "atomic (full) interface errors: {:?}", errors);
+    }
 }

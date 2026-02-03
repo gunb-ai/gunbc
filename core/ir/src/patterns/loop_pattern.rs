@@ -258,4 +258,29 @@ mod tests {
         assert_eq!(node.inputs[0].cardinality, Cardinality::OneOrMore);
         assert_eq!(node.outputs[0].cardinality, Cardinality::OneOrMore);
     }
+
+    // ============ Interface Validation Tests ============
+
+    #[test]
+    fn test_loop_interface_validates() {
+        use crate::validate::validate_subdag_interfaces;
+
+        let mut body_dag: Dag<TestOp> = Dag::new();
+        body_dag.add_node(Node::opaque(
+            "transform",
+            vec![Port::scalar("element", "String")],
+            vec![Port::scalar("result", "String")],
+            PatternOp::LoopPack { output_port: "result".into() },
+        ));
+
+        let node = LoopBuilder::new("loop")
+            .with_body(body_dag)
+            .build();
+
+        let mut dag: Dag<TestOp> = Dag::new();
+        dag.add_node(node);
+
+        let errors = validate_subdag_interfaces(&dag);
+        assert!(errors.is_empty(), "loop interface errors: {:?}", errors);
+    }
 }

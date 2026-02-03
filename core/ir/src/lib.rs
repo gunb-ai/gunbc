@@ -64,6 +64,7 @@ pub mod type_lib;
 pub mod type_op;
 pub mod type_registry;
 pub mod types;
+pub mod validate;
 pub mod value;
 
 // Re-exports for convenience
@@ -90,6 +91,7 @@ pub use type_registry::{TypeNotFoundError, TypeRegistry};
 pub use types::{Cardinality, CardinalityCase, CardinalityMismatch, NodeId, PortName, TypeId};
 pub use value::{SecretString, Value};
 pub use render::Renderable;
+pub use validate::{validate_subdag_interfaces, SubDagError, PortDirection};
 
 // Re-exports from language module for common use
 pub use language::{

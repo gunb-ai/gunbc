@@ -307,4 +307,24 @@ mod tests {
             _ => panic!("Expected SubDag"),
         }
     }
+
+    // ============ Interface Validation Tests ============
+
+    #[test]
+    fn test_transaction_interface_validates() {
+        use crate::validate::validate_subdag_interfaces;
+
+        let node = TransactionBuilder::new("txn")
+            .with_begin(TestOp::Begin)
+            .with_body(empty_body_dag())
+            .with_commit(TestOp::Commit)
+            .with_rollback(TestOp::Rollback)
+            .build();
+
+        let mut dag: Dag<TestOp> = Dag::new();
+        dag.add_node(node);
+
+        let errors = validate_subdag_interfaces(&dag);
+        assert!(errors.is_empty(), "transaction interface errors: {:?}", errors);
+    }
 }

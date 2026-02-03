@@ -354,4 +354,62 @@ mod tests {
         // Output should be optional (may be skipped)
         assert_eq!(node.outputs[0].cardinality, Cardinality::ZeroOrOne);
     }
+
+    // ============ Interface Validation Tests ============
+
+    fn make_branch_body() -> Dag<TestOp> {
+        let mut dag = Dag::new();
+        dag.add_node(Node::opaque(
+            "op",
+            vec![
+                Port::scalar("input", "String"),
+                Port::scalar("condition", "Bool"),
+            ],
+            vec![Port::scalar("result", "String")],
+            PatternOp::BranchMerge { output_port: "result".into() },
+        ));
+        dag
+    }
+
+    #[test]
+    fn test_branch_interface_validates() {
+        use crate::validate::validate_subdag_interfaces;
+
+        let node = BranchBuilder::new("branch")
+            .with_true_branch(make_branch_body())
+            .with_false_branch(make_branch_body())
+            .build();
+
+        let mut dag: Dag<TestOp> = Dag::new();
+        dag.add_node(node);
+
+        let errors = validate_subdag_interfaces(&dag);
+        assert!(errors.is_empty(), "branch interface errors: {:?}", errors);
+    }
+
+    #[test]
+    fn test_if_interface_validates() {
+        use crate::validate::validate_subdag_interfaces;
+
+        let mut then_dag: Dag<TestOp> = Dag::new();
+        then_dag.add_node(Node::opaque(
+            "op",
+            vec![
+                Port::scalar("input", "String"),
+                Port::scalar("condition", "Bool"),
+            ],
+            vec![Port::scalar("output", "String")],
+            PatternOp::BranchMerge { output_port: "output".into() },
+        ));
+
+        let node = IfBuilder::new("test_if")
+            .with_then(then_dag)
+            .build();
+
+        let mut dag: Dag<TestOp> = Dag::new();
+        dag.add_node(node);
+
+        let errors = validate_subdag_interfaces(&dag);
+        assert!(errors.is_empty(), "if interface errors: {:?}", errors);
+    }
 }
