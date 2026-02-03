@@ -1675,11 +1675,7 @@ impl<'a, T> TestGenerator<'a, T> {
         // 1. MockSpec-sourced examples (rich matchers)
         for (idx, example) in mockspec_examples.iter().enumerate() {
             let test_name = if let Some(desc) = &example.description {
-                let sanitized_desc: String = desc
-                    .chars()
-                    .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
-                    .collect::<String>()
-                    .to_lowercase();
+                let sanitized_desc = sanitize_to_snake_case(desc);
                 format!(
                     "test_example_{}_{}",
                     NamingCase::SnakeCase.apply(&example.node_id),
@@ -1709,7 +1705,12 @@ impl<'a, T> TestGenerator<'a, T> {
             code.push_str("#[test]\n");
             code.push_str(&format!("fn {}() {{\n", test_name));
             code.push_str(&format!("    let dag = {};\n", graph_builder_fn));
-            code.push_str("    let mut inputs = std::collections::HashMap::new();\n");
+
+            if example.inputs.is_empty() {
+                code.push_str("    let inputs = std::collections::HashMap::new();\n");
+            } else {
+                code.push_str("    let mut inputs = std::collections::HashMap::new();\n");
+            }
 
             let mut sorted_inputs: Vec<_> = example.inputs.iter().collect();
             sorted_inputs.sort_by_key(|(k, _)| k.as_str());
@@ -1733,15 +1734,17 @@ impl<'a, T> TestGenerator<'a, T> {
             let mut sorted_outputs: Vec<_> = example.outputs.iter().collect();
             sorted_outputs.sort_by_key(|(k, _)| k.as_str());
             for (port, matcher) in sorted_outputs {
+                let var_name = NamingCase::SnakeCase.apply(port);
+                let prefix = if matcher.generates_assertion() { "" } else { "_" };
                 code.push_str(&format!("    // Check output port '{}'\n", port));
                 code.push_str(&format!(
-                    "    let output_{} = outputs.get(\"{}\").expect(\"output port '{}' should exist\");\n",
-                    NamingCase::SnakeCase.apply(port), port, port
+                    "    let {}output_{} = outputs.get(\"{}\").expect(\"output port '{}' should exist\");\n",
+                    prefix, var_name, port, port
                 ));
 
                 let check_code = matcher.to_check_code(&format!(
                     "output_{}",
-                    NamingCase::SnakeCase.apply(port)
+                    var_name
                 ));
                 code.push_str(&format!("    {}\n", check_code));
             }
@@ -1753,11 +1756,7 @@ impl<'a, T> TestGenerator<'a, T> {
         for node in &self.dag.nodes {
             for (idx, example) in node.examples.iter().enumerate() {
                 let test_name = if let Some(desc) = &example.description {
-                    let sanitized_desc: String = desc
-                        .chars()
-                        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
-                        .collect::<String>()
-                        .to_lowercase();
+                    let sanitized_desc = sanitize_to_snake_case(desc);
                     format!(
                         "test_node_example_{}_{}",
                         NamingCase::SnakeCase.apply(&node.id.0),
@@ -1790,7 +1789,12 @@ impl<'a, T> TestGenerator<'a, T> {
                 code.push_str("#[test]\n");
                 code.push_str(&format!("fn {}() {{\n", test_name));
                 code.push_str(&format!("    let dag = {};\n", graph_builder_fn));
-                code.push_str("    let mut inputs = std::collections::HashMap::new();\n");
+
+                if example.inputs.is_empty() {
+                    code.push_str("    let inputs = std::collections::HashMap::new();\n");
+                } else {
+                    code.push_str("    let mut inputs = std::collections::HashMap::new();\n");
+                }
 
                 let mut sorted_inputs: Vec<_> = example.inputs.iter().collect();
                 sorted_inputs.sort_by_key(|(k, _)| k.as_str());
@@ -1829,6 +1833,34 @@ impl<'a, T> TestGenerator<'a, T> {
 
         code
     }
+}
+
+/// Sanitize a description string into a valid snake_case identifier fragment.
+///
+/// Replaces non-alphanumeric characters with `_`, collapses runs of `_`,
+/// strips leading/trailing `_`, and lowercases.
+fn sanitize_to_snake_case(desc: &str) -> String {
+    let raw: String = desc
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .collect();
+    let mut result = String::with_capacity(raw.len());
+    let mut prev_underscore = true; // starts true to strip leading _
+    for c in raw.chars() {
+        if c == '_' {
+            if !prev_underscore {
+                result.push('_');
+            }
+            prev_underscore = true;
+        } else {
+            result.push(c.to_ascii_lowercase());
+            prev_underscore = false;
+        }
+    }
+    if result.ends_with('_') {
+        result.pop();
+    }
+    result
 }
 
 /// Sanitize a resource ID into a valid snake_case Rust identifier.

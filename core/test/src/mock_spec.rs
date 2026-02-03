@@ -793,6 +793,13 @@ impl OutputMatcher {
         }
     }
 
+    /// Whether `to_check_code` emits an executable assertion (vs. a comment).
+    ///
+    /// Used by codegen to decide whether to prefix the output variable with `_`.
+    pub fn generates_assertion(&self) -> bool {
+        matches!(self, OutputMatcher::Exact(_) | OutputMatcher::Contains(_) | OutputMatcher::NonEmpty)
+    }
+
     /// Convert to Rust code for generated tests.
     pub fn to_check_code(&self, value_expr: &str) -> String {
         match self {
