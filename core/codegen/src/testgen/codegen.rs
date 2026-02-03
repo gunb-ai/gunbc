@@ -299,8 +299,8 @@ impl<'a, T> TestGenerator<'a, T> {
         // ===================================================================
         if self.config.execution_tests {
             code.push_str(&self.generate_execution_tests(
-                &analysis,
-                &obligations,
+                analysis,
+                obligations,
                 graph_builder_fn,
             ));
         }
@@ -309,7 +309,7 @@ impl<'a, T> TestGenerator<'a, T> {
         // Bucket B: Contract Obligations (only for Unknown entailments)
         // ===================================================================
         if self.config.contract_tests {
-            code.push_str(&self.generate_contract_tests(&analysis, &obligations));
+            code.push_str(&self.generate_contract_tests(analysis, obligations));
         }
 
         // ===================================================================
@@ -317,8 +317,8 @@ impl<'a, T> TestGenerator<'a, T> {
         // ===================================================================
         if self.config.scenario_tests {
             code.push_str(&self.generate_scenario_tests(
-                &analysis,
-                &obligations,
+                analysis,
+                obligations,
                 graph_builder_fn,
             ));
         }
@@ -327,7 +327,7 @@ impl<'a, T> TestGenerator<'a, T> {
         // Bucket D: Resource Hygiene + Simulation
         // ===================================================================
         if self.config.resource_tests {
-            code.push_str(&self.generate_resource_tests(&analysis, &obligations));
+            code.push_str(&self.generate_resource_tests(analysis, obligations));
         }
 
         // ===================================================================
@@ -339,15 +339,15 @@ impl<'a, T> TestGenerator<'a, T> {
         // The compiler proves: types match, cardinalities satisfy, no cycles.
 
         if self.config.boundary_tests {
-            code.push_str(&self.generate_boundary_tests(&analysis, graph_builder_fn));
+            code.push_str(&self.generate_boundary_tests(analysis, graph_builder_fn));
         }
 
         if self.config.chain_tests {
-            code.push_str(&self.generate_chain_tests(&analysis));
+            code.push_str(&self.generate_chain_tests(analysis));
         }
 
         if self.config.flow_tests {
-            code.push_str(&self.generate_flow_tests(&analysis, graph_builder_fn));
+            code.push_str(&self.generate_flow_tests(analysis, graph_builder_fn));
         }
 
         // ===================================================================
