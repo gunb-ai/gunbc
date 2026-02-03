@@ -136,7 +136,7 @@ impl<T: Clone> UpsertBuilder<T> {
                 Port::guarded_with_cardinality(
                     "exists",
                     "Bool",
-                    Cardinality::One,
+                    Cardinality::ONE,
                     Guard::Eq(Value::Bool(false)),
                 ),
             ],

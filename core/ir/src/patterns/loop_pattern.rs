@@ -62,7 +62,7 @@ impl<T: Clone> LoopBuilder<T> {
             body_dag: None,
             input_port_name: "input".to_string(),
             input_port_type: "StrList".to_string(),
-            input_cardinality: Cardinality::ZeroOrMore,
+            input_cardinality: Cardinality::ZERO_OR_MORE,
             element_port_name: "element".to_string(),
             element_port_type: "String".to_string(),
             output_port_name: "output".to_string(),
@@ -233,13 +233,13 @@ mod tests {
     #[test]
     fn test_loop_preserves_cardinality() {
         let node = LoopBuilder::new("test")
-            .with_input("items", "StrList", Cardinality::OneOrMore)
+            .with_input("items", "StrList", Cardinality::ONE_OR_MORE)
             .with_body(make_loop_body())
             .build();
 
         // OneOrMore should be preserved
         let items = node.inputs.iter().find(|p| p.name.0 == "items").unwrap();
-        assert_eq!(items.cardinality, Cardinality::OneOrMore);
+        assert_eq!(items.cardinality, Cardinality::ONE_OR_MORE);
     }
 
     // ============ Interface Validation Tests ============

@@ -204,15 +204,15 @@ mod tests {
 
         assert_eq!(
             registry.infer_cardinality(&TypeId::from("String")),
-            Some(Cardinality::One)
+            Some(Cardinality::ONE)
         );
         assert_eq!(
             registry.infer_cardinality(&TypeId::from("OptionalString")),
-            Some(Cardinality::ZeroOrOne)
+            Some(Cardinality::ZERO_OR_ONE)
         );
         assert_eq!(
             registry.infer_cardinality(&TypeId::from("StringList")),
-            Some(Cardinality::ZeroOrMore)
+            Some(Cardinality::ZERO_OR_MORE)
         );
     }
 

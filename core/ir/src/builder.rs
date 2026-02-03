@@ -986,8 +986,8 @@ mod tests {
         
         match result {
             Err(BuilderError::CardinalityMismatch { from_cardinality, to_cardinality, .. }) => {
-                assert_eq!(from_cardinality, Cardinality::ZeroOrOne);
-                assert_eq!(to_cardinality, Cardinality::One);
+                assert_eq!(from_cardinality, Cardinality::ZERO_OR_ONE);
+                assert_eq!(to_cardinality, Cardinality::ONE);
             }
             _ => panic!("Expected CardinalityMismatch error"),
         }

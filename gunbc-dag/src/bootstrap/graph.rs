@@ -47,15 +47,15 @@ pub fn bootstrap_signature() -> WorkflowSignature {
     WorkflowSignature::new()
         // No inputs (scan_workspace has no entrypoint inputs)
         // Outputs from makefile transport execution (boundary)
-        .with_output("makefile_response", "TransportResponse", Cardinality::One)
-        .with_output("makefile_written_path", "String", Cardinality::One)
-        .with_output("makefile_content", "String", Cardinality::One)
+        .with_output("makefile_response", "TransportResponse", Cardinality::ONE)
+        .with_output("makefile_written_path", "String", Cardinality::ONE)
+        .with_output("makefile_content", "String", Cardinality::ONE)
         // Outputs from gitignore transport execution (boundary)
-        .with_output("gitignore_response", "TransportResponse", Cardinality::One)
-        .with_output("gitignore_written_path", "String", Cardinality::One)
-        .with_output("gitignore_content", "String", Cardinality::One)
+        .with_output("gitignore_response", "TransportResponse", Cardinality::ONE)
+        .with_output("gitignore_written_path", "String", Cardinality::ONE)
+        .with_output("gitignore_content", "String", Cardinality::ONE)
         // Informational outputs from scan_workspace
-        .with_output("crate_count", "Int", Cardinality::One)
+        .with_output("crate_count", "Int", Cardinality::ONE)
 }
 
 /// Build the bootstrap graph using DagBuilder.

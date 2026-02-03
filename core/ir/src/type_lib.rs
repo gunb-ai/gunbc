@@ -300,15 +300,15 @@ pub fn infer_cardinality(type_dag: &Dag<TypeOp>) -> Cardinality {
     for node in &type_dag.nodes {
         if let crate::node::NodeBody::Opaque(TypeOp::Wrap(kind)) = &node.body {
             return match kind {
-                WrapperKind::Optional => Cardinality::ZeroOrOne,
-                WrapperKind::List => Cardinality::ZeroOrMore,
-                WrapperKind::NonEmptyList => Cardinality::OneOrMore,
+                WrapperKind::Optional => Cardinality::ZERO_OR_ONE,
+                WrapperKind::List => Cardinality::ZERO_OR_MORE,
+                WrapperKind::NonEmptyList => Cardinality::ONE_OR_MORE,
             };
         }
     }
 
     // Default to One (scalar)
-    Cardinality::One
+    Cardinality::ONE
 }
 
 /// Get the base type name from a type DAG.
@@ -387,10 +387,10 @@ mod tests {
         let list_type = list(string());
         let non_empty_type = non_empty_list(string());
 
-        assert_eq!(infer_cardinality(&string_type), Cardinality::One);
-        assert_eq!(infer_cardinality(&optional_type), Cardinality::ZeroOrOne);
-        assert_eq!(infer_cardinality(&list_type), Cardinality::ZeroOrMore);
-        assert_eq!(infer_cardinality(&non_empty_type), Cardinality::OneOrMore);
+        assert_eq!(infer_cardinality(&string_type), Cardinality::ONE);
+        assert_eq!(infer_cardinality(&optional_type), Cardinality::ZERO_OR_ONE);
+        assert_eq!(infer_cardinality(&list_type), Cardinality::ZERO_OR_MORE);
+        assert_eq!(infer_cardinality(&non_empty_type), Cardinality::ONE_OR_MORE);
     }
 
     #[test]
@@ -410,7 +410,7 @@ mod tests {
         assert!(opt_url.nodes.len() >= 2);
         assert!(url_list_type.nodes.len() >= 2);
 
-        assert_eq!(infer_cardinality(&opt_url), Cardinality::ZeroOrOne);
-        assert_eq!(infer_cardinality(&url_list_type), Cardinality::ZeroOrMore);
+        assert_eq!(infer_cardinality(&opt_url), Cardinality::ZERO_OR_ONE);
+        assert_eq!(infer_cardinality(&url_list_type), Cardinality::ZERO_OR_MORE);
     }
 }

@@ -155,7 +155,7 @@ impl<T: Clone> TransactionBuilder<T> {
                 Port::guarded_with_cardinality(
                     "success",
                     "Bool",
-                    Cardinality::One,
+                    Cardinality::ONE,
                     Guard::Eq(Value::Bool(true)),
                 ),
             ],
@@ -171,7 +171,7 @@ impl<T: Clone> TransactionBuilder<T> {
                 Port::guarded_with_cardinality(
                     "success",
                     "Bool",
-                    Cardinality::One,
+                    Cardinality::ONE,
                     Guard::Eq(Value::Bool(false)),
                 ),
             ],

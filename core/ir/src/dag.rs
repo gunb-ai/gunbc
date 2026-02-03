@@ -215,12 +215,12 @@ pub struct Port {
 
 impl Port {
     /// Create a new port.
-    /// Defaults to `Cardinality::One` (scalar, required).
+    /// Defaults to `Cardinality::ONE` (scalar, required).
     pub fn new(name: impl Into<PortName>, type_id: impl Into<TypeId>) -> Self {
         Self {
             name: name.into(),
             type_id: type_id.into(),
-            cardinality: Cardinality::One,
+            cardinality: Cardinality::ONE,
             guard: None,
         }
     }
@@ -242,31 +242,31 @@ impl Port {
     /// Create a scalar port (exactly one value, required).
     /// This is the most common case for simple data flow.
     pub fn scalar(name: impl Into<PortName>, type_id: impl Into<TypeId>) -> Self {
-        Self::with_cardinality(name, type_id, Cardinality::One)
+        Self::with_cardinality(name, type_id, Cardinality::ONE)
     }
 
     /// Create an optional port (zero or one value).
     /// Use for nullable or optional data.
     pub fn optional(name: impl Into<PortName>, type_id: impl Into<TypeId>) -> Self {
-        Self::with_cardinality(name, type_id, Cardinality::ZeroOrOne)
+        Self::with_cardinality(name, type_id, Cardinality::ZERO_OR_ONE)
     }
 
     /// Create a list port (zero or more values).
     /// Use for collections that may be empty.
     pub fn list(name: impl Into<PortName>, type_id: impl Into<TypeId>) -> Self {
-        Self::with_cardinality(name, type_id, Cardinality::ZeroOrMore)
+        Self::with_cardinality(name, type_id, Cardinality::ZERO_OR_MORE)
     }
 
     /// Create a non-empty list port (one or more values).
     /// Use for collections that must have at least one element.
     pub fn non_empty_list(name: impl Into<PortName>, type_id: impl Into<TypeId>) -> Self {
-        Self::with_cardinality(name, type_id, Cardinality::OneOrMore)
+        Self::with_cardinality(name, type_id, Cardinality::ONE_OR_MORE)
     }
 
     /// Create a void port (zero values).
     /// Use for signals that carry no data, just timing.
     pub fn void(name: impl Into<PortName>) -> Self {
-        Self::with_cardinality(name, "Unit", Cardinality::Zero)
+        Self::with_cardinality(name, "Unit", Cardinality::ZERO)
     }
 
     /// Create a port with an equality guard (internal use only).
@@ -282,7 +282,7 @@ impl Port {
         Self {
             name: name.into(),
             type_id: type_id.into(),
-            cardinality: Cardinality::One,
+            cardinality: Cardinality::ONE,
             guard: Some(Guard::Eq(expected)),
         }
     }
@@ -390,7 +390,7 @@ fn values_equal(a: &Value, b: &Value) -> bool {
 pub mod build {
     use super::*;
 
-    /// Create a simple port (defaults to Cardinality::One).
+    /// Create a simple port (defaults to Cardinality::ONE).
     pub fn port(name: &str, type_id: &str) -> Port {
         Port::new(name, type_id)
     }
@@ -438,7 +438,7 @@ pub mod build {
         Port {
             name: name.into(),
             type_id: type_id.into(),
-            cardinality: Cardinality::One,
+            cardinality: Cardinality::ONE,
             guard: Some(Guard::Eq(expected)),
         }
     }
@@ -541,19 +541,19 @@ mod tests {
 
         // Port with registered type - should infer cardinality
         let port1 = Port::scalar("p1", "String");
-        assert_eq!(port1.infer_cardinality(&registry), Cardinality::One);
+        assert_eq!(port1.infer_cardinality(&registry), Cardinality::ONE);
 
         let port2 = Port::scalar("p2", "OptionalString");
-        assert_eq!(port2.infer_cardinality(&registry), Cardinality::ZeroOrOne);
+        assert_eq!(port2.infer_cardinality(&registry), Cardinality::ZERO_OR_ONE);
 
         let port3 = Port::scalar("p3", "StringList");
-        assert_eq!(port3.infer_cardinality(&registry), Cardinality::ZeroOrMore);
+        assert_eq!(port3.infer_cardinality(&registry), Cardinality::ZERO_OR_MORE);
 
         let port4 = Port::scalar("p4", "NonEmptyStringList");
-        assert_eq!(port4.infer_cardinality(&registry), Cardinality::OneOrMore);
+        assert_eq!(port4.infer_cardinality(&registry), Cardinality::ONE_OR_MORE);
 
         // Port with unregistered type - should fall back to declared cardinality
         let port5 = Port::optional("p5", "Unknown");
-        assert_eq!(port5.infer_cardinality(&registry), Cardinality::ZeroOrOne);
+        assert_eq!(port5.infer_cardinality(&registry), Cardinality::ZERO_OR_ONE);
     }
 }

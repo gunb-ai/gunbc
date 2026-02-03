@@ -39,12 +39,12 @@ impl Executable for Buck2GraphOp {
 pub fn buck2_signature() -> WorkflowSignature {
     WorkflowSignature::new()
         // Inputs (entrypoints)
-        .with_input("cargo_toml_path", "String", Cardinality::One)
-        .with_input("output_path", "String", Cardinality::One)
+        .with_input("cargo_toml_path", "String", Cardinality::ONE)
+        .with_input("output_path", "String", Cardinality::ONE)
         // Outputs from execute_transport (boundary)
-        .with_output("response", "TransportResponse", Cardinality::One)
-        .with_output("written_path", "String", Cardinality::One)
-        .with_output("content", "String", Cardinality::One)
+        .with_output("response", "TransportResponse", Cardinality::ONE)
+        .with_output("written_path", "String", Cardinality::ONE)
+        .with_output("content", "String", Cardinality::ONE)
 }
 
 /// Build the Buck2 generation graph using DagBuilder.

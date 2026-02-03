@@ -425,7 +425,7 @@ fn execute_collect_file_contents(
 /// ```ignore
 /// let body = build_read_file_body_dag();
 /// let loop_node = LoopBuilder::new("read_files_loop")
-///     .with_input("files", "StrList", Cardinality::ZeroOrMore)
+///     .with_input("files", "StrList", Cardinality::ZERO_OR_MORE)
 ///     .with_element("filename", "String")
 ///     .with_body(body)
 ///     .with_output("contents", "StrList")
@@ -473,11 +473,11 @@ pub fn build_read_file_body_dag() -> Dag<GistGraphOp> {
 /// - Diff: `(repo_path?, base_ref?) → url`
 pub fn gist_signature(mode: &GistMode) -> WorkflowSignature {
     let mut sig = WorkflowSignature::new()
-        .with_input("repo_path", "String", Cardinality::ZeroOrOne)
-        .with_output("url", "String", Cardinality::One);
+        .with_input("repo_path", "String", Cardinality::ZERO_OR_ONE)
+        .with_output("url", "String", Cardinality::ONE);
 
     if matches!(mode, GistMode::Diff { .. }) {
-        sig = sig.with_input("base_ref", "String", Cardinality::ZeroOrOne);
+        sig = sig.with_input("base_ref", "String", Cardinality::ZERO_OR_ONE);
     }
 
     sig

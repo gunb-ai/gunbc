@@ -42,15 +42,15 @@ pub fn cardinality(type_dag: &Dag<TypeOp>) -> Cardinality {
     for node in &type_dag.nodes {
         if let NodeBody::Opaque(TypeOp::Wrap(kind)) = &node.body {
             return match kind {
-                WrapperKind::Optional => Cardinality::ZeroOrOne,
-                WrapperKind::List => Cardinality::ZeroOrMore,
-                WrapperKind::NonEmptyList => Cardinality::OneOrMore,
+                WrapperKind::Optional => Cardinality::ZERO_OR_ONE,
+                WrapperKind::List => Cardinality::ZERO_OR_MORE,
+                WrapperKind::NonEmptyList => Cardinality::ONE_OR_MORE,
             };
         }
     }
 
     // Default to One (scalar)
-    Cardinality::One
+    Cardinality::ONE
 }
 
 /// L2: Extract base type name from a type DAG.
@@ -164,10 +164,10 @@ mod tests {
         let list_type = type_lib::list(type_lib::string());
         let non_empty_type = type_lib::non_empty_list(type_lib::string());
 
-        assert_eq!(cardinality(&string_type), Cardinality::One);
-        assert_eq!(cardinality(&optional_type), Cardinality::ZeroOrOne);
-        assert_eq!(cardinality(&list_type), Cardinality::ZeroOrMore);
-        assert_eq!(cardinality(&non_empty_type), Cardinality::OneOrMore);
+        assert_eq!(cardinality(&string_type), Cardinality::ONE);
+        assert_eq!(cardinality(&optional_type), Cardinality::ZERO_OR_ONE);
+        assert_eq!(cardinality(&list_type), Cardinality::ZERO_OR_MORE);
+        assert_eq!(cardinality(&non_empty_type), Cardinality::ONE_OR_MORE);
     }
 
     #[test]
@@ -231,7 +231,7 @@ mod tests {
         let url_type = type_lib::url();
         let contract = TypeContract::from_type_dag(&url_type);
 
-        assert_eq!(contract.cardinality, Cardinality::One);
+        assert_eq!(contract.cardinality, Cardinality::ONE);
         assert_eq!(contract.base_type, Some("String".to_string()));
         assert!(!contract.predicates.is_empty());
         assert!(!contract.is_container);
