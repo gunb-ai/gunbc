@@ -395,6 +395,17 @@ These hand-written integration tests are now fully subsumed by
 generated tests. Once testgen covers all DAGs, these files can be
 deleted or reduced to edge-case-only suites.
 
+### Pattern 6: graph_mock.rs Test Blocks
+
+49 hand-written tests across 8 `graph_mock.rs` files. These test
+MockSpec properties (boundary presence, mock value content, chain
+validation, resources). All are mechanically generatable.
+
+**See**: `testgen-improvements.md` Phase 8 for the full extraction
+plan. Patterns A (boundary presence) and C (`validate_chain`)
+are safe to delete now — testgen already generates equivalent tests.
+Pattern E (signature validation) needs TODO 8.2 first.
+
 ---
 
 ## 8. Integration Test Gap Analysis
@@ -601,3 +612,10 @@ Concrete test suites:
   `File` and `Shell` integration tests are the highest-value additions.
 - Testgen already subsumes most hand-written integration tests
   (Pattern 5). Focus hand-written tests on edge cases only.
+- graph_mock.rs files should become data-only (MockSpec + examples).
+  49 tests across 8 files are deletable once testgen Phase 8 lands.
+  Watch: some library targets call `.no_boundary_tests()` — verify
+  generated suite still covers those invariants before deleting.
+- Makefile gen and CI gen should read `all_testgen_targets()` to
+  auto-generate check targets (testgen-improvements.md TODO 6.3).
+  This makes "add a new tool" a single edit instead of 3+.
