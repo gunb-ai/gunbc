@@ -23,7 +23,10 @@
 pub mod graph;
 pub mod graph_mock;
 
-use gunbc_exec::{ExecError, Executable};
+use gunbc_exec::{
+    optional_json, optional_str, require_json, require_map_str_str, require_str, ExecError,
+    Executable, OutputMap,
+};
 use gunbc_ir::Value;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -316,34 +319,23 @@ fn execute_load_pipeline_config(
     let criteria_json = serde_json::to_value(&config.criteria)
         .map_err(|e| ExecError::new(format!("failed to serialize criteria: {}", e)))?;
 
-    let mut out = HashMap::new();
-    out.insert("provider".to_string(), Value::Str(config.provider.clone()));
-    out.insert("model".to_string(), Value::Str(config.model.clone()));
-    out.insert("criteria".to_string(), Value::Json(criteria_json));
-    Ok(out)
+    OutputMap::new()
+        .str("provider", config.provider.clone())
+        .str("model", config.model.clone())
+        .json("criteria", criteria_json)
+        .ok()
 }
 
 fn execute_prepare_review_prompt(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
     // artifact is validated but passed separately to LLM via PrepareSimpleRequest.content
-    let _artifact = inputs
-        .get("artifact")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| ExecError::new("missing or invalid 'artifact' input"))?;
+    let _artifact = require_str(&inputs, "artifact")?;
 
-    let criteria: Criteria = inputs
-        .get("criteria")
-        .and_then(|v| v.as_json())
-        .map(|j| serde_json::from_value(j.clone()))
-        .transpose()
-        .map_err(|e| ExecError::new(format!("invalid 'criteria' JSON: {}", e)))?
-        .ok_or_else(|| ExecError::new("missing 'criteria' input"))?;
+    let criteria: Criteria = serde_json::from_value(require_json(&inputs, "criteria")?.clone())
+        .map_err(|e| ExecError::new(format!("invalid 'criteria' JSON: {}", e)))?;
 
-    let context = inputs
-        .get("context")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
+    let context = optional_str(&inputs, "context").unwrap_or("");
 
     // Build the question from criteria
     let mut question_parts = vec![format!(
@@ -378,27 +370,19 @@ fn execute_prepare_review_prompt(
         criteria.name
     );
 
-    let mut out = HashMap::new();
-    out.insert("question".to_string(), Value::Str(question));
-    out.insert("system_prompt".to_string(), Value::Str(system_prompt));
-    Ok(out)
+    OutputMap::new()
+        .str("question", question)
+        .str("system_prompt", system_prompt)
+        .ok()
 }
 
 fn execute_parse_review_response(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    let answer = inputs
-        .get("answer")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| ExecError::new("missing or invalid 'answer' input"))?;
+    let answer = require_str(&inputs, "answer")?;
 
-    let criteria: Criteria = inputs
-        .get("criteria")
-        .and_then(|v| v.as_json())
-        .map(|j| serde_json::from_value(j.clone()))
-        .transpose()
-        .map_err(|e| ExecError::new(format!("invalid 'criteria' JSON: {}", e)))?
-        .ok_or_else(|| ExecError::new("missing 'criteria' input"))?;
+    let criteria: Criteria = serde_json::from_value(require_json(&inputs, "criteria")?.clone())
+        .map_err(|e| ExecError::new(format!("invalid 'criteria' JSON: {}", e)))?;
 
     let mut errors = Vec::new();
 
@@ -437,23 +421,17 @@ fn execute_parse_review_response(
         summary,
     };
 
-    let mut out = HashMap::new();
-    out.insert(
-        "output".to_string(),
-        Value::Json(serde_json::to_value(&output).unwrap()),
-    );
-    out.insert(
-        "errors".to_string(),
-        Value::Json(serde_json::to_value(&errors).unwrap()),
-    );
-    Ok(out)
+    OutputMap::new()
+        .json("output", serde_json::to_value(&output).unwrap())
+        .json("errors", serde_json::to_value(&errors).unwrap())
+        .ok()
 }
 
 fn execute_merge_outputs(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
     // Accept any cardinality: null/missing → 0, object → 1, array → N.
-    let outputs: Vec<ReviewOutput> = match inputs.get("outputs").and_then(|v| v.as_json()) {
+    let outputs: Vec<ReviewOutput> = match optional_json(&inputs, "outputs") {
         None => vec![],
         Some(j) if j.is_null() => vec![],
         Some(j) if j.is_array() => serde_json::from_value(j.clone())
@@ -491,45 +469,27 @@ fn execute_merge_outputs(
         merged_findings,
     };
 
-    let mut out = HashMap::new();
-    out.insert(
-        "bundle".to_string(),
-        Value::Json(serde_json::to_value(&bundle).unwrap()),
-    );
-    out.insert(
-        "conflicts".to_string(),
-        Value::Json(serde_json::to_value(&conflicts).unwrap()),
-    );
-    Ok(out)
+    OutputMap::new()
+        .json("bundle", serde_json::to_value(&bundle).unwrap())
+        .json("conflicts", serde_json::to_value(&conflicts).unwrap())
+        .ok()
 }
 
 fn execute_hash_finding(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    let issue_key = inputs
-        .get("issue_key")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| ExecError::new("missing or invalid 'issue_key' input"))?;
-
-    let check_id = inputs
-        .get("check_id")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| ExecError::new("missing or invalid 'check_id' input"))?;
+    let issue_key = require_str(&inputs, "issue_key")?;
+    let check_id = require_str(&inputs, "check_id")?;
 
     let finding_id = hash_finding_id(issue_key, check_id);
 
-    let mut out = HashMap::new();
-    out.insert("finding_id".to_string(), Value::Str(finding_id));
-    Ok(out)
+    OutputMap::new().str("finding_id", finding_id).ok()
 }
 
 fn execute_format_diff_artifact(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    let diff_files = inputs
-        .get("diff_files")
-        .and_then(|v| v.as_map_str_str())
-        .ok_or_else(|| ExecError::new("missing or invalid 'diff_files' input"))?;
+    let diff_files = require_map_str_str(&inputs, "diff_files")?;
 
     // Format each file's diff into a readable artifact
     let mut parts = Vec::new();
@@ -543,9 +503,7 @@ fn execute_format_diff_artifact(
         parts.join("\n\n")
     };
 
-    let mut out = HashMap::new();
-    out.insert("artifact".to_string(), Value::Str(artifact));
-    Ok(out)
+    OutputMap::new().str("artifact", artifact).ok()
 }
 
 // ============================================================================

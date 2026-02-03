@@ -17,9 +17,10 @@
 //! GistGraphOp::Git(GitOps::ParseLsFiles)
 //! ```
 
-use gunbc_exec::{ExecError, Executable};
+use gunbc_exec::{
+    optional_str, require_response, ExecError, Executable, OutputMap, TransportResponseExt,
+};
 use gunbc_ir::transport::git::{self, GitRequest};
-use gunbc_ir::transport::{ShellResponse, TransportResponse};
 use gunbc_ir::Value;
 use std::collections::HashMap;
 
@@ -84,10 +85,7 @@ impl Executable for GitOps {
             // ls-files
             // ================================================================
             GitOps::PrepareLsFiles { extensions } => {
-                let repo_path = inputs
-                    .get("repo_path")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or(".");
+                let repo_path = optional_str(&inputs, "repo_path").unwrap_or(".");
 
                 let mut req = GitRequest::ls_files();
                 if !extensions.is_empty() {
@@ -98,47 +96,31 @@ impl Executable for GitOps {
                 }
                 let request = req.to_shell_request();
 
-                let mut out = HashMap::new();
-                out.insert("request".to_string(), Value::Request(request));
-                Ok(out)
+                OutputMap::new().request("request", request).ok()
             }
             GitOps::ParseLsFiles => {
-                let response = inputs
-                    .get("response")
-                    .and_then(|v| v.as_response())
-                    .ok_or_else(|| ExecError::new("missing or invalid 'response' input"))?;
+                let response = require_response(&inputs, "response")?;
+                let shell = response.require_shell()?;
 
-                let files = match response {
-                    TransportResponse::Shell(ShellResponse { stdout, exit_code, .. }) => {
-                        if *exit_code == 0 {
-                            git::parse_ls_files(stdout)
-                        } else {
-                            // Return empty list on failure (could be non-git repo)
-                            Vec::new()
-                        }
-                    }
-                    _ => return Err(ExecError::new("unexpected response type")),
+                let files = if shell.exit_code == 0 {
+                    git::parse_ls_files(&shell.stdout)
+                } else {
+                    // Return empty list on failure (could be non-git repo)
+                    Vec::new()
                 };
 
-                let mut out = HashMap::new();
-                out.insert("files".to_string(), Value::str_list(files));
-                Ok(out)
+                OutputMap::new().value("files", Value::str_list(files)).ok()
             }
 
             // ================================================================
             // diff
             // ================================================================
             GitOps::PrepareDiff { base_ref, extensions } => {
-                let repo_path = inputs
-                    .get("repo_path")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or(".");
+                let repo_path = optional_str(&inputs, "repo_path").unwrap_or(".");
 
                 // Allow runtime override of base_ref
-                let effective_ref = inputs
-                    .get("base_ref")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or(base_ref.as_str());
+                let effective_ref =
+                    optional_str(&inputs, "base_ref").unwrap_or(base_ref.as_str());
 
                 let mut req = GitRequest::diff(effective_ref);
                 if !extensions.is_empty() {
@@ -149,46 +131,29 @@ impl Executable for GitOps {
                 }
                 let request = req.to_shell_request();
 
-                let mut out = HashMap::new();
-                out.insert("request".to_string(), Value::Request(request));
-                Ok(out)
+                OutputMap::new().request("request", request).ok()
             }
             GitOps::ParseDiff => {
-                let response = inputs
-                    .get("response")
-                    .and_then(|v| v.as_response())
-                    .ok_or_else(|| ExecError::new("missing or invalid 'response' input"))?;
+                let response = require_response(&inputs, "response")?;
+                let shell = response.require_shell()?;
 
-                let stdout = match response {
-                    TransportResponse::Shell(shell) => &shell.stdout,
-                    _ => return Err(ExecError::new("unexpected response type")),
-                };
-
-                let chunks = git::parse_diff_chunks(stdout);
+                let chunks = git::parse_diff_chunks(&shell.stdout);
                 let (adds, dels, count) = git::diff_stats(&chunks);
 
-                let mut out = HashMap::new();
-                out.insert("diff_files".to_string(), Value::str_map(chunks));
-                out.insert(
-                    "stats".to_string(),
-                    Value::Str(format!("+{} -{} across {} files", adds, dels, count)),
-                );
-                Ok(out)
+                OutputMap::new()
+                    .value("diff_files", Value::str_map(chunks))
+                    .str("stats", format!("+{} -{} across {} files", adds, dels, count))
+                    .ok()
             }
 
             // ================================================================
             // diff --name-only
             // ================================================================
             GitOps::PrepareDiffNameOnly { base_ref, extensions } => {
-                let repo_path = inputs
-                    .get("repo_path")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or(".");
+                let repo_path = optional_str(&inputs, "repo_path").unwrap_or(".");
 
-                let effective_ref = inputs
-                    .get("base_ref")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or(base_ref.as_str());
+                let effective_ref =
+                    optional_str(&inputs, "base_ref").unwrap_or(base_ref.as_str());
 
                 let mut req = GitRequest::diff_name_only(effective_ref);
                 if !extensions.is_empty() {
@@ -199,40 +164,26 @@ impl Executable for GitOps {
                 }
                 let request = req.to_shell_request();
 
-                let mut out = HashMap::new();
-                out.insert("request".to_string(), Value::Request(request));
-                Ok(out)
+                OutputMap::new().request("request", request).ok()
             }
             GitOps::ParseDiffNameOnly => {
-                let response = inputs
-                    .get("response")
-                    .and_then(|v| v.as_response())
-                    .ok_or_else(|| ExecError::new("missing or invalid 'response' input"))?;
+                let response = require_response(&inputs, "response")?;
+                let shell = response.require_shell()?;
 
-                let files = match response {
-                    TransportResponse::Shell(ShellResponse { stdout, exit_code, .. }) => {
-                        if *exit_code == 0 {
-                            git::parse_diff_name_only(stdout)
-                        } else {
-                            Vec::new()
-                        }
-                    }
-                    _ => return Err(ExecError::new("unexpected response type")),
+                let files = if shell.exit_code == 0 {
+                    git::parse_diff_name_only(&shell.stdout)
+                } else {
+                    Vec::new()
                 };
 
-                let mut out = HashMap::new();
-                out.insert("files".to_string(), Value::str_list(files));
-                Ok(out)
+                OutputMap::new().value("files", Value::str_list(files)).ok()
             }
 
             // ================================================================
             // Utilities
             // ================================================================
             GitOps::PrepareCurrentBranch => {
-                let repo_path = inputs
-                    .get("repo_path")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or(".");
+                let repo_path = optional_str(&inputs, "repo_path").unwrap_or(".");
 
                 let mut req = GitRequest::current_branch();
                 if repo_path != "." {
@@ -240,24 +191,15 @@ impl Executable for GitOps {
                 }
                 let request = req.to_shell_request();
 
-                let mut out = HashMap::new();
-                out.insert("request".to_string(), Value::Request(request));
-                Ok(out)
+                OutputMap::new().request("request", request).ok()
             }
             GitOps::ParseCurrentBranch => {
-                let response = inputs
-                    .get("response")
-                    .and_then(|v| v.as_response())
-                    .ok_or_else(|| ExecError::new("missing or invalid 'response' input"))?;
+                let response = require_response(&inputs, "response")?;
+                let shell = response.require_shell()?;
 
-                let branch = match response {
-                    TransportResponse::Shell(shell) => git::parse_current_branch(&shell.stdout),
-                    _ => return Err(ExecError::new("unexpected response type")),
-                };
+                let branch = git::parse_current_branch(&shell.stdout);
 
-                let mut out = HashMap::new();
-                out.insert("branch".to_string(), Value::Str(branch));
-                Ok(out)
+                OutputMap::new().str("branch", branch).ok()
             }
         }
     }

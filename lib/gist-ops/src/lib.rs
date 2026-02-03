@@ -13,7 +13,7 @@
 //! // request is now a TransportRequest ready to be executed via TransportOps::Execute
 //! ```
 
-use gunbc_exec::{ExecError, Executable};
+use gunbc_exec::{require_response, require_str, ExecError, Executable, OutputMap};
 use gunbc_ir::transport::gist::GistRequest;
 use gunbc_ir::transport::{ShellResponse, TransportRequest, TransportResponse};
 use gunbc_ir::Value;
@@ -34,29 +34,19 @@ impl Executable for GistOps {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         match self {
             GistOps::PrepareRequest { public } => {
-                let markdown = inputs
-                    .get("markdown")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| ExecError::new("missing or invalid 'markdown' input"))?;
+                let markdown = require_str(&inputs, "markdown")?;
 
                 let request =
                     prepare_gist_request(markdown, *public, "Code snapshot created by gunbc-gist");
 
-                let mut out = HashMap::new();
-                out.insert("request".to_string(), Value::Request(request));
-                Ok(out)
+                OutputMap::new().request("request", request).ok()
             }
             GistOps::ParseGistResponse => {
-                let response = inputs
-                    .get("response")
-                    .and_then(|v| v.as_response())
-                    .ok_or_else(|| ExecError::new("missing or invalid 'response' input"))?;
+                let response = require_response(&inputs, "response")?;
 
                 let url = extract_gist_url(response);
 
-                let mut out = HashMap::new();
-                out.insert("url".to_string(), Value::Str(url));
-                Ok(out)
+                OutputMap::new().str("url", url).ok()
             }
         }
     }

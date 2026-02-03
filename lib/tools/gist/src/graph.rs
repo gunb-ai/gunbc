@@ -10,7 +10,11 @@
 //! - ReadFiles: PrepareReadFiles -> Execute -> ParseReadFiles (with loop)
 //! - Gist creation: PrepareRequest -> Execute
 
-use gunbc_exec::{ExecError, Executable};
+use gunbc_exec::{
+    ExecError, Executable, OutputMap, TransportResponseExt,
+    optional_str, optional_str_list,
+    require_response, require_str, require_str_list,
+};
 use gunbc_ir::transport::{ShellRequest, TransportRequest, TransportResponse};
 use gunbc_ir::{
     build::*, BuilderError, Cardinality, Dag, DagBuilder, Node, Value, WorkflowSignature,
@@ -149,15 +153,9 @@ const FILE_MARKER_END: &str = "===";
 fn execute_prepare_read_files(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    let files = inputs
-        .get("files")
-        .and_then(|v| v.as_str_list())
-        .ok_or_else(|| ExecError::new("missing or invalid 'files' input"))?;
+    let files = require_str_list(&inputs, "files")?;
 
-    let repo_path = inputs
-        .get("repo_path")
-        .and_then(|v| v.as_str())
-        .unwrap_or(".");
+    let repo_path = optional_str(&inputs, "repo_path").unwrap_or(".");
 
     // Build full paths
     let full_paths: Vec<String> = files
@@ -195,9 +193,7 @@ fn execute_prepare_read_files(
         stdin: None,
     });
 
-    let mut out = HashMap::new();
-    out.insert("request".to_string(), Value::Request(request));
-    Ok(out)
+    OutputMap::new().request("request", request).ok()
 }
 
 // ============================================================================
@@ -214,15 +210,9 @@ fn execute_prepare_read_files(
 fn execute_parse_read_files(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    let response = inputs
-        .get("response")
-        .and_then(|v| v.as_response())
-        .ok_or_else(|| ExecError::new("missing or invalid 'response' input"))?;
-
-    let stdout = match response {
-        TransportResponse::Shell(shell) => shell.stdout.clone(),
-        _ => return Err(ExecError::new("unexpected response type")),
-    };
+    let response = require_response(&inputs, "response")?;
+    let shell = response.require_shell()?;
+    let stdout = shell.stdout.clone();
 
     // Parse the output: look for ===GUNBC_FILE:name=== markers
     let mut contents = BTreeMap::new();
@@ -265,9 +255,7 @@ fn execute_parse_read_files(
         }
     }
 
-    let mut out = HashMap::new();
-    out.insert("contents".to_string(), Value::str_map(contents));
-    Ok(out)
+    OutputMap::new().value("contents", Value::str_map(contents)).ok()
 }
 
 // ============================================================================
@@ -289,15 +277,9 @@ fn execute_parse_read_files(
 fn execute_prepare_read_file(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    let filename = inputs
-        .get("filename")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| ExecError::new("missing or invalid 'filename' input"))?;
+    let filename = require_str(&inputs, "filename")?;
 
-    let repo_path = inputs
-        .get("repo_path")
-        .and_then(|v| v.as_str())
-        .unwrap_or(".");
+    let repo_path = optional_str(&inputs, "repo_path").unwrap_or(".");
 
     // Build full path
     let full_path = if repo_path == "." {
@@ -314,10 +296,10 @@ fn execute_prepare_read_file(
         stdin: None,
     });
 
-    let mut out = HashMap::new();
-    out.insert("request".to_string(), Value::Request(request));
-    out.insert("filename".to_string(), Value::Str(filename.to_string()));
-    Ok(out)
+    OutputMap::new()
+        .request("request", request)
+        .str("filename", filename)
+        .ok()
 }
 
 /// Parse single file read response (PURE - no I/O).
@@ -335,32 +317,21 @@ fn execute_prepare_read_file(
 fn execute_parse_read_file(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    let response = inputs
-        .get("response")
-        .and_then(|v| v.as_response())
-        .ok_or_else(|| ExecError::new("missing or invalid 'response' input"))?;
+    let response = require_response(&inputs, "response")?;
+    let filename = require_str(&inputs, "filename")?;
 
-    let filename = inputs
-        .get("filename")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| ExecError::new("missing or invalid 'filename' input"))?;
-
-    let content = match response {
-        TransportResponse::Shell(shell) => {
-            if shell.success() {
-                shell.stdout.clone()
-            } else {
-                // Return empty content on failure
-                String::new()
-            }
-        }
-        _ => return Err(ExecError::new("unexpected response type")),
+    let shell = response.require_shell()?;
+    let content = if shell.success() {
+        shell.stdout.clone()
+    } else {
+        // Return empty content on failure
+        String::new()
     };
 
-    let mut out = HashMap::new();
-    out.insert("filename".to_string(), Value::Str(filename.to_string()));
-    out.insert("content".to_string(), Value::Str(content));
-    Ok(out)
+    OutputMap::new()
+        .str("filename", filename)
+        .str("content", content)
+        .ok()
 }
 
 /// Collect file results into a map (PURE - no I/O).
@@ -379,14 +350,8 @@ fn execute_collect_file_contents(
     // For now, this expects a list of filename/content pairs
     // The actual format depends on how LoopBuilder outputs results
     // This is a placeholder for when LoopBuilder integration is complete
-    let filenames = inputs
-        .get("filenames")
-        .and_then(|v| v.as_str_list())
-        .unwrap_or_default();
-    let contents_list = inputs
-        .get("contents_list")
-        .and_then(|v| v.as_str_list())
-        .unwrap_or_default();
+    let filenames = optional_str_list(&inputs, "filenames").unwrap_or_default();
+    let contents_list = optional_str_list(&inputs, "contents_list").unwrap_or_default();
 
     let mut contents = BTreeMap::new();
     for (filename, content) in filenames.iter().zip(contents_list.iter()) {
@@ -395,9 +360,7 @@ fn execute_collect_file_contents(
         }
     }
 
-    let mut out = HashMap::new();
-    out.insert("contents".to_string(), Value::str_map(contents));
-    Ok(out)
+    OutputMap::new().value("contents", Value::str_map(contents)).ok()
 }
 
 // ============================================================================
@@ -774,162 +737,122 @@ impl Mockable for GistGraphOp {
                     GitOps::PrepareLsFiles { .. } => {
                         let request = gunbc_ir::transport::git::GitRequest::ls_files()
                             .to_shell_request();
-                        let mut out = HashMap::new();
-                        out.insert("request".to_string(), Value::Request(request));
-                        out
+                        OutputMap::new().request("request", request).build()
                     }
                     GitOps::ParseLsFiles => {
-                        let mut out = HashMap::new();
-                        out.insert(
-                            "files".to_string(),
-                            Value::str_list(vec![
+                        OutputMap::new()
+                            .value("files", Value::str_list(vec![
                                 "src/main.rs".to_string(),
                                 "README.md".to_string(),
-                            ]),
-                        );
-                        out
+                            ]))
+                            .build()
                     }
                     GitOps::PrepareDiff { .. } | GitOps::PrepareDiffNameOnly { .. }
                     | GitOps::PrepareCurrentBranch => {
-                        let mut out = HashMap::new();
-                        out.insert(
-                            "request".to_string(),
-                            Value::Request(TransportRequest::Shell(ShellRequest {
+                        OutputMap::new()
+                            .request("request", TransportRequest::Shell(ShellRequest {
                                 command: "git".to_string(),
                                 args: vec!["mock".to_string()],
                                 cwd: None,
                                 env: HashMap::new(),
                                 stdin: None,
-                            })),
-                        );
-                        out
+                            }))
+                            .build()
                     }
                     GitOps::ParseDiff => {
-                        let mut out = HashMap::new();
-                        out.insert(
-                            "diff_files".to_string(),
-                            Value::Map(std::collections::BTreeMap::new()),
-                        );
-                        out.insert(
-                            "stats".to_string(),
-                            Value::Str("+0 -0 across 0 files".to_string()),
-                        );
-                        out
+                        OutputMap::new()
+                            .value("diff_files", Value::str_map(std::collections::BTreeMap::new()))
+                            .str("stats", "+0 -0 across 0 files")
+                            .build()
                     }
                     GitOps::ParseDiffNameOnly => {
-                        let mut out = HashMap::new();
-                        out.insert("files".to_string(), Value::str_list(vec![]));
-                        out
+                        OutputMap::new().value("files", Value::str_list(vec![])).build()
                     }
                     GitOps::ParseCurrentBranch => {
-                        let mut out = HashMap::new();
-                        out.insert("branch".to_string(), Value::Str("main".to_string()));
-                        out
+                        OutputMap::new().str("branch", "main").build()
                     }
                 }
             }
 
             // ReadFiles chain
             GistGraphOp::PrepareReadFiles => {
-                let mut out = HashMap::new();
-                out.insert(
-                    "request".to_string(),
-                    Value::Request(TransportRequest::Shell(ShellRequest {
+                OutputMap::new()
+                    .request("request", TransportRequest::Shell(ShellRequest {
                         command: "sh".to_string(),
                         args: vec!["-c".to_string(), "echo file contents".to_string()],
                         cwd: None,
                         env: HashMap::new(),
                         stdin: None,
-                    })),
-                );
-                out
+                    }))
+                    .build()
             }
             GistGraphOp::ParseReadFiles => {
-                let mut out = HashMap::new();
                 let mut contents = std::collections::BTreeMap::new();
                 contents.insert("src/main.rs".to_string(), "fn main() {}".to_string());
-                out.insert("contents".to_string(), Value::str_map(contents));
-                out
+                OutputMap::new().value("contents", Value::str_map(contents)).build()
             }
 
             // Single-file operations
             GistGraphOp::PrepareReadFile => {
-                let mut out = HashMap::new();
-                out.insert(
-                    "request".to_string(),
-                    Value::Request(TransportRequest::Shell(ShellRequest {
+                OutputMap::new()
+                    .request("request", TransportRequest::Shell(ShellRequest {
                         command: "cat".to_string(),
                         args: vec!["src/main.rs".to_string()],
                         cwd: None,
                         env: HashMap::new(),
                         stdin: None,
-                    })),
-                );
-                out.insert("filename".to_string(), Value::Str("src/main.rs".to_string()));
-                out
+                    }))
+                    .str("filename", "src/main.rs")
+                    .build()
             }
             GistGraphOp::ParseReadFile => {
-                let mut out = HashMap::new();
-                out.insert("filename".to_string(), Value::Str("src/main.rs".to_string()));
-                out.insert("content".to_string(), Value::Str("fn main() {}".to_string()));
-                out
+                OutputMap::new()
+                    .str("filename", "src/main.rs")
+                    .str("content", "fn main() {}")
+                    .build()
             }
             GistGraphOp::CollectFileContents => {
-                let mut out = HashMap::new();
                 let mut contents = std::collections::BTreeMap::new();
                 contents.insert("src/main.rs".to_string(), "fn main() {}".to_string());
-                out.insert("contents".to_string(), Value::str_map(contents));
-                out
+                OutputMap::new().value("contents", Value::str_map(contents)).build()
             }
 
             // Pure ops
             GistGraphOp::Markdown(_) => {
-                let mut out = HashMap::new();
-                out.insert(
-                    "markdown".to_string(),
-                    Value::Str("# Code Snapshot\n```rust\nfn main() {}\n```".to_string()),
-                );
-                out
+                OutputMap::new()
+                    .str("markdown", "# Code Snapshot\n```rust\nfn main() {}\n```")
+                    .build()
             }
             GistGraphOp::Gist(op) => match op {
                 GistOps::PrepareRequest { .. } => {
-                    let mut out = HashMap::new();
-                    out.insert(
-                        "request".to_string(),
-                        Value::Request(TransportRequest::Shell(ShellRequest {
+                    OutputMap::new()
+                        .request("request", TransportRequest::Shell(ShellRequest {
                             command: "gh".to_string(),
                             args: vec!["gist".to_string(), "create".to_string()],
                             cwd: None,
                             env: HashMap::new(),
                             stdin: None,
-                        })),
-                    );
-                    out
+                        }))
+                        .build()
                 }
                 GistOps::ParseGistResponse => {
-                    let mut out = HashMap::new();
-                    out.insert(
-                        "url".to_string(),
-                        Value::Str("https://gist.github.com/mock/123".to_string()),
-                    );
-                    out
+                    OutputMap::new()
+                        .str("url", "https://gist.github.com/mock/123")
+                        .build()
                 }
             }
 
             // Transport boundary
             GistGraphOp::Transport(_) => {
-                let mut out = HashMap::new();
-                out.insert(
-                    "response".to_string(),
-                    Value::Response(TransportResponse::Shell(
+                OutputMap::new()
+                    .response("response", TransportResponse::Shell(
                         gunbc_ir::transport::ShellResponse {
                             exit_code: 0,
                             stdout: "src/main.rs\nREADME.md\n".to_string(),
                             stderr: String::new(),
                         },
-                    )),
-                );
-                out
+                    ))
+                    .build()
             }
         }
     }

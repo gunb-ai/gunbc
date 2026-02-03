@@ -3,7 +3,10 @@
 //! These operations transform data without side effects.
 //! They are the building blocks for parsing, extraction, and formatting.
 
-use gunbc_exec::{ExecError, Executable};
+use gunbc_exec::{
+    optional_map_str_str, optional_str, require_json, require_str, require_str_list, ExecError,
+    Executable, OutputMap,
+};
 use gunbc_ir::Value;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -27,10 +30,7 @@ pub enum ParseOp {
 
 impl Executable for ParseOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let input = inputs
-            .get("input")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| ExecError::new("missing or invalid 'input' string"))?;
+        let input = require_str(&inputs, "input")?;
 
         let json_value: serde_json::Value = match self {
             ParseOp::Json => serde_json::from_str(input)
@@ -46,9 +46,7 @@ impl Executable for ParseOp {
             }
         };
 
-        let mut out = HashMap::new();
-        out.insert("output".to_string(), Value::Json(json_value));
-        Ok(out)
+        OutputMap::new().json("output", json_value).ok()
     }
 }
 
@@ -66,15 +64,8 @@ pub struct ExtractOp;
 
 impl Executable for ExtractOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let json: &serde_json::Value = inputs
-            .get("input")
-            .and_then(|v| v.as_json())
-            .ok_or_else(|| ExecError::new("missing or invalid 'input' JSON"))?;
-
-        let path = inputs
-            .get("path")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| ExecError::new("missing or invalid 'path' string"))?;
+        let json: &serde_json::Value = require_json(&inputs, "input")?;
+        let path = require_str(&inputs, "path")?;
 
         // Navigate the path
         let mut current: &serde_json::Value = json;
@@ -91,10 +82,10 @@ impl Executable for ExtractOp {
         let exists = !current.is_null();
         let output = json_to_value(current.clone());
 
-        let mut out = HashMap::new();
-        out.insert("output".to_string(), output);
-        out.insert("exists".to_string(), Value::Bool(exists));
-        Ok(out)
+        OutputMap::new()
+            .value("output", output)
+            .bool("exists", exists)
+            .ok()
     }
 }
 
@@ -111,15 +102,9 @@ pub struct FormatOp;
 
 impl Executable for FormatOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let template = inputs
-            .get("template")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| ExecError::new("missing or invalid 'template' string"))?;
+        let template = require_str(&inputs, "template")?;
 
-        let values = inputs
-            .get("values")
-            .and_then(|v| v.as_map_str_str())
-            .unwrap_or_default();
+        let values = optional_map_str_str(&inputs, "values").unwrap_or_default();
 
         let mut result = template.to_string();
         for (key, value) in &values {
@@ -127,9 +112,7 @@ impl Executable for FormatOp {
             result = result.replace(&placeholder, value);
         }
 
-        let mut out = HashMap::new();
-        out.insert("output".to_string(), Value::Str(result));
-        Ok(out)
+        OutputMap::new().str("output", result).ok()
     }
 }
 
@@ -146,21 +129,13 @@ pub struct ConcatOp;
 
 impl Executable for ConcatOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let list = inputs
-            .get("input")
-            .and_then(|v| v.as_str_list())
-            .ok_or_else(|| ExecError::new("missing or invalid 'input' string list"))?;
+        let list = require_str_list(&inputs, "input")?;
 
-        let separator = inputs
-            .get("separator")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let separator = optional_str(&inputs, "separator").unwrap_or("");
 
         let result = list.join(separator);
 
-        let mut out = HashMap::new();
-        out.insert("output".to_string(), Value::Str(result));
-        Ok(out)
+        OutputMap::new().str("output", result).ok()
     }
 }
 
@@ -177,21 +152,12 @@ pub struct SplitOp;
 
 impl Executable for SplitOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let input = inputs
-            .get("input")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| ExecError::new("missing or invalid 'input' string"))?;
-
-        let delimiter = inputs
-            .get("delimiter")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| ExecError::new("missing or invalid 'delimiter' string"))?;
+        let input = require_str(&inputs, "input")?;
+        let delimiter = require_str(&inputs, "delimiter")?;
 
         let parts: Vec<String> = input.split(delimiter).map(|s| s.to_string()).collect();
 
-        let mut out = HashMap::new();
-        out.insert("output".to_string(), Value::str_list(parts));
-        Ok(out)
+        OutputMap::new().value("output", Value::str_list(parts)).ok()
     }
 }
 

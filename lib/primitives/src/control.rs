@@ -4,7 +4,7 @@
 //! They are typically implemented as higher-order patterns that expand into
 //! SubDag nodes, but these primitives provide the leaf execution.
 
-use gunbc_exec::{ExecError, Executable};
+use gunbc_exec::{require_bool, require_str_list, ExecError, Executable, OutputMap};
 use gunbc_ir::Value;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -28,18 +28,16 @@ pub struct LoopOp;
 
 impl Executable for LoopOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let list = inputs
-            .get("input")
-            .and_then(|v| v.as_str_list())
-            .ok_or_else(|| ExecError::new("missing or invalid 'input' string list"))?;
+        let list = require_str_list(&inputs, "input")?;
 
+        let count = list.len() as i64;
         let indices: Vec<String> = (0..list.len()).map(|i| i.to_string()).collect();
 
-        let mut out = HashMap::new();
-        out.insert("items".to_string(), Value::str_list(list.clone()));
-        out.insert("count".to_string(), Value::Int(list.len() as i64));
-        out.insert("indices".to_string(), Value::str_list(indices));
-        Ok(out)
+        OutputMap::new()
+            .value("items", Value::str_list(list))
+            .int("count", count)
+            .value("indices", Value::str_list(indices))
+            .ok()
     }
 }
 
@@ -61,10 +59,7 @@ pub struct BranchOp;
 
 impl Executable for BranchOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let condition = inputs
-            .get("condition")
-            .and_then(|v| v.as_bool())
-            .ok_or_else(|| ExecError::new("missing or invalid 'condition' bool"))?;
+        let condition = require_bool(&inputs, "condition")?;
 
         // Get both possible values
         let if_true = inputs.get("if_true").cloned().unwrap_or(Value::Bool(true));
@@ -73,10 +68,10 @@ impl Executable for BranchOp {
         let output = if condition { if_true } else { if_false };
         let branch = if condition { "true" } else { "false" };
 
-        let mut out = HashMap::new();
-        out.insert("output".to_string(), output);
-        out.insert("branch".to_string(), Value::Str(branch.to_string()));
-        Ok(out)
+        OutputMap::new()
+            .value("output", output)
+            .str("branch", branch)
+            .ok()
     }
 }
 
@@ -97,22 +92,21 @@ pub struct GuardOp;
 
 impl Executable for GuardOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let guard = inputs
-            .get("guard")
-            .and_then(|v| v.as_bool())
-            .ok_or_else(|| ExecError::new("missing or invalid 'guard' bool"))?;
+        let guard = require_bool(&inputs, "guard")?;
 
         let input = inputs.get("input").cloned().unwrap_or(Value::Bool(true));
 
-        let mut out = HashMap::new();
         if guard {
-            out.insert("output".to_string(), input);
-            out.insert("passed".to_string(), Value::Bool(true));
+            OutputMap::new()
+                .value("output", input)
+                .bool("passed", true)
+                .ok()
         } else {
-            out.insert("output".to_string(), Value::Skipped);
-            out.insert("passed".to_string(), Value::Bool(false));
+            OutputMap::new()
+                .value("output", Value::Skipped)
+                .bool("passed", false)
+                .ok()
         }
-        Ok(out)
     }
 }
 
@@ -162,10 +156,10 @@ impl Executable for SequenceOp {
             }
         }
 
-        let mut out = HashMap::new();
-        out.insert("result".to_string(), result);
-        out.insert("completed".to_string(), Value::Int(completed));
-        Ok(out)
+        OutputMap::new()
+            .value("result", result)
+            .int("completed", completed)
+            .ok()
     }
 }
 

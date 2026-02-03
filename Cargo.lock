@@ -192,6 +192,7 @@ name = "gunbc-exec"
 version = "0.1.0"
 dependencies = [
  "gunbc-ir",
+ "serde_json",
  "thiserror",
 ]
 

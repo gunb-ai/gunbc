@@ -3,7 +3,7 @@
 //! These operations work on collections (List, Json arrays) and
 //! respect cardinality constraints for automatic test generation.
 
-use gunbc_exec::{ExecError, Executable};
+use gunbc_exec::{require_str_list, ExecError, Executable, OutputMap};
 use gunbc_ir::Value;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -64,10 +64,7 @@ pub enum MapOp {
 
 impl Executable for MapOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let list = inputs
-            .get("input")
-            .and_then(|v| v.as_str_list())
-            .ok_or_else(|| ExecError::new("missing or invalid 'input' string list"))?;
+        let list = require_str_list(&inputs, "input")?;
 
         let result: Vec<String> = match self {
             MapOp::ToUppercase => list.iter().map(|s| s.to_uppercase()).collect(),
@@ -78,9 +75,7 @@ impl Executable for MapOp {
             MapOp::Identity => list.clone(),
         };
 
-        let mut out = HashMap::new();
-        out.insert("output".to_string(), Value::str_list(result));
-        Ok(out)
+        OutputMap::new().value("output", Value::str_list(result)).ok()
     }
 }
 
@@ -113,10 +108,7 @@ pub enum FilterOp {
 
 impl Executable for FilterOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let list = inputs
-            .get("input")
-            .and_then(|v| v.as_str_list())
-            .ok_or_else(|| ExecError::new("missing or invalid 'input' string list"))?;
+        let list = require_str_list(&inputs, "input")?;
 
         let result: Vec<String> = match self {
             FilterOp::Contains(pattern) => {
@@ -136,10 +128,10 @@ impl Executable for FilterOp {
         };
 
         let count = result.len() as i64;
-        let mut out = HashMap::new();
-        out.insert("output".to_string(), Value::str_list(result));
-        out.insert("count".to_string(), Value::Int(count));
-        Ok(out)
+        OutputMap::new()
+            .value("output", Value::str_list(result))
+            .int("count", count)
+            .ok()
     }
 }
 
@@ -170,10 +162,7 @@ pub enum FoldOp {
 
 impl Executable for FoldOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let list = inputs
-            .get("input")
-            .and_then(|v| v.as_str_list())
-            .ok_or_else(|| ExecError::new("missing or invalid 'input' string list"))?;
+        let list = require_str_list(&inputs, "input")?;
 
         let output = match self {
             FoldOp::Join(sep) => Value::Str(list.join(sep)),
@@ -195,9 +184,7 @@ impl Executable for FoldOp {
             }
         };
 
-        let mut out = HashMap::new();
-        out.insert("output".to_string(), output);
-        Ok(out)
+        OutputMap::new().value("output", output).ok()
     }
 }
 
@@ -225,12 +212,8 @@ pub enum SortOp {
 
 impl Executable for SortOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let list = inputs
-            .get("input")
-            .and_then(|v| v.as_str_list())
-            .ok_or_else(|| ExecError::new("missing or invalid 'input' string list"))?;
+        let mut result = require_str_list(&inputs, "input")?;
 
-        let mut result = list.clone();
         match self {
             SortOp::Ascending => result.sort(),
             SortOp::Descending => {
@@ -241,9 +224,7 @@ impl Executable for SortOp {
             SortOp::Reverse => result.reverse(),
         }
 
-        let mut out = HashMap::new();
-        out.insert("output".to_string(), Value::str_list(result));
-        Ok(out)
+        OutputMap::new().value("output", Value::str_list(result)).ok()
     }
 }
 
@@ -262,20 +243,19 @@ pub struct FirstOp;
 
 impl Executable for FirstOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let list = inputs
-            .get("input")
-            .and_then(|v| v.as_str_list())
-            .ok_or_else(|| ExecError::new("missing or invalid 'input' string list"))?;
+        let list = require_str_list(&inputs, "input")?;
 
-        let mut out = HashMap::new();
         if let Some(first) = list.first() {
-            out.insert("output".to_string(), Value::Str(first.clone()));
-            out.insert("exists".to_string(), Value::Bool(true));
+            OutputMap::new()
+                .str("output", first.clone())
+                .bool("exists", true)
+                .ok()
         } else {
-            out.insert("output".to_string(), Value::Str(String::new()));
-            out.insert("exists".to_string(), Value::Bool(false));
+            OutputMap::new()
+                .str("output", String::new())
+                .bool("exists", false)
+                .ok()
         }
-        Ok(out)
     }
 }
 
@@ -294,20 +274,19 @@ pub struct LastOp;
 
 impl Executable for LastOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let list = inputs
-            .get("input")
-            .and_then(|v| v.as_str_list())
-            .ok_or_else(|| ExecError::new("missing or invalid 'input' string list"))?;
+        let list = require_str_list(&inputs, "input")?;
 
-        let mut out = HashMap::new();
         if let Some(last) = list.last() {
-            out.insert("output".to_string(), Value::Str(last.clone()));
-            out.insert("exists".to_string(), Value::Bool(true));
+            OutputMap::new()
+                .str("output", last.clone())
+                .bool("exists", true)
+                .ok()
         } else {
-            out.insert("output".to_string(), Value::Str(String::new()));
-            out.insert("exists".to_string(), Value::Bool(false));
+            OutputMap::new()
+                .str("output", String::new())
+                .bool("exists", false)
+                .ok()
         }
-        Ok(out)
     }
 }
 

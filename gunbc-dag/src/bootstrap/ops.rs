@@ -3,7 +3,7 @@
 //! All I/O happens through explicit `TransportOps::Execute` nodes in the DAG.
 //! The ops here are PURE (no I/O) - they prepare requests and parse responses.
 
-use gunbc_exec::{ExecError, Executable};
+use gunbc_exec::{ExecError, Executable, OutputMap, require_response};
 use gunbc_ir::transport::{ShellRequest, TransportRequest, TransportResponse};
 use gunbc_ir::Value;
 use std::collections::HashMap;
@@ -64,9 +64,9 @@ fn execute_prepare_scan_workspace(_inputs: HashMap<String, Value>) -> Result<Has
         stdin: None,
     });
 
-    let mut out = HashMap::new();
-    out.insert("request".to_string(), Value::Request(request));
-    Ok(out)
+    OutputMap::new()
+        .request("request", request)
+        .ok()
 }
 
 // ============================================================================
@@ -77,16 +77,13 @@ fn execute_prepare_scan_workspace(_inputs: HashMap<String, Value>) -> Result<Has
 fn execute_parse_scan_result(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
     // Handle skipped response (upstream transport was skipped)
     if matches!(inputs.get("response"), Some(Value::Skipped)) {
-        let mut out = HashMap::new();
-        out.insert("crate_count".to_string(), Value::Skipped);
-        out.insert("crate_names".to_string(), Value::Skipped);
-        return Ok(out);
+        return OutputMap::new()
+            .value("crate_count", Value::Skipped)
+            .value("crate_names", Value::Skipped)
+            .ok();
     }
 
-    let response = inputs
-        .get("response")
-        .and_then(|v| v.as_response())
-        .ok_or_else(|| ExecError::new("missing or invalid 'response' input"))?;
+    let response = require_response(&inputs, "response")?;
 
     let mut crate_names = Vec::new();
 
@@ -108,10 +105,10 @@ fn execute_parse_scan_result(inputs: HashMap<String, Value>) -> Result<HashMap<S
 
     crate_names.sort();
 
-    let mut out = HashMap::new();
-    out.insert("crate_count".to_string(), Value::Int(crate_names.len() as i64));
-    out.insert("crate_names".to_string(), Value::str_list(crate_names));
-    Ok(out)
+    OutputMap::new()
+        .int("crate_count", crate_names.len() as i64)
+        .value("crate_names", Value::str_list(crate_names))
+        .ok()
 }
 
 /// Generate Makefile content using the makegen renderer.
@@ -127,9 +124,9 @@ fn execute_generate_makefile(_inputs: HashMap<String, Value>) -> Result<HashMap<
     let registry = ToolRegistry::default_registry();
     let makefile = render_makefile(&registry);
 
-    let mut out = HashMap::new();
-    out.insert("makefile_content".to_string(), Value::Str(makefile));
-    Ok(out)
+    OutputMap::new()
+        .str("makefile_content", makefile)
+        .ok()
 }
 
 /// Generate .gitignore content using the makegen renderer.
@@ -144,9 +141,9 @@ fn execute_generate_gitignore(_inputs: HashMap<String, Value>) -> Result<HashMap
     let config = default_build_config();
     let gitignore = render_gitignore(&config);
 
-    let mut out = HashMap::new();
-    out.insert("gitignore_content".to_string(), Value::Str(gitignore));
-    Ok(out)
+    OutputMap::new()
+        .str("gitignore_content", gitignore)
+        .ok()
 }
 
 // Mockable implementation for test generation
@@ -156,31 +153,31 @@ impl Mockable for BootstrapOp {
     fn mock_outputs(&self) -> HashMap<String, Value> {
         match self {
             BootstrapOp::PrepareScanWorkspace => {
-                let mut out = HashMap::new();
-                out.insert("request".to_string(), Value::Request(TransportRequest::Shell(ShellRequest {
-                    command: "find".to_string(),
-                    args: vec!["crates".to_string()],
-                    cwd: None,
-                    env: HashMap::new(),
-                    stdin: None,
-                })));
-                out
+                OutputMap::new()
+                    .request("request", TransportRequest::Shell(ShellRequest {
+                        command: "find".to_string(),
+                        args: vec!["crates".to_string()],
+                        cwd: None,
+                        env: HashMap::new(),
+                        stdin: None,
+                    }))
+                    .build()
             }
             BootstrapOp::ParseScanResult => {
-                let mut out = HashMap::new();
-                out.insert("crate_count".to_string(), Value::Int(5));
-                out.insert("crate_names".to_string(), Value::str_list(vec!["lib-a".to_string(), "lib-b".to_string()]));
-                out
+                OutputMap::new()
+                    .int("crate_count", 5)
+                    .value("crate_names", Value::str_list(vec!["lib-a".to_string(), "lib-b".to_string()]))
+                    .build()
             }
             BootstrapOp::GenerateMakefile => {
-                let mut out = HashMap::new();
-                out.insert("makefile_content".to_string(), Value::Str("# Mock Makefile".to_string()));
-                out
+                OutputMap::new()
+                    .str("makefile_content", "# Mock Makefile")
+                    .build()
             }
             BootstrapOp::GenerateGitignore => {
-                let mut out = HashMap::new();
-                out.insert("gitignore_content".to_string(), Value::Str("# Mock .gitignore\n/target/".to_string()));
-                out
+                OutputMap::new()
+                    .str("gitignore_content", "# Mock .gitignore\n/target/")
+                    .build()
             }
         }
     }

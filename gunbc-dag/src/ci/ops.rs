@@ -12,7 +12,7 @@
 //!    (pure)           (boundary)              (pure)
 //! ```
 
-use gunbc_exec::{ExecError, Executable};
+use gunbc_exec::{ExecError, Executable, OutputMap, TransportResponseExt, optional_bool, optional_str, require_response};
 use gunbc_ir::transport::{FileRequest, TransportRequest, TransportResponse};
 use gunbc_ir::Value;
 use crate::makegen::BuildConfig;
@@ -103,18 +103,15 @@ impl Executable for CIOp {
 fn execute_parse_deps_exists(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
     // Handle skipped response (upstream transport was skipped)
     if matches!(inputs.get("response"), Some(Value::Skipped)) {
-        let mut out = HashMap::new();
-        out.insert("deps_exists".to_string(), Value::Skipped);
-        out.insert("deps_checked".to_string(), Value::Skipped);
-        out.insert("deps_installed".to_string(), Value::Skipped);
-        out.insert("message".to_string(), Value::Skipped);
-        return Ok(out);
+        return OutputMap::new()
+            .value("deps_exists", Value::Skipped)
+            .value("deps_checked", Value::Skipped)
+            .value("deps_installed", Value::Skipped)
+            .value("message", Value::Skipped)
+            .ok();
     }
 
-    let response = inputs
-        .get("response")
-        .and_then(|v| v.as_response())
-        .ok_or_else(|| ExecError::new("missing or invalid 'response' input"))?;
+    let response = require_response(&inputs, "response")?;
 
     let deps_exists = match response {
         TransportResponse::File(file_resp) => file_resp.exists.unwrap_or(false),
@@ -127,12 +124,12 @@ fn execute_parse_deps_exists(inputs: HashMap<String, Value>) -> Result<HashMap<S
         "No deps.toml found, skipping dependency check"
     };
 
-    let mut out = HashMap::new();
-    out.insert("deps_exists".to_string(), Value::Bool(deps_exists));
-    out.insert("deps_checked".to_string(), Value::Bool(true));
-    out.insert("deps_installed".to_string(), Value::Int(0));
-    out.insert("message".to_string(), Value::Str(message.to_string()));
-    Ok(out)
+    OutputMap::new()
+        .bool("deps_exists", deps_exists)
+        .bool("deps_checked", true)
+        .int("deps_installed", 0)
+        .str("message", message)
+        .ok()
 }
 
 // ============================================================================
@@ -143,118 +140,103 @@ fn execute_parse_deps_exists(inputs: HashMap<String, Value>) -> Result<HashMap<S
 fn execute_prepare_codegen_exists_check(_inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
     // Check if the codegen output directory exists
     let request = TransportRequest::File(FileRequest::exists("buck-out/gen/bin"));
-    
-    let mut out = HashMap::new();
-    out.insert("request".to_string(), Value::Request(request));
-    Ok(out)
+
+    OutputMap::new()
+        .request("request", request)
+        .ok()
 }
 
 /// Parse the codegen exists check result (pure).
 fn execute_parse_codegen_exists(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
     // Handle skipped response (upstream transport was skipped)
     if matches!(inputs.get("response"), Some(Value::Skipped)) {
-        let mut out = HashMap::new();
-        out.insert("codegen_needed".to_string(), Value::Skipped);
-        out.insert("prep_success".to_string(), Value::Skipped);
-        out.insert("codegen_ran".to_string(), Value::Skipped);
-        out.insert("prep_message".to_string(), Value::Skipped);
-        return Ok(out);
+        return OutputMap::new()
+            .value("codegen_needed", Value::Skipped)
+            .value("prep_success", Value::Skipped)
+            .value("codegen_ran", Value::Skipped)
+            .value("prep_message", Value::Skipped)
+            .ok();
     }
 
-    let response = inputs
-        .get("response")
-        .and_then(|v| v.as_response())
-        .ok_or_else(|| ExecError::new("missing response input"))?;
+    let response = require_response(&inputs, "response")?;
 
     let codegen_exists = match response {
         TransportResponse::File(file_resp) => file_resp.exists.unwrap_or(false),
         _ => false,
     };
 
-    let mut out = HashMap::new();
-    out.insert("codegen_needed".to_string(), Value::Bool(!codegen_exists));
+    let mut out = OutputMap::new()
+        .bool("codegen_needed", !codegen_exists);
 
     // If codegen exists, prep is already successful
     if codegen_exists {
-        out.insert("prep_success".to_string(), Value::Bool(true));
-        out.insert("codegen_ran".to_string(), Value::Bool(false));
-        out.insert("prep_message".to_string(), Value::Str("Generated code already exists".to_string()));
+        out = out
+            .bool("prep_success", true)
+            .bool("codegen_ran", false)
+            .str("prep_message", "Generated code already exists");
     }
 
-    Ok(out)
+    out.ok()
 }
 
 /// Prepare the codegen shell command (pure).
 fn execute_prepare_codegen_command(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
     // Check if codegen is needed
-    let codegen_needed = inputs
-        .get("codegen_needed")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(true);
+    let codegen_needed = optional_bool(&inputs, "codegen_needed").unwrap_or(true);
 
-    let mut out = HashMap::new();
-    
     if !codegen_needed {
-        out.insert("skip".to_string(), Value::Bool(true));
-        return Ok(out);
+        return OutputMap::new()
+            .bool("skip", true)
+            .ok();
     }
 
     let config = BuildConfig::cargo();
     let request = TransportRequest::Shell(config.codegen.to_shell_request());
 
-    out.insert("request".to_string(), Value::Request(request));
-    out.insert("skip".to_string(), Value::Bool(false));
-    Ok(out)
+    OutputMap::new()
+        .request("request", request)
+        .bool("skip", false)
+        .ok()
 }
 
 /// Parse the codegen shell response (pure).
 fn execute_parse_codegen_result(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
     // Handle skipped response (upstream transport was skipped)
     if matches!(inputs.get("response"), Some(Value::Skipped)) {
-        let mut out = HashMap::new();
-        out.insert("prep_success".to_string(), Value::Skipped);
-        out.insert("codegen_ran".to_string(), Value::Skipped);
-        out.insert("prep_message".to_string(), Value::Skipped);
-        return Ok(out);
+        return OutputMap::new()
+            .value("prep_success", Value::Skipped)
+            .value("codegen_ran", Value::Skipped)
+            .value("prep_message", Value::Skipped)
+            .ok();
     }
 
     // Check if codegen was skipped
-    let skip = inputs
-        .get("skip")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-
-    let mut out = HashMap::new();
+    let skip = optional_bool(&inputs, "skip").unwrap_or(false);
 
     if skip {
         // Codegen was skipped because it already exists
-        out.insert("prep_success".to_string(), Value::Bool(true));
-        out.insert("codegen_ran".to_string(), Value::Bool(false));
-        out.insert("prep_message".to_string(), Value::Str("Generated code already exists".to_string()));
-        return Ok(out);
+        return OutputMap::new()
+            .bool("prep_success", true)
+            .bool("codegen_ran", false)
+            .str("prep_message", "Generated code already exists")
+            .ok();
     }
 
-    let response = inputs
-        .get("response")
-        .and_then(|v| v.as_response())
-        .ok_or_else(|| ExecError::new("missing response input"))?;
-
-    let (success, _stdout, stderr) = match response {
-        TransportResponse::Shell(shell) => (shell.success(), shell.stdout.clone(), shell.stderr.clone()),
-        _ => return Err(ExecError::new("expected shell response")),
-    };
-
-    out.insert("prep_success".to_string(), Value::Bool(success));
-    out.insert("codegen_ran".to_string(), Value::Bool(true));
+    let response = require_response(&inputs, "response")?;
+    let shell = response.require_shell()?;
+    let success = shell.success();
 
     let message = if success {
         "Codegen completed successfully".to_string()
     } else {
-        format!("Codegen failed: {}", stderr)
+        format!("Codegen failed: {}", shell.stderr)
     };
-    out.insert("prep_message".to_string(), Value::Str(message));
 
-    Ok(out)
+    OutputMap::new()
+        .bool("prep_success", success)
+        .bool("codegen_ran", true)
+        .str("prep_message", message)
+        .ok()
 }
 
 // ============================================================================
@@ -263,73 +245,57 @@ fn execute_parse_codegen_result(inputs: HashMap<String, Value>) -> Result<HashMa
 
 /// Prepare the build shell command (pure).
 fn execute_prepare_build_command(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-    let prep_success = inputs
-        .get("prep_success")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(true);
-
-    let mut out = HashMap::new();
+    let prep_success = optional_bool(&inputs, "prep_success").unwrap_or(true);
 
     if !prep_success {
-        out.insert("skip".to_string(), Value::Bool(true));
-        out.insert("skip_reason".to_string(), Value::Str("Skipped due to prep failure".to_string()));
-        return Ok(out);
+        return OutputMap::new()
+            .bool("skip", true)
+            .str("skip_reason", "Skipped due to prep failure")
+            .ok();
     }
 
     let config = BuildConfig::cargo();
     let request = TransportRequest::Shell(config.build.to_shell_request());
 
-    out.insert("request".to_string(), Value::Request(request));
-    out.insert("skip".to_string(), Value::Bool(false));
-    Ok(out)
+    OutputMap::new()
+        .request("request", request)
+        .bool("skip", false)
+        .ok()
 }
 
 /// Parse the build shell response (pure).
 fn execute_parse_build_result(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
     // Handle skipped response (upstream transport was skipped)
     if matches!(inputs.get("response"), Some(Value::Skipped)) {
-        let mut out = HashMap::new();
-        out.insert("build_success".to_string(), Value::Skipped);
-        out.insert("build_skipped".to_string(), Value::Skipped);
-        out.insert("build_stdout".to_string(), Value::Skipped);
-        out.insert("build_stderr".to_string(), Value::Skipped);
-        return Ok(out);
+        return OutputMap::new()
+            .value("build_success", Value::Skipped)
+            .value("build_skipped", Value::Skipped)
+            .value("build_stdout", Value::Skipped)
+            .value("build_stderr", Value::Skipped)
+            .ok();
     }
 
-    let skip = inputs
-        .get("skip")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-
-    let mut out = HashMap::new();
+    let skip = optional_bool(&inputs, "skip").unwrap_or(false);
 
     if skip {
-        let reason = inputs
-            .get("skip_reason")
-            .and_then(|v| v.as_str())
-            .unwrap_or("Skipped");
-        out.insert("build_success".to_string(), Value::Bool(false));
-        out.insert("build_skipped".to_string(), Value::Bool(true));
-        out.insert("build_stdout".to_string(), Value::Str(String::new()));
-        out.insert("build_stderr".to_string(), Value::Str(reason.to_string()));
-        return Ok(out);
+        let reason = optional_str(&inputs, "skip_reason").unwrap_or("Skipped");
+        return OutputMap::new()
+            .bool("build_success", false)
+            .bool("build_skipped", true)
+            .str("build_stdout", "")
+            .str("build_stderr", reason)
+            .ok();
     }
 
-    let response = inputs
-        .get("response")
-        .and_then(|v| v.as_response())
-        .ok_or_else(|| ExecError::new("missing response input"))?;
+    let response = require_response(&inputs, "response")?;
+    let shell = response.require_shell()?;
 
-    let (success, stdout, stderr) = match response {
-        TransportResponse::Shell(shell) => (shell.success(), shell.stdout.clone(), shell.stderr.clone()),
-        _ => return Err(ExecError::new("expected shell response")),
-    };
-
-    out.insert("build_success".to_string(), Value::Bool(success));
-    out.insert("build_skipped".to_string(), Value::Bool(false));
-    out.insert("build_stdout".to_string(), Value::Str(stdout));
-    out.insert("build_stderr".to_string(), Value::Str(stderr));
-    Ok(out)
+    OutputMap::new()
+        .bool("build_success", shell.success())
+        .bool("build_skipped", false)
+        .str("build_stdout", shell.stdout.clone())
+        .str("build_stderr", shell.stderr.clone())
+        .ok()
 }
 
 // ============================================================================
@@ -338,73 +304,57 @@ fn execute_parse_build_result(inputs: HashMap<String, Value>) -> Result<HashMap<
 
 /// Prepare the test shell command (pure).
 fn execute_prepare_test_command(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-    let build_success = inputs
-        .get("build_success")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(true);
-
-    let mut out = HashMap::new();
+    let build_success = optional_bool(&inputs, "build_success").unwrap_or(true);
 
     if !build_success {
-        out.insert("skip".to_string(), Value::Bool(true));
-        out.insert("skip_reason".to_string(), Value::Str("Skipped due to build failure".to_string()));
-        return Ok(out);
+        return OutputMap::new()
+            .bool("skip", true)
+            .str("skip_reason", "Skipped due to build failure")
+            .ok();
     }
 
     let config = BuildConfig::cargo();
     let request = TransportRequest::Shell(config.test.to_shell_request());
 
-    out.insert("request".to_string(), Value::Request(request));
-    out.insert("skip".to_string(), Value::Bool(false));
-    Ok(out)
+    OutputMap::new()
+        .request("request", request)
+        .bool("skip", false)
+        .ok()
 }
 
 /// Parse the test shell response (pure).
 fn execute_parse_test_result(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
     // Handle skipped response (upstream transport was skipped)
     if matches!(inputs.get("response"), Some(Value::Skipped)) {
-        let mut out = HashMap::new();
-        out.insert("test_success".to_string(), Value::Skipped);
-        out.insert("test_skipped".to_string(), Value::Skipped);
-        out.insert("test_stdout".to_string(), Value::Skipped);
-        out.insert("test_stderr".to_string(), Value::Skipped);
-        return Ok(out);
+        return OutputMap::new()
+            .value("test_success", Value::Skipped)
+            .value("test_skipped", Value::Skipped)
+            .value("test_stdout", Value::Skipped)
+            .value("test_stderr", Value::Skipped)
+            .ok();
     }
 
-    let skip = inputs
-        .get("skip")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-
-    let mut out = HashMap::new();
+    let skip = optional_bool(&inputs, "skip").unwrap_or(false);
 
     if skip {
-        let reason = inputs
-            .get("skip_reason")
-            .and_then(|v| v.as_str())
-            .unwrap_or("Skipped");
-        out.insert("test_success".to_string(), Value::Bool(false));
-        out.insert("test_skipped".to_string(), Value::Bool(true));
-        out.insert("test_stdout".to_string(), Value::Str(String::new()));
-        out.insert("test_stderr".to_string(), Value::Str(reason.to_string()));
-        return Ok(out);
+        let reason = optional_str(&inputs, "skip_reason").unwrap_or("Skipped");
+        return OutputMap::new()
+            .bool("test_success", false)
+            .bool("test_skipped", true)
+            .str("test_stdout", "")
+            .str("test_stderr", reason)
+            .ok();
     }
 
-    let response = inputs
-        .get("response")
-        .and_then(|v| v.as_response())
-        .ok_or_else(|| ExecError::new("missing response input"))?;
+    let response = require_response(&inputs, "response")?;
+    let shell = response.require_shell()?;
 
-    let (success, stdout, stderr) = match response {
-        TransportResponse::Shell(shell) => (shell.success(), shell.stdout.clone(), shell.stderr.clone()),
-        _ => return Err(ExecError::new("expected shell response")),
-    };
-
-    out.insert("test_success".to_string(), Value::Bool(success));
-    out.insert("test_skipped".to_string(), Value::Bool(false));
-    out.insert("test_stdout".to_string(), Value::Str(stdout));
-    out.insert("test_stderr".to_string(), Value::Str(stderr));
-    Ok(out)
+    OutputMap::new()
+        .bool("test_success", shell.success())
+        .bool("test_skipped", false)
+        .str("test_stdout", shell.stdout.clone())
+        .str("test_stderr", shell.stderr.clone())
+        .ok()
 }
 
 // ============================================================================
@@ -416,21 +366,18 @@ fn execute_parse_test_result(inputs: HashMap<String, Value>) -> Result<HashMap<S
 /// This is the pre-gate for the Clippy tool execution. It checks if the build succeeded
 /// and either allows the lint or signals to skip.
 fn execute_prepare_clippy_lint(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-    let build_success = inputs
-        .get("build_success")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(true);
-
-    let mut out = HashMap::new();
+    let build_success = optional_bool(&inputs, "build_success").unwrap_or(true);
 
     if !build_success {
-        out.insert("skip".to_string(), Value::Bool(true));
-        out.insert("skip_reason".to_string(), Value::Str("Skipped due to build failure".to_string()));
-        return Ok(out);
+        return OutputMap::new()
+            .bool("skip", true)
+            .str("skip_reason", "Skipped due to build failure")
+            .ok();
     }
 
-    out.insert("skip".to_string(), Value::Bool(false));
-    Ok(out)
+    OutputMap::new()
+        .bool("skip", false)
+        .ok()
 }
 
 /// Parse clippy lint result - convert CliToolOp outputs to CI format (pure).
@@ -438,48 +385,29 @@ fn execute_prepare_clippy_lint(inputs: HashMap<String, Value>) -> Result<HashMap
 /// This is the post-parse for the Clippy SubDag. It converts the clippy run
 /// outputs (success, stdout, stderr) to the expected CI format.
 fn execute_parse_clippy_lint_result(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-    let skip = inputs
-        .get("skip")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-
-    let mut out = HashMap::new();
+    let skip = optional_bool(&inputs, "skip").unwrap_or(false);
 
     if skip {
-        let reason = inputs
-            .get("skip_reason")
-            .and_then(|v| v.as_str())
-            .unwrap_or("Skipped");
-        out.insert("lint_success".to_string(), Value::Bool(false));
-        out.insert("lint_skipped".to_string(), Value::Bool(true));
-        out.insert("lint_stdout".to_string(), Value::Str(String::new()));
-        out.insert("lint_stderr".to_string(), Value::Str(reason.to_string()));
-        return Ok(out);
+        let reason = optional_str(&inputs, "skip_reason").unwrap_or("Skipped");
+        return OutputMap::new()
+            .bool("lint_success", false)
+            .bool("lint_skipped", true)
+            .str("lint_stdout", "")
+            .str("lint_stderr", reason)
+            .ok();
     }
 
     // Get outputs from the clippy SubDag (from the 'resolve' node which runs clippy)
-    let success = inputs
-        .get("success")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-    
-    let stdout = inputs
-        .get("stdout")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
-    
-    let stderr = inputs
-        .get("stderr")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
+    let success = optional_bool(&inputs, "success").unwrap_or(false);
+    let stdout = optional_str(&inputs, "stdout").unwrap_or("").to_string();
+    let stderr = optional_str(&inputs, "stderr").unwrap_or("").to_string();
 
-    out.insert("lint_success".to_string(), Value::Bool(success));
-    out.insert("lint_skipped".to_string(), Value::Bool(false));
-    out.insert("lint_stdout".to_string(), Value::Str(stdout));
-    out.insert("lint_stderr".to_string(), Value::Str(stderr));
-    Ok(out)
+    OutputMap::new()
+        .bool("lint_success", success)
+        .bool("lint_skipped", false)
+        .str("lint_stdout", stdout)
+        .str("lint_stderr", stderr)
+        .ok()
 }
 
 // ============================================================================
@@ -493,20 +421,9 @@ fn execute_parse_clippy_lint_result(inputs: HashMap<String, Value>) -> Result<Ha
 /// CI groups. For test failures, the "failures:" section from stdout
 /// is also extracted and shown.
 fn execute_report(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-    let build_success = inputs
-        .get("build_success")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-
-    let test_success = inputs
-        .get("test_success")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-
-    let lint_success = inputs
-        .get("lint_success")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
+    let build_success = optional_bool(&inputs, "build_success").unwrap_or(false);
+    let test_success = optional_bool(&inputs, "test_success").unwrap_or(false);
+    let lint_success = optional_bool(&inputs, "lint_success").unwrap_or(false);
 
     let overall_success = build_success && test_success && lint_success;
 
@@ -526,10 +443,7 @@ fn execute_report(inputs: HashMap<String, Value>) -> Result<HashMap<String, Valu
 
     // Append failure details for any failed stage
     if !build_success {
-        let stderr = inputs
-            .get("build_stderr")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let stderr = optional_str(&inputs, "build_stderr").unwrap_or("");
         if !stderr.is_empty() {
             report.push_str(&format!("\n--- Build stderr ---\n{stderr}\n"));
         }
@@ -538,10 +452,7 @@ fn execute_report(inputs: HashMap<String, Value>) -> Result<HashMap<String, Valu
     if !test_success {
         // For tests, try to extract the "failures:" section from stdout - that's where
         // the actual test names and panic messages are (stderr just says "test failed")
-        let stdout = inputs
-            .get("test_stdout")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let stdout = optional_str(&inputs, "test_stdout").unwrap_or("");
 
         // Try to extract just the failures section for cleaner output
         if let Some(failures_section) = extract_test_failures(stdout) {
@@ -552,29 +463,23 @@ fn execute_report(inputs: HashMap<String, Value>) -> Result<HashMap<String, Valu
             report.push_str(&format!("\n--- Test stdout ---\n{stdout}\n"));
         }
 
-        let stderr = inputs
-            .get("test_stderr")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let stderr = optional_str(&inputs, "test_stderr").unwrap_or("");
         if !stderr.is_empty() {
             report.push_str(&format!("\n--- Test stderr ---\n{stderr}\n"));
         }
     }
 
     if !lint_success {
-        let stderr = inputs
-            .get("lint_stderr")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let stderr = optional_str(&inputs, "lint_stderr").unwrap_or("");
         if !stderr.is_empty() {
             report.push_str(&format!("\n--- Lint stderr ---\n{stderr}\n"));
         }
     }
 
-    let mut out = HashMap::new();
-    out.insert("overall_success".to_string(), Value::Bool(overall_success));
-    out.insert("report".to_string(), Value::Str(report));
-    Ok(out)
+    OutputMap::new()
+        .bool("overall_success", overall_success)
+        .str("report", report)
+        .ok()
 }
 
 /// Extract the "failures:" section from cargo test output.
@@ -614,90 +519,88 @@ impl Mockable for CIOp {
     fn mock_outputs(&self) -> HashMap<String, Value> {
         match self {
             CIOp::ParseDepsExists => {
-                let mut out = HashMap::new();
-                out.insert("deps_exists".to_string(), Value::Bool(false));
-                out.insert("deps_checked".to_string(), Value::Bool(true));
-                out.insert("deps_installed".to_string(), Value::Int(0));
-                out.insert("message".to_string(), Value::Str("No deps.toml found".to_string()));
-                out
+                OutputMap::new()
+                    .bool("deps_exists", false)
+                    .bool("deps_checked", true)
+                    .int("deps_installed", 0)
+                    .str("message", "No deps.toml found")
+                    .build()
             }
             CIOp::PrepareCodegenExistsCheck => {
-                let mut out = HashMap::new();
-                out.insert("request".to_string(), Value::Request(
-                    TransportRequest::File(FileRequest::exists("buck-out/gen/bin"))
-                ));
-                out
+                OutputMap::new()
+                    .request("request", TransportRequest::File(FileRequest::exists("buck-out/gen/bin")))
+                    .build()
             }
             CIOp::ParseCodegenExists => {
-                let mut out = HashMap::new();
-                out.insert("codegen_needed".to_string(), Value::Bool(false));
-                out.insert("prep_success".to_string(), Value::Bool(true));
-                out.insert("codegen_ran".to_string(), Value::Bool(false));
-                out.insert("prep_message".to_string(), Value::Str("Generated code exists".to_string()));
-                out
+                OutputMap::new()
+                    .bool("codegen_needed", false)
+                    .bool("prep_success", true)
+                    .bool("codegen_ran", false)
+                    .str("prep_message", "Generated code exists")
+                    .build()
             }
             CIOp::PrepareCodegenCommand => {
-                let mut out = HashMap::new();
-                out.insert("skip".to_string(), Value::Bool(true));
-                out
+                OutputMap::new()
+                    .bool("skip", true)
+                    .build()
             }
             CIOp::ParseCodegenResult => {
-                let mut out = HashMap::new();
-                out.insert("prep_success".to_string(), Value::Bool(true));
-                out.insert("codegen_ran".to_string(), Value::Bool(false));
-                out.insert("prep_message".to_string(), Value::Str("Generated code exists".to_string()));
-                out
+                OutputMap::new()
+                    .bool("prep_success", true)
+                    .bool("codegen_ran", false)
+                    .str("prep_message", "Generated code exists")
+                    .build()
             }
             CIOp::PrepareBuildCommand => {
                 let config = BuildConfig::cargo();
                 let request = TransportRequest::Shell(config.build.to_shell_request());
-                let mut out = HashMap::new();
-                out.insert("request".to_string(), Value::Request(request));
-                out.insert("skip".to_string(), Value::Bool(false));
-                out
+                OutputMap::new()
+                    .request("request", request)
+                    .bool("skip", false)
+                    .build()
             }
             CIOp::ParseBuildResult => {
-                let mut out = HashMap::new();
-                out.insert("build_success".to_string(), Value::Bool(true));
-                out.insert("build_skipped".to_string(), Value::Bool(false));
-                out.insert("build_stdout".to_string(), Value::Str("Build complete".to_string()));
-                out.insert("build_stderr".to_string(), Value::Str(String::new()));
-                out
+                OutputMap::new()
+                    .bool("build_success", true)
+                    .bool("build_skipped", false)
+                    .str("build_stdout", "Build complete")
+                    .str("build_stderr", "")
+                    .build()
             }
             CIOp::PrepareTestCommand => {
                 let config = BuildConfig::cargo();
                 let request = TransportRequest::Shell(config.test.to_shell_request());
-                let mut out = HashMap::new();
-                out.insert("request".to_string(), Value::Request(request));
-                out.insert("skip".to_string(), Value::Bool(false));
-                out
+                OutputMap::new()
+                    .request("request", request)
+                    .bool("skip", false)
+                    .build()
             }
             CIOp::ParseTestResult => {
-                let mut out = HashMap::new();
-                out.insert("test_success".to_string(), Value::Bool(true));
-                out.insert("test_skipped".to_string(), Value::Bool(false));
-                out.insert("test_stdout".to_string(), Value::Str("All tests passed".to_string()));
-                out.insert("test_stderr".to_string(), Value::Str(String::new()));
-                out
+                OutputMap::new()
+                    .bool("test_success", true)
+                    .bool("test_skipped", false)
+                    .str("test_stdout", "All tests passed")
+                    .str("test_stderr", "")
+                    .build()
             }
             CIOp::PrepareClippyLint => {
-                let mut out = HashMap::new();
-                out.insert("skip".to_string(), Value::Bool(false));
-                out
+                OutputMap::new()
+                    .bool("skip", false)
+                    .build()
             }
             CIOp::ParseClippyLintResult => {
-                let mut out = HashMap::new();
-                out.insert("lint_success".to_string(), Value::Bool(true));
-                out.insert("lint_skipped".to_string(), Value::Bool(false));
-                out.insert("lint_stdout".to_string(), Value::Str("No warnings".to_string()));
-                out.insert("lint_stderr".to_string(), Value::Str(String::new()));
-                out
+                OutputMap::new()
+                    .bool("lint_success", true)
+                    .bool("lint_skipped", false)
+                    .str("lint_stdout", "No warnings")
+                    .str("lint_stderr", "")
+                    .build()
             }
             CIOp::Report => {
-                let mut out = HashMap::new();
-                out.insert("overall_success".to_string(), Value::Bool(true));
-                out.insert("report".to_string(), Value::Str("CI passed".to_string()));
-                out
+                OutputMap::new()
+                    .bool("overall_success", true)
+                    .str("report", "CI passed")
+                    .build()
             }
         }
     }
