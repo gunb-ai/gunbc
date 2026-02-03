@@ -192,52 +192,95 @@ pub struct Window {
   DryRun log provides all the mock values. Phase 1 (MockSpec enforcement) is
   a prerequisite since we need a valid DryRun to seed windows.
 
-### Phase 6: Registry-Driven Testgen (DAG to Track DAGs)
+### Phase 6: Merge Testgen into Codegen
 
-Eliminate the manual target list in `testgen.rs` by making it a generated artifact.
-The codegen registry becomes the single source of truth for all DAGs; testgen
-registration is derived, not maintained.
+Roll `gunbc-testgen` into `gunbc-codegen` so there's one code generation crate
+that owns the registry, the test generator, and the output pipeline.
 
-**Motivation**: Even with the `target!()` macro, each DAG still needs a manual entry
-in `testgen.rs`. The `ToolDef` type already has `testgen: Option<TestgenTargetDef>`
-and `all_testgen_targets()` exists to collect them — but neither is wired up.
-Meanwhile, the naming conventions are 100% consistent (`graph.rs` + `graph_mock.rs`),
-so the metadata is fully inferrable.
+**Current state**: `gunbc-testgen` and `gunbc-codegen` are independent crates
+that share no code. Both depend on `gunbc-ir`. The testgen binary in `gunbc-dag`
+is the only thing that pulls them together. This means:
+- Two separate code generators doing the same kind of work
+- The registry (`ToolDef`) lives in codegen but can't reference test generation
+- The testgen binary duplicates codegen's FileWriter/arg-parsing infrastructure
+- Adding a DAG requires edits in both systems
 
-**Key insight**: `testgen.rs` needs actual function references (`gunbc_dag::build_X()`)
-that codegen can't hold (circular dep). But codegen CAN generate `testgen.rs` as an
-output file containing those references — just like it generates CLI main.rs files.
+```
+Current dependency graph:
 
-**TODO 6.1: Wire `.testgen()` into ToolDef**
+gunbc-codegen ──→ gunbc-ir      gunbc-testgen ──→ gunbc-ir
+     │            gunbc-clippy        │            gunbc-test
+     │                                │
+     └──── both consumed by ──────────┘
+              gunbc-dag (testgen binary)
+```
+
+**Merged state**: codegen gains testgen's 4 files + `gunbc-test` dep. The
+testgen binary becomes `gunbc-codegen testgen`. The registry can directly
+reference `TestGenerator`.
+
+```
+After merge:
+
+gunbc-codegen ──→ gunbc-ir
+     │            gunbc-test    (was testgen dep)
+     │            gunbc-clippy
+     │
+     ├── codegen (CLI main.rs generation)
+     ├── daggen  (graph.rs generation)
+     ├── cigen   (CI YAML generation)
+     ├── testgen (test file generation)  ← NEW subcommand
+     └── registry (single source of truth for all DAGs)
+```
+
+**TODO 6.1: Move testgen modules into codegen**
+- [ ] Move `core/testgen/src/{analyze,obligation,codegen}.rs` → `core/codegen/src/testgen/`
+- [ ] Add `gunbc-test` dependency to codegen's Cargo.toml
+- [ ] Re-export `TestGenerator`, `TestConfig` from codegen
+- [ ] Update `gunbc-dag/Cargo.toml` to drop `gunbc-testgen` dep
+- [ ] Delete `core/testgen/` crate
+
+**TODO 6.2: Add `testgen` subcommand to codegen binary**
+- [ ] Move testgen binary logic into `cmd_testgen()` in codegen's main.rs
+- [ ] Reuse `FileWriter` for output (already exists in codegen)
+- [ ] Support `--check`, `--dry-run` modes (same as today)
+- [ ] `gunbc-codegen testgen`, `gunbc-codegen testgen --check`
+- [ ] Delete `gunbc-dag/src/bin/testgen.rs`
+
+**TODO 6.3: Wire registry to test generation**
 - [ ] Add `.testgen(TestgenTargetDef::new(...))` to each tool in `all_tools()`
+- [ ] Add `all_testgen_dags()` back — but now populated from ToolDef + library DAGs
 - [ ] Convention: derive output_path and module_name from tool metadata
   - `"{crate_path}/src/{module}/generated_tests.rs"` or similar
-- [ ] `all_testgen_targets()` now returns actual data instead of empty
+- [ ] `all_testgen_targets()` returns real data (currently returns empty)
 
-**TODO 6.2: Registry entry for library DAGs**
-- [ ] Library DAGs (llm-ops) aren't tools — need a parallel registry
-- [ ] Option A: `LibraryDagDef` in registry — same fields, no CLI entrypoints
-- [ ] Option B: Broaden `ToolDef` to cover non-CLI DAGs (add `is_tool: bool`)
-- [ ] Either way: single `all_dags()` function returns everything
+**TODO 6.4: Registry for non-tool DAGs**
+- [ ] Library DAGs (llm-ops) aren't tools — need a parallel registry type
+- [ ] Option A: `LibraryDagDef` — same testgen fields, no CLI entrypoints
+- [ ] Option B: Broaden `ToolDef` to cover non-CLI DAGs (`is_tool: bool`)
+- [ ] Either way: single `all_testgen_dags()` returns everything
+- [ ] Multi-mock pattern: llm-ops has 4 MockSpec variants for 1 DAG builder —
+  registry must support N testgen targets per DAG
 
-**TODO 6.3: Generate testgen target list**
-- [ ] Codegen reads `all_testgen_targets()` + library DAG registry
-- [ ] Emits `build_targets()` function with `target!()` entries
-- [ ] Derives crate import paths from convention
-  (`crate_name` → `gunbc_{name}::build_{name}_graph()`)
-- [ ] Generated file: `gunbc-dag/src/bin/testgen_targets.rs` (included by testgen.rs)
-
-**TODO 6.4: Close the loop**
-- [ ] `testgen.rs` includes generated target list: `include!("testgen_targets.rs")`
-- [ ] Adding a new DAG = adding `.testgen(...)` to ToolDef or library registry
-- [ ] Codegen generates the target list, testgen consumes it
-- [ ] No manual testgen.rs edits needed
+**TODO 6.5: Codegen owns DAG builder references**
+- [ ] Since codegen binary now lives in gunbc-dag (or depends on it), it can
+  hold actual function references — no more string expressions
+- [ ] Alternatively: codegen generates the target list as a .rs file that
+  `gunbc-dag` includes (same pattern as CLI main.rs generation)
+- [ ] The `target!()` macro stays for any manually-registered targets
+- [ ] Goal: adding a new DAG = one `.testgen(...)` call on its `ToolDef`
 
 **Open design questions for Phase 6:**
+- **Circular dep**: codegen binary currently lives in `core/codegen`. If it
+  needs to call `gunbc_dag::build_bootstrap_graph()`, it would need to depend
+  on `gunbc-dag` — which depends on codegen (circular). Two solutions:
+  (a) codegen generates a target list .rs file that gunbc-dag includes, OR
+  (b) the testgen subcommand stays as a binary in gunbc-dag but uses codegen's
+  library (current pattern, just with testgen modules merged into codegen lib).
+  **Option (b) is simpler** — the binary stays where it is, but its logic
+  shrinks to just `build_targets()` since everything else lives in codegen.
 - **Bootstrap ordering**: Codegen must run before testgen. Currently `make build`
   already ensures `ensure-codegen testgen` ordering — this extends naturally.
-- **Multi-mock DAGs**: llm-ops has 4 MockSpec variants for 1 DAG. The registry
-  needs to support N testgen targets per DAG builder.
 - **Depends on**: None of Phases 1-5 are prerequisites. This is an orthogonal
   infrastructure improvement.
 
