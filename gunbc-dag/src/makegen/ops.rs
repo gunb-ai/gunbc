@@ -42,7 +42,7 @@ fn execute_load_registry(_inputs: HashMap<String, Value>) -> Result<HashMap<Stri
 
     let mut out = HashMap::new();
     out.insert("tool_count".to_string(), Value::Int(registry.tools.len() as i64));
-    out.insert("tool_names".to_string(), Value::StrList(tool_names));
+    out.insert("tool_names".to_string(), Value::str_list(tool_names));
     // Store registry as JSON for downstream
     let registry_json = serde_json::json!({
         "tools": registry.tools.iter().map(|t| {
@@ -94,7 +94,7 @@ impl Mockable for MakegenOp {
                 out.insert("tool_count".to_string(), Value::Int(3));
                 out.insert(
                     "tool_names".to_string(),
-                    Value::StrList(vec![
+                    Value::str_list(vec![
                         "gist".to_string(),
                         "deps".to_string(),
                         "buck2".to_string(),
@@ -170,8 +170,8 @@ mod tests {
             _ => panic!("expected tool count"),
         }
 
-        match result.get("tool_names") {
-            Some(Value::StrList(names)) => {
+        match result.get("tool_names").and_then(|v| v.as_str_list()) {
+            Some(names) => {
                 assert!(names.contains(&"gist".to_string()));
                 assert!(names.contains(&"buck2".to_string()));
             }

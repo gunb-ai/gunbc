@@ -30,7 +30,7 @@ pub fn bootstrap_mock_spec() -> MockSpec {
         .boundary(
             "write_files",
             "files_written",
-            Value::StrList(vec![
+            Value::str_list(vec![
                 "Makefile".into(),
                 ".gitignore".into(),
             ]),
@@ -97,7 +97,7 @@ pub fn bootstrap_mock_spec_makefile_only() -> MockSpec {
         .boundary(
             "write_files",
             "files_written",
-            Value::StrList(vec!["Makefile".into()]),
+            Value::str_list(vec!["Makefile".into()]),
         )
         .boundary("write_files", "write_count", Value::Int(1))
         .resource_lock("fs:Makefile")
@@ -109,7 +109,7 @@ pub fn bootstrap_mock_spec_makefile_fails() -> MockSpec {
         .boundary(
             "write_files",
             "files_written",
-            Value::StrList(vec![".gitignore".into()]),
+            Value::str_list(vec![".gitignore".into()]),
         )
         .boundary("write_files", "write_count", Value::Int(1))
         .resource_lock_fails("fs:Makefile", "Permission denied: Makefile is read-only")
@@ -119,7 +119,7 @@ pub fn bootstrap_mock_spec_makefile_fails() -> MockSpec {
 /// Mock spec for testing complete write failure.
 pub fn bootstrap_mock_spec_all_fail() -> MockSpec {
     MockSpec::new("bootstrap")
-        .boundary("write_files", "files_written", Value::StrList(vec![]))
+        .boundary("write_files", "files_written", Value::str_list(vec![]))
         .boundary("write_files", "write_count", Value::Int(0))
         .resource_lock_fails("fs:Makefile", "Permission denied")
         .resource_lock_fails("fs:.gitignore", "Permission denied")
@@ -147,11 +147,11 @@ mod tests {
     fn test_mock_spec_files_written() {
         let spec = bootstrap_mock_spec();
         let files = spec.get_boundary_mock("write_files", "files_written").unwrap();
-        if let Value::StrList(list) = files {
+        if let Some(list) = files.as_str_list() {
             assert!(list.contains(&"Makefile".to_string()));
             assert!(list.contains(&".gitignore".to_string()));
         } else {
-            panic!("Expected StrList");
+            panic!("Expected List");
         }
     }
 

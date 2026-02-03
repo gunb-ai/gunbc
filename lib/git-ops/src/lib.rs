@@ -121,7 +121,7 @@ impl Executable for GitOps {
                 };
 
                 let mut out = HashMap::new();
-                out.insert("files".to_string(), Value::StrList(files));
+                out.insert("files".to_string(), Value::str_list(files));
                 Ok(out)
             }
 
@@ -168,7 +168,7 @@ impl Executable for GitOps {
                 let (adds, dels, count) = git::diff_stats(&chunks);
 
                 let mut out = HashMap::new();
-                out.insert("diff_files".to_string(), Value::MapStrStr(chunks));
+                out.insert("diff_files".to_string(), Value::str_map(chunks));
                 out.insert(
                     "stats".to_string(),
                     Value::Str(format!("+{} -{} across {} files", adds, dels, count)),
@@ -221,7 +221,7 @@ impl Executable for GitOps {
                 };
 
                 let mut out = HashMap::new();
-                out.insert("files".to_string(), Value::StrList(files));
+                out.insert("files".to_string(), Value::str_list(files));
                 Ok(out)
             }
 

@@ -48,16 +48,16 @@ impl Executable for DepsGraphOp {
 pub fn deps_signature() -> WorkflowSignature {
     WorkflowSignature::new()
         // Inputs
-        .with_input("manifest_path", "String", Cardinality::ZeroOrOne)
+        .with_input("manifest_path", "String", Cardinality::ZERO_OR_ONE)
         // Outputs - boundary outputs from terminal nodes
-        .with_output("dep_count", "Int", Cardinality::One)
-        .with_output("dep_names", "StrList", Cardinality::ZeroOrMore)
-        .with_output("already_installed", "StrList", Cardinality::ZeroOrMore)
-        .with_output("needs_install", "StrList", Cardinality::ZeroOrMore)
-        .with_output("platform", "String", Cardinality::One)
-        .with_output("executed", "Bool", Cardinality::One)
-        .with_output("success", "Bool", Cardinality::One)
-        .with_output("script", "String", Cardinality::One)
+        .with_output("dep_count", "Int", Cardinality::ONE)
+        .with_output("dep_names", "List", Cardinality::ZERO_OR_MORE)
+        .with_output("already_installed", "List", Cardinality::ZERO_OR_MORE)
+        .with_output("needs_install", "List", Cardinality::ZERO_OR_MORE)
+        .with_output("platform", "String", Cardinality::ONE)
+        .with_output("executed", "Bool", Cardinality::ONE)
+        .with_output("success", "Bool", Cardinality::ONE)
+        .with_output("script", "String", Cardinality::ONE)
 }
 
 /// Build the deps graph with explicit transport nodes.
@@ -107,7 +107,7 @@ pub fn build_deps_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
             ],
             vec![
                 scalar("dep_count", "Int"),
-                list("dep_names", "StrList"),
+                list("dep_names", "List"),
                 scalar("manifest_path", "String"),
                 scalar("manifest_content", "String"),  // Pass content to GenerateScripts
             ],
@@ -127,8 +127,8 @@ pub fn build_deps_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
             vec![scalar("manifest_content", "String")],  // Receives content, not path
             vec![
                 scalar("install_script", "String"),
-                list("already_installed", "StrList"),
-                list("needs_install", "StrList"),
+                list("already_installed", "List"),
+                list("needs_install", "List"),
                 scalar("platform", "String"),
             ],
             DepsGraphOp::Deps(DepsOp::GenerateScripts),
@@ -214,14 +214,14 @@ pub fn build_deps_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
 pub fn deps_generate_signature() -> WorkflowSignature {
     WorkflowSignature::new()
         // Inputs (entrypoints)
-        .with_input("output_path", "String", Cardinality::ZeroOrOne)
+        .with_input("output_path", "String", Cardinality::ZERO_OR_ONE)
         // Outputs from execute_transport (boundary)
-        .with_output("response", "TransportResponse", Cardinality::One)
-        .with_output("written_path", "String", Cardinality::One)
-        .with_output("content", "String", Cardinality::One)
+        .with_output("response", "TransportResponse", Cardinality::ONE)
+        .with_output("written_path", "String", Cardinality::ONE)
+        .with_output("content", "String", Cardinality::ONE)
         // Informational outputs from load_tool_registry
-        .with_output("tool_count", "Int", Cardinality::One)
-        .with_output("tool_names", "StrList", Cardinality::OneOrMore)
+        .with_output("tool_count", "Int", Cardinality::ONE)
+        .with_output("tool_names", "List", Cardinality::ONE_OR_MORE)
 }
 
 /// Build the deps generate graph.
@@ -247,7 +247,7 @@ pub fn build_deps_generate_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
         vec![],
         vec![
             scalar("tool_count", "Int"),
-            non_empty_list("tool_names", "StrList"),
+            non_empty_list("tool_names", "List"),
         ],
         DepsGraphOp::Deps(DepsOp::LoadToolRegistry),
     ))?;

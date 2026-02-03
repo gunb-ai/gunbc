@@ -6,7 +6,7 @@
 //!
 //! Inputs:
 //! - `template`: String - Template with variables
-//! - `variables`: MapStrStr - Variable name → value mapping
+//! - `variables`: Map - Variable name → value mapping
 //!
 //! Outputs:
 //! - `expanded`: String - Expanded template
@@ -54,7 +54,7 @@ pub fn build_variable_syntax_subdag() -> Node<LanguageOp> {
         "expand",
         vec![
             Port::scalar("template", "String"),
-            Port::scalar("variables", "MapStrStr"),
+            Port::scalar("variables", "Map"),
         ],
         vec![Port::scalar("expanded", "String")],
         LanguageOp::ExpandVariables,

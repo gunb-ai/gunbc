@@ -1,6 +1,6 @@
 //! Collection primitives - list operations with cardinality awareness.
 //!
-//! These operations work on collections (StrList, Json arrays) and
+//! These operations work on collections (List, Json arrays) and
 //! respect cardinality constraints for automatic test generation.
 
 use gunbc_exec::{ExecError, Executable};
@@ -40,11 +40,11 @@ impl Executable for CollectionOp {
 /// string transformations directly.
 ///
 /// Inputs:
-/// - `input`: StrList to map over
+/// - `input`: List to map over
 /// - `transform`: String transformation type
 ///
 /// Outputs:
-/// - `output`: Transformed StrList
+/// - `output`: Transformed List
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub enum MapOp {
     /// Convert each string to uppercase
@@ -79,7 +79,7 @@ impl Executable for MapOp {
         };
 
         let mut out = HashMap::new();
-        out.insert("output".to_string(), Value::StrList(result));
+        out.insert("output".to_string(), Value::str_list(result));
         Ok(out)
     }
 }
@@ -89,11 +89,11 @@ impl Executable for MapOp {
 /// Cardinality: ZeroOrMore → ZeroOrMore (may reduce size)
 ///
 /// Inputs:
-/// - `input`: StrList to filter
+/// - `input`: List to filter
 /// - `pattern`: Optional pattern to match (for Contains, StartsWith, EndsWith)
 ///
 /// Outputs:
-/// - `output`: Filtered StrList
+/// - `output`: Filtered List
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub enum FilterOp {
     /// Keep strings containing the pattern
@@ -137,7 +137,7 @@ impl Executable for FilterOp {
 
         let count = result.len() as i64;
         let mut out = HashMap::new();
-        out.insert("output".to_string(), Value::StrList(result));
+        out.insert("output".to_string(), Value::str_list(result));
         out.insert("count".to_string(), Value::Int(count));
         Ok(out)
     }
@@ -148,7 +148,7 @@ impl Executable for FilterOp {
 /// Cardinality: ZeroOrMore → One
 ///
 /// Inputs:
-/// - `input`: StrList to fold
+/// - `input`: List to fold
 /// - `initial`: Optional initial value
 ///
 /// Outputs:
@@ -206,10 +206,10 @@ impl Executable for FoldOp {
 /// Cardinality: ZeroOrMore → ZeroOrMore (preserves count)
 ///
 /// Inputs:
-/// - `input`: StrList to sort
+/// - `input`: List to sort
 ///
 /// Outputs:
-/// - `output`: Sorted StrList
+/// - `output`: Sorted List
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub enum SortOp {
     /// Sort ascending (lexicographic)
@@ -242,7 +242,7 @@ impl Executable for SortOp {
         }
 
         let mut out = HashMap::new();
-        out.insert("output".to_string(), Value::StrList(result));
+        out.insert("output".to_string(), Value::str_list(result));
         Ok(out)
     }
 }
@@ -252,7 +252,7 @@ impl Executable for SortOp {
 /// Cardinality: OneOrMore → One (requires non-empty)
 ///
 /// Inputs:
-/// - `input`: StrList with at least one element
+/// - `input`: List with at least one element
 ///
 /// Outputs:
 /// - `output`: First element
@@ -284,7 +284,7 @@ impl Executable for FirstOp {
 /// Cardinality: OneOrMore → One (requires non-empty)
 ///
 /// Inputs:
-/// - `input`: StrList with at least one element
+/// - `input`: List with at least one element
 ///
 /// Outputs:
 /// - `output`: Last element
@@ -321,13 +321,13 @@ mod tests {
         let mut inputs = HashMap::new();
         inputs.insert(
             "input".to_string(),
-            Value::StrList(vec!["hello".to_string(), "world".to_string()]),
+            Value::str_list(vec!["hello".to_string(), "world".to_string()]),
         );
 
         let result = op.execute(inputs).unwrap();
         assert_eq!(
             result.get("output"),
-            Some(&Value::StrList(vec!["HELLO".to_string(), "WORLD".to_string()]))
+            Some(&Value::str_list(vec!["HELLO".to_string(), "WORLD".to_string()]))
         );
     }
 
@@ -337,7 +337,7 @@ mod tests {
         let mut inputs = HashMap::new();
         inputs.insert(
             "input".to_string(),
-            Value::StrList(vec![
+            Value::str_list(vec![
                 "main.rs".to_string(),
                 "lib.rs".to_string(),
                 "Cargo.toml".to_string(),
@@ -347,7 +347,7 @@ mod tests {
         let result = op.execute(inputs).unwrap();
         assert_eq!(
             result.get("output"),
-            Some(&Value::StrList(vec!["main.rs".to_string(), "lib.rs".to_string()]))
+            Some(&Value::str_list(vec!["main.rs".to_string(), "lib.rs".to_string()]))
         );
     }
 
@@ -357,7 +357,7 @@ mod tests {
         let mut inputs = HashMap::new();
         inputs.insert(
             "input".to_string(),
-            Value::StrList(vec!["a".to_string(), "b".to_string(), "c".to_string()]),
+            Value::str_list(vec!["a".to_string(), "b".to_string(), "c".to_string()]),
         );
 
         let result = op.execute(inputs).unwrap();
@@ -370,13 +370,13 @@ mod tests {
         let mut inputs = HashMap::new();
         inputs.insert(
             "input".to_string(),
-            Value::StrList(vec!["c".to_string(), "a".to_string(), "b".to_string()]),
+            Value::str_list(vec!["c".to_string(), "a".to_string(), "b".to_string()]),
         );
 
         let result = op.execute(inputs).unwrap();
         assert_eq!(
             result.get("output"),
-            Some(&Value::StrList(vec!["a".to_string(), "b".to_string(), "c".to_string()]))
+            Some(&Value::str_list(vec!["a".to_string(), "b".to_string(), "c".to_string()]))
         );
     }
 
@@ -386,7 +386,7 @@ mod tests {
         let mut inputs = HashMap::new();
         inputs.insert(
             "input".to_string(),
-            Value::StrList(vec!["first".to_string(), "second".to_string()]),
+            Value::str_list(vec!["first".to_string(), "second".to_string()]),
         );
 
         let result = op.execute(inputs).unwrap();
@@ -398,7 +398,7 @@ mod tests {
     fn test_first_empty() {
         let op = FirstOp;
         let mut inputs = HashMap::new();
-        inputs.insert("input".to_string(), Value::StrList(vec![]));
+        inputs.insert("input".to_string(), Value::str_list(vec![]));
 
         let result = op.execute(inputs).unwrap();
         assert_eq!(result.get("exists"), Some(&Value::Bool(false)));

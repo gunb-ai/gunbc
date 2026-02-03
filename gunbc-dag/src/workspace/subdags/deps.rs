@@ -22,9 +22,9 @@ use gunbc_primitives::PrepareFileWriteOp;
 ///
 /// Outputs:
 /// - `dep_count`: Int - Number of dependencies
-/// - `dep_names`: StrList - Dependency names
-/// - `already_installed`: StrList - Dependencies already present
-/// - `needs_install`: StrList - Dependencies that need installation
+/// - `dep_names`: List - Dependency names
+/// - `already_installed`: List - Dependencies already present
+/// - `needs_install`: List - Dependencies that need installation
 /// - `platform`: String - Current platform
 /// - `executed`: Bool - Whether installs were executed
 /// - `success`: Bool - Whether installation succeeded
@@ -69,7 +69,7 @@ pub fn build_deps_install_subdag() -> Node<WorkspaceOp> {
                 ],
                 vec![
                     scalar("dep_count", "Int"),
-                    list("dep_names", "StrList"),
+                    list("dep_names", "List"),
                     scalar("manifest_path", "String"),
                     scalar("manifest_content", "String"),
                 ],
@@ -87,8 +87,8 @@ pub fn build_deps_install_subdag() -> Node<WorkspaceOp> {
                 vec![scalar("manifest_content", "String")],
                 vec![
                     scalar("install_script", "String"),
-                    list("already_installed", "StrList"),
-                    list("needs_install", "StrList"),
+                    list("already_installed", "List"),
+                    list("needs_install", "List"),
                     scalar("platform", "String"),
                 ],
                 WorkspaceOp::Deps(DepsOp::GenerateScripts),
@@ -218,7 +218,7 @@ pub fn build_deps_install_subdag() -> Node<WorkspaceOp> {
 /// - `written_path`: String - Actual path written to
 /// - `content`: String - Generated content
 /// - `tool_count`: Int - Number of tools in registry
-/// - `tool_names`: StrList - Names of registered tools
+/// - `tool_names`: List - Names of registered tools
 pub fn build_deps_generate_subdag() -> Node<WorkspaceOp> {
     let mut builder: DagBuilder<WorkspaceOp> = DagBuilder::new();
 
@@ -229,7 +229,7 @@ pub fn build_deps_generate_subdag() -> Node<WorkspaceOp> {
             vec![],
             vec![
                 scalar("tool_count", "Int"),
-                non_empty_list("tool_names", "StrList"),
+                non_empty_list("tool_names", "List"),
             ],
             WorkspaceOp::Deps(DepsOp::LoadToolRegistry),
         ))

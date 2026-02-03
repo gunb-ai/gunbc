@@ -138,7 +138,7 @@ impl<T: Clone> AtomicBuilder<T> {
                 Port::guarded_with_cardinality(
                     "pre_ok",
                     "Bool",
-                    Cardinality::One,
+                    Cardinality::ONE,
                     Guard::Eq(Value::Bool(true)),
                 ),
             ]

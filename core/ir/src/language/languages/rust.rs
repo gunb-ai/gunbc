@@ -56,7 +56,7 @@ pub const RUST: RustConfig = RustConfig {
 ///
 /// Outputs:
 /// - `id`: String - Language ID ("rust")
-/// - `extensions`: StrList - File extensions ([".rs"])
+/// - `extensions`: List - File extensions ([".rs"])
 /// - `concrete_type`: String (optional) - Mapped type
 /// - `converted_name`: String (optional) - Converted name
 pub fn build_rust_subdag() -> Node<LanguageOp> {
@@ -69,7 +69,7 @@ pub fn build_rust_subdag() -> Node<LanguageOp> {
         vec![
             Port::scalar("id", "String"),
             Port::scalar("name", "String"),
-            Port::scalar("extensions", "StrList"),
+            Port::scalar("extensions", "List"),
             Port::scalar("comment_prefix", "String"),
             Port::scalar("doc_comment_prefix", "String"),
         ],

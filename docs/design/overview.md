@@ -322,8 +322,8 @@ struct WorkflowSignature {
 ```rust
 // Declare a signature
 let sig = WorkflowSignature::new()
-    .with_input("url", "String", Cardinality::One)
-    .with_output("response", "Response", Cardinality::One);
+    .with_input("url", "String", Cardinality::ONE)
+    .with_output("response", "Response", Cardinality::ONE);
 
 // Validate against a DAG
 sig.validate(&dag)?;  // Returns SignatureError if mismatch
@@ -1152,8 +1152,8 @@ pub fn build_deps_graph() -> Result<Dag<DepsOp>, BuilderError> {
 
 pub fn deps_signature() -> WorkflowSignature {
     WorkflowSignature::new()
-        .with_input("manifest_path", "String", Cardinality::ZeroOrOne)
-        .with_output("executed", "Bool", Cardinality::One)
+        .with_input("manifest_path", "String", Cardinality::ZERO_OR_ONE)
+        .with_output("executed", "Bool", Cardinality::ONE)
         // ... other outputs
 }
 ```

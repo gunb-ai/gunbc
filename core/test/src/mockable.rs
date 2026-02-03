@@ -22,7 +22,7 @@ use std::collections::HashMap;
 ///     fn mock_outputs(&self) -> HashMap<String, Value> {
 ///         match self {
 ///             GistOp::FilterFiles { .. } => hashmap! {
-///                 "files" => Value::StrList(vec!["test.rs".into()])
+///                 "files" => Value::str_list(vec!["test.rs".into()])
 ///             },
 ///             // ... other variants
 ///         }
@@ -162,7 +162,7 @@ impl ErrorTestCase {
 ///
 /// ```ignore
 /// let outputs = mock_hashmap! {
-///     "files" => Value::StrList(vec!["test.rs".into()]),
+///     "files" => Value::str_list(vec!["test.rs".into()]),
 ///     "count" => Value::Int(1)
 /// };
 /// ```
@@ -196,12 +196,12 @@ mod tests {
                 CardinalityTestInput::succeeds(
                     "input",
                     CardinalityCase::Empty,
-                    Value::StrList(vec![]),
+                    Value::str_list(vec![]),
                 ),
                 CardinalityTestInput::succeeds(
                     "input",
                     CardinalityCase::One,
-                    Value::StrList(vec!["one".into()]),
+                    Value::str_list(vec!["one".into()]),
                 ),
             ]
         }

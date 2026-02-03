@@ -10,7 +10,7 @@
 //!
 //! Outputs:
 //! - `valid`: Bool - Is the pattern valid?
-//! - `matches`: StrList (optional) - Matched substrings
+//! - `matches`: List (optional) - Matched substrings
 
 use crate::dag::{Dag, Port};
 use crate::node::Node;
@@ -47,7 +47,7 @@ pub fn build_regex_subdag() -> Node<LanguageOp> {
             Port::scalar("pattern", "String"),
             Port::scalar("text", "String"),
         ],
-        vec![Port::scalar("matches", "StrList")],
+        vec![Port::scalar("matches", "List")],
         LanguageOp::RegexMatch,
     ));
 

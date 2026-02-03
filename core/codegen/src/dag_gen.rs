@@ -10,6 +10,7 @@
 
 use crate::registry::{DagDef, EdgeDef, NodeDef, PortDef, ToolDef};
 use gunbc_ir::language::NamingCase;
+use gunbc_ir::types::Cardinality;
 use std::collections::HashSet;
 
 /// Generate a complete graph.rs file from a tool definition.
@@ -227,12 +228,26 @@ fn generate_node_code(node: &NodeDef, enum_name: &str) -> String {
 
 /// Generate code for a single port.
 fn generate_port_code(port: &PortDef) -> String {
-    match port.cardinality.as_str() {
-        "One" => format!("port(\"{}\", \"{}\")", port.name, port.type_id),
-        "ZeroOrOne" => format!("optional(\"{}\", \"{}\")", port.name, port.type_id),
-        "ZeroOrMore" => format!("list(\"{}\", \"{}\")", port.name, port.type_id),
-        "OneOrMore" => format!("non_empty_list(\"{}\", \"{}\")", port.name, port.type_id),
-        _ => format!("port(\"{}\", \"{}\")", port.name, port.type_id),
+    if port.cardinality == Cardinality::ONE {
+        format!("port(\"{}\", \"{}\")", port.name, port.type_id)
+    } else if port.cardinality == Cardinality::ZERO_OR_ONE {
+        format!("optional(\"{}\", \"{}\")", port.name, port.type_id)
+    } else if port.cardinality == Cardinality::ZERO_OR_MORE {
+        format!("list(\"{}\", \"{}\")", port.name, port.type_id)
+    } else if port.cardinality == Cardinality::ONE_OR_MORE {
+        format!("non_empty_list(\"{}\", \"{}\")", port.name, port.type_id)
+    } else {
+        // Custom cardinality — fall back to with_cardinality for arbitrary intervals
+        format!(
+            "Port::with_cardinality(\"{}\", \"{}\", Cardinality::new({}, {}))",
+            port.name,
+            port.type_id,
+            port.cardinality.min,
+            match port.cardinality.max {
+                Some(m) => format!("Some({})", m),
+                None => "None".to_string(),
+            }
+        )
     }
 }
 
@@ -257,8 +272,8 @@ mod tests {
         let port = PortDef::optional("input", "String");
         assert_eq!(generate_port_code(&port), "optional(\"input\", \"String\")");
         
-        let port = PortDef::list("items", "StrList");
-        assert_eq!(generate_port_code(&port), "list(\"items\", \"StrList\")");
+        let port = PortDef::list("items", "List");
+        assert_eq!(generate_port_code(&port), "list(\"items\", \"List\")");
     }
 
     #[test]

@@ -45,6 +45,7 @@
 //! This allows business logic to remain pure while transport execution
 //! happens at well-defined boundaries.
 
+pub mod algebra;
 pub mod boundary;
 pub mod builder;
 pub mod cargo;
@@ -92,6 +93,9 @@ pub use types::{Cardinality, CardinalityCase, CardinalityMismatch, NodeId, PortN
 pub use value::{SecretString, Value};
 pub use render::Renderable;
 pub use validate::{validate_subdag_interfaces, SubDagError, PortDirection};
+pub use algebra::{
+    BoundedLattice, JoinSemilattice, Lattice, MeetSemilattice, PartialOrder, Semiring,
+};
 
 // Re-exports from language module for common use
 pub use language::{

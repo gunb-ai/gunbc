@@ -40,7 +40,7 @@ impl Executable for PatternOp {
                     })?;
 
                 let mut out = HashMap::new();
-                out.insert(element_port.clone(), Value::StrList(list.clone()));
+                out.insert(element_port.clone(), Value::str_list(list.clone()));
                 out.insert("index".to_string(), Value::Int(0));
                 out.insert("count".to_string(), Value::Int(list.len() as i64));
                 Ok(out)
@@ -57,7 +57,7 @@ impl Executable for PatternOp {
                     .unwrap_or(list.len() as i64);
 
                 let mut out = HashMap::new();
-                out.insert(output_port.clone(), Value::StrList(list));
+                out.insert(output_port.clone(), Value::str_list(list));
                 out.insert("iterations".to_string(), Value::Int(count));
                 Ok(out)
             }

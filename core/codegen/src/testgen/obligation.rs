@@ -27,8 +27,8 @@
 //! This gives "ALL deducible non-tautological tests" by construction.
 
 use gunbc_ir::resource::{detect_conflicts, ResourceAccess, ResourceConflict};
-use gunbc_ir::types::{NodeId, PortName, TypeId};
-use gunbc_ir::{contract, Dag, TypeRegistry};
+use gunbc_ir::types::{Cardinality, CardinalityCase, NodeId, PortName, TypeId};
+use gunbc_ir::{contract, detect_boundaries, Dag, TypeRegistry};
 
 // ---------------------------------------------------------------------------
 // Obligation IR
@@ -147,6 +147,22 @@ pub enum Obligation {
         from_type: TypeId,
         to_type: TypeId,
         entailment: EntailmentStatus,
+    },
+
+    /// Cardinality boundary coverage: test that boundary ports handle their full
+    /// cardinality range correctly.
+    ///
+    /// For non-scalar boundary ports, runtime behavior may differ across the
+    /// cardinality cases (Empty, One, Many). This obligation is NOT discharged
+    /// by construction because:
+    /// - Guarded/skipped nodes may receive `Skipped` at runtime
+    /// - Fan-in last-writer-wins can silently overwrite
+    /// - Ops may defensively handle null/array without engine enforcement
+    CardinalityCoverage {
+        node_id: NodeId,
+        port_name: PortName,
+        cardinality: Cardinality,
+        cases: Vec<CardinalityCase>,
     },
 
     // NOTE: WitnessCompatibility (L4) removed — requires Tier 3 infrastructure
@@ -312,6 +328,14 @@ impl ObligationSet {
         self.testable()
             .into_iter()
             .filter(|o| o.source == ObligationSource::Contract)
+            .collect()
+    }
+
+    /// Get only cardinality coverage obligations from Bucket B.
+    pub fn cardinality_obligations(&self) -> Vec<&ProofObligation> {
+        self.bucket_b()
+            .into_iter()
+            .filter(|o| matches!(o.kind, Obligation::CardinalityCoverage { .. }))
             .collect()
     }
 
@@ -576,6 +600,38 @@ fn collect_contract_obligations<T>(
                 ),
                 ObligationSource::Contract,
             ));
+        }
+    }
+
+    // B.3: Cardinality boundary coverage — for each boundary output port with
+    // non-trivial cardinality (more than one test case), add a coverage obligation.
+    // This is NOT proven by construction because runtime behavior may differ
+    // across cardinality cases (empty vs one vs many).
+    let boundaries = detect_boundaries(dag);
+    for (node_id, port_name) in &boundaries.boundary_ports {
+        if let Some(node) = dag.get_node(node_id) {
+            if let Some(port) = node.outputs.iter().find(|p| &p.name == port_name) {
+                let cases = port.cardinality.test_cases();
+                if cases.len() > 1 {
+                    obligations.push(ProofObligation::runtime(
+                        Obligation::CardinalityCoverage {
+                            node_id: node_id.clone(),
+                            port_name: port_name.clone(),
+                            cardinality: port.cardinality,
+                            cases: cases.clone(),
+                        },
+                        format!(
+                            "Boundary port {}.{} has cardinality {} — test {} cases: {:?}",
+                            node_id.0,
+                            port_name.0,
+                            port.cardinality,
+                            cases.len(),
+                            cases
+                        ),
+                        ObligationSource::Contract,
+                    ));
+                }
+            }
         }
     }
 }

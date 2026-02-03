@@ -39,12 +39,12 @@ impl Executable for Buck2GraphOp {
 pub fn buck2_signature() -> WorkflowSignature {
     WorkflowSignature::new()
         // Inputs (entrypoints)
-        .with_input("cargo_toml_path", "String", Cardinality::One)
-        .with_input("output_path", "String", Cardinality::One)
+        .with_input("cargo_toml_path", "String", Cardinality::ONE)
+        .with_input("output_path", "String", Cardinality::ONE)
         // Outputs from execute_transport (boundary)
-        .with_output("response", "TransportResponse", Cardinality::One)
-        .with_output("written_path", "String", Cardinality::One)
-        .with_output("content", "String", Cardinality::One)
+        .with_output("response", "TransportResponse", Cardinality::ONE)
+        .with_output("written_path", "String", Cardinality::ONE)
+        .with_output("content", "String", Cardinality::ONE)
 }
 
 /// Build the Buck2 generation graph using DagBuilder.
@@ -103,7 +103,7 @@ pub fn build_buck2_graph() -> Result<Dag<Buck2GraphOp>, BuilderError> {
         Node::opaque(
             "extract_deps",
             vec![port("cargo_toml", "Json")],
-            vec![port("members", "StrList"), port("deps", "MapStrStr")],
+            vec![port("members", "List"), port("deps", "Map")],
             Buck2GraphOp::Buck2(Buck2Op::ExtractDeps),
         ),
         &parse_cargo_toml,
@@ -113,7 +113,7 @@ pub fn build_buck2_graph() -> Result<Dag<Buck2GraphOp>, BuilderError> {
     let generate_targets = builder.add_node_after(
         Node::opaque(
             "generate_targets",
-            vec![port("members", "StrList"), port("deps", "MapStrStr")],
+            vec![port("members", "List"), port("deps", "Map")],
             vec![port("buck_content", "String")],
             Buck2GraphOp::Buck2(Buck2Op::GenerateBuckTargets),
         ),

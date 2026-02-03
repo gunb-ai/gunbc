@@ -337,7 +337,7 @@ impl InputConstraint {
         match self {
             InputConstraint::NonEmpty => match value {
                 Value::Str(s) if s.is_empty() => Err("expected non-empty string".into()),
-                Value::StrList(v) if v.is_empty() => Err("expected non-empty list".into()),
+                Value::List(v) if v.is_empty() => Err("expected non-empty list".into()),
                 _ => Ok(()),
             },
             InputConstraint::OneOf(values) => {
@@ -535,8 +535,8 @@ fn value_type_name(value: &Value) -> &'static str {
         Value::Bool(_) => "Bool",
         Value::Str(_) => "String",
         Value::Int(_) => "Int",
-        Value::StrList(_) => "StrList",
-        Value::MapStrStr(_) => "MapStrStr",
+        Value::List(_) => "List",
+        Value::Map(_) => "Map",
         Value::Json(_) => "Json",
         Value::Skipped => "Skipped",
         _ => "Unknown",
@@ -763,8 +763,8 @@ impl OutputMatcher {
             OutputMatcher::NonEmpty => match value {
                 Value::Str(s) if !s.is_empty() => Ok(()),
                 Value::Str(_) => Err("expected non-empty string".into()),
-                Value::StrList(v) if !v.is_empty() => Ok(()),
-                Value::StrList(_) => Err("expected non-empty list".into()),
+                Value::List(v) if !v.is_empty() => Ok(()),
+                Value::List(_) => Err("expected non-empty list".into()),
                 _ => Ok(()), // Other types considered non-empty
             },
             OutputMatcher::Satisfies { description, predicate } => {
@@ -852,8 +852,8 @@ mod tests {
 
         assert!(constraint.check(&Value::Str("hello".into())).is_ok());
         assert!(constraint.check(&Value::Str("".into())).is_err());
-        assert!(constraint.check(&Value::StrList(vec!["a".into()])).is_ok());
-        assert!(constraint.check(&Value::StrList(vec![])).is_err());
+        assert!(constraint.check(&Value::str_list(vec!["a".into()])).is_ok());
+        assert!(constraint.check(&Value::str_list(vec![])).is_err());
     }
 
     #[test]
@@ -915,8 +915,8 @@ mod tests {
 
         assert!(matcher.check(&Value::Str("hello".into())).is_ok());
         assert!(matcher.check(&Value::Str("".into())).is_err());
-        assert!(matcher.check(&Value::StrList(vec!["a".into()])).is_ok());
-        assert!(matcher.check(&Value::StrList(vec![])).is_err());
+        assert!(matcher.check(&Value::str_list(vec!["a".into()])).is_ok());
+        assert!(matcher.check(&Value::str_list(vec![])).is_err());
         // Other types are considered non-empty
         assert!(matcher.check(&Value::Int(0)).is_ok());
     }

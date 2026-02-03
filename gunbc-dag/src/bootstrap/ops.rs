@@ -110,7 +110,7 @@ fn execute_parse_scan_result(inputs: HashMap<String, Value>) -> Result<HashMap<S
 
     let mut out = HashMap::new();
     out.insert("crate_count".to_string(), Value::Int(crate_names.len() as i64));
-    out.insert("crate_names".to_string(), Value::StrList(crate_names));
+    out.insert("crate_names".to_string(), Value::str_list(crate_names));
     Ok(out)
 }
 
@@ -169,7 +169,7 @@ impl Mockable for BootstrapOp {
             BootstrapOp::ParseScanResult => {
                 let mut out = HashMap::new();
                 out.insert("crate_count".to_string(), Value::Int(5));
-                out.insert("crate_names".to_string(), Value::StrList(vec!["lib-a".to_string(), "lib-b".to_string()]));
+                out.insert("crate_names".to_string(), Value::str_list(vec!["lib-a".to_string(), "lib-b".to_string()]));
                 out
             }
             BootstrapOp::GenerateMakefile => {

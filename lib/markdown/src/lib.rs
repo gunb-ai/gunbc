@@ -189,7 +189,7 @@ mod tests {
         contents.insert("lib.rs".to_string(), "// code".to_string());
 
         let mut inputs = HashMap::new();
-        inputs.insert("contents".to_string(), Value::MapStrStr(contents));
+        inputs.insert("contents".to_string(), Value::str_map(contents));
 
         let op = MarkdownOp::RenderCodeSnapshot;
         let result = op.execute(inputs).unwrap();
@@ -263,7 +263,7 @@ mod tests {
         diffs.insert("lib.rs".to_string(), "+// new code".to_string());
 
         let mut inputs = HashMap::new();
-        inputs.insert("diff_files".to_string(), Value::MapStrStr(diffs));
+        inputs.insert("diff_files".to_string(), Value::str_map(diffs));
         inputs.insert(
             "stats".to_string(),
             Value::Str("+1 -0 across 1 files".to_string()),

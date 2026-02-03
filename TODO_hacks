@@ -1,0 +1,106 @@
+# TODO_hacks
+#
+# Known consolidation debt and implicit dependencies that should be
+# made structural. Items here are "works but fragile" — they won't
+# break today but will bite when something gets renamed/moved.
+
+## DAG builder functions referenced as strings
+
+The codegen registry stores graph builder names as strings:
+
+    ToolDef::new(..., "build_makegen_graph", "")
+
+Then testgen.rs hardcodes the actual function calls separately. Renaming
+a builder function won't trigger a compile error — it silently breaks at
+runtime. Should use function pointers or a trait-based dispatch instead.
+
+Files:
+  - core/codegen/src/registry.rs  (graph_builder field on ToolDef)
+  - gunbc-dag/src/bin/testgen.rs  (hardcoded calls to builder functions)
+
+## "buck-out/gen" hardcoded in 4+ locations
+
+The output directory appears as a literal string in multiple files. If the
+output dir ever changes, these won't update together. Should be a single
+constant in gunbc-ir or similar.
+
+Files:
+  - core/codegen/src/main.rs       ("buck-out/gen/bin", "buck-out/gen/lib")
+  - gunbc-dag/src/makegen/render.rs ("buck-out/gen/.codegen-stamp")
+  - gunbc-dag/src/ci/ops.rs        ("buck-out/gen/bin" existence check)
+  - core/codegen/src/registry.rs   ("buck-out/" in core_outputs())
+
+## Codegen source tracking directories are static
+
+The Makefile's CODEGEN_SOURCES variable tracks core/codegen/src and
+core/ir/src, but this list is hardcoded in render.rs. If codegen gains
+a new source dependency (e.g. a new core/lang/src crate), the stamp
+won't track it and stale artifacts won't trigger rebuilds.
+
+Files:
+  - gunbc-dag/src/makegen/render.rs (line ~156, hardcoded find paths)
+
+## Meta-target dependency strings not verified
+
+Meta-targets reference other targets by name ("testgen-check", "fmt-fix",
+"lint-fix") as hardcoded strings. Renaming or removing a target won't
+cause a compile error — just a broken Makefile at runtime.
+
+Files:
+  - gunbc-dag/src/makegen/registry.rs (default_meta_targets(), fix_deps)
+
+## "List" used as type_id AND cardinality shape (dual encoding)
+
+The design doc says cardinality is the canonical shape layer, but "List" is
+deeply embedded as a type_id across 28 files — CLI arg parsing, mock
+generation, loop patterns, makegen repeatable detection, etc.
+
+Concrete bug: `PortDef::list_nonempty("tool_names", "List")` in the
+makegen DAG says "element type is List" + "cardinality is ONE_OR_MORE"
+= list-of-lists. Should be `PortDef::list_nonempty("tool_names", "String")`
+since tool_names is a list of strings.
+
+Broader issue: resolving "List as type_id" vs "List as cardinality" requires
+a design pass across CLI generation (cli_gen.rs match arms), mock generation
+(testgen/codegen.rs), loop patterns (loop_pattern.rs), and the makegen
+registry's `repeatable: ep.type_id == "List"` check.
+
+Files:
+  - core/codegen/src/registry.rs:796    (PortDef with "List" type_id)
+  - core/codegen/src/cli_gen.rs         (match on type_id == "List" for CLI gen)
+  - core/codegen/src/testgen/codegen.rs (mock value generation keyed on type_id)
+  - core/ir/src/patterns/loop_pattern.rs (hardcoded "List" type_id)
+  - gunbc-dag/src/makegen/registry.rs   (repeatable check: type_id == "List")
+
+## CardinalityCoverage Empty case doesn't test absence
+
+cardinality_case_mock_value() generates concrete values for Empty:
+  - String → Value::Str(String::new())   (empty string, NOT absent)
+  - Bool   → Value::Bool(false)          (false, NOT absent)
+  - Int    → Value::Int(0)               (zero, NOT absent)
+
+Under set/tape semantics, Empty should mean "zero elements" (absence),
+not "one element whose content is empty." The generated tests for the
+Empty cardinality case actually exercise the One case.
+
+Fixing this requires infrastructure: BoundaryMocks has no concept of
+"absent" — get_mock() always returns a value. Would need Option<Value>
+in BoundaryMock, an unset_value() API, and executor changes to handle
+missing boundary values.
+
+Files:
+  - core/codegen/src/testgen/codegen.rs:1805  (cardinality_case_mock_value)
+  - core/exec/src/intercept.rs                (BoundaryMocks, no unset API)
+  - core/exec/src/execute.rs                  (executor always produces output)
+
+## Cardinality constants are flat — no compositional modeling
+
+Named cardinality constants (ZERO, ONE, ZERO_OR_ONE, etc.) are syntactic
+sugar for interval structs. If "everything is a DAG" then cardinality
+constraints could be modeled as composable DAG nodes — making multiplicity
+runtime-evaluable and composable with other constraint nodes rather than
+a static port property. Currently cardinality is compile-time only (used
+for test generation and port validation), not a first-class runtime concept.
+
+Files:
+  - core/ir/src/types.rs (Cardinality struct and associated constants)

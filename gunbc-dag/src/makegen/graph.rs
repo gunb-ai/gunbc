@@ -43,14 +43,14 @@ impl Executable for MakegenGraphOp {
 pub fn makegen_signature() -> WorkflowSignature {
     WorkflowSignature::new()
         // Inputs (entrypoints)
-        .with_input("output_path", "String", Cardinality::ZeroOrOne)
+        .with_input("output_path", "String", Cardinality::ZERO_OR_ONE)
         // Outputs from execute_transport (boundary)
-        .with_output("response", "TransportResponse", Cardinality::One)
-        .with_output("written_path", "String", Cardinality::One)
-        .with_output("content", "String", Cardinality::One)
+        .with_output("response", "TransportResponse", Cardinality::ONE)
+        .with_output("written_path", "String", Cardinality::ONE)
+        .with_output("content", "String", Cardinality::ONE)
         // Informational outputs from load_registry (secondary boundaries)
-        .with_output("tool_count", "Int", Cardinality::One)
-        .with_output("tool_names", "StrList", Cardinality::OneOrMore)
+        .with_output("tool_count", "Int", Cardinality::ONE)
+        .with_output("tool_names", "List", Cardinality::ONE_OR_MORE)
 }
 
 /// Build the makegen graph using DagBuilder.
@@ -83,7 +83,7 @@ pub fn build_makegen_graph() -> Result<Dag<MakegenGraphOp>, BuilderError> {
         vec![],
         vec![
             scalar("tool_count", "Int"),
-            non_empty_list("tool_names", "StrList"),
+            non_empty_list("tool_names", "List"),
             scalar("registry", "Json"),
         ],
         MakegenGraphOp::Makegen(MakegenOp::LoadRegistry),

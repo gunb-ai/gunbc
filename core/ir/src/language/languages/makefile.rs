@@ -51,7 +51,7 @@ pub const MAKEFILE: MakefileConfig = MakefileConfig {
 ///
 /// Inputs:
 /// - `targets`: List of target definitions
-/// - `variables`: Variable definitions (MapStrStr)
+/// - `variables`: Variable definitions (Map)
 ///
 /// Outputs:
 /// - `id`: String - Format ID ("makefile")
@@ -65,7 +65,7 @@ pub fn build_makefile_subdag() -> Node<LanguageOp> {
         vec![],
         vec![
             Port::scalar("id", "String"),
-            Port::scalar("file_patterns", "StrList"),
+            Port::scalar("file_patterns", "List"),
             Port::scalar("comment_prefix", "String"),
             Port::scalar("indent", "String"),
         ],
@@ -77,7 +77,7 @@ pub fn build_makefile_subdag() -> Node<LanguageOp> {
         "render",
         vec![
             Port::scalar("targets", "Json"), // List of target definitions
-            Port::scalar("variables", "MapStrStr"),
+            Port::scalar("variables", "Map"),
         ],
         vec![Port::scalar("content", "String")],
         LanguageOp::MakefileRender,

@@ -430,7 +430,7 @@ pub fn build_diff_review_graph_with(
         "parse_diff",
         vec![port("response", "TransportResponse")],
         vec![
-            port("diff_files", "MapStrStr"),
+            port("diff_files", "Map"),
             port("stats", "String"),
         ],
         ReviewGraphOp::Git(GitOps::ParseDiff),
@@ -442,7 +442,7 @@ pub fn build_diff_review_graph_with(
 
     dag.add_node(Node::opaque(
         "format_artifact",
-        vec![port("diff_files", "MapStrStr")],
+        vec![port("diff_files", "Map")],
         vec![port("artifact", "String")],
         ReviewGraphOp::Review(ReviewOps::FormatDiffArtifact),
     ));

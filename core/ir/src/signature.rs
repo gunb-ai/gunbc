@@ -11,8 +11,8 @@
 //! use gunbc_ir::types::Cardinality;
 //!
 //! let signature = WorkflowSignature::new()
-//!     .with_input("files", "PathList", Cardinality::OneOrMore)
-//!     .with_output("result", "String", Cardinality::One);
+//!     .with_input("files", "PathList", Cardinality::ONE_OR_MORE)
+//!     .with_output("result", "String", Cardinality::ONE);
 //!
 //! // Validate that the DAG matches the declared signature
 //! signature.validate(&dag)?;
@@ -48,22 +48,22 @@ impl SignaturePort {
 
     /// Create a scalar (required) port.
     pub fn scalar(name: impl Into<PortName>, type_id: impl Into<TypeId>) -> Self {
-        Self::new(name, type_id, Cardinality::One)
+        Self::new(name, type_id, Cardinality::ONE)
     }
 
     /// Create an optional port.
     pub fn optional(name: impl Into<PortName>, type_id: impl Into<TypeId>) -> Self {
-        Self::new(name, type_id, Cardinality::ZeroOrOne)
+        Self::new(name, type_id, Cardinality::ZERO_OR_ONE)
     }
 
     /// Create a list port.
     pub fn list(name: impl Into<PortName>, type_id: impl Into<TypeId>) -> Self {
-        Self::new(name, type_id, Cardinality::ZeroOrMore)
+        Self::new(name, type_id, Cardinality::ZERO_OR_MORE)
     }
 
     /// Create a non-empty list port.
     pub fn non_empty_list(name: impl Into<PortName>, type_id: impl Into<TypeId>) -> Self {
-        Self::new(name, type_id, Cardinality::OneOrMore)
+        Self::new(name, type_id, Cardinality::ONE_OR_MORE)
     }
 }
 
@@ -320,8 +320,8 @@ mod tests {
         dag.add_node(test_node("a", vec![("in", "String")], vec![("out", "String")]));
         
         let sig = WorkflowSignature::new()
-            .with_input("in", "String", Cardinality::One)
-            .with_output("out", "String", Cardinality::One);
+            .with_input("in", "String", Cardinality::ONE)
+            .with_output("out", "String", Cardinality::ONE);
         
         assert!(sig.validate(&dag).is_ok());
     }
@@ -333,7 +333,7 @@ mod tests {
         
         // Signature missing the input declaration
         let sig = WorkflowSignature::new()
-            .with_output("out", "String", Cardinality::One);
+            .with_output("out", "String", Cardinality::ONE);
         
         let err = sig.validate(&dag).unwrap_err();
         assert_eq!(err.missing_inputs.len(), 1);
@@ -347,8 +347,8 @@ mod tests {
         
         // Signature declares an input that doesn't exist
         let sig = WorkflowSignature::new()
-            .with_input("phantom", "String", Cardinality::One)
-            .with_output("out", "String", Cardinality::One);
+            .with_input("phantom", "String", Cardinality::ONE)
+            .with_output("out", "String", Cardinality::ONE);
         
         let err = sig.validate(&dag).unwrap_err();
         assert_eq!(err.extra_inputs.len(), 1);
@@ -362,7 +362,7 @@ mod tests {
         
         // Signature missing the output declaration
         let sig = WorkflowSignature::new()
-            .with_input("in", "String", Cardinality::One);
+            .with_input("in", "String", Cardinality::ONE);
         
         let err = sig.validate(&dag).unwrap_err();
         assert_eq!(err.missing_outputs.len(), 1);
@@ -382,16 +382,16 @@ mod tests {
         
         // Signature declares wrong cardinality
         let sig = WorkflowSignature::new()
-            .with_input("in", "String", Cardinality::One)
-            .with_output("out", "String", Cardinality::One);  // Wrong! Should be ZeroOrOne
+            .with_input("in", "String", Cardinality::ONE)
+            .with_output("out", "String", Cardinality::ONE);  // Wrong! Should be ZeroOrOne
         
         let err = sig.validate(&dag).unwrap_err();
         // The ZeroOrOne output is "missing" (we declared One instead)
         assert_eq!(err.missing_outputs.len(), 1);
-        assert_eq!(err.missing_outputs[0].cardinality, Cardinality::ZeroOrOne);
+        assert_eq!(err.missing_outputs[0].cardinality, Cardinality::ZERO_OR_ONE);
         // The One output is "extra" (we declared it but it doesn't exist)
         assert_eq!(err.extra_outputs.len(), 1);
-        assert_eq!(err.extra_outputs[0].cardinality, Cardinality::One);
+        assert_eq!(err.extra_outputs[0].cardinality, Cardinality::ONE);
     }
 
     #[test]
@@ -401,8 +401,8 @@ mod tests {
         
         // Signature declares wrong type
         let sig = WorkflowSignature::new()
-            .with_input("in", "String", Cardinality::One)
-            .with_output("out", "String", Cardinality::One);  // Wrong! Should be Int
+            .with_input("in", "String", Cardinality::ONE)
+            .with_output("out", "String", Cardinality::ONE);  // Wrong! Should be Int
         
         let err = sig.validate(&dag).unwrap_err();
         assert_eq!(err.missing_outputs.len(), 1);
@@ -428,9 +428,9 @@ mod tests {
     #[test]
     fn test_signature_builder_fluent() {
         let sig = WorkflowSignature::new()
-            .with_input("a", "String", Cardinality::One)
-            .with_input("b", "Int", Cardinality::ZeroOrOne)
-            .with_output("result", "Bool", Cardinality::One);
+            .with_input("a", "String", Cardinality::ONE)
+            .with_input("b", "Int", Cardinality::ZERO_OR_ONE)
+            .with_output("result", "Bool", Cardinality::ONE);
         
         assert_eq!(sig.inputs.len(), 2);
         assert_eq!(sig.outputs.len(), 1);
@@ -439,15 +439,15 @@ mod tests {
     #[test]
     fn test_signature_port_helpers() {
         let scalar = SignaturePort::scalar("s", "String");
-        assert_eq!(scalar.cardinality, Cardinality::One);
+        assert_eq!(scalar.cardinality, Cardinality::ONE);
         
         let optional = SignaturePort::optional("o", "String");
-        assert_eq!(optional.cardinality, Cardinality::ZeroOrOne);
+        assert_eq!(optional.cardinality, Cardinality::ZERO_OR_ONE);
         
         let list = SignaturePort::list("l", "String");
-        assert_eq!(list.cardinality, Cardinality::ZeroOrMore);
+        assert_eq!(list.cardinality, Cardinality::ZERO_OR_MORE);
         
         let non_empty = SignaturePort::non_empty_list("n", "String");
-        assert_eq!(non_empty.cardinality, Cardinality::OneOrMore);
+        assert_eq!(non_empty.cardinality, Cardinality::ONE_OR_MORE);
     }
 }

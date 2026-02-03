@@ -120,7 +120,7 @@ fn execute_load_tool_registry(_inputs: HashMap<String, Value>) -> Result<HashMap
     
     let mut out = HashMap::new();
     out.insert("tool_count".to_string(), Value::Int(tool_count));
-    out.insert("tool_names".to_string(), Value::StrList(tool_names));
+    out.insert("tool_names".to_string(), Value::str_list(tool_names));
     Ok(out)
 }
 
@@ -198,7 +198,7 @@ fn execute_parse_manifest(inputs: HashMap<String, Value>) -> Result<HashMap<Stri
 
     let mut out = HashMap::new();
     out.insert("dep_count".to_string(), Value::Int(manifest.dependency.len() as i64));
-    out.insert("dep_names".to_string(), Value::StrList(dep_names));
+    out.insert("dep_names".to_string(), Value::str_list(dep_names));
     out.insert("manifest_path".to_string(), Value::Str(manifest_path.to_string()));
     // Pass manifest content to downstream (avoiding file reload in GenerateScripts)
     out.insert("manifest_content".to_string(), Value::Str(content));
@@ -246,8 +246,8 @@ fn execute_generate_scripts(inputs: HashMap<String, Value>) -> Result<HashMap<St
 
     let mut out = HashMap::new();
     out.insert("install_script".to_string(), Value::Str(combined_script));
-    out.insert("already_installed".to_string(), Value::StrList(already_installed));
-    out.insert("needs_install".to_string(), Value::StrList(needs_install));
+    out.insert("already_installed".to_string(), Value::str_list(already_installed));
+    out.insert("needs_install".to_string(), Value::str_list(needs_install));
     out.insert("platform".to_string(), Value::Str(installer.platform().name().to_string()));
     Ok(out)
 }
@@ -470,7 +470,7 @@ impl Mockable for DepsOp {
                 out.insert("tool_count".to_string(), Value::Int(3));
                 out.insert(
                     "tool_names".to_string(),
-                    Value::StrList(vec![
+                    Value::str_list(vec![
                         "cargo".to_string(),
                         "gh".to_string(),
                         "git".to_string(),
@@ -500,7 +500,7 @@ impl Mockable for DepsOp {
                 out.insert("dep_count".to_string(), Value::Int(2));
                 out.insert(
                     "dep_names".to_string(),
-                    Value::StrList(vec!["rust".to_string(), "git".to_string()]),
+                    Value::str_list(vec!["rust".to_string(), "git".to_string()]),
                 );
                 out.insert("manifest_path".to_string(), Value::Str("deps.toml".to_string()));
                 out.insert("manifest_content".to_string(), Value::Str("[[dependency]]\nname = \"mock\"".to_string()));
@@ -521,11 +521,11 @@ echo "Installing git..."
                 );
                 out.insert(
                     "already_installed".to_string(),
-                    Value::StrList(vec!["git".to_string()]),
+                    Value::str_list(vec!["git".to_string()]),
                 );
                 out.insert(
                     "needs_install".to_string(),
-                    Value::StrList(vec!["rust".to_string()]),
+                    Value::str_list(vec!["rust".to_string()]),
                 );
                 out.insert("platform".to_string(), Value::Str("linux".to_string()));
                 out
@@ -611,17 +611,17 @@ echo "Installing git..."
                 CardinalityTestInput::succeeds(
                     "dep_names",
                     CardinalityCase::Empty,
-                    Value::StrList(vec![]),
+                    Value::str_list(vec![]),
                 ),
                 CardinalityTestInput::succeeds(
                     "dep_names",
                     CardinalityCase::One,
-                    Value::StrList(vec!["single-dep".to_string()]),
+                    Value::str_list(vec!["single-dep".to_string()]),
                 ),
                 CardinalityTestInput::succeeds(
                     "dep_names",
                     CardinalityCase::Many,
-                    Value::StrList(vec![
+                    Value::str_list(vec![
                         "dep1".to_string(),
                         "dep2".to_string(),
                         "dep3".to_string(),
@@ -709,8 +709,8 @@ script = "echo 'installing echo'"
         let result = execute_generate_scripts(inputs).unwrap();
 
         // echo should be already installed (since 'echo test' succeeds)
-        match result.get("already_installed") {
-            Some(Value::StrList(list)) => {
+        match result.get("already_installed").and_then(|v| v.as_str_list()) {
+            Some(list) => {
                 assert!(list.contains(&"echo".to_string()));
             }
             _ => panic!("expected already_installed list"),

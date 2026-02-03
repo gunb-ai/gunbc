@@ -38,7 +38,7 @@ pub struct ToolMeta {
 pub struct CliEntrypoint {
     /// The port name (becomes --port-name flag)
     pub port_name: String,
-    /// The type (String, Int, Bool, StrList, etc.)
+    /// The type (String, Int, Bool, List, etc.)
     pub type_id: String,
     /// Short flag (e.g., "-r" for repo_path)
     pub short_flag: Option<char>,
@@ -46,6 +46,10 @@ pub struct CliEntrypoint {
     pub default_value: Option<String>,
     /// Help text
     pub help: String,
+    /// Make variable name (e.g., "REPO" for repo_path).
+    /// When set, this entrypoint is exposed as a Make variable in the generated
+    /// Makefile. Entrypoints without make_var are CLI-only (not in Makefile).
+    pub make_var: Option<String>,
 }
 
 impl CliEntrypoint {
@@ -59,6 +63,7 @@ impl CliEntrypoint {
             short_flag: None,
             default_value: None,
             help,
+            make_var: None,
         }
     }
 
@@ -80,6 +85,16 @@ impl CliEntrypoint {
         self
     }
 
+    /// Set Make variable name for Makefile generation.
+    ///
+    /// When set, this entrypoint is exposed as a Make variable in the generated
+    /// Makefile (e.g., `make gist REPO=.`). Entrypoints without a make_var
+    /// are CLI-only and won't appear as Makefile variables.
+    pub fn make_var(mut self, var: impl Into<String>) -> Self {
+        self.make_var = Some(var.into());
+        self
+    }
+
     /// Convert port name to CLI flag name (snake_case to kebab-case).
     ///
     /// Uses the language module's `NamingCase::KebabCase` for consistent conversion.
@@ -95,11 +110,11 @@ impl CliEntrypoint {
     /// Get the Rust type for this entrypoint.
     ///
     /// Uses the language module's type system mapping for standard types,
-    /// with special handling for IR-specific type names like "StrList".
+    /// with special handling for IR-specific type names like "List".
     pub fn rust_type(&self) -> String {
         // Map IR type names to abstract type names for language module
         let abstract_type = match self.type_id.as_str() {
-            "StrList" => "List<String>",
+            "List" => "List<String>",
             other => other,
         };
         lang_rust_type(abstract_type)
@@ -111,7 +126,7 @@ impl CliEntrypoint {
             "String" => "Value::Str",
             "Int" => "Value::Int",
             "Bool" => "Value::Bool",
-            "StrList" => "Value::StrList",
+            "List" => "Value::str_list",
             _ => "Value::Str",
         }
     }
@@ -264,8 +279,8 @@ fn print_value(port: &str, value: &Value) {{
         }}
         Value::Int(i) => println!("  {{}}: {{}}", port, i),
         Value::Bool(b) => println!("  {{}}: {{}}", port, b),
-        Value::StrList(list) => println!("  {{}}: [{{}} items]", port, list.len()),
-        Value::MapStrStr(map) => println!("  {{}}: {{{{{{}} entries}}}}", port, map.len()),
+        Value::List(list) => println!("  {{}}: [{{}} items]", port, list.len()),
+        Value::Map(map) => println!("  {{}}: {{{{{{}} entries}}}}", port, map.len()),
         Value::Json(_) => println!("  {{}}: <JSON>", port),
         _ => {{}}
     }}
@@ -318,7 +333,7 @@ fn generate_arg_parsing(entrypoints: &[CliEntrypoint]) -> String {
                 let default_int = default.parse::<i64>().unwrap_or(0);
                 code.push_str(&format!("    let mut {} = {}i64;\n", ep.var_name(), default_int));
             }
-            "StrList" => {
+            "List" => {
                 code.push_str(&format!("    let mut {}: Vec<String> = vec![];\n", ep.var_name()));
             }
             _ => {
@@ -345,7 +360,7 @@ fn generate_arg_parsing(entrypoints: &[CliEntrypoint]) -> String {
                     short, flag, ep.var_name()
                 ));
             }
-            "StrList" => {
+            "List" => {
                 code.push_str(&format!(
                     "            {}\"--{}\" => {{\n",
                     short, flag
@@ -413,7 +428,7 @@ fn generate_print_inputs(entrypoints: &[CliEntrypoint]) -> String {
                     ep.port_name, ep.var_name()
                 ));
             }
-            "StrList" => {
+            "List" => {
                 code.push_str(&format!(
                     "    println!(\"  {}: {{:?}}\", {});\n",
                     ep.port_name, ep.var_name()
@@ -467,7 +482,7 @@ fn generate_help_options(entrypoints: &[CliEntrypoint]) -> String {
         let type_hint = match ep.type_id.as_str() {
             "Bool" => "",
             "Int" => " <NUM>",
-            "StrList" => " <VAL>...",
+            "List" => " <VAL>...",
             _ => " <VAL>",
         };
         code.push_str(&format!(
@@ -780,8 +795,8 @@ fn print_value(port: &str, value: &Value) {{
         }}
         Value::Int(i) => println!("  {{}}: {{}}", port, i),
         Value::Bool(b) => println!("  {{}}: {{}}", port, b),
-        Value::StrList(list) => println!("  {{}}: [{{}} items]", port, list.len()),
-        Value::MapStrStr(map) => println!("  {{}}: {{{{{{}} entries}}}}", port, map.len()),
+        Value::List(list) => println!("  {{}}: [{{}} items]", port, list.len()),
+        Value::Map(map) => println!("  {{}}: {{{{{{}} entries}}}}", port, map.len()),
         Value::Json(_) => println!("  {{}}: <JSON>", port),
         _ => {{}}
     }}

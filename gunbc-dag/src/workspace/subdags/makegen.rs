@@ -24,7 +24,7 @@ use gunbc_primitives::PrepareFileWriteOp;
 /// - `written_path`: String - Actual path written to
 /// - `content`: String - Generated content
 /// - `tool_count`: Int - Number of tools in registry
-/// - `tool_names`: StrList - Names of registered tools
+/// - `tool_names`: List - Names of registered tools
 pub fn build_makegen_subdag() -> Node<WorkspaceOp> {
     let mut builder: DagBuilder<WorkspaceOp> = DagBuilder::new();
 
@@ -35,7 +35,7 @@ pub fn build_makegen_subdag() -> Node<WorkspaceOp> {
             vec![],
             vec![
                 scalar("tool_count", "Int"),
-                non_empty_list("tool_names", "StrList"),
+                non_empty_list("tool_names", "List"),
                 scalar("registry", "Json"),
             ],
             WorkspaceOp::Makegen(MakegenOp::LoadRegistry),

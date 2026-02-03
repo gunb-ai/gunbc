@@ -181,7 +181,7 @@ fn test_edge_execute_list_to_parse_list() {
 #[test]
 fn test_edge_parse_list_files_to_prepare_read_files() {
     let dag = build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
-    // StrList -> StrList: verified by edge existence in graph
+    // List -> List: verified by edge existence in graph
     assert!(dag.edges.iter().any(|e| e.from_node.0 == "parse_list_files" && e.to_node.0 == "prepare_read_files"));
 }
 
@@ -205,7 +205,7 @@ fn test_edge_execute_read_to_parse_read() {
 #[test]
 fn test_edge_parse_read_to_render_markdown() {
     let dag = build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
-    // MapStrStr -> MapStrStr: verified by edge existence in graph
+    // Map -> Map: verified by edge existence in graph
     assert!(dag.edges.iter().any(|e| e.from_node.0 == "parse_read_files" && e.to_node.0 == "render_markdown"));
 }
 

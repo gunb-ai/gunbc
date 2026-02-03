@@ -24,6 +24,7 @@ use crate::testgen::analyze::{analyze_dag, DagAnalysis};
 use crate::testgen::obligation::{collect_obligations, DischargeStatus, Obligation, ObligationSet};
 use gunbc_ir::language::traits::comment::{generated_header, RUST_COMMENTS};
 use gunbc_ir::language::NamingCase;
+use gunbc_ir::types::CardinalityCase;
 use gunbc_ir::{Dag, Value};
 use gunbc_test::MockSpec;
 use std::hash::{Hash, Hasher};
@@ -309,7 +310,7 @@ impl<'a, T> TestGenerator<'a, T> {
         // Bucket B: Contract Obligations (only for Unknown entailments)
         // ===================================================================
         if self.config.contract_tests {
-            code.push_str(&self.generate_contract_tests(analysis, obligations));
+            code.push_str(&self.generate_contract_tests(analysis, obligations, graph_builder_fn));
         }
 
         // ===================================================================
@@ -489,8 +490,9 @@ impl<'a, T> TestGenerator<'a, T> {
 
     fn generate_contract_tests(
         &self,
-        _analysis: &DagAnalysis,
+        analysis: &DagAnalysis,
         obligations: &ObligationSet,
+        graph_builder_fn: &str,
     ) -> String {
         let bucket = obligations.bucket_b();
         if bucket.is_empty() {
@@ -563,6 +565,105 @@ impl<'a, T> TestGenerator<'a, T> {
                 }
             }
             code.push('\n');
+        }
+
+        // B.3: Cardinality boundary coverage
+        code.push_str(&self.generate_cardinality_coverage_tests(analysis, obligations, graph_builder_fn));
+
+        code
+    }
+
+    /// Generate cardinality boundary coverage tests.
+    ///
+    /// For each boundary port with non-trivial cardinality (more than one test case),
+    /// generates a test per cardinality case (Empty, One, Many) that exercises the
+    /// DAG with mock values at that cardinality boundary.
+    fn generate_cardinality_coverage_tests(
+        &self,
+        _analysis: &DagAnalysis,
+        obligations: &ObligationSet,
+        graph_builder_fn: &str,
+    ) -> String {
+        let card_obligations: Vec<_> = obligations
+            .cardinality_obligations();
+
+        if card_obligations.is_empty() {
+            return String::new();
+        }
+
+        let mut code = String::new();
+        code.push_str("// --- B.3: Cardinality Boundary Coverage ---\n");
+        code.push_str("//\n");
+        code.push_str("// These tests exercise boundary ports at different cardinality levels\n");
+        code.push_str("// (empty, one, many) to verify runtime behavior across the interval.\n\n");
+
+        for obligation in &card_obligations {
+            if let Obligation::CardinalityCoverage {
+                node_id,
+                port_name,
+                cardinality,
+                cases,
+            } = &obligation.kind
+            {
+                // Find the port's type
+                let type_id = self
+                    .dag
+                    .nodes
+                    .iter()
+                    .find(|n| n.id == *node_id)
+                    .and_then(|n| n.outputs.iter().find(|p| p.name == *port_name))
+                    .map(|p| p.type_id.0.as_str())
+                    .unwrap_or("String");
+
+                for case in cases {
+                    let case_name = match case {
+                        CardinalityCase::Empty => "empty",
+                        CardinalityCase::One => "one",
+                        CardinalityCase::Many => "many",
+                    };
+
+                    let test_name = format!(
+                        "test_cardinality_{}_{}_{}",
+                        NamingCase::SnakeCase.apply(&node_id.0),
+                        NamingCase::SnakeCase.apply(&port_name.0),
+                        case_name
+                    );
+
+                    let mock_value = cardinality_case_mock_value(*case, type_id);
+
+                    code.push_str(&format!(
+                        "/// Cardinality coverage: {}.{} with {} element(s) (cardinality: {}).\n",
+                        node_id.0, port_name.0, case_name, cardinality
+                    ));
+                    code.push_str("///\n");
+                    code.push_str(&format!(
+                        "/// Proves: DAG handles {} case for boundary port {}.{}.\n",
+                        case_name, node_id.0, port_name.0
+                    ));
+                    code.push_str("#[test]\n");
+                    code.push_str(&format!("fn {}() {{\n", test_name));
+                    code.push_str(&format!("    let dag = {};\n", graph_builder_fn));
+
+                    let mocks_init = if self.mock_spec_fn.is_some() {
+                        "mock_spec().to_boundary_mocks()"
+                    } else {
+                        "default_mocks()"
+                    };
+                    code.push_str(&format!("    let mut mocks = {};\n", mocks_init));
+                    code.push_str(&format!(
+                        "    mocks.set_value(\"{}\", \"{}\", {});\n",
+                        node_id.0, port_name.0, mock_value
+                    ));
+                    code.push_str(
+                        "    let _log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks))\n",
+                    );
+                    code.push_str(&format!(
+                        "        .expect(\"cardinality {} case should not crash\");\n",
+                        case_name
+                    ));
+                    code.push_str("}\n\n");
+                }
+            }
         }
 
         code
@@ -1682,12 +1783,13 @@ fn value_to_rust_literal(value: &Value) -> String {
             s.replace('\"', "\\\"")
         ),
         Value::Int(i) => format!("Value::Int({})", i),
-        Value::StrList(list) => {
+        Value::List(list) => {
             let items: Vec<String> = list
                 .iter()
+                .filter_map(|v| v.as_str())
                 .map(|s| format!("\"{}\".to_string()", s.replace('\"', "\\\"")))
                 .collect();
-            format!("Value::StrList(vec![{}])", items.join(", "))
+            format!("Value::str_list(vec![{}])", items.join(", "))
         }
         Value::Json(json) => {
             format!("Value::Json(serde_json::json!({}))", json)
@@ -1699,13 +1801,37 @@ fn value_to_rust_literal(value: &Value) -> String {
     }
 }
 
+/// Generate a mock value for a specific cardinality case and type.
+fn cardinality_case_mock_value(case: CardinalityCase, type_id: &str) -> String {
+    match case {
+        CardinalityCase::Empty => match type_id {
+            "String" => "Value::Str(String::new())".to_string(),
+            "Bool" => "Value::Bool(false)".to_string(),
+            "Int" | "i64" | "i32" => "Value::Int(0)".to_string(),
+            _ => "Value::List(vec![])".to_string(),
+        },
+        CardinalityCase::One => match type_id {
+            "String" => "Value::Str(\"<MOCK>\".to_string())".to_string(),
+            "Bool" => "Value::Bool(true)".to_string(),
+            "Int" | "i64" | "i32" => "Value::Int(1)".to_string(),
+            _ => "Value::str_list(vec![\"<MOCK>\".to_string()])".to_string(),
+        },
+        CardinalityCase::Many => match type_id {
+            "String" => "Value::str_list(vec![\"<MOCK_1>\".to_string(), \"<MOCK_2>\".to_string(), \"<MOCK_3>\".to_string()])".to_string(),
+            "Bool" => "Value::List(vec![Value::Bool(true), Value::Bool(false), Value::Bool(true)])".to_string(),
+            "Int" | "i64" | "i32" => "Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)])".to_string(),
+            _ => "Value::str_list(vec![\"<MOCK_1>\".to_string(), \"<MOCK_2>\".to_string(), \"<MOCK_3>\".to_string()])".to_string(),
+        },
+    }
+}
+
 /// Generate a default mock value for a type.
 fn default_mock_for_type(type_id: &str) -> String {
     match type_id {
         "String" => "Value::Str(\"<MOCK>\".to_string())".to_string(),
         "Bool" => "Value::Bool(true)".to_string(),
         "Int" | "i64" | "i32" => "Value::Int(0)".to_string(),
-        "StrList" => "Value::StrList(vec![\"<MOCK>\".to_string()])".to_string(),
+        "List" => "Value::str_list(vec![\"<MOCK>\".to_string()])".to_string(),
         "Secret" => {
             "Value::Secret(gunbc_ir::SecretString::new(\"<MOCK_SECRET>\"))".to_string()
         }

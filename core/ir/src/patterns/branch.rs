@@ -234,7 +234,7 @@ impl<T: Clone> IfBuilder<T> {
         Node::subdag(self.name.as_str(), dag)
             .with_output_cardinality(
                 self.output_port_name.as_str(),
-                Cardinality::ZeroOrOne,
+                Cardinality::ZERO_OR_ONE,
             )
     }
 }
@@ -335,7 +335,7 @@ mod tests {
 
         // Output should be optional (may be skipped)
         let output = node.outputs.iter().find(|p| p.name.0 == "output").unwrap();
-        assert_eq!(output.cardinality, Cardinality::ZeroOrOne);
+        assert_eq!(output.cardinality, Cardinality::ZERO_OR_ONE);
     }
 
     #[test]

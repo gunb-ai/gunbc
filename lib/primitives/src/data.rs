@@ -102,7 +102,7 @@ impl Executable for ExtractOp {
 ///
 /// Inputs:
 /// - `template`: String with {key} placeholders
-/// - `values`: MapStrStr of key-value pairs
+/// - `values`: Map of key-value pairs
 ///
 /// Outputs:
 /// - `output`: Formatted string
@@ -136,7 +136,7 @@ impl Executable for FormatOp {
 /// Concatenate a list of strings with a separator.
 ///
 /// Inputs:
-/// - `input`: StrList to concatenate
+/// - `input`: List to concatenate
 /// - `separator`: String separator (default: "")
 ///
 /// Outputs:
@@ -171,7 +171,7 @@ impl Executable for ConcatOp {
 /// - `delimiter`: String delimiter
 ///
 /// Outputs:
-/// - `output`: StrList of parts
+/// - `output`: List of parts
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SplitOp;
 
@@ -190,7 +190,7 @@ impl Executable for SplitOp {
         let parts: Vec<String> = input.split(delimiter).map(|s| s.to_string()).collect();
 
         let mut out = HashMap::new();
-        out.insert("output".to_string(), Value::StrList(parts));
+        out.insert("output".to_string(), Value::str_list(parts));
         Ok(out)
     }
 }
@@ -209,13 +209,13 @@ fn json_to_value(json: serde_json::Value) -> Value {
         }
         serde_json::Value::String(s) => Value::Str(s),
         serde_json::Value::Array(arr) => {
-            // Try to convert to StrList if all elements are strings
+            // Try to convert to List if all elements are strings
             let strs: Option<Vec<String>> = arr
                 .iter()
                 .map(|v| v.as_str().map(|s| s.to_string()))
                 .collect();
             if let Some(list) = strs {
-                Value::StrList(list)
+                Value::str_list(list)
             } else {
                 Value::Json(serde_json::Value::Array(arr))
             }
@@ -264,7 +264,7 @@ mod tests {
         );
         let mut values = std::collections::BTreeMap::new();
         values.insert("name".to_string(), "world".to_string());
-        inputs.insert("values".to_string(), Value::MapStrStr(values));
+        inputs.insert("values".to_string(), Value::str_map(values));
 
         let result = op.execute(inputs).unwrap();
         assert_eq!(
@@ -279,7 +279,7 @@ mod tests {
         let mut inputs = HashMap::new();
         inputs.insert(
             "input".to_string(),
-            Value::StrList(vec!["a".to_string(), "b".to_string(), "c".to_string()]),
+            Value::str_list(vec!["a".to_string(), "b".to_string(), "c".to_string()]),
         );
         inputs.insert("separator".to_string(), Value::Str(", ".to_string()));
 
@@ -300,7 +300,7 @@ mod tests {
         let result = op.execute(inputs).unwrap();
         assert_eq!(
             result.get("output"),
-            Some(&Value::StrList(vec![
+            Some(&Value::str_list(vec![
                 "a".to_string(),
                 "b".to_string(),
                 "c".to_string()
