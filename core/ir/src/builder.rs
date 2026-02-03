@@ -1042,8 +1042,6 @@ mod tests {
         // Create outer DAG with subdag node
         let subdag_node = Node::subdag(
             "subdag",
-            vec![],
-            vec![],
             inner_dag,
         );
         

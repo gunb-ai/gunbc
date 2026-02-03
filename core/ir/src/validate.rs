@@ -168,28 +168,29 @@ fn validate_single_subdag<T>(
     }
 
     // Validate output ports -> boundaries
-    // Boundaries don't carry type info directly, so we need to look up the port on the node
+    // Check ALL matching boundaries (not just the first) to catch type
+    // mismatches on duplicate boundary names.
     for parent_port in &parent_node.outputs {
-        let matching_boundary = boundaries
+        let matching: Vec<_> = boundaries
             .boundary_ports
             .iter()
-            .find(|(_, name)| name == &parent_port.name);
+            .filter(|(_, name)| name == &parent_port.name)
+            .collect();
 
-        match matching_boundary {
-            None => {
-                let available: Vec<PortName> = boundaries
-                    .boundary_ports
-                    .iter()
-                    .map(|(_, name)| name.clone())
-                    .collect();
-                errors.push(SubDagError::NoInnerBoundary {
-                    node: parent_node.id.clone(),
-                    port: parent_port.name.clone(),
-                    available,
-                });
-            }
-            Some((inner_node_id, inner_port_name)) => {
-                // Look up the actual port on the inner node for type checking
+        if matching.is_empty() {
+            let available: Vec<PortName> = boundaries
+                .boundary_ports
+                .iter()
+                .map(|(_, name)| name.clone())
+                .collect();
+            errors.push(SubDagError::NoInnerBoundary {
+                node: parent_node.id.clone(),
+                port: parent_port.name.clone(),
+                available,
+            });
+        } else {
+            // Type-check every matching boundary port
+            for (inner_node_id, inner_port_name) in &matching {
                 if let Some(inner_node) = inner_dag.get_node(inner_node_id) {
                     if let Some(inner_port) = find_output_port(inner_node, inner_port_name) {
                         check_type_match(
@@ -234,6 +235,7 @@ fn find_output_port<'a, T>(node: &'a Node<T>, port_name: &PortName) -> Option<&'
 mod tests {
     use super::*;
     use crate::dag::{build::*, Dag, Edge};
+    use crate::node::NodeBody;
 
     #[test]
     fn test_valid_subdag_passes() {
@@ -248,8 +250,6 @@ mod tests {
         let mut dag: Dag<()> = Dag::new();
         dag.add_node(Node::subdag(
             "wrapper",
-            vec![port("data", "String")],
-            vec![port("result", "String")],
             inner,
         ));
 
@@ -258,22 +258,50 @@ mod tests {
     }
 
     #[test]
-    fn test_missing_entrypoint() {
+    fn test_inferred_subdag_always_valid() {
+        // With auto-inference, Node::subdag always produces matching ports.
+        // Verify the inferred ports match the inner DAG.
         let mut inner: Dag<()> = Dag::new();
         inner.add_node(Node::opaque(
             "worker",
-            vec![port("config", "String")], // name mismatch: "config" != "data"
+            vec![port("config", "String")],
             vec![port("result", "String")],
             (),
         ));
 
         let mut dag: Dag<()> = Dag::new();
-        dag.add_node(Node::subdag(
-            "wrapper",
-            vec![port("data", "String")],
+        dag.add_node(Node::subdag("wrapper", inner));
+
+        // Auto-inferred: input="config", output="result"
+        let wrapper = &dag.nodes[0];
+        assert!(wrapper.inputs.iter().any(|p| p.name.0 == "config"));
+        assert!(wrapper.outputs.iter().any(|p| p.name.0 == "result"));
+
+        let errors = validate_subdag_interfaces(&dag);
+        assert!(errors.is_empty(), "expected no errors, got: {:?}", errors);
+    }
+
+    #[test]
+    fn test_missing_entrypoint_manual_construction() {
+        // Manually construct a SubDag node with wrong ports to test validation
+        let mut inner: Dag<()> = Dag::new();
+        inner.add_node(Node::opaque(
+            "worker",
+            vec![port("config", "String")],
             vec![port("result", "String")],
-            inner,
+            (),
         ));
+
+        // Manually create node with wrong input port name
+        let bad_node = Node {
+            id: NodeId::new("wrapper"),
+            inputs: vec![port("data", "String")], // "data" != "config"
+            outputs: vec![port("result", "String")],
+            body: NodeBody::SubDag(inner),
+        };
+
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(bad_node);
 
         let errors = validate_subdag_interfaces(&dag);
         assert_eq!(errors.len(), 1);
@@ -281,22 +309,25 @@ mod tests {
     }
 
     #[test]
-    fn test_missing_boundary() {
+    fn test_missing_boundary_manual_construction() {
         let mut inner: Dag<()> = Dag::new();
         inner.add_node(Node::opaque(
             "worker",
             vec![port("data", "String")],
-            vec![port("output", "String")], // name mismatch: "output" != "result"
+            vec![port("output", "String")],
             (),
         ));
 
+        // Manually create node with wrong output port name
+        let bad_node = Node {
+            id: NodeId::new("wrapper"),
+            inputs: vec![port("data", "String")],
+            outputs: vec![port("result", "String")], // "result" != "output"
+            body: NodeBody::SubDag(inner),
+        };
+
         let mut dag: Dag<()> = Dag::new();
-        dag.add_node(Node::subdag(
-            "wrapper",
-            vec![port("data", "String")],
-            vec![port("result", "String")],
-            inner,
-        ));
+        dag.add_node(bad_node);
 
         let errors = validate_subdag_interfaces(&dag);
         assert_eq!(errors.len(), 1);
@@ -304,22 +335,25 @@ mod tests {
     }
 
     #[test]
-    fn test_type_mismatch_on_input() {
+    fn test_type_mismatch_on_input_manual_construction() {
         let mut inner: Dag<()> = Dag::new();
         inner.add_node(Node::opaque(
             "worker",
-            vec![port("data", "Int")], // type mismatch: Int != String
+            vec![port("data", "Int")],
             vec![port("result", "String")],
             (),
         ));
 
+        // Manually declare input as String but inner has Int
+        let bad_node = Node {
+            id: NodeId::new("wrapper"),
+            inputs: vec![port("data", "String")],
+            outputs: vec![port("result", "String")],
+            body: NodeBody::SubDag(inner),
+        };
+
         let mut dag: Dag<()> = Dag::new();
-        dag.add_node(Node::subdag(
-            "wrapper",
-            vec![port("data", "String")],
-            vec![port("result", "String")],
-            inner,
-        ));
+        dag.add_node(bad_node);
 
         let errors = validate_subdag_interfaces(&dag);
         assert_eq!(errors.len(), 1);
@@ -330,22 +364,25 @@ mod tests {
     }
 
     #[test]
-    fn test_type_mismatch_on_output() {
+    fn test_type_mismatch_on_output_manual_construction() {
         let mut inner: Dag<()> = Dag::new();
         inner.add_node(Node::opaque(
             "worker",
             vec![port("data", "String")],
-            vec![port("result", "Int")], // type mismatch: Int != String
+            vec![port("result", "Int")],
             (),
         ));
 
+        // Manually declare output as String but inner has Int
+        let bad_node = Node {
+            id: NodeId::new("wrapper"),
+            inputs: vec![port("data", "String")],
+            outputs: vec![port("result", "String")],
+            body: NodeBody::SubDag(inner),
+        };
+
         let mut dag: Dag<()> = Dag::new();
-        dag.add_node(Node::subdag(
-            "wrapper",
-            vec![port("data", "String")],
-            vec![port("result", "String")],
-            inner,
-        ));
+        dag.add_node(bad_node);
 
         let errors = validate_subdag_interfaces(&dag);
         assert_eq!(errors.len(), 1);
@@ -357,36 +394,24 @@ mod tests {
 
     #[test]
     fn test_nested_subdag_validation() {
-        // Inner SubDag has a broken nested SubDag
+        // With auto-inference, nested SubDags also have matching ports.
+        // Verify recursive validation passes for well-formed nested SubDags.
         let mut deep_inner: Dag<()> = Dag::new();
         deep_inner.add_node(Node::opaque(
             "deep",
             vec![port("x", "String")],
-            vec![port("wrong", "String")], // boundary name won't match parent
+            vec![port("y", "String")],
             (),
         ));
 
         let mut inner: Dag<()> = Dag::new();
-        inner.add_node(Node::subdag(
-            "nested",
-            vec![port("x", "String")],
-            vec![port("y", "String")], // parent expects "y" but deep has "wrong"
-            deep_inner,
-        ));
+        inner.add_node(Node::subdag("nested", deep_inner));
 
         let mut dag: Dag<()> = Dag::new();
-        dag.add_node(Node::subdag(
-            "wrapper",
-            vec![port("x", "String")],
-            vec![port("y", "String")],
-            inner,
-        ));
+        dag.add_node(Node::subdag("wrapper", inner));
 
         let errors = validate_subdag_interfaces(&dag);
-        // Should find the nested error (nested.y -> deep has no "y" boundary)
-        assert!(!errors.is_empty());
-        let has_nested = errors.iter().any(|e| matches!(e, SubDagError::Nested { .. }));
-        assert!(has_nested, "expected nested error, got: {:?}", errors);
+        assert!(errors.is_empty(), "expected no errors, got: {:?}", errors);
     }
 
     #[test]
@@ -409,8 +434,6 @@ mod tests {
         let mut dag: Dag<()> = Dag::new();
         dag.add_node(Node::subdag(
             "wrapper",
-            vec![port("data", "String")],
-            vec![port("out1", "String"), port("out2", "String")],
             inner,
         ));
 
@@ -439,8 +462,6 @@ mod tests {
         let mut dag: Dag<()> = Dag::new();
         dag.add_node(Node::subdag(
             "wrapper",
-            vec![port("data", "String")],
-            vec![port("result", "String")],
             inner,
         ));
 
@@ -463,19 +484,76 @@ mod tests {
     }
 
     #[test]
-    fn test_multiple_errors_collected() {
+    fn test_multiple_errors_manual_construction() {
         let inner: Dag<()> = Dag::new(); // empty inner — no entrypoints or boundaries
 
+        // Manually construct with ports that don't exist in inner DAG
+        let bad_node = Node {
+            id: NodeId::new("broken"),
+            inputs: vec![port("in1", "String"), port("in2", "Int")],
+            outputs: vec![port("out", "String")],
+            body: NodeBody::SubDag(inner),
+        };
+
         let mut dag: Dag<()> = Dag::new();
-        dag.add_node(Node::subdag(
-            "broken",
-            vec![port("in1", "String"), port("in2", "Int")],
-            vec![port("out", "String")],
-            inner,
-        ));
+        dag.add_node(bad_node);
 
         let errors = validate_subdag_interfaces(&dag);
         // Should have 3 errors: 2 missing entrypoints + 1 missing boundary
         assert_eq!(errors.len(), 3, "expected 3 errors, got: {:?}", errors);
+    }
+
+    #[test]
+    fn test_empty_inner_inferred_has_no_ports() {
+        // With auto-inference, an empty inner DAG produces no ports
+        let inner: Dag<()> = Dag::new();
+
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::subdag("empty", inner));
+
+        let node = &dag.nodes[0];
+        assert!(node.inputs.is_empty());
+        assert!(node.outputs.is_empty());
+
+        let errors = validate_subdag_interfaces(&dag);
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn test_duplicate_boundary_type_mismatch_caught() {
+        // Two inner nodes have the same boundary name but different types.
+        // Validation should catch the mismatched one.
+        let mut inner: Dag<()> = Dag::new();
+        inner.add_node(Node::opaque(
+            "a",
+            vec![port("data", "String")],
+            vec![port("result", "String")], // matches parent
+            (),
+        ));
+        inner.add_node(Node::opaque(
+            "b",
+            vec![port("data", "String")],
+            vec![port("result", "Int")], // type mismatch with parent
+            (),
+        ));
+
+        // Manually construct: parent declares result: String
+        let bad_node = Node {
+            id: NodeId::new("wrapper"),
+            inputs: vec![port("data", "String")],
+            outputs: vec![port("result", "String")],
+            body: NodeBody::SubDag(inner),
+        };
+
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(bad_node);
+
+        let errors = validate_subdag_interfaces(&dag);
+        // Should catch the type mismatch on the second boundary
+        assert_eq!(errors.len(), 1, "expected 1 error, got: {:?}", errors);
+        assert!(matches!(
+            &errors[0],
+            SubDagError::TypeMismatch { direction: PortDirection::Output, .. }
+        ));
     }
 }

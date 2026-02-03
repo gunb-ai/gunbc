@@ -90,18 +90,6 @@ pub fn build_rust_subdag() -> Node<LanguageOp> {
     // Create the SubDag node with interface
     Node::subdag(
         "rust",
-        vec![
-            Port::optional("abstract_type", "String"),
-            Port::optional("name", "String"),
-            Port::optional("context", "String"),
-        ],
-        vec![
-            Port::scalar("id", "String"),
-            Port::scalar("extensions", "StrList"),
-            Port::scalar("comment_prefix", "String"),
-            Port::optional("concrete_type", "String"),
-            Port::optional("converted_name", "String"),
-        ],
         inner,
     )
 }
@@ -154,14 +142,14 @@ mod tests {
     fn test_rust_subdag_interface() {
         let node = build_rust_subdag();
 
-        // Check inputs
+        // Check inputs (inferred from inner DAG entrypoints)
         assert!(node.inputs.iter().any(|p| p.name.0 == "abstract_type"));
-        assert!(node.inputs.iter().any(|p| p.name.0 == "name"));
 
-        // Check outputs
+        // Check outputs (inferred from inner DAG boundaries)
         assert!(node.outputs.iter().any(|p| p.name.0 == "id"));
         assert!(node.outputs.iter().any(|p| p.name.0 == "extensions"));
         assert!(node.outputs.iter().any(|p| p.name.0 == "comment_prefix"));
+        assert!(node.outputs.iter().any(|p| p.name.0 == "concrete_type"));
     }
 
     #[test]

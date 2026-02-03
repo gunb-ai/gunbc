@@ -48,12 +48,6 @@ pub fn build_toml_subdag() -> Node<LanguageOp> {
 
     Node::subdag(
         "toml",
-        vec![],
-        vec![
-            Port::scalar("id", "String"),
-            Port::scalar("extensions", "StrList"),
-            Port::scalar("comment_prefix", "String"),
-        ],
         inner,
     )
 }

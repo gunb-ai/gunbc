@@ -4,7 +4,7 @@
 
 use crate::workspace::WorkspaceOp;
 use crate::ci::{build_ci_graph, CIGraphOp};
-use gunbc_ir::{Dag, Node, Port};
+use gunbc_ir::{Dag, Node};
 
 /// Convert a Node<CIGraphOp> to Node<WorkspaceOp>.
 fn convert_ci_node(node: Node<CIGraphOp>) -> Node<WorkspaceOp> {
@@ -61,13 +61,6 @@ pub fn build_ci_subdag() -> Node<WorkspaceOp> {
 
     Node::subdag(
         "ci",
-        vec![], // No inputs - CI is self-contained
-        vec![
-            // Main outputs from CI workflow
-            Port::scalar("build_success", "Bool"),
-            Port::scalar("test_success", "Bool"),
-            Port::scalar("lint_success", "Bool"),
-        ],
         converted_dag,
     )
 }

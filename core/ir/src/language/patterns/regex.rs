@@ -54,14 +54,6 @@ pub fn build_regex_subdag() -> Node<LanguageOp> {
     // Create the SubDag node with interface
     Node::subdag(
         "regex",
-        vec![
-            Port::scalar("pattern", "String"),
-            Port::optional("text", "String"),
-        ],
-        vec![
-            Port::scalar("valid", "Bool"),
-            Port::optional("matches", "StrList"),
-        ],
         inner,
     )
 }
@@ -82,15 +74,13 @@ mod tests {
     fn test_regex_subdag_interface() {
         let node = build_regex_subdag();
 
-        // Check inputs
-        assert_eq!(node.inputs.len(), 2);
-        assert_eq!(node.inputs[0].name.0, "pattern");
-        assert_eq!(node.inputs[1].name.0, "text");
+        // Check inputs (inferred from inner DAG entrypoints)
+        assert!(node.inputs.iter().any(|p| p.name.0 == "pattern"));
+        assert!(node.inputs.iter().any(|p| p.name.0 == "text"));
 
-        // Check outputs
-        assert_eq!(node.outputs.len(), 2);
-        assert_eq!(node.outputs[0].name.0, "valid");
-        assert_eq!(node.outputs[1].name.0, "matches");
+        // Check outputs (inferred from inner DAG boundaries)
+        assert!(node.outputs.iter().any(|p| p.name.0 == "valid"));
+        assert!(node.outputs.iter().any(|p| p.name.0 == "matches"));
     }
 
     #[test]

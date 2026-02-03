@@ -1,8 +1,11 @@
 //! Node types for the DAG.
 
-use crate::dag::{Dag, Port};
-use crate::types::NodeId;
+use crate::boundary::detect_boundaries;
+use crate::dag::{Dag, Guard, Port};
+use crate::entrypoint::detect_entrypoints;
+use crate::types::{Cardinality, NodeId, PortName};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 
 /// A node in the DAG, generic over its operation type.
 ///
@@ -38,14 +41,98 @@ impl<T> Node<T> {
         }
     }
 
-    /// Create a new sub-DAG node.
-    pub fn subdag(id: impl Into<NodeId>, inputs: Vec<Port>, outputs: Vec<Port>, dag: Dag<T>) -> Self {
+    /// Create a sub-DAG node with interface inferred from the inner DAG.
+    ///
+    /// Input ports are derived from the inner DAG's entrypoints (unconnected
+    /// input ports). Output ports are derived from the inner DAG's boundaries
+    /// (unconnected output ports). This makes it impossible to declare an
+    /// interface that doesn't match the inner structure.
+    ///
+    /// Guards are stripped from inferred ports — use [`with_input_guard`] to
+    /// add routing guards after construction.
+    pub fn subdag(id: impl Into<NodeId>, dag: Dag<T>) -> Self {
+        let entrypoints = detect_entrypoints(&dag);
+        let boundaries = detect_boundaries(&dag);
+
+        // Build input ports from entrypoints, deduplicated by name.
+        // Guards are stripped — they're an internal routing concern.
+        let mut seen_inputs = HashSet::new();
+        let mut inputs = Vec::new();
+        for (node_id, port_name, _) in &entrypoints.entrypoint_ports {
+            if seen_inputs.insert(port_name.clone()) {
+                if let Some(node) = dag.get_node(node_id) {
+                    if let Some(port) = node.inputs.iter().find(|p| &p.name == port_name) {
+                        inputs.push(Port::with_cardinality(
+                            port.name.0.as_str(),
+                            port.type_id.0.as_str(),
+                            port.cardinality,
+                        ));
+                    }
+                }
+            }
+        }
+
+        // Build output ports from boundaries, deduplicated by name.
+        let mut seen_outputs = HashSet::new();
+        let mut outputs = Vec::new();
+        for (node_id, port_name) in &boundaries.boundary_ports {
+            if seen_outputs.insert(port_name.clone()) {
+                if let Some(node) = dag.get_node(node_id) {
+                    if let Some(port) = node.outputs.iter().find(|p| &p.name == port_name) {
+                        outputs.push(Port::with_cardinality(
+                            port.name.0.as_str(),
+                            port.type_id.0.as_str(),
+                            port.cardinality,
+                        ));
+                    }
+                }
+            }
+        }
+
+        // Sort by name for deterministic interface ordering.
+        inputs.sort_by(|a, b| a.name.0.cmp(&b.name.0));
+        outputs.sort_by(|a, b| a.name.0.cmp(&b.name.0));
+
         Self {
             id: id.into(),
             inputs,
             outputs,
             body: NodeBody::SubDag(dag),
         }
+    }
+
+    /// Add a routing guard to an input port.
+    ///
+    /// Used by pattern builders (Branch, If) to control conditional execution.
+    ///
+    /// # Panics
+    ///
+    /// Panics if no input port with the given name exists.
+    pub(crate) fn with_input_guard(mut self, port: &str, guard: Guard) -> Self {
+        let port_name: PortName = port.into();
+        let p = self
+            .inputs
+            .iter_mut()
+            .find(|p| p.name == port_name)
+            .unwrap_or_else(|| panic!("no input port '{}' on node '{}'", port, self.id));
+        p.guard = Some(guard);
+        self
+    }
+
+    /// Override the cardinality of an output port.
+    ///
+    /// Used by pattern builders when the SubDag's runtime behavior differs
+    /// from the inner boundary's declared cardinality (e.g., If pattern
+    /// produces optional output even though the inner boundary is scalar).
+    pub(crate) fn with_output_cardinality(mut self, port: &str, cardinality: Cardinality) -> Self {
+        let port_name: PortName = port.into();
+        let p = self
+            .outputs
+            .iter_mut()
+            .find(|p| p.name == port_name)
+            .unwrap_or_else(|| panic!("no output port '{}' on node '{}'", port, self.id));
+        p.cardinality = cardinality;
+        self
     }
 
     /// Check if this node is opaque (not a sub-DAG).

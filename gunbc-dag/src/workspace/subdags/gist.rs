@@ -4,7 +4,7 @@
 
 use crate::workspace::WorkspaceOp;
 use gunbc_gist::{build_gist_graph, GistGraphOp, GistMode, GistOps};
-use gunbc_ir::{Dag, Node, Port};
+use gunbc_ir::{Dag, Node};
 
 /// Convert a Node<GistGraphOp> to Node<WorkspaceOp>.
 fn convert_gist_node(node: Node<GistGraphOp>) -> Node<WorkspaceOp> {
@@ -80,23 +80,12 @@ pub fn build_gist_subdag(
     extensions: Vec<String>,
     create_gist: bool,
 ) -> Node<WorkspaceOp> {
-    let is_diff = matches!(mode, GistMode::Diff { .. });
     let original = build_gist_graph(mode, extensions, create_gist)
         .expect("Gist graph should build");
     let converted_dag = convert_gist_dag(original);
 
-    let mut inputs = vec![Port::optional("repo_path", "String")];
-    if is_diff {
-        inputs.push(Port::optional("base_ref", "String"));
-    }
-
     Node::subdag(
         "gist",
-        inputs,
-        vec![
-            Port::scalar("markdown", "String"),
-            Port::optional("gist_url", "String"),
-        ],
         converted_dag,
     )
 }

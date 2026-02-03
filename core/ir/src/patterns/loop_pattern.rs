@@ -144,9 +144,7 @@ impl<T: Clone> LoopBuilder<T> {
         ));
 
         // Body subdag: processes each element
-        let body_inputs = vec![Port::scalar(self.element_port_name.as_str(), self.element_port_type.as_str())];
-        let body_outputs = vec![Port::scalar("result", self.element_port_type.as_str())];
-        dag.add_node(Node::subdag("body", body_inputs, body_outputs, body_dag));
+        dag.add_node(Node::subdag("body", body_dag));
 
         // Pack node: collects results back into a list
         dag.add_node(Node::opaque(
@@ -174,23 +172,7 @@ impl<T: Clone> LoopBuilder<T> {
         dag.add_edge(Edge::new("unpack", "count", "pack", "count"));
 
         // Create the outer node
-        Node::subdag(
-            self.name.as_str(),
-            vec![Port::with_cardinality(
-                self.input_port_name.as_str(),
-                self.input_port_type.as_str(),
-                self.input_cardinality,
-            )],
-            vec![
-                Port::with_cardinality(
-                    self.output_port_name.as_str(),
-                    self.output_port_type.as_str(),
-                    self.input_cardinality,
-                ),
-                Port::scalar("iterations", "Int"),
-            ],
-            dag,
-        )
+        Node::subdag(self.name.as_str(), dag)
     }
 }
 
@@ -201,33 +183,36 @@ mod tests {
 
     type TestOp = PatternOp;
 
+    fn make_loop_body() -> Dag<TestOp> {
+        let mut dag = Dag::new();
+        dag.add_node(Node::opaque(
+            "transform",
+            vec![Port::scalar("element", "String")],
+            vec![Port::scalar("result", "String")],
+            PatternOp::LoopPack { output_port: "result".into() },
+        ));
+        dag
+    }
+
     #[test]
     fn test_loop_builder_creates_subdag() {
-        let body_dag: Dag<TestOp> = Dag::new();
-
         let node = LoopBuilder::new("test_loop")
-            .with_body(body_dag)
+            .with_body(make_loop_body())
             .build();
 
         assert_eq!(node.id.0, "test_loop");
         assert!(node.is_subdag());
 
-        // Check inputs/outputs
-        assert_eq!(node.inputs.len(), 1);
-        assert_eq!(node.inputs[0].name.0, "input");
-        assert_eq!(node.inputs[0].cardinality, Cardinality::ZeroOrMore);
-
-        assert_eq!(node.outputs.len(), 2);
-        assert_eq!(node.outputs[0].name.0, "output");
-        assert_eq!(node.outputs[1].name.0, "iterations");
+        // Check inputs/outputs by name (sorted alphabetically)
+        assert!(node.inputs.iter().any(|p| p.name.0 == "input"));
+        assert!(node.outputs.iter().any(|p| p.name.0 == "output"));
+        assert!(node.outputs.iter().any(|p| p.name.0 == "iterations"));
     }
 
     #[test]
     fn test_loop_subdag_structure() {
-        let body_dag: Dag<TestOp> = Dag::new();
-
         let node = LoopBuilder::new("test")
-            .with_body(body_dag)
+            .with_body(make_loop_body())
             .build();
 
         match &node.body {
@@ -247,16 +232,14 @@ mod tests {
 
     #[test]
     fn test_loop_preserves_cardinality() {
-        let body_dag: Dag<TestOp> = Dag::new();
-
         let node = LoopBuilder::new("test")
             .with_input("items", "StrList", Cardinality::OneOrMore)
-            .with_body(body_dag)
+            .with_body(make_loop_body())
             .build();
 
         // OneOrMore should be preserved
-        assert_eq!(node.inputs[0].cardinality, Cardinality::OneOrMore);
-        assert_eq!(node.outputs[0].cardinality, Cardinality::OneOrMore);
+        let items = node.inputs.iter().find(|p| p.name.0 == "items").unwrap();
+        assert_eq!(items.cardinality, Cardinality::OneOrMore);
     }
 
     // ============ Interface Validation Tests ============
@@ -265,16 +248,8 @@ mod tests {
     fn test_loop_interface_validates() {
         use crate::validate::validate_subdag_interfaces;
 
-        let mut body_dag: Dag<TestOp> = Dag::new();
-        body_dag.add_node(Node::opaque(
-            "transform",
-            vec![Port::scalar("element", "String")],
-            vec![Port::scalar("result", "String")],
-            PatternOp::LoopPack { output_port: "result".into() },
-        ));
-
         let node = LoopBuilder::new("loop")
-            .with_body(body_dag)
+            .with_body(make_loop_body())
             .build();
 
         let mut dag: Dag<TestOp> = Dag::new();

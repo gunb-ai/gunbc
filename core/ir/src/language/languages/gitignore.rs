@@ -81,15 +81,6 @@ pub fn build_gitignore_subdag() -> Node<LanguageOp> {
     // Create the SubDag node with interface
     Node::subdag(
         "gitignore",
-        vec![
-            Port::scalar("patterns", "StrList"),
-            Port::optional("files", "StrList"),
-        ],
-        vec![
-            Port::scalar("id", "String"),
-            Port::scalar("content", "String"),
-            Port::optional("ignored", "StrList"),
-        ],
         inner,
     )
 }
@@ -191,14 +182,12 @@ mod tests {
     fn test_gitignore_subdag_interface() {
         let node = build_gitignore_subdag();
 
-        // Check inputs
+        // Check inputs (inferred from inner DAG entrypoints)
         assert!(node.inputs.iter().any(|p| p.name.0 == "patterns"));
-        assert!(node.inputs.iter().any(|p| p.name.0 == "files"));
 
-        // Check outputs
+        // Check outputs (inferred from inner DAG boundaries)
         assert!(node.outputs.iter().any(|p| p.name.0 == "id"));
         assert!(node.outputs.iter().any(|p| p.name.0 == "content"));
-        assert!(node.outputs.iter().any(|p| p.name.0 == "ignored"));
     }
 
     #[test]

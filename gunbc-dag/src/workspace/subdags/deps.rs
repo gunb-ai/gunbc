@@ -6,7 +6,7 @@
 use crate::workspace::WorkspaceOp;
 use gunbc_deps::DepsOp;
 use gunbc_ir::build::*;
-use gunbc_ir::{DagBuilder, Node, Port};
+use gunbc_ir::{DagBuilder, Node};
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::PrepareFileWriteOp;
 
@@ -200,17 +200,6 @@ pub fn build_deps_install_subdag() -> Node<WorkspaceOp> {
     // Wrap as SubDag with explicit I/O interface
     Node::subdag(
         "deps_install",
-        vec![Port::optional("manifest_path", "String")],
-        vec![
-            Port::scalar("dep_count", "Int"),
-            Port::list("dep_names", "StrList"),
-            Port::list("already_installed", "StrList"),
-            Port::list("needs_install", "StrList"),
-            Port::scalar("platform", "String"),
-            Port::scalar("executed", "Bool"),
-            Port::scalar("success", "Bool"),
-            Port::scalar("script", "String"),
-        ],
         inner_dag,
     )
 }
@@ -309,14 +298,6 @@ pub fn build_deps_generate_subdag() -> Node<WorkspaceOp> {
 
     Node::subdag(
         "deps_generate",
-        vec![Port::optional("output_path", "String")],
-        vec![
-            Port::scalar("response", "TransportResponse"),
-            Port::scalar("written_path", "String"),
-            Port::scalar("content", "String"),
-            Port::scalar("tool_count", "Int"),
-            Port::list("tool_names", "StrList"),
-        ],
         inner_dag,
     )
 }

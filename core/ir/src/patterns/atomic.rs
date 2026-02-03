@@ -194,26 +194,7 @@ impl<T: Clone> AtomicBuilder<T> {
             dag.add_edge(Edge::new("operation", "op_ok", "postcondition", "op_ok"));
         }
 
-        // Determine outputs based on what's present
-        let outputs = if has_postcondition {
-            vec![
-                Port::scalar(self.output_port_name.as_str(), self.output_port_type.as_str()),
-                Port::scalar("verified", "Bool"),
-            ]
-        } else {
-            vec![
-                Port::scalar(self.output_port_name.as_str(), self.output_port_type.as_str()),
-                Port::scalar("op_ok", "Bool"),
-            ]
-        };
-
-        // Create the outer node with the subdag
-        Node::subdag(
-            self.name.as_str(),
-            vec![Port::scalar(self.input_port_name.as_str(), self.input_port_type.as_str())],
-            outputs,
-            dag,
-        )
+        Node::subdag(self.name.as_str(), dag)
     }
 }
 
@@ -288,10 +269,11 @@ mod tests {
             .with_output_port("result", "Bool")
             .build();
 
-        assert_eq!(node.inputs[0].name.0, "file_path");
-        assert_eq!(node.inputs[0].type_id.0, "Path");
-        assert_eq!(node.outputs[0].name.0, "result");
-        assert_eq!(node.outputs[0].type_id.0, "Bool");
+        let file_path_input = node.inputs.iter().find(|p| p.name.0 == "file_path").unwrap();
+        assert_eq!(file_path_input.type_id.0, "Path");
+
+        let result_output = node.outputs.iter().find(|p| p.name.0 == "result").unwrap();
+        assert_eq!(result_output.type_id.0, "Bool");
     }
 
     // ============ Interface Validation Tests ============

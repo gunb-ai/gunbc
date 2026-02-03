@@ -51,13 +51,6 @@ pub fn build_css_subdag() -> Node<LanguageOp> {
 
     Node::subdag(
         "css",
-        vec![],
-        vec![
-            Port::scalar("id", "String"),
-            Port::scalar("extensions", "StrList"),
-            Port::scalar("comment_open", "String"),
-            Port::scalar("comment_close", "String"),
-        ],
         inner,
     )
 }

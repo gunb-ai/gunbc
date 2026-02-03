@@ -156,12 +156,7 @@ impl<T: Clone> UpsertBuilder<T> {
         dag.add_edge(Edge::new("check", "exists", "create", "exists"));
 
         // Create the outer node with the subdag
-        Node::subdag(
-            self.name.as_str(),
-            vec![Port::scalar(self.input_port_name.as_str(), self.input_port_type.as_str())],
-            vec![Port::scalar(self.output_port_name.as_str(), self.output_port_type.as_str())],
-            dag,
-        )
+        Node::subdag(self.name.as_str(), dag)
     }
 }
 

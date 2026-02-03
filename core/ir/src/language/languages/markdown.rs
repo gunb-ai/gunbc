@@ -66,17 +66,6 @@ pub fn build_markdown_subdag() -> Node<LanguageOp> {
 
     Node::subdag(
         "markdown",
-        vec![
-            Port::optional("code", "String"),
-            Port::optional("language", "String"),
-        ],
-        vec![
-            Port::scalar("id", "String"),
-            Port::scalar("extensions", "StrList"),
-            Port::scalar("comment_open", "String"),
-            Port::scalar("comment_close", "String"),
-            Port::optional("block", "String"),
-        ],
         inner,
     )
 }

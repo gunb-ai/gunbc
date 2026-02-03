@@ -55,15 +55,6 @@ pub fn build_config_format_subdag() -> Node<LanguageOp> {
     // Create the SubDag node with interface
     Node::subdag(
         "config_format",
-        vec![
-            Port::scalar("format_id", "String"),
-            Port::optional("content", "String"),
-        ],
-        vec![
-            Port::scalar("comment_prefix", "String"),
-            Port::scalar("is_declarative", "Bool"),
-            Port::optional("commented", "String"),
-        ],
         inner,
     )
 }

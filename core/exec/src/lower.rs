@@ -247,8 +247,6 @@ mod tests {
         let mut dag: Dag<()> = Dag::new();
         dag.add_node(Node::subdag(
             "wrapper",
-            vec![port("in", "S")],
-            vec![port("out", "S")],
             subdag,
         ));
 
@@ -275,8 +273,6 @@ mod tests {
         dag.add_node(Node::opaque("A", vec![], vec![port("out", "S")], ()));
         dag.add_node(Node::subdag(
             "wrapper",
-            vec![port("data", "S")],
-            vec![port("result", "S")],
             subdag,
         ));
         dag.add_edge(edge("A", "out", "wrapper", "data"));
@@ -310,8 +306,6 @@ mod tests {
         let mut dag: Dag<()> = Dag::new();
         dag.add_node(Node::subdag(
             "wrapper",
-            vec![port("in", "S")],
-            vec![port("out", "S")],
             subdag,
         ));
         dag.add_node(Node::opaque("B", vec![port("data", "S")], vec![], ()));
@@ -353,8 +347,6 @@ mod tests {
         dag.add_node(Node::opaque("A", vec![], vec![port("out", "S")], ()));
         dag.add_node(Node::subdag(
             "wrapper",
-            vec![port("data", "S")],
-            vec![port("out1", "S"), port("out2", "S")],
             subdag,
         ));
         dag.add_edge(edge("A", "out", "wrapper", "data"));
@@ -398,14 +390,10 @@ mod tests {
         let mut dag: Dag<()> = Dag::new();
         dag.add_node(Node::subdag(
             "sub1",
-            vec![port("in", "S")],
-            vec![port("out", "S")],
             subdag1,
         ));
         dag.add_node(Node::subdag(
             "sub2",
-            vec![port("in", "S")],
-            vec![port("out", "S")],
             subdag2,
         ));
         dag.add_edge(edge("sub1", "out", "sub2", "in"));
