@@ -28,13 +28,10 @@ pub use cli_gen::{generate_cli, generate_cli_with_import, CliBoundary, CliEntryp
 pub use dag_gen::generate_graph_rs;
 pub use file_writer::{FileWriter, WriteResult};
 pub use registry::{
-    all_cleanable_outputs, all_testgen_targets, all_tools, core_outputs, DagDef, EdgeDef, NodeDef,
-    PortDef, TestgenTargetDef, ToolDef,
+    all_cleanable_outputs, all_tools, core_outputs, DagDef, EdgeDef, NodeDef, PortDef,
+    TestgenTargetDef, ToolDef,
 };
 pub use template::Template;
-
-// Re-export Renderable from gunbc_ir for backwards compatibility
-pub use gunbc_ir::Renderable;
 
 use gunbc_ir::{detect_boundaries, detect_entrypoints, BoundaryInfo, Dag, EntrypointInfo};
 

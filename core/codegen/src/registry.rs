@@ -361,25 +361,6 @@ impl ToolDef {
     }
 }
 
-/// Get all testgen targets from registered tools.
-///
-/// Returns a list of (tool_name, TestgenTargetDef) for tools that have
-/// testgen configuration. This enables auto-discovery of which tools
-/// need test generation without maintaining a separate list.
-pub fn all_testgen_targets() -> Vec<(&'static str, TestgenTargetDef)> {
-    all_tools()
-        .into_iter()
-        .filter_map(|tool| {
-            tool.testgen.map(|t| {
-                // Leak the tool name to get a static lifetime
-                // This is safe since all_tools() returns static data
-                let name: &'static str = Box::leak(tool.meta.tool_name.into_boxed_str());
-                (name, t)
-            })
-        })
-        .collect()
-}
-
 /// Get all tool definitions for CLI generation.
 pub fn all_tools() -> Vec<ToolDef> {
     vec![
