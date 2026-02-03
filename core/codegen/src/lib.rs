@@ -5,6 +5,7 @@
 //! - [`FileWriter`]: File writing with dry-run support
 //! - [`DagInfo`]: Combined boundary and entrypoint information
 //! - [`cli_gen`]: CLI generation from DAG entrypoints
+//! - [`testgen`]: Test generation from proof obligations
 //! - [`Renderable`]: Trait for types that can be rendered to generated files
 //!
 //! # Note
@@ -21,6 +22,7 @@ pub mod dag_gen;
 pub mod file_writer;
 pub mod registry;
 pub mod template;
+pub mod testgen;
 
 pub use cli_gen::{generate_cli, generate_cli_with_import, CliBoundary, CliEntrypoint, ToolMeta};
 pub use dag_gen::generate_graph_rs;

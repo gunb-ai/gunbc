@@ -8,14 +8,13 @@
 //!     cargo run -p gunbc-dag --bin gunbc-testgen -- --check
 //!     cargo run -p gunbc-dag --bin gunbc-testgen -- --output-dir /path/to/output
 
-use gunbc_codegen::TestgenTargetDef;
+use gunbc_codegen::testgen::{TestConfig, TestGenerator};
+use gunbc_codegen::{FileWriter, TestgenTargetDef};
 use gunbc_exec::Executable;
 use gunbc_ir::Dag;
 use gunbc_test::MockSpec;
-use gunbc_testgen::{TestConfig, TestGenerator};
 use std::env;
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process;
 
 /// Execution mode for testgen.
@@ -201,149 +200,85 @@ fn main() {
     println!();
 
     let targets = build_targets();
+    // Check mode is read-only (like dry-run) — we only compare, never write.
+    let writer = FileWriter::new(mode != Mode::Generate);
 
-    match mode {
-        Mode::Generate => run_generate(&targets, &output_dir),
-        Mode::Check => run_check(&targets, &output_dir),
-        Mode::DryRun => run_dry_run(&targets, &output_dir),
-    }
-}
-
-// ============================================================================
-// Execution Functions
-// ============================================================================
-
-/// Generate and write test files.
-#[allow(clippy::disallowed_methods)]
-fn run_generate(targets: &[TestgenTarget], output_dir: &Path) {
-    let mut generated = 0;
-    let mut errors = 0;
-
-    for target in targets {
-        let code = (target.generate)(&target.config);
-        let output_path = output_dir.join(&target.config.output_path);
-
-        // Ensure parent directory exists
-        if let Some(parent) = output_path.parent() {
-            if let Err(e) = fs::create_dir_all(parent) {
-                eprintln!(
-                    "[{}] error creating dir {}: {}",
-                    target.config.name,
-                    parent.display(),
-                    e
-                );
-                errors += 1;
-                continue;
-            }
-        }
-
-        match fs::write(&output_path, &code) {
-            Ok(_) => {
-                println!(
-                    "[{}] wrote {} ({} bytes)",
-                    target.config.name,
-                    output_path.display(),
-                    code.len()
-                );
-                generated += 1;
-            }
-            Err(e) => {
-                eprintln!(
-                    "[{}] error writing {}: {}",
-                    target.config.name,
-                    output_path.display(),
-                    e
-                );
-                errors += 1;
-            }
-        }
-    }
-
-    println!();
-    println!("generated: {} files, {} errors", generated, errors);
-
-    if errors > 0 {
-        process::exit(1);
-    }
-}
-
-/// Check if generated files are stale.
-#[allow(clippy::disallowed_methods)]
-fn run_check(targets: &[TestgenTarget], output_dir: &Path) {
     let mut ok = 0;
     let mut stale = 0;
-    let mut missing = 0;
+    let mut errors = 0;
     let mut stale_files = Vec::new();
 
-    for target in targets {
-        let expected = (target.generate)(&target.config);
+    for target in &targets {
+        let code = (target.generate)(&target.config);
         let output_path = output_dir.join(&target.config.output_path);
 
-        match fs::read_to_string(&output_path) {
-            Ok(actual) => {
-                if actual == expected {
-                    println!("[{}] ✓ up to date", target.config.name);
+        match writer.write(&output_path, &code) {
+            Ok(result) => {
+                if mode == Mode::Check {
+                    // Check mode: report stale/ok without writing
+                    if result.changed {
+                        println!("[{}] ✗ STALE - needs regeneration", target.config.name);
+                        stale += 1;
+                        stale_files.push(target.config.output_path.clone());
+                    } else {
+                        println!("[{}] ✓ up to date", target.config.name);
+                        ok += 1;
+                    }
+                } else if result.written {
+                    println!(
+                        "[{}] wrote {} ({} bytes)",
+                        target.config.name,
+                        output_path.display(),
+                        code.len()
+                    );
                     ok += 1;
                 } else {
-                    println!("[{}] ✗ STALE - needs regeneration", target.config.name);
-                    stale += 1;
-                    stale_files.push(target.config.output_path.clone());
+                    // Dry-run
+                    println!(
+                        "[{}] would write to: {}",
+                        target.config.name,
+                        output_path.display()
+                    );
+                    println!("  {} bytes, {} lines", code.len(), code.lines().count());
+                    ok += 1;
                 }
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                println!(
-                    "[{}] ✗ MISSING - {}",
-                    target.config.name,
-                    output_path.display()
-                );
-                missing += 1;
-                stale_files.push(target.config.output_path.clone());
             }
             Err(e) => {
                 eprintln!(
-                    "[{}] error reading {}: {}",
+                    "[{}] error: {}: {}",
                     target.config.name,
                     output_path.display(),
                     e
                 );
-                stale += 1;
-                stale_files.push(target.config.output_path.clone());
+                errors += 1;
             }
         }
     }
 
     println!();
-    println!(
-        "check complete: {} ok, {} stale, {} missing",
-        ok, stale, missing
-    );
 
-    if stale > 0 || missing > 0 {
-        println!();
-        println!("Generated tests are out of date. Run `make testgen` to regenerate:");
-        for file in &stale_files {
-            println!("  {}", file);
+    match mode {
+        Mode::Generate => {
+            println!("generated: {} files, {} errors", ok, errors);
         }
+        Mode::Check => {
+            println!("check complete: {} ok, {} stale", ok, stale);
+            if stale > 0 {
+                println!();
+                println!("Generated tests are out of date. Run `make testgen` to regenerate:");
+                for file in &stale_files {
+                    println!("  {}", file);
+                }
+            }
+        }
+        Mode::DryRun => {
+            println!("dry-run complete: {} targets", targets.len());
+        }
+    }
+
+    if errors > 0 || stale > 0 {
         process::exit(1);
     }
-}
-
-/// Dry run - show what would be generated.
-fn run_dry_run(targets: &[TestgenTarget], output_dir: &Path) {
-    for target in targets {
-        let code = (target.generate)(&target.config);
-        let output_path = output_dir.join(&target.config.output_path);
-
-        println!(
-            "[{}] would write to: {}",
-            target.config.name,
-            output_path.display()
-        );
-        println!("  {} bytes, {} lines", code.len(), code.lines().count());
-    }
-
-    println!();
-    println!("dry-run complete: {} targets", targets.len());
 }
 
 fn print_help() {

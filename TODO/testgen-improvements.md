@@ -233,19 +233,19 @@ gunbc-codegen ──→ gunbc-ir
      └── registry (single source of truth for all DAGs)
 ```
 
-**TODO 6.1: Move testgen modules into codegen**
-- [ ] Move `core/testgen/src/{analyze,obligation,codegen}.rs` → `core/codegen/src/testgen/`
-- [ ] Add `gunbc-test` dependency to codegen's Cargo.toml
-- [ ] Re-export `TestGenerator`, `TestConfig` from codegen
-- [ ] Update `gunbc-dag/Cargo.toml` to drop `gunbc-testgen` dep
-- [ ] Delete `core/testgen/` crate
+**TODO 6.1: Move testgen modules into codegen** ✅
+- [x] Moved `core/testgen/src/{analyze,obligation,codegen}.rs` → `core/codegen/src/testgen/`
+- [x] Added `gunbc-test` dependency to codegen's Cargo.toml
+- [x] Exported `testgen` module from codegen (`gunbc_codegen::testgen::*`)
+- [x] Updated `gunbc-dag/Cargo.toml` to drop `gunbc-testgen` dep
+- [x] Deleted `core/testgen/` crate, removed from workspace
+- [x] All 40 tests pass in merged crate
 
-**TODO 6.2: Add `testgen` subcommand to codegen binary**
-- [ ] Move testgen binary logic into `cmd_testgen()` in codegen's main.rs
-- [ ] Reuse `FileWriter` for output (already exists in codegen)
-- [ ] Support `--check`, `--dry-run` modes (same as today)
-- [ ] `gunbc-codegen testgen`, `gunbc-codegen testgen --check`
-- [ ] Delete `gunbc-dag/src/bin/testgen.rs`
+**TODO 6.2: Rewrite testgen binary to use shared infrastructure** ✅
+- [x] Testgen binary now uses `FileWriter` for all I/O (generate, check, dry-run)
+- [x] Eliminated ~150 lines of reimplemented file I/O and staleness checking
+- [x] Binary stays in `gunbc-dag/src/bin/testgen.rs` (needs DAG builder references)
+- [ ] Future: could become `gunbc-codegen testgen` subcommand if circular dep is resolved
 
 **TODO 6.3: Wire registry to test generation**
 - [ ] Add `.testgen(TestgenTargetDef::new(...))` to each tool in `all_tools()`

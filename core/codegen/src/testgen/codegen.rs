@@ -20,8 +20,8 @@
 //!
 //! Only obligations that are Unknown or RuntimeOnly produce tests.
 
-use crate::analyze::{analyze_dag, DagAnalysis};
-use crate::obligation::{collect_obligations, DischargeStatus, Obligation, ObligationSet};
+use crate::testgen::analyze::{analyze_dag, DagAnalysis};
+use crate::testgen::obligation::{collect_obligations, DischargeStatus, Obligation, ObligationSet};
 use gunbc_ir::language::traits::comment::{generated_header, RUST_COMMENTS};
 use gunbc_ir::language::NamingCase;
 use gunbc_ir::{Dag, Value};
