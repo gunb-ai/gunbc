@@ -251,12 +251,69 @@ The terminal renderer implements FrameLoop:
 Layout: leveled from topo order, left-to-right, wrapping at terminal width.
 See Appendix B for visual mockups.
 
+### Diamond / parallel branch layout
+
+DagBuilder already tracks "generations" (topological levels) — nodes at the
+same generation are parallel. `compute_levels()` (~10 lines) extracts this
+from the topo order. Diamonds render as side-by-side branches:
+
+```
+  ● build ──┬── ● test ──┬── ○ report
+             │            │
+             └── ● lint ──┘
+```
+
+The level-grouping algorithm:
+1. Compute `level[node] = max(level[predecessor] + 1)` over topo order
+2. Group nodes by level → each level is a horizontal "band"
+3. Nodes in the same band render side-by-side (parallel)
+4. Use ConnectorTee (├/┬) and ConnectorCorner (└) for fan-out/fan-in
+
+This naturally handles the CI graph's real diamond (build → test + lint →
+report) and any future parallel DAG shapes. See Appendix B for mockups.
+
 ### Dynamic mode
 
-Purely a rendering concern — same DagProgress data model. Adds:
-- Edge wavefront propagation (═══ spreading along edge path)
-- Node state morph sequences (○ → ◔ → ◑ → ◐ for pending→running)
-- 1D cellular automaton (Rule 110) on idle edges for ambient "alive" effect
+Purely a rendering concern — same DagProgress data model.
+
+### Unified animation model
+
+All animations — spinners, edge wavefronts, node morphs, cellular automaton
+patterns — share the same underlying structure: a **SubDag with Frame nodes
+and a Cycle edge**. The renderer advances frames; the animation type just
+determines what the frame content is.
+
+```rust
+/// Single animation state, shared by ALL animation types.
+/// Spinners, wavefronts, morphs, and automaton patterns are
+/// all frame sequences — they differ only in frame content.
+struct Animation {
+    frames: Vec<String>,     // Frame content (from SubDag Frame nodes)
+    current: usize,          // Current frame index
+    interval: Duration,      // Time between frames
+    elapsed: Duration,       // Time since last frame advance
+    mode: AnimationMode,     // How to loop
+}
+
+enum AnimationMode {
+    Cycle,        // Loop forever (spinners, idle automaton)
+    Once,         // Play once then hold last frame (node morph)
+    Propagate {   // Advance position along a path (edge wavefront)
+        path_len: usize,
+        position: usize,
+    },
+}
+```
+
+This means:
+- **Spinners** = Animation { frames: [🌑,🌒,🌓,🌔], mode: Cycle }
+- **Node morph** = Animation { frames: [○,◔,◑,◐], mode: Once }
+- **Edge wavefront** = Animation { frames: [═], mode: Propagate { path_len, .. } }
+- **Idle automaton** = Animation { frames: [·pattern·], mode: Cycle }
+
+No special cases. The `Animation` struct is the universal frame-cycling
+primitive. Each animation type is just a different set of frames + mode
+constructed from the same SymbolOp::Frame SubDags.
 
 Frame scheduling uses Adaptive policy: slows for visually interesting
 transitions, catches up when execution is fast. See Appendix C.
@@ -408,6 +465,34 @@ Active=\x1b[1;37m, Dim=\x1b[2m, Accent=\x1b[36m, Info=\x1b[34m
                           0.01s                      running...
                                                         |
                                               [ ] parse_gist_response
+```
+
+### Diamond / parallel pattern (emoji tier, CI graph)
+
+```
+  🚀 ci-pipeline                                      ⏱️  4.1s
+  ─────────────────────────────────────────────────────────────
+
+  ✅ build ──┬── ✅ test ───┬── 🔄 report
+     1.2s    │    1.8s      │      🌒 running...
+             │              │
+             └── ✅ lint ───┘
+                  0.9s
+```
+
+### Diamond — wider (3 parallel branches, ASCII tier)
+
+```
+  [>] wide-pipeline                                    [T] 3.0s
+  -----------------------------------------------------------------
+  [x] fetch ──┬── [x] validate ──┬── [~] deploy
+      0.5s    │      0.8s        │      running...
+              │                  │
+              ├── [x] transform ─┤
+              │      1.1s        │
+              │                  │
+              └── [x] audit ─────┘
+                     0.6s
 ```
 
 ## Appendix C: Dynamic mode animation frames
