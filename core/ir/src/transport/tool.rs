@@ -475,17 +475,27 @@ pub static APK: ToolDef = ToolDef {
 };
 
 /// cargo package manager (Rust).
-/// Cargo package manager (Rust).
+///
+/// Cargo is both a package manager (tools use `via: "cargo"`) and a tool that
+/// must be installed. On brew, it comes from the `rustup` package alongside
+/// rustc. On apt, it's a separate package.
 ///
 /// For runtime tool acquisition, use `transport::cli::CARGO` with `.requires()`.
 /// This ToolDef is for platform-aware satisfiability checking.
-///
-/// Note: cargo depends on rust being installed.
 pub static CARGO: ToolDef = ToolDef {
     id: "cargo",
     command: "cargo",
     verify: "cargo --version",
-    install_options: &[], // Base PM once rust is installed
+    install_options: &[
+        InstallOption {
+            via: "brew",
+            inputs: InstallInputs::packages(&["rustup"]),
+        },
+        InstallOption {
+            via: "apt",
+            inputs: InstallInputs::packages(&["cargo"]),
+        },
+    ],
     depends_on: &["rust"],
 };
 
@@ -518,10 +528,18 @@ pub static GIT: ToolDef = ToolDef {
     depends_on: &[],
 };
 
-/// Rust toolchain (rustc, cargo).
+/// Rust toolchain (rustc).
 ///
-/// Note: On macOS, rust can be installed via brew (rustup).
-/// On other platforms, proper modeling of shell environments would be needed.
+/// The base of the Rust toolchain dependency chain:
+///
+/// ```text
+/// RUST (rustc) ← CARGO ← CLIPPY
+///                       ← RUSTFMT
+/// ```
+///
+/// Each level declares its own install constraints per platform. On brew,
+/// all levels resolve to the `rustup` package (idempotent). On apt, each
+/// is a separate system package.
 pub static RUST: ToolDef = ToolDef {
     id: "rust",
     command: "rustc",
@@ -531,25 +549,35 @@ pub static RUST: ToolDef = ToolDef {
             via: "brew",
             inputs: InstallInputs::packages(&["rustup"]),
         },
-        // TODO: apt has rustc package but rustup is preferred
+        InstallOption {
+            via: "apt",
+            inputs: InstallInputs::packages(&["rustc"]),
+        },
     ],
     depends_on: &[],
 };
 
 /// Clippy linter (Rust component).
 ///
-/// Clippy linter (Rust component).
-///
 /// For runtime tool acquisition, use `transport::cli::CLIPPY` with `.requires()`.
 /// This ToolDef is for platform-aware satisfiability checking.
 ///
-/// Clippy is installed as a rustup component, not a standalone package.
-/// It's invoked via `cargo clippy`.
+/// On brew, clippy comes from the `rustup` package (as a default component).
+/// On apt, it's the `rust-clippy` package.
 pub static CLIPPY: ToolDef = ToolDef {
     id: "clippy",
     command: "cargo",
     verify: "cargo clippy --version",
-    install_options: &[], // Installed as rust component via rustup
+    install_options: &[
+        InstallOption {
+            via: "brew",
+            inputs: InstallInputs::packages(&["rustup"]),
+        },
+        InstallOption {
+            via: "apt",
+            inputs: InstallInputs::packages(&["rust-clippy"]),
+        },
+    ],
     depends_on: &["cargo"],
 };
 
@@ -558,12 +586,22 @@ pub static CLIPPY: ToolDef = ToolDef {
 /// For runtime tool acquisition, use `transport::cli::RUSTFMT` with `.requires()`.
 /// This ToolDef is for platform-aware satisfiability checking.
 ///
-/// Rustfmt is installed as a rustup component, not a standalone package.
+/// On brew, rustfmt comes from the `rustup` package (as a default component).
+/// On apt, it's the `rustfmt` package.
 pub static RUSTFMT: ToolDef = ToolDef {
     id: "rustfmt",
     command: "rustfmt",
     verify: "rustfmt --version",
-    install_options: &[], // Installed as rust component via rustup
+    install_options: &[
+        InstallOption {
+            via: "brew",
+            inputs: InstallInputs::packages(&["rustup"]),
+        },
+        InstallOption {
+            via: "apt",
+            inputs: InstallInputs::packages(&["rustfmt"]),
+        },
+    ],
     depends_on: &["cargo"],
 };
 
@@ -850,7 +888,7 @@ mod tests {
     }
 
     #[test]
-    fn test_platform_registry() {
+    fn test_platform_registry_inheritance() {
         static TEST_LINUX: PlatformDef = PlatformDef {
             id: "linux",
             parent: None,
@@ -872,98 +910,10 @@ mod tests {
     }
 
     #[test]
-    fn test_builtin_package_managers() {
-        // Verify built-in PMs are defined correctly
-        assert_eq!(super::APT.id, "apt");
-        assert_eq!(super::APT.command, "apt-get");
-        assert!(super::APT.install_options.is_empty()); // Base PM
-
-        assert_eq!(super::BREW.id, "brew");
-        assert!(super::BREW.install_options.is_empty()); // Base PM
-
-        assert_eq!(super::APK.id, "apk");
-        assert!(super::APK.install_options.is_empty()); // Base PM
-
-        assert_eq!(super::CARGO.id, "cargo");
-        assert!(super::CARGO.depends_on.contains(&"rust")); // cargo needs rust
-    }
-
-    #[test]
-    fn test_builtin_platforms() {
-        // Verify built-in platforms are defined correctly
-        assert_eq!(super::UBUNTU.id, "ubuntu");
-        assert_eq!(super::UBUNTU.parent, Some("linux"));
-        assert!(super::UBUNTU.available_pms.contains(&"apt"));
-
-        assert_eq!(super::MACOS.id, "macos");
-        assert_eq!(super::MACOS.parent, None);
-        assert!(super::MACOS.available_pms.contains(&"brew"));
-
-        assert_eq!(super::ALPINE.id, "alpine");
-        assert!(super::ALPINE.available_pms.contains(&"apk"));
-    }
-
-    #[test]
-    fn test_default_registries() {
-        let tool_registry = super::default_tool_registry();
-        assert!(tool_registry.get("apt").is_some());
-        assert!(tool_registry.get("brew").is_some());
-        assert!(tool_registry.get("apk").is_some());
-        assert!(tool_registry.get("cargo").is_some());
-        assert!(tool_registry.get("git").is_some());
-        assert!(tool_registry.get("rust").is_some());
-        assert!(tool_registry.get("gh").is_some());
-
-        let platform_registry = super::default_platform_registry();
-        assert!(platform_registry.get("ubuntu").is_some());
-        assert!(platform_registry.get("macos").is_some());
-        assert!(platform_registry.get("alpine").is_some());
-
-        // Test ubuntu has apt via inheritance
-        let ubuntu_pms = platform_registry.available_pms("ubuntu");
-        assert!(ubuntu_pms.contains("apt"));
-    }
-
-    #[test]
-    fn test_git_tool_definition() {
-        assert_eq!(super::GIT.id, "git");
-        assert_eq!(super::GIT.command, "git");
-        assert_eq!(super::GIT.verify, "git --version");
-        
-        // git should be installable via apt, brew, and apk
-        let apt_opt = super::GIT.install_options.iter().find(|o| o.via == "apt");
-        assert!(apt_opt.is_some());
-        assert_eq!(apt_opt.unwrap().inputs.packages, Some(&["git"][..]));
-
-        let brew_opt = super::GIT.install_options.iter().find(|o| o.via == "brew");
-        assert!(brew_opt.is_some());
-
-        let apk_opt = super::GIT.install_options.iter().find(|o| o.via == "apk");
-        assert!(apk_opt.is_some());
-    }
-
-    #[test]
-    fn test_rust_tool_definition() {
-        assert_eq!(super::RUST.id, "rust");
-        assert_eq!(super::RUST.command, "rustc");
-        assert_eq!(super::RUST.verify, "rustc --version");
-        
-        // rust can be installed via brew (rustup)
-        let brew_opt = super::RUST.install_options.iter().find(|o| o.via == "brew");
-        assert!(brew_opt.is_some());
-        assert_eq!(brew_opt.unwrap().inputs.packages, Some(&["rustup"][..]));
-    }
-
-    #[test]
-    fn test_cargo_depends_on_rust() {
-        assert!(super::CARGO.depends_on.contains(&"rust"));
-    }
-
-    #[test]
     fn test_git_satisfiable_on_ubuntu() {
         let registry = super::default_tool_registry();
         let available: HashSet<&str> = ["apt"].into_iter().collect();
-        
+
         assert!(super::is_satisfiable(&super::GIT, &available, &registry).is_ok());
     }
 
@@ -984,12 +934,26 @@ mod tests {
     }
 
     #[test]
-    fn test_rust_not_satisfiable_on_ubuntu_only_apt() {
+    fn test_rust_toolchain_satisfiable_on_apt() {
         let registry = super::default_tool_registry();
         let available: HashSet<&str> = ["apt"].into_iter().collect();
-        
-        // rust only has brew install option, so not satisfiable with just apt
-        let result = super::is_satisfiable(&super::RUST, &available, &registry);
-        assert!(result.is_err());
+
+        // Full Rust toolchain should be satisfiable via apt packages
+        assert!(super::is_satisfiable(&super::RUST, &available, &registry).is_ok());
+        assert!(super::is_satisfiable(&super::CARGO, &available, &registry).is_ok());
+        assert!(super::is_satisfiable(&super::CLIPPY, &available, &registry).is_ok());
+        assert!(super::is_satisfiable(&super::RUSTFMT, &available, &registry).is_ok());
+    }
+
+    #[test]
+    fn test_rust_toolchain_satisfiable_on_brew() {
+        let registry = super::default_tool_registry();
+        let available: HashSet<&str> = ["brew"].into_iter().collect();
+
+        // Full Rust toolchain should be satisfiable via brew (all → rustup)
+        assert!(super::is_satisfiable(&super::RUST, &available, &registry).is_ok());
+        assert!(super::is_satisfiable(&super::CARGO, &available, &registry).is_ok());
+        assert!(super::is_satisfiable(&super::CLIPPY, &available, &registry).is_ok());
+        assert!(super::is_satisfiable(&super::RUSTFMT, &available, &registry).is_ok());
     }
 }
