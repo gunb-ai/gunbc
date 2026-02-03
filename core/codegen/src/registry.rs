@@ -653,9 +653,26 @@ pub fn all_testgen_targets() -> Vec<TestgenTargetDef> {
 
 /// Testgen targets for library DAGs (composable sub-DAGs that aren't standalone tools).
 ///
-/// llm-ops has one DAG builder tested with four different MockSpecs.
+/// Includes:
+/// - llm-ops: one DAG builder tested with four different MockSpecs
+/// - review: diff and inline review DAGs
+/// - ci: not a ToolDef (bootstrap tool, can't depend on generated code)
 fn library_testgen_targets() -> Vec<TestgenTargetDef> {
     vec![
+        // ====================================================================
+        // Internal DAGs without ToolDef (CI is the bootstrap tool)
+        // ====================================================================
+        TestgenTargetDef::new(
+            "ci",
+            "gunbc-dag/src/ci/generated_tests.rs",
+            "ci_generated_tests",
+        )
+        .dag_builder("crate::build_ci_graph().unwrap()")
+        .mock_spec("crate::ci::graph_mock::ci_mock_spec()")
+        .flow_tests(),
+        // ====================================================================
+        // Library DAGs (composable sub-DAGs)
+        // ====================================================================
         TestgenTargetDef::new(
             "llm-openai",
             "lib/llm-ops/src/generated_tests.rs",
@@ -687,6 +704,25 @@ fn library_testgen_targets() -> Vec<TestgenTargetDef> {
         )
         .dag_builder("crate::graph::build_chat_completion_graph()")
         .mock_spec("crate::graph_mock::secret_api_key_mock_spec()")
+        .no_boundary_tests(),
+        // ====================================================================
+        // Review DAGs
+        // ====================================================================
+        TestgenTargetDef::new(
+            "review-diff",
+            "lib/review/src/generated_tests_diff.rs",
+            "review_diff_generated_tests",
+        )
+        .dag_builder("crate::graph::build_diff_review_graph()")
+        .mock_spec("crate::graph_mock::diff_review_mock_spec()")
+        .no_boundary_tests(),
+        TestgenTargetDef::new(
+            "review-inline",
+            "lib/review/src/generated_tests_inline.rs",
+            "review_inline_generated_tests",
+        )
+        .dag_builder("crate::graph::build_inline_review_graph()")
+        .mock_spec("crate::graph_mock::inline_review_mock_spec()")
         .no_boundary_tests(),
     ]
 }
@@ -752,110 +788,3 @@ fn makegen_dag() -> DagDef {
         .edge("render_makefile", "makefile_content", "write_makefile", "makefile_content")
 }
 
-// ============================================================================
-// Testgen DAG Registry
-// ============================================================================
-
-/// All DAGs that need test generation.
-///
-/// This is the central registry for testgen. Each entry specifies:
-/// - Where the generated tests should go
-/// - How to build the DAG and get its MockSpec
-/// - Test configuration (flow tests, boundary tests, etc.)
-///
-/// # Categories
-///
-/// 1. **Internal gunbc-dag DAGs**: bootstrap, ci, makegen
-///    - Live in `gunbc-dag/src/{name}/`
-///    - Use `crate::` to reference DAG builder
-///    - Enable flow tests (self-contained, no external inputs)
-///
-/// 2. **Library DAGs**: llm-ops
-///    - Live in `lib/{name}/src/`
-///    - Composable sub-DAGs for use in other tools
-///    - May have multiple MockSpec variants (different providers)
-pub fn all_testgen_dags() -> Vec<TestgenTargetDef> {
-    vec![
-        // ====================================================================
-        // Internal gunbc-dag DAGs (flow tests enabled)
-        // ====================================================================
-        TestgenTargetDef::new(
-            "bootstrap",
-            "gunbc-dag/src/bootstrap/generated_tests.rs",
-            "bootstrap_generated_tests",
-        )
-        .dag_builder("crate::build_bootstrap_graph().unwrap()")
-        .mock_spec("crate::bootstrap::graph_mock::bootstrap_mock_spec()")
-        .flow_tests(),
-        TestgenTargetDef::new(
-            "ci",
-            "gunbc-dag/src/ci/generated_tests.rs",
-            "ci_generated_tests",
-        )
-        .dag_builder("crate::build_ci_graph().unwrap()")
-        .mock_spec("crate::ci::graph_mock::ci_mock_spec()")
-        .flow_tests(),
-        TestgenTargetDef::new(
-            "makegen",
-            "gunbc-dag/src/makegen/generated_tests.rs",
-            "makegen_generated_tests",
-        )
-        .dag_builder("crate::build_makegen_graph().unwrap()")
-        .mock_spec("crate::makegen::graph_mock::makegen_mock_spec()")
-        .flow_tests(),
-        // ====================================================================
-        // Library DAGs (composable sub-DAGs)
-        // ====================================================================
-        TestgenTargetDef::new(
-            "llm-openai",
-            "lib/llm-ops/src/generated_tests.rs",
-            "llm_openai_generated_tests",
-        )
-        .dag_builder("crate::graph::build_chat_completion_graph()")
-        .mock_spec("crate::graph_mock::openai_mock_spec()")
-        .no_boundary_tests(),
-        TestgenTargetDef::new(
-            "llm-anthropic",
-            "lib/llm-ops/src/generated_tests_anthropic.rs",
-            "llm_anthropic_generated_tests",
-        )
-        .dag_builder("crate::graph::build_chat_completion_graph()")
-        .mock_spec("crate::graph_mock::anthropic_mock_spec()")
-        .no_boundary_tests(),
-        TestgenTargetDef::new(
-            "llm-code-review",
-            "lib/llm-ops/src/generated_tests_code_review.rs",
-            "llm_code_review_generated_tests",
-        )
-        .dag_builder("crate::graph::build_chat_completion_graph()")
-        .mock_spec("crate::graph_mock::code_review_mock_spec()")
-        .no_boundary_tests(),
-        TestgenTargetDef::new(
-            "llm-secrets",
-            "lib/llm-ops/src/generated_tests_secrets.rs",
-            "llm_secrets_generated_tests",
-        )
-        .dag_builder("crate::graph::build_chat_completion_graph()")
-        .mock_spec("crate::graph_mock::secret_api_key_mock_spec()")
-        .no_boundary_tests(),
-        // ====================================================================
-        // Review DAGs
-        // ====================================================================
-        TestgenTargetDef::new(
-            "review-diff",
-            "lib/review/src/generated_tests_diff.rs",
-            "review_diff_generated_tests",
-        )
-        .dag_builder("crate::graph::build_diff_review_graph()")
-        .mock_spec("crate::graph_mock::diff_review_mock_spec()")
-        .no_boundary_tests(),
-        TestgenTargetDef::new(
-            "review-inline",
-            "lib/review/src/generated_tests_inline.rs",
-            "review_inline_generated_tests",
-        )
-        .dag_builder("crate::graph::build_inline_review_graph()")
-        .mock_spec("crate::graph_mock::inline_review_mock_spec()")
-        .no_boundary_tests(),
-    ]
-}
