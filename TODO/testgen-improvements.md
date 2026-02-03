@@ -136,6 +136,70 @@ test: testgen-check build
 
 **Alternative**: Keep committing but with strict staleness checks in CI.
 
+### Phase 5: Windowed Segment Testing
+
+Test arbitrary sub-segments of a DAG pipeline automatically. Instead of testing nodes
+in isolation (Phase 2), execute contiguous windows of nodes and verify inter-node
+integration.
+
+**Motivation**: Per-node testing catches I/O bugs within a single node, but misses
+integration bugs where the composition `B → C` breaks due to subtle mismatches in
+how values flow between nodes. Windowed testing covers the space between unit tests
+(single node) and full-DAG smoke tests (everything).
+
+**Core idea**: A full DryRun captures every intermediate value at every port. These
+captured values can seed any arbitrary window — no additional mocks needed for pure
+nodes, and transport nodes are already intercepted by DryRun.
+
+**TODO 5.1: Define `Window` type**
+```rust
+pub struct Window {
+    /// Entry-point nodes of this window (inputs severed and injected)
+    pub entry_nodes: Vec<NodeId>,
+    /// Exit-point nodes (outputs captured and verified)
+    pub exit_nodes: Vec<NodeId>,
+    /// All nodes in the interior (executed normally)
+    pub interior: Vec<NodeId>,
+}
+```
+
+**TODO 5.2: Window enumeration**
+- [ ] Given a DAG, enumerate all valid windows (contiguous sub-DAG slices)
+- [ ] For a linear DAG of n nodes, this is O(n^2) windows (sliding window)
+- [ ] For branching DAGs, enumerate by cut boundaries — sever incoming edges at
+      entry nodes, capture outgoing edges at exit nodes
+- [ ] Optionally limit window size (e.g., max 5 nodes) to control test explosion
+
+**TODO 5.3: DryRun value capture**
+- [ ] Run full DryRun with existing MockSpec → `ExecutionLog`
+- [ ] Extract per-port values at window entry boundaries from the log
+- [ ] These become the injected inputs for the windowed execution
+
+**TODO 5.4: Windowed execution**
+- [ ] For each window, construct a sub-DAG or use `input_mock()` injection at
+      the severed entry edges
+- [ ] Execute the window with DryRun mode (transport nodes still intercepted)
+- [ ] Pure nodes execute for real — this is where integration bugs surface
+- [ ] Compare window exit-port values against the full DryRun expected values
+
+**TODO 5.5: Test generation**
+- [ ] For each enumerated window, generate a test function
+- [ ] Test name encodes the window: `test_window_B_through_D`
+- [ ] Inputs derived from DryRun log, outputs verified against DryRun log
+- [ ] Consider grouping by window size or DAG region to organize output
+
+**Open design questions for Phase 5:**
+- **Test explosion**: O(n^2) can be large. Should we sample windows, use a max
+  window size, or generate all and let the user filter?
+- **Branching semantics**: For fan-out/fan-in, what constitutes a valid window?
+  Likely: any connected sub-DAG where all severed incoming edges have DryRun values.
+- **Transport within windows**: If a window interior contains a transport node, it
+  gets DryRun-intercepted. This tests the pure logic around it but not the transport
+  itself — which is the right tradeoff.
+- **Depends on**: Phase 2 (I/O examples) is nice-to-have but not required. The
+  DryRun log provides all the mock values. Phase 1 (MockSpec enforcement) is
+  a prerequisite since we need a valid DryRun to seed windows.
+
 ## Open Questions
 
 1. **Commit or not?** Generated tests as source vs build artifact
