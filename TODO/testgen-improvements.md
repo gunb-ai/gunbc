@@ -76,8 +76,9 @@ Both should be **required**, not optional.
 - [x] Consolidated two-site registration into one: removed `all_testgen_dags()` from
   `codegen/registry.rs`, inlined `TestgenTargetDef` metadata directly alongside builder
   closures in `testgen.rs`. Adding a new target is now a single addition in one place.
-- [ ] Full auto-discovery (scan workspace for `build_*_graph()`) deferred — current
-  single-site registration is low-ceremony enough
+- [x] Added `target!()` macro: each expression written once, macro both calls it
+  and stringifies it (with `crate::` replacement via `to_crate_path()`). ~5 lines per target.
+- [ ] Full auto-discovery deferred — see Phase 6 (Registry-Driven Testgen) below
 
 ### Phase 2: I/O Examples on Nodes
 
@@ -190,6 +191,55 @@ pub struct Window {
 - **Depends on**: Phase 2 (I/O examples) is nice-to-have but not required. The
   DryRun log provides all the mock values. Phase 1 (MockSpec enforcement) is
   a prerequisite since we need a valid DryRun to seed windows.
+
+### Phase 6: Registry-Driven Testgen (DAG to Track DAGs)
+
+Eliminate the manual target list in `testgen.rs` by making it a generated artifact.
+The codegen registry becomes the single source of truth for all DAGs; testgen
+registration is derived, not maintained.
+
+**Motivation**: Even with the `target!()` macro, each DAG still needs a manual entry
+in `testgen.rs`. The `ToolDef` type already has `testgen: Option<TestgenTargetDef>`
+and `all_testgen_targets()` exists to collect them — but neither is wired up.
+Meanwhile, the naming conventions are 100% consistent (`graph.rs` + `graph_mock.rs`),
+so the metadata is fully inferrable.
+
+**Key insight**: `testgen.rs` needs actual function references (`gunbc_dag::build_X()`)
+that codegen can't hold (circular dep). But codegen CAN generate `testgen.rs` as an
+output file containing those references — just like it generates CLI main.rs files.
+
+**TODO 6.1: Wire `.testgen()` into ToolDef**
+- [ ] Add `.testgen(TestgenTargetDef::new(...))` to each tool in `all_tools()`
+- [ ] Convention: derive output_path and module_name from tool metadata
+  - `"{crate_path}/src/{module}/generated_tests.rs"` or similar
+- [ ] `all_testgen_targets()` now returns actual data instead of empty
+
+**TODO 6.2: Registry entry for library DAGs**
+- [ ] Library DAGs (llm-ops) aren't tools — need a parallel registry
+- [ ] Option A: `LibraryDagDef` in registry — same fields, no CLI entrypoints
+- [ ] Option B: Broaden `ToolDef` to cover non-CLI DAGs (add `is_tool: bool`)
+- [ ] Either way: single `all_dags()` function returns everything
+
+**TODO 6.3: Generate testgen target list**
+- [ ] Codegen reads `all_testgen_targets()` + library DAG registry
+- [ ] Emits `build_targets()` function with `target!()` entries
+- [ ] Derives crate import paths from convention
+  (`crate_name` → `gunbc_{name}::build_{name}_graph()`)
+- [ ] Generated file: `gunbc-dag/src/bin/testgen_targets.rs` (included by testgen.rs)
+
+**TODO 6.4: Close the loop**
+- [ ] `testgen.rs` includes generated target list: `include!("testgen_targets.rs")`
+- [ ] Adding a new DAG = adding `.testgen(...)` to ToolDef or library registry
+- [ ] Codegen generates the target list, testgen consumes it
+- [ ] No manual testgen.rs edits needed
+
+**Open design questions for Phase 6:**
+- **Bootstrap ordering**: Codegen must run before testgen. Currently `make build`
+  already ensures `ensure-codegen testgen` ordering — this extends naturally.
+- **Multi-mock DAGs**: llm-ops has 4 MockSpec variants for 1 DAG. The registry
+  needs to support N testgen targets per DAG builder.
+- **Depends on**: None of Phases 1-5 are prerequisites. This is an orthogonal
+  infrastructure improvement.
 
 ## Open Questions
 
