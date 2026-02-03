@@ -7,7 +7,7 @@
 
 use gunbc_ir::transport::{ShellResponse, TransportResponse};
 use gunbc_ir::{CargoInvocation, Value};
-use gunbc_test::{InputConstraint, MockSpec};
+use gunbc_test::{InputConstraint, MockSpec, NodeExample, OutputMatcher};
 
 /// Mock specification for the makegen graph.
 ///
@@ -63,6 +63,23 @@ pub fn makegen_mock_spec() -> MockSpec {
         // Expected outputs: load_registry is a pure root node with boundary outputs
         // tool_count verifies the registry loaded correctly
         .expected_output("load_registry", "tool_count", Value::Int(7))
+        // Node I/O examples: verify pure node behavior
+        .node_example(
+            NodeExample::new("load_registry")
+                .output("tool_count", OutputMatcher::Satisfies {
+                    description: "at least 2 tools registered".into(),
+                    predicate: |v| matches!(v, Value::Int(n) if *n >= 2),
+                })
+                .output("tool_names", OutputMatcher::non_empty())
+                .description("Default registry loads with expected tools"),
+        )
+        .node_example(
+            NodeExample::new("render_makefile")
+                .output("makefile_content", OutputMatcher::contains("gist"))
+                .description("Rendered Makefile contains gist target"),
+        )
+        // Primitive nodes — tested in their own crates
+        .skip_node_example("prepare_file_write")
 }
 
 /// Mock spec for testing no-change scenario.

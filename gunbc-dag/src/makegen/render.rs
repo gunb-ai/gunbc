@@ -348,13 +348,18 @@ fn render_meta_check_variant(meta: &MetaTarget, config: &BuildConfig) -> String 
 
     // Use MetaTarget's get_check_command which references BuildConfig via ConfigField
     if let Some(check_cmd) = meta.get_check_command(config) {
-        let dependency = match meta.prep_level {
-            PrepLevel::None => "",
-            PrepLevel::Codegen => " ensure-codegen",
-            PrepLevel::Full => " build",
+        let mut deps = match meta.prep_level {
+            PrepLevel::None => String::new(),
+            PrepLevel::Codegen => " ensure-codegen".to_string(),
+            PrepLevel::Full => " build".to_string(),
         };
 
-        output.push_str(&format!("{}-check:{}\n", meta.name, dependency));
+        for dep in &meta.extra_deps {
+            deps.push(' ');
+            deps.push_str(dep);
+        }
+
+        output.push_str(&format!("{}-check:{}\n", meta.name, deps));
         output.push_str(&format!("{}{}\n\n", INDENT, check_cmd));
     }
 
@@ -375,7 +380,7 @@ fn render_meta_fix_variant(meta: &MetaTarget, config: &BuildConfig) -> String {
 
     // Build dependencies list
     let mut deps = Vec::new();
-    
+
     // Add fix_deps from meta target (e.g., ["fmt-fix", "lint-fix"])
     for dep in meta.get_fix_deps() {
         deps.push(dep.to_string());
@@ -386,6 +391,11 @@ fn render_meta_fix_variant(meta: &MetaTarget, config: &BuildConfig) -> String {
         PrepLevel::None => {}
         PrepLevel::Codegen => deps.push("ensure-codegen".to_string()),
         PrepLevel::Full => deps.push("build".to_string()),
+    }
+
+    // Add extra dependencies (e.g., testgen-check)
+    for dep in &meta.extra_deps {
+        deps.push(dep.to_string());
     }
 
     let deps_str = if deps.is_empty() {

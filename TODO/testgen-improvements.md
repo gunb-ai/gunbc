@@ -1,7 +1,8 @@
 # Testgen Improvements
 
-**Status**: TODO
+**Status**: In Progress
 **Date**: 2026-02-02
+**Updated**: 2026-02-03
 
 ## Problem Statement
 
@@ -24,23 +25,29 @@ When you define a DAG node, you also specify its I/O contract. Testgen generates
 // Current: you define DAG, then separately write unit tests
 dag.add_node(Node::opaque("prepare_prompt", inputs, outputs, ReviewOps::PrepareReviewPrompt));
 
-// Desired: I/O examples are part of the node definition
-dag.add_node(Node::opaque("prepare_prompt", inputs, outputs, ReviewOps::PrepareReviewPrompt)
-    .with_example(
-        inputs! { "artifact" => "fn foo() {}", "criteria" => security_criteria() },
-        outputs! { "question" => contains("security"), "system_prompt" => non_empty() },
-    )
-);
+// Desired: I/O examples are part of the mock spec
+let spec = MockSpec::new("review")
+    .node_example(
+        NodeExample::new("prepare_prompt")
+            .input("artifact", Value::Str("fn foo() {}".into()))
+            .input("criteria", Value::Str("security".into()))
+            .output("question", OutputMatcher::contains("security"))
+            .output("system_prompt", OutputMatcher::non_empty())
+    );
 ```
 
 Then testgen generates:
 ```rust
 #[test]
-fn test_prepare_prompt_example_0() {
-    let inputs = hashmap! { "artifact" => "fn foo() {}", "criteria" => ... };
-    let result = ReviewOps::PrepareReviewPrompt.execute(inputs).unwrap();
-    assert!(result["question"].as_str().unwrap().contains("security"));
-    assert!(!result["system_prompt"].as_str().unwrap().is_empty());
+fn test_example_prepare_prompt_0() {
+    let dag = build_review_graph();
+    let mut inputs = std::collections::HashMap::new();
+    inputs.insert("artifact".to_string(), Value::Str("fn foo() {}".into()));
+    inputs.insert("criteria".to_string(), Value::Str("security".into()));
+    let outputs = gunbc_exec::execute_single_node(&dag, "prepare_prompt", inputs, ExecutionMode::Real)
+        .expect("node 'prepare_prompt' should execute successfully");
+    assert!(outputs.get("question").unwrap().as_str().map(|s| s.contains("security")).unwrap_or(false));
+    assert!(!outputs.get("system_prompt").unwrap().as_str().map(|s| s.is_empty()).unwrap_or(false));
 }
 ```
 
@@ -52,9 +59,11 @@ fn test_prepare_prompt_example_0() {
 |---|---|---|
 | **What** | Mock response (external I/O) | Expected output (computed) |
 | **Why** | Can't run real I/O in tests | Verify business logic |
-| **How** | `MockSpec::boundary()` | `Node::with_example()` |
+| **How** | `MockSpec::boundary()` | `MockSpec::node_example()` |
 
 Both should be **required**, not optional.
+
+**Design decision**: Examples live on `MockSpec` (via `.node_example()`) rather than on `Node` directly. This keeps `Node<T>` generic and free of test concerns, while `MockSpec` already serves as the test specification.
 
 ## Implementation Plan
 
@@ -95,6 +104,7 @@ pub struct NodeExample {
     pub description: Option<String>,
 }
 ```
+- *Implemented*: `core/test/src/mock_spec.rs:644-708`
 
 **TODO 2.2: Extend Node builder** ✅
 - [x] Added `examples: Vec<NodeIoExample>` field to `Node<T>` (serde skip if empty)
@@ -118,7 +128,7 @@ pub struct NodeExample {
 - [x] `make test` depends on `testgen-check` — fails if generated tests are stale
 - [x] Error message directs user to run `make testgen`
 
-### Phase 4: Stop Committing Generated Tests
+### Phase 4: Generated Test Strategy
 
 **TODO 4.1: Add to .gitignore** ✅
 - [x] Added `TESTGEN_CATEGORY` to gitignore generation: `**/generated_tests*.rs`
@@ -283,17 +293,15 @@ functions live in the tool crates.
 
 ## Open Questions
 
-1. **Commit or not?** Generated tests as source vs build artifact
-   - Pro commit: visible in PR diffs, works without build step
-   - Pro .gitignore: no stale tests, cleaner history
+1. ~~**Commit or not?**~~ → Commit with staleness checks (decided above)
 
-2. **Auto-discover vs manifest?** How to find DAGs
+2. **Auto-discover vs manifest?** How to find DAGs (TODO 1.3)
    - Auto-discover: magic, might miss some
    - Manifest: explicit, more work
+   - Current: hardcoded builder map — works but doesn't scale
 
-3. **Example syntax?** How verbose should `with_example()` be?
-   - Macro-based: `inputs! { ... }` - concise but magic
-   - Builder: `.input("foo", val).output("bar", matcher)` - verbose but clear
+3. ~~**Example syntax?**~~ → Builder pattern on `NodeExample` (decided)
+   - `NodeExample::new("node").input("port", val).output("port", matcher).description("...")`
 
 4. **Inheritance?** If DAG A embeds DAG B as subdag, do B's examples run?
    - Probably yes - verify subdags work in context
@@ -302,10 +310,167 @@ functions live in the tool crates.
 
 After implementation:
 
-1. **Can't forget tests** - testgen auto-discovers DAGs, fails if no MockSpec
-2. **Can't have stale tests** - staleness check in `make test`
-3. **I/O is tested** - node examples generate unit tests
-4. **Minimal ceremony** - just add `.with_example()` to node, tests appear
+1. **Can't forget tests** - ~~testgen auto-discovers DAGs~~ (TODO 1.3 remaining), fails if no MockSpec ✅, panics if pure nodes lack examples ✅
+2. **Can't have stale tests** - staleness check in `make test` ✅, deterministic output ✅
+3. **I/O is tested** - node examples generate unit tests ✅, all 7 targets have examples ✅
+4. **Minimal ceremony** - just add `.node_example()` to MockSpec, tests appear ✅
+
+### Phase 7: Enforcement & Coverage
+
+**TODO 7.1: Enforcement for pure nodes** ✅
+- [x] Added `skipped_node_examples: Vec<String>` field to `MockSpec`
+- [x] Added `skip_node_example()` builder method for explicit opt-out
+- [x] Added enforcement check in `generate_test_module()`: panics when pure nodes
+  have no examples (from MockSpec or Node) and aren't explicitly skipped
+- [x] Error message lists uncovered nodes with guidance on `.node_example()` or
+  `.skip_node_example()`
+- *Implemented in `codegen.rs:176-242`*
+
+**TODO 7.2: Add node_examples to all MockSpecs** ✅
+- [x] **makegen**: `load_registry` (tool_count ≥ 2, tool_names non-empty),
+  `render_makefile` (contains "gist"), skip `prepare_file_write`
+- [x] **bootstrap**: `prepare_scan_workspace` (request non-empty),
+  `parse_scan_result` (skipped response propagation), `generate_makefile`
+  (contains header), `generate_gitignore` (contains header), skip
+  `prepare_makefile_write`, `prepare_gitignore_write`
+- [x] **CI**: `report` (2 examples: all-pass → SUCCESS, build-fail → FAILURE),
+  `parse_deps_exists`/`parse_codegen_exists` (skipped response propagation),
+  `parse_codegen_result`/`parse_build`/`parse_test` (skip=true path with exact
+  outputs), all `prepare_*` nodes (boolean output checks), `parse_clippy_lint`,
+  skip `prepare_deps_exists`
+- [x] **LLM** (4 variants): `prepare` (provider/model/messages → request + echoed
+  provider), `parse` (skipped response propagation)
+
+**TODO 7.3: Fix codegen bugs found during coverage** ✅
+- [x] `to_check_code()` Exact matcher: `assert_eq!` → `assert_eq!(*...)` (deref)
+- [x] `to_check_code()` Contains matcher: added `{:?}` format placeholder for
+  value argument
+- [x] `to_check_code()` all matchers: added trailing semicolons
+- [x] `value_to_rust_literal()`: added `Value::Skipped` support
+- [x] `generate_node_example_tests()`: sorted HashMap iteration for deterministic
+  output (both inputs and outputs)
+
+## Remaining Work
+
+- **TODO 1.3**: Auto-discover DAGs (eliminate hardcoded builder map)
+
+### Phase 8: Absorb Manual graph_mock.rs Tests
+
+49 hand-written tests across 8 `graph_mock.rs` files follow patterns
+that testgen already generates (or could generate with small additions).
+Goal: make `graph_mock.rs` files **data-only** (MockSpec + NodeExamples
++ resources) and delete the `#[cfg(test)]` blocks.
+
+**graph_mock.rs test counts:**
+
+| File | Tests | Patterns |
+|------|-------|----------|
+| `bootstrap/graph_mock.rs` | 5 | boundary presence, mock values |
+| `ci/graph_mock.rs` | 6 | boundary presence, mock values |
+| `makegen/graph_mock.rs` | 5 | boundary presence, resource locks |
+| `lib/llm-ops/graph_mock.rs` | 9 | content contains, chain validation |
+| `lib/tools/gist/graph_mock.rs` | 9 | URL validity, chain validation, modes |
+| `lib/tools/buck2/graph_mock.rs` | 7 | boundary presence |
+| `lib/tools/deps/graph_mock.rs` | 4 | boundary presence |
+| `lib/review/graph_mock.rs` | 4 | boundary presence |
+
+**Patterns to absorb** (maps to testgen features needed):
+
+**Pattern A: "MockSpec has boundary X" (presence checks)**
+Most common. Tests that `mock_spec.boundaries.get("node").is_some()`.
+Already covered by testgen Bucket A (transport interception).
+*Safe to delete now* — if a boundary mock is missing, the generated
+DryRun test will panic at execution time.
+
+**Pattern B: "mock value has property" (content/URL checks)**
+Tests that mock fixture values contain substrings, start with URLs, etc.
+Two options:
+1. Express as `NodeExample` outputs (preferred — tests node behavior,
+   not fixture data)
+2. Add matcher layer on mock fixtures themselves if fixtures are
+   treated as golden data
+
+**Pattern C: "validate_chain(spec, spec, empty_mapping)" (self-chain)**
+Tests that a MockSpec chains with itself. Already generated by testgen
+(chain validation tests in Bucket C).
+*Safe to delete now* — exact same assertion generated automatically.
+
+**Pattern D: "resource exists / lease expiration"**
+Tests for resource configuration. Testgen already emits lease expiration
+tests for `ResourceType::Lease`.
+*Safe to delete once generated resource tests confirmed equivalent.*
+
+**Pattern E: "signature matches DAG"**
+Tests that DAG signature validates. Not yet generated by testgen.
+Requires new testgen assertion (see TODO 8.2 below).
+
+**TODO 8.1: Add transport-mock coverage assertion to testgen**
+- [ ] Walk DAG analysis, find transport executor nodes
+- [ ] Assert MockSpec provides mocks for all output ports used downstream
+- [ ] This replaces per-tool boundary presence tests (Pattern A)
+- [ ] Subsumes ~25 of the 49 tests
+
+**TODO 8.2: Add signature validation assertion to testgen**
+- [ ] If a `TestgenTargetDef` includes a signature, emit a test that
+      calls `signature.validate(&dag)`
+- [ ] Optionally: `infer_signature(&dag)` matches declared signature
+- [ ] This replaces per-tool signature tests (Pattern E, consolidation §7 Pattern 3)
+
+**TODO 8.3: Add mock-value type compatibility assertion to testgen**
+- [ ] For each mock value in MockSpec, assert `Value` type is compatible
+      with the DAG port's `type_id` (and cardinality)
+- [ ] Contract-level check: "mock is Bool-typed" not "mock == Bool(true)"
+- [ ] Catches type drift between MockSpec and DAG port definitions
+
+**TODO 8.4: Delete redundant graph_mock.rs tests**
+- [ ] Delete Pattern A tests (boundary presence) — already generated
+- [ ] Delete Pattern C tests (self-chain) — already generated
+- [ ] Delete Pattern D tests (resource) — once generated resource tests confirmed
+- [ ] Migrate Pattern B tests to NodeExamples — then delete
+- [ ] Delete Pattern E tests — once TODO 8.2 lands
+- [ ] Goal: graph_mock.rs files contain only `pub fn mock_spec()` + data
+
+### Phase 9: DagSpec End-State
+
+Unify DAG builder location, MockSpec, signature, and testgen registration
+into a single `DagSpec` definition. This is the concrete form of
+"DAG definition = test specification."
+
+**Current**: Adding a new tool DAG requires edits in 3+ places:
+1. Builder function in tool crate
+2. MockSpec in `graph_mock.rs`
+3. `target!()` entry in `testgen.rs`
+4. (optional) signature tests in `graph.rs`
+5. (optional) `TestgenTargetDef` in registry
+
+**Goal**: One `DagSpec` per DAG that carries everything:
+
+```rust
+pub struct DagSpec<T> {
+    /// Builds the DAG
+    pub builder: fn() -> Result<Dag<T>>,
+    /// Test specification (mocks, examples, resources)
+    pub mock_spec: MockSpec,
+    /// Expected interface contract (optional)
+    pub signature: Option<DagSignature>,
+    /// Testgen configuration
+    pub testgen: TestgenTargetDef,
+}
+```
+
+**Blocked on**: Phase 8 (absorbing manual tests first), resolving the
+circular dependency between `gunbc-codegen` and tool crates (builder
+functions live in tool crates, DagSpec would need to reference them).
+
+**TODO 9.1: Design DagSpec type**
+- [ ] Define what fields DagSpec carries
+- [ ] Resolve circular dep (likely: DagSpec metadata in codegen,
+      builder fn reference stays in tool crate via registration)
+
+**TODO 9.2: Migrate targets to DagSpec**
+- [ ] Convert `target!()` entries to DagSpec instances
+- [ ] Each tool crate exports a `dag_specs()` function
+- [ ] Testgen, Makefile gen, and CI gen all consume DagSpec
 
 ## References
 
@@ -314,3 +479,4 @@ After implementation:
 - MockSpec: `core/test/src/mock_spec.rs`
 - Obligation model: `core/codegen/src/testgen/obligation.rs`
 - Tool registry: `core/codegen/src/registry.rs`
+- MetaTarget extra_deps: `gunbc-dag/src/makegen/registry.rs`

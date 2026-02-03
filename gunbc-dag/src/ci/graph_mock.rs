@@ -6,7 +6,7 @@
 
 use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse, TransportResponse};
 use gunbc_ir::Value;
-use gunbc_test::MockSpec;
+use gunbc_test::{MockSpec, NodeExample, OutputMatcher};
 
 /// Mock specification for the CI graph.
 ///
@@ -95,6 +95,118 @@ pub fn ci_mock_spec() -> MockSpec {
         .transport_mock("clippy_lint", "skip", Value::Bool(false))
         // Expected outputs: verified after DryRun execution
         .expected_output("report", "overall_success", Value::Bool(true))
+        // Node I/O examples: verify pure node behavior
+        .node_example(
+            NodeExample::new("report")
+                .input("build_success", Value::Bool(true))
+                .input("test_success", Value::Bool(true))
+                .input("lint_success", Value::Bool(true))
+                .output("overall_success", OutputMatcher::exact(Value::Bool(true)))
+                .output("report", OutputMatcher::contains("SUCCESS"))
+                .description("All stages pass → overall success"),
+        )
+        .node_example(
+            NodeExample::new("report")
+                .input("build_success", Value::Bool(false))
+                .input("test_success", Value::Bool(true))
+                .input("lint_success", Value::Bool(true))
+                .output("overall_success", OutputMatcher::exact(Value::Bool(false)))
+                .output("report", OutputMatcher::contains("FAILURE"))
+                .description("Build failure → overall failure"),
+        )
+        // Node I/O examples: verify pure node behavior
+        //
+        // Response-only parse nodes: tested via Skipped propagation (actual
+        // parsing is covered by unit tests in ops.rs).
+        // Parse nodes with skip flag: tested via skip=true path.
+        .node_example(
+            NodeExample::new("parse_deps_exists")
+                .input("response", Value::Skipped)
+                .output("deps_checked", OutputMatcher::Any)
+                .description("Handles skipped transport response gracefully"),
+        )
+        .node_example(
+            NodeExample::new("parse_codegen_exists")
+                .input("response", Value::Skipped)
+                .output("codegen_needed", OutputMatcher::Any)
+                .description("Handles skipped transport response gracefully"),
+        )
+        .node_example(
+            NodeExample::new("parse_codegen_result")
+                .input("skip", Value::Bool(true))
+                .output("prep_success", OutputMatcher::exact(Value::Bool(true)))
+                .output("codegen_ran", OutputMatcher::exact(Value::Bool(false)))
+                .description("Skip path: codegen exists → prep_success, not ran"),
+        )
+        .node_example(
+            NodeExample::new("parse_build")
+                .input("skip", Value::Bool(true))
+                .output("build_success", OutputMatcher::exact(Value::Bool(false)))
+                .output("build_skipped", OutputMatcher::exact(Value::Bool(true)))
+                .description("Skip path: build skipped → success false, skipped true"),
+        )
+        .node_example(
+            NodeExample::new("parse_test")
+                .input("skip", Value::Bool(true))
+                .output("test_success", OutputMatcher::exact(Value::Bool(false)))
+                .output("test_skipped", OutputMatcher::exact(Value::Bool(true)))
+                .description("Skip path: test skipped → success false, skipped true"),
+        )
+        .node_example(
+            NodeExample::new("prepare_codegen_exists")
+                .output("request", OutputMatcher::non_empty())
+                .description("Prepares file-exists check for codegen dir"),
+        )
+        .node_example(
+            NodeExample::new("prepare_codegen_cmd")
+                .output("skip", OutputMatcher::Satisfies {
+                    description: "skip is a boolean".into(),
+                    predicate: |v| matches!(v, Value::Bool(_)),
+                })
+                .description("Codegen command prepare emits skip flag"),
+        )
+        .node_example(
+            NodeExample::new("prepare_build")
+                .output("skip", OutputMatcher::Satisfies {
+                    description: "skip is a boolean".into(),
+                    predicate: |v| matches!(v, Value::Bool(_)),
+                })
+                .description("Build prepare emits skip flag"),
+        )
+        .node_example(
+            NodeExample::new("prepare_test")
+                .output("skip", OutputMatcher::Satisfies {
+                    description: "skip is a boolean".into(),
+                    predicate: |v| matches!(v, Value::Bool(_)),
+                })
+                .description("Test prepare emits skip flag"),
+        )
+        .node_example(
+            NodeExample::new("prepare_clippy_lint")
+                .input("build_success", Value::Bool(true))
+                .output("skip", OutputMatcher::exact(Value::Bool(false)))
+                .description("Build success → clippy not skipped"),
+        )
+        .node_example(
+            NodeExample::new("prepare_clippy_lint")
+                .input("build_success", Value::Bool(false))
+                .output("skip", OutputMatcher::exact(Value::Bool(true)))
+                .description("Build failure → clippy skipped"),
+        )
+        .node_example(
+            NodeExample::new("parse_clippy_lint")
+                .output("lint_success", OutputMatcher::Satisfies {
+                    description: "lint_success is a boolean".into(),
+                    predicate: |v| matches!(v, Value::Bool(_)),
+                })
+                .output("lint_skipped", OutputMatcher::Satisfies {
+                    description: "lint_skipped is a boolean".into(),
+                    predicate: |v| matches!(v, Value::Bool(_)),
+                })
+                .description("Clippy result parse produces success/skipped flags"),
+        )
+        // Primitive nodes — tested in their own crates
+        .skip_node_example("prepare_deps_exists")
 }
 
 /// Mock spec for testing CI failure.

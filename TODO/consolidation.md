@@ -202,6 +202,372 @@ These are already generic and in the right location:
 
 ---
 
+## 5. `type_id == "List"` dual encoding
+
+Cardinality is intended to be the canonical shape layer (element type +
+cardinality interval), but `"List"` is embedded as a `type_id` string
+in multiple code paths. This creates dual encoding: multiplicity is
+expressed both through cardinality AND through the type name.
+
+**The canonical model**: Port type = element type + cardinality.
+- `"String"` + `ZERO_OR_MORE` = tape of strings
+- `"String"` + `ONE` = exactly one string
+- `"String"` + `ZERO_OR_ONE` = optional string
+
+Under this model, no port should have `type_id == "List"`. List-ness
+*is* cardinality.
+
+**Where `"List"` appears as type_id:**
+
+| Location | File | What it does |
+|----------|------|-------------|
+| `repeatable` detection | `gunbc-dag/src/makegen/registry.rs:419` | `ep.type_id == "List"` to detect CLI repeatables |
+| Loop pattern input | `core/ir/src/patterns/loop_pattern.rs:64` | Hardcodes `input_port_type: "List"` |
+| Loop pattern output | `core/ir/src/patterns/loop_pattern.rs:69` | Hardcodes `output_port_type: "List"` |
+| CLI generation | `core/codegen/src/registry.rs` | Registry port defs with `"List"` type |
+
+**Already fixed**: `tool_names` port in makegen was
+`PortDef::list_nonempty("tool_names", "List")` (list-of-lists),
+corrected to `"String"` (list-of-strings).
+
+**Migration strategy** (incremental, not big-bang):
+1. Stop introducing new `"List"` uses
+2. Migrate semantically critical paths: CLI parsing (repeatable =
+   `cardinality.max > 1`), loop patterns (element type from port)
+3. Keep compatibility shims until registry + runtime agree
+4. `TypeContract::from_type_dag` already extracts cardinality from
+   type DAGs — this can become the canonical port type representation
+
+---
+
+## 6. Codebase fragility (non-testgen)
+
+### Builder functions referenced as strings
+
+**Where**: `core/codegen/src/registry.rs` `ToolDef::new()` —
+`graph_builder` parameter is `&str`.
+
+The registry stores builder function names as strings (e.g.,
+`"build_gist_graph"`). Testgen and codegen look up these strings
+to generate code. If a builder function is renamed, no compile
+error is produced — it fails at runtime or generates wrong code.
+
+**Fix**: Store an enum key (e.g., `GraphBuilderId`) instead of a
+string. Map enum → function in one place. Renames then produce
+compile errors.
+
+### `buck-out/gen` hardcoded in 16 locations
+
+**Where**: 5 source files across `core/codegen/src/main.rs`,
+`gunbc-dag/src/makegen/render.rs`, `gunbc-dag/src/ci/ops.rs`,
+`gunbc-dag/src/bin/ci.rs`, `gunbc-dag/src/ci/graph_mock.rs`.
+
+The output directory path is scattered as string literals. If
+it ever changes, these won't update together.
+
+**Fix**: Single constant in `core/ir` or `core/codegen`, referenced
+everywhere. Already noted informally but not tracked.
+
+### Static CODEGEN_SOURCES path list
+
+**Where**: `Makefile:16` and `gunbc-dag/src/makegen/render.rs:156`
+
+```makefile
+CODEGEN_SOURCES := $(shell find core/codegen/src core/ir/src -name '*.rs')
+```
+
+The directory list is hardcoded in both the Makefile and the Makefile
+generator. If codegen gains a new source dependency (e.g., a new
+crate in `core/`), the staleness stamp won't track it. Generated
+artifacts will appear up-to-date when they're not.
+
+**Fix**: Either derive the list from `Cargo.toml` dependencies, or
+at minimum maintain a single source-of-truth list that both the
+Makefile and the renderer reference.
+
+---
+
+## 7. Test Pattern Retrospective
+
+**885 manually written tests surveyed** across the codebase.
+All are purely in-memory — zero real I/O in any test today.
+
+### Pattern 1: Function Unit Tests (HashMap → execute → assert)
+
+The most common pattern. Build a `HashMap<String, Value>` of inputs,
+call the op's `execute()`, assert specific output ports.
+
+**Where**: `gunbc-dag/src/ci/ops.rs`, `gunbc-dag/src/bootstrap/ops.rs`,
+`lib/llm-ops/src/ops.rs`, every `ops.rs` file.
+
+```rust
+let mut inputs = HashMap::new();
+inputs.insert("response".into(), Value::Str(json_string));
+let outputs = op.execute(&inputs)?;
+assert_eq!(outputs.get("build_success"), Some(&Value::Bool(true)));
+```
+
+**Consolidation opportunity**: This is exactly what `NodeExample` now
+automates via testgen. Once Tier 1 infra (`execute_single_node`)
+is stable, many of these hand-written tests become redundant with
+their generated equivalents. Keep hand-written tests only for
+edge cases not expressible as `NodeExample`.
+
+### Pattern 2: Graph Structure Tests (static DAG properties)
+
+Tests that verify node counts, boundary lists, entrypoints,
+transport ports, and edge connectivity — without executing the DAG.
+
+**Where**: `gunbc-dag/src/ci/graph.rs`, `gunbc-dag/src/makegen/graph.rs`,
+`lib/tools/gist/src/graph.rs`.
+
+```rust
+let dag = build_ci_graph()?;
+assert_eq!(dag.nodes.len(), 15);
+assert!(dag.has_node("prepare_build"));
+let boundaries = detect_boundaries(&dag);
+assert!(boundaries.transport_nodes.contains(&"execute_transport"));
+```
+
+**Consolidation opportunity**: Testgen's Bucket A already covers
+boundary detection and transport interception. Remaining structural
+tests (node counts, specific node existence) are fragile — they
+break whenever the graph changes. Consider replacing with
+property-based checks (e.g., "all pure nodes have examples")
+rather than hard-coded counts.
+
+### Pattern 3: Signature Validation (validate + infer)
+
+Tests that verify type signature consistency at the port level:
+validate a node's signature, then infer types from connected edges.
+
+**Where**: `gunbc-dag/src/makegen/graph.rs`, `core/ir/src/dag.rs`.
+
+```rust
+let sig = node.signature();
+assert!(sig.validate().is_ok());
+let inferred = sig.infer_from(&connected_edges);
+assert!(inferred.is_compatible_with(&sig));
+```
+
+**Consolidation opportunity**: Testgen proves type compatibility by
+construction (see header comment in generated files). These tests
+are mostly redundant once testgen covers the DAG. Keep only for
+testing the signature validation API itself (in `core/ir`).
+
+### Pattern 4: Mode-Based Testing (enum variant parameterization)
+
+Tests that exercise different modes/configurations of the same graph,
+verifying structural differences.
+
+**Where**: `lib/tools/gist/src/graph.rs` (Snapshot vs Diff mode).
+
+```rust
+let snapshot_dag = build_gist_graph(GistMode::Snapshot)?;
+let diff_dag = build_gist_graph(GistMode::Diff)?;
+assert!(diff_dag.has_node("git_diff"));
+assert!(!snapshot_dag.has_node("git_diff"));
+```
+
+**Consolidation opportunity**: Testgen currently generates one test
+suite per MockSpec/DAG pair. Mode-parameterized DAGs need one
+MockSpec per mode. This is already handled (gist has separate
+MockSpecs) but could be formalized as a pattern in the testgen
+framework.
+
+### Pattern 5: Execution Mode Testing (DryRun with BoundaryMocks)
+
+Integration-style tests that execute the full DAG in DryRun mode
+with mocked transport responses, verifying execution flow.
+
+**Where**: `lib/tools/gist/tests/integration.rs`,
+`lib/tools/buck2/tests/integration.rs`.
+
+```rust
+let dag = build_gist_graph(GistMode::Snapshot)?;
+let mocks = gist_mock_spec().to_boundary_mocks();
+let log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks))?;
+assert!(log.get("create_gist").unwrap().was_intercepted);
+```
+
+**Consolidation opportunity**: This is exactly testgen Bucket A + C.
+These hand-written integration tests are now fully subsumed by
+generated tests. Once testgen covers all DAGs, these files can be
+deleted or reduced to edge-case-only suites.
+
+### Pattern 6: graph_mock.rs Test Blocks
+
+49 hand-written tests across 8 `graph_mock.rs` files. These test
+MockSpec properties (boundary presence, mock value content, chain
+validation, resources). All are mechanically generatable.
+
+**See**: `testgen-improvements.md` Phase 8 for the full extraction
+plan. Patterns A (boundary presence) and C (`validate_chain`)
+are safe to delete now — testgen already generates equivalent tests.
+Pattern E (signature validation) needs TODO 8.2 first.
+
+---
+
+## 8. Integration Test Gap Analysis
+
+**Current state**: All 885 tests are in-memory. Zero tests exercise
+real transport execution. The transport abstraction layer ensures
+correctness of DAG logic, but `lib/transport/src/executor.rs`
+is untested against real systems.
+
+### Design Problem: `TransportRequest` doesn't encode hermeticity
+
+We want test categories derived from the transport type system:
+**integration** (hermetic, local-only) vs **external** (non-hermetic,
+network/auth). But `TransportRequest` variant alone doesn't determine
+this.
+
+**The problem is `Shell`.** Higher-level domain types know whether
+they're hermetic, but that information is erased when they convert
+to `TransportRequest::Shell`:
+
+```
+GitRequest::LsFiles.to_shell_request()    → Shell { command: "git", ... }   // hermetic
+GistRequest::new().to_shell_request()     → Shell { command: "gh", ... }    // non-hermetic
+CargoCommand::Build.to_shell_request()    → ShellRequest { command: "cargo" } // hermetic
+```
+
+After conversion, these are indistinguishable at the transport layer.
+`ShellRequest` has no field indicating hermeticity. The executor
+sees `Shell(ShellRequest { command, args, ... })` and has no way
+to know whether it hits the network.
+
+**Where hermeticity actually lives:**
+
+| Producer type | File | Hermetic? |
+|---------------|------|-----------|
+| `GitRequest` | `core/ir/src/transport/git.rs` | Yes — local repo only |
+| `CargoCommand` | `core/ir/src/cargo.rs` | Yes — local build system |
+| `CliToolOp::Check/Install` | `core/ir/src/transport/cli.rs` | Yes — local PATH |
+| `GistRequest` (shell) | `core/ir/src/transport/gist.rs` | **No** — `gh gist create` hits GitHub |
+| `GistRequest` (REST) | `core/ir/src/transport/gist.rs` | **No** — `api.github.com` |
+| `RestRequest` (LLM) | `core/ir/src/transport/rest.rs` | **No** — OpenAI/Anthropic APIs |
+
+Hermeticity is a property of the **producer**, not the **transport
+variant**. `File` is always hermetic. `Rest`/`Http`/`Tcp` are always
+non-hermetic. `Shell` is mixed — depends on what produced it.
+
+**Options to fix (not blocking, but worth designing):**
+
+1. **Add `hermetic: bool` to `ShellRequest`** — Simple, set by
+   producers. Executor can assert/filter on it. Downside: ad-hoc
+   boolean, easy to get wrong.
+
+2. **Split `Shell` variant** — `TransportRequest::LocalShell` vs
+   `TransportRequest::NetworkShell`. Type-safe but changes the enum
+   everywhere.
+
+3. **Annotate at the DAG node level** — Add hermeticity metadata
+   to the node that wraps `TransportOps::Execute`, not to the
+   request itself. The node knows its producer. This aligns with
+   how testgen already classifies nodes (boundary detection).
+
+4. **Derive from producer before conversion** — Test categorization
+   happens at the domain type level (`GitRequest`, `GistRequest`),
+   not at the `TransportRequest` level. Tests import domain types
+   directly and never go through the executor's dispatch.
+
+**Current workaround**: Test categories use a manually maintained
+mapping. The tables below classify by **producer type**, not by
+`TransportRequest` variant, because the variant is insufficient.
+
+### Test Categories
+
+```
+make test              # In-memory: unit + generated (DryRun, mocked boundaries)
+make test-integration  # Hermetic transport producers (File, local Shell)
+make test-external     # Non-hermetic transport producers (Rest, Http, Tcp, network Shell)
+```
+
+#### `test-integration` — Hermetic transport producers
+
+Tests that execute real transport but require only the local machine.
+No network, no auth tokens, no external services. Safe to run on
+every CI commit.
+
+Classified by **producer type** (not `TransportRequest` variant):
+
+| Producer | Transport variant | What executes | Fixtures needed |
+|----------|-------------------|---------------|-----------------|
+| `FileRequest` | `File` | `std::fs::*` via `execute_file()` | `tempdir` |
+| (raw shell) | `Shell` | `Command::new()` via `execute_shell()` | System PATH |
+| `GitRequest` | `Shell` | `git` binary with deterministic flags | `tempdir` + `git init` |
+| `CliToolOp` | `Shell` | `which`, tool version checks | System PATH |
+| `CargoCommand` | `Shell` | `cargo build/test/clippy` | `cargo`, slow (XL) |
+
+Concrete test suites:
+
+| Suite | Producer | What It Covers |
+|-------|----------|----------------|
+| **File executor** | `FileRequest` | All 6 `FileOp` variants against temp dirs |
+| **Shell executor** | raw `ShellRequest` | stdout, stderr, exit codes, env vars, working dir |
+| **Git transport** | `GitRequest` | All variants against temp repo; deterministic flags produce parseable output |
+| **CLI tool resolution** | `CliToolOp` | `resolve_tool_path()`, `upsert_tool()`, version checks |
+| **Cargo workflows** | `CargoCommand` | Build/test/clippy via `CliTool` abstraction. Slow — gate behind `--features slow-integration` |
+
+#### `test-external` — Non-hermetic transport producers
+
+Tests that require network access, auth tokens, or create real
+external resources. Run on schedule or manual trigger only.
+
+| Producer | Transport variant | Why non-hermetic |
+|----------|-------------------|------------------|
+| `RestRequest` (GitHub) | `Rest` | Requires `AuthMethod` credentials, hits `api.github.com` |
+| `RestRequest` (LLM) | `Rest` | Requires API keys, hits OpenAI/Anthropic endpoints |
+| `GistRequest` (shell) | `Shell` | `gh gist create` requires `gh auth`, creates real resources |
+| `HttpRequest` | `Http` | Raw HTTP to remote hosts (currently stubbed to localhost-only) |
+| `TcpRequest` | `Tcp` | Raw TCP, requires network connectivity |
+
+Concrete test suites:
+
+| Suite | Producer | What It Covers |
+|-------|----------|----------------|
+| **GitHub gist (REST)** | `GistRequest` | POST to `api.github.com/gists` |
+| **GitHub gist (gh CLI)** | `GistRequest` | `gh gist create` via shell |
+| **LLM API calls** | `RestRequest` | OpenAI/Anthropic endpoints |
+| **HTTP transport** | `HttpRequest` | Raw HTTP (could become hermetic with fixture server) |
+
+### Boundary Summary
+
+| Boundary | Producer | Variant | Category | Coverage | Gap |
+|----------|----------|---------|----------|----------|-----|
+| Filesystem | `FileRequest` | `File` | integration | None | High |
+| Shell execution | raw `ShellRequest` | `Shell` | integration | None | High |
+| Git CLI | `GitRequest` | `Shell` | integration | None | Medium |
+| CLI tool resolution | `CliToolOp` | `Shell` | integration | None | Medium |
+| Cargo/Clippy/Rustfmt | `CargoCommand` | `Shell` | integration | None | Low |
+| GitHub API | `RestRequest` | `Rest` | external | None | Medium |
+| GitHub CLI (gh) | `GistRequest` | `Shell` | external | None | Medium |
+| LLM APIs | `RestRequest` | `Rest` | external | None | Low |
+| Raw HTTP | `HttpRequest` | `Http` | external | None | Low |
+| Raw TCP | `TcpRequest` | `Tcp` | external | None | Low |
+
+### Priority
+
+1. **File executor** (integration) — Highest value, lowest cost.
+   6 `FileOp` variants, temp dirs, instant.
+
+2. **Shell executor** (integration) — Second highest. Verify
+   `execute_shell()` handles stdout/stderr/exit codes correctly.
+
+3. **Git transport** (integration) — Temp repo, exercise all
+   `GitRequest` variants, verify deterministic flag output.
+
+4. **CLI tool resolution** (integration) — `which`-based path
+   resolution, version checks, upsert pattern.
+
+5. **GitHub REST** (external) — When auth infrastructure exists.
+
+6. **Cargo/Clippy** (integration, gated) — Behind feature flag
+   due to compilation time.
+
+---
+
 ## Tasks
 
 - [ ] Extract `hash_finding_id` to `lib/primitives` as `StableHashOp`
@@ -211,6 +577,19 @@ These are already generic and in the right location:
 - [ ] Design rendering DAG for CI workflow generation (when adding second provider)
 - [ ] Consider `ToolGraphOp<D>` generic wrapper (dag-pattern-ux.md Phase 4)
 - [ ] Split `MergeOutputs` dedup from cardinality handling (blocked on engine work)
+- [ ] Review hand-written tests for redundancy with testgen (Pattern 1, 5)
+- [ ] Remove fragile node-count assertions from graph structure tests (Pattern 2)
+- [ ] Eliminate `type_id == "List"` dual encoding (see §5, incremental migration)
+- [ ] Replace string-based builder references with enum keys (see §6)
+- [ ] Extract `buck-out/gen` to a single constant (see §6, 16 occurrences)
+- [ ] Fix CODEGEN_SOURCES hardcoded path list (see §6)
+- [ ] Design hermeticity annotation for `Shell` transport (see §8 design problem)
+- [ ] Add integration tests: `File` transport executor (all 6 FileOp variants)
+- [ ] Add integration tests: `Shell` transport executor (stdout, stderr, exit codes)
+- [ ] Add integration tests: Git transport (`GitRequest` variants against temp repo)
+- [ ] Add integration tests: CLI tool resolution (`resolve_tool_path`, `upsert_tool`)
+- [ ] Add `make test-integration` target (hermetic transport tests)
+- [ ] Add `make test-external` target (non-hermetic transport tests, scheduled CI)
 
 ## Notes
 
@@ -223,3 +602,20 @@ These are already generic and in the right location:
 - `Renderable` trait is a good foundation. Rendering DAGs would use
   ops that implement `Executable`, with `Renderable` for the final
   output formatting step.
+- Hermeticity is a producer-level property, not a transport-level
+  property. `Shell` is overloaded: `GitRequest` → hermetic,
+  `GistRequest` → non-hermetic, both produce identical `ShellRequest`.
+  Test categories must be derived from the producer type, not the
+  `TransportRequest` variant. This is a design gap in the type system.
+- Test retrospective: 885 tests, all in-memory. Transport executor
+  (`lib/transport/src/executor.rs`) is the untested boundary.
+  `File` and `Shell` integration tests are the highest-value additions.
+- Testgen already subsumes most hand-written integration tests
+  (Pattern 5). Focus hand-written tests on edge cases only.
+- graph_mock.rs files should become data-only (MockSpec + examples).
+  49 tests across 8 files are deletable once testgen Phase 8 lands.
+  Watch: some library targets call `.no_boundary_tests()` — verify
+  generated suite still covers those invariants before deleting.
+- Makefile gen and CI gen should read `all_testgen_targets()` to
+  auto-generate check targets (testgen-improvements.md TODO 6.3).
+  This makes "add a new tool" a single edit instead of 3+.
