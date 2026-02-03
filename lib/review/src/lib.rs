@@ -247,8 +247,12 @@ pub enum ReviewOps {
 
     /// Merge multiple ReviewOutputs into a ReviewBundle.
     ///
+    /// Accepts both a single ReviewOutput object and an array of them.
+    /// This means review sources can wire directly to merge without
+    /// needing wrapper nodes.
+    ///
     /// Inputs:
-    /// - `outputs`: Json - array of ReviewOutput objects
+    /// - `outputs`: Json - single ReviewOutput object OR array of them
     ///
     /// Outputs:
     /// - `bundle`: Json - merged ReviewBundle
@@ -273,19 +277,6 @@ pub enum ReviewOps {
     /// Outputs:
     /// - `artifact`: String - formatted diff text suitable for LLM review
     FormatDiffArtifact,
-
-    /// Wrap a single Json value in a one-element array.
-    ///
-    /// MergeOutputs expects `Vec<ReviewOutput>` (a JSON array), but a single
-    /// review source produces one `ReviewOutput` object. This op bridges
-    /// the type mismatch.
-    ///
-    /// Inputs:
-    /// - `item`: Json - a single JSON value
-    ///
-    /// Outputs:
-    /// - `array`: Json - `[item]`
-    WrapArray,
 }
 
 impl Executable for ReviewOps {
@@ -297,7 +288,6 @@ impl Executable for ReviewOps {
             ReviewOps::MergeOutputs => execute_merge_outputs(inputs),
             ReviewOps::HashFinding => execute_hash_finding(inputs),
             ReviewOps::FormatDiffArtifact => execute_format_diff_artifact(inputs),
-            ReviewOps::WrapArray => execute_wrap_array(inputs),
         }
     }
 }
@@ -453,8 +443,19 @@ fn execute_merge_outputs(
         .and_then(|v| v.as_json())
         .ok_or_else(|| ExecError::new("missing or invalid 'outputs' input"))?;
 
-    let outputs: Vec<ReviewOutput> = serde_json::from_value(outputs_json.clone())
-        .map_err(|e| ExecError::new(format!("invalid 'outputs' JSON: {}", e)))?;
+    // Accept both a single ReviewOutput object and an array of them.
+    // Each review source naturally produces one ReviewOutput; the merge
+    // node should handle either shape without requiring wrapper nodes.
+    let outputs: Vec<ReviewOutput> = if outputs_json.is_array() {
+        serde_json::from_value(outputs_json.clone())
+            .map_err(|e| ExecError::new(format!("invalid 'outputs' array: {}", e)))?
+    } else if outputs_json.is_object() {
+        let single: ReviewOutput = serde_json::from_value(outputs_json.clone())
+            .map_err(|e| ExecError::new(format!("invalid 'outputs' object: {}", e)))?;
+        vec![single]
+    } else {
+        return Err(ExecError::new("'outputs' must be a JSON object or array"));
+    };
 
     // Merge findings, deduplicating by ID
     let mut seen_ids: HashMap<String, usize> = HashMap::new();
@@ -535,21 +536,6 @@ fn execute_format_diff_artifact(
 
     let mut out = HashMap::new();
     out.insert("artifact".to_string(), Value::Str(artifact));
-    Ok(out)
-}
-
-fn execute_wrap_array(
-    inputs: HashMap<String, Value>,
-) -> Result<HashMap<String, Value>, ExecError> {
-    let item = inputs
-        .get("item")
-        .and_then(|v| v.as_json())
-        .ok_or_else(|| ExecError::new("missing or invalid 'item' input"))?;
-
-    let array = serde_json::Value::Array(vec![item.clone()]);
-
-    let mut out = HashMap::new();
-    out.insert("array".to_string(), Value::Json(array));
     Ok(out)
 }
 
@@ -959,6 +945,42 @@ Please fix these issues."#;
 
         assert_eq!(bundle.outputs.len(), 2);
         assert_eq!(bundle.merged_findings.len(), 2);
+    }
+
+    #[test]
+    fn test_merge_outputs_single_object() {
+        // MergeOutputs should accept a single ReviewOutput (not wrapped in array)
+        let output = ReviewOutput {
+            schema_version: "0.1.0".to_string(),
+            criteria_name: "security".to_string(),
+            source: "llm".to_string(),
+            findings: vec![Finding {
+                id: "abc123".to_string(),
+                check_id: "sql-injection".to_string(),
+                issue_key: "test1".to_string(),
+                location: Location::Unlocated,
+                observation: "Issue 1".to_string(),
+                candidate_fix: None,
+            }],
+            candidate_remediations: None,
+            summary: "LLM review".to_string(),
+        };
+
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "outputs".to_string(),
+            Value::Json(serde_json::to_value(&output).unwrap()),
+        );
+
+        let result = ReviewOps::MergeOutputs.execute(inputs).unwrap();
+
+        let bundle: ReviewBundle =
+            serde_json::from_value(result.get("bundle").unwrap().as_json().unwrap().clone())
+                .unwrap();
+
+        assert_eq!(bundle.outputs.len(), 1);
+        assert_eq!(bundle.merged_findings.len(), 1);
+        assert_eq!(bundle.outputs[0].source, "llm");
     }
 
     #[test]
