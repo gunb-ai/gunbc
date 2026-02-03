@@ -734,13 +734,14 @@ This could live in `core/test/` alongside existing test infrastructure.
 
 ## Tasks
 
-### High priority (widespread, low effort)
-- [ ] Add `require_str`, `require_json`, `optional_str` input helpers (80 call sites)
-- [ ] Add `OutputMap` builder or `outputs!` macro (164 call sites)
-- [ ] Add `TransportResponse::require_shell/rest/file` methods (51 call sites)
+### High priority (widespread, low effort) — DONE
+- [x] Add `require_str`, `require_json`, `optional_str` input helpers (80 call sites) — `core/exec/src/helpers.rs`
+- [x] Add `OutputMap` builder (164 call sites) — `core/exec/src/helpers.rs`
+- [x] Add `TransportResponseExt::require_shell/rest/file` methods (51 call sites) — `core/exec/src/helpers.rs`
+- [x] Add `ShellRequest::into_transport_request()` — `core/ir/src/transport/mod.rs`
 
 ### Medium priority
-- [ ] Add `ShellRequest::new().args().cwd()` builder (20 call sites)
+- [ ] Migrate remaining raw `ShellRequest { .. }` construction to builder (20 call sites)
 - [ ] Add `assert_boundaries` test helper to `core/test` (8 files)
 - [ ] Extract `hash_finding_id` to `lib/primitives` as `StableHashOp`
 - [ ] Unify blob hash with review hash (both should use SHA256)
