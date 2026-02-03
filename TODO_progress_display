@@ -1,0 +1,581 @@
+# TODO_progress_display
+#
+# Design: DAG progress visualization with "power flow" rendering.
+#
+# Replace verbose line-dump shell output with a live DAG visualization
+# that shows nodes lighting up as execution progresses — think SimCity
+# (2013) power grid flowing through infrastructure.
+#
+# Architecture: renderer-agnostic data model + pluggable display backends
+# (terminal first, web later — same underlying state).
+
+## Problem
+
+Current shell output dumps sequential log lines:
+
+    [parse_read_files]
+      contents: {234 entries}
+    [render_markdown]
+      markdown: # Code Snapshot...
+    [execute_gist]
+      exit_code: 0
+      stderr: - Creating gist snapshot.md
+    [parse_gist_response]
+      url: https://gist.github.com/...
+
+This is functional but:
+- No sense of overall progress or structure
+- Can't see which nodes are waiting, running, or done
+- No visual relationship between nodes (edges are invisible)
+- Long pipelines produce walls of text that scroll off screen
+
+## Design: Three-layer architecture
+
+    ┌─────────────────────────────────────────────────────┐
+    │  Layer 3: Renderers (terminal, web, CI)             │
+    │  - TerminalRenderer: ANSI TUI with live updates     │
+    │  - WebRenderer: JSON/SSE stream for browser UI      │
+    │  - CiRenderer: existing CI group/annotation output  │
+    ├─────────────────────────────────────────────────────┤
+    │  Layer 2: DagProgress (renderer-agnostic state)     │
+    │  - NodeState, EdgeState, timing, output summaries   │
+    │  - Snapshot-based: renderers poll or subscribe       │
+    ├─────────────────────────────────────────────────────┤
+    │  Layer 1: ProgressObserver (execution hook)         │
+    │  - Plugs into execute_flat() loop                   │
+    │  - Emits events: NodeStarted, NodeCompleted, etc.   │
+    └─────────────────────────────────────────────────────┘
+
+## Layer 1: ProgressObserver trait
+
+Plugs into the existing execute_flat() loop in core/exec/src/execute.rs.
+The current loop already processes nodes in topo order — we just need
+callbacks at the right points.
+
+```rust
+/// Observer for DAG execution progress.
+///
+/// Called by the executor at key points during DAG execution.
+/// Implementations control what happens with progress information:
+/// terminal display, web streaming, logging, etc.
+pub trait ProgressObserver: Send {
+    /// Called once before execution begins with the full DAG topology.
+    /// The observer uses this to build its internal layout/graph.
+    fn on_dag_start(&mut self, snapshot: &DagSnapshot);
+
+    /// Called when a node begins execution.
+    fn on_node_start(&mut self, node_id: &NodeId);
+
+    /// Called when a node completes successfully.
+    /// `summary` contains a compact representation of outputs (not raw values).
+    fn on_node_complete(&mut self, node_id: &NodeId, summary: OutputSummary);
+
+    /// Called when a node fails.
+    fn on_node_failed(&mut self, node_id: &NodeId, error: &str);
+
+    /// Called when a node is skipped (guard predicate failed).
+    fn on_node_skipped(&mut self, node_id: &NodeId);
+
+    /// Called when a node is intercepted (dry-run mock).
+    fn on_node_intercepted(&mut self, node_id: &NodeId, summary: OutputSummary);
+
+    /// Called once after all nodes have been processed.
+    fn on_dag_complete(&mut self, elapsed: Duration);
+}
+```
+
+### DagSnapshot — topology for layout
+
+```rust
+/// Static DAG topology snapshot for renderers to build layouts from.
+/// This is the "shape" of the graph, not the execution state.
+pub struct DagSnapshot {
+    pub nodes: Vec<NodeInfo>,
+    pub edges: Vec<EdgeInfo>,
+    /// Topological order (execution sequence for sequential mode)
+    pub topo_order: Vec<NodeId>,
+}
+
+pub struct NodeInfo {
+    pub id: NodeId,
+    pub input_ports: Vec<PortName>,
+    pub output_ports: Vec<PortName>,
+    /// Whether this node is a transport executor (I/O boundary)
+    pub is_boundary: bool,
+    /// Display label (may differ from id for sub-DAG lowered nodes)
+    pub label: String,
+}
+
+pub struct EdgeInfo {
+    pub from_node: NodeId,
+    pub from_port: PortName,
+    pub to_node: NodeId,
+    pub to_port: PortName,
+}
+```
+
+### OutputSummary — compact output representation
+
+```rust
+/// Compact summary of node outputs for display.
+/// Raw values are NOT stored — just enough for a status line.
+pub struct OutputSummary {
+    pub fields: Vec<FieldSummary>,
+    pub elapsed: Duration,
+}
+
+pub struct FieldSummary {
+    pub name: String,
+    pub kind: FieldKind,
+    pub preview: String,  // max ~80 chars, truncated
+}
+
+pub enum FieldKind {
+    Scalar,       // "hello world"
+    Number,       // "42"
+    Boolean,      // "true"
+    List(usize),  // "[234 items]"
+    Map(usize),   // "{12 entries}"
+    Secret,       // "***"
+    Url,          // clickable in terminal
+    Empty,        // ""
+}
+```
+
+### Integration point in execute_flat()
+
+The change to execute_flat() is minimal — just add observer calls
+around the existing node execution:
+
+```rust
+fn execute_flat<T: Executable>(
+    dag: &Dag<T>,
+    boundaries: &BoundaryInfo,
+    mode: &ExecutionMode,
+    ci: Option<&mut CiContext>,
+    observer: Option<&mut dyn ProgressObserver>,  // NEW
+) -> Result<ExecutionLog, ExecError> {
+    let order = topo_sort(dag);
+
+    // NEW: notify observer of DAG topology
+    if let Some(ref mut obs) = observer {
+        obs.on_dag_start(&build_snapshot(dag, &order));
+    }
+
+    let start = Instant::now();
+
+    for node_id in &order {
+        // NEW: notify observer
+        if let Some(ref mut obs) = observer {
+            obs.on_node_start(node_id);
+        }
+
+        // ... existing execution logic ...
+
+        // NEW: notify observer of result
+        if let Some(ref mut obs) = observer {
+            match &result {
+                Ok(outputs) if was_intercepted =>
+                    obs.on_node_intercepted(node_id, summarize(outputs)),
+                Ok(outputs) =>
+                    obs.on_node_complete(node_id, summarize(outputs)),
+                Err(e) =>
+                    obs.on_node_failed(node_id, &e.to_string()),
+            }
+        }
+    }
+
+    // NEW: notify observer of completion
+    if let Some(ref mut obs) = observer {
+        obs.on_dag_complete(start.elapsed());
+    }
+
+    Ok(ExecutionLog { entries })
+}
+```
+
+Files:
+  - core/exec/src/execute.rs    (add observer parameter + callbacks)
+  - core/exec/src/lib.rs        (re-export ProgressObserver, DagSnapshot)
+  - core/exec/src/progress.rs   (NEW: ProgressObserver trait + types)
+
+## Layer 2: DagProgress state machine
+
+Renderer-agnostic state that any display backend can consume.
+This is the "model" — it knows nothing about terminals or HTML.
+
+```rust
+/// Live state of a DAG execution.
+///
+/// Built from ProgressObserver events. Renderers read this to know
+/// what to display. Can be serialized to JSON for web transport.
+#[derive(Debug, Clone, Serialize)]
+pub struct DagProgress {
+    pub nodes: HashMap<NodeId, NodeProgress>,
+    pub edges: HashMap<(NodeId, NodeId), EdgeProgress>,
+    pub topo_order: Vec<NodeId>,
+    pub phase: DagPhase,
+    pub elapsed: Duration,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub enum DagPhase {
+    NotStarted,
+    Running { current_node: NodeId },
+    Completed { elapsed: Duration },
+    Failed { node: NodeId, error: String },
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct NodeProgress {
+    pub id: NodeId,
+    pub label: String,
+    pub state: NodeState,
+    pub is_boundary: bool,
+    pub summary: Option<OutputSummary>,
+    pub elapsed: Option<Duration>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub enum NodeState {
+    /// Not yet reached in topo order
+    Pending,
+    /// Currently executing
+    Running,
+    /// Finished successfully
+    Completed,
+    /// Finished with error
+    Failed,
+    /// Guard predicate skipped this node
+    Skipped,
+    /// Intercepted by dry-run mock
+    Intercepted,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub enum EdgeState {
+    /// No data has flowed yet
+    Idle,
+    /// Source node completed — data is "flowing" to target
+    /// (visual: animated pulse/highlight)
+    Flowing,
+    /// Target node consumed the data — edge is done
+    Done,
+    /// Source was skipped — edge will never carry data
+    Dead,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct EdgeProgress {
+    pub from: NodeId,
+    pub to: NodeId,
+    pub state: EdgeState,
+}
+```
+
+### State transitions (the "power flow")
+
+The SimCity power-grid effect comes from edge state transitions:
+
+    1. DAG starts:     all nodes=Pending, all edges=Idle
+    2. Node A starts:  A=Running
+    3. Node A done:    A=Completed, edges(A→*)=Flowing
+    4. Node B starts:  B=Running, edges(*→B)=Done
+    5. Node B done:    B=Completed, edges(B→*)=Flowing
+    ...
+    N. Last node done: DAG=Completed
+
+The "Flowing" state is the key visual moment — it represents data
+traveling along the edge. A renderer can show this as:
+  - Terminal: brief color pulse on the edge character (─ → ═ → ─)
+  - Web: CSS animation along the SVG path
+  - CI: no visual effect (just log output)
+
+Files:
+  - core/exec/src/progress.rs  (DagProgress, NodeProgress, EdgeProgress)
+
+## Layer 3: Terminal Renderer
+
+### Approach: lightweight ANSI, not full TUI framework
+
+A full TUI framework (ratatui) would be heavyweight for what is
+essentially a progress display. Instead, use direct ANSI escape codes
+with a layout engine that computes character positions from the DAG
+topology.
+
+Rationale:
+- No external dependency (ratatui = ~15 crates in the dep tree)
+- Output is a rectangular character buffer, easy to reason about
+- Can print final state as static text after execution completes
+- Works in any terminal that supports ANSI (which is all of them)
+
+If we later want interactivity (scrolling, clicking nodes), we can
+upgrade to ratatui — but the DagProgress model stays the same.
+
+### Visual design
+
+```
+  gist-diff pipeline                               elapsed: 1.2s
+  ─────────────────────────────────────────────────────────────────
+
+  ● read_files ──────── ● parse_read_files ──────── ● render_markdown
+    ✓ 0.02s               ✓ 0.1s  {234 entries}      ✓ 0.05s
+                                        │
+                                        ▼
+                           ● prepare_gist_request ── ● execute_gist
+                             ✓ 0.01s                   ◐ running...
+                                                           │
+                                                           ▼
+                                                  ● parse_gist_response
+                                                    ○ pending
+```
+
+### Node glyphs
+
+    ○  Pending     (dim/gray)
+    ◐  Running     (yellow, may animate ◐◑◒◓)
+    ●  Completed   (green)
+    ✗  Failed      (red)
+    ◌  Skipped     (dim, strikethrough)
+    ◇  Intercepted (cyan, dry-run)
+
+### Edge glyphs
+
+    ──  Idle     (dim gray)
+    ══  Flowing  (bright white/yellow pulse)
+    ──  Done     (green)
+    ╌╌  Dead     (dim, dashed)
+
+### Layout algorithm
+
+Leveled layout based on topological distance from root:
+
+    1. Compute topo order
+    2. Assign each node a "level" = max distance from any root
+    3. Within each level, order nodes by topo index
+    4. Render left-to-right, wrapping at terminal width
+    5. Draw edges as horizontal (same level) or vertical (cross-level)
+
+For small DAGs (≤10 nodes), a single-line horizontal layout works:
+
+    ● A ── ● B ── ● C ── ● D
+
+For larger DAGs, use multi-row with vertical connections:
+
+    ● A ──┬── ● B ── ● D ──┬── ● F
+          │                 │
+          └── ● C ──────────┘
+                    │
+                    └── ● E
+
+### Rendering loop
+
+```rust
+pub struct TerminalRenderer {
+    /// Layout computed from DagSnapshot
+    layout: DagLayout,
+    /// Current frame buffer (character grid)
+    buffer: TermBuffer,
+    /// Terminal dimensions
+    width: u16,
+    height: u16,
+    /// Whether we're in "live" mode (with cursor movement)
+    /// or "static" mode (just print lines)
+    live: bool,
+}
+
+impl ProgressObserver for TerminalRenderer {
+    fn on_dag_start(&mut self, snapshot: &DagSnapshot) {
+        self.layout = compute_layout(snapshot, self.width);
+        self.render_frame();
+    }
+
+    fn on_node_start(&mut self, node_id: &NodeId) {
+        self.layout.set_state(node_id, NodeState::Running);
+        self.render_frame();
+    }
+
+    fn on_node_complete(&mut self, node_id: &NodeId, summary: OutputSummary) {
+        self.layout.set_state(node_id, NodeState::Completed);
+        self.layout.set_summary(node_id, summary);
+        // Transition outgoing edges to Flowing
+        self.layout.flow_edges_from(node_id);
+        self.render_frame();
+    }
+
+    fn on_dag_complete(&mut self, elapsed: Duration) {
+        // Print final static summary (no cursor movement)
+        self.print_final_summary(elapsed);
+    }
+}
+
+impl TerminalRenderer {
+    fn render_frame(&mut self) {
+        if self.live {
+            // Move cursor to top of display area and redraw
+            print!("\x1b[{}A", self.buffer.height);
+            self.buffer.clear();
+            self.draw_dag();
+            self.buffer.flush();
+        } else {
+            // Static mode: just print current state
+            self.draw_dag();
+            self.buffer.flush();
+        }
+    }
+}
+```
+
+### TermBuffer — minimal character grid
+
+```rust
+/// Rectangular character buffer with ANSI color support.
+/// No external deps — just String manipulation.
+pub struct TermBuffer {
+    cells: Vec<Vec<Cell>>,
+    width: usize,
+    height: usize,
+}
+
+pub struct Cell {
+    ch: char,
+    fg: Color,
+    bold: bool,
+    dim: bool,
+}
+
+pub enum Color {
+    Default,
+    Red,
+    Green,
+    Yellow,
+    Blue,
+    Cyan,
+    White,
+    Gray,
+}
+```
+
+Files:
+  - NEW crate: core/progress/           (or lib/progress/)
+    - src/lib.rs                         (re-exports)
+    - src/observer.rs                    (ProgressObserver trait)
+    - src/model.rs                       (DagProgress state machine)
+    - src/summary.rs                     (OutputSummary, FieldSummary)
+    - src/terminal/mod.rs                (TerminalRenderer)
+    - src/terminal/layout.rs             (DAG layout algorithm)
+    - src/terminal/buffer.rs             (TermBuffer, Cell, Color)
+    - src/terminal/glyphs.rs             (node/edge glyph constants)
+
+## Web renderer (future, design only)
+
+Same DagProgress model, different display:
+
+    1. Serialize DagProgress to JSON
+    2. Stream via SSE (server-sent events) or WebSocket
+    3. Browser renders with SVG/Canvas
+    4. CSS animations for "Flowing" edge state
+    5. Click nodes to expand OutputSummary
+
+The key insight: because DagProgress derives Serialize, the web
+renderer is just `serde_json::to_string(&progress)` piped to a
+connection. No new data model needed.
+
+## Implementation plan
+
+### Phase 1: Data model + observer (core/exec changes)
+
+1. Add core/exec/src/progress.rs with:
+   - ProgressObserver trait
+   - DagSnapshot, NodeInfo, EdgeInfo
+   - OutputSummary, FieldSummary, FieldKind
+   - DagProgress, NodeProgress, EdgeProgress state types
+   - NodeState, EdgeState enums
+
+2. Add observer parameter to execute_flat() (Option<&mut dyn ProgressObserver>)
+   - Wire up on_dag_start, on_node_start, on_node_complete, etc.
+   - Keep existing CI context + print_log_entry behavior as-is
+   - Add execute_with_progress() public API
+
+3. Add summarize() function that converts HashMap<String, Value>
+   into OutputSummary (reuse logic from print_log_entry)
+
+### Phase 2: Terminal renderer (new crate)
+
+4. Create core/progress/ crate with workspace dependency on gunbc-exec
+
+5. Implement layout algorithm:
+   - Level assignment from topo order
+   - Horizontal packing within terminal width
+   - Edge routing (horizontal + vertical segments)
+
+6. Implement TermBuffer (character grid with ANSI colors)
+
+7. Implement TerminalRenderer as ProgressObserver:
+   - Live mode: cursor-based redraw
+   - Static mode: progressive line output
+   - Detect terminal capability (isatty, width)
+
+8. Integrate into gunbc-dag binary entry points:
+   - Add --progress flag (default: on for TTY, off for pipe)
+   - Replace raw println! output with observer-driven display
+
+### Phase 3: Polish + animation
+
+9. Add spinner animation for Running nodes (◐◑◒◓ cycle)
+10. Add edge flow animation (brief highlight pulse)
+11. Add elapsed time display per node and total
+12. Add compact mode for large DAGs (collapse completed nodes)
+13. Handle terminal resize (SIGWINCH)
+
+### Phase 4: Web renderer (future)
+
+14. Add JSON serialization for DagProgress
+15. Add SSE/WebSocket streaming endpoint
+16. Browser-side SVG renderer
+17. CSS animation for edge flow
+
+## Design decisions
+
+### Why not ratatui?
+
+ratatui is excellent for interactive TUIs but adds ~15 transitive
+dependencies. Our use case is a progress display, not an interactive
+app — we don't need scrolling, input handling, mouse events, or
+widgets. A 200-line TermBuffer gives us everything we need.
+
+If we later want interactivity (e.g., click a node to see its full
+output), ratatui becomes the right choice. The DagProgress model
+works with either approach — renderers are swappable.
+
+### Why observer pattern instead of channel?
+
+Channels (mpsc) enable async rendering on a separate thread, which
+matters for animation smoothness. But execution is currently
+synchronous and single-threaded. Adding a channel + render thread
+is premature complexity.
+
+The observer pattern is simpler:
+- Synchronous: render happens between node executions
+- No threading: no Arc/Mutex, no channel setup
+- Easy to test: mock observer records events
+
+When/if execution becomes concurrent (parallel node execution),
+switch to a channel-based approach. The ProgressObserver trait
+stays the same — just the impl changes.
+
+### Why Serialize on DagProgress?
+
+Web renderer needs JSON. But even before that, Serialize enables:
+- Snapshot testing (assert_json_eq! on progress states)
+- Logging progress to a file for post-mortem analysis
+- Piping to jq for scripting
+
+### Why not modify ExecutionLog?
+
+ExecutionLog is a post-hoc record. DagProgress is a live state
+machine. They serve different purposes:
+- ExecutionLog: "what happened" (for downstream code, assertions)
+- DagProgress: "what's happening now" (for humans watching)
+
+Merging them would couple display concerns with execution semantics.
