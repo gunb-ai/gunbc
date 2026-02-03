@@ -16,7 +16,7 @@
 
 use gunbc_ir::transport::llm::mock;
 use gunbc_ir::{Value, SecretString};
-use gunbc_test::{InputConstraint, MockSpec};
+use gunbc_test::{InputConstraint, MockSpec, NodeExample, OutputMatcher};
 
 /// Mock specification for OpenAI chat completion.
 ///
@@ -74,6 +74,24 @@ pub fn openai_mock_spec() -> MockSpec {
         .expects_input("provider", InputConstraint::OneOf(vec![Value::Str("openai".into())]))
         .expects_input("model", InputConstraint::NonEmpty)
         .expects_input("messages", InputConstraint::NonEmpty)
+        // Node I/O examples: verify pure node behavior
+        .node_example(
+            NodeExample::new("prepare")
+                .input("provider", Value::Str("openai".into()))
+                .input("model", Value::Str("gpt-4o".into()))
+                .input("messages", Value::Str("Hello".into()))
+                .output("request", OutputMatcher::non_empty())
+                .output("provider", OutputMatcher::exact(Value::Str("openai".into())))
+                .description("OpenAI prepare emits REST request and echoes provider"),
+        )
+        .node_example(
+            NodeExample::new("parse")
+                .input("provider", Value::Str("openai".into()))
+                .input("response", Value::Skipped)
+                .output("content", OutputMatcher::Any)
+                .output("model", OutputMatcher::Any)
+                .description("OpenAI parse handles skipped transport response"),
+        )
 }
 
 /// Mock specification for Anthropic chat completion.
@@ -132,6 +150,24 @@ pub fn anthropic_mock_spec() -> MockSpec {
         )
         .expects_input("model", InputConstraint::NonEmpty)
         .expects_input("messages", InputConstraint::NonEmpty)
+        // Node I/O examples: verify pure node behavior
+        .node_example(
+            NodeExample::new("prepare")
+                .input("provider", Value::Str("anthropic".into()))
+                .input("model", Value::Str("claude-sonnet-4-20250514".into()))
+                .input("messages", Value::Str("Hello".into()))
+                .output("request", OutputMatcher::non_empty())
+                .output("provider", OutputMatcher::exact(Value::Str("anthropic".into())))
+                .description("Anthropic prepare emits REST request and echoes provider"),
+        )
+        .node_example(
+            NodeExample::new("parse")
+                .input("provider", Value::Str("anthropic".into()))
+                .input("response", Value::Skipped)
+                .output("content", OutputMatcher::Any)
+                .output("model", OutputMatcher::Any)
+                .description("Anthropic parse handles skipped transport response"),
+        )
 }
 
 /// Mock specification for code review workflow.
@@ -181,6 +217,24 @@ Overall: The code is clean and well-structured. Minor fixes recommended.";
         .expects_input("provider", InputConstraint::NonEmpty)
         .expects_input("model", InputConstraint::NonEmpty)
         .expects_input("messages", InputConstraint::NonEmpty)
+        // Node I/O examples: verify pure node behavior
+        .node_example(
+            NodeExample::new("prepare")
+                .input("provider", Value::Str("openai".into()))
+                .input("model", Value::Str("gpt-4o".into()))
+                .input("messages", Value::Str("Review this code".into()))
+                .output("request", OutputMatcher::non_empty())
+                .output("provider", OutputMatcher::non_empty())
+                .description("Code review prepare emits REST request"),
+        )
+        .node_example(
+            NodeExample::new("parse")
+                .input("provider", Value::Str("openai".into()))
+                .input("response", Value::Skipped)
+                .output("content", OutputMatcher::Any)
+                .output("model", OutputMatcher::Any)
+                .description("Code review parse handles skipped transport response"),
+        )
 }
 
 /// Mock specification for testing API key as secret.
@@ -226,6 +280,24 @@ pub fn secret_api_key_mock_spec() -> MockSpec {
         .expects_input("model", InputConstraint::NonEmpty)
         // API key resource: lease-based (keys can expire)
         .resource_lease("api:openai_key", 3_600_000) // 1 hour
+        // Node I/O examples: verify pure node behavior
+        .node_example(
+            NodeExample::new("prepare")
+                .input("provider", Value::Str("openai".into()))
+                .input("model", Value::Str("gpt-4o".into()))
+                .input("messages", Value::Str("Hello".into()))
+                .output("request", OutputMatcher::non_empty())
+                .output("provider", OutputMatcher::non_empty())
+                .description("Secret auth prepare emits REST request"),
+        )
+        .node_example(
+            NodeExample::new("parse")
+                .input("provider", Value::Str("openai".into()))
+                .input("response", Value::Skipped)
+                .output("content", OutputMatcher::Any)
+                .output("model", OutputMatcher::Any)
+                .description("Secret auth parse handles skipped transport response"),
+        )
 }
 
 /// Mock specification for testing rate limiting / error scenarios.

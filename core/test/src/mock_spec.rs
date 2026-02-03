@@ -59,6 +59,10 @@ pub struct MockSpec {
     /// Each example specifies inputs and expected outputs for a single node.
     pub node_examples: Vec<NodeExample>,
 
+    /// Node IDs explicitly skipped from example enforcement.
+    /// Use this for primitive/utility nodes that are tested in their own crates.
+    pub skipped_node_examples: Vec<String>,
+
     /// Mock values for DAG entry inputs (dangling input ports with no upstream edge).
     /// These values are injected when testing a DAG in isolation.
     pub input_mocks: Vec<InputMock>,
@@ -75,6 +79,7 @@ impl MockSpec {
             transport_mocks: Vec::new(),
             expected_outputs: Vec::new(),
             node_examples: Vec::new(),
+            skipped_node_examples: Vec::new(),
             input_mocks: Vec::new(),
         }
     }
@@ -167,6 +172,16 @@ impl MockSpec {
     /// verify: given these inputs, the node produces outputs matching these matchers.
     pub fn node_example(mut self, example: NodeExample) -> Self {
         self.node_examples.push(example);
+        self
+    }
+
+    /// Skip example enforcement for a node.
+    ///
+    /// Use this for primitive/utility nodes that are tested in their own crates
+    /// and don't need I/O examples in the integration test suite. Without this,
+    /// testgen will fail if a pure node has no examples.
+    pub fn skip_node_example(mut self, node_id: impl Into<String>) -> Self {
+        self.skipped_node_examples.push(node_id.into());
         self
     }
 
@@ -783,20 +798,20 @@ impl OutputMatcher {
         match self {
             OutputMatcher::Exact(expected) => {
                 format!(
-                    "assert_eq!({}, {}, \"expected exact value\")",
+                    "assert_eq!(*{}, {}, \"expected exact value\");",
                     value_expr,
                     value_to_code(expected)
                 )
             }
             OutputMatcher::Contains(substring) => {
                 format!(
-                    "assert!({}.as_str().map(|s| s.contains(\"{}\")).unwrap_or(false), \"expected to contain '{}'\", {})",
+                    "assert!({}.as_str().map(|s| s.contains(\"{}\")).unwrap_or(false), \"expected to contain '{}', got: {{:?}}\", {});",
                     value_expr, substring.replace('\"', "\\\""), substring.replace('\"', "\\\""), value_expr
                 )
             }
             OutputMatcher::NonEmpty => {
                 format!(
-                    "assert!(!{}.as_str().map(|s| s.is_empty()).unwrap_or(false), \"expected non-empty\")",
+                    "assert!(!{}.as_str().map(|s| s.is_empty()).unwrap_or(false), \"expected non-empty\");",
                     value_expr
                 )
             }

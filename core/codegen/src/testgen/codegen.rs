@@ -167,6 +167,81 @@ impl<'a, T> TestGenerator<'a, T> {
             );
         }
 
+        // Validate that all pure nodes have I/O examples or are explicitly skipped.
+        //
+        // Pure nodes (non-transport, non-tool-env) contain domain logic that
+        // should be tested. Each pure node must either:
+        // - Have at least one NodeExample in the MockSpec
+        // - Have at least one NodeIoExample on the Node itself
+        // - Be explicitly skipped via MockSpec::skip_node_example()
+        if self.config.example_tests && !analysis.pure_nodes.is_empty() {
+            let example_node_ids: std::collections::HashSet<&str> = self
+                .mock_spec
+                .as_ref()
+                .map(|s| s.node_examples.iter().map(|e| e.node_id.as_str()).collect())
+                .unwrap_or_default();
+
+            let skipped_node_ids: std::collections::HashSet<&str> = self
+                .mock_spec
+                .as_ref()
+                .map(|s| s.skipped_node_examples.iter().map(|s| s.as_str()).collect())
+                .unwrap_or_default();
+
+            let node_example_ids: std::collections::HashSet<&str> = self
+                .dag
+                .nodes
+                .iter()
+                .filter(|n| !n.examples.is_empty())
+                .map(|n| n.id.0.as_str())
+                .collect();
+
+            let uncovered: Vec<&str> = analysis
+                .pure_nodes
+                .iter()
+                .map(|s| s.as_str())
+                .filter(|id| {
+                    !example_node_ids.contains(id)
+                        && !skipped_node_ids.contains(id)
+                        && !node_example_ids.contains(id)
+                })
+                .collect();
+
+            if !uncovered.is_empty() {
+                panic!(
+                    "I/O examples required: DAG '{}' has {} pure node(s) without examples:\n\
+                     \n\
+                     {}\n\
+                     \n\
+                     Pure nodes contain domain logic that must be tested. For each node, either:\n\
+                     \n\
+                     1. Add a NodeExample to the MockSpec:\n\
+                     \n\
+                     ```rust\n\
+                     MockSpec::new(\"{}\")\n\
+                     {}    .node_example(\n\
+                     {}        NodeExample::new(\"<node_id>\")\n\
+                     {}            .input(\"port\", Value::Str(\"...\".into()))\n\
+                     {}            .output(\"port\", OutputMatcher::non_empty())\n\
+                     {}    )\n\
+                     ```\n\
+                     \n\
+                     2. Skip enforcement for primitive/utility nodes:\n\
+                     \n\
+                     ```rust\n\
+                     MockSpec::new(\"{}\")\n\
+                     {}    .skip_node_example(\"<node_id>\")\n\
+                     ```",
+                    module_name,
+                    uncovered.len(),
+                    uncovered.iter().map(|id| format!("  - {}", id)).collect::<Vec<_>>().join("\n"),
+                    module_name,
+                    " ", " ", " ", " ", " ",
+                    module_name,
+                    " ",
+                );
+            }
+        }
+
         let obligations = collect_obligations(self.dag, None, None);
 
         // Generate the test body first so we can hash it for staleness detection.
@@ -1636,7 +1711,9 @@ impl<'a, T> TestGenerator<'a, T> {
             code.push_str(&format!("    let dag = {};\n", graph_builder_fn));
             code.push_str("    let mut inputs = std::collections::HashMap::new();\n");
 
-            for (port, value) in &example.inputs {
+            let mut sorted_inputs: Vec<_> = example.inputs.iter().collect();
+            sorted_inputs.sort_by_key(|(k, _)| k.as_str());
+            for (port, value) in sorted_inputs {
                 code.push_str(&format!(
                     "    inputs.insert(\"{}\".to_string(), {});\n",
                     port,
@@ -1653,7 +1730,9 @@ impl<'a, T> TestGenerator<'a, T> {
                 example.node_id
             ));
 
-            for (port, matcher) in &example.outputs {
+            let mut sorted_outputs: Vec<_> = example.outputs.iter().collect();
+            sorted_outputs.sort_by_key(|(k, _)| k.as_str());
+            for (port, matcher) in sorted_outputs {
                 code.push_str(&format!("    // Check output port '{}'\n", port));
                 code.push_str(&format!(
                     "    let output_{} = outputs.get(\"{}\").expect(\"output port '{}' should exist\");\n",
@@ -1713,7 +1792,9 @@ impl<'a, T> TestGenerator<'a, T> {
                 code.push_str(&format!("    let dag = {};\n", graph_builder_fn));
                 code.push_str("    let mut inputs = std::collections::HashMap::new();\n");
 
-                for (port, value) in &example.inputs {
+                let mut sorted_inputs: Vec<_> = example.inputs.iter().collect();
+                sorted_inputs.sort_by_key(|(k, _)| k.as_str());
+                for (port, value) in sorted_inputs {
                     code.push_str(&format!(
                         "    inputs.insert(\"{}\".to_string(), {});\n",
                         port,
@@ -1730,7 +1811,9 @@ impl<'a, T> TestGenerator<'a, T> {
                     node.id.0
                 ));
 
-                for (port, expected) in &example.expected_outputs {
+                let mut sorted_outputs: Vec<_> = example.expected_outputs.iter().collect();
+                sorted_outputs.sort_by_key(|(k, _)| k.as_str());
+                for (port, expected) in sorted_outputs {
                     code.push_str(&format!("    // Check output port '{}'\n", port));
                     code.push_str(&format!(
                         "    assert_eq!(\n        outputs.get(\"{}\").expect(\"output port '{}' should exist\"),\n        &{},\n        \"node '{}' port '{}' should match expected value\"\n    );\n",
@@ -1797,6 +1880,7 @@ fn value_to_rust_literal(value: &Value) -> String {
         Value::Secret(_) => {
             "Value::Secret(gunbc_ir::SecretString::new(\"<MOCK_SECRET>\"))".to_string()
         }
+        Value::Skipped => "Value::Skipped".to_string(),
         _ => "Value::Str(\"<MOCK>\".to_string())".to_string(),
     }
 }
@@ -1870,7 +1954,10 @@ mod tests {
         ));
         dag.add_edge(edge("source", "out", "sink", "in"));
 
-        let generator = TestGenerator::new(&dag);
+        let spec = MockSpec::new("example")
+            .skip_node_example("source")
+            .skip_node_example("sink");
+        let generator = TestGenerator::new(&dag).with_mock_spec(spec);
         let code = generator.generate_test_module("example", "build_example_graph()");
 
         // Should generate boundary tests (runtime behavior)
@@ -1910,7 +1997,10 @@ mod tests {
         ));
         dag.add_edge(edge("source", "out", "sink", "in"));
 
-        let generator = TestGenerator::new(&dag);
+        let spec = MockSpec::new("example")
+            .skip_node_example("source")
+            .skip_node_example("sink");
+        let generator = TestGenerator::new(&dag).with_mock_spec(spec);
         let code1 = generator.generate_test_module("example", "build_example_graph()");
         let code2 = generator.generate_test_module("example", "build_example_graph()");
 
@@ -1944,7 +2034,9 @@ mod tests {
         dag.add_edge(edge("source", "out", "sink", "in"));
 
         let spec = MockSpec::new("test")
-            .boundary("sink", "result", Value::Str("test_output".into()));
+            .boundary("sink", "result", Value::Str("test_output".into()))
+            .skip_node_example("source")
+            .skip_node_example("sink");
 
         let generator = TestGenerator::new(&dag).with_mock_spec(spec);
         let code = generator.generate_test_module("example", "build_example_graph()");
@@ -1975,7 +2067,9 @@ mod tests {
         let spec = MockSpec::new("test")
             .boundary("sink", "result", Value::Str("test_output".into()))
             .resource_lock("db:write")
-            .resource_lease("api:token", 5000);
+            .resource_lease("api:token", 5000)
+            .skip_node_example("source")
+            .skip_node_example("sink");
 
         let generator = TestGenerator::new(&dag).with_mock_spec(spec);
         let code = generator.generate_test_module("example", "build_example_graph()");
@@ -2012,7 +2106,9 @@ mod tests {
 
         // MockSpec required for DAGs with transport executors
         let spec = MockSpec::new("example")
-            .boundary("execute", "response", Value::Str("<MOCK_RESPONSE>".into()));
+            .boundary("execute", "response", Value::Str("<MOCK_RESPONSE>".into()))
+            .skip_node_example("prepare")
+            .skip_node_example("parse");
 
         let generator = TestGenerator::new(&dag).with_mock_spec(spec);
         let code = generator.generate_test_module("example", "build_example_graph()");
@@ -2069,7 +2165,8 @@ mod tests {
         // MockSpec required for DAGs with transport executors
         let spec = MockSpec::new("guarded")
             .boundary("check", "response", Value::Str("<MOCK>".into()))
-            .boundary("check", "condition", Value::Bool(true));
+            .boundary("check", "condition", Value::Bool(true))
+            .skip_node_example("process");
 
         let generator = TestGenerator::new(&dag).with_mock_spec(spec);
         let code = generator.generate_test_module("guarded", "build_guarded_graph()");
@@ -2116,7 +2213,10 @@ mod tests {
         ));
         dag.add_edge(edge("source", "status", "conditional", "status"));
 
-        let generator = TestGenerator::new(&dag);
+        let spec = MockSpec::new("str_guard")
+            .skip_node_example("source")
+            .skip_node_example("conditional");
+        let generator = TestGenerator::new(&dag).with_mock_spec(spec);
         let code = generator.generate_test_module("str_guard", "build_graph()");
 
         // Non-Bool guard should emit a structured comment, not a test function
@@ -2133,6 +2233,23 @@ mod tests {
             !code.contains("test_guard_conditional_status_branch_coverage"),
             "should NOT generate test function for non-Bool guard"
         );
+    }
+
+    #[test]
+    #[should_panic(expected = "I/O examples required")]
+    fn test_examples_required_for_pure_nodes() {
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque(
+            "transform",
+            vec![port("in", "String")],
+            vec![port("out", "String")],
+            (),
+        ));
+
+        // MockSpec provided but no examples and no skip — should panic
+        let spec = MockSpec::new("test");
+        let generator = TestGenerator::new(&dag).with_mock_spec(spec);
+        let _ = generator.generate_test_module("test", "build_test_graph()");
     }
 
     #[test]
@@ -2168,8 +2285,13 @@ mod tests {
         ));
         dag.add_edge(edge("source", "out", "sink", "in"));
 
-        // No MockSpec needed for pure DAGs (no transport nodes)
-        let generator = TestGenerator::new(&dag);
+        // No transport MockSpec needed, but pure nodes still need examples or skip.
+        // Provide a MockSpec that skips both pure nodes.
+        let spec = MockSpec::new("pure")
+            .skip_node_example("source")
+            .skip_node_example("sink");
+
+        let generator = TestGenerator::new(&dag).with_mock_spec(spec);
         let code = generator.generate_test_module("pure", "build_pure_graph()");
 
         // Should generate tests without panicking
@@ -2203,7 +2325,8 @@ mod tests {
 
         let spec = MockSpec::new("test")
             .boundary("process", "result", Value::Str("test_output".into()))
-            .node_example(example);
+            .node_example(example)
+            .skip_node_example("process");
 
         let generator = TestGenerator::new(&dag).with_mock_spec(spec);
         let code = generator.generate_test_module("example", "build_example_graph()");

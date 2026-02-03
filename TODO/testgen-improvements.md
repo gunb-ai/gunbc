@@ -310,15 +310,49 @@ functions live in the tool crates.
 
 After implementation:
 
-1. **Can't forget tests** - ~~testgen auto-discovers DAGs~~ (TODO 1.3 remaining), fails if no MockSpec ✅
-2. **Can't have stale tests** - staleness check in `make test` ✅
-3. **I/O is tested** - node examples generate unit tests ✅
+1. **Can't forget tests** - ~~testgen auto-discovers DAGs~~ (TODO 1.3 remaining), fails if no MockSpec ✅, panics if pure nodes lack examples ✅
+2. **Can't have stale tests** - staleness check in `make test` ✅, deterministic output ✅
+3. **I/O is tested** - node examples generate unit tests ✅, all 7 targets have examples ✅
 4. **Minimal ceremony** - just add `.node_example()` to MockSpec, tests appear ✅
+
+### Phase 7: Enforcement & Coverage
+
+**TODO 7.1: Enforcement for pure nodes** ✅
+- [x] Added `skipped_node_examples: Vec<String>` field to `MockSpec`
+- [x] Added `skip_node_example()` builder method for explicit opt-out
+- [x] Added enforcement check in `generate_test_module()`: panics when pure nodes
+  have no examples (from MockSpec or Node) and aren't explicitly skipped
+- [x] Error message lists uncovered nodes with guidance on `.node_example()` or
+  `.skip_node_example()`
+- *Implemented in `codegen.rs:176-242`*
+
+**TODO 7.2: Add node_examples to all MockSpecs** ✅
+- [x] **makegen**: `load_registry` (tool_count ≥ 2, tool_names non-empty),
+  `render_makefile` (contains "gist"), skip `prepare_file_write`
+- [x] **bootstrap**: `prepare_scan_workspace` (request non-empty),
+  `parse_scan_result` (skipped response propagation), `generate_makefile`
+  (contains header), `generate_gitignore` (contains header), skip
+  `prepare_makefile_write`, `prepare_gitignore_write`
+- [x] **CI**: `report` (2 examples: all-pass → SUCCESS, build-fail → FAILURE),
+  `parse_deps_exists`/`parse_codegen_exists` (skipped response propagation),
+  `parse_codegen_result`/`parse_build`/`parse_test` (skip=true path with exact
+  outputs), all `prepare_*` nodes (boolean output checks), `parse_clippy_lint`,
+  skip `prepare_deps_exists`
+- [x] **LLM** (4 variants): `prepare` (provider/model/messages → request + echoed
+  provider), `parse` (skipped response propagation)
+
+**TODO 7.3: Fix codegen bugs found during coverage** ✅
+- [x] `to_check_code()` Exact matcher: `assert_eq!` → `assert_eq!(*...)` (deref)
+- [x] `to_check_code()` Contains matcher: added `{:?}` format placeholder for
+  value argument
+- [x] `to_check_code()` all matchers: added trailing semicolons
+- [x] `value_to_rust_literal()`: added `Value::Skipped` support
+- [x] `generate_node_example_tests()`: sorted HashMap iteration for deterministic
+  output (both inputs and outputs)
 
 ## Remaining Work
 
 - **TODO 1.3**: Auto-discover DAGs (eliminate hardcoded builder map)
-- **Add node_examples to existing MockSpecs** — the infrastructure exists but no MockSpecs currently use `node_example()` yet. Add examples to bootstrap, CI, makegen, and LLM MockSpecs.
 
 ## References
 
