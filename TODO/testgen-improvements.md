@@ -73,6 +73,9 @@ Both should be **required**, not optional.
 **TODO 1.3: Auto-discover DAGs** ✅ (partial)
 - [x] Refactored `testgen.rs` to single registration site with generic `generate_target<T>`
 - [x] Eliminated 7 duplicate builder functions — each target is now 3 lines
+- [x] Consolidated two-site registration into one: removed `all_testgen_dags()` from
+  `codegen/registry.rs`, inlined `TestgenTargetDef` metadata directly alongside builder
+  closures in `testgen.rs`. Adding a new target is now a single addition in one place.
 - [ ] Full auto-discovery (scan workspace for `build_*_graph()`) deferred — current
   single-site registration is low-ceremony enough
 

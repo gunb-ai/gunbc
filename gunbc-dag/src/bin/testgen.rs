@@ -8,7 +8,7 @@
 //!     cargo run -p gunbc-dag --bin gunbc-testgen -- --check
 //!     cargo run -p gunbc-dag --bin gunbc-testgen -- --output-dir /path/to/output
 
-use gunbc_codegen::{all_testgen_dags, TestgenTargetDef};
+use gunbc_codegen::TestgenTargetDef;
 use gunbc_exec::Executable;
 use gunbc_ir::Dag;
 use gunbc_test::MockSpec;
@@ -41,64 +41,123 @@ struct TestgenTarget {
 // Target Registration
 //
 // Single registration site: add new DAGs here.
-// Each entry pairs a registry name with a closure that builds the DAG + MockSpec.
-// The common `generate_target` function handles TestConfig + TestGenerator.
+// Each entry defines both metadata (output path, module name, etc.) and the
+// builder that produces the actual DAG + MockSpec. No separate registry needed.
 // ============================================================================
 
-/// Build all testgen targets by matching registry metadata with DAG builders.
+/// Build all testgen targets.
 ///
-/// Adding a new testgen target:
-/// 1. Register in `all_testgen_dags()` (codegen registry) — defines output path, module name
-/// 2. Add an entry to `builders` below — provides the actual DAG + MockSpec
+/// Adding a new testgen target: add an entry below with:
+/// - `TestgenTargetDef::new(name, output_path, module_name)` — metadata
+/// - `.dag_builder()` / `.mock_spec()` — string expressions for generated code
+/// - Builder closure — actual DAG + MockSpec construction
 fn build_targets() -> Vec<TestgenTarget> {
-    // Register DAG builders here. Each entry maps a registry name to a builder.
-    // The builder returns (Dag, MockSpec) — the generic `generate_target` does the rest.
-    let builders: &[(&str, fn(&TestgenTargetDef) -> String)] = &[
-        // Internal gunbc-dag DAGs
-        ("bootstrap", |c| {
-            generate_target(c, gunbc_dag::build_bootstrap_graph().unwrap(), gunbc_dag::bootstrap::graph_mock::bootstrap_mock_spec())
-        }),
-        ("ci", |c| {
-            generate_target(c, gunbc_dag::build_ci_graph().unwrap(), gunbc_dag::ci::graph_mock::ci_mock_spec())
-        }),
-        ("makegen", |c| {
-            generate_target(c, gunbc_dag::build_makegen_graph().unwrap(), gunbc_dag::makegen::graph_mock::makegen_mock_spec())
-        }),
-        // Library DAGs
-        ("llm-openai", |c| {
-            generate_target(c, gunbc_lib_llm_ops::graph::build_chat_completion_graph(), gunbc_lib_llm_ops::graph_mock::openai_mock_spec())
-        }),
-        ("llm-anthropic", |c| {
-            generate_target(c, gunbc_lib_llm_ops::graph::build_chat_completion_graph(), gunbc_lib_llm_ops::graph_mock::anthropic_mock_spec())
-        }),
-        ("llm-code-review", |c| {
-            generate_target(c, gunbc_lib_llm_ops::graph::build_chat_completion_graph(), gunbc_lib_llm_ops::graph_mock::code_review_mock_spec())
-        }),
-        ("llm-secrets", |c| {
-            generate_target(c, gunbc_lib_llm_ops::graph::build_chat_completion_graph(), gunbc_lib_llm_ops::graph_mock::secret_api_key_mock_spec())
-        }),
-    ];
-
-    let configs = all_testgen_dags();
-    let mut targets = Vec::new();
-    let mut unmatched = Vec::new();
-
-    for config in configs {
-        if let Some(&(_, generate)) = builders.iter().find(|(name, _)| *name == config.name) {
-            targets.push(TestgenTarget { config, generate });
-        } else {
-            unmatched.push(config.name.clone());
-        }
-    }
-
-    for name in &unmatched {
-        eprintln!(
-            "warning: no builder registered for testgen target '{}' — add it to build_targets() in testgen.rs",
-            name
-        );
-    }
-
-    targets
+    vec![
+        // ====================================================================
+        // Internal gunbc-dag DAGs (flow tests enabled)
+        // ====================================================================
+        TestgenTarget {
+            config: TestgenTargetDef::new(
+                "bootstrap",
+                "gunbc-dag/src/bootstrap/generated_tests.rs",
+                "bootstrap_generated_tests",
+            )
+            .dag_builder("crate::build_bootstrap_graph().unwrap()")
+            .mock_spec("crate::bootstrap::graph_mock::bootstrap_mock_spec()")
+            .flow_tests(),
+            generate: |c| generate_target(c,
+                gunbc_dag::build_bootstrap_graph().unwrap(),
+                gunbc_dag::bootstrap::graph_mock::bootstrap_mock_spec(),
+            ),
+        },
+        TestgenTarget {
+            config: TestgenTargetDef::new(
+                "ci",
+                "gunbc-dag/src/ci/generated_tests.rs",
+                "ci_generated_tests",
+            )
+            .dag_builder("crate::build_ci_graph().unwrap()")
+            .mock_spec("crate::ci::graph_mock::ci_mock_spec()")
+            .flow_tests(),
+            generate: |c| generate_target(c,
+                gunbc_dag::build_ci_graph().unwrap(),
+                gunbc_dag::ci::graph_mock::ci_mock_spec(),
+            ),
+        },
+        TestgenTarget {
+            config: TestgenTargetDef::new(
+                "makegen",
+                "gunbc-dag/src/makegen/generated_tests.rs",
+                "makegen_generated_tests",
+            )
+            .dag_builder("crate::build_makegen_graph().unwrap()")
+            .mock_spec("crate::makegen::graph_mock::makegen_mock_spec()")
+            .flow_tests(),
+            generate: |c| generate_target(c,
+                gunbc_dag::build_makegen_graph().unwrap(),
+                gunbc_dag::makegen::graph_mock::makegen_mock_spec(),
+            ),
+        },
+        // ====================================================================
+        // Library DAGs (composable sub-DAGs)
+        // ====================================================================
+        TestgenTarget {
+            config: TestgenTargetDef::new(
+                "llm-openai",
+                "lib/llm-ops/src/generated_tests.rs",
+                "llm_openai_generated_tests",
+            )
+            .dag_builder("crate::graph::build_chat_completion_graph()")
+            .mock_spec("crate::graph_mock::openai_mock_spec()")
+            .no_boundary_tests(),
+            generate: |c| generate_target(c,
+                gunbc_lib_llm_ops::graph::build_chat_completion_graph(),
+                gunbc_lib_llm_ops::graph_mock::openai_mock_spec(),
+            ),
+        },
+        TestgenTarget {
+            config: TestgenTargetDef::new(
+                "llm-anthropic",
+                "lib/llm-ops/src/generated_tests_anthropic.rs",
+                "llm_anthropic_generated_tests",
+            )
+            .dag_builder("crate::graph::build_chat_completion_graph()")
+            .mock_spec("crate::graph_mock::anthropic_mock_spec()")
+            .no_boundary_tests(),
+            generate: |c| generate_target(c,
+                gunbc_lib_llm_ops::graph::build_chat_completion_graph(),
+                gunbc_lib_llm_ops::graph_mock::anthropic_mock_spec(),
+            ),
+        },
+        TestgenTarget {
+            config: TestgenTargetDef::new(
+                "llm-code-review",
+                "lib/llm-ops/src/generated_tests_code_review.rs",
+                "llm_code_review_generated_tests",
+            )
+            .dag_builder("crate::graph::build_chat_completion_graph()")
+            .mock_spec("crate::graph_mock::code_review_mock_spec()")
+            .no_boundary_tests(),
+            generate: |c| generate_target(c,
+                gunbc_lib_llm_ops::graph::build_chat_completion_graph(),
+                gunbc_lib_llm_ops::graph_mock::code_review_mock_spec(),
+            ),
+        },
+        TestgenTarget {
+            config: TestgenTargetDef::new(
+                "llm-secrets",
+                "lib/llm-ops/src/generated_tests_secrets.rs",
+                "llm_secrets_generated_tests",
+            )
+            .dag_builder("crate::graph::build_chat_completion_graph()")
+            .mock_spec("crate::graph_mock::secret_api_key_mock_spec()")
+            .no_boundary_tests(),
+            generate: |c| generate_target(c,
+                gunbc_lib_llm_ops::graph::build_chat_completion_graph(),
+                gunbc_lib_llm_ops::graph_mock::secret_api_key_mock_spec(),
+            ),
+        },
+    ]
 }
 
 /// Generic test generation: builds test code from a DAG + MockSpec + config.
@@ -313,7 +372,7 @@ fn run_dry_run(targets: &[TestgenTarget], output_dir: &Path) {
 }
 
 fn print_help() {
-    let dags = all_testgen_dags();
+    let targets = build_targets();
 
     println!("testgen - Generate tests from DAG structures and MockSpecs");
     println!();
@@ -331,8 +390,8 @@ fn print_help() {
     println!("    --check     Verify existing files match what would be generated (fails if stale)");
     println!("    --dry-run   Show what would be generated without writing");
     println!();
-    println!("REGISTERED DAGS ({} targets from registry):", dags.len());
-    for dag in &dags {
-        println!("  {}: {}", dag.name, dag.output_path);
+    println!("REGISTERED DAGS ({} targets):", targets.len());
+    for target in &targets {
+        println!("  {}: {}", target.config.name, target.config.output_path);
     }
 }
