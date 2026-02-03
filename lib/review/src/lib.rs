@@ -247,12 +247,12 @@ pub enum ReviewOps {
 
     /// Merge multiple ReviewOutputs into a ReviewBundle.
     ///
-    /// Accepts both a single ReviewOutput object and an array of them.
-    /// This means review sources can wire directly to merge without
-    /// needing wrapper nodes.
+    /// Accepts any cardinality: null/missing (0 sources), a single
+    /// ReviewOutput object (1 source), or an array of them (N sources).
+    /// Review sources can wire directly to merge without wrapper nodes.
     ///
     /// Inputs:
-    /// - `outputs`: Json - single ReviewOutput object OR array of them
+    /// - `outputs`: Json - null, single ReviewOutput, or array of them
     ///
     /// Outputs:
     /// - `bundle`: Json - merged ReviewBundle
@@ -438,23 +438,18 @@ fn execute_parse_review_response(
 fn execute_merge_outputs(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    let outputs_json = inputs
-        .get("outputs")
-        .and_then(|v| v.as_json())
-        .ok_or_else(|| ExecError::new("missing or invalid 'outputs' input"))?;
-
-    // Accept both a single ReviewOutput object and an array of them.
-    // Each review source naturally produces one ReviewOutput; the merge
-    // node should handle either shape without requiring wrapper nodes.
-    let outputs: Vec<ReviewOutput> = if outputs_json.is_array() {
-        serde_json::from_value(outputs_json.clone())
-            .map_err(|e| ExecError::new(format!("invalid 'outputs' array: {}", e)))?
-    } else if outputs_json.is_object() {
-        let single: ReviewOutput = serde_json::from_value(outputs_json.clone())
-            .map_err(|e| ExecError::new(format!("invalid 'outputs' object: {}", e)))?;
-        vec![single]
-    } else {
-        return Err(ExecError::new("'outputs' must be a JSON object or array"));
+    // Accept any cardinality: null/missing → 0, object → 1, array → N.
+    let outputs: Vec<ReviewOutput> = match inputs.get("outputs").and_then(|v| v.as_json()) {
+        None => vec![],
+        Some(j) if j.is_null() => vec![],
+        Some(j) if j.is_array() => serde_json::from_value(j.clone())
+            .map_err(|e| ExecError::new(format!("invalid 'outputs' array: {}", e)))?,
+        Some(j) if j.is_object() => {
+            let single: ReviewOutput = serde_json::from_value(j.clone())
+                .map_err(|e| ExecError::new(format!("invalid 'outputs' object: {}", e)))?;
+            vec![single]
+        }
+        Some(_) => return Err(ExecError::new("'outputs' must be null, a JSON object, or array")),
     };
 
     // Merge findings, deduplicating by ID
@@ -981,6 +976,36 @@ Please fix these issues."#;
         assert_eq!(bundle.outputs.len(), 1);
         assert_eq!(bundle.merged_findings.len(), 1);
         assert_eq!(bundle.outputs[0].source, "llm");
+    }
+
+    #[test]
+    fn test_merge_outputs_null() {
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "outputs".to_string(),
+            Value::Json(serde_json::Value::Null),
+        );
+
+        let result = ReviewOps::MergeOutputs.execute(inputs).unwrap();
+        let bundle: ReviewBundle =
+            serde_json::from_value(result.get("bundle").unwrap().as_json().unwrap().clone())
+                .unwrap();
+
+        assert_eq!(bundle.outputs.len(), 0);
+        assert_eq!(bundle.merged_findings.len(), 0);
+    }
+
+    #[test]
+    fn test_merge_outputs_missing() {
+        let inputs = HashMap::new();
+
+        let result = ReviewOps::MergeOutputs.execute(inputs).unwrap();
+        let bundle: ReviewBundle =
+            serde_json::from_value(result.get("bundle").unwrap().as_json().unwrap().clone())
+                .unwrap();
+
+        assert_eq!(bundle.outputs.len(), 0);
+        assert_eq!(bundle.merged_findings.len(), 0);
     }
 
     #[test]
