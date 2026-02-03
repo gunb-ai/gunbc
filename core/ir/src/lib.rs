@@ -72,7 +72,7 @@ pub use boundary::{detect_boundaries, BoundaryInfo};
 pub use builder::{BuilderError, DagBuilder, InputRef, NodeRef, OutputRef, PortKind};
 pub use dag::{build, canonical_edge_order, edges_to_port, Dag, Edge, Port};
 pub use entrypoint::{detect_entrypoints, EntrypointInfo};
-pub use node::{Node, NodeBody};
+pub use node::{Node, NodeBody, NodeIoExample};
 pub use patterns::{
     AtomicBuilder, BackoffStrategy, FailureClassifier, PollBuilder, RepeatPolicy, RetryBuilder,
     TransactionBuilder, UpsertBuilder, WhileBuilder, PatternOp,

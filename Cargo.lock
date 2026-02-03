@@ -124,6 +124,7 @@ version = "0.1.0"
 dependencies = [
  "gunbc-clippy",
  "gunbc-ir",
+ "gunbc-test",
 ]
 
 [[package]]
@@ -142,7 +143,6 @@ dependencies = [
  "gunbc-lib-transport",
  "gunbc-primitives",
  "gunbc-test",
- "gunbc-testgen",
  "serde_json",
 ]
 
@@ -288,14 +288,6 @@ dependencies = [
  "gunbc-exec",
  "gunbc-ir",
  "serde_json",
-]
-
-[[package]]
-name = "gunbc-testgen"
-version = "0.1.0"
-dependencies = [
- "gunbc-ir",
- "gunbc-test",
 ]
 
 [[package]]

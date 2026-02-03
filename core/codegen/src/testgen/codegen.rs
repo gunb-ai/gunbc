@@ -20,12 +20,13 @@
 //!
 //! Only obligations that are Unknown or RuntimeOnly produce tests.
 
-use crate::analyze::{analyze_dag, DagAnalysis};
-use crate::obligation::{collect_obligations, DischargeStatus, Obligation, ObligationSet};
+use crate::testgen::analyze::{analyze_dag, DagAnalysis};
+use crate::testgen::obligation::{collect_obligations, DischargeStatus, Obligation, ObligationSet};
 use gunbc_ir::language::traits::comment::{generated_header, RUST_COMMENTS};
 use gunbc_ir::language::NamingCase;
 use gunbc_ir::{Dag, Value};
 use gunbc_test::MockSpec;
+use std::hash::{Hash, Hasher};
 
 /// Configuration for test generation.
 ///
@@ -166,9 +167,19 @@ impl<'a, T> TestGenerator<'a, T> {
         }
 
         let obligations = collect_obligations(self.dag, None, None);
-        let mut code = String::new();
 
-        // Module header
+        // Generate the test body first so we can hash it for staleness detection.
+        let body = self.generate_test_body(&analysis, &obligations, graph_builder_fn);
+
+        // Compute content hash of the body for staleness detection.
+        let content_hash = {
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            body.hash(&mut hasher);
+            format!("{:016x}", hasher.finish())
+        };
+
+        // Build the header with the content hash embedded.
+        let mut code = String::new();
         let prefix = RUST_COMMENTS.line_prefix;
         code.push_str(&format!(
             "{} Generated tests for {} DAG.\n",
@@ -191,7 +202,27 @@ impl<'a, T> TestGenerator<'a, T> {
             "{} Proven by construction: acyclicity, type compatibility, cardinality satisfaction.\n",
             prefix
         ));
+        code.push_str(&format!(
+            "{} Content-Hash: {}\n",
+            prefix, content_hash
+        ));
         code.push_str("\n\n");
+
+        code.push_str(&body);
+        code
+    }
+
+    /// Generate the test body (everything after the header).
+    ///
+    /// Separated from `generate_test_module` so we can hash the body
+    /// before emitting the header (which contains the hash).
+    fn generate_test_body(
+        &self,
+        analysis: &DagAnalysis,
+        obligations: &ObligationSet,
+        graph_builder_fn: &str,
+    ) -> String {
+        let mut code = String::new();
 
         // Imports
         code.push_str("use gunbc_exec::{execute_with_mode, BoundaryMocks, ExecutionMode};\n");
@@ -268,8 +299,8 @@ impl<'a, T> TestGenerator<'a, T> {
         // ===================================================================
         if self.config.execution_tests {
             code.push_str(&self.generate_execution_tests(
-                &analysis,
-                &obligations,
+                analysis,
+                obligations,
                 graph_builder_fn,
             ));
         }
@@ -278,7 +309,7 @@ impl<'a, T> TestGenerator<'a, T> {
         // Bucket B: Contract Obligations (only for Unknown entailments)
         // ===================================================================
         if self.config.contract_tests {
-            code.push_str(&self.generate_contract_tests(&analysis, &obligations));
+            code.push_str(&self.generate_contract_tests(analysis, obligations));
         }
 
         // ===================================================================
@@ -286,8 +317,8 @@ impl<'a, T> TestGenerator<'a, T> {
         // ===================================================================
         if self.config.scenario_tests {
             code.push_str(&self.generate_scenario_tests(
-                &analysis,
-                &obligations,
+                analysis,
+                obligations,
                 graph_builder_fn,
             ));
         }
@@ -296,7 +327,7 @@ impl<'a, T> TestGenerator<'a, T> {
         // Bucket D: Resource Hygiene + Simulation
         // ===================================================================
         if self.config.resource_tests {
-            code.push_str(&self.generate_resource_tests(&analysis, &obligations));
+            code.push_str(&self.generate_resource_tests(analysis, obligations));
         }
 
         // ===================================================================
@@ -308,15 +339,15 @@ impl<'a, T> TestGenerator<'a, T> {
         // The compiler proves: types match, cardinalities satisfy, no cycles.
 
         if self.config.boundary_tests {
-            code.push_str(&self.generate_boundary_tests(&analysis, graph_builder_fn));
+            code.push_str(&self.generate_boundary_tests(analysis, graph_builder_fn));
         }
 
         if self.config.chain_tests {
-            code.push_str(&self.generate_chain_tests(&analysis));
+            code.push_str(&self.generate_chain_tests(analysis));
         }
 
         if self.config.flow_tests {
-            code.push_str(&self.generate_flow_tests(&analysis, graph_builder_fn));
+            code.push_str(&self.generate_flow_tests(analysis, graph_builder_fn));
         }
 
         // ===================================================================
@@ -1427,19 +1458,27 @@ impl<'a, T> TestGenerator<'a, T> {
     // Node I/O Example Tests
     // =======================================================================
 
-    /// Generate tests from MockSpec.node_examples.
+    /// Generate tests from MockSpec.node_examples and Node.examples.
     ///
-    /// Each NodeExample produces a test that:
+    /// Examples come from two sources:
+    /// 1. `MockSpec.node_examples` — rich matchers (Contains, NonEmpty, Satisfies)
+    /// 2. `Node.examples` — exact Value matching (defined on the node itself)
+    ///
+    /// Each example produces a test that:
     /// 1. Executes the single node with the given inputs
-    /// 2. Asserts outputs match the expected matchers
+    /// 2. Asserts outputs match the expected values/matchers
     fn generate_node_example_tests(&self, graph_builder_fn: &str) -> String {
         let mut code = String::new();
 
-        let Some(spec) = &self.mock_spec else {
-            return code;
-        };
+        let mockspec_examples = self
+            .mock_spec
+            .as_ref()
+            .map(|s| &s.node_examples[..])
+            .unwrap_or(&[]);
 
-        if spec.node_examples.is_empty() {
+        let has_node_examples = self.dag.nodes.iter().any(|n| !n.examples.is_empty());
+
+        if mockspec_examples.is_empty() && !has_node_examples {
             return code;
         }
 
@@ -1457,9 +1496,9 @@ impl<'a, T> TestGenerator<'a, T> {
             "// ============================================================================\n\n",
         );
 
-        for (idx, example) in spec.node_examples.iter().enumerate() {
+        // 1. MockSpec-sourced examples (rich matchers)
+        for (idx, example) in mockspec_examples.iter().enumerate() {
             let test_name = if let Some(desc) = &example.description {
-                // Sanitize description to valid Rust identifier
                 let sanitized_desc: String = desc
                     .chars()
                     .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
@@ -1478,7 +1517,6 @@ impl<'a, T> TestGenerator<'a, T> {
                 )
             };
 
-            // Doc comment
             if let Some(desc) = &example.description {
                 code.push_str(&format!("/// Node example: {} - {}\n", example.node_id, desc));
             } else {
@@ -1497,7 +1535,6 @@ impl<'a, T> TestGenerator<'a, T> {
             code.push_str(&format!("    let dag = {};\n", graph_builder_fn));
             code.push_str("    let mut inputs = std::collections::HashMap::new();\n");
 
-            // Set up inputs
             for (port, value) in &example.inputs {
                 code.push_str(&format!(
                     "    inputs.insert(\"{}\".to_string(), {});\n",
@@ -1506,7 +1543,6 @@ impl<'a, T> TestGenerator<'a, T> {
                 ));
             }
 
-            // Execute single node
             code.push_str(&format!(
                 "    let outputs = gunbc_exec::execute_single_node(&dag, \"{}\", inputs, gunbc_exec::ExecutionMode::Real)\n",
                 example.node_id
@@ -1516,7 +1552,6 @@ impl<'a, T> TestGenerator<'a, T> {
                 example.node_id
             ));
 
-            // Assert outputs
             for (port, matcher) in &example.outputs {
                 code.push_str(&format!("    // Check output port '{}'\n", port));
                 code.push_str(&format!(
@@ -1524,7 +1559,6 @@ impl<'a, T> TestGenerator<'a, T> {
                     NamingCase::SnakeCase.apply(port), port, port
                 ));
 
-                // Generate assertion based on matcher type
                 let check_code = matcher.to_check_code(&format!(
                     "output_{}",
                     NamingCase::SnakeCase.apply(port)
@@ -1533,6 +1567,80 @@ impl<'a, T> TestGenerator<'a, T> {
             }
 
             code.push_str("}\n\n");
+        }
+
+        // 2. Node-sourced examples (exact Value matching)
+        for node in &self.dag.nodes {
+            for (idx, example) in node.examples.iter().enumerate() {
+                let test_name = if let Some(desc) = &example.description {
+                    let sanitized_desc: String = desc
+                        .chars()
+                        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+                        .collect::<String>()
+                        .to_lowercase();
+                    format!(
+                        "test_node_example_{}_{}",
+                        NamingCase::SnakeCase.apply(&node.id.0),
+                        sanitized_desc
+                    )
+                } else {
+                    format!(
+                        "test_node_example_{}_{}",
+                        NamingCase::SnakeCase.apply(&node.id.0),
+                        idx
+                    )
+                };
+
+                if let Some(desc) = &example.description {
+                    code.push_str(&format!(
+                        "/// Node I/O example: {} - {}\n",
+                        node.id.0, desc
+                    ));
+                } else {
+                    code.push_str(&format!(
+                        "/// Node I/O example: {} (example {})\n",
+                        node.id.0, idx
+                    ));
+                }
+                code.push_str("///\n");
+                code.push_str(&format!(
+                    "/// Tests that node '{}' produces expected outputs for given inputs (exact match).\n",
+                    node.id.0
+                ));
+                code.push_str("#[test]\n");
+                code.push_str(&format!("fn {}() {{\n", test_name));
+                code.push_str(&format!("    let dag = {};\n", graph_builder_fn));
+                code.push_str("    let mut inputs = std::collections::HashMap::new();\n");
+
+                for (port, value) in &example.inputs {
+                    code.push_str(&format!(
+                        "    inputs.insert(\"{}\".to_string(), {});\n",
+                        port,
+                        value_to_rust_literal(value)
+                    ));
+                }
+
+                code.push_str(&format!(
+                    "    let outputs = gunbc_exec::execute_single_node(&dag, \"{}\", inputs, gunbc_exec::ExecutionMode::Real)\n",
+                    node.id.0
+                ));
+                code.push_str(&format!(
+                    "        .expect(\"node '{}' should execute successfully\");\n\n",
+                    node.id.0
+                ));
+
+                for (port, expected) in &example.expected_outputs {
+                    code.push_str(&format!("    // Check output port '{}'\n", port));
+                    code.push_str(&format!(
+                        "    assert_eq!(\n        outputs.get(\"{}\").expect(\"output port '{}' should exist\"),\n        &{},\n        \"node '{}' port '{}' should match expected value\"\n    );\n",
+                        port, port,
+                        value_to_rust_literal(expected),
+                        node.id.0, port
+                    ));
+                }
+
+                code.push_str("}\n\n");
+            }
         }
 
         code
@@ -1651,9 +1759,45 @@ mod tests {
         assert!(code.contains("Obligations:"));
         assert!(code.contains("Proven by construction"));
 
+        // Should have content hash in header
+        assert!(code.contains("Content-Hash:"), "should have content hash in header");
+
         // Should NOT generate composition tests (compiler proves these)
         assert!(!code.contains("test_all_edges_compatible"));
         assert!(!code.contains("test_edge_source_out_to_sink_in"));
+    }
+
+    #[test]
+    fn test_content_hash_is_stable() {
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque(
+            "source",
+            vec![],
+            vec![port("out", "String")],
+            (),
+        ));
+        dag.add_node(Node::opaque(
+            "sink",
+            vec![port("in", "String")],
+            vec![port("result", "String")],
+            (),
+        ));
+        dag.add_edge(edge("source", "out", "sink", "in"));
+
+        let generator = TestGenerator::new(&dag);
+        let code1 = generator.generate_test_module("example", "build_example_graph()");
+        let code2 = generator.generate_test_module("example", "build_example_graph()");
+
+        // Same DAG should produce identical output (including hash)
+        assert_eq!(code1, code2, "content hash should be deterministic");
+
+        // Extract the hash value
+        let hash_line = code1.lines()
+            .find(|l| l.contains("Content-Hash:"))
+            .expect("should have Content-Hash line");
+        let hash = hash_line.split("Content-Hash: ").nth(1).unwrap().trim();
+        assert_eq!(hash.len(), 16, "hash should be 16 hex chars");
+        assert!(hash.chars().all(|c| c.is_ascii_hexdigit()), "hash should be hex");
     }
 
     #[test]
@@ -2026,6 +2170,53 @@ mod tests {
         assert!(
             code.contains("contains(\"hello\")"),
             "should have contains check in assertion"
+        );
+    }
+
+    #[test]
+    fn test_generate_with_node_io_examples() {
+        use std::collections::HashMap;
+
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(
+            Node::opaque(
+                "upper",
+                vec![port("input", "String")],
+                vec![port("output", "String")],
+                (),
+            )
+            .with_described_example(
+                "basic uppercase",
+                HashMap::from([("input".to_string(), Value::Str("hello".into()))]),
+                HashMap::from([("output".to_string(), Value::Str("HELLO".into()))]),
+            ),
+        );
+
+        let generator = TestGenerator::new(&dag);
+        let code = generator.generate_test_module("node_ex", "build_node_ex_graph()");
+
+        // Should have example tests section
+        assert!(
+            code.contains("Node I/O Example Tests"),
+            "should have example tests section: {}", code
+        );
+
+        // Should generate test from node-sourced example
+        assert!(
+            code.contains("test_node_example_upper_basic_uppercase"),
+            "should generate test with node example name: {}", code
+        );
+
+        // Should use exact match (assert_eq!)
+        assert!(
+            code.contains("assert_eq!"),
+            "node examples should use exact match: {}", code
+        );
+
+        // Should reference the expected value
+        assert!(
+            code.contains("HELLO"),
+            "should contain expected output value: {}", code
         );
     }
 }

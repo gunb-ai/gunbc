@@ -9,7 +9,7 @@
 use gunbc_ir::resource::ResourceAccess;
 use gunbc_ir::{detect_boundaries, BoundaryInfo, Cardinality, CardinalityCase, Dag, TypeId, TypeRegistry};
 
-use crate::obligation::{collect_obligations, ObligationSet};
+use crate::testgen::obligation::{collect_obligations, ObligationSet};
 
 /// Analysis of a DAG for test generation.
 #[derive(Debug)]
