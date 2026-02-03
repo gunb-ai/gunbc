@@ -354,6 +354,7 @@ mod tests {
             inputs: vec![port("data", "String")], // "data" != "config"
             outputs: vec![port("result", "String")],
             body: NodeBody::SubDag(inner),
+            examples: Vec::new(),
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -382,6 +383,7 @@ mod tests {
             inputs: vec![port("data", "String")],
             outputs: vec![port("result", "String")], // "result" != "output"
             body: NodeBody::SubDag(inner),
+            examples: Vec::new(),
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -410,6 +412,7 @@ mod tests {
             inputs: vec![port("data", "String")],
             outputs: vec![port("result", "String")],
             body: NodeBody::SubDag(inner),
+            examples: Vec::new(),
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -439,6 +442,7 @@ mod tests {
             inputs: vec![port("data", "String")],
             outputs: vec![port("result", "String")],
             body: NodeBody::SubDag(inner),
+            examples: Vec::new(),
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -553,6 +557,7 @@ mod tests {
             inputs: vec![port("in1", "String"), port("in2", "Int")],
             outputs: vec![port("out", "String")],
             body: NodeBody::SubDag(inner),
+            examples: Vec::new(),
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -596,6 +601,7 @@ mod tests {
             inputs: vec![port("data", "String")],
             outputs: vec![port("result", "String")],
             body: NodeBody::SubDag(inner),
+            examples: Vec::new(),
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -626,6 +632,7 @@ mod tests {
             inputs: vec![port("data", "String")],
             outputs: vec![port("result", "String")],
             body: NodeBody::SubDag(inner),
+            examples: Vec::new(),
         };
 
         let mut dag: Dag<()> = Dag::new();
@@ -663,6 +670,7 @@ mod tests {
             inputs: vec![port("data", "String")],
             outputs: vec![port("result", "String")],
             body: NodeBody::SubDag(inner),
+            examples: Vec::new(),
         };
 
         let mut dag: Dag<()> = Dag::new();
