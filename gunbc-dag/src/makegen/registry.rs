@@ -578,6 +578,8 @@ pub struct MetaTarget {
     /// Dependencies for the fix variant (e.g., ["fmt-fix", "lint-fix"] for test-fix)
     /// These targets are run before the main command in the -fix variant
     pub fix_deps: Vec<&'static str>,
+    /// Additional Make dependencies beyond the prep level (e.g., "testgen-check" for test)
+    pub extra_deps: Vec<&'static str>,
 }
 
 impl MetaTarget {
@@ -597,6 +599,7 @@ impl MetaTarget {
             has_check_variant: false,
             has_fix_variant: false,
             fix_deps: Vec::new(),
+            extra_deps: Vec::new(),
         }
     }
 
@@ -615,6 +618,16 @@ impl MetaTarget {
     pub fn with_fix_variant(mut self, deps: Vec<&'static str>) -> Self {
         self.has_fix_variant = true;
         self.fix_deps = deps;
+        self
+    }
+
+    /// Add extra Make dependencies beyond the prep level.
+    ///
+    /// These are appended to the dependency list after the prep-level dep.
+    /// For example, `test` depends on `build` (from PrepLevel::Full) AND
+    /// `testgen-check` (from extra_deps).
+    pub fn with_extra_deps(mut self, deps: Vec<&'static str>) -> Self {
+        self.extra_deps = deps;
         self
     }
 
@@ -666,6 +679,7 @@ pub fn default_meta_targets() -> Vec<MetaTarget> {
         // test - run all tests (requires full prep)
         // test-fix: fmt-fix + lint-fix first, then test
         MetaTarget::new("test", "Run all tests", PrepLevel::Full, ConfigField::Test)
+            .with_extra_deps(vec!["testgen-check"])
             .with_fix_variant(vec!["fmt-fix", "lint-fix"]),
         // check - type check without building (requires codegen)
         // check-fix: fmt-fix first, then check

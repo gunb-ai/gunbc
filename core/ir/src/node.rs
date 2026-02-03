@@ -2,7 +2,9 @@
 
 use crate::dag::{Dag, Port};
 use crate::types::NodeId;
+use crate::Value;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 /// A node in the DAG, generic over its operation type.
 ///
@@ -25,6 +27,13 @@ pub struct Node<T> {
     pub outputs: Vec<Port>,
     /// The node's body: either an opaque operation or a nested sub-DAG
     pub body: NodeBody<T>,
+    /// I/O examples for test generation.
+    ///
+    /// Each example specifies concrete input values and expected output values.
+    /// Testgen uses these to generate per-node unit tests that call
+    /// `execute_single_node` with the given inputs and verify the outputs.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub examples: Vec<NodeIoExample>,
 }
 
 impl<T> Node<T> {
@@ -35,6 +44,7 @@ impl<T> Node<T> {
             inputs,
             outputs,
             body: NodeBody::Opaque(op),
+            examples: Vec::new(),
         }
     }
 
@@ -45,7 +55,51 @@ impl<T> Node<T> {
             inputs,
             outputs,
             body: NodeBody::SubDag(dag),
+            examples: Vec::new(),
         }
+    }
+
+    /// Add an I/O example for test generation.
+    ///
+    /// Examples are used by testgen to generate per-node unit tests.
+    /// Each example specifies concrete input values and expected output values.
+    ///
+    /// ```ignore
+    /// Node::opaque("prepare", inputs, outputs, MyOp::Prepare)
+    ///     .with_example(
+    ///         [("input".into(), Value::Str("hello".into()))].into(),
+    ///         [("output".into(), Value::Str("HELLO".into()))].into(),
+    ///     )
+    /// ```
+    pub fn with_example(
+        mut self,
+        inputs: HashMap<String, Value>,
+        expected_outputs: HashMap<String, Value>,
+    ) -> Self {
+        self.examples.push(NodeIoExample {
+            inputs,
+            expected_outputs,
+            description: None,
+        });
+        self
+    }
+
+    /// Add a described I/O example for test generation.
+    ///
+    /// Like `with_example`, but includes a description used in the generated
+    /// test function name and doc comment.
+    pub fn with_described_example(
+        mut self,
+        description: impl Into<String>,
+        inputs: HashMap<String, Value>,
+        expected_outputs: HashMap<String, Value>,
+    ) -> Self {
+        self.examples.push(NodeIoExample {
+            inputs,
+            expected_outputs,
+            description: Some(description.into()),
+        });
+        self
     }
 
     /// Check if this node is opaque (not a sub-DAG).
@@ -66,4 +120,19 @@ pub enum NodeBody<T> {
     Opaque(T),
     /// A nested sub-DAG — same structure, recursive
     SubDag(Dag<T>),
+}
+
+/// An I/O example for a node, used by testgen to generate per-node unit tests.
+///
+/// This is the "on-node" form of examples — it uses exact `Value` matching
+/// for expected outputs. For richer matching (contains, non-empty, predicates),
+/// use `NodeExample` + `OutputMatcher` from `gunbc-test` via MockSpec.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NodeIoExample {
+    /// Input values keyed by port name.
+    pub inputs: HashMap<String, Value>,
+    /// Expected output values keyed by port name (exact match).
+    pub expected_outputs: HashMap<String, Value>,
+    /// Optional description for the generated test name.
+    pub description: Option<String>,
 }

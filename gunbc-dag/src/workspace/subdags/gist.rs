@@ -20,6 +20,7 @@ fn convert_gist_node(node: Node<GistGraphOp>) -> Node<WorkspaceOp> {
                 gunbc_ir::NodeBody::SubDag(convert_gist_dag(dag))
             }
         },
+        examples: Vec::new(),
     }
 }
 

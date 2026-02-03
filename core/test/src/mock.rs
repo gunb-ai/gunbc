@@ -148,6 +148,7 @@ impl<'a, T> ScriptedDagBuilder<'a, T> {
                 inputs: node.inputs.clone(),
                 outputs: node.outputs.clone(),
                 body,
+                examples: Vec::new(),
             });
         }
 

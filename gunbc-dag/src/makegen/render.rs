@@ -165,9 +165,9 @@ fn render_core_targets(config: &BuildConfig) -> String {
     output.push_str("codegen:\n");
     output.push_str(&format!("{}{}\n\n", INDENT, config.codegen_shell()));
 
-    // Full build transaction: codegen → cargo build → symlink
-    output.push_str("# Full build transaction: codegen → cargo build → symlink\n");
-    output.push_str("build: ensure-codegen\n");
+    // Full build transaction: codegen → testgen → cargo build → symlink
+    output.push_str("# Full build transaction: codegen → testgen → cargo build\n");
+    output.push_str("build: ensure-codegen testgen\n");
     output.push_str(&format!("{}{}\n\n", INDENT, config.build_shell()));
 
     // Rollback transaction: remove all generated artifacts
@@ -310,16 +310,22 @@ fn render_meta_target(meta: &MetaTarget, config: &BuildConfig) -> String {
     let mut output = String::new();
 
     // Determine dependency based on prep level
-    let dependency = match meta.prep_level {
-        PrepLevel::None => "",
-        PrepLevel::Codegen => " ensure-codegen",
-        PrepLevel::Full => " build",
+    let mut deps = match meta.prep_level {
+        PrepLevel::None => String::new(),
+        PrepLevel::Codegen => " ensure-codegen".to_string(),
+        PrepLevel::Full => " build".to_string(),
     };
+
+    // Append extra dependencies (e.g., testgen-check for test target)
+    for dep in &meta.extra_deps {
+        deps.push(' ');
+        deps.push_str(dep);
+    }
 
     // Use MetaTarget's get_command which references BuildConfig via ConfigField
     let command = meta.get_command(config);
     output.push_str(&format!("# {}: {}\n", meta.name, meta.description));
-    output.push_str(&format!("{}:{}\n", meta.name, dependency));
+    output.push_str(&format!("{}:{}\n", meta.name, deps));
     output.push_str(&format!("{}{}\n\n", INDENT, command));
 
     output
@@ -521,7 +527,7 @@ mod tests {
 
         assert!(makefile.contains("ensure-codegen:"));
         assert!(makefile.contains("codegen:"));
-        assert!(makefile.contains("build: ensure-codegen"));
+        assert!(makefile.contains("build: ensure-codegen testgen"));
         assert!(makefile.contains("clean:"));
     }
 
@@ -534,7 +540,7 @@ mod tests {
         assert!(makefile.contains("# Meta Targets"));
         
         // Individual meta targets
-        assert!(makefile.contains("test: build"));
+        assert!(makefile.contains("test: build testgen-check"), "test should depend on build and testgen-check");
         assert!(makefile.contains("@cargo test"));
         
         assert!(makefile.contains("check: ensure-codegen"));
