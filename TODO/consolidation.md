@@ -202,7 +202,92 @@ These are already generic and in the right location:
 
 ---
 
-## 5. Test Pattern Retrospective
+## 5. `type_id == "List"` dual encoding
+
+Cardinality is intended to be the canonical shape layer (element type +
+cardinality interval), but `"List"` is embedded as a `type_id` string
+in multiple code paths. This creates dual encoding: multiplicity is
+expressed both through cardinality AND through the type name.
+
+**The canonical model**: Port type = element type + cardinality.
+- `"String"` + `ZERO_OR_MORE` = tape of strings
+- `"String"` + `ONE` = exactly one string
+- `"String"` + `ZERO_OR_ONE` = optional string
+
+Under this model, no port should have `type_id == "List"`. List-ness
+*is* cardinality.
+
+**Where `"List"` appears as type_id:**
+
+| Location | File | What it does |
+|----------|------|-------------|
+| `repeatable` detection | `gunbc-dag/src/makegen/registry.rs:419` | `ep.type_id == "List"` to detect CLI repeatables |
+| Loop pattern input | `core/ir/src/patterns/loop_pattern.rs:64` | Hardcodes `input_port_type: "List"` |
+| Loop pattern output | `core/ir/src/patterns/loop_pattern.rs:69` | Hardcodes `output_port_type: "List"` |
+| CLI generation | `core/codegen/src/registry.rs` | Registry port defs with `"List"` type |
+
+**Already fixed**: `tool_names` port in makegen was
+`PortDef::list_nonempty("tool_names", "List")` (list-of-lists),
+corrected to `"String"` (list-of-strings).
+
+**Migration strategy** (incremental, not big-bang):
+1. Stop introducing new `"List"` uses
+2. Migrate semantically critical paths: CLI parsing (repeatable =
+   `cardinality.max > 1`), loop patterns (element type from port)
+3. Keep compatibility shims until registry + runtime agree
+4. `TypeContract::from_type_dag` already extracts cardinality from
+   type DAGs — this can become the canonical port type representation
+
+---
+
+## 6. Codebase fragility (non-testgen)
+
+### Builder functions referenced as strings
+
+**Where**: `core/codegen/src/registry.rs` `ToolDef::new()` —
+`graph_builder` parameter is `&str`.
+
+The registry stores builder function names as strings (e.g.,
+`"build_gist_graph"`). Testgen and codegen look up these strings
+to generate code. If a builder function is renamed, no compile
+error is produced — it fails at runtime or generates wrong code.
+
+**Fix**: Store an enum key (e.g., `GraphBuilderId`) instead of a
+string. Map enum → function in one place. Renames then produce
+compile errors.
+
+### `buck-out/gen` hardcoded in 16 locations
+
+**Where**: 5 source files across `core/codegen/src/main.rs`,
+`gunbc-dag/src/makegen/render.rs`, `gunbc-dag/src/ci/ops.rs`,
+`gunbc-dag/src/bin/ci.rs`, `gunbc-dag/src/ci/graph_mock.rs`.
+
+The output directory path is scattered as string literals. If
+it ever changes, these won't update together.
+
+**Fix**: Single constant in `core/ir` or `core/codegen`, referenced
+everywhere. Already noted informally but not tracked.
+
+### Static CODEGEN_SOURCES path list
+
+**Where**: `Makefile:16` and `gunbc-dag/src/makegen/render.rs:156`
+
+```makefile
+CODEGEN_SOURCES := $(shell find core/codegen/src core/ir/src -name '*.rs')
+```
+
+The directory list is hardcoded in both the Makefile and the Makefile
+generator. If codegen gains a new source dependency (e.g., a new
+crate in `core/`), the staleness stamp won't track it. Generated
+artifacts will appear up-to-date when they're not.
+
+**Fix**: Either derive the list from `Cargo.toml` dependencies, or
+at minimum maintain a single source-of-truth list that both the
+Makefile and the renderer reference.
+
+---
+
+## 7. Test Pattern Retrospective
 
 **885 manually written tests surveyed** across the codebase.
 All are purely in-memory — zero real I/O in any test today.
@@ -312,7 +397,7 @@ deleted or reduced to edge-case-only suites.
 
 ---
 
-## 6. Integration Test Gap Analysis
+## 8. Integration Test Gap Analysis
 
 **Current state**: All 885 tests are in-memory. Zero tests exercise
 real transport execution. The transport abstraction layer ensures
@@ -483,7 +568,11 @@ Concrete test suites:
 - [ ] Split `MergeOutputs` dedup from cardinality handling (blocked on engine work)
 - [ ] Review hand-written tests for redundancy with testgen (Pattern 1, 5)
 - [ ] Remove fragile node-count assertions from graph structure tests (Pattern 2)
-- [ ] Design hermeticity annotation for `Shell` transport (see §6 design problem)
+- [ ] Eliminate `type_id == "List"` dual encoding (see §5, incremental migration)
+- [ ] Replace string-based builder references with enum keys (see §6)
+- [ ] Extract `buck-out/gen` to a single constant (see §6, 16 occurrences)
+- [ ] Fix CODEGEN_SOURCES hardcoded path list (see §6)
+- [ ] Design hermeticity annotation for `Shell` transport (see §8 design problem)
 - [ ] Add integration tests: `File` transport executor (all 6 FileOp variants)
 - [ ] Add integration tests: `Shell` transport executor (stdout, stderr, exit codes)
 - [ ] Add integration tests: Git transport (`GitRequest` variants against temp repo)

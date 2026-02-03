@@ -172,6 +172,11 @@ assert!(
 Or add `Value::is_empty() -> bool` to the IR and emit
 `assert!(!output.is_empty())`.
 
+**Note**: The runtime `OutputMatcher::check()` method (mock_spec.rs:778)
+already handles this correctly — it matches on `Value::Str`, `Value::List`,
+and treats other types as non-empty by existence. The fix for codegen is
+just mirroring that logic in `to_check_code()`.
+
 ---
 
 ## 4. value_to_rust_literal catch-all silently degrades unknown variants
@@ -218,6 +223,72 @@ _ => "compile_error!(\"unsupported Value variant in node example\")".to_string()
 
 This is the simplest fix and could be done independently of the others.
 
+**Related**: `Value::List` serialization has a separate silent corruption
+path. The `Value::List(list)` arm uses `filter_map(|v| v.as_str())`,
+which silently drops any non-string elements. `Value::List(vec![Value::Int(1)])`
+would serialize to `Value::str_list(vec![])` — empty list, no error.
+Fix: either assert all elements are strings, or serialize recursively
+over `Value` variants.
+
+---
+
+## 5. Cardinality "Empty" tests don't test absence
+
+**Where**: `core/codegen/src/testgen/codegen.rs` `cardinality_case_mock_value()`
+
+**What happens**: For the `CardinalityCase::Empty` case, the function
+generates concrete values with "empty content" rather than actual absence:
+
+```rust
+CardinalityCase::Empty => match type_id {
+    "String" => "Value::Str(String::new())".to_string(),   // empty string
+    "Bool"   => "Value::Bool(false)".to_string(),           // false
+    "Int"    => "Value::Int(0)".to_string(),                // zero
+    _        => "Value::List(vec![])".to_string(),          // empty vec
+}
+```
+
+Under set/tape semantics, a `[0,1]` cardinality port with `Empty`
+should have **zero elements** (absent), not **one element with empty
+content**. `false` is still a `Bool` — it's one element, not zero.
+The generated "empty" tests actually exercise the "one" case.
+
+**Why it matters**: The cardinality boundary tests (Bucket B.3) are
+meant to verify DAG behavior at cardinality boundaries. If Empty
+doesn't test absence, the most valuable boundary (present vs absent)
+is never exercised. This blocks property-based and boundary-based
+testing from catching real cardinality bugs.
+
+**Example from generated code**: For a `[0,1]` Bool port, the generated
+"empty" test does `mocks.set_value("node", "port", Value::Bool(false))`.
+This is indistinguishable from "one element that happens to be false."
+
+**Root cause**: `BoundaryMocks` has no way to represent "absent." It
+stores `HashMap<String, HashMap<String, Value>>` — every entry is
+present with a concrete `Value`. There's no `unset_value()` or
+`Option<Value>` semantics.
+
+**Possible approaches**:
+
+1. **`Option<Value>` in BoundaryMocks** — Change mock storage to
+   `HashMap<String, HashMap<String, Option<Value>>>`. `None` means
+   absent, `Some(v)` means present. Executor treats `None` as
+   zero elements.
+
+2. **`Value::Absent` variant** — Add an explicit variant that the
+   executor interprets as "this port has no value." Simpler than
+   `Option<Value>` because it doesn't change the map type, but
+   adds a variant to a core enum.
+
+3. **`unset_value()` API on BoundaryMocks** — Store absent ports
+   separately (e.g., `HashSet<(String, String)>` of removed ports).
+   `set_value()` adds, `unset_value()` removes.
+
+**Affected tests**: All Bucket B.3 "empty" tests for scalar types
+(`Bool`, `Int`, `String`). List-typed ports already use
+`Value::List(vec![])` which is arguably correct (zero elements
+represented as empty collection).
+
 ---
 
 ## Tasks
@@ -227,6 +298,8 @@ This is the simplest fix and could be done independently of the others.
 - [ ] Hack 2: Update parse node examples to use real transport responses once ^^ lands
 - [ ] Hack 3: Make `NonEmpty` codegen type-aware (or add `Value::is_empty()`)
 - [ ] Hack 4: Replace `value_to_rust_literal` catch-all with `panic!()` or `compile_error!()`
+- [ ] Hack 4: Fix `Value::List` filter_map silent dropping of non-string elements
+- [ ] Hack 5: Make cardinality Empty tests represent absence, not empty content
 
 ## Notes
 
@@ -238,6 +311,14 @@ This is the simplest fix and could be done independently of the others.
 - Hack 1 is independent — it's about closure serialization, not Value
   serialization. The "typed matcher variants" approach (option 2) is
   probably the cleanest since it keeps generated tests self-contained.
+  Typed matchers form a small finite logic language that's both
+  serializable to codegen and amenable to future proof generation.
+- Hack 3 note: the runtime `OutputMatcher::check()` already handles
+  `Value::List` and non-string types correctly. The codegen path
+  (`to_check_code()`) just needs to mirror that logic.
+- Hack 5 is the most architecturally important — it blocks meaningful
+  cardinality boundary testing. If Empty doesn't test absence, the
+  B.3 tests exercise a subset of what they claim to cover.
 - None of these are blocking. Tests compile, run, and pass. The risk
   is false confidence — tests that look like they verify behavior but
   actually don't. The enforcement mechanism (hack 0, already fixed)
