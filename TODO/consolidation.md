@@ -732,6 +732,166 @@ This could live in `core/test/` alongside existing test infrastructure.
 
 ---
 
+## 12. Skipped-value propagation boilerplate — 8 occurrences across 3 files
+
+**Where**: `gunbc-dag/src/ci/ops.rs` (5), `lib/llm-ops/src/lib.rs` (2),
+`gunbc-dag/src/bootstrap/ops.rs` (1)
+
+**Problem**: Every parse op that receives a transport response must
+check if the upstream was skipped and propagate `Value::Skipped` to
+all outputs. This produces 5–8 lines of identical boilerplate per op:
+
+```rust
+if matches!(inputs.get("response"), Some(Value::Skipped)) {
+    return OutputMap::new()
+        .value("field_a", Value::Skipped)
+        .value("field_b", Value::Skipped)
+        .value("field_c", Value::Skipped)
+        .ok();
+}
+```
+
+The only thing that varies is the list of output field names.
+
+**Proposed**: Helper function in `core/exec/src/helpers.rs`:
+
+```rust
+/// If the given input key is `Value::Skipped`, return all output
+/// fields as `Value::Skipped`. Otherwise return `None`.
+pub fn propagate_skipped(
+    inputs: &HashMap<String, Value>,
+    input_key: &str,
+    output_keys: &[&str],
+) -> Option<Result<HashMap<String, Value>, ExecError>> {
+    if matches!(inputs.get(input_key), Some(Value::Skipped)) {
+        let mut map = OutputMap::new();
+        for key in output_keys {
+            map = map.value(key, Value::Skipped);
+        }
+        Some(map.ok())
+    } else {
+        None
+    }
+}
+```
+
+Callers become:
+
+```rust
+if let Some(result) = propagate_skipped(&inputs, "response",
+    &["field_a", "field_b", "field_c"]) {
+    return result;
+}
+```
+
+---
+
+## 13. Error mapping boilerplate — 23 `.map_err` + 4 `.map_err(ExecError::new)` across 10 files
+
+**Where**: `lib/review/src/lib.rs` (5), `lib/llm-ops/src/lib.rs` (4),
+`core/exec/src/execute.rs` (4), `lib/primitives/src/data.rs` (3),
+`gunbc-dag/src/ci/graph.rs` (3), `lib/blob/src/lib.rs` (2),
+`lib/tools/deps/src/ops.rs` (2), `lib/transport/src/ops.rs` (1),
+`gunbc-dag/src/ci/env.rs` (1), `gunbc-dag/src/workspace/ops.rs` (1),
+`lib/tools/cargo/src/ops.rs` (1)
+
+**Pattern**: Repeated `.map_err(|e| ExecError::new(format!("context: {}", e)))?`
+chains for wrapping parse/serialize errors:
+
+```rust
+serde_json::from_str(&text)
+    .map_err(|e| ExecError::new(format!("JSON parse error: {}", e)))?;
+```
+
+**Proposed**: Context-wrapping method on `ExecError`:
+
+```rust
+impl ExecError {
+    /// Wrap any Display error with a context message.
+    pub fn context<E: std::fmt::Display>(msg: &str, err: E) -> Self {
+        ExecError::new(format!("{}: {}", msg, err))
+    }
+}
+
+// Plus a Result extension trait:
+pub trait ResultExt<T> {
+    fn exec_context(self, msg: &str) -> Result<T, ExecError>;
+}
+impl<T, E: std::fmt::Display> ResultExt<T> for Result<T, E> {
+    fn exec_context(self, msg: &str) -> Result<T, ExecError> {
+        self.map_err(|e| ExecError::context(msg, e))
+    }
+}
+```
+
+Callers become:
+
+```rust
+serde_json::from_str(&text).exec_context("JSON parse error")?;
+```
+
+---
+
+## 14. ShellResponse construction — 39 direct constructions across 16 files
+
+**Where**: `core/codegen/src/registry.rs` (6),
+`lib/tools/gist/tests/integration.rs` (6),
+`lib/tools/gist/tests/generated_tests.rs` (6),
+`gunbc-dag/src/bin/ci.rs` (3), `gunbc-dag/src/bootstrap/graph_mock.rs` (3),
+`lib/git-ops/src/lib.rs` (2), `gunbc-dag/src/ci/graph_mock.rs` (2),
+`lib/review/src/graph_mock.rs` (2), and 8 more files with 1 each.
+
+**Problem**: `ShellResponse` has no convenience constructors, unlike
+`FileResponse` which has `written()`, `read_ok()`, `error()`.
+Every construction site writes the full struct literal:
+
+```rust
+ShellResponse {
+    exit_code: 0,
+    stdout: output.to_string(),
+    stderr: String::new(),
+}
+```
+
+Most (>80%) are success cases with empty stderr.
+
+**Proposed**: Convenience constructors on `ShellResponse`:
+
+```rust
+impl ShellResponse {
+    /// Command succeeded (exit_code 0) with given stdout.
+    pub fn ok(stdout: impl Into<String>) -> Self {
+        Self { exit_code: 0, stdout: stdout.into(), stderr: String::new() }
+    }
+
+    /// Command failed with given exit code and stderr.
+    pub fn failed(exit_code: i32, stderr: impl Into<String>) -> Self {
+        Self { exit_code, stdout: String::new(), stderr: stderr.into() }
+    }
+}
+```
+
+---
+
+## 15. Unmigrated ops still using raw HashMap — 13 sites across 7 files
+
+**Where**: `lib/tools/cargo/src/ops.rs` (3 in `mock_outputs`),
+`lib/tools/deps/src/graph.rs` (2 in mock closures),
+`gunbc-dag/src/ci/graph.rs` (1), `core/exec/src/execute.rs` (1),
+`core/test/src/mock.rs` (1), `core/ir/src/transport/cli.rs` (4),
+`core/exec/src/helpers.rs` (1 — internal, fine)
+
+These files still use `let mut out = HashMap::new()` instead of
+`OutputMap`. Most are in secondary locations (mock impls, graph
+dispatch, CLI tool infra) rather than primary `execute()` methods.
+
+**Proposed**: Migrate to `OutputMap` for consistency.
+`core/ir/src/transport/cli.rs` is special — it's in `core/ir`
+which doesn't depend on `core/exec`, so it can't use `OutputMap`.
+This is fine; it's infrastructure code, not op code.
+
+---
+
 ## Tasks
 
 ### High priority (widespread, low effort) — DONE
@@ -740,18 +900,23 @@ This could live in `core/test/` alongside existing test infrastructure.
 - [x] Add `TransportResponseExt::require_shell/rest/file` methods (51 call sites) — `core/exec/src/helpers.rs`
 - [x] Add `ShellRequest::into_transport_request()` — `core/ir/src/transport/mod.rs`
 
+### High priority (new — widespread, low effort)
+- [ ] Add `propagate_skipped` helper (8 call sites across 3 files) — §12
+- [ ] Add `ExecError::context()` + `ResultExt` trait (27 call sites across 10 files) — §13
+- [ ] Add `ShellResponse::ok()` / `ShellResponse::failed()` constructors (39 sites, 16 files) — §14
+
 ### Medium priority
-- [ ] Migrate remaining raw `ShellRequest { .. }` construction to builder (20 call sites)
-- [ ] Add `assert_boundaries` test helper to `core/test` (8 files)
-- [ ] Extract `hash_finding_id` to `lib/primitives` as `StableHashOp`
-- [ ] Unify blob hash with review hash (both should use SHA256)
-- [ ] Extract `FormatDiffArtifact` to `lib/primitives` as `FormatMapOp`
+- [ ] Migrate remaining raw `HashMap::new()` output construction to `OutputMap` (9 sites, 5 files) — §15
+- [ ] Add `assert_boundaries` test helper to `core/test` (8 files) — §11
+- [ ] Extract `hash_finding_id` to `lib/primitives` as `StableHashOp` — §1
+- [ ] Unify blob hash with review hash (both should use SHA256) — §1
+- [ ] Extract `FormatDiffArtifact` to `lib/primitives` as `FormatMapOp` — §1
 
 ### Lower priority / blocked
-- [ ] Consider `ToolGraphOp<D>` generic wrapper (dag-pattern-ux.md Phase 4)
-- [ ] Split `MergeOutputs` dedup from cardinality handling (blocked on engine work)
-- [ ] Design rendering DAG for Makefile generation (when adding Justfile)
-- [ ] Design rendering DAG for CI workflow generation (when adding second provider)
+- [ ] Consider `ToolGraphOp<D>` generic wrapper (dag-pattern-ux.md Phase 4) — §3
+- [ ] Split `MergeOutputs` dedup from cardinality handling (blocked on engine work) — §1
+- [ ] Design rendering DAG for Makefile generation (when adding Justfile) — §2
+- [ ] Design rendering DAG for CI workflow generation (when adding second provider) — §2
 - [ ] Review hand-written tests for redundancy with testgen (Pattern 1, 5) — §7
 - [ ] Remove fragile node-count assertions from graph structure tests (Pattern 2) — §7
 - [ ] Eliminate `type_id == "List"` dual encoding (see §5, incremental migration)
@@ -796,3 +961,13 @@ This could live in `core/test/` alongside existing test infrastructure.
 - Makefile gen and CI gen should read `all_testgen_targets()` to
   auto-generate check targets (testgen-improvements.md TODO 6.3).
   This makes "add a new tool" a single edit instead of 3+.
+- The skipped-propagation pattern (§12) is mechanical — it affects the
+  parse ops that sit after transport boundaries. This will grow as
+  more DAGs are added, so worth fixing now.
+- The error-mapping pattern (§13) is less urgent since the current code
+  works, but the `ResultExt` trait eliminates a lot of visual noise.
+- The ShellResponse constructors (§14) are a quick win — `FileResponse`
+  already has the same pattern (`written()`, `read_ok()`, `error()`),
+  so this is consistent API completion.
+- The unmigrated HashMap sites (§15) are mostly in mock/infra code,
+  not primary execute paths. Lower urgency but worth cleaning up.
