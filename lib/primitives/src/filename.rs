@@ -388,6 +388,336 @@ pub fn sanitize(input: &str, filesystems: &[&Filesystem], replacement: char) -> 
 }
 
 // ============================================================================
+// Filesystem Detection
+// ============================================================================
+
+/// Detect the default filesystem for the current platform at compile time.
+///
+/// Returns the most common default filesystem for each supported platform:
+/// - Linux → ext4
+/// - macOS → APFS
+/// - Windows → NTFS
+///
+/// For filename constraint purposes, all major Linux filesystems (ext4, XFS,
+/// Btrfs, ZFS) share identical rules, so compile-time detection is sufficient.
+/// If finer-grained runtime detection is needed (e.g., distinguishing NTFS
+/// from ext4 on a dual-boot), a transport operation could probe `statfs`.
+pub fn detect_local_filesystem() -> &'static Filesystem {
+    #[cfg(target_os = "macos")]
+    {
+        return &APFS;
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        return &NTFS;
+    }
+
+    // Linux and all other platforms: ext4 constraints (most permissive)
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        &EXT4
+    }
+}
+
+/// Get the default filesystem set for the current local platform.
+///
+/// Returns a single-element slice containing [`detect_local_filesystem()`].
+/// Use [`CROSS_PLATFORM`] instead when targeting multiple platforms.
+pub fn local_filesystems() -> &'static [&'static Filesystem] {
+    #[cfg(target_os = "macos")]
+    {
+        static LOCAL: &[&Filesystem] = &[&APFS];
+        return LOCAL;
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        static LOCAL: &[&Filesystem] = &[&NTFS];
+        return LOCAL;
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        static LOCAL: &[&Filesystem] = &[&EXT4];
+        LOCAL
+    }
+}
+
+// ============================================================================
+// Validation
+// ============================================================================
+
+/// A specific constraint violation found during filename validation.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Violation {
+    /// A forbidden character was found.
+    ForbiddenChar {
+        ch: char,
+        filesystem: &'static str,
+    },
+    /// A control character (0x01–0x1F) was found.
+    ControlChar {
+        ch: char,
+        filesystem: &'static str,
+    },
+    /// The filename matches a reserved device name.
+    ReservedName {
+        name: String,
+        filesystem: &'static str,
+    },
+    /// The filename exceeds the maximum component length.
+    TooLong {
+        actual: usize,
+        max: usize,
+        filesystem: &'static str,
+    },
+    /// A forbidden character appears at the trailing position.
+    ForbiddenTrailing {
+        ch: char,
+        filesystem: &'static str,
+    },
+    /// The filename is empty.
+    Empty,
+}
+
+impl std::fmt::Display for Violation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Violation::ForbiddenChar { ch, filesystem } => {
+                write!(f, "'{}' is forbidden on {}", ch, filesystem)
+            }
+            Violation::ControlChar { ch, filesystem } => {
+                write!(
+                    f,
+                    "control char U+{:04X} is forbidden on {}",
+                    *ch as u32, filesystem
+                )
+            }
+            Violation::ReservedName { name, filesystem } => {
+                write!(f, "'{}' is a reserved name on {}", name, filesystem)
+            }
+            Violation::TooLong {
+                actual,
+                max,
+                filesystem,
+            } => {
+                write!(
+                    f,
+                    "length {} exceeds {}-byte limit on {}",
+                    actual, max, filesystem
+                )
+            }
+            Violation::ForbiddenTrailing { ch, filesystem } => {
+                write!(f, "trailing '{}' is forbidden on {}", ch, filesystem)
+            }
+            Violation::Empty => write!(f, "filename is empty"),
+        }
+    }
+}
+
+/// Validate a filename against the constraints of all given filesystems.
+///
+/// Returns an empty vec if the filename is valid on all target filesystems.
+/// Each violation includes the filesystem that flagged it, so callers can
+/// see exactly which platform would have a problem.
+///
+/// # Example
+///
+/// ```
+/// use gunbc_primitives::filename::{validate, CROSS_PLATFORM, Violation};
+///
+/// // Valid everywhere
+/// assert!(validate("readme.md", CROSS_PLATFORM).is_empty());
+///
+/// // Slash is forbidden on all platforms
+/// let v = validate("path/file", CROSS_PLATFORM);
+/// assert!(!v.is_empty());
+/// ```
+pub fn validate(name: &str, filesystems: &[&Filesystem]) -> Vec<Violation> {
+    let mut violations = Vec::new();
+
+    if name.is_empty() {
+        violations.push(Violation::Empty);
+        return violations;
+    }
+
+    for fs in filesystems {
+        // Forbidden chars
+        for ch in name.chars() {
+            if fs.forbidden_chars.contains(&ch) {
+                violations.push(Violation::ForbiddenChar {
+                    ch,
+                    filesystem: fs.id,
+                });
+            }
+            if fs.forbid_control_chars && (ch as u32) >= 1 && (ch as u32) <= 0x1F {
+                violations.push(Violation::ControlChar {
+                    ch,
+                    filesystem: fs.id,
+                });
+            }
+        }
+
+        // Reserved names
+        if fs.is_reserved_name(name) {
+            violations.push(Violation::ReservedName {
+                name: name.to_string(),
+                filesystem: fs.id,
+            });
+        }
+
+        // Length
+        if name.len() > fs.max_component_bytes {
+            violations.push(Violation::TooLong {
+                actual: name.len(),
+                max: fs.max_component_bytes,
+                filesystem: fs.id,
+            });
+        }
+
+        // Trailing chars
+        if let Some(last) = name.chars().last() {
+            if fs.forbidden_trailing.contains(&last) {
+                violations.push(Violation::ForbiddenTrailing {
+                    ch: last,
+                    filesystem: fs.id,
+                });
+            }
+        }
+    }
+
+    violations
+}
+
+// ============================================================================
+// Write Gateway
+// ============================================================================
+
+/// Policy for how the filesystem gateway handles invalid filenames.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum WritePolicy {
+    /// Automatically sanitize invalid filenames. Always produces a usable name.
+    Sanitize,
+    /// Reject invalid filenames with a list of constraint violations.
+    Strict,
+}
+
+/// Outcome of preparing a filename through the filesystem gateway.
+///
+/// This is the result type for [`prepare_filename`] — the central gateway
+/// that all filename decisions should flow through.
+#[derive(Debug, Clone, PartialEq)]
+pub enum FilenameOutcome {
+    /// The filename is already valid on all target filesystems.
+    Valid(String),
+    /// The filename was automatically sanitized (only in [`WritePolicy::Sanitize`]).
+    Sanitized {
+        original: String,
+        sanitized: String,
+    },
+    /// The filename was rejected due to violations (only in [`WritePolicy::Strict`]).
+    Rejected {
+        original: String,
+        violations: Vec<Violation>,
+    },
+}
+
+impl FilenameOutcome {
+    /// Get the usable filename, or `None` if rejected.
+    pub fn filename(&self) -> Option<&str> {
+        match self {
+            FilenameOutcome::Valid(name) => Some(name),
+            FilenameOutcome::Sanitized { sanitized, .. } => Some(sanitized),
+            FilenameOutcome::Rejected { .. } => None,
+        }
+    }
+
+    /// Returns `true` if the filename was accepted (valid or sanitized).
+    pub fn is_accepted(&self) -> bool {
+        !matches!(self, FilenameOutcome::Rejected { .. })
+    }
+
+    /// Returns `true` if the original was already valid (no modification).
+    pub fn is_valid(&self) -> bool {
+        matches!(self, FilenameOutcome::Valid(_))
+    }
+
+    /// Returns `true` if the filename was modified during sanitization.
+    pub fn was_sanitized(&self) -> bool {
+        matches!(self, FilenameOutcome::Sanitized { .. })
+    }
+}
+
+/// Prepare a filename for writing through the filesystem gateway.
+///
+/// This is the central entry point for all filename decisions. Callers
+/// specify a desired filename, target filesystems, and a policy. The
+/// gateway either validates, sanitizes, or rejects the filename.
+///
+/// # Sanitize Policy
+///
+/// Always succeeds. Invalid characters are replaced with `replacement`,
+/// reserved names are prefixed, and the result is truncated to fit.
+///
+/// # Strict Policy
+///
+/// Returns [`FilenameOutcome::Rejected`] with a list of violations if the
+/// filename would be invalid on any target filesystem.
+///
+/// # Example
+///
+/// ```
+/// use gunbc_primitives::filename::{prepare_filename, WritePolicy, FilenameOutcome, CROSS_PLATFORM};
+///
+/// // Sanitize mode — auto-fixes
+/// let outcome = prepare_filename("claude/branch", CROSS_PLATFORM, WritePolicy::Sanitize, '-');
+/// assert_eq!(outcome.filename(), Some("claude-branch"));
+///
+/// // Strict mode — rejects invalid names
+/// let outcome = prepare_filename("claude/branch", CROSS_PLATFORM, WritePolicy::Strict, '-');
+/// assert!(matches!(outcome, FilenameOutcome::Rejected { .. }));
+///
+/// // Already valid — passes through
+/// let outcome = prepare_filename("readme.md", CROSS_PLATFORM, WritePolicy::Strict, '-');
+/// assert!(matches!(outcome, FilenameOutcome::Valid(_)));
+/// ```
+pub fn prepare_filename(
+    name: &str,
+    filesystems: &[&Filesystem],
+    policy: WritePolicy,
+    replacement: char,
+) -> FilenameOutcome {
+    match policy {
+        WritePolicy::Sanitize => {
+            // Always run sanitize — it normalizes (collapses consecutive
+            // replacement chars, trims) even when the input is technically
+            // valid. Compare input vs output to determine the outcome.
+            let sanitized = sanitize(name, filesystems, replacement);
+            if sanitized == name {
+                FilenameOutcome::Valid(name.to_string())
+            } else {
+                FilenameOutcome::Sanitized {
+                    original: name.to_string(),
+                    sanitized,
+                }
+            }
+        }
+        WritePolicy::Strict => {
+            let violations = validate(name, filesystems);
+            if violations.is_empty() {
+                FilenameOutcome::Valid(name.to_string())
+            } else {
+                FilenameOutcome::Rejected {
+                    original: name.to_string(),
+                    violations,
+                }
+            }
+        }
+    }
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 
@@ -830,6 +1160,274 @@ mod tests {
                 once, twice,
                 "sanitize not idempotent for input '{}': '{}' → '{}'",
                 input, once, twice
+            );
+        }
+    }
+
+    // ====================================================================
+    // Filesystem detection
+    // ====================================================================
+
+    #[test]
+    fn test_detect_local_filesystem_returns_known() {
+        let fs = detect_local_filesystem();
+        let known_ids = ["ext4", "apfs", "ntfs"];
+        assert!(
+            known_ids.contains(&fs.id),
+            "detected '{}', expected one of {:?}",
+            fs.id,
+            known_ids
+        );
+    }
+
+    #[test]
+    fn test_local_filesystems_contains_detected() {
+        let local = local_filesystems();
+        let detected = detect_local_filesystem();
+        assert_eq!(local.len(), 1);
+        assert_eq!(local[0].id, detected.id);
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn test_linux_detects_ext4() {
+        assert_eq!(detect_local_filesystem().id, "ext4");
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn test_macos_detects_apfs() {
+        assert_eq!(detect_local_filesystem().id, "apfs");
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn test_windows_detects_ntfs() {
+        assert_eq!(detect_local_filesystem().id, "ntfs");
+    }
+
+    // ====================================================================
+    // Validation
+    // ====================================================================
+
+    #[test]
+    fn test_validate_valid_filename() {
+        assert!(validate("readme.md", CROSS_PLATFORM).is_empty());
+        assert!(validate("hello-world", CROSS_PLATFORM).is_empty());
+        assert!(validate("v1.0.0_rc1", CROSS_PLATFORM).is_empty());
+    }
+
+    #[test]
+    fn test_validate_empty() {
+        let v = validate("", CROSS_PLATFORM);
+        assert_eq!(v.len(), 1);
+        assert!(matches!(v[0], Violation::Empty));
+    }
+
+    #[test]
+    fn test_validate_forbidden_slash() {
+        let v = validate("path/file", CROSS_PLATFORM);
+        // `/` is forbidden on all three: ext4, ntfs, apfs
+        let slash_violations: Vec<_> = v
+            .iter()
+            .filter(|v| matches!(v, Violation::ForbiddenChar { ch: '/', .. }))
+            .collect();
+        assert_eq!(slash_violations.len(), 3, "all 3 filesystems should flag '/'");
+    }
+
+    #[test]
+    fn test_validate_colon_only_on_apfs_and_ntfs() {
+        let v = validate("file:name", CROSS_PLATFORM);
+        let colon_violations: Vec<_> = v
+            .iter()
+            .filter(|v| matches!(v, Violation::ForbiddenChar { ch: ':', .. }))
+            .collect();
+        // `:` is forbidden on APFS and NTFS but NOT ext4
+        assert_eq!(colon_violations.len(), 2);
+    }
+
+    #[test]
+    fn test_validate_reserved_name_ntfs_only() {
+        let v = validate("CON", CROSS_PLATFORM);
+        let reserved: Vec<_> = v
+            .iter()
+            .filter(|v| matches!(v, Violation::ReservedName { .. }))
+            .collect();
+        // Only NTFS has reserved names
+        assert_eq!(reserved.len(), 1);
+        assert!(matches!(
+            reserved[0],
+            Violation::ReservedName {
+                filesystem: "ntfs",
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn test_validate_trailing_dot() {
+        let v = validate("file.", CROSS_PLATFORM);
+        let trailing: Vec<_> = v
+            .iter()
+            .filter(|v| matches!(v, Violation::ForbiddenTrailing { .. }))
+            .collect();
+        // Only NTFS forbids trailing dot
+        assert_eq!(trailing.len(), 1);
+    }
+
+    #[test]
+    fn test_validate_too_long() {
+        let long = "a".repeat(300);
+        let v = validate(&long, CROSS_PLATFORM);
+        let too_long: Vec<_> = v
+            .iter()
+            .filter(|v| matches!(v, Violation::TooLong { .. }))
+            .collect();
+        // All three have 255-byte limit
+        assert_eq!(too_long.len(), 3);
+    }
+
+    #[test]
+    fn test_validate_control_char_ntfs_only() {
+        let v = validate("hello\x01world", CROSS_PLATFORM);
+        let control: Vec<_> = v
+            .iter()
+            .filter(|v| matches!(v, Violation::ControlChar { .. }))
+            .collect();
+        // Only NTFS forbids control chars
+        assert_eq!(control.len(), 1);
+        assert!(matches!(
+            control[0],
+            Violation::ControlChar {
+                filesystem: "ntfs",
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn test_violation_display() {
+        let v = Violation::ForbiddenChar {
+            ch: '/',
+            filesystem: "ext4",
+        };
+        assert_eq!(v.to_string(), "'/' is forbidden on ext4");
+
+        let v = Violation::Empty;
+        assert_eq!(v.to_string(), "filename is empty");
+
+        let v = Violation::TooLong {
+            actual: 300,
+            max: 255,
+            filesystem: "ntfs",
+        };
+        assert_eq!(v.to_string(), "length 300 exceeds 255-byte limit on ntfs");
+    }
+
+    // ====================================================================
+    // Write gateway: prepare_filename
+    // ====================================================================
+
+    #[test]
+    fn test_prepare_filename_valid_passthrough() {
+        let outcome =
+            prepare_filename("readme.md", CROSS_PLATFORM, WritePolicy::Strict, '-');
+        assert!(matches!(outcome, FilenameOutcome::Valid(ref s) if s == "readme.md"));
+        assert!(outcome.is_valid());
+        assert!(outcome.is_accepted());
+        assert!(!outcome.was_sanitized());
+        assert_eq!(outcome.filename(), Some("readme.md"));
+    }
+
+    #[test]
+    fn test_prepare_filename_sanitize_mode() {
+        let outcome = prepare_filename(
+            "claude/branch",
+            CROSS_PLATFORM,
+            WritePolicy::Sanitize,
+            '-',
+        );
+        assert!(matches!(
+            outcome,
+            FilenameOutcome::Sanitized {
+                ref original,
+                ref sanitized,
+            } if original == "claude/branch" && sanitized == "claude-branch"
+        ));
+        assert!(!outcome.is_valid());
+        assert!(outcome.is_accepted());
+        assert!(outcome.was_sanitized());
+        assert_eq!(outcome.filename(), Some("claude-branch"));
+    }
+
+    #[test]
+    fn test_prepare_filename_strict_rejects() {
+        let outcome = prepare_filename(
+            "claude/branch",
+            CROSS_PLATFORM,
+            WritePolicy::Strict,
+            '-',
+        );
+        assert!(matches!(outcome, FilenameOutcome::Rejected { .. }));
+        assert!(!outcome.is_accepted());
+        assert!(outcome.filename().is_none());
+    }
+
+    #[test]
+    fn test_prepare_filename_strict_accepts_valid() {
+        let outcome = prepare_filename(
+            "already-safe-name.md",
+            CROSS_PLATFORM,
+            WritePolicy::Strict,
+            '-',
+        );
+        assert!(matches!(outcome, FilenameOutcome::Valid(_)));
+        assert_eq!(outcome.filename(), Some("already-safe-name.md"));
+    }
+
+    #[test]
+    fn test_prepare_filename_sanitize_reserved() {
+        let outcome =
+            prepare_filename("CON", CROSS_PLATFORM, WritePolicy::Sanitize, '-');
+        assert_eq!(outcome.filename(), Some("_CON"));
+        assert!(outcome.was_sanitized());
+    }
+
+    #[test]
+    fn test_prepare_filename_local_filesystem() {
+        // Using local filesystem detection — should work on any platform
+        let local = local_filesystems();
+        let outcome = prepare_filename("safe-name.txt", local, WritePolicy::Strict, '-');
+        assert!(outcome.is_accepted());
+    }
+
+    #[test]
+    fn test_prepare_filename_sanitize_is_always_accepted() {
+        let inputs = [
+            "path/file",
+            "CON",
+            "file:name",
+            "",
+            "a*b?c",
+            "trail. ",
+            "///",
+        ];
+        for input in &inputs {
+            let outcome = prepare_filename(
+                input,
+                CROSS_PLATFORM,
+                WritePolicy::Sanitize,
+                '-',
+            );
+            assert!(
+                outcome.is_accepted(),
+                "sanitize should always accept, failed for '{}'",
+                input
+            );
+            assert!(
+                outcome.filename().is_some(),
+                "sanitize should always produce a filename, failed for '{}'",
+                input
             );
         }
     }
