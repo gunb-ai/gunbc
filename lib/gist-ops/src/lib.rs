@@ -17,6 +17,7 @@ use gunbc_exec::{optional_str, require_response, require_str, ExecError, Executa
 use gunbc_ir::transport::gist::GistRequest;
 use gunbc_ir::transport::{ShellResponse, TransportRequest, TransportResponse};
 use gunbc_ir::Value;
+use gunbc_primitives::filename;
 use std::collections::HashMap;
 use std::time::SystemTime;
 
@@ -88,17 +89,17 @@ pub fn prepare_gist_request(
         .to_shell_request()
 }
 
-/// Sanitize a branch name for use in a filename.
+/// Sanitize a branch name for use in a filename across all platforms.
 ///
-/// Branch names like `claude/branch-name` or `feature/foo bar` contain
-/// characters that are problematic in filenames across platforms. This
-/// function replaces them with hyphens and normalizes the result.
+/// Delegates to the filesystem-constraint-driven sanitizer in
+/// `gunbc_primitives::filename`. Cross-platform safety emerges from
+/// composing ext4 + NTFS + APFS constraints.
 ///
-/// Rules:
-/// - Replace `/`, `\`, `:`, `*`, `?`, `"`, `<`, `>`, `|`, spaces with `-`
-/// - Collapse consecutive hyphens into one
-/// - Trim leading/trailing hyphens
-/// - Fall back to `"snapshot"` if the result is empty
+/// Additionally replaces spaces with the replacement char, since spaces
+/// in filenames are universally problematic in shell contexts even though
+/// they're technically valid on all filesystems.
+///
+/// Falls back to `"snapshot"` if the result would be empty.
 ///
 /// # Examples
 ///
@@ -108,36 +109,13 @@ pub fn prepare_gist_request(
 /// assert_eq!(sanitize_branch_for_filename("feature/foo bar"), "feature-foo-bar");
 /// ```
 pub fn sanitize_branch_for_filename(branch: &str) -> String {
-    let sanitized: String = branch
-        .chars()
-        .map(|c| match c {
-            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' | ' ' => '-',
-            _ => c,
-        })
-        .collect();
-
-    // Collapse consecutive hyphens
-    let mut result = String::with_capacity(sanitized.len());
-    let mut prev_hyphen = false;
-    for c in sanitized.chars() {
-        if c == '-' {
-            if !prev_hyphen {
-                result.push(c);
-            }
-            prev_hyphen = true;
-        } else {
-            result.push(c);
-            prev_hyphen = false;
-        }
-    }
-
-    // Trim leading/trailing hyphens
-    let trimmed = result.trim_matches('-');
-
-    if trimmed.is_empty() {
+    // Replace spaces before filesystem sanitization (convention, not a FS rule)
+    let no_spaces: String = branch.chars().map(|c| if c == ' ' { '-' } else { c }).collect();
+    let result = filename::sanitize(&no_spaces, filename::CROSS_PLATFORM, '-');
+    if result == "untitled" {
         "snapshot".to_string()
     } else {
-        trimmed.to_string()
+        result
     }
 }
 
