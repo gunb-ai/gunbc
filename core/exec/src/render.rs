@@ -42,9 +42,10 @@ pub trait FrameLoop {
 }
 
 /// Frame scheduling policy.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub enum FramePolicy {
     /// Always show latest state. Skip intermediate frames.
+    #[default]
     Latest,
     /// Show every state transition, queue if execution outpaces display.
     Sequential { max_queue: usize },
@@ -52,31 +53,20 @@ pub enum FramePolicy {
     Adaptive { min_fps: u8, max_fps: u8 },
 }
 
-impl Default for FramePolicy {
-    fn default() -> Self {
-        Self::Latest
-    }
-}
-
 // ---------------------------------------------------------------------------
 // RenderMode
 // ---------------------------------------------------------------------------
 
 /// Rendering style (orthogonal to symbol tier).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum RenderMode {
     /// Symbol-per-state, clean layout.
+    #[default]
     Standard,
     /// Animated effects (spinners, wavefronts).
     Dynamic,
     /// Single-line summary.
     Compact,
-}
-
-impl Default for RenderMode {
-    fn default() -> Self {
-        Self::Standard
-    }
 }
 
 // ---------------------------------------------------------------------------

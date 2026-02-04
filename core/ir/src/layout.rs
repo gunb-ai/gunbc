@@ -136,20 +136,15 @@ pub enum EdgeOrientation {
 }
 
 /// What to do when the DAG doesn't fit in the viewport.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum OverflowStrategy {
     /// Collapse low-priority nodes. Show completed nodes as a count.
+    #[default]
     Collapse,
     /// Truncate: show first N levels that fit, add "... +M more" footer.
     Truncate,
     /// Scroll: focus viewport on the active region.
     Scroll { focus: NodeId },
-}
-
-impl Default for OverflowStrategy {
-    fn default() -> Self {
-        Self::Collapse
-    }
 }
 
 /// Tracks what got truncated/collapsed due to viewport constraints.
@@ -316,12 +311,10 @@ pub fn compute_layout(
     };
 
     let overflow = OverflowState {
-        strategy: if collapsed_nodes.is_empty() && visible_levels.len() == levels.len() {
-            OverflowStrategy::Collapse
-        } else if !collapsed_nodes.is_empty() {
-            OverflowStrategy::Collapse
-        } else {
+        strategy: if visible_levels.len() < levels.len() && collapsed_nodes.is_empty() {
             OverflowStrategy::Truncate
+        } else {
+            OverflowStrategy::Collapse
         },
         collapsed_nodes,
         visible_levels,
