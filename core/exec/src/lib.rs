@@ -28,6 +28,7 @@
 //! log groups around DAG nodes, emit annotations for errors, etc.
 
 pub mod ci_context;
+pub mod display;
 pub mod error;
 pub mod execute;
 pub mod helpers;
@@ -40,6 +41,7 @@ pub mod terminal;
 pub mod topo;
 
 pub use ci_context::CiContext;
+pub use display::{execute_and_display, print_value};
 pub use error::{ExecError, ResultExt};
 pub use execute::{
     execute, execute_single_node, execute_with_ci, execute_with_mode, execute_with_mode_and_ci,
