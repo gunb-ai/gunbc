@@ -4,13 +4,17 @@
 //! automatically. No CLI flags needed — the profile detects capabilities
 //! and decides whether animated progress display is appropriate.
 //!
+//! The base assumption is a serial connection (plain text, no escape codes).
+//! Progress display is only enabled when we are confident the environment
+//! supports it: interactive TTY, not CI, Unicode or better.
+//!
 //! # Detection Strategy
 //!
 //! 1. **Shell**: `$SHELL` on Unix, `$PSModulePath`/`$WT_SESSION`/`$ComSpec` on Windows
 //! 2. **TTY**: `$TERM` set (Unix convention for interactive terminals)
 //! 3. **CI**: `$CI` set → never show progress (plain structured output)
 //! 4. **Symbol tier**: `$TERM_PROGRAM`/`$WT_SESSION` → Emoji, `$LANG` UTF-8 → Unicode, else ASCII
-//! 5. **Viewport**: `$COLUMNS`/`$LINES` with 80×24 fallback
+//! 5. **Viewport**: `$COLUMNS`/`$LINES`, default 80×24
 
 use gunbc_ir::layout::{Viewport, ViewportUnit};
 use gunbc_ir::symbols::Tier;
@@ -76,7 +80,11 @@ impl TerminalProfile {
         }
     }
 
-    /// Create a non-interactive profile for testing or explicit plain output.
+    /// Create a non-interactive profile (serial connection baseline).
+    ///
+    /// Used in tests and as the explicit "no terminal" state.
+    /// `supports_progress` is always false — plain text output only.
+    #[cfg(test)]
     pub fn plain() -> Self {
         Self {
             shell: Shell::Unknown("none".into()),
@@ -159,7 +167,8 @@ fn detect_tier() -> Tier {
 
 /// Detect terminal viewport dimensions.
 ///
-/// Reads `$COLUMNS` and `$LINES`, falling back to 80×24.
+/// Reads `$COLUMNS` and `$LINES`. Defaults to 80×24 when not set
+/// (standard terminal size assumption, not a degradation path).
 fn detect_viewport() -> Viewport {
     let cols = env::var("COLUMNS")
         .ok()

@@ -53,7 +53,7 @@ impl Viewport {
         Self { width, height, unit }
     }
 
-    /// Standard terminal viewport (80×24 chars). Fallback when not a TTY.
+    /// Standard terminal viewport (80×24 chars).
     pub fn terminal_default() -> Self {
         Self {
             width: 80,

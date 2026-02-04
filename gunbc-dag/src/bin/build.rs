@@ -167,8 +167,7 @@ fn run_with_progress(
     visual.on_dag_start(&snapshot);
 
     let mut renderer =
-        TerminalRenderer::new(io::stdout(), &STANDARD, profile.tier, layout);
-    renderer.set_tty(profile.is_tty);
+        TerminalRenderer::new(io::stdout(), &STANDARD, profile.tier, layout, profile.is_tty);
 
     // Animation timing: minimum 1 second total, 2 frames per level (start + complete)
     // Execution already ran at full speed — this is purely visual replay.

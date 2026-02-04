@@ -42,18 +42,6 @@ pub trait FrameLoop {
     fn render(&mut self, progress: &DagProgress);
 }
 
-/// Frame scheduling policy.
-#[derive(Debug, Clone, Default)]
-pub enum FramePolicy {
-    /// Always show latest state. Skip intermediate frames.
-    #[default]
-    Latest,
-    /// Show every state transition, queue if execution outpaces display.
-    Sequential { max_queue: usize },
-    /// Adaptive: slow for interesting transitions, catch up when idle.
-    Adaptive { min_fps: u8, max_fps: u8 },
-}
-
 // ---------------------------------------------------------------------------
 // RenderMode
 // ---------------------------------------------------------------------------
@@ -172,8 +160,11 @@ impl Animation {
 /// Terminal renderer that paints DAG progress using symbols and ANSI colors.
 ///
 /// Writes to any `Write` target — stdout in production, `Vec<u8>` in tests.
-/// Uses carriage-return + cursor-up for live updating when TTY is available,
-/// falls back to append-only when piped.
+/// Uses carriage-return + cursor-up for live updating on a TTY.
+///
+/// The renderer requires at least `Tier::Unicode` — it is never instantiated
+/// for ASCII-only environments. Those environments get plain text output
+/// via `run_classic()` instead.
 pub struct TerminalRenderer<W: Write> {
     output: W,
     symbol_set: &'static SymbolSet,
@@ -182,7 +173,8 @@ pub struct TerminalRenderer<W: Write> {
     layout: DagLayout,
     /// Number of lines written in the last frame (for cursor-up).
     last_frame_lines: usize,
-    /// Whether we're writing to a TTY (supports cursor movement).
+    /// Whether we're writing to a TTY (controls cursor movement).
+    /// Always true in production; false in tests to capture raw output.
     is_tty: bool,
     /// Spinner animation for running nodes.
     spinner: Animation,
@@ -190,12 +182,27 @@ pub struct TerminalRenderer<W: Write> {
 
 impl<W: Write> TerminalRenderer<W> {
     /// Create a new terminal renderer.
+    ///
+    /// `is_tty` controls cursor movement (overwrite previous frame).
+    /// Production callers pass `true`; tests pass `false` to capture output.
+    ///
+    /// # Panics (debug)
+    ///
+    /// Panics if `tier` is `Tier::Ascii`. The renderer requires Unicode or
+    /// better — ASCII environments should use plain text output instead.
     pub fn new(
         output: W,
         symbol_set: &'static SymbolSet,
         tier: Tier,
         layout: DagLayout,
+        is_tty: bool,
     ) -> Self {
+        debug_assert!(
+            !matches!(tier, Tier::Ascii),
+            "TerminalRenderer requires Tier::Unicode or Tier::Emoji — \
+             ASCII environments should use plain text output"
+        );
+
         let spinner_frames: Vec<String> = [
             SymbolId::Spinner0,
             SymbolId::Spinner1,
@@ -213,14 +220,9 @@ impl<W: Write> TerminalRenderer<W> {
             mode: RenderMode::Standard,
             layout,
             last_frame_lines: 0,
-            is_tty: false,
+            is_tty,
             spinner: Animation::cycle(spinner_frames, Duration::from_millis(150)),
         }
-    }
-
-    /// Set whether we're writing to a TTY.
-    pub fn set_tty(&mut self, is_tty: bool) {
-        self.is_tty = is_tty;
     }
 
     /// Set the render mode.
@@ -268,21 +270,12 @@ impl<W: Write> TerminalRenderer<W> {
 
     /// Legend symbol for a node state: ✔, ✘, ◐, etc.
     fn legend_symbol(&self, state: NodeState) -> &'static str {
-        match self.tier {
-            Tier::Ascii => match state {
-                NodeState::Completed | NodeState::Intercepted => "ok",
-                NodeState::Failed => "FAIL",
-                NodeState::Running => "...",
-                NodeState::Skipped => "skip",
-                NodeState::Pending => "-",
-            },
-            _ => match state {
-                NodeState::Completed | NodeState::Intercepted => "\u{2714}", // ✔
-                NodeState::Failed => "\u{2718}",                             // ✘
-                NodeState::Running => "\u{25D0}",                            // ◐
-                NodeState::Skipped => "\u{25CC}",                            // ◌
-                NodeState::Pending => "\u{25CB}",                            // ○
-            },
+        match state {
+            NodeState::Completed | NodeState::Intercepted => "\u{2714}", // ✔
+            NodeState::Failed => "\u{2718}",                             // ✘
+            NodeState::Running => "\u{25D0}",                            // ◐
+            NodeState::Skipped => "\u{25CC}",                            // ◌
+            NodeState::Pending => "\u{25CB}",                            // ○
         }
     }
 
@@ -827,25 +820,17 @@ impl<W: Write> TerminalRenderer<W> {
         false
     }
 
-    /// Arrow connector padded to `w`: ` → ` or ` > `.
+    /// Arrow connector padded to `w`: ` → `.
     fn arrow_str(&self, w: usize) -> String {
-        let s = match self.tier {
-            Tier::Ascii => " > ",
-            _ => " → ",
-        };
-        pad_connector(s, w)
+        pad_connector(" → ", w)
     }
 
-    /// Fan-out top: ` ─┬─ ` or ` -+- `.
+    /// Fan-out top: ` ─┬─ `.
     fn fanout_top_str(&self, w: usize) -> String {
-        let s = match self.tier {
-            Tier::Ascii => " -+- ",
-            _ => " \u{2500}\u{252C}\u{2500} ", // ─┬─
-        };
-        pad_connector(s, w)
+        pad_connector(" \u{2500}\u{252C}\u{2500} ", w) // ─┬─
     }
 
-    /// Fan-out branch: `  └─ ` or `  '- `, with `├` for middle branches.
+    /// Fan-out branch: `  └─ `, with `├─` for middle branches.
     #[allow(clippy::too_many_arguments)]
     fn fanout_branch_str(
         &self,
@@ -871,75 +856,45 @@ impl<W: Write> TerminalRenderer<W> {
         });
 
         if has_more_below {
-            match self.tier {
-                Tier::Ascii => pad_connector("  |- ", w),
-                _ => pad_connector("  \u{251C}\u{2500} ", w), // ├─
-            }
+            pad_connector("  \u{251C}\u{2500} ", w) // ├─
         } else {
-            match self.tier {
-                Tier::Ascii => pad_connector("  '- ", w),
-                _ => pad_connector("  \u{2514}\u{2500} ", w), // └─
-            }
+            pad_connector("  \u{2514}\u{2500} ", w) // └─
         }
     }
 
-    /// Vertical pass-through: `  │  ` or `  |  `.
+    /// Vertical pass-through: `  │  `.
     fn vertical_str(&self, w: usize) -> String {
-        match self.tier {
-            Tier::Ascii => pad_connector("  |  ", w),
-            _ => pad_connector("  \u{2502}  ", w), // │
-        }
+        pad_connector("  \u{2502}  ", w) // │
     }
 
-    /// Merge-down connector (node's children are only on tracks below).
+    /// Merge-down connector (node's children are only on tracks below): ` ─┬ `.
     fn merge_down_str(&self, w: usize) -> String {
-        match self.tier {
-            Tier::Ascii => pad_connector(" -+  ", w),
-            _ => pad_connector(" \u{2500}\u{252C}  ", w), // ─┬
-        }
+        pad_connector(" \u{2500}\u{252C}  ", w) // ─┬
     }
 
-    /// Merge-up connector: node's child is on a track above. ` ─┘ `
+    /// Merge-up connector: node's child is on a track above: ` ─┘ `.
     fn merge_up_str(&self, w: usize) -> String {
-        match self.tier {
-            Tier::Ascii => pad_connector(" -'  ", w),
-            _ => pad_connector(" \u{2500}\u{2518}  ", w), // ─┘
-        }
+        pad_connector(" \u{2500}\u{2518}  ", w) // ─┘
     }
 
-    /// Merge-top connector: node on this track receives edges from below. ` ─┴─ `
+    /// Merge-top connector: node on this track receives edges from below: ` ─┴─ `.
     fn merge_top_str(&self, w: usize) -> String {
-        match self.tier {
-            Tier::Ascii => pad_connector(" -+- ", w),
-            _ => pad_connector(" \u{2500}\u{2534}\u{2500} ", w), // ─┴─
-        }
+        pad_connector(" \u{2500}\u{2534}\u{2500} ", w) // ─┴─
     }
 
-    /// Merge-branch connector: lower track merges into node above. `  └─ ` or `  ├─ `
+    /// Merge-branch connector: lower track merges into node above: `  └─ `.
     #[allow(clippy::too_many_arguments)]
     fn merge_branch_str(
         &self,
-        track: usize,
+        _track: usize,
         _col: usize,
         _grid: &HashMap<(usize, usize), NodeId>,
         _parents_of: &HashMap<NodeId, Vec<NodeId>>,
         _node_track: &HashMap<NodeId, usize>,
-        num_tracks: usize,
+        _num_tracks: usize,
         w: usize,
     ) -> String {
-        // Check if there are more merge branches below this one
-        let is_last = track >= num_tracks - 1;
-        if is_last {
-            match self.tier {
-                Tier::Ascii => pad_connector("  '- ", w),
-                _ => pad_connector("  \u{2514}\u{2500} ", w), // └─
-            }
-        } else {
-            match self.tier {
-                Tier::Ascii => pad_connector("  '- ", w),
-                _ => pad_connector("  \u{2514}\u{2500} ", w), // └─
-            }
-        }
+        pad_connector("  \u{2514}\u{2500} ", w) // └─
     }
 
     /// Look up the edge state between two nodes from progress.
@@ -1238,7 +1193,7 @@ mod tests {
     }
 
     fn make_renderer(buf: &mut Vec<u8>, layout: DagLayout) -> TerminalRenderer<&mut Vec<u8>> {
-        TerminalRenderer::new(buf, &STANDARD, Tier::Ascii, layout)
+        TerminalRenderer::new(buf, &STANDARD, Tier::Unicode, layout, false)
     }
 
     #[test]

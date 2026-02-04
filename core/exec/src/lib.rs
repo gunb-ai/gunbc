@@ -59,7 +59,7 @@ pub use progress::{
     NodeState, OutputSummary, ProgressEvent, ProgressObserver, RecordingObserver, DagPhase,
 };
 pub use render::{
-    Animation, AnimationMode, FrameLoop, FramePolicy, RenderMode, TerminalRenderer,
+    Animation, AnimationMode, FrameLoop, RenderMode, TerminalRenderer,
 };
 pub use terminal::{Shell, TerminalProfile};
 pub use topo::topo_sort;

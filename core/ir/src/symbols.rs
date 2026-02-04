@@ -15,7 +15,7 @@
 //! # Compositional Model (SubDag pattern)
 //!
 //! Symbols follow the same SubDag pattern as the language module:
-//! - Encoding tiers are a SubDag: emoji → unicode → ascii fallback
+//! - Encoding tiers are a SubDag: emoji → unicode → ascii
 //! - Individual symbols are SubDags: config + encoding atoms + resolve
 //! - Animation frames are SubDags with cycle edges
 //!
