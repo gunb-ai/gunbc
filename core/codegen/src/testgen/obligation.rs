@@ -27,7 +27,7 @@
 //! This gives "ALL deducible non-tautological tests" by construction.
 
 use gunbc_ir::resource::{detect_conflicts, ResourceAccess, ResourceConflict};
-use gunbc_ir::types::{Cardinality, CardinalityCase, NodeId, PortName, TypeId};
+use gunbc_ir::types::{Cardinality, NodeId, PortName, TypeId};
 use gunbc_ir::{contract, detect_boundaries, Dag, TypeRegistry};
 
 // ---------------------------------------------------------------------------
@@ -162,7 +162,8 @@ pub enum Obligation {
         node_id: NodeId,
         port_name: PortName,
         cardinality: Cardinality,
-        cases: Vec<CardinalityCase>,
+        /// Boundary values (element counts) to test at this port.
+        boundary_values: Vec<u32>,
     },
 
     // NOTE: WitnessCompatibility (L4) removed — requires Tier 3 infrastructure
@@ -611,22 +612,22 @@ fn collect_contract_obligations<T>(
     for (node_id, port_name) in &boundaries.boundary_ports {
         if let Some(node) = dag.get_node(node_id) {
             if let Some(port) = node.outputs.iter().find(|p| &p.name == port_name) {
-                let cases = port.cardinality.test_cases();
-                if cases.len() > 1 {
+                let bvs = port.cardinality.test_cases();
+                if bvs.len() > 1 {
                     obligations.push(ProofObligation::runtime(
                         Obligation::CardinalityCoverage {
                             node_id: node_id.clone(),
                             port_name: port_name.clone(),
                             cardinality: port.cardinality,
-                            cases: cases.clone(),
+                            boundary_values: bvs.clone(),
                         },
                         format!(
-                            "Boundary port {}.{} has cardinality {} — test {} cases: {:?}",
+                            "Boundary port {}.{} has cardinality {} — test {} boundary values: {:?}",
                             node_id.0,
                             port_name.0,
                             port.cardinality,
-                            cases.len(),
-                            cases
+                            bvs.len(),
+                            bvs
                         ),
                         ObligationSource::Contract,
                     ));

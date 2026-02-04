@@ -7,7 +7,7 @@
 //!    produce tests.
 
 use gunbc_ir::resource::ResourceAccess;
-use gunbc_ir::{detect_boundaries, BoundaryInfo, Cardinality, CardinalityCase, Dag, TypeId, TypeRegistry};
+use gunbc_ir::{detect_boundaries, BoundaryInfo, Cardinality, Dag, TypeId, TypeRegistry};
 
 use crate::testgen::obligation::{collect_obligations, ObligationSet};
 
@@ -54,8 +54,8 @@ pub struct PortCardinalityInfo {
     pub is_input: bool,
     pub type_id: TypeId,
     pub cardinality: Cardinality,
-    /// Test cases that should be generated for this port
-    pub test_cases: Vec<CardinalityCase>,
+    /// Boundary values that should be tested for this port
+    pub test_cases: Vec<u32>,
 }
 
 impl PortCardinalityInfo {

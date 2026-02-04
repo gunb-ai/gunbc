@@ -27,7 +27,7 @@ use crate::testgen::render_rust::RustRenderer;
 use crate::testgen::test_ir::{Assert, Expr};
 use gunbc_ir::language::traits::comment::{generated_header, RUST_COMMENTS};
 use gunbc_ir::language::NamingCase;
-use gunbc_ir::types::CardinalityCase;
+use gunbc_ir::boundary_label;
 use gunbc_ir::{Dag, Value, ValueExpr};
 use gunbc_test::{MockSpec, OutputMatcher};
 use std::hash::{Hash, Hasher};
@@ -658,7 +658,7 @@ impl<'a, T> TestGenerator<'a, T> {
     /// DAG with mock values at that cardinality boundary.
     fn generate_cardinality_coverage_tests(
         &self,
-        _analysis: &DagAnalysis,
+        analysis: &DagAnalysis,
         obligations: &ObligationSet,
         graph_builder_fn: &str,
     ) -> String {
@@ -680,43 +680,39 @@ impl<'a, T> TestGenerator<'a, T> {
                 node_id,
                 port_name,
                 cardinality,
-                cases,
+                boundary_values,
             } = &obligation.kind
             {
-                // Find the port's type
-                let type_id = self
-                    .dag
-                    .nodes
+                // Look up the port's type from the analysis (structured data)
+                // rather than ad-hoc DAG iteration
+                let type_id = analysis
+                    .port_cardinalities
                     .iter()
-                    .find(|n| n.id == *node_id)
-                    .and_then(|n| n.outputs.iter().find(|p| p.name == *port_name))
+                    .find(|p| p.node_id == node_id.0 && p.port_name == port_name.0 && !p.is_input)
                     .map(|p| p.type_id.0.as_str())
                     .unwrap_or("String");
 
-                for case in cases {
-                    let case_name = match case {
-                        CardinalityCase::Empty => "empty",
-                        CardinalityCase::One => "one",
-                        CardinalityCase::Many => "many",
-                    };
+                for &count in boundary_values {
+                    let label = boundary_label(count);
 
                     let test_name = format!(
-                        "test_cardinality_{}_{}_{}",
+                        "test_cardinality_{}_{}_{}_{}",
                         NamingCase::SnakeCase.apply(&node_id.0),
                         NamingCase::SnakeCase.apply(&port_name.0),
-                        case_name
+                        label,
+                        count
                     );
 
-                    let mock_value = cardinality_case_mock_value(*case, type_id);
+                    let mock_value = boundary_count_mock_value(count, type_id);
 
                     code.push_str(&format!(
                         "/// Cardinality coverage: {}.{} with {} element(s) (cardinality: {}).\n",
-                        node_id.0, port_name.0, case_name, cardinality
+                        node_id.0, port_name.0, count, cardinality
                     ));
                     code.push_str("///\n");
                     code.push_str(&format!(
-                        "/// Proves: DAG handles {} case for boundary port {}.{}.\n",
-                        case_name, node_id.0, port_name.0
+                        "/// Proves: DAG handles count={} ({}) for boundary port {}.{}.\n",
+                        count, label, node_id.0, port_name.0
                     ));
                     code.push_str("#[test]\n");
                     code.push_str(&format!("fn {}() {{\n", test_name));
@@ -736,8 +732,8 @@ impl<'a, T> TestGenerator<'a, T> {
                         "    let _log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks))\n",
                     );
                     code.push_str(&format!(
-                        "        .expect(\"cardinality {} case should not crash\");\n",
-                        case_name
+                        "        .expect(\"cardinality count={} ({}) should not crash\");\n",
+                        count, label
                     ));
                     code.push_str("}\n\n");
                 }
@@ -2003,55 +1999,41 @@ fn render_output_matcher_check(matcher: &OutputMatcher, var_name: &str) -> Strin
     result.trim_end_matches('\n').to_string()
 }
 
-/// Generate a mock value for a specific cardinality case and type.
+/// Generate a mock value for a boundary count and type.
 ///
-/// Builds a ValueExpr and renders it via RustRenderer. The type_id string
-/// matching is a known limitation — ideally this should consult DagAnalysis
-/// cardinality data instead (see TODO_codegen_dag.md, "severed analysis").
+/// Builds a ValueExpr and renders it via RustRenderer. The `count` is the
+/// number of elements (a boundary value from `Cardinality::test_cases()`).
 ///
-/// For the `Empty` case, scalar types emit `Value::Unit` (absence), not
-/// concrete "empty content" like `false` or `0`. This matches the behavior
-/// of `contract::witnesses()` and ensures cardinality boundary tests actually
-/// verify the absent-vs-present boundary rather than exercising the "one
-/// element" path with a zero-like value. Collection types emit empty
+/// For count=0, scalar types emit `Value::Unit` (absence), not concrete
+/// "empty content" like `false` or `0`. Collection types emit empty
 /// collections (which correctly represent zero elements).
-fn cardinality_case_mock_value(case: CardinalityCase, type_id: &str) -> String {
-    let expr = match case {
-        CardinalityCase::Empty => match type_id {
+fn boundary_count_mock_value(count: u32, type_id: &str) -> String {
+    let expr = match count {
+        0 => match type_id {
             // Collection types: empty collection = zero elements (correct)
             "List" => ValueExpr::List(vec![]),
             "Set" => ValueExpr::List(vec![]), // rendered as empty set
             // Scalar types: Value::Unit = absent (not a value with empty content)
             _ => ValueExpr::Unit,
         },
-        CardinalityCase::One => match type_id {
+        1 => match type_id {
             "String" => ValueExpr::Str("<MOCK>".to_string()),
             "Bool" => ValueExpr::Bool(true),
             "Int" | "i64" | "i32" => ValueExpr::Int(1),
             _ => ValueExpr::List(vec![ValueExpr::Str("<MOCK>".to_string())]),
         },
-        CardinalityCase::Many => match type_id {
-            "String" => ValueExpr::List(vec![
-                ValueExpr::Str("<MOCK_1>".to_string()),
-                ValueExpr::Str("<MOCK_2>".to_string()),
-                ValueExpr::Str("<MOCK_3>".to_string()),
-            ]),
-            "Bool" => ValueExpr::List(vec![
-                ValueExpr::Bool(true),
-                ValueExpr::Bool(false),
-                ValueExpr::Bool(true),
-            ]),
-            "Int" | "i64" | "i32" => ValueExpr::List(vec![
-                ValueExpr::Int(1),
-                ValueExpr::Int(2),
-                ValueExpr::Int(3),
-            ]),
-            _ => ValueExpr::List(vec![
-                ValueExpr::Str("<MOCK_1>".to_string()),
-                ValueExpr::Str("<MOCK_2>".to_string()),
-                ValueExpr::Str("<MOCK_3>".to_string()),
-            ]),
-        },
+        n => {
+            // Generate `n` mock elements
+            let elements: Vec<ValueExpr> = (1..=n)
+                .map(|i| match type_id {
+                    "String" => ValueExpr::Str(format!("<MOCK_{}>", i)),
+                    "Bool" => ValueExpr::Bool(i % 2 == 1),
+                    "Int" | "i64" | "i32" => ValueExpr::Int(i as i64),
+                    _ => ValueExpr::Str(format!("<MOCK_{}>", i)),
+                })
+                .collect();
+            ValueExpr::List(elements)
+        }
     };
     RustRenderer.render_value(&expr)
 }

@@ -90,7 +90,7 @@ pub use git::GitConfig;
 pub use transport::{TransportRequest, TransportResponse};
 pub use type_op::{BaseType, Coercion, Predicate, PredicateValue, TypeOp, WrapperKind};
 pub use type_registry::{TypeNotFoundError, TypeRegistry};
-pub use types::{Cardinality, CardinalityCase, CardinalityMismatch, NodeId, PortName, TypeId};
+pub use types::{boundary_label, Cardinality, CardinalityMismatch, NodeId, PortName, TypeId};
 pub use value::{SecretString, Value};
 pub use value_expr::ValueExpr;
 pub use render::Renderable;

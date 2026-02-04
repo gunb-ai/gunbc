@@ -28,7 +28,7 @@
 use crate::dag::Dag;
 use crate::node::NodeBody;
 use crate::type_op::{Predicate, TypeOp, WrapperKind};
-use crate::types::{Cardinality, CardinalityCase};
+use crate::types::Cardinality;
 use crate::value::Value;
 
 /// L1: Extract cardinality from a type DAG.
@@ -93,13 +93,11 @@ pub fn predicates(type_dag: &Dag<TypeOp>) -> Vec<Predicate> {
 ///
 /// 1. **Base type** determines the shape (String, Int, Bool, etc.)
 /// 2. **Predicates** refine the base witness (NonEmpty, InRange, etc.)
-/// 3. **Cardinality** generates boundary cases (Empty, One, Many)
+/// 3. **Cardinality** generates boundary values from the interval
 ///
-/// Returns one witness per cardinality case the type allows.
-/// For a `List<String>` (cardinality `[0,∞)`), this produces:
-/// - Empty → `Value::List(vec![])`
-/// - One   → `Value::List(vec![Value::Str("example")])`
-/// - Many  → `Value::List(vec![Value::Str("example_1"), Value::Str("example_2")])`
+/// Returns one witness per boundary value the cardinality accepts.
+/// For a `List<String>` (cardinality `[0,∞)`), this produces witnesses
+/// at counts 0, 1, and 10 (the in-range boundary values).
 pub fn witnesses(type_dag: &Dag<TypeOp>) -> Vec<BoundaryWitness> {
     let card = cardinality(type_dag);
     let base = base_type(type_dag);
@@ -110,9 +108,9 @@ pub fn witnesses(type_dag: &Dag<TypeOp>) -> Vec<BoundaryWitness> {
 
     card.test_cases()
         .into_iter()
-        .map(|case| {
-            let value = match case {
-                CardinalityCase::Empty => match &wrapper {
+        .map(|count| {
+            let value = match count {
+                0 => match &wrapper {
                     Some(WrapperKind::Optional) => Value::Unit,
                     Some(WrapperKind::List | WrapperKind::NonEmptyList) => {
                         Value::List(vec![])
@@ -122,7 +120,7 @@ pub fn witnesses(type_dag: &Dag<TypeOp>) -> Vec<BoundaryWitness> {
                     }
                     None => Value::Unit, // Scalar empty = absent
                 },
-                CardinalityCase::One => match &wrapper {
+                1 => match &wrapper {
                     Some(WrapperKind::List | WrapperKind::NonEmptyList) => {
                         Value::List(vec![scalar_witness.clone()])
                     }
@@ -131,8 +129,8 @@ pub fn witnesses(type_dag: &Dag<TypeOp>) -> Vec<BoundaryWitness> {
                     }
                     _ => scalar_witness.clone(),
                 },
-                CardinalityCase::Many => {
-                    let witnesses = many_witnesses(&scalar_witness);
+                n => {
+                    let witnesses = n_witnesses(&scalar_witness, n);
                     match &wrapper {
                         Some(WrapperKind::List | WrapperKind::NonEmptyList) => {
                             Value::List(witnesses)
@@ -144,16 +142,16 @@ pub fn witnesses(type_dag: &Dag<TypeOp>) -> Vec<BoundaryWitness> {
                     }
                 }
             };
-            BoundaryWitness { case, value }
+            BoundaryWitness { count, value }
         })
         .collect()
 }
 
-/// A boundary witness: a cardinality case paired with an example value.
+/// A boundary witness: a boundary value count paired with an example value.
 #[derive(Debug, Clone)]
 pub struct BoundaryWitness {
-    /// Which cardinality boundary this tests.
-    pub case: CardinalityCase,
+    /// Number of elements at this boundary.
+    pub count: u32,
     /// An example value satisfying the type contract at this boundary.
     pub value: Value,
 }
@@ -233,17 +231,16 @@ fn refine_witness(witness: Value, pred: &Predicate, base: &str) -> Value {
     }
 }
 
-/// Generate multiple distinct witnesses for the Many cardinality case.
-fn many_witnesses(scalar: &Value) -> Vec<Value> {
-    match scalar {
-        Value::Str(s) => vec![
-            Value::Str(format!("{}_1", s)),
-            Value::Str(format!("{}_2", s)),
-        ],
-        Value::Int(i) => vec![Value::Int(*i), Value::Int(*i + 1)],
-        Value::Bool(_) => vec![Value::Bool(true), Value::Bool(false)],
-        other => vec![other.clone(), other.clone()],
-    }
+/// Generate `n` distinct witness values based on a scalar witness.
+fn n_witnesses(scalar: &Value, n: u32) -> Vec<Value> {
+    (0..n)
+        .map(|i| match scalar {
+            Value::Str(s) => Value::Str(format!("{}_{}", s, i + 1)),
+            Value::Int(v) => Value::Int(*v + i as i64),
+            Value::Bool(_) => Value::Bool(i % 2 == 0),
+            other => other.clone(),
+        })
+        .collect()
 }
 
 /// Check if a type DAG has any validation predicates.
@@ -391,9 +388,9 @@ mod tests {
         let string_type = type_lib::string();
         let w = witnesses(&string_type);
 
-        // Scalar (cardinality ONE) → exactly one witness (the One case)
+        // Scalar (cardinality ONE) → exactly one witness (count=1)
         assert_eq!(w.len(), 1);
-        assert_eq!(w[0].case, CardinalityCase::One);
+        assert_eq!(w[0].count, 1);
         assert!(matches!(&w[0].value, Value::Str(_)));
     }
 
@@ -403,7 +400,7 @@ mod tests {
         let w = witnesses(&int_type);
 
         assert_eq!(w.len(), 1);
-        assert_eq!(w[0].case, CardinalityCase::One);
+        assert_eq!(w[0].count, 1);
         assert!(matches!(&w[0].value, Value::Int(_)));
     }
 
@@ -412,11 +409,11 @@ mod tests {
         let opt_type = type_lib::optional(type_lib::string());
         let w = witnesses(&opt_type);
 
-        // Optional (cardinality [0,1]) → Empty + One
+        // Optional (cardinality [0,1]) → count=0 + count=1
         assert_eq!(w.len(), 2);
-        assert_eq!(w[0].case, CardinalityCase::Empty);
+        assert_eq!(w[0].count, 0);
         assert_eq!(w[0].value, Value::Unit);
-        assert_eq!(w[1].case, CardinalityCase::One);
+        assert_eq!(w[1].count, 1);
     }
 
     #[test]
@@ -424,14 +421,14 @@ mod tests {
         let list_type = type_lib::list(type_lib::string());
         let w = witnesses(&list_type);
 
-        // List (cardinality [0,∞)) → Empty + One + Many
+        // List (cardinality [0,∞)) → count=0, count=1, count=10
         assert_eq!(w.len(), 3);
-        assert_eq!(w[0].case, CardinalityCase::Empty);
+        assert_eq!(w[0].count, 0);
         assert_eq!(w[0].value, Value::List(vec![]));
-        assert_eq!(w[1].case, CardinalityCase::One);
+        assert_eq!(w[1].count, 1);
         assert!(matches!(&w[1].value, Value::List(v) if v.len() == 1));
-        assert_eq!(w[2].case, CardinalityCase::Many);
-        assert!(matches!(&w[2].value, Value::List(v) if v.len() == 2));
+        assert_eq!(w[2].count, 10);
+        assert!(matches!(&w[2].value, Value::List(v) if v.len() == 10));
     }
 
     #[test]
@@ -439,10 +436,11 @@ mod tests {
         let ne_list = type_lib::non_empty_list(type_lib::string());
         let w = witnesses(&ne_list);
 
-        // NonEmptyList (cardinality [1,∞)) → One + Many (no Empty)
-        assert_eq!(w.len(), 2);
-        assert_eq!(w[0].case, CardinalityCase::One);
-        assert_eq!(w[1].case, CardinalityCase::Many);
+        // NonEmptyList (cardinality [1,∞)) → count=1, count=2, count=11
+        assert_eq!(w.len(), 3);
+        assert_eq!(w[0].count, 1);
+        assert_eq!(w[1].count, 2);
+        assert_eq!(w[2].count, 11);
     }
 
     #[test]
@@ -464,14 +462,14 @@ mod tests {
         let set_type = type_lib::set(type_lib::string());
         let w = witnesses(&set_type);
 
-        // Set (cardinality [0,∞)) → Empty + One + Many
+        // Set (cardinality [0,∞)) → count=0, count=1, count=10
         assert_eq!(w.len(), 3);
-        assert_eq!(w[0].case, CardinalityCase::Empty);
+        assert_eq!(w[0].count, 0);
         assert!(matches!(&w[0].value, Value::Set(v) if v.is_empty()));
-        assert_eq!(w[1].case, CardinalityCase::One);
+        assert_eq!(w[1].count, 1);
         assert!(matches!(&w[1].value, Value::Set(v) if v.len() == 1));
-        assert_eq!(w[2].case, CardinalityCase::Many);
-        assert!(matches!(&w[2].value, Value::Set(v) if v.len() == 2));
+        assert_eq!(w[2].count, 10);
+        assert!(matches!(&w[2].value, Value::Set(v) if v.len() == 10));
     }
 
     #[test]

@@ -23,7 +23,7 @@ use crate::intercept::BoundaryMocks;
 use crate::lower::lower;
 use crate::topo::topo_sort;
 use crate::Executable;
-use gunbc_ir::{detect_boundaries, BoundaryInfo, Dag, Node, NodeBody, NodeId, Value};
+use gunbc_ir::{canonical_edge_order, detect_boundaries, BoundaryInfo, Dag, Node, NodeBody, NodeId, Value};
 use gunbc_ir::transport::cli::{get_tool_by_id, ToolHandle};
 use std::collections::HashMap;
 use std::fmt;
@@ -424,17 +424,42 @@ fn execute_flat<T: Executable>(
             }
         }
 
-        // Gather inputs from upstream edges
-        // Tool handles flow through edges like any other value
+        // Gather inputs from upstream edges (cardinality-aware).
+        //
+        // List ports (cardinality allows_many) collect fan-in values into
+        // Value::List in canonical edge order. Scalar ports take a single
+        // value (last-writer-wins for backward compat).
         let mut inputs: HashMap<String, Value> = HashMap::new();
-        for edge in &dag.edges {
+        let mut fan_in: HashMap<String, Vec<Value>> = HashMap::new();
+
+        // Build a lookup for which input ports are list-typed
+        let list_ports: std::collections::HashSet<&str> = node
+            .inputs
+            .iter()
+            .filter(|p| p.cardinality.is_list())
+            .map(|p| p.name.0.as_str())
+            .collect();
+
+        for edge in canonical_edge_order(&dag.edges) {
             if edge.to_node == *node_id {
                 if let Some(upstream) = node_outputs.get(&edge.from_node.0) {
                     if let Some(val) = upstream.get(&edge.from_port.0) {
-                        inputs.insert(edge.to_port.0.clone(), val.clone());
+                        if list_ports.contains(edge.to_port.0.as_str()) {
+                            fan_in
+                                .entry(edge.to_port.0.clone())
+                                .or_default()
+                                .push(val.clone());
+                        } else {
+                            inputs.insert(edge.to_port.0.clone(), val.clone());
+                        }
                     }
                 }
             }
+        }
+
+        // Wrap collected fan-in values as Value::List
+        for (port_name, values) in fan_in {
+            inputs.insert(port_name, Value::List(values));
         }
 
         // Inject input mocks for dangling input ports (DAG entry points)
@@ -689,27 +714,39 @@ fn mock_tool_env_outputs<T>(
 mod tests {
     use super::*;
     use gunbc_ir::build::*;
+    use gunbc_ir::Edge;
 
-    // Operation that produces a specific value on a named port
+    // Test operation: produces a fixed value, or passes through inputs if `pass_through` is set.
     #[derive(Debug, Clone)]
-    struct Produce {
+    struct TestOp {
         port: String,
         value: Value,
+        pass_through: bool,
     }
 
-    impl Produce {
-        fn new(port: &str, value: Value) -> Self {
-            Self { port: port.to_string(), value }
+    impl TestOp {
+        fn produce(port: &str, value: Value) -> Self {
+            Self { port: port.to_string(), value, pass_through: false }
+        }
+
+        fn echo() -> Self {
+            Self { port: String::new(), value: Value::Unit, pass_through: true }
         }
     }
 
-    impl Executable for Produce {
-        fn execute(&self, _inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+    impl Executable for TestOp {
+        fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+            if self.pass_through {
+                return Ok(inputs);
+            }
             let mut out = HashMap::new();
             out.insert(self.port.clone(), self.value.clone());
             Ok(out)
         }
     }
+
+    // Backward-compat alias used in existing tests
+    type Produce = TestOp;
 
     #[test]
     fn test_execute_simple_pipeline() {
@@ -718,7 +755,7 @@ mod tests {
             "A",
             vec![],
             vec![port("out", "String")],
-            Produce::new("out", Value::Str("hello".to_string())),
+            TestOp::produce("out", Value::Str("hello".to_string())),
         ));
 
         let log = execute(&dag).unwrap();
@@ -740,7 +777,7 @@ mod tests {
             // This input marks it as a transport executor - will be intercepted
             vec![port("request", "TransportRequest")],
             vec![port("response", "TransportResponse")],
-            Produce::new("response", Value::Str("real-response".to_string())),
+            TestOp::produce("response", Value::Str("real-response".to_string())),
         ));
 
         // In dry-run mode, transport executor nodes should be intercepted
@@ -764,7 +801,7 @@ mod tests {
             "create_gist",
             vec![],
             vec![port("url", "String")],
-            Produce::new("url", Value::Str("real-url".to_string())),
+            TestOp::produce("url", Value::Str("real-url".to_string())),
         ));
 
         let log = execute(&dag).unwrap();
@@ -788,7 +825,7 @@ mod tests {
             "prepare",
             vec![port("content", "String")],
             vec![port("request", "TransportRequest")],
-            Produce::new("request", Value::Str("prepared-request".to_string())),
+            TestOp::produce("request", Value::Str("prepared-request".to_string())),
         ));
         
         // Transport executor - consumes the request (will be intercepted)
@@ -796,7 +833,7 @@ mod tests {
             "execute",
             vec![port("request", "TransportRequest")],  // This makes it a transport executor
             vec![port("response", "TransportResponse")],
-            Produce::new("response", Value::Str("real-response".to_string())),
+            TestOp::produce("response", Value::Str("real-response".to_string())),
         ));
         dag.add_edge(edge("prepare", "request", "execute", "request"));
 
@@ -819,13 +856,13 @@ mod tests {
             "A",
             vec![],
             vec![port("out", "String")],
-            Produce::new("out", Value::Str("hello".to_string())),
+            TestOp::produce("out", Value::Str("hello".to_string())),
         ));
         dag.add_node(Node::opaque(
             "B",
             vec![port("in", "String")],
             vec![port("out", "String")],
-            Produce::new("out", Value::Str("world".to_string())),
+            TestOp::produce("out", Value::Str("world".to_string())),
         ));
         dag.add_edge(edge("A", "out", "B", "in"));
 
@@ -855,7 +892,7 @@ mod tests {
             "transport_node",
             vec![port("request", "TransportRequest")],  // Makes it a transport executor
             vec![port("result", "String")],
-            Produce::new("result", Value::Str("real-value".to_string())),
+            TestOp::produce("result", Value::Str("real-value".to_string())),
         ));
 
         let mut mocks = BoundaryMocks::new();
@@ -872,6 +909,92 @@ mod tests {
             entry.outputs.get("result"),
             Some(&Value::Str("simulated-value".to_string()))
         );
+    }
+
+    #[test]
+    fn test_fan_in_to_list_port_collects_values() {
+        // Two producers feed into a single list port — values should be collected
+        // into a Value::List in canonical edge order.
+        let mut dag: Dag<TestOp> = Dag::new();
+        dag.add_node(Node::opaque(
+            "A",
+            vec![],
+            vec![port("out", "String")],
+            TestOp::produce("out", Value::Str("alpha".to_string())),
+        ));
+        dag.add_node(Node::opaque(
+            "B",
+            vec![],
+            vec![port("out", "String")],
+            TestOp::produce("out", Value::Str("beta".to_string())),
+        ));
+        dag.add_node(Node::opaque(
+            "C",
+            vec![list("items", "String")],   // list port: cardinality ZeroOrMore
+            vec![port("items", "String")],    // echo: passes inputs through as outputs
+            TestOp::echo(),
+        ));
+        // Two edges to the same list port, with explicit indices for ordering
+        dag.add_edge(Edge::with_index("A", "out", "C", "items", 0));
+        dag.add_edge(Edge::with_index("B", "out", "C", "items", 1));
+
+        let log = execute(&dag).unwrap();
+
+        let c_entry = log.get("C").unwrap();
+        match c_entry.outputs.get("items") {
+            Some(Value::List(items)) => {
+                assert_eq!(items.len(), 2);
+                assert_eq!(items[0], Value::Str("alpha".to_string()));
+                assert_eq!(items[1], Value::Str("beta".to_string()));
+            }
+            other => panic!("expected Value::List, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_scalar_port_takes_single_value() {
+        // A scalar port with one incoming edge should still work as before.
+        let mut dag: Dag<TestOp> = Dag::new();
+        dag.add_node(Node::opaque(
+            "A",
+            vec![],
+            vec![port("out", "String")],
+            TestOp::produce("out", Value::Str("hello".to_string())),
+        ));
+        dag.add_node(Node::opaque(
+            "B",
+            vec![port("data", "String")],
+            vec![port("data", "String")],
+            TestOp::echo(),
+        ));
+        dag.add_edge(edge("A", "out", "B", "data"));
+
+        let log = execute(&dag).unwrap();
+
+        // B echoes its input — should receive the scalar value from A
+        let b_entry = log.get("B").unwrap();
+        assert_eq!(
+            b_entry.outputs.get("data"),
+            Some(&Value::Str("hello".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_list_port_zero_edges_not_present() {
+        // A list port with no incoming edges should not inject an entry
+        // (input mocks can fill it in DryRun mode).
+        let mut dag: Dag<TestOp> = Dag::new();
+        dag.add_node(Node::opaque(
+            "A",
+            vec![list("items", "String")],
+            vec![port("out", "String")],
+            TestOp::produce("out", Value::Str("ok".to_string())),
+        ));
+
+        let log = execute(&dag).unwrap();
+
+        let a_entry = log.get("A").unwrap();
+        assert_eq!(a_entry.outputs.get("out"), Some(&Value::Str("ok".to_string())));
     }
 
     #[test]

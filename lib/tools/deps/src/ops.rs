@@ -402,7 +402,6 @@ fn execute_parse_install(inputs: HashMap<String, Value>) -> Result<HashMap<Strin
 // Mockable trait implementation
 // ============================================================================
 
-use gunbc_ir::CardinalityCase;
 use gunbc_test::{CardinalityTestInput, ErrorTestCase, Mockable};
 
 impl Mockable for DepsOp {
@@ -551,17 +550,17 @@ echo "Installing git..."
             DepsOp::GenerateScripts => vec![
                 CardinalityTestInput::succeeds(
                     "dep_names",
-                    CardinalityCase::Empty,
+                    0,
                     Value::str_list(vec![]),
                 ),
                 CardinalityTestInput::succeeds(
                     "dep_names",
-                    CardinalityCase::One,
+                    1,
                     Value::str_list(vec!["single-dep".to_string()]),
                 ),
                 CardinalityTestInput::succeeds(
                     "dep_names",
-                    CardinalityCase::Many,
+                    3,
                     Value::str_list(vec![
                         "dep1".to_string(),
                         "dep2".to_string(),

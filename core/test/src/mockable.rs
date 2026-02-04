@@ -7,7 +7,7 @@
 //!
 //! This enables automatic test generation based on the operation's declaration.
 
-use gunbc_ir::{CardinalityCase, Value};
+use gunbc_ir::Value;
 use std::collections::HashMap;
 
 /// A trait for operations that can provide test fixtures.
@@ -75,8 +75,8 @@ pub trait Mockable {
 pub struct CardinalityTestInput {
     /// The port name to provide input for
     pub port: String,
-    /// The cardinality case being tested
-    pub case: CardinalityCase,
+    /// The boundary value count being tested (0 = empty, 1 = one, 2+ = many)
+    pub count: u32,
     /// The test value to use
     pub value: Value,
     /// Expected behavior when this input is used
@@ -85,10 +85,10 @@ pub struct CardinalityTestInput {
 
 impl CardinalityTestInput {
     /// Create a new cardinality test input that should succeed.
-    pub fn succeeds(port: impl Into<String>, case: CardinalityCase, value: Value) -> Self {
+    pub fn succeeds(port: impl Into<String>, count: u32, value: Value) -> Self {
         Self {
             port: port.into(),
-            case,
+            count,
             value,
             expected: ExpectedBehavior::Succeeds,
         }
@@ -97,13 +97,13 @@ impl CardinalityTestInput {
     /// Create a new cardinality test input that should fail.
     pub fn fails(
         port: impl Into<String>,
-        case: CardinalityCase,
+        count: u32,
         value: Value,
         error_pattern: impl Into<String>,
     ) -> Self {
         Self {
             port: port.into(),
-            case,
+            count,
             value,
             expected: ExpectedBehavior::FailsWith(error_pattern.into()),
         }
@@ -195,12 +195,12 @@ mod tests {
             vec![
                 CardinalityTestInput::succeeds(
                     "input",
-                    CardinalityCase::Empty,
+                    0,
                     Value::str_list(vec![]),
                 ),
                 CardinalityTestInput::succeeds(
                     "input",
-                    CardinalityCase::One,
+                    1,
                     Value::str_list(vec!["one".into()]),
                 ),
             ]
@@ -227,8 +227,8 @@ mod tests {
         let op = TestOp;
         let inputs = op.cardinality_inputs();
         assert_eq!(inputs.len(), 2);
-        assert_eq!(inputs[0].case, CardinalityCase::Empty);
-        assert_eq!(inputs[1].case, CardinalityCase::One);
+        assert_eq!(inputs[0].count, 0);
+        assert_eq!(inputs[1].count, 1);
     }
 
     #[test]
