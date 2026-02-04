@@ -27,40 +27,18 @@ at the boundary instead of inline in execute().
 
 ---
 
-## 2. Installer::new() calls Platform::detect() inline
+## 2. ~~Installer::new() calls Platform::detect() inline~~ ✅ FIXED (Phase 1)
 
-**Where**: `lib/tools/deps/src/installer.rs:39-42`
+**Where**: `lib/tools/deps/src/installer.rs`, `lib/tools/deps/src/ops.rs`
 
-```rust
-pub fn new() -> Self {
-    Self {
-        platform: Platform::detect(),
-    }
-}
-```
+**What was done**: Removed `Installer::new()`. All call sites now use
+`Installer::for_platform(Platform::detect())` (production) or
+`Installer::for_platform(Platform::Linux)` (tests). The `Platform::detect()`
+call is now visible at the call site. `Default` impl updated to delegate
+to `for_platform(Platform::detect())`.
 
-**Called from**: `lib/tools/deps/src/ops.rs:211`
-
-```rust
-fn execute_generate_scripts(...) -> Result<...> {
-    let installer = Installer::new();  // Platform::detect() hidden inside
-    // ...
-}
-```
-
-**Problem**: `execute_generate_scripts` is an `Executable` implementation
-(pure business logic). It should receive `Platform` as a DAG input, not
-detect it at execution time. `Installer::for_platform()` already exists
-at line 46 — just need to wire it up.
-
-**Fix**: Add a `platform` input port to the GenerateScripts node. The DAG
-should acquire platform at the environment boundary and feed it in.
-
-**Note**: `Platform::detect()` uses compile-time `cfg!` — same pattern we
-already fixed in `filename.rs`. The platform is a property of the target
-environment, not the build host.
-
-**Severity**: HIGH — same class of problem as the filesystem detection hack.
+**Remaining**: Phase 2 — add `PlatformEnv` node to the deps DAG to acquire
+the platform at the boundary instead of inline in execute().
 
 ---
 

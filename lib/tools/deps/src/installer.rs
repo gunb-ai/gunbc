@@ -35,13 +35,6 @@ pub struct Installer {
 }
 
 impl Installer {
-    /// Create a new installer for the current platform.
-    pub fn new() -> Self {
-        Self {
-            platform: Platform::detect(),
-        }
-    }
-
     /// Create an installer for a specific platform.
     pub fn for_platform(platform: Platform) -> Self {
         Self { platform }
@@ -150,7 +143,7 @@ fi
 
 impl Default for Installer {
     fn default() -> Self {
-        Self::new()
+        Self::for_platform(Platform::detect())
     }
 }
 
@@ -169,7 +162,7 @@ mod tests {
 
     #[test]
     fn test_is_installed_with_common_tools() {
-        let installer = Installer::new();
+        let installer = Installer::for_platform(Platform::detect());
         // 'echo' should be available on all platforms
         assert!(installer.is_installed("echo test"));
     }
@@ -192,7 +185,7 @@ mod tests {
 
     #[test]
     fn test_generate_idempotent_script() {
-        let installer = Installer::new();
+        let installer = Installer::for_platform(Platform::detect());
         let script = installer.generate_idempotent_script(
             "gh",
             "gh --version",
