@@ -4,6 +4,7 @@
 //! The ops here are PURE (no I/O) - they prepare requests and parse responses.
 
 use crate::installer::Installer;
+use crate::platform::Platform;
 use crate::manifest::DepsManifest;
 use crate::upsert::upsert_dry_run;
 use gunbc_exec::{
@@ -208,7 +209,9 @@ fn execute_generate_scripts(inputs: HashMap<String, Value>) -> Result<HashMap<St
     let manifest = DepsManifest::parse(manifest_content)
         .map_err(|e| ExecError::new(format!("failed to parse manifest: {}", e)))?;
 
-    let installer = Installer::new();
+    // DI violation: Platform::detect() inline. Phase 2 will receive
+    // Platform through a DAG input port.
+    let installer = Installer::for_platform(Platform::detect());
     let mut scripts = Vec::new();
     let mut already_installed = Vec::new();
     let mut needs_install = Vec::new();

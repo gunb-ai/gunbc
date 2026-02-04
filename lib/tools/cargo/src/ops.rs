@@ -7,7 +7,7 @@
 //! Note: Cargo does not support automatic installation (requires rustup.rs),
 //! so the Install operation will fail with a helpful error message.
 
-use gunbc_exec::{ExecError, Executable};
+use gunbc_exec::{ExecError, Executable, OutputMap};
 use gunbc_ir::resource::AccessMode;
 use gunbc_ir::transport::cli::{self, CliToolOp};
 use gunbc_ir::Value;
@@ -101,26 +101,20 @@ use gunbc_test::Mockable;
 impl Mockable for CargoOp {
     fn mock_outputs(&self) -> HashMap<String, Value> {
         match self {
-            CargoOp::CheckInstalled => {
-                let mut out = HashMap::new();
-                out.insert("exists".to_string(), Value::Bool(true));
-                out.insert("output".to_string(), Value::Str("cargo 1.75.0".to_string()));
-                out
-            }
-            CargoOp::CheckRustup => {
-                let mut out = HashMap::new();
-                out.insert("exists".to_string(), Value::Bool(true));
-                out.insert("output".to_string(), Value::Str("rustup 1.26.0".to_string()));
-                out
-            }
-            CargoOp::Run { .. } => {
-                let mut out = HashMap::new();
-                out.insert("success".to_string(), Value::Bool(true));
-                out.insert("exit_code".to_string(), Value::Int(0));
-                out.insert("stdout".to_string(), Value::Str("Build complete".to_string()));
-                out.insert("stderr".to_string(), Value::Str(String::new()));
-                out
-            }
+            CargoOp::CheckInstalled => OutputMap::new()
+                .bool("exists", true)
+                .str("output", "cargo 1.75.0")
+                .build(),
+            CargoOp::CheckRustup => OutputMap::new()
+                .bool("exists", true)
+                .str("output", "rustup 1.26.0")
+                .build(),
+            CargoOp::Run { .. } => OutputMap::new()
+                .bool("success", true)
+                .int("exit_code", 0)
+                .str("stdout", "Build complete")
+                .str("stderr", "")
+                .build(),
         }
     }
 }

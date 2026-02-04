@@ -129,10 +129,11 @@ pub fn upsert_dry_run(
 mod tests {
     use super::*;
     use crate::manifest::DepsManifest;
+    use crate::platform::Platform;
 
     #[test]
     fn test_upsert_already_installed() {
-        let installer = Installer::new();
+        let installer = Installer::for_platform(Platform::detect());
 
         // Use 'echo' which is always available
         let manifest = DepsManifest::parse(

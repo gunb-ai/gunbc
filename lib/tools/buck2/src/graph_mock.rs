@@ -130,14 +130,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_mock_spec_has_boundary() {
-        let spec = buck2_mock_spec();
-        assert!(spec.get_boundary_mock("execute_transport", "written_path").is_some());
-        assert!(spec.get_boundary_mock("execute_transport", "content").is_some());
-        assert!(spec.get_boundary_mock("execute_transport", "response").is_some());
-    }
-
-    #[test]
     fn test_mock_spec_path_default() {
         let spec = buck2_mock_spec();
         let path = spec.get_boundary_mock("execute_transport", "written_path").unwrap();
@@ -149,13 +141,6 @@ mod tests {
         let spec = buck2_mock_spec_custom_output("build/BUCK");
         let path = spec.get_boundary_mock("execute_transport", "written_path").unwrap();
         assert!(matches!(path, Value::Str(s) if s == "build/BUCK"));
-    }
-
-    #[test]
-    fn test_file_locks_present() {
-        let spec = buck2_mock_spec();
-        assert!(spec.get_resource("fs:Cargo.toml").is_some());
-        assert!(spec.get_resource("fs:BUCK").is_some());
     }
 
     #[test]

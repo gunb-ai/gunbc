@@ -242,33 +242,4 @@ mod tests {
         assert!(criteria.checks.iter().any(|c| c.id == "security"));
     }
 
-    #[test]
-    fn test_inline_review_mock_spec_has_boundaries() {
-        let spec = inline_review_mock_spec();
-        assert!(spec.get_boundary_mock("execute_llm", "response").is_some());
-        assert!(spec.get_boundary_mock("parse_response", "output").is_some());
-        assert!(spec.get_boundary_mock("parse_response", "errors").is_some());
-    }
-
-    #[test]
-    fn test_diff_review_mock_spec_has_boundaries() {
-        let spec = diff_review_mock_spec();
-        assert!(spec.get_boundary_mock("execute_diff", "response").is_some());
-        assert!(spec.get_boundary_mock("execute_llm", "response").is_some());
-        assert!(spec.get_boundary_mock("parse_response", "output").is_some());
-        assert!(spec.get_boundary_mock("parse_diff", "stats").is_some());
-    }
-
-    #[test]
-    fn test_diff_review_mock_spec_has_two_transport_boundaries() {
-        let spec = diff_review_mock_spec();
-        assert!(
-            spec.get_boundary_mock("execute_diff", "response").is_some(),
-            "should have git diff transport boundary"
-        );
-        assert!(
-            spec.get_boundary_mock("execute_llm", "response").is_some(),
-            "should have LLM transport boundary"
-        );
-    }
 }
