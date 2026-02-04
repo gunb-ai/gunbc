@@ -793,7 +793,7 @@ fn collect_resource_obligations<T>(
 
     // D.2: Resource owner validity — nodes that output resources should be env/owner nodes
     for node in &dag.nodes {
-        let outputs_resource = node.outputs.iter().any(|p| is_resource_port(p));
+        let outputs_resource = node.outputs.iter().any(is_resource_port);
 
         if outputs_resource {
             obligations.push(ProofObligation::runtime(
