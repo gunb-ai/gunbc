@@ -399,13 +399,18 @@ impl<W: Write> TerminalRenderer<W> {
             }
         }
 
-        // Build parent → children adjacency
+        // Build parent → children and child → parents adjacency
         let mut children_of: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
+        let mut parents_of: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
         for edge in &progress.snapshot.edges {
             children_of
                 .entry(edge.from_node.clone())
                 .or_default()
                 .push(edge.to_node.clone());
+            parents_of
+                .entry(edge.to_node.clone())
+                .or_default()
+                .push(edge.from_node.clone());
         }
 
         // Assign single-letter labels (A, B, C, ...) in topological order
@@ -425,14 +430,28 @@ impl<W: Write> TerminalRenderer<W> {
         let max_letter_w = node_letter.values().map(|l| l.len()).max().unwrap_or(1);
         let col_w = max_letter_w + 2; // [X] = 1 + letter + 1
 
-        // Gap widths: 5 for fan-out columns, 3 otherwise
+        // Gap widths: 5 for fan-out or merge columns, 3 otherwise
         let mut gap_widths: Vec<usize> = vec![3; num_cols.saturating_sub(1)];
         for (col, gw) in gap_widths.iter_mut().enumerate() {
             for track in 0..num_tracks {
+                // Fan-out: node at (track, col) has >1 children
                 if let Some(node) = grid.get(&(track, col)) {
                     if children_of.get(node).map(|c| c.len()).unwrap_or(0) > 1 {
                         *gw = 5;
                         break;
+                    }
+                }
+                // Merge: node at (track, col+1) has parents on different tracks
+                if let Some(node) = grid.get(&(track, col + 1)) {
+                    if let Some(pars) = parents_of.get(node) {
+                        let par_tracks: HashSet<usize> = pars
+                            .iter()
+                            .filter_map(|p| node_track.get(p).copied())
+                            .collect();
+                        if par_tracks.len() > 1 {
+                            *gw = 5;
+                            break;
+                        }
                     }
                 }
             }
@@ -464,6 +483,7 @@ impl<W: Write> TerminalRenderer<W> {
                         col,
                         &grid,
                         &children_of,
+                        &parents_of,
                         &node_track,
                         num_tracks,
                         gap_widths[col],
@@ -482,7 +502,10 @@ impl<W: Write> TerminalRenderer<W> {
             }
         }
 
-        // Legend: only show running + failed nodes (compact)
+        // Legend: show running + failed nodes in a fixed-height area to prevent jitter.
+        // Always reserve exactly LEGEND_LINES lines so frame height stays constant
+        // during animation (nodes transitioning between states).
+        const LEGEND_LINES: usize = 3;
         let mut legend_entries: Vec<(NodeState, &str, String)> = Vec::new();
         for level in &self.layout.levels {
             for node in level {
@@ -498,16 +521,16 @@ impl<W: Write> TerminalRenderer<W> {
                 }
             }
         }
-        // Show up to 3 entries
-        if !legend_entries.is_empty() {
-            for (state, letter, label) in legend_entries.iter().take(3) {
-                let sym = self.legend_symbol(*state);
-                let color = self.state_color(*state);
-                lines.push(format!("  {}{} {}: {}\x1b[0m", color.ansi(), sym, letter, label));
-            }
-            if legend_entries.len() > 3 {
-                lines.push(format!("  ... and {} more", legend_entries.len() - 3));
-            }
+        // Fill legend slots (up to LEGEND_LINES), pad empty slots with blank lines
+        let visible = legend_entries.len().min(LEGEND_LINES);
+        for (state, letter, label) in legend_entries.iter().take(visible) {
+            let sym = self.legend_symbol(*state);
+            let color = self.state_color(*state);
+            lines.push(format!("  {}{} {}: {}\x1b[0m", color.ansi(), sym, letter, label));
+        }
+        // Pad remaining legend slots with empty lines to keep frame height stable
+        for _ in visible..LEGEND_LINES {
+            lines.push(String::new());
         }
 
         // Footer
@@ -660,6 +683,7 @@ impl<W: Write> TerminalRenderer<W> {
         col: usize,
         grid: &HashMap<(usize, usize), NodeId>,
         children_of: &HashMap<NodeId, Vec<NodeId>>,
+        parents_of: &HashMap<NodeId, Vec<NodeId>>,
         node_track: &HashMap<NodeId, usize>,
         num_tracks: usize,
         gap: usize,
@@ -667,30 +691,52 @@ impl<W: Write> TerminalRenderer<W> {
         let has_here = grid.contains_key(&(track, col));
         let has_next = grid.contains_key(&(track, col + 1));
 
+        // Check if the next node is a merge (has parents on multiple tracks)
+        let next_is_merge = has_next && {
+            let next_node = &grid[&(track, col + 1)];
+            parents_of.get(next_node).map(|pars| {
+                let par_tracks: HashSet<usize> = pars
+                    .iter()
+                    .filter_map(|p| node_track.get(p).copied())
+                    .collect();
+                par_tracks.len() > 1
+            }).unwrap_or(false)
+        };
+
         if has_here {
             let node = &grid[&(track, col)];
-            let child_tracks: Vec<usize> = children_of
+            let mut child_tracks: Vec<usize> = children_of
                 .get(node)
                 .map(|cs| cs.iter().filter_map(|c| node_track.get(c).copied()).collect())
                 .unwrap_or_default();
+            // Deduplicate: multi-port edges to the same child produce duplicate tracks
+            child_tracks.sort();
+            child_tracks.dedup();
 
             if child_tracks.is_empty() {
-                // Terminal node — check for merge connector
                 " ".repeat(gap)
-            } else if child_tracks.len() <= 1 || child_tracks.iter().all(|&t| t == track) {
-                if has_next || child_tracks.contains(&track) {
-                    self.arrow_str(gap)
-                } else {
-                    // Children on other tracks only — merge down
-                    self.merge_down_str(gap)
-                }
-            } else {
-                // Fan-out
+            } else if child_tracks.len() > 1 && !child_tracks.iter().all(|&t| t == track) {
+                // Fan-out: children on multiple different tracks
                 self.fanout_top_str(gap)
+            } else if has_next || child_tracks.contains(&track) {
+                // Straight through on same track (or next node on this track)
+                if next_is_merge {
+                    self.merge_top_str(gap)
+                } else {
+                    self.arrow_str(gap)
+                }
+            } else if child_tracks.iter().all(|&t| t < track) {
+                // All children above — merge up ─┘
+                self.merge_up_str(gap)
+            } else {
+                // Children below — merge down ─┬
+                self.merge_down_str(gap)
             }
         } else if has_next {
-            // Branch start from a fan-out on another track
+            // No node here but node at next col — check if it's a merge target
             let next_node = &grid[&(track, col + 1)];
+
+            // Is this a fan-out branch from a parent on another track?
             let is_branch = (0..num_tracks).any(|t| {
                 t != track
                     && grid
@@ -699,15 +745,28 @@ impl<W: Write> TerminalRenderer<W> {
                         .map(|cs| cs.contains(next_node))
                         .unwrap_or(false)
             });
+
+            // Is this a merge branch from a node below merging up?
+            let is_merge_branch = parents_of.get(next_node).map(|pars| {
+                pars.iter().any(|p| {
+                    node_track.get(p).copied().unwrap_or(0) > track
+                })
+            }).unwrap_or(false);
+
             if is_branch {
                 self.fanout_branch_str(
                     track, col, grid, children_of, node_track, num_tracks, gap,
+                )
+            } else if is_merge_branch && next_is_merge {
+                // Merge branch entering from below
+                self.merge_branch_str(
+                    track, col, grid, parents_of, node_track, num_tracks, gap,
                 )
             } else {
                 " ".repeat(gap)
             }
         } else {
-            // Empty — check for vertical pass-through
+            // Empty cell — check for vertical pass-through
             if self.needs_vertical(track, col, grid, children_of, node_track) {
                 self.vertical_str(gap)
             } else {
@@ -805,11 +864,54 @@ impl<W: Write> TerminalRenderer<W> {
         }
     }
 
-    /// Merge-down connector (node's children are only on other tracks).
+    /// Merge-down connector (node's children are only on tracks below).
     fn merge_down_str(&self, w: usize) -> String {
         match self.tier {
             Tier::Ascii => pad_connector(" -+  ", w),
             _ => pad_connector(" \u{2500}\u{252C}  ", w), // ─┬
+        }
+    }
+
+    /// Merge-up connector: node's child is on a track above. ` ─┘ `
+    fn merge_up_str(&self, w: usize) -> String {
+        match self.tier {
+            Tier::Ascii => pad_connector(" -'  ", w),
+            _ => pad_connector(" \u{2500}\u{2518}  ", w), // ─┘
+        }
+    }
+
+    /// Merge-top connector: node on this track receives edges from below. ` ─┴─ `
+    fn merge_top_str(&self, w: usize) -> String {
+        match self.tier {
+            Tier::Ascii => pad_connector(" -+- ", w),
+            _ => pad_connector(" \u{2500}\u{2534}\u{2500} ", w), // ─┴─
+        }
+    }
+
+    /// Merge-branch connector: lower track merges into node above. `  └─ ` or `  ├─ `
+    #[allow(clippy::too_many_arguments)]
+    fn merge_branch_str(
+        &self,
+        track: usize,
+        _col: usize,
+        _grid: &HashMap<(usize, usize), NodeId>,
+        _parents_of: &HashMap<NodeId, Vec<NodeId>>,
+        _node_track: &HashMap<NodeId, usize>,
+        num_tracks: usize,
+        w: usize,
+    ) -> String {
+        // Check if there are more merge branches below this one
+        let is_last = track >= num_tracks - 1;
+        if is_last {
+            match self.tier {
+                Tier::Ascii => pad_connector("  '- ", w),
+                _ => pad_connector("  \u{2514}\u{2500} ", w), // └─
+            }
+        } else {
+            match self.tier {
+                Tier::Ascii => pad_connector("  '- ", w),
+                _ => pad_connector("  \u{2514}\u{2500} ", w), // └─
+            }
         }
     }
 
