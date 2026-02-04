@@ -312,6 +312,12 @@ pub struct MockResolver {
     paths: HashMap<String, PathBuf>,
 }
 
+impl Default for MockResolver {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MockResolver {
     /// Create an empty mock resolver (all resolutions will fail).
     pub fn new() -> Self {
