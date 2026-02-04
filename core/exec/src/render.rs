@@ -309,9 +309,21 @@ impl<W: Write> TerminalRenderer<W> {
             }
         }
 
-        // Write all lines
+        // Write all lines (clear each line first when overwriting in TTY mode)
         for line in &lines {
+            if self.is_tty {
+                let _ = write!(self.output, "\x1b[2K"); // erase entire line
+            }
             let _ = writeln!(self.output, "{}", line);
+        }
+        // If previous frame had more lines, clear the leftover lines
+        if self.is_tty && lines.len() < self.last_frame_lines {
+            for _ in 0..(self.last_frame_lines - lines.len()) {
+                let _ = write!(self.output, "\x1b[2K\n");
+            }
+            // Move cursor back up past the blank lines we just wrote
+            let extra = self.last_frame_lines - lines.len();
+            let _ = write!(self.output, "\x1b[{}A", extra);
         }
         let _ = self.output.flush();
         self.last_frame_lines = lines.len();

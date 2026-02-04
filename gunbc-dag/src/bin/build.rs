@@ -1,9 +1,9 @@
-//! gunbc-bootstrap main entry point.
+//! gunbc-build main entry point.
 //!
-//! Bootstrap tool for initializing gunbc projects.
+//! Local development build pipeline: build → (test + clippy) → summary.
 //! Supports progress display with `--progress` flag (default: auto-detect TTY).
 
-use gunbc_dag::build_bootstrap_graph;
+use gunbc_dag::build::build_build_graph;
 use gunbc_exec::{
     execute_with_mode, execute_with_progress_and_mode, BoundaryMocks, DagProgress, ExecutionMode,
     FrameLoop, OutputSummary, ProgressObserver, TerminalRenderer,
@@ -41,7 +41,7 @@ fn main() {
     }
 
     // Build the graph
-    let dag = match build_bootstrap_graph() {
+    let dag = match build_build_graph() {
         Ok(d) => d,
         Err(e) => {
             eprintln!("Error building graph: {}", e);
@@ -60,42 +60,16 @@ fn main() {
             }))
         };
 
-        // Scan workspace: returns a mock directory listing
-        mocks.set_value(
-            "execute_scan_workspace",
-            "response",
-            Value::Response(TransportResponse::Shell(ShellResponse {
-                exit_code: 0,
-                stdout: "crates/example\n".to_string(),
-                stderr: String::new(),
-            })),
-        );
+        // Build transport
+        mocks.set_value("execute_build", "response", ok_shell());
 
-        // Makefile transport executor
-        mocks.set_value("execute_makefile_transport", "makefile_response", ok_shell());
-        mocks.set_value(
-            "execute_makefile_transport",
-            "makefile_written_path",
-            Value::Str("<DRY-RUN>".to_string()),
-        );
-        mocks.set_value(
-            "execute_makefile_transport",
-            "makefile_content",
-            Value::Str("<DRY-RUN>".to_string()),
-        );
+        // Test transport
+        mocks.set_value("execute_test", "response", ok_shell());
+        mocks.set_value("execute_test", "skip", Value::Bool(false));
 
-        // Gitignore transport executor
-        mocks.set_value("execute_gitignore_transport", "gitignore_response", ok_shell());
-        mocks.set_value(
-            "execute_gitignore_transport",
-            "gitignore_written_path",
-            Value::Str("<DRY-RUN>".to_string()),
-        );
-        mocks.set_value(
-            "execute_gitignore_transport",
-            "gitignore_content",
-            Value::Str("<DRY-RUN>".to_string()),
-        );
+        // Clippy transport
+        mocks.set_value("execute_clippy", "response", ok_shell());
+        mocks.set_value("execute_clippy", "skip", Value::Bool(false));
 
         ExecutionMode::DryRun(mocks)
     } else {
@@ -110,7 +84,7 @@ fn main() {
     };
 
     // Print header
-    println!("bootstrap");
+    println!("build");
     println!("  mode: {}", if dry_run { "dry-run" } else { "real" });
     println!();
 
@@ -121,8 +95,8 @@ fn main() {
     }
 }
 
-/// Classic execution: log output like before.
-fn run_classic(dag: &gunbc_ir::Dag<gunbc_dag::BootstrapGraphOp>, mode: ExecutionMode) {
+/// Classic execution: log output.
+fn run_classic(dag: &gunbc_ir::Dag<gunbc_dag::build::BuildGraphOp>, mode: ExecutionMode) {
     match execute_with_mode(dag, mode) {
         Ok(log) => {
             for entry in &log.entries {
@@ -137,6 +111,12 @@ fn run_classic(dag: &gunbc_ir::Dag<gunbc_dag::BootstrapGraphOp>, mode: Execution
                     print_value(port, value);
                 }
             }
+            // Check overall_success
+            for entry in &log.entries {
+                if let Some(Value::Bool(false)) = entry.outputs.get("overall_success") {
+                    process::exit(1);
+                }
+            }
         }
         Err(e) => {
             eprintln!("Error: {}", e);
@@ -146,7 +126,10 @@ fn run_classic(dag: &gunbc_ir::Dag<gunbc_dag::BootstrapGraphOp>, mode: Execution
 }
 
 /// Progress-display execution: live DAG visualization with animated replay.
-fn run_with_progress(dag: &gunbc_ir::Dag<gunbc_dag::BootstrapGraphOp>, mode: ExecutionMode) {
+fn run_with_progress(
+    dag: &gunbc_ir::Dag<gunbc_dag::build::BuildGraphOp>,
+    mode: ExecutionMode,
+) {
     // Lower the DAG to get flat topology for layout
     let flat = match gunbc_exec::lower(dag) {
         Ok(f) => f,
@@ -172,15 +155,15 @@ fn run_with_progress(dag: &gunbc_ir::Dag<gunbc_dag::BootstrapGraphOp>, mode: Exe
     // Compute layout
     let layout = compute_layout(&topo_order, &flat.edges, &labels, &vp);
 
-    // Save levels before handing layout to renderer (for parallel animation)
+    // Save levels for parallel animation
     let levels = layout.levels.clone();
 
-    // Create progress tracker and execute (instant)
+    // Create progress tracker and execute
     let snapshot = gunbc_exec::DagSnapshot::from_dag(&flat, &topo_order, &boundaries);
     let mut progress = DagProgress::new(snapshot.clone());
     let result = execute_with_progress_and_mode(dag, mode, &mut progress);
 
-    // Capture actual final state per node (for failure detection)
+    // Capture actual final state per node
     let final_states: std::collections::HashMap<NodeId, gunbc_exec::NodeState> = progress
         .nodes
         .iter()
@@ -196,9 +179,9 @@ fn run_with_progress(dag: &gunbc_ir::Dag<gunbc_dag::BootstrapGraphOp>, mode: Exe
     let mut renderer = TerminalRenderer::new(io::stdout(), &STANDARD, detect_tier(), layout);
     renderer.set_tty(is_tty);
 
-    // Animation timing: ~1 second total, 2 frames per level (start all + complete all)
+    // Animation timing: ~1 second total, 2 frames per level
     let num_levels = levels.len();
-    let total_frames = num_levels * 2; // start + complete for each level
+    let total_frames = num_levels * 2;
     let frame_ms = (1000u64 / total_frames.max(1) as u64).clamp(50, 200);
     let frame_delay = Duration::from_millis(frame_ms);
 
@@ -210,16 +193,14 @@ fn run_with_progress(dag: &gunbc_ir::Dag<gunbc_dag::BootstrapGraphOp>, mode: Exe
         elapsed: Duration::from_millis(frame_ms),
     };
 
-    // Animate by level: parallel nodes in each level start and complete together
+    // Animate by level: parallel nodes start and complete together
     for level in &levels {
-        // Start all nodes in this level simultaneously
         for node_id in level {
             visual.on_node_start(node_id);
         }
         renderer.render(&visual);
         thread::sleep(frame_delay);
 
-        // Complete all nodes in this level simultaneously
         for node_id in level {
             let final_state = final_states
                 .get(node_id)
@@ -245,14 +226,12 @@ fn run_with_progress(dag: &gunbc_ir::Dag<gunbc_dag::BootstrapGraphOp>, mode: Exe
         thread::sleep(frame_delay);
     }
 
-    // Final frame: set actual elapsed and phase
+    // Final frame
     match &final_phase {
         gunbc_exec::DagPhase::Completed { elapsed } => {
             visual.on_dag_complete(*elapsed);
         }
-        gunbc_exec::DagPhase::Failed { .. } => {
-            // Phase already set by on_node_failed
-        }
+        gunbc_exec::DagPhase::Failed { .. } => {}
         _ => {
             visual.on_dag_complete(Duration::ZERO);
         }
@@ -263,17 +242,23 @@ fn run_with_progress(dag: &gunbc_ir::Dag<gunbc_dag::BootstrapGraphOp>, mode: Exe
         eprintln!("\nError: {}", e);
         process::exit(1);
     }
+
+    // Check final states for exit code
+    let any_failed = final_states
+        .values()
+        .any(|s| *s == gunbc_exec::NodeState::Failed);
+    if any_failed {
+        process::exit(1);
+    }
 }
 
 /// Detect whether stdout is a TTY.
 fn atty_check() -> bool {
-    // Simple heuristic: check if TERM is set (most TTYs set it)
     env::var("TERM").is_ok()
 }
 
 /// Get terminal viewport dimensions.
 fn terminal_viewport() -> Viewport {
-    // Try to get terminal size from environment
     let cols = env::var("COLUMNS")
         .ok()
         .and_then(|s| s.parse::<u16>().ok())
@@ -288,8 +273,6 @@ fn terminal_viewport() -> Viewport {
 
 /// Detect the best symbol tier for the current terminal.
 fn detect_tier() -> Tier {
-    // Use Emoji if the terminal likely supports it, otherwise Unicode
-    // Simple heuristic: check for known modern terminals
     if env::var("TERM_PROGRAM").is_ok() || env::var("WT_SESSION").is_ok() {
         Tier::Emoji
     } else if env::var("LANG")
@@ -324,21 +307,21 @@ fn print_value(port: &str, value: &Value) {
         }
         Value::Int(i) => println!("  {}: {}", port, i),
         Value::Bool(b) => println!("  {}: {}", port, b),
-        Value::List(list) => println!("  {}: [{} items]", port, list.len()),
-        Value::Set(set) => println!("  {}: {{{} items}}", port, set.len()),
-        Value::Map(map) => println!("  {}: {{{} entries}}", port, map.len()),
-        Value::Json(_) => println!("  {}: <JSON>", port),
         _ => {}
     }
 }
 
 fn print_help() {
-    println!("bootstrap - Generate Makefile and .gitignore");
+    println!("build - Build, test, and lint the project");
     println!();
     println!("USAGE:");
-    println!("    bootstrap [OPTIONS]");
+    println!("    gunbc-build [OPTIONS]");
     println!();
     println!("OPTIONS:");
     println!("    -n, --dry-run        Don't perform actual I/O");
+    println!("    --progress           Force progress display");
+    println!("    --no-progress        Disable progress display");
     println!("    -h, --help           Print this help");
+    println!();
+    println!("Pipeline: build -> (test + clippy) -> summary");
 }
