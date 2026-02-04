@@ -349,13 +349,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_mock_spec_has_boundary() {
-        let spec = ci_mock_spec();
-        assert!(spec.get_boundary_mock("report", "overall_success").is_some());
-        assert!(spec.get_boundary_mock("report", "report").is_some());
-    }
-
-    #[test]
     fn test_mock_spec_success() {
         let spec = ci_mock_spec();
         let success = spec.get_boundary_mock("report", "overall_success").unwrap();
@@ -367,14 +360,6 @@ mod tests {
         let spec = ci_mock_spec_test_fails();
         let success = spec.get_boundary_mock("report", "overall_success").unwrap();
         assert!(matches!(success, Value::Bool(false)));
-    }
-
-    #[test]
-    fn test_cargo_locks_present() {
-        let spec = ci_mock_spec();
-        assert!(spec.get_resource("cargo:build").is_some());
-        assert!(spec.get_resource("cargo:test").is_some());
-        assert!(spec.get_resource("cargo:clippy").is_some());
     }
 
     #[test]

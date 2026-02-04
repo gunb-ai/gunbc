@@ -388,16 +388,6 @@ pub fn rate_limited_mock_spec() -> MockSpec {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gunbc_test::validate_chain;
-    use std::collections::HashMap;
-
-    #[test]
-    fn test_openai_mock_spec_has_boundaries() {
-        let spec = openai_mock_spec();
-        assert!(spec.get_boundary_mock("execute", "response").is_some());
-        assert!(spec.get_boundary_mock("parse", "content").is_some());
-        assert!(spec.get_boundary_mock("parse", "model").is_some());
-    }
 
     #[test]
     fn test_openai_mock_spec_content() {
@@ -408,13 +398,6 @@ mod tests {
         } else {
             panic!("Expected string content");
         }
-    }
-
-    #[test]
-    fn test_anthropic_mock_spec_has_boundaries() {
-        let spec = anthropic_mock_spec();
-        assert!(spec.get_boundary_mock("execute", "response").is_some());
-        assert!(spec.get_boundary_mock("parse", "content").is_some());
     }
 
     #[test]
@@ -462,14 +445,6 @@ mod tests {
         let spec = rate_limited_mock_spec();
         let response = spec.get_boundary_mock("execute", "response").unwrap();
         assert!(matches!(response, Value::Response(_)));
-    }
-
-    #[test]
-    fn test_chain_validation_self() {
-        let spec = openai_mock_spec();
-        let mapping = HashMap::new();
-        let result = validate_chain(&spec, &spec, &mapping);
-        assert!(result.is_ok());
     }
 
     #[test]

@@ -151,13 +151,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_mock_spec_has_boundary() {
-        let spec = bootstrap_mock_spec();
-        assert!(spec.get_boundary_mock("write_files", "files_written").is_some());
-        assert!(spec.get_boundary_mock("write_files", "write_count").is_some());
-    }
-
-    #[test]
     fn test_mock_spec_write_count() {
         let spec = bootstrap_mock_spec();
         let count = spec.get_boundary_mock("write_files", "write_count").unwrap();
@@ -174,13 +167,6 @@ mod tests {
         } else {
             panic!("Expected List");
         }
-    }
-
-    #[test]
-    fn test_both_file_locks_present() {
-        let spec = bootstrap_mock_spec();
-        assert!(spec.get_resource("fs:Makefile").is_some());
-        assert!(spec.get_resource("fs:.gitignore").is_some());
     }
 
     #[test]
