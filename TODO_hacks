@@ -93,6 +93,94 @@ Files:
   - core/exec/src/intercept.rs                (BoundaryMocks, no unset API)
   - core/exec/src/execute.rs                  (executor always produces output)
 
+## `Satisfies` matcher emits a comment, not an assertion
+
+Generated tests with `OutputMatcher::Satisfies` emit a comment like
+"// make sure this is satisfied" instead of a real assertion. This means
+test coverage is silently absent — the test compiles and passes without
+actually checking anything.
+
+Fix: generate a call to the matcher's `check(...)` method (or a shared
+helper) so there is one semantics definition. Don't re-encode matcher
+logic as string codegen.
+
+Files:
+  - core/codegen/src/testgen/codegen.rs  (Satisfies code emission)
+  - core/test/src/mock_spec.rs           (OutputMatcher::check runtime impl)
+
+## `NonEmpty` matcher is type-incorrect in codegen
+
+The generated NonEmpty check uses `as_str().unwrap_or("")` which makes
+non-string values (lists, maps, ints) behave like empty string — can
+falsely fail. The runtime `OutputMatcher::check` implementation is
+type-aware (good), but the codegen path emits its own string-specific
+code, so semantics can drift.
+
+Fix: same as Satisfies — generated tests should call the matcher's
+`check(...)` rather than re-encoding the logic in codegen.
+
+Files:
+  - core/codegen/src/testgen/codegen.rs  (NonEmpty string-specific codegen)
+
+## `value_to_rust_literal` has silent fallback and lossy list handling
+
+- Drops non-string elements when serializing Value::List (filter_map to
+  as_str), then emits Value::str_list — a list of ints becomes empty.
+- Catch-all `_ => Value::Str("<MOCK>")` compiles but silently changes
+  values. Devastating for proof/testgen where values must be faithful.
+
+Fix:
+- Replace fallback with compile_error! or panic! in codegen
+- Serialize Value::List recursively (emit Value::List(vec![...]))
+- Add explicit handling for Value::Map, Value::Request, Value::Response
+
+Files:
+  - core/codegen/src/testgen/codegen.rs:1777  (value_to_rust_literal)
+
+## `Map` type_id is under-specified for proofs/testgen
+
+Value::Map(BTreeMap<String, Value>) lost type parameter info when
+MapStrStr was replaced with generic Map. Codegen can't serialize
+Value::Map in general, and there's no way to express "map of string
+to string" vs "map of string to json" at the port type level.
+
+For proofs/testgen, need one of:
+- Parametric type IDs: Map<String,String>, Map<String,Json>
+- Type DAG / type expression structure instead of flat String type_id
+
+Without this, "Map" is effectively "untyped JSON object."
+
+Files:
+  - core/ir/src/value.rs                (Value::Map definition)
+  - core/ir/src/types.rs                (type_id is a flat String)
+  - core/codegen/src/testgen/codegen.rs (can't serialize Map faithfully)
+
+## `diff_files` port has cardinality/value mismatch
+
+In some graphs, diff_files is declared as `list("diff_files", "Map")`
+but the mock output provides a scalar `Value::str_map(...)` (a single
+map, not a list of maps). Either:
+- diff_files is a single map → port should be `port("diff_files", "Map")`
+- diff_files is a list of records → output should be Value::List(vec![...])
+
+Pick one semantics and enforce across all graphs.
+
+Files:
+  - lib/tools/gist/src/graph.rs  (port declaration vs mock output)
+  - lib/review/src/graph.rs      (same pattern)
+
+## `can_coerce_to` duplicates `satisfies` on Cardinality
+
+can_coerce_to checks self.satisfies(target) then repeats the same
+predicate. The intended distinction ("lossless injection") isn't
+implemented. If coercions that alter cardinality but preserve
+information are needed later (scalar→list by wrapping, optional→list
+by empty/singleton), this needs explicit allowed-coercion rules,
+not just set containment.
+
+Files:
+  - core/ir/src/types.rs  (Cardinality::can_coerce_to)
+
 ## Cardinality constants are flat — no compositional modeling
 
 Named cardinality constants (ZERO, ONE, ZERO_OR_ONE, etc.) are syntactic
@@ -104,3 +192,16 @@ for test generation and port validation), not a first-class runtime concept.
 
 Files:
   - core/ir/src/types.rs (Cardinality struct and associated constants)
+
+---
+
+## Blockers: must-fix before relying on testgen
+
+These are the items that make generated tests semantically unsound.
+Until fixed, generated test results should not be trusted as proof
+of correctness.
+
+1. Replace `Satisfies` comment emission with real assertion/callback
+2. Remove `value_to_rust_literal` fallback — make list/map non-lossy
+3. Teach mocks to represent absence — fix Empty cardinality semantics
+4. Stop inferring list-ness from `type_id == "List"` in makegen/CLI
