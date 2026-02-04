@@ -416,9 +416,7 @@ impl ToolInfo {
                     cli_flag: format!("--{}", ep.flag_name()),
                     type_hint: ep.type_id.clone(),
                     default: ep.default_value.clone(),
-                    // TODO: Replace with cardinality.allows_many() when CliEntrypoint
-                    // carries Cardinality instead of type_id string.
-                    repeatable: ep.type_id == "List" || ep.type_id == "Set",
+                    repeatable: ep.cardinality.allows_many(),
                 });
             }
         }

@@ -25,8 +25,8 @@ pub mod graph;
 pub mod graph_mock;
 
 use gunbc_exec::{
-    optional_str, require_response, require_str, ExecError, Executable, OutputMap,
-    TransportResponseExt,
+    optional_str, propagate_skipped, require_response, require_str, ExecError, Executable,
+    OutputMap, TransportResponseExt,
 };
 use gunbc_ir::transport::llm::{self, ChatMessage, ChatRequest, MessageContent, Role};
 use gunbc_ir::transport::TransportRequest;
@@ -166,15 +166,8 @@ fn execute_prepare_chat_request(
 fn execute_parse_chat_response(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    // Handle skipped response (upstream transport was skipped)
-    if matches!(inputs.get("response"), Some(Value::Skipped)) {
-        return OutputMap::new()
-            .value("content", Value::Skipped)
-            .value("model", Value::Skipped)
-            .value("finish_reason", Value::Skipped)
-            .value("input_tokens", Value::Skipped)
-            .value("output_tokens", Value::Skipped)
-            .ok();
+    if let Some(result) = propagate_skipped(&inputs, "response", &["content", "model", "finish_reason", "input_tokens", "output_tokens"]) {
+        return result;
     }
 
     let provider_id = require_str(&inputs, "provider")?;
@@ -238,11 +231,8 @@ fn execute_prepare_simple_request(
 fn execute_parse_simple_response(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    // Handle skipped response (upstream transport was skipped)
-    if matches!(inputs.get("response"), Some(Value::Skipped)) {
-        return OutputMap::new()
-            .value("answer", Value::Skipped)
-            .ok();
+    if let Some(result) = propagate_skipped(&inputs, "response", &["answer"]) {
+        return result;
     }
 
     let provider_id = require_str(&inputs, "provider")?;

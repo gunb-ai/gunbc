@@ -249,6 +249,49 @@ impl Default for OutputMap {
 }
 
 // ---------------------------------------------------------------------------
+// Skip propagation
+// ---------------------------------------------------------------------------
+
+/// Check if an input is `Value::Skipped` and, if so, propagate it to all
+/// listed output keys.
+///
+/// Returns `Some(Ok(outputs))` when the input was skipped (caller should
+/// return early), or `None` when the input was present and execution should
+/// continue normally.
+///
+/// This eliminates the repeated pattern:
+/// ```ignore
+/// if matches!(inputs.get("response"), Some(Value::Skipped)) {
+///     return OutputMap::new()
+///         .value("out1", Value::Skipped)
+///         .value("out2", Value::Skipped)
+///         .ok();
+/// }
+/// ```
+///
+/// becomes:
+/// ```ignore
+/// if let Some(result) = propagate_skipped(&inputs, "response", &["out1", "out2"]) {
+///     return result;
+/// }
+/// ```
+pub fn propagate_skipped(
+    inputs: &HashMap<String, Value>,
+    input_key: &str,
+    output_keys: &[&str],
+) -> Option<Result<HashMap<String, Value>, ExecError>> {
+    if matches!(inputs.get(input_key), Some(Value::Skipped)) {
+        let mut map = OutputMap::new();
+        for key in output_keys {
+            map = map.value(key, Value::Skipped);
+        }
+        Some(map.ok())
+    } else {
+        None
+    }
+}
+
+// ---------------------------------------------------------------------------
 // TransportResponse extraction
 // ---------------------------------------------------------------------------
 
@@ -370,11 +413,7 @@ mod tests {
 
     #[test]
     fn require_shell_on_shell_response() {
-        let resp = TransportResponse::Shell(ShellResponse {
-            exit_code: 0,
-            stdout: "ok".to_string(),
-            stderr: String::new(),
-        });
+        let resp: TransportResponse = ShellResponse::ok("ok").into();
         let shell = resp.require_shell().unwrap();
         assert_eq!(shell.stdout, "ok");
     }
@@ -387,5 +426,34 @@ mod tests {
             headers: HashMap::new(),
         });
         assert!(resp.require_shell().is_err());
+    }
+
+    #[test]
+    fn propagate_skipped_returns_some_when_skipped() {
+        let mut inputs = HashMap::new();
+        inputs.insert("response".to_string(), Value::Skipped);
+
+        let result = propagate_skipped(&inputs, "response", &["out1", "out2"]);
+        assert!(result.is_some());
+
+        let outputs = result.unwrap().unwrap();
+        assert_eq!(outputs.get("out1"), Some(&Value::Skipped));
+        assert_eq!(outputs.get("out2"), Some(&Value::Skipped));
+    }
+
+    #[test]
+    fn propagate_skipped_returns_none_when_present() {
+        let mut inputs = HashMap::new();
+        inputs.insert("response".to_string(), Value::Str("data".to_string()));
+
+        let result = propagate_skipped(&inputs, "response", &["out1"]);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn propagate_skipped_returns_none_when_missing() {
+        let inputs = HashMap::new();
+        let result = propagate_skipped(&inputs, "response", &["out1"]);
+        assert!(result.is_none());
     }
 }

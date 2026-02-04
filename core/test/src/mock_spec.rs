@@ -702,7 +702,9 @@ impl NodeExample {
 /// - Exact: value must equal expected exactly
 /// - Contains: string output must contain substring
 /// - NonEmpty: value must be non-empty (strings, lists)
-/// - Satisfies: custom predicate function
+/// - Typed matchers: IsBool, IsInt, IsString, IsRequest, IsResponse
+/// - IntGe/IntLe: integer range checks
+/// - Satisfies: custom predicate function (fallback for complex checks)
 #[derive(Clone)]
 pub enum OutputMatcher {
     /// Output must equal this value exactly
@@ -711,7 +713,27 @@ pub enum OutputMatcher {
     Contains(String),
     /// Output must be non-empty
     NonEmpty,
-    /// Output must satisfy a custom predicate
+    /// Output must be a boolean (any value).
+    ///
+    /// Unlike `Satisfies`, this generates a real codegen assertion.
+    IsBool,
+    /// Output must be an integer (any value).
+    IsInt,
+    /// Output must be a string (any value).
+    IsString,
+    /// Output must be a transport request.
+    IsRequest,
+    /// Output must be a transport response.
+    IsResponse,
+    /// Integer must be >= threshold.
+    IntGe(i64),
+    /// Integer must be <= threshold.
+    IntLe(i64),
+    /// Output must satisfy a custom predicate.
+    ///
+    /// Prefer typed matchers (IsBool, IntGe, etc.) when possible, since
+    /// codegen can emit real assertions for them. `Satisfies` currently
+    /// emits a comment in generated tests.
     Satisfies {
         description: String,
         predicate: fn(&Value) -> bool,
@@ -726,6 +748,13 @@ impl std::fmt::Debug for OutputMatcher {
             OutputMatcher::Exact(v) => write!(f, "Exact({:?})", v),
             OutputMatcher::Contains(s) => write!(f, "Contains(\"{}\")", s),
             OutputMatcher::NonEmpty => write!(f, "NonEmpty"),
+            OutputMatcher::IsBool => write!(f, "IsBool"),
+            OutputMatcher::IsInt => write!(f, "IsInt"),
+            OutputMatcher::IsString => write!(f, "IsString"),
+            OutputMatcher::IsRequest => write!(f, "IsRequest"),
+            OutputMatcher::IsResponse => write!(f, "IsResponse"),
+            OutputMatcher::IntGe(n) => write!(f, "IntGe({})", n),
+            OutputMatcher::IntLe(n) => write!(f, "IntLe({})", n),
             OutputMatcher::Satisfies { description, .. } => {
                 write!(f, "Satisfies({})", description)
             }
@@ -782,6 +811,36 @@ impl OutputMatcher {
                 Value::Set(_) => Err("expected non-empty set".into()),
                 _ => Ok(()), // Other types considered non-empty
             },
+            OutputMatcher::IsBool => match value {
+                Value::Bool(_) => Ok(()),
+                _ => Err(format!("expected Bool, got {:?}", value)),
+            },
+            OutputMatcher::IsInt => match value {
+                Value::Int(_) => Ok(()),
+                _ => Err(format!("expected Int, got {:?}", value)),
+            },
+            OutputMatcher::IsString => match value {
+                Value::Str(_) => Ok(()),
+                _ => Err(format!("expected String, got {:?}", value)),
+            },
+            OutputMatcher::IsRequest => match value {
+                Value::Request(_) => Ok(()),
+                _ => Err(format!("expected Request, got {:?}", value)),
+            },
+            OutputMatcher::IsResponse => match value {
+                Value::Response(_) => Ok(()),
+                _ => Err(format!("expected Response, got {:?}", value)),
+            },
+            OutputMatcher::IntGe(threshold) => match value {
+                Value::Int(n) if n >= threshold => Ok(()),
+                Value::Int(n) => Err(format!("expected Int >= {}, got {}", threshold, n)),
+                _ => Err(format!("expected Int, got {:?}", value)),
+            },
+            OutputMatcher::IntLe(threshold) => match value {
+                Value::Int(n) if n <= threshold => Ok(()),
+                Value::Int(n) => Err(format!("expected Int <= {}, got {}", threshold, n)),
+                _ => Err(format!("expected Int, got {:?}", value)),
+            },
             OutputMatcher::Satisfies { description, predicate } => {
                 if predicate(value) {
                     Ok(())
@@ -796,10 +855,11 @@ impl OutputMatcher {
     /// Whether this matcher produces an executable assertion (vs. a comment).
     ///
     /// Used by codegen to decide whether to prefix the output variable with `_`.
+    /// All typed matchers (IsBool, IntGe, etc.) generate real assertions.
+    /// Only `Satisfies` and `Any` don't.
     pub fn generates_assertion(&self) -> bool {
-        matches!(self, OutputMatcher::Exact(_) | OutputMatcher::Contains(_) | OutputMatcher::NonEmpty)
+        !matches!(self, OutputMatcher::Satisfies { .. } | OutputMatcher::Any)
     }
-
 }
 
 #[cfg(test)]

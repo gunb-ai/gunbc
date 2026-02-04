@@ -5,7 +5,7 @@
 //! - What input constraints upstream must satisfy
 //! - Resource simulations for file system operations
 
-use gunbc_ir::transport::{ShellResponse, TransportResponse};
+use gunbc_ir::transport::ShellResponse;
 use gunbc_ir::{CargoInvocation, Value};
 use gunbc_test::{InputConstraint, MockSpec, NodeExample, OutputMatcher};
 
@@ -44,11 +44,7 @@ pub fn makegen_mock_spec() -> MockSpec {
         .transport_mock(
             "execute_transport",
             "response",
-            Value::Response(TransportResponse::Shell(ShellResponse {
-                exit_code: 0,
-                stdout: String::new(),
-                stderr: String::new(),
-            })),
+            Value::Response(ShellResponse::ok("").into()),
         )
         .transport_mock(
             "execute_transport",
@@ -66,10 +62,7 @@ pub fn makegen_mock_spec() -> MockSpec {
         // Node I/O examples: verify pure node behavior
         .node_example(
             NodeExample::new("load_registry")
-                .output("tool_count", OutputMatcher::Satisfies {
-                    description: "at least 2 tools registered".into(),
-                    predicate: |v| matches!(v, Value::Int(n) if *n >= 2),
-                })
+                .output("tool_count", OutputMatcher::IntGe(2))
                 .output("tool_names", OutputMatcher::non_empty())
                 .description("Default registry loads with expected tools"),
         )

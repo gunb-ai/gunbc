@@ -12,7 +12,7 @@
 //!    (pure)           (boundary)              (pure)
 //! ```
 
-use gunbc_exec::{ExecError, Executable, OutputMap, TransportResponseExt, optional_bool, optional_str, require_response};
+use gunbc_exec::{ExecError, Executable, OutputMap, TransportResponseExt, optional_bool, optional_str, propagate_skipped, require_response};
 use gunbc_ir::transport::{FileRequest, TransportRequest, TransportResponse};
 use gunbc_ir::Value;
 use crate::makegen::BuildConfig;
@@ -101,14 +101,8 @@ impl Executable for CIOp {
 
 /// Parse the deps.toml exists check result (pure).
 fn execute_parse_deps_exists(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-    // Handle skipped response (upstream transport was skipped)
-    if matches!(inputs.get("response"), Some(Value::Skipped)) {
-        return OutputMap::new()
-            .value("deps_exists", Value::Skipped)
-            .value("deps_checked", Value::Skipped)
-            .value("deps_installed", Value::Skipped)
-            .value("message", Value::Skipped)
-            .ok();
+    if let Some(result) = propagate_skipped(&inputs, "response", &["deps_exists", "deps_checked", "deps_installed", "message"]) {
+        return result;
     }
 
     let response = require_response(&inputs, "response")?;
@@ -148,14 +142,8 @@ fn execute_prepare_codegen_exists_check(_inputs: HashMap<String, Value>) -> Resu
 
 /// Parse the codegen exists check result (pure).
 fn execute_parse_codegen_exists(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-    // Handle skipped response (upstream transport was skipped)
-    if matches!(inputs.get("response"), Some(Value::Skipped)) {
-        return OutputMap::new()
-            .value("codegen_needed", Value::Skipped)
-            .value("prep_success", Value::Skipped)
-            .value("codegen_ran", Value::Skipped)
-            .value("prep_message", Value::Skipped)
-            .ok();
+    if let Some(result) = propagate_skipped(&inputs, "response", &["codegen_needed", "prep_success", "codegen_ran", "prep_message"]) {
+        return result;
     }
 
     let response = require_response(&inputs, "response")?;
@@ -201,13 +189,8 @@ fn execute_prepare_codegen_command(inputs: HashMap<String, Value>) -> Result<Has
 
 /// Parse the codegen shell response (pure).
 fn execute_parse_codegen_result(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-    // Handle skipped response (upstream transport was skipped)
-    if matches!(inputs.get("response"), Some(Value::Skipped)) {
-        return OutputMap::new()
-            .value("prep_success", Value::Skipped)
-            .value("codegen_ran", Value::Skipped)
-            .value("prep_message", Value::Skipped)
-            .ok();
+    if let Some(result) = propagate_skipped(&inputs, "response", &["prep_success", "codegen_ran", "prep_message"]) {
+        return result;
     }
 
     // Check if codegen was skipped
@@ -265,14 +248,8 @@ fn execute_prepare_build_command(inputs: HashMap<String, Value>) -> Result<HashM
 
 /// Parse the build shell response (pure).
 fn execute_parse_build_result(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-    // Handle skipped response (upstream transport was skipped)
-    if matches!(inputs.get("response"), Some(Value::Skipped)) {
-        return OutputMap::new()
-            .value("build_success", Value::Skipped)
-            .value("build_skipped", Value::Skipped)
-            .value("build_stdout", Value::Skipped)
-            .value("build_stderr", Value::Skipped)
-            .ok();
+    if let Some(result) = propagate_skipped(&inputs, "response", &["build_success", "build_skipped", "build_stdout", "build_stderr"]) {
+        return result;
     }
 
     let skip = optional_bool(&inputs, "skip").unwrap_or(false);
@@ -324,14 +301,8 @@ fn execute_prepare_test_command(inputs: HashMap<String, Value>) -> Result<HashMa
 
 /// Parse the test shell response (pure).
 fn execute_parse_test_result(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-    // Handle skipped response (upstream transport was skipped)
-    if matches!(inputs.get("response"), Some(Value::Skipped)) {
-        return OutputMap::new()
-            .value("test_success", Value::Skipped)
-            .value("test_skipped", Value::Skipped)
-            .value("test_stdout", Value::Skipped)
-            .value("test_stderr", Value::Skipped)
-            .ok();
+    if let Some(result) = propagate_skipped(&inputs, "response", &["test_success", "test_skipped", "test_stdout", "test_stderr"]) {
+        return result;
     }
 
     let skip = optional_bool(&inputs, "skip").unwrap_or(false);
@@ -615,14 +586,14 @@ mod tests {
     fn test_parse_deps_exists_true() {
         let mut inputs = HashMap::new();
         inputs.insert("response".to_string(), Value::Response(
-            TransportResponse::File(FileResponse {
+            FileResponse {
                 path: "deps.toml".to_string(),
                 operation: FileOp::Exists,
                 success: true,
                 content: None,
                 exists: Some(true),
                 error: None,
-            })
+            }.into()
         ));
 
         let result = execute_parse_deps_exists(inputs).unwrap();
@@ -633,14 +604,14 @@ mod tests {
     fn test_parse_deps_exists_false() {
         let mut inputs = HashMap::new();
         inputs.insert("response".to_string(), Value::Response(
-            TransportResponse::File(FileResponse {
+            FileResponse {
                 path: "deps.toml".to_string(),
                 operation: FileOp::Exists,
                 success: true,
                 content: None,
                 exists: Some(false),
                 error: None,
-            })
+            }.into()
         ));
 
         let result = execute_parse_deps_exists(inputs).unwrap();
@@ -672,11 +643,7 @@ mod tests {
         let mut inputs = HashMap::new();
         inputs.insert("skip".to_string(), Value::Bool(false));
         inputs.insert("response".to_string(), Value::Response(
-            TransportResponse::Shell(ShellResponse {
-                exit_code: 0,
-                stdout: "Build success".to_string(),
-                stderr: String::new(),
-            })
+            ShellResponse::ok("Build success").into()
         ));
 
         let result = execute_parse_build_result(inputs).unwrap();

@@ -4,7 +4,7 @@
 
 use crate::{Criteria, Check, ReviewOutput, Finding, Location};
 use gunbc_ir::transport::llm::mock;
-use gunbc_ir::transport::{ShellResponse, TransportResponse};
+use gunbc_ir::transport::ShellResponse;
 use gunbc_ir::Value;
 use gunbc_test::{InputConstraint, MockSpec};
 
@@ -102,12 +102,12 @@ pub fn inline_review_mock_spec() -> MockSpec {
         .transport_mock(
             "execute_llm",
             "response",
-            Value::Response(TransportResponse::Rest(llm_response.clone())),
+            Value::Response(llm_response.clone().into()),
         )
         .boundary(
             "execute_llm",
             "response",
-            Value::Response(TransportResponse::Rest(llm_response)),
+            Value::Response(llm_response.into()),
         )
         // Boundary: parse_response outputs
         .boundary(
@@ -188,31 +188,23 @@ diff --git a/src/main.rs b/src/main.rs
         .transport_mock(
             "execute_diff",
             "response",
-            Value::Response(TransportResponse::Shell(ShellResponse {
-                exit_code: 0,
-                stdout: diff_output.to_string(),
-                stderr: String::new(),
-            })),
+            Value::Response(ShellResponse::ok(diff_output).into()),
         )
         .boundary(
             "execute_diff",
             "response",
-            Value::Response(TransportResponse::Shell(ShellResponse {
-                exit_code: 0,
-                stdout: diff_output.to_string(),
-                stderr: String::new(),
-            })),
+            Value::Response(ShellResponse::ok(diff_output).into()),
         )
         // Transport mock: LLM execute
         .transport_mock(
             "execute_llm",
             "response",
-            Value::Response(TransportResponse::Rest(llm_response.clone())),
+            Value::Response(llm_response.clone().into()),
         )
         .boundary(
             "execute_llm",
             "response",
-            Value::Response(TransportResponse::Rest(llm_response)),
+            Value::Response(llm_response.into()),
         )
         // Boundary: parse_response outputs
         .boundary(

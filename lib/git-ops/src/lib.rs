@@ -215,19 +215,11 @@ mod tests {
     use gunbc_ir::transport::{ShellResponse, TransportRequest, TransportResponse};
 
     fn shell_response(stdout: &str) -> TransportResponse {
-        TransportResponse::Shell(ShellResponse {
-            exit_code: 0,
-            stdout: stdout.to_string(),
-            stderr: String::new(),
-        })
+        ShellResponse::ok(stdout).into()
     }
 
     fn failed_shell_response() -> TransportResponse {
-        TransportResponse::Shell(ShellResponse {
-            exit_code: 1,
-            stdout: String::new(),
-            stderr: "error".to_string(),
-        })
+        ShellResponse::failed(1, "error").into()
     }
 
     // ========================================================================

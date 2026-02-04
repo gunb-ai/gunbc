@@ -210,9 +210,96 @@ impl ShellRequest {
 }
 
 impl ShellResponse {
+    /// Create a successful shell response (exit code 0).
+    pub fn ok(stdout: impl Into<String>) -> Self {
+        Self {
+            exit_code: 0,
+            stdout: stdout.into(),
+            stderr: String::new(),
+        }
+    }
+
+    /// Create a failed shell response with the given exit code and stderr.
+    pub fn failed(exit_code: i32, stderr: impl Into<String>) -> Self {
+        Self {
+            exit_code,
+            stdout: String::new(),
+            stderr: stderr.into(),
+        }
+    }
+
     /// Check if the command succeeded (exit code 0).
     pub fn success(&self) -> bool {
         self.exit_code == 0
+    }
+
+    /// Wrap this response in a [`TransportResponse::Shell`].
+    pub fn into_transport_response(self) -> TransportResponse {
+        TransportResponse::Shell(self)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// From impls for transport request/response types
+// ---------------------------------------------------------------------------
+
+impl From<ShellRequest> for TransportRequest {
+    fn from(req: ShellRequest) -> Self {
+        TransportRequest::Shell(req)
+    }
+}
+
+impl From<RestRequest> for TransportRequest {
+    fn from(req: RestRequest) -> Self {
+        TransportRequest::Rest(req)
+    }
+}
+
+impl From<HttpRequest> for TransportRequest {
+    fn from(req: HttpRequest) -> Self {
+        TransportRequest::Http(req)
+    }
+}
+
+impl From<FileRequest> for TransportRequest {
+    fn from(req: FileRequest) -> Self {
+        TransportRequest::File(req)
+    }
+}
+
+impl From<TcpRequest> for TransportRequest {
+    fn from(req: TcpRequest) -> Self {
+        TransportRequest::Tcp(req)
+    }
+}
+
+impl From<ShellResponse> for TransportResponse {
+    fn from(resp: ShellResponse) -> Self {
+        TransportResponse::Shell(resp)
+    }
+}
+
+impl From<RestResponse> for TransportResponse {
+    fn from(resp: RestResponse) -> Self {
+        TransportResponse::Rest(resp)
+    }
+}
+
+impl From<HttpResponse> for TransportResponse {
+    fn from(resp: HttpResponse) -> Self {
+        TransportResponse::Http(resp)
+    }
+}
+
+impl From<FileResponse> for TransportResponse {
+    fn from(resp: FileResponse) -> Self {
+        TransportResponse::File(resp)
+    }
+}
+
+impl From<TcpResponse> for TransportResponse {
+    fn from(resp: TcpResponse) -> Self {
+        TransportResponse::Tcp(resp)
     }
 }
 
@@ -233,5 +320,37 @@ mod tests {
         assert_eq!(req.args, vec!["gist", "create", "-f", "test.md"]);
         assert_eq!(req.cwd, Some("/tmp".to_string()));
         assert_eq!(req.stdin, Some("# Test".to_string()));
+    }
+
+    #[test]
+    fn test_shell_response_ok() {
+        let resp = ShellResponse::ok("hello");
+        assert!(resp.success());
+        assert_eq!(resp.stdout, "hello");
+        assert_eq!(resp.stderr, "");
+        assert_eq!(resp.exit_code, 0);
+    }
+
+    #[test]
+    fn test_shell_response_failed() {
+        let resp = ShellResponse::failed(1, "error");
+        assert!(!resp.success());
+        assert_eq!(resp.stdout, "");
+        assert_eq!(resp.stderr, "error");
+        assert_eq!(resp.exit_code, 1);
+    }
+
+    #[test]
+    fn test_from_shell_request() {
+        let req = ShellRequest::new("ls");
+        let transport: TransportRequest = req.into();
+        assert!(matches!(transport, TransportRequest::Shell(_)));
+    }
+
+    #[test]
+    fn test_from_shell_response() {
+        let resp = ShellResponse::ok("ok");
+        let transport: TransportResponse = resp.into();
+        assert!(matches!(transport, TransportResponse::Shell(_)));
     }
 }

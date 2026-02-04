@@ -293,13 +293,22 @@ represented as empty collection).
 
 ## Tasks
 
-- [ ] Hack 1: Replace `Satisfies` comment-only codegen with runtime callback or typed matcher variants
+- [x] Hack 1: Replace `Satisfies` comment-only codegen with typed matcher variants
+  - Added `IsBool`, `IsInt`, `IsString`, `IsRequest`, `IsResponse`, `IntGe(i64)`, `IntLe(i64)` to `OutputMatcher`
+  - All typed matchers generate real assertions in codegen (via `Assert::True` with method chains)
+  - Migrated existing `Satisfies` usages in `ci/graph_mock.rs` and `makegen/graph_mock.rs`
+  - `Satisfies` remains as escape hatch for truly custom predicates
 - [x] Hack 2: Add `Value::Response`/`Value::Request` support (done via ValueExpr pipeline)
 - [ ] Hack 2: Update parse node examples to use real transport responses
 - [x] Hack 3: Make `NonEmpty` codegen type-aware (or add `Value::is_empty()`)
 - [x] Hack 4: Replace `value_to_rust_literal` catch-all with `panic!()` or `compile_error!()`
 - [x] Hack 4: Fix `Value::List` filter_map silent dropping of non-string elements
-- [ ] Hack 5: Make cardinality Empty tests represent absence, not empty content
+- [x] Hack 5: Make cardinality Empty tests represent absence, not empty content
+  - `cardinality_case_mock_value()` now emits `Value::Unit` for scalar Empty
+    (String, Bool, Int) instead of concrete "empty content" (`false`, `0`, `""`)
+  - Collection types (List, Set) still use empty collections (correct: zero elements)
+  - Aligns with `contract::witnesses()` which already uses `Value::Unit` for absence
+  - Cardinality boundary tests now exercise the actual absent-vs-present boundary
 
 ## Notes
 
@@ -311,14 +320,15 @@ represented as empty collection).
   The old `value_to_rust_literal` is a one-liner delegating to this
   pipeline; the old `value_to_code` and `to_check_code` in mock_spec.rs
   have been deleted as dead code.
-- Hack 1 is independent — it's about closure serialization, not Value
-  serialization. The "typed matcher variants" approach (option 2) is
-  probably the cleanest since it keeps generated tests self-contained.
-  Typed matchers form a small finite logic language that's both
-  serializable to codegen and amenable to future proof generation.
-- Hack 5 is the most architecturally important — it blocks meaningful
-  cardinality boundary testing. If Empty doesn't test absence, the
-  B.3 tests exercise a subset of what they claim to cover.
-- None of the remaining hacks are blocking. Tests compile, run, and
-  pass. The risk is false confidence — tests that look like they verify
-  behavior but actually don't.
+- **Hack 1 resolved**: Typed matcher variants (`IsBool`, `IsInt`, etc.)
+  now generate real codegen assertions. These are serializable to Rust
+  source without closure references. `Satisfies` remains only for
+  complex predicates that can't be expressed as simple type/range checks.
+  Existing usages in CI and makegen graph mocks have been migrated.
+- **Hack 5 resolved**: Scalar Empty now uses `Value::Unit` (absence),
+  matching the behavior of `contract::witnesses()`. No infrastructure
+  change to `BoundaryMocks` was needed — `Value::Unit` already serves
+  as the "absent" signal within the existing `Value` type.
+- Only hack 2 (parse node examples with real transport responses) remains.
+  This requires serializing full transport response constructors in
+  generated test code, which the `ValueExpr` pipeline already supports.

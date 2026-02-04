@@ -3,7 +3,7 @@
 //! All I/O happens through explicit `TransportOps::Execute` nodes in the DAG.
 //! The ops here are PURE (no I/O) - they prepare requests and parse responses.
 
-use gunbc_exec::{ExecError, Executable, OutputMap, require_response};
+use gunbc_exec::{ExecError, Executable, OutputMap, propagate_skipped, require_response};
 use gunbc_ir::transport::{ShellRequest, TransportRequest, TransportResponse};
 use gunbc_ir::Value;
 use std::collections::HashMap;
@@ -75,12 +75,8 @@ fn execute_prepare_scan_workspace(_inputs: HashMap<String, Value>) -> Result<Has
 
 /// Parse scan result (PURE - no I/O).
 fn execute_parse_scan_result(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-    // Handle skipped response (upstream transport was skipped)
-    if matches!(inputs.get("response"), Some(Value::Skipped)) {
-        return OutputMap::new()
-            .value("crate_count", Value::Skipped)
-            .value("crate_names", Value::Skipped)
-            .ok();
+    if let Some(result) = propagate_skipped(&inputs, "response", &["crate_count", "crate_names"]) {
+        return result;
     }
 
     let response = require_response(&inputs, "response")?;
