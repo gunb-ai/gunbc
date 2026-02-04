@@ -24,7 +24,7 @@ pub mod graph;
 pub mod graph_mock;
 
 use gunbc_exec::{
-    optional_json, optional_str, require_json, require_map_str_str, require_str, ExecError,
+    optional_str, require_json, require_map_str_str, require_str, ExecError,
     Executable, OutputMap,
 };
 use gunbc_ir::Value;
@@ -264,12 +264,12 @@ pub enum ReviewOps {
 
     /// Merge multiple ReviewOutputs into a ReviewBundle.
     ///
-    /// Accepts any cardinality: null/missing (0 sources), a single
-    /// ReviewOutput object (1 source), or an array of them (N sources).
-    /// Review sources can wire directly to merge without wrapper nodes.
+    /// The `outputs` port is a list port (cardinality `[0, *)`) — the engine
+    /// collects fan-in edges into a `Value::List` automatically. Each element
+    /// is a `Value::Json` containing a serialized `ReviewOutput`.
     ///
     /// Inputs:
-    /// - `outputs`: Json - null, single ReviewOutput, or array of them
+    /// - `outputs`: List<Json> - collected ReviewOutput values (engine-managed)
     ///
     /// Outputs:
     /// - `bundle`: Json - merged ReviewBundle
@@ -430,18 +430,28 @@ fn execute_parse_review_response(
 fn execute_merge_outputs(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    // Accept any cardinality: null/missing → 0, object → 1, array → N.
-    let outputs: Vec<ReviewOutput> = match optional_json(&inputs, "outputs") {
+    // The engine delivers Value::List for list ports (fan-in collected automatically).
+    // Missing key means 0 upstream edges → empty list.
+    let outputs: Vec<ReviewOutput> = match inputs.get("outputs") {
         None => vec![],
-        Some(j) if j.is_null() => vec![],
-        Some(j) if j.is_array() => serde_json::from_value(j.clone())
-            .map_err(|e| ExecError::new(format!("invalid 'outputs' array: {}", e)))?,
-        Some(j) if j.is_object() => {
-            let single: ReviewOutput = serde_json::from_value(j.clone())
-                .map_err(|e| ExecError::new(format!("invalid 'outputs' object: {}", e)))?;
-            vec![single]
+        Some(Value::List(items)) => {
+            let mut outputs = Vec::with_capacity(items.len());
+            for (i, item) in items.iter().enumerate() {
+                let j = item
+                    .as_json()
+                    .ok_or_else(|| ExecError::new(format!("outputs[{}] is not JSON", i)))?;
+                let output: ReviewOutput = serde_json::from_value(j.clone())
+                    .map_err(|e| ExecError::new(format!("invalid outputs[{}]: {}", i, e)))?;
+                outputs.push(output);
+            }
+            outputs
         }
-        Some(_) => return Err(ExecError::new("'outputs' must be null, a JSON object, or array")),
+        Some(other) => {
+            return Err(ExecError::new(format!(
+                "expected List for 'outputs', got {:?}",
+                std::mem::discriminant(other)
+            )))
+        }
     };
 
     // Merge findings, deduplicating by ID
@@ -864,6 +874,17 @@ Please fix these issues."#;
         assert!(errors.iter().any(|e| e.contains("unknown check_id")));
     }
 
+    /// Helper: wrap ReviewOutputs as a Value::List of Value::Json,
+    /// matching what the engine delivers to list ports.
+    fn outputs_list(outputs: &[ReviewOutput]) -> Value {
+        Value::List(
+            outputs
+                .iter()
+                .map(|o| Value::Json(serde_json::to_value(o).unwrap()))
+                .collect(),
+        )
+    }
+
     #[test]
     fn test_merge_outputs() {
         let output1 = ReviewOutput {
@@ -899,10 +920,7 @@ Please fix these issues."#;
         };
 
         let mut inputs = HashMap::new();
-        inputs.insert(
-            "outputs".to_string(),
-            Value::Json(serde_json::to_value(vec![output1, output2]).unwrap()),
-        );
+        inputs.insert("outputs".to_string(), outputs_list(&[output1, output2]));
 
         let result = ReviewOps::MergeOutputs.execute(inputs).unwrap();
 
@@ -915,8 +933,8 @@ Please fix these issues."#;
     }
 
     #[test]
-    fn test_merge_outputs_single_object() {
-        // MergeOutputs should accept a single ReviewOutput (not wrapped in array)
+    fn test_merge_outputs_single() {
+        // MergeOutputs with a single-element list (one upstream edge)
         let output = ReviewOutput {
             schema_version: "0.1.0".to_string(),
             criteria_name: "security".to_string(),
@@ -934,10 +952,7 @@ Please fix these issues."#;
         };
 
         let mut inputs = HashMap::new();
-        inputs.insert(
-            "outputs".to_string(),
-            Value::Json(serde_json::to_value(&output).unwrap()),
-        );
+        inputs.insert("outputs".to_string(), outputs_list(&[output]));
 
         let result = ReviewOps::MergeOutputs.execute(inputs).unwrap();
 
@@ -951,12 +966,10 @@ Please fix these issues."#;
     }
 
     #[test]
-    fn test_merge_outputs_null() {
+    fn test_merge_outputs_empty_list() {
+        // Engine delivers an empty list when list port has 0 fan-in edges
         let mut inputs = HashMap::new();
-        inputs.insert(
-            "outputs".to_string(),
-            Value::Json(serde_json::Value::Null),
-        );
+        inputs.insert("outputs".to_string(), Value::List(vec![]));
 
         let result = ReviewOps::MergeOutputs.execute(inputs).unwrap();
         let bundle: ReviewBundle =
@@ -969,6 +982,7 @@ Please fix these issues."#;
 
     #[test]
     fn test_merge_outputs_missing() {
+        // No upstream edges at all → key absent from inputs
         let inputs = HashMap::new();
 
         let result = ReviewOps::MergeOutputs.execute(inputs).unwrap();
@@ -1010,10 +1024,7 @@ Please fix these issues."#;
         };
 
         let mut inputs = HashMap::new();
-        inputs.insert(
-            "outputs".to_string(),
-            Value::Json(serde_json::to_value(vec![output1, output2]).unwrap()),
-        );
+        inputs.insert("outputs".to_string(), outputs_list(&[output1, output2]));
 
         let result = ReviewOps::MergeOutputs.execute(inputs).unwrap();
 

@@ -581,8 +581,9 @@ pub fn build_diff_review_graph_with(
 ///                  └──(future sources)──▶ [MergeOutputs]
 /// ```
 ///
-/// MergeOutputs accepts both a single ReviewOutput object and an array,
-/// so each source can wire directly without wrapper nodes.
+/// MergeOutputs declares a list port for `outputs` — the engine collects
+/// fan-in edges into `Value::List` automatically. Each source wires
+/// directly to the merge node without wrapper nodes.
 pub fn build_multi_source_review_graph() -> Dag<ReviewGraphOp> {
     build_multi_source_review_graph_with(ReviewPipelineConfig::gunbc_default())
 }
@@ -678,7 +679,7 @@ pub fn build_multi_source_review_graph_with(
 
     dag.add_node(Node::opaque(
         "merge",
-        vec![port("outputs", "Json")],
+        vec![list("outputs", "Json")],
         vec![
             port("bundle", "Json"),
             port("conflicts", "Json"),
@@ -704,7 +705,7 @@ pub fn build_multi_source_review_graph_with(
     dag.add_edge(edge("prepare_llm", "provider", "parse_llm", "provider"));
     dag.add_edge(edge("parse_llm", "answer", "parse_response", "answer"));
 
-    // Review output → merge (MergeOutputs accepts single object or array)
+    // Review output → merge (list port collects fan-in automatically)
     dag.add_edge(edge("parse_response", "output", "merge", "outputs"));
 
     dag

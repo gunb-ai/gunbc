@@ -49,6 +49,7 @@ pub mod algebra;
 pub mod boundary;
 pub mod builder;
 pub mod cargo;
+pub mod coerce;
 pub mod compose;
 pub mod contract;
 pub mod dag;
@@ -71,6 +72,10 @@ pub mod value_expr;
 
 // Re-exports for convenience
 pub use boundary::{detect_boundaries, BoundaryInfo};
+pub use coerce::{
+    classify_coercion, detect_coercions, validate_coercions, CardinalityCoercion, CoercionError,
+    CoercionKind, CoercionReport,
+};
 pub use builder::{BuilderError, DagBuilder, InputRef, NodeRef, OutputRef, PortKind};
 pub use dag::{build, canonical_edge_order, edges_to_port, Dag, Edge, Port};
 pub use entrypoint::{detect_entrypoints, EntrypointInfo};

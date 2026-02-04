@@ -26,6 +26,7 @@
 //!
 //! This gives "ALL deducible non-tautological tests" by construction.
 
+use gunbc_ir::coerce::detect_coercions;
 use gunbc_ir::resource::{detect_conflicts, ResourceAccess, ResourceConflict};
 use gunbc_ir::types::{Cardinality, NodeId, PortName, TypeId};
 use gunbc_ir::{contract, detect_boundaries, Dag, TypeRegistry};
@@ -164,6 +165,22 @@ pub enum Obligation {
         cardinality: Cardinality,
         /// Boundary values (element counts) to test at this port.
         boundary_values: Vec<u32>,
+    },
+
+    /// Coercion coverage: verify that implicit cardinality coercions at edges
+    /// produce correctly shaped values.
+    ///
+    /// When a scalar output connects to a list input, the engine wraps the
+    /// value in `Value::List`. These tests verify the engine handles each
+    /// coercion point correctly.
+    CoercionCoverage {
+        from_node: NodeId,
+        from_port: PortName,
+        to_node: NodeId,
+        to_port: PortName,
+        from_cardinality: Cardinality,
+        to_cardinality: Cardinality,
+        kind: gunbc_ir::coerce::CoercionKind,
     },
 
     // NOTE: WitnessCompatibility (L4) removed — requires Tier 3 infrastructure
@@ -337,6 +354,14 @@ impl ObligationSet {
         self.bucket_b()
             .into_iter()
             .filter(|o| matches!(o.kind, Obligation::CardinalityCoverage { .. }))
+            .collect()
+    }
+
+    /// Get only coercion coverage obligations from Bucket B.
+    pub fn coercion_obligations(&self) -> Vec<&ProofObligation> {
+        self.bucket_b()
+            .into_iter()
+            .filter(|o| matches!(o.kind, Obligation::CoercionCoverage { .. }))
             .collect()
     }
 
@@ -634,6 +659,35 @@ fn collect_contract_obligations<T>(
                 }
             }
         }
+    }
+
+    // B.4: Coercion coverage — for each edge with an implicit cardinality
+    // coercion, add a coverage obligation. The engine transforms values at
+    // these edges (e.g., wrapping scalars in lists), and tests verify this.
+    let coercions = detect_coercions(dag);
+    for coercion in coercions {
+        obligations.push(ProofObligation::runtime(
+            Obligation::CoercionCoverage {
+                from_node: coercion.from_node.clone(),
+                from_port: coercion.from_port.clone(),
+                to_node: coercion.to_node.clone(),
+                to_port: coercion.to_port.clone(),
+                from_cardinality: coercion.from_cardinality,
+                to_cardinality: coercion.to_cardinality,
+                kind: coercion.kind,
+            },
+            format!(
+                "Coercion at {}.{} → {}.{}: {} ({} → {})",
+                coercion.from_node.0,
+                coercion.from_port.0,
+                coercion.to_node.0,
+                coercion.to_port.0,
+                coercion.kind,
+                coercion.from_cardinality,
+                coercion.to_cardinality,
+            ),
+            ObligationSource::Contract,
+        ));
     }
 }
 
@@ -1255,5 +1309,65 @@ mod tests {
             None,
         );
         assert!(matches!(status, EntailmentStatus::Unknown { .. }));
+    }
+
+    #[test]
+    fn test_coercion_obligations_collected() {
+        // DAG with scalar output → list input should produce coercion obligation
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque(
+            "producer",
+            vec![],
+            vec![Port::scalar("out", "Json")],
+            (),
+        ));
+        dag.add_node(Node::opaque(
+            "consumer",
+            vec![Port::list("inputs", "Json")],
+            vec![Port::scalar("result", "Json")],
+            (),
+        ));
+        dag.add_edge(edge("producer", "out", "consumer", "inputs"));
+
+        let obligations = collect_obligations(&dag, None, None);
+        let coercion_obs = obligations.coercion_obligations();
+
+        assert_eq!(coercion_obs.len(), 1, "should detect one coercion");
+        if let Obligation::CoercionCoverage {
+            from_node,
+            to_node,
+            kind,
+            ..
+        } = &coercion_obs[0].kind
+        {
+            assert_eq!(from_node.0, "producer");
+            assert_eq!(to_node.0, "consumer");
+            assert_eq!(*kind, gunbc_ir::coerce::CoercionKind::WrapScalar);
+        } else {
+            panic!("expected CoercionCoverage obligation");
+        }
+    }
+
+    #[test]
+    fn test_no_coercion_for_matching_cardinalities() {
+        // DAG with matching cardinalities should produce no coercion obligations
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque(
+            "a",
+            vec![],
+            vec![Port::scalar("out", "String")],
+            (),
+        ));
+        dag.add_node(Node::opaque(
+            "b",
+            vec![Port::scalar("in", "String")],
+            vec![],
+            (),
+        ));
+        dag.add_edge(edge("a", "out", "b", "in"));
+
+        let obligations = collect_obligations(&dag, None, None);
+        let coercion_obs = obligations.coercion_obligations();
+        assert!(coercion_obs.is_empty(), "no coercion for matching cardinalities");
     }
 }

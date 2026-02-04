@@ -643,15 +643,15 @@ Concrete failure classes this would catch:
 - [x] Serde compat (named strings + {min, max} fallback)
 - [x] Add `Value::List` variant
 - [x] Cardinality-aware input gathering in execute.rs
-- [ ] Coercion compiler pass
+- [x] Coercion compiler pass
 - [ ] Map semantics design (Track D scope decision)
 - [ ] Embed cardinality in type system (Part 3)
 - [x] Migrate call sites (One → ONE, etc.)
-- [ ] Migrate `MergeOutputs` to use engine-guaranteed list inputs
+- [x] Migrate `MergeOutputs` to use engine-guaranteed list inputs
 - [x] Replace `CardinalityCase` enum with computed boundary values
 - [x] Add cardinality obligations to testgen obligation model
 - [x] Wire `port_cardinalities` into codegen (currently unused/underscore)
-- [ ] Generate coercion coverage tests for compiler pass output
+- [x] Generate coercion coverage tests for compiler pass output
 
 ## Notes
 

@@ -648,6 +648,9 @@ impl<'a, T> TestGenerator<'a, T> {
         // B.3: Cardinality boundary coverage
         code.push_str(&self.generate_cardinality_coverage_tests(analysis, obligations, graph_builder_fn));
 
+        // B.4: Coercion coverage
+        code.push_str(&self.generate_coercion_coverage_tests(obligations, graph_builder_fn));
+
         code
     }
 
@@ -737,6 +740,87 @@ impl<'a, T> TestGenerator<'a, T> {
                     ));
                     code.push_str("}\n\n");
                 }
+            }
+        }
+
+        code
+    }
+
+    /// Generate coercion coverage tests.
+    ///
+    /// For each edge with an implicit cardinality coercion, generates a test
+    /// that exercises the DAG to verify the engine correctly transforms values
+    /// at the coercion point (e.g., wrapping scalars in lists).
+    fn generate_coercion_coverage_tests(
+        &self,
+        obligations: &ObligationSet,
+        graph_builder_fn: &str,
+    ) -> String {
+        let coercion_obligations: Vec<_> = obligations.coercion_obligations();
+
+        if coercion_obligations.is_empty() {
+            return String::new();
+        }
+
+        let mut code = String::new();
+        code.push_str("// --- B.4: Coercion Coverage ---\n");
+        code.push_str("//\n");
+        code.push_str("// These tests verify that implicit cardinality coercions at edges\n");
+        code.push_str("// produce correctly shaped values (e.g., scalar wrapped in list).\n\n");
+
+        for obligation in &coercion_obligations {
+            if let Obligation::CoercionCoverage {
+                from_node,
+                from_port,
+                to_node,
+                to_port,
+                from_cardinality,
+                to_cardinality,
+                kind,
+            } = &obligation.kind
+            {
+                let kind_label = format!("{}", kind);
+                let test_name = format!(
+                    "test_coercion_{}_{}_{}_{}",
+                    NamingCase::SnakeCase.apply(&from_node.0),
+                    NamingCase::SnakeCase.apply(&from_port.0),
+                    NamingCase::SnakeCase.apply(&to_node.0),
+                    NamingCase::SnakeCase.apply(&to_port.0),
+                );
+
+                code.push_str(&format!(
+                    "/// Coercion coverage: {}.{} {} → {}.{} {} ({}).\n",
+                    from_node.0,
+                    from_port.0,
+                    from_cardinality,
+                    to_node.0,
+                    to_port.0,
+                    to_cardinality,
+                    kind_label,
+                ));
+                code.push_str("///\n");
+                code.push_str(&format!(
+                    "/// Proves: engine correctly applies {} coercion at this edge.\n",
+                    kind_label,
+                ));
+                code.push_str("#[test]\n");
+                code.push_str(&format!("fn {}() {{\n", test_name));
+                code.push_str(&format!("    let dag = {};\n", graph_builder_fn));
+
+                let mocks_init = if self.mock_spec_fn.is_some() {
+                    "mock_spec().to_boundary_mocks()"
+                } else {
+                    "default_mocks()"
+                };
+                code.push_str(&format!("    let mocks = {};\n", mocks_init));
+                code.push_str(
+                    "    let _log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks))\n",
+                );
+                code.push_str(&format!(
+                    "        .expect(\"coercion {} at {}.{} → {}.{} should not crash\");\n",
+                    kind_label, from_node.0, from_port.0, to_node.0, to_port.0,
+                ));
+                code.push_str("}\n\n");
             }
         }
 
