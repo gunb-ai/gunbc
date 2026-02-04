@@ -1,7 +1,7 @@
 # Testgen Codegen Hacks
 
-**Status**: In Progress
-**Date**: 2026-02-03
+**Status**: ✅ Done
+**Date**: 2026-02-03 (completed 2026-02-04)
 
 Hacks and fallbacks discovered during node_example enforcement coverage.
 Each item was introduced because the codegen can't serialize certain Rust
@@ -271,7 +271,7 @@ represented as empty collection).
   - Migrated existing `Satisfies` usages in `ci/graph_mock.rs` and `makegen/graph_mock.rs`
   - `Satisfies` remains as escape hatch for truly custom predicates
 - [x] Hack 2: Add `Value::Response`/`Value::Request` support (done via ValueExpr pipeline)
-- [ ] Hack 2: Update parse node examples to use real transport responses
+- [x] Hack 2: Update parse node examples to use real transport responses
 - [x] Hack 3: Make `NonEmpty` codegen type-aware (or add `Value::is_empty()`)
 - [x] Hack 4: Replace `value_to_rust_literal` catch-all with `panic!()` or `compile_error!()`
 - [x] Hack 4: Fix `Value::List` filter_map silent dropping of non-string elements
@@ -301,6 +301,4 @@ represented as empty collection).
   matching the behavior of `contract::witnesses()`. No infrastructure
   change to `BoundaryMocks` was needed — `Value::Unit` already serves
   as the "absent" signal within the existing `Value` type.
-- Only hack 2 (parse node examples with real transport responses) remains.
-  This requires serializing full transport response constructors in
-  generated test code, which the `ValueExpr` pipeline already supports.
+- All five hacks are now resolved. This file can be moved to `TODONE/`.
