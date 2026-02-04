@@ -212,27 +212,32 @@ fn run_with_progress<T: Executable + Clone>(
     }
     renderer.render(&visual);
 
-    if let Err(e) = result {
-        eprintln!("\nError: {}", e);
-        process::exit(1);
-    }
+    // Check execution result and exit code
+    match result {
+        Ok(log) => {
+            // Check final node states for hard failures
+            let any_failed = final_states
+                .values()
+                .any(|s| *s == NodeState::Failed);
+            if any_failed {
+                process::exit(1);
+            }
 
-    // Check final states for exit code
-    let any_failed = final_states
-        .values()
-        .any(|s| *s == NodeState::Failed);
-    if any_failed {
-        process::exit(1);
-    }
-
-    // Check success port from execution log (not available in progress path,
-    // but failure is already caught above via NodeState::Failed)
-    if success_port.is_some() {
-        // The success_port check is handled by node failure detection above.
-        // If a summary node sets overall_success=false, it manifests as a
-        // non-failed node with a false output — but the exit code is already
-        // handled by the caller checking log entries in the classic path.
-        // In the progress path, we rely on node failure state.
+            // Check success port from execution log — same policy as classic path.
+            // A node can complete successfully (NodeState::Completed) while still
+            // emitting overall_success=false. Both paths must apply the same check.
+            if let Some(port) = success_port {
+                for entry in &log.entries {
+                    if let Some(Value::Bool(false)) = entry.outputs.get(port) {
+                        process::exit(1);
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!("\nError: {}", e);
+            process::exit(1);
+        }
     }
 }
 
@@ -247,7 +252,7 @@ pub fn print_value(port: &str, value: &Value) {
             } else if s.len() < 80 {
                 println!("  {}: {}", port, s);
             } else {
-                println!("  {}: {}...", port, &s[..60.min(s.len())]);
+                println!("  {}: {}...", port, truncate_str(s, 60));
             }
         }
         Value::Int(i) => println!("  {}: {}", port, i),
@@ -257,5 +262,15 @@ pub fn print_value(port: &str, value: &Value) {
         Value::Map(map) => println!("  {}: {{{} entries}}", port, map.len()),
         Value::Json(_) => println!("  {}: <JSON>", port),
         _ => {}
+    }
+}
+
+/// Truncate a string to at most `max_chars` characters (char-boundary safe).
+///
+/// Returns a borrowed slice when possible. Never panics on multi-byte UTF-8.
+fn truncate_str(s: &str, max_chars: usize) -> &str {
+    match s.char_indices().nth(max_chars) {
+        Some((byte_idx, _)) => &s[..byte_idx],
+        None => s,
     }
 }

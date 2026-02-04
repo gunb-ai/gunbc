@@ -155,6 +155,7 @@ impl OutputSummary {
                     Value::Secret(_) => (FieldKind::Secret, "***".to_string()),
                     Value::Request(_) => (FieldKind::Scalar, "<Request>".to_string()),
                     Value::Response(_) => (FieldKind::Scalar, "<Response>".to_string()),
+                    Value::Set(s) => (FieldKind::List(s.len()), format!("{{{} items}}", s.len())),
                 };
                 Some(FieldSummary {
                     name: name.clone(),
@@ -168,11 +169,14 @@ impl OutputSummary {
     }
 }
 
+/// Truncate a string to at most `max` characters (char-boundary safe).
+///
+/// Uses `char_indices` to find the cut point, avoiding panics on multi-byte
+/// UTF-8 codepoints.
 fn truncate_str(s: &str, max: usize) -> String {
-    if s.len() <= max {
-        s.to_string()
-    } else {
-        format!("{}...", &s[..max.min(s.len())])
+    match s.char_indices().nth(max) {
+        Some((byte_idx, _)) => format!("{}...", &s[..byte_idx]),
+        None => s.to_string(),
     }
 }
 

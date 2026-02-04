@@ -469,21 +469,7 @@ fn execute_flat<T: Executable>(
             .get(node_id.0.as_str())
             .ok_or_else(|| ExecError::new(format!("node '{}' not found", node_id.0)))?;
 
-        // Start CI group for this node (skip for "report" so it's not collapsed)
-        let use_group = node_id.0 != "report";
-        if use_group {
-            if let Some(ref mut ci) = ci_ctx {
-                ci.start_group(&node_id.0, false);
-            }
-        }
-
-        // Notify observer that node is starting
-        let node_start = Instant::now();
-        if let Some(ref mut o) = obs {
-            o.on_node_start(node_id);
-        }
-
-        // Gather inputs from upstream edges
+        // Gather inputs from upstream edges (needed for guard evaluation)
         // Tool handles flow through edges like any other value
         let mut inputs: HashMap<String, Value> = HashMap::new();
         for edge in &dag.edges {
@@ -509,8 +495,14 @@ fn execute_flat<T: Executable>(
             }
         }
 
-        // Check guards
+        // Check guards BEFORE emitting on_node_start — skipped nodes never
+        // enter the "running" state. This prevents misleading transitions in
+        // observers and avoids flicker in progress displays.
         let skip = should_skip_node(node, &inputs);
+
+        // CI group and use_group are tracked at the loop iteration level
+        // because end_group must be called after outputs are logged.
+        let use_group = !skip && node_id.0 != "report";
 
         let (outputs, was_intercepted) = if skip {
             // Node is skipped — all outputs become Skipped
@@ -524,6 +516,19 @@ fn execute_flat<T: Executable>(
             }
             (outputs, false)
         } else {
+            // Start CI group for this node (skip for "report" so it's not collapsed)
+            if use_group {
+                if let Some(ref mut ci) = ci_ctx {
+                    ci.start_group(&node_id.0, false);
+                }
+            }
+
+            // Notify observer that node is starting (only for nodes that will execute)
+            let node_start = Instant::now();
+            if let Some(ref mut o) = obs {
+                o.on_node_start(node_id);
+            }
+
             // Check if this is a transport execution node (consumes TransportRequest),
             // a tool environment node (emits ToolHandle), or a tool consumer node
             // (consumes ToolHandle). These are intercepted in dry-run/simulate mode
