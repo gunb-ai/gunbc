@@ -19,10 +19,11 @@
 //! observer callback. For future concurrent execution, the frame loop
 //! runs on its own thread/tick.
 
-use crate::progress::{DagPhase, DagProgress, EdgeState, NodeState};
-use gunbc_ir::layout::{DagLayout, EdgeOrientation};
-use gunbc_ir::symbols::{SemanticColor, SymbolId, SymbolSet, Tier};
+use crate::progress::{DagPhase, DagProgress, NodeState};
+use gunbc_ir::layout::DagLayout;
+use gunbc_ir::symbols::{SymbolId, SymbolSet, Tier};
 use gunbc_ir::NodeId;
+use std::collections::{HashMap, HashSet};
 use std::io::Write;
 use std::time::Duration;
 
@@ -254,27 +255,6 @@ impl<W: Write> TerminalRenderer<W> {
         }
     }
 
-    /// Get the symbol ID for an edge state.
-    fn edge_symbol_id(&self, state: EdgeState) -> SymbolId {
-        match state {
-            EdgeState::Idle => SymbolId::EdgeIdle,
-            EdgeState::Flowing => SymbolId::EdgeFlowing,
-            EdgeState::Done => SymbolId::EdgeDone,
-            EdgeState::Dead => SymbolId::EdgeDead,
-        }
-    }
-
-    /// Get the semantic color for a node state.
-    fn node_color(&self, state: NodeState) -> SemanticColor {
-        match state {
-            NodeState::Pending => SemanticColor::Dim,
-            NodeState::Running => SemanticColor::Active,
-            NodeState::Completed => SemanticColor::Success,
-            NodeState::Failed => SemanticColor::Error,
-            NodeState::Skipped => SemanticColor::Dim,
-            NodeState::Intercepted => SemanticColor::Info,
-        }
-    }
 
     /// Move cursor up to overwrite previous frame (TTY only).
     fn cursor_up(&mut self) {
@@ -352,28 +332,110 @@ impl<W: Write> TerminalRenderer<W> {
         }
     }
 
-    /// Render standard mode: one line per level, nodes and edges.
+    /// Render standard mode: horizontal left-to-right DAG flow.
+    ///
+    /// Each topological level maps to a column. Parallel nodes at the same
+    /// level get separate tracks (rows). Fan-outs use ─┬─ / └─ connectors.
     fn render_standard(&self, lines: &mut Vec<String>, progress: &DagProgress) {
-        // Header: DAG status
-        let header = self.render_dag_header(progress);
-        lines.push(header);
+        lines.push(self.render_dag_header(progress));
 
-        // Render each level
-        for (level_idx, level_nodes) in self.layout.levels.iter().enumerate() {
-            // Node line
-            let node_line = self.render_level_nodes(level_nodes, progress);
-            lines.push(node_line);
+        if self.layout.levels.is_empty() {
+            return;
+        }
 
-            // Edge line (between this level and next, if not last)
-            if level_idx < self.layout.levels.len() - 1 {
-                let edge_line = self.render_level_edges(level_nodes, progress);
-                if !edge_line.trim().is_empty() {
-                    lines.push(edge_line);
+        let num_cols = self.layout.levels.len();
+        let (node_track, num_tracks) = self.assign_tracks(progress);
+
+        // Build (track, column) → NodeId grid
+        let mut grid: HashMap<(usize, usize), NodeId> = HashMap::new();
+        for (col, level) in self.layout.levels.iter().enumerate() {
+            for node in level {
+                if let Some(&track) = node_track.get(node) {
+                    grid.insert((track, col), node.clone());
                 }
             }
         }
 
-        // Footer: summary
+        // Build parent → children adjacency
+        let mut children_of: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
+        for edge in &progress.snapshot.edges {
+            children_of
+                .entry(edge.from_node.clone())
+                .or_default()
+                .push(edge.to_node.clone());
+        }
+
+        // Label and column dimensions
+        let max_label = self.max_label_width(num_cols);
+        let sym_w = self.symbol_display_width();
+
+        let mut col_widths: Vec<usize> = vec![0; num_cols];
+        for (col, cw) in col_widths.iter_mut().enumerate() {
+            for track in 0..num_tracks {
+                if let Some(node) = grid.get(&(track, col)) {
+                    let label = short_label(node, &progress.snapshot.labels, max_label);
+                    *cw = (*cw).max(sym_w + 1 + label.len());
+                }
+            }
+            *cw = (*cw).max(3);
+        }
+
+        // Gap widths: 5 for fan-out columns, 3 otherwise
+        let mut gap_widths: Vec<usize> = vec![3; num_cols.saturating_sub(1)];
+        for (col, gw) in gap_widths.iter_mut().enumerate() {
+            for track in 0..num_tracks {
+                if let Some(node) = grid.get(&(track, col)) {
+                    if children_of.get(node).map(|c| c.len()).unwrap_or(0) > 1 {
+                        *gw = 5;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Render each track as a horizontal line
+        for track in 0..num_tracks {
+            let mut line = String::new();
+            for col in 0..num_cols {
+                if let Some(node) = grid.get(&(track, col)) {
+                    let state = progress
+                        .nodes
+                        .get(node)
+                        .map(|np| np.state)
+                        .unwrap_or(NodeState::Pending);
+                    let sym = self.colored_symbol(self.node_symbol_id(state));
+                    let label = short_label(node, &progress.snapshot.labels, max_label);
+                    line.push_str(&sym);
+                    line.push(' ');
+                    line.push_str(&label);
+                    let vis_w = sym_w + 1 + label.len();
+                    let pad = col_widths[col].saturating_sub(vis_w);
+                    line.push_str(&" ".repeat(pad));
+                } else {
+                    line.push_str(&" ".repeat(col_widths[col]));
+                }
+
+                if col < num_cols - 1 {
+                    let conn = self.horizontal_connector(
+                        track,
+                        col,
+                        &grid,
+                        &children_of,
+                        &node_track,
+                        num_tracks,
+                        gap_widths[col],
+                    );
+                    line.push_str(&conn);
+                }
+            }
+
+            let trimmed = line.trim_end().to_string();
+            if !trimmed.is_empty() {
+                lines.push(format!("  {}", trimmed));
+            }
+        }
+
+        // Footer
         if matches!(
             progress.phase,
             DagPhase::Completed { .. } | DagPhase::Failed { .. }
@@ -428,106 +490,262 @@ impl<W: Write> TerminalRenderer<W> {
         }
     }
 
-    /// Render nodes at a single level.
-    fn render_level_nodes(&self, level_nodes: &[NodeId], progress: &DagProgress) -> String {
-        let mut parts: Vec<String> = Vec::new();
+    // ------------------------------------------------------------------
+    // Horizontal layout helpers
+    // ------------------------------------------------------------------
 
-        for node_id in level_nodes {
-            let node_layout = match self.layout.nodes.get(node_id) {
-                Some(nl) => nl,
-                None => continue,
-            };
+    /// Assign each node to a horizontal track (row in the output).
+    ///
+    /// Track 0 is the main path. When a node fans out, the first child stays
+    /// on the parent's track; additional children get new tracks below.
+    fn assign_tracks(
+        &self,
+        progress: &DagProgress,
+    ) -> (HashMap<NodeId, usize>, usize) {
+        let mut parents_of: HashMap<&NodeId, Vec<&NodeId>> = HashMap::new();
+        for edge in &progress.snapshot.edges {
+            parents_of
+                .entry(&edge.to_node)
+                .or_default()
+                .push(&edge.from_node);
+        }
 
-            if node_layout.is_collapsed {
-                continue;
+        let mut node_track: HashMap<NodeId, usize> = HashMap::new();
+        let mut next_track: usize = 0;
+
+        for level in &self.layout.levels {
+            let mut claimed = HashSet::new();
+
+            // Sort: nodes whose parents are on lower tracks go first
+            let mut sorted = level.clone();
+            sorted.sort_by_key(|n| {
+                parents_of
+                    .get(n)
+                    .and_then(|ps| {
+                        ps.iter()
+                            .filter_map(|p| node_track.get(*p))
+                            .min()
+                            .copied()
+                    })
+                    .unwrap_or(usize::MAX)
+            });
+
+            for node in &sorted {
+                let inherited = parents_of.get(node).and_then(|parents| {
+                    let mut tracks: Vec<usize> = parents
+                        .iter()
+                        .filter_map(|p| node_track.get(*p).copied())
+                        .collect();
+                    tracks.sort();
+                    tracks.dedup();
+                    tracks.into_iter().find(|t| !claimed.contains(t))
+                });
+
+                if let Some(track) = inherited {
+                    node_track.insert(node.clone(), track);
+                    claimed.insert(track);
+                } else {
+                    while claimed.contains(&next_track) {
+                        next_track += 1;
+                    }
+                    node_track.insert(node.clone(), next_track);
+                    claimed.insert(next_track);
+                    next_track += 1;
+                }
             }
-
-            let state = progress
-                .nodes
-                .get(node_id)
-                .map(|np| np.state)
-                .unwrap_or(NodeState::Pending);
-
-            let sym_id = self.node_symbol_id(state);
-            let sym = self.colored_symbol(sym_id);
-            let label = progress
-                .snapshot
-                .labels
-                .get(node_id)
-                .map(|s| s.as_str())
-                .unwrap_or(&node_id.0);
-
-            // Add elapsed time for completed/failed nodes
-            let elapsed_str = progress
-                .nodes
-                .get(node_id)
-                .and_then(|np| np.elapsed)
-                .map(|d| format!(" ({})", format_duration(d)))
-                .unwrap_or_default();
-
-            let color = self.node_color(state);
-            let label_colored = format!("{}{}{}", color.ansi(), label, SemanticColor::reset());
-
-            parts.push(format!("  {} {}{}", sym, label_colored, elapsed_str));
         }
 
-        // Handle collapsed nodes
-        let collapsed_count = level_nodes
-            .iter()
-            .filter(|id| {
-                self.layout
-                    .nodes
-                    .get(*id)
-                    .map(|nl| nl.is_collapsed)
-                    .unwrap_or(false)
-            })
-            .count();
-        if collapsed_count > 0 {
-            parts.push(format!("  ... +{} more", collapsed_count));
-        }
-
-        parts.join("  ")
+        let num_tracks = node_track
+            .values()
+            .max()
+            .copied()
+            .map(|m| m + 1)
+            .unwrap_or(1);
+        (node_track, num_tracks)
     }
 
-    /// Render edges between levels.
-    fn render_level_edges(&self, level_nodes: &[NodeId], progress: &DagProgress) -> String {
-        let mut parts: Vec<String> = Vec::new();
+    /// Compute the connector string between column `col` and `col+1` for a track.
+    #[allow(clippy::too_many_arguments)]
+    fn horizontal_connector(
+        &self,
+        track: usize,
+        col: usize,
+        grid: &HashMap<(usize, usize), NodeId>,
+        children_of: &HashMap<NodeId, Vec<NodeId>>,
+        node_track: &HashMap<NodeId, usize>,
+        num_tracks: usize,
+        gap: usize,
+    ) -> String {
+        let has_here = grid.contains_key(&(track, col));
+        let has_next = grid.contains_key(&(track, col + 1));
 
-        for node_id in level_nodes {
-            let outgoing: Vec<&gunbc_ir::layout::EdgeLayout> = self.layout.edges_from(node_id);
-            if outgoing.is_empty() {
-                continue;
+        if has_here {
+            let node = &grid[&(track, col)];
+            let child_tracks: Vec<usize> = children_of
+                .get(node)
+                .map(|cs| cs.iter().filter_map(|c| node_track.get(c).copied()).collect())
+                .unwrap_or_default();
+
+            if child_tracks.is_empty() {
+                // Terminal node — check for merge connector
+                " ".repeat(gap)
+            } else if child_tracks.len() <= 1 || child_tracks.iter().all(|&t| t == track) {
+                if has_next || child_tracks.contains(&track) {
+                    self.arrow_str(gap)
+                } else {
+                    // Children on other tracks only — merge down
+                    self.merge_down_str(gap)
+                }
+            } else {
+                // Fan-out
+                self.fanout_top_str(gap)
             }
-
-            for edge_layout in &outgoing {
-                let edge_state = progress
-                    .edges
-                    .get(&(edge_layout.from.clone(), edge_layout.to.clone()))
-                    .map(|ep| ep.state)
-                    .unwrap_or(EdgeState::Idle);
-
-                let connector = match edge_layout.orientation {
-                    EdgeOrientation::Vertical => {
-                        self.symbol(SymbolId::ConnectorVertical)
-                    }
-                    EdgeOrientation::Horizontal => {
-                        self.symbol(SymbolId::ConnectorHorizontal)
-                    }
-                    EdgeOrientation::Bend => {
-                        self.symbol(SymbolId::ConnectorCornerBottomLeft)
-                    }
-                };
-
-                let edge_sym = self.symbol(self.edge_symbol_id(edge_state));
-                parts.push(format!("  {} {}", connector, edge_sym));
+        } else if has_next {
+            // Branch start from a fan-out on another track
+            let next_node = &grid[&(track, col + 1)];
+            let is_branch = (0..num_tracks).any(|t| {
+                t != track
+                    && grid
+                        .get(&(t, col))
+                        .and_then(|p| children_of.get(p))
+                        .map(|cs| cs.contains(next_node))
+                        .unwrap_or(false)
+            });
+            if is_branch {
+                self.fanout_branch_str(
+                    track, col, grid, children_of, node_track, num_tracks, gap,
+                )
+            } else {
+                " ".repeat(gap)
             }
-        }
-
-        if parts.is_empty() {
-            String::new()
         } else {
-            parts.join("")
+            // Empty — check for vertical pass-through
+            if self.needs_vertical(track, col, grid, children_of, node_track) {
+                self.vertical_str(gap)
+            } else {
+                " ".repeat(gap)
+            }
         }
+    }
+
+    /// Check if a vertical pass-through │ is needed at (track, col gap).
+    fn needs_vertical(
+        &self,
+        track: usize,
+        col: usize,
+        grid: &HashMap<(usize, usize), NodeId>,
+        children_of: &HashMap<NodeId, Vec<NodeId>>,
+        node_track: &HashMap<NodeId, usize>,
+    ) -> bool {
+        for src_track in 0..track {
+            if let Some(parent) = grid.get(&(src_track, col)) {
+                if let Some(children) = children_of.get(parent) {
+                    let child_tracks: Vec<usize> = children
+                        .iter()
+                        .filter_map(|c| node_track.get(c).copied())
+                        .collect();
+                    if child_tracks.iter().any(|&t| t > track) {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
+
+    /// Arrow connector padded to `w`: ` → ` or ` > `.
+    fn arrow_str(&self, w: usize) -> String {
+        let s = match self.tier {
+            Tier::Ascii => " > ",
+            _ => " → ",
+        };
+        pad_connector(s, w)
+    }
+
+    /// Fan-out top: ` ─┬─ ` or ` -+- `.
+    fn fanout_top_str(&self, w: usize) -> String {
+        let s = match self.tier {
+            Tier::Ascii => " -+- ",
+            _ => " \u{2500}\u{252C}\u{2500} ", // ─┬─
+        };
+        pad_connector(s, w)
+    }
+
+    /// Fan-out branch: `  └─ ` or `  '- `, with `├` for middle branches.
+    #[allow(clippy::too_many_arguments)]
+    fn fanout_branch_str(
+        &self,
+        track: usize,
+        col: usize,
+        grid: &HashMap<(usize, usize), NodeId>,
+        children_of: &HashMap<NodeId, Vec<NodeId>>,
+        _node_track: &HashMap<NodeId, usize>,
+        num_tracks: usize,
+        w: usize,
+    ) -> String {
+        let has_more_below = (track + 1..num_tracks).any(|t| {
+            grid.get(&(t, col + 1))
+                .map(|next| {
+                    (0..track).any(|st| {
+                        grid.get(&(st, col))
+                            .and_then(|p| children_of.get(p))
+                            .map(|cs| cs.contains(next))
+                            .unwrap_or(false)
+                    })
+                })
+                .unwrap_or(false)
+        });
+
+        if has_more_below {
+            match self.tier {
+                Tier::Ascii => pad_connector("  |- ", w),
+                _ => pad_connector("  \u{251C}\u{2500} ", w), // ├─
+            }
+        } else {
+            match self.tier {
+                Tier::Ascii => pad_connector("  '- ", w),
+                _ => pad_connector("  \u{2514}\u{2500} ", w), // └─
+            }
+        }
+    }
+
+    /// Vertical pass-through: `  │  ` or `  |  `.
+    fn vertical_str(&self, w: usize) -> String {
+        match self.tier {
+            Tier::Ascii => pad_connector("  |  ", w),
+            _ => pad_connector("  \u{2502}  ", w), // │
+        }
+    }
+
+    /// Merge-down connector (node's children are only on other tracks).
+    fn merge_down_str(&self, w: usize) -> String {
+        match self.tier {
+            Tier::Ascii => pad_connector(" -+  ", w),
+            _ => pad_connector(" \u{2500}\u{252C}  ", w), // ─┬
+        }
+    }
+
+    /// Display width of a node symbol based on tier.
+    fn symbol_display_width(&self) -> usize {
+        match self.tier {
+            Tier::Emoji => 2,
+            _ => 1,
+        }
+    }
+
+    /// Max label width based on number of columns and viewport.
+    fn max_label_width(&self, num_cols: usize) -> usize {
+        if num_cols == 0 {
+            return 20;
+        }
+        let vp_w = self.layout.viewport.width as usize;
+        let sym_w = self.symbol_display_width();
+        let overhead = num_cols * (sym_w + 1)
+            + num_cols.saturating_sub(1) * 4
+            + 4; // indent + margin
+        let available = vp_w.saturating_sub(overhead);
+        let per_col = available / num_cols;
+        per_col.clamp(6, 20)
     }
 
     /// Render the footer summary.
@@ -603,6 +821,47 @@ fn format_duration(d: Duration) -> String {
         let mins = secs / 60;
         let rem_secs = secs % 60;
         format!("{}m{:02}s", mins, rem_secs)
+    }
+}
+
+/// Shorten a node label to fit within `max_width`.
+fn short_label(
+    node_id: &NodeId,
+    labels: &HashMap<NodeId, String>,
+    max_width: usize,
+) -> String {
+    let full = labels
+        .get(node_id)
+        .map(|s| s.as_str())
+        .unwrap_or(&node_id.0);
+    if full.len() <= max_width {
+        return full.to_string();
+    }
+    // Strip common verb prefixes
+    for prefix in &["prepare_", "execute_", "generate_", "parse_", "write_"] {
+        if let Some(rest) = full.strip_prefix(prefix) {
+            if rest.len() <= max_width {
+                return rest.to_string();
+            }
+        }
+    }
+    // Truncate
+    if max_width > 1 {
+        format!("{}~", &full[..max_width - 1])
+    } else {
+        full[..max_width].to_string()
+    }
+}
+
+/// Pad or truncate a connector string to exactly `w` display characters.
+fn pad_connector(s: &str, w: usize) -> String {
+    let display_w = s.chars().count();
+    if display_w >= w {
+        s.chars().take(w).collect()
+    } else {
+        let mut result = s.to_string();
+        result.push_str(&" ".repeat(w - display_w));
+        result
     }
 }
 
@@ -906,5 +1165,123 @@ mod tests {
         assert!(output.contains("B"));
         assert!(output.contains("C"));
         assert!(output.contains("D"));
+    }
+
+    #[test]
+    fn test_horizontal_linear_single_line() {
+        // Linear chain: all nodes should appear on the same output line
+        let snap = test_snapshot();
+        let progress = DagProgress::new(snap.clone());
+
+        let vp = Viewport::new(80, 24, ViewportUnit::Chars);
+        let layout = compute_layout(
+            &snap.topo_order,
+            &snap.edges,
+            &snap.labels,
+            &vp,
+        );
+
+        let mut buf = Vec::new();
+        {
+            let mut renderer = make_renderer(&mut buf, layout);
+            renderer.render(&progress);
+        }
+
+        let output = String::from_utf8(buf).unwrap();
+        let lines: Vec<&str> = output.lines().collect();
+        // Find the line containing all three node labels (horizontal layout)
+        let has_all_on_one_line = lines.iter().any(|line| {
+            line.contains("lint") && line.contains("build") && line.contains("test")
+        });
+        assert!(
+            has_all_on_one_line,
+            "Linear chain should render all nodes on one line, got:\n{}",
+            output
+        );
+    }
+
+    #[test]
+    fn test_horizontal_fanout_two_tracks() {
+        // A → B, A → C : should produce two tracks
+        let snap = DagSnapshot {
+            node_ids: vec![
+                NodeId::from("A"),
+                NodeId::from("B"),
+                NodeId::from("C"),
+            ],
+            edges: vec![
+                Edge::new("A", "out", "B", "in"),
+                Edge::new("A", "out", "C", "in"),
+            ],
+            topo_order: vec![
+                NodeId::from("A"),
+                NodeId::from("B"),
+                NodeId::from("C"),
+            ],
+            boundary_nodes: vec![],
+            labels: [
+                (NodeId::from("A"), "A".to_string()),
+                (NodeId::from("B"), "B".to_string()),
+                (NodeId::from("C"), "C".to_string()),
+            ]
+            .into_iter()
+            .collect(),
+        };
+
+        let mut progress = DagProgress::new(snap.clone());
+        progress.on_dag_start(&snap);
+        progress.on_node_start(&NodeId::from("A"));
+        progress.on_node_complete(&NodeId::from("A"), empty_summary());
+
+        let vp = Viewport::new(80, 24, ViewportUnit::Chars);
+        let layout = compute_layout(
+            &snap.topo_order,
+            &snap.edges,
+            &snap.labels,
+            &vp,
+        );
+
+        let mut buf = Vec::new();
+        {
+            let mut renderer = make_renderer(&mut buf, layout);
+            renderer.render(&progress);
+        }
+
+        let output = String::from_utf8(buf).unwrap();
+        // A should be on track 0, B on track 0, C on track 1
+        // So B and C should be on different output lines
+        let b_line = output.lines().find(|l| l.contains(" B"));
+        let c_line = output.lines().find(|l| l.contains(" C"));
+        assert!(b_line.is_some(), "B should appear in output:\n{}", output);
+        assert!(c_line.is_some(), "C should appear in output:\n{}", output);
+        assert_ne!(
+            b_line.unwrap(),
+            c_line.unwrap(),
+            "Fan-out should put B and C on different lines"
+        );
+    }
+
+    #[test]
+    fn test_short_label_truncation() {
+        let labels: HashMap<NodeId, String> = [
+            (NodeId::from("prepare_scan_workspace"), "prepare_scan_workspace".to_string()),
+            (NodeId::from("short"), "short".to_string()),
+        ]
+        .into_iter()
+        .collect();
+
+        // Short label fits
+        assert_eq!(
+            short_label(&NodeId::from("short"), &labels, 10),
+            "short"
+        );
+
+        // Long label with prefix strip: "prepare_" removed → "scan_workspace" (14 chars ≤ 15)
+        let result = short_label(&NodeId::from("prepare_scan_workspace"), &labels, 15);
+        assert_eq!(result, "scan_workspace");
+
+        // Truncation with ~
+        let result = short_label(&NodeId::from("prepare_scan_workspace"), &labels, 8);
+        assert_eq!(result, "prepare~");
     }
 }
