@@ -10,6 +10,7 @@ use gunbc_exec::{
 };
 use gunbc_ir::layout::{compute_layout, Viewport, ViewportUnit};
 use gunbc_ir::symbols::{Tier, STANDARD};
+use gunbc_ir::transport::{ShellResponse, TransportResponse};
 use gunbc_ir::{detect_boundaries, Value};
 use std::env;
 use std::io;
@@ -49,14 +50,48 @@ fn main() {
     // Set up execution mode
     let mode = if dry_run {
         let mut mocks = BoundaryMocks::new();
+        let ok_shell = || {
+            Value::Response(TransportResponse::Shell(ShellResponse {
+                exit_code: 0,
+                stdout: String::new(),
+                stderr: String::new(),
+            }))
+        };
+
+        // Scan workspace: returns a mock directory listing
         mocks.set_value(
-            "write_makefile",
-            "written_path",
+            "execute_scan_workspace",
+            "response",
+            Value::Response(TransportResponse::Shell(ShellResponse {
+                exit_code: 0,
+                stdout: "crates/example\n".to_string(),
+                stderr: String::new(),
+            })),
+        );
+
+        // Makefile transport executor
+        mocks.set_value("execute_makefile_transport", "makefile_response", ok_shell());
+        mocks.set_value(
+            "execute_makefile_transport",
+            "makefile_written_path",
             Value::Str("<DRY-RUN>".to_string()),
         );
         mocks.set_value(
-            "write_gitignore",
-            "written_path",
+            "execute_makefile_transport",
+            "makefile_content",
+            Value::Str("<DRY-RUN>".to_string()),
+        );
+
+        // Gitignore transport executor
+        mocks.set_value("execute_gitignore_transport", "gitignore_response", ok_shell());
+        mocks.set_value(
+            "execute_gitignore_transport",
+            "gitignore_written_path",
+            Value::Str("<DRY-RUN>".to_string()),
+        );
+        mocks.set_value(
+            "execute_gitignore_transport",
+            "gitignore_content",
             Value::Str("<DRY-RUN>".to_string()),
         );
 
