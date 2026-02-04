@@ -22,11 +22,14 @@
 
 use crate::testgen::analyze::{analyze_dag, DagAnalysis};
 use crate::testgen::obligation::{collect_obligations, DischargeStatus, Obligation, ObligationSet};
+use crate::testgen::render::TestRenderer;
+use crate::testgen::render_rust::RustRenderer;
+use crate::testgen::test_ir::{Assert, Expr};
 use gunbc_ir::language::traits::comment::{generated_header, RUST_COMMENTS};
 use gunbc_ir::language::NamingCase;
 use gunbc_ir::types::CardinalityCase;
-use gunbc_ir::{Dag, Value};
-use gunbc_test::MockSpec;
+use gunbc_ir::{Dag, Value, ValueExpr};
+use gunbc_test::{MockSpec, OutputMatcher};
 use std::hash::{Hash, Hasher};
 
 /// Configuration for test generation.
@@ -1742,10 +1745,7 @@ impl<'a, T> TestGenerator<'a, T> {
                     prefix, var_name, port, port
                 ));
 
-                let check_code = matcher.to_check_code(&format!(
-                    "output_{}",
-                    var_name
-                ));
+                let check_code = render_output_matcher_check(matcher, &var_name);
                 code.push_str(&format!("    {}\n", check_code));
             }
 
@@ -1888,99 +1888,125 @@ fn sanitize_resource_id(id: &str) -> String {
     result
 }
 
-/// Convert a Value to a Rust literal string.
+/// Convert a Value to a Rust literal string via ValueExpr.
 ///
-/// Panics on variants that can't be serialized to source (Request, Response).
-/// This is intentional — silent degradation to `<MOCK>` hid real bugs.
+/// Uses the ValueExpr intermediate representation — every Value variant
+/// is handled exhaustively in `Value → ValueExpr`, and every ValueExpr
+/// variant is handled exhaustively in `RustRenderer::render_value`.
+/// No catch-all at either stage.
 fn value_to_rust_literal(value: &Value) -> String {
-    match value {
-        Value::Unit => "Value::Unit".to_string(),
-        Value::Bool(b) => format!("Value::Bool({})", b),
-        Value::Str(s) => format!(
-            "Value::Str(\"{}\".to_string())",
-            s.replace('\\', "\\\\").replace('\"', "\\\"")
-        ),
-        Value::Int(i) => format!("Value::Int({})", i),
-        Value::List(list) => {
-            let items: Vec<String> = list.iter().map(value_to_rust_literal).collect();
-            format!("Value::List(vec![{}])", items.join(", "))
+    RustRenderer.render_value(&ValueExpr::from(value))
+}
+
+/// Render an output matcher assertion as a single line of Rust code.
+///
+/// Uses the test IR (Assert, Expr) and RustRenderer to produce the assertion,
+/// replacing the old `OutputMatcher::to_check_code()` string interpolation.
+/// The `var_name` is the snake_case port name; the actual variable is `output_{var_name}`.
+fn render_output_matcher_check(matcher: &OutputMatcher, var_name: &str) -> String {
+    let output_var = format!("output_{}", var_name);
+    let result = match matcher {
+        OutputMatcher::Exact(expected) => {
+            let assert = Assert::Eq {
+                left: Expr::var(&output_var).deref(),
+                right: Expr::Value(ValueExpr::from(expected)),
+                message: "expected exact value".to_string(),
+            };
+            RustRenderer.render_assert(&assert, 0)
         }
-        Value::Map(map) => {
-            let entries: Vec<String> = map
-                .iter()
-                .map(|(k, v)| {
-                    format!(
-                        "(\"{}\".to_string(), {})",
-                        k.replace('\\', "\\\\").replace('\"', "\\\""),
-                        value_to_rust_literal(v)
-                    )
-                })
-                .collect();
-            format!(
-                "Value::Map(std::collections::BTreeMap::from([{}]))",
-                entries.join(", ")
-            )
+        OutputMatcher::Contains(substring) => {
+            let assert = Assert::Contains {
+                expr: Expr::var(&output_var),
+                substring: substring.clone(),
+                message: format!("expected to contain '{}', got: {{:?}}", substring),
+            };
+            RustRenderer.render_assert(&assert, 0)
         }
-        Value::Json(json) => {
-            format!("Value::Json(serde_json::json!({}))", json)
+        OutputMatcher::NonEmpty => {
+            let assert = Assert::NonEmpty {
+                expr: Expr::var(&output_var),
+                message: "expected non-empty value".to_string(),
+            };
+            RustRenderer.render_assert(&assert, 0)
         }
-        Value::Secret(_) => {
-            "Value::Secret(gunbc_ir::SecretString::new(\"<MOCK_SECRET>\"))".to_string()
+        OutputMatcher::Satisfies { description, .. } => {
+            format!("// Custom assertion: {}\n", description)
         }
-        Value::Skipped => "Value::Skipped".to_string(),
-        Value::Request(_) | Value::Response(_) => panic!(
-            "value_to_rust_literal: cannot serialize {:?} to Rust source. \
-             Add serialization support or use Value::Skipped as a placeholder.",
-            std::mem::discriminant(value)
-        ),
-    }
+        OutputMatcher::Any => {
+            format!("// Any value accepted for {}\n", output_var)
+        }
+    };
+    // render_assert appends \n; strip it since the call site adds its own \n
+    result.trim_end_matches('\n').to_string()
 }
 
 /// Generate a mock value for a specific cardinality case and type.
+///
+/// Builds a ValueExpr and renders it via RustRenderer. The type_id string
+/// matching is a known limitation — ideally this should consult DagAnalysis
+/// cardinality data instead (see TODO_codegen_dag.md, "severed analysis").
 fn cardinality_case_mock_value(case: CardinalityCase, type_id: &str) -> String {
-    match case {
+    let expr = match case {
         CardinalityCase::Empty => match type_id {
-            "String" => "Value::Str(String::new())".to_string(),
-            "Bool" => "Value::Bool(false)".to_string(),
-            "Int" | "i64" | "i32" => "Value::Int(0)".to_string(),
-            _ => "Value::List(vec![])".to_string(),
+            "String" => ValueExpr::Str(String::new()),
+            "Bool" => ValueExpr::Bool(false),
+            "Int" | "i64" | "i32" => ValueExpr::Int(0),
+            _ => ValueExpr::List(vec![]),
         },
         CardinalityCase::One => match type_id {
-            "String" => "Value::Str(\"<MOCK>\".to_string())".to_string(),
-            "Bool" => "Value::Bool(true)".to_string(),
-            "Int" | "i64" | "i32" => "Value::Int(1)".to_string(),
-            _ => "Value::str_list(vec![\"<MOCK>\".to_string()])".to_string(),
+            "String" => ValueExpr::Str("<MOCK>".to_string()),
+            "Bool" => ValueExpr::Bool(true),
+            "Int" | "i64" | "i32" => ValueExpr::Int(1),
+            _ => ValueExpr::List(vec![ValueExpr::Str("<MOCK>".to_string())]),
         },
         CardinalityCase::Many => match type_id {
-            "String" => "Value::str_list(vec![\"<MOCK_1>\".to_string(), \"<MOCK_2>\".to_string(), \"<MOCK_3>\".to_string()])".to_string(),
-            "Bool" => "Value::List(vec![Value::Bool(true), Value::Bool(false), Value::Bool(true)])".to_string(),
-            "Int" | "i64" | "i32" => "Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)])".to_string(),
-            _ => "Value::str_list(vec![\"<MOCK_1>\".to_string(), \"<MOCK_2>\".to_string(), \"<MOCK_3>\".to_string()])".to_string(),
+            "String" => ValueExpr::List(vec![
+                ValueExpr::Str("<MOCK_1>".to_string()),
+                ValueExpr::Str("<MOCK_2>".to_string()),
+                ValueExpr::Str("<MOCK_3>".to_string()),
+            ]),
+            "Bool" => ValueExpr::List(vec![
+                ValueExpr::Bool(true),
+                ValueExpr::Bool(false),
+                ValueExpr::Bool(true),
+            ]),
+            "Int" | "i64" | "i32" => ValueExpr::List(vec![
+                ValueExpr::Int(1),
+                ValueExpr::Int(2),
+                ValueExpr::Int(3),
+            ]),
+            _ => ValueExpr::List(vec![
+                ValueExpr::Str("<MOCK_1>".to_string()),
+                ValueExpr::Str("<MOCK_2>".to_string()),
+                ValueExpr::Str("<MOCK_3>".to_string()),
+            ]),
         },
-    }
+    };
+    RustRenderer.render_value(&expr)
 }
 
 /// Generate a default mock value for a type.
+///
+/// Builds a ValueExpr and renders it via RustRenderer. Transport types
+/// are now modeled as Struct ValueExprs rather than hardcoded format strings.
 fn default_mock_for_type(type_id: &str) -> String {
-    match type_id {
-        "String" => "Value::Str(\"<MOCK>\".to_string())".to_string(),
-        "Bool" => "Value::Bool(true)".to_string(),
-        "Int" | "i64" | "i32" => "Value::Int(0)".to_string(),
-        "List" => "Value::str_list(vec![\"<MOCK>\".to_string()])".to_string(),
-        "Secret" => {
-            "Value::Secret(gunbc_ir::SecretString::new(\"<MOCK_SECRET>\"))".to_string()
-        }
-        "TransportResponse" => {
-            "Value::Response(gunbc_ir::transport::TransportResponse::Shell(\
-                gunbc_ir::transport::ShellResponse { \
-                    exit_code: 0, \
-                    stdout: \"<MOCK>\".to_string(), \
-                    stderr: String::new() \
-                }))"
-            .to_string()
-        }
-        _ => "Value::Str(\"<MOCK>\".to_string())".to_string(),
-    }
+    let expr = match type_id {
+        "String" => ValueExpr::Str("<MOCK>".to_string()),
+        "Bool" => ValueExpr::Bool(true),
+        "Int" | "i64" | "i32" => ValueExpr::Int(0),
+        "List" => ValueExpr::List(vec![ValueExpr::Str("<MOCK>".to_string())]),
+        "Secret" => ValueExpr::Secret("<MOCK_SECRET>".to_string()),
+        "TransportResponse" => ValueExpr::Struct {
+            name: "TransportResponse::Shell".to_string(),
+            fields: vec![
+                ("exit_code".to_string(), ValueExpr::Int(0)),
+                ("stdout".to_string(), ValueExpr::Str("<MOCK>".to_string())),
+                ("stderr".to_string(), ValueExpr::Str(String::new())),
+            ],
+        },
+        _ => ValueExpr::Str("<MOCK>".to_string()),
+    };
+    RustRenderer.render_value(&expr)
 }
 
 #[cfg(test)]
