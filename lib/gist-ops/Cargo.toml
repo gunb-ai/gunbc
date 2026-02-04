@@ -9,6 +9,7 @@ description = "Gist operations library for gunbc DAGs"
 gunbc-ir = { path = "../../core/ir" }
 gunbc-exec = { path = "../../core/exec" }
 gunbc-lib-transport = { path = "../transport" }
+gunbc-primitives = { path = "../primitives" }
 
 [dev-dependencies]
 gunbc-test = { path = "../../core/test" }

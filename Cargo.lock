@@ -240,6 +240,7 @@ dependencies = [
  "gunbc-exec",
  "gunbc-ir",
  "gunbc-lib-transport",
+ "gunbc-primitives",
  "gunbc-test",
 ]
 

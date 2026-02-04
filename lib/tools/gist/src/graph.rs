@@ -485,6 +485,50 @@ pub fn build_gist_graph(
     };
 
     // ========================================================================
+    // Branch name acquisition (parallel to content acquisition)
+    // ========================================================================
+
+    // Node: PrepareCurrentBranch (PURE - builds git rev-parse request)
+    let prepare_current_branch = builder.add_root_node(Node::opaque(
+        "prepare_current_branch",
+        vec![optional("repo_path", "String")],
+        vec![port("request", "TransportRequest")],
+        GistGraphOp::Git(GitOps::PrepareCurrentBranch),
+    ))?;
+
+    // Node: ExecuteCurrentBranch (BOUNDARY - actual I/O)
+    let execute_current_branch = builder.add_node_after(
+        Node::opaque(
+            "execute_current_branch",
+            vec![port("request", "TransportRequest")],
+            vec![port("response", "TransportResponse")],
+            GistGraphOp::Transport(TransportOps::Execute),
+        ),
+        &prepare_current_branch,
+    )?;
+
+    // Node: ParseCurrentBranch (PURE - extracts branch name)
+    let parse_current_branch = builder.add_node_after(
+        Node::opaque(
+            "parse_current_branch",
+            vec![port("response", "TransportResponse")],
+            vec![optional("branch", "String")],
+            GistGraphOp::Git(GitOps::ParseCurrentBranch),
+        ),
+        &execute_current_branch,
+    )?;
+
+    // Wire branch acquisition chain
+    builder.add_edge(
+        prepare_current_branch.out("request"),
+        execute_current_branch.in_port("request"),
+    )?;
+    builder.add_edge(
+        execute_current_branch.out("response"),
+        parse_current_branch.in_port("response"),
+    )?;
+
+    // ========================================================================
     // Shared gist creation tail
     // ========================================================================
 
@@ -492,7 +536,7 @@ pub fn build_gist_graph(
     let prepare_gist_request = builder.add_node_after(
         Node::opaque(
             "prepare_gist_request",
-            vec![scalar("markdown", "String")],
+            vec![scalar("markdown", "String"), optional("branch", "String")],
             vec![scalar("request", "TransportRequest")],
             GistGraphOp::Gist(GistOps::PrepareRequest { public }),
         ),
@@ -525,6 +569,10 @@ pub fn build_gist_graph(
     builder.add_edge(
         render_markdown.out("markdown"),
         prepare_gist_request.in_port("markdown"),
+    )?;
+    builder.add_edge(
+        parse_current_branch.out("branch"),
+        prepare_gist_request.in_port("branch"),
     )?;
     builder.add_edge(
         prepare_gist_request.out("request"),
@@ -871,12 +919,13 @@ mod tests {
     fn test_snapshot_graph_builds_successfully() {
         let dag = build_gist_graph(GistMode::Snapshot, vec![], false)
             .expect("graph should build");
-        // 10 nodes: prepare_list, execute_list, parse_list,
+        // 13 nodes: prepare_list, execute_list, parse_list,
         //           prepare_read, execute_read, parse_read, render_markdown,
+        //           prepare_current_branch, execute_current_branch, parse_current_branch,
         //           prepare_gist, execute_gist, parse_gist_response
-        assert_eq!(dag.nodes.len(), 10);
-        // 9 edges
-        assert_eq!(dag.edges.len(), 9);
+        assert_eq!(dag.nodes.len(), 13);
+        // 12 edges: 6 snapshot + 3 branch chain + 3 gist tail (markdown, branch, request→execute, response)
+        assert_eq!(dag.edges.len(), 12);
     }
 
     #[test]
@@ -886,6 +935,7 @@ mod tests {
 
         assert!(dag.get_node(&"execute_list_files".into()).is_some());
         assert!(dag.get_node(&"execute_read_files".into()).is_some());
+        assert!(dag.get_node(&"execute_current_branch".into()).is_some());
         assert!(dag.get_node(&"execute_gist".into()).is_some());
     }
 
@@ -897,6 +947,7 @@ mod tests {
 
         assert!(entrypoints.is_entrypoint_port(&"prepare_list_files".into(), &"repo_path".into()));
         assert!(entrypoints.is_entrypoint_port(&"prepare_read_files".into(), &"repo_path".into()));
+        assert!(entrypoints.is_entrypoint_port(&"prepare_current_branch".into(), &"repo_path".into()));
     }
 
     #[test]
@@ -910,6 +961,8 @@ mod tests {
         assert!(!boundaries.is_boundary_node(&"prepare_read_files".into()));
         assert!(!boundaries.is_boundary_node(&"parse_read_files".into()));
         assert!(!boundaries.is_boundary_node(&"render_markdown".into()));
+        assert!(!boundaries.is_boundary_node(&"prepare_current_branch".into()));
+        assert!(!boundaries.is_boundary_node(&"parse_current_branch".into()));
         assert!(!boundaries.is_boundary_node(&"prepare_gist_request".into()));
         // parse_gist_response is a terminal node, so it's a boundary
         assert!(boundaries.is_boundary_node(&"parse_gist_response".into()));
@@ -945,8 +998,8 @@ mod tests {
             .expect("graph should build");
         let inferred = infer_signature(&dag);
 
-        // Should have two inputs (repo_path on prepare_list_files and prepare_read_files)
-        assert_eq!(inferred.inputs.len(), 2);
+        // Should have three inputs (repo_path on prepare_list_files, prepare_read_files, and prepare_current_branch)
+        assert_eq!(inferred.inputs.len(), 3);
 
         // Should have one output (url from parse_gist_response)
         assert_eq!(inferred.outputs.len(), 1);
@@ -965,11 +1018,13 @@ mod tests {
             vec![],
             false,
         ).expect("diff graph should build");
-        // 7 nodes: prepare_diff, execute_diff, parse_diff,
-        //          render_markdown, prepare_gist, execute_gist, parse_gist_response
-        assert_eq!(dag.nodes.len(), 7);
-        // 6 edges (linear pipeline + stats branch to render)
-        assert_eq!(dag.edges.len(), 7);
+        // 10 nodes: prepare_diff, execute_diff, parse_diff,
+        //           render_markdown,
+        //           prepare_current_branch, execute_current_branch, parse_current_branch,
+        //           prepare_gist, execute_gist, parse_gist_response
+        assert_eq!(dag.nodes.len(), 10);
+        // 10 edges: 4 diff pipeline + 3 branch chain + 3 gist tail (markdown, branch, request→execute, response)
+        assert_eq!(dag.edges.len(), 10);
     }
 
     #[test]
@@ -981,6 +1036,7 @@ mod tests {
         ).expect("diff graph should build");
 
         assert!(dag.get_node(&"execute_diff".into()).is_some());
+        assert!(dag.get_node(&"execute_current_branch".into()).is_some());
         assert!(dag.get_node(&"execute_gist".into()).is_some());
     }
 
@@ -995,6 +1051,7 @@ mod tests {
 
         assert!(entrypoints.is_entrypoint_port(&"prepare_diff".into(), &"repo_path".into()));
         assert!(entrypoints.is_entrypoint_port(&"prepare_diff".into(), &"base_ref".into()));
+        assert!(entrypoints.is_entrypoint_port(&"prepare_current_branch".into(), &"repo_path".into()));
     }
 
     #[test]
@@ -1010,6 +1067,9 @@ mod tests {
             "execute_diff",
             "parse_diff",
             "render_markdown",
+            "prepare_current_branch",
+            "execute_current_branch",
+            "parse_current_branch",
             "prepare_gist_request",
             "execute_gist",
             "parse_gist_response",
@@ -1036,6 +1096,8 @@ mod tests {
         assert!(!boundaries.is_boundary_node(&"prepare_diff".into()));
         assert!(!boundaries.is_boundary_node(&"parse_diff".into()));
         assert!(!boundaries.is_boundary_node(&"render_markdown".into()));
+        assert!(!boundaries.is_boundary_node(&"prepare_current_branch".into()));
+        assert!(!boundaries.is_boundary_node(&"parse_current_branch".into()));
         assert!(!boundaries.is_boundary_node(&"prepare_gist_request".into()));
         // parse_gist_response is terminal → boundary
         assert!(boundaries.is_boundary_node(&"parse_gist_response".into()));
@@ -1060,8 +1122,8 @@ mod tests {
         ).expect("diff graph should build");
         let inferred = infer_signature(&dag);
 
-        // Should have two inputs (repo_path and base_ref on prepare_diff)
-        assert_eq!(inferred.inputs.len(), 2);
+        // Should have three inputs (repo_path and base_ref on prepare_diff, repo_path on prepare_current_branch)
+        assert_eq!(inferred.inputs.len(), 3);
 
         // Should have one output (url from parse_gist_response)
         assert_eq!(inferred.outputs.len(), 1);
@@ -1083,8 +1145,11 @@ mod tests {
             false,
         ).expect("diff should build");
 
-        // Both must have the same gist tail nodes
-        for node_id in &["prepare_gist_request", "execute_gist", "parse_gist_response"] {
+        // Both must have the same gist tail + branch acquisition nodes
+        for node_id in &[
+            "prepare_current_branch", "execute_current_branch", "parse_current_branch",
+            "prepare_gist_request", "execute_gist", "parse_gist_response",
+        ] {
             assert!(snap.get_node(&(*node_id).into()).is_some(), "snapshot missing {}", node_id);
             assert!(diff.get_node(&(*node_id).into()).is_some(), "diff missing {}", node_id);
         }

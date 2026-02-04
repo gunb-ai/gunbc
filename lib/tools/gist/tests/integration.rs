@@ -6,6 +6,19 @@ use gunbc_ir::transport::{ShellResponse, TransportResponse};
 use gunbc_ir::{detect_boundaries, Value};
 use gunbc_test::assert_boundary_mockable;
 
+/// Helper: mock for execute_current_branch boundary.
+fn mock_current_branch(mocks: &mut BoundaryMocks, branch: &str) {
+    mocks.set_value(
+        "execute_current_branch",
+        "response",
+        Value::Response(TransportResponse::Shell(ShellResponse {
+            exit_code: 0,
+            stdout: format!("{}\n", branch),
+            stderr: String::new(),
+        })),
+    );
+}
+
 /// Test that dry-run mode intercepts the transport boundaries.
 #[test]
 fn test_dry_run_intercepts_transport() {
@@ -36,6 +49,9 @@ fn test_dry_run_intercepts_transport() {
         })),
     );
 
+    // Mock for execute_current_branch (branch name acquisition)
+    mock_current_branch(&mut mocks, "feature/test-branch");
+
     // Mock for execute_gist (gist creation transport - only has response output now)
     mocks.set_value(
         "execute_gist",
@@ -64,6 +80,14 @@ fn test_dry_run_intercepts_transport() {
     assert!(
         read_entry.was_intercepted,
         "execute_read_files should be intercepted in dry-run"
+    );
+
+    let branch_entry = log
+        .get("execute_current_branch")
+        .expect("execute_current_branch should be in log");
+    assert!(
+        branch_entry.was_intercepted,
+        "execute_current_branch should be intercepted in dry-run"
     );
 
     let gist_entry = log
@@ -149,6 +173,9 @@ fn test_gist_graph_boundary_mockable() {
         })),
     );
 
+    // Mock execute_current_branch
+    mock_current_branch(&mut mocks, "main");
+
     // Mock execute_gist (only has response output now)
     mocks.set_value(
         "execute_gist",
@@ -169,6 +196,8 @@ fn test_gist_graph_boundary_mockable() {
     );
     // execute_gist is a transport executor boundary
     assert!(result.boundary_nodes.contains(&"execute_gist".to_string()));
+    // execute_current_branch is also a transport boundary
+    assert!(result.boundary_nodes.contains(&"execute_current_branch".to_string()));
 }
 
 /// Test that real mode does NOT intercept boundaries.
@@ -194,6 +223,153 @@ fn test_real_mode_no_interception() {
         Err(_) => {
             // Expected to fail at transport nodes without proper auth/repo
             // That's fine - the point is we got there without interception
+        }
+    }
+}
+
+// ============================================================================
+// Branch-based filename integration tests
+// ============================================================================
+
+/// Test that the branch name flows through to the gist request filename.
+///
+/// Verifies the full pipeline: branch acquisition → filename sanitization →
+/// gist request creation with the branch-based filename.
+#[test]
+fn test_branch_name_in_gist_filename() {
+    let dag = build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
+
+    let mut mocks = BoundaryMocks::new();
+
+    mocks.set_value(
+        "execute_list_files",
+        "response",
+        Value::Response(TransportResponse::Shell(ShellResponse {
+            exit_code: 0,
+            stdout: "src/main.rs\n".to_string(),
+            stderr: String::new(),
+        })),
+    );
+    mocks.set_value(
+        "execute_read_files",
+        "response",
+        Value::Response(TransportResponse::Shell(ShellResponse {
+            exit_code: 0,
+            stdout: "===GUNBC_FILE:src/main.rs===\nfn main() {}\n".to_string(),
+            stderr: String::new(),
+        })),
+    );
+    // Use a branch name with slashes (common in git workflows)
+    mock_current_branch(&mut mocks, "claude/improve-gist-filename");
+    mocks.set_value(
+        "execute_gist",
+        "response",
+        Value::Response(TransportResponse::Shell(ShellResponse {
+            exit_code: 0,
+            stdout: "https://gist.github.com/mock/456".to_string(),
+            stderr: String::new(),
+        })),
+    );
+
+    let log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).unwrap();
+
+    // Verify prepare_gist_request received the branch name and produced a sanitized filename
+    let prepare_gist = log
+        .get("prepare_gist_request")
+        .expect("prepare_gist_request should be in log");
+    match prepare_gist.outputs.get("request") {
+        Some(Value::Request(gunbc_ir::transport::TransportRequest::Shell(req))) => {
+            // The filename should contain the sanitized branch name (slashes → hyphens)
+            let filename_arg = req.args.iter().find(|a| a.contains("claude-improve-gist-filename"));
+            assert!(
+                filename_arg.is_some(),
+                "expected sanitized branch name in filename, got args: {:?}",
+                req.args
+            );
+            // Should end with .md
+            assert!(
+                filename_arg.unwrap().ends_with(".md"),
+                "filename should end with .md"
+            );
+            // Should contain a timestamp pattern (YYYY-MM-DD)
+            assert!(
+                filename_arg.unwrap().contains('-') && filename_arg.unwrap().contains('_'),
+                "filename should contain timestamp separators"
+            );
+        }
+        other => panic!("expected shell request from prepare_gist_request, got: {:?}", other),
+    }
+}
+
+/// Test filename generation with various platform-challenging branch names.
+///
+/// This is an integration-level test that exercises the full filename
+/// sanitization pipeline through the DAG, covering branch names that
+/// would be problematic on Windows, macOS, or Linux.
+#[test]
+fn test_platform_challenging_branch_names() {
+    let challenging_branches = vec![
+        // Slashes (common in git, invalid on all platforms)
+        ("feature/my-feature", "feature-my-feature"),
+        // Deep nesting
+        ("refs/heads/feature/sub/deep", "refs-heads-feature-sub-deep"),
+        // Windows-unsafe characters
+        ("fix:urgent", "fix-urgent"),
+        // Spaces
+        ("my cool branch", "my-cool-branch"),
+        // Mixed problematic chars
+        ("user/fix<bug>?v2", "user-fix-bug-v2"),
+    ];
+
+    for (branch, expected_prefix) in challenging_branches {
+        let dag = build_gist_graph(GistMode::Snapshot, vec![], false)
+            .expect("graph should build");
+
+        let mut mocks = BoundaryMocks::new();
+        mocks.set_value(
+            "execute_list_files",
+            "response",
+            Value::Response(TransportResponse::Shell(ShellResponse {
+                exit_code: 0,
+                stdout: "src/main.rs\n".to_string(),
+                stderr: String::new(),
+            })),
+        );
+        mocks.set_value(
+            "execute_read_files",
+            "response",
+            Value::Response(TransportResponse::Shell(ShellResponse {
+                exit_code: 0,
+                stdout: "===GUNBC_FILE:src/main.rs===\nfn main() {}\n".to_string(),
+                stderr: String::new(),
+            })),
+        );
+        mock_current_branch(&mut mocks, branch);
+        mocks.set_value(
+            "execute_gist",
+            "response",
+            Value::Response(TransportResponse::Shell(ShellResponse {
+                exit_code: 0,
+                stdout: "https://gist.github.com/mock/789".to_string(),
+                stderr: String::new(),
+            })),
+        );
+
+        let log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).unwrap();
+
+        let prepare_gist = log
+            .get("prepare_gist_request")
+            .expect("prepare_gist_request should be in log");
+        match prepare_gist.outputs.get("request") {
+            Some(Value::Request(gunbc_ir::transport::TransportRequest::Shell(req))) => {
+                let filename_arg = req.args.iter().find(|a| a.starts_with(expected_prefix));
+                assert!(
+                    filename_arg.is_some(),
+                    "branch '{}': expected filename starting with '{}', got args: {:?}",
+                    branch, expected_prefix, req.args
+                );
+            }
+            other => panic!("branch '{}': expected shell request, got: {:?}", branch, other),
         }
     }
 }

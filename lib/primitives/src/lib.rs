@@ -33,6 +33,7 @@
 pub mod collection;
 pub mod control;
 pub mod data;
+pub mod filename;
 pub mod io;
 
 pub use collection::{CollectionOp, FilterOp, FirstOp, FoldOp, LastOp, MapOp, SetOp, SortOp};
