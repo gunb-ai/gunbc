@@ -13,7 +13,7 @@
 
 use crate::manifest::DEFAULT_MANIFEST_FILENAME;
 use crate::ops::DepsOp;
-use gunbc_exec::{ExecError, Executable};
+use gunbc_exec::{ExecError, Executable, OutputMap};
 use gunbc_ir::{
     build::*, BuilderError, Cardinality, Dag, DagBuilder, Node, Value, WorkflowSignature,
 };
@@ -321,25 +321,21 @@ impl Mockable for DepsGraphOp {
     fn mock_outputs(&self) -> HashMap<String, Value> {
         match self {
             DepsGraphOp::Deps(op) => op.mock_outputs(),
-            DepsGraphOp::PrepareFileWrite(_) => {
-                // Manual mock for PrepareFileWriteOp
-                let mut out = HashMap::new();
-                out.insert(
-                    "request".to_string(),
-                    Value::Request(gunbc_ir::transport::TransportRequest::File(
+            DepsGraphOp::PrepareFileWrite(_) => OutputMap::new()
+                .request(
+                    "request",
+                    gunbc_ir::transport::TransportRequest::File(
                         gunbc_ir::transport::FileRequest::write(
                             DEFAULT_MANIFEST_FILENAME,
                             "# mock deps.toml",
                         ),
-                    )),
-                );
-                out
-            }
-            DepsGraphOp::Transport(_) => {
-                let mut out = HashMap::new();
-                out.insert(
-                    "response".to_string(),
-                    Value::Response(gunbc_ir::transport::TransportResponse::File(
+                    ),
+                )
+                .build(),
+            DepsGraphOp::Transport(_) => OutputMap::new()
+                .response(
+                    "response",
+                    gunbc_ir::transport::TransportResponse::File(
                         gunbc_ir::transport::FileResponse {
                             path: "deps.toml".to_string(),
                             operation: gunbc_ir::transport::FileOp::Read,
@@ -348,10 +344,9 @@ impl Mockable for DepsGraphOp {
                             exists: Some(true),
                             error: None,
                         },
-                    )),
-                );
-                out
-            }
+                    ),
+                )
+                .build(),
         }
     }
 }

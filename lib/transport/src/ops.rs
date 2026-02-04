@@ -41,7 +41,13 @@ impl Executable for TransportOps {
                     return out.ok();
                 }
 
-                let request = require_request(&inputs, "request")?;
+                let mut request = require_request(&inputs, "request")?;
+
+                // DI violation: env vars resolved inline via std::env::var.
+                // Phase 2 will pass resolved auth through DAG input ports.
+                if let TransportRequest::Rest(ref mut r) = request {
+                    r.resolve_auth(|var| std::env::var(var).ok());
+                }
 
                 let response = execute_request(&request)?;
 

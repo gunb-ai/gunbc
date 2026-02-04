@@ -423,9 +423,9 @@ Requires new testgen assertion (see TODO 8.2 below).
 - [ ] Catches type drift between MockSpec and DAG port definitions
 
 **TODO 8.4: Delete redundant graph_mock.rs tests**
-- [ ] Delete Pattern A tests (boundary presence) — already generated
-- [ ] Delete Pattern C tests (self-chain) — already generated
-- [ ] Delete Pattern D tests (resource) — once generated resource tests confirmed
+- [x] Delete Pattern A tests (boundary presence) — 10 tests deleted across 7 files
+- [x] Delete Pattern C tests (self-chain) — 1 test deleted from llm-ops
+- [x] Delete Pattern D tests (resource presence) — 4 tests deleted across 4 files
 - [ ] Migrate Pattern B tests to NodeExamples — then delete
 - [ ] Delete Pattern E tests — once TODO 8.2 lands
 - [ ] Goal: graph_mock.rs files contain only `pub fn mock_spec()` + data

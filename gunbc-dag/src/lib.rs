@@ -17,12 +17,14 @@
 //! - `gunbc-dag::ci` defines gunbc's CI pipeline (repo-specific)
 
 pub mod bootstrap;
+pub mod build;
 pub mod ci;
 pub mod makegen;
 pub mod workspace;
 
 // Re-exports for convenience
 pub use bootstrap::{BootstrapOp, BootstrapGraphOp, build_bootstrap_graph, bootstrap_signature};
+pub use build::{BuildOp, BuildGraphOp, build_build_graph, build_signature};
 pub use ci::{CIOp, CIGraphOp, build_ci_graph, ci_signature, ci_workflow_config};
 pub use makegen::{
     MakegenOp, MakegenGraphOp, build_makegen_graph, makegen_signature,

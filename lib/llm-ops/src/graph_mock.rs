@@ -87,6 +87,21 @@ pub fn openai_mock_spec() -> MockSpec {
         .node_example(
             NodeExample::new("parse")
                 .input("provider", Value::Str("openai".into()))
+                .input("response", Value::Response(
+                    gunbc_ir::transport::TransportResponse::Rest(
+                        mock::mock_openai_response("Test response content.")
+                    )
+                ))
+                .output("content", OutputMatcher::exact(Value::Str("Test response content.".into())))
+                .output("model", OutputMatcher::exact(Value::Str("gpt-4o".into())))
+                .output("finish_reason", OutputMatcher::exact(Value::Str("Stop".into())))
+                .output("input_tokens", OutputMatcher::exact(Value::Int(10)))
+                .output("output_tokens", OutputMatcher::exact(Value::Int(20)))
+                .description("OpenAI parse extracts content, model, tokens from REST response"),
+        )
+        .node_example(
+            NodeExample::new("parse")
+                .input("provider", Value::Str("openai".into()))
                 .input("response", Value::Skipped)
                 .output("content", OutputMatcher::Any)
                 .output("model", OutputMatcher::Any)
@@ -163,6 +178,21 @@ pub fn anthropic_mock_spec() -> MockSpec {
         .node_example(
             NodeExample::new("parse")
                 .input("provider", Value::Str("anthropic".into()))
+                .input("response", Value::Response(
+                    gunbc_ir::transport::TransportResponse::Rest(
+                        mock::mock_anthropic_response("Anthropic test response.")
+                    )
+                ))
+                .output("content", OutputMatcher::exact(Value::Str("Anthropic test response.".into())))
+                .output("model", OutputMatcher::exact(Value::Str("claude-sonnet-4-20250514".into())))
+                .output("finish_reason", OutputMatcher::exact(Value::Str("Stop".into())))
+                .output("input_tokens", OutputMatcher::exact(Value::Int(10)))
+                .output("output_tokens", OutputMatcher::exact(Value::Int(20)))
+                .description("Anthropic parse extracts content, model, tokens from REST response"),
+        )
+        .node_example(
+            NodeExample::new("parse")
+                .input("provider", Value::Str("anthropic".into()))
                 .input("response", Value::Skipped)
                 .output("content", OutputMatcher::Any)
                 .output("model", OutputMatcher::Any)
@@ -230,6 +260,18 @@ Overall: The code is clean and well-structured. Minor fixes recommended.";
         .node_example(
             NodeExample::new("parse")
                 .input("provider", Value::Str("openai".into()))
+                .input("response", Value::Response(
+                    gunbc_ir::transport::TransportResponse::Rest(
+                        mock::mock_openai_response("Code looks good.")
+                    )
+                ))
+                .output("content", OutputMatcher::exact(Value::Str("Code looks good.".into())))
+                .output("model", OutputMatcher::exact(Value::Str("gpt-4o".into())))
+                .description("Code review parse extracts content from REST response"),
+        )
+        .node_example(
+            NodeExample::new("parse")
+                .input("provider", Value::Str("openai".into()))
                 .input("response", Value::Skipped)
                 .output("content", OutputMatcher::Any)
                 .output("model", OutputMatcher::Any)
@@ -293,6 +335,18 @@ pub fn secret_api_key_mock_spec() -> MockSpec {
         .node_example(
             NodeExample::new("parse")
                 .input("provider", Value::Str("openai".into()))
+                .input("response", Value::Response(
+                    gunbc_ir::transport::TransportResponse::Rest(
+                        mock::mock_openai_response("Authenticated response.")
+                    )
+                ))
+                .output("content", OutputMatcher::exact(Value::Str("Authenticated response.".into())))
+                .output("model", OutputMatcher::exact(Value::Str("gpt-4o".into())))
+                .description("Secret auth parse extracts content from REST response"),
+        )
+        .node_example(
+            NodeExample::new("parse")
+                .input("provider", Value::Str("openai".into()))
                 .input("response", Value::Skipped)
                 .output("content", OutputMatcher::Any)
                 .output("model", OutputMatcher::Any)
@@ -334,16 +388,6 @@ pub fn rate_limited_mock_spec() -> MockSpec {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gunbc_test::validate_chain;
-    use std::collections::HashMap;
-
-    #[test]
-    fn test_openai_mock_spec_has_boundaries() {
-        let spec = openai_mock_spec();
-        assert!(spec.get_boundary_mock("execute", "response").is_some());
-        assert!(spec.get_boundary_mock("parse", "content").is_some());
-        assert!(spec.get_boundary_mock("parse", "model").is_some());
-    }
 
     #[test]
     fn test_openai_mock_spec_content() {
@@ -354,13 +398,6 @@ mod tests {
         } else {
             panic!("Expected string content");
         }
-    }
-
-    #[test]
-    fn test_anthropic_mock_spec_has_boundaries() {
-        let spec = anthropic_mock_spec();
-        assert!(spec.get_boundary_mock("execute", "response").is_some());
-        assert!(spec.get_boundary_mock("parse", "content").is_some());
     }
 
     #[test]
@@ -408,14 +445,6 @@ mod tests {
         let spec = rate_limited_mock_spec();
         let response = spec.get_boundary_mock("execute", "response").unwrap();
         assert!(matches!(response, Value::Response(_)));
-    }
-
-    #[test]
-    fn test_chain_validation_self() {
-        let spec = openai_mock_spec();
-        let mapping = HashMap::new();
-        let result = validate_chain(&spec, &spec, &mapping);
-        assert!(result.is_ok());
     }
 
     #[test]

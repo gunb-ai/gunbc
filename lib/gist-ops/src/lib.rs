@@ -43,7 +43,7 @@ impl Executable for GistOps {
                 let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
                 let now = SystemTime::now();
 
-                let filename = generate_gist_filename_with(&fs, branch.unwrap_or("snapshot"), now);
+                let filename = generate_gist_filename(&fs, branch.unwrap_or("snapshot"), now);
                 let description = match branch {
                     Some(b) if !b.trim().is_empty() && b.trim() != "HEAD" => {
                         format!("Code snapshot of {} created by gunbc-gist", b)
@@ -95,35 +95,22 @@ pub fn prepare_gist_request(
         .to_shell_request()
 }
 
-/// Sanitize a branch name for use in a filename across all platforms.
-///
-/// Convenience wrapper that acquires a cross-platform [`FilesystemHandle`]
-/// internally. For dependency-injected usage, call
-/// [`sanitize_branch_for_filename_with`] instead.
+/// Sanitize a branch name for use as a filename component.
 ///
 /// Falls back to `"snapshot"` if the branch is empty or entirely degenerate.
-///
-/// # Examples
-///
-/// ```ignore
-/// assert_eq!(sanitize_branch_for_filename("main"), "main");
-/// assert_eq!(sanitize_branch_for_filename("claude/branch-name"), "claude-branch-name");
-/// assert_eq!(sanitize_branch_for_filename("feature/foo bar"), "feature-foo-bar");
-/// ```
-pub fn sanitize_branch_for_filename(branch: &str) -> String {
-    let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
-    sanitize_branch_for_filename_with(&fs, branch)
-}
-
-/// Sanitize a branch name using an injected [`FilesystemHandle`].
-///
-/// This is the injectable variant — DAG nodes should acquire a handle at the
-/// boundary and pass it here rather than letting the function construct one.
 ///
 /// Replaces spaces with the replacement char (convention, not a FS rule),
 /// then routes through the filesystem gateway. Falls back to `"snapshot"`
 /// if the input is empty or sanitizes to the filesystem's default fallback.
-pub fn sanitize_branch_for_filename_with(fs: &filename::FilesystemHandle, branch: &str) -> String {
+///
+/// # Examples
+///
+/// ```ignore
+/// let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
+/// assert_eq!(sanitize_branch_for_filename(&fs, "main"), "main");
+/// assert_eq!(sanitize_branch_for_filename(&fs, "claude/branch-name"), "claude-branch-name");
+/// ```
+pub fn sanitize_branch_for_filename(fs: &filename::FilesystemHandle, branch: &str) -> String {
     // Replace spaces before filesystem gateway (convention, not a FS rule)
     let no_spaces: String = branch
         .chars()
@@ -145,38 +132,26 @@ pub fn sanitize_branch_for_filename_with(fs: &filename::FilesystemHandle, branch
     }
 }
 
-/// Generate a gist filename from a branch name.
+/// Generate a gist filename from a branch name, filesystem handle, and timestamp.
 ///
-/// Convenience wrapper that uses `SystemTime::now()` for the timestamp.
-/// For dependency-injected usage, call [`generate_gist_filename_with`] instead.
+/// The branch prefix is sanitized and truncated to fit within the filesystem's
+/// max component bytes after accounting for the suffix (`_YYYY-MM-DD_HH-MM-SS.md`).
 ///
 /// # Examples
 ///
 /// ```ignore
-/// // With branch "claude/my-feature":
-/// // => "claude-my-feature_2024-01-15_14-30-00.md"
-/// let filename = generate_gist_filename("claude/my-feature");
+/// let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
+/// let now = SystemTime::now();
+/// let filename = generate_gist_filename(&fs, "claude/my-feature", now);
 /// assert!(filename.starts_with("claude-my-feature_"));
 /// assert!(filename.ends_with(".md"));
 /// ```
-pub fn generate_gist_filename(branch: &str) -> String {
-    let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
-    generate_gist_filename_with(&fs, branch, SystemTime::now())
-}
-
-/// Generate a gist filename using injected dependencies.
-///
-/// DAG nodes should acquire the filesystem handle and capture the clock
-/// at the boundary, then pass both here.
-///
-/// The branch prefix is truncated to fit within the filesystem's max
-/// component bytes after accounting for the suffix (`_YYYY-MM-DD_HH-MM-SS.md`).
-pub fn generate_gist_filename_with(
+pub fn generate_gist_filename(
     fs: &filename::FilesystemHandle,
     branch: &str,
     now: SystemTime,
 ) -> String {
-    let sanitized = sanitize_branch_for_filename_with(fs, branch);
+    let sanitized = sanitize_branch_for_filename(fs, branch);
     let timestamp = format_utc_timestamp(now);
     let suffix = format!("_{}.md", timestamp); // e.g., "_2024-01-15_14-30-00.md" = 23 bytes
 
@@ -286,7 +261,9 @@ mod tests {
 
     #[test]
     fn test_prepare_gist_request_with_branch_filename() {
-        let filename = generate_gist_filename("claude/my-feature");
+        let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
+        let fixed_time = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1705325400);
+        let filename = generate_gist_filename(&fs, "claude/my-feature", fixed_time);
         let request = prepare_gist_request("# Test", false, "Test gist", &filename);
 
         match request {
@@ -345,64 +322,76 @@ mod tests {
     // Filename sanitization tests
     // ========================================================================
 
+    fn test_fs() -> filename::FilesystemHandle {
+        filename::FilesystemHandle::cross_platform(filename::Scope::Write)
+    }
+
     #[test]
     fn test_sanitize_simple_branch() {
-        assert_eq!(sanitize_branch_for_filename("main"), "main");
-        assert_eq!(sanitize_branch_for_filename("develop"), "develop");
-        assert_eq!(sanitize_branch_for_filename("my-branch"), "my-branch");
+        let fs = test_fs();
+        assert_eq!(sanitize_branch_for_filename(&fs, "main"), "main");
+        assert_eq!(sanitize_branch_for_filename(&fs, "develop"), "develop");
+        assert_eq!(sanitize_branch_for_filename(&fs, "my-branch"), "my-branch");
     }
 
     #[test]
     fn test_sanitize_branch_with_slashes() {
-        assert_eq!(sanitize_branch_for_filename("claude/branch-name"), "claude-branch-name");
-        assert_eq!(sanitize_branch_for_filename("feature/foo/bar"), "feature-foo-bar");
-        assert_eq!(sanitize_branch_for_filename("refs/heads/main"), "refs-heads-main");
+        let fs = test_fs();
+        assert_eq!(sanitize_branch_for_filename(&fs, "claude/branch-name"), "claude-branch-name");
+        assert_eq!(sanitize_branch_for_filename(&fs, "feature/foo/bar"), "feature-foo-bar");
+        assert_eq!(sanitize_branch_for_filename(&fs, "refs/heads/main"), "refs-heads-main");
     }
 
     #[test]
     fn test_sanitize_branch_with_spaces() {
-        assert_eq!(sanitize_branch_for_filename("my branch"), "my-branch");
-        assert_eq!(sanitize_branch_for_filename("feature/foo bar"), "feature-foo-bar");
+        let fs = test_fs();
+        assert_eq!(sanitize_branch_for_filename(&fs, "my branch"), "my-branch");
+        assert_eq!(sanitize_branch_for_filename(&fs, "feature/foo bar"), "feature-foo-bar");
     }
 
     #[test]
     fn test_sanitize_branch_windows_unsafe_chars() {
-        assert_eq!(sanitize_branch_for_filename("branch:name"), "branch-name");
-        assert_eq!(sanitize_branch_for_filename("branch*name"), "branch-name");
-        assert_eq!(sanitize_branch_for_filename("branch?name"), "branch-name");
-        assert_eq!(sanitize_branch_for_filename("branch<name>"), "branch-name");
-        assert_eq!(sanitize_branch_for_filename("branch|name"), "branch-name");
-        assert_eq!(sanitize_branch_for_filename("branch\"name"), "branch-name");
-        assert_eq!(sanitize_branch_for_filename("branch\\name"), "branch-name");
+        let fs = test_fs();
+        assert_eq!(sanitize_branch_for_filename(&fs, "branch:name"), "branch-name");
+        assert_eq!(sanitize_branch_for_filename(&fs, "branch*name"), "branch-name");
+        assert_eq!(sanitize_branch_for_filename(&fs, "branch?name"), "branch-name");
+        assert_eq!(sanitize_branch_for_filename(&fs, "branch<name>"), "branch-name");
+        assert_eq!(sanitize_branch_for_filename(&fs, "branch|name"), "branch-name");
+        assert_eq!(sanitize_branch_for_filename(&fs, "branch\"name"), "branch-name");
+        assert_eq!(sanitize_branch_for_filename(&fs, "branch\\name"), "branch-name");
     }
 
     #[test]
     fn test_sanitize_collapses_consecutive_hyphens() {
-        assert_eq!(sanitize_branch_for_filename("a//b"), "a-b");
-        assert_eq!(sanitize_branch_for_filename("a///b"), "a-b");
-        assert_eq!(sanitize_branch_for_filename("a/ /b"), "a-b");
+        let fs = test_fs();
+        assert_eq!(sanitize_branch_for_filename(&fs, "a//b"), "a-b");
+        assert_eq!(sanitize_branch_for_filename(&fs, "a///b"), "a-b");
+        assert_eq!(sanitize_branch_for_filename(&fs, "a/ /b"), "a-b");
     }
 
     #[test]
     fn test_sanitize_trims_leading_trailing_hyphens() {
-        assert_eq!(sanitize_branch_for_filename("/branch"), "branch");
-        assert_eq!(sanitize_branch_for_filename("branch/"), "branch");
-        assert_eq!(sanitize_branch_for_filename("/branch/"), "branch");
+        let fs = test_fs();
+        assert_eq!(sanitize_branch_for_filename(&fs, "/branch"), "branch");
+        assert_eq!(sanitize_branch_for_filename(&fs, "branch/"), "branch");
+        assert_eq!(sanitize_branch_for_filename(&fs, "/branch/"), "branch");
     }
 
     #[test]
     fn test_sanitize_empty_and_degenerate() {
-        assert_eq!(sanitize_branch_for_filename(""), "snapshot");
-        assert_eq!(sanitize_branch_for_filename("/"), "snapshot");
-        assert_eq!(sanitize_branch_for_filename("///"), "snapshot");
-        assert_eq!(sanitize_branch_for_filename("   "), "snapshot");
+        let fs = test_fs();
+        assert_eq!(sanitize_branch_for_filename(&fs, ""), "snapshot");
+        assert_eq!(sanitize_branch_for_filename(&fs, "/"), "snapshot");
+        assert_eq!(sanitize_branch_for_filename(&fs, "///"), "snapshot");
+        assert_eq!(sanitize_branch_for_filename(&fs, "   "), "snapshot");
     }
 
     #[test]
     fn test_sanitize_preserves_dots_and_underscores() {
-        assert_eq!(sanitize_branch_for_filename("v1.0.0"), "v1.0.0");
-        assert_eq!(sanitize_branch_for_filename("my_branch"), "my_branch");
-        assert_eq!(sanitize_branch_for_filename("release/v2.0_rc1"), "release-v2.0_rc1");
+        let fs = test_fs();
+        assert_eq!(sanitize_branch_for_filename(&fs, "v1.0.0"), "v1.0.0");
+        assert_eq!(sanitize_branch_for_filename(&fs, "my_branch"), "my_branch");
+        assert_eq!(sanitize_branch_for_filename(&fs, "release/v2.0_rc1"), "release-v2.0_rc1");
     }
 
     // ========================================================================
@@ -425,18 +414,18 @@ mod tests {
 
     #[test]
     fn test_generate_gist_filename_format() {
-        let filename = generate_gist_filename("main");
-        assert!(filename.starts_with("main_"), "expected 'main_' prefix, got: {}", filename);
-        assert!(filename.ends_with(".md"), "expected '.md' suffix, got: {}", filename);
-        // Should match pattern: main_YYYY-MM-DD_HH-MM-SS.md
-        assert_eq!(filename.len(), "main_".len() + "YYYY-MM-DD_HH-MM-SS".len() + ".md".len());
+        let fs = test_fs();
+        let fixed_time = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1705325400);
+        let filename = generate_gist_filename(&fs, "main", fixed_time);
+        assert_eq!(filename, "main_2024-01-15_13-30-00.md");
     }
 
     #[test]
     fn test_generate_gist_filename_sanitizes_branch() {
-        let filename = generate_gist_filename("claude/improve-gist-filename");
-        assert!(filename.starts_with("claude-improve-gist-filename_"), "got: {}", filename);
-        assert!(filename.ends_with(".md"));
+        let fs = test_fs();
+        let fixed_time = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1705325400);
+        let filename = generate_gist_filename(&fs, "claude/improve-gist-filename", fixed_time);
+        assert_eq!(filename, "claude-improve-gist-filename_2024-01-15_13-30-00.md");
     }
 
     // ========================================================================
@@ -445,39 +434,24 @@ mod tests {
 
     #[test]
     fn test_sanitize_real_untitled_branch_preserved() {
+        let fs = test_fs();
         // A real branch named "untitled" must NOT be turned into "snapshot"
-        assert_eq!(sanitize_branch_for_filename("untitled"), "untitled");
+        assert_eq!(sanitize_branch_for_filename(&fs, "untitled"), "untitled");
     }
 
     // ========================================================================
-    // Injectable variant tests
+    // Deterministic timestamp tests
     // ========================================================================
 
     #[test]
-    fn test_sanitize_branch_with_injected_handle() {
-        let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
-        assert_eq!(sanitize_branch_for_filename_with(&fs, "claude/branch"), "claude-branch");
-        assert_eq!(sanitize_branch_for_filename_with(&fs, ""), "snapshot");
-    }
-
-    #[test]
-    fn test_generate_gist_filename_with_injected_deps() {
-        let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
-        let fixed_time = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1705325400);
-
-        let filename = generate_gist_filename_with(&fs, "main", fixed_time);
-        assert_eq!(filename, "main_2024-01-15_13-30-00.md");
-    }
-
-    #[test]
-    fn test_generate_gist_filename_with_deterministic_timestamp() {
-        let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
+    fn test_generate_gist_filename_deterministic_timestamp() {
+        let fs = test_fs();
         let t1 = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1705325400);
         let t2 = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1705325400);
 
         // Same inputs → same output (deterministic)
-        let f1 = generate_gist_filename_with(&fs, "test", t1);
-        let f2 = generate_gist_filename_with(&fs, "test", t2);
+        let f1 = generate_gist_filename(&fs, "test", t1);
+        let f2 = generate_gist_filename(&fs, "test", t2);
         assert_eq!(f1, f2);
     }
 
@@ -487,12 +461,12 @@ mod tests {
 
     #[test]
     fn test_generate_gist_filename_caps_total_length() {
-        let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
+        let fs = test_fs();
         let fixed_time = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1705325400);
 
         // Branch name that's 250 chars — after sanitization still 250 chars
         let long_branch = "a".repeat(250);
-        let filename = generate_gist_filename_with(&fs, &long_branch, fixed_time);
+        let filename = generate_gist_filename(&fs, &long_branch, fixed_time);
 
         assert!(
             filename.len() <= 255,
