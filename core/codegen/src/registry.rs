@@ -422,6 +422,12 @@ pub fn all_tools() -> Vec<ToolDef> {
             ],
         )
         .boundary(
+            "execute_current_branch",
+            vec![
+                ("response", "Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: \"main\\n\".to_string(), stderr: String::new() }))"),
+            ],
+        )
+        .boundary(
             "execute_gist",
             vec![
                 ("url", "Value::Str(\"<DRY-RUN: gist URL>\".to_string())"),
@@ -469,6 +475,12 @@ pub fn all_tools() -> Vec<ToolDef> {
             "execute_diff",
             vec![
                 ("response", "Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: \"diff --git a/src/main.rs b/src/main.rs\\n--- a/src/main.rs\\n+++ b/src/main.rs\\n@@ -1 +1,2 @@\\n fn main() {}\\n+// changed\\n\".to_string(), stderr: String::new() }))"),
+            ],
+        )
+        .boundary(
+            "execute_current_branch",
+            vec![
+                ("response", "Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: \"main\\n\".to_string(), stderr: String::new() }))"),
             ],
         )
         .boundary(
