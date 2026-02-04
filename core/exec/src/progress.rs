@@ -233,10 +233,22 @@ pub struct EdgeProgress {
 /// Implements [`ProgressObserver`] — it's a concrete observer that
 /// maintains the "power flow" state machine. Renderer-agnostic:
 /// knows nothing about terminals, HTML, or symbols.
+///
+/// # Edge Identity
+///
+/// Edges are keyed by `(from_node, to_node)` — intentionally collapsing
+/// multiple port-level edges between the same node pair into a single
+/// visual edge. This is the correct abstraction for progress display:
+/// the renderer shows data flow between nodes, not between ports.
+/// If the DAG has edges A:out1→B:in1 and A:out2→B:in2, they appear as
+/// one visual edge A→B with a single state.
 #[derive(Debug, Clone)]
 pub struct DagProgress {
     pub snapshot: DagSnapshot,
     pub nodes: HashMap<NodeId, NodeProgress>,
+    /// Visual edges keyed by `(from_node, to_node)`.
+    /// Multiple port-level edges between the same nodes are intentionally
+    /// collapsed into one visual edge.
     pub edges: HashMap<(NodeId, NodeId), EdgeProgress>,
     pub phase: DagPhase,
     pub start_time: Option<Instant>,
@@ -246,6 +258,7 @@ impl DagProgress {
     /// Create a new progress tracker from a DAG snapshot.
     ///
     /// All nodes start as Pending, all edges as Idle, phase as NotStarted.
+    /// Port-level edges are collapsed to node-pair visual edges.
     pub fn new(snapshot: DagSnapshot) -> Self {
         let nodes: HashMap<NodeId, NodeProgress> = snapshot
             .node_ids
@@ -263,18 +276,16 @@ impl DagProgress {
             })
             .collect();
 
-        let edges: HashMap<(NodeId, NodeId), EdgeProgress> = snapshot
-            .edges
-            .iter()
-            .map(|e| {
-                (
-                    (e.from_node.clone(), e.to_node.clone()),
-                    EdgeProgress {
-                        state: EdgeState::Idle,
-                    },
-                )
-            })
-            .collect();
+        // Collapse port-level edges to node-pair visual edges.
+        // Multiple edges between the same (from, to) pair become one EdgeProgress.
+        let mut edges: HashMap<(NodeId, NodeId), EdgeProgress> = HashMap::new();
+        for e in &snapshot.edges {
+            edges
+                .entry((e.from_node.clone(), e.to_node.clone()))
+                .or_insert(EdgeProgress {
+                    state: EdgeState::Idle,
+                });
+        }
 
         Self {
             snapshot,

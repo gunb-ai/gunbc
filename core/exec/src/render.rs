@@ -108,14 +108,18 @@ impl Animation {
     }
 
     /// Advance the animation by dt. Returns true if frame changed.
+    ///
+    /// Handles long dt values correctly: if dt spans multiple intervals,
+    /// all skipped frames are consumed (the animation catches up rather
+    /// than getting stuck).
     pub fn tick(&mut self, dt: Duration) -> bool {
         if self.frames.is_empty() {
             return false;
         }
         self.elapsed += dt;
-        if self.elapsed >= self.interval {
+        let old = self.current;
+        while self.elapsed >= self.interval {
             self.elapsed -= self.interval;
-            let old = self.current;
             match &mut self.mode {
                 AnimationMode::Cycle => {
                     self.current = (self.current + 1) % self.frames.len();
@@ -132,10 +136,8 @@ impl Animation {
                     self.current = (self.current + 1) % self.frames.len();
                 }
             }
-            self.current != old
-        } else {
-            false
         }
+        self.current != old
     }
 
     /// Get the current frame content.
@@ -176,6 +178,9 @@ pub struct TerminalRenderer<W: Write> {
     /// Whether we're writing to a TTY (controls cursor movement).
     /// Always true in production; false in tests to capture raw output.
     is_tty: bool,
+    /// Whether to emit ANSI color escape codes.
+    /// False when `$NO_COLOR` is set or terminal doesn't support color.
+    color_enabled: bool,
     /// Spinner animation for running nodes.
     spinner: Animation,
 }
@@ -183,8 +188,10 @@ pub struct TerminalRenderer<W: Write> {
 impl<W: Write> TerminalRenderer<W> {
     /// Create a new terminal renderer.
     ///
-    /// `is_tty` controls cursor movement (overwrite previous frame).
-    /// Production callers pass `true`; tests pass `false` to capture output.
+    /// - `is_tty`: controls cursor movement (overwrite previous frame).
+    ///   Production callers pass `true`; tests pass `false` to capture output.
+    /// - `color_enabled`: whether to emit ANSI color escape codes.
+    ///   Pass `profile.supports_color` from [`TerminalProfile`].
     ///
     /// # Panics (debug)
     ///
@@ -196,6 +203,7 @@ impl<W: Write> TerminalRenderer<W> {
         tier: Tier,
         layout: DagLayout,
         is_tty: bool,
+        color_enabled: bool,
     ) -> Self {
         debug_assert!(
             !matches!(tier, Tier::Ascii),
@@ -221,6 +229,7 @@ impl<W: Write> TerminalRenderer<W> {
             layout,
             last_frame_lines: 0,
             is_tty,
+            color_enabled,
             spinner: Animation::cycle(spinner_frames, Duration::from_millis(150)),
         }
     }
@@ -240,12 +249,33 @@ impl<W: Write> TerminalRenderer<W> {
         self.symbol_set.resolve_tier(id, self.tier)
     }
 
-    /// Resolve a colored symbol.
+    /// Resolve a colored symbol (respects `color_enabled`).
     fn colored_symbol(&self, id: SymbolId) -> String {
-        self.symbol_set.get(id).resolve_colored(self.tier)
+        let sym = self.symbol_set.get(id);
+        let glyph = sym.resolve(self.tier);
+        if self.color_enabled {
+            format!("{}{}{}", sym.color.ansi(), glyph, self.reset())
+        } else {
+            glyph.to_string()
+        }
     }
 
-    /// ANSI color code for a node state (for coloring boxes).
+    /// ANSI color start code, or empty string if color is disabled.
+    fn color(&self, c: SemanticColor) -> &'static str {
+        if self.color_enabled { c.ansi() } else { "" }
+    }
+
+    /// ANSI reset code, or empty string if color is disabled.
+    fn reset(&self) -> &'static str {
+        if self.color_enabled { "\x1b[0m" } else { "" }
+    }
+
+    /// ANSI bold code, or empty string if color is disabled.
+    fn bold(&self) -> &'static str {
+        if self.color_enabled { "\x1b[1m" } else { "" }
+    }
+
+    /// Semantic color for a node state.
     fn state_color(&self, state: NodeState) -> SemanticColor {
         match state {
             NodeState::Pending => SemanticColor::Dim,
@@ -257,15 +287,15 @@ impl<W: Write> TerminalRenderer<W> {
         }
     }
 
-    /// Wrap text in ANSI bold + color for a node state.
+    /// Wrap text in styled box for a node state (respects `color_enabled`).
     fn colored_box(&self, text: &str, state: NodeState) -> String {
         let color = self.state_color(state);
         // Bold for completed/failed/running, dim stays dim
         let bold = match state {
-            NodeState::Completed | NodeState::Failed | NodeState::Running | NodeState::Intercepted => "\x1b[1m",
+            NodeState::Completed | NodeState::Failed | NodeState::Running | NodeState::Intercepted => self.bold(),
             _ => "",
         };
-        format!("{}{}[{}]\x1b[0m", bold, color.ansi(), text)
+        format!("{}{}[{}]{}", bold, self.color(color), text, self.reset())
     }
 
     /// Legend symbol for a node state: ✔, ✘, ◐, etc.
@@ -463,7 +493,7 @@ impl<W: Write> TerminalRenderer<W> {
                         .unwrap_or(NodeState::Pending);
                     let letter = node_letter.get(node).map(|s| s.as_str()).unwrap_or("?");
                     line.push_str(&self.colored_box(letter, state));
-                    let vis_w = letter.len() + 2; // [X]
+                    let vis_w = display_width(letter) + 2; // [X]
                     let pad = col_w.saturating_sub(vis_w);
                     line.push_str(&" ".repeat(pad));
                 } else {
@@ -544,8 +574,8 @@ impl<W: Write> TerminalRenderer<W> {
                 .map(|d| format!(" [{}]", format_duration(d)))
                 .unwrap_or_default();
             lines.push(format!(
-                "  {}{} {}: {}{}\x1b[0m",
-                color.ansi(), sym, letter, label, time_str
+                "  {}{} {}: {}{}{}",
+                self.color(color), sym, letter, label, time_str, self.reset()
             ));
         }
         // Pad remaining legend slots with empty lines to keep frame height stable
@@ -587,7 +617,7 @@ impl<W: Write> TerminalRenderer<W> {
                 let icon = match self.tier {
                     Tier::Emoji => {
                         let animal = random_animal(*e);
-                        format!("{}{}\x1b[0m", SemanticColor::Success.ansi(), animal)
+                        format!("{}{}{}", self.color(SemanticColor::Success), animal, self.reset())
                     }
                     _ => self.colored_symbol(SymbolId::DagCompleted),
                 };
@@ -606,7 +636,7 @@ impl<W: Write> TerminalRenderer<W> {
                     .unwrap_or(&node.0);
                 let icon = match self.tier {
                     Tier::Emoji => {
-                        format!("{}\u{274C}\x1b[0m", SemanticColor::Error.ansi()) // ❌
+                        format!("{}\u{274C}{}", self.color(SemanticColor::Error), self.reset()) // ❌
                     }
                     _ => self.colored_symbol(SymbolId::DagFailed),
                 };
@@ -958,7 +988,7 @@ impl<W: Write> TerminalRenderer<W> {
         EdgeState::Idle
     }
 
-    /// Wrap a connector string in ANSI color based on edge state.
+    /// Wrap a connector string in ANSI color based on edge state (respects `color_enabled`).
     fn color_connector(&self, s: &str, state: EdgeState) -> String {
         let color = match state {
             EdgeState::Idle => SemanticColor::Dim,
@@ -966,7 +996,7 @@ impl<W: Write> TerminalRenderer<W> {
             EdgeState::Done => SemanticColor::Success,
             EdgeState::Dead => SemanticColor::Dim,
         };
-        format!("{}{}\x1b[0m", color.ansi(), s)
+        format!("{}{}{}", self.color(color), s, self.reset())
     }
 
     /// Render the footer summary.
@@ -1136,7 +1166,7 @@ fn short_label(
 
 /// Pad or truncate a connector string to exactly `w` display characters.
 fn pad_connector(s: &str, w: usize) -> String {
-    let display_w = s.chars().count();
+    let display_w = display_width(s);
     if display_w >= w {
         s.chars().take(w).collect()
     } else {
@@ -1144,6 +1174,57 @@ fn pad_connector(s: &str, w: usize) -> String {
         result.push_str(&" ".repeat(w - display_w));
         result
     }
+}
+
+/// Compute the display width of a string in terminal columns.
+///
+/// Uses proper Unicode width rules: ASCII characters are 1 column,
+/// CJK/fullwidth characters are 2 columns, combining marks are 0 columns.
+/// This is correct for terminal column alignment — unlike `str::len()`
+/// (bytes) or `str::chars().count()` (codepoints), which don't account
+/// for display width.
+fn display_width(s: &str) -> usize {
+    s.chars().map(|c| char_width(c)).sum()
+}
+
+/// Approximate terminal display width of a single character.
+///
+/// Returns 2 for CJK/fullwidth characters, 0 for combining marks
+/// and zero-width characters, 1 for everything else.
+fn char_width(c: char) -> usize {
+    let cp = c as u32;
+    // Zero-width: combining marks, zero-width joiners, variation selectors
+    if (0x0300..=0x036F).contains(&cp)      // Combining Diacritical Marks
+        || (0x1AB0..=0x1AFF).contains(&cp)  // Combining Diacritical Marks Extended
+        || (0x1DC0..=0x1DFF).contains(&cp)  // Combining Diacritical Marks Supplement
+        || (0x20D0..=0x20FF).contains(&cp)  // Combining Diacritical Marks for Symbols
+        || (0xFE00..=0xFE0F).contains(&cp)  // Variation Selectors
+        || (0xFE20..=0xFE2F).contains(&cp)  // Combining Half Marks
+        || cp == 0x200B                      // Zero Width Space
+        || cp == 0x200C                      // Zero Width Non-Joiner
+        || cp == 0x200D                      // Zero Width Joiner
+        || cp == 0xFEFF                      // Zero Width No-Break Space (BOM)
+    {
+        return 0;
+    }
+    // Fullwidth / CJK: most CJK unified ideographs and fullwidth forms
+    if (0x1100..=0x115F).contains(&cp)      // Hangul Jamo
+        || (0x2E80..=0x303E).contains(&cp)  // CJK Radicals, Kangxi, CJK Symbols
+        || (0x3041..=0x33BF).contains(&cp)  // Hiragana, Katakana, Bopomofo, CJK Compat
+        || (0x3400..=0x4DBF).contains(&cp)  // CJK Unified Ideographs Extension A
+        || (0x4E00..=0x9FFF).contains(&cp)  // CJK Unified Ideographs
+        || (0xA000..=0xA4CF).contains(&cp)  // Yi Syllables + Radicals
+        || (0xAC00..=0xD7AF).contains(&cp)  // Hangul Syllables
+        || (0xF900..=0xFAFF).contains(&cp)  // CJK Compatibility Ideographs
+        || (0xFE30..=0xFE6F).contains(&cp)  // CJK Compatibility Forms + Small Form Variants
+        || (0xFF01..=0xFF60).contains(&cp)  // Fullwidth ASCII
+        || (0xFFE0..=0xFFE6).contains(&cp)  // Fullwidth Signs
+        || (0x20000..=0x2FFFF).contains(&cp) // CJK Unified Ideographs Extension B+
+        || (0x30000..=0x3FFFF).contains(&cp) // CJK Unified Ideographs Extension G+
+    {
+        return 2;
+    }
+    1
 }
 
 // ---------------------------------------------------------------------------
@@ -1193,7 +1274,7 @@ mod tests {
     }
 
     fn make_renderer(buf: &mut Vec<u8>, layout: DagLayout) -> TerminalRenderer<&mut Vec<u8>> {
-        TerminalRenderer::new(buf, &STANDARD, Tier::Unicode, layout, false)
+        TerminalRenderer::new(buf, &STANDARD, Tier::Unicode, layout, false, false)
     }
 
     #[test]
@@ -1564,5 +1645,45 @@ mod tests {
         // Truncation with ~
         let result = short_label(&NodeId::from("prepare_scan_workspace"), &labels, 8);
         assert_eq!(result, "prepare~");
+    }
+
+    #[test]
+    fn test_display_width_ascii() {
+        assert_eq!(display_width("hello"), 5);
+        assert_eq!(display_width("[A]"), 3);
+        assert_eq!(display_width(""), 0);
+    }
+
+    #[test]
+    fn test_display_width_unicode() {
+        // Box-drawing characters are 1 column each
+        assert_eq!(display_width("─┬─"), 3);
+        assert_eq!(display_width("└─"), 2);
+        assert_eq!(display_width("│"), 1);
+    }
+
+    #[test]
+    fn test_display_width_cjk() {
+        // CJK characters are 2 columns each
+        assert_eq!(display_width("漢字"), 4);
+        assert_eq!(display_width("A漢B"), 4); // A=1 + 漢=2 + B=1
+    }
+
+    #[test]
+    fn test_display_width_combining() {
+        // Combining marks are 0 width
+        assert_eq!(display_width("e\u{0301}"), 1); // é (e + combining acute)
+    }
+
+    #[test]
+    fn test_animation_tick_catches_up() {
+        let frames = vec!["a".into(), "b".into(), "c".into(), "d".into()];
+        let mut anim = Animation::cycle(frames, Duration::from_millis(100));
+        assert_eq!(anim.frame(), "a");
+
+        // Skip 350ms worth of time — should advance 3 frames (a→b→c→d)
+        let changed = anim.tick(Duration::from_millis(350));
+        assert!(changed);
+        assert_eq!(anim.frame(), "d");
     }
 }
