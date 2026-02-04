@@ -42,34 +42,25 @@ the platform at the boundary instead of inline in execute().
 
 ---
 
-## 3. std::env::var() in transport executor (auth resolution)
+## 3. ~~std::env::var() in transport executor (auth resolution)~~ ✅ FIXED (Phase 1)
 
-**Where**: `lib/transport/src/executor.rs:81,97`
+**Where**: `lib/transport/src/executor.rs`, `lib/transport/src/ops.rs`
 
-```rust
-gunbc_ir::transport::AuthMethod::EnvVar(var) => {
-    if let Ok(token) = std::env::var(var) {        // line 81
-        http_req.headers.insert("Authorization".into(), format!("Bearer {}", token));
-    }
-}
-gunbc_ir::transport::AuthMethod::EnvVarHeader { header, env_var } => {
-    if let Ok(value) = std::env::var(env_var) {    // line 97
-        http_req.headers.insert(header.clone(), value);
-    }
-}
-```
+**What was done**: Added `AuthMethod::resolve_env_vars()` that takes an
+injectable lookup function and converts `EnvVar(name)` → `Bearer(value)`
+and `EnvVarHeader { header, env_var }` → `ApiKey { header, key }`.
+`RestRequest::resolve_auth()` wraps this for convenience.
 
-**Problem**: The transport executor reads env vars inline during request
-execution. This makes it impossible to test auth handling without setting
-real environment variables, and couples the executor to OS state.
+Resolution now happens in `TransportOps::Execute` (the DAG node in `ops.rs`)
+before calling into the transport executor. The executor (`executor.rs`)
+no longer reads env vars — `EnvVar`/`EnvVarHeader` arms hit a `debug_assert!`
+if they somehow reach the executor unresolved.
 
-**Fix**: The `AuthMethod::EnvVar` variant should be resolved *before*
-reaching the executor — at the DAG boundary where secrets are acquired.
-By the time the executor sees a request, all tokens should be concrete
-`AuthMethod::Bearer(token)` values. Alternatively, pass an env-var
-resolver function/trait to the executor.
+Auth resolution is fully testable: tests pass mock lookup closures instead
+of setting real environment variables. 8 new tests cover all variants.
 
-**Severity**: HIGH — security-sensitive path, hard to test.
+**Remaining**: Phase 2 — pass resolved auth through DAG input ports instead
+of resolving inline in `TransportOps::Execute`.
 
 ---
 
@@ -171,21 +162,21 @@ and execute through the transport layer.
 
 | # | Resource | Location | Severity | Fix |
 |---|----------|----------|----------|-----|
-| 1 | FilesystemHandle | gist-ops/lib.rs:113 | HIGH | Accept as parameter |
-| 2 | Platform | installer.rs:39, ops.rs:211 | HIGH | DAG input port |
-| 3 | Env vars (auth) | executor.rs:81,97 | HIGH | Resolve before executor |
+| 1 | ~~FilesystemHandle~~ | ~~gist-ops/lib.rs:113~~ | ~~HIGH~~ | ✅ Accept as parameter |
+| 2 | ~~Platform~~ | ~~installer.rs:39, ops.rs:211~~ | ~~HIGH~~ | ✅ DAG input port |
+| 3 | ~~Env vars (auth)~~ | ~~executor.rs:81,97~~ | ~~HIGH~~ | ✅ Resolve before executor |
 | 4 | Env vars (codegen) | cli_gen.rs:724,748,767 | MEDIUM | Accept env dict param |
-| 5 | SystemTime | gist-ops/lib.rs:145 | HIGH | Accept as parameter |
+| 5 | ~~SystemTime~~ | ~~gist-ops/lib.rs:145~~ | ~~HIGH~~ | ✅ Accept as parameter |
 | 6 | Env vars (CI detect) | provider.rs:79-99 | LOW | Already at boundary |
 | 7 | which command | cli.rs:260-281 | MEDIUM | Trait-based resolver |
 
 ## Tasks
 
-- [ ] Item 1: Refactor `sanitize_branch_for_filename` to accept `&FilesystemHandle`
-- [ ] Item 2: Add `platform` input port to GenerateScripts DAG node
-- [ ] Item 3: Resolve `AuthMethod::EnvVar` to `AuthMethod::Bearer` at DAG boundary
+- [x] Item 1: Refactor `sanitize_branch_for_filename` to accept `&FilesystemHandle`
+- [x] Item 2: Add `platform` input port to GenerateScripts DAG node
+- [x] Item 3: Resolve `AuthMethod::EnvVar` to `AuthMethod::Bearer` at DAG boundary
 - [ ] Item 4: Generate CI runner functions that accept env dict parameter
-- [ ] Item 5: Add `SystemTime` parameter to `generate_gist_filename`
+- [x] Item 5: Add `SystemTime` parameter to `generate_gist_filename`
 - [ ] Item 7: Abstract tool path resolution behind a trait
 
 ## Notes

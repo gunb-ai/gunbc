@@ -337,7 +337,7 @@ This doesn't need to be solved all at once. Incremental steps:
 - [x] `sanitize_branch_for_filename(&FilesystemHandle, &str) → String`
 - [x] `generate_gist_filename(&FilesystemHandle, &str, SystemTime) → String`
 - [x] `Installer::for_platform(Platform)` everywhere (drop `::new()`)
-- [ ] Resolve `AuthMethod::EnvVar` before executor
+- [x] Resolve `AuthMethod::EnvVar` before executor
 
 These are pure refactors — change function signatures, thread the
 values from callers. No new DAG infrastructure needed.
