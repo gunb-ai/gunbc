@@ -345,55 +345,27 @@ pub fn non_empty_file_path_list() -> Dag<TypeOp> {
 // Type DAG Utilities
 // =============================================================================
 
+// Query functions delegate to contract module (single source of truth).
+
 /// Get the output cardinality of a type DAG.
 ///
-/// This inspects the type DAG structure to determine cardinality:
-/// - Optional<T> → ZeroOrOne
-/// - List<T> / Set<T> → ZeroOrMore
-/// - NonEmptyList<T> / NonEmptySet<T> → OneOrMore
-/// - Everything else → One
+/// Delegates to [`crate::contract::cardinality`].
 pub fn infer_cardinality(type_dag: &Dag<TypeOp>) -> Cardinality {
-    // Look for wrapper nodes to determine cardinality
-    for node in &type_dag.nodes {
-        if let crate::node::NodeBody::Opaque(TypeOp::Wrap(kind)) = &node.body {
-            return match kind {
-                WrapperKind::Optional => Cardinality::ZERO_OR_ONE,
-                WrapperKind::List | WrapperKind::Set => Cardinality::ZERO_OR_MORE,
-                WrapperKind::NonEmptyList | WrapperKind::NonEmptySet => Cardinality::ONE_OR_MORE,
-            };
-        }
-    }
-
-    // Default to One (scalar)
-    Cardinality::ONE
+    crate::contract::cardinality(type_dag)
 }
 
 /// Get the base type name from a type DAG.
+///
+/// Delegates to [`crate::contract::base_type`].
 pub fn base_type_name(type_dag: &Dag<TypeOp>) -> Option<String> {
-    // Find the first Identity node and get its output type
-    for node in &type_dag.nodes {
-        if let crate::node::NodeBody::Opaque(TypeOp::Identity) = &node.body {
-            if let Some(output) = node.outputs.first() {
-                return Some(output.type_id.0.clone());
-            }
-        }
-    }
-    None
+    crate::contract::base_type(type_dag)
 }
 
 /// Get all predicates from a type DAG.
+///
+/// Delegates to [`crate::contract::predicates`].
 pub fn predicates(type_dag: &Dag<TypeOp>) -> Vec<Predicate> {
-    type_dag
-        .nodes
-        .iter()
-        .filter_map(|n| {
-            if let crate::node::NodeBody::Opaque(TypeOp::Validate(pred)) = &n.body {
-                Some(pred.clone())
-            } else {
-                None
-            }
-        })
-        .collect()
+    crate::contract::predicates(type_dag)
 }
 
 #[cfg(test)]

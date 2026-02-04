@@ -86,7 +86,7 @@ impl fmt::Display for SecretString {
 /// `Set` provides unordered, unique-element collection semantics distinct
 /// from `List`. Set algebra (union, intersection, difference) is defined
 /// as methods on `Value` and as `SetOp` in the collection primitives.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub enum Value {
     /// Unit value (no data)
     #[default]
@@ -440,6 +440,30 @@ impl Value {
         match self {
             Value::Secret(s) => Some(s),
             _ => None,
+        }
+    }
+}
+
+/// Manual PartialEq: all variants use derived equality except Set,
+/// which uses order-independent comparison (set semantics).
+impl PartialEq for Value {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Value::Unit, Value::Unit) => true,
+            (Value::Bool(a), Value::Bool(b)) => a == b,
+            (Value::Str(a), Value::Str(b)) => a == b,
+            (Value::Int(a), Value::Int(b)) => a == b,
+            (Value::List(a), Value::List(b)) => a == b,
+            (Value::Set(a), Value::Set(b)) => {
+                a.len() == b.len() && a.iter().all(|v| b.contains(v))
+            }
+            (Value::Map(a), Value::Map(b)) => a == b,
+            (Value::Json(a), Value::Json(b)) => a == b,
+            (Value::Request(a), Value::Request(b)) => a == b,
+            (Value::Response(a), Value::Response(b)) => a == b,
+            (Value::Secret(a), Value::Secret(b)) => a == b,
+            (Value::Skipped, Value::Skipped) => true,
+            _ => false,
         }
     }
 }

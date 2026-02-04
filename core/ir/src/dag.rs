@@ -365,28 +365,9 @@ impl Guard {
     /// Evaluate the guard against an actual value.
     pub(crate) fn evaluate(&self, actual: &Value) -> bool {
         match self {
-            Guard::Eq(expected) => values_equal(actual, expected),
-            Guard::NotEq(expected) => !values_equal(actual, expected),
+            Guard::Eq(expected) => actual == expected,
+            Guard::NotEq(expected) => actual != expected,
         }
-    }
-}
-
-/// Compare two values for equality (structural).
-fn values_equal(a: &Value, b: &Value) -> bool {
-    match (a, b) {
-        (Value::Unit, Value::Unit) => true,
-        (Value::Bool(a), Value::Bool(b)) => a == b,
-        (Value::Str(a), Value::Str(b)) => a == b,
-        (Value::Int(a), Value::Int(b)) => a == b,
-        (Value::List(a), Value::List(b)) => a == b,
-        (Value::Set(a), Value::Set(b)) => {
-            // Set equality is order-independent
-            a.len() == b.len() && a.iter().all(|v| b.contains(v))
-        }
-        (Value::Map(a), Value::Map(b)) => a == b,
-        (Value::Json(a), Value::Json(b)) => a == b,
-        (Value::Skipped, Value::Skipped) => true,
-        _ => false,
     }
 }
 

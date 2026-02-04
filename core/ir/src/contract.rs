@@ -35,8 +35,8 @@ use crate::value::Value;
 ///
 /// Cardinality is determined by the wrapper kind:
 /// - `Optional<T>` → `ZeroOrOne`
-/// - `List<T>` → `ZeroOrMore`
-/// - `NonEmptyList<T>` → `OneOrMore`
+/// - `List<T>` / `Set<T>` → `ZeroOrMore`
+/// - `NonEmptyList<T>` / `NonEmptySet<T>` → `OneOrMore`
 /// - Everything else → `One`
 pub fn cardinality(type_dag: &Dag<TypeOp>) -> Cardinality {
     // Look for wrapper nodes to determine cardinality
@@ -253,7 +253,7 @@ pub fn has_predicates(type_dag: &Dag<TypeOp>) -> bool {
     })
 }
 
-/// Check if a type is a container type (Optional, List, NonEmptyList).
+/// Check if a type is a container type (Optional, List, NonEmptyList, Set, NonEmptySet).
 pub fn is_container(type_dag: &Dag<TypeOp>) -> bool {
     type_dag.nodes.iter().any(|n| {
         matches!(&n.body, NodeBody::Opaque(TypeOp::Wrap(_)))

@@ -353,6 +353,7 @@ impl InputConstraint {
             InputConstraint::NonEmpty => match value {
                 Value::Str(s) if s.is_empty() => Err("expected non-empty string".into()),
                 Value::List(v) if v.is_empty() => Err("expected non-empty list".into()),
+                Value::Set(v) if v.is_empty() => Err("expected non-empty set".into()),
                 _ => Ok(()),
             },
             InputConstraint::OneOf(values) => {
@@ -384,17 +385,10 @@ impl InputConstraint {
 }
 
 /// Check if two values match (for OneOf constraint).
+///
+/// Uses Value's PartialEq, which does order-independent comparison for Sets.
 fn values_match(expected: &Value, actual: &Value) -> bool {
-    match (expected, actual) {
-        (Value::Unit, Value::Unit) => true,
-        (Value::Bool(a), Value::Bool(b)) => a == b,
-        (Value::Str(a), Value::Str(b)) => a == b,
-        (Value::Int(a), Value::Int(b)) => a == b,
-        (Value::Set(a), Value::Set(b)) => {
-            a.len() == b.len() && a.iter().all(|v| b.contains(v))
-        }
-        _ => false,
-    }
+    expected == actual
 }
 
 // ============================================================================
@@ -784,6 +778,8 @@ impl OutputMatcher {
                 Value::Str(_) => Err("expected non-empty string".into()),
                 Value::List(v) if !v.is_empty() => Ok(()),
                 Value::List(_) => Err("expected non-empty list".into()),
+                Value::Set(v) if !v.is_empty() => Ok(()),
+                Value::Set(_) => Err("expected non-empty set".into()),
                 _ => Ok(()), // Other types considered non-empty
             },
             OutputMatcher::Satisfies { description, predicate } => {
