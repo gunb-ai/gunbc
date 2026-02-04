@@ -24,9 +24,12 @@ pub mod graph;
 
 pub mod graph_mock;
 
-use gunbc_exec::{ExecError, Executable};
+use gunbc_exec::{
+    optional_str, require_response, require_str, ExecError, Executable, OutputMap,
+    TransportResponseExt,
+};
 use gunbc_ir::transport::llm::{self, ChatMessage, ChatRequest, MessageContent, Role};
-use gunbc_ir::transport::{TransportRequest, TransportResponse};
+use gunbc_ir::transport::TransportRequest;
 use gunbc_ir::Value;
 use std::collections::HashMap;
 
@@ -110,22 +113,14 @@ impl Executable for LlmOps {
 fn execute_prepare_chat_request(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    let provider_id = inputs
-        .get("provider")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| ExecError::new("missing or invalid 'provider' input"))?
-        .to_string();
-
-    let model = inputs
-        .get("model")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| ExecError::new("missing or invalid 'model' input"))?;
+    let provider_id = require_str(&inputs, "provider")?.to_string();
+    let model = require_str(&inputs, "model")?;
 
     // Build messages list
     let mut messages = Vec::new();
 
     // Optional system prompt (convenience: added as first system message)
-    if let Some(system_prompt) = inputs.get("system_prompt").and_then(|v| v.as_str()) {
+    if let Some(system_prompt) = optional_str(&inputs, "system_prompt") {
         if !system_prompt.is_empty() {
             messages.push(ChatMessage::system(system_prompt));
         }
@@ -161,13 +156,10 @@ fn execute_prepare_chat_request(
     let rest_request = llm::build_chat_request(&provider_id, &chat)
         .map_err(ExecError::new)?;
 
-    let mut out = HashMap::new();
-    out.insert(
-        "request".to_string(),
-        Value::Request(TransportRequest::Rest(rest_request)),
-    );
-    out.insert("provider".to_string(), Value::Str(provider_id));
-    Ok(out)
+    OutputMap::new()
+        .request("request", TransportRequest::Rest(rest_request))
+        .str("provider", provider_id)
+        .ok()
 }
 
 /// Parse a provider-specific REST response into structured chat output.
@@ -176,53 +168,29 @@ fn execute_parse_chat_response(
 ) -> Result<HashMap<String, Value>, ExecError> {
     // Handle skipped response (upstream transport was skipped)
     if matches!(inputs.get("response"), Some(Value::Skipped)) {
-        let mut out = HashMap::new();
-        out.insert("content".to_string(), Value::Skipped);
-        out.insert("model".to_string(), Value::Skipped);
-        out.insert("finish_reason".to_string(), Value::Skipped);
-        out.insert("input_tokens".to_string(), Value::Skipped);
-        out.insert("output_tokens".to_string(), Value::Skipped);
-        return Ok(out);
+        return OutputMap::new()
+            .value("content", Value::Skipped)
+            .value("model", Value::Skipped)
+            .value("finish_reason", Value::Skipped)
+            .value("input_tokens", Value::Skipped)
+            .value("output_tokens", Value::Skipped)
+            .ok();
     }
 
-    let provider_id = inputs
-        .get("provider")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| ExecError::new("missing or invalid 'provider' input"))?;
-
-    let response = inputs
-        .get("response")
-        .and_then(|v| v.as_response())
-        .ok_or_else(|| ExecError::new("missing or invalid 'response' input"))?;
-
-    let rest_response = match response {
-        TransportResponse::Rest(r) => r,
-        _ => {
-            return Err(ExecError::new(
-                "expected REST response from LLM API, got different transport type",
-            ))
-        }
-    };
+    let provider_id = require_str(&inputs, "provider")?;
+    let response = require_response(&inputs, "response")?;
+    let rest_response = response.require_rest()?;
 
     let chat_response = llm::parse_chat_response(provider_id, rest_response)
         .map_err(ExecError::new)?;
 
-    let mut out = HashMap::new();
-    out.insert("content".to_string(), Value::Str(chat_response.content));
-    out.insert("model".to_string(), Value::Str(chat_response.model));
-    out.insert(
-        "finish_reason".to_string(),
-        Value::Str(format!("{:?}", chat_response.finish_reason)),
-    );
-    out.insert(
-        "input_tokens".to_string(),
-        Value::Int(chat_response.usage.input_tokens as i64),
-    );
-    out.insert(
-        "output_tokens".to_string(),
-        Value::Int(chat_response.usage.output_tokens as i64),
-    );
-    Ok(out)
+    OutputMap::new()
+        .str("content", chat_response.content)
+        .str("model", chat_response.model)
+        .str("finish_reason", format!("{:?}", chat_response.finish_reason))
+        .int("input_tokens", chat_response.usage.input_tokens as i64)
+        .int("output_tokens", chat_response.usage.output_tokens as i64)
+        .ok()
 }
 
 /// Build a simple request from content + question.
@@ -231,26 +199,10 @@ fn execute_parse_chat_response(
 fn execute_prepare_simple_request(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    let provider_id = inputs
-        .get("provider")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| ExecError::new("missing or invalid 'provider' input"))?
-        .to_string();
-
-    let model = inputs
-        .get("model")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| ExecError::new("missing or invalid 'model' input"))?;
-
-    let content = inputs
-        .get("content")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| ExecError::new("missing or invalid 'content' input"))?;
-
-    let question = inputs
-        .get("question")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| ExecError::new("missing or invalid 'question' input"))?;
+    let provider_id = require_str(&inputs, "provider")?.to_string();
+    let model = require_str(&inputs, "model")?;
+    let content = require_str(&inputs, "content")?;
+    let question = require_str(&inputs, "question")?;
 
     // Build the user message combining content and question
     let user_message = format!(
@@ -261,7 +213,7 @@ fn execute_prepare_simple_request(
     let mut messages = Vec::new();
 
     // Optional system prompt
-    if let Some(system_prompt) = inputs.get("system_prompt").and_then(|v| v.as_str()) {
+    if let Some(system_prompt) = optional_str(&inputs, "system_prompt") {
         if !system_prompt.is_empty() {
             messages.push(ChatMessage::system(system_prompt));
         }
@@ -276,13 +228,10 @@ fn execute_prepare_simple_request(
     let rest_request =
         llm::build_chat_request(&provider_id, &chat).map_err(ExecError::new)?;
 
-    let mut out = HashMap::new();
-    out.insert(
-        "request".to_string(),
-        Value::Request(TransportRequest::Rest(rest_request)),
-    );
-    out.insert("provider".to_string(), Value::Str(provider_id));
-    Ok(out)
+    OutputMap::new()
+        .request("request", TransportRequest::Rest(rest_request))
+        .str("provider", provider_id)
+        .ok()
 }
 
 /// Parse a simple response: just extract the answer string.
@@ -291,36 +240,21 @@ fn execute_parse_simple_response(
 ) -> Result<HashMap<String, Value>, ExecError> {
     // Handle skipped response (upstream transport was skipped)
     if matches!(inputs.get("response"), Some(Value::Skipped)) {
-        let mut out = HashMap::new();
-        out.insert("answer".to_string(), Value::Skipped);
-        return Ok(out);
+        return OutputMap::new()
+            .value("answer", Value::Skipped)
+            .ok();
     }
 
-    let provider_id = inputs
-        .get("provider")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| ExecError::new("missing or invalid 'provider' input"))?;
-
-    let response = inputs
-        .get("response")
-        .and_then(|v| v.as_response())
-        .ok_or_else(|| ExecError::new("missing or invalid 'response' input"))?;
-
-    let rest_response = match response {
-        TransportResponse::Rest(r) => r,
-        _ => {
-            return Err(ExecError::new(
-                "expected REST response from LLM API, got different transport type",
-            ))
-        }
-    };
+    let provider_id = require_str(&inputs, "provider")?;
+    let response = require_response(&inputs, "response")?;
+    let rest_response = response.require_rest()?;
 
     let chat_response =
         llm::parse_chat_response(provider_id, rest_response).map_err(ExecError::new)?;
 
-    let mut out = HashMap::new();
-    out.insert("answer".to_string(), Value::Str(chat_response.content));
-    Ok(out)
+    OutputMap::new()
+        .str("answer", chat_response.content)
+        .ok()
 }
 
 /// Parse chat messages from a JSON value.
@@ -451,6 +385,7 @@ pub fn code_generation_request(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gunbc_ir::transport::TransportResponse;
 
     #[test]
     fn test_prepare_chat_request_openai() {

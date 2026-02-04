@@ -15,7 +15,7 @@
 //! This structural enforcement ensures all I/O goes through visible DAG nodes.
 
 use crate::executor::execute_transport;
-use gunbc_exec::{ExecError, Executable};
+use gunbc_exec::{optional_bool, require_request, ExecError, Executable, OutputMap};
 use gunbc_ir::transport::{TransportRequest, TransportResponse};
 use gunbc_ir::Value;
 use std::collections::HashMap;
@@ -31,48 +31,42 @@ impl Executable for TransportOps {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         match self {
             TransportOps::Execute => {
-                let skip = inputs
-                    .get("skip")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
+                let skip = optional_bool(&inputs, "skip").unwrap_or(false);
 
                 if skip {
-                    let mut out = HashMap::new();
-                    out.insert("skip".to_string(), Value::Bool(true));
+                    let mut out = OutputMap::new().bool("skip", true);
                     if let Some(reason) = inputs.get("skip_reason") {
-                        out.insert("skip_reason".to_string(), reason.clone());
+                        out = out.value("skip_reason", reason.clone());
                     }
-                    return Ok(out);
+                    return out.ok();
                 }
 
-                let request = inputs
-                    .get("request")
-                    .and_then(|v| v.as_request())
-                    .ok_or_else(|| ExecError::new("missing or invalid 'request' input"))?;
+                let request = require_request(&inputs, "request")?;
 
                 let response = execute_request(&request)?;
 
-                let mut out = HashMap::new();
-                
+                let mut out = OutputMap::new();
+
                 // Extract extra info for file responses
                 if let TransportResponse::File(file_resp) = &response {
-                    out.insert("written_path".to_string(), Value::Str(file_resp.path.clone()));
+                    out = out.str("written_path", file_resp.path.clone());
                     if let Some(content) = &file_resp.content {
-                        out.insert("content".to_string(), Value::Str(content.clone()));
+                        out = out.str("content", content.clone());
                     }
                 }
 
                 // Extract extra info for shell responses
                 if let TransportResponse::Shell(shell_resp) = &response {
-                    out.insert("stdout".to_string(), Value::Str(shell_resp.stdout.clone()));
-                    out.insert("stderr".to_string(), Value::Str(shell_resp.stderr.clone()));
-                    out.insert("exit_code".to_string(), Value::Int(shell_resp.exit_code as i64));
-                    out.insert("success".to_string(), Value::Bool(shell_resp.success()));
+                    out = out
+                        .str("stdout", shell_resp.stdout.clone())
+                        .str("stderr", shell_resp.stderr.clone())
+                        .int("exit_code", shell_resp.exit_code as i64)
+                        .bool("success", shell_resp.success());
                 }
-                
-                out.insert("response".to_string(), Value::Response(response));
-                out.insert("skip".to_string(), Value::Bool(false));
-                Ok(out)
+
+                out.response("response", response)
+                    .bool("skip", false)
+                    .ok()
             }
         }
     }

@@ -7,7 +7,7 @@
 //!
 //! All operations are PURE (no I/O). I/O happens through TransportOps::Execute nodes.
 
-use gunbc_exec::{ExecError, Executable};
+use gunbc_exec::{require_json, require_response, ExecError, Executable, OutputMap};
 use gunbc_ir::resource::{AccessMode, ResourceId};
 use gunbc_ir::transport::{
     FileOp, FileRequest, ShellRequest, TransportRequest, TransportResponse,
@@ -324,34 +324,30 @@ impl Executable for BlobOps {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         match self {
             BlobOps::PrepareFetch => {
-                let source_json = inputs
-                    .get("source")
-                    .and_then(|v| v.as_json())
-                    .ok_or_else(|| ExecError::new("missing or invalid 'source' input"))?;
+                let source_json = require_json(&inputs, "source")?;
 
                 let source: BlobSource = serde_json::from_value(source_json.clone())
                     .map_err(|e| ExecError::new(format!("invalid source: {}", e)))?;
-
-                let mut out = HashMap::new();
 
                 match &source.source {
                     // Inline: no I/O needed, return handle directly
                     SourceSpec::Inline { data, .. } => {
                         let handle = BlobHandle::acquire(source.clone(), data.clone());
-                        out.insert("handle".to_string(), handle.encode());
-                        out.insert("skip_fetch".to_string(), Value::Bool(true));
+                        OutputMap::new()
+                            .value("handle", handle.encode())
+                            .bool("skip_fetch", true)
+                            .ok()
                     }
 
                     // File: prepare file read request
                     SourceSpec::File { path } => {
                         let request =
                             TransportRequest::File(FileRequest::read(path.to_string_lossy()));
-                        out.insert("request".to_string(), Value::Request(request));
-                        out.insert("skip_fetch".to_string(), Value::Bool(false));
-                        out.insert(
-                            "source".to_string(),
-                            Value::Json(serde_json::to_value(&source).unwrap()),
-                        );
+                        OutputMap::new()
+                            .request("request", request)
+                            .bool("skip_fetch", false)
+                            .json("source", serde_json::to_value(&source).unwrap())
+                            .ok()
                     }
 
                     // Git blob: prepare git show command
@@ -363,36 +359,27 @@ impl Executable for BlobOps {
                             env: HashMap::new(),
                             stdin: None,
                         });
-                        out.insert("request".to_string(), Value::Request(request));
-                        out.insert("skip_fetch".to_string(), Value::Bool(false));
-                        out.insert(
-                            "source".to_string(),
-                            Value::Json(serde_json::to_value(&source).unwrap()),
-                        );
+                        OutputMap::new()
+                            .request("request", request)
+                            .bool("skip_fetch", false)
+                            .json("source", serde_json::to_value(&source).unwrap())
+                            .ok()
                     }
 
                     // S3/HTTP: not yet implemented
                     SourceSpec::S3 { .. } | SourceSpec::Http { .. } => {
-                        return Err(ExecError::new("S3/HTTP sources not yet implemented"));
+                        Err(ExecError::new("S3/HTTP sources not yet implemented"))
                     }
                 }
-
-                Ok(out)
             }
 
             BlobOps::ParseFetch => {
-                let source_json = inputs
-                    .get("source")
-                    .and_then(|v| v.as_json())
-                    .ok_or_else(|| ExecError::new("missing or invalid 'source' input"))?;
+                let source_json = require_json(&inputs, "source")?;
 
                 let source: BlobSource = serde_json::from_value(source_json.clone())
                     .map_err(|e| ExecError::new(format!("invalid source: {}", e)))?;
 
-                let response = inputs
-                    .get("response")
-                    .and_then(|v| v.as_response())
-                    .ok_or_else(|| ExecError::new("missing or invalid 'response' input"))?;
+                let response = require_response(&inputs, "response")?;
 
                 let data = match response {
                     TransportResponse::File(file_resp)
@@ -421,13 +408,10 @@ impl Executable for BlobOps {
 
                 let handle = BlobHandle::acquire(source, data);
 
-                let mut out = HashMap::new();
-                out.insert("handle".to_string(), handle.encode());
-                out.insert(
-                    "meta".to_string(),
-                    Value::Json(serde_json::to_value(handle.meta()).unwrap()),
-                );
-                Ok(out)
+                OutputMap::new()
+                    .value("handle", handle.encode())
+                    .json("meta", serde_json::to_value(handle.meta()).unwrap())
+                    .ok()
             }
         }
     }

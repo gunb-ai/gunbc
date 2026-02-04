@@ -3,9 +3,12 @@
 //! All I/O happens through explicit `TransportOps::Execute` nodes in the DAG.
 //! The ops here are PURE (no I/O) - they prepare requests and parse responses.
 
-use gunbc_exec::{ExecError, Executable};
+use gunbc_exec::{
+    optional_map_str_str, optional_str, optional_str_list, require_json, require_response,
+    ExecError, Executable, OutputMap, TransportResponseExt,
+};
 use gunbc_ir::language::traits::comment::generated_header;
-use gunbc_ir::transport::{FileRequest, TransportRequest, TransportResponse};
+use gunbc_ir::transport::{FileRequest, TransportRequest};
 use gunbc_ir::Value;
 use gunbc_primitives::data::{ExtractOp, ParseOp};
 use std::collections::{BTreeMap, HashMap};
@@ -52,17 +55,16 @@ impl Executable for Buck2Op {
 fn execute_prepare_parse_cargo_toml(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    let path = match inputs.get("cargo_toml_path") {
-        Some(Value::Str(s)) => s.clone(),
-        _ => "Cargo.toml".to_string(),
-    };
+    let path = optional_str(&inputs, "cargo_toml_path")
+        .unwrap_or("Cargo.toml")
+        .to_string();
 
     let request = TransportRequest::File(FileRequest::read(&path));
 
-    let mut out = HashMap::new();
-    out.insert("request".to_string(), Value::Request(request));
-    out.insert("cargo_toml_path".to_string(), Value::Str(path));
-    Ok(out)
+    OutputMap::new()
+        .request("request", request)
+        .str("cargo_toml_path", path)
+        .ok()
 }
 
 // ============================================================================
@@ -73,24 +75,14 @@ fn execute_prepare_parse_cargo_toml(
 fn execute_parse_cargo_toml_result(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    let response = inputs
-        .get("response")
-        .and_then(|v| v.as_response())
-        .ok_or_else(|| ExecError::new("missing or invalid 'response' input"))?;
+    let response = require_response(&inputs, "response")?;
 
-    let path = inputs
-        .get("cargo_toml_path")
-        .and_then(|v| v.as_str())
-        .unwrap_or("Cargo.toml");
+    let path = optional_str(&inputs, "cargo_toml_path").unwrap_or("Cargo.toml");
 
-    let content = match response {
-        TransportResponse::File(file_resp) => {
-            file_resp.content.clone().ok_or_else(|| {
-                ExecError::new(format!("file not found or empty: {}", path))
-            })?
-        }
-        _ => return Err(ExecError::new("unexpected response type")),
-    };
+    let file_resp = response.require_file()?;
+    let content = file_resp.content.clone().ok_or_else(|| {
+        ExecError::new(format!("file not found or empty: {}", path))
+    })?;
 
     // Use ParseOp::Toml primitive
     let mut parse_inputs = HashMap::new();
@@ -102,9 +94,7 @@ fn execute_parse_cargo_toml_result(
         .cloned()
         .ok_or_else(|| ExecError::new("TOML parse failed"))?;
 
-    let mut out = HashMap::new();
-    out.insert("cargo_toml".to_string(), json);
-    Ok(out)
+    OutputMap::new().value("cargo_toml", json).ok()
 }
 
 /// Extract dependencies using primitives.
@@ -114,10 +104,7 @@ fn execute_parse_cargo_toml_result(
 /// 2. ExtractOp for "workspace.dependencies"
 /// 3. ExtractOp for "dependencies"
 fn execute_extract_deps(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-    let cargo_toml = match inputs.get("cargo_toml") {
-        Some(Value::Json(j)) => j.clone(),
-        _ => return Err(ExecError::new("missing or invalid 'cargo_toml' input")),
-    };
+    let cargo_toml = require_json(&inputs, "cargo_toml")?.clone();
 
     let mut deps: BTreeMap<String, String> = BTreeMap::new();
 
@@ -168,10 +155,10 @@ fn execute_extract_deps(inputs: HashMap<String, Value>) -> Result<HashMap<String
         }
     }
 
-    let mut out = HashMap::new();
-    out.insert("members".to_string(), Value::str_list(members));
-    out.insert("deps".to_string(), Value::str_map(deps));
-    Ok(out)
+    OutputMap::new()
+        .str_list("members", members)
+        .map_str_str("deps", deps)
+        .ok()
 }
 
 /// Helper to extract version from dependency spec.
@@ -209,13 +196,9 @@ fn is_binary_crate(_member_path: &Path) -> bool {
 fn execute_generate_targets(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    let members = inputs.get("members")
-        .and_then(|v| v.as_str_list())
-        .unwrap_or_default();
+    let members = optional_str_list(&inputs, "members").unwrap_or_default();
 
-    let _deps = inputs.get("deps")
-        .and_then(|v| v.as_map_str_str())
-        .unwrap_or_default();
+    let _deps = optional_map_str_str(&inputs, "deps").unwrap_or_default();
 
     let mut buck_content = String::new();
 
@@ -277,9 +260,7 @@ fn execute_generate_targets(
         );
     }
 
-    let mut out = HashMap::new();
-    out.insert("buck_content".to_string(), Value::Str(buck_content));
-    Ok(out)
+    OutputMap::new().str("buck_content", buck_content).ok()
 }
 
 // Mockable implementation for test generation
@@ -289,29 +270,29 @@ impl Mockable for Buck2Op {
     fn mock_outputs(&self) -> HashMap<String, Value> {
         match self {
             Buck2Op::PrepareParseCargoToml => {
-                let mut out = HashMap::new();
-                out.insert("request".to_string(), Value::Request(TransportRequest::File(FileRequest::read("Cargo.toml"))));
-                out.insert("cargo_toml_path".to_string(), Value::Str("Cargo.toml".to_string()));
-                out
+                OutputMap::new()
+                    .request("request", TransportRequest::File(FileRequest::read("Cargo.toml")))
+                    .str("cargo_toml_path", "Cargo.toml")
+                    .build()
             }
             Buck2Op::ParseCargoTomlResult => {
-                let mut out = HashMap::new();
-                out.insert("cargo_toml".to_string(), Value::Json(serde_json::json!({
-                    "package": { "name": "test-crate" },
-                    "workspace": { "members": ["crates/foo"] }
-                })));
-                out
+                OutputMap::new()
+                    .json("cargo_toml", serde_json::json!({
+                        "package": { "name": "test-crate" },
+                        "workspace": { "members": ["crates/foo"] }
+                    }))
+                    .build()
             }
             Buck2Op::ExtractDeps => {
-                let mut out = HashMap::new();
-                out.insert("members".to_string(), Value::str_list(vec!["foo".to_string()]));
-                out.insert("deps".to_string(), Value::Map(std::collections::BTreeMap::new()));
-                out
+                OutputMap::new()
+                    .str_list("members", vec!["foo".to_string()])
+                    .map_str_str("deps", BTreeMap::new())
+                    .build()
             }
             Buck2Op::GenerateBuckTargets => {
-                let mut out = HashMap::new();
-                out.insert("buck_content".to_string(), Value::Str("# Mock BUCK content\nrust_library(name = \"foo\")".to_string()));
-                out
+                OutputMap::new()
+                    .str("buck_content", "# Mock BUCK content\nrust_library(name = \"foo\")")
+                    .build()
             }
         }
     }

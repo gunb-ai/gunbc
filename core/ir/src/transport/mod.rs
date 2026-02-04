@@ -202,6 +202,11 @@ impl ShellRequest {
         self.env.insert(key.into(), value.into());
         self
     }
+
+    /// Wrap this request in a [`TransportRequest::Shell`].
+    pub fn into_transport_request(self) -> TransportRequest {
+        TransportRequest::Shell(self)
+    }
 }
 
 impl ShellResponse {

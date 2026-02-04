@@ -34,7 +34,7 @@
 
 use crate::ci::env::EnvOp;
 use crate::ci::ops::CIOp;
-use gunbc_exec::{ExecError, Executable};
+use gunbc_exec::{ExecError, Executable, OutputMap, optional_bool};
 use gunbc_ir::transport::cli::{CliToolOp, ToolHandle};
 use gunbc_ir::{
     build::*, BuilderError, Cardinality, Dag, DagBuilder, Node, Value, WorkflowSignature,
@@ -86,17 +86,11 @@ impl Executable for CIGraphOp {
             CIGraphOp::Env(op) => op.execute(inputs),
             CIGraphOp::CliTool(op) => {
                 // Check if we should skip execution
-                let skip = inputs
-                    .get("skip")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
-                
-                let mut out = HashMap::new();
-                
+                let skip = optional_bool(&inputs, "skip").unwrap_or(false);
+
                 if skip {
                     // Pass through skip flag, don't run the tool
-                    out.insert("skip".to_string(), Value::Bool(true));
-                    return Ok(out);
+                    return OutputMap::new().bool("skip", true).ok();
                 }
                 
                 // Run the tool (prefer tool handle if provided)
@@ -115,7 +109,7 @@ impl Executable for CIGraphOp {
                 };
                 
                 // Copy tool outputs and add skip=false
-                out.extend(result);
+                let mut out = result;
                 out.insert("skip".to_string(), Value::Bool(false));
                 Ok(out)
             }
