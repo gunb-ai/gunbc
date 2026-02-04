@@ -36,6 +36,7 @@ pub mod lower;
 pub mod pattern_op;
 pub mod progress;
 pub mod render;
+pub mod terminal;
 pub mod topo;
 
 pub use ci_context::CiContext;
@@ -60,6 +61,7 @@ pub use progress::{
 pub use render::{
     Animation, AnimationMode, FrameLoop, FramePolicy, RenderMode, TerminalRenderer,
 };
+pub use terminal::{Shell, TerminalProfile};
 pub use topo::topo_sort;
 
 use gunbc_ir::Value;

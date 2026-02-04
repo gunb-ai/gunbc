@@ -1,15 +1,15 @@
 //! gunbc-bootstrap main entry point.
 //!
 //! Bootstrap tool for initializing gunbc projects.
-//! Supports progress display with `--progress` flag (default: auto-detect TTY).
+//! Progress display is automatic based on terminal capabilities.
 
 use gunbc_dag::build_bootstrap_graph;
 use gunbc_exec::{
     execute_with_mode, execute_with_progress_and_mode, BoundaryMocks, DagProgress, ExecutionMode,
-    FrameLoop, OutputSummary, ProgressObserver, TerminalRenderer,
+    FrameLoop, OutputSummary, ProgressObserver, TerminalProfile, TerminalRenderer,
 };
-use gunbc_ir::layout::{compute_layout, Viewport, ViewportUnit};
-use gunbc_ir::symbols::{Tier, STANDARD};
+use gunbc_ir::layout::compute_layout;
+use gunbc_ir::symbols::STANDARD;
 use gunbc_ir::transport::{ShellResponse, TransportResponse};
 use gunbc_ir::{detect_boundaries, NodeId, Value};
 use std::env;
@@ -23,14 +23,11 @@ fn main() {
 
     // Parse arguments
     let mut dry_run = false;
-    let mut progress_mode = ProgressMode::Auto;
 
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
             "-n" | "--dry-run" => dry_run = true,
-            "--progress" => progress_mode = ProgressMode::On,
-            "--no-progress" => progress_mode = ProgressMode::Off,
             "-h" | "--help" => {
                 print_help();
                 return;
@@ -39,6 +36,9 @@ fn main() {
         }
         i += 1;
     }
+
+    // Detect terminal environment
+    let profile = TerminalProfile::detect();
 
     // Build the graph
     let dag = match build_bootstrap_graph() {
@@ -102,20 +102,13 @@ fn main() {
         ExecutionMode::Real
     };
 
-    // Decide whether to use progress display
-    let use_progress = match progress_mode {
-        ProgressMode::On => true,
-        ProgressMode::Off => false,
-        ProgressMode::Auto => atty_check(),
-    };
-
     // Print header
     println!("bootstrap");
     println!("  mode: {}", if dry_run { "dry-run" } else { "real" });
     println!();
 
-    if use_progress {
-        run_with_progress(&dag, mode);
+    if profile.supports_progress {
+        run_with_progress(&dag, mode, &profile);
     } else {
         run_classic(&dag, mode);
     }
@@ -146,7 +139,11 @@ fn run_classic(dag: &gunbc_ir::Dag<gunbc_dag::BootstrapGraphOp>, mode: Execution
 }
 
 /// Progress-display execution: live DAG visualization with animated replay.
-fn run_with_progress(dag: &gunbc_ir::Dag<gunbc_dag::BootstrapGraphOp>, mode: ExecutionMode) {
+fn run_with_progress(
+    dag: &gunbc_ir::Dag<gunbc_dag::BootstrapGraphOp>,
+    mode: ExecutionMode,
+    profile: &TerminalProfile,
+) {
     // Lower the DAG to get flat topology for layout
     let flat = match gunbc_exec::lower(dag) {
         Ok(f) => f,
@@ -166,11 +163,8 @@ fn run_with_progress(dag: &gunbc_ir::Dag<gunbc_dag::BootstrapGraphOp>, mode: Exe
         .map(|n| (n.id.clone(), n.id.0.clone()))
         .collect();
 
-    // Build viewport from terminal size (fallback 80×24)
-    let vp = terminal_viewport();
-
-    // Compute layout
-    let layout = compute_layout(&topo_order, &flat.edges, &labels, &vp);
+    // Compute layout from profile viewport
+    let layout = compute_layout(&topo_order, &flat.edges, &labels, &profile.viewport);
 
     // Save levels before handing layout to renderer (for parallel animation)
     let levels = layout.levels.clone();
@@ -192,9 +186,9 @@ fn run_with_progress(dag: &gunbc_ir::Dag<gunbc_dag::BootstrapGraphOp>, mode: Exe
     let mut visual = DagProgress::new(snapshot.clone());
     visual.on_dag_start(&snapshot);
 
-    let is_tty = atty_check();
-    let mut renderer = TerminalRenderer::new(io::stdout(), &STANDARD, detect_tier(), layout);
-    renderer.set_tty(is_tty);
+    let mut renderer =
+        TerminalRenderer::new(io::stdout(), &STANDARD, profile.tier, layout);
+    renderer.set_tty(profile.is_tty);
 
     // Animation timing: minimum 1 second total, 2 frames per level (start + complete)
     // Execution already ran at full speed — this is purely visual replay.
@@ -267,50 +261,6 @@ fn run_with_progress(dag: &gunbc_ir::Dag<gunbc_dag::BootstrapGraphOp>, mode: Exe
     }
 }
 
-/// Detect whether stdout is a TTY.
-fn atty_check() -> bool {
-    // Simple heuristic: check if TERM is set (most TTYs set it)
-    env::var("TERM").is_ok()
-}
-
-/// Get terminal viewport dimensions.
-fn terminal_viewport() -> Viewport {
-    // Try to get terminal size from environment
-    let cols = env::var("COLUMNS")
-        .ok()
-        .and_then(|s| s.parse::<u16>().ok())
-        .unwrap_or(80);
-    let rows = env::var("LINES")
-        .ok()
-        .and_then(|s| s.parse::<u16>().ok())
-        .unwrap_or(24);
-
-    Viewport::new(cols, rows, ViewportUnit::Chars)
-}
-
-/// Detect the best symbol tier for the current terminal.
-fn detect_tier() -> Tier {
-    // Use Emoji if the terminal likely supports it, otherwise Unicode
-    // Simple heuristic: check for known modern terminals
-    if env::var("TERM_PROGRAM").is_ok() || env::var("WT_SESSION").is_ok() {
-        Tier::Emoji
-    } else if env::var("LANG")
-        .unwrap_or_default()
-        .contains("UTF-8")
-    {
-        Tier::Unicode
-    } else {
-        Tier::Ascii
-    }
-}
-
-#[derive(Clone, Copy)]
-enum ProgressMode {
-    Auto,
-    On,
-    Off,
-}
-
 fn print_value(port: &str, value: &Value) {
     match value {
         Value::Str(s) => {
@@ -343,4 +293,6 @@ fn print_help() {
     println!("OPTIONS:");
     println!("    -n, --dry-run        Don't perform actual I/O");
     println!("    -h, --help           Print this help");
+    println!();
+    println!("Progress display is automatic based on terminal capabilities.");
 }
