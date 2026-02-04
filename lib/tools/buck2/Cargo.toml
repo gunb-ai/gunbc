@@ -16,7 +16,3 @@ serde_json = "1.0"
 
 [dev-dependencies]
 gunbc-test = { path = "../../../core/test" }
-
-[[bin]]
-name = "gunbc-buck2"
-path = "../../../buck-out/gen/bin/buck2/main.rs"

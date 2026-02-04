@@ -47,12 +47,12 @@ path = "../../../buck-out/gen/bin/buck2/main.rs"  # doesn't exist
 
 ## Cleanup Plan
 
-### Phase 1: Remove broken binary targets
+### Phase 1: Remove broken binary targets ✓
 
-- [ ] Remove `[[bin]]` sections from `lib/tools/gist/Cargo.toml`
-- [ ] Remove `[[bin]]` sections from `lib/tools/deps/Cargo.toml`
-- [ ] Remove `[[bin]]` sections from `lib/tools/buck2/Cargo.toml`
-- [ ] Verify `cargo test` works without `--lib` flag
+- [x] Remove `[[bin]]` sections from `lib/tools/gist/Cargo.toml`
+- [x] Remove `[[bin]]` sections from `lib/tools/deps/Cargo.toml`
+- [x] Remove `[[bin]]` sections from `lib/tools/buck2/Cargo.toml`
+- [x] Verify `cargo test` works without `--lib` flag
 
 ### Phase 2: Decide on Buck2 crate
 
