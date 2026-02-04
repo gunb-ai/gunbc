@@ -904,10 +904,13 @@ This is fine; it's infrastructure code, not op code.
 - [ ] Add `propagate_skipped` helper (8 call sites across 3 files) — §12
 - [ ] Add `ExecError::context()` + `ResultExt` trait (27 call sites across 10 files) — §13
 - [ ] Add `ShellResponse::ok()` / `ShellResponse::failed()` constructors (39 sites, 16 files) — §14
+- [ ] Add `InputsExt` trait to replace free-function `require_*/optional_*` calls — shrinks import lists
+- [ ] Add `From<ShellRequest> for TransportRequest` (+ FileRequest etc) and make `OutputMap::request` accept `impl Into<TransportRequest>`
 
 ### Medium priority
 - [ ] Migrate remaining raw `HashMap::new()` output construction to `OutputMap` (9 sites, 5 files) — §15
 - [ ] Add `assert_boundaries` test helper to `core/test` (8 files) — §11
+- [ ] Collapse `default_mock_for_type` into `cardinality_case_mock_value` in testgen codegen — single type→mock mapping
 - [ ] Extract `hash_finding_id` to `lib/primitives` as `StableHashOp` — §1
 - [ ] Unify blob hash with review hash (both should use SHA256) — §1
 - [ ] Extract `FormatDiffArtifact` to `lib/primitives` as `FormatMapOp` — §1
