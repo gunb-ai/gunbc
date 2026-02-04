@@ -388,59 +388,177 @@ pub fn sanitize(input: &str, filesystems: &[&Filesystem], replacement: char) -> 
 }
 
 // ============================================================================
-// Filesystem Detection
+// Filesystem Handle — Capability-Based Access
 // ============================================================================
 
-/// Detect the default filesystem for the current platform at compile time.
+/// Access scope for filesystem operations.
 ///
-/// Returns the most common default filesystem for each supported platform:
-/// - Linux → ext4
-/// - macOS → APFS
-/// - Windows → NTFS
+/// Declares what the handle holder intends to do. Today this is a marker;
+/// future versions can enforce scope at the handle level.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Scope {
+    /// Read-only: can validate filenames but not prepare for writing.
+    Read,
+    /// Read-write: can validate, sanitize, and prepare filenames for writing.
+    Write,
+}
+
+/// A handle to one or more target filesystems.
 ///
-/// For filename constraint purposes, all major Linux filesystems (ext4, XFS,
-/// Btrfs, ZFS) share identical rules, so compile-time detection is sufficient.
-/// If finer-grained runtime detection is needed (e.g., distinguishing NTFS
-/// from ext4 on a dual-boot), a transport operation could probe `statfs`.
-pub fn detect_local_filesystem() -> &'static Filesystem {
-    #[cfg(target_os = "macos")]
-    {
-        return &APFS;
-    }
+/// This is the **only** way to perform filesystem-aware filename operations.
+/// You cannot construct this directly — it only comes from acquisition methods
+/// that establish the target filesystem(s) and access scope.
+///
+/// Analogous to [`ToolHandle`] in `core/ir/src/transport/cli.rs`:
+/// - Private constructor prevents bypass
+/// - Acquisition establishes capability
+/// - All operations go through the handle
+///
+/// # Acquisition
+///
+/// Three ways to acquire a handle:
+///
+/// ```
+/// use gunbc_primitives::filename::{FilesystemHandle, Scope, EXT4, NTFS, APFS};
+///
+/// // 1. Cross-platform — safest for shared/uploaded files
+/// let fs = FilesystemHandle::cross_platform(Scope::Write);
+///
+/// // 2. Single filesystem — when you know the target
+/// let fs = FilesystemHandle::for_filesystem(&EXT4, Scope::Write);
+///
+/// // 3. Explicit set — custom target combination
+/// let fs = FilesystemHandle::for_targets(&[&EXT4, &NTFS, &APFS], Scope::Write);
+/// ```
+///
+/// # Operations
+///
+/// ```
+/// use gunbc_primitives::filename::{FilesystemHandle, Scope, WritePolicy};
+///
+/// let fs = FilesystemHandle::cross_platform(Scope::Write);
+///
+/// // Validate — is this name safe?
+/// let violations = fs.validate_filename("claude/branch");
+/// assert!(!violations.is_empty());
+///
+/// // Sanitize — make it safe
+/// let safe = fs.sanitize_filename("claude/branch");
+/// assert_eq!(safe, "claude-branch");
+///
+/// // Gateway — validate or sanitize depending on policy
+/// let outcome = fs.prepare_filename("claude/branch", WritePolicy::Sanitize);
+/// assert_eq!(outcome.filename(), Some("claude-branch"));
+/// ```
+pub struct FilesystemHandle {
+    targets: Vec<&'static Filesystem>,
+    scope: Scope,
+    replacement: char,
+    /// Prevents external construction — acquire through the API.
+    _acquired: std::marker::PhantomData<()>,
+}
 
-    #[cfg(target_os = "windows")]
-    {
-        return &NTFS;
-    }
-
-    // Linux and all other platforms: ext4 constraints (most permissive)
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    {
-        &EXT4
+impl std::fmt::Debug for FilesystemHandle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let ids: Vec<&str> = self.targets.iter().map(|fs| fs.id).collect();
+        f.debug_struct("FilesystemHandle")
+            .field("targets", &ids)
+            .field("scope", &self.scope)
+            .field("replacement", &self.replacement)
+            .finish()
     }
 }
 
-/// Get the default filesystem set for the current local platform.
-///
-/// Returns a single-element slice containing [`detect_local_filesystem()`].
-/// Use [`CROSS_PLATFORM`] instead when targeting multiple platforms.
-pub fn local_filesystems() -> &'static [&'static Filesystem] {
-    #[cfg(target_os = "macos")]
-    {
-        static LOCAL: &[&Filesystem] = &[&APFS];
-        return LOCAL;
+impl FilesystemHandle {
+    // ================================================================
+    // Acquisition — the only ways to create a handle
+    // ================================================================
+
+    /// Acquire a handle targeting a single filesystem.
+    ///
+    /// Use when you know exactly what filesystem the target path lives on
+    /// (e.g., after runtime detection via `statfs`).
+    pub fn for_filesystem(fs: &'static Filesystem, scope: Scope) -> Self {
+        Self {
+            targets: vec![fs],
+            scope,
+            replacement: '-',
+            _acquired: std::marker::PhantomData,
+        }
     }
 
-    #[cfg(target_os = "windows")]
-    {
-        static LOCAL: &[&Filesystem] = &[&NTFS];
-        return LOCAL;
+    /// Acquire a handle targeting multiple filesystems.
+    ///
+    /// Constraints are composed: forbidden chars = union, max bytes = minimum,
+    /// reserved names = union. Use when the file may be accessed from
+    /// multiple filesystem types.
+    pub fn for_targets(filesystems: &[&'static Filesystem], scope: Scope) -> Self {
+        Self {
+            targets: filesystems.to_vec(),
+            scope,
+            replacement: '-',
+            _acquired: std::marker::PhantomData,
+        }
     }
 
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    {
-        static LOCAL: &[&Filesystem] = &[&EXT4];
-        LOCAL
+    /// Acquire a cross-platform handle (ext4 + NTFS + APFS).
+    ///
+    /// Use when you don't control the recipient's filesystem — uploads,
+    /// shared files, gist filenames, etc. This is the safest option.
+    pub fn cross_platform(scope: Scope) -> Self {
+        Self::for_targets(CROSS_PLATFORM, scope)
+    }
+
+    /// Set the replacement character for sanitization (default: `-`).
+    pub fn with_replacement(mut self, replacement: char) -> Self {
+        self.replacement = replacement;
+        self
+    }
+
+    // ================================================================
+    // Queries
+    // ================================================================
+
+    /// Get the target filesystems this handle composes constraints for.
+    pub fn targets(&self) -> &[&'static Filesystem] {
+        &self.targets
+    }
+
+    /// Get the declared access scope.
+    pub fn scope(&self) -> Scope {
+        self.scope
+    }
+
+    /// Get the replacement character used for sanitization.
+    pub fn replacement(&self) -> char {
+        self.replacement
+    }
+
+    // ================================================================
+    // Operations — all filesystem-aware work goes through the handle
+    // ================================================================
+
+    /// Validate a filename against this handle's target filesystems.
+    ///
+    /// Returns a list of constraint violations. Empty = valid on all targets.
+    pub fn validate_filename(&self, name: &str) -> Vec<Violation> {
+        validate(name, &self.targets)
+    }
+
+    /// Sanitize a filename for this handle's target filesystems.
+    ///
+    /// Always succeeds — replaces forbidden chars, collapses, trims,
+    /// handles reserved names, truncates to fit.
+    pub fn sanitize_filename(&self, name: &str) -> String {
+        sanitize(name, &self.targets, self.replacement)
+    }
+
+    /// Prepare a filename through the gateway.
+    ///
+    /// - [`WritePolicy::Sanitize`]: auto-fix violations (always succeeds)
+    /// - [`WritePolicy::Strict`]: reject with violations if invalid
+    pub fn prepare_filename(&self, name: &str, policy: WritePolicy) -> FilenameOutcome {
+        prepare_filename(name, &self.targets, policy, self.replacement)
     }
 }
 
@@ -1165,45 +1283,90 @@ mod tests {
     }
 
     // ====================================================================
-    // Filesystem detection
+    // FilesystemHandle — acquisition and operations
     // ====================================================================
 
     #[test]
-    fn test_detect_local_filesystem_returns_known() {
-        let fs = detect_local_filesystem();
-        let known_ids = ["ext4", "apfs", "ntfs"];
-        assert!(
-            known_ids.contains(&fs.id),
-            "detected '{}', expected one of {:?}",
-            fs.id,
-            known_ids
-        );
+    fn test_handle_cross_platform_acquisition() {
+        let fs = FilesystemHandle::cross_platform(Scope::Write);
+        assert_eq!(fs.targets().len(), 3);
+        assert_eq!(fs.scope(), Scope::Write);
+        assert_eq!(fs.replacement(), '-');
     }
 
     #[test]
-    fn test_local_filesystems_contains_detected() {
-        let local = local_filesystems();
-        let detected = detect_local_filesystem();
-        assert_eq!(local.len(), 1);
-        assert_eq!(local[0].id, detected.id);
+    fn test_handle_single_filesystem() {
+        let fs = FilesystemHandle::for_filesystem(&EXT4, Scope::Read);
+        assert_eq!(fs.targets().len(), 1);
+        assert_eq!(fs.targets()[0].id, "ext4");
+        assert_eq!(fs.scope(), Scope::Read);
     }
 
     #[test]
-    #[cfg(target_os = "linux")]
-    fn test_linux_detects_ext4() {
-        assert_eq!(detect_local_filesystem().id, "ext4");
+    fn test_handle_custom_targets() {
+        let fs = FilesystemHandle::for_targets(&[&APFS, &NTFS], Scope::Write);
+        assert_eq!(fs.targets().len(), 2);
+        let ids: Vec<&str> = fs.targets().iter().map(|t| t.id).collect();
+        assert!(ids.contains(&"apfs"));
+        assert!(ids.contains(&"ntfs"));
     }
 
     #[test]
-    #[cfg(target_os = "macos")]
-    fn test_macos_detects_apfs() {
-        assert_eq!(detect_local_filesystem().id, "apfs");
+    fn test_handle_with_replacement() {
+        let fs = FilesystemHandle::cross_platform(Scope::Write).with_replacement('_');
+        assert_eq!(fs.replacement(), '_');
+        assert_eq!(fs.sanitize_filename("a/b"), "a_b");
     }
 
     #[test]
-    #[cfg(target_os = "windows")]
-    fn test_windows_detects_ntfs() {
-        assert_eq!(detect_local_filesystem().id, "ntfs");
+    fn test_handle_validate() {
+        let fs = FilesystemHandle::cross_platform(Scope::Write);
+        assert!(fs.validate_filename("safe-name.md").is_empty());
+        assert!(!fs.validate_filename("path/file").is_empty());
+    }
+
+    #[test]
+    fn test_handle_sanitize() {
+        let fs = FilesystemHandle::cross_platform(Scope::Write);
+        assert_eq!(fs.sanitize_filename("claude/branch"), "claude-branch");
+        assert_eq!(fs.sanitize_filename("safe-name"), "safe-name");
+    }
+
+    #[test]
+    fn test_handle_prepare_filename() {
+        let fs = FilesystemHandle::cross_platform(Scope::Write);
+
+        let outcome = fs.prepare_filename("safe-name.md", WritePolicy::Strict);
+        assert!(outcome.is_valid());
+
+        let outcome = fs.prepare_filename("claude/branch", WritePolicy::Sanitize);
+        assert_eq!(outcome.filename(), Some("claude-branch"));
+
+        let outcome = fs.prepare_filename("claude/branch", WritePolicy::Strict);
+        assert!(!outcome.is_accepted());
+    }
+
+    #[test]
+    fn test_handle_ext4_is_permissive() {
+        let fs = FilesystemHandle::for_filesystem(&EXT4, Scope::Write);
+        // ext4 only forbids `/` — colon is fine
+        assert_eq!(fs.sanitize_filename("file:name"), "file:name");
+        assert_eq!(fs.sanitize_filename("a/b"), "a-b");
+    }
+
+    #[test]
+    fn test_handle_ntfs_is_restrictive() {
+        let fs = FilesystemHandle::for_filesystem(&NTFS, Scope::Write);
+        assert_eq!(fs.sanitize_filename("CON"), "_CON");
+        assert_eq!(fs.sanitize_filename("file:name"), "file-name");
+    }
+
+    #[test]
+    fn test_handle_debug() {
+        let fs = FilesystemHandle::for_filesystem(&EXT4, Scope::Read);
+        let debug = format!("{:?}", fs);
+        assert!(debug.contains("ext4"));
+        assert!(debug.contains("Read"));
     }
 
     // ====================================================================
@@ -1394,10 +1557,9 @@ mod tests {
     }
 
     #[test]
-    fn test_prepare_filename_local_filesystem() {
-        // Using local filesystem detection — should work on any platform
-        let local = local_filesystems();
-        let outcome = prepare_filename("safe-name.txt", local, WritePolicy::Strict, '-');
+    fn test_prepare_filename_single_filesystem() {
+        // Using a single explicit filesystem
+        let outcome = prepare_filename("safe-name.txt", &[&EXT4], WritePolicy::Strict, '-');
         assert!(outcome.is_accepted());
     }
 

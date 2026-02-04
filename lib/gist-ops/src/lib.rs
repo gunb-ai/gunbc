@@ -91,10 +91,9 @@ pub fn prepare_gist_request(
 
 /// Sanitize a branch name for use in a filename across all platforms.
 ///
-/// Routes through the filesystem gateway ([`filename::prepare_filename`])
-/// with [`WritePolicy::Sanitize`] targeting [`CROSS_PLATFORM`] filesystems.
-/// The gateway composes ext4 + NTFS + APFS constraints and auto-fixes
-/// any violations.
+/// Acquires a cross-platform [`FilesystemHandle`] and routes through its
+/// gateway. The handle composes ext4 + NTFS + APFS constraints and
+/// auto-fixes any violations.
 ///
 /// Additionally replaces spaces with the replacement char, since spaces
 /// in filenames are universally problematic in shell contexts even though
@@ -110,18 +109,16 @@ pub fn prepare_gist_request(
 /// assert_eq!(sanitize_branch_for_filename("feature/foo bar"), "feature-foo-bar");
 /// ```
 pub fn sanitize_branch_for_filename(branch: &str) -> String {
+    // Acquire a cross-platform filesystem handle for writing
+    let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
+
     // Replace spaces before filesystem gateway (convention, not a FS rule)
     let no_spaces: String = branch
         .chars()
         .map(|c| if c == ' ' { '-' } else { c })
         .collect();
 
-    let outcome = filename::prepare_filename(
-        &no_spaces,
-        filename::CROSS_PLATFORM,
-        filename::WritePolicy::Sanitize,
-        '-',
-    );
+    let outcome = fs.prepare_filename(&no_spaces, filename::WritePolicy::Sanitize);
 
     match outcome.filename() {
         Some("untitled") | None => "snapshot".to_string(),
