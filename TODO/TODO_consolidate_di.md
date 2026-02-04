@@ -12,26 +12,18 @@ transport executor), then pass it down as a parameter or DAG input.
 
 ---
 
-## 1. FilesystemHandle — constructed inline in gist-ops
+## 1. ~~FilesystemHandle — constructed inline in gist-ops~~ ✅ FIXED (Phase 1)
 
-**Where**: `lib/gist-ops/src/lib.rs:113`
+**Where**: `lib/gist-ops/src/lib.rs`
 
-```rust
-pub fn sanitize_branch_for_filename(branch: &str) -> String {
-    let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
-    // ...
-}
-```
+**What was done**: Removed the non-injectable `sanitize_branch_for_filename(branch)`
+wrapper. The function now requires `&FilesystemHandle` as its first parameter:
+`sanitize_branch_for_filename(&fs, branch)`. The `GistOps::PrepareRequest::execute()`
+method now explicitly constructs the handle at the call site (visible DI violation
+for Phase 2 to wire through DAG edges). All tests updated.
 
-**Problem**: `sanitize_branch_for_filename` acquires a `FilesystemHandle`
-inside its body. The handle should be acquired by the DAG node (or
-environment) and passed in. Same for `generate_gist_filename` which
-calls `sanitize_branch_for_filename` at line 144.
-
-**Fix**: Accept `&FilesystemHandle` as a parameter. The `GistOps::PrepareRequest`
-node should acquire (or receive) the handle and pass it through.
-
-**Severity**: HIGH — this is the motivating example for this audit.
+**Remaining**: Phase 2 — add `FsEnv` node to the gist DAG to acquire the handle
+at the boundary instead of inline in execute().
 
 ---
 
@@ -130,30 +122,18 @@ sets a bad pattern for anyone reading it as an example.
 
 ---
 
-## 5. SystemTime::now() in gist filename generation
+## 5. ~~SystemTime::now() in gist filename generation~~ ✅ FIXED (Phase 1)
 
-**Where**: `lib/gist-ops/src/lib.rs:145`
+**Where**: `lib/gist-ops/src/lib.rs`
 
-```rust
-pub fn generate_gist_filename(branch: &str) -> String {
-    let sanitized = sanitize_branch_for_filename(branch);
-    let timestamp = format_utc_timestamp(SystemTime::now());
-    format!("{}_{}.md", sanitized, timestamp)
-}
-```
+**What was done**: Removed the non-injectable `generate_gist_filename(branch)`
+wrapper. The function now requires `(&FilesystemHandle, &str, SystemTime)`:
+`generate_gist_filename(&fs, branch, now)`. The `GistOps::PrepareRequest::execute()`
+method now explicitly captures `SystemTime::now()` at the call site. All tests
+updated to use fixed timestamps, making them fully deterministic.
 
-**Problem**: Implicit dependency on the system clock. Tests can't verify
-the timestamp format without race conditions, and the function is
-non-deterministic.
-
-**Fix**: Accept `SystemTime` as a parameter (or a clock trait). The DAG
-node should capture "now" at the boundary and pass it in:
-
-```rust
-pub fn generate_gist_filename(branch: &str, now: SystemTime) -> String
-```
-
-**Severity**: HIGH — non-deterministic public API.
+**Remaining**: Phase 2 — add `ClockEnv` node to the gist DAG to acquire the
+timestamp at the boundary instead of inline in execute().
 
 ---
 

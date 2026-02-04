@@ -334,8 +334,8 @@ Proposal: Distinguish between:
 This doesn't need to be solved all at once. Incremental steps:
 
 ### Phase 1: Make violations explicit (mechanical)
-- [ ] `sanitize_branch_for_filename(&FilesystemHandle, &str) → String`
-- [ ] `generate_gist_filename(&str, SystemTime) → String`
+- [x] `sanitize_branch_for_filename(&FilesystemHandle, &str) → String`
+- [x] `generate_gist_filename(&FilesystemHandle, &str, SystemTime) → String`
 - [ ] `Installer::for_platform(Platform)` everywhere (drop `::new()`)
 - [ ] Resolve `AuthMethod::EnvVar` before executor
 

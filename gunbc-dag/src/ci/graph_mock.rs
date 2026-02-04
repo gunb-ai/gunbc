@@ -108,9 +108,23 @@ pub fn ci_mock_spec() -> MockSpec {
         )
         // Node I/O examples: verify pure node behavior
         //
-        // Response-only parse nodes: tested via Skipped propagation (actual
-        // parsing is covered by unit tests in ops.rs).
-        // Parse nodes with skip flag: tested via skip=true path.
+        // Parse nodes now test both real transport responses AND skip propagation.
+        .node_example(
+            NodeExample::new("parse_deps_exists")
+                .input("response", Value::Response(FileResponse {
+                    path: "deps.toml".into(),
+                    operation: FileOp::Exists,
+                    success: true,
+                    content: None,
+                    exists: Some(true),
+                    error: None,
+                }.into()))
+                .output("deps_exists", OutputMatcher::exact(Value::Bool(true)))
+                .output("deps_checked", OutputMatcher::exact(Value::Bool(true)))
+                .output("deps_installed", OutputMatcher::exact(Value::Int(0)))
+                .output("message", OutputMatcher::contains("deps.toml found"))
+                .description("File exists: deps.toml found → deps_exists true"),
+        )
         .node_example(
             NodeExample::new("parse_deps_exists")
                 .input("response", Value::Skipped)
@@ -119,9 +133,33 @@ pub fn ci_mock_spec() -> MockSpec {
         )
         .node_example(
             NodeExample::new("parse_codegen_exists")
+                .input("response", Value::Response(FileResponse {
+                    path: "buck-out/gen/bin".into(),
+                    operation: FileOp::Exists,
+                    success: true,
+                    content: None,
+                    exists: Some(true),
+                    error: None,
+                }.into()))
+                .output("codegen_needed", OutputMatcher::exact(Value::Bool(false)))
+                .output("prep_success", OutputMatcher::exact(Value::Bool(true)))
+                .output("codegen_ran", OutputMatcher::exact(Value::Bool(false)))
+                .description("File exists: codegen dir found → codegen not needed"),
+        )
+        .node_example(
+            NodeExample::new("parse_codegen_exists")
                 .input("response", Value::Skipped)
                 .output("codegen_needed", OutputMatcher::Any)
                 .description("Handles skipped transport response gracefully"),
+        )
+        .node_example(
+            NodeExample::new("parse_codegen_result")
+                .input("response", Value::Response(ShellResponse::ok("Generated 3 files").into()))
+                .input("skip", Value::Bool(false))
+                .output("prep_success", OutputMatcher::exact(Value::Bool(true)))
+                .output("codegen_ran", OutputMatcher::exact(Value::Bool(true)))
+                .output("prep_message", OutputMatcher::contains("successfully"))
+                .description("Codegen shell success → prep_success true, codegen_ran true"),
         )
         .node_example(
             NodeExample::new("parse_codegen_result")
@@ -132,10 +170,28 @@ pub fn ci_mock_spec() -> MockSpec {
         )
         .node_example(
             NodeExample::new("parse_build")
+                .input("response", Value::Response(ShellResponse::ok("Compiling gunbc v0.1.0\n    Finished dev").into()))
+                .input("skip", Value::Bool(false))
+                .output("build_success", OutputMatcher::exact(Value::Bool(true)))
+                .output("build_skipped", OutputMatcher::exact(Value::Bool(false)))
+                .output("build_stdout", OutputMatcher::contains("Compiling"))
+                .description("Build shell success → build_success true"),
+        )
+        .node_example(
+            NodeExample::new("parse_build")
                 .input("skip", Value::Bool(true))
                 .output("build_success", OutputMatcher::exact(Value::Bool(false)))
                 .output("build_skipped", OutputMatcher::exact(Value::Bool(true)))
                 .description("Skip path: build skipped → success false, skipped true"),
+        )
+        .node_example(
+            NodeExample::new("parse_test")
+                .input("response", Value::Response(ShellResponse::ok("running 42 tests\ntest result: ok. 42 passed").into()))
+                .input("skip", Value::Bool(false))
+                .output("test_success", OutputMatcher::exact(Value::Bool(true)))
+                .output("test_skipped", OutputMatcher::exact(Value::Bool(false)))
+                .output("test_stdout", OutputMatcher::contains("42 tests"))
+                .description("Test shell success → test_success true"),
         )
         .node_example(
             NodeExample::new("parse_test")

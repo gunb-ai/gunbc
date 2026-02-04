@@ -72,57 +72,29 @@ indirection.
 
 ---
 
-## 2. Parse nodes tested via Value::Skipped only verify skip propagation
+## 2. ~~Parse nodes tested via Value::Skipped only verify skip propagation~~ ✅ FIXED
 
-**Where**: `bootstrap/graph_mock.rs` (`parse_scan_result`),
-`ci/graph_mock.rs` (`parse_deps_exists`, `parse_codegen_exists`),
-`lib/llm-ops/src/graph_mock.rs` (all 4 `parse` examples)
+All parse node examples now test **both** real transport responses (with exact
+output assertions) and skip propagation (retained as a second example).
 
-**What happens**: These node examples provide `input("response",
-Value::Skipped)` and check `OutputMatcher::Any`. The node's skip-handling
-path runs (`if matches!(input, Value::Skipped) { return all-Skipped }`),
-but the **actual parsing logic is never exercised** at the integration
-test level.
+**Fixed in**: bootstrap/graph_mock.rs, ci/graph_mock.rs, llm-ops/graph_mock.rs
 
-The parsing logic IS tested in unit tests in `ops.rs` for each tool.
-So this isn't untested code — it's untested *at the generated-test layer*.
+**What was done**:
+- `bootstrap::parse_scan_result` — added `ShellResponse::ok("crates/bar\ncrates/foo\n")` example
+  with exact crate_count=2 and crate_names assertions
+- `ci::parse_deps_exists` — added `FileResponse { exists: Some(true) }` example
+- `ci::parse_codegen_exists` — added `FileResponse { exists: Some(true) }` example
+- `ci::parse_codegen_result` — added `ShellResponse::ok(...)` with skip=false example
+- `ci::parse_build` — added `ShellResponse::ok(...)` with skip=false example
+- `ci::parse_test` — added `ShellResponse::ok(...)` with skip=false example
+- `llm::parse` (openai) — added real `mock_openai_response()` REST example
+- `llm::parse` (anthropic) — added real `mock_anthropic_response()` REST example
+- `llm::parse` (code_review) — added real `mock_openai_response()` REST example
+- `llm::parse` (secrets) — added real `mock_openai_response()` REST example
 
-**Why it matters**: The whole point of node examples is to verify nodes
-work in DAG context with realistic I/O. Testing only the skip path
-doesn't do that.
-
-**Root cause**: `value_to_rust_literal()` can't serialize
-`Value::Response(TransportResponse::Shell(ShellResponse { ... }))` to
-Rust source. The catch-all arm maps unknown variants to
-`Value::Str("<MOCK>")` (see hack #4). So there's no way to provide a
-realistic transport response as an example input in generated code.
-
-**Possible approaches**:
-
-1. **Extend `value_to_rust_literal()`** to handle `Value::Response` and
-   `Value::Request` — emit the full constructor chain:
-   ```rust
-   Value::Response(gunbc_ir::transport::TransportResponse::Shell(
-       gunbc_ir::transport::ShellResponse {
-           exit_code: 0,
-           stdout: "crates/foo\ncrates/bar\n".to_string(),
-           stderr: String::new(),
-       }
-   ))
-   ```
-   This is verbose but mechanical. Each `TransportResponse` variant
-   (Shell, File, Rest) needs a serializer. Once this works, examples
-   can provide real responses and assert real parse outputs.
-
-2. **Mock response builder in codegen preamble**: Emit helper functions
-   at the top of the generated test module that build mock responses,
-   then reference them by name in examples. This keeps the test body
-   readable.
-
-**Affected nodes** (7 total):
-- `bootstrap::parse_scan_result`
-- `ci::parse_deps_exists`, `ci::parse_codegen_exists`
-- `llm::parse` (openai, anthropic, code_review, secrets)
+**Root cause was already fixed**: The `ValueExpr` pipeline (`value_expr.rs`) handles
+`Value::Response` and `Value::Request` serialization. No codegen changes needed —
+only the graph_mock examples needed updating.
 
 ---
 

@@ -385,10 +385,10 @@ impl Executable for SetOp {
         };
 
         let count = result.len() as i64;
-        let mut out = HashMap::new();
-        out.insert("output".to_string(), Value::Set(result));
-        out.insert("count".to_string(), Value::Int(count));
-        Ok(out)
+        OutputMap::new()
+            .value("output", Value::Set(result))
+            .int("count", count)
+            .ok()
     }
 }
 

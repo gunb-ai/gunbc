@@ -87,6 +87,21 @@ pub fn openai_mock_spec() -> MockSpec {
         .node_example(
             NodeExample::new("parse")
                 .input("provider", Value::Str("openai".into()))
+                .input("response", Value::Response(
+                    gunbc_ir::transport::TransportResponse::Rest(
+                        mock::mock_openai_response("Test response content.")
+                    )
+                ))
+                .output("content", OutputMatcher::exact(Value::Str("Test response content.".into())))
+                .output("model", OutputMatcher::exact(Value::Str("gpt-4o".into())))
+                .output("finish_reason", OutputMatcher::exact(Value::Str("Stop".into())))
+                .output("input_tokens", OutputMatcher::exact(Value::Int(10)))
+                .output("output_tokens", OutputMatcher::exact(Value::Int(20)))
+                .description("OpenAI parse extracts content, model, tokens from REST response"),
+        )
+        .node_example(
+            NodeExample::new("parse")
+                .input("provider", Value::Str("openai".into()))
                 .input("response", Value::Skipped)
                 .output("content", OutputMatcher::Any)
                 .output("model", OutputMatcher::Any)
@@ -163,6 +178,21 @@ pub fn anthropic_mock_spec() -> MockSpec {
         .node_example(
             NodeExample::new("parse")
                 .input("provider", Value::Str("anthropic".into()))
+                .input("response", Value::Response(
+                    gunbc_ir::transport::TransportResponse::Rest(
+                        mock::mock_anthropic_response("Anthropic test response.")
+                    )
+                ))
+                .output("content", OutputMatcher::exact(Value::Str("Anthropic test response.".into())))
+                .output("model", OutputMatcher::exact(Value::Str("claude-sonnet-4-20250514".into())))
+                .output("finish_reason", OutputMatcher::exact(Value::Str("Stop".into())))
+                .output("input_tokens", OutputMatcher::exact(Value::Int(10)))
+                .output("output_tokens", OutputMatcher::exact(Value::Int(20)))
+                .description("Anthropic parse extracts content, model, tokens from REST response"),
+        )
+        .node_example(
+            NodeExample::new("parse")
+                .input("provider", Value::Str("anthropic".into()))
                 .input("response", Value::Skipped)
                 .output("content", OutputMatcher::Any)
                 .output("model", OutputMatcher::Any)
@@ -230,6 +260,18 @@ Overall: The code is clean and well-structured. Minor fixes recommended.";
         .node_example(
             NodeExample::new("parse")
                 .input("provider", Value::Str("openai".into()))
+                .input("response", Value::Response(
+                    gunbc_ir::transport::TransportResponse::Rest(
+                        mock::mock_openai_response("Code looks good.")
+                    )
+                ))
+                .output("content", OutputMatcher::exact(Value::Str("Code looks good.".into())))
+                .output("model", OutputMatcher::exact(Value::Str("gpt-4o".into())))
+                .description("Code review parse extracts content from REST response"),
+        )
+        .node_example(
+            NodeExample::new("parse")
+                .input("provider", Value::Str("openai".into()))
                 .input("response", Value::Skipped)
                 .output("content", OutputMatcher::Any)
                 .output("model", OutputMatcher::Any)
@@ -289,6 +331,18 @@ pub fn secret_api_key_mock_spec() -> MockSpec {
                 .output("request", OutputMatcher::non_empty())
                 .output("provider", OutputMatcher::non_empty())
                 .description("Secret auth prepare emits REST request"),
+        )
+        .node_example(
+            NodeExample::new("parse")
+                .input("provider", Value::Str("openai".into()))
+                .input("response", Value::Response(
+                    gunbc_ir::transport::TransportResponse::Rest(
+                        mock::mock_openai_response("Authenticated response.")
+                    )
+                ))
+                .output("content", OutputMatcher::exact(Value::Str("Authenticated response.".into())))
+                .output("model", OutputMatcher::exact(Value::Str("gpt-4o".into())))
+                .description("Secret auth parse extracts content from REST response"),
         )
         .node_example(
             NodeExample::new("parse")

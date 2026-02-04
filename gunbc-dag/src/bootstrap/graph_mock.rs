@@ -85,6 +85,13 @@ pub fn bootstrap_mock_spec() -> MockSpec {
         )
         .node_example(
             NodeExample::new("parse_scan_result")
+                .input("response", Value::Response(ShellResponse::ok("crates/bar\ncrates/foo\n").into()))
+                .output("crate_count", OutputMatcher::exact(Value::Int(2)))
+                .output("crate_names", OutputMatcher::exact(Value::str_list(vec!["bar".into(), "foo".into()])))
+                .description("Parses shell stdout to extract sorted crate names and count"),
+        )
+        .node_example(
+            NodeExample::new("parse_scan_result")
                 .input("response", Value::Skipped)
                 .output("crate_count", OutputMatcher::Any)
                 .output("crate_names", OutputMatcher::Any)
