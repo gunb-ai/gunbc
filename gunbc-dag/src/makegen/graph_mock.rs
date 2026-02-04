@@ -58,7 +58,7 @@ pub fn makegen_mock_spec() -> MockSpec {
         )
         // Expected outputs: load_registry is a pure root node with boundary outputs
         // tool_count verifies the registry loaded correctly
-        .expected_output("load_registry", "tool_count", Value::Int(7))
+        .expected_output("load_registry", "tool_count", Value::Int(8))
         // Node I/O examples: verify pure node behavior
         .node_example(
             NodeExample::new("load_registry")
