@@ -166,6 +166,10 @@ pub enum WrapperKind {
     List,
     /// Non-empty list wrapper (T → NonEmptyList<T>).
     NonEmptyList,
+    /// Set wrapper (T → Set<T>) — unordered, unique elements.
+    Set,
+    /// Non-empty set wrapper (T → NonEmptySet<T>).
+    NonEmptySet,
 }
 
 #[cfg(test)]

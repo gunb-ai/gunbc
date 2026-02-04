@@ -379,6 +379,10 @@ fn values_equal(a: &Value, b: &Value) -> bool {
         (Value::Str(a), Value::Str(b)) => a == b,
         (Value::Int(a), Value::Int(b)) => a == b,
         (Value::List(a), Value::List(b)) => a == b,
+        (Value::Set(a), Value::Set(b)) => {
+            // Set equality is order-independent
+            a.len() == b.len() && a.iter().all(|v| b.contains(v))
+        }
         (Value::Map(a), Value::Map(b)) => a == b,
         (Value::Json(a), Value::Json(b)) => a == b,
         (Value::Skipped, Value::Skipped) => true,

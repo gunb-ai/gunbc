@@ -390,6 +390,9 @@ fn values_match(expected: &Value, actual: &Value) -> bool {
         (Value::Bool(a), Value::Bool(b)) => a == b,
         (Value::Str(a), Value::Str(b)) => a == b,
         (Value::Int(a), Value::Int(b)) => a == b,
+        (Value::Set(a), Value::Set(b)) => {
+            a.len() == b.len() && a.iter().all(|v| b.contains(v))
+        }
         _ => false,
     }
 }
@@ -551,6 +554,7 @@ fn value_type_name(value: &Value) -> &'static str {
         Value::Str(_) => "String",
         Value::Int(_) => "Int",
         Value::List(_) => "List",
+        Value::Set(_) => "Set",
         Value::Map(_) => "Map",
         Value::Json(_) => "Json",
         Value::Skipped => "Skipped",

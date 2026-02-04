@@ -35,7 +35,7 @@ pub mod control;
 pub mod data;
 pub mod io;
 
-pub use collection::{CollectionOp, FilterOp, FirstOp, FoldOp, LastOp, MapOp, SortOp};
+pub use collection::{CollectionOp, FilterOp, FirstOp, FoldOp, LastOp, MapOp, SetOp, SortOp};
 pub use control::{BranchOp, LoopOp};
 pub use data::{ConcatOp, ExtractOp, FormatOp, ParseOp, SplitOp};
 pub use io::{
@@ -65,6 +65,7 @@ pub enum PrimitiveOp {
     Sort(SortOp),
     First(FirstOp),
     Last(LastOp),
+    Set(SetOp),
 
     // I/O primitives - Pure prepare ops (build TransportRequest, no I/O)
     // Port-based variants (dynamic paths/commands from upstream nodes)
@@ -100,6 +101,7 @@ impl Executable for PrimitiveOp {
             PrimitiveOp::Sort(op) => op.execute(inputs),
             PrimitiveOp::First(op) => op.execute(inputs),
             PrimitiveOp::Last(op) => op.execute(inputs),
+            PrimitiveOp::Set(op) => op.execute(inputs),
 
             // I/O - Pure prepare ops (port-based)
             PrimitiveOp::PrepareFileRead(op) => op.execute(inputs),

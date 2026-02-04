@@ -82,6 +82,10 @@ impl fmt::Display for SecretString {
 /// Values compose from primitive layers through generic containers.
 /// `List` and `Map` hold `Value` elements, so any nesting is expressible:
 /// `List<Str>`, `Map<Str, Int>`, `List<List<Bool>>`, etc.
+///
+/// `Set` provides unordered, unique-element collection semantics distinct
+/// from `List`. Set algebra (union, intersection, difference) is defined
+/// as methods on `Value` and as `SetOp` in the collection primitives.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub enum Value {
     /// Unit value (no data)
@@ -93,8 +97,14 @@ pub enum Value {
     Str(String),
     /// Integer
     Int(i64),
-    /// Homogeneous list of values
+    /// Homogeneous list of values (ordered, allows duplicates)
     List(Vec<Value>),
+    /// Unordered collection of unique values (set semantics)
+    ///
+    /// Internally stored as a `Vec<Value>` with uniqueness enforced at
+    /// construction time via `PartialEq`. Order is not guaranteed.
+    /// Use `Value::set()` or `Value::str_set()` to construct.
+    Set(Vec<Value>),
     /// String-keyed map of values
     Map(BTreeMap<String, Value>),
     /// JSON value (for complex/dynamic data)
@@ -134,6 +144,112 @@ impl Value {
         )
     }
 
+    /// Create a set from a vector of values, deduplicating via `PartialEq`.
+    ///
+    /// Elements are deduplicated: if the same value appears multiple times,
+    /// only the first occurrence is kept.
+    pub fn set(values: Vec<Value>) -> Self {
+        let mut unique = Vec::with_capacity(values.len());
+        for v in values {
+            if !unique.contains(&v) {
+                unique.push(v);
+            }
+        }
+        Value::Set(unique)
+    }
+
+    /// Create a set of strings, deduplicating.
+    pub fn str_set(strings: Vec<String>) -> Self {
+        Self::set(strings.into_iter().map(Value::Str).collect())
+    }
+
+    // =========================================================================
+    // Set algebra (language-agnostic operations)
+    // =========================================================================
+
+    /// Set union: elements in either self or other.
+    ///
+    /// Returns `None` if either value is not a `Set`.
+    pub fn set_union(&self, other: &Value) -> Option<Value> {
+        match (self, other) {
+            (Value::Set(a), Value::Set(b)) => {
+                let mut result = a.clone();
+                for v in b {
+                    if !result.contains(v) {
+                        result.push(v.clone());
+                    }
+                }
+                Some(Value::Set(result))
+            }
+            _ => None,
+        }
+    }
+
+    /// Set intersection: elements in both self and other.
+    ///
+    /// Returns `None` if either value is not a `Set`.
+    pub fn set_intersection(&self, other: &Value) -> Option<Value> {
+        match (self, other) {
+            (Value::Set(a), Value::Set(b)) => {
+                let result: Vec<Value> = a.iter().filter(|v| b.contains(v)).cloned().collect();
+                Some(Value::Set(result))
+            }
+            _ => None,
+        }
+    }
+
+    /// Set difference: elements in self but not in other.
+    ///
+    /// Returns `None` if either value is not a `Set`.
+    pub fn set_difference(&self, other: &Value) -> Option<Value> {
+        match (self, other) {
+            (Value::Set(a), Value::Set(b)) => {
+                let result: Vec<Value> = a.iter().filter(|v| !b.contains(v)).cloned().collect();
+                Some(Value::Set(result))
+            }
+            _ => None,
+        }
+    }
+
+    /// Symmetric difference: elements in either but not both.
+    ///
+    /// Returns `None` if either value is not a `Set`.
+    pub fn set_symmetric_difference(&self, other: &Value) -> Option<Value> {
+        match (self, other) {
+            (Value::Set(a), Value::Set(b)) => {
+                let mut result: Vec<Value> =
+                    a.iter().filter(|v| !b.contains(v)).cloned().collect();
+                for v in b {
+                    if !a.contains(v) {
+                        result.push(v.clone());
+                    }
+                }
+                Some(Value::Set(result))
+            }
+            _ => None,
+        }
+    }
+
+    /// Check if self is a subset of other.
+    ///
+    /// Returns `None` if either value is not a `Set`.
+    pub fn is_subset(&self, other: &Value) -> Option<bool> {
+        match (self, other) {
+            (Value::Set(a), Value::Set(b)) => Some(a.iter().all(|v| b.contains(v))),
+            _ => None,
+        }
+    }
+
+    /// Check if a set contains a specific value.
+    ///
+    /// Returns `None` if self is not a `Set`.
+    pub fn set_contains(&self, value: &Value) -> Option<bool> {
+        match self {
+            Value::Set(elements) => Some(elements.contains(value)),
+            _ => None,
+        }
+    }
+
     // =========================================================================
     // Type predicates
     // =========================================================================
@@ -156,6 +272,11 @@ impl Value {
     /// Check if this is a secret value.
     pub fn is_secret(&self) -> bool {
         matches!(self, Value::Secret(_))
+    }
+
+    /// Check if this is a set.
+    pub fn is_set(&self) -> bool {
+        matches!(self, Value::Set(_))
     }
 
     // =========================================================================
@@ -206,6 +327,14 @@ impl Value {
         }
     }
 
+    /// Try to extract a set of values.
+    pub fn as_set(&self) -> Option<&[Value]> {
+        match self {
+            Value::Set(v) => Some(v),
+            _ => None,
+        }
+    }
+
     /// Try to extract a map of values.
     pub fn as_map(&self) -> Option<&BTreeMap<String, Value>> {
         match self {
@@ -226,6 +355,27 @@ impl Value {
     pub fn as_str_list(&self) -> Option<Vec<String>> {
         match self {
             Value::List(items) => {
+                let mut result = Vec::with_capacity(items.len());
+                for item in items {
+                    match item {
+                        Value::Str(s) => result.push(s.clone()),
+                        _ => return None,
+                    }
+                }
+                Some(result)
+            }
+            _ => None,
+        }
+    }
+
+    /// Try to extract a set of strings.
+    ///
+    /// Returns `Some` only if the value is a `Set` where every element
+    /// is a `Str`. Returns `None` for non-set values or sets containing
+    /// non-string elements.
+    pub fn as_str_set(&self) -> Option<Vec<String>> {
+        match self {
+            Value::Set(items) => {
                 let mut result = Vec::with_capacity(items.len());
                 for item in items {
                     match item {
@@ -302,6 +452,7 @@ impl fmt::Display for Value {
             Value::Str(s) => write!(f, "{s}"),
             Value::Int(i) => write!(f, "{i}"),
             Value::List(v) => write!(f, "[{} items]", v.len()),
+            Value::Set(v) => write!(f, "{{{} items}}", v.len()),
             Value::Map(m) => write!(f, "{{{} entries}}", m.len()),
             Value::Json(j) => write!(f, "{}", j),
             Value::Request(r) => write!(f, "<Request: {:?}>", std::mem::discriminant(r)),

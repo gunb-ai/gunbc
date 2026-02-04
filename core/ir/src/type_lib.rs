@@ -260,6 +260,63 @@ pub fn non_empty_list(element_type: Dag<TypeOp>) -> Dag<TypeOp> {
     dag
 }
 
+/// Set type — wraps an inner type with ZeroOrMore cardinality and set (unique) semantics.
+///
+/// The element type DAG is included as a SubDag.
+pub fn set(element_type: Dag<TypeOp>) -> Dag<TypeOp> {
+    let mut dag = Dag::new();
+
+    // Input: set of values
+    dag.add_node(Node::opaque(
+        "input",
+        vec![Port::list("in", "Any")],
+        vec![Port::list("out", "Any")],
+        TypeOp::Wrap(WrapperKind::Set),
+    ));
+
+    // Element type validation (as SubDag, applied to each element)
+    dag.add_node(Node::subdag(
+        "element_type",
+        element_type,
+    ));
+
+    dag.add_edge(Edge::new("input", "out", "element_type", "in"));
+
+    dag
+}
+
+/// Non-empty set type — wraps an inner type with OneOrMore cardinality and set semantics.
+pub fn non_empty_set(element_type: Dag<TypeOp>) -> Dag<TypeOp> {
+    let mut dag = Dag::new();
+
+    // Input: non-empty set of values
+    dag.add_node(Node::opaque(
+        "input",
+        vec![Port::non_empty_list("in", "Any")],
+        vec![Port::non_empty_list("out", "Any")],
+        TypeOp::Wrap(WrapperKind::NonEmptySet),
+    ));
+
+    // Non-empty check
+    dag.add_node(Node::opaque(
+        "check_non_empty",
+        vec![Port::non_empty_list("in", "Any")],
+        vec![Port::non_empty_list("out", "Any")],
+        TypeOp::Validate(Predicate::NonEmpty),
+    ));
+
+    // Element type validation (as SubDag)
+    dag.add_node(Node::subdag(
+        "element_type",
+        element_type,
+    ));
+
+    dag.add_edge(Edge::new("input", "out", "check_non_empty", "in"));
+    dag.add_edge(Edge::new("check_non_empty", "out", "element_type", "in"));
+
+    dag
+}
+
 // =============================================================================
 // Composite Type Helpers
 // =============================================================================
@@ -292,8 +349,8 @@ pub fn non_empty_file_path_list() -> Dag<TypeOp> {
 ///
 /// This inspects the type DAG structure to determine cardinality:
 /// - Optional<T> → ZeroOrOne
-/// - List<T> → ZeroOrMore
-/// - NonEmptyList<T> → OneOrMore
+/// - List<T> / Set<T> → ZeroOrMore
+/// - NonEmptyList<T> / NonEmptySet<T> → OneOrMore
 /// - Everything else → One
 pub fn infer_cardinality(type_dag: &Dag<TypeOp>) -> Cardinality {
     // Look for wrapper nodes to determine cardinality
@@ -301,8 +358,8 @@ pub fn infer_cardinality(type_dag: &Dag<TypeOp>) -> Cardinality {
         if let crate::node::NodeBody::Opaque(TypeOp::Wrap(kind)) = &node.body {
             return match kind {
                 WrapperKind::Optional => Cardinality::ZERO_OR_ONE,
-                WrapperKind::List => Cardinality::ZERO_OR_MORE,
-                WrapperKind::NonEmptyList => Cardinality::ONE_OR_MORE,
+                WrapperKind::List | WrapperKind::Set => Cardinality::ZERO_OR_MORE,
+                WrapperKind::NonEmptyList | WrapperKind::NonEmptySet => Cardinality::ONE_OR_MORE,
             };
         }
     }
