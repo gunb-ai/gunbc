@@ -1,212 +1,169 @@
 # Type System Evolution
 
-**Status**: Aspirational / Design
-**Date**: 2026-02-03
+**Status**: In Progress
+**Date**: 2026-02-04
+**Updated**: Reflects design decisions and implementation from review session.
 
-Longer-term directions for making the type system more structural.
+Directions for making the type system more structural.
 These build on existing work (cardinality algebra, `TypeContract`,
-`type_id == "List"` migration) but aren't blocking current work.
+`type_id == "List"` migration).
 
 ---
 
-## 1. Ports reference type contracts, not raw `type_id` strings
+## 1. Types are DAGs — structural comparison, not string matching
 
-**Current**: Ports store `type_id: String` (e.g., `"String"`, `"Bool"`,
-`"Json"`). Type compatibility is checked by string equality.
+**Design decision**: Types are already modeled as DAGs (`Dag<TypeOp>`) in
+`core/ir/src/type_op.rs`. The four operations are `Identity`, `Validate`,
+`Transform`, and `Wrap`. Type constructors in `type_lib.rs` compose these.
 
-**Goal**: Ports reference a `TypeContract` (or type DAG) that carries
-base type + cardinality + predicates as structured data.
+**Current gap**: Ports reference types by `type_id: TypeId` (a String wrapper)
+and require a `TypeRegistry` lookup to get the actual DAG. Type compatibility
+in `TypeRegistry::is_compatible()` compares base type + cardinality but
+ignores predicates. So `Url` and `String` are incompatible by name even
+though Url is a refinement of String.
 
-`TypeContract::from_type_dag` already exists (`core/ir/src/contract.rs`)
-and extracts cardinality, base type, predicates, and wrapper kind from
-a type DAG. This is the foundation.
+**Goal**: Ports should carry (or directly reference) the type DAG, and
+comparison should be structural subsumption — "is this type DAG a refinement
+of that type DAG?" This is not a newtype wrapper; it's moving from name-based
+to structure-based type identity.
 
 **What it enables**:
 - Edge compatibility becomes compositional (contract subsumption)
-- Proof obligations can be generated from contracts
-- CLI generation derives `repeatable` from `cardinality.max > 1`
-  instead of `type_id == "List"` string match
-- Testgen witness generation: given a contract, generate boundary
-  values automatically (0/1/many of base type T)
+- Refinement types work naturally (Url satisfies String)
+- CLI generation derives `repeatable` from cardinality, not type names
 
-**Migration path**: Start with `TypeId` newtype wrapping `String`
-to make all type references greppable. Then evolve `TypeId` to carry
-a reference to a type DAG / contract.
+**Status**: Not started (requires deeper architectural change to Port).
+The `TypeId` newtype already exists as a String wrapper.
 
 ---
 
-## 2. `Value::is_empty()` — centralized emptiness semantics
+## 2. Emptiness consolidates on cardinality
 
-**Current**: Emptiness checks are scattered and inconsistent:
-- `OutputMatcher::NonEmpty` codegen uses `as_str().map(|s| s.is_empty())`
-  which is wrong for non-strings (see TODO_hacks.md Hack #3)
-- Runtime `OutputMatcher::check()` has a correct match-based check
-- Cardinality Empty tests use concrete empty values, not absence
-  (see TODO_hacks.md Hack #5)
+**Design decision**: Emptiness is a property of the cardinality model, not
+a standalone concept. `Cardinality` already has `allows_empty()` (`min == 0`),
+a full lattice algebra in `algebra.rs`, and `test_cases()` generating
+`Empty/One/Many` case variants.
 
-**Goal**: Single `Value::is_empty() -> bool` method on the `Value` enum:
+The remaining work is wiring cardinality through to places that currently
+use ad-hoc emptiness checks (e.g., `OutputMatcher::NonEmpty` in codegen
+uses `as_str()` — a string check, not a cardinality check). A `Value::is_empty()`
+helper could exist as a convenience, but it should delegate to cardinality
+semantics, not define its own.
 
-```rust
-impl Value {
-    pub fn is_empty(&self) -> bool {
-        match self {
-            Value::Str(s) => s.is_empty(),
-            Value::StrList(v) | Value::List(v) => v.is_empty(),
-            Value::Unit | Value::Skipped => true,
-            _ => false, // Int, Bool, Request, Response, Json, Map — non-empty by existence
-        }
-    }
-}
-```
-
-**What it enables**:
-- `NonEmpty` codegen becomes `assert!(!output.is_empty())`
-- Input constraints can use `!value.is_empty()` for required ports
-- Boundary generation: empty = `is_empty() == true` value for the type
-- Contract validation: "non-empty" predicate maps to `!is_empty()`
+**Note**: The codegen-specific wiring (items 2, 3 from hacks) is being
+addressed separately as part of the codegen rework.
 
 ---
 
-## 3. Typed matcher variants (logic language for assertions)
+## 3. Codegen needs structured language modeling
 
-**Current**: `OutputMatcher::Satisfies { predicate, description }` carries
-a closure that can't be serialized to generated Rust code. Codegen emits
-a comment instead of an assertion (see TODO_hacks.md Hack #1).
+**Design decision**: The `Satisfies` closure / `value_to_rust_literal`
+catch-all problem points to a deeper issue — codegen doesn't model
+target language elements as structured data the way we model other
+interfaces (git, gist).
 
-**Goal**: Replace most `Satisfies` uses with typed matcher variants that
-form a finite logic language — serializable, composable, and amenable
-to proof generation:
+**Goal**: Model Rust (and eventually Python, TS) language elements
+as structured data — the same way we model git ops or gist ops.
+Something like a `RustExpr` enum with variants for literals, assertions,
+function calls, etc. Codegen builds that data structure, then a separate
+renderer emits text. This makes serialization exhaustive (no catch-all)
+and new variants force compiler errors instead of silent degradation.
 
-```rust
-pub enum OutputMatcher {
-    Exact(Value),
-    Contains(String),
-    NonEmpty,
-    Any,
-
-    // New typed variants:
-    IsType(ValueType),           // assert!(matches!(output, Value::Bool(_)))
-    IntRange { min: Option<i64>, max: Option<i64> },
-    MatchesRegex(String),
-    IsNonEmptyList,              // List with >=1 element
-    ListLength { min: usize, max: Option<usize> },
-
-    // Escape hatch (keep for truly custom predicates):
-    Satisfies { predicate: fn(&Value) -> bool, description: String },
-}
-```
-
-**What it enables**:
-- Generated tests actually assert things (no more comment-only matchers)
-- Matchers become a small logic you can reason about statically
-- Future: generate matchers from type contracts (contract → matcher)
-- Future: counterexample generation (given matcher, find failing value)
-
-**Migration**: Audit all `Satisfies` uses, replace with typed variants
-where possible. Most current uses are `is_bool`, `is_non_negative_int`,
-`matches_type` patterns — these map directly to `IsType` and `IntRange`.
+**Status**: Being addressed in a separate codegen rework effort.
 
 ---
 
-## 4. Tape order semantics
+## 4. Set is a concrete type ✅
 
-**Current**: `Value::List` uses derived `PartialEq`, which is
-order-sensitive. `vec![a, b] != vec![b, a]`.
+**Design decision**: List is a list, Set is a set. `Value::Set` was added
+as a concrete type with language-agnostic set algebra.
 
-**Question**: If "tape = set/bag" is a design goal, should list equality
-be order-insensitive? This affects:
-- `OutputMatcher::Exact` on list values
-- Edge compatibility (does `[a, b]` satisfy a port expecting `[b, a]`?)
-- Testgen: generated assertions with `assert_eq!` on lists
-
-**Options**:
-1. **Lists are ordered** — current behavior. Simple, predictable.
-   "Tape" is a metaphor for sequential processing, not set membership.
-2. **Lists are unordered (set/bag)** — add canonicalization (sort)
-   before equality checks. Need `Value: Ord` or custom comparison.
-   Add "Ordered" predicate to type contracts for ports that care.
-3. **Both** — `Value::List` is ordered by default. Add
-   `Value::Set(BTreeSet<Value>)` for unordered collections.
-   Cardinality applies to both.
-
-**Recommendation**: Defer. Keep order-sensitive equality for now.
-Only revisit if a concrete use case needs set semantics. The
-current design works and avoids complexity.
+**Implemented**:
+- `Value::Set(Vec<Value>)` — unordered, unique-element collection
+  (`core/ir/src/value.rs`). Uniqueness enforced via `PartialEq` at
+  construction time. Constructors: `Value::set()`, `Value::str_set()`.
+- Set algebra methods on `Value`: `set_union()`, `set_intersection()`,
+  `set_difference()`, `set_symmetric_difference()`, `is_subset()`,
+  `set_contains()`.
+- `WrapperKind::Set` and `WrapperKind::NonEmptySet` in the type system
+  (`core/ir/src/type_op.rs`).
+- Type constructors: `type_lib::set()`, `type_lib::non_empty_set()`.
+- `SetOp` in collection primitives (`lib/primitives/src/collection.rs`)
+  — `Union`, `Intersection`, `Difference`, `SymmetricDifference`.
+  Accepts both Set and List inputs (List is auto-promoted by deduplication).
+- All exhaustive match statements updated across the codebase.
 
 ---
 
-## 5. Boundary witness generation from type contracts
+## 5. Boundary witness generation from type contracts ✅
 
-**Current**: Cardinality boundary tests (Bucket B.3) hardcode mock
-values via `cardinality_case_mock_value()`. Witnesses are manually
-specified per type_id.
+**Implemented**: `contract::witnesses()` generates boundary witness values
+from a type DAG's contract (`core/ir/src/contract.rs`).
 
-**Goal**: Given a `TypeContract`, automatically generate boundary
-witnesses:
+Given a type DAG, it:
+1. Extracts base type, predicates, cardinality, and wrapper kind
+2. Generates a scalar witness refined by predicates (e.g., URL type
+   → `"https://example.com"` because of the `Matches` predicate)
+3. Produces one `BoundaryWitness { case, value }` per cardinality case
 
-```rust
-fn boundary_witnesses(contract: &TypeContract) -> Vec<Value> {
-    let base_witnesses = match contract.base_type.as_deref() {
-        Some("String") => vec![Value::Str("".into()), Value::Str("test".into())],
-        Some("Bool")   => vec![Value::Bool(false), Value::Bool(true)],
-        Some("Int")    => vec![Value::Int(0), Value::Int(1), Value::Int(-1)],
-        _ => vec![],
-    };
+Examples:
+- `String` (cardinality ONE) → 1 witness: `Value::Str("example")`
+- `Optional<String>` → 2 witnesses: `Value::Unit` (Empty), `Value::Str(...)` (One)
+- `List<String>` → 3 witnesses: `[]` (Empty), `["example"]` (One), `["example_1", "example_2"]` (Many)
+- `Set<String>` → 3 witnesses: `{}` (Empty), `{"example"}` (One), `{"example_1", "example_2"}` (Many)
 
-    contract.cardinality.boundary_cases().iter().flat_map(|case| {
-        match case {
-            Empty   => vec![/* absent — requires Hack #5 fix */],
-            One     => base_witnesses.clone(),
-            Many(n) => vec![Value::List(base_witnesses[..n].to_vec())],
-        }
-    }).collect()
-}
-```
-
-**What it enables**:
-- B.3 tests generated from contracts, not hardcoded tables
-- Property-based testing: "for all boundary witnesses, DAG doesn't crash"
-- Fuzz-like coverage with finite, deterministic test sets
-
-**Blocked on**: Hack #5 (absence representation), `type_id == "List"`
-migration (§5 in consolidation.md), `Value::is_empty()` (§2 above).
+**What's next**: Wire witnesses into testgen to replace hardcoded
+`cardinality_case_mock_value()` tables. This is part of the codegen rework.
 
 ---
 
-## 6. Cardinality-driven CLI generation
+## 6. Cardinality-driven CLI generation (partial) ✅
 
-**Current**: `gunbc-dag/src/makegen/registry.rs:419` detects repeatable
-CLI flags via `ep.type_id == "List"`.
+**Implemented**: `gunbc-dag/src/makegen/registry.rs` now checks
+`ep.type_id == "List" || ep.type_id == "Set"` instead of just `"List"`.
+A TODO comment marks this for replacement with `cardinality.allows_many()`
+when `CliEntrypoint` carries `Cardinality` (part of codegen rework).
 
-**Goal**: `repeatable = cardinality.max > 1 || cardinality.max == None`
-(unbounded). This falls out of the `type_id == "List"` migration
-(consolidation.md §5) but is worth calling out as a concrete
-improvement to CLI codegen correctness.
+**Loop pattern fixed**: `core/ir/src/patterns/loop_pattern.rs` defaults
+now use `"String"` as the type_id (element type) instead of `"List"`.
+Cardinality `ZERO_OR_MORE` handles the collection semantics — this
+eliminates the dual encoding where `"List"` was both a type name and
+a cardinality indicator.
 
-**What it enables**:
-- CLI parsing correctness derived from the type system, not string matching
-- New cardinality intervals (e.g., `[2, 5]`) automatically produce
-  correct CLI constraints (repeatable with min/max validation)
+**What's next**: Add `cardinality: Cardinality` field to `CliEntrypoint`
+and replace all `type_id ==` string checks in codegen. This is being
+addressed in the codegen rework.
 
 ---
 
-## Tasks
+## Remaining Tasks
 
-- [ ] Introduce `TypeId` newtype wrapping `String` (greppable, future-proof)
-- [ ] Add `Value::is_empty()` method to `core/ir`
-- [ ] Audit `Satisfies` uses and define typed matcher variants
-- [ ] Decide on tape order semantics (document decision, defer if no use case)
-- [ ] Prototype boundary witness generation from `TypeContract`
-- [ ] Replace `type_id == "List"` in CLI gen with cardinality check
+- [ ] Move toward structural type DAG comparison in Port (item 1)
+- [ ] Wire cardinality through to codegen emptiness checks (item 2, codegen rework)
+- [ ] Model target language elements as structured data (item 3, codegen rework)
+- [ ] Add `cardinality` field to `CliEntrypoint` (item 6, codegen rework)
+- [ ] Wire `contract::witnesses()` into testgen (codegen rework)
 
-## Notes
+## Completed
 
-- These items are aspirational, not blocking. Current system works.
-- The order of priority roughly follows the dependency chain:
-  `Value::is_empty()` → typed matchers → witness generation.
-- `TypeContract::from_type_dag` is the key existing primitive. Most
-  of these goals amount to "use contracts everywhere instead of
-  raw strings."
-- Don't conflate "tape semantics" with "set semantics." Tapes are
-  sequential. If we want unordered collections, add them explicitly
-  rather than changing list equality.
+- [x] Add `Value::Set` as concrete type with set algebra (item 4)
+- [x] Add `WrapperKind::Set` / `NonEmptySet` to type system
+- [x] Add `SetOp` to collection primitives
+- [x] Implement `contract::witnesses()` boundary witness generation (item 5)
+- [x] Replace `type_id == "List"` in non-codegen locations (item 6 partial)
+- [x] Fix loop pattern dual encoding (type_id "List" → element type + cardinality)
+
+## Design Principles (from review)
+
+- **Types are DAGs**: String, Bool, Json are all composed on each other.
+  Comparison should be structural DAG subsumption, not string equality.
+- **Cardinality owns emptiness**: Don't add standalone `is_empty()` as a
+  separate concept. Consolidate on the cardinality model — emptiness falls
+  out naturally from `cardinality.allows_empty()`.
+- **Codegen must model its target**: For any backend (Python, TS, Rust),
+  model the language elements correctly as structured data — the same way
+  we model git, gist, and other interfaces. String concatenation is the
+  root cause of serialization hacks.
+- **List is a list, Set is a set**: Don't overload List with set semantics.
+  Set is a distinct type with its own algebra. Language-agnostic design
+  ensures it works across backends.

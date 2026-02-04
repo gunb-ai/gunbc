@@ -260,6 +260,63 @@ pub fn non_empty_list(element_type: Dag<TypeOp>) -> Dag<TypeOp> {
     dag
 }
 
+/// Set type — wraps an inner type with ZeroOrMore cardinality and set (unique) semantics.
+///
+/// The element type DAG is included as a SubDag.
+pub fn set(element_type: Dag<TypeOp>) -> Dag<TypeOp> {
+    let mut dag = Dag::new();
+
+    // Input: set of values
+    dag.add_node(Node::opaque(
+        "input",
+        vec![Port::list("in", "Any")],
+        vec![Port::list("out", "Any")],
+        TypeOp::Wrap(WrapperKind::Set),
+    ));
+
+    // Element type validation (as SubDag, applied to each element)
+    dag.add_node(Node::subdag(
+        "element_type",
+        element_type,
+    ));
+
+    dag.add_edge(Edge::new("input", "out", "element_type", "in"));
+
+    dag
+}
+
+/// Non-empty set type — wraps an inner type with OneOrMore cardinality and set semantics.
+pub fn non_empty_set(element_type: Dag<TypeOp>) -> Dag<TypeOp> {
+    let mut dag = Dag::new();
+
+    // Input: non-empty set of values
+    dag.add_node(Node::opaque(
+        "input",
+        vec![Port::non_empty_list("in", "Any")],
+        vec![Port::non_empty_list("out", "Any")],
+        TypeOp::Wrap(WrapperKind::NonEmptySet),
+    ));
+
+    // Non-empty check
+    dag.add_node(Node::opaque(
+        "check_non_empty",
+        vec![Port::non_empty_list("in", "Any")],
+        vec![Port::non_empty_list("out", "Any")],
+        TypeOp::Validate(Predicate::NonEmpty),
+    ));
+
+    // Element type validation (as SubDag)
+    dag.add_node(Node::subdag(
+        "element_type",
+        element_type,
+    ));
+
+    dag.add_edge(Edge::new("input", "out", "check_non_empty", "in"));
+    dag.add_edge(Edge::new("check_non_empty", "out", "element_type", "in"));
+
+    dag
+}
+
 // =============================================================================
 // Composite Type Helpers
 // =============================================================================
@@ -288,55 +345,27 @@ pub fn non_empty_file_path_list() -> Dag<TypeOp> {
 // Type DAG Utilities
 // =============================================================================
 
+// Query functions delegate to contract module (single source of truth).
+
 /// Get the output cardinality of a type DAG.
 ///
-/// This inspects the type DAG structure to determine cardinality:
-/// - Optional<T> → ZeroOrOne
-/// - List<T> → ZeroOrMore
-/// - NonEmptyList<T> → OneOrMore
-/// - Everything else → One
+/// Delegates to [`crate::contract::cardinality`].
 pub fn infer_cardinality(type_dag: &Dag<TypeOp>) -> Cardinality {
-    // Look for wrapper nodes to determine cardinality
-    for node in &type_dag.nodes {
-        if let crate::node::NodeBody::Opaque(TypeOp::Wrap(kind)) = &node.body {
-            return match kind {
-                WrapperKind::Optional => Cardinality::ZERO_OR_ONE,
-                WrapperKind::List => Cardinality::ZERO_OR_MORE,
-                WrapperKind::NonEmptyList => Cardinality::ONE_OR_MORE,
-            };
-        }
-    }
-
-    // Default to One (scalar)
-    Cardinality::ONE
+    crate::contract::cardinality(type_dag)
 }
 
 /// Get the base type name from a type DAG.
+///
+/// Delegates to [`crate::contract::base_type`].
 pub fn base_type_name(type_dag: &Dag<TypeOp>) -> Option<String> {
-    // Find the first Identity node and get its output type
-    for node in &type_dag.nodes {
-        if let crate::node::NodeBody::Opaque(TypeOp::Identity) = &node.body {
-            if let Some(output) = node.outputs.first() {
-                return Some(output.type_id.0.clone());
-            }
-        }
-    }
-    None
+    crate::contract::base_type(type_dag)
 }
 
 /// Get all predicates from a type DAG.
+///
+/// Delegates to [`crate::contract::predicates`].
 pub fn predicates(type_dag: &Dag<TypeOp>) -> Vec<Predicate> {
-    type_dag
-        .nodes
-        .iter()
-        .filter_map(|n| {
-            if let crate::node::NodeBody::Opaque(TypeOp::Validate(pred)) = &n.body {
-                Some(pred.clone())
-            } else {
-                None
-            }
-        })
-        .collect()
+    crate::contract::predicates(type_dag)
 }
 
 #[cfg(test)]

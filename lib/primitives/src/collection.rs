@@ -18,6 +18,7 @@ pub enum CollectionOp {
     Sort(SortOp),
     First(FirstOp),
     Last(LastOp),
+    Set(SetOp),
 }
 
 impl Executable for CollectionOp {
@@ -29,6 +30,7 @@ impl Executable for CollectionOp {
             CollectionOp::Sort(op) => op.execute(inputs),
             CollectionOp::First(op) => op.execute(inputs),
             CollectionOp::Last(op) => op.execute(inputs),
+            CollectionOp::Set(op) => op.execute(inputs),
         }
     }
 }
@@ -290,6 +292,106 @@ impl Executable for LastOp {
     }
 }
 
+/// Set operation — language-agnostic set algebra.
+///
+/// All operations take two set inputs (`left`, `right`) and produce a set output.
+/// Inputs that are `List` values are automatically promoted to sets (deduplicated).
+///
+/// Cardinality: ZeroOrMore × ZeroOrMore → ZeroOrMore
+///
+/// Inputs:
+/// - `left`: Set (or List to be promoted)
+/// - `right`: Set (or List to be promoted)
+///
+/// Outputs:
+/// - `output`: Resulting Set
+/// - `count`: Int (number of elements in result)
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub enum SetOp {
+    /// Union: elements in either left or right.
+    #[default]
+    Union,
+    /// Intersection: elements in both left and right.
+    Intersection,
+    /// Difference: elements in left but not in right.
+    Difference,
+    /// Symmetric difference: elements in either but not both.
+    SymmetricDifference,
+}
+
+impl SetOp {
+    /// Extract a set (Vec<Value> with unique elements) from an input value.
+    /// Accepts both Set and List (List is promoted by deduplication).
+    fn extract_set(value: &Value) -> Result<Vec<Value>, ExecError> {
+        match value {
+            Value::Set(v) => Ok(v.clone()),
+            Value::List(v) => {
+                // Promote list to set by deduplication
+                let mut unique = Vec::with_capacity(v.len());
+                for item in v {
+                    if !unique.contains(item) {
+                        unique.push(item.clone());
+                    }
+                }
+                Ok(unique)
+            }
+            _ => Err(ExecError::new("expected Set or List value")),
+        }
+    }
+}
+
+impl Executable for SetOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        let left_val = inputs
+            .get("left")
+            .ok_or_else(|| ExecError::new("missing 'left' input"))?;
+        let right_val = inputs
+            .get("right")
+            .ok_or_else(|| ExecError::new("missing 'right' input"))?;
+
+        let left = Self::extract_set(left_val)?;
+        let right = Self::extract_set(right_val)?;
+
+        let result = match self {
+            SetOp::Union => {
+                let mut out = left;
+                for v in &right {
+                    if !out.contains(v) {
+                        out.push(v.clone());
+                    }
+                }
+                out
+            }
+            SetOp::Intersection => left
+                .iter()
+                .filter(|v| right.contains(v))
+                .cloned()
+                .collect(),
+            SetOp::Difference => left
+                .iter()
+                .filter(|v| !right.contains(v))
+                .cloned()
+                .collect(),
+            SetOp::SymmetricDifference => {
+                let mut out: Vec<Value> =
+                    left.iter().filter(|v| !right.contains(v)).cloned().collect();
+                for v in &right {
+                    if !left.contains(v) {
+                        out.push(v.clone());
+                    }
+                }
+                out
+            }
+        };
+
+        let count = result.len() as i64;
+        let mut out = HashMap::new();
+        out.insert("output".to_string(), Value::Set(result));
+        out.insert("count".to_string(), Value::Int(count));
+        Ok(out)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -381,5 +483,108 @@ mod tests {
 
         let result = op.execute(inputs).unwrap();
         assert_eq!(result.get("exists"), Some(&Value::Bool(false)));
+    }
+
+    // --- Set operation tests ---
+
+    #[test]
+    fn test_set_union() {
+        let op = SetOp::Union;
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "left".to_string(),
+            Value::str_set(vec!["a".to_string(), "b".to_string()]),
+        );
+        inputs.insert(
+            "right".to_string(),
+            Value::str_set(vec!["b".to_string(), "c".to_string()]),
+        );
+
+        let result = op.execute(inputs).unwrap();
+        let output = result.get("output").unwrap().as_set().unwrap();
+        assert_eq!(output.len(), 3);
+        assert!(output.contains(&Value::Str("a".to_string())));
+        assert!(output.contains(&Value::Str("b".to_string())));
+        assert!(output.contains(&Value::Str("c".to_string())));
+        assert_eq!(result.get("count"), Some(&Value::Int(3)));
+    }
+
+    #[test]
+    fn test_set_intersection() {
+        let op = SetOp::Intersection;
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "left".to_string(),
+            Value::str_set(vec!["a".to_string(), "b".to_string(), "c".to_string()]),
+        );
+        inputs.insert(
+            "right".to_string(),
+            Value::str_set(vec!["b".to_string(), "c".to_string(), "d".to_string()]),
+        );
+
+        let result = op.execute(inputs).unwrap();
+        let output = result.get("output").unwrap().as_set().unwrap();
+        assert_eq!(output.len(), 2);
+        assert!(output.contains(&Value::Str("b".to_string())));
+        assert!(output.contains(&Value::Str("c".to_string())));
+    }
+
+    #[test]
+    fn test_set_difference() {
+        let op = SetOp::Difference;
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "left".to_string(),
+            Value::str_set(vec!["a".to_string(), "b".to_string(), "c".to_string()]),
+        );
+        inputs.insert(
+            "right".to_string(),
+            Value::str_set(vec!["b".to_string()]),
+        );
+
+        let result = op.execute(inputs).unwrap();
+        let output = result.get("output").unwrap().as_set().unwrap();
+        assert_eq!(output.len(), 2);
+        assert!(output.contains(&Value::Str("a".to_string())));
+        assert!(output.contains(&Value::Str("c".to_string())));
+    }
+
+    #[test]
+    fn test_set_symmetric_difference() {
+        let op = SetOp::SymmetricDifference;
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "left".to_string(),
+            Value::str_set(vec!["a".to_string(), "b".to_string()]),
+        );
+        inputs.insert(
+            "right".to_string(),
+            Value::str_set(vec!["b".to_string(), "c".to_string()]),
+        );
+
+        let result = op.execute(inputs).unwrap();
+        let output = result.get("output").unwrap().as_set().unwrap();
+        assert_eq!(output.len(), 2);
+        assert!(output.contains(&Value::Str("a".to_string())));
+        assert!(output.contains(&Value::Str("c".to_string())));
+    }
+
+    #[test]
+    fn test_set_from_list_promotion() {
+        let op = SetOp::Union;
+        let mut inputs = HashMap::new();
+        // Lists with duplicates get promoted to sets
+        inputs.insert(
+            "left".to_string(),
+            Value::str_list(vec!["a".to_string(), "a".to_string(), "b".to_string()]),
+        );
+        inputs.insert(
+            "right".to_string(),
+            Value::str_list(vec!["b".to_string(), "c".to_string()]),
+        );
+
+        let result = op.execute(inputs).unwrap();
+        let output = result.get("output").unwrap().as_set().unwrap();
+        assert_eq!(output.len(), 3); // a, b, c — duplicates removed
     }
 }

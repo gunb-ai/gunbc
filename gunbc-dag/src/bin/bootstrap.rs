@@ -86,6 +86,7 @@ fn print_value(port: &str, value: &Value) {
         Value::Int(i) => println!("  {}: {}", port, i),
         Value::Bool(b) => println!("  {}: {}", port, b),
         Value::List(list) => println!("  {}: [{} items]", port, list.len()),
+        Value::Set(set) => println!("  {}: {{{} items}}", port, set.len()),
         Value::Map(map) => println!("  {}: {{{} entries}}", port, map.len()),
         Value::Json(_) => println!("  {}: <JSON>", port),
         _ => {}
