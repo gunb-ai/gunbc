@@ -243,26 +243,47 @@ impl<W: Write> TerminalRenderer<W> {
         self.symbol_set.get(id).resolve_colored(self.tier)
     }
 
-    /// Get the symbol ID for a node state.
-    fn node_symbol_id(&self, state: NodeState) -> SymbolId {
+    /// ANSI color code for a node state (for coloring boxes).
+    fn state_color(&self, state: NodeState) -> SemanticColor {
         match state {
-            NodeState::Pending => SymbolId::NodePending,
-            NodeState::Running => SymbolId::NodeRunning,
-            NodeState::Completed => SymbolId::NodeCompleted,
-            NodeState::Failed => SymbolId::NodeFailed,
-            NodeState::Skipped => SymbolId::NodeSkipped,
-            NodeState::Intercepted => SymbolId::NodeIntercepted,
+            NodeState::Pending => SemanticColor::Dim,
+            NodeState::Running => SemanticColor::Active,
+            NodeState::Completed => SemanticColor::Success,
+            NodeState::Failed => SemanticColor::Error,
+            NodeState::Skipped => SemanticColor::Dim,
+            NodeState::Intercepted => SemanticColor::Success, // intercepted = done in dry-run
         }
     }
 
-    /// Resolve a colored node symbol, always using Unicode tier (✓ not ✅).
-    fn colored_node_symbol(&self, state: NodeState) -> String {
-        let id = self.node_symbol_id(state);
-        let tier = match self.tier {
-            Tier::Ascii => Tier::Ascii,
-            _ => Tier::Unicode, // ✓ instead of ✅
+    /// Wrap text in ANSI bold + color for a node state.
+    fn colored_box(&self, text: &str, state: NodeState) -> String {
+        let color = self.state_color(state);
+        // Bold for completed/failed/running, dim stays dim
+        let bold = match state {
+            NodeState::Completed | NodeState::Failed | NodeState::Running | NodeState::Intercepted => "\x1b[1m",
+            _ => "",
         };
-        self.symbol_set.get(id).resolve_colored(tier)
+        format!("{}{}[{}]\x1b[0m", bold, color.ansi(), text)
+    }
+
+    /// Legend symbol for a node state: ✔, ✘, ◐, etc.
+    fn legend_symbol(&self, state: NodeState) -> &'static str {
+        match self.tier {
+            Tier::Ascii => match state {
+                NodeState::Completed | NodeState::Intercepted => "ok",
+                NodeState::Failed => "FAIL",
+                NodeState::Running => "...",
+                NodeState::Skipped => "skip",
+                NodeState::Pending => "-",
+            },
+            _ => match state {
+                NodeState::Completed | NodeState::Intercepted => "\u{2714}", // ✔
+                NodeState::Failed => "\u{2718}",                             // ✘
+                NodeState::Running => "\u{25D0}",                            // ◐
+                NodeState::Skipped => "\u{25CC}",                            // ◌
+                NodeState::Pending => "\u{25CB}",                            // ○
+            },
+        }
     }
 
 
@@ -388,10 +409,9 @@ impl<W: Write> TerminalRenderer<W> {
             }
         }
 
-        // Column dimensions: all boxes are uniform width
-        let sym_w = self.symbol_display_width();
+        // Column dimensions: all boxes are uniform [X] = letter + 2 brackets
         let max_letter_w = node_letter.values().map(|l| l.len()).max().unwrap_or(1);
-        let col_w = sym_w + max_letter_w + 3; // uniform column width
+        let col_w = max_letter_w + 2; // [X] = 1 + letter + 1
 
         // Gap widths: 5 for fan-out columns, 3 otherwise
         let mut gap_widths: Vec<usize> = vec![3; num_cols.saturating_sub(1)];
@@ -417,14 +437,9 @@ impl<W: Write> TerminalRenderer<W> {
                         .get(node)
                         .map(|np| np.state)
                         .unwrap_or(NodeState::Pending);
-                    let sym = self.colored_node_symbol(state);
                     let letter = node_letter.get(node).map(|s| s.as_str()).unwrap_or("?");
-                    line.push('[');
-                    line.push_str(&sym);
-                    line.push(' ');
-                    line.push_str(letter);
-                    line.push(']');
-                    let vis_w = sym_w + letter.len() + 3;
+                    line.push_str(&self.colored_box(letter, state));
+                    let vis_w = letter.len() + 2; // [X]
                     let pad = col_w.saturating_sub(vis_w);
                     line.push_str(&" ".repeat(pad));
                 } else {
@@ -455,7 +470,7 @@ impl<W: Write> TerminalRenderer<W> {
             }
         }
 
-        // Legend: show letter → full name for active/completed/failed nodes
+        // Legend: show symbol + letter → full name
         lines.push(String::new());
         for level in &self.layout.levels {
             let mut sorted = level.clone();
@@ -468,8 +483,10 @@ impl<W: Write> TerminalRenderer<W> {
                     .unwrap_or(NodeState::Pending);
                 let letter = node_letter.get(node).map(|s| s.as_str()).unwrap_or("?");
                 let label = full_label(node, &progress.snapshot.labels);
-                let sym = self.colored_node_symbol(state);
-                lines.push(format!("  {} {}: {}", sym, letter, label));
+                let sym = self.legend_symbol(state);
+                let color = self.state_color(state);
+                let entry = format!("  {}{} {}: {}\x1b[0m", color.ansi(), sym, letter, label);
+                lines.push(entry);
             }
         }
 
@@ -846,12 +863,6 @@ impl<W: Write> TerminalRenderer<W> {
             EdgeState::Dead => SemanticColor::Dim,
         };
         format!("{}{}\x1b[0m", color.ansi(), s)
-    }
-
-    /// Display width of a node symbol in a box (always Unicode tier: 1 char).
-    fn symbol_display_width(&self) -> usize {
-        // Node symbols always use Unicode tier (✓, ◉, etc.) which are 1 char wide
-        1
     }
 
     /// Render the footer summary.
@@ -1355,9 +1366,9 @@ mod tests {
 
         let output = String::from_utf8(buf).unwrap();
         let lines: Vec<&str> = output.lines().collect();
-        // All letter-boxes on one DAG line (horizontal layout)
+        // All letter-boxes on one DAG line (boxes contain [A], [B], [C] with ANSI wrapping)
         let has_all_on_one_line = lines.iter().any(|line| {
-            line.contains(" A]") && line.contains(" B]") && line.contains(" C]")
+            line.contains("[A]") && line.contains("[B]") && line.contains("[C]")
         });
         assert!(
             has_all_on_one_line,
@@ -1419,9 +1430,9 @@ mod tests {
 
         let output = String::from_utf8(buf).unwrap();
         // With letter labels: A is first node, B and C are fan-out targets
-        // B and C should be on different DAG lines (look for box patterns)
-        let b_line = output.lines().find(|l| l.contains(" B]"));
-        let c_line = output.lines().find(|l| l.contains(" C]"));
+        // B and C should be on different DAG lines (look for [B] and [C] with ANSI)
+        let b_line = output.lines().find(|l| l.contains("[B]"));
+        let c_line = output.lines().find(|l| l.contains("[C]"));
         assert!(b_line.is_some(), "B box should appear in output:\n{}", output);
         assert!(c_line.is_some(), "C box should appear in output:\n{}", output);
         assert_ne!(
