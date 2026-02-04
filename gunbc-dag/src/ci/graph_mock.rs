@@ -159,26 +159,17 @@ pub fn ci_mock_spec() -> MockSpec {
         )
         .node_example(
             NodeExample::new("prepare_codegen_cmd")
-                .output("skip", OutputMatcher::Satisfies {
-                    description: "skip is a boolean".into(),
-                    predicate: |v| matches!(v, Value::Bool(_)),
-                })
+                .output("skip", OutputMatcher::IsBool)
                 .description("Codegen command prepare emits skip flag"),
         )
         .node_example(
             NodeExample::new("prepare_build")
-                .output("skip", OutputMatcher::Satisfies {
-                    description: "skip is a boolean".into(),
-                    predicate: |v| matches!(v, Value::Bool(_)),
-                })
+                .output("skip", OutputMatcher::IsBool)
                 .description("Build prepare emits skip flag"),
         )
         .node_example(
             NodeExample::new("prepare_test")
-                .output("skip", OutputMatcher::Satisfies {
-                    description: "skip is a boolean".into(),
-                    predicate: |v| matches!(v, Value::Bool(_)),
-                })
+                .output("skip", OutputMatcher::IsBool)
                 .description("Test prepare emits skip flag"),
         )
         .node_example(
@@ -195,14 +186,8 @@ pub fn ci_mock_spec() -> MockSpec {
         )
         .node_example(
             NodeExample::new("parse_clippy_lint")
-                .output("lint_success", OutputMatcher::Satisfies {
-                    description: "lint_success is a boolean".into(),
-                    predicate: |v| matches!(v, Value::Bool(_)),
-                })
-                .output("lint_skipped", OutputMatcher::Satisfies {
-                    description: "lint_skipped is a boolean".into(),
-                    predicate: |v| matches!(v, Value::Bool(_)),
-                })
+                .output("lint_success", OutputMatcher::IsBool)
+                .output("lint_skipped", OutputMatcher::IsBool)
                 .description("Clippy result parse produces success/skipped flags"),
         )
         // Primitive nodes — tested in their own crates

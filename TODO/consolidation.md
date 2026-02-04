@@ -900,12 +900,15 @@ This is fine; it's infrastructure code, not op code.
 - [x] Add `TransportResponseExt::require_shell/rest/file` methods (51 call sites) — `core/exec/src/helpers.rs`
 - [x] Add `ShellRequest::into_transport_request()` — `core/ir/src/transport/mod.rs`
 
-### High priority (new — widespread, low effort)
-- [ ] Add `propagate_skipped` helper (8 call sites across 3 files) — §12
-- [ ] Add `ExecError::context()` + `ResultExt` trait (27 call sites across 10 files) — §13
-- [ ] Add `ShellResponse::ok()` / `ShellResponse::failed()` constructors (39 sites, 16 files) — §14
+### High priority (new — widespread, low effort) — DONE
+- [x] Add `propagate_skipped` helper (8 call sites across 3 files) — §12
+- [x] Add `ExecError::context()` + `ResultExt` trait (27 call sites across 10 files) — §13
+- [x] Add `ShellResponse::ok()` / `ShellResponse::failed()` constructors (39 sites, 16 files) — §14
+- [x] Add `From<ShellRequest> for TransportRequest` (+ FileRequest, RestRequest, etc.) — all 5 request types + 5 response types
+
+### High priority (remaining)
 - [ ] Add `InputsExt` trait to replace free-function `require_*/optional_*` calls — shrinks import lists
-- [ ] Add `From<ShellRequest> for TransportRequest` (+ FileRequest etc) and make `OutputMap::request` accept `impl Into<TransportRequest>`
+- [ ] Migrate call sites to use `propagate_skipped`, `ExecError::context()`, `ShellResponse::ok()` etc.
 
 ### Medium priority
 - [ ] Migrate remaining raw `HashMap::new()` output construction to `OutputMap` (9 sites, 5 files) — §15

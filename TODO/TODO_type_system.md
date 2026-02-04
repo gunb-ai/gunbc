@@ -117,22 +117,23 @@ Examples:
 
 ---
 
-## 6. Cardinality-driven CLI generation (partial) ✅
+## 6. Cardinality-driven CLI generation ✅
 
-**Implemented**: `gunbc-dag/src/makegen/registry.rs` now checks
-`ep.type_id == "List" || ep.type_id == "Set"` instead of just `"List"`.
-A TODO comment marks this for replacement with `cardinality.allows_many()`
-when `CliEntrypoint` carries `Cardinality` (part of codegen rework).
+**Implemented**: `CliEntrypoint` now carries a `cardinality: Cardinality`
+field (`core/codegen/src/cli_gen.rs`). All CLI generation logic —
+`rust_type()`, `value_constructor()`, `is_repeatable()`, arg parsing,
+help text — derives collection behavior from `cardinality.allows_many()`
+instead of string-matching `type_id == "List"`.
+
+The makegen registry (`gunbc-dag/src/makegen/registry.rs`) now uses
+`ep.cardinality.allows_many()` directly, eliminating the TODO that
+previously marked this for replacement.
 
 **Loop pattern fixed**: `core/ir/src/patterns/loop_pattern.rs` defaults
 now use `"String"` as the type_id (element type) instead of `"List"`.
 Cardinality `ZERO_OR_MORE` handles the collection semantics — this
 eliminates the dual encoding where `"List"` was both a type name and
 a cardinality indicator.
-
-**What's next**: Add `cardinality: Cardinality` field to `CliEntrypoint`
-and replace all `type_id ==` string checks in codegen. This is being
-addressed in the codegen rework.
 
 ---
 
@@ -141,7 +142,6 @@ addressed in the codegen rework.
 - [ ] Move toward structural type DAG comparison in Port (item 1)
 - [ ] Wire cardinality through to codegen emptiness checks (item 2, codegen rework)
 - [ ] Model target language elements as structured data (item 3, codegen rework — in progress)
-- [ ] Add `cardinality` field to `CliEntrypoint` (item 6, codegen rework)
 - [ ] Wire `contract::witnesses()` into testgen (codegen rework)
 
 ## Completed
@@ -153,6 +153,13 @@ addressed in the codegen rework.
 - [x] Implement `contract::witnesses()` boundary witness generation (item 5)
 - [x] Replace `type_id == "List"` in non-codegen locations (item 6 partial)
 - [x] Fix loop pattern dual encoding (type_id "List" → element type + cardinality)
+- [x] Add `cardinality: Cardinality` field to `CliEntrypoint` (item 6)
+- [x] Replace `type_id ==` string checks in CLI generation with `cardinality.allows_many()`
+- [x] Add typed `OutputMatcher` variants (`IsBool`, `IsInt`, `IsString`, `IsRequest`, `IsResponse`, `IntGe`, `IntLe`) that generate real codegen assertions
+- [x] Add `ShellResponse::ok()` / `failed()` constructors for transport response modeling
+- [x] Add `From<T> for TransportRequest` / `TransportResponse` impls for all transport types
+- [x] Add `ExecError::context()` and `ResultExt` trait for structured error context
+- [x] Add `propagate_skipped()` helper for skip propagation pattern
 
 ## Design Principles (from review)
 

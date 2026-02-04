@@ -9,6 +9,7 @@
 //! Uses the language module for Rust type mappings and naming conventions.
 
 use gunbc_ir::language::{rust_type as lang_rust_type, NamingCase};
+use gunbc_ir::Cardinality;
 
 /// Metadata about a tool for CLI generation.
 #[derive(Debug, Clone)]
@@ -40,6 +41,12 @@ pub struct CliEntrypoint {
     pub port_name: String,
     /// The type (String, Int, Bool, List, etc.)
     pub type_id: String,
+    /// Cardinality of this entrypoint's port.
+    ///
+    /// Used to determine CLI behavior: `allows_many()` → repeatable flag,
+    /// `allows_empty()` → optional argument. This replaces string matching
+    /// on `type_id == "List"` with proper cardinality queries.
+    pub cardinality: Cardinality,
     /// Short flag (e.g., "-r" for repo_path)
     pub short_flag: Option<char>,
     /// Default value if not provided
@@ -54,17 +61,35 @@ pub struct CliEntrypoint {
 
 impl CliEntrypoint {
     /// Create a new CLI entrypoint.
+    ///
+    /// Cardinality defaults to `ONE` (scalar). Use `with_cardinality()` to
+    /// set it explicitly, or use `list()` / `set()` constructors for
+    /// collection entrypoints.
     pub fn new(port_name: impl Into<String>, type_id: impl Into<String>) -> Self {
         let port = port_name.into();
+        let type_id_str = type_id.into();
         let help = format!("Value for {} port", port);
+        // Infer cardinality from type_id for backward compatibility.
+        // New code should use with_cardinality() or the typed constructors.
+        let cardinality = match type_id_str.as_str() {
+            "List" | "Set" => Cardinality::ZERO_OR_MORE,
+            _ => Cardinality::ONE,
+        };
         Self {
             port_name: port,
-            type_id: type_id.into(),
+            type_id: type_id_str,
+            cardinality,
             short_flag: None,
             default_value: None,
             help,
             make_var: None,
         }
+    }
+
+    /// Set the cardinality explicitly.
+    pub fn with_cardinality(mut self, cardinality: Cardinality) -> Self {
+        self.cardinality = cardinality;
+        self
     }
 
     /// Set short flag.
@@ -109,26 +134,42 @@ impl CliEntrypoint {
 
     /// Get the Rust type for this entrypoint.
     ///
-    /// Uses the language module's type system mapping for standard types,
-    /// with special handling for IR-specific type names like "List".
+    /// Uses the language module's type system mapping for standard types.
+    /// Collection types are derived from cardinality, not type_id string matching.
     pub fn rust_type(&self) -> String {
-        // Map IR type names to abstract type names for language module
-        let abstract_type = match self.type_id.as_str() {
-            "List" => "List<String>",
-            other => other,
-        };
-        lang_rust_type(abstract_type)
+        if self.cardinality.allows_many() {
+            // Collection entrypoint — element type is type_id
+            let element = match self.type_id.as_str() {
+                "List" | "Set" => "String", // Legacy: "List"/"Set" as type_id means list-of-strings
+                other => other,
+            };
+            lang_rust_type(&format!("List<{}>", element))
+        } else {
+            lang_rust_type(&self.type_id)
+        }
     }
 
     /// Get the Value constructor for this type.
+    ///
+    /// Collection types are derived from cardinality, not type_id string matching.
     pub fn value_constructor(&self) -> &str {
-        match self.type_id.as_str() {
-            "String" => "Value::Str",
-            "Int" => "Value::Int",
-            "Bool" => "Value::Bool",
-            "List" => "Value::str_list",
-            _ => "Value::Str",
+        if self.cardinality.allows_many() {
+            "Value::str_list"
+        } else {
+            match self.type_id.as_str() {
+                "String" => "Value::Str",
+                "Int" => "Value::Int",
+                "Bool" => "Value::Bool",
+                _ => "Value::Str",
+            }
         }
+    }
+
+    /// Whether this entrypoint accepts multiple values (repeatable CLI flag).
+    ///
+    /// Derived from cardinality, not type_id string matching.
+    pub fn is_repeatable(&self) -> bool {
+        self.cardinality.allows_many()
     }
 }
 
@@ -313,95 +354,99 @@ fn print_help() {{
 
 fn generate_arg_parsing(entrypoints: &[CliEntrypoint]) -> String {
     let mut code = String::new();
-    
+
     // Declare variables with defaults
     for ep in entrypoints {
         let default = ep.default_value.as_deref().unwrap_or_default();
-        match ep.type_id.as_str() {
-            "String" => {
-                if default.is_empty() {
-                    code.push_str(&format!("    let mut {}: Option<String> = None;\n", ep.var_name()));
-                } else {
+        if ep.is_repeatable() {
+            // Collection entrypoints: Vec<String>
+            code.push_str(&format!("    let mut {}: Vec<String> = vec![];\n", ep.var_name()));
+        } else {
+            match ep.type_id.as_str() {
+                "String" => {
+                    if default.is_empty() {
+                        code.push_str(&format!("    let mut {}: Option<String> = None;\n", ep.var_name()));
+                    } else {
+                        code.push_str(&format!("    let mut {} = \"{}\".to_string();\n", ep.var_name(), default));
+                    }
+                }
+                "Bool" => {
+                    let default_bool = default == "true";
+                    code.push_str(&format!("    let mut {} = {};\n", ep.var_name(), default_bool));
+                }
+                "Int" => {
+                    let default_int = default.parse::<i64>().unwrap_or(0);
+                    code.push_str(&format!("    let mut {} = {}i64;\n", ep.var_name(), default_int));
+                }
+                _ => {
                     code.push_str(&format!("    let mut {} = \"{}\".to_string();\n", ep.var_name(), default));
                 }
-            }
-            "Bool" => {
-                let default_bool = default == "true";
-                code.push_str(&format!("    let mut {} = {};\n", ep.var_name(), default_bool));
-            }
-            "Int" => {
-                let default_int = default.parse::<i64>().unwrap_or(0);
-                code.push_str(&format!("    let mut {} = {}i64;\n", ep.var_name(), default_int));
-            }
-            "List" => {
-                code.push_str(&format!("    let mut {}: Vec<String> = vec![];\n", ep.var_name()));
-            }
-            _ => {
-                code.push_str(&format!("    let mut {} = \"{}\".to_string();\n", ep.var_name(), default));
             }
         }
     }
     code.push_str("    let mut dry_run = false;\n");
     code.push('\n');
-    
+
     // Parse loop
     code.push_str("    let mut i = 1;\n");
     code.push_str("    while i < args.len() {\n");
     code.push_str("        match args[i].as_str() {\n");
-    
+
     for ep in entrypoints {
         let flag = ep.flag_name();
         let short = ep.short_flag.map(|c| format!("\"-{}\" | ", c)).unwrap_or_default();
-        
-        match ep.type_id.as_str() {
-            "Bool" => {
-                code.push_str(&format!(
-                    "            {}\"--{}\" => {} = true,\n",
-                    short, flag, ep.var_name()
-                ));
-            }
-            "List" => {
-                code.push_str(&format!(
-                    "            {}\"--{}\" => {{\n",
-                    short, flag
-                ));
-                code.push_str("                i += 1;\n");
-                code.push_str(&format!(
-                    "                if i < args.len() {{ {}.push(args[i].clone()); }}\n",
-                    ep.var_name()
-                ));
-                code.push_str("            }\n");
-            }
-            _ => {
-                code.push_str(&format!(
-                    "            {}\"--{}\" => {{\n",
-                    short, flag
-                ));
-                code.push_str("                i += 1;\n");
-                if ep.default_value.is_some() || ep.type_id != "String" {
+
+        if ep.is_repeatable() {
+            // Repeatable flags: --flag val --flag val2
+            code.push_str(&format!(
+                "            {}\"--{}\" => {{\n",
+                short, flag
+            ));
+            code.push_str("                i += 1;\n");
+            code.push_str(&format!(
+                "                if i < args.len() {{ {}.push(args[i].clone()); }}\n",
+                ep.var_name()
+            ));
+            code.push_str("            }\n");
+        } else {
+            match ep.type_id.as_str() {
+                "Bool" => {
                     code.push_str(&format!(
-                        "                if i < args.len() {{ {} = args[i].clone(){}; }}\n",
-                        ep.var_name(),
-                        if ep.type_id == "Int" { ".parse().unwrap_or(0)" } else { "" }
-                    ));
-                } else {
-                    code.push_str(&format!(
-                        "                if i < args.len() {{ {} = Some(args[i].clone()); }}\n",
-                        ep.var_name()
+                        "            {}\"--{}\" => {} = true,\n",
+                        short, flag, ep.var_name()
                     ));
                 }
-                code.push_str("            }\n");
+                _ => {
+                    code.push_str(&format!(
+                        "            {}\"--{}\" => {{\n",
+                        short, flag
+                    ));
+                    code.push_str("                i += 1;\n");
+                    if ep.default_value.is_some() || ep.type_id != "String" {
+                        code.push_str(&format!(
+                            "                if i < args.len() {{ {} = args[i].clone(){}; }}\n",
+                            ep.var_name(),
+                            if ep.type_id == "Int" { ".parse().unwrap_or(0)" } else { "" }
+                        ));
+                    } else {
+                        code.push_str(&format!(
+                            "                if i < args.len() {{ {} = Some(args[i].clone()); }}\n",
+                            ep.var_name()
+                        ));
+                    }
+                    code.push_str("            }\n");
+                }
             }
         }
     }
-    
+
     code.push_str("            \"-n\" | \"--dry-run\" => dry_run = true,\n");
     code.push_str("            \"-h\" | \"--help\" => { print_help(); return; }\n");
     code.push_str("            _ => {}\n");
     code.push_str("        }\n");
     code.push_str("        i += 1;\n");
     code.push_str("    }\n");
-    
+
     code
 }
 
@@ -421,30 +466,31 @@ fn generate_mock_setup(boundaries: &[CliBoundary]) -> String {
 fn generate_print_inputs(entrypoints: &[CliEntrypoint]) -> String {
     let mut code = String::new();
     for ep in entrypoints {
-        match ep.type_id.as_str() {
-            "Bool" => {
-                code.push_str(&format!(
-                    "    println!(\"  {}: {{}}\", {});\n",
-                    ep.port_name, ep.var_name()
-                ));
-            }
-            "List" => {
-                code.push_str(&format!(
-                    "    println!(\"  {}: {{:?}}\", {});\n",
-                    ep.port_name, ep.var_name()
-                ));
-            }
-            _ => {
-                if ep.default_value.is_some() {
+        if ep.is_repeatable() {
+            code.push_str(&format!(
+                "    println!(\"  {}: {{:?}}\", {});\n",
+                ep.port_name, ep.var_name()
+            ));
+        } else {
+            match ep.type_id.as_str() {
+                "Bool" => {
                     code.push_str(&format!(
                         "    println!(\"  {}: {{}}\", {});\n",
                         ep.port_name, ep.var_name()
                     ));
-                } else {
-                    code.push_str(&format!(
-                        "    println!(\"  {}: {{}}\", {}.as_deref().unwrap_or(\"<default>\"));\n",
-                        ep.port_name, ep.var_name()
-                    ));
+                }
+                _ => {
+                    if ep.default_value.is_some() {
+                        code.push_str(&format!(
+                            "    println!(\"  {}: {{}}\", {});\n",
+                            ep.port_name, ep.var_name()
+                        ));
+                    } else {
+                        code.push_str(&format!(
+                            "    println!(\"  {}: {{}}\", {}.as_deref().unwrap_or(\"<default>\"));\n",
+                            ep.port_name, ep.var_name()
+                        ));
+                    }
                 }
             }
         }
@@ -479,11 +525,14 @@ fn generate_help_options(entrypoints: &[CliEntrypoint]) -> String {
     for ep in entrypoints {
         let flag = ep.flag_name();
         let short = ep.short_flag.map(|c| format!("-{}, ", c)).unwrap_or_else(|| "    ".to_string());
-        let type_hint = match ep.type_id.as_str() {
-            "Bool" => "",
-            "Int" => " <NUM>",
-            "List" => " <VAL>...",
-            _ => " <VAL>",
+        let type_hint = if ep.is_repeatable() {
+            " <VAL>..."
+        } else {
+            match ep.type_id.as_str() {
+                "Bool" => "",
+                "Int" => " <NUM>",
+                _ => " <VAL>",
+            }
         };
         code.push_str(&format!(
             "    println!(\"    {}--{}{:width$}  {}\");\n",

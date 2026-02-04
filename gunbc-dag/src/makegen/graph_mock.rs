@@ -66,10 +66,7 @@ pub fn makegen_mock_spec() -> MockSpec {
         // Node I/O examples: verify pure node behavior
         .node_example(
             NodeExample::new("load_registry")
-                .output("tool_count", OutputMatcher::Satisfies {
-                    description: "at least 2 tools registered".into(),
-                    predicate: |v| matches!(v, Value::Int(n) if *n >= 2),
-                })
+                .output("tool_count", OutputMatcher::IntGe(2))
                 .output("tool_names", OutputMatcher::non_empty())
                 .description("Default registry loads with expected tools"),
         )

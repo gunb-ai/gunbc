@@ -1929,6 +1929,70 @@ fn render_output_matcher_check(matcher: &OutputMatcher, var_name: &str) -> Strin
             };
             RustRenderer.render_assert(&assert, 0)
         }
+        OutputMatcher::IsBool => {
+            let assert = Assert::True {
+                expr: Expr::var(&output_var).method("as_bool", vec![]).method("is_some", vec![]),
+                message: format!("expected Bool for {}", output_var),
+            };
+            RustRenderer.render_assert(&assert, 0)
+        }
+        OutputMatcher::IsInt => {
+            let assert = Assert::True {
+                expr: Expr::var(&output_var).method("as_int", vec![]).method("is_some", vec![]),
+                message: format!("expected Int for {}", output_var),
+            };
+            RustRenderer.render_assert(&assert, 0)
+        }
+        OutputMatcher::IsString => {
+            let assert = Assert::True {
+                expr: Expr::var(&output_var).method("as_str", vec![]).method("is_some", vec![]),
+                message: format!("expected String for {}", output_var),
+            };
+            RustRenderer.render_assert(&assert, 0)
+        }
+        OutputMatcher::IsRequest => {
+            let assert = Assert::True {
+                expr: Expr::var(&output_var).method("as_request", vec![]).method("is_some", vec![]),
+                message: format!("expected Request for {}", output_var),
+            };
+            RustRenderer.render_assert(&assert, 0)
+        }
+        OutputMatcher::IsResponse => {
+            let assert = Assert::True {
+                expr: Expr::var(&output_var).method("as_response", vec![]).method("is_some", vec![]),
+                message: format!("expected Response for {}", output_var),
+            };
+            RustRenderer.render_assert(&assert, 0)
+        }
+        OutputMatcher::IntGe(threshold) => {
+            // assert!(var.as_int().unwrap() >= threshold)
+            let assert = Assert::True {
+                expr: Expr::var(&output_var)
+                    .method("as_int", vec![])
+                    .method("is_some_and", vec![
+                        Expr::Closure {
+                            args: vec!["n".to_string()],
+                            body: Box::new(Expr::Str(format!("n >= {}", threshold))),
+                        },
+                    ]),
+                message: format!("expected Int >= {} for {}", threshold, output_var),
+            };
+            RustRenderer.render_assert(&assert, 0)
+        }
+        OutputMatcher::IntLe(threshold) => {
+            let assert = Assert::True {
+                expr: Expr::var(&output_var)
+                    .method("as_int", vec![])
+                    .method("is_some_and", vec![
+                        Expr::Closure {
+                            args: vec!["n".to_string()],
+                            body: Box::new(Expr::Str(format!("n <= {}", threshold))),
+                        },
+                    ]),
+                message: format!("expected Int <= {} for {}", threshold, output_var),
+            };
+            RustRenderer.render_assert(&assert, 0)
+        }
         OutputMatcher::Satisfies { description, .. } => {
             format!("// Custom assertion: {}\n", description)
         }
