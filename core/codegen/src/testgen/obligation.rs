@@ -718,6 +718,24 @@ fn collect_scenario_obligations<T>(dag: &Dag<T>, obligations: &mut Vec<ProofObli
     }
 }
 
+/// Whether a type_id identifies a resource type.
+///
+/// Resource types are handles and locks that require connectivity and
+/// contention handling obligations.
+fn is_resource_type(type_id: &TypeId) -> bool {
+    matches!(
+        type_id.0.as_str(),
+        "ToolHandle" | "Lock" | "Lease" | "SharedLock"
+    )
+}
+
+/// Whether a port is a resource port (by name prefix or type).
+fn is_resource_port(port: &gunbc_ir::dag::Port) -> bool {
+    port.name.0.starts_with("resource:")
+        || port.name.0.starts_with("tool:")
+        || is_resource_type(&port.type_id)
+}
+
 /// Bucket D: Resource hygiene obligations.
 fn collect_resource_obligations<T>(
     dag: &Dag<T>,
@@ -727,14 +745,7 @@ fn collect_resource_obligations<T>(
     // D.1: Resource input connectivity — every resource/tool input has an edge
     for node in &dag.nodes {
         for port in &node.inputs {
-            let is_resource = port.name.0.starts_with("resource:")
-                || port.name.0.starts_with("tool:")
-                || port.type_id.0 == "ToolHandle"
-                || port.type_id.0 == "Lock"
-                || port.type_id.0 == "Lease"
-                || port.type_id.0 == "SharedLock";
-
-            if is_resource {
+            if is_resource_port(port) {
                 let has_edge = dag
                     .edges
                     .iter()
@@ -782,14 +793,7 @@ fn collect_resource_obligations<T>(
 
     // D.2: Resource owner validity — nodes that output resources should be env/owner nodes
     for node in &dag.nodes {
-        let outputs_resource = node.outputs.iter().any(|p| {
-            p.name.0.starts_with("resource:")
-                || p.name.0.starts_with("tool:")
-                || p.type_id.0 == "ToolHandle"
-                || p.type_id.0 == "Lock"
-                || p.type_id.0 == "Lease"
-                || p.type_id.0 == "SharedLock"
-        });
+        let outputs_resource = node.outputs.iter().any(|p| is_resource_port(p));
 
         if outputs_resource {
             obligations.push(ProofObligation::runtime(
@@ -808,14 +812,7 @@ fn collect_resource_obligations<T>(
     // D.3: No orphan resources — resources acquired should be consumed
     for node in &dag.nodes {
         for port in &node.outputs {
-            let is_resource = port.name.0.starts_with("resource:")
-                || port.name.0.starts_with("tool:")
-                || port.type_id.0 == "ToolHandle"
-                || port.type_id.0 == "Lock"
-                || port.type_id.0 == "Lease"
-                || port.type_id.0 == "SharedLock";
-
-            if is_resource {
+            if is_resource_port(port) {
                 let has_consumer = dag
                     .edges
                     .iter()
@@ -901,12 +898,7 @@ fn collect_resource_obligations<T>(
     // verify the consumer can handle contention (acquisition failure).
     for node in &dag.nodes {
         for port in &node.inputs {
-            let is_resource = port.type_id.0 == "ToolHandle"
-                || port.type_id.0 == "Lock"
-                || port.type_id.0 == "Lease"
-                || port.type_id.0 == "SharedLock";
-
-            if is_resource {
+            if is_resource_type(&port.type_id) {
                 obligations.push(ProofObligation::runtime(
                     Obligation::ResourceContentionHandling {
                         resource_port: format!("{}.{}", node.id.0, port.name.0),

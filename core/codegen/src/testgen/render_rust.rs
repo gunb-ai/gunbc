@@ -7,7 +7,22 @@ use super::render::TestRenderer;
 use super::test_ir::*;
 use gunbc_ir::ValueExpr;
 
+/// Escape a string for embedding in a Rust string literal.
+fn escape_rust_str(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
 pub struct RustRenderer;
+
+/// Whether to render a ValueExpr as a `Value::X(...)` constructor or as a
+/// bare Rust type (for transport struct fields).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ValueMode {
+    /// Render as `Value` enum constructor: `Value::Str("x".to_string())`
+    Wrapped,
+    /// Render as bare Rust type: `"x".to_string()`
+    Bare,
+}
 
 impl TestRenderer for RustRenderer {
     fn extension(&self) -> &str {
@@ -15,51 +30,7 @@ impl TestRenderer for RustRenderer {
     }
 
     fn render_value(&self, expr: &ValueExpr) -> String {
-        match expr {
-            ValueExpr::Unit => "Value::Unit".to_string(),
-            ValueExpr::Bool(b) => format!("Value::Bool({})", b),
-            ValueExpr::Str(s) => format!(
-                "Value::Str(\"{}\".to_string())",
-                s.replace('\\', "\\\\").replace('\"', "\\\"")
-            ),
-            ValueExpr::Int(i) => format!("Value::Int({})", i),
-            ValueExpr::List(items) => {
-                let rendered: Vec<String> = items.iter().map(|v| self.render_value(v)).collect();
-                format!("Value::List(vec![{}])", rendered.join(", "))
-            }
-            ValueExpr::Map(entries) => {
-                if entries.is_empty() {
-                    return "Value::Map(std::collections::BTreeMap::new())".to_string();
-                }
-                let rendered: Vec<String> = entries
-                    .iter()
-                    .map(|(k, v)| {
-                        format!(
-                            "(\"{}\".to_string(), {})",
-                            k.replace('\\', "\\\\").replace('\"', "\\\""),
-                            self.render_value(v)
-                        )
-                    })
-                    .collect();
-                format!(
-                    "Value::Map(std::collections::BTreeMap::from([{}]))",
-                    rendered.join(", ")
-                )
-            }
-            ValueExpr::Json(json) => {
-                format!("Value::Json(serde_json::json!({}))", json)
-            }
-            ValueExpr::Struct { name, fields } => {
-                self.render_rust_struct(name, fields)
-            }
-            ValueExpr::Secret(s) => {
-                format!(
-                    "Value::Secret(gunbc_ir::SecretString::new(\"{}\"))",
-                    s.replace('\\', "\\\\").replace('\"', "\\\"")
-                )
-            }
-            ValueExpr::Skipped => "Value::Skipped".to_string(),
-        }
+        self.render_value_inner(expr, ValueMode::Wrapped)
     }
 
     fn render_file(&self, file: &TestFile) -> String {
@@ -121,10 +92,7 @@ impl TestRenderer for RustRenderer {
         match expr {
             Expr::Value(v) => self.render_value(v),
             Expr::Var(name) => name.clone(),
-            Expr::Str(s) => format!(
-                "\"{}\"",
-                s.replace('\\', "\\\\").replace('\"', "\\\"")
-            ),
+            Expr::Str(s) => format!("\"{}\"", escape_rust_str(s)),
             Expr::Call { func, args } => {
                 let func_str = self.render_expr(func);
                 let args_str: Vec<String> = args.iter().map(|a| self.render_expr(a)).collect();
@@ -203,7 +171,7 @@ impl TestRenderer for RustRenderer {
                     pad,
                     self.render_expr(left),
                     self.render_expr(right),
-                    message.replace('\"', "\\\"")
+                    escape_rust_str(message)
                 )
             }
             Assert::True { expr, message } => {
@@ -211,7 +179,7 @@ impl TestRenderer for RustRenderer {
                     "{}assert!({}, \"{}\");\n",
                     pad,
                     self.render_expr(expr),
-                    message.replace('\"', "\\\"")
+                    escape_rust_str(message)
                 )
             }
             Assert::NonEmpty { expr, message } => {
@@ -219,7 +187,7 @@ impl TestRenderer for RustRenderer {
                     "{}assert!(!{}.is_empty(), \"{}\");\n",
                     pad,
                     self.render_expr(expr),
-                    message.replace('\"', "\\\"")
+                    escape_rust_str(message)
                 )
             }
             Assert::Contains {
@@ -231,8 +199,8 @@ impl TestRenderer for RustRenderer {
                     "{}assert!({}.as_str().map(|s| s.contains(\"{}\")).unwrap_or(false), \"{}\", {});\n",
                     pad,
                     self.render_expr(expr),
-                    substring.replace('\"', "\\\""),
-                    message.replace('\"', "\\\""),
+                    escape_rust_str(substring),
+                    escape_rust_str(message),
                     self.render_expr(expr),
                 )
             }
@@ -252,111 +220,162 @@ impl TestRenderer for RustRenderer {
 }
 
 impl RustRenderer {
+    /// Core value rendering: a single exhaustive match over ValueExpr.
+    ///
+    /// `Wrapped` mode emits `Value::X(...)` constructors (for test assertions).
+    /// `Bare` mode emits native Rust types (for transport struct fields).
+    fn render_value_inner(&self, expr: &ValueExpr, mode: ValueMode) -> String {
+        let bare = mode == ValueMode::Bare;
+        match expr {
+            ValueExpr::Unit => {
+                if bare { "None" } else { "Value::Unit" }.to_string()
+            }
+            ValueExpr::Bool(b) => {
+                if bare {
+                    format!("{}", b)
+                } else {
+                    format!("Value::Bool({})", b)
+                }
+            }
+            ValueExpr::Str(s) => {
+                let escaped = escape_rust_str(s);
+                if bare {
+                    format!("\"{}\".to_string()", escaped)
+                } else {
+                    format!("Value::Str(\"{}\".to_string())", escaped)
+                }
+            }
+            ValueExpr::Int(i) => {
+                if bare {
+                    format!("{}", i)
+                } else {
+                    format!("Value::Int({})", i)
+                }
+            }
+            ValueExpr::List(items) => {
+                let rendered: Vec<String> = items
+                    .iter()
+                    .map(|v| self.render_value_inner(v, mode))
+                    .collect();
+                let inner = format!("vec![{}]", rendered.join(", "));
+                if bare {
+                    inner
+                } else {
+                    format!("Value::List({})", inner)
+                }
+            }
+            ValueExpr::Map(entries) => {
+                // Wrapped uses BTreeMap (Value::Map's backing type).
+                // Bare uses HashMap (transport struct field type).
+                if bare {
+                    if entries.is_empty() {
+                        return "std::collections::HashMap::new()".to_string();
+                    }
+                    let rendered: Vec<String> = entries
+                        .iter()
+                        .map(|(k, v)| {
+                            format!(
+                                "(\"{}\".to_string(), {})",
+                                escape_rust_str(k),
+                                self.render_value_inner(v, mode)
+                            )
+                        })
+                        .collect();
+                    format!(
+                        "std::collections::HashMap::from([{}])",
+                        rendered.join(", ")
+                    )
+                } else {
+                    if entries.is_empty() {
+                        return "Value::Map(std::collections::BTreeMap::new())".to_string();
+                    }
+                    let rendered: Vec<String> = entries
+                        .iter()
+                        .map(|(k, v)| {
+                            format!(
+                                "(\"{}\".to_string(), {})",
+                                escape_rust_str(k),
+                                self.render_value_inner(v, mode)
+                            )
+                        })
+                        .collect();
+                    format!(
+                        "Value::Map(std::collections::BTreeMap::from([{}]))",
+                        rendered.join(", ")
+                    )
+                }
+            }
+            ValueExpr::Json(json) => {
+                let inner = format!("serde_json::json!({})", json);
+                if bare {
+                    inner
+                } else {
+                    format!("Value::Json({})", inner)
+                }
+            }
+            ValueExpr::Struct { name, fields } => {
+                if bare {
+                    let field_strs: Vec<String> = fields
+                        .iter()
+                        .map(|(k, v)| {
+                            format!("{}: {}", k, self.render_value_inner(v, mode))
+                        })
+                        .collect();
+                    format!("{} {{ {} }}", name, field_strs.join(", "))
+                } else {
+                    self.render_rust_struct(name, fields)
+                }
+            }
+            ValueExpr::Secret(s) => {
+                let escaped = escape_rust_str(s);
+                let inner = format!("gunbc_ir::SecretString::new(\"{}\")", escaped);
+                if bare {
+                    inner
+                } else {
+                    format!("Value::Secret({})", inner)
+                }
+            }
+            ValueExpr::Skipped => "Value::Skipped".to_string(),
+        }
+    }
+
     /// Render a struct-typed ValueExpr to Rust source.
     ///
     /// Handles transport types (TransportRequest::Shell, etc.) by
-    /// emitting fully-qualified Rust struct construction.
+    /// emitting fully-qualified Rust struct construction wrapped in
+    /// Value::Request/Response.
     fn render_rust_struct(&self, name: &str, fields: &[(String, ValueExpr)]) -> String {
-        // Transport types need wrapping in Value::Request/Response
-        let (wrapper, inner_path) = match name {
-            n if n.starts_with("TransportRequest::") => {
-                let variant = n.strip_prefix("TransportRequest::").unwrap();
+        // Parse transport variant name once to determine all three values:
+        // wrapper (Value::Request/Response), enum path, and inner struct type.
+        let (wrapper, enum_path, struct_type) =
+            if let Some(variant) = name.strip_prefix("TransportRequest::") {
                 (
                     Some("Value::Request"),
-                    format!(
-                        "gunbc_ir::transport::TransportRequest::{}",
-                        variant
-                    ),
+                    format!("gunbc_ir::transport::TransportRequest::{}", variant),
+                    format!("gunbc_ir::transport::{}Request", variant),
                 )
-            }
-            n if n.starts_with("TransportResponse::") => {
-                let variant = n.strip_prefix("TransportResponse::").unwrap();
+            } else if let Some(variant) = name.strip_prefix("TransportResponse::") {
                 (
                     Some("Value::Response"),
-                    format!(
-                        "gunbc_ir::transport::TransportResponse::{}",
-                        variant
-                    ),
+                    format!("gunbc_ir::transport::TransportResponse::{}", variant),
+                    format!("gunbc_ir::transport::{}Response", variant),
                 )
-            }
-            _ => (None, name.to_string()),
-        };
-
-        // Build the inner struct literal
-        let struct_type = match name {
-            n if n.starts_with("TransportRequest::") => {
-                let variant = n.strip_prefix("TransportRequest::").unwrap();
-                format!("gunbc_ir::transport::{}Request", variant)
-            }
-            n if n.starts_with("TransportResponse::") => {
-                let variant = n.strip_prefix("TransportResponse::").unwrap();
-                format!("gunbc_ir::transport::{}Response", variant)
-            }
-            _ => name.to_string(),
-        };
+            } else {
+                (None, name.to_string(), name.to_string())
+            };
 
         let field_strs: Vec<String> = fields
             .iter()
-            .map(|(k, v)| format!("{}: {}", k, self.render_struct_field_value(v)))
+            .map(|(k, v)| {
+                format!("{}: {}", k, self.render_value_inner(v, ValueMode::Bare))
+            })
             .collect();
 
         let struct_lit = format!("{} {{ {} }}", struct_type, field_strs.join(", "));
 
         match wrapper {
-            Some(w) => format!("{}({}({}))", w, inner_path, struct_lit),
+            Some(w) => format!("{}({}({}))", w, enum_path, struct_lit),
             None => struct_lit,
-        }
-    }
-
-    /// Render a struct field value — uses native Rust types, not Value wrappers.
-    fn render_struct_field_value(&self, expr: &ValueExpr) -> String {
-        match expr {
-            ValueExpr::Unit => "None".to_string(),
-            ValueExpr::Bool(b) => format!("{}", b),
-            ValueExpr::Str(s) => format!(
-                "\"{}\".to_string()",
-                s.replace('\\', "\\\\").replace('\"', "\\\"")
-            ),
-            ValueExpr::Int(i) => format!("{}", i),
-            ValueExpr::List(items) => {
-                let rendered: Vec<String> = items
-                    .iter()
-                    .map(|v| self.render_struct_field_value(v))
-                    .collect();
-                format!("vec![{}]", rendered.join(", "))
-            }
-            ValueExpr::Map(entries) => {
-                if entries.is_empty() {
-                    return "std::collections::HashMap::new()".to_string();
-                }
-                let rendered: Vec<String> = entries
-                    .iter()
-                    .map(|(k, v)| {
-                        format!(
-                            "(\"{}\".to_string(), {})",
-                            k.replace('\\', "\\\\").replace('\"', "\\\""),
-                            self.render_struct_field_value(v)
-                        )
-                    })
-                    .collect();
-                format!(
-                    "std::collections::HashMap::from([{}])",
-                    rendered.join(", ")
-                )
-            }
-            ValueExpr::Json(json) => format!("serde_json::json!({})", json),
-            ValueExpr::Struct { name, fields } => {
-                let field_strs: Vec<String> = fields
-                    .iter()
-                    .map(|(k, v)| format!("{}: {}", k, self.render_struct_field_value(v)))
-                    .collect();
-                format!("{} {{ {} }}", name, field_strs.join(", "))
-            }
-            ValueExpr::Secret(s) => format!(
-                "gunbc_ir::SecretString::new(\"{}\")",
-                s.replace('\\', "\\\\").replace('\"', "\\\"")
-            ),
-            ValueExpr::Skipped => "Value::Skipped".to_string(),
         }
     }
 }
@@ -388,6 +407,31 @@ mod tests {
         assert_eq!(
             r.render_value(&ValueExpr::Str("say \"hi\"".into())),
             "Value::Str(\"say \\\"hi\\\"\".to_string())"
+        );
+    }
+
+    #[test]
+    fn render_bare_value_no_wrapper() {
+        let r = RustRenderer;
+        assert_eq!(
+            r.render_value_inner(&ValueExpr::Unit, ValueMode::Bare),
+            "None"
+        );
+        assert_eq!(
+            r.render_value_inner(&ValueExpr::Bool(true), ValueMode::Bare),
+            "true"
+        );
+        assert_eq!(
+            r.render_value_inner(&ValueExpr::Str("hi".into()), ValueMode::Bare),
+            "\"hi\".to_string()"
+        );
+        assert_eq!(
+            r.render_value_inner(&ValueExpr::Int(42), ValueMode::Bare),
+            "42"
+        );
+        assert_eq!(
+            r.render_value_inner(&ValueExpr::List(vec![ValueExpr::Str("a".into())]), ValueMode::Bare),
+            "vec![\"a\".to_string()]"
         );
     }
 

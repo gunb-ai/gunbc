@@ -793,89 +793,13 @@ impl OutputMatcher {
         }
     }
 
-    /// Whether `to_check_code` emits an executable assertion (vs. a comment).
+    /// Whether this matcher produces an executable assertion (vs. a comment).
     ///
     /// Used by codegen to decide whether to prefix the output variable with `_`.
     pub fn generates_assertion(&self) -> bool {
         matches!(self, OutputMatcher::Exact(_) | OutputMatcher::Contains(_) | OutputMatcher::NonEmpty)
     }
 
-    /// Convert to Rust code for generated tests.
-    pub fn to_check_code(&self, value_expr: &str) -> String {
-        match self {
-            OutputMatcher::Exact(expected) => {
-                format!(
-                    "assert_eq!(*{}, {}, \"expected exact value\");",
-                    value_expr,
-                    value_to_code(expected)
-                )
-            }
-            OutputMatcher::Contains(substring) => {
-                format!(
-                    "assert!({}.as_str().map(|s| s.contains(\"{}\")).unwrap_or(false), \"expected to contain '{}', got: {{:?}}\", {});",
-                    value_expr, substring.replace('\"', "\\\""), substring.replace('\"', "\\\""), value_expr
-                )
-            }
-            OutputMatcher::NonEmpty => {
-                format!(
-                    "assert!(!{}.is_empty(), \"expected non-empty value\");",
-                    value_expr
-                )
-            }
-            OutputMatcher::Satisfies { description, .. } => {
-                // For custom predicates, we can only emit a comment
-                format!("// Custom assertion: {}", description)
-            }
-            OutputMatcher::Any => {
-                format!("// Any value accepted for {}", value_expr)
-            }
-        }
-    }
-}
-
-/// Convert a Value to Rust code for generated test assertions.
-///
-/// Panics on variants that can't be serialized to source (Request, Response).
-fn value_to_code(value: &Value) -> String {
-    match value {
-        Value::Unit => "Value::Unit".to_string(),
-        Value::Bool(b) => format!("Value::Bool({})", b),
-        Value::Str(s) => format!(
-            "Value::Str(\"{}\".to_string())",
-            s.replace('\\', "\\\\").replace('\"', "\\\"")
-        ),
-        Value::Int(i) => format!("Value::Int({})", i),
-        Value::List(list) => {
-            let items: Vec<String> = list.iter().map(value_to_code).collect();
-            format!("Value::List(vec![{}])", items.join(", "))
-        }
-        Value::Map(map) => {
-            let entries: Vec<String> = map
-                .iter()
-                .map(|(k, v)| {
-                    format!(
-                        "(\"{}\".to_string(), {})",
-                        k.replace('\\', "\\\\").replace('\"', "\\\""),
-                        value_to_code(v)
-                    )
-                })
-                .collect();
-            format!(
-                "Value::Map(std::collections::BTreeMap::from([{}]))",
-                entries.join(", ")
-            )
-        }
-        Value::Json(json) => format!("Value::Json(serde_json::json!({}))", json),
-        Value::Secret(_) => {
-            "Value::Secret(gunbc_ir::SecretString::new(\"<MOCK_SECRET>\"))".to_string()
-        }
-        Value::Skipped => "Value::Skipped".to_string(),
-        Value::Request(_) | Value::Response(_) => panic!(
-            "value_to_code: cannot serialize {:?} to Rust source. \
-             Add serialization support or use Value::Skipped as a placeholder.",
-            std::mem::discriminant(value)
-        ),
-    }
 }
 
 #[cfg(test)]
@@ -1025,18 +949,4 @@ mod tests {
         assert_eq!(spec.node_examples[0].node_id, "parse");
     }
 
-    #[test]
-    fn test_output_matcher_to_check_code() {
-        let exact = OutputMatcher::exact(Value::Str("hello".into()));
-        let code = exact.to_check_code("output");
-        assert!(code.contains("assert_eq!"));
-
-        let contains = OutputMatcher::contains("world");
-        let code = contains.to_check_code("output");
-        assert!(code.contains("contains"));
-
-        let non_empty = OutputMatcher::non_empty();
-        let code = non_empty.to_check_code("output");
-        assert!(code.contains("is_empty"));
-    }
 }
