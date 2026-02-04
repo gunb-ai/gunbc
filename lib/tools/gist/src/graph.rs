@@ -512,7 +512,7 @@ pub fn build_gist_graph(
         Node::opaque(
             "parse_current_branch",
             vec![port("response", "TransportResponse")],
-            vec![scalar("branch", "String")],
+            vec![optional("branch", "String")],
             GistGraphOp::Git(GitOps::ParseCurrentBranch),
         ),
         &execute_current_branch,

@@ -140,6 +140,10 @@ impl Executable for GitOps {
                 let chunks = git::parse_diff_chunks(&shell.stdout);
                 let (adds, dels, count) = git::diff_stats(&chunks);
 
+                // Truncate oversized diffs to prevent GitHub API payload rejection.
+                // Stats are computed before truncation to reflect the real diff.
+                let chunks = git::truncate_diff_chunks(chunks, 500, 5000);
+
                 OutputMap::new()
                     .map_str_str("diff_files", chunks)
                     .str("stats", format!("+{} -{} across {} files", adds, dels, count))
@@ -199,7 +203,14 @@ impl Executable for GitOps {
 
                 let branch = git::parse_current_branch(&shell.stdout);
 
-                OutputMap::new().str("branch", branch).ok()
+                // Treat empty, whitespace-only, and "HEAD" (detached) as unknown.
+                // Downstream consumers (GistOps::PrepareRequest) handle missing branch
+                // gracefully — they fall back to "snapshot" for the filename.
+                let mut out = OutputMap::new();
+                if !branch.is_empty() && branch != "HEAD" {
+                    out = out.str("branch", branch);
+                }
+                out.ok()
             }
         }
     }

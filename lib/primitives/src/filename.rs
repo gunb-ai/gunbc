@@ -56,7 +56,8 @@ pub struct Filesystem {
     pub id: &'static str,
 
     /// Characters the filesystem cannot store in filename components.
-    /// Null byte (0x00) is implicitly forbidden — Rust strings can't contain it.
+    /// Null byte (0x00) is always forbidden (checked in `is_forbidden()`)
+    /// and does not need to be listed here.
     pub forbidden_chars: &'static [char],
 
     /// Whether ASCII control characters (0x01–0x1F) are forbidden.
@@ -83,6 +84,10 @@ pub struct Filesystem {
 impl Filesystem {
     /// Check if a character is forbidden on this filesystem.
     pub fn is_forbidden(&self, c: char) -> bool {
+        // NUL is forbidden on every real filesystem (POSIX and Windows).
+        if c == '\0' {
+            return true;
+        }
         if self.forbidden_chars.contains(&c) {
             return true;
         }
@@ -313,7 +318,11 @@ pub fn sanitize(input: &str, filesystems: &[&Filesystem], replacement: char) -> 
     let replaced: String = input
         .chars()
         .map(|c| {
-            // Check control chars first (avoids scanning forbidden_chars arrays)
+            // NUL is forbidden on every real filesystem.
+            if c == '\0' {
+                return replacement;
+            }
+            // Check control chars (avoids scanning forbidden_chars arrays)
             if forbid_control && (c as u32) >= 1 && (c as u32) <= 0x1F {
                 return replacement;
             }
@@ -342,16 +351,20 @@ pub fn sanitize(input: &str, filesystems: &[&Filesystem], replacement: char) -> 
         }
     }
 
-    // Step 3: Strip forbidden trailing chars (union of all filesystems + replacement)
-    let is_trimmable = |c: char| -> bool {
-        if c == replacement {
-            return true;
-        }
+    // Step 3a: Trim leading/trailing replacement chars (stylistic cleanup —
+    // a leading/trailing `-` from a replaced `/` looks bad).
+    let trimmed = result.trim_matches(replacement);
+    result = trimmed.to_string();
+
+    // Step 3b: Strip forbidden trailing chars at the END only (e.g., `.` and ` `
+    // on NTFS). This must not strip leading chars — `.gitignore` style names
+    // must preserve their leading dot.
+    let is_forbidden_trailing = |c: char| -> bool {
         filesystems
             .iter()
             .any(|fs| fs.forbidden_trailing.contains(&c))
     };
-    let trimmed = result.trim_matches(is_trimmable);
+    let trimmed = result.trim_end_matches(is_forbidden_trailing);
     result = trimmed.to_string();
 
     // Step 4: Check reserved names (union across all filesystems)
@@ -375,7 +388,8 @@ pub fn sanitize(input: &str, filesystems: &[&Filesystem], replacement: char) -> 
         }
         result.truncate(end);
         // Re-strip trailing forbidden chars after truncation
-        let trimmed = result.trim_end_matches(is_trimmable);
+        let trimmed = result.trim_end_matches(replacement);
+        let trimmed = trimmed.trim_end_matches(is_forbidden_trailing);
         result = trimmed.to_string();
     }
 
@@ -534,6 +548,18 @@ impl FilesystemHandle {
         self.replacement
     }
 
+    /// Minimum `max_component_bytes` across all target filesystems.
+    ///
+    /// Useful for computing how much budget is left after appending a suffix
+    /// (e.g., `_YYYY-MM-DD_HH-MM-SS.md`) to a sanitized prefix.
+    pub fn max_component_bytes(&self) -> usize {
+        self.targets
+            .iter()
+            .map(|fs| fs.max_component_bytes)
+            .min()
+            .unwrap_or(255)
+    }
+
     // ================================================================
     // Operations — all filesystem-aware work goes through the handle
     // ================================================================
@@ -660,9 +686,22 @@ pub fn validate(name: &str, filesystems: &[&Filesystem]) -> Vec<Violation> {
         return violations;
     }
 
+    // NUL check: universal across all filesystems (reported once, not per-fs)
+    for ch in name.chars() {
+        if ch == '\0' {
+            violations.push(Violation::ForbiddenChar {
+                ch,
+                filesystem: "all",
+            });
+        }
+    }
+
     for fs in filesystems {
         // Forbidden chars
         for ch in name.chars() {
+            if ch == '\0' {
+                continue; // Already reported above
+            }
             if fs.forbidden_chars.contains(&ch) {
                 violations.push(Violation::ForbiddenChar {
                     ch,
@@ -1142,6 +1181,45 @@ mod tests {
         //   c == '-' → no. forbidden_trailing.contains → NTFS has ' ' → yes.
         // So leading+trailing spaces are trimmed. Result = "".
         assert_eq!(s, "untitled");
+    }
+
+    #[test]
+    fn test_sanitize_nul_byte_replaced() {
+        let s = sanitize("a\0b", CROSS_PLATFORM, '-');
+        assert_eq!(s, "a-b");
+    }
+
+    #[test]
+    fn test_sanitize_preserves_leading_dot() {
+        // Leading dot must be preserved — .gitignore, .env, etc.
+        let s = sanitize(".gitignore", CROSS_PLATFORM, '-');
+        assert_eq!(s, ".gitignore");
+
+        let s = sanitize(".env", CROSS_PLATFORM, '-');
+        assert_eq!(s, ".env");
+    }
+
+    #[test]
+    fn test_sanitize_strips_trailing_dot_not_leading() {
+        let s = sanitize(".hidden.", &[&NTFS], '-');
+        assert_eq!(s, ".hidden");
+    }
+
+    #[test]
+    fn test_validate_nul_byte() {
+        let v = validate("a\0b", CROSS_PLATFORM);
+        let nul_violations: Vec<_> = v
+            .iter()
+            .filter(|v| matches!(v, Violation::ForbiddenChar { ch: '\0', .. }))
+            .collect();
+        assert!(!nul_violations.is_empty(), "NUL byte should be flagged");
+    }
+
+    #[test]
+    fn test_is_forbidden_nul_on_all_filesystems() {
+        assert!(EXT4.is_forbidden('\0'));
+        assert!(NTFS.is_forbidden('\0'));
+        assert!(APFS.is_forbidden('\0'));
     }
 
     #[test]

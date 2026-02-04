@@ -41,8 +41,10 @@ impl Executable for GistOps {
 
                 let filename = generate_gist_filename(branch.unwrap_or("snapshot"));
                 let description = match branch {
-                    Some(b) => format!("Code snapshot of {} created by gunbc-gist", b),
-                    None => "Code snapshot created by gunbc-gist".to_string(),
+                    Some(b) if !b.trim().is_empty() && b.trim() != "HEAD" => {
+                        format!("Code snapshot of {} created by gunbc-gist", b)
+                    }
+                    _ => "Code snapshot created by gunbc-gist".to_string(),
                 };
 
                 let request =
@@ -91,15 +93,11 @@ pub fn prepare_gist_request(
 
 /// Sanitize a branch name for use in a filename across all platforms.
 ///
-/// Acquires a cross-platform [`FilesystemHandle`] and routes through its
-/// gateway. The handle composes ext4 + NTFS + APFS constraints and
-/// auto-fixes any violations.
+/// Convenience wrapper that acquires a cross-platform [`FilesystemHandle`]
+/// internally. For dependency-injected usage, call
+/// [`sanitize_branch_for_filename_with`] instead.
 ///
-/// Additionally replaces spaces with the replacement char, since spaces
-/// in filenames are universally problematic in shell contexts even though
-/// they're technically valid on all filesystems.
-///
-/// Falls back to `"snapshot"` if the result would be empty.
+/// Falls back to `"snapshot"` if the branch is empty or entirely degenerate.
 ///
 /// # Examples
 ///
@@ -109,27 +107,44 @@ pub fn prepare_gist_request(
 /// assert_eq!(sanitize_branch_for_filename("feature/foo bar"), "feature-foo-bar");
 /// ```
 pub fn sanitize_branch_for_filename(branch: &str) -> String {
-    // Acquire a cross-platform filesystem handle for writing
     let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
+    sanitize_branch_for_filename_with(&fs, branch)
+}
 
+/// Sanitize a branch name using an injected [`FilesystemHandle`].
+///
+/// This is the injectable variant — DAG nodes should acquire a handle at the
+/// boundary and pass it here rather than letting the function construct one.
+///
+/// Replaces spaces with the replacement char (convention, not a FS rule),
+/// then routes through the filesystem gateway. Falls back to `"snapshot"`
+/// if the input is empty or sanitizes to the filesystem's default fallback.
+pub fn sanitize_branch_for_filename_with(fs: &filename::FilesystemHandle, branch: &str) -> String {
     // Replace spaces before filesystem gateway (convention, not a FS rule)
     let no_spaces: String = branch
         .chars()
-        .map(|c| if c == ' ' { '-' } else { c })
+        .map(|c| if c == ' ' { fs.replacement() } else { c })
         .collect();
 
     let outcome = fs.prepare_filename(&no_spaces, filename::WritePolicy::Sanitize);
 
+    // Detect the sanitizer's degenerate-input fallback ("untitled") vs a real branch
+    // literally named "untitled". A real "untitled" branch passes validation unchanged
+    // (outcome is Valid), while a degenerate input produces Sanitized { sanitized: "untitled" }.
+    if outcome.was_sanitized() && outcome.filename() == Some("untitled") {
+        return "snapshot".to_string();
+    }
+
     match outcome.filename() {
-        Some("untitled") | None => "snapshot".to_string(),
-        Some(name) => name.to_string(),
+        Some(name) if !name.is_empty() => name.to_string(),
+        _ => "snapshot".to_string(),
     }
 }
 
 /// Generate a gist filename from a branch name.
 ///
-/// Produces a filename like `main_2024-01-15_14-30-00.md` by sanitizing
-/// the branch name and appending a human-readable UTC timestamp.
+/// Convenience wrapper that uses `SystemTime::now()` for the timestamp.
+/// For dependency-injected usage, call [`generate_gist_filename_with`] instead.
 ///
 /// # Examples
 ///
@@ -141,9 +156,47 @@ pub fn sanitize_branch_for_filename(branch: &str) -> String {
 /// assert!(filename.ends_with(".md"));
 /// ```
 pub fn generate_gist_filename(branch: &str) -> String {
-    let sanitized = sanitize_branch_for_filename(branch);
-    let timestamp = format_utc_timestamp(SystemTime::now());
-    format!("{}_{}.md", sanitized, timestamp)
+    let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
+    generate_gist_filename_with(&fs, branch, SystemTime::now())
+}
+
+/// Generate a gist filename using injected dependencies.
+///
+/// DAG nodes should acquire the filesystem handle and capture the clock
+/// at the boundary, then pass both here.
+///
+/// The branch prefix is truncated to fit within the filesystem's max
+/// component bytes after accounting for the suffix (`_YYYY-MM-DD_HH-MM-SS.md`).
+pub fn generate_gist_filename_with(
+    fs: &filename::FilesystemHandle,
+    branch: &str,
+    now: SystemTime,
+) -> String {
+    let sanitized = sanitize_branch_for_filename_with(fs, branch);
+    let timestamp = format_utc_timestamp(now);
+    let suffix = format!("_{}.md", timestamp); // e.g., "_2024-01-15_14-30-00.md" = 23 bytes
+
+    // Ensure the full filename fits within the filesystem's component limit.
+    let max_bytes = fs.max_component_bytes();
+    let branch_budget = max_bytes.saturating_sub(suffix.len());
+
+    let truncated = if sanitized.len() > branch_budget {
+        // Truncate at UTF-8 boundary
+        let mut end = branch_budget;
+        while end > 0 && !sanitized.is_char_boundary(end) {
+            end -= 1;
+        }
+        // Trim trailing replacement char from truncation point
+        sanitized[..end].trim_end_matches(fs.replacement())
+    } else {
+        &sanitized
+    };
+
+    if truncated.is_empty() {
+        format!("snapshot{}", suffix)
+    } else {
+        format!("{}{}", truncated, suffix)
+    }
 }
 
 /// Format a SystemTime as a human-readable UTC timestamp for filenames.
@@ -380,5 +433,69 @@ mod tests {
         let filename = generate_gist_filename("claude/improve-gist-filename");
         assert!(filename.starts_with("claude-improve-gist-filename_"), "got: {}", filename);
         assert!(filename.ends_with(".md"));
+    }
+
+    // ========================================================================
+    // "untitled" sentinel collision — real branch vs degenerate input
+    // ========================================================================
+
+    #[test]
+    fn test_sanitize_real_untitled_branch_preserved() {
+        // A real branch named "untitled" must NOT be turned into "snapshot"
+        assert_eq!(sanitize_branch_for_filename("untitled"), "untitled");
+    }
+
+    // ========================================================================
+    // Injectable variant tests
+    // ========================================================================
+
+    #[test]
+    fn test_sanitize_branch_with_injected_handle() {
+        let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
+        assert_eq!(sanitize_branch_for_filename_with(&fs, "claude/branch"), "claude-branch");
+        assert_eq!(sanitize_branch_for_filename_with(&fs, ""), "snapshot");
+    }
+
+    #[test]
+    fn test_generate_gist_filename_with_injected_deps() {
+        let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
+        let fixed_time = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1705325400);
+
+        let filename = generate_gist_filename_with(&fs, "main", fixed_time);
+        assert_eq!(filename, "main_2024-01-15_13-30-00.md");
+    }
+
+    #[test]
+    fn test_generate_gist_filename_with_deterministic_timestamp() {
+        let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
+        let t1 = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1705325400);
+        let t2 = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1705325400);
+
+        // Same inputs → same output (deterministic)
+        let f1 = generate_gist_filename_with(&fs, "test", t1);
+        let f2 = generate_gist_filename_with(&fs, "test", t2);
+        assert_eq!(f1, f2);
+    }
+
+    // ========================================================================
+    // Filename length capping
+    // ========================================================================
+
+    #[test]
+    fn test_generate_gist_filename_caps_total_length() {
+        let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
+        let fixed_time = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1705325400);
+
+        // Branch name that's 250 chars — after sanitization still 250 chars
+        let long_branch = "a".repeat(250);
+        let filename = generate_gist_filename_with(&fs, &long_branch, fixed_time);
+
+        assert!(
+            filename.len() <= 255,
+            "filename {} bytes exceeds 255: {}",
+            filename.len(),
+            filename
+        );
+        assert!(filename.ends_with("_2024-01-15_13-30-00.md"));
     }
 }
