@@ -46,6 +46,56 @@ unambiguous across languages. Operations that require careful per-language
 negotiation (e.g., integer overflow, string encoding, struct construction)
 should be explicit so they can be litigated once per backend.
 
+### Type language (proto-like, minimal)
+
+The type language is the intersection of what every target language can
+express without ambiguity. Think protobuf — deliberately small, maps
+cleanly everywhere. Complexity goes into backends, not into the core.
+
+**In scope:**
+
+| Type | Rationale |
+|------|-----------|
+| `bool` | Universal. |
+| `i64` | Single integer type. No unsigned — it's implementable per-backend but adds complexity with zero benefit to test code. |
+| `string` | Universal. |
+| `json` | Escape hatch for unstructured data. Render as `serde_json::json!()` / dict literal / plain object. Keep as explicit variant rather than decomposing into primitives. |
+| `list(T)` | Homogeneous ordered collection. |
+| `map(string, T)` | Dynamic string-keyed collection (proto `map<string, T>`). |
+| `struct { name, fields }` | Named product type with statically known fields. Distinct from map — backends render as Rust struct / Python dataclass / TS interface. |
+| `unit` | Absence of data — null/None/undefined/Unit. |
+
+**Out of scope (and why):**
+
+- **Unsigned integers** — Python doesn't distinguish, JS numbers are
+  floats. Implementable per-backend but doesn't help test code.
+- **Pointers/references** — no target language needs them for test
+  assertions.
+- **Enums/sum types** — would need per-language pattern matching. Model
+  as struct + tag field if needed.
+- **Generics** — proto doesn't have them. The cardinality system handles
+  "zero or more of T."
+
+### Cardinality as the typing system
+
+Cardinality is not part of the type — it's metadata on the *port*. A
+port has a base type (string, bool, struct Foo) and a cardinality
+interval ([0,1], [1,∞), etc.). Whether something is "optional" or
+"repeatable" falls out of the interval:
+
+- `[0,0]` — absent (Hack #5: this is what Empty should test)
+- `[0,1]` — optional: Rust `Option<T>`, Python `Optional[T]`, TS `T | undefined`
+- `[1,1]` — required scalar (default)
+- `[0,∞)` — optional repeatable: Rust `Vec<T>`, Python `list[T]`, TS `T[]`
+- `[1,∞)` — required repeatable
+
+The backend picks the idiomatic representation based on the interval,
+not based on the type being called "List". This is already how
+`DagAnalysis` works internally (via `allows_empty()`, `test_cases()`) —
+it just isn't wired through to emission. Struct/object types in each
+language can leverage cardinality to decide field optionality, collection
+wrapping, etc.
+
 ### Two layers: ValueExpr and CodeOp
 
 Separate value representation from code structure. Values are data
@@ -57,7 +107,7 @@ Separate value representation from code structure. Values are data
 ValueExpr::Unit                       — null/None/undefined/Unit
 ValueExpr::Bool(bool)                 — true/false/True/False
 ValueExpr::Str(String)                — "hello" / 'hello'
-ValueExpr::Int(i64)                   — 42 (overflow semantics vary!)
+ValueExpr::Int(i64)                   — 42
 ValueExpr::List(Vec<ValueExpr>)       — [a, b, c] / vec![a, b, c]
 ValueExpr::Map(Vec<(String, ValueExpr)>) — {k: v} / BTreeMap::from(...)
 ValueExpr::Json(serde_json::Value)    — serde_json::json!() / JSON.parse()
@@ -66,7 +116,7 @@ ValueExpr::Struct { name, fields }    — MyStruct { a, b } / { a, b }
 
 Converting `Value → ValueExpr` is a total function — the compiler forces
 exhaustive handling. No catch-all possible. `Request`/`Response` must be
-explicitly modeled (as structs or as opaque references) rather than
+explicitly modeled as structs (they have known fields) rather than
 silently degraded to `"<MOCK>"`.
 
 **CodeOp** — what a test does, independent of language:
