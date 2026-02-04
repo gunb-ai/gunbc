@@ -51,7 +51,9 @@ impl From<&Value> for ValueExpr {
             Value::Bool(b) => ValueExpr::Bool(*b),
             Value::Str(s) => ValueExpr::Str(s.clone()),
             Value::Int(i) => ValueExpr::Int(*i),
-            Value::List(v) => ValueExpr::List(v.iter().map(ValueExpr::from).collect()),
+            Value::List(v) | Value::Set(v) => {
+                ValueExpr::List(v.iter().map(ValueExpr::from).collect())
+            }
             Value::Map(m) => {
                 ValueExpr::Map(m.iter().map(|(k, v)| (k.clone(), ValueExpr::from(v))).collect())
             }

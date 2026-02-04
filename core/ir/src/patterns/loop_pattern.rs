@@ -36,9 +36,9 @@ use crate::types::Cardinality;
 ///
 /// ```ignore
 /// let loop_node = LoopBuilder::new("process_files")
-///     .with_input("files", "List")
+///     .with_input("files", "String", Cardinality::ZERO_OR_MORE)
 ///     .with_body(body_dag)
-///     .with_output("processed", "List")
+///     .with_output("processed", "String")
 ///     .build();
 /// ```
 pub struct LoopBuilder<T> {
@@ -61,12 +61,15 @@ impl<T: Clone> LoopBuilder<T> {
             name: name.into(),
             body_dag: None,
             input_port_name: "input".to_string(),
-            input_port_type: "List".to_string(),
+            // Type is the element type; cardinality handles the collection semantics.
+            // Previously this was "List" (dual encoding), but the port's cardinality
+            // already expresses that this is a multi-valued port.
+            input_port_type: "String".to_string(),
             input_cardinality: Cardinality::ZERO_OR_MORE,
             element_port_name: "element".to_string(),
             element_port_type: "String".to_string(),
             output_port_name: "output".to_string(),
-            output_port_type: "List".to_string(),
+            output_port_type: "String".to_string(),
         }
     }
 
@@ -233,7 +236,7 @@ mod tests {
     #[test]
     fn test_loop_preserves_cardinality() {
         let node = LoopBuilder::new("test")
-            .with_input("items", "List", Cardinality::ONE_OR_MORE)
+            .with_input("items", "String", Cardinality::ONE_OR_MORE)
             .with_body(make_loop_body())
             .build();
 

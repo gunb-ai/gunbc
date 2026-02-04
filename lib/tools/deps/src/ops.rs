@@ -6,7 +6,10 @@
 use crate::installer::Installer;
 use crate::manifest::DepsManifest;
 use crate::upsert::upsert_dry_run;
-use gunbc_exec::{ExecError, Executable};
+use gunbc_exec::{
+    optional_str, require_response, require_str, ExecError, Executable, OutputMap,
+    TransportResponseExt,
+};
 use gunbc_ir::transport::{FileRequest, ShellRequest, TransportRequest, TransportResponse};
 use gunbc_ir::Value;
 use gunbc_primitives::data::ParseOp;
@@ -111,17 +114,18 @@ use crate::tool_upsert::generate_deps_toml_from_registry;
 /// Returns tool metadata and rendered deps.toml content.
 fn execute_load_tool_registry(_inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
     use gunbc_ir::transport::tool::default_tool_registry;
-    
+
     let registry = default_tool_registry();
     let tools: Vec<_> = registry.all().collect();
-    
+
     let tool_names: Vec<String> = tools.iter().map(|t| t.id.to_string()).collect();
     let tool_count = tools.len() as i64;
-    
-    let mut out = HashMap::new();
-    out.insert("tool_count".to_string(), Value::Int(tool_count));
-    out.insert("tool_names".to_string(), Value::str_list(tool_names));
-    Ok(out)
+
+
+    OutputMap::new()
+        .int("tool_count", tool_count)
+        .str_list("tool_names", tool_names)
+        .ok()
 }
 
 /// Render deps.toml content from tool registry (PURE - no I/O).
@@ -133,10 +137,10 @@ fn execute_load_tool_registry(_inputs: HashMap<String, Value>) -> Result<HashMap
 fn execute_render_deps_toml(_inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
     // Generate deps.toml content directly from registry
     let content = generate_deps_toml_from_registry();
-    
-    let mut out = HashMap::new();
-    out.insert("deps_toml_content".to_string(), Value::Str(content));
-    Ok(out)
+
+    OutputMap::new()
+        .str("deps_toml_content", content)
+        .ok()
 }
 
 // ============================================================================
@@ -145,17 +149,14 @@ fn execute_render_deps_toml(_inputs: HashMap<String, Value>) -> Result<HashMap<S
 
 /// Prepare file read request for manifest (PURE - no I/O).
 fn execute_prepare_load_manifest(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-    let manifest_path = match inputs.get("manifest_path") {
-        Some(Value::Str(s)) => s.clone(),
-        _ => "deps.toml".to_string(),
-    };
+    let manifest_path = optional_str(&inputs, "manifest_path").unwrap_or("deps.toml");
 
-    let request = TransportRequest::File(FileRequest::read(&manifest_path));
+    let request = TransportRequest::File(FileRequest::read(manifest_path));
 
-    let mut out = HashMap::new();
-    out.insert("request".to_string(), Value::Request(request));
-    out.insert("manifest_path".to_string(), Value::Str(manifest_path));
-    Ok(out)
+    OutputMap::new()
+        .request("request", request)
+        .str("manifest_path", manifest_path)
+        .ok()
 }
 
 // ============================================================================
@@ -166,24 +167,13 @@ fn execute_prepare_load_manifest(inputs: HashMap<String, Value>) -> Result<HashM
 ///
 /// Outputs manifest_content for downstream GenerateScripts (avoiding re-load).
 fn execute_parse_manifest(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-    let response = inputs
-        .get("response")
-        .and_then(|v| v.as_response())
-        .ok_or_else(|| ExecError::new("missing or invalid 'response' input"))?;
+    let response = require_response(&inputs, "response")?;
+    let manifest_path = optional_str(&inputs, "manifest_path").unwrap_or("deps.toml");
 
-    let manifest_path = inputs
-        .get("manifest_path")
-        .and_then(|v| v.as_str())
-        .unwrap_or("deps.toml");
-
-    let content = match response {
-        TransportResponse::File(file_resp) => {
-            file_resp.content.clone().ok_or_else(|| {
-                ExecError::new(format!("failed to load manifest: file not found: {}", manifest_path))
-            })?
-        }
-        _ => return Err(ExecError::new("unexpected response type")),
-    };
+    let file_resp = response.require_file()?;
+    let content = file_resp.content.clone().ok_or_else(|| {
+        ExecError::new(format!("failed to load manifest: file not found: {}", manifest_path))
+    })?;
 
     // Use ParseOp::Toml primitive to parse (validates TOML structure)
     let mut parse_inputs = HashMap::new();
@@ -196,13 +186,13 @@ fn execute_parse_manifest(inputs: HashMap<String, Value>) -> Result<HashMap<Stri
 
     let dep_names: Vec<String> = manifest.dependency.iter().map(|d| d.name.clone()).collect();
 
-    let mut out = HashMap::new();
-    out.insert("dep_count".to_string(), Value::Int(manifest.dependency.len() as i64));
-    out.insert("dep_names".to_string(), Value::str_list(dep_names));
-    out.insert("manifest_path".to_string(), Value::Str(manifest_path.to_string()));
-    // Pass manifest content to downstream (avoiding file reload in GenerateScripts)
-    out.insert("manifest_content".to_string(), Value::Str(content));
-    Ok(out)
+    OutputMap::new()
+        .int("dep_count", manifest.dependency.len() as i64)
+        .str_list("dep_names", dep_names)
+        .str("manifest_path", manifest_path)
+        // Pass manifest content to downstream (avoiding file reload in GenerateScripts)
+        .str("manifest_content", content)
+        .ok()
 }
 
 /// Generate install scripts for all dependencies (PURE - no I/O).
@@ -212,10 +202,7 @@ fn execute_parse_manifest(inputs: HashMap<String, Value>) -> Result<HashMap<Stri
 /// PrepareLoadManifest -> Execute -> ParseManifest chain.
 fn execute_generate_scripts(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
     // Get manifest content from upstream (passed through graph, not file I/O)
-    let manifest_content = inputs
-        .get("manifest_content")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| ExecError::new("missing manifest_content input"))?;
+    let manifest_content = require_str(&inputs, "manifest_content")?;
 
     // Parse the manifest content (no file I/O)
     let manifest = DepsManifest::parse(manifest_content)
@@ -244,12 +231,12 @@ fn execute_generate_scripts(inputs: HashMap<String, Value>) -> Result<HashMap<St
 
     let combined_script = scripts.join("\n");
 
-    let mut out = HashMap::new();
-    out.insert("install_script".to_string(), Value::Str(combined_script));
-    out.insert("already_installed".to_string(), Value::str_list(already_installed));
-    out.insert("needs_install".to_string(), Value::str_list(needs_install));
-    out.insert("platform".to_string(), Value::Str(installer.platform().name().to_string()));
-    Ok(out)
+    OutputMap::new()
+        .str("install_script", combined_script)
+        .str_list("already_installed", already_installed)
+        .str_list("needs_install", needs_install)
+        .str("platform", installer.platform().name().to_string())
+        .ok()
 }
 
 // ============================================================================
@@ -258,23 +245,20 @@ fn execute_generate_scripts(inputs: HashMap<String, Value>) -> Result<HashMap<St
 
 /// Prepare shell command for install script (PURE - no I/O).
 fn execute_prepare_execute_installs(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-    let script = match inputs.get("install_script") {
-        Some(Value::Str(s)) => s.clone(),
-        _ => return Err(ExecError::new("missing install_script input")),
-    };
+    let script = require_str(&inputs, "install_script")?;
 
     let request = TransportRequest::Shell(ShellRequest {
         command: "sh".to_string(),
-        args: vec!["-c".to_string(), script.clone()],
+        args: vec!["-c".to_string(), script.to_string()],
         cwd: None,
         env: HashMap::new(),
         stdin: None,
     });
 
-    let mut out = HashMap::new();
-    out.insert("request".to_string(), Value::Request(request));
-    out.insert("script".to_string(), Value::Str(script));
-    Ok(out)
+    OutputMap::new()
+        .request("request", request)
+        .str("script", script)
+        .ok()
 }
 
 // ============================================================================
@@ -283,29 +267,19 @@ fn execute_prepare_execute_installs(inputs: HashMap<String, Value>) -> Result<Ha
 
 /// Parse execute result (PURE - no I/O).
 fn execute_parse_execute_result(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-    let response = inputs
-        .get("response")
-        .and_then(|v| v.as_response())
-        .ok_or_else(|| ExecError::new("missing or invalid 'response' input"))?;
+    let response = require_response(&inputs, "response")?;
+    let script = optional_str(&inputs, "script").unwrap_or("");
 
-    let script = inputs
-        .get("script")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
+    let shell = response.require_shell()?;
+    let (success, stdout, stderr) = (shell.success(), shell.stdout.clone(), shell.stderr.clone());
 
-    let (success, stdout, stderr) = match response {
-        TransportResponse::Shell(shell) => (shell.success(), shell.stdout.clone(), shell.stderr.clone()),
-        _ => return Err(ExecError::new("unexpected response type")),
-    };
-
-    let mut out = HashMap::new();
-    out.insert("executed".to_string(), Value::Bool(true));
-    out.insert("success".to_string(), Value::Bool(success));
-    out.insert("script".to_string(), Value::Str(script));
-    out.insert("stdout".to_string(), Value::Str(stdout));
-    out.insert("stderr".to_string(), Value::Str(stderr));
-    Ok(out)
+    OutputMap::new()
+        .bool("executed", true)
+        .bool("success", success)
+        .str("script", script)
+        .str("stdout", stdout)
+        .str("stderr", stderr)
+        .ok()
 }
 
 // ============================================================================
@@ -325,15 +299,8 @@ fn execute_parse_execute_result(inputs: HashMap<String, Value>) -> Result<HashMa
 /// - request: TransportRequest (shell command for verify)
 /// - dep_name: String (pass through for correlation)
 fn execute_prepare_check_installed(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-    let dep_name = inputs
-        .get("dep_name")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| ExecError::new("missing dep_name input"))?;
-
-    let verify_cmd = inputs
-        .get("verify_cmd")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| ExecError::new("missing verify_cmd input"))?;
+    let dep_name = require_str(&inputs, "dep_name")?;
+    let verify_cmd = require_str(&inputs, "verify_cmd")?;
 
     let request = TransportRequest::Shell(ShellRequest {
         command: "sh".to_string(),
@@ -343,10 +310,10 @@ fn execute_prepare_check_installed(inputs: HashMap<String, Value>) -> Result<Has
         stdin: None,
     });
 
-    let mut out = HashMap::new();
-    out.insert("request".to_string(), Value::Request(request));
-    out.insert("dep_name".to_string(), Value::Str(dep_name.to_string()));
-    Ok(out)
+    OutputMap::new()
+        .request("request", request)
+        .str("dep_name", dep_name)
+        .ok()
 }
 
 /// Parse check result (PURE - no I/O).
@@ -361,26 +328,18 @@ fn execute_prepare_check_installed(inputs: HashMap<String, Value>) -> Result<Has
 /// - exists: Bool (true if installed)
 /// - dep_name: String (pass through)
 fn execute_parse_check_installed(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-    let response = inputs
-        .get("response")
-        .and_then(|v| v.as_response())
-        .ok_or_else(|| ExecError::new("missing or invalid 'response' input"))?;
-
-    let dep_name = inputs
-        .get("dep_name")
-        .and_then(|v| v.as_str())
-        .unwrap_or("unknown")
-        .to_string();
+    let response = require_response(&inputs, "response")?;
+    let dep_name = optional_str(&inputs, "dep_name").unwrap_or("unknown");
 
     let exists = match response {
         TransportResponse::Shell(shell) => shell.success(),
         _ => false,
     };
 
-    let mut out = HashMap::new();
-    out.insert("exists".to_string(), Value::Bool(exists));
-    out.insert("dep_name".to_string(), Value::Str(dep_name));
-    Ok(out)
+    OutputMap::new()
+        .bool("exists", exists)
+        .str("dep_name", dep_name)
+        .ok()
 }
 
 /// Prepare install command for dependency (PURE - no I/O).
@@ -396,15 +355,8 @@ fn execute_parse_check_installed(inputs: HashMap<String, Value>) -> Result<HashM
 /// - request: TransportRequest (shell command for install)
 /// - dep_name: String (pass through)
 fn execute_prepare_install(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-    let dep_name = inputs
-        .get("dep_name")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| ExecError::new("missing dep_name input"))?;
-
-    let install_cmd = inputs
-        .get("install_cmd")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| ExecError::new("missing install_cmd input"))?;
+    let dep_name = require_str(&inputs, "dep_name")?;
+    let install_cmd = require_str(&inputs, "install_cmd")?;
 
     let request = TransportRequest::Shell(ShellRequest {
         command: "sh".to_string(),
@@ -414,10 +366,10 @@ fn execute_prepare_install(inputs: HashMap<String, Value>) -> Result<HashMap<Str
         stdin: None,
     });
 
-    let mut out = HashMap::new();
-    out.insert("request".to_string(), Value::Request(request));
-    out.insert("dep_name".to_string(), Value::Str(dep_name.to_string()));
-    Ok(out)
+    OutputMap::new()
+        .request("request", request)
+        .str("dep_name", dep_name)
+        .ok()
 }
 
 /// Parse install result (PURE - no I/O).
@@ -432,26 +384,18 @@ fn execute_prepare_install(inputs: HashMap<String, Value>) -> Result<HashMap<Str
 /// - installed: Bool (true if install succeeded)
 /// - dep_name: String (pass through)
 fn execute_parse_install(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-    let response = inputs
-        .get("response")
-        .and_then(|v| v.as_response())
-        .ok_or_else(|| ExecError::new("missing or invalid 'response' input"))?;
-
-    let dep_name = inputs
-        .get("dep_name")
-        .and_then(|v| v.as_str())
-        .unwrap_or("unknown")
-        .to_string();
+    let response = require_response(&inputs, "response")?;
+    let dep_name = optional_str(&inputs, "dep_name").unwrap_or("unknown");
 
     let installed = match response {
         TransportResponse::Shell(shell) => shell.success(),
         _ => false,
     };
 
-    let mut out = HashMap::new();
-    out.insert("installed".to_string(), Value::Bool(installed));
-    out.insert("dep_name".to_string(), Value::Str(dep_name));
-    Ok(out)
+    OutputMap::new()
+        .bool("installed", installed)
+        .str("dep_name", dep_name)
+        .ok()
 }
 
 // ============================================================================
@@ -466,136 +410,133 @@ impl Mockable for DepsOp {
         match self {
             // deps.toml generation ops
             DepsOp::LoadToolRegistry => {
-                let mut out = HashMap::new();
-                out.insert("tool_count".to_string(), Value::Int(3));
-                out.insert(
-                    "tool_names".to_string(),
-                    Value::str_list(vec![
-                        "cargo".to_string(),
-                        "gh".to_string(),
-                        "git".to_string(),
-                    ]),
-                );
-                out
+                OutputMap::new()
+                    .int("tool_count", 3)
+                    .str_list(
+                        "tool_names",
+                        vec![
+                            "cargo".to_string(),
+                            "gh".to_string(),
+                            "git".to_string(),
+                        ],
+                    )
+                    .build()
             }
             DepsOp::RenderDepsToml => {
-                let mut out = HashMap::new();
-                out.insert(
-                    "deps_toml_content".to_string(),
-                    Value::Str("# Generated deps.toml\n[[dependency]]\nname = \"mock\"\nverify = \"mock --version\"\n".to_string()),
-                );
-                out
+                OutputMap::new()
+                    .str(
+                        "deps_toml_content",
+                        "# Generated deps.toml\n[[dependency]]\nname = \"mock\"\nverify = \"mock --version\"\n",
+                    )
+                    .build()
             }
             DepsOp::PrepareLoadManifest => {
-                let mut out = HashMap::new();
-                out.insert(
-                    "request".to_string(),
-                    Value::Request(TransportRequest::File(FileRequest::read("deps.toml"))),
-                );
-                out.insert("manifest_path".to_string(), Value::Str("deps.toml".to_string()));
-                out
+                OutputMap::new()
+                    .request(
+                        "request",
+                        TransportRequest::File(FileRequest::read("deps.toml")),
+                    )
+                    .str("manifest_path", "deps.toml")
+                    .build()
             }
             DepsOp::ParseManifest => {
-                let mut out = HashMap::new();
-                out.insert("dep_count".to_string(), Value::Int(2));
-                out.insert(
-                    "dep_names".to_string(),
-                    Value::str_list(vec!["rust".to_string(), "git".to_string()]),
-                );
-                out.insert("manifest_path".to_string(), Value::Str("deps.toml".to_string()));
-                out.insert("manifest_content".to_string(), Value::Str("[[dependency]]\nname = \"mock\"".to_string()));
-                out
+                OutputMap::new()
+                    .int("dep_count", 2)
+                    .str_list(
+                        "dep_names",
+                        vec!["rust".to_string(), "git".to_string()],
+                    )
+                    .str("manifest_path", "deps.toml")
+                    .str("manifest_content", "[[dependency]]\nname = \"mock\"")
+                    .build()
             }
             DepsOp::GenerateScripts => {
-                let mut out = HashMap::new();
-                out.insert(
-                    "install_script".to_string(),
-                    Value::Str(
+                OutputMap::new()
+                    .str(
+                        "install_script",
                         r#"#!/bin/bash
 # Install script for mock deps
 echo "Installing rust..."
 echo "Installing git..."
-"#
-                        .to_string(),
-                    ),
-                );
-                out.insert(
-                    "already_installed".to_string(),
-                    Value::str_list(vec!["git".to_string()]),
-                );
-                out.insert(
-                    "needs_install".to_string(),
-                    Value::str_list(vec!["rust".to_string()]),
-                );
-                out.insert("platform".to_string(), Value::Str("linux".to_string()));
-                out
+"#,
+                    )
+                    .str_list(
+                        "already_installed",
+                        vec!["git".to_string()],
+                    )
+                    .str_list(
+                        "needs_install",
+                        vec!["rust".to_string()],
+                    )
+                    .str("platform", "linux")
+                    .build()
             }
             DepsOp::PrepareExecuteInstalls => {
-                let mut out = HashMap::new();
-                out.insert(
-                    "request".to_string(),
-                    Value::Request(TransportRequest::Shell(ShellRequest {
-                        command: "sh".to_string(),
-                        args: vec!["-c".to_string(), "echo mock".to_string()],
-                        cwd: None,
-                        env: HashMap::new(),
-                        stdin: None,
-                    })),
-                );
-                out.insert("script".to_string(), Value::Str("echo mock".to_string()));
-                out
+                OutputMap::new()
+                    .request(
+                        "request",
+                        TransportRequest::Shell(ShellRequest {
+                            command: "sh".to_string(),
+                            args: vec!["-c".to_string(), "echo mock".to_string()],
+                            cwd: None,
+                            env: HashMap::new(),
+                            stdin: None,
+                        }),
+                    )
+                    .str("script", "echo mock")
+                    .build()
             }
             DepsOp::ParseExecuteResult => {
-                let mut out = HashMap::new();
-                out.insert("executed".to_string(), Value::Bool(true));
-                out.insert("success".to_string(), Value::Bool(true));
-                out.insert("script".to_string(), Value::Str("echo 'mock install'".to_string()));
-                out.insert("stdout".to_string(), Value::Str("mock install\n".to_string()));
-                out.insert("stderr".to_string(), Value::Str("".to_string()));
-                out
+                OutputMap::new()
+                    .bool("executed", true)
+                    .bool("success", true)
+                    .str("script", "echo 'mock install'")
+                    .str("stdout", "mock install\n")
+                    .str("stderr", "")
+                    .build()
             }
             // Single-dependency operations
             DepsOp::PrepareCheckInstalled => {
-                let mut out = HashMap::new();
-                out.insert(
-                    "request".to_string(),
-                    Value::Request(TransportRequest::Shell(ShellRequest {
-                        command: "sh".to_string(),
-                        args: vec!["-c".to_string(), "which mock-dep".to_string()],
-                        cwd: None,
-                        env: HashMap::new(),
-                        stdin: None,
-                    })),
-                );
-                out.insert("dep_name".to_string(), Value::Str("mock-dep".to_string()));
-                out
+                OutputMap::new()
+                    .request(
+                        "request",
+                        TransportRequest::Shell(ShellRequest {
+                            command: "sh".to_string(),
+                            args: vec!["-c".to_string(), "which mock-dep".to_string()],
+                            cwd: None,
+                            env: HashMap::new(),
+                            stdin: None,
+                        }),
+                    )
+                    .str("dep_name", "mock-dep")
+                    .build()
             }
             DepsOp::ParseCheckInstalled => {
-                let mut out = HashMap::new();
-                out.insert("exists".to_string(), Value::Bool(true));
-                out.insert("dep_name".to_string(), Value::Str("mock-dep".to_string()));
-                out
+                OutputMap::new()
+                    .bool("exists", true)
+                    .str("dep_name", "mock-dep")
+                    .build()
             }
             DepsOp::PrepareInstall => {
-                let mut out = HashMap::new();
-                out.insert(
-                    "request".to_string(),
-                    Value::Request(TransportRequest::Shell(ShellRequest {
-                        command: "sh".to_string(),
-                        args: vec!["-c".to_string(), "echo 'installing mock-dep'".to_string()],
-                        cwd: None,
-                        env: HashMap::new(),
-                        stdin: None,
-                    })),
-                );
-                out.insert("dep_name".to_string(), Value::Str("mock-dep".to_string()));
-                out
+                OutputMap::new()
+                    .request(
+                        "request",
+                        TransportRequest::Shell(ShellRequest {
+                            command: "sh".to_string(),
+                            args: vec!["-c".to_string(), "echo 'installing mock-dep'".to_string()],
+                            cwd: None,
+                            env: HashMap::new(),
+                            stdin: None,
+                        }),
+                    )
+                    .str("dep_name", "mock-dep")
+                    .build()
             }
             DepsOp::ParseInstall => {
-                let mut out = HashMap::new();
-                out.insert("installed".to_string(), Value::Bool(true));
-                out.insert("dep_name".to_string(), Value::Str("mock-dep".to_string()));
-                out
+                OutputMap::new()
+                    .bool("installed", true)
+                    .str("dep_name", "mock-dep")
+                    .build()
             }
         }
     }
@@ -649,26 +590,26 @@ echo "Installing git..."
                 ErrorTestCase::new(
                     "missing_manifest_content",
                     HashMap::new(),  // No manifest_content provided
-                    "missing manifest_content input",
+                    "missing or invalid 'manifest_content' input",
                 ),
             ],
             DepsOp::PrepareExecuteInstalls => vec![ErrorTestCase::new(
                 "missing_install_script",
                 HashMap::new(),
-                "missing install_script input",
+                "missing or invalid 'install_script' input",
             )],
             DepsOp::ParseExecuteResult => vec![],
             // Single-dependency ops
             DepsOp::PrepareCheckInstalled => vec![ErrorTestCase::new(
                 "missing_dep_name",
                 HashMap::new(),
-                "missing dep_name input",
+                "missing or invalid 'dep_name' input",
             )],
             DepsOp::ParseCheckInstalled => vec![],
             DepsOp::PrepareInstall => vec![ErrorTestCase::new(
                 "missing_dep_name",
                 HashMap::new(),
-                "missing dep_name input",
+                "missing or invalid 'dep_name' input",
             )],
             DepsOp::ParseInstall => vec![],
         }
@@ -723,6 +664,6 @@ script = "echo 'installing echo'"
         let inputs = HashMap::new();
         let result = execute_generate_scripts(inputs);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("missing manifest_content"));
+        assert!(result.unwrap_err().to_string().contains("manifest_content"));
     }
 }

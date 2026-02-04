@@ -1,7 +1,8 @@
 # LLM Code Review Pipeline
 
-**Status**: Tracks 2-6 implemented; Track 1 (Resource trait) still design
+**Status**: V0 complete. Tracks 2-6 implemented. Track 1 (Resource trait) still design.
 **Date**: 2026-02-01
+**Updated**: 2026-02-03
 
 ## North Star
 
@@ -66,10 +67,10 @@ GitOps::PrepareDiff → Execute → ReviewOps::PreparePrompt → LLM → ParseRe
 ```
 
 **V0 Crispness Checklist**:
-- [ ] ReviewPhase subdag is read-only (no write ops)
-- [ ] DryRun can run entire graph without touching repo
-- [ ] Output is machine-parseable JSON with schema version
-- [ ] Findings have stable IDs via `issue_key`
+- [x] ReviewPhase subdag is read-only (no write ops)
+- [x] DryRun can run entire graph without touching repo
+- [x] Output is machine-parseable JSON with schema version
+- [x] Findings have stable IDs via `issue_key`
 
 **V0 does NOT include**: durability, Codex integration, multi-turn, apply/commit.
 
@@ -123,12 +124,12 @@ These abstractions need to be designed together - changes in one affect the othe
 - [ ] Read vs Write classification — future (all review ops are read-only)
 - [ ] Integration tests against sample diff — future
 
-### Open Questions
+### Open Questions (Resolved)
 
-1. **Blob as first-class Value?** Should `Value::Blob(Blob)` exist, or always serialize to Json?
-2. **Resource caching** - at what layer? Transport? Resource? Blob?
-3. **Schema validation** - where does LLM response validation happen?
-4. **Review output as blob** - can findings be stored/passed as blobs for further processing?
+1. **Blob as first-class Value?** → JSON serialization via `BlobHandle.encode/decode`. No `Value::Blob` variant.
+2. **Resource caching** → Deferred until Track 1 (Resource Abstraction) provides a unified answer.
+3. **Schema validation** → In `ParseReviewResponse` via `extract_json_from_response()` + check_id validation against criteria.
+4. **Review output as blob** → Not needed for V0. Findings flow as `Value::Json`.
 
 ---
 
@@ -160,120 +161,99 @@ Unify acquisition pattern across tools, blobs, locks.
 
 ---
 
-### Track 2: Blob Abstraction (`lib/blob/`)
-
-Content acquisition aligned with tool acquisition.
+### Track 2: Blob Abstraction (`lib/blob/`) — DONE
 
 **TODO 2.1: BlobSource types**
-- [ ] `SourceSpec` enum: Inline, File, GitBlob, S3, Http
-- [ ] `BlobSource` struct with `source`, `access_mode`, `cache_key`
-- [ ] `BlobSource::resource_id()` for conflict detection
+- [x] `BlobSource` enum: Inline, File, GitBlob, S3, Http
+- [x] `resource_id()` for conflict detection
+- [x] `AccessMode::Read` for all blobs
 
 **TODO 2.2: BlobOps**
-- [ ] `PrepareCheckCached` / `ParseCheckCached` (cache lookup)
-- [ ] `PrepareFetch` / `ParseFetch` (fetch from source)
-- [ ] `Acquire` convenience (full upsert via `UpsertBuilder`)
-- [ ] Implement `Executable` trait
+- [x] `PrepareFetch` / `ParseFetch` (fetch from source)
+- [x] Implement `Executable` trait
 
 **TODO 2.3: BlobHandle**
-- [ ] Sealed handle (like `ToolHandle` with `PhantomData`)
-- [ ] `data()` and `meta()` accessors
-- [ ] `BlobMeta`: size, hash, content_type, etag
+- [x] Sealed handle with `PhantomData`
+- [x] `data()`, `meta()`, `source()` accessors
+- [x] `BlobMeta`: size, hash, content_type, etag
+- [x] `encode()` / `decode()` for DAG edge transmission
 
 **TODO 2.4: Value integration**
-- [ ] Decide: `Value::Blob(BlobHandle)` vs JSON serialization
-- [ ] Test blob flow through DAG edges
+- [x] JSON serialization via BlobHandle.encode/decode (no `Value::Blob`)
+- [x] Blob flow through DAG edges tested
 
 ---
 
-### Track 3: LLM Query Abstraction (`lib/llm-ops/`)
-
-Generic content + question → answer primitive.
+### Track 3: LLM Query Abstraction (`lib/llm-ops/`) — DONE
 
 **TODO 3.1: LlmQueryOps**
-- [ ] `PrepareQuery`: content + question + schema? → request
-- [ ] `ParseQuery`: response + schema? → answer + raw
-- [ ] Implement `Executable` trait
-- [ ] Relationship to existing `PrepareChatRequest`/`ParseChatResponse`
+- [x] `PrepareSimpleRequest`: content + question → request
+- [x] `ParseSimpleResponse`: response → answer string
+- [x] Implement `Executable` trait
+- [x] Wraps existing `PrepareChatRequest`/`ParseChatResponse`
 
-**TODO 3.2: Structured output**
-- [ ] JSON mode support (provider-specific)
-- [ ] Schema validation in `ParseQuery`
-- [ ] Error handling for malformed responses
+**TODO 3.2: Structured output** — deferred (future)
 
 ---
 
-### Track 4: Review Domain (`lib/review/`)
-
-Review-specific types and operations.
+### Track 4: Review Domain (`lib/review/`) — DONE
 
 **TODO 4.1: Core types**
-- [ ] `Criteria` struct (name, description, checks)
-- [ ] `Check` struct (id, question, examples)
-- [ ] `Finding` struct (id, check_id, issue_key, location, observation, candidate_fix)
-- [ ] `Location` enum (FileLine, Span, DiffLine, Unlocated)
-- [ ] `ReviewOutput` struct (schema_version, criteria_name, source, findings, summary)
-- [ ] `ReviewBundle` for multi-source merging
+- [x] `Criteria` struct (name, description, checks)
+- [x] `Check` struct (id, question, examples)
+- [x] `Finding` struct (id, check_id, issue_key, location, observation, candidate_fix)
+- [x] `Location` enum (FileLine, Span, DiffLine, Unlocated)
+- [x] `ReviewOutput` struct (schema_version, criteria_name, source, findings, summary)
+- [x] `ReviewBundle` for multi-source merging
+- [x] `CandidateRemediations` and `CandidateTask`
 
 **TODO 4.2: ReviewOps**
-- [ ] `BuildQuestion`: criteria → question string (for LlmQuery)
-- [ ] `ParseFindings`: answer → ReviewOutput
-- [ ] `MergeOutputs`: Vec<ReviewOutput> → ReviewBundle
-- [ ] `HashFinding`: issue_key + check_id → stable finding_id
-- [ ] Implement `Executable` trait
+- [x] `PrepareReviewPrompt`: criteria → prompt + system_prompt
+- [x] `ParseReviewResponse`: answer → ReviewOutput (JSON)
+- [x] `MergeOutputs`: Vec<ReviewOutput> → ReviewBundle with dedup
+- [x] `HashFinding`: issue_key + check_id → stable SHA256 finding_id
+- [x] `FormatDiffArtifact`: diff_files → artifact string
+- [x] `LoadPipelineConfig`: emit config as output ports
+- [x] Implement `Executable` trait
 
 **TODO 4.3: JSON schema**
-- [ ] Derive Serialize/Deserialize for all types
-- [ ] Schema version field
-- [ ] Validation tests
+- [x] Derive Serialize/Deserialize for all types
+- [x] Schema version field (`ReviewOutput::SCHEMA_VERSION = "0.1.0"`)
+- [x] Validation tests
 
 ---
 
-### Track 5: DAG Composition (`lib/review/dag.rs`)
-
-Wire up phases as composable subdags.
+### Track 5: DAG Composition (`lib/review/graph.rs`) — DONE
 
 **TODO 5.1: ReviewPhase builder**
-- [ ] Entrypoints: source (BlobSource), criteria, config
-- [ ] Internal: BlobOps::Acquire → ReviewOps::BuildQuestion → LlmQueryOps → ParseFindings
-- [ ] Interface boundaries: findings, blob_meta
+- [x] `build_review_phase_graph()` with 8-node DAG
+- [x] Entrypoints: source, artifact, criteria, provider, model
+- [x] Interface boundaries: findings, errors, meta
 
 **TODO 5.2: DiffReviewPhase builder**
-- [ ] Composes GitOps::PrepareDiff → ReviewPhase
-- [ ] Input: git ref, criteria
-- [ ] Output: ReviewOutput
+- [x] `build_diff_review_graph()` composes GitOps + ReviewPhase
+- [x] Input: git ref, criteria
+- [x] Output: ReviewOutput
 
-**TODO 5.3: MultiSourceReviewPhase builder**
-- [ ] Parallel fan-out: LLM + cargo check + clippy
-- [ ] MergeOutputs for dedup
-- [ ] Output: ReviewBundle
+**TODO 5.3: InlineReview builder**
+- [x] `build_inline_review_graph()` — simplified, no blob fetch
 
 **TODO 5.4: DryRun support**
-- [ ] Verify all TransportOps::Execute intercepted
-- [ ] Mock responses for testing
-- [ ] No side effects in DryRun mode
+- [x] MockSpec definitions for all transport boundaries
+- [x] `ExecutionMode::DryRun()` intercepts I/O
+- [x] No side effects in DryRun mode
 
 ---
 
-### Track 6: CLI Integration
-
-Add `gunbc review` command.
+### Track 6: CLI Integration — DONE
 
 **TODO 6.1: CLI command**
-- [ ] `gunbc review --diff <ref>` subcommand
-- [ ] Load criteria from config or use default
-- [ ] Output JSON to stdout
-- [ ] `--dry-run` flag
+- [x] `gunbc review` registered in codegen registry
+- [x] `--base-ref`, `--provider`, `--model`, `--dry-run` flags
+- [x] Output JSON to stdout
 
 **TODO 6.2: Default criteria**
-- [ ] Ship basic "code review" criteria
-- [ ] Configurable via `~/.gunbc/review.toml` or similar
-
-**TODO 6.3: Integration tests**
-- [ ] Test against sample diff
-- [ ] Verify JSON output schema
-- [ ] DryRun mode test (no actual LLM calls)
-- [ ] Test blob caching behavior
+- [x] Default criteria: correctness, security, performance, clarity
 
 ---
 

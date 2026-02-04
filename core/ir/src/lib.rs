@@ -80,7 +80,7 @@ pub use patterns::{
     TransactionBuilder, UpsertBuilder, WhileBuilder, PatternOp,
 };
 pub use signature::{infer_signature, SignatureError, SignaturePort, WorkflowSignature};
-pub use contract::TypeContract;
+pub use contract::{BoundaryWitness, TypeContract};
 pub use resource::{AccessMode, ResourceAccess, ResourceConflict, ResourceId};
 pub use cargo::{
     CargoCommand, CargoEnv, CargoInvocation, Subcommand, TermColor, Warnings,

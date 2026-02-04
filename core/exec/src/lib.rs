@@ -30,6 +30,7 @@
 pub mod ci_context;
 pub mod error;
 pub mod execute;
+pub mod helpers;
 pub mod intercept;
 pub mod lower;
 pub mod pattern_op;
@@ -40,6 +41,11 @@ pub use error::ExecError;
 pub use execute::{
     execute, execute_single_node, execute_with_ci, execute_with_mode, execute_with_mode_and_ci,
     ExecutionLog, ExecutionMode, LogEntry,
+};
+pub use helpers::{
+    optional_bool, optional_json, optional_map_str_str, optional_str, optional_str_list,
+    require_bool, require_int, require_json, require_map_str_str, require_request, require_response,
+    require_str, require_str_list, require_value, OutputMap, TransportResponseExt,
 };
 pub use intercept::{BoundaryMock, BoundaryMocks};
 pub use lower::{lower, LowerError};

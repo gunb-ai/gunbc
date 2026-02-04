@@ -15,7 +15,7 @@
 //! println!("{}", markdown);
 //! ```
 
-use gunbc_exec::{ExecError, Executable};
+use gunbc_exec::{optional_str, require_map_str_str, ExecError, Executable, OutputMap};
 use gunbc_ir::language::markdown_language_id;
 use gunbc_ir::Value;
 use std::collections::{BTreeMap, HashMap};
@@ -33,33 +33,20 @@ impl Executable for MarkdownOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         match self {
             MarkdownOp::RenderCodeSnapshot => {
-                let contents = inputs
-                    .get("contents")
-                    .and_then(|v| v.as_map_str_str())
-                    .ok_or_else(|| ExecError::new("missing or invalid 'contents' input"))?;
+                let contents = require_map_str_str(&inputs, "contents")?;
 
                 let markdown = render_code_snapshot(&contents);
 
-                let mut out = HashMap::new();
-                out.insert("markdown".to_string(), Value::Str(markdown));
-                Ok(out)
+                OutputMap::new().str("markdown", markdown).ok()
             }
             MarkdownOp::RenderDiffSnapshot => {
-                let diff_files = inputs
-                    .get("diff_files")
-                    .and_then(|v| v.as_map_str_str())
-                    .ok_or_else(|| ExecError::new("missing or invalid 'diff_files' input"))?;
+                let diff_files = require_map_str_str(&inputs, "diff_files")?;
 
-                let stats = inputs
-                    .get("stats")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
+                let stats = optional_str(&inputs, "stats").unwrap_or("");
 
                 let markdown = render_diff_snapshot(&diff_files, stats);
 
-                let mut out = HashMap::new();
-                out.insert("markdown".to_string(), Value::Str(markdown));
-                Ok(out)
+                OutputMap::new().str("markdown", markdown).ok()
             }
         }
     }

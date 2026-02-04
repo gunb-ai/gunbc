@@ -568,33 +568,378 @@ Concrete test suites:
 
 ---
 
+## 9. Executable boilerplate across ops
+
+Patterns repeated in every `Executable::execute` implementation.
+These are the highest-impact consolidation targets by occurrence count.
+
+### Input extraction — 80 occurrences across 18 files
+
+**Pattern**: Every op manually extracts inputs with identical
+error-handling boilerplate:
+
+```rust
+let x = inputs.get("x")
+    .and_then(|v| v.as_str())
+    .ok_or_else(|| ExecError::new("missing or invalid 'x' input"))?;
+```
+
+70 "missing or invalid" error messages, 80 `.ok_or_else(|| ExecError::new`
+calls across the codebase. The heaviest files:
+- `lib/tools/deps/src/ops.rs` (9)
+- `lib/llm-ops/src/lib.rs` (10)
+- `lib/primitives/src/data.rs` (7)
+- `lib/review/src/lib.rs` (7)
+- `lib/primitives/src/collection.rs` (6)
+- `core/exec/src/pattern_op.rs` (6)
+
+**Proposed**: Helper functions on the input map:
+
+```rust
+// In core/exec or core/ir
+pub fn require_str(inputs: &HashMap<String, Value>, key: &str) -> Result<&str, ExecError>;
+pub fn require_json(inputs: &HashMap<String, Value>, key: &str) -> Result<&Value, ExecError>;
+pub fn optional_str(inputs: &HashMap<String, Value>, key: &str) -> Option<&str>;
+```
+
+These compose: `let x = require_str(inputs, "x")?;` replaces
+3 chained method calls. Error messages become consistent automatically.
+
+### Output map construction — 164 occurrences across 24 files
+
+**Pattern**: Every op builds its output HashMap manually:
+
+```rust
+let mut out = HashMap::new();
+out.insert("key".to_string(), Value::Str(content.to_string()));
+out.insert("other".to_string(), Value::Bool(true));
+Ok(out)
+```
+
+164 `let mut out = HashMap::new()` across 24 files. The heaviest:
+- `gunbc-dag/src/ci/ops.rs` (29)
+- `lib/tools/deps/src/ops.rs` (22)
+- `lib/tools/gist/src/graph.rs` (20)
+- `core/exec/src/pattern_op.rs` (9)
+
+**Proposed**: Builder or helper macro:
+
+```rust
+// Option A: builder
+OutputMap::new()
+    .str("key", content)
+    .bool("other", true)
+    .build()
+
+// Option B: macro
+outputs! {
+    "key" => Value::Str(content.to_string()),
+    "other" => Value::Bool(true),
+}
+```
+
+### Response type matching — 51 occurrences across 17 files
+
+**Pattern**: Parse ops extract the response variant with identical
+match + error fallback:
+
+```rust
+match response {
+    TransportResponse::Shell(shell) => { /* use shell.stdout */ }
+    _ => return Err(ExecError::new("unexpected response type")),
+}
+```
+
+51 `TransportResponse::Shell(` matches, 11 "unexpected response type"
+errors. No convenience methods exist on `TransportResponse`.
+
+**Proposed**: Add typed extraction methods:
+
+```rust
+impl TransportResponse {
+    pub fn require_shell(&self) -> Result<&ShellResponse, ExecError>;
+    pub fn require_rest(&self) -> Result<&RestResponse, ExecError>;
+    pub fn require_file(&self) -> Result<&FileResponse, ExecError>;
+}
+```
+
+Each returns a consistent error. Callers become:
+`let shell = response.require_shell()?;`
+
+---
+
+## 10. ShellRequest construction — 20 occurrences across 6 files
+
+**Where**: `lib/blob/`, `lib/tools/deps/`, `lib/tools/gist/`,
+`lib/primitives/src/io.rs`, `gunbc-dag/src/bootstrap/`
+
+**Problem**: Raw struct construction with repeated field patterns:
+
+```rust
+TransportRequest::Shell(ShellRequest {
+    command: "git".to_string(),
+    args: vec!["diff".to_string(), ...],
+    cwd: Some(repo_path.to_string()),
+    env: HashMap::new(),
+    stdin: None,
+})
+```
+
+Some transports have builders (`GitRequest::to_shell_request`,
+`CargoCommand::to_shell_request`) but most callers construct raw.
+
+**Proposed**: Builder on `ShellRequest`:
+
+```rust
+ShellRequest::new("git")
+    .args(["diff", &base_ref])
+    .cwd(repo_path)
+    .into_transport_request()
+```
+
+Consumers: blob fetch, deps ops, gist ops, bootstrap ops, io primitives.
+
+---
+
+## 11. MockSpec test boilerplate — 8 graph_mock.rs files
+
+**Where**: Every crate with a DAG defines a `graph_mock.rs` with
+near-identical MockSpec construction and boundary assertion tests.
+
+**Files**: `lib/review/`, `lib/llm-ops/`, `lib/tools/gist/`,
+`lib/tools/buck2/`, `lib/tools/deps/`, `gunbc-dag/src/*/`
+
+**Pattern**: Each file has:
+1. A `xxx_mock_spec()` function building MockSpec chains
+2. Tests asserting boundaries exist: `assert!(spec.get_boundary_mock("node", "port").is_some())`
+3. Tests asserting mock specs are complete
+
+The boundary assertion tests are nearly copy-paste across files.
+
+**Proposed**: Parameterized test helper:
+
+```rust
+/// Assert all expected boundaries exist in a MockSpec.
+pub fn assert_boundaries(spec: &MockSpec, expected: &[(&str, &str)]) {
+    for (node, port) in expected {
+        assert!(spec.get_boundary_mock(node, port).is_some(),
+            "missing boundary mock for {}.{}", node, port);
+    }
+}
+```
+
+This could live in `core/test/` alongside existing test infrastructure.
+
+---
+
+## 12. Skipped-value propagation boilerplate — 8 occurrences across 3 files
+
+**Where**: `gunbc-dag/src/ci/ops.rs` (5), `lib/llm-ops/src/lib.rs` (2),
+`gunbc-dag/src/bootstrap/ops.rs` (1)
+
+**Problem**: Every parse op that receives a transport response must
+check if the upstream was skipped and propagate `Value::Skipped` to
+all outputs. This produces 5–8 lines of identical boilerplate per op:
+
+```rust
+if matches!(inputs.get("response"), Some(Value::Skipped)) {
+    return OutputMap::new()
+        .value("field_a", Value::Skipped)
+        .value("field_b", Value::Skipped)
+        .value("field_c", Value::Skipped)
+        .ok();
+}
+```
+
+The only thing that varies is the list of output field names.
+
+**Proposed**: Helper function in `core/exec/src/helpers.rs`:
+
+```rust
+/// If the given input key is `Value::Skipped`, return all output
+/// fields as `Value::Skipped`. Otherwise return `None`.
+pub fn propagate_skipped(
+    inputs: &HashMap<String, Value>,
+    input_key: &str,
+    output_keys: &[&str],
+) -> Option<Result<HashMap<String, Value>, ExecError>> {
+    if matches!(inputs.get(input_key), Some(Value::Skipped)) {
+        let mut map = OutputMap::new();
+        for key in output_keys {
+            map = map.value(key, Value::Skipped);
+        }
+        Some(map.ok())
+    } else {
+        None
+    }
+}
+```
+
+Callers become:
+
+```rust
+if let Some(result) = propagate_skipped(&inputs, "response",
+    &["field_a", "field_b", "field_c"]) {
+    return result;
+}
+```
+
+---
+
+## 13. Error mapping boilerplate — 23 `.map_err` + 4 `.map_err(ExecError::new)` across 10 files
+
+**Where**: `lib/review/src/lib.rs` (5), `lib/llm-ops/src/lib.rs` (4),
+`core/exec/src/execute.rs` (4), `lib/primitives/src/data.rs` (3),
+`gunbc-dag/src/ci/graph.rs` (3), `lib/blob/src/lib.rs` (2),
+`lib/tools/deps/src/ops.rs` (2), `lib/transport/src/ops.rs` (1),
+`gunbc-dag/src/ci/env.rs` (1), `gunbc-dag/src/workspace/ops.rs` (1),
+`lib/tools/cargo/src/ops.rs` (1)
+
+**Pattern**: Repeated `.map_err(|e| ExecError::new(format!("context: {}", e)))?`
+chains for wrapping parse/serialize errors:
+
+```rust
+serde_json::from_str(&text)
+    .map_err(|e| ExecError::new(format!("JSON parse error: {}", e)))?;
+```
+
+**Proposed**: Context-wrapping method on `ExecError`:
+
+```rust
+impl ExecError {
+    /// Wrap any Display error with a context message.
+    pub fn context<E: std::fmt::Display>(msg: &str, err: E) -> Self {
+        ExecError::new(format!("{}: {}", msg, err))
+    }
+}
+
+// Plus a Result extension trait:
+pub trait ResultExt<T> {
+    fn exec_context(self, msg: &str) -> Result<T, ExecError>;
+}
+impl<T, E: std::fmt::Display> ResultExt<T> for Result<T, E> {
+    fn exec_context(self, msg: &str) -> Result<T, ExecError> {
+        self.map_err(|e| ExecError::context(msg, e))
+    }
+}
+```
+
+Callers become:
+
+```rust
+serde_json::from_str(&text).exec_context("JSON parse error")?;
+```
+
+---
+
+## 14. ShellResponse construction — 39 direct constructions across 16 files
+
+**Where**: `core/codegen/src/registry.rs` (6),
+`lib/tools/gist/tests/integration.rs` (6),
+`lib/tools/gist/tests/generated_tests.rs` (6),
+`gunbc-dag/src/bin/ci.rs` (3), `gunbc-dag/src/bootstrap/graph_mock.rs` (3),
+`lib/git-ops/src/lib.rs` (2), `gunbc-dag/src/ci/graph_mock.rs` (2),
+`lib/review/src/graph_mock.rs` (2), and 8 more files with 1 each.
+
+**Problem**: `ShellResponse` has no convenience constructors, unlike
+`FileResponse` which has `written()`, `read_ok()`, `error()`.
+Every construction site writes the full struct literal:
+
+```rust
+ShellResponse {
+    exit_code: 0,
+    stdout: output.to_string(),
+    stderr: String::new(),
+}
+```
+
+Most (>80%) are success cases with empty stderr.
+
+**Proposed**: Convenience constructors on `ShellResponse`:
+
+```rust
+impl ShellResponse {
+    /// Command succeeded (exit_code 0) with given stdout.
+    pub fn ok(stdout: impl Into<String>) -> Self {
+        Self { exit_code: 0, stdout: stdout.into(), stderr: String::new() }
+    }
+
+    /// Command failed with given exit code and stderr.
+    pub fn failed(exit_code: i32, stderr: impl Into<String>) -> Self {
+        Self { exit_code, stdout: String::new(), stderr: stderr.into() }
+    }
+}
+```
+
+---
+
+## 15. Unmigrated ops still using raw HashMap — 13 sites across 7 files
+
+**Where**: `lib/tools/cargo/src/ops.rs` (3 in `mock_outputs`),
+`lib/tools/deps/src/graph.rs` (2 in mock closures),
+`gunbc-dag/src/ci/graph.rs` (1), `core/exec/src/execute.rs` (1),
+`core/test/src/mock.rs` (1), `core/ir/src/transport/cli.rs` (4),
+`core/exec/src/helpers.rs` (1 — internal, fine)
+
+These files still use `let mut out = HashMap::new()` instead of
+`OutputMap`. Most are in secondary locations (mock impls, graph
+dispatch, CLI tool infra) rather than primary `execute()` methods.
+
+**Proposed**: Migrate to `OutputMap` for consistency.
+`core/ir/src/transport/cli.rs` is special — it's in `core/ir`
+which doesn't depend on `core/exec`, so it can't use `OutputMap`.
+This is fine; it's infrastructure code, not op code.
+
+---
+
 ## Tasks
 
-- [ ] Extract `hash_finding_id` to `lib/primitives` as `StableHashOp`
-- [ ] Unify blob hash with review hash (both should use SHA256)
-- [ ] Extract `FormatDiffArtifact` to `lib/primitives` as `FormatMapOp`
-- [ ] Design rendering DAG for Makefile generation (when adding Justfile)
-- [ ] Design rendering DAG for CI workflow generation (when adding second provider)
-- [ ] Consider `ToolGraphOp<D>` generic wrapper (dag-pattern-ux.md Phase 4)
-- [ ] Split `MergeOutputs` dedup from cardinality handling (blocked on engine work)
-- [ ] Review hand-written tests for redundancy with testgen (Pattern 1, 5)
-- [ ] Remove fragile node-count assertions from graph structure tests (Pattern 2)
+### High priority (widespread, low effort) — DONE
+- [x] Add `require_str`, `require_json`, `optional_str` input helpers (80 call sites) — `core/exec/src/helpers.rs`
+- [x] Add `OutputMap` builder (164 call sites) — `core/exec/src/helpers.rs`
+- [x] Add `TransportResponseExt::require_shell/rest/file` methods (51 call sites) — `core/exec/src/helpers.rs`
+- [x] Add `ShellRequest::into_transport_request()` — `core/ir/src/transport/mod.rs`
+
+### High priority (new — widespread, low effort)
+- [ ] Add `propagate_skipped` helper (8 call sites across 3 files) — §12
+- [ ] Add `ExecError::context()` + `ResultExt` trait (27 call sites across 10 files) — §13
+- [ ] Add `ShellResponse::ok()` / `ShellResponse::failed()` constructors (39 sites, 16 files) — §14
+- [ ] Add `InputsExt` trait to replace free-function `require_*/optional_*` calls — shrinks import lists
+- [ ] Add `From<ShellRequest> for TransportRequest` (+ FileRequest etc) and make `OutputMap::request` accept `impl Into<TransportRequest>`
+
+### Medium priority
+- [ ] Migrate remaining raw `HashMap::new()` output construction to `OutputMap` (9 sites, 5 files) — §15
+- [ ] Add `assert_boundaries` test helper to `core/test` (8 files) — §11
+- [ ] Collapse `default_mock_for_type` into `cardinality_case_mock_value` in testgen codegen — single type→mock mapping
+- [ ] Extract `hash_finding_id` to `lib/primitives` as `StableHashOp` — §1
+- [ ] Unify blob hash with review hash (both should use SHA256) — §1
+- [ ] Extract `FormatDiffArtifact` to `lib/primitives` as `FormatMapOp` — §1
+
+### Lower priority / blocked
+- [ ] Consider `ToolGraphOp<D>` generic wrapper (dag-pattern-ux.md Phase 4) — §3
+- [ ] Split `MergeOutputs` dedup from cardinality handling (blocked on engine work) — §1
+- [ ] Design rendering DAG for Makefile generation (when adding Justfile) — §2
+- [ ] Design rendering DAG for CI workflow generation (when adding second provider) — §2
+- [ ] Review hand-written tests for redundancy with testgen (Pattern 1, 5) — §7
+- [ ] Remove fragile node-count assertions from graph structure tests (Pattern 2) — §7
 - [ ] Eliminate `type_id == "List"` dual encoding (see §5, incremental migration)
 - [ ] Replace string-based builder references with enum keys (see §6)
 - [ ] Extract `buck-out/gen` to a single constant (see §6, 16 occurrences)
 - [ ] Fix CODEGEN_SOURCES hardcoded path list (see §6)
 - [ ] Design hermeticity annotation for `Shell` transport (see §8 design problem)
-- [ ] Add integration tests: `File` transport executor (all 6 FileOp variants)
-- [ ] Add integration tests: `Shell` transport executor (stdout, stderr, exit codes)
-- [ ] Add integration tests: Git transport (`GitRequest` variants against temp repo)
-- [ ] Add integration tests: CLI tool resolution (`resolve_tool_path`, `upsert_tool`)
-- [ ] Add `make test-integration` target (hermetic transport tests)
-- [ ] Add `make test-external` target (non-hermetic transport tests, scheduled CI)
+- [ ] Add integration tests: `File` transport executor (all 6 FileOp variants) — §8
+- [ ] Add integration tests: `Shell` transport executor (stdout, stderr, exit codes) — §8
+- [ ] Add integration tests: Git transport (`GitRequest` variants against temp repo) — §8
+- [ ] Add integration tests: CLI tool resolution (`resolve_tool_path`, `upsert_tool`) — §8
+- [ ] Add `make test-integration` target (hermetic transport tests) — §8
+- [ ] Add `make test-external` target (non-hermetic transport tests, scheduled CI) — §8
 
 ## Notes
 
 - "Extract when second consumer appears" — don't prematurely abstract.
   The first consumer defines the interface, the second validates it.
+- The section 5 items (input/output/response helpers) are different:
+  they already have 18-24 consumers. These are safe to extract now.
 - Rendering DAGs are high value but not urgent. The current functions
   are pure and testable. DAGs add composability and interceptability.
 - The cardinality design doc subsumes the MergeOutputs generalization.
@@ -619,3 +964,13 @@ Concrete test suites:
 - Makefile gen and CI gen should read `all_testgen_targets()` to
   auto-generate check targets (testgen-improvements.md TODO 6.3).
   This makes "add a new tool" a single edit instead of 3+.
+- The skipped-propagation pattern (§12) is mechanical — it affects the
+  parse ops that sit after transport boundaries. This will grow as
+  more DAGs are added, so worth fixing now.
+- The error-mapping pattern (§13) is less urgent since the current code
+  works, but the `ResultExt` trait eliminates a lot of visual noise.
+- The ShellResponse constructors (§14) are a quick win — `FileResponse`
+  already has the same pattern (`written()`, `read_ok()`, `error()`),
+  so this is consistent API completion.
+- The unmigrated HashMap sites (§15) are mostly in mock/infra code,
+  not primary execute paths. Lower urgency but worth cleaning up.

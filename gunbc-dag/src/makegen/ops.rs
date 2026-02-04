@@ -5,7 +5,7 @@
 //! - `PrepareFileWriteOp` (primitive) creates the TransportRequest
 //! - `TransportOps::Execute` (boundary) performs actual I/O
 
-use gunbc_exec::{ExecError, Executable};
+use gunbc_exec::{ExecError, Executable, OutputMap};
 use gunbc_ir::Value;
 use std::collections::HashMap;
 
@@ -40,9 +40,6 @@ fn execute_load_registry(_inputs: HashMap<String, Value>) -> Result<HashMap<Stri
     // Serialize tool names for downstream
     let tool_names: Vec<String> = registry.tools.iter().map(|t| t.short_name.clone()).collect();
 
-    let mut out = HashMap::new();
-    out.insert("tool_count".to_string(), Value::Int(registry.tools.len() as i64));
-    out.insert("tool_names".to_string(), Value::str_list(tool_names));
     // Store registry as JSON for downstream
     let registry_json = serde_json::json!({
         "tools": registry.tools.iter().map(|t| {
@@ -63,8 +60,12 @@ fn execute_load_registry(_inputs: HashMap<String, Value>) -> Result<HashMap<Stri
             })
         }).collect::<Vec<_>>()
     });
-    out.insert("registry".to_string(), Value::Json(registry_json));
-    Ok(out)
+
+    OutputMap::new()
+        .int("tool_count", registry.tools.len() as i64)
+        .str_list("tool_names", tool_names)
+        .json("registry", registry_json)
+        .ok()
 }
 
 /// Render the Makefile content.
@@ -74,9 +75,7 @@ fn execute_render_makefile(_inputs: HashMap<String, Value>) -> Result<HashMap<St
     let registry = ToolRegistry::default_registry();
     let content = render_makefile(&registry);
 
-    let mut out = HashMap::new();
-    out.insert("makefile_content".to_string(), Value::Str(content));
-    Ok(out)
+    OutputMap::new().str("makefile_content", content).ok()
 }
 
 // ============================================================================
@@ -90,36 +89,29 @@ impl Mockable for MakegenOp {
     fn mock_outputs(&self) -> HashMap<String, Value> {
         match self {
             MakegenOp::LoadRegistry => {
-                let mut out = HashMap::new();
-                out.insert("tool_count".to_string(), Value::Int(3));
-                out.insert(
-                    "tool_names".to_string(),
-                    Value::str_list(vec![
+                OutputMap::new()
+                    .int("tool_count", 3)
+                    .str_list("tool_names", vec![
                         "gist".to_string(),
                         "deps".to_string(),
                         "buck2".to_string(),
-                    ]),
-                );
-                out.insert(
-                    "registry".to_string(),
-                    Value::Json(serde_json::json!({
+                    ])
+                    .json("registry", serde_json::json!({
                         "tools": [
                             {"binary_name": cargo::name("gist"), "short_name": "gist"},
                             {"binary_name": cargo::name("deps"), "short_name": "deps"},
                             {"binary_name": cargo::name("buck2"), "short_name": "buck2"},
                         ]
-                    })),
-                );
-                out
+                    }))
+                    .build()
             }
             MakegenOp::RenderMakefile => {
                 let gist = CargoInvocation::standalone("gist").command();
                 let deps = CargoInvocation::standalone("deps").command();
                 let buck2 = CargoInvocation::standalone("buck2").command();
-                let mut out = HashMap::new();
-                out.insert(
-                    "makefile_content".to_string(),
-                    Value::Str(
+                OutputMap::new()
+                    .str(
+                        "makefile_content",
                         format!(
                             "# Generated Makefile\n\
                             .PHONY: gist deps buck2\n\
@@ -133,9 +125,8 @@ impl Mockable for MakegenOp {
                             buck2:\n\
                             \t{buck2}\n"
                         ),
-                    ),
-                );
-                out
+                    )
+                    .build()
             }
         }
     }

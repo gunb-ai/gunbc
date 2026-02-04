@@ -10,7 +10,10 @@
 //! performing any I/O. The actual I/O happens in `TransportOps::Execute`,
 //! which is properly intercepted in DryRun mode.
 
-use gunbc_exec::{ExecError, Executable};
+use gunbc_exec::{
+    optional_bool, optional_map_str_str, optional_str, optional_str_list, require_str, ExecError,
+    Executable, OutputMap,
+};
 use gunbc_ir::transport::{FileRequest, HttpMethod, RestRequest, ShellRequest, TransportRequest};
 use gunbc_ir::Value;
 use serde::{Deserialize, Serialize};
@@ -34,22 +37,13 @@ pub struct HttpRequestOp;
 
 impl Executable for HttpRequestOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let url = inputs
-            .get("url")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| ExecError::new("missing or invalid 'url' string"))?;
+        let url = require_str(&inputs, "url")?;
 
-        let method = inputs
-            .get("method")
-            .and_then(|v| v.as_str())
-            .unwrap_or("GET");
+        let method = optional_str(&inputs, "method").unwrap_or("GET");
 
-        let body = inputs.get("body").and_then(|v| v.as_str());
+        let body = optional_str(&inputs, "body");
 
-        let headers = inputs
-            .get("headers")
-            .and_then(|v| v.as_map_str_str())
-            .unwrap_or_default();
+        let headers = optional_map_str_str(&inputs, "headers").unwrap_or_default();
 
         // Parse method
         let http_method = match method.to_uppercase().as_str() {
@@ -72,9 +66,7 @@ impl Executable for HttpRequestOp {
             timeout_ms: None,
         });
 
-        let mut out = HashMap::new();
-        out.insert("request".to_string(), Value::Request(request));
-        Ok(out)
+        OutputMap::new().request("request", request).ok()
     }
 }
 
@@ -95,22 +87,15 @@ pub struct PrepareFileWriteOp;
 impl Executable for PrepareFileWriteOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         // Accept multiple port names for flexibility, with default
-        let path = inputs
-            .get("path")
-            .or_else(|| inputs.get("output_path"))
-            .and_then(|v| v.as_str())
+        let path = optional_str(&inputs, "path")
+            .or_else(|| optional_str(&inputs, "output_path"))
             .unwrap_or("output"); // Default if not provided
 
-        let content = inputs
-            .get("content")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| ExecError::new("missing or invalid 'content' string"))?;
+        let content = require_str(&inputs, "content")?;
 
         let request = TransportRequest::File(FileRequest::write(path, content));
 
-        let mut out = HashMap::new();
-        out.insert("request".to_string(), Value::Request(request));
-        Ok(out)
+        OutputMap::new().request("request", request).ok()
     }
 }
 
@@ -129,16 +114,11 @@ pub struct PrepareFileReadOp;
 
 impl Executable for PrepareFileReadOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let path = inputs
-            .get("path")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| ExecError::new("missing or invalid 'path' string"))?;
+        let path = require_str(&inputs, "path")?;
 
         let request = TransportRequest::File(FileRequest::read(path));
 
-        let mut out = HashMap::new();
-        out.insert("request".to_string(), Value::Request(request));
-        Ok(out)
+        OutputMap::new().request("request", request).ok()
     }
 }
 
@@ -154,16 +134,11 @@ pub struct PrepareFileExistsOp;
 
 impl Executable for PrepareFileExistsOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let path = inputs
-            .get("path")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| ExecError::new("missing or invalid 'path' string"))?;
+        let path = require_str(&inputs, "path")?;
 
         let request = TransportRequest::File(FileRequest::exists(path));
 
-        let mut out = HashMap::new();
-        out.insert("request".to_string(), Value::Request(request));
-        Ok(out)
+        OutputMap::new().request("request", request).ok()
     }
 }
 
@@ -184,17 +159,11 @@ pub struct PrepareShellOp;
 
 impl Executable for PrepareShellOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let command = inputs
-            .get("command")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| ExecError::new("missing or invalid 'command' string"))?;
+        let command = require_str(&inputs, "command")?;
 
-        let args = inputs
-            .get("args")
-            .and_then(|v| v.as_str_list())
-            .unwrap_or_default();
+        let args = optional_str_list(&inputs, "args").unwrap_or_default();
 
-        let cwd = inputs.get("cwd").and_then(|v| v.as_str());
+        let cwd = optional_str(&inputs, "cwd");
 
         let request = TransportRequest::Shell(ShellRequest {
             command: command.to_string(),
@@ -204,9 +173,7 @@ impl Executable for PrepareShellOp {
             stdin: None,
         });
 
-        let mut out = HashMap::new();
-        out.insert("request".to_string(), Value::Request(request));
-        Ok(out)
+        OutputMap::new().request("request", request).ok()
     }
 }
 
@@ -226,15 +193,9 @@ pub struct PrepareDirectoryListOp;
 
 impl Executable for PrepareDirectoryListOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let path = inputs
-            .get("path")
-            .and_then(|v| v.as_str())
-            .unwrap_or(".");
+        let path = optional_str(&inputs, "path").unwrap_or(".");
 
-        let recursive = inputs
-            .get("recursive")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
+        let recursive = optional_bool(&inputs, "recursive").unwrap_or(false);
 
         // Use find for recursive, ls for non-recursive
         let (command, args) = if recursive {
@@ -254,9 +215,7 @@ impl Executable for PrepareDirectoryListOp {
             stdin: None,
         });
 
-        let mut out = HashMap::new();
-        out.insert("request".to_string(), Value::Request(request));
-        Ok(out)
+        OutputMap::new().request("request", request).ok()
     }
 }
 
@@ -288,9 +247,7 @@ impl Executable for EmbeddedFileExistsOp {
     fn execute(&self, _inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         let request = TransportRequest::File(FileRequest::exists(&self.path));
 
-        let mut out = HashMap::new();
-        out.insert("request".to_string(), Value::Request(request));
-        Ok(out)
+        OutputMap::new().request("request", request).ok()
     }
 }
 
@@ -341,9 +298,7 @@ impl Executable for EmbeddedShellOp {
             stdin: None,
         });
 
-        let mut out = HashMap::new();
-        out.insert("request".to_string(), Value::Request(request));
-        Ok(out)
+        OutputMap::new().request("request", request).ok()
     }
 }
 
