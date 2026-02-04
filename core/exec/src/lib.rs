@@ -28,18 +28,24 @@
 //! log groups around DAG nodes, emit annotations for errors, etc.
 
 pub mod ci_context;
+pub mod display;
 pub mod error;
 pub mod execute;
 pub mod helpers;
 pub mod intercept;
 pub mod lower;
 pub mod pattern_op;
+pub mod progress;
+pub mod render;
+pub mod terminal;
 pub mod topo;
 
 pub use ci_context::CiContext;
+pub use display::{execute_and_display, print_value};
 pub use error::{ExecError, ResultExt};
 pub use execute::{
     execute, execute_single_node, execute_with_ci, execute_with_mode, execute_with_mode_and_ci,
+    execute_with_progress, execute_with_progress_and_mode, execute_with_all,
     ExecutionLog, ExecutionMode, LogEntry,
 };
 pub use helpers::{
@@ -50,6 +56,14 @@ pub use helpers::{
 };
 pub use intercept::{BoundaryMock, BoundaryMocks};
 pub use lower::{lower, LowerError};
+pub use progress::{
+    DagProgress, DagSnapshot, EdgeProgress, EdgeState, FieldKind, FieldSummary, NodeProgress,
+    NodeState, OutputSummary, ProgressEvent, ProgressObserver, RecordingObserver, DagPhase,
+};
+pub use render::{
+    Animation, AnimationMode, FrameLoop, RenderMode, TerminalRenderer,
+};
+pub use terminal::{Shell, TerminalProfile};
 pub use topo::topo_sort;
 
 use gunbc_ir::Value;

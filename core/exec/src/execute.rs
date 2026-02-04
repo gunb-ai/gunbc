@@ -21,13 +21,14 @@
 use crate::error::ExecError;
 use crate::intercept::BoundaryMocks;
 use crate::lower::lower;
+use crate::progress::{DagSnapshot, OutputSummary, ProgressObserver};
 use crate::topo::topo_sort;
 use crate::Executable;
 use gunbc_ir::{detect_boundaries, BoundaryInfo, Dag, Node, NodeBody, NodeId, Value};
 use gunbc_ir::transport::cli::{get_tool_by_id, ToolHandle};
 use std::collections::HashMap;
 use std::fmt;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// Execution mode: real, dry-run, or simulate.
 #[derive(Debug, Clone, Default)]
@@ -220,7 +221,7 @@ pub fn execute_with_mode<T: Executable + Clone>(
     let boundaries = detect_boundaries(&flat);
 
     // Execute the flat DAG
-    execute_flat(&flat, &boundaries, &mode, None)
+    execute_flat(&flat, &boundaries, &mode, None, None)
 }
 
 /// Execute a DAG with CI context for workflow command emission.
@@ -257,7 +258,51 @@ pub fn execute_with_mode_and_ci<T: Executable + Clone>(
     let boundaries = detect_boundaries(&flat);
 
     // Execute the flat DAG with CI context
-    execute_flat(&flat, &boundaries, &mode, Some(ci))
+    execute_flat(&flat, &boundaries, &mode, Some(ci), None)
+}
+
+/// Execute a DAG with a progress observer.
+///
+/// The progress observer receives callbacks at each execution stage
+/// (node start, complete, fail, skip, intercept). This enables live
+/// progress display, recording, or any other observation pattern.
+///
+/// # Example
+///
+/// ```ignore
+/// use gunbc_exec::{execute_with_progress, progress::DagProgress};
+///
+/// let mut progress = None; // Will be initialized from snapshot
+/// let log = execute_with_progress(&dag, &mut progress)?;
+/// ```
+pub fn execute_with_progress<T: Executable + Clone>(
+    dag: &Dag<T>,
+    observer: &mut dyn ProgressObserver,
+) -> Result<ExecutionLog, ExecError> {
+    execute_with_progress_and_mode(dag, ExecutionMode::Real, observer)
+}
+
+/// Execute a DAG with both execution mode and progress observer.
+pub fn execute_with_progress_and_mode<T: Executable + Clone>(
+    dag: &Dag<T>,
+    mode: ExecutionMode,
+    observer: &mut dyn ProgressObserver,
+) -> Result<ExecutionLog, ExecError> {
+    let flat = lower(dag).map_err(|e| ExecError::new(format!("lowering failed: {e}")))?;
+    let boundaries = detect_boundaries(&flat);
+    execute_flat(&flat, &boundaries, &mode, None, Some(observer))
+}
+
+/// Execute a DAG with execution mode, CI context, and progress observer.
+pub fn execute_with_all<T: Executable + Clone>(
+    dag: &Dag<T>,
+    mode: ExecutionMode,
+    ci: &mut crate::CiContext,
+    observer: &mut dyn ProgressObserver,
+) -> Result<ExecutionLog, ExecError> {
+    let flat = lower(dag).map_err(|e| ExecError::new(format!("lowering failed: {e}")))?;
+    let boundaries = detect_boundaries(&flat);
+    execute_flat(&flat, &boundaries, &mode, Some(ci), Some(observer))
 }
 
 /// Execute a single node from a DAG.
@@ -355,7 +400,7 @@ pub fn simulate<T: Executable + Clone>(
     let order = topo_sort(&flat);
 
     // Execute with simulation tracking (no CI context in simulation)
-    let log = execute_flat(&flat, &boundaries, &ExecutionMode::Simulate(config.clone()), None)?;
+    let log = execute_flat(&flat, &boundaries, &ExecutionMode::Simulate(config.clone()), None, None)?;
 
     // Compute simulation metrics
     let timeline = compute_timeline(&order, &config);
@@ -397,9 +442,10 @@ fn compute_critical_path<T>(dag: &Dag<T>, _config: &SimConfig) -> Vec<NodeId> {
 /// Execute a flat (fully lowered) DAG.
 fn execute_flat<T: Executable>(
     dag: &Dag<T>,
-    _boundaries: &BoundaryInfo,  // Kept for future signature inference use
+    boundaries: &BoundaryInfo,
     mode: &ExecutionMode,
     ci: Option<&mut crate::CiContext>,
+    observer: Option<&mut dyn ProgressObserver>,
 ) -> Result<ExecutionLog, ExecError> {
     let order = topo_sort(dag);
     let node_map: HashMap<&str, &Node<T>> = dag.nodes.iter().map(|n| (n.id.0.as_str(), n)).collect();
@@ -407,24 +453,23 @@ fn execute_flat<T: Executable>(
     let mut node_outputs: HashMap<String, HashMap<String, Value>> = HashMap::new();
     let mut entries = Vec::new();
 
-    // Wrap CI context in a cell for mutable access in the loop
-    // (Rust borrow checker limitation with Option<&mut T> in loops)
+    // Wrap CI context and observer in cells for mutable access in the loop
     let mut ci_ctx = ci;
+    let mut obs = observer;
+
+    // Build snapshot and fire on_dag_start
+    let dag_start = Instant::now();
+    if let Some(ref mut o) = obs {
+        let snapshot = DagSnapshot::from_dag(dag, &order, boundaries);
+        o.on_dag_start(&snapshot);
+    }
 
     for node_id in &order {
         let node = node_map
             .get(node_id.0.as_str())
             .ok_or_else(|| ExecError::new(format!("node '{}' not found", node_id.0)))?;
 
-        // Start CI group for this node (skip for "report" so it's not collapsed)
-        let use_group = node_id.0 != "report";
-        if use_group {
-            if let Some(ref mut ci) = ci_ctx {
-                ci.start_group(&node_id.0, false);
-            }
-        }
-
-        // Gather inputs from upstream edges
+        // Gather inputs from upstream edges (needed for guard evaluation)
         // Tool handles flow through edges like any other value
         let mut inputs: HashMap<String, Value> = HashMap::new();
         for edge in &dag.edges {
@@ -450,8 +495,14 @@ fn execute_flat<T: Executable>(
             }
         }
 
-        // Check guards
+        // Check guards BEFORE emitting on_node_start — skipped nodes never
+        // enter the "running" state. This prevents misleading transitions in
+        // observers and avoids flicker in progress displays.
         let skip = should_skip_node(node, &inputs);
+
+        // CI group and use_group are tracked at the loop iteration level
+        // because end_group must be called after outputs are logged.
+        let use_group = !skip && node_id.0 != "report";
 
         let (outputs, was_intercepted) = if skip {
             // Node is skipped — all outputs become Skipped
@@ -460,8 +511,24 @@ fn execute_flat<T: Executable>(
                 .iter()
                 .map(|p| (p.name.0.clone(), Value::Skipped))
                 .collect();
+            if let Some(ref mut o) = obs {
+                o.on_node_skipped(node_id);
+            }
             (outputs, false)
         } else {
+            // Start CI group for this node (skip for "report" so it's not collapsed)
+            if use_group {
+                if let Some(ref mut ci) = ci_ctx {
+                    ci.start_group(&node_id.0, false);
+                }
+            }
+
+            // Notify observer that node is starting (only for nodes that will execute)
+            let node_start = Instant::now();
+            if let Some(ref mut o) = obs {
+                o.on_node_start(node_id);
+            }
+
             // Check if this is a transport execution node (consumes TransportRequest),
             // a tool environment node (emits ToolHandle), or a tool consumer node
             // (consumes ToolHandle). These are intercepted in dry-run/simulate mode
@@ -491,20 +558,38 @@ fn execute_flat<T: Executable>(
                         })
                         .collect()
                 };
+                if let Some(ref mut o) = obs {
+                    let summary = OutputSummary::from_outputs(&outputs, node_start.elapsed());
+                    o.on_node_intercepted(node_id, summary);
+                }
                 (outputs, true)
             } else {
                 // Execute normally
                 match &node.body {
                     NodeBody::Opaque(op) => {
                         match op.execute(inputs) {
-                            Ok(outputs) => (outputs, false),
+                            Ok(outputs) => {
+                                if let Some(ref mut o) = obs {
+                                    let summary = OutputSummary::from_outputs(&outputs, node_start.elapsed());
+                                    o.on_node_complete(node_id, summary);
+                                }
+                                (outputs, false)
+                            }
                             Err(e) => {
+                                // Notify observer of failure
+                                if let Some(ref mut o) = obs {
+                                    o.on_node_failed(node_id, &e.to_string());
+                                }
                                 // Emit CI error annotation if context available
                                 if let Some(ref mut ci) = ci_ctx {
                                     ci.error(&format!("Node '{}' failed: {}", node_id.0, e), None);
                                     if use_group {
                                         ci.end_group(); // Close the group before returning error
                                     }
+                                }
+                                // Notify observer of DAG completion (with failure)
+                                if let Some(ref mut o) = obs {
+                                    o.on_dag_complete(dag_start.elapsed());
                                 }
                                 return Err(e);
                             }
@@ -515,6 +600,10 @@ fn execute_flat<T: Executable>(
                             "node '{}' is a SubDag — DAG must be lowered before execution",
                             node_id.0
                         );
+                        if let Some(ref mut o) = obs {
+                            o.on_node_failed(node_id, &err_msg);
+                            o.on_dag_complete(dag_start.elapsed());
+                        }
                         if let Some(ref mut ci) = ci_ctx {
                             ci.error(&err_msg, None);
                             if use_group {
@@ -557,6 +646,11 @@ fn execute_flat<T: Executable>(
                 ci.end_group();
             }
         }
+    }
+
+    // Notify observer of successful DAG completion
+    if let Some(ref mut o) = obs {
+        o.on_dag_complete(dag_start.elapsed());
     }
 
     Ok(ExecutionLog { entries })

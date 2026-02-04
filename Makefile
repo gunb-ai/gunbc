@@ -10,7 +10,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help codegen ensure-codegen build clean testgen testgen-check fmt-fix lint-fix test test-fix check check-fix clippy clippy-fix fmt fmt-check ci-yaml gist gist-dry gist-diff gist-diff-dry buck2 buck2-dry makegen makegen-dry deps deps-dry bootstrap bootstrap-dry ci ci-dry
+.PHONY: help codegen ensure-codegen build clean testgen testgen-check fmt-fix lint-fix test test-fix check check-fix clippy clippy-fix fmt fmt-check ci-yaml gist gist-dry gist-diff gist-diff-dry buck2 buck2-dry makegen makegen-dry deps deps-dry bootstrap bootstrap-dry ci ci-dry build-all build-all-dry
 
 # Codegen source tracking: rebuild generated files when sources change
 CODEGEN_SOURCES := $(shell find core/codegen/src core/ir/src -name '*.rs' 2>/dev/null)
@@ -77,6 +77,7 @@ help:
 	@echo "  deps [MANIFEST=deps.toml]  - Install tool dependencies"
 	@echo "  bootstrap   - Generate Makefile and .gitignore"
 	@echo "  ci   - Run CI pipeline"
+	@echo "  build-all   - Build, test, and lint with progress display"
 	@echo ""
 	@echo "Add -dry suffix for dry-run (e.g., make gist-dry)"
 
@@ -175,4 +176,11 @@ ci: ensure-codegen
 
 ci-dry: ensure-codegen
 	@cargo run -p gunbc-dag --bin gunbc-ci -- --dry-run
+
+# gunbc-build entrypoints: 
+build-all: ensure-codegen
+	@cargo run -p gunbc-dag --bin gunbc-build --
+
+build-all-dry: ensure-codegen
+	@cargo run -p gunbc-dag --bin gunbc-build -- --dry-run
 
