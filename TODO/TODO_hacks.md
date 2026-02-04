@@ -296,9 +296,9 @@ represented as empty collection).
 - [ ] Hack 1: Replace `Satisfies` comment-only codegen with runtime callback or typed matcher variants
 - [ ] Hack 2: Add `Value::Response`/`Value::Request` support to `value_to_rust_literal()`
 - [ ] Hack 2: Update parse node examples to use real transport responses once ^^ lands
-- [ ] Hack 3: Make `NonEmpty` codegen type-aware (or add `Value::is_empty()`)
-- [ ] Hack 4: Replace `value_to_rust_literal` catch-all with `panic!()` or `compile_error!()`
-- [ ] Hack 4: Fix `Value::List` filter_map silent dropping of non-string elements
+- [x] Hack 3: Make `NonEmpty` codegen type-aware (or add `Value::is_empty()`)
+- [x] Hack 4: Replace `value_to_rust_literal` catch-all with `panic!()` or `compile_error!()`
+- [x] Hack 4: Fix `Value::List` filter_map silent dropping of non-string elements
 - [ ] Hack 5: Make cardinality Empty tests represent absence, not empty content
 
 ## Notes

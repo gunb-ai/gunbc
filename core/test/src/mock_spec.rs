@@ -818,7 +818,7 @@ impl OutputMatcher {
             }
             OutputMatcher::NonEmpty => {
                 format!(
-                    "assert!(!{}.as_str().map(|s| s.is_empty()).unwrap_or(false), \"expected non-empty\");",
+                    "assert!(!{}.is_empty(), \"expected non-empty value\");",
                     value_expr
                 )
             }
@@ -833,14 +833,48 @@ impl OutputMatcher {
     }
 }
 
-/// Convert a Value to Rust code.
+/// Convert a Value to Rust code for generated test assertions.
+///
+/// Panics on variants that can't be serialized to source (Request, Response).
 fn value_to_code(value: &Value) -> String {
     match value {
         Value::Unit => "Value::Unit".to_string(),
         Value::Bool(b) => format!("Value::Bool({})", b),
-        Value::Str(s) => format!("Value::Str(\"{}\".to_string())", s.replace('\"', "\\\"")),
+        Value::Str(s) => format!(
+            "Value::Str(\"{}\".to_string())",
+            s.replace('\\', "\\\\").replace('\"', "\\\"")
+        ),
         Value::Int(i) => format!("Value::Int({})", i),
-        _ => "/* complex value */".to_string(),
+        Value::List(list) => {
+            let items: Vec<String> = list.iter().map(value_to_code).collect();
+            format!("Value::List(vec![{}])", items.join(", "))
+        }
+        Value::Map(map) => {
+            let entries: Vec<String> = map
+                .iter()
+                .map(|(k, v)| {
+                    format!(
+                        "(\"{}\".to_string(), {})",
+                        k.replace('\\', "\\\\").replace('\"', "\\\""),
+                        value_to_code(v)
+                    )
+                })
+                .collect();
+            format!(
+                "Value::Map(std::collections::BTreeMap::from([{}]))",
+                entries.join(", ")
+            )
+        }
+        Value::Json(json) => format!("Value::Json(serde_json::json!({}))", json),
+        Value::Secret(_) => {
+            "Value::Secret(gunbc_ir::SecretString::new(\"<MOCK_SECRET>\"))".to_string()
+        }
+        Value::Skipped => "Value::Skipped".to_string(),
+        Value::Request(_) | Value::Response(_) => panic!(
+            "value_to_code: cannot serialize {:?} to Rust source. \
+             Add serialization support or use Value::Skipped as a placeholder.",
+            std::mem::discriminant(value)
+        ),
     }
 }
 

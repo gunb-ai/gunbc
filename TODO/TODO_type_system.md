@@ -193,7 +193,7 @@ improvement to CLI codegen correctness.
 ## Tasks
 
 - [ ] Introduce `TypeId` newtype wrapping `String` (greppable, future-proof)
-- [ ] Add `Value::is_empty()` method to `core/ir`
+- [x] Add `Value::is_empty()` method to `core/ir`
 - [ ] Audit `Satisfies` uses and define typed matcher variants
 - [ ] Decide on tape order semantics (document decision, defer if no use case)
 - [ ] Prototype boundary witness generation from `TypeContract`

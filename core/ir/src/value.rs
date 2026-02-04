@@ -135,6 +135,32 @@ impl Value {
     }
 
     // =========================================================================
+    // Emptiness
+    // =========================================================================
+
+    /// Whether this value is semantically empty.
+    ///
+    /// Emptiness is defined per variant:
+    /// - `Unit`, `Skipped` — always empty (no data / didn't run)
+    /// - `Str` — empty string
+    /// - `List` — zero elements
+    /// - `Map` — zero entries
+    /// - `Secret` — empty inner string
+    /// - `Bool`, `Int`, `Json`, `Request`, `Response` — never empty
+    ///   (they carry data by existence)
+    pub fn is_empty(&self) -> bool {
+        match self {
+            Value::Unit | Value::Skipped => true,
+            Value::Str(s) => s.is_empty(),
+            Value::List(v) => v.is_empty(),
+            Value::Map(m) => m.is_empty(),
+            Value::Secret(s) => s.is_empty(),
+            Value::Bool(_) | Value::Int(_) | Value::Json(_)
+            | Value::Request(_) | Value::Response(_) => false,
+        }
+    }
+
+    // =========================================================================
     // Type predicates
     // =========================================================================
 
