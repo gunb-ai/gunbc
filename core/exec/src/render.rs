@@ -19,9 +19,9 @@
 //! observer callback. For future concurrent execution, the frame loop
 //! runs on its own thread/tick.
 
-use crate::progress::{DagPhase, DagProgress, NodeState};
+use crate::progress::{DagPhase, DagProgress, EdgeState, NodeState};
 use gunbc_ir::layout::DagLayout;
-use gunbc_ir::symbols::{SymbolId, SymbolSet, Tier};
+use gunbc_ir::symbols::{SemanticColor, SymbolId, SymbolSet, Tier};
 use gunbc_ir::NodeId;
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
@@ -374,10 +374,11 @@ impl<W: Write> TerminalRenderer<W> {
             for track in 0..num_tracks {
                 if let Some(node) = grid.get(&(track, col)) {
                     let label = short_label(node, &progress.snapshot.labels, max_label);
-                    *cw = (*cw).max(sym_w + 1 + label.len());
+                    // [sym label] = 1 + sym_w + 1 + label.len() + 1 = sym_w + label.len() + 3
+                    *cw = (*cw).max(sym_w + label.len() + 3);
                 }
             }
-            *cw = (*cw).max(3);
+            *cw = (*cw).max(5); // min width for box: [x ?]
         }
 
         // Gap widths: 5 for fan-out columns, 3 otherwise
@@ -405,10 +406,12 @@ impl<W: Write> TerminalRenderer<W> {
                         .unwrap_or(NodeState::Pending);
                     let sym = self.colored_symbol(self.node_symbol_id(state));
                     let label = short_label(node, &progress.snapshot.labels, max_label);
+                    line.push('[');
                     line.push_str(&sym);
                     line.push(' ');
                     line.push_str(&label);
-                    let vis_w = sym_w + 1 + label.len();
+                    line.push(']');
+                    let vis_w = sym_w + label.len() + 3; // [sym label]
                     let pad = col_widths[col].saturating_sub(vis_w);
                     line.push_str(&" ".repeat(pad));
                 } else {
@@ -425,7 +428,11 @@ impl<W: Write> TerminalRenderer<W> {
                         num_tracks,
                         gap_widths[col],
                     );
-                    line.push_str(&conn);
+                    let edge_state = self.connector_state(
+                        track, col, &grid, &children_of, &node_track, progress,
+                    );
+                    let colored = self.color_connector(&conn, edge_state);
+                    line.push_str(&colored);
                 }
             }
 
@@ -466,9 +473,16 @@ impl<W: Write> TerminalRenderer<W> {
                 )
             }
             DagPhase::Completed { elapsed: e } => {
+                let icon = match self.tier {
+                    Tier::Emoji => {
+                        let animal = random_animal(*e);
+                        format!("{}{}\x1b[0m", SemanticColor::Success.ansi(), animal)
+                    }
+                    _ => self.colored_symbol(SymbolId::DagCompleted),
+                };
                 format!(
                     "{} Completed [{}]",
-                    self.colored_symbol(SymbolId::DagCompleted),
+                    icon,
                     format_duration(*e)
                 )
             }
@@ -479,9 +493,15 @@ impl<W: Write> TerminalRenderer<W> {
                     .get(node)
                     .map(|s| s.as_str())
                     .unwrap_or(&node.0);
+                let icon = match self.tier {
+                    Tier::Emoji => {
+                        format!("{}\u{274C}\x1b[0m", SemanticColor::Error.ansi()) // ❌
+                    }
+                    _ => self.colored_symbol(SymbolId::DagFailed),
+                };
                 format!(
                     "{} Failed at {}: {} [{}]",
-                    self.colored_symbol(SymbolId::DagFailed),
+                    icon,
                     label,
                     error,
                     elapsed
@@ -725,6 +745,78 @@ impl<W: Write> TerminalRenderer<W> {
         }
     }
 
+    /// Look up the edge state between two nodes from progress.
+    fn connector_edge_state(
+        &self,
+        from: &NodeId,
+        to: &NodeId,
+        progress: &DagProgress,
+    ) -> EdgeState {
+        progress
+            .edges
+            .get(&(from.clone(), to.clone()))
+            .map(|ep| ep.state)
+            .unwrap_or(EdgeState::Idle)
+    }
+
+    /// Determine the dominant edge state for a connector between col and col+1 on a track.
+    fn connector_state(
+        &self,
+        track: usize,
+        col: usize,
+        grid: &HashMap<(usize, usize), NodeId>,
+        children_of: &HashMap<NodeId, Vec<NodeId>>,
+        node_track: &HashMap<NodeId, usize>,
+        progress: &DagProgress,
+    ) -> EdgeState {
+        // Find the source node at (track, col) or earlier
+        if let Some(src) = grid.get(&(track, col)) {
+            // Find target at (track, col+1) or find child on this track
+            if let Some(dst) = grid.get(&(track, col + 1)) {
+                return self.connector_edge_state(src, dst, progress);
+            }
+            // Check if src has children on other tracks
+            if let Some(children) = children_of.get(src) {
+                for child in children {
+                    if let Some(&ct) = node_track.get(child) {
+                        if ct == track {
+                            return self.connector_edge_state(src, child, progress);
+                        }
+                    }
+                }
+                // Any child — use first
+                if let Some(child) = children.first() {
+                    return self.connector_edge_state(src, child, progress);
+                }
+            }
+        }
+        // Branch target — find which parent fans out to the node on col+1
+        if let Some(dst) = grid.get(&(track, col + 1)) {
+            // Find parent on an earlier track at this column
+            for parent_track in 0..track + 1 {
+                if let Some(parent) = grid.get(&(parent_track, col)) {
+                    if let Some(children) = children_of.get(parent) {
+                        if children.contains(dst) {
+                            return self.connector_edge_state(parent, dst, progress);
+                        }
+                    }
+                }
+            }
+        }
+        EdgeState::Idle
+    }
+
+    /// Wrap a connector string in ANSI color based on edge state.
+    fn color_connector(&self, s: &str, state: EdgeState) -> String {
+        let color = match state {
+            EdgeState::Idle => SemanticColor::Dim,
+            EdgeState::Flowing => SemanticColor::Accent,
+            EdgeState::Done => SemanticColor::Success,
+            EdgeState::Dead => SemanticColor::Dim,
+        };
+        format!("{}{}\x1b[0m", color.ansi(), s)
+    }
+
     /// Display width of a node symbol based on tier.
     fn symbol_display_width(&self) -> usize {
         match self.tier {
@@ -803,6 +895,36 @@ impl<W: Write> FrameLoop for TerminalRenderer<W> {
     fn render(&mut self, progress: &DagProgress) {
         self.render_frame(progress);
     }
+}
+
+// ---------------------------------------------------------------------------
+// Animal emojis for success
+// ---------------------------------------------------------------------------
+
+/// Animal emojis picked at random for successful DAG completion (Emoji tier only).
+const ANIMAL_EMOJIS: &[&str] = &[
+    "\u{1F43B}", // 🐻
+    "\u{1F427}", // 🐧
+    "\u{1F436}", // 🐶
+    "\u{1F431}", // 🐱
+    "\u{1F98A}", // 🦊
+    "\u{1F43C}", // 🐼
+    "\u{1F428}", // 🐨
+    "\u{1F42F}", // 🐯
+    "\u{1F981}", // 🦁
+    "\u{1F438}", // 🐸
+    "\u{1F422}", // 🐢
+    "\u{1F98B}", // 🦋
+    "\u{1F41D}", // 🐝
+    "\u{1F433}", // 🐳
+    "\u{1F99C}", // 🦜
+    "\u{1F984}", // 🦄
+];
+
+/// Pick a pseudo-random animal emoji using elapsed millis as seed.
+fn random_animal(elapsed: Duration) -> &'static str {
+    let idx = (elapsed.as_millis() as usize) % ANIMAL_EMOJIS.len();
+    ANIMAL_EMOJIS[idx]
 }
 
 // ---------------------------------------------------------------------------
