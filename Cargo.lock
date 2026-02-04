@@ -124,19 +124,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gunbc-buck2"
-version = "0.1.0"
-dependencies = [
- "gunbc-exec",
- "gunbc-ir",
- "gunbc-lib-transport",
- "gunbc-primitives",
- "gunbc-test",
- "serde_json",
- "toml",
-]
-
-[[package]]
 name = "gunbc-clippy"
 version = "0.1.0"
 dependencies = [
@@ -158,7 +145,6 @@ dependencies = [
 name = "gunbc-dag"
 version = "0.1.0"
 dependencies = [
- "gunbc-buck2",
  "gunbc-clippy",
  "gunbc-codegen",
  "gunbc-deps",

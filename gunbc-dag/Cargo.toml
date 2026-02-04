@@ -20,7 +20,6 @@ gunbc-lib-gist-ops = { path = "../lib/gist-ops" }
 # General tools (reusable)
 gunbc-deps = { path = "../lib/tools/deps" }
 gunbc-gist = { path = "../lib/tools/gist" }
-gunbc-buck2 = { path = "../lib/tools/buck2" }
 gunbc-clippy = { path = "../lib/tools/clippy" }
 gunbc-lib-llm-ops = { path = "../lib/llm-ops" }
 

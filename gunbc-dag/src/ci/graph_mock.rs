@@ -53,7 +53,7 @@ pub fn ci_mock_spec() -> MockSpec {
             "execute_codegen_exists",
             "response",
             Value::Response(FileResponse {
-                path: "buck-out/gen/bin".into(),
+                path: "Cargo.toml".into(),
                 operation: FileOp::Exists,
                 success: true,
                 content: None,
@@ -134,7 +134,7 @@ pub fn ci_mock_spec() -> MockSpec {
         .node_example(
             NodeExample::new("parse_codegen_exists")
                 .input("response", Value::Response(FileResponse {
-                    path: "buck-out/gen/bin".into(),
+                    path: "Cargo.toml".into(),
                     operation: FileOp::Exists,
                     success: true,
                     content: None,
