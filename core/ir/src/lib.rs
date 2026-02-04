@@ -67,6 +67,7 @@ pub mod type_registry;
 pub mod types;
 pub mod validate;
 pub mod value;
+pub mod value_expr;
 
 // Re-exports for convenience
 pub use boundary::{detect_boundaries, BoundaryInfo};
@@ -91,6 +92,7 @@ pub use type_op::{BaseType, Coercion, Predicate, PredicateValue, TypeOp, Wrapper
 pub use type_registry::{TypeNotFoundError, TypeRegistry};
 pub use types::{Cardinality, CardinalityCase, CardinalityMismatch, NodeId, PortName, TypeId};
 pub use value::{SecretString, Value};
+pub use value_expr::ValueExpr;
 pub use render::Renderable;
 pub use validate::{validate_subdag_interfaces, SubDagError, PortDirection};
 pub use algebra::{

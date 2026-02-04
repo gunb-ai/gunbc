@@ -294,32 +294,31 @@ represented as empty collection).
 ## Tasks
 
 - [ ] Hack 1: Replace `Satisfies` comment-only codegen with runtime callback or typed matcher variants
-- [ ] Hack 2: Add `Value::Response`/`Value::Request` support to `value_to_rust_literal()`
-- [ ] Hack 2: Update parse node examples to use real transport responses once ^^ lands
-- [ ] Hack 3: Make `NonEmpty` codegen type-aware (or add `Value::is_empty()`)
-- [ ] Hack 4: Replace `value_to_rust_literal` catch-all with `panic!()` or `compile_error!()`
-- [ ] Hack 4: Fix `Value::List` filter_map silent dropping of non-string elements
+- [x] Hack 2: Add `Value::Response`/`Value::Request` support (done via ValueExpr pipeline)
+- [ ] Hack 2: Update parse node examples to use real transport responses
+- [x] Hack 3: Make `NonEmpty` codegen type-aware (or add `Value::is_empty()`)
+- [x] Hack 4: Replace `value_to_rust_literal` catch-all with `panic!()` or `compile_error!()`
+- [x] Hack 4: Fix `Value::List` filter_map silent dropping of non-string elements
 - [ ] Hack 5: Make cardinality Empty tests represent absence, not empty content
 
 ## Notes
 
-- Hacks 2, 3, and 4 are all consequences of the same root limitation:
-  `value_to_rust_literal()` doesn't cover all `Value` variants. Fixing
-  hack 2 (adding Request/Response serialization) would also make hack 3
-  less common (fewer non-string outputs needing NonEmpty) and hack 4
-  less dangerous (fewer variants hitting the catch-all).
+- **Root cause fixed**: Hacks 2, 3, and 4 were all consequences of the
+  same limitation: `value_to_rust_literal()` didn't cover all `Value`
+  variants. This is now resolved — the `ValueExpr` intermediate
+  representation handles every `Value` variant exhaustively (including
+  `Request`/`Response` transport types), rendered via `RustRenderer`.
+  The old `value_to_rust_literal` is a one-liner delegating to this
+  pipeline; the old `value_to_code` and `to_check_code` in mock_spec.rs
+  have been deleted as dead code.
 - Hack 1 is independent — it's about closure serialization, not Value
   serialization. The "typed matcher variants" approach (option 2) is
   probably the cleanest since it keeps generated tests self-contained.
   Typed matchers form a small finite logic language that's both
   serializable to codegen and amenable to future proof generation.
-- Hack 3 note: the runtime `OutputMatcher::check()` already handles
-  `Value::List` and non-string types correctly. The codegen path
-  (`to_check_code()`) just needs to mirror that logic.
 - Hack 5 is the most architecturally important — it blocks meaningful
   cardinality boundary testing. If Empty doesn't test absence, the
   B.3 tests exercise a subset of what they claim to cover.
-- None of these are blocking. Tests compile, run, and pass. The risk
-  is false confidence — tests that look like they verify behavior but
-  actually don't. The enforcement mechanism (hack 0, already fixed)
-  ensures coverage *exists*; these hacks are about coverage *depth*.
+- None of the remaining hacks are blocking. Tests compile, run, and
+  pass. The risk is false confidence — tests that look like they verify
+  behavior but actually don't.

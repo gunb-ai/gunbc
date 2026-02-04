@@ -140,12 +140,13 @@ addressed in the codegen rework.
 
 - [ ] Move toward structural type DAG comparison in Port (item 1)
 - [ ] Wire cardinality through to codegen emptiness checks (item 2, codegen rework)
-- [ ] Model target language elements as structured data (item 3, codegen rework)
+- [ ] Model target language elements as structured data (item 3, codegen rework — in progress)
 - [ ] Add `cardinality` field to `CliEntrypoint` (item 6, codegen rework)
 - [ ] Wire `contract::witnesses()` into testgen (codegen rework)
 
 ## Completed
 
+- [x] Add `Value::is_empty()` method to `core/ir` (item 2, convenience method)
 - [x] Add `Value::Set` as concrete type with set algebra (item 4)
 - [x] Add `WrapperKind::Set` / `NonEmptySet` to type system
 - [x] Add `SetOp` to collection primitives

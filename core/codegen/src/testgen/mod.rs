@@ -23,6 +23,11 @@
 pub mod analyze;
 pub mod codegen;
 pub mod obligation;
+pub mod render;
+pub mod render_python;
+pub mod render_rust;
+pub mod render_ts;
+pub mod test_ir;
 
 pub use analyze::{analyze_dag, analyze_dag_with_obligations, DagAnalysis};
 pub use codegen::{TestConfig, TestGenerator};

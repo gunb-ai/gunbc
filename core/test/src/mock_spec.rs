@@ -793,55 +793,13 @@ impl OutputMatcher {
         }
     }
 
-    /// Whether `to_check_code` emits an executable assertion (vs. a comment).
+    /// Whether this matcher produces an executable assertion (vs. a comment).
     ///
     /// Used by codegen to decide whether to prefix the output variable with `_`.
     pub fn generates_assertion(&self) -> bool {
         matches!(self, OutputMatcher::Exact(_) | OutputMatcher::Contains(_) | OutputMatcher::NonEmpty)
     }
 
-    /// Convert to Rust code for generated tests.
-    pub fn to_check_code(&self, value_expr: &str) -> String {
-        match self {
-            OutputMatcher::Exact(expected) => {
-                format!(
-                    "assert_eq!(*{}, {}, \"expected exact value\");",
-                    value_expr,
-                    value_to_code(expected)
-                )
-            }
-            OutputMatcher::Contains(substring) => {
-                format!(
-                    "assert!({}.as_str().map(|s| s.contains(\"{}\")).unwrap_or(false), \"expected to contain '{}', got: {{:?}}\", {});",
-                    value_expr, substring.replace('\"', "\\\""), substring.replace('\"', "\\\""), value_expr
-                )
-            }
-            OutputMatcher::NonEmpty => {
-                format!(
-                    "assert!(!{}.as_str().map(|s| s.is_empty()).unwrap_or(false), \"expected non-empty\");",
-                    value_expr
-                )
-            }
-            OutputMatcher::Satisfies { description, .. } => {
-                // For custom predicates, we can only emit a comment
-                format!("// Custom assertion: {}", description)
-            }
-            OutputMatcher::Any => {
-                format!("// Any value accepted for {}", value_expr)
-            }
-        }
-    }
-}
-
-/// Convert a Value to Rust code.
-fn value_to_code(value: &Value) -> String {
-    match value {
-        Value::Unit => "Value::Unit".to_string(),
-        Value::Bool(b) => format!("Value::Bool({})", b),
-        Value::Str(s) => format!("Value::Str(\"{}\".to_string())", s.replace('\"', "\\\"")),
-        Value::Int(i) => format!("Value::Int({})", i),
-        _ => "/* complex value */".to_string(),
-    }
 }
 
 #[cfg(test)]
@@ -991,18 +949,4 @@ mod tests {
         assert_eq!(spec.node_examples[0].node_id, "parse");
     }
 
-    #[test]
-    fn test_output_matcher_to_check_code() {
-        let exact = OutputMatcher::exact(Value::Str("hello".into()));
-        let code = exact.to_check_code("output");
-        assert!(code.contains("assert_eq!"));
-
-        let contains = OutputMatcher::contains("world");
-        let code = contains.to_check_code("output");
-        assert!(code.contains("contains"));
-
-        let non_empty = OutputMatcher::non_empty();
-        let code = non_empty.to_check_code("output");
-        assert!(code.contains("is_empty"));
-    }
 }
