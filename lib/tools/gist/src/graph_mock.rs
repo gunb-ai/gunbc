@@ -75,6 +75,18 @@ pub fn gist_mock_spec(mode: &GistMode) -> MockSpec {
         }
     }
 
+    // Shared branch acquisition boundary (both modes)
+    spec = spec
+        .boundary(
+            "execute_current_branch",
+            "response",
+            Value::Json(serde_json::json!({
+                "exit_code": 0,
+                "stdout": "main\n",
+                "stderr": ""
+            })),
+        );
+
     // Shared gist boundary (both modes)
     spec = spec
         .boundary(
@@ -132,6 +144,7 @@ mod tests {
 
         assert!(spec.get_boundary_mock("execute_list_files", "response").is_some());
         assert!(spec.get_boundary_mock("execute_read_files", "response").is_some());
+        assert!(spec.get_boundary_mock("execute_current_branch", "response").is_some());
         assert!(spec.get_boundary_mock("execute_gist", "url").is_some());
         assert!(spec.get_boundary_mock("execute_gist", "response").is_some());
     }
@@ -173,6 +186,7 @@ mod tests {
         let spec = gist_mock_spec(&mode);
 
         assert!(spec.get_boundary_mock("execute_diff", "response").is_some());
+        assert!(spec.get_boundary_mock("execute_current_branch", "response").is_some());
         assert!(spec.get_boundary_mock("execute_gist", "url").is_some());
         assert!(spec.get_boundary_mock("execute_gist", "response").is_some());
     }

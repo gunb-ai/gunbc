@@ -7,8 +7,22 @@
 
 use gunbc_exec::{execute_with_mode, BoundaryMocks, ExecutionMode};
 use gunbc_gist::{build_gist_graph, GistMode};
+use gunbc_ir::transport::{ShellResponse, TransportResponse};
 use gunbc_ir::{detect_boundaries, Value};
 use gunbc_test::{assert_boundary_mockable, assert_types_compatible};
+
+/// Helper: mock for execute_current_branch boundary.
+fn mock_current_branch(mocks: &mut BoundaryMocks) {
+    mocks.set_value(
+        "execute_current_branch",
+        "response",
+        Value::Response(TransportResponse::Shell(ShellResponse {
+            exit_code: 0,
+            stdout: "main\n".to_string(),
+            stderr: String::new(),
+        })),
+    );
+}
 
 // ============================================================================
 // BOUNDARY TESTS
@@ -26,39 +40,36 @@ fn test_boundaries_mockable() {
     mocks.set_value(
         "execute_list_files",
         "response",
-        Value::Response(gunbc_ir::transport::TransportResponse::Shell(
-            gunbc_ir::transport::ShellResponse {
-                exit_code: 0,
-                stdout: "src/main.rs\n".to_string(),
-                stderr: String::new(),
-            },
-        )),
+        Value::Response(TransportResponse::Shell(ShellResponse {
+            exit_code: 0,
+            stdout: "src/main.rs\n".to_string(),
+            stderr: String::new(),
+        })),
     );
 
     // Mock execute_read_files
     mocks.set_value(
         "execute_read_files",
         "response",
-        Value::Response(gunbc_ir::transport::TransportResponse::Shell(
-            gunbc_ir::transport::ShellResponse {
-                exit_code: 0,
-                stdout: "===GUNBC_FILE:src/main.rs===\nfn main() {}\n".to_string(),
-                stderr: String::new(),
-            },
-        )),
+        Value::Response(TransportResponse::Shell(ShellResponse {
+            exit_code: 0,
+            stdout: "===GUNBC_FILE:src/main.rs===\nfn main() {}\n".to_string(),
+            stderr: String::new(),
+        })),
     );
+
+    // Mock execute_current_branch
+    mock_current_branch(&mut mocks);
 
     // Mock execute_gist (only has response output now)
     mocks.set_value(
         "execute_gist",
         "response",
-        Value::Response(gunbc_ir::transport::TransportResponse::Shell(
-            gunbc_ir::transport::ShellResponse {
-                exit_code: 0,
-                stdout: "https://gist.github.com/mock/123".to_string(),
-                stderr: String::new(),
-            },
-        )),
+        Value::Response(TransportResponse::Shell(ShellResponse {
+            exit_code: 0,
+            stdout: "https://gist.github.com/mock/123".to_string(),
+            stderr: String::new(),
+        })),
     );
 
     let result = assert_boundary_mockable(&dag, mocks);
@@ -85,41 +96,37 @@ fn test_boundary_parse_gist_response_mockable() {
     mocks.set_value(
         "execute_list_files",
         "response",
-        Value::Response(gunbc_ir::transport::TransportResponse::Shell(
-            gunbc_ir::transport::ShellResponse {
-                exit_code: 0,
-                stdout: "src/main.rs\n".to_string(),
-                stderr: String::new(),
-            },
-        )),
+        Value::Response(TransportResponse::Shell(ShellResponse {
+            exit_code: 0,
+            stdout: "src/main.rs\n".to_string(),
+            stderr: String::new(),
+        })),
     );
     // Mock execute_read_files
     mocks.set_value(
         "execute_read_files",
         "response",
-        Value::Response(gunbc_ir::transport::TransportResponse::Shell(
-            gunbc_ir::transport::ShellResponse {
-                exit_code: 0,
-                stdout: "===GUNBC_FILE:src/main.rs===\nfn main() {}\n".to_string(),
-                stderr: String::new(),
-            },
-        )),
+        Value::Response(TransportResponse::Shell(ShellResponse {
+            exit_code: 0,
+            stdout: "===GUNBC_FILE:src/main.rs===\nfn main() {}\n".to_string(),
+            stderr: String::new(),
+        })),
     );
+    // Mock execute_current_branch
+    mock_current_branch(&mut mocks);
     // Mock execute_gist (only has response output now)
     mocks.set_value(
         "execute_gist",
         "response",
-        Value::Response(gunbc_ir::transport::TransportResponse::Shell(
-            gunbc_ir::transport::ShellResponse {
-                exit_code: 0,
-                stdout: "https://gist.github.com/mock/123".to_string(),
-                stderr: String::new(),
-            },
-        )),
+        Value::Response(TransportResponse::Shell(ShellResponse {
+            exit_code: 0,
+            stdout: "https://gist.github.com/mock/123".to_string(),
+            stderr: String::new(),
+        })),
     );
 
     let log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).unwrap();
-    
+
     // Verify parse_gist_response was executed (it's in the log)
     let entry = log
         .get("parse_gist_response")
@@ -231,4 +238,29 @@ fn test_edge_execute_gist_to_parse_gist_response() {
     let dag = build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
     // TransportResponse -> TransportResponse: verified by edge existence in graph
     assert!(dag.edges.iter().any(|e| e.from_node.0 == "execute_gist" && e.to_node.0 == "parse_gist_response"));
+}
+
+// ============================================================================
+// BRANCH ACQUISITION EDGE TESTS
+// ============================================================================
+
+/// Test edge prepare_current_branch.request -> execute_current_branch.request type compatibility.
+#[test]
+fn test_edge_prepare_current_branch_to_execute_current_branch() {
+    let dag = build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
+    assert!(dag.edges.iter().any(|e| e.from_node.0 == "prepare_current_branch" && e.to_node.0 == "execute_current_branch"));
+}
+
+/// Test edge execute_current_branch.response -> parse_current_branch.response type compatibility.
+#[test]
+fn test_edge_execute_current_branch_to_parse_current_branch() {
+    let dag = build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
+    assert!(dag.edges.iter().any(|e| e.from_node.0 == "execute_current_branch" && e.to_node.0 == "parse_current_branch"));
+}
+
+/// Test edge parse_current_branch.branch -> prepare_gist_request.branch type compatibility.
+#[test]
+fn test_edge_parse_current_branch_to_prepare_gist_request() {
+    let dag = build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
+    assert!(dag.edges.iter().any(|e| e.from_node.0 == "parse_current_branch" && e.to_node.0 == "prepare_gist_request"));
 }
