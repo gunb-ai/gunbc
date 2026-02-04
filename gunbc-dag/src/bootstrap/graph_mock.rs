@@ -4,7 +4,7 @@
 //! - What mock values boundary nodes provide
 //! - Resource simulations for file system operations
 
-use gunbc_ir::transport::{ShellResponse, TransportResponse};
+use gunbc_ir::transport::ShellResponse;
 use gunbc_ir::Value;
 use gunbc_test::{MockSpec, NodeExample, OutputMatcher};
 
@@ -43,20 +43,12 @@ pub fn bootstrap_mock_spec() -> MockSpec {
         .transport_mock(
             "execute_scan_workspace",
             "response",
-            Value::Response(TransportResponse::Shell(ShellResponse {
-                exit_code: 0,
-                stdout: "crates/bar\ncrates/foo\n".to_string(),
-                stderr: String::new(),
-            })),
+            Value::Response(ShellResponse::ok("crates/bar\ncrates/foo\n").into()),
         )
         .transport_mock(
             "execute_makefile_transport",
             "makefile_response",
-            Value::Response(TransportResponse::Shell(ShellResponse {
-                exit_code: 0,
-                stdout: String::new(),
-                stderr: String::new(),
-            })),
+            Value::Response(ShellResponse::ok("").into()),
         )
         .transport_mock(
             "execute_makefile_transport",
@@ -71,11 +63,7 @@ pub fn bootstrap_mock_spec() -> MockSpec {
         .transport_mock(
             "execute_gitignore_transport",
             "gitignore_response",
-            Value::Response(TransportResponse::Shell(ShellResponse {
-                exit_code: 0,
-                stdout: String::new(),
-                stderr: String::new(),
-            })),
+            Value::Response(ShellResponse::ok("").into()),
         )
         .transport_mock(
             "execute_gitignore_transport",

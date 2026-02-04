@@ -2009,13 +2009,21 @@ fn render_output_matcher_check(matcher: &OutputMatcher, var_name: &str) -> Strin
 /// Builds a ValueExpr and renders it via RustRenderer. The type_id string
 /// matching is a known limitation — ideally this should consult DagAnalysis
 /// cardinality data instead (see TODO_codegen_dag.md, "severed analysis").
+///
+/// For the `Empty` case, scalar types emit `Value::Unit` (absence), not
+/// concrete "empty content" like `false` or `0`. This matches the behavior
+/// of `contract::witnesses()` and ensures cardinality boundary tests actually
+/// verify the absent-vs-present boundary rather than exercising the "one
+/// element" path with a zero-like value. Collection types emit empty
+/// collections (which correctly represent zero elements).
 fn cardinality_case_mock_value(case: CardinalityCase, type_id: &str) -> String {
     let expr = match case {
         CardinalityCase::Empty => match type_id {
-            "String" => ValueExpr::Str(String::new()),
-            "Bool" => ValueExpr::Bool(false),
-            "Int" | "i64" | "i32" => ValueExpr::Int(0),
-            _ => ValueExpr::List(vec![]),
+            // Collection types: empty collection = zero elements (correct)
+            "List" => ValueExpr::List(vec![]),
+            "Set" => ValueExpr::List(vec![]), // rendered as empty set
+            // Scalar types: Value::Unit = absent (not a value with empty content)
+            _ => ValueExpr::Unit,
         },
         CardinalityCase::One => match type_id {
             "String" => ValueExpr::Str("<MOCK>".to_string()),

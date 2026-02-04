@@ -413,11 +413,7 @@ mod tests {
 
     #[test]
     fn require_shell_on_shell_response() {
-        let resp = TransportResponse::Shell(ShellResponse {
-            exit_code: 0,
-            stdout: "ok".to_string(),
-            stderr: String::new(),
-        });
+        let resp: TransportResponse = ShellResponse::ok("ok").into();
         let shell = resp.require_shell().unwrap();
         assert_eq!(shell.stdout, "ok");
     }

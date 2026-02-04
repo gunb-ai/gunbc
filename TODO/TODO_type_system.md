@@ -160,6 +160,9 @@ a cardinality indicator.
 - [x] Add `From<T> for TransportRequest` / `TransportResponse` impls for all transport types
 - [x] Add `ExecError::context()` and `ResultExt` trait for structured error context
 - [x] Add `propagate_skipped()` helper for skip propagation pattern
+- [x] Migrate all `propagate_skipped()` call sites (8 sites in 3 files)
+- [x] Migrate `ShellResponse::ok()/failed()` and `From` impls to call sites
+- [x] Fix cardinality Empty codegen to use `Value::Unit` (absence) for scalar types
 
 ## Design Principles (from review)
 

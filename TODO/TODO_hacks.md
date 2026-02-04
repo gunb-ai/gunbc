@@ -303,7 +303,12 @@ represented as empty collection).
 - [x] Hack 3: Make `NonEmpty` codegen type-aware (or add `Value::is_empty()`)
 - [x] Hack 4: Replace `value_to_rust_literal` catch-all with `panic!()` or `compile_error!()`
 - [x] Hack 4: Fix `Value::List` filter_map silent dropping of non-string elements
-- [ ] Hack 5: Make cardinality Empty tests represent absence, not empty content
+- [x] Hack 5: Make cardinality Empty tests represent absence, not empty content
+  - `cardinality_case_mock_value()` now emits `Value::Unit` for scalar Empty
+    (String, Bool, Int) instead of concrete "empty content" (`false`, `0`, `""`)
+  - Collection types (List, Set) still use empty collections (correct: zero elements)
+  - Aligns with `contract::witnesses()` which already uses `Value::Unit` for absence
+  - Cardinality boundary tests now exercise the actual absent-vs-present boundary
 
 ## Notes
 
@@ -320,9 +325,10 @@ represented as empty collection).
   source without closure references. `Satisfies` remains only for
   complex predicates that can't be expressed as simple type/range checks.
   Existing usages in CI and makegen graph mocks have been migrated.
-- Hack 5 is the most architecturally important — it blocks meaningful
-  cardinality boundary testing. If Empty doesn't test absence, the
-  B.3 tests exercise a subset of what they claim to cover.
-- Only hacks 2 (parse node examples) and 5 (absence testing) remain.
-  Both require deeper infrastructure changes (transport serialization
-  and `Option<Value>` semantics respectively).
+- **Hack 5 resolved**: Scalar Empty now uses `Value::Unit` (absence),
+  matching the behavior of `contract::witnesses()`. No infrastructure
+  change to `BoundaryMocks` was needed — `Value::Unit` already serves
+  as the "absent" signal within the existing `Value` type.
+- Only hack 2 (parse node examples with real transport responses) remains.
+  This requires serializing full transport response constructors in
+  generated test code, which the `ValueExpr` pipeline already supports.

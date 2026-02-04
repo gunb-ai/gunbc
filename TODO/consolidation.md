@@ -908,7 +908,9 @@ This is fine; it's infrastructure code, not op code.
 
 ### High priority (remaining)
 - [ ] Add `InputsExt` trait to replace free-function `require_*/optional_*` calls — shrinks import lists
-- [ ] Migrate call sites to use `propagate_skipped`, `ExecError::context()`, `ShellResponse::ok()` etc.
+- [x] Migrate call sites to use `propagate_skipped` (8 sites, 3 files)
+- [x] Migrate call sites to use `ShellResponse::ok()/failed()` + `From` impls (graph_mock, bin, ops, tests)
+- [ ] Migrate remaining call sites to use `ExecError::context()` / `ResultExt` (~42 sites, 12 files)
 
 ### Medium priority
 - [ ] Migrate remaining raw `HashMap::new()` output construction to `OutputMap` (9 sites, 5 files) — §15

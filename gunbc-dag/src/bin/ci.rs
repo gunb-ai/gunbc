@@ -16,7 +16,7 @@
 
 use gunbc_dag::build_ci_graph;
 use gunbc_exec::{execute_with_mode_and_ci, BoundaryMocks, CiContext, ExecutionMode};
-use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse, TransportResponse};
+use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse};
 use gunbc_ir::Value;
 use std::env;
 use std::process;
@@ -50,55 +50,43 @@ fn main() {
 
         // execute_deps_exists: file exists check for deps.toml
         mocks.set_value("execute_deps_exists", "response", Value::Response(
-            TransportResponse::File(FileResponse {
+            FileResponse {
                 path: "deps.toml".to_string(),
                 operation: FileOp::Exists,
                 success: true,
                 content: None,
                 exists: Some(false),
                 error: None,
-            })
+            }.into()
         ));
 
         // execute_codegen_exists: file exists check for buck-out/gen/bin
         mocks.set_value("execute_codegen_exists", "response", Value::Response(
-            TransportResponse::File(FileResponse {
+            FileResponse {
                 path: "buck-out/gen/bin".to_string(),
                 operation: FileOp::Exists,
                 success: true,
                 content: None,
                 exists: Some(true), // Pretend codegen already exists
                 error: None,
-            })
+            }.into()
         ));
 
         // execute_codegen: shell command (skipped when codegen exists)
         mocks.set_value("execute_codegen", "response", Value::Response(
-            TransportResponse::Shell(ShellResponse {
-                exit_code: 0,
-                stdout: String::new(),
-                stderr: String::new(),
-            })
+            ShellResponse::ok("").into()
         ));
         mocks.set_value("execute_codegen", "skip", Value::Bool(true));
 
         // execute_build: shell command for cargo build
         mocks.set_value("execute_build", "response", Value::Response(
-            TransportResponse::Shell(ShellResponse {
-                exit_code: 0,
-                stdout: "<DRY-RUN>".to_string(),
-                stderr: String::new(),
-            })
+            ShellResponse::ok("<DRY-RUN>").into()
         ));
         mocks.set_value("execute_build", "skip", Value::Bool(false));
 
         // execute_test: shell command for cargo test
         mocks.set_value("execute_test", "response", Value::Response(
-            TransportResponse::Shell(ShellResponse {
-                exit_code: 0,
-                stdout: "<DRY-RUN>".to_string(),
-                stderr: String::new(),
-            })
+            ShellResponse::ok("<DRY-RUN>").into()
         ));
         mocks.set_value("execute_test", "skip", Value::Bool(false));
 

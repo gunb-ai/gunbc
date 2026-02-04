@@ -4,7 +4,7 @@
 //! - What mock values boundary nodes provide
 //! - Resource simulations for CI operations
 
-use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse, TransportResponse};
+use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse};
 use gunbc_ir::Value;
 use gunbc_test::{MockSpec, NodeExample, OutputMatcher};
 
@@ -39,27 +39,27 @@ pub fn ci_mock_spec() -> MockSpec {
         .transport_mock(
             "execute_deps_exists",
             "response",
-            Value::Response(TransportResponse::File(FileResponse {
+            Value::Response(FileResponse {
                 path: "deps.toml".into(),
                 operation: FileOp::Exists,
                 success: true,
                 content: None,
                 exists: Some(true),
                 error: None,
-            })),
+            }.into()),
         )
         // -- Prep: codegen output already exists
         .transport_mock(
             "execute_codegen_exists",
             "response",
-            Value::Response(TransportResponse::File(FileResponse {
+            Value::Response(FileResponse {
                 path: "buck-out/gen/bin".into(),
                 operation: FileOp::Exists,
                 success: true,
                 content: None,
                 exists: Some(true),
                 error: None,
-            })),
+            }.into()),
         )
         // -- Codegen: skipped (already exists)
         .transport_mock("execute_codegen", "response", Value::Skipped)
@@ -68,11 +68,7 @@ pub fn ci_mock_spec() -> MockSpec {
         .transport_mock(
             "execute_build",
             "response",
-            Value::Response(TransportResponse::Shell(ShellResponse {
-                exit_code: 0,
-                stdout: "Compiling gunbc v0.1.0\n    Finished dev target(s)".into(),
-                stderr: String::new(),
-            })),
+            Value::Response(ShellResponse::ok("Compiling gunbc v0.1.0\n    Finished dev target(s)").into()),
         )
         .transport_mock("execute_build", "skip", Value::Bool(false))
         .transport_mock("execute_build", "skip_reason", Value::Str(String::new()))
@@ -80,11 +76,7 @@ pub fn ci_mock_spec() -> MockSpec {
         .transport_mock(
             "execute_test",
             "response",
-            Value::Response(TransportResponse::Shell(ShellResponse {
-                exit_code: 0,
-                stdout: "running 42 tests\ntest result: ok. 42 passed".into(),
-                stderr: String::new(),
-            })),
+            Value::Response(ShellResponse::ok("running 42 tests\ntest result: ok. 42 passed").into()),
         )
         .transport_mock("execute_test", "skip", Value::Bool(false))
         .transport_mock("execute_test", "skip_reason", Value::Str(String::new()))
