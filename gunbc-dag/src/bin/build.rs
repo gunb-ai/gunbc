@@ -179,10 +179,12 @@ fn run_with_progress(
     let mut renderer = TerminalRenderer::new(io::stdout(), &STANDARD, detect_tier(), layout);
     renderer.set_tty(is_tty);
 
-    // Animation timing: ~1 second total, 2 frames per level
+    // Animation timing: minimum 1 second total, 2 frames per level (start + complete)
+    // Execution already ran at full speed — this is purely visual replay.
+    const MIN_ANIMATION_MS: u64 = 1000;
     let num_levels = levels.len();
-    let total_frames = num_levels * 2;
-    let frame_ms = (1000u64 / total_frames.max(1) as u64).clamp(50, 200);
+    let total_frames = (num_levels * 2).max(1) as u64;
+    let frame_ms = (MIN_ANIMATION_MS / total_frames).max(50);
     let frame_delay = Duration::from_millis(frame_ms);
 
     // Render initial state (all pending)

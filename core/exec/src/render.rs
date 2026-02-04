@@ -502,31 +502,58 @@ impl<W: Write> TerminalRenderer<W> {
             }
         }
 
-        // Legend: show running + failed nodes in a fixed-height area to prevent jitter.
-        // Always reserve exactly LEGEND_LINES lines so frame height stays constant
-        // during animation (nodes transitioning between states).
+        // Legend: fixed-height area showing the 3 most relevant tasks with timing.
+        // Priority: running/failed first, then most recently completed (reverse topo).
+        // Always reserves LEGEND_LINES to prevent jitter.
         const LEGEND_LINES: usize = 3;
-        let mut legend_entries: Vec<(NodeState, &str, String)> = Vec::new();
+
+        // Collect running/failed entries (highest priority)
+        let mut active_entries: Vec<(NodeState, &str, String, Option<Duration>)> = Vec::new();
+        // Collect completed/intercepted entries in reverse topo order (most recent last)
+        let mut done_entries: Vec<(NodeState, &str, String, Option<Duration>)> = Vec::new();
+
         for level in &self.layout.levels {
             for node in level {
-                let state = progress
-                    .nodes
-                    .get(node)
-                    .map(|np| np.state)
-                    .unwrap_or(NodeState::Pending);
-                if matches!(state, NodeState::Running | NodeState::Failed) {
-                    let letter = node_letter.get(node).map(|s| s.as_str()).unwrap_or("?");
-                    let label = full_label(node, &progress.snapshot.labels);
-                    legend_entries.push((state, letter, label));
+                let np = progress.nodes.get(node);
+                let state = np.map(|n| n.state).unwrap_or(NodeState::Pending);
+                let letter = node_letter.get(node).map(|s| s.as_str()).unwrap_or("?");
+                let label = full_label(node, &progress.snapshot.labels);
+                let elapsed = np.and_then(|n| {
+                    n.elapsed.or_else(|| n.start_time.map(|t| t.elapsed()))
+                });
+
+                match state {
+                    NodeState::Running | NodeState::Failed => {
+                        active_entries.push((state, letter, label, elapsed));
+                    }
+                    NodeState::Completed | NodeState::Intercepted => {
+                        done_entries.push((state, letter, label, elapsed));
+                    }
+                    _ => {}
                 }
             }
         }
-        // Fill legend slots (up to LEGEND_LINES), pad empty slots with blank lines
-        let visible = legend_entries.len().min(LEGEND_LINES);
-        for (state, letter, label) in legend_entries.iter().take(visible) {
+
+        // Build final legend: active first, then fill remaining with most recent done
+        let mut legend: Vec<(NodeState, &str, String, Option<Duration>)> = Vec::new();
+        legend.extend(active_entries.into_iter().take(LEGEND_LINES));
+        let remaining = LEGEND_LINES.saturating_sub(legend.len());
+        if remaining > 0 {
+            // Take the most recently completed (last in topo order)
+            legend.extend(done_entries.into_iter().rev().take(remaining));
+        }
+
+        let visible = legend.len().min(LEGEND_LINES);
+        for (state, letter, label, elapsed) in legend.iter().take(visible) {
             let sym = self.legend_symbol(*state);
             let color = self.state_color(*state);
-            lines.push(format!("  {}{} {}: {}\x1b[0m", color.ansi(), sym, letter, label));
+            let time_str = elapsed
+                .map(|d| format!(" [{}]", format_duration(d)))
+                .unwrap_or_default();
+            lines.push(format!(
+                "  {}{} {}: {}{}\x1b[0m",
+                color.ansi(), sym, letter, label, time_str
+            ));
         }
         // Pad remaining legend slots with empty lines to keep frame height stable
         for _ in visible..LEGEND_LINES {
