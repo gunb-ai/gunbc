@@ -138,7 +138,7 @@ pub fn witnesses(type_dag: &Dag<TypeOp>) -> Vec<BoundaryWitness> {
                             Value::List(witnesses)
                         }
                         Some(WrapperKind::Set | WrapperKind::NonEmptySet) => {
-                            Value::Set(witnesses)
+                            Value::set(witnesses)
                         }
                         _ => Value::List(witnesses), // fallback
                     }
@@ -472,5 +472,30 @@ mod tests {
         assert!(matches!(&w[1].value, Value::Set(v) if v.len() == 1));
         assert_eq!(w[2].case, CardinalityCase::Many);
         assert!(matches!(&w[2].value, Value::Set(v) if v.len() == 2));
+    }
+
+    #[test]
+    fn test_witnesses_set_deduplicates_many() {
+        // Value::set() must deduplicate identical elements to uphold the
+        // set uniqueness invariant. many_witnesses() returns duplicates
+        // for non-String/Int/Bool scalars (the `other` fallback branch).
+        let duplicates = vec![Value::Unit, Value::Unit];
+        let deduped = Value::set(duplicates);
+        assert!(matches!(&deduped, Value::Set(v) if v.len() == 1),
+            "Value::set() should deduplicate identical Unit values");
+
+        let json_dups = vec![
+            Value::Json(serde_json::json!({"key": "value"})),
+            Value::Json(serde_json::json!({"key": "value"})),
+        ];
+        let deduped_json = Value::set(json_dups);
+        assert!(matches!(&deduped_json, Value::Set(v) if v.len() == 1),
+            "Value::set() should deduplicate identical Json values");
+
+        // Distinct values should be preserved
+        let distinct = vec![Value::Int(1), Value::Int(2)];
+        let kept = Value::set(distinct);
+        assert!(matches!(&kept, Value::Set(v) if v.len() == 2),
+            "Value::set() should preserve distinct values");
     }
 }
