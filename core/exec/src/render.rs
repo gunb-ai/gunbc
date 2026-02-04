@@ -342,7 +342,7 @@ impl<W: Write> TerminalRenderer<W> {
         // If previous frame had more lines, clear the leftover lines
         if self.is_tty && lines.len() < self.last_frame_lines {
             for _ in 0..(self.last_frame_lines - lines.len()) {
-                let _ = write!(self.output, "\x1b[2K\n");
+                let _ = writeln!(self.output, "\x1b[2K");
             }
             // Move cursor back up past the blank lines we just wrote
             let extra = self.last_frame_lines - lines.len();
@@ -1184,7 +1184,7 @@ fn pad_connector(s: &str, w: usize) -> String {
 /// (bytes) or `str::chars().count()` (codepoints), which don't account
 /// for display width.
 fn display_width(s: &str) -> usize {
-    s.chars().map(|c| char_width(c)).sum()
+    s.chars().map(char_width).sum()
 }
 
 /// Approximate terminal display width of a single character.
