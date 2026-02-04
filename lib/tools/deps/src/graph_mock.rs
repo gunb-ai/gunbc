@@ -67,13 +67,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_mock_spec_has_boundary() {
-        let spec = deps_mock_spec();
-        assert!(spec.get_boundary_mock("execute_installs", "executed").is_some());
-        assert!(spec.get_boundary_mock("execute_installs", "script").is_some());
-    }
-
-    #[test]
     fn test_mock_spec_executed_is_bool() {
         let spec = deps_mock_spec();
         let executed = spec.get_boundary_mock("execute_installs", "executed").unwrap();

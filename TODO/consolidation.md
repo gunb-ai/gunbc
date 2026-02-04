@@ -913,7 +913,9 @@ This is fine; it's infrastructure code, not op code.
 - [ ] Migrate remaining call sites to use `ExecError::context()` / `ResultExt` (~42 sites, 12 files)
 
 ### Medium priority
-- [ ] Migrate remaining raw `HashMap::new()` output construction to `OutputMap` (9 sites, 5 files) — §15
+- [x] Migrate remaining raw `HashMap::new()` output construction to `OutputMap` — §15
+  - Migrated: `lib/tools/cargo/src/ops.rs` (3 sites), `lib/tools/deps/src/graph.rs` (2 sites), `lib/primitives/src/collection.rs` (1 site)
+  - Remaining: `core/ir/src/transport/cli.rs` (4 sites, can't use OutputMap — core/ir doesn't depend on core/exec), `core/exec/src/execute.rs` (1 test helper), `core/test/src/mock.rs` (1 test helper)
 - [ ] Add `assert_boundaries` test helper to `core/test` (8 files) — §11
 - [ ] Collapse `default_mock_for_type` into `cardinality_case_mock_value` in testgen codegen — single type→mock mapping
 - [ ] Extract `hash_finding_id` to `lib/primitives` as `StableHashOp` — §1

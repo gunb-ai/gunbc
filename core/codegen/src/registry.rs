@@ -664,6 +664,12 @@ pub fn all_tools() -> Vec<ToolDef> {
         ),
         // NOTE: prep tool has been removed - its functionality is now
         // consolidated into CI's Prep stage, using BuildConfig from makegen
+        //
+        // NOTE: gunbc-build is NOT in this registry.
+        // It has a handwritten main.rs with its own DAG-based progress display.
+        // It's registered in the makegen registry as "build-all" to avoid
+        // conflicting with the core "build" Make target (cargo build --all-targets).
+        // See gunbc-dag/src/bin/build.rs
     ]
 }
 

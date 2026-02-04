@@ -56,11 +56,13 @@ pub mod dag;
 pub mod entrypoint;
 pub mod git;
 pub mod language;
+pub mod layout;
 pub mod node;
 pub mod patterns;
 pub mod render;
 pub mod resource;
 pub mod signature;
+pub mod symbols;
 pub mod transport;
 pub mod type_lib;
 pub mod type_op;
@@ -99,7 +101,14 @@ pub use types::{boundary_label, Cardinality, CardinalityMismatch, NodeId, PortNa
 pub use value::{SecretString, Value};
 pub use value_expr::ValueExpr;
 pub use render::Renderable;
+pub use symbols::{
+    SemanticColor, Symbol, SymbolId, SymbolOp, SymbolSet, Tier, STANDARD,
+};
 pub use validate::{validate_subdag_interfaces, SubDagError, PortDirection};
+pub use layout::{
+    compute_layout, compute_levels, DagLayout, EdgeLayout, EdgeOrientation, NodeLayout,
+    OverflowState, OverflowStrategy, Viewport, ViewportUnit,
+};
 pub use algebra::{
     BoundedLattice, JoinSemilattice, Lattice, MeetSemilattice, PartialOrder, Semiring,
 };

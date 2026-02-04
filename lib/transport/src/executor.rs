@@ -69,20 +69,14 @@ fn execute_rest(request: &RestRequest) -> Result<RestResponse, TransportError> {
             .insert("Content-Type".to_string(), "application/json".to_string());
     }
 
-    // Handle auth
+    // Handle auth — EnvVar/EnvVarHeader should be resolved before reaching
+    // the executor (see TransportOps::Execute in ops.rs).
     if let Some(ref auth) = request.auth {
         match auth {
             gunbc_ir::transport::AuthMethod::Bearer(token) => {
                 http_req
                     .headers
                     .insert("Authorization".to_string(), format!("Bearer {}", token));
-            }
-            gunbc_ir::transport::AuthMethod::EnvVar(var) => {
-                if let Ok(token) = std::env::var(var) {
-                    http_req
-                        .headers
-                        .insert("Authorization".to_string(), format!("Bearer {}", token));
-                }
             }
             gunbc_ir::transport::AuthMethod::Basic { username, password } => {
                 let creds = base64_encode(&format!("{}:{}", username, password));
@@ -93,10 +87,13 @@ fn execute_rest(request: &RestRequest) -> Result<RestResponse, TransportError> {
             gunbc_ir::transport::AuthMethod::ApiKey { header, key } => {
                 http_req.headers.insert(header.clone(), key.clone());
             }
-            gunbc_ir::transport::AuthMethod::EnvVarHeader { header, env_var } => {
-                if let Ok(value) = std::env::var(env_var) {
-                    http_req.headers.insert(header.clone(), value);
-                }
+            gunbc_ir::transport::AuthMethod::EnvVar(_)
+            | gunbc_ir::transport::AuthMethod::EnvVarHeader { .. } => {
+                debug_assert!(
+                    false,
+                    "EnvVar/EnvVarHeader auth should be resolved before reaching the executor"
+                );
+                // Graceful fallback: skip auth if not resolved
             }
             gunbc_ir::transport::AuthMethod::None => {}
         }

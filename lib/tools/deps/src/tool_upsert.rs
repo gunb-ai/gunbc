@@ -16,7 +16,7 @@
 //!
 //! // Convert ToolDef to PlatformInstall for the Installer
 //! if let Some(platform_install) = tool_to_platform_install(&GH_TOOL, &available_pms) {
-//!     let installer = Installer::new();
+//!     let installer = Installer::for_platform(Platform::detect());
 //!     let cmd = installer.generate_install_cmd(&platform_install);
 //! }
 //! ```
@@ -320,7 +320,7 @@ mod tests {
     #[test]
     fn test_generate_tool_install_cmd_no_pm() {
         let available: HashSet<&str> = HashSet::new();
-        let installer = Installer::new();
+        let installer = Installer::for_platform(Platform::Linux);
 
         let cmd = generate_tool_install_cmd(&GIT, &available, &installer);
         assert!(cmd.is_err());

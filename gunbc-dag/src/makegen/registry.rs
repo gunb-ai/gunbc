@@ -853,6 +853,18 @@ impl ToolRegistry {
             ToolInfo::composed("ci", "dag", "Run CI pipeline"),
         );
 
+        // build-all has a handwritten main.rs with DAG progress display.
+        // Named "build-all" to avoid conflicting with the core "build" target
+        // (which is just cargo build). build-all runs build + test + clippy.
+        registry.register(ToolInfo {
+            invocation: gunbc_ir::CargoInvocation::composed("build", "dag"),
+            short_name: "build-all".to_string(),
+            description: "Build, test, and lint with progress display".to_string(),
+            entrypoints: Vec::new(),
+            extra_targets: Vec::new(),
+            has_declarative_dag: false,
+        });
+
         registry
     }
 }

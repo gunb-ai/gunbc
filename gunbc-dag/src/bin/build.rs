@@ -1,9 +1,9 @@
-//! gunbc-bootstrap main entry point.
+//! gunbc-build main entry point.
 //!
-//! Bootstrap tool for initializing gunbc projects.
+//! Local development build pipeline: build → (test + clippy) → summary.
 //! Progress display is automatic based on terminal capabilities.
 
-use gunbc_dag::build_bootstrap_graph;
+use gunbc_dag::build::build_build_graph;
 use gunbc_exec::{execute_and_display, BoundaryMocks, ExecutionMode, TerminalProfile};
 use gunbc_ir::transport::{ShellResponse, TransportResponse};
 use gunbc_ir::Value;
@@ -33,7 +33,7 @@ fn main() {
     let profile = TerminalProfile::detect();
 
     // Build the graph
-    let dag = match build_bootstrap_graph() {
+    let dag = match build_build_graph() {
         Ok(d) => d,
         Err(e) => {
             eprintln!("Error building graph: {}", e);
@@ -52,42 +52,16 @@ fn main() {
             }))
         };
 
-        // Scan workspace: returns a mock directory listing
-        mocks.set_value(
-            "execute_scan_workspace",
-            "response",
-            Value::Response(TransportResponse::Shell(ShellResponse {
-                exit_code: 0,
-                stdout: "crates/example\n".to_string(),
-                stderr: String::new(),
-            })),
-        );
+        // Build transport
+        mocks.set_value("execute_build", "response", ok_shell());
 
-        // Makefile transport executor
-        mocks.set_value("execute_makefile_transport", "makefile_response", ok_shell());
-        mocks.set_value(
-            "execute_makefile_transport",
-            "makefile_written_path",
-            Value::Str("<DRY-RUN>".to_string()),
-        );
-        mocks.set_value(
-            "execute_makefile_transport",
-            "makefile_content",
-            Value::Str("<DRY-RUN>".to_string()),
-        );
+        // Test transport
+        mocks.set_value("execute_test", "response", ok_shell());
+        mocks.set_value("execute_test", "skip", Value::Bool(false));
 
-        // Gitignore transport executor
-        mocks.set_value("execute_gitignore_transport", "gitignore_response", ok_shell());
-        mocks.set_value(
-            "execute_gitignore_transport",
-            "gitignore_written_path",
-            Value::Str("<DRY-RUN>".to_string()),
-        );
-        mocks.set_value(
-            "execute_gitignore_transport",
-            "gitignore_content",
-            Value::Str("<DRY-RUN>".to_string()),
-        );
+        // Clippy transport
+        mocks.set_value("execute_clippy", "response", ok_shell());
+        mocks.set_value("execute_clippy", "skip", Value::Bool(false));
 
         ExecutionMode::DryRun(mocks)
     } else {
@@ -95,23 +69,24 @@ fn main() {
     };
 
     // Print header
-    println!("bootstrap");
+    println!("build");
     println!("  mode: {}", if dry_run { "dry-run" } else { "real" });
     println!();
 
     // Execute and display (progress or classic based on terminal)
-    execute_and_display(&dag, mode, &profile, None);
+    execute_and_display(&dag, mode, &profile, Some("overall_success"));
 }
 
 fn print_help() {
-    println!("bootstrap - Generate Makefile and .gitignore");
+    println!("build - Build, test, and lint the project");
     println!();
     println!("USAGE:");
-    println!("    bootstrap [OPTIONS]");
+    println!("    gunbc-build [OPTIONS]");
     println!();
     println!("OPTIONS:");
     println!("    -n, --dry-run        Don't perform actual I/O");
     println!("    -h, --help           Print this help");
     println!();
+    println!("Pipeline: build -> (test + clippy) -> summary");
     println!("Progress display is automatic based on terminal capabilities.");
 }

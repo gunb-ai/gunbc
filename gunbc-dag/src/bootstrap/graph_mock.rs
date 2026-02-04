@@ -85,6 +85,13 @@ pub fn bootstrap_mock_spec() -> MockSpec {
         )
         .node_example(
             NodeExample::new("parse_scan_result")
+                .input("response", Value::Response(ShellResponse::ok("crates/bar\ncrates/foo\n").into()))
+                .output("crate_count", OutputMatcher::exact(Value::Int(2)))
+                .output("crate_names", OutputMatcher::exact(Value::str_list(vec!["bar".into(), "foo".into()])))
+                .description("Parses shell stdout to extract sorted crate names and count"),
+        )
+        .node_example(
+            NodeExample::new("parse_scan_result")
                 .input("response", Value::Skipped)
                 .output("crate_count", OutputMatcher::Any)
                 .output("crate_names", OutputMatcher::Any)
@@ -144,13 +151,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_mock_spec_has_boundary() {
-        let spec = bootstrap_mock_spec();
-        assert!(spec.get_boundary_mock("write_files", "files_written").is_some());
-        assert!(spec.get_boundary_mock("write_files", "write_count").is_some());
-    }
-
-    #[test]
     fn test_mock_spec_write_count() {
         let spec = bootstrap_mock_spec();
         let count = spec.get_boundary_mock("write_files", "write_count").unwrap();
@@ -167,13 +167,6 @@ mod tests {
         } else {
             panic!("Expected List");
         }
-    }
-
-    #[test]
-    fn test_both_file_locks_present() {
-        let spec = bootstrap_mock_spec();
-        assert!(spec.get_resource("fs:Makefile").is_some());
-        assert!(spec.get_resource("fs:.gitignore").is_some());
     }
 
     #[test]

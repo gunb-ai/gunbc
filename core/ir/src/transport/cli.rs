@@ -253,38 +253,64 @@ pub fn get_tool_by_id(id: &str) -> Option<&'static CliToolDef> {
     }
 }
 
-/// Resolve the path to a tool binary using `which`.
+/// Trait for resolving tool binary paths on the system.
 ///
-/// Returns the full path to the binary if found on PATH.
+/// The production implementation uses the `which` command.
+/// Tests can provide a mock resolver that returns fixed paths.
+pub trait ToolPathResolver {
+    /// Resolve the full path to a binary by name.
+    ///
+    /// Returns `Ok(path)` if the binary is found, or an error message.
+    fn resolve(&self, binary: &str) -> Result<PathBuf, String>;
+}
+
+/// Production resolver: uses `which` command to find binaries on PATH.
+///
+/// DI violation: shells out to `which` (Unix-only).
+/// Phase 2 will acquire path resolution through DAG input ports.
+pub struct WhichResolver;
+
 #[allow(clippy::disallowed_methods)]
-pub fn resolve_tool_path(tool: &'static CliToolDef) -> Result<PathBuf, CliToolError> {
+impl ToolPathResolver for WhichResolver {
+    fn resolve(&self, binary: &str) -> Result<PathBuf, String> {
+        let output = Command::new("which")
+            .arg(binary)
+            .output()
+            .map_err(|e| format!("Failed to run which: {}", e))?;
+
+        if !output.status.success() {
+            return Err(format!("Binary '{}' not found on PATH", binary));
+        }
+
+        let path_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        Ok(PathBuf::from(path_str))
+    }
+}
+
+/// Resolve the path to a tool binary using the given resolver.
+///
+/// Returns the full path to the binary if found.
+pub fn resolve_tool_path(
+    tool: &'static CliToolDef,
+    resolver: &dyn ToolPathResolver,
+) -> Result<PathBuf, CliToolError> {
     let binary = tool.binary_name().ok_or_else(|| {
         CliToolError::new(tool, "resolve", "No binary name defined")
     })?;
 
-    // Use `which` command to find the binary
-    let output = Command::new("which")
-        .arg(binary)
-        .output()
-        .map_err(|e| CliToolError::new(tool, "resolve", format!("Failed to run which: {}", e)))?;
-
-    if !output.status.success() {
-        return Err(CliToolError::new(
-            tool,
-            "resolve",
-            format!("Binary '{}' not found on PATH", binary),
-        ));
-    }
-
-    let path_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    Ok(PathBuf::from(path_str))
+    resolver
+        .resolve(binary)
+        .map_err(|msg| CliToolError::new(tool, "resolve", msg))
 }
 
 /// Upsert a tool: check if installed, install if needed, return resolved path.
 ///
 /// This is the main entry point for tool acquisition in the environment node.
 #[allow(clippy::disallowed_methods)]
-pub fn upsert_tool(tool: &'static CliToolDef) -> Result<PathBuf, CliToolError> {
+pub fn upsert_tool(
+    tool: &'static CliToolDef,
+    resolver: &dyn ToolPathResolver,
+) -> Result<PathBuf, CliToolError> {
     // Step 1: Check if tool exists
     let check_result = execute_check(tool)?;
     let exists = check_result
@@ -298,7 +324,7 @@ pub fn upsert_tool(tool: &'static CliToolDef) -> Result<PathBuf, CliToolError> {
     }
 
     // Step 3: Resolve and return the path
-    resolve_tool_path(tool)
+    resolve_tool_path(tool, resolver)
 }
 
 impl CliToolDef {
