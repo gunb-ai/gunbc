@@ -26,8 +26,8 @@ if from_base == to_base && from_card.satisfies(to_card) { true }
 This has three gaps:
 
 1. **No coercion safety model.** `can_coerce_to()` is currently equivalent
-   to `satisfies()` — it can't express "this conversion is safe but
-   requires a transformation step."
+   to `satisfies()` — it can't express whether a conversion is a safe
+   upcast or an incompatible mismatch with a clear error message.
 
 2. **Cardinality is detached from types.** A `Port` with `type_id: "Json"`
    and `cardinality: ZERO_OR_MORE` is semantically `List<Json>`, but the
@@ -191,40 +191,63 @@ impl TypeContract {
     /// - L2: Base type lattice (upcast only)
     /// - L3: Predicate entailment (source has ≥ target's predicates)
     pub fn can_safely_coerce_to(&self, target: &TypeContract) -> CoercionResult {
-        // L1: Cardinality
-        let card_ok = self.cardinality.satisfies(target.cardinality);
-
-        // L2: Base type
-        let base_ok = match (&self.base_type, &target.base_type) {
-            (Some(from), Some(to)) => base_type_upcasts_to(from, to),
-            (_, None) => true,   // target has no base type constraint
-            (None, Some(_)) => false, // can't prove compatibility
-        };
-
-        // L3: Predicates
-        let pred_ok = target.predicates.iter().all(|tp| {
-            self.predicates.iter().any(|sp| sp.entails(tp))
-        });
-
-        if card_ok && base_ok && pred_ok {
-            CoercionResult::Safe
-        } else if !card_ok && self.cardinality.can_coerce_to(target.cardinality) {
-            CoercionResult::RequiresTransform(CoercionKind::from_cardinalities(
+        // L1: Cardinality — interval containment
+        if !self.cardinality.satisfies(target.cardinality) {
+            return CoercionResult::err(format!(
+                "cardinality {} does not satisfy {}",
                 self.cardinality, target.cardinality
-            ))
-        } else {
-            CoercionResult::Incompatible { card_ok, base_ok, pred_ok }
+            ));
         }
+
+        // L2: Base type — lattice upcast
+        match (&self.base_type, &target.base_type) {
+            (Some(from), Some(to)) if !base_type_upcasts_to(from, to) => {
+                return CoercionResult::err(format!(
+                    "base type '{}' cannot upcast to '{}'", from, to
+                ));
+            }
+            (None, Some(to)) => {
+                return CoercionResult::err(format!(
+                    "unknown source base type cannot prove compatibility with '{}'", to
+                ));
+            }
+            _ => {} // ok: same type, target unconstrained, or valid upcast
+        }
+
+        // L3: Predicates — entailment (source must satisfy all target predicates)
+        for tp in &target.predicates {
+            if !self.predicates.iter().any(|sp| sp.entails(tp)) {
+                return CoercionResult::err(format!(
+                    "source predicates do not entail target predicate {:?}", tp
+                ));
+            }
+        }
+
+        CoercionResult::Ok
     }
 }
 
+/// Result of a coercion check: either the coercion is safe (deducible
+/// upcast or identity) or it's an error with a reason.
+///
+/// If a coercion is deducible, it's safe — there's no middle ground.
+/// Specific coercion strategies for individual types can be defined
+/// when those types actually need them.
 enum CoercionResult {
-    /// Values flow directly, no transformation needed.
-    Safe,
-    /// Safe but requires an explicit transformation step.
-    RequiresTransform(CoercionKind),
-    /// Incompatible — cannot coerce.
-    Incompatible { card_ok: bool, base_ok: bool, pred_ok: bool },
+    /// Coercion is safe — values flow directly or via deducible upcast.
+    Ok,
+    /// Coercion is not possible.
+    Err(String),
+}
+
+impl CoercionResult {
+    fn err(msg: impl Into<String>) -> Self {
+        CoercionResult::Err(msg.into())
+    }
+
+    fn is_ok(&self) -> bool {
+        matches!(self, CoercionResult::Ok)
+    }
 }
 ```
 
@@ -331,9 +354,8 @@ use explicit patterns when needed.**
 ### Phase 4: CoercionResult in Obligation Model
 
 - [ ] Replace `CoercionKind` detection with `CoercionResult`-based analysis
-- [ ] Generate tests for `RequiresTransform` edges (verify engine applies
-  the transformation correctly)
-- [ ] Surface `Incompatible` results as build-time errors
+- [ ] Surface `Err` results as build-time errors with diagnostic messages
+- [ ] Define type-specific coercion strategies as needed (not up front)
 
 ## 7. Relationship to Existing Code
 
@@ -344,7 +366,7 @@ use explicit patterns when needed.**
 | `Predicate` enum | L3 predicate model (entailment logic needed) |
 | `WrapperKind` | L1 cardinality encoding in type DAGs |
 | `TypeRegistry::is_compatible()` | Replaced by `TypeContract::can_safely_coerce_to()` |
-| `Cardinality::can_coerce_to()` | Used within L1 check of contract coercion |
+| `Cardinality::satisfies()` | Used within L1 check of contract coercion |
 | `classify_coercion()` (coerce.rs) | Edge-level coercion detection (unchanged) |
 | `detect_coercions()` (coerce.rs) | Finds edges needing transformation (unchanged) |
 

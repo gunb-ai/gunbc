@@ -644,8 +644,8 @@ Concrete failure classes this would catch:
 - [x] Add `Value::List` variant
 - [x] Cardinality-aware input gathering in execute.rs
 - [x] Coercion compiler pass
-- [ ] Map semantics design (Track D scope decision)
-- [ ] Embed cardinality in type system (Part 3)
+- [x] Map semantics design (Track D scope decision) — resolved in design-type-coercion.md: explicit only, no implicit auto-iteration
+- [x] Embed cardinality in type system (Part 3) — resolved in design-type-coercion.md: TypeContract as source of truth
 - [x] Migrate call sites (One → ONE, etc.)
 - [x] Migrate `MergeOutputs` to use engine-guaranteed list inputs
 - [x] Replace `CardinalityCase` enum with computed boundary values
