@@ -6,15 +6,17 @@
 use gunbc_dag::build_bootstrap_graph;
 use gunbc_exec::{
     execute_with_mode, execute_with_progress_and_mode, BoundaryMocks, DagProgress, ExecutionMode,
-    FrameLoop, TerminalRenderer,
+    FrameLoop, OutputSummary, ProgressObserver, TerminalRenderer,
 };
 use gunbc_ir::layout::{compute_layout, Viewport, ViewportUnit};
 use gunbc_ir::symbols::{Tier, STANDARD};
 use gunbc_ir::transport::{ShellResponse, TransportResponse};
-use gunbc_ir::{detect_boundaries, Value};
+use gunbc_ir::{detect_boundaries, NodeId, Value};
 use std::env;
 use std::io;
 use std::process;
+use std::thread;
+use std::time::Duration;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -143,7 +145,7 @@ fn run_classic(dag: &gunbc_ir::Dag<gunbc_dag::BootstrapGraphOp>, mode: Execution
     }
 }
 
-/// Progress-display execution: live DAG visualization.
+/// Progress-display execution: live DAG visualization with animated replay.
 fn run_with_progress(dag: &gunbc_ir::Dag<gunbc_dag::BootstrapGraphOp>, mode: ExecutionMode) {
     // Lower the DAG to get flat topology for layout
     let flat = match gunbc_exec::lower(dag) {
@@ -158,7 +160,7 @@ fn run_with_progress(dag: &gunbc_ir::Dag<gunbc_dag::BootstrapGraphOp>, mode: Exe
     let topo_order = gunbc_exec::topo_sort(&flat);
 
     // Build labels from node IDs
-    let labels: std::collections::HashMap<gunbc_ir::NodeId, String> = flat
+    let labels: std::collections::HashMap<NodeId, String> = flat
         .nodes
         .iter()
         .map(|n| (n.id.clone(), n.id.0.clone()))
@@ -170,17 +172,85 @@ fn run_with_progress(dag: &gunbc_ir::Dag<gunbc_dag::BootstrapGraphOp>, mode: Exe
     // Compute layout
     let layout = compute_layout(&topo_order, &flat.edges, &labels, &vp);
 
-    // Create progress tracker
+    // Create progress tracker and execute (instant)
     let snapshot = gunbc_exec::DagSnapshot::from_dag(&flat, &topo_order, &boundaries);
-    let mut progress = DagProgress::new(snapshot);
-
-    // Execute with progress observer
+    let mut progress = DagProgress::new(snapshot.clone());
     let result = execute_with_progress_and_mode(dag, mode, &mut progress);
 
-    // Render final state
+    // Capture actual final state per node (for failure detection)
+    let final_states: std::collections::HashMap<NodeId, gunbc_exec::NodeState> = progress
+        .nodes
+        .iter()
+        .map(|(id, np)| (id.clone(), np.state))
+        .collect();
+    let final_phase = progress.phase.clone();
+
+    // Animated replay: create a fresh visual progress and step through
+    let mut visual = DagProgress::new(snapshot.clone());
+    visual.on_dag_start(&snapshot);
+
+    let is_tty = atty_check();
     let mut renderer = TerminalRenderer::new(io::stdout(), &STANDARD, detect_tier(), layout);
-    renderer.set_tty(atty_check());
-    renderer.render(&progress);
+    renderer.set_tty(is_tty);
+
+    // Animation timing: ~1 second total, 2 frames per node (start + complete)
+    let num_nodes = topo_order.len();
+    let total_frames = num_nodes * 2; // start + complete for each
+    let frame_ms = (1000u64 / total_frames.max(1) as u64).clamp(30, 150);
+    let frame_delay = Duration::from_millis(frame_ms);
+
+    // Render initial state (all pending)
+    renderer.render(&visual);
+
+    // Step through each node: start → render → sleep → complete → render → sleep
+    let empty_summary = || OutputSummary {
+        fields: vec![],
+        elapsed: Duration::from_millis(frame_ms),
+    };
+
+    for node_id in &topo_order {
+        let final_state = final_states
+            .get(node_id)
+            .copied()
+            .unwrap_or(gunbc_exec::NodeState::Pending);
+
+        // Start
+        visual.on_node_start(node_id);
+        renderer.render(&visual);
+        thread::sleep(frame_delay);
+
+        // Complete/fail/skip based on actual result
+        match final_state {
+            gunbc_exec::NodeState::Failed => {
+                visual.on_node_failed(node_id, "failed");
+            }
+            gunbc_exec::NodeState::Skipped => {
+                visual.on_node_skipped(node_id);
+            }
+            gunbc_exec::NodeState::Intercepted => {
+                visual.on_node_intercepted(node_id, empty_summary());
+            }
+            _ => {
+                visual.on_node_complete(node_id, empty_summary());
+            }
+        }
+        renderer.render(&visual);
+        thread::sleep(frame_delay);
+    }
+
+    // Final frame: set actual elapsed and phase
+    match &final_phase {
+        gunbc_exec::DagPhase::Completed { elapsed } => {
+            visual.on_dag_complete(*elapsed);
+        }
+        gunbc_exec::DagPhase::Failed { .. } => {
+            // Phase already set by on_node_failed
+        }
+        _ => {
+            visual.on_dag_complete(Duration::ZERO);
+        }
+    }
+    renderer.render(&visual);
 
     if let Err(e) = result {
         eprintln!("\nError: {}", e);

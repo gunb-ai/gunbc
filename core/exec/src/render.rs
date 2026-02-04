@@ -470,23 +470,31 @@ impl<W: Write> TerminalRenderer<W> {
             }
         }
 
-        // Legend: show symbol + letter → full name
-        lines.push(String::new());
+        // Legend: only show running + failed nodes (compact)
+        let mut legend_entries: Vec<(NodeState, &str, String)> = Vec::new();
         for level in &self.layout.levels {
-            let mut sorted = level.clone();
-            sorted.sort_by_key(|n| node_track.get(n).copied().unwrap_or(0));
-            for node in &sorted {
+            for node in level {
                 let state = progress
                     .nodes
                     .get(node)
                     .map(|np| np.state)
                     .unwrap_or(NodeState::Pending);
-                let letter = node_letter.get(node).map(|s| s.as_str()).unwrap_or("?");
-                let label = full_label(node, &progress.snapshot.labels);
-                let sym = self.legend_symbol(state);
-                let color = self.state_color(state);
-                let entry = format!("  {}{} {}: {}\x1b[0m", color.ansi(), sym, letter, label);
-                lines.push(entry);
+                if matches!(state, NodeState::Running | NodeState::Failed) {
+                    let letter = node_letter.get(node).map(|s| s.as_str()).unwrap_or("?");
+                    let label = full_label(node, &progress.snapshot.labels);
+                    legend_entries.push((state, letter, label));
+                }
+            }
+        }
+        // Show up to 3 entries
+        if !legend_entries.is_empty() {
+            for (state, letter, label) in legend_entries.iter().take(3) {
+                let sym = self.legend_symbol(*state);
+                let color = self.state_color(*state);
+                lines.push(format!("  {}{} {}: {}\x1b[0m", color.ansi(), sym, letter, label));
+            }
+            if legend_entries.len() > 3 {
+                lines.push(format!("  ... and {} more", legend_entries.len() - 3));
             }
         }
 
@@ -1113,10 +1121,10 @@ mod tests {
 
         let output = String::from_utf8(buf).unwrap();
         assert!(!output.is_empty());
-        // Should contain node labels
-        assert!(output.contains("lint"));
-        assert!(output.contains("build"));
-        assert!(output.contains("test"));
+        // Should contain letter-boxed nodes
+        assert!(output.contains("[A]"), "Missing [A]\n{}", output);
+        assert!(output.contains("[B]"), "Missing [B]\n{}", output);
+        assert!(output.contains("[C]"), "Missing [C]\n{}", output);
     }
 
     #[test]
@@ -1375,10 +1383,6 @@ mod tests {
             "Linear chain should render all letter-boxes on one line, got:\n{}",
             output
         );
-        // Legend should contain full names
-        assert!(output.contains("A: lint"), "Legend missing A: lint\n{}", output);
-        assert!(output.contains("B: build"), "Legend missing B: build\n{}", output);
-        assert!(output.contains("C: test"), "Legend missing C: test\n{}", output);
     }
 
     #[test]
