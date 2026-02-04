@@ -122,6 +122,15 @@ pub enum Expr {
         args: Vec<String>,
         body: Box<Expr>,
     },
+    /// Binary operation: `left op right` (e.g., `n >= 2`, `a == b`).
+    BinOp {
+        left: Box<Expr>,
+        op: String,
+        right: Box<Expr>,
+    },
+    /// Bare integer literal (not `Value::Int`). For use in expressions
+    /// operating on unwrapped values (e.g., closure bodies after `as_int()`).
+    IntLit(i64),
 }
 
 // ===========================================================================
@@ -204,6 +213,20 @@ impl Expr {
     /// Shorthand for `&self`.
     pub fn ref_of(self) -> Self {
         Expr::Ref(Box::new(self))
+    }
+
+    /// Shorthand for `self op right` (e.g., `n.ge(Expr::int(2))`).
+    pub fn bin_op(self, op: impl Into<String>, right: Expr) -> Self {
+        Expr::BinOp {
+            left: Box::new(self),
+            op: op.into(),
+            right: Box::new(right),
+        }
+    }
+
+    /// Shorthand for a bare integer literal (renders as `n`, not `Value::Int(n)`).
+    pub fn int(n: i64) -> Self {
+        Expr::IntLit(n)
     }
 }
 

@@ -128,6 +128,10 @@ impl TestRenderer for RustRenderer {
                     format!("|{}| {}", args.join(", "), body_str)
                 }
             }
+            Expr::BinOp { left, op, right } => {
+                format!("{} {} {}", self.render_expr(left), op, self.render_expr(right))
+            }
+            Expr::IntLit(n) => n.to_string(),
         }
     }
 
@@ -497,6 +501,23 @@ mod tests {
         assert_eq!(
             r.render_assert(&a, 1),
             "    assert!(!output.is_empty(), \"expected non-empty value\");\n"
+        );
+    }
+
+    #[test]
+    fn render_bin_op_in_closure() {
+        let r = RustRenderer;
+        let expr = Expr::var("x")
+            .method("as_int", vec![])
+            .method("is_some_and", vec![
+                Expr::Closure {
+                    args: vec!["n".to_string()],
+                    body: Box::new(Expr::var("n").bin_op(">=", Expr::int(2))),
+                },
+            ]);
+        assert_eq!(
+            r.render_expr(&expr),
+            "x.as_int().is_some_and(|n| n >= 2)"
         );
     }
 }
