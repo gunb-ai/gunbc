@@ -90,8 +90,30 @@ is structurally impossible. After Phase 3, `codegen.rs` contains zero
 - `cardinality_case_mock_value()` → `CodeOp::Literal` (same path, no special case)
 - All `format!("assert_eq!(...)")` in phase generators → DAG construction
 
+## Analysis data is currently severed from emission
+
+Five phase generators accept `&DagAnalysis` and immediately discard it
+(`_analysis`). The cardinality algebra exists — `allows_empty()`,
+`test_cases()`, `satisfies()`, the full lattice — but `codegen.rs` never
+consults it. Instead, `cardinality_case_mock_value()` reconstructs
+cardinality behavior from ad-hoc `type_id` string matching (`"String"`,
+`"Bool"`, `"Int"`), ignoring the port's actual `Cardinality` interval.
+
+The migration must wire `DagAnalysis` into the `Dag<CodeOp>` construction
+phase so that cardinality-driven decisions (empty case generation, list
+vs scalar emission, optional handling) come from the structured analysis,
+not from string heuristics. Concretely:
+
+- `CodeOp::Literal` nodes should carry the port's `Cardinality`, not
+  just a `type_id` string.
+- Mock value generation should use `cardinality.allows_empty()` and
+  `cardinality.test_cases()` instead of type-name pattern matching.
+- The `_analysis` parameters should become live inputs to DAG
+  construction, not dead signatures.
+
 ## What this does NOT replace
 
 The obligation collector (`collect_obligations`) and DAG analysis
 (`analyze_dag`) remain unchanged — they produce structured data that feeds
-into DAG construction. The change is purely in the emission layer.
+into DAG construction. The change is purely in the emission layer, but
+the emission layer must actually *consume* the analysis data it receives.
