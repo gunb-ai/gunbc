@@ -255,6 +255,16 @@ impl<W: Write> TerminalRenderer<W> {
         }
     }
 
+    /// Resolve a colored node symbol, always using Unicode tier (✓ not ✅).
+    fn colored_node_symbol(&self, state: NodeState) -> String {
+        let id = self.node_symbol_id(state);
+        let tier = match self.tier {
+            Tier::Ascii => Tier::Ascii,
+            _ => Tier::Unicode, // ✓ instead of ✅
+        };
+        self.symbol_set.get(id).resolve_colored(tier)
+    }
+
 
     /// Move cursor up to overwrite previous frame (TTY only).
     fn cursor_up(&mut self) {
@@ -365,21 +375,23 @@ impl<W: Write> TerminalRenderer<W> {
                 .push(edge.to_node.clone());
         }
 
-        // Label and column dimensions
-        let max_label = self.max_label_width(num_cols);
-        let sym_w = self.symbol_display_width();
-
-        let mut col_widths: Vec<usize> = vec![0; num_cols];
-        for (col, cw) in col_widths.iter_mut().enumerate() {
-            for track in 0..num_tracks {
-                if let Some(node) = grid.get(&(track, col)) {
-                    let label = short_label(node, &progress.snapshot.labels, max_label);
-                    // [sym label] = 1 + sym_w + 1 + label.len() + 1 = sym_w + label.len() + 3
-                    *cw = (*cw).max(sym_w + label.len() + 3);
-                }
+        // Assign single-letter labels (A, B, C, ...) in topological order
+        let mut node_letter: HashMap<NodeId, String> = HashMap::new();
+        let mut letter_idx: usize = 0;
+        for level in &self.layout.levels {
+            let mut sorted = level.clone();
+            sorted.sort_by_key(|n| node_track.get(n).copied().unwrap_or(0));
+            for node in &sorted {
+                let letter = letter_for_index(letter_idx);
+                node_letter.insert(node.clone(), letter);
+                letter_idx += 1;
             }
-            *cw = (*cw).max(5); // min width for box: [x ?]
         }
+
+        // Column dimensions: all boxes are uniform width
+        let sym_w = self.symbol_display_width();
+        let max_letter_w = node_letter.values().map(|l| l.len()).max().unwrap_or(1);
+        let col_w = sym_w + max_letter_w + 3; // uniform column width
 
         // Gap widths: 5 for fan-out columns, 3 otherwise
         let mut gap_widths: Vec<usize> = vec![3; num_cols.saturating_sub(1)];
@@ -397,6 +409,7 @@ impl<W: Write> TerminalRenderer<W> {
         // Render each track as a horizontal line
         for track in 0..num_tracks {
             let mut line = String::new();
+            #[allow(clippy::needless_range_loop)]
             for col in 0..num_cols {
                 if let Some(node) = grid.get(&(track, col)) {
                     let state = progress
@@ -404,18 +417,18 @@ impl<W: Write> TerminalRenderer<W> {
                         .get(node)
                         .map(|np| np.state)
                         .unwrap_or(NodeState::Pending);
-                    let sym = self.colored_symbol(self.node_symbol_id(state));
-                    let label = short_label(node, &progress.snapshot.labels, max_label);
+                    let sym = self.colored_node_symbol(state);
+                    let letter = node_letter.get(node).map(|s| s.as_str()).unwrap_or("?");
                     line.push('[');
                     line.push_str(&sym);
                     line.push(' ');
-                    line.push_str(&label);
+                    line.push_str(letter);
                     line.push(']');
-                    let vis_w = sym_w + label.len() + 3; // [sym label]
-                    let pad = col_widths[col].saturating_sub(vis_w);
+                    let vis_w = sym_w + letter.len() + 3;
+                    let pad = col_w.saturating_sub(vis_w);
                     line.push_str(&" ".repeat(pad));
                 } else {
-                    line.push_str(&" ".repeat(col_widths[col]));
+                    line.push_str(&" ".repeat(col_w));
                 }
 
                 if col < num_cols - 1 {
@@ -439,6 +452,24 @@ impl<W: Write> TerminalRenderer<W> {
             let trimmed = line.trim_end().to_string();
             if !trimmed.is_empty() {
                 lines.push(format!("  {}", trimmed));
+            }
+        }
+
+        // Legend: show letter → full name for active/completed/failed nodes
+        lines.push(String::new());
+        for level in &self.layout.levels {
+            let mut sorted = level.clone();
+            sorted.sort_by_key(|n| node_track.get(n).copied().unwrap_or(0));
+            for node in &sorted {
+                let state = progress
+                    .nodes
+                    .get(node)
+                    .map(|np| np.state)
+                    .unwrap_or(NodeState::Pending);
+                let letter = node_letter.get(node).map(|s| s.as_str()).unwrap_or("?");
+                let label = full_label(node, &progress.snapshot.labels);
+                let sym = self.colored_node_symbol(state);
+                lines.push(format!("  {} {}: {}", sym, letter, label));
             }
         }
 
@@ -817,27 +848,10 @@ impl<W: Write> TerminalRenderer<W> {
         format!("{}{}\x1b[0m", color.ansi(), s)
     }
 
-    /// Display width of a node symbol based on tier.
+    /// Display width of a node symbol in a box (always Unicode tier: 1 char).
     fn symbol_display_width(&self) -> usize {
-        match self.tier {
-            Tier::Emoji => 2,
-            _ => 1,
-        }
-    }
-
-    /// Max label width based on number of columns and viewport.
-    fn max_label_width(&self, num_cols: usize) -> usize {
-        if num_cols == 0 {
-            return 20;
-        }
-        let vp_w = self.layout.viewport.width as usize;
-        let sym_w = self.symbol_display_width();
-        let overhead = num_cols * (sym_w + 1)
-            + num_cols.saturating_sub(1) * 4
-            + 4; // indent + margin
-        let available = vp_w.saturating_sub(overhead);
-        let per_col = available / num_cols;
-        per_col.clamp(6, 20)
+        // Node symbols always use Unicode tier (✓, ◉, etc.) which are 1 char wide
+        1
     }
 
     /// Render the footer summary.
@@ -946,7 +960,37 @@ fn format_duration(d: Duration) -> String {
     }
 }
 
+/// Convert an index to a letter label: 0→A, 1→B, ..., 25→Z, 26→AA, etc.
+fn letter_for_index(idx: usize) -> String {
+    if idx < 26 {
+        return String::from((b'A' + idx as u8) as char);
+    }
+    let mut result = String::new();
+    let mut n = idx;
+    loop {
+        result.insert(0, (b'A' + (n % 26) as u8) as char);
+        if n < 26 {
+            break;
+        }
+        n = n / 26 - 1;
+    }
+    result
+}
+
+/// Get the full label for a node (no truncation).
+fn full_label(
+    node_id: &NodeId,
+    labels: &HashMap<NodeId, String>,
+) -> String {
+    labels
+        .get(node_id)
+        .map(|s| s.as_str())
+        .unwrap_or(&node_id.0)
+        .to_string()
+}
+
 /// Shorten a node label to fit within `max_width`.
+#[cfg(test)]
 fn short_label(
     node_id: &NodeId,
     labels: &HashMap<NodeId, String>,
@@ -1311,15 +1355,19 @@ mod tests {
 
         let output = String::from_utf8(buf).unwrap();
         let lines: Vec<&str> = output.lines().collect();
-        // Find the line containing all three node labels (horizontal layout)
+        // All letter-boxes on one DAG line (horizontal layout)
         let has_all_on_one_line = lines.iter().any(|line| {
-            line.contains("lint") && line.contains("build") && line.contains("test")
+            line.contains(" A]") && line.contains(" B]") && line.contains(" C]")
         });
         assert!(
             has_all_on_one_line,
-            "Linear chain should render all nodes on one line, got:\n{}",
+            "Linear chain should render all letter-boxes on one line, got:\n{}",
             output
         );
+        // Legend should contain full names
+        assert!(output.contains("A: lint"), "Legend missing A: lint\n{}", output);
+        assert!(output.contains("B: build"), "Legend missing B: build\n{}", output);
+        assert!(output.contains("C: test"), "Legend missing C: test\n{}", output);
     }
 
     #[test]
@@ -1370,16 +1418,16 @@ mod tests {
         }
 
         let output = String::from_utf8(buf).unwrap();
-        // A should be on track 0, B on track 0, C on track 1
-        // So B and C should be on different output lines
-        let b_line = output.lines().find(|l| l.contains(" B"));
-        let c_line = output.lines().find(|l| l.contains(" C"));
-        assert!(b_line.is_some(), "B should appear in output:\n{}", output);
-        assert!(c_line.is_some(), "C should appear in output:\n{}", output);
+        // With letter labels: A is first node, B and C are fan-out targets
+        // B and C should be on different DAG lines (look for box patterns)
+        let b_line = output.lines().find(|l| l.contains(" B]"));
+        let c_line = output.lines().find(|l| l.contains(" C]"));
+        assert!(b_line.is_some(), "B box should appear in output:\n{}", output);
+        assert!(c_line.is_some(), "C box should appear in output:\n{}", output);
         assert_ne!(
             b_line.unwrap(),
             c_line.unwrap(),
-            "Fan-out should put B and C on different lines"
+            "Fan-out should put B and C boxes on different lines"
         );
     }
 
