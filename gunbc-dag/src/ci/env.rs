@@ -19,7 +19,7 @@
 //! The env node is the I/O boundary - it gets mocked in DryRun mode.
 
 use gunbc_exec::{ExecError, Executable};
-use gunbc_ir::transport::cli::{upsert_tool, get_tool_by_id, ToolHandle};
+use gunbc_ir::transport::cli::{upsert_tool, get_tool_by_id, ToolHandle, WhichResolver};
 use gunbc_ir::Value;
 use std::collections::HashMap;
 
@@ -63,8 +63,10 @@ impl Executable for EnvOp {
                 ExecError::new(format!("Unknown tool '{}' in environment", tool_id))
             })?;
 
-            // Upsert: check if installed, install if needed, get path
-            let path = upsert_tool(tool)
+            // DI violation: WhichResolver constructed inline.
+            // Phase 2 will acquire path resolution through DAG input ports.
+            let resolver = WhichResolver;
+            let path = upsert_tool(tool, &resolver)
                 .map_err(|e| ExecError::new(format!("Failed to acquire tool '{}': {}", tool_id, e)))?;
 
             // Create handle and add to outputs

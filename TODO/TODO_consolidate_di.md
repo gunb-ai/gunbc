@@ -131,30 +131,20 @@ pattern standard (item 4), this would naturally follow.
 
 ---
 
-## 7. resolve_tool_path() shells out to `which`
+## 7. ~~resolve_tool_path() shells out to `which`~~ ✅ FIXED (Phase 1)
 
-**Where**: `core/ir/src/transport/cli.rs:260-281`
+**Where**: `core/ir/src/transport/cli.rs`, `gunbc-dag/src/ci/env.rs`
 
-```rust
-pub fn resolve_tool_path(tool: &'static CliToolDef) -> Result<PathBuf, CliToolError> {
-    let output = Command::new("which")
-        .arg(binary)
-        .output()?;
-    // ...
-}
-```
+**What was done**: Added `ToolPathResolver` trait with `resolve(&self, binary)
+-> Result<PathBuf, String>` and `WhichResolver` production implementation.
+`resolve_tool_path()` and `upsert_tool()` now accept `&dyn ToolPathResolver`.
 
-**Problem**: Direct system call to `which` — can't mock for testing, and
-`which` isn't available on all platforms (Windows uses `where`).
+`EnvOp::execute()` (the I/O boundary) constructs `WhichResolver` and passes
+it to `upsert_tool()`. Tests can inject a mock resolver that returns fixed
+paths without shelling out.
 
-**Mitigating factor**: Called from `upsert_tool()` which is used at the
-EnvOp boundary (the correct I/O boundary for tool acquisition).
-
-**Fix**: Add a trait-based tool resolver that the transport layer can mock.
-Or use the existing transport pattern: build a `PrepareResolve` request
-and execute through the transport layer.
-
-**Severity**: MEDIUM — at the right boundary, but hard to test/mock.
+**Remaining**: Phase 2 — acquire resolver through DAG input ports, and
+potentially add platform-aware resolution (Windows `where` vs Unix `which`).
 
 ---
 
@@ -168,7 +158,7 @@ and execute through the transport layer.
 | 4 | Env vars (codegen) | cli_gen.rs:724,748,767 | MEDIUM | Accept env dict param |
 | 5 | ~~SystemTime~~ | ~~gist-ops/lib.rs:145~~ | ~~HIGH~~ | ✅ Accept as parameter |
 | 6 | Env vars (CI detect) | provider.rs:79-99 | LOW | Already at boundary |
-| 7 | which command | cli.rs:260-281 | MEDIUM | Trait-based resolver |
+| 7 | ~~which command~~ | ~~cli.rs:260-281~~ | ~~MEDIUM~~ | ✅ Trait-based resolver |
 
 ## Tasks
 
@@ -177,7 +167,7 @@ and execute through the transport layer.
 - [x] Item 3: Resolve `AuthMethod::EnvVar` to `AuthMethod::Bearer` at DAG boundary
 - [ ] Item 4: Generate CI runner functions that accept env dict parameter
 - [x] Item 5: Add `SystemTime` parameter to `generate_gist_filename`
-- [ ] Item 7: Abstract tool path resolution behind a trait
+- [x] Item 7: Abstract tool path resolution behind a trait
 
 ## Notes
 
