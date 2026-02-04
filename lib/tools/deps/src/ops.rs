@@ -208,7 +208,12 @@ fn execute_generate_scripts(inputs: HashMap<String, Value>) -> Result<HashMap<St
     let manifest = DepsManifest::parse(manifest_content)
         .map_err(|e| ExecError::new(format!("failed to parse manifest: {}", e)))?;
 
-    let installer = Installer::new();
+    // Use platform from DAG input (acquired at boundary), fall back to detect
+    let platform = match optional_str(&inputs, "platform") {
+        Some(p) => crate::platform::Platform::parse(p),
+        None => crate::platform::Platform::detect(),
+    };
+    let installer = Installer::for_platform(platform);
     let mut scripts = Vec::new();
     let mut already_installed = Vec::new();
     let mut needs_install = Vec::new();

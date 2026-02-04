@@ -39,7 +39,11 @@ impl Executable for GistOps {
                 let markdown = require_str(&inputs, "markdown")?;
                 let branch = optional_str(&inputs, "branch");
 
-                let filename = generate_gist_filename(branch.unwrap_or("snapshot"));
+                // Acquire system resources at the DAG boundary (not inline)
+                let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
+                let now = SystemTime::now();
+
+                let filename = generate_gist_filename_with(&fs, branch.unwrap_or("snapshot"), now);
                 let description = match branch {
                     Some(b) if !b.trim().is_empty() && b.trim() != "HEAD" => {
                         format!("Code snapshot of {} created by gunbc-gist", b)

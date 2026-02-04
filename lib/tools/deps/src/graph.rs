@@ -49,6 +49,7 @@ pub fn deps_signature() -> WorkflowSignature {
     WorkflowSignature::new()
         // Inputs
         .with_input("manifest_path", "String", Cardinality::ZERO_OR_ONE)
+        .with_input("platform", "String", Cardinality::ZERO_OR_ONE)
         // Outputs - boundary outputs from terminal nodes
         .with_output("dep_count", "Int", Cardinality::ONE)
         .with_output("dep_names", "List", Cardinality::ZERO_OR_MORE)
@@ -124,7 +125,10 @@ pub fn build_deps_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
     let generate_scripts = builder.add_node_after(
         Node::opaque(
             "generate_scripts",
-            vec![scalar("manifest_content", "String")],  // Receives content, not path
+            vec![
+                scalar("manifest_content", "String"),   // Receives content, not path
+                optional("platform", "String"),          // Platform acquired at boundary
+            ],
             vec![
                 scalar("install_script", "String"),
                 list("already_installed", "List"),

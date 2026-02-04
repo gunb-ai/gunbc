@@ -704,9 +704,12 @@ fn run_single_step(args: &[String]) {{
     
     // Build the graph
     let dag = {graph_builder_call};
-    
+
+    // Capture environment once at the boundary
+    let env_dict: HashMap<String, String> = env::vars().collect();
+
     // Load inputs from environment (CI step outputs from previous steps)
-    let inputs = load_step_inputs_from_env(&step_name);
+    let inputs = load_step_inputs_from_env(&step_name, &env_dict);
     
     // Set up execution mode
     let mode = if dry_run {{
@@ -728,7 +731,7 @@ fn run_single_step(args: &[String]) {{
             }}
             
             // Emit outputs for next steps (CI provider format)
-            emit_step_outputs(&step_name, &outputs);
+            emit_step_outputs(&step_name, &outputs, &env_dict);
             
             // Check for failure
             if let Some(Value::Bool(false)) = outputs.get("{success_port_or_empty}") {{
@@ -766,11 +769,14 @@ fn list_dag_steps() {{
 /// Load inputs from environment variables set by previous CI steps.
 ///
 /// Convention: STEP_<NODE>_<PORT> = value
-fn load_step_inputs_from_env(step_name: &str) -> HashMap<String, Value> {{
+///
+/// Accepts an env dictionary captured at the boundary instead of reading
+/// env vars directly, making this function pure and testable.
+fn load_step_inputs_from_env(step_name: &str, env_dict: &HashMap<String, String>) -> HashMap<String, Value> {{
     let mut inputs = HashMap::new();
-    
+
     // Look for environment variables matching our convention
-    for (key, value) in env::vars() {{
+    for (key, value) in env_dict.iter() {{
         if key.starts_with("STEP_") && key != format!("STEP_{{}}_", step_name.to_uppercase()) {{
             // Parse: STEP_NODENAME_PORTNAME
             let parts: Vec<&str> = key.splitn(3, '_').collect();
@@ -792,9 +798,12 @@ fn load_step_inputs_from_env(step_name: &str) -> HashMap<String, Value> {{
 }}
 
 /// Emit outputs in CI provider format for next steps.
-fn emit_step_outputs(step_name: &str, outputs: &HashMap<String, Value>) {{
+///
+/// Accepts an env dictionary captured at the boundary instead of reading
+/// env vars directly, making this function pure and testable.
+fn emit_step_outputs(step_name: &str, outputs: &HashMap<String, Value>, env_dict: &HashMap<String, String>) {{
     // Check if we're in GitHub Actions
-    if let Ok(output_file) = env::var("GITHUB_OUTPUT") {{
+    if let Some(output_file) = env_dict.get("GITHUB_OUTPUT") {{
         // GitHub Actions format: write to $GITHUB_OUTPUT file
         if let Ok(mut file) = std::fs::OpenOptions::new()
             .create(true)
@@ -813,7 +822,7 @@ fn emit_step_outputs(step_name: &str, outputs: &HashMap<String, Value>) {{
                     step_name.to_uppercase(), port.to_uppercase(), str_value);
             }}
         }}
-    }} else if env::var("GITLAB_CI").is_ok() {{
+    }} else if env_dict.contains_key("GITLAB_CI") {{
         // GitLab CI format: export to dotenv artifact
         for (port, value) in outputs {{
             let str_value = match value {{

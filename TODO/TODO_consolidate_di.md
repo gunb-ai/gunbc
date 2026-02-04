@@ -223,12 +223,12 @@ and execute through the transport layer.
 
 ## Tasks
 
-- [ ] Item 1: Refactor `sanitize_branch_for_filename` to accept `&FilesystemHandle`
-- [ ] Item 2: Add `platform` input port to GenerateScripts DAG node
+- [x] Item 1: Refactor `sanitize_branch_for_filename` to accept `&FilesystemHandle`
+- [x] Item 2: Add `platform` input port to GenerateScripts DAG node
 - [ ] Item 3: Resolve `AuthMethod::EnvVar` to `AuthMethod::Bearer` at DAG boundary
-- [ ] Item 4: Generate CI runner functions that accept env dict parameter
-- [ ] Item 5: Add `SystemTime` parameter to `generate_gist_filename`
-- [ ] Item 7: Abstract tool path resolution behind a trait
+- [x] Item 4: Generate CI runner functions that accept env dict parameter
+- [x] Item 5: Add `SystemTime` parameter to `generate_gist_filename`
+- [x] Item 7: Abstract tool path resolution behind a trait
 
 ## Notes
 
