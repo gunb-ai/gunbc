@@ -64,30 +64,19 @@ of resolving inline in `TransportOps::Execute`.
 
 ---
 
-## 4. std::env in codegen-generated CI runners
+## 4. ~~std::env in codegen-generated CI runners~~ ✅ FIXED (Phase 1)
 
-**Where**: `core/codegen/src/cli_gen.rs:724,748,767`
+**Where**: `core/codegen/src/cli_gen.rs`
 
-```rust
-fn load_step_inputs_from_env(step_name: &str) -> HashMap<String, Value> {
-    for (key, value) in env::vars() { ... }        // line 724
-}
+**What was done**: Generated runner functions now accept
+`&HashMap<String, String>` instead of calling `env::vars()` directly.
+- `load_step_inputs_from_env(step_name, &env_dict)` iterates the dict
+- `emit_step_outputs(step_name, &outputs, &env_dict)` looks up
+  `GITHUB_OUTPUT` and `GITLAB_CI` from the dict
+- The single `env::vars().collect()` call happens once in the generated
+  `run_single_step()`, making the env capture point visible.
 
-fn emit_step_outputs(step_name: &str, outputs: &HashMap<String, Value>) {
-    if let Ok(output_file) = env::var("GITHUB_OUTPUT") { ... }  // line 748
-    } else if env::var("GITLAB_CI").is_ok() { ... }             // line 767
-}
-```
-
-**Problem**: Generated runner functions read env vars directly. Can't mock
-CI environments for testing generated code.
-
-**Fix**: Generated functions should accept an env dictionary parameter
-(`HashMap<String, String>`) instead of calling `env::vars()` directly.
-The actual `env::vars()` call happens once in the generated `main()`.
-
-**Severity**: MEDIUM — this is generated code, not library code. But it
-sets a bad pattern for anyone reading it as an example.
+**Remaining**: Phase 2 — pass env dict through DAG input ports.
 
 ---
 
@@ -155,7 +144,7 @@ potentially add platform-aware resolution (Windows `where` vs Unix `which`).
 | 1 | ~~FilesystemHandle~~ | ~~gist-ops/lib.rs:113~~ | ~~HIGH~~ | ✅ Accept as parameter |
 | 2 | ~~Platform~~ | ~~installer.rs:39, ops.rs:211~~ | ~~HIGH~~ | ✅ DAG input port |
 | 3 | ~~Env vars (auth)~~ | ~~executor.rs:81,97~~ | ~~HIGH~~ | ✅ Resolve before executor |
-| 4 | Env vars (codegen) | cli_gen.rs:724,748,767 | MEDIUM | Accept env dict param |
+| 4 | ~~Env vars (codegen)~~ | ~~cli_gen.rs:724,748,767~~ | ~~MEDIUM~~ | ✅ Accept env dict param |
 | 5 | ~~SystemTime~~ | ~~gist-ops/lib.rs:145~~ | ~~HIGH~~ | ✅ Accept as parameter |
 | 6 | Env vars (CI detect) | provider.rs:79-99 | LOW | Already at boundary |
 | 7 | ~~which command~~ | ~~cli.rs:260-281~~ | ~~MEDIUM~~ | ✅ Trait-based resolver |
@@ -165,7 +154,7 @@ potentially add platform-aware resolution (Windows `where` vs Unix `which`).
 - [x] Item 1: Refactor `sanitize_branch_for_filename` to accept `&FilesystemHandle`
 - [x] Item 2: Add `platform` input port to GenerateScripts DAG node
 - [x] Item 3: Resolve `AuthMethod::EnvVar` to `AuthMethod::Bearer` at DAG boundary
-- [ ] Item 4: Generate CI runner functions that accept env dict parameter
+- [x] Item 4: Generate CI runner functions that accept env dict parameter
 - [x] Item 5: Add `SystemTime` parameter to `generate_gist_filename`
 - [x] Item 7: Abstract tool path resolution behind a trait
 
