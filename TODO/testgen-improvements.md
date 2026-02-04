@@ -472,6 +472,36 @@ functions live in tool crates, DagSpec would need to reference them).
 - [ ] Each tool crate exports a `dag_specs()` function
 - [ ] Testgen, Makefile gen, and CI gen all consume DagSpec
 
+---
+
+## Phase 10: Credential Lifecycle Testing
+
+Additions needed for auto-generating credential lifecycle tests.
+See [TODO_credential_lifecycle.md](TODO_credential_lifecycle.md) for
+the credential design that drives these requirements.
+
+**Depends on**: Phase 5 (windowed testing), Phase 8 (test absorption)
+
+**TODO 10.1: Add `ResourceType::Credential` to resource simulation**
+- [ ] Add `ResourceType::Credential { expiry_ms, refreshable }` to `mock_spec.rs`
+- [ ] Add `ResourceBehavior::RefreshSucceeds { new_ttl_ms }`
+- [ ] Add `ResourceBehavior::RefreshFails { error }`
+- [ ] Add `ResourceBehavior::RevokeSucceeds`
+- [ ] Generate: acquire, use-while-valid, refresh, use-after-refresh,
+      expire, revoke test sequence in Bucket D
+
+**TODO 10.2: Add `MockSequence` / `ConditionalMock` to MockSpec**
+- [ ] Add `MockSequence`: ordered list of responses per transport node
+      (first call → response A, second call → response B)
+- [ ] OR `ConditionalMock`: predicate on input values selects response
+- [ ] Wire into `BoundaryMocks` / DryRun interception in `execute.rs`
+
+**TODO 10.3: Generate credential lifecycle suites**
+- [ ] Detect `CredentialOp` nodes in DAG analysis
+- [ ] Generate Bucket C scenarios specific to credential flows:
+      acquire-fails, use-with-expired, refresh-succeeds, revoke-then-use
+- [ ] Use Phase 5 windows to test sub-segments of the credential flow
+
 ## References
 
 - Testgen module: `core/codegen/src/testgen/`

@@ -320,56 +320,80 @@ emits:
 
 ---
 
-## Integration Tests
+## Testing Strategy
 
-Full lifecycle tests for each credential source. These verify the
-acquire → use → destroy cycle against real (but benign) resources.
+### What testgen generates today (no changes needed)
 
-### Test 1: GitHub App — installation token lifecycle
+Once the credential DAG exists with `CredentialOp`, `Prepare*`, transport
+`Execute`, and `Parse*` nodes, testgen automatically generates:
+
+**Bucket A — Execution semantics:**
+- DryRun completion: full credential DAG runs with mocked transports
+- Transport interception: every transport executor node is interceptable
+  (the `acquire_token` HTTP call, the `use_api` HTTP call, etc.)
+
+**Bucket B — Contract obligations:**
+- Edge predicate entailment across credential → prepare → execute edges
+- Cardinality coverage for credential ports (One credential vs None)
+- Node contract compliance for each pure node
+
+**Bucket C — Scenario coverage (N+1):**
+- All transports succeed (acquire + use both work)
+- Single transport failure: acquire fails → verify error propagation
+- Single transport failure: use fails (token rejected) → verify handling
+
+**Bucket D — Resource hygiene:**
+- `resource_lease("credential:github", 3600_000)` → generates
+  `test_resource_credential_github_acquire` and
+  `test_resource_credential_github_timeout`
+- Resource conflict detection between parallel credential consumers
+
+**Node I/O examples** (from MockSpec):
+- Per-node unit tests for `AcquireCredential`, `ValidateToken`, etc.
+- Each with `OutputMatcher` assertions (exact values, type checks, non-empty)
+
+### What testgen CANNOT generate today — gaps
+
+Three capabilities are missing for full lifecycle test generation:
+
+| Gap | Description | Blocking testgen phase |
+|-----|-------------|----------------------|
+| **Stateful mocking** | Mocks are static per-node. Can't return token A on first call, token B after refresh. Need predicate-based or call-count-aware mock responses. | New capability — `ConditionalMock` or stateful `MockSequence` |
+| **Multi-phase flows** | No way to test "run nodes 1-3, assert intermediate state, then run 4-5." The full acquire → use → refresh → use → destroy sequence is a choreography that DryRun runs in one shot with static mocks. | **Phase 5: Window-based testing** (`testgen-improvements.md`) |
+| **Credential resource type** | Resource sim has Lock/Lease but not acquire/refresh/revoke semantics. Lease timeout tests TTL but can't test "refresh extends the lease" or "revoke invalidates." | Extension to Bucket D — add `ResourceType::Credential` with refresh/revoke behaviors |
+
+**Dependency chain:**
 
 ```
-Setup:    GitHub App configured (app_id, private_key, installation_id)
-Acquire:  Exchange JWT for installation token (POST /app/installations/{id}/access_tokens)
-Use:      Read a public repo's metadata (GET /repos/{owner}/{repo}) — benign, read-only
-Verify:   Response is 200, token worked
-Destroy:  DELETE /installation/token — explicitly revoke
-Verify:   Same GET now returns 401 — token is dead
+Phase 5 (windowed testing)
+    → enables multi-phase credential flow tests
+    → testgen can enumerate windows: [acquire..use], [use..refresh], [refresh..revoke]
+    → inject intermediate values at window boundaries
+    → test each phase independently AND in sequence
+
+Bucket D extension (credential resource type)
+    → ResourceType::Credential { expiry_ms, refreshable }
+    → ResourceBehavior::RefreshSucceeds { new_ttl_ms }
+    → ResourceBehavior::RefreshFails { error }
+    → ResourceBehavior::RevokeSucceeds
+    → generates: acquire, use-while-valid, refresh, use-after-refresh,
+                 expire, revoke lifecycle test sequence
+
+Stateful mocking (new)
+    → MockSequence: ordered list of responses per transport node
+    → First call to acquire_token → returns token A
+    → Second call (after refresh) → returns token B
+    → OR: ConditionalMock with predicate on input values
 ```
 
-### Test 2: GitHub PAT (env var) — session lifecycle
+### Manual baseline tests (written now, absorbed by testgen later)
 
-```
-Setup:    GITHUB_TOKEN env var set (in test harness, not real env)
-Acquire:  EnvVarProvider reads it, wraps as Credential
-Use:      GET /repos/{owner}/{repo} — benign read
-Verify:   200 response
-Teardown: Clear env var in test harness
-Verify:   Re-acquire fails with CredentialError::missing_env
-```
+These are the tests we write by hand for Phases 1-3. They become
+absorption targets per `testgen-improvements.md` Phase 8 when the
+gaps above are filled. Mark each with `// TESTGEN-ABSORB: <gap>` so
+they're easy to find.
 
-### Test 3: OpenAI API key — session lifecycle
-
-```
-Setup:    OPENAI_API_KEY env var set
-Acquire:  LlmEnvVarProvider reads it, wraps as Credential with Bearer scheme
-Use:      GET /v1/models — benign, read-only, cheap
-Verify:   200 response, models list returned
-Teardown: Clear env var
-Verify:   Re-acquire fails
-```
-
-### Test 4: Anthropic API key — session lifecycle
-
-```
-Setup:    ANTHROPIC_API_KEY env var set
-Acquire:  LlmEnvVarProvider reads it, wraps as Credential with Header("x-api-key")
-Use:      GET /v1/models — benign read
-Verify:   200 response
-Teardown: Clear env var
-Verify:   Re-acquire fails
-```
-
-### Test 5: Credential expiry lifecycle (unit test, no network)
+**Test 1: Credential expiry lifecycle (unit test, no network)**
 
 ```
 Setup:    Create Credential with expires_at = now - 1 second
@@ -380,15 +404,64 @@ Setup:    Create Credential with expires_at = None
 Verify:   credential.is_valid() == true (session-scoped)
 ```
 
-### Test 6: DryRun credential interception
+Testgen coverage: Bucket B node contract tests will cover this once
+`Credential.is_valid()` is a node output. No gap — this is expressible
+today via `NodeExample` with `OutputMatcher::exact(Value::Bool(true))`.
+
+**Test 2: Env var provider acquire/fail cycle**
 
 ```
-Setup:    CredentialOp with mock providers
-Execute:  DAG in DryRun mode
-Verify:   CredentialOp intercepted, mock credentials emitted
-Verify:   No env vars read, no HTTP calls made
-Verify:   Downstream Prepare node received mock Credential
+Setup:    GITHUB_TOKEN env var set (in test harness, not real env)
+Acquire:  EnvVarProvider reads it, wraps as Credential
+Verify:   credential.secret.value == expected token
+Verify:   credential.scheme == AuthScheme::Bearer
+Teardown: Clear env var
+Verify:   Re-acquire fails with CredentialError::missing_env
 ```
+
+Testgen coverage: Per-node I/O example covers the success case. The
+clear-then-fail case requires **stateful mocking** (env changes between
+calls). Mark: `// TESTGEN-ABSORB: stateful-mocking`.
+
+**Test 3: GitHub App — full lifecycle with real App**
+
+```
+Setup:    GitHub App configured (app_id, private_key, installation_id)
+Acquire:  Exchange JWT for installation token
+Use:      GET /repos/{owner}/{repo} — benign, read-only
+Verify:   Response is 200, token worked
+Destroy:  DELETE /installation/token — explicitly revoke
+Verify:   Same GET now returns 401 — token is dead
+```
+
+Testgen coverage: Requires **multi-phase flows** (Phase 5 windowed
+testing) AND **stateful mocking** (revoke changes subsequent responses).
+Mark: `// TESTGEN-ABSORB: phase-5-windows, stateful-mocking`.
+
+### Testgen improvements needed (cross-reference)
+
+These are additions to `testgen-improvements.md` that credential
+lifecycle testing depends on. They are NOT blockers for Phases 1-3
+of this doc — we write manual tests now and absorb later.
+
+**Existing phases that help:**
+
+- **Phase 5 (Window-based testing)** — enables testing credential flow
+  sub-segments: `[acquire..use]`, `[use..refresh]`, `[refresh..revoke]`.
+  Currently pending (TODO 5.1–5.5).
+
+- **Phase 8 (Manual test absorption)** — the manual baseline tests
+  above are absorption targets. TODO 8.1–8.4 define the assertion types
+  testgen needs to replace hand-written tests.
+
+**New items for testgen-improvements.md (document, don't block on):**
+
+- `TODO 10.1`: Add `ResourceType::Credential` with refresh/revoke
+  behaviors to resource simulation (Bucket D extension)
+- `TODO 10.2`: Add `MockSequence` or `ConditionalMock` to MockSpec
+  for stateful transport mocking
+- `TODO 10.3`: Generate credential lifecycle test suites when
+  `CredentialOp` nodes are detected in a DAG (Bucket C extension)
 
 ---
 
@@ -402,6 +475,7 @@ Verify:   Downstream Prepare node received mock Credential
 - [ ] Add `CredentialProvider` trait
 - [ ] Add `CredentialError` type
 - [ ] Unit tests: Secret redaction, Credential.is_valid(), AuthScheme.apply()
+      (manual — Test 1. Expressible as `NodeExample` once wired into DAG)
 
 ### Phase 2: Concrete providers — GitHub + LLM (additive)
 
@@ -409,9 +483,8 @@ Verify:   Downstream Prepare node received mock Credential
 - [ ] Add `LlmEnvVarProvider` (reads OPENAI_API_KEY / ANTHROPIC_API_KEY)
 - [ ] Add `CredentialOp` boundary node (mirrors EnvOp pattern)
 - [ ] Add mock credential provider for DryRun
-- [ ] Integration tests: env var lifecycle (Tests 2, 3, 4)
-- [ ] Integration test: DryRun interception (Test 6)
-- [ ] Unit test: expiry lifecycle (Test 5)
+- [ ] Add `MockSpec` for credential DAG (DryRun, scenarios, I/O examples auto-generated by testgen)
+- [ ] Manual test: env var acquire/fail cycle (Test 2 — `// TESTGEN-ABSORB: stateful-mocking`)
 
 ### Phase 3: GitHub App provider (first real lifecycle)
 
@@ -419,7 +492,7 @@ Verify:   Downstream Prepare node received mock Credential
 - [ ] JWT generation from App private key (RS256)
 - [ ] Installation token acquisition (POST /app/installations/{id}/access_tokens)
 - [ ] Token revocation (DELETE /installation/token)
-- [ ] Integration test: full lifecycle with real GitHub App (Test 1)
+- [ ] Manual test: full lifecycle with real GitHub App (Test 3 — `// TESTGEN-ABSORB: phase-5-windows, stateful-mocking`)
 
 ### Phase 4: Migration (breaking changes, crate by crate)
 
@@ -432,6 +505,14 @@ Verify:   Downstream Prepare node received mock Credential
 - [ ] Remove `GitHubAuth` enum (replaced by provider impls)
 - [ ] Remove `LlmAuthStyle` and `ApiKeyEnvVar` (replaced by AuthScheme + provider)
 - [ ] Update all DAG graphs to include CredentialOp boundary node
+
+### Phase 5: Testgen absorption (after testgen-improvements Phase 5 + 8)
+
+- [ ] TODO 10.1: Add `ResourceType::Credential` to resource simulation
+- [ ] TODO 10.2: Add `MockSequence`/`ConditionalMock` to MockSpec
+- [ ] TODO 10.3: Generate credential lifecycle suites for DAGs with `CredentialOp`
+- [ ] Absorb manual Tests 2, 3 into testgen-generated tests
+- [ ] Delete hand-written tests marked `// TESTGEN-ABSORB`
 
 ---
 
