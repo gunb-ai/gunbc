@@ -2,7 +2,7 @@
 
 **Status**: Design
 **Date**: 2026-02-04
-**Depends on**: TODO_consolidate_di.md Item 3
+**Depends on**: TODONE/TODO_consolidate_di.md Item 3
 
 Auth should be invisible to business logic. Processes either receive a
 resolved token or the result of an authenticated call. All credentials
