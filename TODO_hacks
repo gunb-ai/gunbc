@@ -107,6 +107,11 @@ key in the computed key. But `compute_key(&self)` has no manifest parameter.
 `SimpleResource::compute_key()` returns `ContentHash::empty()` as placeholder.
 This can make resources incorrectly appear fresh.
 
+**Note (2026-02-05):** This is test/placeholder code only. Production code
+(codegen, testgen, ci/ops.rs) uses `HashBuilder` directly via `compute_*_input_hash()`
+functions, not through the `ManagedResource` trait. The `SimpleResource` type is
+only used in unit tests within managed.rs itself.
+
 **Fix:** Return error or move to `#[cfg(test)]`.
 
 ### #12: check_state computes keys even when manifest entry is missing

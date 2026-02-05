@@ -199,7 +199,7 @@ fn execute_parse_codegen_exists(
                 // OK - we have proof that inputs match and outputs exist
             }
             ManifestCheckResult::Stale(reason) => {
-                return Err(ExecError::new(&format!(
+                return Err(ExecError::new(format!(
                     "Generated code is stale: {} (run with --mode=ensure to fix)",
                     reason
                 )));
@@ -214,7 +214,7 @@ fn execute_parse_codegen_exists(
             }
             ManifestCheckResult::Error(err) => {
                 // In verify mode, manifest errors are hard failures
-                return Err(ExecError::new(&format!(
+                return Err(ExecError::new(format!(
                     "Cannot verify freshness: {} (run with --mode=ensure to fix)",
                     err
                 )));
@@ -269,7 +269,7 @@ fn execute_parse_codegen_exists(
 fn get_exec_mode_from_env() -> ExecMode {
     match std::env::var("GUNBC_EXEC_MODE").as_deref() {
         Ok("verify") => ExecMode::Verify,
-        Ok("ensure") | _ => ExecMode::Ensure,
+        _ => ExecMode::Ensure, // "ensure" or any other value defaults to Ensure
     }
 }
 

@@ -121,10 +121,10 @@ impl HashBuilder {
         // Hash: path + NUL + length + contents + NUL
         // This prevents boundary collisions (e.g., A="ab",B="c" vs A="a",B="bc")
         self.hasher.update(path.to_string_lossy().as_bytes());
-        self.hasher.update(&[0u8]); // delimiter
-        self.hasher.update(&(contents.len() as u64).to_le_bytes());
+        self.hasher.update([0u8]); // delimiter
+        self.hasher.update((contents.len() as u64).to_le_bytes());
         self.hasher.update(&contents);
-        self.hasher.update(&[0u8]); // delimiter
+        self.hasher.update([0u8]); // delimiter
 
         Ok(self)
     }
@@ -140,7 +140,7 @@ impl HashBuilder {
         // Hash the glob pattern itself so "no matches" is a distinct contribution
         self.hasher.update(b"glob:");
         self.hasher.update(pattern.as_bytes());
-        self.hasher.update(&[0u8]);
+        self.hasher.update([0u8]);
 
         let entries: Result<Vec<_>, _> = glob::glob(pattern)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?
@@ -148,8 +148,7 @@ impl HashBuilder {
 
         // Propagate glob traversal errors instead of silently ignoring them
         let mut paths: Vec<_> = entries.map_err(|e| {
-            io::Error::new(
-                io::ErrorKind::Other,
+            io::Error::other(
                 format!("glob traversal error: {}", e),
             )
         })?;
