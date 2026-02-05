@@ -873,23 +873,23 @@ is already correct for tools.
 - [ ] `build_resources()` function
 - [ ] Unit tests for resolution
 
-### Phase 3: Manifest Integration
-- [ ] Manifest write in codegen
-- [ ] Manifest write in testgen
-- [ ] Integration tests
+### Phase 3: Manifest Integration ✓
+- [x] Manifest write in codegen
+- [x] Manifest write in testgen
+- [x] Integration tests
 
-### Phase 4: CI Integration
-- [ ] Replace file check in ci/ops.rs
-- [ ] Test with fresh/stale/missing manifest
+### Phase 4: CI Integration ✓
+- [x] Replace file check in ci/ops.rs
+- [x] Test with fresh/stale/missing manifest
 
-### Phase 5: ExecMode Integration
-- [ ] `ExecMode` enum
-- [ ] Add to `ExecutorContext`
-- [ ] `--mode` flag in testgen
-- [ ] `--mode` flag in other bins
-- [ ] Deprecate `--check` flag
+### Phase 5: ExecMode Integration ✓
+- [x] `ExecMode` enum (in state.rs)
+- [x] `--mode` flag in CI tool
+- [ ] `--mode` flag in testgen (deferred)
+- [ ] `--mode` flag in other bins (deferred)
+- [ ] Deprecate `--check` flag (deferred)
 
-### Phase 6: Makefile Simplification
+### Phase 6: Makefile Simplification (Deferred)
 - [ ] Remove `extra_deps` from `MetaTarget`
 - [ ] Remove `fix_deps` from `MetaTarget`
 - [ ] Remove/deprecate `PrepLevel`
@@ -897,10 +897,13 @@ is already correct for tools.
 - [ ] Emit `--mode` in renderer
 - [ ] Test generated Makefile
 
+Note: Phase 6 is now enabled by the infrastructure from phases 1-5.
+The current manual wiring continues to work; simplification is a future optimization.
+
 ### Phase 7: ToolHandle Unification (Optional)
 - [ ] `ToolHandle` as `ResourceHandle<ToolResource>`
 
-### Phase 8: Cleanup
-- [ ] Update TODO_hacks
-- [ ] Update design-resource-acquisition.md
-- [ ] Update README
+### Phase 8: Cleanup ✓
+- [x] Update TODO_hacks
+- [x] Mark resolved TODOs in TODONE
+- [ ] Update README (deferred)

@@ -298,3 +298,22 @@ The following items are tracked in other docs:
 - **Environment/resource modeling (inline handle construction)** →
   TODO/design-resource-acquisition.md (comprehensive design)
 - **IR completeness for generated code** → TODO/design-codegen-quality.md
+
+## Resolved Items (2026-02-05)
+
+**RESOLVED: CI codegen check is brittle (file existence hack)**
+
+The CI pipeline now uses manifest-based freshness checking instead of
+file existence. See TODO/design-unified-resource-model.md for the full
+implementation (Phases 1-5).
+
+Implementation:
+- `core/ir/src/resource/` - ContentHash, ResourceManifest, ExecMode, etc.
+- `core/codegen/src/main.rs` - Writes manifest after successful codegen
+- `gunbc-dag/src/bin/testgen.rs` - Writes manifest after successful testgen
+- `gunbc-dag/src/ci/ops.rs` - Manifest-based freshness check
+- `gunbc-dag/src/bin/ci.rs` - `--mode=verify|ensure` flag
+
+The resource model now tracks:
+- `build:generated_cli` - codegen outputs + input hash
+- `build:generated_tests` - testgen outputs + input hash (depends on codegen)
