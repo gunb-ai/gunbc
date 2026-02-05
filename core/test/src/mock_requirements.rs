@@ -230,18 +230,17 @@ impl MockRequirements {
             return true;
         }
 
-        // Map-backed types (ToolHandle, AuthToken, Timestamp, etc.)
+        // Map-backed types (ToolHandle, AuthToken, FilesystemHandle, Platform)
         if actual == "Map" {
-            let map_backed = [
-                "ToolHandle",
-                "AuthToken",
-                "Timestamp",
-                "FilesystemHandle",
-                "Platform",
-            ];
+            let map_backed = ["ToolHandle", "AuthToken", "FilesystemHandle", "Platform"];
             if map_backed.contains(&expected) {
                 return true;
             }
+        }
+
+        // Int-backed types (Timestamp stores millis as Int)
+        if actual == "Int" && expected == "Timestamp" {
+            return true;
         }
 
         false
@@ -521,6 +520,42 @@ pub fn extract_mock_requirements<T>(dag: &gunbc_ir::Dag<T>, name: &str) -> MockR
                     cardinality: port.cardinality,
                     required: true,
                     kind: MockSlotKind::Transport,
+                });
+            }
+        }
+    }
+
+    // Also add slots for resource/env node outputs that ARE connected downstream
+    // (they provide capability tokens that need mocks for DryRun)
+    for node in &dag.nodes {
+        if !resource_nodes.contains(node.id.0.as_str()) {
+            continue;
+        }
+
+        for port in &node.outputs {
+            // Skip if already added as boundary
+            let is_boundary = boundaries
+                .boundary_ports
+                .iter()
+                .any(|(nid, pn)| nid == &node.id && pn == &port.name);
+            if is_boundary {
+                continue;
+            }
+
+            // Check if this output is connected downstream
+            let is_connected = dag
+                .edges
+                .iter()
+                .any(|e| e.from_node == node.id && e.from_port == port.name);
+
+            if is_connected {
+                requirements = requirements.add_slot(MockSlot {
+                    node_id: node.id.clone(),
+                    port_name: port.name.clone(),
+                    type_id: port.type_id.clone(),
+                    cardinality: port.cardinality,
+                    required: true,
+                    kind: MockSlotKind::Resource,
                 });
             }
         }

@@ -233,6 +233,14 @@ impl MockSpec {
             .map(|m| &m.value)
     }
 
+    /// Get mock value for a specific transport executor port.
+    pub fn get_transport_mock(&self, node: &str, port: &str) -> Option<&Value> {
+        self.transport_mocks
+            .iter()
+            .find(|m| m.node == node && m.port == port)
+            .map(|m| &m.value)
+    }
+
     /// Check if a value satisfies input expectations for a port.
     pub fn satisfies_input(&self, port: &str, value: &Value) -> Result<(), String> {
         let expectation = self.input_expectations.iter().find(|e| e.port == port);
