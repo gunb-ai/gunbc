@@ -1,6 +1,6 @@
 # Design: Unified Resource Model
 
-> **Consolidates:** URGENT_codegen_upsert.md, design-build-resource-chain.md,
+> **Consolidates:** TODONE/URGENT_codegen_upsert.md, TODONE/design-build-resource-chain.md,
 > design-resource-acquisition.md (Phases 4-5), and related TODO_hacks items.
 >
 > **Principle:** All acquirable things—tools, build artifacts, filesystem handles,
@@ -11,11 +11,17 @@
 - [ ] Unassigned
 
 ## Status
-**URGENT** — This design addresses multiple interconnected issues:
-- CI codegen check is brittle (file existence hack)
-- Manual dependency wiring in Makefile (extra_deps, fix_deps, PrepLevel)
-- testgen/testgen-check duality, fmt/fmt-fix duality
-- No staleness detection for build artifacts
+**Phases 1-5 implemented** (2026-02-05). Core infrastructure is in place:
+- ContentHash, HashBuilder for freshness keys
+- ResourceManifest for on-disk storage
+- Manifest integration in codegen/testgen
+- CI uses manifest-based freshness (replaces brittle file check)
+- ExecMode (Verify/Ensure) via `--mode` flag
+
+**Remaining work:**
+- Phase 6: Makefile simplification (deferred — infrastructure ready)
+- Phase 7: ToolHandle unification (optional)
+- Section 11: Extension candidates (deps.toml, Makefile tracking, etc.)
 
 ## 1. Problem Statement
 

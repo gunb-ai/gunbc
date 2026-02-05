@@ -1,7 +1,7 @@
 # Design: Resource Acquisition Model
 
 > Resolves: TODO_dag_environment.md Q1–Q6, Phase 3 design decisions,
-> and TODO_consolidate_di.md dependency injection items.
+> and TODONE/TODO_consolidate_di.md dependency injection items.
 >
 > Principle: **All environment needs are resource acquisition.**
 > Dependencies are always injected and solved up front, not within a node.
@@ -9,6 +9,18 @@
 
 ## Ownership
 - [x] Taken by Codex (2026-02-05)
+
+## Status
+**Phases 1-3 complete** (2026-02-05). Resource trait infrastructure implemented:
+- `Resource` trait with `resource_id()`, `access_mode()`, `kind()`
+- Per-resource environment nodes (FsEnv, PlatformEnv, ClockEnv, AuthEnv)
+- `res:` port naming convention and validation
+- DryRun mock extension for all resource types
+- Migrated existing inline violations to resource acquisition pattern
+
+**Remaining (tracked in design-unified-resource-model.md):**
+- Phase 4: Sub-DAG zero-based delegation model
+- Phase 5: Resource accounting / auto-derive ResourceAccess
 
 ## 1. Problem Statement
 
