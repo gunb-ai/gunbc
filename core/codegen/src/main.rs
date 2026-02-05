@@ -32,10 +32,13 @@ use gunbc_clippy::ClippyConfigRenderer;
 use gunbc_codegen::{
     all_cleanable_outputs, all_tools, generate_cli_with_import, generate_graph_rs, FileWriter,
 };
+use gunbc_ir::resource::{
+    ContentHash, HashBuilder, ManifestEntry, ResourceManifest,
+};
 use gunbc_ir::transport::ci::{
     yaml_block, CacheConfig, CiRenderer, GitHubActionsProvider, GitLabCiProvider, RenderConfig,
 };
-use gunbc_ir::{Renderable, CODEGEN_BIN_DIR, CODEGEN_LIB_DIR};
+use gunbc_ir::{Renderable, ResourceId, CODEGEN_BIN_DIR, CODEGEN_LIB_DIR};
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fs;
@@ -89,6 +92,9 @@ fn cmd_commit(dry_run: bool) {
         eprintln!("Codegen failed");
         std::process::exit(1);
     }
+
+    // Update resource manifest to record successful codegen
+    update_manifest_after_codegen(dry_run);
 
     // Step 2: Build with cargo
     println!("\n[2/3] Building binaries...");
@@ -235,6 +241,9 @@ fn cmd_codegen(dry_run: bool) {
         eprintln!("Codegen failed");
         std::process::exit(1);
     }
+
+    // Update resource manifest to record successful codegen
+    update_manifest_after_codegen(dry_run);
 }
 
 /// Generate graph.rs files from declarative DAG definitions.
@@ -763,6 +772,89 @@ fn codegen_clis(dry_run: bool) -> bool {
     }
 
     true
+}
+
+// ============================================================================
+// Resource Manifest Support
+// ============================================================================
+
+/// Compute the content hash for codegen inputs.
+///
+/// This hashes the source files that affect codegen output:
+/// - core/codegen/src/**/*.rs (codegen implementation)
+/// - core/ir/src/**/*.rs (IR types used by codegen)
+/// - Cargo.toml files for these crates
+///
+/// Note: This is a simplified hash that may have false negatives (rebuild
+/// when not strictly necessary). Future optimization: use mtime-based caching.
+fn compute_codegen_input_hash() -> io::Result<ContentHash> {
+    let builder = HashBuilder::new();
+
+    // Hash codegen source files
+    let (builder, codegen_count) = builder.update_glob("core/codegen/src/**/*.rs")?;
+
+    // Hash IR source files (codegen depends on IR types)
+    let (builder, ir_count) = builder.update_glob("core/ir/src/**/*.rs")?;
+
+    // Hash relevant Cargo.toml files
+    let builder = builder.update_file("core/codegen/Cargo.toml")?;
+    let builder = builder.update_file("core/ir/Cargo.toml")?;
+
+    // Include Rust version as part of the hash
+    let rust_version = env::var("RUSTC_VERSION").unwrap_or_else(|_| "unknown".to_string());
+    let builder = builder.update_str(&rust_version);
+
+    println!(
+        "  Computed hash from {} codegen + {} IR source files",
+        codegen_count, ir_count
+    );
+
+    Ok(builder.finalize())
+}
+
+/// Write a manifest entry for the generated CLI resource.
+///
+/// This records that codegen was successful with the given input hash.
+/// The CI system can later check this to determine if codegen needs to run.
+#[allow(clippy::disallowed_methods)]
+fn write_codegen_manifest(hash: ContentHash) -> io::Result<()> {
+    let mut manifest = ResourceManifest::load_default()?;
+
+    let resource_id = ResourceId::build("generated_cli");
+    let entry = ManifestEntry::new(hash).with_outputs(vec![
+        PathBuf::from(CODEGEN_BIN_DIR),
+        PathBuf::from(CODEGEN_LIB_DIR),
+    ]);
+
+    manifest.insert(resource_id, entry);
+    manifest.save_default()?;
+
+    println!("  Updated resource manifest: target/.resource-manifest.json");
+    Ok(())
+}
+
+/// Update the resource manifest after successful codegen.
+///
+/// Called at the end of successful codegen operations (commit, codegen).
+fn update_manifest_after_codegen(dry_run: bool) {
+    if dry_run {
+        println!("\n  (dry-run: would update resource manifest)");
+        return;
+    }
+
+    println!("\n  Updating resource manifest...");
+    match compute_codegen_input_hash() {
+        Ok(hash) => {
+            if let Err(e) = write_codegen_manifest(hash) {
+                eprintln!("  Warning: Could not write manifest: {}", e);
+                // Non-fatal - codegen still succeeded
+            }
+        }
+        Err(e) => {
+            eprintln!("  Warning: Could not compute input hash: {}", e);
+            // Non-fatal - codegen still succeeded
+        }
+    }
 }
 
 fn print_help() {
