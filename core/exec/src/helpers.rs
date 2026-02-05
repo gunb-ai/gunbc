@@ -635,7 +635,7 @@ mod tests {
         let mut inputs = HashMap::new();
         inputs.insert("flag".to_string(), Value::Bool(true));
 
-        assert_eq!(inputs.require_bool("flag").unwrap(), true);
+        assert!(inputs.require_bool("flag").unwrap());
     }
 
     #[test]
