@@ -226,6 +226,30 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                 );
             }
 
+            // Validate that all mocks reference existing nodes and ports.
+            //
+            // This catches typos and stale mocks that reference renamed/removed nodes.
+            let unknown_slots = self.find_unknown_mock_slots(spec);
+            if !unknown_slots.is_empty() {
+                panic!(
+                    "Unknown mock slots: DAG '{}' has {} mock(s) referencing unknown nodes/ports:\n\
+                     \n\
+                     {}\n\
+                     \n\
+                     Each mock must reference an existing node output port.\n\
+                     Check for typos or remove stale mocks.",
+                    module_name,
+                    unknown_slots.len(),
+                    unknown_slots
+                        .iter()
+                        .map(|(node, port, reason)| {
+                            format!("  - {}.{}: {}", node, port, reason)
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n"),
+                );
+            }
+
             // Validate mock-value type compatibility: every mock value's type should
             // be compatible with the corresponding port's TypeId.
             //
@@ -442,6 +466,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
         };
 
         // Helper to check type compatibility
+        // NOTE: This must match MockRequirements::types_compatible in gunbc-test
         let types_compatible = |port_type: &str, value_type: &str| -> bool {
             // Exact match
             if port_type == value_type {
@@ -456,23 +481,29 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                 return true;
             }
             // Json is flexible - can hold structured data that might be typed differently
+            // NOTE: This is intentionally permissive; consider tightening if type drift is a concern
             if port_type == "Json" || value_type == "Json" {
                 return true;
             }
-            // Several structured types are serialized as Map:
-            // - ToolHandle, AuthToken, Timestamp, FilesystemHandle, etc.
-            // Map values are compatible with these typed ports.
+            // Map-backed types: ToolHandle, AuthToken, FilesystemHandle
+            // These types serialize to/from Map when stored as Value
             if value_type == "Map" {
-                let map_backed_types = [
-                    "ToolHandle",
-                    "AuthToken",
-                    "Timestamp",
-                    "FilesystemHandle",
-                    "Platform",
-                ];
+                let map_backed_types = ["ToolHandle", "AuthToken", "FilesystemHandle"];
                 if map_backed_types.contains(&port_type) {
                     return true;
                 }
+            }
+            // Int-backed types: Timestamp stores milliseconds as Int
+            if value_type == "Int" && port_type == "Timestamp" {
+                return true;
+            }
+            // String-backed types: Platform serializes as String
+            if value_type == "String" && port_type == "Platform" {
+                return true;
+            }
+            // Map can also represent Platform (for structured platform info)
+            if value_type == "Map" && port_type == "Platform" {
+                return true;
             }
             false
         };
@@ -514,6 +545,73 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
         }
 
         mismatches
+    }
+
+    /// Find mocks that reference non-existent nodes or ports.
+    ///
+    /// Returns a list of (node_id, port_name, reason) tuples.
+    fn find_unknown_mock_slots(&self, spec: &MockSpec) -> Vec<(String, String, String)> {
+        let mut unknown = Vec::new();
+
+        // Check transport mocks
+        for tm in &spec.transport_mocks {
+            match self.dag.get_node(&NodeId(tm.node.clone())) {
+                None => {
+                    unknown.push((
+                        tm.node.clone(),
+                        tm.port.clone(),
+                        "node does not exist".to_string(),
+                    ));
+                }
+                Some(node) => {
+                    if !node.outputs.iter().any(|p| p.name.0 == tm.port) {
+                        unknown.push((
+                            tm.node.clone(),
+                            tm.port.clone(),
+                            format!(
+                                "port does not exist on node (available: {})",
+                                node.outputs
+                                    .iter()
+                                    .map(|p| p.name.0.as_str())
+                                    .collect::<Vec<_>>()
+                                    .join(", ")
+                            ),
+                        ));
+                    }
+                }
+            }
+        }
+
+        // Check boundary mocks
+        for bm in &spec.boundary_mocks {
+            match self.dag.get_node(&NodeId(bm.node.clone())) {
+                None => {
+                    unknown.push((
+                        bm.node.clone(),
+                        bm.port.clone(),
+                        "node does not exist".to_string(),
+                    ));
+                }
+                Some(node) => {
+                    if !node.outputs.iter().any(|p| p.name.0 == bm.port) {
+                        unknown.push((
+                            bm.node.clone(),
+                            bm.port.clone(),
+                            format!(
+                                "port does not exist on node (available: {})",
+                                node.outputs
+                                    .iter()
+                                    .map(|p| p.name.0.as_str())
+                                    .collect::<Vec<_>>()
+                                    .join(", ")
+                            ),
+                        ));
+                    }
+                }
+            }
+        }
+
+        unknown
     }
 
     /// Generate the full test file (header excluded).

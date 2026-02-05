@@ -111,11 +111,14 @@ The following type compatibilities are implemented:
 
 ## MockSlotKind
 
-Three kinds of mock slots are detected:
+Four kinds of interceptable nodes are detected:
 
-1. **Boundary** - Unconnected output ports (world writes)
-2. **Transport** - Transport executor outputs (consume TransportRequest)
-3. **Resource** - Environment/resource node outputs (emit capability tokens)
+1. **Boundary** - Unconnected output ports (world writes) - Optional mocks
+2. **Transport** - Transport executor outputs (consume TransportRequest) - Required mocks
+3. **Resource** - Environment/resource node outputs (emit capability tokens) - Required mocks
+4. **CliTool** - CLI tool nodes (consume ToolHandle but not TransportRequest) - Required mocks (e.g., `clippy_lint`)
+
+All transport and CLI tool outputs require mocks because DryRun interception returns mocked values for the entire node.
 
 ## Error Handling
 
@@ -141,6 +144,21 @@ pub struct MockIncompleteError {
 3. **Co-location** - DAG is built first, mocks extracted from its structure
 4. **IDE support** - typed helpers enable autocomplete
 5. **Test validates pattern** - `test_typed_builder_catches_type_errors` proves type checking works
+6. **Duplicate prevention** - Setting the same slot twice replaces instead of duplicating
+7. **Unknown slot detection** - Testgen validates that all mocks reference existing nodes/ports
+
+## Testgen Validations
+
+Testgen (`core/codegen/src/testgen/codegen.rs`) now validates:
+
+1. **Unknown mock slots** - Mocks referencing non-existent nodes/ports cause panics
+2. **Type compatibility** - Mock value types must match port types (same rules as MockRequirements)
+3. **Missing transport mocks** - Connected transport outputs without mocks cause panics
+
+Type compatibility is implemented identically in both MockRequirements and testgen:
+- `Int -> Timestamp` (Timestamp serializes as Int)
+- `String -> Platform` (Platform serializes as String)
+- `Map -> ToolHandle/AuthToken/FilesystemHandle/Platform` (Map-backed types)
 
 ## Migration Status
 

@@ -68,7 +68,12 @@ pub enum MockTypeError {
         actual: String,
     },
 
-    /// Value cardinality doesn't match port cardinality
+    /// Value cardinality doesn't match port cardinality.
+    ///
+    /// NOTE: Cardinality validation is not yet implemented. This variant exists
+    /// for future use when we add validation that list/optional values match
+    /// their port's declared cardinality.
+    #[allow(dead_code)]
     CardinalityMismatch {
         node: String,
         port: String,
@@ -230,12 +235,18 @@ impl MockRequirements {
             return true;
         }
 
-        // Map-backed types (ToolHandle, AuthToken, FilesystemHandle, Platform)
+        // Map-backed types (ToolHandle, AuthToken, FilesystemHandle)
+        // NOTE: This must match types_compatible in codegen/testgen/codegen.rs
         if actual == "Map" {
-            let map_backed = ["ToolHandle", "AuthToken", "FilesystemHandle", "Platform"];
+            let map_backed = ["ToolHandle", "AuthToken", "FilesystemHandle"];
             if map_backed.contains(&expected) {
                 return true;
             }
+        }
+
+        // Map can also represent Platform (for structured platform info)
+        if actual == "Map" && expected == "Platform" {
+            return true;
         }
 
         // Int-backed types (Timestamp stores millis as Int)
@@ -280,12 +291,14 @@ impl MockRequirements {
         self.validate_type(slot, &value)?;
         let slot_kind = slot.kind;
 
-        self.filled
-            .insert((NodeId(node.to_string()), PortName(port.to_string())));
+        let key = (NodeId(node.to_string()), PortName(port.to_string()));
 
-        // Add to appropriate mock list based on slot kind
+        // Replace existing mock if present (don't allow duplicates)
+        // Remove any existing mock for this slot first
         match slot_kind {
             MockSlotKind::Transport => {
+                self.transport_mocks
+                    .retain(|m| !(m.node == node && m.port == port));
                 self.transport_mocks.push(TransportMock {
                     node: node.to_string(),
                     port: port.to_string(),
@@ -293,6 +306,8 @@ impl MockRequirements {
                 });
             }
             MockSlotKind::Boundary | MockSlotKind::Resource => {
+                self.boundary_mocks
+                    .retain(|m| !(m.node == node && m.port == port));
                 self.boundary_mocks.push(BoundaryMock {
                     node: node.to_string(),
                     port: port.to_string(),
@@ -300,6 +315,8 @@ impl MockRequirements {
                 });
             }
         }
+
+        self.filled.insert(key);
 
         Ok(self)
     }
@@ -465,6 +482,23 @@ pub fn extract_mock_requirements<T>(dag: &gunbc_ir::Dag<T>, name: &str) -> MockR
         .map(|n| n.id.0.as_str())
         .collect();
 
+    // Find CLI tool nodes (consume ToolHandle but are not resource providers)
+    // These nodes execute external tools and need mocks for their outputs during DryRun
+    let cli_tool_nodes: HashSet<&str> = dag
+        .nodes
+        .iter()
+        .filter(|n| {
+            // Has ToolHandle input
+            let has_tool_input = n.inputs.iter().any(|p| p.type_id.0 == "ToolHandle");
+            // Is not a resource node (doesn't emit resource types)
+            let is_not_resource = !resource_nodes.contains(n.id.0.as_str());
+            // Is not a transport node (doesn't consume TransportRequest)
+            let is_not_transport = !transport_nodes.contains(n.id.0.as_str());
+            has_tool_input && is_not_resource && is_not_transport
+        })
+        .map(|n| n.id.0.as_str())
+        .collect();
+
     let mut requirements = MockRequirements::new(name);
 
     // Add slots for boundary ports from transport and resource nodes only
@@ -477,12 +511,15 @@ pub fn extract_mock_requirements<T>(dag: &gunbc_ir::Dag<T>, name: &str) -> MockR
             .find(|p| &p.name == port_name)
             .unwrap();
 
-        // Only require mocks for transport and resource nodes
+        // Only require mocks for transport, resource, and CLI tool nodes
         // Pure node terminal outputs are computed during execution
         let (kind, required) = if transport_nodes.contains(node_id.0.as_str()) {
             (MockSlotKind::Transport, true)
         } else if resource_nodes.contains(node_id.0.as_str()) {
             (MockSlotKind::Resource, true)
+        } else if cli_tool_nodes.contains(node_id.0.as_str()) {
+            // CLI tool nodes (like clippy_lint) need mocks for DryRun interception
+            (MockSlotKind::Transport, true)
         } else {
             // Pure node terminal outputs - optional (for expected output verification)
             (MockSlotKind::Boundary, false)
@@ -561,6 +598,36 @@ pub fn extract_mock_requirements<T>(dag: &gunbc_ir::Dag<T>, name: &str) -> MockR
                     kind: MockSlotKind::Resource,
                 });
             }
+        }
+    }
+
+    // Also add slots for ALL CLI tool node outputs (even connected ones)
+    // because DryRun interception requires mocks for every output port
+    for node in &dag.nodes {
+        if !cli_tool_nodes.contains(node.id.0.as_str()) {
+            continue;
+        }
+
+        for port in &node.outputs {
+            // Skip if already added as boundary
+            let is_boundary = boundaries
+                .boundary_ports
+                .iter()
+                .any(|(nid, pn)| nid == &node.id && pn == &port.name);
+            if is_boundary {
+                continue;
+            }
+
+            // CLI tool nodes require mocks for ALL outputs (connected or not)
+            // because DryRun interception returns mocked values for the entire node
+            requirements = requirements.add_slot(MockSlot {
+                node_id: node.id.clone(),
+                port_name: port.name.clone(),
+                type_id: port.type_id.clone(),
+                cardinality: port.cardinality,
+                required: true,
+                kind: MockSlotKind::Transport, // Treat CLI tools like transport for interception
+            });
         }
     }
 
