@@ -883,4 +883,137 @@ mod tests {
             panic!("Expected Run variant");
         }
     }
+
+    // ========================================================================
+    // Integration tests for tool path resolution
+    // ========================================================================
+
+    use crate::resource::AccessMode;
+
+    /// Tool definition for testing - uses `git` which should exist everywhere.
+    static TEST_TOOL_GIT: CliToolDef = CliToolDef {
+        id: "git",
+        check_cmd: &["git", "--version"],
+        install_cmd: None,
+        run_cmd: &["git"],
+        description: "Test git tool",
+        access_mode: AccessMode::Read,
+    };
+
+    /// Tool definition for a nonexistent tool.
+    static TEST_TOOL_NONEXISTENT: CliToolDef = CliToolDef {
+        id: "nonexistent_tool_xyz_12345",
+        check_cmd: &["nonexistent_tool_xyz_12345", "--version"],
+        install_cmd: None,
+        run_cmd: &["nonexistent_tool_xyz_12345"],
+        description: "Nonexistent tool for testing",
+        access_mode: AccessMode::Read,
+    };
+
+    #[test]
+    fn test_which_resolver_finds_git() {
+        let resolver = WhichResolver;
+        let result = resolver.resolve(&TEST_TOOL_GIT);
+
+        assert!(result.is_ok(), "git should be found: {:?}", result);
+        let path = result.unwrap();
+        assert!(path.exists(), "resolved path should exist");
+        assert!(
+            path.to_string_lossy().contains("git"),
+            "path should contain 'git'"
+        );
+    }
+
+    #[test]
+    fn test_which_resolver_fails_for_nonexistent() {
+        let resolver = WhichResolver;
+        let result = resolver.resolve(&TEST_TOOL_NONEXISTENT);
+
+        assert!(
+            result.is_err(),
+            "nonexistent tool should not resolve: {:?}",
+            result
+        );
+
+        let err = result.unwrap_err();
+        assert_eq!(err.tool_id, "nonexistent_tool_xyz_12345");
+        assert!(err.message.contains("not found"));
+    }
+
+    #[test]
+    fn test_mock_resolver_returns_configured_path() {
+        let resolver = MockResolver::new().with_path("git", "/mock/path/to/git");
+        let result = resolver.resolve(&TEST_TOOL_GIT);
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), PathBuf::from("/mock/path/to/git"));
+    }
+
+    #[test]
+    fn test_mock_resolver_fails_for_unconfigured() {
+        let resolver = MockResolver::new(); // no paths configured
+        let result = resolver.resolve(&TEST_TOOL_GIT);
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.message.contains("MockResolver"));
+        assert!(err.message.contains("no path configured"));
+    }
+
+    #[test]
+    fn test_resolve_tool_path_with_which() {
+        // Test the convenience function with real resolver
+        let result = resolve_tool_path_with(&TEST_TOOL_GIT, &WhichResolver);
+
+        assert!(result.is_ok(), "should resolve git: {:?}", result);
+    }
+
+    #[test]
+    fn test_resolve_tool_path_with_mock() {
+        let mock = MockResolver::new().with_path("git", "/test/git");
+        let result = resolve_tool_path_with(&TEST_TOOL_GIT, &mock);
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), PathBuf::from("/test/git"));
+    }
+
+    #[test]
+    fn test_cli_tool_error_display() {
+        let err = CliToolError::new(&TEST_TOOL_GIT, "resolve", "tool not found");
+
+        let display = format!("{}", err);
+        assert!(display.contains("git"));
+        assert!(display.contains("resolve"));
+        assert!(display.contains("tool not found"));
+    }
+
+    #[test]
+    fn test_tool_handle_acquire() {
+        let handle = TEST_TOOL_GIT.acquire("/path/to/git");
+
+        assert_eq!(handle.id(), "git");
+        assert_eq!(handle.path(), &PathBuf::from("/path/to/git"));
+        // A real acquired handle has a real path
+        assert!(!handle.path().to_string_lossy().starts_with("/mock/"));
+    }
+
+    #[test]
+    fn test_tool_handle_mock() {
+        let handle = TEST_TOOL_GIT.mock();
+
+        assert_eq!(handle.id(), "git");
+        // Mock handles have paths starting with /mock/
+        assert!(handle.path().to_string_lossy().starts_with("/mock/"));
+        assert!(handle.path().to_string_lossy().contains("git"));
+    }
+
+    #[test]
+    fn test_get_tool_by_id() {
+        let tool = get_tool_by_id("git");
+        assert!(tool.is_some());
+        assert_eq!(tool.unwrap().id, "git");
+
+        let unknown = get_tool_by_id("unknown_tool_xyz");
+        assert!(unknown.is_none());
+    }
 }

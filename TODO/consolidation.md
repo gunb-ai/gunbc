@@ -908,12 +908,12 @@ This is fine; it's infrastructure code, not op code.
 
 ### Remaining (new functionality — integration tests)
 
-- [ ] Add integration tests: `File` transport executor (all 6 FileOp variants) — §8
-- [ ] Add integration tests: `Shell` transport executor (stdout, stderr, exit codes) — §8
-- [ ] Add integration tests: Git transport (`GitRequest` variants against temp repo) — §8
-- [ ] Add integration tests: CLI tool resolution (`resolve_tool_path`, `upsert_tool`) — §8
-- [ ] Add `make test-integration` target (hermetic transport tests) — §8
-- [ ] Add `make test-external` target (non-hermetic transport tests, scheduled CI) — §8
+- [x] Add integration tests: `File` transport executor (all 6 FileOp variants) — `lib/transport/src/executor.rs`
+- [x] Add integration tests: `Shell` transport executor (stdout, stderr, exit codes) — `lib/transport/src/executor.rs`
+- [x] Add integration tests: Git transport (`GitRequest` variants against temp repo) — `lib/transport/src/executor.rs::git_integration`
+- [x] Add integration tests: CLI tool resolution (`resolve_tool_path`, `upsert_tool`) — `core/ir/src/transport/cli.rs`
+- [ ] Add `make test-integration` target (hermetic transport tests) — deferred: tests run as part of normal `cargo test`
+- [ ] Add `make test-external` target (non-hermetic transport tests, scheduled CI) — deferred: no external tests yet
 
 ## Notes
 

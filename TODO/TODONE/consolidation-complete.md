@@ -75,3 +75,21 @@ reference material (patterns, architecture notes).
 
 ### `core/codegen/src/cli_gen.rs`
 - `GraphBuilderId` enum: compile-time safe graph builder references
+
+## Integration Tests Added
+
+All tests are hermetic (no network, use temp dirs, clean up after).
+
+### `lib/transport/src/executor.rs`
+- File transport: Read, Write, Append, Delete, Exists, CreateDir (15 tests)
+- Shell transport: echo, stdin, stderr, exit codes, env vars, cwd (11 tests)
+- Git transport: ls-files, current-branch, diff, diff-name-only, merge-base, pathspecs (6 tests)
+- Dispatch: execute_transport routing tests (2 tests)
+
+### `core/ir/src/transport/cli.rs`
+- WhichResolver: finds git, fails for nonexistent (2 tests)
+- MockResolver: configured paths, unconfigured failure (2 tests)
+- resolve_tool_path_with: both resolvers (2 tests)
+- ToolHandle: acquire, mock (2 tests)
+- get_tool_by_id: lookup (1 test)
+- CliToolError: display (1 test)
