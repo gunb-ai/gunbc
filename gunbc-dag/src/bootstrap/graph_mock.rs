@@ -1,38 +1,84 @@
 //! Mock specification for the bootstrap tool.
 //!
-//! This file declares:
-//! - What mock values boundary nodes provide
-//! - Resource simulations for file system operations
+//! This file uses the typed mock builder pattern to construct MockSpecs
+//! that are "impossible by construction" — the DAG's requirements are
+//! extracted and mocks are type-checked at construction time.
+//!
+//! # Boundary Mocks
+//!
+//! Three transport nodes need mocks:
+//! - `execute_scan_workspace`: Scans workspace for crates
+//! - `execute_makefile_transport`: Writes Makefile
+//! - `execute_gitignore_transport`: Writes .gitignore
+//!
+//! # Input Expectations
+//!
+//! No inputs - bootstrap scans the workspace automatically.
+//!
+//! # Resource Simulations
+//!
+//! - File locks for Makefile and .gitignore
 
-use gunbc_ir::transport::ShellResponse;
+use crate::bootstrap::graph::build_bootstrap_graph;
+use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse, TransportResponse};
 use gunbc_ir::Value;
-use gunbc_test::{MockSpec, NodeExample, OutputMatcher};
+use gunbc_test::{extract_mock_requirements, MockSpec, NodeExample, OutputMatcher};
 
 /// Mock specification for the bootstrap graph.
 ///
-/// # Boundary Mocks
-///
-/// The `write_files` node is the boundary (world write).
-/// It outputs:
-/// - `files_written`: List of files that were written
-/// - `write_count`: Number of files written
-///
-/// # Input Expectations
-///
-/// No inputs - bootstrap scans the workspace automatically.
-///
-/// # Resource Simulations
-///
-/// - File locks for Makefile and .gitignore
+/// Uses the typed mock builder pattern: the DAG is built first, requirements
+/// are extracted from its structure, and mocks are type-checked at construction.
 pub fn bootstrap_mock_spec() -> MockSpec {
-    with_bootstrap_transport_mocks(MockSpec::new("bootstrap"))
-        // Boundary: write_files outputs
-        .boundary(
-            "write_files",
-            "files_written",
-            Value::str_list(vec!["Makefile".into(), ".gitignore".into()]),
+    // Build the actual DAG to extract requirements
+    let dag = build_bootstrap_graph().expect("bootstrap graph should build");
+
+    // Extract typed requirements from DAG structure
+    extract_mock_requirements(&dag, "bootstrap")
+        // Transport: execute_scan_workspace (workspace scan)
+        .transport_response(
+            "execute_scan_workspace",
+            "response",
+            TransportResponse::Shell(ShellResponse::ok("crates/bar\ncrates/foo\n")),
         )
-        .boundary("write_files", "write_count", Value::Int(2))
+        .expect("execute_scan_workspace response should match type")
+        // Transport: execute_makefile_transport (write Makefile)
+        .transport_response(
+            "execute_makefile_transport",
+            "makefile_response",
+            TransportResponse::File(FileResponse {
+                path: "Makefile".into(),
+                operation: FileOp::Write,
+                success: true,
+                content: Some("<mock-makefile>".into()),
+                exists: Some(true),
+                error: None,
+            }),
+        )
+        .expect("execute_makefile_transport response should match type")
+        .boundary_str("execute_makefile_transport", "makefile_written_path", "Makefile")
+        .expect("execute_makefile_transport path should match type")
+        .boundary_str("execute_makefile_transport", "makefile_content", "<mock-makefile>")
+        .expect("execute_makefile_transport content should match type")
+        // Transport: execute_gitignore_transport (write .gitignore)
+        .transport_response(
+            "execute_gitignore_transport",
+            "gitignore_response",
+            TransportResponse::File(FileResponse {
+                path: ".gitignore".into(),
+                operation: FileOp::Write,
+                success: true,
+                content: Some("<mock-gitignore>".into()),
+                exists: Some(true),
+                error: None,
+            }),
+        )
+        .expect("execute_gitignore_transport response should match type")
+        .boundary_str("execute_gitignore_transport", "gitignore_written_path", ".gitignore")
+        .expect("execute_gitignore_transport path should match type")
+        .boundary_str("execute_gitignore_transport", "gitignore_content", "<mock-gitignore>")
+        .expect("execute_gitignore_transport content should match type")
+        // Build spec (pure terminal outputs are computed, not mocked)
+        .build_unchecked()
         // Resources: file locks for both outputs
         .resource_lock("fs:Makefile")
         .resource_lock("fs:.gitignore")
@@ -85,103 +131,186 @@ pub fn bootstrap_mock_spec() -> MockSpec {
         .skip_node_example("prepare_gitignore_write")
 }
 
-/// Mock spec for testing single file write.
+/// Mock spec for testing single file write (Makefile only).
 pub fn bootstrap_mock_spec_makefile_only() -> MockSpec {
-    with_bootstrap_transport_mocks(MockSpec::new("bootstrap"))
-        .boundary(
-            "write_files",
-            "files_written",
-            Value::str_list(vec!["Makefile".into()]),
+    let dag = build_bootstrap_graph().expect("bootstrap graph should build");
+
+    extract_mock_requirements(&dag, "bootstrap")
+        .transport_response(
+            "execute_scan_workspace",
+            "response",
+            TransportResponse::Shell(ShellResponse::ok("crates/bar\ncrates/foo\n")),
         )
-        .boundary("write_files", "write_count", Value::Int(1))
+        .expect("execute_scan_workspace response should match type")
+        .transport_response(
+            "execute_makefile_transport",
+            "makefile_response",
+            TransportResponse::File(FileResponse {
+                path: "Makefile".into(),
+                operation: FileOp::Write,
+                success: true,
+                content: Some("<mock>".into()),
+                exists: Some(true),
+                error: None,
+            }),
+        )
+        .expect("execute_makefile_transport response should match type")
+        .boundary_str("execute_makefile_transport", "makefile_written_path", "Makefile")
+        .expect("path should match type")
+        .boundary_str("execute_makefile_transport", "makefile_content", "<mock>")
+        .expect("content should match type")
+        .transport_response(
+            "execute_gitignore_transport",
+            "gitignore_response",
+            TransportResponse::File(FileResponse {
+                path: ".gitignore".into(),
+                operation: FileOp::Write,
+                success: false, // gitignore write skipped
+                content: None,
+                exists: Some(false),
+                error: None,
+            }),
+        )
+        .expect("execute_gitignore_transport response should match type")
+        .boundary_str("execute_gitignore_transport", "gitignore_written_path", "")
+        .expect("path should match type")
+        .boundary_str("execute_gitignore_transport", "gitignore_content", "")
+        .expect("content should match type")
+        .build_unchecked()
         .resource_lock("fs:Makefile")
 }
 
 /// Mock spec for testing file system failure on Makefile.
 pub fn bootstrap_mock_spec_makefile_fails() -> MockSpec {
-    with_bootstrap_transport_mocks(MockSpec::new("bootstrap"))
-        .boundary(
-            "write_files",
-            "files_written",
-            Value::str_list(vec![".gitignore".into()]),
+    let dag = build_bootstrap_graph().expect("bootstrap graph should build");
+
+    extract_mock_requirements(&dag, "bootstrap")
+        .transport_response(
+            "execute_scan_workspace",
+            "response",
+            TransportResponse::Shell(ShellResponse::ok("crates/bar\ncrates/foo\n")),
         )
-        .boundary("write_files", "write_count", Value::Int(1))
+        .expect("execute_scan_workspace response should match type")
+        .transport_response(
+            "execute_makefile_transport",
+            "makefile_response",
+            TransportResponse::File(FileResponse {
+                path: "Makefile".into(),
+                operation: FileOp::Write,
+                success: false,
+                content: None,
+                exists: Some(true),
+                error: Some("Permission denied: Makefile is read-only".into()),
+            }),
+        )
+        .expect("execute_makefile_transport response should match type")
+        .boundary_str("execute_makefile_transport", "makefile_written_path", "")
+        .expect("path should match type")
+        .boundary_str("execute_makefile_transport", "makefile_content", "")
+        .expect("content should match type")
+        .transport_response(
+            "execute_gitignore_transport",
+            "gitignore_response",
+            TransportResponse::File(FileResponse {
+                path: ".gitignore".into(),
+                operation: FileOp::Write,
+                success: true,
+                content: Some("<mock>".into()),
+                exists: Some(true),
+                error: None,
+            }),
+        )
+        .expect("execute_gitignore_transport response should match type")
+        .boundary_str("execute_gitignore_transport", "gitignore_written_path", ".gitignore")
+        .expect("path should match type")
+        .boundary_str("execute_gitignore_transport", "gitignore_content", "<mock>")
+        .expect("content should match type")
+        .build_unchecked()
         .resource_lock_fails("fs:Makefile", "Permission denied: Makefile is read-only")
         .resource_lock("fs:.gitignore")
 }
 
 /// Mock spec for testing complete write failure.
 pub fn bootstrap_mock_spec_all_fail() -> MockSpec {
-    with_bootstrap_transport_mocks(MockSpec::new("bootstrap"))
-        .boundary("write_files", "files_written", Value::str_list(vec![]))
-        .boundary("write_files", "write_count", Value::Int(0))
+    let dag = build_bootstrap_graph().expect("bootstrap graph should build");
+
+    extract_mock_requirements(&dag, "bootstrap")
+        .transport_response(
+            "execute_scan_workspace",
+            "response",
+            TransportResponse::Shell(ShellResponse::ok("crates/bar\ncrates/foo\n")),
+        )
+        .expect("execute_scan_workspace response should match type")
+        .transport_response(
+            "execute_makefile_transport",
+            "makefile_response",
+            TransportResponse::File(FileResponse {
+                path: "Makefile".into(),
+                operation: FileOp::Write,
+                success: false,
+                content: None,
+                exists: Some(true),
+                error: Some("Permission denied".into()),
+            }),
+        )
+        .expect("execute_makefile_transport response should match type")
+        .boundary_str("execute_makefile_transport", "makefile_written_path", "")
+        .expect("path should match type")
+        .boundary_str("execute_makefile_transport", "makefile_content", "")
+        .expect("content should match type")
+        .transport_response(
+            "execute_gitignore_transport",
+            "gitignore_response",
+            TransportResponse::File(FileResponse {
+                path: ".gitignore".into(),
+                operation: FileOp::Write,
+                success: false,
+                content: None,
+                exists: Some(true),
+                error: Some("Permission denied".into()),
+            }),
+        )
+        .expect("execute_gitignore_transport response should match type")
+        .boundary_str("execute_gitignore_transport", "gitignore_written_path", "")
+        .expect("path should match type")
+        .boundary_str("execute_gitignore_transport", "gitignore_content", "")
+        .expect("content should match type")
+        .build_unchecked()
         .resource_lock_fails("fs:Makefile", "Permission denied")
         .resource_lock_fails("fs:.gitignore", "Permission denied")
-}
-
-fn with_bootstrap_transport_mocks(spec: MockSpec) -> MockSpec {
-    spec.transport_mock(
-        "execute_scan_workspace",
-        "response",
-        Value::Response(ShellResponse::ok("crates/bar\ncrates/foo\n").into()),
-    )
-    .transport_mock(
-        "execute_makefile_transport",
-        "makefile_response",
-        Value::Response(ShellResponse::ok("").into()),
-    )
-    .transport_mock(
-        "execute_makefile_transport",
-        "makefile_written_path",
-        Value::Str("Makefile".into()),
-    )
-    .transport_mock(
-        "execute_makefile_transport",
-        "makefile_content",
-        Value::Str("<mock>".into()),
-    )
-    .transport_mock(
-        "execute_gitignore_transport",
-        "gitignore_response",
-        Value::Response(ShellResponse::ok("").into()),
-    )
-    .transport_mock(
-        "execute_gitignore_transport",
-        "gitignore_written_path",
-        Value::Str(".gitignore".into()),
-    )
-    .transport_mock(
-        "execute_gitignore_transport",
-        "gitignore_content",
-        Value::Str("<mock>".into()),
-    )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    // ========================================================================
+    // Mock spec tests (Pattern B - mock value properties)
+    // ========================================================================
+
     #[test]
-    fn test_mock_spec_write_count() {
+    fn test_mock_spec_has_transport_mocks() {
         let spec = bootstrap_mock_spec();
-        let count = spec
-            .get_boundary_mock("write_files", "write_count")
-            .unwrap();
-        assert!(matches!(count, Value::Int(2)));
+        // All three transport mocks should be present
+        assert!(spec
+            .get_transport_mock("execute_scan_workspace", "response")
+            .is_some());
+        assert!(spec
+            .get_transport_mock("execute_makefile_transport", "makefile_response")
+            .is_some());
+        assert!(spec
+            .get_transport_mock("execute_gitignore_transport", "gitignore_response")
+            .is_some());
     }
 
     #[test]
-    fn test_mock_spec_files_written() {
+    fn test_mock_spec_has_expected_output() {
         let spec = bootstrap_mock_spec();
-        let files = spec
-            .get_boundary_mock("write_files", "files_written")
-            .unwrap();
-        if let Some(list) = files.as_str_list() {
-            assert!(list.contains(&"Makefile".to_string()));
-            assert!(list.contains(&".gitignore".to_string()));
-        } else {
-            panic!("Expected List");
-        }
+        let has_expected = spec
+            .expected_outputs
+            .iter()
+            .any(|e| e.node == "parse_scan_result" && e.port == "crate_count");
+        assert!(has_expected);
     }
 
     #[test]
@@ -198,5 +327,15 @@ mod tests {
             gitignore.acquire(),
             gunbc_test::ResourceAcquireResult::Acquired
         ));
+    }
+
+    #[test]
+    fn test_typed_builder_rejects_wrong_slot() {
+        let dag = build_bootstrap_graph().expect("graph should build");
+        let reqs = extract_mock_requirements(&dag, "bootstrap");
+
+        // Try to set a mock for a non-existent node
+        let result = reqs.boundary_str("nonexistent_node", "port", "value");
+        assert!(result.is_err());
     }
 }
