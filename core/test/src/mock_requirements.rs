@@ -498,8 +498,8 @@ pub fn extract_mock_requirements<T>(dag: &gunbc_ir::Dag<T>, name: &str) -> MockR
         });
     }
 
-    // Also add slots for transport node outputs that ARE connected downstream
-    // (they still need mocks for DryRun interception)
+    // Also add slots for ALL transport node outputs (even unconnected ones)
+    // because DryRun interception requires mocks for every output port
     for node in &dag.nodes {
         if !transport_nodes.contains(node.id.0.as_str()) {
             continue;
@@ -515,22 +515,16 @@ pub fn extract_mock_requirements<T>(dag: &gunbc_ir::Dag<T>, name: &str) -> MockR
                 continue;
             }
 
-            // Check if this output is connected downstream
-            let is_connected = dag
-                .edges
-                .iter()
-                .any(|e| e.from_node == node.id && e.from_port == port.name);
-
-            if is_connected {
-                requirements = requirements.add_slot(MockSlot {
-                    node_id: node.id.clone(),
-                    port_name: port.name.clone(),
-                    type_id: port.type_id.clone(),
-                    cardinality: port.cardinality,
-                    required: true,
-                    kind: MockSlotKind::Transport,
-                });
-            }
+            // Transport nodes require mocks for ALL outputs (connected or not)
+            // because DryRun interception returns mocked values for the entire node
+            requirements = requirements.add_slot(MockSlot {
+                node_id: node.id.clone(),
+                port_name: port.name.clone(),
+                type_id: port.type_id.clone(),
+                cardinality: port.cardinality,
+                required: true,
+                kind: MockSlotKind::Transport,
+            });
         }
     }
 
