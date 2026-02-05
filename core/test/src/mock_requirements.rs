@@ -243,6 +243,11 @@ impl MockRequirements {
             return true;
         }
 
+        // String-backed types (Platform serializes as String)
+        if actual == "String" && expected == "Platform" {
+            return true;
+        }
+
         false
     }
 
@@ -462,7 +467,8 @@ pub fn extract_mock_requirements<T>(dag: &gunbc_ir::Dag<T>, name: &str) -> MockR
 
     let mut requirements = MockRequirements::new(name);
 
-    // Add slots for all boundary ports
+    // Add slots for boundary ports from transport and resource nodes only
+    // Pure node terminal outputs are COMPUTED, not mocked, so they're not required
     for (node_id, port_name) in &boundaries.boundary_ports {
         let node = dag.get_node(node_id).unwrap();
         let port = node
@@ -471,12 +477,15 @@ pub fn extract_mock_requirements<T>(dag: &gunbc_ir::Dag<T>, name: &str) -> MockR
             .find(|p| &p.name == port_name)
             .unwrap();
 
-        let kind = if transport_nodes.contains(node_id.0.as_str()) {
-            MockSlotKind::Transport
+        // Only require mocks for transport and resource nodes
+        // Pure node terminal outputs are computed during execution
+        let (kind, required) = if transport_nodes.contains(node_id.0.as_str()) {
+            (MockSlotKind::Transport, true)
         } else if resource_nodes.contains(node_id.0.as_str()) {
-            MockSlotKind::Resource
+            (MockSlotKind::Resource, true)
         } else {
-            MockSlotKind::Boundary
+            // Pure node terminal outputs - optional (for expected output verification)
+            (MockSlotKind::Boundary, false)
         };
 
         requirements = requirements.add_slot(MockSlot {
@@ -484,7 +493,7 @@ pub fn extract_mock_requirements<T>(dag: &gunbc_ir::Dag<T>, name: &str) -> MockR
             port_name: port_name.clone(),
             type_id: port.type_id.clone(),
             cardinality: port.cardinality,
-            required: true,
+            required,
             kind,
         });
     }
