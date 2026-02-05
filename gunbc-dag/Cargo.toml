@@ -47,3 +47,7 @@ path = "src/bin/testgen.rs"
 [[bin]]
 name = "gunbc-build"
 path = "src/bin/build.rs"
+
+[[bin]]
+name = "gunbc-codegen-dag"
+path = "src/bin/codegen.rs"

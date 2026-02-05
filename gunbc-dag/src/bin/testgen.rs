@@ -55,6 +55,23 @@ macro_rules! target {
         $name:expr, $output:expr, $module:expr,
         $krate:expr,
         dag: $dag:expr,
+        mock: $mock:expr,
+        signature: $signature:expr
+        $(, $config:ident)*
+    ) => {
+        TestgenTarget {
+            config: TestgenTargetDef::new($name, $output, $module)
+                .dag_builder(&to_crate_path(stringify!($dag), $krate))
+                .mock_spec(&to_crate_path(stringify!($mock), $krate))
+                .signature(&to_crate_path(stringify!($signature), $krate))
+                $(.$config())*,
+            generate: |c| generate_target(c, $dag, $mock),
+        }
+    };
+    (
+        $name:expr, $output:expr, $module:expr,
+        $krate:expr,
+        dag: $dag:expr,
         mock: $mock:expr
         $(, $config:ident)*
     ) => {
@@ -90,18 +107,21 @@ fn build_targets() -> Vec<TestgenTarget> {
             "gunbc_dag",
             dag: gunbc_dag::build_bootstrap_graph().unwrap(),
             mock: gunbc_dag::bootstrap::graph_mock::bootstrap_mock_spec(),
+            signature: gunbc_dag::bootstrap_signature(),
             flow_tests
         ),
         target!("ci", "gunbc-dag/src/ci/generated_tests.rs", "ci_generated_tests",
             "gunbc_dag",
             dag: gunbc_dag::build_ci_graph().unwrap(),
             mock: gunbc_dag::ci::graph_mock::ci_mock_spec(),
+            signature: gunbc_dag::ci_signature(),
             flow_tests
         ),
         target!("makegen", "gunbc-dag/src/makegen/generated_tests.rs", "makegen_generated_tests",
             "gunbc_dag",
             dag: gunbc_dag::build_makegen_graph().unwrap(),
             mock: gunbc_dag::makegen::graph_mock::makegen_mock_spec(),
+            signature: gunbc_dag::makegen_signature(),
             flow_tests
         ),
         // ====================================================================
@@ -147,13 +167,17 @@ fn generate_target<T: Executable + Clone>(
         boundary_tests: config.boundary_tests,
         chain_tests: config.chain_tests,
         flow_tests: config.flow_tests,
+        window_max_nodes: config.window_max_nodes,
         ..TestConfig::default()
     };
-    TestGenerator::new(&dag)
+    let mut generator = TestGenerator::new(&dag)
         .with_config(test_config)
         .with_mock_spec(spec)
-        .with_mock_spec_fn(&config.mock_spec_path)
-        .generate_test_module(&config.module_name, &config.dag_builder_call)
+        .with_mock_spec_fn(&config.mock_spec_path);
+    if let Some(signature_fn) = &config.signature_path {
+        generator = generator.with_signature_fn(signature_fn);
+    }
+    generator.generate_test_module(&config.module_name, &config.dag_builder_call)
 }
 
 // ============================================================================
@@ -297,7 +321,9 @@ fn print_help() {
     println!();
     println!("MODES:");
     println!("    (default)   Generate and write test files");
-    println!("    --check     Verify existing files match what would be generated (fails if stale)");
+    println!(
+        "    --check     Verify existing files match what would be generated (fails if stale)"
+    );
     println!("    --dry-run   Show what would be generated without writing");
     println!();
     println!("REGISTERED DAGS ({} targets):", targets.len());

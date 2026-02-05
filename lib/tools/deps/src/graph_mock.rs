@@ -5,6 +5,8 @@
 //! - What input constraints upstream must satisfy
 //! - Resource simulations for package manager operations
 
+use crate::Platform;
+use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse};
 use gunbc_ir::Value;
 use gunbc_test::{InputConstraint, MockSpec};
 
@@ -26,7 +28,9 @@ use gunbc_test::{InputConstraint, MockSpec};
 /// - Package manager lock: Ensures only one install runs at a time
 /// - Sudo lease: Time-bounded privilege elevation
 pub fn deps_mock_spec() -> MockSpec {
-    MockSpec::new("deps")
+    with_deps_transport_mocks(MockSpec::new("deps"))
+        // Env: resolved platform
+        .boundary("platform_env", "platform", Platform::Linux.into())
         // Boundary: execute_installs outputs
         .boundary("execute_installs", "executed", Value::Bool(true))
         .boundary(
@@ -51,7 +55,9 @@ pub fn deps_mock_spec_with_sudo() -> MockSpec {
 
 /// Mock spec for testing package manager failure.
 pub fn deps_mock_spec_pkg_fails() -> MockSpec {
-    MockSpec::new("deps")
+    with_deps_transport_mocks(MockSpec::new("deps"))
+        // Env: resolved platform
+        .boundary("platform_env", "platform", Platform::Linux.into())
         .boundary("execute_installs", "executed", Value::Bool(false))
         .boundary(
             "execute_installs",
@@ -62,6 +68,35 @@ pub fn deps_mock_spec_pkg_fails() -> MockSpec {
         .resource_lock_fails("pkg:manager", "Package manager locked by another process")
 }
 
+fn with_deps_transport_mocks(spec: MockSpec) -> MockSpec {
+    let manifest = r#"[dependency]
+name = "ripgrep"
+verify_cmd = "rg --version"
+install_cmd = "cargo install ripgrep"
+"#;
+
+    spec.transport_mock(
+        "execute_load_manifest",
+        "response",
+        Value::Response(
+            FileResponse {
+                path: "deps.toml".into(),
+                operation: FileOp::Read,
+                success: true,
+                content: Some(manifest.to_string()),
+                exists: Some(true),
+                error: None,
+            }
+            .into(),
+        ),
+    )
+    .transport_mock(
+        "execute_installs",
+        "response",
+        Value::Response(ShellResponse::ok("Dependencies installed").into()),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -69,7 +104,9 @@ mod tests {
     #[test]
     fn test_mock_spec_executed_is_bool() {
         let spec = deps_mock_spec();
-        let executed = spec.get_boundary_mock("execute_installs", "executed").unwrap();
+        let executed = spec
+            .get_boundary_mock("execute_installs", "executed")
+            .unwrap();
         assert!(matches!(executed, Value::Bool(true)));
     }
 
@@ -79,7 +116,9 @@ mod tests {
         let resource = spec.get_resource("sudo:elevation").unwrap();
         assert!(matches!(
             resource.resource_type,
-            gunbc_test::ResourceType::Lease { duration_ms: 300_000 }
+            gunbc_test::ResourceType::Lease {
+                duration_ms: 300_000
+            }
         ));
     }
 
@@ -88,6 +127,9 @@ mod tests {
         let spec = deps_mock_spec_pkg_fails();
         let resource = spec.get_resource("pkg:manager").unwrap();
         let result = resource.acquire();
-        assert!(matches!(result, gunbc_test::ResourceAcquireResult::Failed(_)));
+        assert!(matches!(
+            result,
+            gunbc_test::ResourceAcquireResult::Failed(_)
+        ));
     }
 }

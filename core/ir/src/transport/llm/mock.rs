@@ -115,7 +115,7 @@ pub fn mock_llm_response(provider_id: &str, content: &str) -> Option<RestRespons
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::transport::llm::{openai, anthropic};
+    use crate::transport::llm::{anthropic, openai};
 
     #[test]
     fn test_mock_openai_response_parses() {

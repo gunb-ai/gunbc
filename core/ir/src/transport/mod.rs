@@ -52,51 +52,82 @@ pub mod rest;
 pub mod tcp;
 pub mod tool;
 
+pub use ci::{
+    detect_provider, is_ci, AnnotationLevel, CiProvider, FileLocation, GitHubActionsProvider,
+    GitLabCiProvider, GitLabRunner, PlainTextProvider, Runner, WorkflowCommand,
+};
+pub use cli::{
+    build_cli_ensure,
+    build_cli_upsert,
+    // Resolver-aware entry points
+    resolve_tool_path_with,
+    upsert_tool_with,
+    CliToolDef,
+    CliToolError,
+    CliToolOp,
+    MockResolver,
+    ToolHandle,
+    // Tool path resolution trait + implementations
+    ToolPathResolver,
+    WhichResolver,
+    CARGO as CLI_CARGO,
+    // CLI Tool definitions (use these with node.requires())
+    CLIPPY as CLI_CLIPPY,
+    GH as CLI_GH,
+    GIT as CLI_GIT,
+    RUSTFMT as CLI_RUSTFMT,
+};
 pub use file::{FileOp, FileRequest, FileResponse};
 pub use gist::GistRequest;
 pub use git::GitRequest;
+pub use github::cli::GH_TOOL;
 pub use github::{
     api::{github_rest_request, GitHubApi, GITHUB_API},
     cli::{gh_cli_commands, gh_cli_request, is_gh_installed, GHCommand},
-    GitHubAuth, GITHUB_API_VERSION, GITHUB_CONTRACT_VERSION, GH_CLI_MIN_VERSION,
+    GitHubAuth, GH_CLI_MIN_VERSION, GITHUB_API_VERSION, GITHUB_CONTRACT_VERSION,
 };
 pub use github_actions::{
     merge_permissions, Integration, PermissionLevel, PermissionScope, Permissions, RunnerImage,
     WorkflowConfig,
 };
 pub use http::{HttpMethod, HttpRequest, HttpResponse};
+pub use llm::{
+    anthropic_provider, build_chat_request, builtin_provider_ids, openai_provider,
+    parse_chat_response, provider_by_id, ApiKeyEnvVar, ChatMessage, ChatRequest, ChatResponse,
+    FinishReason, LlmAuthStyle, LlmProvider, Role, Usage,
+};
 pub use rest::{AuthMethod, RestRequest, RestResponse};
 pub use tcp::{TcpRequest, TcpResponse};
-pub use cli::{
-    build_cli_ensure, build_cli_upsert, CliToolDef, CliToolError, CliToolOp, ToolHandle,
-    // Tool path resolution trait + implementations
-    ToolPathResolver, WhichResolver, MockResolver,
-    // Resolver-aware entry points
-    resolve_tool_path_with, upsert_tool_with,
-    // CLI Tool definitions (use these with node.requires())
-    CLIPPY as CLI_CLIPPY, RUSTFMT as CLI_RUSTFMT, CARGO as CLI_CARGO, GIT as CLI_GIT, GH as CLI_GH,
-};
 pub use tool::{
-    check_all_satisfiable, default_platform_registry, default_tool_registry, is_satisfiable,
-    plan_installation, InstallInputs, InstallOption, InstallPlan,
-    PlatformDef, PlatformRegistry, ToolDef, ToolRegistry, UnsatisfiableError,
-    // Package managers
-    APK, APT, BREW, CARGO,
-    // Tools
-    CLIPPY, GIT, RUST, RUSTFMT,
+    check_all_satisfiable,
+    default_platform_registry,
+    default_tool_registry,
+    is_satisfiable,
+    plan_installation,
+    InstallInputs,
+    InstallOption,
+    InstallPlan,
+    PlatformDef,
+    PlatformRegistry,
+    ToolDef,
+    ToolRegistry,
+    UnsatisfiableError,
     // Platforms
-    ALPINE, DEBIAN, LINUX, MACOS, UBUNTU,
-};
-pub use github::cli::GH_TOOL;
-pub use ci::{
-    detect_provider, is_ci, AnnotationLevel, CiProvider, FileLocation, GitHubActionsProvider,
-    GitLabCiProvider, GitLabRunner, PlainTextProvider, Runner, WorkflowCommand,
-};
-pub use llm::{
-    build_chat_request, parse_chat_response,
-    anthropic_provider, openai_provider, provider_by_id, builtin_provider_ids,
-    ChatMessage, ChatRequest, ChatResponse, FinishReason, Role, Usage,
-    LlmProvider, LlmAuthStyle, ApiKeyEnvVar,
+    ALPINE,
+    // Package managers
+    APK,
+    APT,
+    BREW,
+    CARGO,
+    // Tools
+    CLIPPY,
+    DEBIAN,
+    GIT,
+    LINUX,
+    MACOS,
+    RUST,
+    RUSTFMT,
+    UBUNTU,
 };
 
 use serde::{Deserialize, Serialize};

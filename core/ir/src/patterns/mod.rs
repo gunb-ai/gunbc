@@ -38,6 +38,8 @@ pub use atomic::AtomicBuilder;
 pub use branch::BranchBuilder;
 pub use loop_pattern::LoopBuilder;
 pub use pattern_op::PatternOp;
-pub use repeat::{BackoffStrategy, FailureClassifier, PollBuilder, RepeatPolicy, RetryBuilder, WhileBuilder};
+pub use repeat::{
+    BackoffStrategy, FailureClassifier, PollBuilder, RepeatPolicy, RetryBuilder, WhileBuilder,
+};
 pub use transaction::TransactionBuilder;
 pub use upsert::UpsertBuilder;

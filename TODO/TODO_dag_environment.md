@@ -3,6 +3,9 @@
 **Status**: Design / Open Questions
 **Date**: 2026-02-04
 
+## Ownership
+- [x] Taken by Codex (2026-02-05)
+
 How should DAG nodes access system resources (filesystem, platform,
 clock, env vars, tools)? Today this is ad-hoc. This doc maps the
 current state, proposes a direction, and poses design questions.
@@ -343,11 +346,13 @@ These are pure refactors — change function signatures, thread the
 values from callers. No new DAG infrastructure needed.
 
 ### Phase 2: Add environment acquisition to graphs
-- [ ] Add `FsEnv` node to gist graph (emits `FilesystemHandle`)
-- [ ] Add `PlatformEnv` node to deps graph (emits `Platform`)
-- [ ] Add `ClockEnv` node where timestamps are needed
-- [ ] Wire edges from env nodes to consumers
-- [ ] DryRun interception for new env node types
+- [x] Add `FsEnv` node to gist graph (emits `FilesystemHandle`)
+- [x] Add `PlatformEnv` node to deps graph (emits `Platform`)
+- [x] Add `ClockEnv` node where timestamps are needed
+- [x] Wire edges from env nodes to consumers
+- [x] DryRun interception for new env node types
+- [x] Resolve LLM auth explicitly via `ResolveAuth` → `AuthEnv` (no provider fallback)
+- [x] Require explicit mocks in DryRun (no implicit defaults for intercepted nodes)
 
 ### Phase 3: Generalize to RuntimeEnv (if needed)
 - [ ] Decide Q1 (single vs many env nodes)

@@ -72,53 +72,62 @@ pub mod validate;
 pub mod value;
 pub mod value_expr;
 
+// Codegen output locations used by the bootstrapper and codegen DAG.
+pub const CODEGEN_OUT_DIR: &str = "target/codegen";
+pub const CODEGEN_BIN_DIR: &str = "target/codegen/bin";
+pub const CODEGEN_LIB_DIR: &str = "target/codegen/lib";
+pub const CODEGEN_STAMP_PATH: &str = "target/codegen/.codegen-stamp";
+
 // Re-exports for convenience
+pub use algebra::{
+    BoundedLattice, JoinSemilattice, Lattice, MeetSemilattice, PartialOrder, Semiring,
+};
 pub use boundary::{detect_boundaries, BoundaryInfo};
-pub use coerce::{
-    classify_coercion, detect_coercions, validate_coercions, CardinalityCoercion, CoercionError,
-    CoercionKind, CoercionReport,
-};
 pub use builder::{BuilderError, DagBuilder, InputRef, NodeRef, OutputRef, PortKind};
-pub use dag::{build, canonical_edge_order, edges_to_port, Dag, Edge, Port};
-pub use entrypoint::{detect_entrypoints, EntrypointInfo};
-pub use node::{Node, NodeBody, NodeIoExample};
-pub use patterns::{
-    AtomicBuilder, BackoffStrategy, FailureClassifier, PollBuilder, RepeatPolicy, RetryBuilder,
-    TransactionBuilder, UpsertBuilder, WhileBuilder, PatternOp,
-};
-pub use signature::{infer_signature, SignatureError, SignaturePort, WorkflowSignature};
-pub use contract::{BoundaryWitness, TypeContract};
-pub use resource::{AccessMode, ResourceAccess, ResourceConflict, ResourceId};
 pub use cargo::{
     CargoCommand, CargoEnv, CargoInvocation, Subcommand, TermColor, Warnings,
     PREFIX as CARGO_PREFIX,
 };
+pub use coerce::{
+    classify_coercion, detect_coercions, validate_coercions, CardinalityCoercion, CoercionError,
+    CoercionKind, CoercionReport,
+};
+pub use contract::{BoundaryWitness, TypeContract};
+pub use dag::{build, canonical_edge_order, edges_to_port, Dag, Edge, Port};
+pub use entrypoint::{detect_entrypoints, EntrypointInfo};
 pub use git::GitConfig;
+pub use layout::{
+    compute_layout, compute_levels, ConnectorCell, DagLayout, EdgeLayout, EdgeOrientation,
+    NodeLayout, OverflowState, OverflowStrategy, Viewport, ViewportUnit,
+};
+pub use node::{Node, NodeBody, NodeIoExample};
+pub use patterns::{
+    AtomicBuilder, BackoffStrategy, FailureClassifier, PatternOp, PollBuilder, RepeatPolicy,
+    RetryBuilder, TransactionBuilder, UpsertBuilder, WhileBuilder,
+};
+pub use render::Renderable;
+pub use resource::{
+    AccessMode, AuthToken, Resource, ResourceAccess, ResourceConflict, ResourceId, ResourceKind,
+    Timestamp,
+};
+pub use signature::{infer_signature, SignatureError, SignaturePort, WorkflowSignature};
+pub use symbols::{SemanticColor, Symbol, SymbolId, SymbolOp, SymbolSet, Tier, STANDARD};
 pub use transport::{TransportRequest, TransportResponse};
 pub use type_op::{BaseType, Coercion, Predicate, PredicateValue, TypeOp, WrapperKind};
 pub use type_registry::{TypeNotFoundError, TypeRegistry};
 pub use types::{boundary_label, Cardinality, CardinalityMismatch, NodeId, PortName, TypeId};
+pub use validate::{
+    validate_resource_wiring, validate_subdag_interfaces, PortDirection, SubDagError,
+    UnwiredResource,
+};
 pub use value::{SecretString, Value};
 pub use value_expr::ValueExpr;
-pub use render::Renderable;
-pub use symbols::{
-    SemanticColor, Symbol, SymbolId, SymbolOp, SymbolSet, Tier, STANDARD,
-};
-pub use validate::{validate_subdag_interfaces, SubDagError, PortDirection};
-pub use layout::{
-    compute_layout, compute_levels, DagLayout, EdgeLayout, EdgeOrientation, NodeLayout,
-    OverflowState, OverflowStrategy, Viewport, ViewportUnit,
-};
-pub use algebra::{
-    BoundedLattice, JoinSemilattice, Lattice, MeetSemilattice, PartialOrder, Semiring,
-};
 
 // Re-exports from language module for common use
 pub use language::{
-    build_languages_dag, detect_language_from_file, markdown_language_id,
-    rust_type, NamingCase, LanguageOp,
-    MakefileConfig, MakeTarget, RustConfig, GitignoreConfig, HtmlConfig, MarkdownConfig,
-    DEFAULT_GITIGNORE_FILENAME, DEFAULT_MAKEFILE_FILENAME,
-    MAKEFILE, RUST, GITIGNORE, HTML, MARKDOWN,
-    render_html_document, render_code_block, html_comment, markdown_comment,
+    build_languages_dag, detect_language_from_file, html_comment, markdown_comment,
+    markdown_language_id, render_code_block, render_html_document, rust_type, GitignoreConfig,
+    HtmlConfig, LanguageOp, MakeTarget, MakefileConfig, MarkdownConfig, NamingCase, RustConfig,
+    DEFAULT_GITIGNORE_FILENAME, DEFAULT_MAKEFILE_FILENAME, GITIGNORE, HTML, MAKEFILE, MARKDOWN,
+    RUST,
 };

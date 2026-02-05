@@ -122,7 +122,10 @@ impl<T: Clone> AtomicBuilder<T> {
         if let Some(precondition_op) = self.precondition_op {
             dag.add_node(Node::opaque(
                 "precondition",
-                vec![Port::scalar(self.input_port_name.as_str(), self.input_port_type.as_str())],
+                vec![Port::scalar(
+                    self.input_port_name.as_str(),
+                    self.input_port_type.as_str(),
+                )],
                 vec![
                     Port::scalar("pre_ok", "Bool"),
                     Port::scalar(self.input_port_name.as_str(), self.input_port_type.as_str()),
@@ -143,14 +146,20 @@ impl<T: Clone> AtomicBuilder<T> {
                 ),
             ]
         } else {
-            vec![Port::scalar(self.input_port_name.as_str(), self.input_port_type.as_str())]
+            vec![Port::scalar(
+                self.input_port_name.as_str(),
+                self.input_port_type.as_str(),
+            )]
         };
 
         dag.add_node(Node::opaque(
             "operation",
             operation_inputs,
             vec![
-                Port::scalar(self.output_port_name.as_str(), self.output_port_type.as_str()),
+                Port::scalar(
+                    self.output_port_name.as_str(),
+                    self.output_port_type.as_str(),
+                ),
                 Port::scalar("op_ok", "Bool"),
             ],
             operation_op,
@@ -162,11 +171,17 @@ impl<T: Clone> AtomicBuilder<T> {
             dag.add_node(Node::opaque(
                 "postcondition",
                 vec![
-                    Port::scalar(self.output_port_name.as_str(), self.output_port_type.as_str()),
+                    Port::scalar(
+                        self.output_port_name.as_str(),
+                        self.output_port_type.as_str(),
+                    ),
                     Port::scalar("op_ok", "Bool"),
                 ],
                 vec![
-                    Port::scalar(self.output_port_name.as_str(), self.output_port_type.as_str()),
+                    Port::scalar(
+                        self.output_port_name.as_str(),
+                        self.output_port_type.as_str(),
+                    ),
                     Port::scalar("verified", "Bool"),
                 ],
                 postcondition_op,
@@ -254,7 +269,11 @@ mod tests {
 
                 // Check operation has guard
                 let op_node = dag.get_node(&"operation".into()).unwrap();
-                let pre_ok_port = op_node.inputs.iter().find(|p| p.name.0 == "pre_ok").unwrap();
+                let pre_ok_port = op_node
+                    .inputs
+                    .iter()
+                    .find(|p| p.name.0 == "pre_ok")
+                    .unwrap();
                 assert!(pre_ok_port.guard.is_some());
             }
             _ => panic!("Expected SubDag"),
@@ -269,7 +288,11 @@ mod tests {
             .with_output_port("result", "Bool")
             .build();
 
-        let file_path_input = node.inputs.iter().find(|p| p.name.0 == "file_path").unwrap();
+        let file_path_input = node
+            .inputs
+            .iter()
+            .find(|p| p.name.0 == "file_path")
+            .unwrap();
         assert_eq!(file_path_input.type_id.0, "Path");
 
         let result_output = node.outputs.iter().find(|p| p.name.0 == "result").unwrap();
@@ -290,7 +313,11 @@ mod tests {
         dag.add_node(node);
 
         let errors = validate_subdag_interfaces(&dag);
-        assert!(errors.is_empty(), "atomic (op-only) interface errors: {:?}", errors);
+        assert!(
+            errors.is_empty(),
+            "atomic (op-only) interface errors: {:?}",
+            errors
+        );
     }
 
     #[test]
@@ -307,6 +334,10 @@ mod tests {
         dag.add_node(node);
 
         let errors = validate_subdag_interfaces(&dag);
-        assert!(errors.is_empty(), "atomic (full) interface errors: {:?}", errors);
+        assert!(
+            errors.is_empty(),
+            "atomic (full) interface errors: {:?}",
+            errors
+        );
     }
 }

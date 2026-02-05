@@ -9,6 +9,7 @@
 use gunbc_ir::resource::ResourceAccess;
 use gunbc_ir::{detect_boundaries, BoundaryInfo, Cardinality, Dag, TypeId, TypeRegistry};
 
+use crate::testgen::cardinality::fermi_test_cases;
 use crate::testgen::obligation::{collect_obligations, ObligationSet};
 
 /// Analysis of a DAG for test generation.
@@ -112,11 +113,7 @@ pub fn analyze_dag_with_obligations<T>(
 fn find_transport_executors<T>(dag: &Dag<T>) -> Vec<String> {
     dag.nodes
         .iter()
-        .filter(|n| {
-            n.inputs
-                .iter()
-                .any(|p| p.type_id.0 == "TransportRequest")
-        })
+        .filter(|n| n.inputs.iter().any(|p| p.type_id.0 == "TransportRequest"))
         .map(|n| n.id.0.clone())
         .collect()
 }
@@ -125,11 +122,7 @@ fn find_transport_executors<T>(dag: &Dag<T>) -> Vec<String> {
 fn find_tool_env_nodes<T>(dag: &Dag<T>) -> Vec<String> {
     dag.nodes
         .iter()
-        .filter(|n| {
-            n.outputs
-                .iter()
-                .any(|p| p.type_id.0 == "ToolHandle")
-        })
+        .filter(|n| n.outputs.iter().any(|p| p.type_id.0 == "ToolHandle"))
         .map(|n| n.id.0.clone())
         .collect()
 }
@@ -178,7 +171,7 @@ fn analyze_port_cardinalities<T>(dag: &Dag<T>) -> Vec<PortCardinalityInfo> {
                 is_input: true,
                 type_id: port.type_id.clone(),
                 cardinality: port.cardinality,
-                test_cases: port.cardinality.test_cases(),
+                test_cases: fermi_test_cases(port.cardinality),
             });
         }
 
@@ -190,7 +183,7 @@ fn analyze_port_cardinalities<T>(dag: &Dag<T>) -> Vec<PortCardinalityInfo> {
                 is_input: false,
                 type_id: port.type_id.clone(),
                 cardinality: port.cardinality,
-                test_cases: port.cardinality.test_cases(),
+                test_cases: fermi_test_cases(port.cardinality),
             });
         }
     }
@@ -243,7 +236,12 @@ mod tests {
     fn test_analyze_simple_dag() {
         let mut dag: Dag<()> = Dag::new();
         dag.add_node(Node::opaque("A", vec![], vec![port("out", "String")], ()));
-        dag.add_node(Node::opaque("B", vec![port("in", "String")], vec![port("out", "String")], ()));
+        dag.add_node(Node::opaque(
+            "B",
+            vec![port("in", "String")],
+            vec![port("out", "String")],
+            (),
+        ));
         dag.add_edge(edge("A", "out", "B", "in"));
 
         let analysis = analyze_dag(&dag);
@@ -305,12 +303,7 @@ mod tests {
     #[test]
     fn test_analyze_with_obligations() {
         let mut dag: Dag<()> = Dag::new();
-        dag.add_node(Node::opaque(
-            "a",
-            vec![],
-            vec![port("out", "String")],
-            (),
-        ));
+        dag.add_node(Node::opaque("a", vec![], vec![port("out", "String")], ()));
         dag.add_node(Node::opaque(
             "b",
             vec![port("in", "String")],

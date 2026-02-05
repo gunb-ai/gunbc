@@ -16,7 +16,7 @@
 use gunbc_exec::{optional_str, require_response, require_str, ExecError, Executable, OutputMap};
 use gunbc_ir::transport::gist::GistRequest;
 use gunbc_ir::transport::{ShellResponse, TransportRequest, TransportResponse};
-use gunbc_ir::Value;
+use gunbc_ir::{Timestamp, Value};
 use gunbc_primitives::filename;
 use std::collections::HashMap;
 use std::time::SystemTime;
@@ -26,6 +26,10 @@ use std::time::SystemTime;
 /// All operations are PURE - no I/O. Use TransportOps::Execute for actual I/O.
 #[derive(Debug, Clone)]
 pub enum GistOps {
+    /// Filesystem environment (resource acquisition)
+    FsEnv { scope: filename::Scope },
+    /// Clock environment (timestamp snapshot)
+    ClockEnv,
     /// Prepare a gist creation request (PURE - no I/O)
     PrepareRequest { public: bool },
     /// Parse gist response to extract URL (PURE - no I/O)
@@ -35,13 +39,25 @@ pub enum GistOps {
 impl Executable for GistOps {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         match self {
+            GistOps::FsEnv { scope } => {
+                let fs = filename::FilesystemHandle::cross_platform(*scope);
+                let port = match scope {
+                    filename::Scope::Read => "fs:read",
+                    filename::Scope::Write => "fs:write",
+                };
+                OutputMap::new().value(port, fs.into()).ok()
+            }
+            GistOps::ClockEnv => {
+                let ts = Timestamp::now();
+                OutputMap::new().value("clock", ts.into()).ok()
+            }
             GistOps::PrepareRequest { public } => {
                 let markdown = require_str(&inputs, "markdown")?;
                 let branch = optional_str(&inputs, "branch");
 
                 // Acquire system resources at the DAG boundary (not inline)
-                let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
-                let now = SystemTime::now();
+                let fs = require_filesystem_handle(&inputs, "res:fs")?;
+                let now = require_timestamp(&inputs, "res:clock")?;
 
                 let filename = generate_gist_filename(&fs, branch.unwrap_or("snapshot"), now);
                 let description = match branch {
@@ -51,8 +67,7 @@ impl Executable for GistOps {
                     _ => "Code snapshot created by gunbc-gist".to_string(),
                 };
 
-                let request =
-                    prepare_gist_request(markdown, *public, &description, &filename);
+                let request = prepare_gist_request(markdown, *public, &description, &filename);
 
                 OutputMap::new().request("request", request).ok()
             }
@@ -141,7 +156,7 @@ pub fn sanitize_branch_for_filename(fs: &filename::FilesystemHandle, branch: &st
 ///
 /// ```ignore
 /// let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
-/// let now = SystemTime::now();
+/// let now = Timestamp::now();
 /// let filename = generate_gist_filename(&fs, "claude/my-feature", now);
 /// assert!(filename.starts_with("claude-my-feature_"));
 /// assert!(filename.ends_with(".md"));
@@ -149,10 +164,10 @@ pub fn sanitize_branch_for_filename(fs: &filename::FilesystemHandle, branch: &st
 pub fn generate_gist_filename(
     fs: &filename::FilesystemHandle,
     branch: &str,
-    now: SystemTime,
+    now: Timestamp,
 ) -> String {
     let sanitized = sanitize_branch_for_filename(fs, branch);
-    let timestamp = format_utc_timestamp(now);
+    let timestamp = format_utc_timestamp(now.to_system_time());
     let suffix = format!("_{}.md", timestamp); // e.g., "_2024-01-15_14-30-00.md" = 23 bytes
 
     // Ensure the full filename fits within the filesystem's component limit.
@@ -204,6 +219,25 @@ fn format_utc_timestamp(time: SystemTime) -> String {
     )
 }
 
+fn require_filesystem_handle(
+    inputs: &HashMap<String, Value>,
+    key: &str,
+) -> Result<filename::FilesystemHandle, ExecError> {
+    let value = inputs
+        .get(key)
+        .ok_or_else(|| ExecError::new(format!("missing '{}' input", key)))?;
+    filename::FilesystemHandle::try_from(value)
+        .map_err(|e| ExecError::new(format!("invalid '{}' input: {}", key, e)))
+}
+
+fn require_timestamp(inputs: &HashMap<String, Value>, key: &str) -> Result<Timestamp, ExecError> {
+    let value = inputs
+        .get(key)
+        .ok_or_else(|| ExecError::new(format!("missing '{}' input", key)))?;
+    Timestamp::try_from(value)
+        .map_err(|e| ExecError::new(format!("invalid '{}' input: {}", key, e)))
+}
+
 /// Convert days since Unix epoch to (year, month, day).
 ///
 /// Uses Howard Hinnant's civil_from_days algorithm.
@@ -228,10 +262,8 @@ pub fn extract_gist_url(response: &TransportResponse) -> String {
             gunbc_ir::transport::gist::parse_gist_url_from_shell(stdout)
                 .unwrap_or_else(|| stdout.trim().to_string())
         }
-        TransportResponse::Rest(r) => {
-            gunbc_ir::transport::gist::parse_gist_url_from_rest(&r.body)
-                .unwrap_or_else(|| "unknown".to_string())
-        }
+        TransportResponse::Rest(r) => gunbc_ir::transport::gist::parse_gist_url_from_rest(&r.body)
+            .unwrap_or_else(|| "unknown".to_string()),
         _ => "unknown".to_string(),
     }
 }
@@ -262,15 +294,24 @@ mod tests {
     #[test]
     fn test_prepare_gist_request_with_branch_filename() {
         let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
-        let fixed_time = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1705325400);
+        let fixed_time = Timestamp::from_system_time(
+            SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1705325400),
+        );
         let filename = generate_gist_filename(&fs, "claude/my-feature", fixed_time);
         let request = prepare_gist_request("# Test", false, "Test gist", &filename);
 
         match request {
             TransportRequest::Shell(req) => {
                 // Filename should start with sanitized branch name
-                let f_arg = req.args.iter().find(|a| a.starts_with("claude-my-feature_"));
-                assert!(f_arg.is_some(), "expected filename with sanitized branch name, got args: {:?}", req.args);
+                let f_arg = req
+                    .args
+                    .iter()
+                    .find(|a| a.starts_with("claude-my-feature_"));
+                assert!(
+                    f_arg.is_some(),
+                    "expected filename with sanitized branch name, got args: {:?}",
+                    req.args
+                );
                 assert!(f_arg.unwrap().ends_with(".md"));
             }
             _ => panic!("expected shell request"),
@@ -281,6 +322,10 @@ mod tests {
     fn test_gist_ops_prepare_without_branch() {
         let mut inputs = HashMap::new();
         inputs.insert("markdown".to_string(), Value::Str("# Test".to_string()));
+        let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
+        let ts = Timestamp::from_system_time(SystemTime::UNIX_EPOCH);
+        inputs.insert("res:fs".to_string(), fs.into());
+        inputs.insert("res:clock".to_string(), ts.into());
 
         let op = GistOps::PrepareRequest { public: false };
         let result = op.execute(inputs).unwrap();
@@ -290,7 +335,11 @@ mod tests {
             Some(Value::Request(TransportRequest::Shell(req))) => {
                 // Without branch, filename should start with "snapshot_"
                 let f_arg = req.args.iter().find(|a| a.starts_with("snapshot_"));
-                assert!(f_arg.is_some(), "expected snapshot filename, got args: {:?}", req.args);
+                assert!(
+                    f_arg.is_some(),
+                    "expected snapshot filename, got args: {:?}",
+                    req.args
+                );
             }
             _ => panic!("expected shell request"),
         }
@@ -300,19 +349,36 @@ mod tests {
     fn test_gist_ops_prepare_with_branch() {
         let mut inputs = HashMap::new();
         inputs.insert("markdown".to_string(), Value::Str("# Test".to_string()));
-        inputs.insert("branch".to_string(), Value::Str("feature/cool-thing".to_string()));
+        inputs.insert(
+            "branch".to_string(),
+            Value::Str("feature/cool-thing".to_string()),
+        );
+        let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
+        let ts = Timestamp::from_system_time(SystemTime::UNIX_EPOCH);
+        inputs.insert("res:fs".to_string(), fs.into());
+        inputs.insert("res:clock".to_string(), ts.into());
 
         let op = GistOps::PrepareRequest { public: false };
         let result = op.execute(inputs).unwrap();
 
         match result.get("request") {
             Some(Value::Request(TransportRequest::Shell(req))) => {
-                let f_arg = req.args.iter().find(|a| a.starts_with("feature-cool-thing_"));
-                assert!(f_arg.is_some(), "expected branch-based filename, got args: {:?}", req.args);
+                let f_arg = req
+                    .args
+                    .iter()
+                    .find(|a| a.starts_with("feature-cool-thing_"));
+                assert!(
+                    f_arg.is_some(),
+                    "expected branch-based filename, got args: {:?}",
+                    req.args
+                );
                 // Description should include the branch name
                 let desc_idx = req.args.iter().position(|a| a == "--desc").unwrap();
                 let desc = &req.args[desc_idx + 1];
-                assert!(desc.contains("feature/cool-thing"), "description should include original branch name");
+                assert!(
+                    desc.contains("feature/cool-thing"),
+                    "description should include original branch name"
+                );
             }
             _ => panic!("expected shell request"),
         }
@@ -337,28 +403,61 @@ mod tests {
     #[test]
     fn test_sanitize_branch_with_slashes() {
         let fs = test_fs();
-        assert_eq!(sanitize_branch_for_filename(&fs, "claude/branch-name"), "claude-branch-name");
-        assert_eq!(sanitize_branch_for_filename(&fs, "feature/foo/bar"), "feature-foo-bar");
-        assert_eq!(sanitize_branch_for_filename(&fs, "refs/heads/main"), "refs-heads-main");
+        assert_eq!(
+            sanitize_branch_for_filename(&fs, "claude/branch-name"),
+            "claude-branch-name"
+        );
+        assert_eq!(
+            sanitize_branch_for_filename(&fs, "feature/foo/bar"),
+            "feature-foo-bar"
+        );
+        assert_eq!(
+            sanitize_branch_for_filename(&fs, "refs/heads/main"),
+            "refs-heads-main"
+        );
     }
 
     #[test]
     fn test_sanitize_branch_with_spaces() {
         let fs = test_fs();
         assert_eq!(sanitize_branch_for_filename(&fs, "my branch"), "my-branch");
-        assert_eq!(sanitize_branch_for_filename(&fs, "feature/foo bar"), "feature-foo-bar");
+        assert_eq!(
+            sanitize_branch_for_filename(&fs, "feature/foo bar"),
+            "feature-foo-bar"
+        );
     }
 
     #[test]
     fn test_sanitize_branch_windows_unsafe_chars() {
         let fs = test_fs();
-        assert_eq!(sanitize_branch_for_filename(&fs, "branch:name"), "branch-name");
-        assert_eq!(sanitize_branch_for_filename(&fs, "branch*name"), "branch-name");
-        assert_eq!(sanitize_branch_for_filename(&fs, "branch?name"), "branch-name");
-        assert_eq!(sanitize_branch_for_filename(&fs, "branch<name>"), "branch-name");
-        assert_eq!(sanitize_branch_for_filename(&fs, "branch|name"), "branch-name");
-        assert_eq!(sanitize_branch_for_filename(&fs, "branch\"name"), "branch-name");
-        assert_eq!(sanitize_branch_for_filename(&fs, "branch\\name"), "branch-name");
+        assert_eq!(
+            sanitize_branch_for_filename(&fs, "branch:name"),
+            "branch-name"
+        );
+        assert_eq!(
+            sanitize_branch_for_filename(&fs, "branch*name"),
+            "branch-name"
+        );
+        assert_eq!(
+            sanitize_branch_for_filename(&fs, "branch?name"),
+            "branch-name"
+        );
+        assert_eq!(
+            sanitize_branch_for_filename(&fs, "branch<name>"),
+            "branch-name"
+        );
+        assert_eq!(
+            sanitize_branch_for_filename(&fs, "branch|name"),
+            "branch-name"
+        );
+        assert_eq!(
+            sanitize_branch_for_filename(&fs, "branch\"name"),
+            "branch-name"
+        );
+        assert_eq!(
+            sanitize_branch_for_filename(&fs, "branch\\name"),
+            "branch-name"
+        );
     }
 
     #[test]
@@ -391,7 +490,10 @@ mod tests {
         let fs = test_fs();
         assert_eq!(sanitize_branch_for_filename(&fs, "v1.0.0"), "v1.0.0");
         assert_eq!(sanitize_branch_for_filename(&fs, "my_branch"), "my_branch");
-        assert_eq!(sanitize_branch_for_filename(&fs, "release/v2.0_rc1"), "release-v2.0_rc1");
+        assert_eq!(
+            sanitize_branch_for_filename(&fs, "release/v2.0_rc1"),
+            "release-v2.0_rc1"
+        );
     }
 
     // ========================================================================
@@ -415,7 +517,9 @@ mod tests {
     #[test]
     fn test_generate_gist_filename_format() {
         let fs = test_fs();
-        let fixed_time = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1705325400);
+        let fixed_time = Timestamp::from_system_time(
+            SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1705325400),
+        );
         let filename = generate_gist_filename(&fs, "main", fixed_time);
         assert_eq!(filename, "main_2024-01-15_13-30-00.md");
     }
@@ -423,9 +527,14 @@ mod tests {
     #[test]
     fn test_generate_gist_filename_sanitizes_branch() {
         let fs = test_fs();
-        let fixed_time = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1705325400);
+        let fixed_time = Timestamp::from_system_time(
+            SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1705325400),
+        );
         let filename = generate_gist_filename(&fs, "claude/improve-gist-filename", fixed_time);
-        assert_eq!(filename, "claude-improve-gist-filename_2024-01-15_13-30-00.md");
+        assert_eq!(
+            filename,
+            "claude-improve-gist-filename_2024-01-15_13-30-00.md"
+        );
     }
 
     // ========================================================================
@@ -446,8 +555,12 @@ mod tests {
     #[test]
     fn test_generate_gist_filename_deterministic_timestamp() {
         let fs = test_fs();
-        let t1 = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1705325400);
-        let t2 = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1705325400);
+        let t1 = Timestamp::from_system_time(
+            SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1705325400),
+        );
+        let t2 = Timestamp::from_system_time(
+            SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1705325400),
+        );
 
         // Same inputs → same output (deterministic)
         let f1 = generate_gist_filename(&fs, "test", t1);
@@ -462,7 +575,9 @@ mod tests {
     #[test]
     fn test_generate_gist_filename_caps_total_length() {
         let fs = test_fs();
-        let fixed_time = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1705325400);
+        let fixed_time = Timestamp::from_system_time(
+            SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1705325400),
+        );
 
         // Branch name that's 250 chars — after sanitization still 250 chars
         let long_branch = "a".repeat(250);

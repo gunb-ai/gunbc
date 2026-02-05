@@ -123,7 +123,10 @@ impl<T: Clone> UpsertBuilder<T> {
         // Check node: determines if resource exists
         dag.add_node(Node::opaque(
             "check",
-            vec![Port::scalar(self.input_port_name.as_str(), self.input_port_type.as_str())],
+            vec![Port::scalar(
+                self.input_port_name.as_str(),
+                self.input_port_type.as_str(),
+            )],
             vec![Port::scalar("exists", "Bool")],
             check_op,
         ));
@@ -147,8 +150,14 @@ impl<T: Clone> UpsertBuilder<T> {
         // Resolve node: always runs, verifies final state
         dag.add_node(Node::opaque(
             "resolve",
-            vec![Port::scalar(self.input_port_name.as_str(), self.input_port_type.as_str())],
-            vec![Port::scalar(self.output_port_name.as_str(), self.output_port_type.as_str())],
+            vec![Port::scalar(
+                self.input_port_name.as_str(),
+                self.input_port_type.as_str(),
+            )],
+            vec![Port::scalar(
+                self.output_port_name.as_str(),
+                self.output_port_type.as_str(),
+            )],
             resolve_op,
         ));
 
@@ -223,7 +232,11 @@ mod tests {
 
                 // Check create has guard
                 let create_node = dag.get_node(&"create".into()).unwrap();
-                let exists_port = create_node.inputs.iter().find(|p| p.name.0 == "exists").unwrap();
+                let exists_port = create_node
+                    .inputs
+                    .iter()
+                    .find(|p| p.name.0 == "exists")
+                    .unwrap();
                 assert!(exists_port.guard.is_some());
             }
             _ => panic!("Expected SubDag"),

@@ -97,7 +97,7 @@ pub fn predicates(type_dag: &Dag<TypeOp>) -> Vec<Predicate> {
 ///
 /// Returns one witness per boundary value the cardinality accepts.
 /// For a `List<String>` (cardinality `[0,∞)`), this produces witnesses
-/// at counts 0, 1, and 10 (the in-range boundary values).
+/// at counts 0 and 1 (the in-range boundary values).
 pub fn witnesses(type_dag: &Dag<TypeOp>) -> Vec<BoundaryWitness> {
     let card = cardinality(type_dag);
     let base = base_type(type_dag);
@@ -106,18 +106,14 @@ pub fn witnesses(type_dag: &Dag<TypeOp>) -> Vec<BoundaryWitness> {
 
     let scalar_witness = scalar_witness_for_base(&base, &preds);
 
-    card.test_cases()
+    card.test_cases_for_tests()
         .into_iter()
         .map(|count| {
             let value = match count {
                 0 => match &wrapper {
                     Some(WrapperKind::Optional) => Value::Unit,
-                    Some(WrapperKind::List | WrapperKind::NonEmptyList) => {
-                        Value::List(vec![])
-                    }
-                    Some(WrapperKind::Set | WrapperKind::NonEmptySet) => {
-                        Value::Set(vec![])
-                    }
+                    Some(WrapperKind::List | WrapperKind::NonEmptyList) => Value::List(vec![]),
+                    Some(WrapperKind::Set | WrapperKind::NonEmptySet) => Value::Set(vec![]),
                     None => Value::Unit, // Scalar empty = absent
                 },
                 1 => match &wrapper {
@@ -135,9 +131,7 @@ pub fn witnesses(type_dag: &Dag<TypeOp>) -> Vec<BoundaryWitness> {
                         Some(WrapperKind::List | WrapperKind::NonEmptyList) => {
                             Value::List(witnesses)
                         }
-                        Some(WrapperKind::Set | WrapperKind::NonEmptySet) => {
-                            Value::set(witnesses)
-                        }
+                        Some(WrapperKind::Set | WrapperKind::NonEmptySet) => Value::set(witnesses),
                         _ => Value::List(witnesses), // fallback
                     }
                 }
@@ -245,16 +239,18 @@ fn n_witnesses(scalar: &Value, n: u32) -> Vec<Value> {
 
 /// Check if a type DAG has any validation predicates.
 pub fn has_predicates(type_dag: &Dag<TypeOp>) -> bool {
-    type_dag.nodes.iter().any(|n| {
-        matches!(&n.body, NodeBody::Opaque(TypeOp::Validate(_)))
-    })
+    type_dag
+        .nodes
+        .iter()
+        .any(|n| matches!(&n.body, NodeBody::Opaque(TypeOp::Validate(_))))
 }
 
 /// Check if a type is a container type (Optional, List, NonEmptyList, Set, NonEmptySet).
 pub fn is_container(type_dag: &Dag<TypeOp>) -> bool {
-    type_dag.nodes.iter().any(|n| {
-        matches!(&n.body, NodeBody::Opaque(TypeOp::Wrap(_)))
-    })
+    type_dag
+        .nodes
+        .iter()
+        .any(|n| matches!(&n.body, NodeBody::Opaque(TypeOp::Wrap(_))))
 }
 
 /// Get the wrapper kind if this is a container type.
@@ -330,7 +326,7 @@ mod tests {
         let url_type = type_lib::url();
 
         assert!(predicates(&string_type).is_empty());
-        
+
         let url_preds = predicates(&url_type);
         assert!(!url_preds.is_empty());
         assert!(url_preds.iter().any(|p| matches!(p, Predicate::NonEmpty)));
@@ -366,7 +362,10 @@ mod tests {
         assert_eq!(wrapper_kind(&string_type), None);
         assert_eq!(wrapper_kind(&optional_type), Some(WrapperKind::Optional));
         assert_eq!(wrapper_kind(&list_type), Some(WrapperKind::List));
-        assert_eq!(wrapper_kind(&non_empty_type), Some(WrapperKind::NonEmptyList));
+        assert_eq!(
+            wrapper_kind(&non_empty_type),
+            Some(WrapperKind::NonEmptyList)
+        );
     }
 
     #[test]
@@ -421,14 +420,12 @@ mod tests {
         let list_type = type_lib::list(type_lib::string());
         let w = witnesses(&list_type);
 
-        // List (cardinality [0,∞)) → count=0, count=1, count=10
-        assert_eq!(w.len(), 3);
+        // List (cardinality [0,∞)) → count=0, count=1
+        assert_eq!(w.len(), 2);
         assert_eq!(w[0].count, 0);
         assert_eq!(w[0].value, Value::List(vec![]));
         assert_eq!(w[1].count, 1);
         assert!(matches!(&w[1].value, Value::List(v) if v.len() == 1));
-        assert_eq!(w[2].count, 10);
-        assert!(matches!(&w[2].value, Value::List(v) if v.len() == 10));
     }
 
     #[test]
@@ -436,11 +433,10 @@ mod tests {
         let ne_list = type_lib::non_empty_list(type_lib::string());
         let w = witnesses(&ne_list);
 
-        // NonEmptyList (cardinality [1,∞)) → count=1, count=2, count=11
-        assert_eq!(w.len(), 3);
+        // NonEmptyList (cardinality [1,∞)) → count=1, count=2
+        assert_eq!(w.len(), 2);
         assert_eq!(w[0].count, 1);
         assert_eq!(w[1].count, 2);
-        assert_eq!(w[2].count, 11);
     }
 
     #[test]
@@ -449,7 +445,7 @@ mod tests {
         let w = witnesses(&url_type);
 
         assert_eq!(w.len(), 1); // scalar
-        // URL has Matches predicate with "http" — should produce URL-like witness
+                                // URL has Matches predicate with "http" — should produce URL-like witness
         if let Value::Str(s) = &w[0].value {
             assert!(s.contains("http"), "URL witness should contain http: {}", s);
         } else {
@@ -462,14 +458,12 @@ mod tests {
         let set_type = type_lib::set(type_lib::string());
         let w = witnesses(&set_type);
 
-        // Set (cardinality [0,∞)) → count=0, count=1, count=10
-        assert_eq!(w.len(), 3);
+        // Set (cardinality [0,∞)) → count=0, count=1
+        assert_eq!(w.len(), 2);
         assert_eq!(w[0].count, 0);
         assert!(matches!(&w[0].value, Value::Set(v) if v.is_empty()));
         assert_eq!(w[1].count, 1);
         assert!(matches!(&w[1].value, Value::Set(v) if v.len() == 1));
-        assert_eq!(w[2].count, 10);
-        assert!(matches!(&w[2].value, Value::Set(v) if v.len() == 10));
     }
 
     #[test]
@@ -479,21 +473,27 @@ mod tests {
         // for non-String/Int/Bool scalars (the `other` fallback branch).
         let duplicates = vec![Value::Unit, Value::Unit];
         let deduped = Value::set(duplicates);
-        assert!(matches!(&deduped, Value::Set(v) if v.len() == 1),
-            "Value::set() should deduplicate identical Unit values");
+        assert!(
+            matches!(&deduped, Value::Set(v) if v.len() == 1),
+            "Value::set() should deduplicate identical Unit values"
+        );
 
         let json_dups = vec![
             Value::Json(serde_json::json!({"key": "value"})),
             Value::Json(serde_json::json!({"key": "value"})),
         ];
         let deduped_json = Value::set(json_dups);
-        assert!(matches!(&deduped_json, Value::Set(v) if v.len() == 1),
-            "Value::set() should deduplicate identical Json values");
+        assert!(
+            matches!(&deduped_json, Value::Set(v) if v.len() == 1),
+            "Value::set() should deduplicate identical Json values"
+        );
 
         // Distinct values should be preserved
         let distinct = vec![Value::Int(1), Value::Int(2)];
         let kept = Value::set(distinct);
-        assert!(matches!(&kept, Value::Set(v) if v.len() == 2),
-            "Value::set() should preserve distinct values");
+        assert!(
+            matches!(&kept, Value::Set(v) if v.len() == 2),
+            "Value::set() should preserve distinct values"
+        );
     }
 }

@@ -133,9 +133,7 @@ fn content_to_string(content: &MessageContent) -> String {
 /// - Reasoning summary from `reasoning` output items
 /// - Token usage including `cached_tokens` and `reasoning_tokens`
 /// - Finish status from the response `status` field
-pub fn parse_openai_responses_response(
-    response: &RestResponse,
-) -> Result<ChatResponse, String> {
+pub fn parse_openai_responses_response(response: &RestResponse) -> Result<ChatResponse, String> {
     if !response.is_success() {
         let error_msg = response
             .body
@@ -191,14 +189,8 @@ pub fn parse_openai_responses_response(
                 .and_then(|t| t.as_u64());
 
             Usage {
-                input_tokens: u
-                    .get("input_tokens")
-                    .and_then(|t| t.as_u64())
-                    .unwrap_or(0),
-                output_tokens: u
-                    .get("output_tokens")
-                    .and_then(|t| t.as_u64())
-                    .unwrap_or(0),
+                input_tokens: u.get("input_tokens").and_then(|t| t.as_u64()).unwrap_or(0),
+                output_tokens: u.get("output_tokens").and_then(|t| t.as_u64()).unwrap_or(0),
                 cache_creation_input_tokens: None,
                 cache_read_input_tokens: None,
                 cached_tokens,
@@ -243,9 +235,7 @@ fn extract_text_from_output(body: &serde_json::Value) -> String {
 }
 
 /// Extract reasoning summary and build response blocks from output items.
-fn extract_reasoning_from_output(
-    body: &serde_json::Value,
-) -> (Option<String>, Vec<ResponseBlock>) {
+fn extract_reasoning_from_output(body: &serde_json::Value) -> (Option<String>, Vec<ResponseBlock>) {
     let mut thinking_parts = Vec::new();
     let mut blocks = Vec::new();
 
@@ -417,8 +407,14 @@ mod tests {
         );
         assert_eq!(chat.usage.reasoning_tokens, Some(400));
         assert_eq!(chat.content_blocks.len(), 2);
-        assert!(matches!(&chat.content_blocks[0], ResponseBlock::Thinking { .. }));
-        assert!(matches!(&chat.content_blocks[1], ResponseBlock::Text { .. }));
+        assert!(matches!(
+            &chat.content_blocks[0],
+            ResponseBlock::Thinking { .. }
+        ));
+        assert!(matches!(
+            &chat.content_blocks[1],
+            ResponseBlock::Text { .. }
+        ));
     }
 
     #[test]

@@ -82,12 +82,10 @@ impl TerminalProfile {
         let viewport = detect_viewport();
 
         // Progress requires: real TTY + not CI + not dumb + at least Unicode
-        let supports_progress =
-            is_tty && !is_ci && !is_dumb && !matches!(tier, Tier::Ascii);
+        let supports_progress = is_tty && !is_ci && !is_dumb && !matches!(tier, Tier::Ascii);
 
         // Color requires: real TTY + not CI + not dumb + NO_COLOR not set
-        let supports_color =
-            is_tty && !is_ci && !is_dumb && !no_color;
+        let supports_color = is_tty && !is_ci && !is_dumb && !no_color;
 
         Self {
             shell,
@@ -172,9 +170,7 @@ fn detect_ci() -> bool {
 /// `TERM=dumb` means no escape sequence support — used by Emacs shell,
 /// some CI runners, and minimal environments.
 fn detect_dumb() -> bool {
-    env::var("TERM")
-        .map(|t| t == "dumb")
-        .unwrap_or(false)
+    env::var("TERM").map(|t| t == "dumb").unwrap_or(false)
 }
 
 /// Detect the best symbol tier for the current terminal.
@@ -197,8 +193,10 @@ fn detect_tier(is_dumb: bool) -> Tier {
     // UTF-8 locale → Unicode tier
     let lang = env::var("LANG").unwrap_or_default();
     let lc_all = env::var("LC_ALL").unwrap_or_default();
-    if lang.contains("UTF-8") || lang.contains("utf-8")
-        || lc_all.contains("UTF-8") || lc_all.contains("utf-8")
+    if lang.contains("UTF-8")
+        || lang.contains("utf-8")
+        || lc_all.contains("UTF-8")
+        || lc_all.contains("utf-8")
     {
         return Tier::Unicode;
     }
@@ -247,7 +245,11 @@ fn terminal_size_ioctl() -> Option<(u16, u16)> {
     }
 
     extern "C" {
-        fn ioctl(fd: std::os::raw::c_int, request: std::os::raw::c_ulong, ...) -> std::os::raw::c_int;
+        fn ioctl(
+            fd: std::os::raw::c_int,
+            request: std::os::raw::c_ulong,
+            ...
+        ) -> std::os::raw::c_int;
     }
 
     // TIOCGWINSZ value is platform-specific

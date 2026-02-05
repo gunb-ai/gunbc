@@ -35,7 +35,7 @@ impl ManifestConfig {
     pub fn new() -> Self {
         Self::default()
     }
-    
+
     /// Get the manifest filename.
     pub fn filename(&self) -> &str {
         self.filename
@@ -117,7 +117,6 @@ pub struct PlatformInstall {
     #[serde(default)]
     pub url: Option<String>,
 }
-
 
 #[cfg(test)]
 mod tests {

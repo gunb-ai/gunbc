@@ -36,6 +36,6 @@ pub use graph::{
 };
 
 // Re-export the library ops for convenience
-pub use gunbc_lib_git_ops::GitOps;
 pub use gunbc_lib_gist_ops::GistOps;
+pub use gunbc_lib_git_ops::GitOps;
 pub use gunbc_lib_markdown::MarkdownOp;

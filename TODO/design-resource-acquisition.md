@@ -7,6 +7,9 @@
 > Dependencies are always injected and solved up front, not within a node.
 > Sub-DAGs receive only explicitly delegated resources (zero-based budgeting).
 
+## Ownership
+- [x] Taken by Codex (2026-02-05)
+
 ## 1. Problem Statement
 
 Today, `EnvOp` acquires CLI tools and emits `ToolHandle` values through
@@ -362,42 +365,25 @@ conflict.
 
 ## 7. DryRun Interception
 
-### 7.1 Unified Mock Pattern
+### 7.1 Explicit Mocking (No Defaults)
 
-DryRun mode intercepts environment nodes by type. The existing
-interception logic (execute.rs:631-654) detects nodes that emit
-`ToolHandle` outputs. This extends naturally:
+DryRun interception remains type-based, but **does not auto-generate**
+resource values. Every intercepted node (transport executors, env nodes,
+tool consumers) must have **explicit mocks for every output port** via
+`BoundaryMocks` / `MockSpec`. Missing mocks are errors.
 
-```rust
-fn is_env_node<T>(node: &Node<T>) -> bool {
-    // Environment nodes have zero inputs and resource-typed outputs
-    node.inputs.is_empty()
-        && node.outputs.iter().any(|p| is_resource_type(&p.type_id))
-}
+### 7.2 Resource Mock Constructors
 
-fn mock_env_node<T>(node: &Node<T>) -> Option<HashMap<String, Value>> {
-    if !is_env_node(node) { return None; }
-
-    let mut mocks = HashMap::new();
-    for output in &node.outputs {
-        mocks.insert(output.name.0.clone(), mock_resource(&output.type_id));
-    }
-    Some(mocks)
-}
-```
-
-### 7.2 Mock Resources
-
-Each resource type has a mock constructor:
+Use the resource constructors to build explicit mock values:
 
 | Resource | Mock Value |
 |----------|-----------|
 | `ToolHandle` | `ToolHandle::mock(tool)` — `/mock/{id}` path |
-| `FsHandle` | `FsHandle::mock()` — in-memory or temp dir |
+| `FsHandle` | `FilesystemHandle::cross_platform(scope)` |
 | `Platform` | `Platform::Linux` — deterministic default |
 | `Timestamp` | `Timestamp(0)` — epoch for reproducibility |
 | `EnvVars` | `HashMap::new()` — empty env |
-| `AuthToken` | `AuthToken::mock("test-token")` |
+| `AuthToken` | `AuthToken::new(service, env_var, SecretString::new("..."))` |
 
 ## 8. Relationship to Existing Code
 
@@ -428,27 +414,27 @@ Each resource type has a mock constructor:
 
 ### Phase 1: Resource Trait and Infrastructure
 
-- [ ] Add `Resource` trait to `core/ir/src/resource.rs`
-- [ ] Add `ResourceKind` enum (Capability, Observation)
-- [ ] Implement `Resource` for `ToolHandle`
-- [ ] Add `res:` port naming convention validation in `DagBuilder`
-- [ ] Add `validate_resource_wiring()` function
+- [x] Add `Resource` trait to `core/ir/src/resource.rs`
+- [x] Add `ResourceKind` enum (Capability, Observation)
+- [x] Implement `Resource` for `ToolHandle`
+- [x] Add `res:` port naming convention validation in `DagBuilder`
+- [x] Add `validate_resource_wiring()` function
 
 ### Phase 2: Concrete Environment Nodes
 
-- [ ] Implement `PlatformEnv` (simplest — just detects platform)
-- [ ] Implement `ClockEnv` (snapshot `SystemTime::now()`)
-- [ ] Implement `FsEnv` (emits `FilesystemHandle`)
-- [ ] Implement `AuthEnv` (resolves env var → token)
-- [ ] Add DryRun mock constructors for each
+- [x] Implement `PlatformEnv` (simplest — just detects platform)
+- [x] Implement `ClockEnv` (snapshot `SystemTime::now()`)
+- [x] Implement `FsEnv` (emits `FilesystemHandle`)
+- [x] Implement `AuthEnv` (resolves env var → token)
+- [x] Add DryRun mock constructors for each
 
 ### Phase 3: Migrate Existing Violations
 
-- [ ] `sanitize_branch_for_filename()` — accept `&FilesystemHandle` input
-- [ ] `generate_gist_filename()` — accept `Timestamp` input
-- [ ] `Installer::for_platform()` — accept `Platform` input
-- [ ] `execute_rest()` — accept resolved `AuthToken`, stop reading env vars
-- [ ] Wire env nodes into gist graph, deps graph, transport graph
+- [x] `sanitize_branch_for_filename()` — accept `&FilesystemHandle` input
+- [x] `generate_gist_filename()` — accept `Timestamp` input
+- [x] `Installer::for_platform()` — accept `Platform` input
+- [x] `execute_rest()` — accept resolved `AuthToken`, stop reading env vars
+- [x] Wire env nodes into gist graph, deps graph, transport graph
 
 ### Phase 4: Sub-DAG Delegation
 
@@ -465,11 +451,11 @@ Each resource type has a mock constructor:
 
 ## Checklist
 
-- [ ] `Resource` trait with `resource_id()`, `access_mode()`, `kind()`
-- [ ] `ResourceKind::Capability` / `ResourceKind::Observation`
-- [ ] Per-resource environment nodes (FsEnv, PlatformEnv, ClockEnv, AuthEnv)
-- [ ] `res:` port naming convention
-- [ ] Resource wiring validation (`validate_resource_wiring()`)
+- [x] `Resource` trait with `resource_id()`, `access_mode()`, `kind()`
+- [x] `ResourceKind::Capability` / `ResourceKind::Observation`
+- [x] Per-resource environment nodes (FsEnv, PlatformEnv, ClockEnv, AuthEnv)
+- [x] `res:` port naming convention
+- [x] Resource wiring validation (`validate_resource_wiring()`)
 - [ ] Sub-DAG zero-based delegation model
-- [ ] DryRun mock extension for all resource types
-- [ ] Migrate existing inline violations to resource acquisition pattern
+- [x] DryRun mock extension for all resource types
+- [x] Migrate existing inline violations to resource acquisition pattern

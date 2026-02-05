@@ -192,7 +192,7 @@ impl Subcommand {
 
     /// Whether this subcommand invokes the Rust compiler (affected by RUSTFLAGS).
     pub fn compiles(&self) -> bool {
-        matches!(self, Self::Build | Self::Test | Self::Check)
+        matches!(self, Self::Build | Self::Test | Self::Check | Self::Run(_))
     }
 }
 
@@ -201,7 +201,8 @@ impl Subcommand {
 /// The rendering layer owns how this is expressed per subcommand:
 /// - `Clippy`: `-- -D warnings` (clippy driver flag)
 /// - `Build`/`Test`/`Check`: `RUSTFLAGS="-D warnings"` (env var)
-/// - `Fmt`/`Run`: no effect
+/// - `Run`: `RUSTFLAGS="-D warnings"` (env var)
+/// - `Fmt`: no effect
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Warnings {
     /// Default compiler behavior (warnings are warnings).
@@ -366,7 +367,12 @@ impl CargoCommand {
                 args.push("run".to_string());
                 match &inv.package {
                     Some(pkg) => {
-                        args.extend(["-p".to_string(), pkg.clone(), "--bin".to_string(), inv.binary.clone()]);
+                        args.extend([
+                            "-p".to_string(),
+                            pkg.clone(),
+                            "--bin".to_string(),
+                            inv.binary.clone(),
+                        ]);
                     }
                     None => {
                         args.extend(["-p".to_string(), inv.binary.clone()]);
@@ -425,10 +431,7 @@ impl CargoCommand {
         if env.is_empty() {
             return self.to_shell();
         }
-        let prefix: Vec<String> = env
-            .iter()
-            .map(|(k, v)| format!("{k}=\"{v}\""))
-            .collect();
+        let prefix: Vec<String> = env.iter().map(|(k, v)| format!("{k}=\"{v}\"")).collect();
         format!("{} {}", prefix.join(" "), self.to_shell())
     }
 
@@ -511,7 +514,15 @@ mod tests {
         let inv = CargoInvocation::standalone("codegen");
         assert_eq!(
             inv.run_with_args(&["--release", "--", "codegen"]),
-            vec!["cargo", "run", "-p", "gunbc-codegen", "--release", "--", "codegen"]
+            vec![
+                "cargo",
+                "run",
+                "-p",
+                "gunbc-codegen",
+                "--release",
+                "--",
+                "codegen"
+            ]
         );
     }
 
@@ -537,7 +548,10 @@ mod tests {
         let cmd = CargoCommand::new(Subcommand::Test).warnings(Warnings::Deny);
         // Test doesn't add trailing args for warnings - uses env instead
         assert_eq!(cmd.to_args(), vec!["cargo", "test"]);
-        assert_eq!(cmd.env(), vec![("RUSTFLAGS".to_string(), "-D warnings".to_string())]);
+        assert_eq!(
+            cmd.env(),
+            vec![("RUSTFLAGS".to_string(), "-D warnings".to_string())]
+        );
     }
 
     #[test]
@@ -564,9 +578,15 @@ mod tests {
         assert_eq!(
             cmd.to_args(),
             vec![
-                "cargo", "clippy",
-                "--fix", "--workspace", "--allow-dirty", "--allow-staged",
-                "--", "-D", "warnings"
+                "cargo",
+                "clippy",
+                "--fix",
+                "--workspace",
+                "--allow-dirty",
+                "--allow-staged",
+                "--",
+                "-D",
+                "warnings"
             ]
         );
     }
@@ -585,7 +605,29 @@ mod tests {
             .trailing_arg("codegen");
         assert_eq!(
             cmd.to_args(),
-            vec!["cargo", "run", "-p", "gunbc-codegen", "--release", "--", "codegen"]
+            vec![
+                "cargo",
+                "run",
+                "-p",
+                "gunbc-codegen",
+                "--release",
+                "--",
+                "codegen"
+            ]
+        );
+    }
+
+    #[test]
+    fn test_cargo_run_deny_warnings() {
+        let inv = CargoInvocation::standalone("codegen");
+        let cmd = CargoCommand::new(Subcommand::Run(inv)).warnings(Warnings::Deny);
+        assert_eq!(
+            cmd.env(),
+            vec![("RUSTFLAGS".to_string(), "-D warnings".to_string())]
+        );
+        assert_eq!(
+            cmd.to_shell_with_env(),
+            "RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-codegen"
         );
     }
 
@@ -598,7 +640,10 @@ mod tests {
     #[test]
     fn test_to_shell_with_env() {
         let cmd = CargoCommand::new(Subcommand::Test).warnings(Warnings::Deny);
-        assert_eq!(cmd.to_shell_with_env(), "RUSTFLAGS=\"-D warnings\" cargo test");
+        assert_eq!(
+            cmd.to_shell_with_env(),
+            "RUSTFLAGS=\"-D warnings\" cargo test"
+        );
     }
 
     #[test]
@@ -607,7 +652,10 @@ mod tests {
             .all_targets()
             .warnings(Warnings::Deny);
         // Clippy has no env (uses trailing args), so to_shell_with_env == to_shell
-        assert_eq!(cmd.to_shell_with_env(), "cargo clippy --all-targets -- -D warnings");
+        assert_eq!(
+            cmd.to_shell_with_env(),
+            "cargo clippy --all-targets -- -D warnings"
+        );
     }
 
     #[test]
@@ -630,6 +678,7 @@ mod tests {
         assert!(Subcommand::Build.compiles());
         assert!(Subcommand::Test.compiles());
         assert!(Subcommand::Check.compiles());
+        assert!(Subcommand::Run(CargoInvocation::standalone("codegen")).compiles());
         assert!(!Subcommand::Clippy.compiles());
         assert!(!Subcommand::Fmt.compiles());
     }

@@ -6,8 +6,8 @@ pub mod ops;
 pub mod subdags;
 
 pub use ops::WorkspaceOp;
-pub use subdags::build_workspace_dag;
 pub use subdags::bootstrap::build_bootstrap_subdag;
+pub use subdags::build_workspace_dag;
 pub use subdags::ci::build_ci_subdag;
 pub use subdags::clippy::{build_clippy_lint_all_subdag, build_clippy_subdag};
 pub use subdags::deps::{build_deps_generate_subdag, build_deps_install_subdag};

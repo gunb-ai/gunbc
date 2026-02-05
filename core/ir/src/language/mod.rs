@@ -44,19 +44,19 @@ pub mod traits;
 use crate::dag::Dag;
 
 // Re-exports - SubDag builders
-pub use patterns::{build_glob_subdag, build_regex_subdag, build_variable_syntax_subdag};
-pub use traits::{
-    build_comment_prefix_subdag, build_naming_conventions_subdag, build_type_system_mapping_subdag,
-};
 pub use categories::{build_config_format_subdag, build_turing_complete_subdag};
 pub use languages::{
     build_css_subdag, build_gitignore_subdag, build_html_subdag, build_makefile_subdag,
     build_markdown_subdag, build_rust_subdag, build_toml_subdag, build_yaml_subdag,
 };
+pub use patterns::{build_glob_subdag, build_regex_subdag, build_variable_syntax_subdag};
+pub use traits::{
+    build_comment_prefix_subdag, build_naming_conventions_subdag, build_type_system_mapping_subdag,
+};
 
 // Re-exports - Static configurations
 pub use languages::{
-    rust_type, CssConfig, GitignoreConfig, HtmlConfig, MakefileConfig, MakeTarget, MarkdownConfig,
+    rust_type, CssConfig, GitignoreConfig, HtmlConfig, MakeTarget, MakefileConfig, MarkdownConfig,
     RustConfig, TomlConfig, YamlConfig, CSS, DEFAULT_GITIGNORE_FILENAME, DEFAULT_MAKEFILE_FILENAME,
     GITIGNORE, HTML, MAKEFILE, MARKDOWN, RUST, TOML, YAML,
 };
@@ -307,26 +307,41 @@ mod tests {
 
     #[test]
     fn test_naming_case_snake() {
-        assert_eq!(NamingCase::SnakeCase.apply("myFunctionName"), "my_function_name");
-        assert_eq!(NamingCase::SnakeCase.apply("my_function_name"), "my_function_name");
+        assert_eq!(
+            NamingCase::SnakeCase.apply("myFunctionName"),
+            "my_function_name"
+        );
+        assert_eq!(
+            NamingCase::SnakeCase.apply("my_function_name"),
+            "my_function_name"
+        );
         assert_eq!(NamingCase::SnakeCase.apply("MyClassName"), "my_class_name");
     }
 
     #[test]
     fn test_naming_case_pascal() {
-        assert_eq!(NamingCase::PascalCase.apply("my_function_name"), "MyFunctionName");
+        assert_eq!(
+            NamingCase::PascalCase.apply("my_function_name"),
+            "MyFunctionName"
+        );
         assert_eq!(NamingCase::PascalCase.apply("my-component"), "MyComponent");
     }
 
     #[test]
     fn test_naming_case_camel() {
-        assert_eq!(NamingCase::CamelCase.apply("my_function_name"), "myFunctionName");
+        assert_eq!(
+            NamingCase::CamelCase.apply("my_function_name"),
+            "myFunctionName"
+        );
         assert_eq!(NamingCase::CamelCase.apply("my-component"), "myComponent");
     }
 
     #[test]
     fn test_naming_case_screaming() {
-        assert_eq!(NamingCase::ScreamingSnakeCase.apply("max_value"), "MAX_VALUE");
+        assert_eq!(
+            NamingCase::ScreamingSnakeCase.apply("max_value"),
+            "MAX_VALUE"
+        );
     }
 
     #[test]
@@ -346,7 +361,7 @@ mod tests {
     #[test]
     fn test_build_languages_dag() {
         let dag = build_languages_dag();
-        
+
         // Should have all the SubDag nodes
         assert!(dag.get_node(&"regex".into()).is_some());
         assert!(dag.get_node(&"glob".into()).is_some());

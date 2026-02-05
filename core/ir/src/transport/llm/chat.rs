@@ -103,15 +103,10 @@ pub enum ContentBlock {
     },
     /// Thinking block from an extended-thinking response (Anthropic).
     /// Must be preserved verbatim when passing back in multi-turn tool-use.
-    Thinking {
-        thinking: String,
-        signature: String,
-    },
+    Thinking { thinking: String, signature: String },
     /// Redacted thinking block (Anthropic safety filter).
     /// Must be preserved verbatim for reasoning continuity.
-    RedactedThinking {
-        data: String,
-    },
+    RedactedThinking { data: String },
 }
 
 impl ContentBlock {
@@ -655,8 +650,20 @@ mod tests {
 
         let blocks = msg.content.blocks().unwrap();
         assert_eq!(blocks.len(), 2);
-        assert!(matches!(&blocks[0], ContentBlock::Text { cache_control: Some(_), .. }));
-        assert!(matches!(&blocks[1], ContentBlock::Text { cache_control: None, .. }));
+        assert!(matches!(
+            &blocks[0],
+            ContentBlock::Text {
+                cache_control: Some(_),
+                ..
+            }
+        ));
+        assert!(matches!(
+            &blocks[1],
+            ContentBlock::Text {
+                cache_control: None,
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -691,14 +698,14 @@ mod tests {
 
         assert!(matches!(
             req.thinking,
-            Some(ThinkingConfig::Anthropic { budget_tokens: 10000 })
+            Some(ThinkingConfig::Anthropic {
+                budget_tokens: 10000
+            })
         ));
 
-        let req = ChatRequest::new("o3", vec![ChatMessage::user("Reason about this.")])
-            .thinking(ThinkingConfig::openai_with_summary(
-                ReasoningEffort::High,
-                ReasoningSummary::Concise,
-            ));
+        let req = ChatRequest::new("o3", vec![ChatMessage::user("Reason about this.")]).thinking(
+            ThinkingConfig::openai_with_summary(ReasoningEffort::High, ReasoningSummary::Concise),
+        );
 
         assert!(matches!(
             req.thinking,
@@ -771,7 +778,13 @@ mod tests {
         assert_eq!(block.as_text(), Some("Hello"));
 
         let cached = ContentBlock::text("System").with_cache(CacheControl::ephemeral());
-        assert!(matches!(cached, ContentBlock::Text { cache_control: Some(_), .. }));
+        assert!(matches!(
+            cached,
+            ContentBlock::Text {
+                cache_control: Some(_),
+                ..
+            }
+        ));
     }
 
     #[test]

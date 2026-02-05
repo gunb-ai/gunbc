@@ -112,7 +112,9 @@ use crate::tool_upsert::generate_deps_toml_from_registry;
 ///
 /// Combines loading and rendering into one step since ToolDef isn't serializable.
 /// Returns tool metadata and rendered deps.toml content.
-fn execute_load_tool_registry(_inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+fn execute_load_tool_registry(
+    _inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
     use gunbc_ir::transport::tool::default_tool_registry;
 
     let registry = default_tool_registry();
@@ -120,7 +122,6 @@ fn execute_load_tool_registry(_inputs: HashMap<String, Value>) -> Result<HashMap
 
     let tool_names: Vec<String> = tools.iter().map(|t| t.id.to_string()).collect();
     let tool_count = tools.len() as i64;
-
 
     OutputMap::new()
         .int("tool_count", tool_count)
@@ -134,13 +135,13 @@ fn execute_load_tool_registry(_inputs: HashMap<String, Value>) -> Result<HashMap
 /// default tool registry.
 ///
 /// Outputs: deps_toml_content: String
-fn execute_render_deps_toml(_inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+fn execute_render_deps_toml(
+    _inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
     // Generate deps.toml content directly from registry
     let content = generate_deps_toml_from_registry();
 
-    OutputMap::new()
-        .str("deps_toml_content", content)
-        .ok()
+    OutputMap::new().str("deps_toml_content", content).ok()
 }
 
 // ============================================================================
@@ -148,7 +149,9 @@ fn execute_render_deps_toml(_inputs: HashMap<String, Value>) -> Result<HashMap<S
 // ============================================================================
 
 /// Prepare file read request for manifest (PURE - no I/O).
-fn execute_prepare_load_manifest(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+fn execute_prepare_load_manifest(
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
     let manifest_path = optional_str(&inputs, "manifest_path").unwrap_or("deps.toml");
 
     let request = TransportRequest::File(FileRequest::read(manifest_path));
@@ -166,13 +169,18 @@ fn execute_prepare_load_manifest(inputs: HashMap<String, Value>) -> Result<HashM
 /// Parse manifest file response (PURE - no I/O).
 ///
 /// Outputs manifest_content for downstream GenerateScripts (avoiding re-load).
-fn execute_parse_manifest(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+fn execute_parse_manifest(
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
     let response = require_response(&inputs, "response")?;
     let manifest_path = optional_str(&inputs, "manifest_path").unwrap_or("deps.toml");
 
     let file_resp = response.require_file()?;
     let content = file_resp.content.clone().ok_or_else(|| {
-        ExecError::new(format!("failed to load manifest: file not found: {}", manifest_path))
+        ExecError::new(format!(
+            "failed to load manifest: file not found: {}",
+            manifest_path
+        ))
     })?;
 
     // Use ParseOp::Toml primitive to parse (validates TOML structure)
@@ -200,7 +208,9 @@ fn execute_parse_manifest(inputs: HashMap<String, Value>) -> Result<HashMap<Stri
 /// This function is now truly pure - it receives manifest_content as input
 /// instead of loading from file. The manifest was already loaded via the
 /// PrepareLoadManifest -> Execute -> ParseManifest chain.
-fn execute_generate_scripts(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+fn execute_generate_scripts(
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
     // Get manifest content from upstream (passed through graph, not file I/O)
     let manifest_content = require_str(&inputs, "manifest_content")?;
 
@@ -208,11 +218,9 @@ fn execute_generate_scripts(inputs: HashMap<String, Value>) -> Result<HashMap<St
     let manifest = DepsManifest::parse(manifest_content)
         .map_err(|e| ExecError::new(format!("failed to parse manifest: {}", e)))?;
 
-    // Use platform from DAG input (acquired at boundary), fall back to detect
-    let platform = match optional_str(&inputs, "platform") {
-        Some(p) => crate::platform::Platform::parse(p),
-        None => crate::platform::Platform::detect(),
-    };
+    // Use platform from DAG input (acquired at boundary)
+    let platform_str = require_str(&inputs, "res:platform")?;
+    let platform = crate::platform::Platform::parse(platform_str);
     let installer = Installer::for_platform(platform);
     let mut scripts = Vec::new();
     let mut already_installed = Vec::new();
@@ -249,7 +257,9 @@ fn execute_generate_scripts(inputs: HashMap<String, Value>) -> Result<HashMap<St
 // ============================================================================
 
 /// Prepare shell command for install script (PURE - no I/O).
-fn execute_prepare_execute_installs(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+fn execute_prepare_execute_installs(
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
     let script = require_str(&inputs, "install_script")?;
 
     let request = TransportRequest::Shell(ShellRequest {
@@ -271,7 +281,9 @@ fn execute_prepare_execute_installs(inputs: HashMap<String, Value>) -> Result<Ha
 // ============================================================================
 
 /// Parse execute result (PURE - no I/O).
-fn execute_parse_execute_result(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+fn execute_parse_execute_result(
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
     let response = require_response(&inputs, "response")?;
     let script = optional_str(&inputs, "script").unwrap_or("");
 
@@ -303,7 +315,9 @@ fn execute_parse_execute_result(inputs: HashMap<String, Value>) -> Result<HashMa
 /// Outputs:
 /// - request: TransportRequest (shell command for verify)
 /// - dep_name: String (pass through for correlation)
-fn execute_prepare_check_installed(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+fn execute_prepare_check_installed(
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
     let dep_name = require_str(&inputs, "dep_name")?;
     let verify_cmd = require_str(&inputs, "verify_cmd")?;
 
@@ -332,7 +346,9 @@ fn execute_prepare_check_installed(inputs: HashMap<String, Value>) -> Result<Has
 /// Outputs:
 /// - exists: Bool (true if installed)
 /// - dep_name: String (pass through)
-fn execute_parse_check_installed(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+fn execute_parse_check_installed(
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
     let response = require_response(&inputs, "response")?;
     let dep_name = optional_str(&inputs, "dep_name").unwrap_or("unknown");
 
@@ -359,7 +375,9 @@ fn execute_parse_check_installed(inputs: HashMap<String, Value>) -> Result<HashM
 /// Outputs:
 /// - request: TransportRequest (shell command for install)
 /// - dep_name: String (pass through)
-fn execute_prepare_install(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+fn execute_prepare_install(
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
     let dep_name = require_str(&inputs, "dep_name")?;
     let install_cmd = require_str(&inputs, "install_cmd")?;
 
@@ -388,7 +406,9 @@ fn execute_prepare_install(inputs: HashMap<String, Value>) -> Result<HashMap<Str
 /// Outputs:
 /// - installed: Bool (true if install succeeded)
 /// - dep_name: String (pass through)
-fn execute_parse_install(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+fn execute_parse_install(
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
     let response = require_response(&inputs, "response")?;
     let dep_name = optional_str(&inputs, "dep_name").unwrap_or("unknown");
 
@@ -553,11 +573,7 @@ echo "Installing git..."
             DepsOp::PrepareLoadManifest => vec![],
             DepsOp::ParseManifest => vec![],
             DepsOp::GenerateScripts => vec![
-                CardinalityTestInput::succeeds(
-                    "dep_names",
-                    0,
-                    Value::str_list(vec![]),
-                ),
+                CardinalityTestInput::succeeds("dep_names", 0, Value::str_list(vec![])),
                 CardinalityTestInput::succeeds(
                     "dep_names",
                     1,
@@ -593,8 +609,16 @@ echo "Installing git..."
             DepsOp::GenerateScripts => vec![
                 ErrorTestCase::new(
                     "missing_manifest_content",
-                    HashMap::new(),  // No manifest_content provided
+                    HashMap::new(), // No manifest_content provided
                     "missing or invalid 'manifest_content' input",
+                ),
+                ErrorTestCase::new(
+                    "missing_platform",
+                    HashMap::from([(
+                        "manifest_content".to_string(),
+                        Value::Str("[[dependency]]\nname = \"mock\"".to_string()),
+                    )]),
+                    "missing 'res:platform' input",
                 ),
             ],
             DepsOp::PrepareExecuteInstalls => vec![ErrorTestCase::new(
@@ -650,11 +674,15 @@ script = "echo 'installing echo'"
             "manifest_content".to_string(),
             Value::Str(manifest_content.to_string()),
         );
+        inputs.insert("res:platform".to_string(), Value::Str("linux".to_string()));
 
         let result = execute_generate_scripts(inputs).unwrap();
 
         // echo should be already installed (since 'echo test' succeeds)
-        match result.get("already_installed").and_then(|v| v.as_str_list()) {
+        match result
+            .get("already_installed")
+            .and_then(|v| v.as_str_list())
+        {
             Some(list) => {
                 assert!(list.contains(&"echo".to_string()));
             }
@@ -665,7 +693,8 @@ script = "echo 'installing echo'"
     #[test]
     fn test_generate_scripts_missing_content() {
         // Test that missing manifest_content fails with appropriate error
-        let inputs = HashMap::new();
+        let mut inputs = HashMap::new();
+        inputs.insert("res:platform".to_string(), Value::Str("linux".to_string()));
         let result = execute_generate_scripts(inputs);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("manifest_content"));

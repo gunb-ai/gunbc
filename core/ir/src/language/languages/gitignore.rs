@@ -16,8 +16,8 @@
 #![allow(dead_code)]
 
 use crate::dag::{Dag, Port};
-use crate::node::Node;
 use crate::language::LanguageOp;
+use crate::node::Node;
 
 /// Default gitignore filename - the canonical name for generated .gitignore files.
 pub const DEFAULT_GITIGNORE_FILENAME: &str = ".gitignore";
@@ -64,7 +64,7 @@ pub fn build_gitignore_subdag() -> Node<LanguageOp> {
         vec![],
         vec![
             Port::scalar("id", "String"),
-            Port::scalar("file_patterns", "List"),
+            Port::list("file_patterns", "String"),
             Port::scalar("comment_prefix", "String"),
         ],
         LanguageOp::GitignoreConfig,
@@ -73,16 +73,13 @@ pub fn build_gitignore_subdag() -> Node<LanguageOp> {
     // Render patterns to content
     inner.add_node(Node::opaque(
         "render",
-        vec![Port::scalar("patterns", "List")],
+        vec![Port::list("patterns", "String")],
         vec![Port::scalar("content", "String")],
         LanguageOp::GitignoreRender,
     ));
 
     // Create the SubDag node with interface
-    Node::subdag(
-        "gitignore",
-        inner,
-    )
+    Node::subdag("gitignore", inner)
 }
 
 /// Render gitignore patterns to file content.
@@ -124,7 +121,11 @@ pub fn is_ignored(file: &str, patterns: &[String]) -> bool {
         }
 
         let is_neg = is_negated(pattern);
-        let pattern_str = if is_neg { &pattern[1..] } else { pattern.as_str() };
+        let pattern_str = if is_neg {
+            &pattern[1..]
+        } else {
+            pattern.as_str()
+        };
 
         // Simple glob matching (supports * and **)
         if simple_glob_match(pattern_str, file) {
@@ -143,7 +144,7 @@ fn simple_glob_match(pattern: &str, file: &str) -> bool {
         if parts.len() == 2 {
             let prefix = parts[0].trim_end_matches('/');
             let suffix = parts[1].trim_start_matches('/');
-            
+
             if !prefix.is_empty() && !file.starts_with(prefix) {
                 return false;
             }
@@ -208,10 +209,7 @@ mod tests {
 
     #[test]
     fn test_render_gitignore_content() {
-        let patterns = vec![
-            "*.rs".to_string(),
-            "target/".to_string(),
-        ];
+        let patterns = vec!["*.rs".to_string(), "target/".to_string()];
         assert_eq!(render_gitignore_content(&patterns), "*.rs\ntarget/");
     }
 

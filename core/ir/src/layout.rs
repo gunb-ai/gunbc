@@ -50,7 +50,11 @@ pub enum ViewportUnit {
 impl Viewport {
     /// Create a new viewport.
     pub fn new(width: u16, height: u16, unit: ViewportUnit) -> Self {
-        Self { width, height, unit }
+        Self {
+            width,
+            height,
+            unit,
+        }
     }
 
     /// Standard terminal viewport (80×24 chars).
@@ -92,6 +96,20 @@ pub struct DagLayout {
     pub edges: Vec<EdgeLayout>,
     /// Nodes grouped by topological level (parallel nodes share a level).
     pub levels: Vec<Vec<NodeId>>,
+    /// Number of horizontal tracks (rows) used by the layout.
+    pub tracks: usize,
+    /// Mapping of node → track index.
+    pub node_tracks: HashMap<NodeId, usize>,
+    /// Mapping of node → letter label (A, B, ...).
+    pub node_letters: HashMap<NodeId, String>,
+    /// Grid lookup: (track, column) → node.
+    pub grid: HashMap<(usize, usize), NodeId>,
+    /// Connector cells between columns (gap index → track index).
+    pub connectors: Vec<Vec<ConnectorCell>>,
+    /// Box width in characters (uniform for all nodes).
+    pub box_width: u16,
+    /// Connector gap width in characters.
+    pub gap_width: u16,
     /// Actual height used (may be less than viewport.height).
     pub total_rows: u16,
     /// Actual width used.
@@ -104,9 +122,9 @@ pub struct DagLayout {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NodeLayout {
     pub id: NodeId,
-    /// Vertical position (level → row mapping).
+    /// Vertical position (track index).
     pub row: u16,
-    /// Horizontal position within the level band.
+    /// Horizontal position (level/column index).
     pub col: u16,
     /// Display width of the node label.
     pub label_width: u16,
@@ -122,6 +140,13 @@ pub struct EdgeLayout {
     /// (row, col) waypoints for edge routing.
     pub path: Vec<(u16, u16)>,
     pub orientation: EdgeOrientation,
+}
+
+/// A single connector cell between two columns on a specific track.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConnectorCell {
+    pub glyph: char,
+    pub edges: Vec<(NodeId, NodeId)>,
 }
 
 /// How an edge is oriented in the layout.
@@ -214,104 +239,307 @@ pub fn compute_levels(topo_order: &[NodeId], edges: &[Edge]) -> Vec<Vec<NodeId>>
 // Layout computation
 // ---------------------------------------------------------------------------
 
-/// Node spacing constants (in character cells).
-const NODE_SYMBOL_WIDTH: u16 = 2; // symbol + space
-const NODE_MIN_LABEL: u16 = 4;    // minimum label display
-const NODE_PADDING: u16 = 3;      // inter-node padding
-const LEVEL_ROW_SPACING: u16 = 2; // rows between levels (node row + edge row)
+/// Connector gap width between columns (in character cells).
+const DEFAULT_GAP_WIDTH: u16 = 3;
+
+#[derive(Debug, Clone, Default)]
+struct ConnectorBits {
+    up: bool,
+    down: bool,
+    left: bool,
+    right: bool,
+    arrow: bool,
+    edges: Vec<(NodeId, NodeId)>,
+}
+
+impl ConnectorBits {
+    fn add_edge(&mut self, from: &NodeId, to: &NodeId) {
+        if !self.edges.iter().any(|(f, t)| f == from && t == to) {
+            self.edges.push((from.clone(), to.clone()));
+        }
+    }
+
+    fn glyph(&self) -> char {
+        let up = self.up;
+        let down = self.down;
+        let left = self.left;
+        let right = self.right;
+
+        match (up, down, left, right) {
+            (true, true, true, true) => '\u{253C}',    // ┼
+            (true, true, true, false) => '\u{2524}',   // ┤
+            (true, true, false, true) => '\u{251C}',   // ├
+            (true, false, true, true) => '\u{2534}',   // ┴
+            (false, true, true, true) => '\u{252C}',   // ┬
+            (false, true, false, true) => '\u{250C}',  // ┌
+            (false, true, true, false) => '\u{2510}',  // ┐
+            (true, false, false, true) => '\u{2514}',  // └
+            (true, false, true, false) => '\u{2518}',  // ┘
+            (true, true, false, false) => '\u{2502}',  // │
+            (true, false, false, false) => '\u{2502}', // │
+            (false, true, false, false) => '\u{2502}', // │
+            (false, false, true, true) => {
+                if self.arrow {
+                    '\u{2192}'
+                } else {
+                    '\u{2500}'
+                } // → or ─
+            }
+            (false, false, true, false) => '\u{2500}', // ─
+            (false, false, false, true) => '\u{2500}', // ─
+            _ => ' ',
+        }
+    }
+}
 
 /// Compute the spatial layout of a DAG within a viewport.
 ///
 /// This is the main entry point. Takes a DAG's topology (as topo order + edges)
-/// and a viewport, returns positioned nodes and edges.
+/// and a viewport, returns positioned nodes, connectors, and edge routes.
 pub fn compute_layout(
     topo_order: &[NodeId],
     edges: &[Edge],
-    labels: &HashMap<NodeId, String>,
+    _labels: &HashMap<NodeId, String>,
     viewport: &Viewport,
 ) -> DagLayout {
     let levels = compute_levels(topo_order, edges);
+    let num_cols = levels.len();
 
-    // Compute node positions
+    let mut level_of: HashMap<NodeId, usize> = HashMap::new();
+    for (col, level) in levels.iter().enumerate() {
+        for node in level {
+            level_of.insert(node.clone(), col);
+        }
+    }
+
+    let mut topo_index: HashMap<NodeId, usize> = HashMap::new();
+    for (idx, node) in topo_order.iter().enumerate() {
+        topo_index.insert(node.clone(), idx);
+    }
+
+    let mut parents_of: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
+    for edge in edges {
+        parents_of
+            .entry(edge.to_node.clone())
+            .or_default()
+            .push(edge.from_node.clone());
+    }
+
+    // Order nodes within each level using parent-track barycenter, then topo order.
+    // This is deterministic and derived from dependency structure (not renderer heuristics).
+    let mut node_tracks: HashMap<NodeId, usize> = HashMap::new();
+    let mut ordered_levels: Vec<Vec<NodeId>> = Vec::new();
+
+    for (col, level) in levels.iter().enumerate() {
+        let mut nodes = level.clone();
+        if col == 0 {
+            nodes.sort_by_key(|n| topo_index.get(n).copied().unwrap_or(usize::MAX));
+        } else {
+            nodes.sort_by(|a, b| {
+                let a_score = avg_parent_track(a, &parents_of, &node_tracks);
+                let b_score = avg_parent_track(b, &parents_of, &node_tracks);
+                a_score
+                    .partial_cmp(&b_score)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+                    .then_with(|| {
+                        topo_index
+                            .get(a)
+                            .copied()
+                            .unwrap_or(usize::MAX)
+                            .cmp(&topo_index.get(b).copied().unwrap_or(usize::MAX))
+                    })
+            });
+        }
+
+        for (idx, node) in nodes.iter().enumerate() {
+            node_tracks.insert(node.clone(), idx);
+        }
+        ordered_levels.push(nodes);
+    }
+
+    let tracks = ordered_levels
+        .iter()
+        .map(|lvl| lvl.len())
+        .max()
+        .unwrap_or(0);
+
+    // Letters for node boxes (A, B, ...).
+    let mut node_letters: HashMap<NodeId, String> = HashMap::new();
+    for (idx, node) in topo_order.iter().enumerate() {
+        node_letters.insert(node.clone(), index_to_letters(idx));
+    }
+    let max_letter_width = node_letters
+        .values()
+        .map(|s| s.len() as u16)
+        .max()
+        .unwrap_or(1);
+    let box_width = max_letter_width + 2; // [A]
+    let gap_width = DEFAULT_GAP_WIDTH;
+    let max_tracks_visible = if viewport.is_unbounded_height() {
+        tracks
+    } else {
+        viewport.height as usize
+    };
+
+    // Build node layouts and grid lookup.
     let mut node_layouts: HashMap<NodeId, NodeLayout> = HashMap::new();
-    let mut max_col: u16 = 0;
+    let mut grid: HashMap<(usize, usize), NodeId> = HashMap::new();
     let mut collapsed_nodes: Vec<NodeId> = Vec::new();
-
-    for (level_idx, level_nodes) in levels.iter().enumerate() {
-        let row = (level_idx as u16) * LEVEL_ROW_SPACING;
-
-        // Calculate how much space each node needs
-        let node_widths: Vec<u16> = level_nodes
-            .iter()
-            .map(|id| {
-                let label = labels.get(id).map(|s| s.as_str()).unwrap_or(&id.0);
-                let label_w = label.len() as u16;
-                NODE_SYMBOL_WIDTH + label_w.max(NODE_MIN_LABEL)
-            })
-            .collect();
-
-        // Total width needed for this level
-        let total_needed: u16 = node_widths.iter().sum::<u16>()
-            + NODE_PADDING * (level_nodes.len().saturating_sub(1) as u16);
-
-        let fits = total_needed <= viewport.width;
-
-        // Place nodes left-to-right
-        let mut col: u16 = 0;
-        for (i, id) in level_nodes.iter().enumerate() {
-            let label = labels.get(id).map(|s| s.as_str()).unwrap_or(&id.0);
-            let label_width = label.len() as u16;
-            let is_collapsed = !fits && i >= max_visible_nodes(viewport.width);
-
+    for (col, level) in ordered_levels.iter().enumerate() {
+        for node in level {
+            let track = node_tracks.get(node).copied().unwrap_or(0);
+            let letter_w = node_letters.get(node).map(|s| s.len() as u16).unwrap_or(1);
+            let is_collapsed = track >= max_tracks_visible;
             if is_collapsed {
-                collapsed_nodes.push(id.clone());
+                collapsed_nodes.push(node.clone());
             }
-
             node_layouts.insert(
-                id.clone(),
+                node.clone(),
                 NodeLayout {
-                    id: id.clone(),
-                    row,
-                    col,
-                    label_width,
+                    id: node.clone(),
+                    row: track as u16,
+                    col: col as u16,
+                    label_width: letter_w,
                     is_collapsed,
                 },
             );
+            grid.insert((track, col), node.clone());
+        }
+    }
 
-            col += node_widths[i] + NODE_PADDING;
-            if col > max_col {
-                max_col = col;
+    // Connector bits between columns (gap index → track index).
+    let mut connector_bits: Vec<Vec<ConnectorBits>> =
+        vec![vec![ConnectorBits::default(); tracks]; num_cols.saturating_sub(1)];
+
+    // Route edges using a deterministic policy:
+    // - Vertical move in the first gap to reach the target track.
+    // - Horizontal moves along the target track for remaining gaps.
+    for edge in edges {
+        let from = &edge.from_node;
+        let to = &edge.to_node;
+        let col_from = *level_of.get(from).unwrap_or(&0);
+        let col_to = *level_of.get(to).unwrap_or(&col_from);
+        if col_to <= col_from {
+            continue;
+        }
+        let track_from = *node_tracks.get(from).unwrap_or(&0);
+        let track_to = *node_tracks.get(to).unwrap_or(&0);
+        let first_gap = col_from;
+        let last_gap = col_to - 1;
+
+        if track_from == track_to {
+            for gap in first_gap..=last_gap {
+                if let Some(cell) = connector_bits
+                    .get_mut(gap)
+                    .and_then(|row| row.get_mut(track_from))
+                {
+                    cell.left = true;
+                    cell.right = true;
+                    if gap == last_gap {
+                        cell.arrow = true;
+                    }
+                    cell.add_edge(from, to);
+                }
+            }
+            continue;
+        }
+
+        // First gap: vertical move between tracks.
+        if let Some(col_cells) = connector_bits.get_mut(first_gap) {
+            let (min_t, max_t) = if track_from < track_to {
+                (track_from, track_to)
+            } else {
+                (track_to, track_from)
+            };
+            for track in min_t..=max_t {
+                if let Some(cell) = col_cells.get_mut(track) {
+                    if track == track_from {
+                        cell.left = true;
+                        if track_to > track_from {
+                            cell.down = true;
+                        } else {
+                            cell.up = true;
+                        }
+                    } else if track == track_to {
+                        cell.right = true;
+                        if track_to > track_from {
+                            cell.up = true;
+                        } else {
+                            cell.down = true;
+                        }
+                    } else {
+                        cell.up = true;
+                        cell.down = true;
+                    }
+                    cell.add_edge(from, to);
+                }
+            }
+        }
+
+        // Remaining gaps: horizontal along target track.
+        if col_to > col_from + 1 {
+            for gap in (first_gap + 1)..=last_gap {
+                if let Some(cell) = connector_bits
+                    .get_mut(gap)
+                    .and_then(|row| row.get_mut(track_to))
+                {
+                    cell.left = true;
+                    cell.right = true;
+                    if gap == last_gap {
+                        cell.arrow = true;
+                    }
+                    cell.add_edge(from, to);
+                }
             }
         }
     }
 
-    // Compute edge layouts
+    let connectors: Vec<Vec<ConnectorCell>> = connector_bits
+        .into_iter()
+        .map(|row| {
+            row.into_iter()
+                .map(|bits| ConnectorCell {
+                    glyph: bits.glyph(),
+                    edges: bits.edges,
+                })
+                .collect()
+        })
+        .collect();
+
     let edge_layouts: Vec<EdgeLayout> = edges
         .iter()
         .filter_map(|edge| {
             let from_layout = node_layouts.get(&edge.from_node)?;
             let to_layout = node_layouts.get(&edge.to_node)?;
-            Some(compute_edge_layout(from_layout, to_layout))
+            Some(compute_edge_layout_horizontal(from_layout, to_layout))
         })
         .collect();
 
-    let total_rows = if levels.is_empty() {
+    let total_rows = tracks as u16;
+    let total_cols = if num_cols == 0 {
         0
     } else {
-        (levels.len() as u16 - 1) * LEVEL_ROW_SPACING + 1
+        (num_cols as u16) * box_width + ((num_cols as u16).saturating_sub(1) * gap_width)
     };
 
-    // Determine visible levels
-    let visible_levels = if viewport.is_unbounded_height() || total_rows <= viewport.height {
-        0..levels.len()
+    // Visible columns based on horizontal viewport width.
+    let visible_levels = if num_cols == 0 {
+        0..0
     } else {
-        // Truncate to fit viewport
-        let max_levels = (viewport.height / LEVEL_ROW_SPACING) as usize + 1;
-        0..max_levels.min(levels.len())
+        let max_levels = if viewport.width == 0 {
+            0
+        } else {
+            ((viewport.width + gap_width) / (box_width + gap_width)).max(1) as usize
+        };
+        if total_cols <= viewport.width {
+            0..num_cols
+        } else {
+            0..max_levels.min(num_cols)
+        }
     };
 
     let overflow = OverflowState {
-        strategy: if visible_levels.len() < levels.len() && collapsed_nodes.is_empty() {
+        strategy: if visible_levels.len() < num_cols && collapsed_nodes.is_empty() {
             OverflowStrategy::Truncate
         } else {
             OverflowStrategy::Collapse
@@ -324,58 +552,69 @@ pub fn compute_layout(
         viewport: *viewport,
         nodes: node_layouts,
         edges: edge_layouts,
-        levels,
+        levels: ordered_levels,
+        tracks,
+        node_tracks,
+        node_letters,
+        grid,
+        connectors,
+        box_width,
+        gap_width,
         total_rows,
-        total_cols: max_col,
+        total_cols,
         overflow,
     }
 }
 
-/// Compute how many nodes can fit side-by-side in the given width.
-fn max_visible_nodes(width: u16) -> usize {
-    // Each node needs at least symbol + short label + padding
-    let min_node_width = NODE_SYMBOL_WIDTH + NODE_MIN_LABEL + NODE_PADDING;
-    (width / min_node_width).max(1) as usize
+fn avg_parent_track(
+    node: &NodeId,
+    parents_of: &HashMap<NodeId, Vec<NodeId>>,
+    node_tracks: &HashMap<NodeId, usize>,
+) -> f64 {
+    let parents = match parents_of.get(node) {
+        Some(p) if !p.is_empty() => p,
+        _ => return f64::MAX,
+    };
+    let mut total = 0.0;
+    let mut count = 0.0;
+    for parent in parents {
+        if let Some(track) = node_tracks.get(parent) {
+            total += *track as f64;
+            count += 1.0;
+        }
+    }
+    if count == 0.0 {
+        f64::MAX
+    } else {
+        total / count
+    }
 }
 
-/// Compute the edge layout between two positioned nodes.
-fn compute_edge_layout(from: &NodeLayout, to: &NodeLayout) -> EdgeLayout {
-    let from_center_col = from.col + NODE_SYMBOL_WIDTH + from.label_width / 2;
-    let to_center_col = to.col + NODE_SYMBOL_WIDTH + to.label_width / 2;
+fn index_to_letters(mut idx: usize) -> String {
+    // 0 -> A, 1 -> B, ... 25 -> Z, 26 -> AA
+    let mut chars = Vec::new();
+    loop {
+        let rem = idx % 26;
+        chars.push((b'A' + rem as u8) as char);
+        if idx < 26 {
+            break;
+        }
+        idx = (idx / 26) - 1;
+    }
+    chars.iter().rev().collect()
+}
 
+fn compute_edge_layout_horizontal(from: &NodeLayout, to: &NodeLayout) -> EdgeLayout {
     let orientation = if from.row == to.row {
         EdgeOrientation::Horizontal
-    } else if from_center_col == to_center_col {
-        EdgeOrientation::Vertical
     } else {
         EdgeOrientation::Bend
     };
-
-    let path = match orientation {
-        EdgeOrientation::Horizontal => {
-            vec![(from.row, from_center_col), (to.row, to_center_col)]
-        }
-        EdgeOrientation::Vertical => {
-            // Straight down: from bottom of source to top of dest
-            let edge_row = from.row + 1; // connector row between levels
-            vec![
-                (from.row, from_center_col),
-                (edge_row, from_center_col),
-                (to.row, to_center_col),
-            ]
-        }
-        EdgeOrientation::Bend => {
-            // Route: go down from source, then horizontal, then to destination
-            let edge_row = from.row + 1; // connector row
-            vec![
-                (from.row, from_center_col),
-                (edge_row, from_center_col),
-                (edge_row, to_center_col),
-                (to.row, to_center_col),
-            ]
-        }
+    let path = if from.row == to.row {
+        vec![(from.row, from.col), (to.row, to.col)]
+    } else {
+        vec![(from.row, from.col), (to.row, from.col), (to.row, to.col)]
     };
-
     EdgeLayout {
         from: from.id.clone(),
         to: to.id.clone(),
@@ -451,11 +690,7 @@ mod tests {
     #[test]
     fn test_compute_levels_linear() {
         // A → B → C
-        let order = vec![
-            NodeId::from("A"),
-            NodeId::from("B"),
-            NodeId::from("C"),
-        ];
+        let order = vec![NodeId::from("A"), NodeId::from("B"), NodeId::from("C")];
         let edges = vec![
             Edge::new("A", "out", "B", "in"),
             Edge::new("B", "out", "C", "in"),
@@ -499,11 +734,7 @@ mod tests {
     #[test]
     fn test_compute_levels_independent() {
         // A, B, C (no edges)
-        let order = vec![
-            NodeId::from("A"),
-            NodeId::from("B"),
-            NodeId::from("C"),
-        ];
+        let order = vec![NodeId::from("A"), NodeId::from("B"), NodeId::from("C")];
         let edges = vec![];
 
         let levels = compute_levels(&order, &edges);
@@ -515,11 +746,7 @@ mod tests {
 
     #[test]
     fn test_layout_linear_pipeline() {
-        let order = vec![
-            NodeId::from("A"),
-            NodeId::from("B"),
-            NodeId::from("C"),
-        ];
+        let order = vec![NodeId::from("A"), NodeId::from("B"), NodeId::from("C")];
         let edges = vec![
             Edge::new("A", "out", "B", "in"),
             Edge::new("B", "out", "C", "in"),
@@ -533,17 +760,18 @@ mod tests {
         assert_eq!(layout.max_parallelism(), 1);
         assert!(!layout.has_overflow());
 
-        // Nodes should be at different rows
+        // Nodes should share the same track (row 0)
         let a = layout.node(&NodeId::from("A")).unwrap();
         let b = layout.node(&NodeId::from("B")).unwrap();
         let c = layout.node(&NodeId::from("C")).unwrap();
-        assert!(a.row < b.row);
-        assert!(b.row < c.row);
+        assert_eq!(a.row, 0);
+        assert_eq!(b.row, 0);
+        assert_eq!(c.row, 0);
 
-        // All at column 0 (single node per level)
+        // Columns should advance by level
         assert_eq!(a.col, 0);
-        assert_eq!(b.col, 0);
-        assert_eq!(c.col, 0);
+        assert_eq!(b.col, 1);
+        assert_eq!(c.col, 2);
     }
 
     #[test]
@@ -568,13 +796,13 @@ mod tests {
         assert_eq!(layout.level_count(), 3);
         assert_eq!(layout.max_parallelism(), 2);
 
-        // B and C should be on the same row (parallel)
+        // B and C should be in the same column (parallel level)
         let b = layout.node(&NodeId::from("B")).unwrap();
         let c = layout.node(&NodeId::from("C")).unwrap();
-        assert_eq!(b.row, c.row);
+        assert_eq!(b.col, c.col);
 
-        // B and C should have different columns
-        assert_ne!(b.col, c.col);
+        // B and C should have different rows (tracks)
+        assert_ne!(b.row, c.row);
 
         // Edges to D should be bends (different columns)
         let d_edges = layout.edges_to(&NodeId::from("D"));
@@ -605,8 +833,8 @@ mod tests {
             .map(|s| (NodeId::from(s.as_str()), s.clone()))
             .collect();
 
-        // Narrow viewport: only fits ~4 nodes
-        let vp = Viewport::new(40, 24, ViewportUnit::Chars);
+        // Short viewport height: only fits 3 tracks
+        let vp = Viewport::new(80, 3, ViewportUnit::Chars);
         let layout = compute_layout(&order, &edges, &labels, &vp);
 
         // Should have collapsed some nodes
@@ -616,7 +844,7 @@ mod tests {
 
     #[test]
     fn test_edge_orientations() {
-        // Linear: edges should be vertical
+        // Linear: edges should be horizontal in the left-to-right layout
         let order = vec![NodeId::from("A"), NodeId::from("B")];
         let edges = vec![Edge::new("A", "out", "B", "in")];
         let labels = labels_from(&["A", "B"]);
@@ -624,13 +852,10 @@ mod tests {
 
         let layout = compute_layout(&order, &edges, &labels, &vp);
 
-        // Same column → vertical or bend based on center alignment
+        // Same track → horizontal
         assert_eq!(layout.edges.len(), 1);
         let edge = &layout.edges[0];
-        assert!(
-            edge.orientation == EdgeOrientation::Vertical
-                || edge.orientation == EdgeOrientation::Bend
-        );
+        assert_eq!(edge.orientation, EdgeOrientation::Horizontal);
     }
 
     #[test]

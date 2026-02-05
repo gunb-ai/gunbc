@@ -13,8 +13,8 @@
 #![allow(dead_code)]
 
 use crate::dag::{Dag, Port};
-use crate::node::Node;
 use crate::language::LanguageOp;
+use crate::node::Node;
 
 /// Build the ConfigFormat category SubDag node.
 ///
@@ -53,10 +53,7 @@ pub fn build_config_format_subdag() -> Node<LanguageOp> {
     ));
 
     // Create the SubDag node with interface
-    Node::subdag(
-        "config_format",
-        inner,
-    )
+    Node::subdag("config_format", inner)
 }
 
 /// Get the comment prefix for a config format.

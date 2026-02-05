@@ -27,9 +27,11 @@
 // This crate IS the transport layer - it's allowed to use direct I/O
 #![allow(clippy::disallowed_methods)]
 
+pub mod env;
 pub mod executor;
 pub mod ops;
 
 // STRUCTURAL ENFORCEMENT: Only export TransportOps
 // execute_transport and execute_request are internal - not exported
+pub use env::AuthEnv;
 pub use ops::TransportOps;

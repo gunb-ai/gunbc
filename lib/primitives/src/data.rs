@@ -198,7 +198,10 @@ mod tests {
     fn test_parse_json() {
         let op = ParseOp::Json;
         let mut inputs = HashMap::new();
-        inputs.insert("input".to_string(), Value::Str(r#"{"name": "test"}"#.to_string()));
+        inputs.insert(
+            "input".to_string(),
+            Value::Str(r#"{"name": "test"}"#.to_string()),
+        );
 
         let result = op.execute(inputs).unwrap();
         let output = result.get("output").unwrap();

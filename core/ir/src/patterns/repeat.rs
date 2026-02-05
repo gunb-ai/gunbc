@@ -221,7 +221,10 @@ impl<T: Clone> RetryBuilder<T> {
                 Port::scalar("attempt", "Int"),
             ],
             vec![
-                Port::scalar(self.output_port_name.as_str(), self.output_port_type.as_str()),
+                Port::scalar(
+                    self.output_port_name.as_str(),
+                    self.output_port_type.as_str(),
+                ),
                 Port::scalar("attempts_made", "Int"),
                 Port::optional("final_error", "Error"),
             ],
@@ -458,7 +461,10 @@ impl<T: Clone> PollBuilder<T> {
         // Timer node: manages intervals and timeout
         dag.add_node(Node::opaque(
             "timer",
-            vec![Port::scalar(self.input_port_name.as_str(), self.input_port_type.as_str())],
+            vec![Port::scalar(
+                self.input_port_name.as_str(),
+                self.input_port_type.as_str(),
+            )],
             vec![
                 Port::scalar("body_input", self.input_port_type.as_str()),
                 Port::scalar("poll_count", "Int"),
@@ -484,7 +490,10 @@ impl<T: Clone> PollBuilder<T> {
                 Port::scalar("elapsed_ms", "Int"),
             ],
             vec![
-                Port::optional(self.output_port_name.as_str(), self.output_port_type.as_str()),
+                Port::optional(
+                    self.output_port_name.as_str(),
+                    self.output_port_type.as_str(),
+                ),
                 Port::scalar("success", "Bool"),
                 Port::scalar("polls", "Int"),
                 Port::scalar("elapsed_ms", "Int"),
@@ -532,9 +541,7 @@ mod tests {
     fn test_retry_subdag_structure() {
         let body: Dag<TestOp> = Dag::new();
 
-        let node = RetryBuilder::new("test")
-            .with_body(body)
-            .build();
+        let node = RetryBuilder::new("test").with_body(body).build();
 
         match &node.body {
             NodeBody::SubDag(dag) => {
@@ -639,9 +646,7 @@ mod tests {
     fn test_poll_subdag_structure() {
         let body: Dag<TestOp> = Dag::new();
 
-        let node = PollBuilder::new("test")
-            .with_body(body)
-            .build();
+        let node = PollBuilder::new("test").with_body(body).build();
 
         match &node.body {
             NodeBody::SubDag(dag) => {
@@ -683,7 +688,9 @@ mod tests {
                 Port::optional("result", "Any"),
                 Port::optional("error", "Error"),
             ],
-            PatternOp::RetryCollector { output_port: "result".into() },
+            PatternOp::RetryCollector {
+                output_port: "result".into(),
+            },
         ));
         dag
     }
@@ -709,7 +716,9 @@ mod tests {
             "check",
             vec![Port::scalar("state", "Unit")],
             vec![Port::scalar("continue", "Bool")],
-            PatternOp::WhileController { max_iterations: None },
+            PatternOp::WhileController {
+                max_iterations: None,
+            },
         ));
         dag
     }
@@ -723,7 +732,9 @@ mod tests {
                 Port::scalar("iteration", "Int"),
             ],
             vec![Port::scalar("next_state", "Unit")],
-            PatternOp::WhileInit { input_port: "state".into() },
+            PatternOp::WhileInit {
+                input_port: "state".into(),
+            },
         ));
         dag
     }
@@ -753,7 +764,9 @@ mod tests {
                 Port::optional("result", "Any"),
                 Port::scalar("success", "Bool"),
             ],
-            PatternOp::PollCollector { output_port: "result".into() },
+            PatternOp::PollCollector {
+                output_port: "result".into(),
+            },
         ));
         dag
     }
@@ -762,9 +775,7 @@ mod tests {
     fn test_poll_interface_validates() {
         use crate::validate::validate_subdag_interfaces;
 
-        let node = PollBuilder::new("poll")
-            .with_body(make_poll_body())
-            .build();
+        let node = PollBuilder::new("poll").with_body(make_poll_body()).build();
 
         let mut dag: Dag<TestOp> = Dag::new();
         dag.add_node(node);

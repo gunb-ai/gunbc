@@ -24,8 +24,7 @@ pub mod graph;
 pub mod graph_mock;
 
 use gunbc_exec::{
-    optional_str, require_json, require_map_str_str, require_str, ExecError,
-    Executable, OutputMap,
+    optional_str, require_json, require_map_str_str, require_str, ExecError, Executable, OutputMap,
 };
 use gunbc_ir::Value;
 use serde::{Deserialize, Serialize};
@@ -737,7 +736,10 @@ mod tests {
         let mut inputs = HashMap::new();
         inputs.insert(
             "artifact".to_string(),
-            Value::Str("fn foo() { query(format!(\"SELECT * FROM users WHERE id = {}\", id)); }".to_string()),
+            Value::Str(
+                "fn foo() { query(format!(\"SELECT * FROM users WHERE id = {}\", id)); }"
+                    .to_string(),
+            ),
         );
         inputs.insert(
             "criteria".to_string(),
@@ -1065,10 +1067,7 @@ Please fix these issues."#;
         );
 
         let result2 = ReviewOps::HashFinding.execute(inputs2).unwrap();
-        assert_eq!(
-            result.get("finding_id"),
-            result2.get("finding_id")
-        );
+        assert_eq!(result.get("finding_id"), result2.get("finding_id"));
     }
 
     #[test]
@@ -1092,7 +1091,9 @@ Please fix these issues."#;
             "line": 42
         })))
         .unwrap();
-        assert!(matches!(loc, Location::FileLine { file, line } if file == "src/main.rs" && line == 42));
+        assert!(
+            matches!(loc, Location::FileLine { file, line } if file == "src/main.rs" && line == 42)
+        );
 
         // Span
         let loc = parse_location(Some(&serde_json::json!({
@@ -1102,7 +1103,9 @@ Please fix these issues."#;
             "end": 20
         })))
         .unwrap();
-        assert!(matches!(loc, Location::Span { file, start, end } if file == "src/lib.rs" && start == 10 && end == 20));
+        assert!(
+            matches!(loc, Location::Span { file, start, end } if file == "src/lib.rs" && start == 10 && end == 20)
+        );
 
         // Simplified format
         let loc = parse_location(Some(&serde_json::json!({
@@ -1135,10 +1138,9 @@ Please fix these issues."#;
         assert_eq!(json["key"], "value");
 
         // JSON buried in text
-        let json = extract_json_from_response(
-            r#"The analysis shows {"key": "value"} as the result."#,
-        )
-        .unwrap();
+        let json =
+            extract_json_from_response(r#"The analysis shows {"key": "value"} as the result."#)
+                .unwrap();
         assert_eq!(json["key"], "value");
     }
 
@@ -1163,10 +1165,7 @@ Please fix these issues."#;
         );
 
         let mut inputs = HashMap::new();
-        inputs.insert(
-            "diff_files".to_string(),
-            Value::str_map(diff_files),
-        );
+        inputs.insert("diff_files".to_string(), Value::str_map(diff_files));
 
         let result = ReviewOps::FormatDiffArtifact.execute(inputs).unwrap();
         let artifact = result.get("artifact").unwrap().as_str().unwrap();
@@ -1181,10 +1180,7 @@ Please fix these issues."#;
         use std::collections::BTreeMap;
 
         let mut inputs = HashMap::new();
-        inputs.insert(
-            "diff_files".to_string(),
-            Value::Map(BTreeMap::new()),
-        );
+        inputs.insert("diff_files".to_string(), Value::Map(BTreeMap::new()));
 
         let result = ReviewOps::FormatDiffArtifact.execute(inputs).unwrap();
         let artifact = result.get("artifact").unwrap().as_str().unwrap();

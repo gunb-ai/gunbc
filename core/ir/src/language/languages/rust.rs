@@ -15,8 +15,8 @@
 //! - Naming: snake_case functions, PascalCase types
 
 use crate::dag::{Dag, Port};
-use crate::node::Node;
 use crate::language::LanguageOp;
+use crate::node::Node;
 
 /// Rust language static configuration.
 pub struct RustConfig {
@@ -69,7 +69,7 @@ pub fn build_rust_subdag() -> Node<LanguageOp> {
         vec![
             Port::scalar("id", "String"),
             Port::scalar("name", "String"),
-            Port::scalar("extensions", "List"),
+            Port::list("extensions", "String"),
             Port::scalar("comment_prefix", "String"),
             Port::scalar("doc_comment_prefix", "String"),
         ],
@@ -88,10 +88,7 @@ pub fn build_rust_subdag() -> Node<LanguageOp> {
     ));
 
     // Create the SubDag node with interface
-    Node::subdag(
-        "rust",
-        inner,
-    )
+    Node::subdag("rust", inner)
 }
 
 /// Map an abstract type to Rust type.

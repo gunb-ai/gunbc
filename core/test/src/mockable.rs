@@ -193,16 +193,8 @@ mod tests {
 
         fn cardinality_inputs(&self) -> Vec<CardinalityTestInput> {
             vec![
-                CardinalityTestInput::succeeds(
-                    "input",
-                    0,
-                    Value::str_list(vec![]),
-                ),
-                CardinalityTestInput::succeeds(
-                    "input",
-                    1,
-                    Value::str_list(vec!["one".into()]),
-                ),
+                CardinalityTestInput::succeeds("input", 0, Value::str_list(vec![])),
+                CardinalityTestInput::succeeds("input", 1, Value::str_list(vec!["one".into()])),
             ]
         }
 
@@ -243,10 +235,8 @@ mod tests {
     fn test_expected_behavior_matches() {
         assert!(ExpectedBehavior::Succeeds.matches(&Ok(())));
         assert!(!ExpectedBehavior::Succeeds.matches(&Err("error".into())));
-        
-        assert!(ExpectedBehavior::FailsWith("missing".into())
-            .matches(&Err("missing input".into())));
-        assert!(!ExpectedBehavior::FailsWith("missing".into())
-            .matches(&Ok(())));
+
+        assert!(ExpectedBehavior::FailsWith("missing".into()).matches(&Err("missing input".into())));
+        assert!(!ExpectedBehavior::FailsWith("missing".into()).matches(&Ok(())));
     }
 }

@@ -14,8 +14,8 @@
 #![allow(dead_code)]
 
 use crate::dag::{Dag, Port};
-use crate::node::Node;
 use crate::language::{LanguageOp, NamingCase};
+use crate::node::Node;
 
 /// Naming conventions for a language.
 #[derive(Debug, Clone)]
@@ -80,10 +80,7 @@ pub fn build_naming_conventions_subdag() -> Node<LanguageOp> {
     ));
 
     // Create the SubDag node with interface
-    Node::subdag(
-        "naming",
-        inner,
-    )
+    Node::subdag("naming", inner)
 }
 
 /// Get the naming conventions for a language.
@@ -99,7 +96,7 @@ pub fn naming_for_language(language: &str) -> Option<&'static LanguageNaming> {
 /// Convert a name to match a language's convention for a specific context.
 pub fn convert_for_language(name: &str, language: &str, context: &str) -> Option<String> {
     let naming = naming_for_language(language)?;
-    
+
     let case = match context {
         "type" => naming.type_case,
         "function" => naming.function_case,

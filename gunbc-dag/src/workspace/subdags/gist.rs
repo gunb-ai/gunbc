@@ -13,12 +13,8 @@ fn convert_gist_node(node: Node<GistGraphOp>) -> Node<WorkspaceOp> {
         inputs: node.inputs,
         outputs: node.outputs,
         body: match node.body {
-            gunbc_ir::NodeBody::Opaque(op) => {
-                gunbc_ir::NodeBody::Opaque(convert_gist_op(op))
-            }
-            gunbc_ir::NodeBody::SubDag(dag) => {
-                gunbc_ir::NodeBody::SubDag(convert_gist_dag(dag))
-            }
+            gunbc_ir::NodeBody::Opaque(op) => gunbc_ir::NodeBody::Opaque(convert_gist_op(op)),
+            gunbc_ir::NodeBody::SubDag(dag) => gunbc_ir::NodeBody::SubDag(convert_gist_dag(dag)),
         },
         examples: Vec::new(),
     }
@@ -28,7 +24,7 @@ fn convert_gist_node(node: Node<GistGraphOp>) -> Node<WorkspaceOp> {
 fn convert_gist_op(op: GistGraphOp) -> WorkspaceOp {
     match op {
         // Gist-specific ops - wrap in Gist variant with a placeholder
-        // Note: GistOps only has PrepareRequest and ParseGistResponse
+        // GistOps includes env + request/parse variants; internal ops use a placeholder
         // The internal graph ops don't have direct WorkspaceOp equivalents
         GistGraphOp::Git(_)
         | GistGraphOp::PrepareReadFiles
@@ -81,14 +77,11 @@ pub fn build_gist_subdag(
     extensions: Vec<String>,
     create_gist: bool,
 ) -> Node<WorkspaceOp> {
-    let original = build_gist_graph(mode, extensions, create_gist)
-        .expect("Gist graph should build");
+    let original =
+        build_gist_graph(mode, extensions, create_gist).expect("Gist graph should build");
     let converted_dag = convert_gist_dag(original);
 
-    Node::subdag(
-        "gist",
-        converted_dag,
-    )
+    Node::subdag("gist", converted_dag)
 }
 
 /// Build a default gist SubDag for Rust files (snapshot mode).

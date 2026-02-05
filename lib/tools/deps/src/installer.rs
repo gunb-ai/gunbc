@@ -46,7 +46,7 @@ impl Installer {
     }
 
     /// Check if a tool is installed by running the verify command.
-    /// 
+    ///
     /// Note: This is part of the tool installation infrastructure - it's allowed
     /// to use Command::new because it's implementing the verify step.
     #[allow(clippy::disallowed_methods)]
@@ -91,19 +91,15 @@ impl Installer {
                 }
                 Ok(format!("cargo install {}", install.packages.join(" ")))
             }
-            InstallMethod::Script => {
-                install
-                    .script
-                    .clone()
-                    .ok_or_else(|| "script install requires script field".to_string())
-            }
+            InstallMethod::Script => install
+                .script
+                .clone()
+                .ok_or_else(|| "script install requires script field".to_string()),
             InstallMethod::GithubRelease => {
                 // Would need more complex handling for downloading releases
                 Err("github_release method not yet implemented".to_string())
             }
-            InstallMethod::Unknown => {
-                Err(format!("unknown install method: {}", install.method))
-            }
+            InstallMethod::Unknown => Err(format!("unknown install method: {}", install.method)),
         }
     }
 

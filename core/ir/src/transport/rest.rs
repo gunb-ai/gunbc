@@ -36,14 +36,20 @@ impl fmt::Debug for AuthMethod {
             AuthMethod::None => write!(f, "AuthMethod::None"),
             AuthMethod::Bearer(_) => write!(f, "AuthMethod::Bearer(***)"),
             AuthMethod::Basic { username, .. } => {
-                write!(f, "AuthMethod::Basic {{ username: {username:?}, password: *** }}")
+                write!(
+                    f,
+                    "AuthMethod::Basic {{ username: {username:?}, password: *** }}"
+                )
             }
             AuthMethod::ApiKey { header, .. } => {
                 write!(f, "AuthMethod::ApiKey {{ header: {header:?}, key: *** }}")
             }
             AuthMethod::EnvVar(var) => write!(f, "AuthMethod::EnvVar({var:?})"),
             AuthMethod::EnvVarHeader { header, env_var } => {
-                write!(f, "AuthMethod::EnvVarHeader {{ header: {header:?}, env_var: {env_var:?} }}")
+                write!(
+                    f,
+                    "AuthMethod::EnvVarHeader {{ header: {header:?}, env_var: {env_var:?} }}"
+                )
             }
         }
     }
@@ -76,9 +82,7 @@ impl AuthMethod {
     /// testable without real environment variables.
     pub fn resolve_env_vars(&self, lookup: impl Fn(&str) -> Option<String>) -> Option<AuthMethod> {
         match self {
-            AuthMethod::EnvVar(var) => {
-                lookup(var).map(AuthMethod::Bearer)
-            }
+            AuthMethod::EnvVar(var) => lookup(var).map(AuthMethod::Bearer),
             AuthMethod::EnvVarHeader { header, env_var } => {
                 lookup(env_var).map(|key| AuthMethod::ApiKey {
                     header: header.clone(),
@@ -289,14 +293,21 @@ mod tests {
         }));
 
         assert!(resp.is_success());
-        assert_eq!(resp.get_str("html_url"), Some("https://gist.github.com/abc123"));
+        assert_eq!(
+            resp.get_str("html_url"),
+            Some("https://gist.github.com/abc123")
+        );
     }
 
     #[test]
     fn test_resolve_env_var_found() {
         let auth = AuthMethod::EnvVar("MY_TOKEN".into());
         let resolved = auth.resolve_env_vars(|var| {
-            if var == "MY_TOKEN" { Some("secret123".into()) } else { None }
+            if var == "MY_TOKEN" {
+                Some("secret123".into())
+            } else {
+                None
+            }
         });
         assert_eq!(resolved, Some(AuthMethod::Bearer("secret123".into())));
     }
@@ -315,11 +326,18 @@ mod tests {
             env_var: "ANTHROPIC_KEY".into(),
         };
         let resolved = auth.resolve_env_vars(|var| {
-            if var == "ANTHROPIC_KEY" { Some("sk-ant-123".into()) } else { None }
+            if var == "ANTHROPIC_KEY" {
+                Some("sk-ant-123".into())
+            } else {
+                None
+            }
         });
         assert_eq!(
             resolved,
-            Some(AuthMethod::ApiKey { header: "x-api-key".into(), key: "sk-ant-123".into() })
+            Some(AuthMethod::ApiKey {
+                header: "x-api-key".into(),
+                key: "sk-ant-123".into()
+            })
         );
     }
 
@@ -349,18 +367,20 @@ mod tests {
 
     #[test]
     fn test_request_resolve_auth() {
-        let mut req = RestRequest::get("https://api.example.com")
-            .auth_env("MY_TOKEN");
+        let mut req = RestRequest::get("https://api.example.com").auth_env("MY_TOKEN");
         req.resolve_auth(|var| {
-            if var == "MY_TOKEN" { Some("resolved_token".into()) } else { None }
+            if var == "MY_TOKEN" {
+                Some("resolved_token".into())
+            } else {
+                None
+            }
         });
         assert_eq!(req.auth, Some(AuthMethod::Bearer("resolved_token".into())));
     }
 
     #[test]
     fn test_request_resolve_auth_missing_env() {
-        let mut req = RestRequest::get("https://api.example.com")
-            .auth_env("MISSING");
+        let mut req = RestRequest::get("https://api.example.com").auth_env("MISSING");
         req.resolve_auth(|_| None);
         assert_eq!(req.auth, None);
     }

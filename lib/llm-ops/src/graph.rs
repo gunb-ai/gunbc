@@ -3,7 +3,7 @@
 //! Provides a composable DAG for the LLM chat completion pattern:
 //!
 //! ```text
-//! PrepareChatRequest (pure) → TransportOps::Execute (I/O) → ParseChatResponse (pure)
+//! PrepareChatRequest (pure) → ResolveAuth (pure) → AuthEnv (env) → TransportOps::Execute (I/O) → ParseChatResponse (pure)
 //! ```
 //!
 //! This graph can be embedded as a sub-DAG in larger workflows that need
@@ -11,7 +11,7 @@
 
 use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::{build::*, Dag, Node, Value};
-use gunbc_lib_transport::TransportOps;
+use gunbc_lib_transport::{AuthEnv, TransportOps};
 use std::collections::HashMap;
 
 use crate::LlmOps;
@@ -25,6 +25,8 @@ pub enum LlmGraphOp {
     Llm(LlmOps),
     /// Transport execution (BOUNDARY - actual I/O)
     Transport(TransportOps),
+    /// Auth environment (BOUNDARY - resolves provider auth)
+    Env(AuthEnv),
 }
 
 impl Executable for LlmGraphOp {
@@ -32,6 +34,7 @@ impl Executable for LlmGraphOp {
         match self {
             LlmGraphOp::Llm(op) => op.execute(inputs),
             LlmGraphOp::Transport(op) => op.execute(inputs),
+            LlmGraphOp::Env(op) => op.execute(inputs),
         }
     }
 }
@@ -73,15 +76,34 @@ pub fn build_chat_completion_graph() -> Dag<LlmGraphOp> {
         LlmGraphOp::Llm(LlmOps::PrepareChatRequest),
     ));
 
-    // Node 2: Execute transport (I/O boundary)
+    // Node 2: Resolve auth requirements (pure)
+    dag.add_node(Node::opaque(
+        "resolve_auth",
+        vec![port("provider", "String")],
+        vec![port("service", "String"), port("env_var", "String")],
+        LlmGraphOp::Llm(LlmOps::ResolveAuth),
+    ));
+
+    // Node 3: Auth environment (resolves provider auth)
+    dag.add_node(Node::opaque(
+        "auth_env",
+        vec![port("service", "String"), port("env_var", "String")],
+        vec![port("auth:llm", "AuthToken")],
+        LlmGraphOp::Env(AuthEnv::from_inputs("auth:llm")),
+    ));
+
+    // Node 4: Execute transport (I/O boundary)
     dag.add_node(Node::opaque(
         "execute",
-        vec![port("request", "TransportRequest")],
+        vec![
+            port("request", "TransportRequest"),
+            port("res:auth", "AuthToken"),
+        ],
         vec![port("response", "TransportResponse")],
         LlmGraphOp::Transport(TransportOps::Execute),
     ));
 
-    // Node 3: ParseChatResponse (pure)
+    // Node 5: ParseChatResponse (pure)
     dag.add_node(Node::opaque(
         "parse",
         vec![
@@ -98,10 +120,14 @@ pub fn build_chat_completion_graph() -> Dag<LlmGraphOp> {
         LlmGraphOp::Llm(LlmOps::ParseChatResponse),
     ));
 
-    // Edges: prepare -> execute -> parse
+    // Edges: prepare -> resolve_auth -> auth_env -> execute -> parse
     dag.add_edge(edge("prepare", "request", "execute", "request"));
     dag.add_edge(edge("execute", "response", "parse", "response"));
     dag.add_edge(edge("prepare", "provider", "parse", "provider"));
+    dag.add_edge(edge("prepare", "provider", "resolve_auth", "provider"));
+    dag.add_edge(edge("resolve_auth", "service", "auth_env", "service"));
+    dag.add_edge(edge("resolve_auth", "env_var", "auth_env", "env_var"));
+    dag.add_edge(edge("auth_env", "auth:llm", "execute", "res:auth"));
 
     dag
 }
@@ -114,8 +140,8 @@ mod tests {
     #[test]
     fn test_chat_completion_graph_structure() {
         let dag = build_chat_completion_graph();
-        assert_eq!(dag.nodes.len(), 3);
-        assert_eq!(dag.edges.len(), 3);
+        assert_eq!(dag.nodes.len(), 5);
+        assert_eq!(dag.edges.len(), 7);
     }
 
     #[test]

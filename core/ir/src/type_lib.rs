@@ -118,7 +118,12 @@ pub fn refined(type_name: &str, predicates: Vec<Predicate>) -> Dag<TypeOp> {
             TypeOp::Validate(pred),
         ));
 
-        dag.add_edge(Edge::new(prev_node.as_str(), prev_port, node_id.as_str(), "in"));
+        dag.add_edge(Edge::new(
+            prev_node.as_str(),
+            prev_port,
+            node_id.as_str(),
+            "in",
+        ));
 
         prev_node = node_id;
     }
@@ -166,12 +171,24 @@ pub fn email() -> Dag<TypeOp> {
 
 /// Positive integer type.
 pub fn positive_int() -> Dag<TypeOp> {
-    refined("Int", vec![Predicate::InRange { min: 1, max: i64::MAX }])
+    refined(
+        "Int",
+        vec![Predicate::InRange {
+            min: 1,
+            max: i64::MAX,
+        }],
+    )
 }
 
 /// Non-negative integer type.
 pub fn non_negative_int() -> Dag<TypeOp> {
-    refined("Int", vec![Predicate::InRange { min: 0, max: i64::MAX }])
+    refined(
+        "Int",
+        vec![Predicate::InRange {
+            min: 0,
+            max: i64::MAX,
+        }],
+    )
 }
 
 // =============================================================================
@@ -193,10 +210,7 @@ pub fn optional(inner_type: Dag<TypeOp>) -> Dag<TypeOp> {
     ));
 
     // Inner type validation (as SubDag)
-    dag.add_node(Node::subdag(
-        "inner_type",
-        inner_type,
-    ));
+    dag.add_node(Node::subdag("inner_type", inner_type));
 
     dag.add_edge(Edge::new("input", "out", "inner_type", "in"));
 
@@ -218,10 +232,7 @@ pub fn list(element_type: Dag<TypeOp>) -> Dag<TypeOp> {
     ));
 
     // Element type validation (as SubDag, applied to each element)
-    dag.add_node(Node::subdag(
-        "element_type",
-        element_type,
-    ));
+    dag.add_node(Node::subdag("element_type", element_type));
 
     dag.add_edge(Edge::new("input", "out", "element_type", "in"));
 
@@ -249,10 +260,7 @@ pub fn non_empty_list(element_type: Dag<TypeOp>) -> Dag<TypeOp> {
     ));
 
     // Element type validation (as SubDag)
-    dag.add_node(Node::subdag(
-        "element_type",
-        element_type,
-    ));
+    dag.add_node(Node::subdag("element_type", element_type));
 
     dag.add_edge(Edge::new("input", "out", "check_non_empty", "in"));
     dag.add_edge(Edge::new("check_non_empty", "out", "element_type", "in"));
@@ -275,10 +283,7 @@ pub fn set(element_type: Dag<TypeOp>) -> Dag<TypeOp> {
     ));
 
     // Element type validation (as SubDag, applied to each element)
-    dag.add_node(Node::subdag(
-        "element_type",
-        element_type,
-    ));
+    dag.add_node(Node::subdag("element_type", element_type));
 
     dag.add_edge(Edge::new("input", "out", "element_type", "in"));
 
@@ -306,10 +311,7 @@ pub fn non_empty_set(element_type: Dag<TypeOp>) -> Dag<TypeOp> {
     ));
 
     // Element type validation (as SubDag)
-    dag.add_node(Node::subdag(
-        "element_type",
-        element_type,
-    ));
+    dag.add_node(Node::subdag("element_type", element_type));
 
     dag.add_edge(Edge::new("input", "out", "check_non_empty", "in"));
     dag.add_edge(Edge::new("check_non_empty", "out", "element_type", "in"));

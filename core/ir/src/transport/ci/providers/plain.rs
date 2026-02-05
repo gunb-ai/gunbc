@@ -68,9 +68,7 @@ impl CiProvider for PlainTextProvider {
                 format!("Output: {}={}", key, value)
             }
 
-            WorkflowCommand::MaskValue { .. } => {
-                "[masked value]".to_string()
-            }
+            WorkflowCommand::MaskValue { .. } => "[masked value]".to_string(),
 
             WorkflowCommand::Summary { markdown } => {
                 format!("--- Summary ---\n{}\n---------------", markdown)

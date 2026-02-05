@@ -124,7 +124,8 @@ pub fn gitlab_saas_linux_small() -> GitLabRunner {
         id: "saas-linux-small-amd64",
         runner_name: "GitLab SaaS Linux Small Runner",
         tools: vec![
-            "git", "docker", "curl", "wget", "jq", "zip", "unzip",
+            "git", "docker", "curl", "wget", "jq", "zip",
+            "unzip",
             // Note: cargo/rustc not pre-installed, need to use rust image
         ],
         docs_url: "https://docs.gitlab.com/ee/ci/runners/saas/linux_saas_runner.html",
@@ -138,9 +139,7 @@ pub fn gitlab_saas_linux_medium() -> GitLabRunner {
     GitLabRunner {
         id: "saas-linux-medium-amd64",
         runner_name: "GitLab SaaS Linux Medium Runner",
-        tools: vec![
-            "git", "docker", "curl", "wget", "jq", "zip", "unzip",
-        ],
+        tools: vec!["git", "docker", "curl", "wget", "jq", "zip", "unzip"],
         docs_url: "https://docs.gitlab.com/ee/ci/runners/saas/linux_saas_runner.html",
     }
 }
@@ -152,9 +151,7 @@ pub fn gitlab_saas_linux_large() -> GitLabRunner {
     GitLabRunner {
         id: "saas-linux-large-amd64",
         runner_name: "GitLab SaaS Linux Large Runner",
-        tools: vec![
-            "git", "docker", "curl", "wget", "jq", "zip", "unzip",
-        ],
+        tools: vec!["git", "docker", "curl", "wget", "jq", "zip", "unzip"],
         docs_url: "https://docs.gitlab.com/ee/ci/runners/saas/linux_saas_runner.html",
     }
 }

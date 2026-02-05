@@ -33,12 +33,14 @@
 pub mod collection;
 pub mod control;
 pub mod data;
+pub mod env;
 pub mod filename;
 pub mod io;
 
 pub use collection::{CollectionOp, FilterOp, FirstOp, FoldOp, LastOp, MapOp, SetOp, SortOp};
 pub use control::{BranchOp, LoopOp};
 pub use data::{ConcatOp, ExtractOp, FormatOp, ParseOp, SplitOp};
+pub use env::{ClockEnv, FsEnv};
 pub use io::{
     EmbeddedFileExistsOp, EmbeddedShellOp, HttpRequestOp, PrepareDirectoryListOp,
     PrepareFileExistsOp, PrepareFileReadOp, PrepareFileWriteOp, PrepareShellOp,

@@ -31,6 +31,8 @@ use gunbc_ir::resource::{detect_conflicts, ResourceAccess, ResourceConflict};
 use gunbc_ir::types::{Cardinality, NodeId, PortName, TypeId};
 use gunbc_ir::{contract, detect_boundaries, Dag, TypeRegistry};
 
+use crate::testgen::cardinality::fermi_test_cases;
+
 // ---------------------------------------------------------------------------
 // Obligation IR
 // ---------------------------------------------------------------------------
@@ -118,17 +120,13 @@ pub enum Obligation {
     // Static typing cannot prove "DryRun truly intercepts all transports."
     // -----------------------------------------------------------------------
     /// Every transport executor is interceptable in DryRun.
-    TransportInterceptable {
-        node_id: NodeId,
-    },
+    TransportInterceptable { node_id: NodeId },
 
     /// DryRun completes without crash for the full workflow.
     DryRunCompletion,
 
     /// Pure nodes are deterministic: same inputs + same mocks → same outputs.
-    PureNodeDeterminism {
-        node_id: NodeId,
-    },
+    PureNodeDeterminism { node_id: NodeId },
 
     // -----------------------------------------------------------------------
     // Bucket B: Contract Obligations (graph-specific, high value)
@@ -185,14 +183,11 @@ pub enum Obligation {
 
     // NOTE: WitnessCompatibility (L4) removed — requires Tier 3 infrastructure
     // (types-as-DAGs, witness generation). Will be re-added when witnesses exist.
-
     /// Node contract compliance: given valid inputs, outputs satisfy contracts.
     ///
     /// Non-tautological because the node's implementation can be wrong
     /// even if the wiring is correct.
-    NodeContractCompliance {
-        node_id: NodeId,
-    },
+    NodeContractCompliance { node_id: NodeId },
 
     // -----------------------------------------------------------------------
     // Bucket C: Scenario Coverage (graph + transport mocks)
@@ -203,9 +198,7 @@ pub enum Obligation {
     AllTransportsSucceed,
 
     /// Single transport fails: verify failure propagation semantics.
-    SingleTransportFailure {
-        node_id: NodeId,
-    },
+    SingleTransportFailure { node_id: NodeId },
 
     /// Skip-path propagation: when upstream skips, downstream handles it.
     SkipPathPropagation {
@@ -238,9 +231,7 @@ pub enum Obligation {
     },
 
     /// Resource owners (providers) are valid env/acquisition nodes.
-    ResourceOwnerValid {
-        node_id: NodeId,
-    },
+    ResourceOwnerValid { node_id: NodeId },
 
     /// No orphan resources: acquired resources are consumed by someone.
     ResourceOrphan {
@@ -249,15 +240,10 @@ pub enum Obligation {
     },
 
     /// Resource conflicts are absent (DAG ordering prevents parallel conflicts).
-    ResourceConflictAbsence {
-        conflicts: Vec<ResourceConflict>,
-    },
+    ResourceConflictAbsence { conflicts: Vec<ResourceConflict> },
 
     /// Resource contention handling: consumer handles failed acquisition.
-    ResourceContentionHandling {
-        resource_port: String,
-    },
-
+    ResourceContentionHandling { resource_port: String },
     // NOTE: ResourceSimulation removed — resource simulation tests are
     // generated directly from MockSpec resource mocks in codegen, not from
     // obligations. Will be re-added if resource simulation needs obligation tracking.
@@ -353,7 +339,7 @@ impl ObligationSet {
     pub fn cardinality_obligations(&self) -> Vec<&ProofObligation> {
         self.bucket_b()
             .into_iter()
-            .filter(|o| matches!(o.kind, Obligation::CardinalityCoverage { .. }))
+            .filter(|o| matches!(&o.kind, Obligation::CardinalityCoverage { .. }))
             .collect()
     }
 
@@ -361,7 +347,7 @@ impl ObligationSet {
     pub fn coercion_obligations(&self) -> Vec<&ProofObligation> {
         self.bucket_b()
             .into_iter()
-            .filter(|o| matches!(o.kind, Obligation::CoercionCoverage { .. }))
+            .filter(|o| matches!(&o.kind, Obligation::CoercionCoverage { .. }))
             .collect()
     }
 
@@ -394,7 +380,11 @@ impl ObligationSet {
         let invalids = self.invalids();
         ObligationStats {
             total: self.all.len(),
-            discharged: self.all.iter().filter(|o| matches!(o.status, DischargeStatus::Verified { .. })).count(),
+            discharged: self
+                .all
+                .iter()
+                .filter(|o| matches!(o.status, DischargeStatus::Verified { .. }))
+                .count(),
             invalid: invalids.len(),
             testable: testable.len(),
             bucket_a: self.bucket_a().len(),
@@ -517,10 +507,7 @@ fn collect_execution_obligations<T>(dag: &Dag<T>, obligations: &mut Vec<ProofObl
             .inputs
             .iter()
             .any(|p| p.type_id.0 == "TransportRequest");
-        let is_tool_env = node
-            .outputs
-            .iter()
-            .any(|p| p.type_id.0 == "ToolHandle");
+        let is_tool_env = node.outputs.iter().any(|p| p.type_id.0 == "ToolHandle");
         let consumes_tool = node.inputs.iter().any(|p| p.type_id.0 == "ToolHandle");
 
         if !is_transport && !is_tool_env && !consumes_tool {
@@ -556,11 +543,7 @@ fn collect_contract_obligations<T>(
             if let (Some(fp), Some(tp)) = (from_port, to_port) {
                 // L1 + L2 are statically verified (type/cardinality compat)
                 // We only care about L3: predicate entailment
-                let entailment = check_predicate_entailment(
-                    &fp.type_id,
-                    &tp.type_id,
-                    registry,
-                );
+                let entailment = check_predicate_entailment(&fp.type_id, &tp.type_id, registry);
 
                 let edge_label = format!(
                     "{}.{} → {}.{}",
@@ -574,11 +557,17 @@ fn collect_contract_obligations<T>(
                         "verified",
                     ),
                     EntailmentStatus::Unknown { reason } => (
-                        format!("Edge {}: predicate entailment unknown ({})", edge_label, reason),
+                        format!(
+                            "Edge {}: predicate entailment unknown ({})",
+                            edge_label, reason
+                        ),
                         "unknown",
                     ),
                     EntailmentStatus::Invalid { reason } => (
-                        format!("Edge {}: predicate entailment INVALID ({})", edge_label, reason),
+                        format!(
+                            "Edge {}: predicate entailment INVALID ({})",
+                            edge_label, reason
+                        ),
                         "invalid",
                     ),
                 };
@@ -599,7 +588,8 @@ fn collect_contract_obligations<T>(
 
                 match status {
                     "verified" => {
-                        obligations.push(obligation.discharge("Predicate entailment statically verified"));
+                        obligations
+                            .push(obligation.discharge("Predicate entailment statically verified"));
                     }
                     "invalid" => {
                         obligations.push(obligation.invalidate(reason));
@@ -637,7 +627,7 @@ fn collect_contract_obligations<T>(
     for (node_id, port_name) in &boundaries.boundary_ports {
         if let Some(node) = dag.get_node(node_id) {
             if let Some(port) = node.outputs.iter().find(|p| &p.name == port_name) {
-                let bvs = port.cardinality.test_cases();
+                let bvs = fermi_test_cases(port.cardinality);
                 if bvs.len() > 1 {
                     obligations.push(ProofObligation::runtime(
                         Obligation::CardinalityCoverage {
@@ -696,11 +686,7 @@ fn collect_scenario_obligations<T>(dag: &Dag<T>, obligations: &mut Vec<ProofObli
     let transport_executors: Vec<&NodeId> = dag
         .nodes
         .iter()
-        .filter(|n| {
-            n.inputs
-                .iter()
-                .any(|p| p.type_id.0 == "TransportRequest")
-        })
+        .filter(|n| n.inputs.iter().any(|p| p.type_id.0 == "TransportRequest"))
         .map(|n| &n.id)
         .collect();
 
@@ -731,10 +717,7 @@ fn collect_scenario_obligations<T>(dag: &Dag<T>, obligations: &mut Vec<ProofObli
         // downstream nodes, verify skip propagation when it fails.
         for node_id in &transport_executors {
             // Check if this node has downstream nodes
-            let has_downstream = dag
-                .edges
-                .iter()
-                .any(|e| &e.from_node == *node_id);
+            let has_downstream = dag.edges.iter().any(|e| &e.from_node == *node_id);
 
             if has_downstream {
                 obligations.push(ProofObligation::runtime(
@@ -813,10 +796,7 @@ fn collect_resource_obligations<T>(
                                 node_id: node.id.clone(),
                                 port_name: port.name.clone(),
                             },
-                            format!(
-                                "Resource input {}.{} is connected",
-                                node.id.0, port.name.0
-                            ),
+                            format!("Resource input {}.{} is connected", node.id.0, port.name.0),
                             ObligationSource::ResourceModel,
                         )
                         .discharge("Edge exists to resource input"),
@@ -855,10 +835,7 @@ fn collect_resource_obligations<T>(
                 Obligation::ResourceOwnerValid {
                     node_id: node.id.clone(),
                 },
-                format!(
-                    "Resource owner '{}' is a valid acquisition node",
-                    node.id.0
-                ),
+                format!("Resource owner '{}' is a valid acquisition node", node.id.0),
                 ObligationSource::ResourceModel,
             ));
         }
@@ -880,10 +857,7 @@ fn collect_resource_obligations<T>(
                                 node_id: node.id.clone(),
                                 port_name: port.name.clone(),
                             },
-                            format!(
-                                "Resource output {}.{} has consumer",
-                                node.id.0, port.name.0
-                            ),
+                            format!("Resource output {}.{} has consumer", node.id.0, port.name.0),
                             ObligationSource::ResourceModel,
                         )
                         .discharge("Edge exists from resource output to consumer"),
@@ -919,9 +893,7 @@ fn collect_resource_obligations<T>(
         if conflicts.is_empty() {
             obligations.push(
                 ProofObligation::new(
-                    Obligation::ResourceConflictAbsence {
-                        conflicts: vec![],
-                    },
+                    Obligation::ResourceConflictAbsence { conflicts: vec![] },
                     "No resource conflicts detected",
                     ObligationSource::ResourceModel,
                 )
@@ -1041,7 +1013,9 @@ fn check_predicate_entailment(
             // This is a conservative check: we only verify exact matches.
             // More sophisticated entailment (e.g., InRange subsumption) is future work.
             let all_target_covered = to_preds.iter().all(|tp| {
-                from_preds.iter().any(|fp| format!("{:?}", fp) == format!("{:?}", tp))
+                from_preds
+                    .iter()
+                    .any(|fp| format!("{:?}", fp) == format!("{:?}", tp))
             });
 
             if all_target_covered {
@@ -1099,22 +1073,22 @@ mod tests {
         assert!(stats.testable > 0);
 
         // Should have DryRun completion
-        assert!(obligations.all.iter().any(|o| matches!(
-            o.kind,
-            Obligation::DryRunCompletion
-        )));
+        assert!(obligations
+            .all
+            .iter()
+            .any(|o| matches!(o.kind, Obligation::DryRunCompletion)));
 
         // Should have determinism for pure nodes
-        assert!(obligations.all.iter().any(|o| matches!(
-            o.kind,
-            Obligation::PureNodeDeterminism { .. }
-        )));
+        assert!(obligations
+            .all
+            .iter()
+            .any(|o| matches!(o.kind, Obligation::PureNodeDeterminism { .. })));
 
         // Should have node contract compliance
-        assert!(obligations.all.iter().any(|o| matches!(
-            o.kind,
-            Obligation::NodeContractCompliance { .. }
-        )));
+        assert!(obligations
+            .all
+            .iter()
+            .any(|o| matches!(o.kind, Obligation::NodeContractCompliance { .. })));
     }
 
     #[test]
@@ -1150,10 +1124,10 @@ mod tests {
         )));
 
         // Should have scenario obligations
-        assert!(obligations.all.iter().any(|o| matches!(
-            o.kind,
-            Obligation::AllTransportsSucceed
-        )));
+        assert!(obligations
+            .all
+            .iter()
+            .any(|o| matches!(o.kind, Obligation::AllTransportsSucceed)));
         assert!(obligations.all.iter().any(|o| matches!(
             &o.kind,
             Obligation::SingleTransportFailure { node_id } if node_id.0 == "execute"
@@ -1180,10 +1154,12 @@ mod tests {
         let obligations = collect_obligations(&dag, None, None);
 
         // Resource input connected should be discharged (edge exists)
-        let connected = obligations.all.iter().find(|o| matches!(
-            &o.kind,
-            Obligation::ResourceInputConnected { node_id, .. } if node_id.0 == "lint"
-        ));
+        let connected = obligations.all.iter().find(|o| {
+            matches!(
+                &o.kind,
+                Obligation::ResourceInputConnected { node_id, .. } if node_id.0 == "lint"
+            )
+        });
         assert!(connected.is_some());
         assert!(!connected.unwrap().needs_test()); // Discharged
 
@@ -1209,14 +1185,22 @@ mod tests {
 
         // Disconnected resource input is now Invalid (structural error),
         // not Unknown (needs test). There's nothing to test — the edge is missing.
-        let connected = obligations.all.iter().find(|o| matches!(
-            &o.kind,
-            Obligation::ResourceInputConnected { node_id, .. } if node_id.0 == "lint"
-        ));
+        let connected = obligations.all.iter().find(|o| {
+            matches!(
+                &o.kind,
+                Obligation::ResourceInputConnected { node_id, .. } if node_id.0 == "lint"
+            )
+        });
         assert!(connected.is_some());
         let connected = connected.unwrap();
-        assert!(connected.is_invalid(), "disconnected resource should be Invalid");
-        assert!(!connected.needs_test(), "Invalid obligations don't need runtime tests");
+        assert!(
+            connected.is_invalid(),
+            "disconnected resource should be Invalid"
+        );
+        assert!(
+            !connected.needs_test(),
+            "Invalid obligations don't need runtime tests"
+        );
         assert!(obligations.has_invalids());
     }
 
@@ -1235,14 +1219,19 @@ mod tests {
         let obligations = collect_obligations(&dag, None, Some(&accesses));
 
         // Conflict is a provable structural error, now Invalid
-        let conflict = obligations.all.iter().find(|o| matches!(
-            &o.kind,
-            Obligation::ResourceConflictAbsence { conflicts } if !conflicts.is_empty()
-        ));
+        let conflict = obligations.all.iter().find(|o| {
+            matches!(
+                &o.kind,
+                Obligation::ResourceConflictAbsence { conflicts } if !conflicts.is_empty()
+            )
+        });
         assert!(conflict.is_some());
         let conflict = conflict.unwrap();
         assert!(conflict.is_invalid(), "resource conflict should be Invalid");
-        assert!(!conflict.needs_test(), "Invalid obligations don't need runtime tests");
+        assert!(
+            !conflict.needs_test(),
+            "Invalid obligations don't need runtime tests"
+        );
     }
 
     #[test]
@@ -1266,48 +1255,37 @@ mod tests {
         let stats = obligations.stats();
 
         assert!(stats.total > 0);
-        assert_eq!(stats.discharged + stats.invalid + stats.testable, stats.total);
+        assert_eq!(
+            stats.discharged + stats.invalid + stats.testable,
+            stats.total
+        );
     }
 
     #[test]
     fn test_entailment_same_type() {
-        let status = check_predicate_entailment(
-            &TypeId("String".into()),
-            &TypeId("String".into()),
-            None,
-        );
+        let status =
+            check_predicate_entailment(&TypeId("String".into()), &TypeId("String".into()), None);
         assert!(matches!(status, EntailmentStatus::Verified));
     }
 
     #[test]
     fn test_entailment_target_any() {
         // Target is Any → verified (accepts anything)
-        let status = check_predicate_entailment(
-            &TypeId("Url".into()),
-            &TypeId("Any".into()),
-            None,
-        );
+        let status = check_predicate_entailment(&TypeId("Url".into()), &TypeId("Any".into()), None);
         assert!(matches!(status, EntailmentStatus::Verified));
     }
 
     #[test]
     fn test_entailment_source_any_target_specific() {
         // Source is Any, target is specific → Unknown (can't prove satisfaction)
-        let status = check_predicate_entailment(
-            &TypeId("Any".into()),
-            &TypeId("Url".into()),
-            None,
-        );
+        let status = check_predicate_entailment(&TypeId("Any".into()), &TypeId("Url".into()), None);
         assert!(matches!(status, EntailmentStatus::Unknown { .. }));
     }
 
     #[test]
     fn test_entailment_unknown_without_registry() {
-        let status = check_predicate_entailment(
-            &TypeId("Url".into()),
-            &TypeId("String".into()),
-            None,
-        );
+        let status =
+            check_predicate_entailment(&TypeId("Url".into()), &TypeId("String".into()), None);
         assert!(matches!(status, EntailmentStatus::Unknown { .. }));
     }
 
@@ -1368,6 +1346,9 @@ mod tests {
 
         let obligations = collect_obligations(&dag, None, None);
         let coercion_obs = obligations.coercion_obligations();
-        assert!(coercion_obs.is_empty(), "no coercion for matching cardinalities");
+        assert!(
+            coercion_obs.is_empty(),
+            "no coercion for matching cardinalities"
+        );
     }
 }

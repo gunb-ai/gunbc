@@ -4,6 +4,9 @@
 **Date**: 2026-02-04
 **Depends on**: TODONE/TODO_consolidate_di.md Item 3
 
+## Ownership
+- [x] Taken by Codex (2026-02-05)
+
 Auth should be invisible to business logic. Processes either receive a
 resolved token or the result of an authenticated call. All credentials
 should be short-lived with a managed lifecycle: acquire → use → expire.

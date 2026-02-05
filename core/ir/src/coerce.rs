@@ -123,32 +123,7 @@ pub fn classify_coercion(from: Cardinality, to: Cardinality) -> Option<CoercionK
 /// Walks all edges and identifies where the engine needs to transform
 /// values to bridge cardinality differences between connected ports.
 pub fn detect_coercions<T>(dag: &Dag<T>) -> Vec<CardinalityCoercion> {
-    let mut coercions = Vec::new();
-
-    for edge in &dag.edges {
-        let from_port = dag
-            .get_node(&edge.from_node)
-            .and_then(|n| n.outputs.iter().find(|p| p.name == edge.from_port));
-        let to_port = dag
-            .get_node(&edge.to_node)
-            .and_then(|n| n.inputs.iter().find(|p| p.name == edge.to_port));
-
-        if let (Some(fp), Some(tp)) = (from_port, to_port) {
-            if let Some(kind) = classify_coercion(fp.cardinality, tp.cardinality) {
-                coercions.push(CardinalityCoercion {
-                    from_node: edge.from_node.clone(),
-                    from_port: edge.from_port.clone(),
-                    to_node: edge.to_node.clone(),
-                    to_port: edge.to_port.clone(),
-                    from_cardinality: fp.cardinality,
-                    to_cardinality: tp.cardinality,
-                    kind,
-                });
-            }
-        }
-    }
-
-    coercions
+    validate_coercions(dag).coercions
 }
 
 /// Summary report of coercions in a DAG.
@@ -229,10 +204,7 @@ pub fn validate_coercions<T>(dag: &Dag<T>) -> CoercionReport {
                 }
             } else {
                 // Incompatible — error
-                let reason = from_card
-                    .check_satisfies(to_card)
-                    .unwrap_err()
-                    .reason;
+                let reason = from_card.check_satisfies(to_card).unwrap_err().reason;
                 errors.push(CoercionError {
                     from_node: edge.from_node.clone(),
                     from_port: edge.from_port.clone(),
@@ -363,6 +335,34 @@ mod tests {
         ));
 
         dag.add_edge(edge("a", "out", "b", "in"));
+
+        let coercions = detect_coercions(&dag);
+        assert!(coercions.is_empty());
+    }
+
+    #[test]
+    fn detect_coercions_ignores_incompatible() {
+        let mut dag = Dag::new();
+
+        dag.add_node(Node::opaque(
+            "producer",
+            vec![],
+            vec![port("output", "Json")], // [1,1]
+            TestOp,
+        ));
+
+        dag.add_node(Node::opaque(
+            "consumer",
+            vec![Port::with_cardinality(
+                "input",
+                "Json",
+                Cardinality::new(2, Some(2)),
+            )], // [2,2]
+            vec![port("result", "Json")],
+            TestOp,
+        ));
+
+        dag.add_edge(edge("producer", "output", "consumer", "input"));
 
         let coercions = detect_coercions(&dag);
         assert!(coercions.is_empty());

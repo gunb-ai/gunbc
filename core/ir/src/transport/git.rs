@@ -738,10 +738,7 @@ new file mode 100644
 
     #[test]
     fn test_parse_merge_base() {
-        assert_eq!(
-            parse_merge_base("abc123def456\n"),
-            "abc123def456"
-        );
+        assert_eq!(parse_merge_base("abc123def456\n"), "abc123def456");
     }
 
     #[test]
@@ -788,7 +785,9 @@ diff --git a/file.rs b/file.rs
             "new_name.rs"
         );
         assert_eq!(
-            extract_diff_filename("diff --git a/path/with spaces/file.rs b/path/with spaces/file.rs"),
+            extract_diff_filename(
+                "diff --git a/path/with spaces/file.rs b/path/with spaces/file.rs"
+            ),
             "path/with spaces/file.rs"
         );
     }
@@ -875,6 +874,10 @@ Binary files a/image.png and b/image.png differ";
         let truncated = truncate_diff_chunks(chunks, 1000, 50);
         let total_lines: usize = truncated.values().map(|c| c.lines().count()).sum();
         // Should be capped near the total limit (50 + some truncation notices)
-        assert!(total_lines <= 70, "total lines {} exceeded expected cap", total_lines);
+        assert!(
+            total_lines <= 70,
+            "total lines {} exceeded expected cap",
+            total_lines
+        );
     }
 }

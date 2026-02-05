@@ -54,9 +54,11 @@ impl From<&Value> for ValueExpr {
             Value::List(v) | Value::Set(v) => {
                 ValueExpr::List(v.iter().map(ValueExpr::from).collect())
             }
-            Value::Map(m) => {
-                ValueExpr::Map(m.iter().map(|(k, v)| (k.clone(), ValueExpr::from(v))).collect())
-            }
+            Value::Map(m) => ValueExpr::Map(
+                m.iter()
+                    .map(|(k, v)| (k.clone(), ValueExpr::from(v)))
+                    .collect(),
+            ),
             Value::Json(j) => ValueExpr::Json(j.clone()),
             Value::Request(r) => request_to_value_expr(r),
             Value::Response(r) => response_to_value_expr(r),
@@ -86,7 +88,10 @@ fn opt_str(s: &Option<String>) -> ValueExpr {
 
 /// Convert a HashMap<String, String> to a sorted ValueExpr::Map.
 fn str_map_expr(m: &std::collections::HashMap<String, String>) -> ValueExpr {
-    let mut entries: Vec<_> = m.iter().map(|(k, v)| (k.clone(), ValueExpr::Str(v.clone()))).collect();
+    let mut entries: Vec<_> = m
+        .iter()
+        .map(|(k, v)| (k.clone(), ValueExpr::Str(v.clone())))
+        .collect();
     entries.sort_by(|a, b| a.0.cmp(&b.0));
     ValueExpr::Map(entries)
 }
@@ -109,7 +114,10 @@ fn request_to_value_expr(req: &TransportRequest) -> ValueExpr {
         TransportRequest::Rest(r) => ValueExpr::Struct {
             name: "TransportRequest::Rest".to_string(),
             fields: vec![
-                ("method".to_string(), ValueExpr::Str(format!("{:?}", r.method))),
+                (
+                    "method".to_string(),
+                    ValueExpr::Str(format!("{:?}", r.method)),
+                ),
                 ("url".to_string(), ValueExpr::Str(r.url.clone())),
                 ("headers".to_string(), str_map_expr(&r.headers)),
                 (
@@ -125,7 +133,10 @@ fn request_to_value_expr(req: &TransportRequest) -> ValueExpr {
         TransportRequest::Http(h) => ValueExpr::Struct {
             name: "TransportRequest::Http".to_string(),
             fields: vec![
-                ("method".to_string(), ValueExpr::Str(format!("{:?}", h.method))),
+                (
+                    "method".to_string(),
+                    ValueExpr::Str(format!("{:?}", h.method)),
+                ),
                 ("url".to_string(), ValueExpr::Str(h.url.clone())),
                 ("headers".to_string(), str_map_expr(&h.headers)),
                 ("body".to_string(), opt_str(&h.body)),
@@ -135,9 +146,15 @@ fn request_to_value_expr(req: &TransportRequest) -> ValueExpr {
             name: "TransportRequest::File".to_string(),
             fields: vec![
                 ("path".to_string(), ValueExpr::Str(f.path.clone())),
-                ("operation".to_string(), ValueExpr::Str(format!("{:?}", f.operation))),
+                (
+                    "operation".to_string(),
+                    ValueExpr::Str(format!("{:?}", f.operation)),
+                ),
                 ("content".to_string(), opt_str(&f.content)),
-                ("create_parents".to_string(), ValueExpr::Bool(f.create_parents)),
+                (
+                    "create_parents".to_string(),
+                    ValueExpr::Bool(f.create_parents),
+                ),
             ],
         },
         TransportRequest::Tcp(t) => ValueExpr::Struct {
@@ -181,7 +198,10 @@ fn response_to_value_expr(resp: &TransportResponse) -> ValueExpr {
             name: "TransportResponse::File".to_string(),
             fields: vec![
                 ("path".to_string(), ValueExpr::Str(f.path.clone())),
-                ("operation".to_string(), ValueExpr::Str(format!("{:?}", f.operation))),
+                (
+                    "operation".to_string(),
+                    ValueExpr::Str(format!("{:?}", f.operation)),
+                ),
                 ("success".to_string(), ValueExpr::Bool(f.success)),
                 ("content".to_string(), opt_str(&f.content)),
                 (
@@ -199,8 +219,14 @@ fn response_to_value_expr(resp: &TransportResponse) -> ValueExpr {
             fields: vec![
                 ("connected".to_string(), ValueExpr::Bool(t.connected)),
                 ("data".to_string(), opt_str(&t.data)),
-                ("bytes_sent".to_string(), ValueExpr::Int(t.bytes_sent as i64)),
-                ("bytes_received".to_string(), ValueExpr::Int(t.bytes_received as i64)),
+                (
+                    "bytes_sent".to_string(),
+                    ValueExpr::Int(t.bytes_sent as i64),
+                ),
+                (
+                    "bytes_received".to_string(),
+                    ValueExpr::Int(t.bytes_received as i64),
+                ),
                 ("error".to_string(), opt_str(&t.error)),
             ],
         },
@@ -232,7 +258,11 @@ mod tests {
 
     #[test]
     fn list_preserves_heterogeneous_elements() {
-        let v = Value::List(vec![Value::Int(1), Value::Str("two".into()), Value::Bool(true)]);
+        let v = Value::List(vec![
+            Value::Int(1),
+            Value::Str("two".into()),
+            Value::Bool(true),
+        ]);
         let expr = ValueExpr::from(&v);
         assert_eq!(
             expr,

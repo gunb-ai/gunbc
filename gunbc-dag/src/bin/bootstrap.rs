@@ -64,7 +64,11 @@ fn main() {
         );
 
         // Makefile transport executor
-        mocks.set_value("execute_makefile_transport", "makefile_response", ok_shell());
+        mocks.set_value(
+            "execute_makefile_transport",
+            "makefile_response",
+            ok_shell(),
+        );
         mocks.set_value(
             "execute_makefile_transport",
             "makefile_written_path",
@@ -77,7 +81,11 @@ fn main() {
         );
 
         // Gitignore transport executor
-        mocks.set_value("execute_gitignore_transport", "gitignore_response", ok_shell());
+        mocks.set_value(
+            "execute_gitignore_transport",
+            "gitignore_response",
+            ok_shell(),
+        );
         mocks.set_value(
             "execute_gitignore_transport",
             "gitignore_written_path",
@@ -100,7 +108,7 @@ fn main() {
     println!();
 
     // Execute and display (progress or classic based on terminal)
-    execute_and_display(&dag, mode, &profile, None);
+    execute_and_display(&dag, mode, &profile, None, None);
 }
 
 fn print_help() {

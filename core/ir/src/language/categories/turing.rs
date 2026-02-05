@@ -12,8 +12,8 @@
 //! - NamingConventions SubDag
 
 use crate::dag::{Dag, Port};
-use crate::node::Node;
 use crate::language::LanguageOp;
+use crate::node::Node;
 
 /// Build the TuringComplete category SubDag node.
 ///
@@ -64,10 +64,7 @@ pub fn build_turing_complete_subdag() -> Node<LanguageOp> {
     ));
 
     // Create the SubDag node with interface
-    Node::subdag(
-        "turing_complete",
-        inner,
-    )
+    Node::subdag("turing_complete", inner)
 }
 
 #[cfg(test)]

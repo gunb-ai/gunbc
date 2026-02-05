@@ -30,10 +30,7 @@ pub enum BootstrapGraphOp {
 }
 
 impl Executable for BootstrapGraphOp {
-    fn execute(
-        &self,
-        inputs: HashMap<String, Value>,
-    ) -> Result<HashMap<String, Value>, ExecError> {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         match self {
             BootstrapGraphOp::Bootstrap(op) => op.execute(inputs),
             BootstrapGraphOp::PrepareFileWrite(op) => op.execute(inputs),
@@ -100,10 +97,7 @@ pub fn build_bootstrap_graph() -> Result<Dag<BootstrapGraphOp>, BuilderError> {
         Node::opaque(
             "parse_scan_result",
             vec![port("response", "TransportResponse")],
-            vec![
-                port("crate_count", "Int"),
-                port("crate_names", "List"),
-            ],
+            vec![port("crate_count", "Int"), list("crate_names", "String")],
             BootstrapGraphOp::Bootstrap(BootstrapOp::ParseScanResult),
         ),
         &execute_scan,
@@ -115,7 +109,7 @@ pub fn build_bootstrap_graph() -> Result<Dag<BootstrapGraphOp>, BuilderError> {
     let generate_makefile = builder.add_node_after(
         Node::opaque(
             "generate_makefile",
-            vec![port("crate_names", "List")],
+            vec![list("crate_names", "String")],
             vec![port("makefile_content", "String")],
             BootstrapGraphOp::Bootstrap(BootstrapOp::GenerateMakefile),
         ),
@@ -154,7 +148,7 @@ pub fn build_bootstrap_graph() -> Result<Dag<BootstrapGraphOp>, BuilderError> {
     let generate_gitignore = builder.add_node_after(
         Node::opaque(
             "generate_gitignore",
-            vec![port("crate_names", "List")],
+            vec![list("crate_names", "String")],
             vec![port("gitignore_content", "String")],
             BootstrapGraphOp::Bootstrap(BootstrapOp::GenerateGitignore),
         ),
@@ -189,17 +183,38 @@ pub fn build_bootstrap_graph() -> Result<Dag<BootstrapGraphOp>, BuilderError> {
 
     // Wire up the ScanWorkspace chain
     builder.add_edge(prepare_scan.out("request"), execute_scan.in_port("request"))?;
-    builder.add_edge(execute_scan.out("response"), scan_workspace.in_port("response"))?;
+    builder.add_edge(
+        execute_scan.out("response"),
+        scan_workspace.in_port("response"),
+    )?;
 
     // Wire up the Makefile chain
-    builder.add_edge(scan_workspace.out("crate_names"), generate_makefile.in_port("crate_names"))?;
-    builder.add_edge(generate_makefile.out("makefile_content"), prepare_makefile.in_port("content"))?;
-    builder.add_edge(prepare_makefile.out("request"), execute_makefile.in_port("request"))?;
+    builder.add_edge(
+        scan_workspace.out("crate_names"),
+        generate_makefile.in_port("crate_names"),
+    )?;
+    builder.add_edge(
+        generate_makefile.out("makefile_content"),
+        prepare_makefile.in_port("content"),
+    )?;
+    builder.add_edge(
+        prepare_makefile.out("request"),
+        execute_makefile.in_port("request"),
+    )?;
 
     // Wire up the Gitignore chain
-    builder.add_edge(scan_workspace.out("crate_names"), generate_gitignore.in_port("crate_names"))?;
-    builder.add_edge(generate_gitignore.out("gitignore_content"), prepare_gitignore.in_port("content"))?;
-    builder.add_edge(prepare_gitignore.out("request"), _execute_gitignore.in_port("request"))?;
+    builder.add_edge(
+        scan_workspace.out("crate_names"),
+        generate_gitignore.in_port("crate_names"),
+    )?;
+    builder.add_edge(
+        generate_gitignore.out("gitignore_content"),
+        prepare_gitignore.in_port("content"),
+    )?;
+    builder.add_edge(
+        prepare_gitignore.out("request"),
+        _execute_gitignore.in_port("request"),
+    )?;
 
     Ok(builder.build())
 }
@@ -227,7 +242,9 @@ mod tests {
         // Verify transport nodes exist
         assert!(dag.get_node(&"execute_scan_workspace".into()).is_some());
         assert!(dag.get_node(&"execute_makefile_transport".into()).is_some());
-        assert!(dag.get_node(&"execute_gitignore_transport".into()).is_some());
+        assert!(dag
+            .get_node(&"execute_gitignore_transport".into())
+            .is_some());
     }
 
     #[test]
@@ -270,7 +287,7 @@ mod tests {
     fn test_inferred_signature() {
         let dag = build_bootstrap_graph().expect("graph should build");
         let inferred = infer_signature(&dag);
-        
+
         // 0 inputs (no entrypoints)
         assert_eq!(inferred.inputs.len(), 0);
         // Boundary outputs: 3 from each transport execute (6 total) + 1 crate_count from scan

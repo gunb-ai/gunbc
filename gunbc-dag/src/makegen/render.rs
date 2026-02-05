@@ -8,6 +8,7 @@
 use crate::makegen::registry::{
     BuildConfig, EntrypointParam, ExtraTarget, MetaTarget, PrepLevel, ToolInfo, ToolRegistry,
 };
+use gunbc_ir::cargo::Warnings;
 use gunbc_ir::language::MAKEFILE;
 use gunbc_ir::Renderable;
 
@@ -32,7 +33,7 @@ impl<'a> MakefileRenderer<'a> {
     pub fn new(registry: &'a ToolRegistry) -> Self {
         Self {
             registry,
-            config: BuildConfig::cargo(),
+            config: BuildConfig::cargo_entrypoints(),
         }
     }
 
@@ -101,7 +102,9 @@ fn render_makefile_content(registry: &ToolRegistry, config: &BuildConfig) -> Str
     output.push_str(".DEFAULT_GOAL := help\n\n");
 
     // Phony targets - include core targets, meta targets, and tool targets
-    output.push_str(".PHONY: help build clean testgen testgen-check fmt-fix lint-fix");
+    output.push_str(
+        ".PHONY: help ensure-codegen codegen build clean testgen testgen-check fmt-fix lint-fix",
+    );
 
     // Add meta targets (with check and fix variants)
     for meta in &registry.meta_targets {
@@ -127,15 +130,15 @@ fn render_makefile_content(registry: &ToolRegistry, config: &BuildConfig) -> Str
     output.push_str(&render_core_targets(config));
 
     // Help target
-    output.push_str(&render_help_target(registry));
+    output.push_str(&render_help_target(registry, config));
 
     // Meta targets (test, check, fmt, clippy)
     output.push_str(&render_meta_targets(registry, config));
 
     // Tool targets
     for tool in &registry.tools {
-        output.push_str(&render_tool_target(tool));
-        output.push_str(&render_dry_run_target(tool));
+        output.push_str(&render_tool_target(tool, config));
+        output.push_str(&render_dry_run_target(tool, config));
         for extra in &tool.extra_targets {
             output.push_str(&render_extra_target(tool, extra));
         }
@@ -148,9 +151,24 @@ fn render_makefile_content(registry: &ToolRegistry, config: &BuildConfig) -> Str
 fn render_core_targets(config: &BuildConfig) -> String {
     let mut output = String::new();
 
-    // Full build transaction: testgen → cargo build
-    output.push_str("# Full build transaction: testgen → cargo build\n");
-    output.push_str("build: testgen\n");
+    // Ensure-codegen: bootstrap-safe generation of CLI entrypoints
+    output.push_str("# Ensure CLI entrypoints exist (bootstrap-safe)\n");
+    output.push_str("ensure-codegen:\n");
+    output.push_str(&format!("{}{}\n\n", INDENT, config.ensure_codegen_shell()));
+
+    // Codegen: generate CLI entrypoints via DAG (upsert)
+    output.push_str("# Generate CLI entrypoints (DAG upsert)\n");
+    output.push_str("codegen: ensure-codegen\n");
+    output.push_str(&format!("{}{}\n\n", INDENT, config.codegen_shell()));
+
+    // Full build transaction: codegen → testgen → build pipeline
+    let build_desc = if config.use_dag_entrypoints {
+        "codegen \u{2192} testgen \u{2192} gunbc-build"
+    } else {
+        "codegen \u{2192} testgen \u{2192} cargo build"
+    };
+    output.push_str(&format!("# Full build transaction: {build_desc}\n"));
+    output.push_str("build: codegen testgen\n");
     output.push_str(&format!("{}{}\n\n", INDENT, config.build_shell()));
 
     // Clean build artifacts
@@ -160,19 +178,19 @@ fn render_core_targets(config: &BuildConfig) -> String {
 
     // Testgen: regenerate tests from DAGs
     output.push_str("# Regenerate tests from DAG structures and MockSpecs\n");
-    output.push_str("testgen:\n");
+    output.push_str("testgen: ensure-codegen\n");
     output.push_str(&format!("{}{}\n\n", INDENT, config.testgen_shell()));
 
     // Testgen check: verify generated tests are not stale
     output.push_str("# Check if generated tests are stale (fails if regeneration needed)\n");
-    output.push_str("testgen-check:\n");
+    output.push_str("testgen-check: ensure-codegen\n");
     output.push_str(&format!("{}{}\n\n", INDENT, config.testgen_check_shell()));
 
     output
 }
 
 /// Render the help target.
-fn render_help_target(registry: &ToolRegistry) -> String {
+fn render_help_target(registry: &ToolRegistry, config: &BuildConfig) -> String {
     let mut output = String::new();
 
     output.push_str("help:\n");
@@ -182,15 +200,22 @@ fn render_help_target(registry: &ToolRegistry) -> String {
     output.push_str("\t@echo \"  make <target>      - verify only (CI-safe)\"\n");
     output.push_str("\t@echo \"  make <target>-fix  - auto-fix then verify (for dev)\"\n");
     output.push_str("\t@echo \"\"\n");
-    
+
     // Build transactions section
     output.push_str("\t@echo \"Build commands:\"\n");
-    output.push_str("\t@echo \"  build    - testgen → cargo build\"\n");
+    let build_desc = if config.use_dag_entrypoints {
+        "codegen \u{2192} testgen \u{2192} gunbc-build"
+    } else {
+        "codegen \u{2192} testgen \u{2192} cargo build"
+    };
+    output.push_str(&format!("\t@echo \"  build    - {build_desc}\"\n"));
+    output.push_str("\t@echo \"  codegen  - Generate CLI entrypoints\"\n");
+    output.push_str("\t@echo \"  ensure-codegen  - Bootstrap CLI entrypoints (safe on clean)\"\n");
     output.push_str("\t@echo \"  clean    - Remove build artifacts\"\n");
     output.push_str("\t@echo \"  testgen  - Regenerate tests from DAG structures\"\n");
     output.push_str("\t@echo \"  testgen-check  - Check if generated tests are stale\"\n");
     output.push_str("\t@echo \"\"\n");
-    
+
     // Meta targets section
     output.push_str("\t@echo \"Development:\"\n");
     for meta in &registry.meta_targets {
@@ -217,7 +242,7 @@ fn render_help_target(registry: &ToolRegistry) -> String {
         }
     }
     output.push_str("\t@echo \"\"\n");
-    
+
     // Tools section
     output.push_str("\t@echo \"Tools:\"\n");
     for tool in &registry.tools {
@@ -243,9 +268,13 @@ fn render_help_target(registry: &ToolRegistry) -> String {
 fn render_meta_targets(registry: &ToolRegistry, config: &BuildConfig) -> String {
     let mut output = String::new();
 
-    output.push_str("# ============================================================================\n");
+    output.push_str(
+        "# ============================================================================\n",
+    );
     output.push_str("# Meta Targets - Development workflow commands\n");
-    output.push_str("# ============================================================================\n\n");
+    output.push_str(
+        "# ============================================================================\n\n",
+    );
 
     // Render alias targets for common fix dependencies
     // These are used as dependencies by -fix targets (e.g., test-fix: fmt-fix lint-fix)
@@ -262,6 +291,42 @@ fn render_meta_targets(registry: &ToolRegistry, config: &BuildConfig) -> String 
     }
 
     output
+}
+
+/// Map prep level to its Make dependency target.
+fn prep_dep_name(prep: PrepLevel, config: &BuildConfig) -> Option<&'static str> {
+    match prep {
+        PrepLevel::None => None,
+        PrepLevel::Codegen => Some("ensure-codegen"),
+        PrepLevel::Full => {
+            if config.use_dag_entrypoints {
+                // DAG entrypoints already include build/test/lint stages.
+                // Avoid running the full pipeline twice.
+                Some("codegen")
+            } else {
+                Some("build")
+            }
+        }
+    }
+}
+
+/// Build the dependency string for a meta target (with leading space).
+fn meta_target_deps(meta: &MetaTarget, config: &BuildConfig) -> String {
+    let mut deps: Vec<String> = Vec::new();
+
+    if let Some(prep) = prep_dep_name(meta.prep_level, config) {
+        deps.push(prep.to_string());
+    }
+
+    for dep in &meta.extra_deps {
+        deps.push((*dep).to_string());
+    }
+
+    if deps.is_empty() {
+        String::new()
+    } else {
+        format!(" {}", deps.join(" "))
+    }
 }
 
 /// Render alias targets for common fix dependencies.
@@ -287,18 +352,7 @@ fn render_fix_alias_targets(config: &BuildConfig) -> String {
 fn render_meta_target(meta: &MetaTarget, config: &BuildConfig) -> String {
     let mut output = String::new();
 
-    // Determine dependency based on prep level
-    let mut deps = match meta.prep_level {
-        PrepLevel::None => String::new(),
-        PrepLevel::Codegen => String::new(),
-        PrepLevel::Full => " build".to_string(),
-    };
-
-    // Append extra dependencies (e.g., testgen-check for test target)
-    for dep in &meta.extra_deps {
-        deps.push(' ');
-        deps.push_str(dep);
-    }
+    let deps = meta_target_deps(meta, config);
 
     // Use MetaTarget's get_command which references BuildConfig via ConfigField
     let command = meta.get_command(config);
@@ -315,16 +369,7 @@ fn render_meta_check_variant(meta: &MetaTarget, config: &BuildConfig) -> String 
 
     // Use MetaTarget's get_check_command which references BuildConfig via ConfigField
     if let Some(check_cmd) = meta.get_check_command(config) {
-        let mut deps = match meta.prep_level {
-            PrepLevel::None => String::new(),
-            PrepLevel::Codegen => String::new(),
-            PrepLevel::Full => " build".to_string(),
-        };
-
-        for dep in &meta.extra_deps {
-            deps.push(' ');
-            deps.push_str(dep);
-        }
+        let deps = meta_target_deps(meta, config);
 
         output.push_str(&format!("{}-check:{}\n", meta.name, deps));
         output.push_str(&format!("{}{}\n\n", INDENT, check_cmd));
@@ -354,14 +399,23 @@ fn render_meta_fix_variant(meta: &MetaTarget, config: &BuildConfig) -> String {
     }
 
     // Add prep dependency based on prep level
-    match meta.prep_level {
-        PrepLevel::None | PrepLevel::Codegen => {}
-        PrepLevel::Full => deps.push("build".to_string()),
+    if let Some(prep) = prep_dep_name(meta.prep_level, config) {
+        deps.push(prep.to_string());
     }
 
-    // Add extra dependencies (e.g., testgen-check)
+    // Add extra dependencies, transforming verify targets to ensure targets.
+    // For fix variants, we want to regenerate (e.g., testgen) not just verify
+    // (e.g., testgen-check). This follows the convention:
+    //   - make test: depends on testgen-check (fail if stale)
+    //   - make test-fix: depends on testgen (regenerate if stale)
     for dep in &meta.extra_deps {
-        deps.push(dep.to_string());
+        let fix_dep = if dep.ends_with("-check") {
+            // Transform verify target to ensure target (testgen-check → testgen)
+            dep.trim_end_matches("-check").to_string()
+        } else {
+            dep.to_string()
+        };
+        deps.push(fix_dep);
     }
 
     let deps_str = if deps.is_empty() {
@@ -371,7 +425,9 @@ fn render_meta_fix_variant(meta: &MetaTarget, config: &BuildConfig) -> String {
     };
 
     // Get the fix command (dedicated fix command or regular command)
-    let fix_cmd = meta.get_fix_command(config).unwrap_or_else(|| meta.get_command(config));
+    let fix_cmd = meta
+        .get_fix_command(config)
+        .unwrap_or_else(|| meta.get_command(config));
 
     output.push_str(&format!("# {}-fix: auto-fix then verify\n", meta.name));
     output.push_str(&format!("{}-fix:{}\n", meta.name, deps_str));
@@ -396,8 +452,13 @@ fn render_help_params(params: &[EntrypointParam]) -> String {
 }
 
 /// Render a tool target.
-fn render_tool_target(tool: &ToolInfo) -> String {
+fn render_tool_target(tool: &ToolInfo, config: &BuildConfig) -> String {
     let mut output = String::new();
+    let warning_prefix = if config.warnings == Warnings::Deny {
+        "RUSTFLAGS=\"-D warnings\" "
+    } else {
+        ""
+    };
 
     // Comment with entrypoint info
     let port_list = tool
@@ -406,11 +467,16 @@ fn render_tool_target(tool: &ToolInfo) -> String {
         .map(|p| format!("{} ({})", p.port_name, p.type_hint))
         .collect::<Vec<_>>()
         .join(", ");
-    output.push_str(&format!("# {} entrypoints: {}\n", tool.binary_name(), port_list));
-
-    output.push_str(&format!("{}:\n", tool.short_name));
     output.push_str(&format!(
-        "\t@{} --{}",
+        "# {} entrypoints: {}\n",
+        tool.binary_name(),
+        port_list
+    ));
+
+    output.push_str(&format!("{}: ensure-codegen\n", tool.short_name));
+    output.push_str(&format!(
+        "\t@{}{} --{}",
+        warning_prefix,
         tool.invocation.command(),
         render_cli_args(&tool.entrypoints)
     ));
@@ -420,12 +486,18 @@ fn render_tool_target(tool: &ToolInfo) -> String {
 }
 
 /// Render a dry-run target.
-fn render_dry_run_target(tool: &ToolInfo) -> String {
+fn render_dry_run_target(tool: &ToolInfo, config: &BuildConfig) -> String {
     let mut output = String::new();
+    let warning_prefix = if config.warnings == Warnings::Deny {
+        "RUSTFLAGS=\"-D warnings\" "
+    } else {
+        ""
+    };
 
-    output.push_str(&format!("{}-dry:\n", tool.short_name));
+    output.push_str(&format!("{}-dry: ensure-codegen\n", tool.short_name));
     output.push_str(&format!(
-        "\t@{} -- --dry-run{}",
+        "\t@{}{} -- --dry-run{}",
+        warning_prefix,
         tool.invocation.command(),
         render_cli_args(&tool.entrypoints)
     ));
@@ -442,7 +514,10 @@ fn render_extra_target(tool: &ToolInfo, extra: &ExtraTarget) -> String {
         "# {}-{}: {}\n",
         tool.short_name, extra.suffix, extra.description
     ));
-    output.push_str(&format!("{}-{}: {}\n", tool.short_name, extra.suffix, tool.short_name));
+    output.push_str(&format!(
+        "{}-{}: {}\n",
+        tool.short_name, extra.suffix, tool.short_name
+    ));
 
     // Add post commands
     for cmd in &extra.post_commands {
@@ -509,7 +584,11 @@ mod tests {
         let registry = ToolRegistry::default_registry();
         let makefile = render_makefile(&registry);
 
-        assert!(makefile.contains("build: testgen"));
+        assert!(makefile.contains("ensure-codegen:"));
+        assert!(makefile.contains("codegen: ensure-codegen"));
+        assert!(makefile.contains("build: codegen testgen"));
+        assert!(makefile.contains("testgen: ensure-codegen"));
+        assert!(makefile.contains("testgen-check: ensure-codegen"));
         assert!(makefile.contains("clean:"));
     }
 
@@ -520,17 +599,20 @@ mod tests {
 
         // Meta targets section
         assert!(makefile.contains("# Meta Targets"));
-        
-        // Individual meta targets
-        assert!(makefile.contains("test: build testgen-check"), "test should depend on build and testgen-check");
-        assert!(makefile.contains("@cargo test"));
 
-        assert!(makefile.contains("check:"));
+        // Individual meta targets
+        assert!(
+            makefile.contains("test: codegen testgen-check"),
+            "test should depend on codegen and testgen-check"
+        );
+        assert!(makefile.contains("gunbc-build"));
+
+        assert!(makefile.contains("check: ensure-codegen"));
         assert!(makefile.contains("@cargo check --all-targets"));
 
-        assert!(makefile.contains("clippy:"));
-        assert!(makefile.contains("@cargo clippy"));
-        
+        assert!(makefile.contains("clippy: ensure-codegen"));
+        assert!(makefile.contains("gunbc-build"));
+
         assert!(makefile.contains("fmt:"));
         assert!(makefile.contains("@cargo fmt"));
         assert!(makefile.contains("fmt-check:"));
@@ -542,6 +624,8 @@ mod tests {
         let makefile = render_makefile(&registry);
 
         assert!(makefile.contains("Build commands:"));
+        assert!(makefile.contains("codegen  - Generate CLI entrypoints"));
+        assert!(makefile.contains("ensure-codegen  - Bootstrap CLI entrypoints"));
         assert!(makefile.contains("Development:"));
         assert!(makefile.contains("Tools:"));
     }
@@ -553,13 +637,30 @@ mod tests {
 
         // Testgen targets in core section
         assert!(makefile.contains("testgen:"), "should have testgen target");
-        assert!(makefile.contains("testgen-check:"), "should have testgen-check target");
+        assert!(
+            makefile.contains("testgen-check:"),
+            "should have testgen-check target"
+        );
 
         // Testgen in help
-        assert!(makefile.contains("testgen  - Regenerate tests"), "help should mention testgen");
+        assert!(
+            makefile.contains("testgen  - Regenerate tests"),
+            "help should mention testgen"
+        );
 
         // Testgen in .PHONY
-        assert!(makefile.contains("testgen testgen-check"), "should be in .PHONY");
+        assert!(
+            makefile.contains("testgen testgen-check"),
+            "should be in .PHONY"
+        );
+        assert!(
+            makefile.contains("ensure-codegen"),
+            "should include ensure-codegen in .PHONY"
+        );
+        assert!(
+            makefile.contains("codegen"),
+            "should include codegen in .PHONY"
+        );
     }
 
     #[test]
@@ -572,6 +673,20 @@ mod tests {
         assert!(makefile.contains("cargo build --all-targets"));
         assert!(makefile.contains("cargo test"));
         assert!(makefile.contains("cargo clippy"));
+    }
+
+    #[test]
+    fn test_render_makefile_tool_targets_deny_warnings() {
+        let registry = ToolRegistry::default_registry();
+        let config = BuildConfig::cargo();
+        let makefile = render_makefile_with_config(&registry, &config);
+
+        assert!(
+            makefile.contains("RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-gist --bin gunbc-gist")
+        );
+        assert!(makefile.contains(
+            "RUSTFLAGS=\"-D warnings\" cargo run -p gunbc-gist --bin gunbc-gist -- --dry-run"
+        ));
     }
 
     #[test]
@@ -664,7 +779,7 @@ mod tests {
         // clippy-fix should exist
         assert!(makefile.contains("clippy-fix:"));
 
-        // check-fix should exist  
+        // check-fix should exist
         assert!(makefile.contains("check-fix:"));
     }
 

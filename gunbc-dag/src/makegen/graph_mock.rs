@@ -23,7 +23,7 @@ use gunbc_test::{InputConstraint, MockSpec, NodeExample, OutputMatcher};
 ///
 /// - `output_path`: Optional string, defaults to "Makefile"
 pub fn makegen_mock_spec() -> MockSpec {
-    MockSpec::new("makegen")
+    with_makegen_transport_mocks(MockSpec::new("makegen"))
         // Boundary: write_makefile outputs
         .boundary(
             "write_makefile",
@@ -40,25 +40,9 @@ pub fn makegen_mock_spec() -> MockSpec {
         .expects_input("output_path", InputConstraint::Any)
         // Resource: file write lock
         .resource_lock("fs:Makefile")
-        // Transport mocks: values returned by intercepted transport executor node
-        .transport_mock(
-            "execute_transport",
-            "response",
-            Value::Response(ShellResponse::ok("").into()),
-        )
-        .transport_mock(
-            "execute_transport",
-            "written_path",
-            Value::Str("Makefile".into()),
-        )
-        .transport_mock(
-            "execute_transport",
-            "content",
-            Value::Str("<mock-written>".into()),
-        )
         // Expected outputs: load_registry is a pure root node with boundary outputs
         // tool_count verifies the registry loaded correctly
-        .expected_output("load_registry", "tool_count", Value::Int(8))
+        .expected_output("load_registry", "tool_count", Value::Int(7))
         // Node I/O examples: verify pure node behavior
         .node_example(
             NodeExample::new("load_registry")
@@ -77,21 +61,47 @@ pub fn makegen_mock_spec() -> MockSpec {
 
 /// Mock spec for testing no-change scenario.
 pub fn makegen_mock_spec_no_change() -> MockSpec {
-    MockSpec::new("makegen")
-        .boundary("write_makefile", "written_path", Value::Str("Makefile".into()))
-        .boundary("write_makefile", "content", Value::Str(mock_makefile_content()))
+    with_makegen_transport_mocks(MockSpec::new("makegen"))
+        .boundary(
+            "write_makefile",
+            "written_path",
+            Value::Str("Makefile".into()),
+        )
+        .boundary(
+            "write_makefile",
+            "content",
+            Value::Str(mock_makefile_content()),
+        )
         .boundary("write_makefile", "changed", Value::Bool(false))
         .expects_input("output_path", InputConstraint::Any)
 }
 
 /// Mock spec for testing file system failure.
 pub fn makegen_mock_spec_fs_fails() -> MockSpec {
-    MockSpec::new("makegen")
+    with_makegen_transport_mocks(MockSpec::new("makegen"))
         .boundary("write_makefile", "written_path", Value::Str("".into()))
         .boundary("write_makefile", "content", Value::Str("".into()))
         .boundary("write_makefile", "changed", Value::Bool(false))
         .expects_input("output_path", InputConstraint::Any)
         .resource_lock_fails("fs:Makefile", "Permission denied: Makefile is read-only")
+}
+
+fn with_makegen_transport_mocks(spec: MockSpec) -> MockSpec {
+    spec.transport_mock(
+        "execute_transport",
+        "response",
+        Value::Response(ShellResponse::ok("").into()),
+    )
+    .transport_mock(
+        "execute_transport",
+        "written_path",
+        Value::Str("Makefile".into()),
+    )
+    .transport_mock(
+        "execute_transport",
+        "content",
+        Value::Str("<mock-written>".into()),
+    )
 }
 
 /// Generate mock Makefile content.
@@ -139,6 +149,9 @@ mod tests {
         let spec = makegen_mock_spec_fs_fails();
         let resource = spec.get_resource("fs:Makefile").unwrap();
         let result = resource.acquire();
-        assert!(matches!(result, gunbc_test::ResourceAcquireResult::Failed(_)));
+        assert!(matches!(
+            result,
+            gunbc_test::ResourceAcquireResult::Failed(_)
+        ));
     }
 }

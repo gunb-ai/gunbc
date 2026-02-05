@@ -42,17 +42,14 @@ pub fn build_css_subdag() -> Node<LanguageOp> {
         vec![
             Port::scalar("id", "String"),
             Port::scalar("name", "String"),
-            Port::scalar("extensions", "List"),
+            Port::list("extensions", "String"),
             Port::scalar("comment_open", "String"),
             Port::scalar("comment_close", "String"),
         ],
         LanguageOp::CssConfig,
     ));
 
-    Node::subdag(
-        "css",
-        inner,
-    )
+    Node::subdag("css", inner)
 }
 
 /// Generate CSS comment.

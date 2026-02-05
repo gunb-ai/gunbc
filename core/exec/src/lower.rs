@@ -1,6 +1,8 @@
 //! Lowering: flatten sub-DAGs into a single flat DAG.
 
-use gunbc_ir::{detect_boundaries, detect_entrypoints, Dag, Edge, Node, NodeBody, NodeId, PortName};
+use gunbc_ir::{
+    detect_boundaries, detect_entrypoints, Dag, Edge, Node, NodeBody, NodeId, PortName,
+};
 use std::collections::HashMap;
 use thiserror::Error;
 
@@ -246,10 +248,7 @@ mod tests {
 
         // Create the parent DAG with a SubDag node
         let mut dag: Dag<()> = Dag::new();
-        dag.add_node(Node::subdag(
-            "wrapper",
-            subdag,
-        ));
+        dag.add_node(Node::subdag("wrapper", subdag));
 
         let lowered = lower(&dag).unwrap();
 
@@ -272,10 +271,7 @@ mod tests {
         // Create parent DAG: A -> SubDag
         let mut dag: Dag<()> = Dag::new();
         dag.add_node(Node::opaque("A", vec![], vec![port("out", "S")], ()));
-        dag.add_node(Node::subdag(
-            "wrapper",
-            subdag,
-        ));
+        dag.add_node(Node::subdag("wrapper", subdag));
         dag.add_edge(edge("A", "out", "wrapper", "data"));
 
         let lowered = lower(&dag).unwrap();
@@ -305,10 +301,7 @@ mod tests {
 
         // Create parent DAG: SubDag -> B
         let mut dag: Dag<()> = Dag::new();
-        dag.add_node(Node::subdag(
-            "wrapper",
-            subdag,
-        ));
+        dag.add_node(Node::subdag("wrapper", subdag));
         dag.add_node(Node::opaque("B", vec![port("data", "S")], vec![], ()));
         dag.add_edge(edge("wrapper", "out", "B", "data"));
 
@@ -346,10 +339,7 @@ mod tests {
         // Create parent DAG: A -> SubDag (should fan out to both inner nodes)
         let mut dag: Dag<()> = Dag::new();
         dag.add_node(Node::opaque("A", vec![], vec![port("out", "S")], ()));
-        dag.add_node(Node::subdag(
-            "wrapper",
-            subdag,
-        ));
+        dag.add_node(Node::subdag("wrapper", subdag));
         dag.add_edge(edge("A", "out", "wrapper", "data"));
 
         let lowered = lower(&dag).unwrap();
@@ -389,14 +379,8 @@ mod tests {
         ));
 
         let mut dag: Dag<()> = Dag::new();
-        dag.add_node(Node::subdag(
-            "sub1",
-            subdag1,
-        ));
-        dag.add_node(Node::subdag(
-            "sub2",
-            subdag2,
-        ));
+        dag.add_node(Node::subdag("sub1", subdag1));
+        dag.add_node(Node::subdag("sub2", subdag2));
         dag.add_edge(edge("sub1", "out", "sub2", "in"));
 
         let lowered = lower(&dag).unwrap();

@@ -75,12 +75,7 @@ impl GistRequest {
         let files_json: serde_json::Map<String, serde_json::Value> = self
             .files
             .iter()
-            .map(|(name, file)| {
-                (
-                    name.clone(),
-                    serde_json::json!({ "content": file.content }),
-                )
-            })
+            .map(|(name, file)| (name.clone(), serde_json::json!({ "content": file.content })))
             .collect();
 
         let mut body = serde_json::json!({
@@ -144,7 +139,9 @@ pub fn parse_gist_url_from_shell(stdout: &str) -> Option<String> {
 
 /// Parse a gist URL from a REST response.
 pub fn parse_gist_url_from_rest(body: &serde_json::Value) -> Option<String> {
-    body.get("html_url").and_then(|v| v.as_str()).map(String::from)
+    body.get("html_url")
+        .and_then(|v| v.as_str())
+        .map(String::from)
 }
 
 #[cfg(test)]
@@ -166,12 +163,10 @@ mod tests {
 
     #[test]
     fn test_to_rest_request() {
-        let gist = GistRequest::new()
-            .file("test.md", "# Test")
-            .public(true);
+        let gist = GistRequest::new().file("test.md", "# Test").public(true);
 
         let transport = gist.to_rest_request();
-        
+
         match transport {
             TransportRequest::Rest(req) => {
                 assert_eq!(req.url, "https://api.github.com/gists");
@@ -183,9 +178,7 @@ mod tests {
 
     #[test]
     fn test_to_shell_request() {
-        let gist = GistRequest::new()
-            .file("test.md", "# Test")
-            .public(true);
+        let gist = GistRequest::new().file("test.md", "# Test").public(true);
 
         let transport = gist.to_shell_request();
 

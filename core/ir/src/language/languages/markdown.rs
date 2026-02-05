@@ -45,7 +45,7 @@ pub fn build_markdown_subdag() -> Node<LanguageOp> {
         vec![
             Port::scalar("id", "String"),
             Port::scalar("name", "String"),
-            Port::scalar("extensions", "List"),
+            Port::list("extensions", "String"),
             Port::scalar("comment_open", "String"),
             Port::scalar("comment_close", "String"),
             Port::scalar("code_fence", "String"),
@@ -64,21 +64,24 @@ pub fn build_markdown_subdag() -> Node<LanguageOp> {
         LanguageOp::MarkdownRenderCodeBlock,
     ));
 
-    Node::subdag(
-        "markdown",
-        inner,
-    )
+    Node::subdag("markdown", inner)
 }
 
 /// Render a fenced code block.
 pub fn render_code_block(code: &str, language: Option<&str>) -> String {
     let lang = language.unwrap_or("");
-    format!("{}{}\n{}\n{}", MARKDOWN.code_fence, lang, code, MARKDOWN.code_fence)
+    format!(
+        "{}{}\n{}\n{}",
+        MARKDOWN.code_fence, lang, code, MARKDOWN.code_fence
+    )
 }
 
 /// Generate Markdown comment.
 pub fn markdown_comment(text: &str) -> String {
-    format!("{}{}{}", MARKDOWN.comment_open, text, MARKDOWN.comment_close)
+    format!(
+        "{}{}{}",
+        MARKDOWN.comment_open, text, MARKDOWN.comment_close
+    )
 }
 
 #[cfg(test)]

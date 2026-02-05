@@ -226,54 +226,251 @@ pub static STANDARD: SymbolSet = SymbolSet {
 
 static STANDARD_SYMBOLS: [Symbol; 34] = [
     // Node states
-    Symbol { id: SymbolId::NodePending,     emoji: "⏳", unicode: "○", ascii: "[ ]", color: SemanticColor::Dim },
-    Symbol { id: SymbolId::NodeRunning,     emoji: "🔄", unicode: "◐", ascii: "[~]", color: SemanticColor::Active },
-    Symbol { id: SymbolId::NodeCompleted,   emoji: "✅", unicode: "●", ascii: "[x]", color: SemanticColor::Success },
-    Symbol { id: SymbolId::NodeFailed,      emoji: "❌", unicode: "✗", ascii: "[!]", color: SemanticColor::Error },
-    Symbol { id: SymbolId::NodeSkipped,     emoji: "⏭️",  unicode: "◌", ascii: "[-]", color: SemanticColor::Dim },
-    Symbol { id: SymbolId::NodeIntercepted, emoji: "🔮", unicode: "◇", ascii: "[m]", color: SemanticColor::Info },
-
+    Symbol {
+        id: SymbolId::NodePending,
+        emoji: "⏳",
+        unicode: "○",
+        ascii: "[ ]",
+        color: SemanticColor::Dim,
+    },
+    Symbol {
+        id: SymbolId::NodeRunning,
+        emoji: "🔄",
+        unicode: "◐",
+        ascii: "[~]",
+        color: SemanticColor::Active,
+    },
+    Symbol {
+        id: SymbolId::NodeCompleted,
+        emoji: "✅",
+        unicode: "●",
+        ascii: "[x]",
+        color: SemanticColor::Success,
+    },
+    Symbol {
+        id: SymbolId::NodeFailed,
+        emoji: "❌",
+        unicode: "✗",
+        ascii: "[!]",
+        color: SemanticColor::Error,
+    },
+    Symbol {
+        id: SymbolId::NodeSkipped,
+        emoji: "⏭️",
+        unicode: "◌",
+        ascii: "[-]",
+        color: SemanticColor::Dim,
+    },
+    Symbol {
+        id: SymbolId::NodeIntercepted,
+        emoji: "🔮",
+        unicode: "◇",
+        ascii: "[m]",
+        color: SemanticColor::Info,
+    },
     // Edge states
-    Symbol { id: SymbolId::EdgeIdle,    emoji: "─", unicode: "─", ascii: "-",  color: SemanticColor::Dim },
-    Symbol { id: SymbolId::EdgeFlowing, emoji: "⚡", unicode: "═", ascii: "=", color: SemanticColor::Accent },
-    Symbol { id: SymbolId::EdgeDone,    emoji: "─", unicode: "─", ascii: "-",  color: SemanticColor::Success },
-    Symbol { id: SymbolId::EdgeDead,    emoji: "┄", unicode: "┄", ascii: ".",  color: SemanticColor::Dim },
-
+    Symbol {
+        id: SymbolId::EdgeIdle,
+        emoji: "─",
+        unicode: "─",
+        ascii: "-",
+        color: SemanticColor::Dim,
+    },
+    Symbol {
+        id: SymbolId::EdgeFlowing,
+        emoji: "⚡",
+        unicode: "═",
+        ascii: "=",
+        color: SemanticColor::Accent,
+    },
+    Symbol {
+        id: SymbolId::EdgeDone,
+        emoji: "─",
+        unicode: "─",
+        ascii: "-",
+        color: SemanticColor::Success,
+    },
+    Symbol {
+        id: SymbolId::EdgeDead,
+        emoji: "┄",
+        unicode: "┄",
+        ascii: ".",
+        color: SemanticColor::Dim,
+    },
     // DAG phases
-    Symbol { id: SymbolId::DagNotStarted, emoji: "🔲", unicode: "□", ascii: "[ ]", color: SemanticColor::Dim },
-    Symbol { id: SymbolId::DagRunning,    emoji: "🚀", unicode: "▶", ascii: "[>]", color: SemanticColor::Active },
-    Symbol { id: SymbolId::DagCompleted,  emoji: "🏁", unicode: "■", ascii: "[X]", color: SemanticColor::Success },
-    Symbol { id: SymbolId::DagFailed,     emoji: "💥", unicode: "■", ascii: "[!]", color: SemanticColor::Error },
-
+    Symbol {
+        id: SymbolId::DagNotStarted,
+        emoji: "🔲",
+        unicode: "□",
+        ascii: "[ ]",
+        color: SemanticColor::Dim,
+    },
+    Symbol {
+        id: SymbolId::DagRunning,
+        emoji: "🚀",
+        unicode: "▶",
+        ascii: "[>]",
+        color: SemanticColor::Active,
+    },
+    Symbol {
+        id: SymbolId::DagCompleted,
+        emoji: "🏁",
+        unicode: "■",
+        ascii: "[X]",
+        color: SemanticColor::Success,
+    },
+    Symbol {
+        id: SymbolId::DagFailed,
+        emoji: "💥",
+        unicode: "■",
+        ascii: "[!]",
+        color: SemanticColor::Error,
+    },
     // Structural
-    Symbol { id: SymbolId::BoundaryMarker, emoji: "🌐", unicode: "◈", ascii: "[B]", color: SemanticColor::Info },
-
+    Symbol {
+        id: SymbolId::BoundaryMarker,
+        emoji: "🌐",
+        unicode: "◈",
+        ascii: "[B]",
+        color: SemanticColor::Info,
+    },
     // Spinners
-    Symbol { id: SymbolId::Spinner0, emoji: "🌑", unicode: "◐", ascii: "|",  color: SemanticColor::Active },
-    Symbol { id: SymbolId::Spinner1, emoji: "🌒", unicode: "◓", ascii: "/",  color: SemanticColor::Active },
-    Symbol { id: SymbolId::Spinner2, emoji: "🌓", unicode: "◑", ascii: "-",  color: SemanticColor::Active },
-    Symbol { id: SymbolId::Spinner3, emoji: "🌔", unicode: "◒", ascii: "\\", color: SemanticColor::Active },
-
+    Symbol {
+        id: SymbolId::Spinner0,
+        emoji: "🌑",
+        unicode: "◐",
+        ascii: "|",
+        color: SemanticColor::Active,
+    },
+    Symbol {
+        id: SymbolId::Spinner1,
+        emoji: "🌒",
+        unicode: "◓",
+        ascii: "/",
+        color: SemanticColor::Active,
+    },
+    Symbol {
+        id: SymbolId::Spinner2,
+        emoji: "🌓",
+        unicode: "◑",
+        ascii: "-",
+        color: SemanticColor::Active,
+    },
+    Symbol {
+        id: SymbolId::Spinner3,
+        emoji: "🌔",
+        unicode: "◒",
+        ascii: "\\",
+        color: SemanticColor::Active,
+    },
     // Status indicators
-    Symbol { id: SymbolId::Success, emoji: "✅", unicode: "✓",  ascii: "OK",   color: SemanticColor::Success },
-    Symbol { id: SymbolId::Failure, emoji: "❌", unicode: "✗",  ascii: "FAIL", color: SemanticColor::Error },
-    Symbol { id: SymbolId::Warning, emoji: "⚠️",  unicode: "⚠",  ascii: "WARN", color: SemanticColor::Warning },
-    Symbol { id: SymbolId::Info,    emoji: "ℹ️",  unicode: "ℹ",  ascii: "INFO", color: SemanticColor::Info },
-
+    Symbol {
+        id: SymbolId::Success,
+        emoji: "✅",
+        unicode: "✓",
+        ascii: "OK",
+        color: SemanticColor::Success,
+    },
+    Symbol {
+        id: SymbolId::Failure,
+        emoji: "❌",
+        unicode: "✗",
+        ascii: "FAIL",
+        color: SemanticColor::Error,
+    },
+    Symbol {
+        id: SymbolId::Warning,
+        emoji: "⚠️",
+        unicode: "⚠",
+        ascii: "WARN",
+        color: SemanticColor::Warning,
+    },
+    Symbol {
+        id: SymbolId::Info,
+        emoji: "ℹ️",
+        unicode: "ℹ",
+        ascii: "INFO",
+        color: SemanticColor::Info,
+    },
     // Data types
-    Symbol { id: SymbolId::DataList,   emoji: "📋", unicode: "≡", ascii: "[L]", color: SemanticColor::Default },
-    Symbol { id: SymbolId::DataMap,    emoji: "🗂️",  unicode: "⊞", ascii: "[M]", color: SemanticColor::Default },
-    Symbol { id: SymbolId::DataSecret, emoji: "🔒", unicode: "▪", ascii: "[*]", color: SemanticColor::Warning },
-    Symbol { id: SymbolId::DataUrl,    emoji: "🔗", unicode: "↗", ascii: "[U]", color: SemanticColor::Info },
-    Symbol { id: SymbolId::DataTimer,  emoji: "⏱️",  unicode: "⏱", ascii: "[T]", color: SemanticColor::Dim },
-
+    Symbol {
+        id: SymbolId::DataList,
+        emoji: "📋",
+        unicode: "≡",
+        ascii: "[L]",
+        color: SemanticColor::Default,
+    },
+    Symbol {
+        id: SymbolId::DataMap,
+        emoji: "🗂️",
+        unicode: "⊞",
+        ascii: "[M]",
+        color: SemanticColor::Default,
+    },
+    Symbol {
+        id: SymbolId::DataSecret,
+        emoji: "🔒",
+        unicode: "▪",
+        ascii: "[*]",
+        color: SemanticColor::Warning,
+    },
+    Symbol {
+        id: SymbolId::DataUrl,
+        emoji: "🔗",
+        unicode: "↗",
+        ascii: "[U]",
+        color: SemanticColor::Info,
+    },
+    Symbol {
+        id: SymbolId::DataTimer,
+        emoji: "⏱️",
+        unicode: "⏱",
+        ascii: "[T]",
+        color: SemanticColor::Dim,
+    },
     // Connectors
-    Symbol { id: SymbolId::ConnectorHorizontal,      emoji: "──", unicode: "──", ascii: "--", color: SemanticColor::Dim },
-    Symbol { id: SymbolId::ConnectorVertical,         emoji: "│",  unicode: "│",  ascii: "|",  color: SemanticColor::Dim },
-    Symbol { id: SymbolId::ConnectorTeeDown,          emoji: "┬",  unicode: "┬",  ascii: "+",  color: SemanticColor::Dim },
-    Symbol { id: SymbolId::ConnectorTeeUp,            emoji: "┴",  unicode: "┴",  ascii: "+",  color: SemanticColor::Dim },
-    Symbol { id: SymbolId::ConnectorCornerBottomLeft, emoji: "└",  unicode: "└",  ascii: "+",  color: SemanticColor::Dim },
-    Symbol { id: SymbolId::ConnectorCornerTopLeft,    emoji: "┌",  unicode: "┌",  ascii: "+",  color: SemanticColor::Dim },
+    Symbol {
+        id: SymbolId::ConnectorHorizontal,
+        emoji: "──",
+        unicode: "──",
+        ascii: "--",
+        color: SemanticColor::Dim,
+    },
+    Symbol {
+        id: SymbolId::ConnectorVertical,
+        emoji: "│",
+        unicode: "│",
+        ascii: "|",
+        color: SemanticColor::Dim,
+    },
+    Symbol {
+        id: SymbolId::ConnectorTeeDown,
+        emoji: "┬",
+        unicode: "┬",
+        ascii: "+",
+        color: SemanticColor::Dim,
+    },
+    Symbol {
+        id: SymbolId::ConnectorTeeUp,
+        emoji: "┴",
+        unicode: "┴",
+        ascii: "+",
+        color: SemanticColor::Dim,
+    },
+    Symbol {
+        id: SymbolId::ConnectorCornerBottomLeft,
+        emoji: "└",
+        unicode: "└",
+        ascii: "+",
+        color: SemanticColor::Dim,
+    },
+    Symbol {
+        id: SymbolId::ConnectorCornerTopLeft,
+        emoji: "┌",
+        unicode: "┌",
+        ascii: "+",
+        color: SemanticColor::Dim,
+    },
 ];
 
 // ---------------------------------------------------------------------------
@@ -324,19 +521,28 @@ pub fn build_symbol_subdag(symbol: &Symbol) -> Node<SymbolOp> {
         "emoji",
         vec![],
         vec![Port::scalar("value", "String")],
-        SymbolOp::Atom { tier: Tier::Emoji, value: symbol.emoji.to_string() },
+        SymbolOp::Atom {
+            tier: Tier::Emoji,
+            value: symbol.emoji.to_string(),
+        },
     ));
     inner.add_node(Node::opaque(
         "unicode",
         vec![],
         vec![Port::scalar("value", "String")],
-        SymbolOp::Atom { tier: Tier::Unicode, value: symbol.unicode.to_string() },
+        SymbolOp::Atom {
+            tier: Tier::Unicode,
+            value: symbol.unicode.to_string(),
+        },
     ));
     inner.add_node(Node::opaque(
         "ascii",
         vec![],
         vec![Port::scalar("value", "String")],
-        SymbolOp::Atom { tier: Tier::Ascii, value: symbol.ascii.to_string() },
+        SymbolOp::Atom {
+            tier: Tier::Ascii,
+            value: symbol.ascii.to_string(),
+        },
     ));
 
     // Resolve node — selects atom based on tier input
@@ -353,9 +559,15 @@ pub fn build_symbol_subdag(symbol: &Symbol) -> Node<SymbolOp> {
     ));
 
     // Edges: atoms → resolve
-    inner.add_edge(crate::dag::build::edge("emoji", "value", "resolve", "emoji"));
-    inner.add_edge(crate::dag::build::edge("unicode", "value", "resolve", "unicode"));
-    inner.add_edge(crate::dag::build::edge("ascii", "value", "resolve", "ascii"));
+    inner.add_edge(crate::dag::build::edge(
+        "emoji", "value", "resolve", "emoji",
+    ));
+    inner.add_edge(crate::dag::build::edge(
+        "unicode", "value", "resolve", "unicode",
+    ));
+    inner.add_edge(crate::dag::build::edge(
+        "ascii", "value", "resolve", "ascii",
+    ));
 
     Node::subdag(format!("symbol_{:?}", symbol.id), inner)
 }
@@ -376,8 +588,15 @@ pub fn build_spinner_subdag(symbol_set: &SymbolSet) -> Node<SymbolOp> {
     for (i, _id) in spinner_ids.iter().enumerate() {
         inner.add_node(Node::opaque(
             format!("frame_{}", i),
-            if i == 0 { vec![Port::scalar("cycle", "Unit")] } else { vec![Port::scalar("prev", "Unit")] },
-            vec![Port::scalar("value", "String"), Port::scalar("next", "Unit")],
+            if i == 0 {
+                vec![Port::scalar("cycle", "Unit")]
+            } else {
+                vec![Port::scalar("prev", "Unit")]
+            },
+            vec![
+                Port::scalar("value", "String"),
+                Port::scalar("next", "Unit"),
+            ],
             SymbolOp::Frame { index: i as u8 },
         ));
     }
@@ -391,9 +610,15 @@ pub fn build_spinner_subdag(symbol_set: &SymbolSet) -> Node<SymbolOp> {
     ));
 
     // Chain: frame_0 → frame_1 → frame_2 → frame_3 → cycle → frame_0
-    inner.add_edge(crate::dag::build::edge("frame_0", "next", "frame_1", "prev"));
-    inner.add_edge(crate::dag::build::edge("frame_1", "next", "frame_2", "prev"));
-    inner.add_edge(crate::dag::build::edge("frame_2", "next", "frame_3", "prev"));
+    inner.add_edge(crate::dag::build::edge(
+        "frame_0", "next", "frame_1", "prev",
+    ));
+    inner.add_edge(crate::dag::build::edge(
+        "frame_1", "next", "frame_2", "prev",
+    ));
+    inner.add_edge(crate::dag::build::edge(
+        "frame_2", "next", "frame_3", "prev",
+    ));
     inner.add_edge(crate::dag::build::edge("frame_3", "next", "cycle", "last"));
     // Note: cycle → frame_0 edge creates a cycle — modeled as metadata, not an actual DAG edge
 
@@ -422,17 +647,40 @@ mod tests {
     fn test_standard_set_exhaustive() {
         // Every SymbolId variant should be present in STANDARD
         let all_ids = [
-            SymbolId::NodePending, SymbolId::NodeRunning, SymbolId::NodeCompleted,
-            SymbolId::NodeFailed, SymbolId::NodeSkipped, SymbolId::NodeIntercepted,
-            SymbolId::EdgeIdle, SymbolId::EdgeFlowing, SymbolId::EdgeDone, SymbolId::EdgeDead,
-            SymbolId::DagNotStarted, SymbolId::DagRunning, SymbolId::DagCompleted, SymbolId::DagFailed,
+            SymbolId::NodePending,
+            SymbolId::NodeRunning,
+            SymbolId::NodeCompleted,
+            SymbolId::NodeFailed,
+            SymbolId::NodeSkipped,
+            SymbolId::NodeIntercepted,
+            SymbolId::EdgeIdle,
+            SymbolId::EdgeFlowing,
+            SymbolId::EdgeDone,
+            SymbolId::EdgeDead,
+            SymbolId::DagNotStarted,
+            SymbolId::DagRunning,
+            SymbolId::DagCompleted,
+            SymbolId::DagFailed,
             SymbolId::BoundaryMarker,
-            SymbolId::Spinner0, SymbolId::Spinner1, SymbolId::Spinner2, SymbolId::Spinner3,
-            SymbolId::Success, SymbolId::Failure, SymbolId::Warning, SymbolId::Info,
-            SymbolId::DataList, SymbolId::DataMap, SymbolId::DataSecret, SymbolId::DataUrl, SymbolId::DataTimer,
-            SymbolId::ConnectorHorizontal, SymbolId::ConnectorVertical,
-            SymbolId::ConnectorTeeDown, SymbolId::ConnectorTeeUp,
-            SymbolId::ConnectorCornerBottomLeft, SymbolId::ConnectorCornerTopLeft,
+            SymbolId::Spinner0,
+            SymbolId::Spinner1,
+            SymbolId::Spinner2,
+            SymbolId::Spinner3,
+            SymbolId::Success,
+            SymbolId::Failure,
+            SymbolId::Warning,
+            SymbolId::Info,
+            SymbolId::DataList,
+            SymbolId::DataMap,
+            SymbolId::DataSecret,
+            SymbolId::DataUrl,
+            SymbolId::DataTimer,
+            SymbolId::ConnectorHorizontal,
+            SymbolId::ConnectorVertical,
+            SymbolId::ConnectorTeeDown,
+            SymbolId::ConnectorTeeUp,
+            SymbolId::ConnectorCornerBottomLeft,
+            SymbolId::ConnectorCornerTopLeft,
         ];
         for id in &all_ids {
             STANDARD.get(*id); // panics if missing
@@ -452,26 +700,38 @@ mod tests {
         let colored = sym.resolve_colored(Tier::Ascii);
         assert!(colored.contains("[x]"));
         assert!(colored.contains("\x1b[32m")); // Green for Success
-        assert!(colored.contains("\x1b[0m"));  // Reset
+        assert!(colored.contains("\x1b[0m")); // Reset
     }
 
     #[test]
     fn test_symbol_set_resolve() {
         assert_eq!(STANDARD.resolve(SymbolId::DagRunning), "🚀");
-        assert_eq!(STANDARD.resolve_tier(SymbolId::DagRunning, Tier::Ascii), "[>]");
+        assert_eq!(
+            STANDARD.resolve_tier(SymbolId::DagRunning, Tier::Ascii),
+            "[>]"
+        );
     }
 
     #[test]
     fn test_spinner_frames_distinct() {
         let frames: Vec<&str> = [
-            SymbolId::Spinner0, SymbolId::Spinner1,
-            SymbolId::Spinner2, SymbolId::Spinner3,
-        ].iter().map(|id| STANDARD.resolve_tier(*id, Tier::Unicode)).collect();
+            SymbolId::Spinner0,
+            SymbolId::Spinner1,
+            SymbolId::Spinner2,
+            SymbolId::Spinner3,
+        ]
+        .iter()
+        .map(|id| STANDARD.resolve_tier(*id, Tier::Unicode))
+        .collect();
 
         // All four frames should be distinct
         for i in 0..frames.len() {
             for j in (i + 1)..frames.len() {
-                assert_ne!(frames[i], frames[j], "spinner frames {} and {} are identical", i, j);
+                assert_ne!(
+                    frames[i], frames[j],
+                    "spinner frames {} and {} are identical",
+                    i, j
+                );
             }
         }
     }
@@ -483,7 +743,10 @@ mod tests {
         // SubDag — interface inferred from inner DAG entrypoints/boundaries
         match &node.body {
             crate::node::NodeBody::SubDag(inner) => {
-                assert!(inner.nodes.len() >= 4, "should have config + 3 atoms + resolve");
+                assert!(
+                    inner.nodes.len() >= 4,
+                    "should have config + 3 atoms + resolve"
+                );
             }
             _ => panic!("expected SubDag"),
         }

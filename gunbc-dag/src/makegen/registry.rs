@@ -82,8 +82,13 @@ impl BuildCommand {
 pub struct BuildConfig {
     /// Build system (cargo, buck2)
     pub build_system: BuildSystem,
+    /// Whether Makefile targets should use DAG entrypoints (e.g., gunbc-build)
+    /// instead of raw cargo/buck2 commands.
+    pub use_dag_entrypoints: bool,
     /// Repo-level warning policy (applied to all compilation commands).
     pub warnings: Warnings,
+    /// Command to ensure codegen outputs exist (bootstrap-safe)
+    pub ensure_codegen: BuildCommand,
     /// Command to run codegen
     pub codegen: BuildCommand,
     /// Command to run daggen
@@ -118,21 +123,27 @@ impl BuildConfig {
     pub fn cargo() -> Self {
         let w = Warnings::Deny;
         let codegen_inv = CargoInvocation::standalone("codegen");
+        let codegen_dag_inv = CargoInvocation::composed("codegen-dag", "dag");
         let c = |cmd: CargoCommand| BuildCommand::Cargo(cmd);
         Self {
             build_system: BuildSystem::Cargo,
+            use_dag_entrypoints: false,
             warnings: w,
-            codegen: c(CargoCommand::new(Subcommand::Run(codegen_inv.clone()))
+            ensure_codegen: c(CargoCommand::new(Subcommand::Run(codegen_inv.clone()))
                 .release()
-                .trailing_arg("codegen")),
+                .trailing_arg("codegen")
+                .warnings(w)),
+            codegen: c(CargoCommand::new(Subcommand::Run(codegen_dag_inv.clone()))
+                .release()
+                .warnings(w)),
             daggen: c(CargoCommand::new(Subcommand::Run(codegen_inv.clone()))
                 .release()
-                .trailing_arg("daggen")),
+                .trailing_arg("daggen")
+                .warnings(w)),
             build: c(CargoCommand::new(Subcommand::Build)
                 .all_targets()
                 .warnings(w)),
-            test: c(CargoCommand::new(Subcommand::Test)
-                .warnings(w)),
+            test: c(CargoCommand::new(Subcommand::Test).warnings(w)),
             lint: c(CargoCommand::new(Subcommand::Clippy)
                 .all_targets()
                 .warnings(w)),
@@ -143,20 +154,52 @@ impl BuildConfig {
                 .flag("--allow-staged")
                 .warnings(w)),
             fmt: c(CargoCommand::new(Subcommand::Fmt)),
-            fmt_check: c(CargoCommand::new(Subcommand::Fmt)
-                .trailing_arg("--check")),
+            fmt_check: c(CargoCommand::new(Subcommand::Fmt).trailing_arg("--check")),
             check: c(CargoCommand::new(Subcommand::Check)
                 .all_targets()
                 .warnings(w)),
             ci_yaml: c(CargoCommand::new(Subcommand::Run(codegen_inv.clone()))
                 .release()
-                .trailing_arg("cigen")),
-            testgen: c(CargoCommand::new(Subcommand::Run(CargoInvocation::in_package("gunbc-testgen", "gunbc-dag")))
-                .release()),
-            testgen_check: c(CargoCommand::new(Subcommand::Run(CargoInvocation::in_package("gunbc-testgen", "gunbc-dag")))
+                .trailing_arg("cigen")
+                .warnings(w)),
+            testgen: c(
+                CargoCommand::new(Subcommand::Run(CargoInvocation::in_package(
+                    "gunbc-testgen",
+                    "gunbc-dag",
+                )))
                 .release()
-                .trailing_arg("--check")),
+                .warnings(w),
+            ),
+            testgen_check: c(
+                CargoCommand::new(Subcommand::Run(CargoInvocation::in_package(
+                    "gunbc-testgen",
+                    "gunbc-dag",
+                )))
+                .release()
+                .trailing_arg("--check")
+                .warnings(w),
+            ),
         }
+    }
+
+    /// Cargo build config that routes build/test/lint through DAG entrypoints.
+    ///
+    /// Used for Makefile generation so `make build/test/clippy` are graph-driven,
+    /// while internal ops (BuildOp/CI) still use raw cargo commands via `cargo()`.
+    pub fn cargo_entrypoints() -> Self {
+        let mut config = Self::cargo();
+        let build_inv = CargoInvocation::composed("build", "dag");
+        let entry = BuildCommand::Cargo(
+            CargoCommand::new(Subcommand::Run(build_inv))
+                .release()
+                .warnings(config.warnings),
+        );
+
+        config.build = entry.clone();
+        config.test = entry.clone();
+        config.lint = entry;
+        config.use_dag_entrypoints = true;
+        config
     }
 
     /// Buck2-based build config (for future use).
@@ -166,17 +209,25 @@ impl BuildConfig {
     pub fn buck2() -> Self {
         let w = Warnings::Deny;
         let codegen_inv = CargoInvocation::standalone("codegen");
+        let codegen_dag_inv = CargoInvocation::composed("codegen-dag", "dag");
         let c = |cmd: CargoCommand| BuildCommand::Cargo(cmd);
-        let sh = |parts: &[&str]| BuildCommand::Shell(parts.iter().map(|s| s.to_string()).collect());
+        let sh =
+            |parts: &[&str]| BuildCommand::Shell(parts.iter().map(|s| s.to_string()).collect());
         Self {
             build_system: BuildSystem::Buck2,
+            use_dag_entrypoints: false,
             warnings: w,
-            codegen: c(CargoCommand::new(Subcommand::Run(codegen_inv.clone()))
+            ensure_codegen: c(CargoCommand::new(Subcommand::Run(codegen_inv.clone()))
                 .release()
-                .trailing_arg("codegen")),
+                .trailing_arg("codegen")
+                .warnings(w)),
+            codegen: c(CargoCommand::new(Subcommand::Run(codegen_dag_inv.clone()))
+                .release()
+                .warnings(w)),
             daggen: c(CargoCommand::new(Subcommand::Run(codegen_inv.clone()))
                 .release()
-                .trailing_arg("daggen")),
+                .trailing_arg("daggen")
+                .warnings(w)),
             // Buck2-native commands
             build: sh(&["buck2", "build", "//..."]),
             test: sh(&["buck2", "test", "//..."]),
@@ -190,24 +241,41 @@ impl BuildConfig {
                 .warnings(w)),
             // fmt stays cargo (buck2 delegates to cargo fmt)
             fmt: c(CargoCommand::new(Subcommand::Fmt)),
-            fmt_check: c(CargoCommand::new(Subcommand::Fmt)
-                .trailing_arg("--check")),
+            fmt_check: c(CargoCommand::new(Subcommand::Fmt).trailing_arg("--check")),
             check: sh(&["buck2", "build", "//..."]),
             ci_yaml: c(CargoCommand::new(Subcommand::Run(codegen_inv.clone()))
                 .release()
-                .trailing_arg("cigen")),
+                .trailing_arg("cigen")
+                .warnings(w)),
             // testgen uses cargo (no buck2 equivalent yet)
-            testgen: c(CargoCommand::new(Subcommand::Run(CargoInvocation::in_package("gunbc-testgen", "gunbc-dag")))
-                .release()),
-            testgen_check: c(CargoCommand::new(Subcommand::Run(CargoInvocation::in_package("gunbc-testgen", "gunbc-dag")))
+            testgen: c(
+                CargoCommand::new(Subcommand::Run(CargoInvocation::in_package(
+                    "gunbc-testgen",
+                    "gunbc-dag",
+                )))
                 .release()
-                .trailing_arg("--check")),
+                .warnings(w),
+            ),
+            testgen_check: c(
+                CargoCommand::new(Subcommand::Run(CargoInvocation::in_package(
+                    "gunbc-testgen",
+                    "gunbc-dag",
+                )))
+                .release()
+                .trailing_arg("--check")
+                .warnings(w),
+            ),
         }
     }
 
     /// Get the codegen command as a shell string (for Makefile generation).
     pub fn codegen_shell(&self) -> String {
         format!("@{}", self.codegen.to_shell())
+    }
+
+    /// Get the ensure-codegen command as a shell string.
+    pub fn ensure_codegen_shell(&self) -> String {
+        format!("@{}", self.ensure_codegen.to_shell())
     }
 
     /// Get the build command as a shell string.
@@ -348,10 +416,7 @@ impl ToolInfo {
     /// ToolInfo::standalone("gist", "Create a GitHub gist")
     /// // binary: "gunbc-gist", short_name: "gist"
     /// ```
-    pub fn standalone(
-        component: &str,
-        description: impl Into<String>,
-    ) -> Self {
+    pub fn standalone(component: &str, description: impl Into<String>) -> Self {
         Self {
             invocation: gunbc_ir::CargoInvocation::standalone(component),
             short_name: component.to_string(),
@@ -752,7 +817,7 @@ pub fn default_meta_targets() -> Vec<MetaTarget> {
 /// Registry of all gunbc tools and meta targets.
 #[derive(Debug)]
 pub struct ToolRegistry {
-    /// Individual tool targets (gist, buck2, etc.)
+    /// Individual tool targets (gist, deps, etc.)
     pub tools: Vec<ToolInfo>,
     /// Meta targets (test, check, fmt, clippy)
     pub meta_targets: Vec<MetaTarget>,
@@ -849,13 +914,11 @@ impl ToolRegistry {
         // Manual additions: tools not in the codegen registry.
         // ci has a handwritten main.rs — it's the bootstrap tool that runs
         // codegen for other tools, so it can't depend on generated code.
-        registry.register(
-            ToolInfo::composed("ci", "dag", "Run CI pipeline"),
-        );
+        registry.register(ToolInfo::composed("ci", "dag", "Run CI pipeline"));
 
         // build-all has a handwritten main.rs with DAG progress display.
-        // Named "build-all" to avoid conflicting with the core "build" target
-        // (which is just cargo build). build-all runs build + test + clippy.
+        // Kept as a compatibility alias; the core "build" target now
+        // uses the same DAG entrypoint.
         registry.register(ToolInfo {
             invocation: gunbc_ir::CargoInvocation::composed("build", "dag"),
             short_name: "build-all".to_string(),
@@ -901,6 +964,15 @@ mod tests {
         assert!(config.lint_shell().contains("clippy"));
     }
 
+    #[test]
+    fn test_build_config_cargo_entrypoints() {
+        let config = BuildConfig::cargo_entrypoints();
+        assert!(config.use_dag_entrypoints);
+        assert!(config.build_shell().contains("gunbc-build"));
+        assert!(config.test_shell().contains("gunbc-build"));
+        assert!(config.lint_shell().contains("gunbc-build"));
+    }
+
     // ========================================================================
     // ToolRegistry Tests
     // ========================================================================
@@ -909,21 +981,25 @@ mod tests {
     fn test_default_registry_has_tools() {
         let registry = ToolRegistry::default_registry();
         assert!(registry.tools.len() >= 2);
-        
+
         let gist = registry.tools.iter().find(|t| t.short_name == "gist");
         assert!(gist.is_some());
-        
-        let buck2 = registry.tools.iter().find(|t| t.short_name == "buck2");
-        assert!(buck2.is_some());
+
+        let deps = registry.tools.iter().find(|t| t.short_name == "deps");
+        assert!(deps.is_some());
     }
 
     #[test]
     fn test_tool_has_entrypoints() {
         let registry = ToolRegistry::default_registry();
-        let gist = registry.tools.iter().find(|t| t.short_name == "gist").unwrap();
-        
+        let gist = registry
+            .tools
+            .iter()
+            .find(|t| t.short_name == "gist")
+            .unwrap();
+
         assert!(!gist.entrypoints.is_empty());
-        
+
         let repo_param = gist.entrypoints.iter().find(|p| p.port_name == "repo_path");
         assert!(repo_param.is_some());
         assert_eq!(repo_param.unwrap().make_var, "REPO");
@@ -948,7 +1024,11 @@ mod tests {
     #[test]
     fn test_makegen_has_declarative_dag() {
         let registry = ToolRegistry::default_registry();
-        let makegen = registry.tools.iter().find(|t| t.short_name == "makegen").unwrap();
+        let makegen = registry
+            .tools
+            .iter()
+            .find(|t| t.short_name == "makegen")
+            .unwrap();
         assert!(makegen.has_declarative_dag);
     }
 
@@ -959,7 +1039,7 @@ mod tests {
     #[test]
     fn test_default_meta_targets() {
         let targets = default_meta_targets();
-        
+
         // Should have test, check, clippy, fmt
         assert!(targets.iter().any(|t| t.name == "test"));
         assert!(targets.iter().any(|t| t.name == "check"));
@@ -970,13 +1050,13 @@ mod tests {
     #[test]
     fn test_meta_target_prep_levels() {
         let targets = default_meta_targets();
-        
+
         let test = targets.iter().find(|t| t.name == "test").unwrap();
         assert_eq!(test.prep_level, PrepLevel::Full);
-        
+
         let fmt = targets.iter().find(|t| t.name == "fmt").unwrap();
         assert_eq!(fmt.prep_level, PrepLevel::None);
-        
+
         let clippy = targets.iter().find(|t| t.name == "clippy").unwrap();
         assert_eq!(clippy.prep_level, PrepLevel::Codegen);
     }
@@ -1108,7 +1188,9 @@ mod tests {
             );
 
             // Verify CLI flags match generated CLI flag names
-            for (info_param, codegen_ep) in tool_info.entrypoints.iter().zip(codegen_make_params.iter()) {
+            for (info_param, codegen_ep) in
+                tool_info.entrypoints.iter().zip(codegen_make_params.iter())
+            {
                 assert_eq!(
                     info_param.cli_flag,
                     format!("--{}", codegen_ep.flag_name()),

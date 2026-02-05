@@ -27,6 +27,7 @@
 //! Future improvement: Express codegen as a DAG executed by a minimal bootstrap
 //! executor that doesn't depend on the generated tools.
 
+use cargo_metadata::MetadataCommand;
 use gunbc_clippy::ClippyConfigRenderer;
 use gunbc_codegen::{
     all_cleanable_outputs, all_tools, generate_cli_with_import, generate_graph_rs, FileWriter,
@@ -34,31 +35,33 @@ use gunbc_codegen::{
 use gunbc_ir::transport::ci::{
     yaml_block, CacheConfig, CiRenderer, GitHubActionsProvider, GitLabCiProvider, RenderConfig,
 };
-use gunbc_ir::Renderable;
-use std::collections::HashMap;
+use gunbc_ir::{Renderable, CODEGEN_BIN_DIR, CODEGEN_LIB_DIR};
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fs;
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
+use toml_edit::{value, ArrayOfTables, DocumentMut, Item, Table};
 
 fn main() {
     let args: Vec<String> = env::args().collect();
-    
+
     // Parse command (first non-flag argument)
-    let command = args.iter()
+    let command = args
+        .iter()
         .skip(1)
         .find(|a| !a.starts_with('-'))
         .map(|s| s.as_str())
         .unwrap_or("commit");
-    
+
     let dry_run = args.iter().any(|a| a == "-n" || a == "--dry-run");
-    
+
     if args.iter().any(|a| a == "-h" || a == "--help") {
         print_help();
         return;
     }
-    
+
     match command {
         "commit" => cmd_commit(dry_run),
         "rollback" => cmd_rollback(dry_run),
@@ -79,14 +82,14 @@ fn cmd_commit(dry_run: bool) {
     println!("gunbc-codegen: commit transaction");
     println!("  mode: {}", if dry_run { "dry-run" } else { "real" });
     println!();
-    
+
     // Step 1: Generate CLIs
     println!("[1/3] Generating CLIs...");
     if !codegen_clis(dry_run) {
         eprintln!("Codegen failed");
         std::process::exit(1);
     }
-    
+
     // Step 2: Build with cargo
     println!("\n[2/3] Building binaries...");
     if !dry_run {
@@ -100,7 +103,7 @@ fn cmd_commit(dry_run: bool) {
     } else {
         println!("  (dry-run: would run cargo build --release)");
     }
-    
+
     // Step 3: Setup bin directory (cross-platform)
     println!("\n[3/3] Setting up bin directory...");
     if !dry_run {
@@ -115,12 +118,12 @@ fn cmd_commit(dry_run: bool) {
     } else {
         println!("  (dry-run: would setup bin -> target/release)");
     }
-    
+
     println!("\nCommit complete. Binaries available at ./bin/ or ./target/release/");
 }
 
 /// Run cargo build --release
-/// 
+///
 /// Note: This is the bootstrapper - it can't use the transport pattern
 /// because it needs to build the transport layer first.
 #[allow(clippy::disallowed_methods)]
@@ -128,7 +131,7 @@ fn run_cargo_build() -> io::Result<()> {
     let status = Command::new("cargo")
         .args(["build", "--release"])
         .status()?;
-    
+
     if status.success() {
         Ok(())
     } else {
@@ -144,7 +147,7 @@ fn run_cargo_build() -> io::Result<()> {
 fn setup_bin_directory() -> io::Result<()> {
     let bin_path = Path::new("bin");
     let target_path = Path::new("target/release");
-    
+
     // Remove existing bin directory/symlink/file
     if bin_path.exists() || bin_path.is_symlink() {
         if bin_path.is_dir() && !bin_path.is_symlink() {
@@ -153,13 +156,13 @@ fn setup_bin_directory() -> io::Result<()> {
             fs::remove_file(bin_path)?;
         }
     }
-    
+
     // Try symlink first (works on Unix and some Windows configurations)
     #[cfg(unix)]
     {
         std::os::unix::fs::symlink(target_path, bin_path)
     }
-    
+
     // On Windows, try to create a directory junction, or fall back to documenting the location
     #[cfg(windows)]
     {
@@ -169,7 +172,7 @@ fn setup_bin_directory() -> io::Result<()> {
         fs::write(bin_path.join(".location"), marker_content)?;
         return Ok(());
     }
-    
+
     // Fallback for other platforms
     #[cfg(not(any(unix, windows)))]
     {
@@ -183,10 +186,10 @@ fn cmd_rollback(dry_run: bool) {
     println!("gunbc-codegen: rollback transaction");
     println!("  mode: {}", if dry_run { "dry-run" } else { "real" });
     println!();
-    
+
     let targets = all_cleanable_outputs();
     let mut errors = Vec::new();
-    
+
     for target in &targets {
         let path = Path::new(target);
         if path.exists() || path.is_symlink() {
@@ -198,7 +201,7 @@ fn cmd_rollback(dry_run: bool) {
                 } else {
                     fs::remove_file(path)
                 };
-                
+
                 match result {
                     Ok(()) => println!("  removed: {}", target),
                     Err(e) => {
@@ -209,13 +212,16 @@ fn cmd_rollback(dry_run: bool) {
             }
         }
     }
-    
+
     if dry_run {
         println!("\nDry-run complete. No files removed.");
     } else if errors.is_empty() {
         println!("\nRollback complete. Run 'gunbc-codegen commit' to rebuild.");
     } else {
-        println!("\nRollback completed with {} error(s). Some files may remain.", errors.len());
+        println!(
+            "\nRollback completed with {} error(s). Some files may remain.",
+            errors.len()
+        );
     }
 }
 
@@ -224,8 +230,11 @@ fn cmd_codegen(dry_run: bool) {
     println!("gunbc-codegen: codegen only");
     println!("  mode: {}", if dry_run { "dry-run" } else { "real" });
     println!();
-    
-    codegen_clis(dry_run);
+
+    if !codegen_clis(dry_run) {
+        eprintln!("Codegen failed");
+        std::process::exit(1);
+    }
 }
 
 /// Generate graph.rs files from declarative DAG definitions.
@@ -233,27 +242,36 @@ fn cmd_daggen(dry_run: bool) {
     println!("gunbc-codegen: daggen");
     println!("  mode: {}", if dry_run { "dry-run" } else { "real" });
     println!();
-    
+
     let writer = FileWriter::new(dry_run);
     let tools = all_tools();
-    let output_dir = "target/codegen/lib";
-    
+    let output_dir = CODEGEN_LIB_DIR;
+
     let mut generated = 0;
     let mut skipped = 0;
-    
+
     for tool in &tools {
         if let Some(code) = generate_graph_rs(tool) {
             let tool_dir = Path::new(output_dir).join(&tool.meta.tool_name);
             let graph_path = tool_dir.join("graph.rs");
-            
+
             match writer.write(&graph_path, &code) {
                 Ok(result) => {
                     let status = if result.written {
-                        if result.changed { "written" } else { "unchanged" }
+                        if result.changed {
+                            "written"
+                        } else {
+                            "unchanged"
+                        }
                     } else {
                         "dry-run"
                     };
-                    println!("  [{}] {} ({})", tool.meta.tool_name, graph_path.display(), status);
+                    println!(
+                        "  [{}] {} ({})",
+                        tool.meta.tool_name,
+                        graph_path.display(),
+                        status
+                    );
                     generated += 1;
                 }
                 Err(e) => {
@@ -265,7 +283,7 @@ fn cmd_daggen(dry_run: bool) {
             skipped += 1;
         }
     }
-    
+
     println!();
     println!("Generated: {}, Skipped: {}", generated, skipped);
 }
@@ -280,36 +298,45 @@ fn cmd_cigen(dry_run: bool) {
     println!("gunbc-codegen: cigen");
     println!("  mode: {}", if dry_run { "dry-run" } else { "real" });
     println!();
-    
+
     let writer = FileWriter::new(dry_run);
-    
+
     let github_provider = GitHubActionsProvider;
     let gitlab_provider = GitLabCiProvider::default();
-    
+
     // Generate CI YAML for gunbc-ci
     // gunbc-ci is special - it has a handwritten main.rs that handles codegen internally
     let codegen = gunbc_ir::CargoInvocation::standalone("codegen");
     let tool = gunbc_ir::CargoInvocation::composed("ci", "dag");
     let config = RenderConfig::new("ci", tool)
-        .with_generator(
-            &codegen.binary,
-            &format!("{} -- cigen", codegen.command()),
-        )
+        .with_generator(&codegen.binary, &format!("{} -- cigen", codegen.command()))
         .with_runner(gunbc_ir::transport::github_actions::ubuntu_latest())
         .with_cargo_env(gunbc_ir::CargoEnv::ci())
         .with_git(gunbc_ir::GitConfig::default())
         .with_cache(CacheConfig::rust());
 
     let outputs: Vec<(&str, String, String)> = vec![
-        ("GitHub Actions", generate_github_actions_template(&config), github_provider.output_path("ci")),
-        ("GitLab CI", generate_gitlab_ci_template(&config), gitlab_provider.output_path("ci")),
+        (
+            "GitHub Actions",
+            generate_github_actions_template(&config),
+            github_provider.output_path("ci"),
+        ),
+        (
+            "GitLab CI",
+            generate_gitlab_ci_template(&config),
+            gitlab_provider.output_path("ci"),
+        ),
     ];
 
     for (label, yaml, path) in &outputs {
         match writer.write(Path::new(path), yaml) {
             Ok(result) => {
                 let status = if result.written {
-                    if result.changed { "written" } else { "unchanged" }
+                    if result.changed {
+                        "written"
+                    } else {
+                        "unchanged"
+                    }
                 } else {
                     "dry-run"
                 };
@@ -344,7 +371,11 @@ fn cmd_clippy_toml(dry_run: bool) {
     match writer.write(clippy_path, &content) {
         Ok(result) => {
             let status = if result.written {
-                if result.changed { "written" } else { "unchanged" }
+                if result.changed {
+                    "written"
+                } else {
+                    "unchanged"
+                }
             } else {
                 "dry-run"
             };
@@ -373,12 +404,18 @@ fn generate_github_actions_template(config: &RenderConfig) -> String {
     // Triggers — derived from git config
     let branches = config.git.ci_branches();
     yaml.push_str("on:\n  push:\n");
-    yaml_block(&mut yaml, "    branches:", &branches, |b| format!("      - {}", b));
+    yaml_block(&mut yaml, "    branches:", &branches, |b| {
+        format!("      - {}", b)
+    });
     yaml.push_str("  pull_request:\n");
-    yaml_block(&mut yaml, "    branches:", &branches, |b| format!("      - {}", b));
+    yaml_block(&mut yaml, "    branches:", &branches, |b| {
+        format!("      - {}", b)
+    });
 
     // Environment — derived from cargo env + manual overrides
-    yaml_block(&mut yaml, "env:", &config.all_env(), |(k, v)| format!("  {}: {}", k, v));
+    yaml_block(&mut yaml, "env:", &config.all_env(), |(k, v)| {
+        format!("  {}: {}", k, v)
+    });
 
     // Job
     yaml.push_str(&format!(
@@ -390,7 +427,10 @@ fn generate_github_actions_template(config: &RenderConfig) -> String {
     if let Some(checkout) = &config.checkout {
         yaml.push_str("      - name: Checkout\n        uses: actions/checkout@v4\n");
         if let Some(depth) = checkout.fetch_depth {
-            yaml.push_str(&format!("        with:\n          fetch-depth: {}\n", depth));
+            yaml.push_str(&format!(
+                "        with:\n          fetch-depth: {}\n",
+                depth
+            ));
         }
         yaml.push('\n');
     }
@@ -401,9 +441,16 @@ fn generate_github_actions_template(config: &RenderConfig) -> String {
     // Cache (from config model)
     if let Some(cache) = &config.cache {
         yaml.push_str("      - name: Cache Cargo\n        uses: actions/cache@v4\n        with:\n");
-        yaml_block(&mut yaml, "          path: |", &cache.paths, |p| format!("            {}", p));
+        yaml_block(&mut yaml, "          path: |", &cache.paths, |p| {
+            format!("            {}", p)
+        });
         yaml.push_str(&format!("          key: {}\n", cache.key));
-        yaml_block(&mut yaml, "          restore-keys: |", &cache.restore_keys, |k| format!("            {}", k));
+        yaml_block(
+            &mut yaml,
+            "          restore-keys: |",
+            &cache.restore_keys,
+            |k| format!("            {}", k),
+        );
     }
 
     // Run CI Pipeline
@@ -423,100 +470,98 @@ fn generate_gitlab_ci_template(config: &RenderConfig) -> String {
     yaml.push_str("\n\nimage: rust:latest\n\n");
 
     // Variables — derived from cargo env + manual overrides
-    yaml_block(&mut yaml, "variables:", &config.all_env(), |(k, v)| format!("  {}: \"{}\"", k, v));
+    yaml_block(&mut yaml, "variables:", &config.all_env(), |(k, v)| {
+        format!("  {}: \"{}\"", k, v)
+    });
 
     yaml.push_str("stages:\n  - ci\n\n");
 
     // Cache — GitLab uses CI_COMMIT_REF_SLUG and relative paths
-    yaml.push_str("cache:\n  key: cargo-${CI_COMMIT_REF_SLUG}\n  paths:\n    - .cargo/\n    - target/\n\n");
+    yaml.push_str(
+        "cache:\n  key: cargo-${CI_COMMIT_REF_SLUG}\n  paths:\n    - .cargo/\n    - target/\n\n",
+    );
 
     // CI job
     yaml.push_str(&format!(
         "{}:\n  stage: ci\n  script:\n    - {} --release\n",
-        config.workflow_name, config.tool.command(),
+        config.workflow_name,
+        config.tool.command(),
     ));
 
     yaml
 }
 
-/// Check if a Cargo.toml already contains a `[[bin]]` entry for the given binary name.
+/// Resolve workspace package names to their directory paths using cargo metadata.
 ///
-/// Parses section headers to distinguish `[[bin]]` entries from `[package]`
-/// name fields, avoiding false positives.
-fn has_bin_entry(cargo_content: &str, binary_name: &str) -> bool {
-    let target = format!("\"{}\"", binary_name);
-    let mut in_bin = false;
-    for line in cargo_content.lines() {
-        let trimmed = line.trim();
-        if trimmed == "[[bin]]" {
-            in_bin = true;
-        } else if trimmed.starts_with('[') {
-            in_bin = false;
-        } else if in_bin && trimmed.starts_with("name") && trimmed.contains(&target) {
-            return true;
+/// Returns `(workspace_root, package_name → manifest_dir)`.
+fn resolve_workspace_packages() -> Option<(PathBuf, HashMap<String, PathBuf>)> {
+    let metadata = MetadataCommand::new().no_deps().exec().ok()?;
+    let workspace_root = PathBuf::from(metadata.workspace_root.as_std_path());
+    let member_ids: HashSet<_> = metadata.workspace_members.into_iter().collect();
+
+    let mut packages = HashMap::new();
+    for package in metadata.packages {
+        if !member_ids.contains(&package.id) {
+            continue;
         }
+        let manifest_dir = package
+            .manifest_path
+            .as_std_path()
+            .parent()
+            .map(|p| p.to_path_buf())?;
+        packages.insert(package.name.clone(), manifest_dir);
     }
-    false
+
+    Some((workspace_root, packages))
 }
 
-/// Resolve workspace package names to their directory paths.
-///
-/// Reads the workspace root `Cargo.toml`, extracts member directories, and
-/// reads each member's `Cargo.toml` to extract the package name.
-///
-/// Returns a map of `package_name → member_dir` (relative to workspace root).
-#[allow(clippy::disallowed_methods)]
-fn resolve_workspace_packages() -> HashMap<String, String> {
-    let mut packages = HashMap::new();
+/// Compute a relative path from `from` to `to`.
+fn relative_path(from: &Path, to: &Path) -> PathBuf {
+    let from_parts: Vec<_> = from.components().collect();
+    let to_parts: Vec<_> = to.components().collect();
 
-    let workspace_toml = match fs::read_to_string("Cargo.toml") {
-        Ok(content) => content,
-        Err(_) => return packages,
-    };
-
-    // Find the members = [...] block
-    let Some(members_start) = workspace_toml.find("members = [") else {
-        return packages;
-    };
-    let rest = &workspace_toml[members_start..];
-    let Some(members_end) = rest.find(']') else {
-        return packages;
-    };
-    let members_text = &rest[..members_end];
-
-    // Extract quoted member paths
-    for line in members_text.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with('#') || trimmed.starts_with("//") {
-            continue;
-        }
-        let Some(start) = trimmed.find('"') else {
-            continue;
-        };
-        let Some(end) = trimmed[start + 1..].find('"') else {
-            continue;
-        };
-        let member_dir = &trimmed[start + 1..start + 1 + end];
-
-        // Read this member's Cargo.toml to get the package name
-        let member_toml_path = format!("{}/Cargo.toml", member_dir);
-        if let Ok(member_content) = fs::read_to_string(&member_toml_path) {
-            for member_line in member_content.lines() {
-                let mt = member_line.trim();
-                if mt.starts_with("name") && mt.contains('=') && mt.contains('"') {
-                    if let Some(ns) = mt.find('"') {
-                        if let Some(ne) = mt[ns + 1..].find('"') {
-                            let name = &mt[ns + 1..ns + 1 + ne];
-                            packages.insert(name.to_string(), member_dir.to_string());
-                        }
-                    }
-                    break;
-                }
-            }
-        }
+    let mut i = 0;
+    while i < from_parts.len() && i < to_parts.len() && from_parts[i] == to_parts[i] {
+        i += 1;
     }
 
-    packages
+    let mut result = PathBuf::new();
+    for _ in i..from_parts.len() {
+        result.push("..");
+    }
+    for comp in &to_parts[i..] {
+        result.push(comp.as_os_str());
+    }
+    result
+}
+
+fn normalize_path(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
+}
+
+/// Ensure a Cargo.toml has a `[[bin]]` entry for the given binary.
+fn ensure_bin_entry(doc: &mut DocumentMut, bin_name: &str, bin_path: &str) -> Result<bool, String> {
+    let entry = doc
+        .as_table_mut()
+        .entry("bin")
+        .or_insert(Item::ArrayOfTables(ArrayOfTables::new()));
+
+    let bins = entry
+        .as_array_of_tables_mut()
+        .ok_or_else(|| "Cargo.toml [bin] must be an array of tables".to_string())?;
+
+    if bins
+        .iter()
+        .any(|t| t.get("name").and_then(|v| v.as_str()) == Some(bin_name))
+    {
+        return Ok(false);
+    }
+
+    let mut table = Table::new();
+    table["name"] = value(bin_name);
+    table["path"] = value(bin_path);
+    bins.push(table);
+    Ok(true)
 }
 
 /// Generate CLI main.rs files for all tools and register binary targets.
@@ -524,10 +569,86 @@ fn resolve_workspace_packages() -> HashMap<String, String> {
 fn codegen_clis(dry_run: bool) -> bool {
     let writer = FileWriter::new(dry_run);
     let tools = all_tools();
-    let output_dir = "target/codegen/bin";
-    
-    let mut success = true;
-    
+    let output_dir = CODEGEN_BIN_DIR;
+
+    struct BinRegistration {
+        tool_name: String,
+        bin_name: String,
+        cargo_toml_path: PathBuf,
+        doc: DocumentMut,
+        rel_path: String,
+    }
+
+    let mut errors: Vec<String> = Vec::new();
+    let mut registrations: Vec<BinRegistration> = Vec::new();
+
+    let Some((workspace_root, package_dirs)) = resolve_workspace_packages() else {
+        eprintln!("  ERROR: could not resolve workspace packages via cargo metadata");
+        return false;
+    };
+
+    for tool in &tools {
+        let Some(inv) = &tool.invocation else {
+            continue;
+        };
+        let package_name = inv.package.as_ref().unwrap_or(&inv.binary);
+        let Some(crate_dir) = package_dirs.get(package_name.as_str()) else {
+            errors.push(format!(
+                "[{}] package '{}' not found in workspace",
+                tool.meta.tool_name, package_name
+            ));
+            continue;
+        };
+
+        let cargo_toml_path = crate_dir.join("Cargo.toml");
+        let cargo_content = match fs::read_to_string(&cargo_toml_path) {
+            Ok(c) => c,
+            Err(e) => {
+                errors.push(format!(
+                    "[{}] could not read {}: {}",
+                    tool.meta.tool_name,
+                    cargo_toml_path.display(),
+                    e
+                ));
+                continue;
+            }
+        };
+
+        let doc = match cargo_content.parse::<DocumentMut>() {
+            Ok(d) => d,
+            Err(e) => {
+                errors.push(format!(
+                    "[{}] could not parse {}: {}",
+                    tool.meta.tool_name,
+                    cargo_toml_path.display(),
+                    e
+                ));
+                continue;
+            }
+        };
+
+        let bin_abs_path = workspace_root
+            .join(CODEGEN_BIN_DIR)
+            .join(&tool.meta.tool_name)
+            .join("main.rs");
+        let rel_path = normalize_path(&relative_path(crate_dir, &bin_abs_path));
+
+        registrations.push(BinRegistration {
+            tool_name: tool.meta.tool_name.clone(),
+            bin_name: inv.binary.clone(),
+            cargo_toml_path,
+            doc,
+            rel_path,
+        });
+    }
+
+    if !errors.is_empty() {
+        for err in &errors {
+            eprintln!("  ERROR: {}", err);
+        }
+        return false;
+    }
+
     for tool in &tools {
         let code = generate_cli_with_import(
             &tool.meta,
@@ -537,21 +658,41 @@ fn codegen_clis(dry_run: bool) -> bool {
         );
         let tool_dir = Path::new(output_dir).join(&tool.meta.tool_name);
         let main_path = tool_dir.join("main.rs");
-        
+
         match writer.write(&main_path, &code) {
             Ok(result) => {
                 let status = if result.written {
-                    if result.changed { "written" } else { "unchanged" }
+                    if result.changed {
+                        "written"
+                    } else {
+                        "unchanged"
+                    }
                 } else {
                     "dry-run"
                 };
-                println!("  [{}] {} ({})", tool.meta.tool_name, main_path.display(), status);
+                println!(
+                    "  [{}] {} ({})",
+                    tool.meta.tool_name,
+                    main_path.display(),
+                    status
+                );
             }
             Err(e) => {
-                eprintln!("  [{}] ERROR: {}", tool.meta.tool_name, e);
-                success = false;
+                errors.push(format!(
+                    "[{}] could not write {}: {}",
+                    tool.meta.tool_name,
+                    main_path.display(),
+                    e
+                ));
             }
         }
+    }
+
+    if !errors.is_empty() {
+        for err in &errors {
+            eprintln!("  ERROR: {}", err);
+        }
+        return false;
     }
 
     // Step 2: Ensure [[bin]] entries exist in target Cargo.toml files.
@@ -566,85 +707,62 @@ fn codegen_clis(dry_run: bool) -> bool {
     println!();
     println!("  Registering binary targets...");
 
-    let package_dirs = resolve_workspace_packages();
-
-    for tool in &tools {
-        let Some(inv) = &tool.invocation else {
-            continue;
-        };
-        let package_name = inv.package.as_ref().unwrap_or(&inv.binary);
-
-        let Some(crate_dir) = package_dirs.get(package_name.as_str()) else {
-            eprintln!(
-                "  [{}] WARNING: package '{}' not found in workspace",
-                tool.meta.tool_name, package_name
-            );
-            continue;
-        };
-
-        let cargo_toml_path = format!("{}/Cargo.toml", crate_dir);
-        let cargo_content = match fs::read_to_string(&cargo_toml_path) {
-            Ok(c) => c,
-            Err(e) => {
-                eprintln!(
-                    "  [{}] WARNING: could not read {}: {}",
-                    tool.meta.tool_name, cargo_toml_path, e
-                );
-                continue;
-            }
-        };
-
-        // Skip if [[bin]] entry already exists for this binary
-        if has_bin_entry(&cargo_content, &inv.binary) {
-            println!(
-                "  [{}] {} (already registered)",
-                tool.meta.tool_name, cargo_toml_path
-            );
-            continue;
-        }
-
-        // Compute relative path from crate dir to generated main.rs
-        let depth = crate_dir.split('/').count();
-        let prefix = "../".repeat(depth);
-        let bin_path = format!(
-            "{}target/codegen/bin/{}/main.rs",
-            prefix, tool.meta.tool_name
-        );
-
-        // Append [[bin]] entry
-        let bin_entry = format!(
-            "\n[[bin]]\nname = \"{}\"\npath = \"{}\"\n",
-            inv.binary, bin_path
-        );
-        let new_content = format!("{}{}", cargo_content, bin_entry);
-
-        match writer.write(Path::new(&cargo_toml_path), &new_content) {
-            Ok(result) => {
-                let status = if result.written {
-                    if result.changed {
-                        "registered"
-                    } else {
-                        "unchanged"
-                    }
-                } else {
-                    "dry-run"
-                };
+    for reg in &mut registrations {
+        match ensure_bin_entry(&mut reg.doc, &reg.bin_name, &reg.rel_path) {
+            Ok(false) => {
                 println!(
-                    "  [{}] {} → {} ({})",
-                    tool.meta.tool_name, inv.binary, cargo_toml_path, status
+                    "  [{}] {} (already registered)",
+                    reg.tool_name,
+                    reg.cargo_toml_path.display()
                 );
             }
+            Ok(true) => match writer.write(&reg.cargo_toml_path, reg.doc.to_string()) {
+                Ok(result) => {
+                    let status = if result.written {
+                        if result.changed {
+                            "registered"
+                        } else {
+                            "unchanged"
+                        }
+                    } else {
+                        "dry-run"
+                    };
+                    println!(
+                        "  [{}] {} → {} ({})",
+                        reg.tool_name,
+                        reg.bin_name,
+                        reg.cargo_toml_path.display(),
+                        status
+                    );
+                }
+                Err(e) => {
+                    errors.push(format!(
+                        "[{}] could not write {}: {}",
+                        reg.tool_name,
+                        reg.cargo_toml_path.display(),
+                        e
+                    ));
+                }
+            },
             Err(e) => {
-                eprintln!(
-                    "  [{}] ERROR writing {}: {}",
-                    tool.meta.tool_name, cargo_toml_path, e
-                );
-                success = false;
+                errors.push(format!(
+                    "[{}] could not update {}: {}",
+                    reg.tool_name,
+                    reg.cargo_toml_path.display(),
+                    e
+                ));
             }
         }
     }
 
-    success
+    if !errors.is_empty() {
+        for err in &errors {
+            eprintln!("  ERROR: {}", err);
+        }
+        return false;
+    }
+
+    true
 }
 
 fn print_help() {

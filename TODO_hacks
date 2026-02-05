@@ -3,6 +3,9 @@
 # Known consolidation debt and implicit dependencies that should be
 # made structural. Items here are "works but fragile" — they won't
 # break today but will bite when something gets renamed/moved.
+#
+# Note: resolved items have been moved to `TODO/TODONE/TODO_hacks.md`
+# and `TODO/TODONE/TODO_hacks_general.md`.
 
 ## DAG builder functions referenced as strings
 
@@ -14,31 +17,50 @@ Then testgen.rs hardcodes the actual function calls separately. Renaming
 a builder function won't trigger a compile error — it silently breaks at
 runtime. Should use function pointers or a trait-based dispatch instead.
 
+**Suggested fixes (from review 2026-02-05):**
+1. Generate the dispatch match table from a single source of truth.
+2. Use a macro that ties function item to ToolDef so string is derived
+   from `stringify!(fn_name)` in one place.
+3. Break circular dep by moving ToolDefs into a smaller shared crate.
+4. At minimum: add generator-time validation that every ToolDef.graph_builder
+   string resolves to exactly one known builder (fail early).
+
 Files:
   - core/codegen/src/registry.rs  (graph_builder field on ToolDef)
   - gunbc-dag/src/bin/testgen.rs  (hardcoded calls to builder functions)
 
-## "buck-out/gen" hardcoded in 4+ locations
+## PrepLevel→deps mapping hardcoded in renderer
 
-The output directory appears as a literal string in multiple files. If the
-output dir ever changes, these won't update together. Should be a single
-constant in gunbc-ir or similar.
+In `render_meta_target()`, the PrepLevel→dependency mapping is literal:
+  - `PrepLevel::Codegen => "ensure-codegen"`
+  - `PrepLevel::Full => "build"`
 
-Files:
-  - core/codegen/src/main.rs       ("buck-out/gen/bin", "buck-out/gen/lib")
-  - gunbc-dag/src/makegen/render.rs ("buck-out/gen/.codegen-stamp")
-  - gunbc-dag/src/ci/ops.rs        ("buck-out/gen/bin" existence check)
-  - core/codegen/src/registry.rs   ("buck-out/" in core_outputs())
+This is policy embedded in renderer logic rather than modeled as data.
 
-## Codegen source tracking directories are static
-
-The Makefile's CODEGEN_SOURCES variable tracks core/codegen/src and
-core/ir/src, but this list is hardcoded in render.rs. If codegen gains
-a new source dependency (e.g. a new core/lang/src crate), the stamp
-won't track it and stale artifacts won't trigger rebuilds.
+**Suggested fix:** Treat prep-level→deps mapping as data (in BuildConfig
+or ToolRegistry), or skip PrepLevel entirely and store explicit typed
+deps in the meta target definition.
 
 Files:
-  - gunbc-dag/src/makegen/render.rs (line ~156, hardcoded find paths)
+  - gunbc-dag/src/makegen/render.rs (prep_dep_name function)
+
+---
+
+## Tool targets blanket-depend on ensure-codegen
+
+All tool targets currently get `ensure-codegen` as a dependency. But some
+tools (like `ci`) are hand-written binaries that don't need generated code.
+This creates unnecessary coupling and rebuild overhead.
+
+**Suggested fix:** Add per-tool flag `needs_codegen: bool` or `generated_cli: bool`
+in ToolInfo. Only render `tool: ensure-codegen` dependency when needed.
+Makes the ensure chain derived rather than blanket-applied.
+
+Files:
+  - gunbc-dag/src/makegen/registry.rs (ToolInfo)
+  - gunbc-dag/src/makegen/render.rs (render_tool_targets)
+
+---
 
 ## Meta-target dependency strings not verified
 
@@ -46,96 +68,55 @@ Meta-targets reference other targets by name ("testgen-check", "fmt-fix",
 "lint-fix") as hardcoded strings. Renaming or removing a target won't
 cause a compile error — just a broken Makefile at runtime.
 
+**Suggested fix (from review 2026-02-05):**
+- Replace `Vec<String>` for meta deps with typed `Vec<TargetRef>` where:
+  - `TargetRef::Core(CoreTarget)` (e.g., EnsureCodegen, Build)
+  - `TargetRef::Meta(MetaTargetId)`
+  - `TargetRef::Tool(ToolName)`
+- Add generator-time validation: every dep resolves, no cycles, no duplicates.
+- Render to makefile names at the end, but keep typed inside generator.
+
 Files:
   - gunbc-dag/src/makegen/registry.rs (default_meta_targets(), fix_deps)
 
-## "List" used as type_id AND cardinality shape (dual encoding)
+## "List" used as type_id AND cardinality shape (dual encoding) — PARTIAL FIXES
 
 The design doc says cardinality is the canonical shape layer, but "List" is
 deeply embedded as a type_id across 28 files — CLI arg parsing, mock
 generation, loop patterns, makegen repeatable detection, etc.
 
-Concrete bug: `PortDef::list_nonempty("tool_names", "List")` in the
-makegen DAG says "element type is List" + "cardinality is ONE_OR_MORE"
-= list-of-lists. Should be `PortDef::list_nonempty("tool_names", "String")`
-since tool_names is a list of strings.
+Concrete bug (FIXED 2026-02-05): `tool_names` now uses `"String"` as the
+element type in hand-written graphs (makegen/deps + workspace subdags).
 
-Broader issue: resolving "List as type_id" vs "List as cardinality" requires
-a design pass across CLI generation (cli_gen.rs match arms), mock generation
-(testgen/codegen.rs), loop patterns (loop_pattern.rs), and the makegen
-registry's `repeatable: ep.type_id == "List"` check.
+Progress so far:
+- CLI generation now derives list-ness from cardinality (no type_id == "List").
+- makegen registry repeatable flags derive from cardinality.
+- loop pattern defaults use element types + cardinality.
+- deps graphs now use `"String"` element types for dep/tool name lists.
+- bootstrap graphs now use list("crate_names", "String") instead of type_id "List".
+- language subdags/patterns now use list(..., "String") for list ports.
+- registry entrypoints now use type_id "String" + cardinality for extensions.
+- CliEntrypoint::new no longer infers cardinality from "List"/"Set".
 
-Files:
-  - core/codegen/src/registry.rs:796    (PortDef with "List" type_id)
-  - core/codegen/src/cli_gen.rs         (match on type_id == "List" for CLI gen)
-  - core/codegen/src/testgen/codegen.rs (mock value generation keyed on type_id)
-  - core/ir/src/patterns/loop_pattern.rs (hardcoded "List" type_id)
-  - gunbc-dag/src/makegen/registry.rs   (repeatable check: type_id == "List")
+Remaining work: finish removing type_id-encoded cardinality
+(e.g., StringList/OptionalString) once the type registry refactor lands.
+Mock generation now hard-fails on unknown type_ids and on `List`/`Set`.
 
-## CardinalityCoverage Empty case doesn't test absence
+## Cardinality test-case cap is a bandaid (TODO)
 
-cardinality_case_mock_value() generates concrete values for Empty:
-  - String → Value::Str(String::new())   (empty string, NOT absent)
-  - Bool   → Value::Bool(false)          (false, NOT absent)
-  - Int    → Value::Int(0)               (zero, NOT absent)
-
-Under set/tape semantics, Empty should mean "zero elements" (absence),
-not "one element whose content is empty." The generated tests for the
-Empty cardinality case actually exercise the One case.
-
-Fixing this requires infrastructure: BoundaryMocks has no concept of
-"absent" — get_mock() always returns a value. Would need Option<Value>
-in BoundaryMock, an unset_value() API, and executor changes to handle
-missing boundary values.
+To avoid huge generated vectors when a bounded max is large, testgen now
+uses a capped boundary set (`Cardinality::test_cases_for_tests`, cap=64).
+This prevents OOM/giant files but hides the deeper design issue: the
+contract/testgen layer doesn't distinguish "boundary correctness" from
+"large-N stress." We need a principled sampling strategy or explicit
+test-budget policy (e.g., boundary-only by default, optional stress tests
+per port/type) rather than a hardcoded cap.
 
 Files:
-  - core/codegen/src/testgen/codegen.rs:1805  (cardinality_case_mock_value)
-  - core/exec/src/intercept.rs                (BoundaryMocks, no unset API)
-  - core/exec/src/execute.rs                  (executor always produces output)
-
-## `Satisfies` matcher emits a comment, not an assertion
-
-Generated tests with `OutputMatcher::Satisfies` emit a comment like
-"// make sure this is satisfied" instead of a real assertion. This means
-test coverage is silently absent — the test compiles and passes without
-actually checking anything.
-
-Fix: generate a call to the matcher's `check(...)` method (or a shared
-helper) so there is one semantics definition. Don't re-encode matcher
-logic as string codegen.
-
-Files:
-  - core/codegen/src/testgen/codegen.rs  (Satisfies code emission)
-  - core/test/src/mock_spec.rs           (OutputMatcher::check runtime impl)
-
-## `NonEmpty` matcher is type-incorrect in codegen
-
-The generated NonEmpty check uses `as_str().unwrap_or("")` which makes
-non-string values (lists, maps, ints) behave like empty string — can
-falsely fail. The runtime `OutputMatcher::check` implementation is
-type-aware (good), but the codegen path emits its own string-specific
-code, so semantics can drift.
-
-Fix: same as Satisfies — generated tests should call the matcher's
-`check(...)` rather than re-encoding the logic in codegen.
-
-Files:
-  - core/codegen/src/testgen/codegen.rs  (NonEmpty string-specific codegen)
-
-## `value_to_rust_literal` has silent fallback and lossy list handling
-
-- Drops non-string elements when serializing Value::List (filter_map to
-  as_str), then emits Value::str_list — a list of ints becomes empty.
-- Catch-all `_ => Value::Str("<MOCK>")` compiles but silently changes
-  values. Devastating for proof/testgen where values must be faithful.
-
-Fix:
-- Replace fallback with compile_error! or panic! in codegen
-- Serialize Value::List recursively (emit Value::List(vec![...]))
-- Add explicit handling for Value::Map, Value::Request, Value::Response
-
-Files:
-  - core/codegen/src/testgen/codegen.rs:1777  (value_to_rust_literal)
+  - core/ir/src/types.rs               (test_cases_for_tests / cap)
+  - core/ir/src/contract.rs            (witnesses uses capped cases)
+  - core/codegen/src/testgen/analyze.rs
+  - core/codegen/src/testgen/obligation.rs
 
 ## `Map` type_id is under-specified for proofs/testgen
 
@@ -154,20 +135,6 @@ Files:
   - core/ir/src/value.rs                (Value::Map definition)
   - core/ir/src/types.rs                (type_id is a flat String)
   - core/codegen/src/testgen/codegen.rs (can't serialize Map faithfully)
-
-## `diff_files` port has cardinality/value mismatch
-
-In some graphs, diff_files is declared as `list("diff_files", "Map")`
-but the mock output provides a scalar `Value::str_map(...)` (a single
-map, not a list of maps). Either:
-- diff_files is a single map → port should be `port("diff_files", "Map")`
-- diff_files is a list of records → output should be Value::List(vec![...])
-
-Pick one semantics and enforce across all graphs.
-
-Files:
-  - lib/tools/gist/src/graph.rs  (port declaration vs mock output)
-  - lib/review/src/graph.rs      (same pattern)
 
 ## `can_coerce_to` duplicates `satisfies` on Cardinality
 
@@ -195,13 +162,32 @@ Files:
 
 ---
 
-## Blockers: must-fix before relying on testgen
+## DryRun mocks use silent defaults (may mask missing resource wiring)
 
-These are the items that make generated tests semantically unsound.
-Until fixed, generated test results should not be trusted as proof
-of correctness.
+Mock values for resources default to deterministic values:
+  - Platform::Linux
+  - Timestamp(0)
+  - EnvVars empty map
 
-1. Replace `Satisfies` comment emission with real assertion/callback
-2. Remove `value_to_rust_literal` fallback — make list/map non-lossy
-3. Teach mocks to represent absence — fix Empty cardinality semantics
-4. Stop inferring list-ness from `type_id == "List"` in makegen/CLI
+This is good for determinism but acts as a fallback — a DAG can appear
+to work in DryRun even if it never properly acquired/wired those resources.
+
+**Suggested fix:** Consider a "strict DryRun" mode where env-node outputs
+default to poison/UNSET unless explicitly mocked. Missing resource wiring
+would then fail loudly instead of silently working with defaults.
+
+Files:
+  - core/exec/src/execute.rs (DryRun mock injection)
+  - TODO/design-resource-acquisition.md (resource modeling)
+
+---
+
+## Cross-references (tracked elsewhere)
+
+The following items are tracked in other docs:
+
+- **`buck-out/gen` hardcoded in 16 locations** → TODO/consolidation.md §6
+- **CODEGEN_SOURCES path list is static** → TODO/consolidation.md §6
+- **Environment/resource modeling (inline handle construction)** →
+  TODO/design-resource-acquisition.md (comprehensive design)
+- **IR completeness for generated code** → TODO/design-codegen-quality.md

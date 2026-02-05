@@ -39,6 +39,12 @@
 //! assert_eq!(safe, "claude-branch-name");
 //! ```
 
+use gunbc_ir::resource::{
+    capability_marker, ensure_capability_marker, AccessMode, Resource, ResourceId, ResourceKind,
+};
+use gunbc_ir::Value;
+use std::collections::BTreeMap;
+
 // ============================================================================
 // Filesystem Model
 // ============================================================================
@@ -219,9 +225,8 @@ pub static HFS_PLUS: Filesystem = Filesystem {
 /// on NTFS, FAT32, or exFAT when accessed through the Windows API layer.
 /// Matching is case-insensitive: `con`, `CON`, `Con` are all reserved.
 const WINDOWS_RESERVED_NAMES: &[&str] = &[
-    "CON", "PRN", "AUX", "NUL",
-    "COM0", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
-    "LPT0", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+    "CON", "PRN", "AUX", "NUL", "COM0", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7",
+    "COM8", "COM9", "LPT0", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
 ];
 
 /// Characters forbidden on Windows filesystems.
@@ -417,6 +422,25 @@ pub enum Scope {
     Write,
 }
 
+impl Scope {
+    /// String form used for encoding.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Scope::Read => "read",
+            Scope::Write => "write",
+        }
+    }
+
+    /// Parse from string form.
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "read" => Some(Scope::Read),
+            "write" => Some(Scope::Write),
+            _ => None,
+        }
+    }
+}
+
 /// A handle to one or more target filesystems.
 ///
 /// This is the **only** way to perform filesystem-aware filename operations.
@@ -589,6 +613,147 @@ impl FilesystemHandle {
 }
 
 // ============================================================================
+// Resource Encoding / Decoding
+// ============================================================================
+
+/// Look up a filesystem by ID.
+pub fn filesystem_by_id(id: &str) -> Option<&'static Filesystem> {
+    match id {
+        "ext4" => Some(&EXT4),
+        "xfs" => Some(&XFS),
+        "btrfs" => Some(&BTRFS),
+        "zfs" => Some(&ZFS),
+        "apfs" => Some(&APFS),
+        "hfs+" => Some(&HFS_PLUS),
+        "ntfs" => Some(&NTFS),
+        "fat32" => Some(&FAT32),
+        "exfat" => Some(&EXFAT),
+        _ => None,
+    }
+}
+
+/// Error when parsing a FilesystemHandle from a Value.
+#[derive(Debug)]
+pub struct FilesystemHandleParseError {
+    pub message: String,
+}
+
+impl std::fmt::Display for FilesystemHandleParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "FilesystemHandle parse error: {}", self.message)
+    }
+}
+
+impl std::error::Error for FilesystemHandleParseError {}
+
+impl Resource for FilesystemHandle {
+    fn resource_id(&self) -> ResourceId {
+        ResourceId::new(format!("fs:{}", self.scope.as_str()))
+    }
+
+    fn access_mode(&self) -> AccessMode {
+        match self.scope {
+            Scope::Read => AccessMode::Read,
+            Scope::Write => AccessMode::Write,
+        }
+    }
+
+    fn kind(&self) -> ResourceKind {
+        ResourceKind::Capability
+    }
+}
+
+/// Encode a FilesystemHandle for DAG edges.
+impl From<FilesystemHandle> for Value {
+    fn from(handle: FilesystemHandle) -> Self {
+        let targets: Vec<String> = handle.targets.iter().map(|fs| fs.id.to_string()).collect();
+        let mut map = BTreeMap::new();
+        map.insert(
+            "type".to_string(),
+            Value::Str("filesystem_handle".to_string()),
+        );
+        map.insert(
+            "scope".to_string(),
+            Value::Str(handle.scope.as_str().to_string()),
+        );
+        map.insert(
+            "targets".to_string(),
+            Value::List(targets.into_iter().map(Value::Str).collect()),
+        );
+        map.insert(
+            "replacement".to_string(),
+            Value::Str(handle.replacement.to_string()),
+        );
+        map.insert("cap".to_string(), Value::Secret(capability_marker()));
+        Value::Map(map)
+    }
+}
+
+/// Decode a FilesystemHandle from a Value.
+impl TryFrom<&Value> for FilesystemHandle {
+    type Error = FilesystemHandleParseError;
+
+    fn try_from(value: &Value) -> Result<Self, Self::Error> {
+        let map = value.as_map().ok_or_else(|| FilesystemHandleParseError {
+            message: "expected map value".to_string(),
+        })?;
+
+        if let Err(e) = ensure_capability_marker(map, "FilesystemHandle") {
+            return Err(FilesystemHandleParseError { message: e });
+        }
+
+        let type_field = map.get("type").and_then(Value::as_str).unwrap_or("");
+        if type_field != "filesystem_handle" {
+            return Err(FilesystemHandleParseError {
+                message: format!("unexpected type: {}", type_field),
+            });
+        }
+
+        let scope_str =
+            map.get("scope")
+                .and_then(Value::as_str)
+                .ok_or_else(|| FilesystemHandleParseError {
+                    message: "missing scope".to_string(),
+                })?;
+        let scope = Scope::parse(scope_str).ok_or_else(|| FilesystemHandleParseError {
+            message: format!("invalid scope: {}", scope_str),
+        })?;
+
+        let targets_list = map.get("targets").and_then(Value::as_list).ok_or_else(|| {
+            FilesystemHandleParseError {
+                message: "missing targets".to_string(),
+            }
+        })?;
+        let mut targets = Vec::new();
+        for t in targets_list {
+            let id = t.as_str().ok_or_else(|| FilesystemHandleParseError {
+                message: "target id must be string".to_string(),
+            })?;
+            let fs = filesystem_by_id(id).ok_or_else(|| FilesystemHandleParseError {
+                message: format!("unknown filesystem id: {}", id),
+            })?;
+            targets.push(fs);
+        }
+
+        let replacement = map
+            .get("replacement")
+            .and_then(Value::as_str)
+            .and_then(|s| s.chars().next())
+            .unwrap_or('-');
+
+        Ok(FilesystemHandle::for_targets(&targets, scope).with_replacement(replacement))
+    }
+}
+
+impl TryFrom<Value> for FilesystemHandle {
+    type Error = FilesystemHandleParseError;
+
+    fn try_from(value: Value) -> Result<Self, Self::Error> {
+        FilesystemHandle::try_from(&value)
+    }
+}
+
+// ============================================================================
 // Validation
 // ============================================================================
 
@@ -596,15 +761,9 @@ impl FilesystemHandle {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Violation {
     /// A forbidden character was found.
-    ForbiddenChar {
-        ch: char,
-        filesystem: &'static str,
-    },
+    ForbiddenChar { ch: char, filesystem: &'static str },
     /// A control character (0x01–0x1F) was found.
-    ControlChar {
-        ch: char,
-        filesystem: &'static str,
-    },
+    ControlChar { ch: char, filesystem: &'static str },
     /// The filename matches a reserved device name.
     ReservedName {
         name: String,
@@ -617,10 +776,7 @@ pub enum Violation {
         filesystem: &'static str,
     },
     /// A forbidden character appears at the trailing position.
-    ForbiddenTrailing {
-        ch: char,
-        filesystem: &'static str,
-    },
+    ForbiddenTrailing { ch: char, filesystem: &'static str },
     /// The filename is empty.
     Empty,
 }
@@ -769,10 +925,7 @@ pub enum FilenameOutcome {
     /// The filename is already valid on all target filesystems.
     Valid(String),
     /// The filename was automatically sanitized (only in [`WritePolicy::Sanitize`]).
-    Sanitized {
-        original: String,
-        sanitized: String,
-    },
+    Sanitized { original: String, sanitized: String },
     /// The filename was rejected due to violations (only in [`WritePolicy::Strict`]).
     Rejected {
         original: String,
@@ -975,7 +1128,9 @@ mod tests {
 
     #[test]
     fn test_filesystem_ids_are_distinct() {
-        let all = [&EXT4, &XFS, &BTRFS, &ZFS, &APFS, &HFS_PLUS, &NTFS, &FAT32, &EXFAT];
+        let all = [
+            &EXT4, &XFS, &BTRFS, &ZFS, &APFS, &HFS_PLUS, &NTFS, &FAT32, &EXFAT,
+        ];
         let mut ids: Vec<&str> = all.iter().map(|fs| fs.id).collect();
         let before = ids.len();
         ids.sort();
@@ -1258,7 +1413,7 @@ mod tests {
         let s = sanitize(&input, CROSS_PLATFORM, '-');
         assert!(s.len() <= 255);
         assert!(s.is_char_boundary(s.len())); // valid UTF-8
-        // Should truncate to 254 'a's (dropping the 'ä' which doesn't fit)
+                                              // Should truncate to 254 'a's (dropping the 'ä' which doesn't fit)
         assert_eq!(s.len(), 254);
     }
 
@@ -1293,7 +1448,11 @@ mod tests {
 
     #[test]
     fn test_sanitize_dependabot_branch() {
-        let s = sanitize("dependabot/npm_and_yarn/lodash-4.17.21", CROSS_PLATFORM, '-');
+        let s = sanitize(
+            "dependabot/npm_and_yarn/lodash-4.17.21",
+            CROSS_PLATFORM,
+            '-',
+        );
         assert_eq!(s, "dependabot-npm_and_yarn-lodash-4.17.21");
     }
 
@@ -1473,7 +1632,11 @@ mod tests {
             .iter()
             .filter(|v| matches!(v, Violation::ForbiddenChar { ch: '/', .. }))
             .collect();
-        assert_eq!(slash_violations.len(), 3, "all 3 filesystems should flag '/'");
+        assert_eq!(
+            slash_violations.len(),
+            3,
+            "all 3 filesystems should flag '/'"
+        );
     }
 
     #[test]
@@ -1571,8 +1734,7 @@ mod tests {
 
     #[test]
     fn test_prepare_filename_valid_passthrough() {
-        let outcome =
-            prepare_filename("readme.md", CROSS_PLATFORM, WritePolicy::Strict, '-');
+        let outcome = prepare_filename("readme.md", CROSS_PLATFORM, WritePolicy::Strict, '-');
         assert!(matches!(outcome, FilenameOutcome::Valid(ref s) if s == "readme.md"));
         assert!(outcome.is_valid());
         assert!(outcome.is_accepted());
@@ -1582,12 +1744,7 @@ mod tests {
 
     #[test]
     fn test_prepare_filename_sanitize_mode() {
-        let outcome = prepare_filename(
-            "claude/branch",
-            CROSS_PLATFORM,
-            WritePolicy::Sanitize,
-            '-',
-        );
+        let outcome = prepare_filename("claude/branch", CROSS_PLATFORM, WritePolicy::Sanitize, '-');
         assert!(matches!(
             outcome,
             FilenameOutcome::Sanitized {
@@ -1603,12 +1760,7 @@ mod tests {
 
     #[test]
     fn test_prepare_filename_strict_rejects() {
-        let outcome = prepare_filename(
-            "claude/branch",
-            CROSS_PLATFORM,
-            WritePolicy::Strict,
-            '-',
-        );
+        let outcome = prepare_filename("claude/branch", CROSS_PLATFORM, WritePolicy::Strict, '-');
         assert!(matches!(outcome, FilenameOutcome::Rejected { .. }));
         assert!(!outcome.is_accepted());
         assert!(outcome.filename().is_none());
@@ -1628,8 +1780,7 @@ mod tests {
 
     #[test]
     fn test_prepare_filename_sanitize_reserved() {
-        let outcome =
-            prepare_filename("CON", CROSS_PLATFORM, WritePolicy::Sanitize, '-');
+        let outcome = prepare_filename("CON", CROSS_PLATFORM, WritePolicy::Sanitize, '-');
         assert_eq!(outcome.filename(), Some("_CON"));
         assert!(outcome.was_sanitized());
     }
@@ -1653,12 +1804,7 @@ mod tests {
             "///",
         ];
         for input in &inputs {
-            let outcome = prepare_filename(
-                input,
-                CROSS_PLATFORM,
-                WritePolicy::Sanitize,
-                '-',
-            );
+            let outcome = prepare_filename(input, CROSS_PLATFORM, WritePolicy::Sanitize, '-');
             assert!(
                 outcome.is_accepted(),
                 "sanitize should always accept, failed for '{}'",

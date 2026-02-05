@@ -16,6 +16,7 @@
 
 use gunbc_dag::build_ci_graph;
 use gunbc_exec::{execute_with_mode_and_ci, BoundaryMocks, CiContext, ExecutionMode};
+use gunbc_ir::transport::cli::{ToolHandle, CLIPPY};
 use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse};
 use gunbc_ir::Value;
 use std::env;
@@ -23,14 +24,14 @@ use std::process;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
-    
+
     let dry_run = args.iter().any(|a| a == "-n" || a == "--dry-run");
-    
+
     if args.iter().any(|a| a == "-h" || a == "--help") {
         print_help();
         return;
     }
-    
+
     // Build the CI graph
     let dag = match build_ci_graph() {
         Ok(d) => d,
@@ -39,68 +40,97 @@ fn main() {
             process::exit(1);
         }
     };
-    
+
     // Set up execution mode
     let mode = if dry_run {
         let mut mocks = BoundaryMocks::new();
+
+        // Env: tool acquisition
+        mocks.set_value(
+            "runner_env",
+            "tool:clippy",
+            ToolHandle::mock(&CLIPPY).into(),
+        );
 
         // Transport execution nodes need properly-typed Response mocks.
         // The default mock is Value::Str("<DRY-RUN>"), but downstream parse
         // nodes call v.as_response() which only matches Value::Response.
 
         // execute_deps_exists: file exists check for deps.toml
-        mocks.set_value("execute_deps_exists", "response", Value::Response(
-            FileResponse {
-                path: "deps.toml".to_string(),
-                operation: FileOp::Exists,
-                success: true,
-                content: None,
-                exists: Some(false),
-                error: None,
-            }.into()
-        ));
+        mocks.set_value(
+            "execute_deps_exists",
+            "response",
+            Value::Response(
+                FileResponse {
+                    path: "deps.toml".to_string(),
+                    operation: FileOp::Exists,
+                    success: true,
+                    content: None,
+                    exists: Some(false),
+                    error: None,
+                }
+                .into(),
+            ),
+        );
 
         // execute_codegen_exists: file exists check (codegen removed, use Cargo.toml)
-        mocks.set_value("execute_codegen_exists", "response", Value::Response(
-            FileResponse {
-                path: "Cargo.toml".to_string(),
-                operation: FileOp::Exists,
-                success: true,
-                content: None,
-                exists: Some(true), // Pretend codegen already exists
-                error: None,
-            }.into()
-        ));
+        mocks.set_value(
+            "execute_codegen_exists",
+            "response",
+            Value::Response(
+                FileResponse {
+                    path: "Cargo.toml".to_string(),
+                    operation: FileOp::Exists,
+                    success: true,
+                    content: None,
+                    exists: Some(true), // Pretend codegen already exists
+                    error: None,
+                }
+                .into(),
+            ),
+        );
 
         // execute_codegen: shell command (skipped when codegen exists)
-        mocks.set_value("execute_codegen", "response", Value::Response(
-            ShellResponse::ok("").into()
-        ));
+        mocks.set_value(
+            "execute_codegen",
+            "response",
+            Value::Response(ShellResponse::ok("").into()),
+        );
         mocks.set_value("execute_codegen", "skip", Value::Bool(true));
 
         // execute_build: shell command for cargo build
-        mocks.set_value("execute_build", "response", Value::Response(
-            ShellResponse::ok("<DRY-RUN>").into()
-        ));
+        mocks.set_value(
+            "execute_build",
+            "response",
+            Value::Response(ShellResponse::ok("<DRY-RUN>").into()),
+        );
         mocks.set_value("execute_build", "skip", Value::Bool(false));
 
         // execute_test: shell command for cargo test
-        mocks.set_value("execute_test", "response", Value::Response(
-            ShellResponse::ok("<DRY-RUN>").into()
-        ));
+        mocks.set_value(
+            "execute_test",
+            "response",
+            Value::Response(ShellResponse::ok("<DRY-RUN>").into()),
+        );
         mocks.set_value("execute_test", "skip", Value::Bool(false));
+
+        // clippy_lint: tool consumer (intercepted)
+        mocks.set_value("clippy_lint", "success", Value::Bool(true));
+        mocks.set_value("clippy_lint", "stdout", Value::Str(String::new()));
+        mocks.set_value("clippy_lint", "stderr", Value::Str(String::new()));
+        mocks.set_value("clippy_lint", "skip", Value::Bool(false));
 
         ExecutionMode::DryRun(mocks)
     } else {
         ExecutionMode::Real
     };
-    
+
     // Detect CI environment and create context for workflow commands
     // In GitHub Actions: emits ::group:: for collapsible sections
     // In GitLab CI: emits section_start/end escape sequences
     // Locally: just prints plain text
     let mut ci = CiContext::detect();
-    
+
     // Print header
     println!("{}", gunbc_ir::cargo::name("ci"));
     println!("  mode: {}", if dry_run { "dry-run" } else { "real" });
@@ -109,7 +139,7 @@ fn main() {
         println!("  ci: {}", ci.provider_name());
     }
     println!();
-    
+
     // Execute the CI pipeline with CI context for step visibility.
     // Node outputs are printed inside their CI groups by the executor,
     // except for the "report" node which prints directly (no group).

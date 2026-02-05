@@ -16,8 +16,8 @@
 
 use crate::executor::execute_transport;
 use gunbc_exec::{optional_bool, require_request, ExecError, Executable, OutputMap};
-use gunbc_ir::transport::{TransportRequest, TransportResponse};
-use gunbc_ir::Value;
+use gunbc_ir::transport::{AuthMethod, TransportRequest, TransportResponse};
+use gunbc_ir::{AuthToken, Value};
 use std::collections::HashMap;
 
 /// Transport operations for use in DAG nodes.
@@ -43,10 +43,22 @@ impl Executable for TransportOps {
 
                 let mut request = require_request(&inputs, "request")?;
 
-                // DI violation: env vars resolved inline via std::env::var.
-                // Phase 2 will pass resolved auth through DAG input ports.
+                // Auth resolution: resolved AuthToken must be provided via DAG inputs.
                 if let TransportRequest::Rest(ref mut r) = request {
-                    r.resolve_auth(|var| std::env::var(var).ok());
+                    if let Some(ref auth) = r.auth {
+                        if matches!(
+                            auth,
+                            AuthMethod::EnvVar(_) | AuthMethod::EnvVarHeader { .. }
+                        ) {
+                            let token = inputs.get("res:auth").ok_or_else(|| {
+                                ExecError::new("missing 'res:auth' input for REST auth")
+                            })?;
+                            let token = AuthToken::try_from(token).map_err(|e| {
+                                ExecError::new(format!("invalid 'res:auth' input: {}", e))
+                            })?;
+                            r.auth = Some(resolve_auth_with_token(auth, &token)?);
+                        }
+                    }
                 }
 
                 let response = execute_request(&request)?;
@@ -70,9 +82,7 @@ impl Executable for TransportOps {
                         .bool("success", shell_resp.success());
                 }
 
-                out.response("response", response)
-                    .bool("skip", false)
-                    .ok()
+                out.response("response", response).bool("skip", false).ok()
             }
         }
     }
@@ -88,6 +98,35 @@ impl Executable for TransportOps {
 /// External code must use `TransportOps::Execute` nodes in a DAG.
 pub(crate) fn execute_request(request: &TransportRequest) -> Result<TransportResponse, ExecError> {
     execute_transport(request).map_err(|e| ExecError::new(format!("transport error: {}", e)))
+}
+
+fn resolve_auth_with_token(auth: &AuthMethod, token: &AuthToken) -> Result<AuthMethod, ExecError> {
+    match auth {
+        AuthMethod::EnvVar(var) => {
+            if token.env_var() != var {
+                return Err(ExecError::new(format!(
+                    "auth token env var mismatch: request expects '{}', token is '{}'",
+                    var,
+                    token.env_var()
+                )));
+            }
+            Ok(AuthMethod::Bearer(token.secret().expose().to_string()))
+        }
+        AuthMethod::EnvVarHeader { header, env_var } => {
+            if token.env_var() != env_var {
+                return Err(ExecError::new(format!(
+                    "auth token env var mismatch: request expects '{}', token is '{}'",
+                    env_var,
+                    token.env_var()
+                )));
+            }
+            Ok(AuthMethod::ApiKey {
+                header: header.clone(),
+                key: token.secret().expose().to_string(),
+            })
+        }
+        other => Ok(other.clone()),
+    }
 }
 
 #[cfg(test)]
@@ -117,7 +156,9 @@ mod tests {
         let mut inputs = HashMap::new();
         inputs.insert("skip".to_string(), Value::Bool(true));
 
-        let result = TransportOps::Execute.execute(inputs).expect("skip should short-circuit");
+        let result = TransportOps::Execute
+            .execute(inputs)
+            .expect("skip should short-circuit");
 
         assert_eq!(result.get("skip"), Some(&Value::Bool(true)));
         assert!(!result.contains_key("response"));
@@ -136,14 +177,13 @@ mod tests {
         let mut inputs = HashMap::new();
         inputs.insert("request".to_string(), Value::Request(request));
 
-        let result = TransportOps::Execute.execute(inputs).expect("transport should execute");
+        let result = TransportOps::Execute
+            .execute(inputs)
+            .expect("transport should execute");
 
         assert_eq!(result.get("success"), Some(&Value::Bool(true)));
         assert_eq!(result.get("skip"), Some(&Value::Bool(false)));
-        let stdout = result
-            .get("stdout")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let stdout = result.get("stdout").and_then(|v| v.as_str()).unwrap_or("");
         assert!(stdout.contains("hello"));
     }
 }

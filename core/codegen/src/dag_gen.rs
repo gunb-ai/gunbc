@@ -16,12 +16,12 @@ use std::collections::HashSet;
 /// Generate a complete graph.rs file from a tool definition.
 pub fn generate_graph_rs(tool: &ToolDef) -> Option<String> {
     let dag = tool.dag.as_ref()?;
-    
+
     let imports = generate_imports(tool, dag);
     let graph_op = generate_graph_op_enum(tool, dag);
     let executable = generate_executable_impl(tool, dag);
     let builder = generate_graph_builder(tool, dag);
-    
+
     Some(format!(
         r#"//! Generated graph builder for {tool_name}.
 //!
@@ -51,14 +51,15 @@ fn generate_imports(tool: &ToolDef, dag: &DagDef) -> String {
         "use gunbc_ir::{build::*, Dag, Edge, Node, Value};".to_string(),
         "use std::collections::HashMap;".to_string(),
     ];
-    
+
     // Collect unique operation crates
-    let crates: HashSet<&str> = dag.nodes
+    let crates: HashSet<&str> = dag
+        .nodes
         .iter()
         .map(|n| n.op_crate.as_str())
         .filter(|c| !c.is_empty())
         .collect();
-    
+
     for crate_name in crates {
         if crate_name == "gunbc_primitives" {
             imports.push("use gunbc_primitives::PrimitiveOp;".to_string());
@@ -66,40 +67,49 @@ fn generate_imports(tool: &ToolDef, dag: &DagDef) -> String {
             imports.push(format!("use {};", crate_name));
         }
     }
-    
+
     // Add tool-specific imports if using local ops
     let has_local_ops = dag.nodes.iter().any(|n| n.op_crate.is_empty());
     if has_local_ops {
-        imports.push(format!("use crate::ops::{}Op;", NamingCase::PascalCase.apply(&tool.meta.tool_name)));
+        imports.push(format!(
+            "use crate::ops::{}Op;",
+            NamingCase::PascalCase.apply(&tool.meta.tool_name)
+        ));
     }
-    
+
     imports.join("\n")
 }
 
 /// Generate the GraphOp enum that combines all operation types.
 fn generate_graph_op_enum(tool: &ToolDef, dag: &DagDef) -> String {
-    let enum_name = format!("{}GraphOp", NamingCase::PascalCase.apply(&tool.meta.tool_name));
-    
+    let enum_name = format!(
+        "{}GraphOp",
+        NamingCase::PascalCase.apply(&tool.meta.tool_name)
+    );
+
     // Collect unique operation types
     let mut variants = vec![];
     let mut seen = HashSet::new();
-    
+
     for node in &dag.nodes {
         let variant_name = if node.op_crate == "gunbc_primitives" {
             "Primitive(PrimitiveOp)".to_string()
         } else if node.op_crate.is_empty() {
             // Local op
-            format!("Local({}Op)", NamingCase::PascalCase.apply(&tool.meta.tool_name))
+            format!(
+                "Local({}Op)",
+                NamingCase::PascalCase.apply(&tool.meta.tool_name)
+            )
         } else {
             // External crate op
             format!("{}({})", node.op_type, node.op_type)
         };
-        
+
         if seen.insert(variant_name.clone()) {
             variants.push(variant_name);
         }
     }
-    
+
     format!(
         r#"/// Operation type for {tool_name} graphs.
 #[derive(Debug, Clone)]
@@ -108,7 +118,8 @@ pub enum {enum_name} {{
 }}"#,
         tool_name = tool.meta.tool_name,
         enum_name = enum_name,
-        variants = variants.iter()
+        variants = variants
+            .iter()
             .map(|v| format!("    {},", v))
             .collect::<Vec<_>>()
             .join("\n"),
@@ -117,26 +128,38 @@ pub enum {enum_name} {{
 
 /// Generate the Executable impl for the GraphOp enum.
 fn generate_executable_impl(tool: &ToolDef, dag: &DagDef) -> String {
-    let enum_name = format!("{}GraphOp", NamingCase::PascalCase.apply(&tool.meta.tool_name));
-    
+    let enum_name = format!(
+        "{}GraphOp",
+        NamingCase::PascalCase.apply(&tool.meta.tool_name)
+    );
+
     // Collect unique match arms
     let mut arms = vec![];
     let mut seen = HashSet::new();
-    
+
     for node in &dag.nodes {
         let arm = if node.op_crate == "gunbc_primitives" {
-            format!("            {}::Primitive(op) => op.execute(inputs),", enum_name)
+            format!(
+                "            {}::Primitive(op) => op.execute(inputs),",
+                enum_name
+            )
         } else if node.op_crate.is_empty() {
-            format!("            {}::Local(op) => op.execute(inputs),", enum_name)
+            format!(
+                "            {}::Local(op) => op.execute(inputs),",
+                enum_name
+            )
         } else {
-            format!("            {}::{}(op) => op.execute(inputs),", enum_name, node.op_type)
+            format!(
+                "            {}::{}(op) => op.execute(inputs),",
+                enum_name, node.op_type
+            )
         };
-        
+
         if seen.insert(arm.clone()) {
             arms.push(arm);
         }
     }
-    
+
     format!(
         r#"impl Executable for {enum_name} {{
     fn execute(
@@ -156,20 +179,27 @@ fn generate_executable_impl(tool: &ToolDef, dag: &DagDef) -> String {
 /// Generate the build_*_graph() function.
 fn generate_graph_builder(tool: &ToolDef, dag: &DagDef) -> String {
     let fn_name = format!("build_{}_graph", tool.meta.tool_name);
-    let enum_name = format!("{}GraphOp", NamingCase::PascalCase.apply(&tool.meta.tool_name));
-    
+    let enum_name = format!(
+        "{}GraphOp",
+        NamingCase::PascalCase.apply(&tool.meta.tool_name)
+    );
+
     // Generate node additions
-    let nodes = dag.nodes.iter()
+    let nodes = dag
+        .nodes
+        .iter()
         .map(|n| generate_node_code(n, &enum_name))
         .collect::<Vec<_>>()
         .join("\n\n");
-    
+
     // Generate edge additions
-    let edges = dag.edges.iter()
+    let edges = dag
+        .edges
+        .iter()
         .map(generate_edge_code)
         .collect::<Vec<_>>()
         .join("\n");
-    
+
     format!(
         r#"/// Build the {tool_name} graph.
 pub fn {fn_name}({args}) -> Dag<{enum_name}> {{
@@ -193,16 +223,20 @@ pub fn {fn_name}({args}) -> Dag<{enum_name}> {{
 
 /// Generate code for a single node.
 fn generate_node_code(node: &NodeDef, enum_name: &str) -> String {
-    let inputs = node.inputs.iter()
+    let inputs = node
+        .inputs
+        .iter()
         .map(generate_port_code)
         .collect::<Vec<_>>()
         .join(", ");
-    
-    let outputs = node.outputs.iter()
+
+    let outputs = node
+        .outputs
+        .iter()
         .map(generate_port_code)
         .collect::<Vec<_>>()
         .join(", ");
-    
+
     let op = if node.op_crate == "gunbc_primitives" {
         format!("{}::Primitive(PrimitiveOp::{})", enum_name, node.op_variant)
     } else if node.op_crate.is_empty() {
@@ -210,7 +244,7 @@ fn generate_node_code(node: &NodeDef, enum_name: &str) -> String {
     } else {
         format!("{}::{}({})", enum_name, node.op_type, node.op_variant)
     };
-    
+
     format!(
         r#"    // Node: {id}
     dag.add_node(Node::opaque(
@@ -268,12 +302,12 @@ mod tests {
     fn test_generate_port_code() {
         let port = PortDef::scalar("input", "String");
         assert_eq!(generate_port_code(&port), "port(\"input\", \"String\")");
-        
+
         let port = PortDef::optional("input", "String");
         assert_eq!(generate_port_code(&port), "optional(\"input\", \"String\")");
-        
-        let port = PortDef::list("items", "List");
-        assert_eq!(generate_port_code(&port), "list(\"items\", \"List\")");
+
+        let port = PortDef::list("items", "String");
+        assert_eq!(generate_port_code(&port), "list(\"items\", \"String\")");
     }
 
     #[test]
@@ -291,21 +325,36 @@ mod tests {
             .into_iter()
             .find(|t| t.meta.tool_name == "makegen")
             .expect("makegen tool should exist");
-        
+
         // Check that it has a DAG definition
         assert!(makegen.has_dag(), "makegen should have a declarative DAG");
-        
+
         // Generate the graph.rs
         let graph_rs = generate_graph_rs(&makegen);
         assert!(graph_rs.is_some(), "should generate graph.rs");
-        
+
         let code = graph_rs.unwrap();
-        
+
         // Verify key components are present
-        assert!(code.contains("MakegenGraphOp"), "should have MakegenGraphOp enum");
-        assert!(code.contains("build_makegen_graph"), "should have build function");
-        assert!(code.contains("load_registry"), "should have load_registry node");
-        assert!(code.contains("render_makefile"), "should have render_makefile node");
-        assert!(code.contains("write_makefile"), "should have write_makefile node");
+        assert!(
+            code.contains("MakegenGraphOp"),
+            "should have MakegenGraphOp enum"
+        );
+        assert!(
+            code.contains("build_makegen_graph"),
+            "should have build function"
+        );
+        assert!(
+            code.contains("load_registry"),
+            "should have load_registry node"
+        );
+        assert!(
+            code.contains("render_makefile"),
+            "should have render_makefile node"
+        );
+        assert!(
+            code.contains("write_makefile"),
+            "should have write_makefile node"
+        );
     }
 }

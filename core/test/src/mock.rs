@@ -8,7 +8,8 @@ use std::sync::Arc;
 
 /// Mock behavior: either scripted outputs or a function.
 /// Type alias for mock function to reduce complexity
-pub type MockFn = Arc<dyn Fn(HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> + Send + Sync>;
+pub type MockFn =
+    Arc<dyn Fn(HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> + Send + Sync>;
 
 #[derive(Clone)]
 pub enum MockBehavior {
@@ -27,7 +28,10 @@ impl MockBehavior {
     /// Create functional behavior.
     pub fn func<F>(f: F) -> Self
     where
-        F: Fn(HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> + Send + Sync + 'static,
+        F: Fn(HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError>
+            + Send
+            + Sync
+            + 'static,
     {
         Self::Func(Arc::new(f))
     }
@@ -51,7 +55,10 @@ pub struct MockOp {
 
 impl MockOp {
     /// Create a new mock operation with scripted outputs.
-    pub fn new(node_id: impl Into<String>, outputs: impl IntoIterator<Item = (impl Into<String>, Value)>) -> Self {
+    pub fn new(
+        node_id: impl Into<String>,
+        outputs: impl IntoIterator<Item = (impl Into<String>, Value)>,
+    ) -> Self {
         Self {
             node_id: node_id.into(),
             behavior: MockBehavior::scripted(outputs),
@@ -61,7 +68,10 @@ impl MockOp {
     /// Create a mock operation with functional behavior.
     pub fn with_func<F>(node_id: impl Into<String>, f: F) -> Self
     where
-        F: Fn(HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> + Send + Sync + 'static,
+        F: Fn(HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError>
+            + Send
+            + Sync
+            + 'static,
     {
         Self {
             node_id: node_id.into(),
@@ -104,17 +114,26 @@ impl<'a, T> ScriptedDagBuilder<'a, T> {
     }
 
     /// Set scripted outputs for a node.
-    pub fn with_outputs(mut self, node_id: &str, outputs: impl IntoIterator<Item = (impl Into<String>, Value)>) -> Self {
-        self.behaviors.insert(node_id.to_string(), MockBehavior::scripted(outputs));
+    pub fn with_outputs(
+        mut self,
+        node_id: &str,
+        outputs: impl IntoIterator<Item = (impl Into<String>, Value)>,
+    ) -> Self {
+        self.behaviors
+            .insert(node_id.to_string(), MockBehavior::scripted(outputs));
         self
     }
 
     /// Set functional behavior for a node.
     pub fn with_func<F>(mut self, node_id: &str, f: F) -> Self
     where
-        F: Fn(HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> + Send + Sync + 'static,
+        F: Fn(HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError>
+            + Send
+            + Sync
+            + 'static,
     {
-        self.behaviors.insert(node_id.to_string(), MockBehavior::func(f));
+        self.behaviors
+            .insert(node_id.to_string(), MockBehavior::func(f));
         self
     }
 
@@ -173,7 +192,7 @@ mod tests {
     fn test_mock_op_scripted() {
         let op = MockOp::new("test", [("out", Value::Str("hello".to_string()))]);
         let result = op.execute(HashMap::new()).unwrap();
-        
+
         match result.get("out") {
             Some(Value::Str(s)) => assert_eq!(s, "hello"),
             _ => panic!("expected string output"),
@@ -203,7 +222,12 @@ mod tests {
     fn test_scripted_dag_builder() {
         let mut dag: Dag<()> = Dag::new();
         dag.add_node(Node::opaque("A", vec![], vec![port("out", "S")], ()));
-        dag.add_node(Node::opaque("B", vec![port("in", "S")], vec![port("out", "S")], ()));
+        dag.add_node(Node::opaque(
+            "B",
+            vec![port("in", "S")],
+            vec![port("out", "S")],
+            (),
+        ));
         dag.add_edge(edge("A", "out", "B", "in"));
 
         let mock_dag = ScriptedDagBuilder::new(&dag)

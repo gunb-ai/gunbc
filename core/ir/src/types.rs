@@ -38,6 +38,9 @@ pub struct Cardinality {
 }
 
 impl Cardinality {
+    /// Default cap for test-case generation (prevents huge vectors in tests).
+    pub const TEST_CASE_CAP: u32 = 64;
+
     /// ∅ — signal-only, no data.
     pub const ZERO: Self = Self {
         min: 0,
@@ -57,16 +60,10 @@ impl Cardinality {
     };
 
     /// {x}* — Kleene star (zero or more, list).
-    pub const ZERO_OR_MORE: Self = Self {
-        min: 0,
-        max: None,
-    };
+    pub const ZERO_OR_MORE: Self = Self { min: 0, max: None };
 
     /// {x}+ — Kleene plus (one or more, non-empty list).
-    pub const ONE_OR_MORE: Self = Self {
-        min: 1,
-        max: None,
-    };
+    pub const ONE_OR_MORE: Self = Self { min: 1, max: None };
 
     /// Create a new cardinality with explicit bounds.
     ///
@@ -162,8 +159,8 @@ impl Cardinality {
                 cases.push(above);
             }
         } else {
-            // Unbounded: test with a "large" value
-            cases.push(self.min.saturating_add(10));
+            // Unbounded: no synthetic "large" value here.
+            // Test generators can choose a fermi-sized "many" case explicitly.
         }
         cases.sort();
         cases.dedup();
@@ -180,6 +177,31 @@ impl Cardinality {
             .into_iter()
             .filter(|&n| self.allows_count(n))
             .collect()
+    }
+
+    /// Returns test cases with a cap for large counts.
+    ///
+    /// This keeps boundary coverage while avoiding enormous test vectors when
+    /// a bounded max is very large. If `cap` is below the minimum, no capping
+    /// occurs (to preserve validity).
+    pub fn test_cases_capped(&self, cap: u32) -> Vec<u32> {
+        let mut cases = self.test_cases();
+        if cap < self.min {
+            return cases;
+        }
+        for n in &mut cases {
+            if *n > cap {
+                *n = cap;
+            }
+        }
+        cases.sort();
+        cases.dedup();
+        cases
+    }
+
+    /// Default test cases used by generators (with a safe cap).
+    pub fn test_cases_for_tests(&self) -> Vec<u32> {
+        self.test_cases_capped(Self::TEST_CASE_CAP)
     }
 
     /// Check if the given count is within this cardinality's interval.
@@ -260,9 +282,7 @@ impl Cardinality {
             format!(
                 "output might have many elements (max={}) but input accepts at most {}",
                 self.max.map_or("∞".to_string(), |m| m.to_string()),
-                input
-                    .max
-                    .map_or("∞".to_string(), |m| m.to_string())
+                input.max.map_or("∞".to_string(), |m| m.to_string())
             )
         } else {
             format!("cardinality {} cannot satisfy {}", self, input)
@@ -387,7 +407,9 @@ impl<'de> Deserialize<'de> for Cardinality {
             type Value = Cardinality;
 
             fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                f.write_str("a cardinality string (\"Zero\", \"One\", ...) or {\"min\": N, \"max\": N}")
+                f.write_str(
+                    "a cardinality string (\"Zero\", \"One\", ...) or {\"min\": N, \"max\": N}",
+                )
             }
 
             fn visit_str<E: de::Error>(self, value: &str) -> Result<Cardinality, E> {
@@ -665,10 +687,29 @@ mod tests {
         assert_eq!(Cardinality::ONE.test_cases(), vec![1]);
         // ZERO_OR_ONE [0,1]: 0 and 1 are in-range
         assert_eq!(Cardinality::ZERO_OR_ONE.test_cases(), vec![0, 1]);
-        // ZERO_OR_MORE [0,∞): 0, 1, and 10 (large) are in-range
-        assert_eq!(Cardinality::ZERO_OR_MORE.test_cases(), vec![0, 1, 10]);
-        // ONE_OR_MORE [1,∞): 1, 2, and 11 (large) are in-range
-        assert_eq!(Cardinality::ONE_OR_MORE.test_cases(), vec![1, 2, 11]);
+        // ZERO_OR_MORE [0,∞): 0 and 1 are in-range
+        assert_eq!(Cardinality::ZERO_OR_MORE.test_cases(), vec![0, 1]);
+        // ONE_OR_MORE [1,∞): 1 and 2 are in-range
+        assert_eq!(Cardinality::ONE_OR_MORE.test_cases(), vec![1, 2]);
+    }
+
+    #[test]
+    fn test_test_cases_capped() {
+        // Large bounded max should be capped.
+        let bounded = Cardinality::new(0, Some(1000));
+        assert_eq!(bounded.test_cases_capped(10), vec![0, 1, 10]);
+
+        // Cap within range for non-zero min.
+        let bounded = Cardinality::new(50, Some(1000));
+        assert_eq!(bounded.test_cases_capped(60), vec![50, 51, 60]);
+
+        // If cap < min, do not cap (preserve validity).
+        let bounded = Cardinality::new(70, Some(1000));
+        assert_eq!(bounded.test_cases_capped(60), vec![70, 71, 1000]);
+
+        // Unbounded: no synthetic "large" values are added here.
+        let unbounded = Cardinality::new(0, None);
+        assert_eq!(unbounded.test_cases_capped(5), vec![0, 1]);
     }
 
     #[test]
@@ -679,12 +720,15 @@ mod tests {
         assert_eq!(Cardinality::ONE.boundary_values(), vec![0, 1, 2]);
         // ZERO_OR_ONE [0,1]: {0, 1, 2(above-max)}
         assert_eq!(Cardinality::ZERO_OR_ONE.boundary_values(), vec![0, 1, 2]);
-        // ZERO_OR_MORE [0,∞): {0, 1, 10(large)}
-        assert_eq!(Cardinality::ZERO_OR_MORE.boundary_values(), vec![0, 1, 10]);
-        // ONE_OR_MORE [1,∞): {0(below-min), 1, 2, 11(large)}
-        assert_eq!(Cardinality::ONE_OR_MORE.boundary_values(), vec![0, 1, 2, 11]);
+        // ZERO_OR_MORE [0,∞): {0, 1}
+        assert_eq!(Cardinality::ZERO_OR_MORE.boundary_values(), vec![0, 1]);
+        // ONE_OR_MORE [1,∞): {0(below-min), 1, 2}
+        assert_eq!(Cardinality::ONE_OR_MORE.boundary_values(), vec![0, 1, 2]);
         // Custom [2,5]: {1(below-min), 2, 3(min+1), 5, 6(above-max)}
-        assert_eq!(Cardinality::new(2, Some(5)).boundary_values(), vec![1, 2, 3, 5, 6]);
+        assert_eq!(
+            Cardinality::new(2, Some(5)).boundary_values(),
+            vec![1, 2, 3, 5, 6]
+        );
     }
 
     #[test]
@@ -872,10 +916,7 @@ mod tests {
             serde_json::to_string(&Cardinality::ZERO).unwrap(),
             "\"Zero\""
         );
-        assert_eq!(
-            serde_json::to_string(&Cardinality::ONE).unwrap(),
-            "\"One\""
-        );
+        assert_eq!(serde_json::to_string(&Cardinality::ONE).unwrap(), "\"One\"");
         assert_eq!(
             serde_json::to_string(&Cardinality::ZERO_OR_ONE).unwrap(),
             "\"ZeroOrOne\""

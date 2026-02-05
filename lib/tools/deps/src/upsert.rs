@@ -80,7 +80,10 @@ impl UpsertResult {
             was_installed: false,
             install_attempted: false,
             is_installed: false,
-            error: Some(format!("no install configuration for platform: {}", platform)),
+            error: Some(format!(
+                "no install configuration for platform: {}",
+                platform
+            )),
         }
     }
 }

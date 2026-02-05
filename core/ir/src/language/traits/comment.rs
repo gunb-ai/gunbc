@@ -11,8 +11,8 @@
 //! - `commented`: String - Commented content
 
 use crate::dag::{Dag, Port};
-use crate::node::Node;
 use crate::language::LanguageOp;
+use crate::node::Node;
 
 /// Comment syntax for a format/language.
 #[derive(Debug, Clone)]
@@ -85,10 +85,7 @@ pub fn build_comment_prefix_subdag() -> Node<LanguageOp> {
     ));
 
     // Create the SubDag node with interface
-    Node::subdag(
-        "comment_prefix",
-        inner,
-    )
+    Node::subdag("comment_prefix", inner)
 }
 
 /// Get comment syntax for a language/format.
@@ -161,15 +158,15 @@ mod tests {
     fn test_add_line_comment() {
         assert_eq!(add_line_comment("hello", "#"), "# hello");
         assert_eq!(add_line_comment("line1\nline2", "//"), "// line1\n// line2");
-        assert_eq!(add_line_comment("before\n\nafter", "#"), "# before\n#\n# after");
+        assert_eq!(
+            add_line_comment("before\n\nafter", "#"),
+            "# before\n#\n# after"
+        );
     }
 
     #[test]
     fn test_add_block_comment() {
-        assert_eq!(
-            add_block_comment("content", "/*", "*/"),
-            "/*\ncontent\n*/"
-        );
+        assert_eq!(add_block_comment("content", "/*", "*/"), "/*\ncontent\n*/");
     }
 
     #[test]

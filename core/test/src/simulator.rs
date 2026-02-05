@@ -93,9 +93,7 @@ impl Simulator {
 
     /// Generate a random value (panics if no generator).
     pub fn generate(&self) -> Value {
-        self.generator
-            .as_ref()
-            .expect("Simulator has no generator")()
+        self.generator.as_ref().expect("Simulator has no generator")()
     }
 
     /// Generate multiple random values.

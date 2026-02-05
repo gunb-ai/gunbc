@@ -1,9 +1,8 @@
 //! Transport request executors.
 
 use gunbc_ir::transport::{
-    FileOp, FileRequest, FileResponse, HttpRequest, HttpResponse, RestRequest,
-    RestResponse, ShellRequest, ShellResponse, TcpRequest, TcpResponse, TransportRequest,
-    TransportResponse,
+    FileOp, FileRequest, FileResponse, HttpRequest, HttpResponse, RestRequest, RestResponse,
+    ShellRequest, ShellResponse, TcpRequest, TcpResponse, TransportRequest, TransportResponse,
 };
 use std::collections::HashMap;
 use std::fs;
@@ -61,9 +60,10 @@ fn execute_rest(request: &RestRequest) -> Result<RestResponse, TransportError> {
 
     // Add JSON body
     if let Some(ref body) = request.body {
-        http_req.body = Some(serde_json::to_string(body).map_err(|e| {
-            TransportError::new(format!("failed to serialize body: {}", e))
-        })?);
+        http_req.body = Some(
+            serde_json::to_string(body)
+                .map_err(|e| TransportError::new(format!("failed to serialize body: {}", e)))?,
+        );
         http_req
             .headers
             .insert("Content-Type".to_string(), "application/json".to_string());
@@ -104,9 +104,8 @@ fn execute_rest(request: &RestRequest) -> Result<RestResponse, TransportError> {
     let http_resp = execute_http(&http_req)?;
 
     // Parse JSON response
-    let body: serde_json::Value = serde_json::from_str(&http_resp.body).unwrap_or_else(|_| {
-        serde_json::json!({ "raw": http_resp.body })
-    });
+    let body: serde_json::Value = serde_json::from_str(&http_resp.body)
+        .unwrap_or_else(|_| serde_json::json!({ "raw": http_resp.body }));
 
     Ok(RestResponse {
         status: http_resp.status,
@@ -128,13 +127,13 @@ fn base64_encode(input: &str) -> String {
 
         result.push(ALPHABET[b0 >> 2] as char);
         result.push(ALPHABET[((b0 & 0x03) << 4) | (b1 >> 4)] as char);
-        
+
         if chunk.len() > 1 {
             result.push(ALPHABET[((b1 & 0x0f) << 2) | (b2 >> 6)] as char);
         } else {
             result.push('=');
         }
-        
+
         if chunk.len() > 2 {
             result.push(ALPHABET[b2 & 0x3f] as char);
         } else {
@@ -152,12 +151,12 @@ fn base64_encode(input: &str) -> String {
 fn execute_http(request: &HttpRequest) -> Result<HttpResponse, TransportError> {
     // Parse URL to extract host and path
     let url = &request.url;
-    
+
     // For now, return a mock response for non-local URLs
     // A real implementation would use reqwest or similar
     if !url.starts_with("http://localhost") && !url.starts_with("http://127.0.0.1") {
         return Err(TransportError::new(
-            "HTTP transport not fully implemented - use Shell transport with curl for now"
+            "HTTP transport not fully implemented - use Shell transport with curl for now",
         ));
     }
 
@@ -170,14 +169,18 @@ fn execute_http(request: &HttpRequest) -> Result<HttpResponse, TransportError> {
         .map_err(|e| TransportError::new(format!("connection failed: {}", e)))?;
 
     if let Some(timeout) = request.timeout_ms {
-        stream.set_read_timeout(Some(Duration::from_millis(timeout))).ok();
-        stream.set_write_timeout(Some(Duration::from_millis(timeout))).ok();
+        stream
+            .set_read_timeout(Some(Duration::from_millis(timeout)))
+            .ok();
+        stream
+            .set_write_timeout(Some(Duration::from_millis(timeout)))
+            .ok();
     }
 
     // Build request
     let mut req_str = format!("{} {} HTTP/1.1\r\n", request.method, path);
     req_str.push_str(&format!("Host: {}\r\n", host_port));
-    
+
     for (key, value) in &request.headers {
         req_str.push_str(&format!("{}: {}\r\n", key, value));
     }
@@ -192,12 +195,14 @@ fn execute_http(request: &HttpRequest) -> Result<HttpResponse, TransportError> {
         req_str.push_str(body);
     }
 
-    stream.write_all(req_str.as_bytes())
+    stream
+        .write_all(req_str.as_bytes())
         .map_err(|e| TransportError::new(format!("write failed: {}", e)))?;
 
     // Read response
     let mut response = String::new();
-    stream.read_to_string(&mut response)
+    stream
+        .read_to_string(&mut response)
         .map_err(|e| TransportError::new(format!("read failed: {}", e)))?;
 
     // Parse response (very basic)
@@ -234,28 +239,34 @@ fn execute_http(request: &HttpRequest) -> Result<HttpResponse, TransportError> {
 /// Execute a file operation.
 fn execute_file(request: &FileRequest) -> Result<FileResponse, TransportError> {
     match request.operation {
-        FileOp::Read => {
-            match fs::read_to_string(&request.path) {
-                Ok(content) => Ok(FileResponse::read_ok(&request.path, content)),
-                Err(e) => Ok(FileResponse::error(&request.path, FileOp::Read, e.to_string())),
-            }
-        }
+        FileOp::Read => match fs::read_to_string(&request.path) {
+            Ok(content) => Ok(FileResponse::read_ok(&request.path, content)),
+            Err(e) => Ok(FileResponse::error(
+                &request.path,
+                FileOp::Read,
+                e.to_string(),
+            )),
+        },
         FileOp::Write => {
             if request.create_parents {
                 if let Some(parent) = std::path::Path::new(&request.path).parent() {
                     fs::create_dir_all(parent).ok();
                 }
             }
-            
+
             let content = request.content.as_deref().unwrap_or("");
             match fs::write(&request.path, content) {
                 Ok(()) => Ok(FileResponse::written(&request.path)),
-                Err(e) => Ok(FileResponse::error(&request.path, FileOp::Write, e.to_string())),
+                Err(e) => Ok(FileResponse::error(
+                    &request.path,
+                    FileOp::Write,
+                    e.to_string(),
+                )),
             }
         }
         FileOp::Append => {
             use std::fs::OpenOptions;
-            
+
             if request.create_parents {
                 if let Some(parent) = std::path::Path::new(&request.path).parent() {
                     fs::create_dir_all(parent).ok();
@@ -268,72 +279,87 @@ fn execute_file(request: &FileRequest) -> Result<FileResponse, TransportError> {
                 .create(true)
                 .open(&request.path)
             {
-                Ok(mut file) => {
-                    match file.write_all(content.as_bytes()) {
-                        Ok(()) => Ok(FileResponse {
-                            path: request.path.clone(),
-                            operation: FileOp::Append,
-                            success: true,
-                            content: None,
-                            exists: None,
-                            error: None,
-                        }),
-                        Err(e) => Ok(FileResponse::error(&request.path, FileOp::Append, e.to_string())),
-                    }
-                }
-                Err(e) => Ok(FileResponse::error(&request.path, FileOp::Append, e.to_string())),
+                Ok(mut file) => match file.write_all(content.as_bytes()) {
+                    Ok(()) => Ok(FileResponse {
+                        path: request.path.clone(),
+                        operation: FileOp::Append,
+                        success: true,
+                        content: None,
+                        exists: None,
+                        error: None,
+                    }),
+                    Err(e) => Ok(FileResponse::error(
+                        &request.path,
+                        FileOp::Append,
+                        e.to_string(),
+                    )),
+                },
+                Err(e) => Ok(FileResponse::error(
+                    &request.path,
+                    FileOp::Append,
+                    e.to_string(),
+                )),
             }
         }
-        FileOp::Delete => {
-            match fs::remove_file(&request.path) {
-                Ok(()) => Ok(FileResponse {
-                    path: request.path.clone(),
-                    operation: FileOp::Delete,
-                    success: true,
-                    content: None,
-                    exists: None,
-                    error: None,
-                }),
-                Err(e) => Ok(FileResponse::error(&request.path, FileOp::Delete, e.to_string())),
-            }
-        }
+        FileOp::Delete => match fs::remove_file(&request.path) {
+            Ok(()) => Ok(FileResponse {
+                path: request.path.clone(),
+                operation: FileOp::Delete,
+                success: true,
+                content: None,
+                exists: None,
+                error: None,
+            }),
+            Err(e) => Ok(FileResponse::error(
+                &request.path,
+                FileOp::Delete,
+                e.to_string(),
+            )),
+        },
         FileOp::Exists => {
             let exists = std::path::Path::new(&request.path).exists();
             Ok(FileResponse::exists_result(&request.path, exists))
         }
-        FileOp::CreateDir => {
-            match fs::create_dir_all(&request.path) {
-                Ok(()) => Ok(FileResponse {
-                    path: request.path.clone(),
-                    operation: FileOp::CreateDir,
-                    success: true,
-                    content: None,
-                    exists: None,
-                    error: None,
-                }),
-                Err(e) => Ok(FileResponse::error(&request.path, FileOp::CreateDir, e.to_string())),
-            }
-        }
+        FileOp::CreateDir => match fs::create_dir_all(&request.path) {
+            Ok(()) => Ok(FileResponse {
+                path: request.path.clone(),
+                operation: FileOp::CreateDir,
+                success: true,
+                content: None,
+                exists: None,
+                error: None,
+            }),
+            Err(e) => Ok(FileResponse::error(
+                &request.path,
+                FileOp::CreateDir,
+                e.to_string(),
+            )),
+        },
     }
 }
 
 /// Execute a TCP request.
 fn execute_tcp(request: &TcpRequest) -> Result<TcpResponse, TransportError> {
     let addr = format!("{}:{}", request.host, request.port);
-    
+
     let mut stream = TcpStream::connect(&addr)
         .map_err(|e| TransportError::new(format!("connection failed: {}", e)))?;
 
     if let Some(timeout) = request.connect_timeout_ms {
-        stream.set_read_timeout(Some(Duration::from_millis(timeout))).ok();
+        stream
+            .set_read_timeout(Some(Duration::from_millis(timeout)))
+            .ok();
     }
     if let Some(timeout) = request.read_timeout_ms {
-        stream.set_write_timeout(Some(Duration::from_millis(timeout))).ok();
+        stream
+            .set_write_timeout(Some(Duration::from_millis(timeout)))
+            .ok();
     }
 
     let mut bytes_sent = 0;
     if let Some(ref data) = request.data {
-        stream.write_all(data.as_bytes())
+        stream
+            .write_all(data.as_bytes())
             .map_err(|e| TransportError::new(format!("write failed: {}", e)))?;
         bytes_sent = data.len();
     }
@@ -343,7 +369,11 @@ fn execute_tcp(request: &TcpRequest) -> Result<TcpResponse, TransportError> {
     let bytes_received = response.len();
 
     Ok(TcpResponse::ok(
-        if response.is_empty() { None } else { Some(response) },
+        if response.is_empty() {
+            None
+        } else {
+            Some(response)
+        },
         bytes_sent,
         bytes_received,
     ))
@@ -374,7 +404,8 @@ fn execute_shell(request: &ShellRequest) -> Result<ShellResponse, TransportError
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
 
-    let mut child = cmd.spawn()
+    let mut child = cmd
+        .spawn()
         .map_err(|e| TransportError::new(format!("failed to spawn: {}", e)))?;
 
     // Write stdin if provided
@@ -384,7 +415,8 @@ fn execute_shell(request: &ShellRequest) -> Result<ShellResponse, TransportError
         }
     }
 
-    let output = child.wait_with_output()
+    let output = child
+        .wait_with_output()
         .map_err(|e| TransportError::new(format!("failed to wait: {}", e)))?;
 
     Ok(ShellResponse {
@@ -402,7 +434,7 @@ mod tests {
     fn test_file_read() {
         let request = FileRequest::read("Cargo.toml");
         let response = execute_file(&request).unwrap();
-        
+
         assert!(response.success);
         assert!(response.content.is_some());
         assert!(response.content.unwrap().contains("[package]"));
@@ -412,7 +444,7 @@ mod tests {
     fn test_file_exists() {
         let request = FileRequest::exists("Cargo.toml");
         let response = execute_file(&request).unwrap();
-        
+
         assert!(response.success);
         assert_eq!(response.exists, Some(true));
     }
@@ -421,7 +453,7 @@ mod tests {
     fn test_file_not_exists() {
         let request = FileRequest::exists("nonexistent_file_12345.txt");
         let response = execute_file(&request).unwrap();
-        
+
         assert!(response.success);
         assert_eq!(response.exists, Some(false));
     }
@@ -430,7 +462,7 @@ mod tests {
     fn test_shell_echo() {
         let request = ShellRequest::new("echo").arg("hello");
         let response = execute_shell(&request).unwrap();
-        
+
         assert_eq!(response.exit_code, 0);
         assert!(response.stdout.contains("hello"));
     }
@@ -439,7 +471,7 @@ mod tests {
     fn test_shell_with_stdin() {
         let request = ShellRequest::new("cat").stdin("test input");
         let response = execute_shell(&request).unwrap();
-        
+
         assert_eq!(response.exit_code, 0);
         assert_eq!(response.stdout.trim(), "test input");
     }

@@ -201,10 +201,8 @@ mod tests {
 
     #[test]
     fn test_join_via_trait() {
-        let result = <Cardinality as JoinSemilattice>::join(
-            Cardinality::ONE,
-            Cardinality::ZERO_OR_ONE,
-        );
+        let result =
+            <Cardinality as JoinSemilattice>::join(Cardinality::ONE, Cardinality::ZERO_OR_ONE);
         assert_eq!(result, Cardinality::ZERO_OR_ONE);
     }
 

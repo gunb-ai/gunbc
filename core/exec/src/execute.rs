@@ -3,8 +3,11 @@
 //! # DryRun Interception
 //!
 //! DryRun mode intercepts **transport execution nodes** (nodes that consume
-//! `TransportRequest` values) and **tool environment nodes** (nodes that
-//! produce `ToolHandle` outputs). This is based on the design principle:
+//! `TransportRequest` values), **environment nodes** (nodes that emit
+//! resource outputs like `ToolHandle`, `FilesystemHandle`, `Timestamp`,
+//! `AuthToken`, or `Platform`), and **tool consumer nodes** (nodes that
+//! consume `ToolHandle`). Intercepted nodes require **explicit mocks for every
+//! output port** — there is no default fallback.
 //!
 //! > "World I/O is performed only by transport executor nodes"
 //! > "DryRun intercepts transport execution nodes, not boundary outputs"
@@ -15,6 +18,12 @@
 //! A node is considered a tool environment node if:
 //! - It has an output port with type `ToolHandle`
 //!
+//! A node is considered a resource environment node if:
+//! - It has an output port with type `FilesystemHandle`, `Timestamp`, `AuthToken`, or `Platform`
+//!
+//! A node is considered a tool consumer node if:
+//! - It has an input port with type `ToolHandle`
+//!
 //! Boundary detection (`BoundaryInfo`) is still used for signature inference
 //! and workflow interface detection, but NOT for DryRun interception.
 
@@ -24,8 +33,10 @@ use crate::lower::lower;
 use crate::progress::{DagSnapshot, OutputSummary, ProgressObserver};
 use crate::topo::topo_sort;
 use crate::Executable;
-use gunbc_ir::{canonical_edge_order, detect_boundaries, BoundaryInfo, Dag, Node, NodeBody, NodeId, Value};
-use gunbc_ir::transport::cli::{get_tool_by_id, ToolHandle};
+use gunbc_ir::{
+    canonical_edge_order, detect_boundaries, BoundaryInfo, Cardinality, Dag, Node, NodeBody,
+    NodeId, Value,
+};
 use std::collections::HashMap;
 use std::fmt;
 use std::time::{Duration, Instant};
@@ -165,7 +176,11 @@ pub struct LogEntry {
 
 impl fmt::Display for LogEntry {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let marker = if self.was_intercepted { " [DRY-RUN]" } else { "" };
+        let marker = if self.was_intercepted {
+            " [DRY-RUN]"
+        } else {
+            ""
+        };
         write!(f, "[{}]{}", self.node_id, marker)?;
         for (k, v) in &self.outputs {
             write!(f, " {k}={v}")?;
@@ -214,6 +229,17 @@ pub fn execute_with_mode<T: Executable + Clone>(
     dag: &Dag<T>,
     mode: ExecutionMode,
 ) -> Result<ExecutionLog, ExecError> {
+    execute_with_mode_and_inputs(dag, mode, None)
+}
+
+/// Execute a DAG with the specified execution mode and optional input mocks.
+///
+/// Input mocks are injected into entrypoint ports (inputs with no upstream edge).
+pub fn execute_with_mode_and_inputs<T: Executable + Clone>(
+    dag: &Dag<T>,
+    mode: ExecutionMode,
+    input_mocks: Option<&BoundaryMocks>,
+) -> Result<ExecutionLog, ExecError> {
     // Lower sub-DAGs first
     let flat = lower(dag).map_err(|e| ExecError::new(format!("lowering failed: {e}")))?;
 
@@ -221,7 +247,7 @@ pub fn execute_with_mode<T: Executable + Clone>(
     let boundaries = detect_boundaries(&flat);
 
     // Execute the flat DAG
-    execute_flat(&flat, &boundaries, &mode, None, None)
+    execute_flat(&flat, &boundaries, &mode, None, None, input_mocks)
 }
 
 /// Execute a DAG with CI context for workflow command emission.
@@ -258,7 +284,7 @@ pub fn execute_with_mode_and_ci<T: Executable + Clone>(
     let boundaries = detect_boundaries(&flat);
 
     // Execute the flat DAG with CI context
-    execute_flat(&flat, &boundaries, &mode, Some(ci), None)
+    execute_flat(&flat, &boundaries, &mode, Some(ci), None, None)
 }
 
 /// Execute a DAG with a progress observer.
@@ -290,7 +316,19 @@ pub fn execute_with_progress_and_mode<T: Executable + Clone>(
 ) -> Result<ExecutionLog, ExecError> {
     let flat = lower(dag).map_err(|e| ExecError::new(format!("lowering failed: {e}")))?;
     let boundaries = detect_boundaries(&flat);
-    execute_flat(&flat, &boundaries, &mode, None, Some(observer))
+    execute_flat(&flat, &boundaries, &mode, None, Some(observer), None)
+}
+
+/// Execute a DAG with both execution mode and progress observer plus input mocks.
+pub fn execute_with_progress_and_mode_and_inputs<T: Executable + Clone>(
+    dag: &Dag<T>,
+    mode: ExecutionMode,
+    observer: &mut dyn ProgressObserver,
+    input_mocks: Option<&BoundaryMocks>,
+) -> Result<ExecutionLog, ExecError> {
+    let flat = lower(dag).map_err(|e| ExecError::new(format!("lowering failed: {e}")))?;
+    let boundaries = detect_boundaries(&flat);
+    execute_flat(&flat, &boundaries, &mode, None, Some(observer), input_mocks)
 }
 
 /// Execute a DAG with execution mode, CI context, and progress observer.
@@ -302,7 +340,7 @@ pub fn execute_with_all<T: Executable + Clone>(
 ) -> Result<ExecutionLog, ExecError> {
     let flat = lower(dag).map_err(|e| ExecError::new(format!("lowering failed: {e}")))?;
     let boundaries = detect_boundaries(&flat);
-    execute_flat(&flat, &boundaries, &mode, Some(ci), Some(observer))
+    execute_flat(&flat, &boundaries, &mode, Some(ci), Some(observer), None)
 }
 
 /// Execute a single node from a DAG.
@@ -351,7 +389,12 @@ pub fn execute_single_node<T: Executable + Clone>(
 
     // Check if this is a transport execution node for interception
     let is_transport_executor = is_transport_execution_node(node);
-    let should_intercept = is_transport_executor && matches!(mode, ExecutionMode::DryRun(_) | ExecutionMode::Simulate(_));
+    let is_tool_env = is_tool_env_node(node);
+    let is_resource_env = is_resource_env_node(node);
+    let is_tool_consumer = consumes_tool_handle(node);
+    let should_intercept =
+        (is_transport_executor || is_tool_env || is_resource_env || is_tool_consumer)
+            && matches!(mode, ExecutionMode::DryRun(_) | ExecutionMode::Simulate(_));
 
     if should_intercept {
         // Intercept: use mock values for boundary outputs
@@ -361,14 +404,7 @@ pub fn execute_single_node<T: Executable + Clone>(
             _ => unreachable!(),
         };
 
-        let outputs: HashMap<String, Value> = node
-            .outputs
-            .iter()
-            .map(|p| {
-                let mock = mocks.get_mock(&node.id, &p.name);
-                (p.name.0.clone(), mock.value.clone())
-            })
-            .collect();
+        let outputs: HashMap<String, Value> = mock_intercept_outputs(node, mocks)?;
         return Ok(outputs);
     }
 
@@ -400,11 +436,22 @@ pub fn simulate<T: Executable + Clone>(
     let order = topo_sort(&flat);
 
     // Execute with simulation tracking (no CI context in simulation)
-    let log = execute_flat(&flat, &boundaries, &ExecutionMode::Simulate(config.clone()), None, None)?;
+    let log = execute_flat(
+        &flat,
+        &boundaries,
+        &ExecutionMode::Simulate(config.clone()),
+        None,
+        None,
+        None,
+    )?;
 
     // Compute simulation metrics
     let timeline = compute_timeline(&order, &config);
-    let total_time = timeline.iter().map(|(_, start, dur)| *start + *dur).max().unwrap_or(Duration::ZERO);
+    let total_time = timeline
+        .iter()
+        .map(|(_, start, dur)| *start + *dur)
+        .max()
+        .unwrap_or(Duration::ZERO);
     let critical_path = compute_critical_path(&flat, &config);
     let resource_usage = ResourceUsage::default(); // Simplified for now
 
@@ -446,9 +493,11 @@ fn execute_flat<T: Executable>(
     mode: &ExecutionMode,
     ci: Option<&mut crate::CiContext>,
     observer: Option<&mut dyn ProgressObserver>,
+    input_mocks: Option<&BoundaryMocks>,
 ) -> Result<ExecutionLog, ExecError> {
     let order = topo_sort(dag);
-    let node_map: HashMap<&str, &Node<T>> = dag.nodes.iter().map(|n| (n.id.0.as_str(), n)).collect();
+    let node_map: HashMap<&str, &Node<T>> =
+        dag.nodes.iter().map(|n| (n.id.0.as_str(), n)).collect();
 
     let mut node_outputs: HashMap<String, HashMap<String, Value>> = HashMap::new();
     let mut entries = Vec::new();
@@ -474,28 +523,57 @@ fn execute_flat<T: Executable>(
         //
         // List ports (cardinality allows_many) collect fan-in values into
         // Value::List in canonical edge order. Scalar ports take a single
-        // value (last-writer-wins for backward compat).
+        // value (fan-in is rejected at build time).
         let mut inputs: HashMap<String, Value> = HashMap::new();
         let mut fan_in: HashMap<String, Vec<Value>> = HashMap::new();
+        let mut scalar_sources: HashMap<String, String> = HashMap::new();
 
-        // Build a lookup for which input ports are list-typed
-        let list_ports: std::collections::HashSet<&str> = node
+        // Build a lookup for list-typed input ports and their cardinalities
+        let list_ports: HashMap<&str, Cardinality> = node
             .inputs
             .iter()
             .filter(|p| p.cardinality.is_list())
-            .map(|p| p.name.0.as_str())
+            .map(|p| (p.name.0.as_str(), p.cardinality))
             .collect();
 
         for edge in canonical_edge_order(&dag.edges) {
             if edge.to_node == *node_id {
                 if let Some(upstream) = node_outputs.get(&edge.from_node.0) {
                     if let Some(val) = upstream.get(&edge.from_port.0) {
-                        if list_ports.contains(edge.to_port.0.as_str()) {
-                            fan_in
-                                .entry(edge.to_port.0.clone())
-                                .or_default()
-                                .push(val.clone());
+                        if list_ports.contains_key(edge.to_port.0.as_str()) {
+                            let from_cardinality = dag
+                                .get_node(&edge.from_node)
+                                .and_then(|n| n.outputs.iter().find(|p| p.name == edge.from_port))
+                                .map(|p| p.cardinality)
+                                .unwrap_or(Cardinality::ONE);
+
+                            // Optional/list outputs represent absence as Unit — skip those.
+                            if matches!(val, Value::Unit) && from_cardinality.allows_empty() {
+                                continue;
+                            }
+
+                            let bucket = fan_in.entry(edge.to_port.0.clone()).or_default();
+                            if from_cardinality.is_list() {
+                                if let Value::List(items) = val {
+                                    bucket.extend(items.clone());
+                                } else {
+                                    bucket.push(val.clone());
+                                }
+                            } else {
+                                bucket.push(val.clone());
+                            }
                         } else {
+                            if let Some(prev) = scalar_sources.get(&edge.to_port.0) {
+                                let current = format!("{}.{}", edge.from_node.0, edge.from_port.0);
+                                return Err(ExecError::new(format!(
+                                    "scalar input '{}.{}' has multiple upstream edges: {} and {}",
+                                    edge.to_node.0, edge.to_port.0, prev, current
+                                )));
+                            }
+                            scalar_sources.insert(
+                                edge.to_port.0.clone(),
+                                format!("{}.{}", edge.from_node.0, edge.from_port.0),
+                            );
                             inputs.insert(edge.to_port.0.clone(), val.clone());
                         }
                     }
@@ -508,16 +586,41 @@ fn execute_flat<T: Executable>(
             inputs.insert(port_name, Value::List(values));
         }
 
-        // Inject input mocks for dangling input ports (DAG entry points)
-        // This allows testing DAGs in isolation even when they expect external inputs
-        if let ExecutionMode::DryRun(ref mocks) | ExecutionMode::Simulate(SimConfig { boundary_mocks: ref mocks, .. }) = mode {
+        // Inject input mocks for dangling input ports (DAG entry points).
+        // Optional input mocks can be provided directly (real mode) or via
+        // DryRun/Simulate boundary mocks.
+        let mut inject_inputs = |mocks: &BoundaryMocks| {
             for port in &node.inputs {
                 if !inputs.contains_key(&port.name.0) {
-                    // This port has no incoming edge - check for input mock
                     if let Some(mock_value) = mocks.get_input(&node.id.0, &port.name.0) {
                         inputs.insert(port.name.0.clone(), mock_value.clone());
                     }
                 }
+            }
+        };
+
+        // Prefer explicit input mocks if provided.
+        if let Some(mocks) = input_mocks {
+            inject_inputs(mocks);
+        }
+
+        if let ExecutionMode::DryRun(ref mocks)
+        | ExecutionMode::Simulate(SimConfig {
+            boundary_mocks: ref mocks,
+            ..
+        }) = mode
+        {
+            inject_inputs(mocks);
+        }
+
+        // Default list inputs to empty when allowed and still missing.
+        // This makes list-typed ports explicit even with zero fan-in.
+        for port in &node.inputs {
+            if port.cardinality.is_list()
+                && port.cardinality.allows_empty()
+                && !inputs.contains_key(&port.name.0)
+            {
+                inputs.insert(port.name.0.clone(), Value::List(vec![]));
             }
         }
 
@@ -561,9 +664,11 @@ fn execute_flat<T: Executable>(
             // because they perform I/O or would try to use mock tool paths.
             let is_transport_executor = is_transport_execution_node(node);
             let is_tool_env = is_tool_env_node(node);
+            let is_resource_env = is_resource_env_node(node);
             let is_tool_consumer = consumes_tool_handle(node);
-            let should_intercept = (is_transport_executor || is_tool_env || is_tool_consumer)
-                && matches!(mode, ExecutionMode::DryRun(_) | ExecutionMode::Simulate(_));
+            let should_intercept =
+                (is_transport_executor || is_tool_env || is_resource_env || is_tool_consumer)
+                    && matches!(mode, ExecutionMode::DryRun(_) | ExecutionMode::Simulate(_));
 
             if should_intercept {
                 // Intercept: use mock values for boundary outputs
@@ -573,17 +678,7 @@ fn execute_flat<T: Executable>(
                     _ => unreachable!(),
                 };
 
-                let outputs = if is_tool_env {
-                    mock_tool_env_outputs(node, mocks)?
-                } else {
-                    node.outputs
-                        .iter()
-                        .map(|p| {
-                            let mock = mocks.get_mock(node_id, &p.name);
-                            (p.name.0.clone(), mock.value.clone())
-                        })
-                        .collect()
-                };
+                let outputs = mock_intercept_outputs(node, mocks)?;
                 if let Some(ref mut o) = obs {
                     let summary = OutputSummary::from_outputs(&outputs, node_start.elapsed());
                     o.on_node_intercepted(node_id, summary);
@@ -596,7 +691,8 @@ fn execute_flat<T: Executable>(
                         match op.execute(inputs) {
                             Ok(outputs) => {
                                 if let Some(ref mut o) = obs {
-                                    let summary = OutputSummary::from_outputs(&outputs, node_start.elapsed());
+                                    let summary =
+                                        OutputSummary::from_outputs(&outputs, node_start.elapsed());
                                     o.on_node_complete(node_id, summary);
                                 }
                                 (outputs, false)
@@ -749,17 +845,29 @@ fn should_skip_node<T>(node: &Node<T>, inputs: &HashMap<String, Value>) -> bool 
 /// principle: "impossibility by structure" - if a node doesn't consume a
 /// TransportRequest, it can't perform transport I/O.
 fn is_transport_execution_node<T>(node: &Node<T>) -> bool {
-    node.inputs.iter().any(|port| {
-        port.type_id.0 == "TransportRequest"
-    })
+    node.inputs
+        .iter()
+        .any(|port| port.type_id.0 == "TransportRequest")
 }
 
 /// Check if a node is a tool environment boundary.
 ///
 /// Tool environment nodes emit `ToolHandle` outputs and are intercepted in DryRun.
 fn is_tool_env_node<T>(node: &Node<T>) -> bool {
+    node.outputs
+        .iter()
+        .any(|port| port.type_id.0 == "ToolHandle")
+}
+
+/// Check if a node is a non-tool resource environment boundary.
+///
+/// These emit resource values like FilesystemHandle, Timestamp, AuthToken, Platform.
+fn is_resource_env_node<T>(node: &Node<T>) -> bool {
     node.outputs.iter().any(|port| {
-        port.type_id.0 == "ToolHandle"
+        matches!(
+            port.type_id.0.as_str(),
+            "FilesystemHandle" | "Timestamp" | "AuthToken" | "Platform"
+        )
     })
 }
 
@@ -768,38 +876,34 @@ fn is_tool_env_node<T>(node: &Node<T>) -> bool {
 /// Nodes that consume ToolHandles (like CLI tool runners) should be intercepted
 /// in DryRun mode because they would otherwise try to execute with a mock path.
 fn consumes_tool_handle<T>(node: &Node<T>) -> bool {
-    node.inputs.iter().any(|port| {
-        port.type_id.0 == "ToolHandle"
-    })
+    node.inputs
+        .iter()
+        .any(|port| port.type_id.0 == "ToolHandle")
 }
 
 /// Build mock outputs for a tool environment node.
-fn mock_tool_env_outputs<T>(
+/// Build mock outputs for any intercepted node.
+fn mock_intercept_outputs<T>(
     node: &Node<T>,
     mocks: &BoundaryMocks,
 ) -> Result<HashMap<String, Value>, ExecError> {
     let mut outputs = HashMap::new();
 
     for port in &node.outputs {
-        // Respect explicit mocks if present
-        if mocks.has_mock(&node.id, &port.name) {
-            let mock = mocks.get_mock(&node.id, &port.name);
-            outputs.insert(port.name.0.clone(), mock.value.clone());
-            continue;
+        if !mocks.has_mock(&node.id, &port.name) {
+            return Err(ExecError::new(format!(
+                "missing mock for intercepted node '{}': output port '{}'",
+                node.id.0, port.name.0
+            )));
         }
 
-        if let Some(tool_id) = port.name.0.strip_prefix("tool:") {
-            let tool = get_tool_by_id(tool_id).ok_or_else(|| {
-                ExecError::new(format!(
-                    "Unknown tool '{}' for env node '{}'",
-                    tool_id, node.id.0
-                ))
-            })?;
-            outputs.insert(port.name.0.clone(), ToolHandle::mock(tool).into());
-        } else {
-            let mock = mocks.get_mock(&node.id, &port.name);
-            outputs.insert(port.name.0.clone(), mock.value.clone());
-        }
+        let mock = mocks.get_mock(&node.id, &port.name).ok_or_else(|| {
+            ExecError::new(format!(
+                "missing mock for intercepted node '{}': output port '{}'",
+                node.id.0, port.name.0
+            ))
+        })?;
+        outputs.insert(port.name.0.clone(), mock.value.clone());
     }
 
     Ok(outputs)
@@ -821,16 +925,27 @@ mod tests {
 
     impl TestOp {
         fn produce(port: &str, value: Value) -> Self {
-            Self { port: port.to_string(), value, pass_through: false }
+            Self {
+                port: port.to_string(),
+                value,
+                pass_through: false,
+            }
         }
 
         fn echo() -> Self {
-            Self { port: String::new(), value: Value::Unit, pass_through: true }
+            Self {
+                port: String::new(),
+                value: Value::Unit,
+                pass_through: true,
+            }
         }
     }
 
     impl Executable for TestOp {
-        fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        fn execute(
+            &self,
+            inputs: HashMap<String, Value>,
+        ) -> Result<HashMap<String, Value>, ExecError> {
             if self.pass_through {
                 return Ok(inputs);
             }
@@ -854,7 +969,7 @@ mod tests {
         ));
 
         let log = execute(&dag).unwrap();
-        
+
         assert_eq!(log.entries.len(), 1);
         assert_eq!(log.entries[0].node_id, "A");
         match &log.entries[0].outputs.get("out") {
@@ -877,7 +992,11 @@ mod tests {
 
         // In dry-run mode, transport executor nodes should be intercepted
         let mut mocks = BoundaryMocks::new();
-        mocks.set_value("execute_transport", "response", Value::Str("mock-response".to_string()));
+        mocks.set_value(
+            "execute_transport",
+            "response",
+            Value::Str("mock-response".to_string()),
+        );
 
         let log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).unwrap();
 
@@ -914,7 +1033,7 @@ mod tests {
         // Pure nodes (no TransportRequest input) should never be intercepted
         // Only transport executor nodes should be intercepted
         let mut dag: Dag<Produce> = Dag::new();
-        
+
         // Pure node - prepares a request but doesn't execute it
         dag.add_node(Node::opaque(
             "prepare",
@@ -922,17 +1041,18 @@ mod tests {
             vec![port("request", "TransportRequest")],
             TestOp::produce("request", Value::Str("prepared-request".to_string())),
         ));
-        
+
         // Transport executor - consumes the request (will be intercepted)
         dag.add_node(Node::opaque(
             "execute",
-            vec![port("request", "TransportRequest")],  // This makes it a transport executor
+            vec![port("request", "TransportRequest")], // This makes it a transport executor
             vec![port("response", "TransportResponse")],
             TestOp::produce("response", Value::Str("real-response".to_string())),
         ));
         dag.add_edge(edge("prepare", "request", "execute", "request"));
 
-        let mocks = BoundaryMocks::with_default(Value::Str("mocked".to_string()));
+        let mut mocks = BoundaryMocks::new();
+        mocks.set_value("execute", "response", Value::Str("mocked".to_string()));
         let log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).unwrap();
 
         // prepare is NOT a transport executor — should execute normally
@@ -965,16 +1085,16 @@ mod tests {
         let config = SimConfig::new()
             .with_timing("A", Duration::from_millis(100))
             .with_timing("B", Duration::from_millis(200))
-            .with_mocks(BoundaryMocks::with_default(Value::Str("mocked".to_string())));
+            .with_mocks(BoundaryMocks::new());
 
         let result = simulate(&dag, config).unwrap();
 
         // Check that simulation ran
         assert!(!result.log.entries.is_empty());
-        
+
         // Check timeline
         assert_eq!(result.timeline.len(), 2);
-        
+
         // Check total time is sum of node times (sequential execution)
         assert_eq!(result.total_time, Duration::from_millis(300));
     }
@@ -985,13 +1105,17 @@ mod tests {
         let mut dag: Dag<Produce> = Dag::new();
         dag.add_node(Node::opaque(
             "transport_node",
-            vec![port("request", "TransportRequest")],  // Makes it a transport executor
+            vec![port("request", "TransportRequest")], // Makes it a transport executor
             vec![port("result", "String")],
             TestOp::produce("result", Value::Str("real-value".to_string())),
         ));
 
         let mut mocks = BoundaryMocks::new();
-        mocks.set_value("transport_node", "result", Value::Str("simulated-value".to_string()));
+        mocks.set_value(
+            "transport_node",
+            "result",
+            Value::Str("simulated-value".to_string()),
+        );
 
         let config = SimConfig::new().with_mocks(mocks);
 
@@ -1025,8 +1149,8 @@ mod tests {
         ));
         dag.add_node(Node::opaque(
             "C",
-            vec![list("items", "String")],   // list port: cardinality ZeroOrMore
-            vec![port("items", "String")],    // echo: passes inputs through as outputs
+            vec![list("items", "String")], // list port: cardinality ZeroOrMore
+            vec![port("items", "String")], // echo: passes inputs through as outputs
             TestOp::echo(),
         ));
         // Two edges to the same list port, with explicit indices for ordering
@@ -1037,6 +1161,43 @@ mod tests {
 
         let c_entry = log.get("C").unwrap();
         match c_entry.outputs.get("items") {
+            Some(Value::List(items)) => {
+                assert_eq!(items.len(), 2);
+                assert_eq!(items[0], Value::Str("alpha".to_string()));
+                assert_eq!(items[1], Value::Str("beta".to_string()));
+            }
+            other => panic!("expected Value::List, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_list_output_to_list_input_passes_through() {
+        // A list output feeding a list input should not become a list-of-lists.
+        let mut dag: Dag<TestOp> = Dag::new();
+        dag.add_node(Node::opaque(
+            "A",
+            vec![],
+            vec![list("items", "String")],
+            TestOp::produce(
+                "items",
+                Value::List(vec![
+                    Value::Str("alpha".to_string()),
+                    Value::Str("beta".to_string()),
+                ]),
+            ),
+        ));
+        dag.add_node(Node::opaque(
+            "B",
+            vec![list("items", "String")],
+            vec![list("items", "String")],
+            TestOp::echo(),
+        ));
+        dag.add_edge(edge("A", "items", "B", "items"));
+
+        let log = execute(&dag).unwrap();
+
+        let b_entry = log.get("B").unwrap();
+        match b_entry.outputs.get("items") {
             Some(Value::List(items)) => {
                 assert_eq!(items.len(), 2);
                 assert_eq!(items[0], Value::Str("alpha".to_string()));
@@ -1075,21 +1236,81 @@ mod tests {
     }
 
     #[test]
-    fn test_list_port_zero_edges_not_present() {
-        // A list port with no incoming edges should not inject an entry
-        // (input mocks can fill it in DryRun mode).
+    fn test_scalar_port_fan_in_errors() {
+        // A scalar port with multiple incoming edges should fail.
+        let mut dag: Dag<TestOp> = Dag::new();
+        dag.add_node(Node::opaque(
+            "A",
+            vec![],
+            vec![port("out", "String")],
+            TestOp::produce("out", Value::Str("alpha".to_string())),
+        ));
+        dag.add_node(Node::opaque(
+            "B",
+            vec![],
+            vec![port("out", "String")],
+            TestOp::produce("out", Value::Str("beta".to_string())),
+        ));
+        dag.add_node(Node::opaque(
+            "C",
+            vec![port("data", "String")],
+            vec![port("data", "String")],
+            TestOp::echo(),
+        ));
+        dag.add_edge(edge("A", "out", "C", "data"));
+        dag.add_edge(edge("B", "out", "C", "data"));
+
+        let err = execute(&dag).expect_err("expected scalar fan-in to error");
+        assert!(err
+            .to_string()
+            .contains("scalar input 'C.data' has multiple upstream edges"));
+    }
+
+    #[test]
+    fn test_list_port_zero_edges_defaults_to_empty_list() {
+        // A list port with no incoming edges should default to an empty list.
         let mut dag: Dag<TestOp> = Dag::new();
         dag.add_node(Node::opaque(
             "A",
             vec![list("items", "String")],
-            vec![port("out", "String")],
-            TestOp::produce("out", Value::Str("ok".to_string())),
+            vec![list("items", "String")],
+            TestOp::echo(),
         ));
 
         let log = execute(&dag).unwrap();
 
         let a_entry = log.get("A").unwrap();
-        assert_eq!(a_entry.outputs.get("out"), Some(&Value::Str("ok".to_string())));
+        match a_entry.outputs.get("items") {
+            Some(Value::List(items)) => assert!(items.is_empty()),
+            other => panic!("expected empty Value::List, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_optional_to_list_skips_unit() {
+        // Optional output (Unit) feeding a list input should not insert Unit.
+        let mut dag: Dag<TestOp> = Dag::new();
+        dag.add_node(Node::opaque(
+            "A",
+            vec![],
+            vec![optional("item", "String")],
+            TestOp::produce("item", Value::Unit),
+        ));
+        dag.add_node(Node::opaque(
+            "B",
+            vec![list("items", "String")],
+            vec![list("items", "String")],
+            TestOp::echo(),
+        ));
+        dag.add_edge(edge("A", "item", "B", "items"));
+
+        let log = execute(&dag).unwrap();
+
+        let b_entry = log.get("B").unwrap();
+        match b_entry.outputs.get("items") {
+            Some(Value::List(items)) => assert!(items.is_empty()),
+            other => panic!("expected empty Value::List, got {:?}", other),
+        }
     }
 
     #[test]
@@ -1102,12 +1323,21 @@ mod tests {
                 ResourceBudget::unlimited()
                     .with_memory(1024 * 1024)
                     .with_cpu(5000)
-                    .with_concurrency(4)
+                    .with_concurrency(4),
             );
 
-        assert_eq!(config.node_duration(&NodeId::from("node1")), Duration::from_secs(1));
-        assert_eq!(config.node_duration(&NodeId::from("node2")), Duration::from_secs(2));
-        assert_eq!(config.node_duration(&NodeId::from("unknown")), Duration::ZERO);
+        assert_eq!(
+            config.node_duration(&NodeId::from("node1")),
+            Duration::from_secs(1)
+        );
+        assert_eq!(
+            config.node_duration(&NodeId::from("node2")),
+            Duration::from_secs(2)
+        );
+        assert_eq!(
+            config.node_duration(&NodeId::from("unknown")),
+            Duration::ZERO
+        );
         assert_eq!(config.random_seed, Some(42));
         assert_eq!(config.resources.max_memory, Some(1024 * 1024));
         assert_eq!(config.resources.max_cpu_ms, Some(5000));

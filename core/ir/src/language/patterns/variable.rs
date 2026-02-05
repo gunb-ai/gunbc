@@ -12,8 +12,8 @@
 //! - `expanded`: String - Expanded template
 
 use crate::dag::{Dag, Port};
-use crate::node::Node;
 use crate::language::LanguageOp;
+use crate::node::Node;
 use std::collections::HashMap;
 
 /// Variable syntax styles.
@@ -61,10 +61,7 @@ pub fn build_variable_syntax_subdag() -> Node<LanguageOp> {
     ));
 
     // Create the SubDag node with interface
-    Node::subdag(
-        "variable_syntax",
-        inner,
-    )
+    Node::subdag("variable_syntax", inner)
 }
 
 /// Expand variables in a template string.
@@ -159,10 +156,7 @@ mod tests {
         let mut vars = HashMap::new();
         vars.insert("NAME".to_string(), "test".to_string());
 
-        assert_eq!(
-            expand_variables("${NAME}.txt", &vars),
-            "test.txt"
-        );
+        assert_eq!(expand_variables("${NAME}.txt", &vars), "test.txt");
     }
 
     #[test]

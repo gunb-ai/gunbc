@@ -24,12 +24,15 @@ use crate::testgen::analyze::{analyze_dag, DagAnalysis};
 use crate::testgen::obligation::{collect_obligations, DischargeStatus, Obligation, ObligationSet};
 use crate::testgen::render::TestRenderer;
 use crate::testgen::render_rust::RustRenderer;
-use crate::testgen::test_ir::{Assert, Expr};
-use gunbc_ir::language::traits::comment::{generated_header, RUST_COMMENTS};
-use gunbc_ir::language::NamingCase;
+use crate::testgen::test_ir::{
+    Assert, Expr, HelperFn, Import, Stmt, TestFile, TestFn, TestSection,
+};
 use gunbc_ir::boundary_label;
-use gunbc_ir::{Dag, Value, ValueExpr};
+use gunbc_ir::language::NamingCase;
+use gunbc_ir::{Cardinality, Dag, NodeId, PortName, ValueExpr};
 use gunbc_test::{MockSpec, OutputMatcher};
+use serde_json::Value as JsonValue;
+use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 
 /// Configuration for test generation.
@@ -48,6 +51,7 @@ use std::hash::{Hash, Hasher};
 /// - Resource hygiene (connectivity, ownership, conflicts)
 /// - Resource simulation (MockSpec-based acquisition/timeout)
 /// - Node I/O example tests (when MockSpec has node_examples)
+/// - Windowed segment tests (contiguous sub-DAG slices)
 #[derive(Debug, Clone)]
 pub struct TestConfig {
     /// Generate Bucket A tests (execution semantics)
@@ -66,6 +70,8 @@ pub struct TestConfig {
     pub flow_tests: bool,
     /// Generate per-node I/O example tests (from MockSpec.node_examples)
     pub example_tests: bool,
+    /// Max window size for windowed tests (None = no limit)
+    pub window_max_nodes: Option<usize>,
     /// Test module visibility
     pub visibility: String,
 }
@@ -81,6 +87,7 @@ impl Default for TestConfig {
             chain_tests: true,
             flow_tests: false,
             example_tests: true,
+            window_max_nodes: Some(5),
             visibility: "pub".to_string(),
         }
     }
@@ -96,9 +103,11 @@ pub struct TestGenerator<'a, T> {
     mock_spec: Option<MockSpec>,
     /// Function path to call for MockSpec (e.g., "crate::ci::graph_mock::ci_mock_spec()")
     mock_spec_fn: Option<String>,
+    /// Function path to call for declared signature (e.g., "crate::makegen_signature()")
+    signature_fn: Option<String>,
 }
 
-impl<'a, T> TestGenerator<'a, T> {
+impl<'a, T: Clone> TestGenerator<'a, T> {
     /// Create a new test generator for a DAG.
     pub fn new(dag: &'a Dag<T>) -> Self {
         Self {
@@ -106,6 +115,7 @@ impl<'a, T> TestGenerator<'a, T> {
             config: TestConfig::default(),
             mock_spec: None,
             mock_spec_fn: None,
+            signature_fn: None,
         }
     }
 
@@ -127,6 +137,12 @@ impl<'a, T> TestGenerator<'a, T> {
     /// that calls the specified function to get the MockSpec at test time.
     pub fn with_mock_spec_fn(mut self, path: impl Into<String>) -> Self {
         self.mock_spec_fn = Some(path.into());
+        self
+    }
+
+    /// Set the signature function path (e.g., "crate::ci::ci_signature()").
+    pub fn with_signature_fn(mut self, path: impl Into<String>) -> Self {
+        self.signature_fn = Some(path.into());
         self
     }
 
@@ -236,9 +252,17 @@ impl<'a, T> TestGenerator<'a, T> {
                      ```",
                     module_name,
                     uncovered.len(),
-                    uncovered.iter().map(|id| format!("  - {}", id)).collect::<Vec<_>>().join("\n"),
+                    uncovered
+                        .iter()
+                        .map(|id| format!("  - {}", id))
+                        .collect::<Vec<_>>()
+                        .join("\n"),
                     module_name,
-                    " ", " ", " ", " ", " ",
+                    " ",
+                    " ",
+                    " ",
+                    " ",
+                    " ",
                     module_name,
                     " ",
                 );
@@ -247,361 +271,434 @@ impl<'a, T> TestGenerator<'a, T> {
 
         let obligations = collect_obligations(self.dag, None, None);
 
-        // Generate the test body first so we can hash it for staleness detection.
-        let body = self.generate_test_body(&analysis, &obligations, graph_builder_fn);
+        let mut file = self.generate_test_file(&analysis, &obligations, graph_builder_fn);
 
-        // Compute content hash of the body for staleness detection.
+        // Render body (no header) to compute content hash.
+        let body = RustRenderer.render_file(&file);
         let content_hash = {
             let mut hasher = std::collections::hash_map::DefaultHasher::new();
             body.hash(&mut hasher);
             format!("{:016x}", hasher.finish())
         };
 
-        // Build the header with the content hash embedded.
-        let mut code = String::new();
-        let prefix = RUST_COMMENTS.line_prefix;
-        code.push_str(&format!(
-            "{} Generated tests for {} DAG.\n",
-            prefix, module_name
-        ));
-        code.push_str(&format!("{}\n", prefix));
-        code.push_str(&generated_header(
-            &gunbc_ir::cargo::name("testgen"),
-            "make testgen",
-            prefix,
-        ));
-
-        // Obligation summary as header comment
         let stats = obligations.stats();
-        code.push_str(&format!(
-            "{} Obligations: {}\n",
-            prefix, stats
-        ));
-        code.push_str(&format!(
-            "{} Proven by construction: acyclicity, type compatibility, cardinality satisfaction.\n",
-            prefix
-        ));
-        code.push_str(&format!(
-            "{} Content-Hash: {}\n",
-            prefix, content_hash
-        ));
-        code.push_str("\n\n");
+        let generator = gunbc_ir::cargo::name("testgen");
 
-        code.push_str(&body);
-        code
+        file.header = vec![
+            format!("Generated tests for {} DAG.", module_name),
+            String::new(),
+            format!("Generated by {}", generator),
+            "DO NOT EDIT - regenerate with: make testgen".to_string(),
+            format!("Obligations: {}", stats),
+            "Proven by construction: acyclicity, type compatibility, cardinality satisfaction."
+                .to_string(),
+            format!("Content-Hash: {}", content_hash),
+        ];
+
+        RustRenderer.render_file(&file)
     }
 
-    /// Generate the test body (everything after the header).
-    ///
-    /// Separated from `generate_test_module` so we can hash the body
-    /// before emitting the header (which contains the hash).
-    fn generate_test_body(
+    /// Generate the full test file (header excluded).
+    fn generate_test_file(
         &self,
         analysis: &DagAnalysis,
         obligations: &ObligationSet,
         graph_builder_fn: &str,
-    ) -> String {
-        let mut code = String::new();
+    ) -> TestFile {
+        let mut file = TestFile {
+            header: Vec::new(),
+            imports: Vec::new(),
+            helpers: Vec::new(),
+            sections: Vec::new(),
+        };
 
         // Imports
-        code.push_str("use gunbc_exec::{execute_with_mode, BoundaryMocks, ExecutionMode};\n");
-        code.push_str("use gunbc_ir::{detect_boundaries, Cardinality, Value};\n");
-
-        // Import MockSpec if we have a mock_spec_fn (need it for helper function)
-        if self.mock_spec_fn.is_some() {
-            code.push_str(
-                "use gunbc_test::{assert_boundary_mockable, assert_types_compatible, MockSpec};\n",
-            );
+        if self.mock_spec_fn.is_some() && self.config.window_max_nodes.unwrap_or(usize::MAX) >= 2 {
+            file.imports.push(Import {
+                path: vec!["gunbc_exec".to_string()],
+                items: vec![
+                    "execute_with_mode".to_string(),
+                    "lower".to_string(),
+                    "BoundaryMocks".to_string(),
+                    "ExecutionMode".to_string(),
+                ],
+            });
         } else {
-            code.push_str(
-                "use gunbc_test::{assert_boundary_mockable, assert_types_compatible, default_mocks};\n",
-            );
+            file.imports.push(Import {
+                path: vec!["gunbc_exec".to_string()],
+                items: vec![
+                    "execute_with_mode".to_string(),
+                    "BoundaryMocks".to_string(),
+                    "ExecutionMode".to_string(),
+                ],
+            });
+        }
+
+        file.imports.push(Import {
+            path: vec!["gunbc_ir".to_string()],
+            items: vec![
+                "detect_boundaries".to_string(),
+                "Cardinality".to_string(),
+                "Value".to_string(),
+            ],
+        });
+
+        if self.mock_spec_fn.is_some() {
+            file.imports.push(Import {
+                path: vec!["gunbc_test".to_string()],
+                items: vec![
+                    "assert_boundary_mockable".to_string(),
+                    "assert_types_compatible".to_string(),
+                    "MockSpec".to_string(),
+                ],
+            });
+        } else {
+            file.imports.push(Import {
+                path: vec!["gunbc_test".to_string()],
+                items: vec![
+                    "assert_boundary_mockable".to_string(),
+                    "assert_types_compatible".to_string(),
+                ],
+            });
+        }
+
+        if self.mock_spec_fn.is_some() && self.config.window_max_nodes.unwrap_or(usize::MAX) >= 2 {
+            file.imports.push(Import {
+                path: vec!["gunbc_test".to_string()],
+                items: vec![
+                    "apply_window_inputs".to_string(),
+                    "assert_window_outputs".to_string(),
+                    "window_subdag".to_string(),
+                    "Window".to_string(),
+                ],
+            });
         }
 
         if self.config.chain_tests && self.mock_spec.is_some() {
-            code.push_str("use gunbc_test::{validate_chain, InputConstraint};\n");
+            file.imports.push(Import {
+                path: vec!["gunbc_test".to_string()],
+                items: vec!["validate_chain".to_string(), "InputConstraint".to_string()],
+            });
         }
+
         if self.config.resource_tests
             && self
                 .mock_spec
                 .as_ref()
                 .is_some_and(|s| !s.resource_mocks.resources.is_empty())
         {
-            code.push_str("use gunbc_test::{ResourceAcquireResult, ResourceSimulation};\n");
+            file.imports.push(Import {
+                path: vec!["gunbc_test".to_string()],
+                items: vec![
+                    "ResourceAcquireResult".to_string(),
+                    "ResourceSimulation".to_string(),
+                ],
+            });
         }
-        code.push('\n');
 
-        // Generate mock_spec() helper function if we have a mock_spec_fn path
+        // Helpers
         if let Some(mock_spec_fn) = &self.mock_spec_fn {
-            code.push_str("/// Get the MockSpec for this DAG.\n");
-            code.push_str("fn mock_spec() -> MockSpec {\n");
-            code.push_str(&format!("    {}\n", mock_spec_fn));
-            code.push_str("}\n\n");
+            file.helpers.push(HelperFn {
+                name: "mock_spec".to_string(),
+                return_type: "MockSpec".to_string(),
+                body: vec![Stmt::tail(Expr::var(mock_spec_fn))],
+            });
         }
 
-        // ===================================================================
+        // Signature validation (optional)
+        if let Some(signature_fn) = &self.signature_fn {
+            let test = TestFn {
+                name: "test_signature_matches_dag".to_string(),
+                doc: vec!["Declared signature matches the DAG inputs/outputs.".to_string()],
+                body: vec![
+                    Stmt::let_bind("dag", Expr::var(graph_builder_fn)),
+                    Stmt::let_bind("sig", Expr::var(signature_fn)),
+                    Stmt::Expr(
+                        Expr::var("sig")
+                            .method("validate", vec![Expr::var("dag").ref_of()])
+                            .method(
+                                "expect",
+                                vec![Expr::Str("signature should match DAG".into())],
+                            ),
+                    ),
+                ],
+            };
+            file.sections.push(TestSection {
+                title: "Signature Validation".to_string(),
+                notes: Vec::new(),
+                tests: vec![test],
+            });
+        }
+
         // Invalid obligations — structural errors surfaced as failing tests
-        // ===================================================================
         let invalids = obligations.invalids();
         if !invalids.is_empty() {
-            code.push_str("// =========================================================================\n");
-            code.push_str("// INVALID OBLIGATIONS — structural errors detected during analysis\n");
-            code.push_str("//\n");
-            code.push_str("// These are NOT runtime tests. They surface provably wrong graph structure.\n");
-            code.push_str("// Fix the underlying issue rather than deleting these tests.\n");
-            code.push_str("// =========================================================================\n\n");
-
+            let mut tests = Vec::new();
             for (i, obligation) in invalids.iter().enumerate() {
                 let reason = match &obligation.status {
                     DischargeStatus::Invalid { reason } => reason.as_str(),
                     _ => "unknown",
                 };
-                code.push_str(&format!(
-                    "/// INVALID: {}\n",
-                    obligation.reason
-                ));
-                code.push_str("#[test]\n");
-                code.push_str(&format!(
-                    "fn test_invalid_obligation_{}() {{\n",
-                    i
-                ));
-                code.push_str(&format!(
-                    "    panic!(\"Structural error: {}\");\n",
-                    reason.replace('\"', "\\\"")
-                ));
-                code.push_str("}\n\n");
+                tests.push(TestFn {
+                    name: format!("test_invalid_obligation_{}", i),
+                    doc: vec![format!("INVALID: {}", obligation.reason)],
+                    body: vec![Stmt::Expr(Expr::call(
+                        "panic!",
+                        vec![Expr::Str(format!("Structural error: {}", reason))],
+                    ))],
+                });
+            }
+            file.sections.push(TestSection {
+                title: "INVALID OBLIGATIONS — structural errors detected during analysis"
+                    .to_string(),
+                notes: Vec::new(),
+                tests,
+            });
+        }
+
+        if self.config.execution_tests {
+            if let Some(section) =
+                self.build_execution_section(analysis, obligations, graph_builder_fn)
+            {
+                file.sections.push(section);
             }
         }
 
-        // ===================================================================
-        // Bucket A: Execution Semantics
-        // ===================================================================
-        if self.config.execution_tests {
-            code.push_str(&self.generate_execution_tests(
-                analysis,
-                obligations,
-                graph_builder_fn,
-            ));
-        }
-
-        // ===================================================================
-        // Bucket B: Contract Obligations (only for Unknown entailments)
-        // ===================================================================
         if self.config.contract_tests {
-            code.push_str(&self.generate_contract_tests(analysis, obligations, graph_builder_fn));
+            let sections = self.build_contract_sections(analysis, obligations, graph_builder_fn);
+            file.sections.extend(sections);
         }
 
-        // ===================================================================
-        // Bucket C: Scenario Coverage
-        // ===================================================================
         if self.config.scenario_tests {
-            code.push_str(&self.generate_scenario_tests(
-                analysis,
-                obligations,
-                graph_builder_fn,
-            ));
+            if let Some(section) =
+                self.build_scenario_section(analysis, obligations, graph_builder_fn)
+            {
+                file.sections.push(section);
+            }
         }
 
-        // ===================================================================
-        // Bucket D: Resource Hygiene + Simulation
-        // ===================================================================
         if self.config.resource_tests {
-            code.push_str(&self.generate_resource_tests(analysis, obligations));
+            let sections = self.build_resource_sections(analysis, obligations);
+            file.sections.extend(sections);
         }
-
-        // ===================================================================
-        // Legacy: individual boundary tests, chain validation, flow tests
-        // ===================================================================
-
-        // NOTE: Type and cardinality compatibility are verified at compile time
-        // by validate_dag(), so we don't generate redundant tests for those.
-        // The compiler proves: types match, cardinalities satisfy, no cycles.
 
         if self.config.boundary_tests {
-            code.push_str(&self.generate_boundary_tests(analysis, graph_builder_fn));
+            if let Some(section) = self.build_boundary_section(analysis, graph_builder_fn) {
+                file.sections.push(section);
+            }
         }
 
         if self.config.chain_tests {
-            code.push_str(&self.generate_chain_tests(analysis));
+            if let Some(section) = self.build_chain_section(analysis) {
+                file.sections.push(section);
+            }
         }
 
         if self.config.flow_tests {
-            code.push_str(&self.generate_flow_tests(analysis, graph_builder_fn));
+            if let Some(section) = self.build_flow_section(analysis, graph_builder_fn) {
+                file.sections.push(section);
+            }
         }
 
-        // ===================================================================
-        // Node I/O Example Tests (from MockSpec.node_examples)
-        // ===================================================================
+        if self.mock_spec_fn.is_some() && self.config.window_max_nodes.unwrap_or(usize::MAX) >= 2 {
+            if let Some(section) = self.build_window_section(graph_builder_fn) {
+                file.sections.push(section);
+            }
+        }
+
         if self.config.example_tests {
-            code.push_str(&self.generate_node_example_tests(graph_builder_fn));
+            if let Some(section) = self.build_node_example_section(graph_builder_fn) {
+                file.sections.push(section);
+            }
         }
 
-        code
+        file
     }
 
     // =======================================================================
     // Bucket A: Execution Semantics
     // =======================================================================
 
-    fn generate_execution_tests(
+    fn build_execution_section(
         &self,
-        _analysis: &DagAnalysis,
+        analysis: &DagAnalysis,
         obligations: &ObligationSet,
         graph_builder_fn: &str,
-    ) -> String {
+    ) -> Option<TestSection> {
         let bucket = obligations.bucket_a();
         if bucket.is_empty() {
-            return String::new();
+            return None;
         }
 
-        let mut code = String::new();
-        code.push_str(
-            "// ============================================================================\n",
-        );
-        code.push_str("// Bucket A: Execution Semantics\n");
-        code.push_str("// Proves: executor/boundary model correctness (runtime-only)\n");
-        code.push_str(
-            "// ============================================================================\n\n",
-        );
+        let mut tests = Vec::new();
+        let mut notes =
+            vec!["Proves: executor/boundary model correctness (runtime-only)".to_string()];
 
-        // A.1: DryRun completion
+        let mocks_expr = self.dryrun_mocks_expr(analysis, "execution tests");
+
         if bucket
             .iter()
             .any(|o| matches!(o.kind, Obligation::DryRunCompletion))
         {
-            let mocks_expr = if self.mock_spec_fn.is_some() {
-                "mock_spec().to_boundary_mocks()"
-            } else {
-                "default_mocks()"
-            };
-            code.push_str("/// DryRun execution completes without crash.\n");
-            code.push_str("///\n");
-            code.push_str("/// This is the minimal smoke test: build the DAG, run it in DryRun\n");
-            code.push_str("/// with default mocks, and verify it completes successfully.\n");
-            code.push_str("#[test]\n");
-            code.push_str("fn test_dryrun_completion() {\n");
-            code.push_str(&format!("    let dag = {};\n", graph_builder_fn));
-            code.push_str(&format!(
-                "    let log = execute_with_mode(&dag, ExecutionMode::DryRun({}))\n",
-                mocks_expr
-            ));
-            code.push_str("        .expect(\"DryRun execution should complete without crash\");\n");
-            code.push_str("    assert!(!log.entries.is_empty(), \"execution should produce log entries\");\n");
-            code.push_str("}\n\n");
+            let exec = Expr::call(
+                "execute_with_mode",
+                vec![
+                    Expr::var("dag").ref_of(),
+                    Expr::call("ExecutionMode::DryRun", vec![mocks_expr.clone()]),
+                ],
+            )
+            .method(
+                "expect",
+                vec![Expr::Str(
+                    "DryRun execution should complete without crash".into(),
+                )],
+            );
+
+            tests.push(TestFn {
+                name: "test_dryrun_completion".to_string(),
+                doc: vec![
+                    "DryRun execution completes without crash.".to_string(),
+                    String::new(),
+                    "This is the minimal smoke test: build the DAG, run it in DryRun".to_string(),
+                    "with explicit boundary mocks, and verify it completes successfully."
+                        .to_string(),
+                ],
+                body: vec![
+                    Stmt::let_bind("dag", Expr::var(graph_builder_fn)),
+                    Stmt::let_bind("log", exec),
+                    Stmt::Assert(Assert::True {
+                        expr: Expr::var("log")
+                            .field("entries")
+                            .method("is_empty", vec![])
+                            .logical_not(),
+                        message: "execution should produce log entries".to_string(),
+                    }),
+                ],
+            });
         }
 
-        // A.2: Transport interception
         let transport_obligations: Vec<_> = bucket
             .iter()
             .filter(|o| matches!(o.kind, Obligation::TransportInterceptable { .. }))
             .collect();
 
         if !transport_obligations.is_empty() {
-            let mocks_expr = if self.mock_spec_fn.is_some() {
-                "mock_spec().to_boundary_mocks()"
-            } else {
-                "default_mocks()"
-            };
-            code.push_str("/// All transport executors are intercepted in DryRun.\n");
-            code.push_str("///\n");
-            code.push_str(
-                "/// Proves: every transport executor is interceptable; DryRun won't\n",
-            );
-            code.push_str("/// accidentally perform real I/O.\n");
-            code.push_str("#[test]\n");
-            code.push_str("fn test_transport_interception() {\n");
-            code.push_str(&format!("    let dag = {};\n", graph_builder_fn));
-            code.push_str(&format!(
-                "    let result = assert_boundary_mockable(&dag, {});\n",
-                mocks_expr
-            ));
-            code.push_str(
-                "    assert!(result.is_ok(), \"All transports should be interceptable: {:?}\", result.error);\n",
-            );
+            let mut body = vec![
+                Stmt::let_bind("dag", Expr::var(graph_builder_fn)),
+                Stmt::let_bind(
+                    "result",
+                    Expr::call(
+                        "assert_boundary_mockable",
+                        vec![Expr::var("dag").ref_of(), mocks_expr],
+                    ),
+                ),
+                Stmt::Expr(Expr::call(
+                    "assert!",
+                    vec![
+                        Expr::var("result").method("is_ok", vec![]),
+                        Expr::Str("All transports should be interceptable: {:?}".into()),
+                        Expr::var("result").field("error"),
+                    ],
+                )),
+            ];
 
             for obligation in &transport_obligations {
                 if let Obligation::TransportInterceptable { node_id } = &obligation.kind {
-                    code.push_str(&format!(
-                        "    assert!(result.boundary_nodes.iter().any(|n| n == \"{}\"),\n",
-                        node_id.0
-                    ));
-                    code.push_str(&format!(
-                        "        \"transport executor '{}' should be in intercepted list\");\n",
-                        node_id.0
-                    ));
+                    let contains = Expr::var("result")
+                        .field("boundary_nodes")
+                        .method("iter", vec![])
+                        .method(
+                            "any",
+                            vec![Expr::Closure {
+                                args: vec!["n".to_string()],
+                                body: Box::new(
+                                    Expr::var("n").bin_op("==", Expr::Str(node_id.0.clone())),
+                                ),
+                            }],
+                        );
+
+                    body.push(Stmt::Assert(Assert::True {
+                        expr: contains,
+                        message: format!(
+                            "transport executor '{}' should be in intercepted list",
+                            node_id.0
+                        ),
+                    }));
                 }
             }
 
-            code.push_str("}\n\n");
+            tests.push(TestFn {
+                name: "test_transport_interception".to_string(),
+                doc: vec![
+                    "All transport executors are intercepted in DryRun.".to_string(),
+                    String::new(),
+                    "Proves: every transport executor is interceptable; DryRun won't".to_string(),
+                    "accidentally perform real I/O.".to_string(),
+                ],
+                body,
+            });
         }
 
-        // A.3: Determinism — emit as a structural comment + future test placeholder
-        let determinism_count = bucket
+        let determinism_obligations: Vec<_> = bucket
             .iter()
             .filter(|o| matches!(o.kind, Obligation::PureNodeDeterminism { .. }))
-            .count();
-
-        if determinism_count > 0 {
-            code.push_str(&format!(
-                "// Determinism obligations: {} pure nodes.\n",
-                determinism_count
+            .collect();
+        if !determinism_obligations.is_empty() {
+            notes.push(String::new());
+            notes.push(format!(
+                "Determinism obligations: {} pure nodes.",
+                determinism_obligations.len()
             ));
-            code.push_str("// To enable per-node determinism tests, use `execute_single_node`\n");
-            code.push_str("// from gunbc_exec with baseline-derived inputs (Tier 1 infra).\n");
-            for obligation in &bucket {
+            notes.push(
+                "To enable per-node determinism tests, use `execute_single_node`".to_string(),
+            );
+            notes.push("from gunbc_exec with baseline-derived inputs (Tier 1 infra).".to_string());
+            for obligation in determinism_obligations {
                 if let Obligation::PureNodeDeterminism { node_id } = &obligation.kind {
-                    code.push_str(&format!(
-                        "// - '{}': same inputs → same outputs\n",
-                        node_id.0
-                    ));
+                    notes.push(format!("- '{}': same inputs → same outputs", node_id.0));
                 }
             }
-            code.push('\n');
         }
 
-        code
+        Some(TestSection {
+            title: "Bucket A: Execution Semantics".to_string(),
+            notes,
+            tests,
+        })
     }
 
     // =======================================================================
     // Bucket B: Contract Obligations
     // =======================================================================
 
-    fn generate_contract_tests(
+    fn build_contract_sections(
         &self,
         analysis: &DagAnalysis,
         obligations: &ObligationSet,
         graph_builder_fn: &str,
-    ) -> String {
+    ) -> Vec<TestSection> {
         let bucket = obligations.bucket_b();
         if bucket.is_empty() {
-            return String::new();
+            return Vec::new();
         }
 
-        let mut code = String::new();
-        code.push_str(
-            "// ============================================================================\n",
-        );
-        code.push_str("// Bucket B: Contract Obligations\n");
-        code.push_str("// Tests for semantic compatibility when proof engine returns Unknown.\n");
-        code.push_str(
-            "// ============================================================================\n\n",
-        );
+        let mut notes =
+            vec!["Tests for semantic compatibility when proof engine returns Unknown.".to_string()];
 
-        // B.1: Edge predicate entailment (Unknown only)
         let entailment_obligations: Vec<_> = bucket
             .iter()
             .filter(|o| matches!(o.kind, Obligation::EdgePredicateEntailment { .. }))
             .collect();
-
         if !entailment_obligations.is_empty() {
-            code.push_str(&format!(
-                "// {} edge predicate entailment obligations (Unknown).\n",
+            notes.push(format!(
+                "{} edge predicate entailment obligations (Unknown).",
                 entailment_obligations.len()
             ));
-            code.push_str(
-                "// Full entailment tests require contract tower witnesses (Tier 3 infra).\n",
+            notes.push(
+                "Full entailment tests require contract tower witnesses (Tier 3 infra)."
+                    .to_string(),
             );
-            code.push_str("// For now, these are documented as obligations:\n");
+            notes.push("For now, these are documented as obligations:".to_string());
             for obligation in &entailment_obligations {
                 if let Obligation::EdgePredicateEntailment {
                     from_node,
@@ -611,73 +708,61 @@ impl<'a, T> TestGenerator<'a, T> {
                     ..
                 } = &obligation.kind
                 {
-                    code.push_str(&format!(
-                        "// - {}.{} → {}.{}: {}\n",
+                    notes.push(format!(
+                        "- {}.{} → {}.{}: {}",
                         from_node.0, from_port.0, to_node.0, to_port.0, obligation.reason
                     ));
                 }
             }
-            code.push('\n');
+            notes.push(String::new());
         }
 
-        // B.2: Node contract compliance
         let compliance_obligations: Vec<_> = bucket
             .iter()
             .filter(|o| matches!(o.kind, Obligation::NodeContractCompliance { .. }))
             .collect();
-
         if !compliance_obligations.is_empty() {
-            code.push_str(&format!(
-                "// {} node contract compliance obligations.\n",
+            notes.push(format!(
+                "{} node contract compliance obligations.",
                 compliance_obligations.len()
             ));
-            code.push_str(
-                "// Per-node compliance tests use `execute_single_node` (Tier 1 infra).\n",
+            notes.push(
+                "Per-node compliance tests use `execute_single_node` (Tier 1 infra).".to_string(),
             );
             for obligation in &compliance_obligations {
                 if let Obligation::NodeContractCompliance { node_id } = &obligation.kind {
-                    code.push_str(&format!(
-                        "// - '{}': valid inputs → valid outputs\n",
-                        node_id.0
-                    ));
+                    notes.push(format!("- '{}': valid inputs → valid outputs", node_id.0));
                 }
             }
-            code.push('\n');
         }
 
-        // B.3: Cardinality boundary coverage
-        code.push_str(&self.generate_cardinality_coverage_tests(analysis, obligations, graph_builder_fn));
+        let mut tests = Vec::new();
+        tests.extend(self.build_cardinality_coverage_tests(
+            analysis,
+            obligations,
+            graph_builder_fn,
+        ));
+        tests.extend(self.build_coercion_coverage_tests(analysis, obligations, graph_builder_fn));
 
-        // B.4: Coercion coverage
-        code.push_str(&self.generate_coercion_coverage_tests(obligations, graph_builder_fn));
-
-        code
+        vec![TestSection {
+            title: "Bucket B: Contract Obligations".to_string(),
+            notes,
+            tests,
+        }]
     }
 
-    /// Generate cardinality boundary coverage tests.
-    ///
-    /// For each boundary port with non-trivial cardinality (more than one test case),
-    /// generates a test per cardinality case (Empty, One, Many) that exercises the
-    /// DAG with mock values at that cardinality boundary.
-    fn generate_cardinality_coverage_tests(
+    fn build_cardinality_coverage_tests(
         &self,
         analysis: &DagAnalysis,
         obligations: &ObligationSet,
         graph_builder_fn: &str,
-    ) -> String {
-        let card_obligations: Vec<_> = obligations
-            .cardinality_obligations();
-
+    ) -> Vec<TestFn> {
+        let card_obligations = obligations.cardinality_obligations();
         if card_obligations.is_empty() {
-            return String::new();
+            return Vec::new();
         }
 
-        let mut code = String::new();
-        code.push_str("// --- B.3: Cardinality Boundary Coverage ---\n");
-        code.push_str("//\n");
-        code.push_str("// These tests exercise boundary ports at different cardinality levels\n");
-        code.push_str("// (empty, one, many) to verify runtime behavior across the interval.\n\n");
-
+        let mut tests = Vec::new();
         for obligation in &card_obligations {
             if let Obligation::CardinalityCoverage {
                 node_id,
@@ -686,18 +771,20 @@ impl<'a, T> TestGenerator<'a, T> {
                 boundary_values,
             } = &obligation.kind
             {
-                // Look up the port's type from the analysis (structured data)
-                // rather than ad-hoc DAG iteration
                 let type_id = analysis
                     .port_cardinalities
                     .iter()
                     .find(|p| p.node_id == node_id.0 && p.port_name == port_name.0 && !p.is_input)
                     .map(|p| p.type_id.0.as_str())
-                    .unwrap_or("String");
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "missing output port type for {}.{} in analysis; cannot generate cardinality coverage tests",
+                            node_id.0, port_name.0
+                        )
+                    });
 
                 for &count in boundary_values {
                     let label = boundary_label(count);
-
                     let test_name = format!(
                         "test_cardinality_{}_{}_{}_{}",
                         NamingCase::SnakeCase.apply(&node_id.0),
@@ -706,68 +793,70 @@ impl<'a, T> TestGenerator<'a, T> {
                         count
                     );
 
-                    let mock_value = boundary_count_mock_value(count, type_id);
+                    let mock_value = boundary_count_mock_value(count, type_id, *cardinality);
+                    let mocks_expr = self.dryrun_mocks_expr(analysis, "cardinality coverage tests");
 
-                    code.push_str(&format!(
-                        "/// Cardinality coverage: {}.{} with {} element(s) (cardinality: {}).\n",
-                        node_id.0, port_name.0, count, cardinality
-                    ));
-                    code.push_str("///\n");
-                    code.push_str(&format!(
-                        "/// Proves: DAG handles count={} ({}) for boundary port {}.{}.\n",
-                        count, label, node_id.0, port_name.0
-                    ));
-                    code.push_str("#[test]\n");
-                    code.push_str(&format!("fn {}() {{\n", test_name));
-                    code.push_str(&format!("    let dag = {};\n", graph_builder_fn));
-
-                    let mocks_init = if self.mock_spec_fn.is_some() {
-                        "mock_spec().to_boundary_mocks()"
-                    } else {
-                        "default_mocks()"
-                    };
-                    code.push_str(&format!("    let mut mocks = {};\n", mocks_init));
-                    code.push_str(&format!(
-                        "    mocks.set_value(\"{}\", \"{}\", {});\n",
-                        node_id.0, port_name.0, mock_value
-                    ));
-                    code.push_str(
-                        "    let _log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks))\n",
+                    let exec = Expr::call(
+                        "execute_with_mode",
+                        vec![
+                            Expr::var("dag").ref_of(),
+                            Expr::call("ExecutionMode::DryRun", vec![Expr::var("mocks")]),
+                        ],
+                    )
+                    .method(
+                        "expect",
+                        vec![Expr::Str(format!(
+                            "cardinality count={} ({}) should not crash",
+                            count, label
+                        ))],
                     );
-                    code.push_str(&format!(
-                        "        .expect(\"cardinality count={} ({}) should not crash\");\n",
-                        count, label
-                    ));
-                    code.push_str("}\n\n");
+
+                    tests.push(TestFn {
+                        name: test_name,
+                        doc: vec![
+                            format!(
+                                "Cardinality coverage: {}.{} with {} element(s) (cardinality: {}).",
+                                node_id.0, port_name.0, count, cardinality
+                            ),
+                            String::new(),
+                            format!(
+                                "Proves: DAG handles count={} ({}) for boundary port {}.{}.",
+                                count, label, node_id.0, port_name.0
+                            ),
+                        ],
+                        body: vec![
+                            Stmt::let_bind("dag", Expr::var(graph_builder_fn)),
+                            Stmt::let_mut("mocks", mocks_expr),
+                            Stmt::Expr(Expr::var("mocks").method(
+                                "set_value",
+                                vec![
+                                    Expr::Str(node_id.0.clone()),
+                                    Expr::Str(port_name.0.clone()),
+                                    Expr::Value(mock_value),
+                                ],
+                            )),
+                            Stmt::let_bind("_log", exec),
+                        ],
+                    });
                 }
             }
         }
 
-        code
+        tests
     }
 
-    /// Generate coercion coverage tests.
-    ///
-    /// For each edge with an implicit cardinality coercion, generates a test
-    /// that exercises the DAG to verify the engine correctly transforms values
-    /// at the coercion point (e.g., wrapping scalars in lists).
-    fn generate_coercion_coverage_tests(
+    fn build_coercion_coverage_tests(
         &self,
+        analysis: &DagAnalysis,
         obligations: &ObligationSet,
         graph_builder_fn: &str,
-    ) -> String {
-        let coercion_obligations: Vec<_> = obligations.coercion_obligations();
-
+    ) -> Vec<TestFn> {
+        let coercion_obligations = obligations.coercion_obligations();
         if coercion_obligations.is_empty() {
-            return String::new();
+            return Vec::new();
         }
 
-        let mut code = String::new();
-        code.push_str("// --- B.4: Coercion Coverage ---\n");
-        code.push_str("//\n");
-        code.push_str("// These tests verify that implicit cardinality coercions at edges\n");
-        code.push_str("// produce correctly shaped values (e.g., scalar wrapped in list).\n\n");
-
+        let mut tests = Vec::new();
         for obligation in &coercion_obligations {
             if let Obligation::CoercionCoverage {
                 from_node,
@@ -788,125 +877,138 @@ impl<'a, T> TestGenerator<'a, T> {
                     NamingCase::SnakeCase.apply(&to_port.0),
                 );
 
-                code.push_str(&format!(
-                    "/// Coercion coverage: {}.{} {} → {}.{} {} ({}).\n",
-                    from_node.0,
-                    from_port.0,
-                    from_cardinality,
-                    to_node.0,
-                    to_port.0,
-                    to_cardinality,
-                    kind_label,
-                ));
-                code.push_str("///\n");
-                code.push_str(&format!(
-                    "/// Proves: engine correctly applies {} coercion at this edge.\n",
-                    kind_label,
-                ));
-                code.push_str("#[test]\n");
-                code.push_str(&format!("fn {}() {{\n", test_name));
-                code.push_str(&format!("    let dag = {};\n", graph_builder_fn));
+                let mocks_expr = self.dryrun_mocks_expr(analysis, "coercion coverage tests");
 
-                let mocks_init = if self.mock_spec_fn.is_some() {
-                    "mock_spec().to_boundary_mocks()"
-                } else {
-                    "default_mocks()"
-                };
-                code.push_str(&format!("    let mocks = {};\n", mocks_init));
-                code.push_str(
-                    "    let _log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks))\n",
+                let exec = Expr::call(
+                    "execute_with_mode",
+                    vec![
+                        Expr::var("dag").ref_of(),
+                        Expr::call("ExecutionMode::DryRun", vec![Expr::var("mocks")]),
+                    ],
+                )
+                .method(
+                    "expect",
+                    vec![Expr::Str(format!(
+                        "coercion {} at {}.{} → {}.{} should not crash",
+                        kind_label, from_node.0, from_port.0, to_node.0, to_port.0
+                    ))],
                 );
-                code.push_str(&format!(
-                    "        .expect(\"coercion {} at {}.{} → {}.{} should not crash\");\n",
-                    kind_label, from_node.0, from_port.0, to_node.0, to_port.0,
-                ));
-                code.push_str("}\n\n");
+
+                tests.push(TestFn {
+                    name: test_name,
+                    doc: vec![
+                        format!(
+                            "Coercion coverage: {}.{} {} → {}.{} {} ({}).",
+                            from_node.0,
+                            from_port.0,
+                            from_cardinality,
+                            to_node.0,
+                            to_port.0,
+                            to_cardinality,
+                            kind_label,
+                        ),
+                        String::new(),
+                        format!(
+                            "Proves: engine correctly applies {} coercion at this edge.",
+                            kind_label
+                        ),
+                    ],
+                    body: vec![
+                        Stmt::let_bind("dag", Expr::var(graph_builder_fn)),
+                        Stmt::let_bind("mocks", mocks_expr),
+                        Stmt::let_bind("_log", exec),
+                    ],
+                });
             }
         }
 
-        code
+        tests
     }
 
     // =======================================================================
     // Bucket C: Scenario Coverage
     // =======================================================================
 
-    fn generate_scenario_tests(
+    fn build_scenario_section(
         &self,
         analysis: &DagAnalysis,
         obligations: &ObligationSet,
         graph_builder_fn: &str,
-    ) -> String {
+    ) -> Option<TestSection> {
         let bucket = obligations.bucket_c();
         if bucket.is_empty() {
-            return String::new();
+            return None;
         }
 
-        let mut code = String::new();
-        code.push_str(
-            "// ============================================================================\n",
-        );
-        code.push_str("// Bucket C: Scenario Coverage\n");
-        code.push_str(
-            "// N+1 scenarios: one success + one per-transport failure + guard toggles.\n",
-        );
-        code.push_str(
-            "// ============================================================================\n\n",
-        );
+        let mut tests = Vec::new();
+        let mut notes = vec![
+            "N+1 scenarios: one success + one per-transport failure + guard toggles.".to_string(),
+        ];
 
-        // C.1: All transports succeed
         if bucket
             .iter()
             .any(|o| matches!(o.kind, Obligation::AllTransportsSucceed))
         {
-            code.push_str("/// Happy path: all transports succeed.\n");
-            code.push_str("///\n");
-            code.push_str(
-                "/// Proves: workflow reaches terminal outputs with all transports mocked as success.\n",
+            let mocks_expr = self.dryrun_mocks_expr(analysis, "scenario all-succeed tests");
+            let exec = Expr::call(
+                "execute_with_mode",
+                vec![
+                    Expr::var("dag").ref_of(),
+                    Expr::call("ExecutionMode::DryRun", vec![mocks_expr]),
+                ],
+            )
+            .method(
+                "expect",
+                vec![Expr::Str("all-succeed scenario should complete".into())],
             );
-            let mocks_expr = if self.mock_spec_fn.is_some() {
-                "mock_spec().to_boundary_mocks()"
-            } else {
-                "default_mocks()"
-            };
-            code.push_str("#[test]\n");
-            code.push_str("fn test_scenario_all_succeed() {\n");
-            code.push_str(&format!("    let dag = {};\n", graph_builder_fn));
-            code.push_str(&format!(
-                "    let log = execute_with_mode(&dag, ExecutionMode::DryRun({}))\n",
-                mocks_expr
-            ));
-            code.push_str("        .expect(\"all-succeed scenario should complete\");\n");
 
-            // Verify all transport executors were intercepted
+            let mut body = vec![
+                Stmt::let_bind("dag", Expr::var(graph_builder_fn)),
+                Stmt::let_bind("log", exec),
+            ];
+
             for transport in &analysis.transport_executors {
-                code.push_str(&format!(
-                    "    let entry = log.get(\"{}\").expect(\"'{}' should be in log\");\n",
-                    transport, transport
+                body.push(Stmt::let_bind(
+                    "entry",
+                    Expr::var("log")
+                        .method("get", vec![Expr::Str(transport.clone())])
+                        .method(
+                            "expect",
+                            vec![Expr::Str(format!("'{}' should be in log", transport))],
+                        ),
                 ));
-                code.push_str(&format!(
-                    "    assert!(entry.was_intercepted, \"'{}' should be intercepted in DryRun\");\n",
-                    transport
-                ));
+                body.push(Stmt::Assert(Assert::True {
+                    expr: Expr::var("entry").field("was_intercepted"),
+                    message: format!("'{}' should be intercepted in DryRun", transport),
+                }));
             }
 
-            code.push_str("}\n\n");
+            tests.push(TestFn {
+                name: "test_scenario_all_succeed".to_string(),
+                doc: vec![
+                    "Happy path: all transports succeed.".to_string(),
+                    String::new(),
+                    "Proves: workflow reaches terminal outputs with all transports mocked as success."
+                        .to_string(),
+                ],
+                body,
+            });
         }
 
-        // C.2: Single transport failure scenarios
         let failure_obligations: Vec<_> = bucket
             .iter()
             .filter(|o| matches!(o.kind, Obligation::SingleTransportFailure { .. }))
             .collect();
-
         if !failure_obligations.is_empty() {
-            code.push_str(&format!(
-                "// {} single-failure scenarios (one per transport executor).\n",
+            notes.push(format!(
+                "{} single-failure scenarios (one per transport executor).",
                 failure_obligations.len()
             ));
-            code.push_str(
-                "// Full failure scenarios require per-transport failure mocks (Tier 0 infra).\n",
+            notes.push(
+                "Full failure scenarios require per-transport failure mocks (Tier 0 infra)."
+                    .to_string(),
             );
+            notes.push(String::new());
 
             for obligation in &failure_obligations {
                 if let Obligation::SingleTransportFailure { node_id } = &obligation.kind {
@@ -914,51 +1016,58 @@ impl<'a, T> TestGenerator<'a, T> {
                         "test_scenario_{}_fails",
                         NamingCase::SnakeCase.apply(&node_id.0)
                     );
-                    code.push_str(&format!(
-                        "/// Single failure: '{}' transport fails.\n",
-                        node_id.0
-                    ));
-                    code.push_str("///\n");
-                    code.push_str(
-                        "/// Proves: failure propagation semantics are consistent.\n",
-                    );
-                    code.push_str("#[test]\n");
-                    code.push_str(&format!("fn {}() {{\n", test_name));
-                    code.push_str(&format!("    let dag = {};\n", graph_builder_fn));
-                    code.push_str(
-                        "    let mut mocks = BoundaryMocks::with_default(Value::Str(\"<FAIL>\".to_string()));\n",
-                    );
-                    code.push_str(&format!(
-                        "    // Inject failure at '{}'\n",
-                        node_id.0
-                    ));
-                    code.push_str(&format!(
-                        "    mocks.set_value(\"{}\", \"response\",\n",
-                        node_id.0
-                    ));
-                    code.push_str(
-                        "        Value::Str(\"<TRANSPORT_FAILURE>\".to_string()));\n",
-                    );
-                    code.push_str(
-                        "    // Execution may succeed or fail depending on graph semantics;\n",
-                    );
-                    code.push_str(
-                        "    // the key property is that it doesn't crash/hang.\n",
-                    );
-                    code.push_str(
-                        "    let _result = execute_with_mode(&dag, ExecutionMode::DryRun(mocks));\n",
-                    );
-                    code.push_str("}\n\n");
+
+                    let mocks_expr =
+                        self.dryrun_mocks_expr(analysis, "scenario single-failure tests");
+
+                    let body = vec![
+                        Stmt::let_bind("dag", Expr::var(graph_builder_fn)),
+                        Stmt::let_mut("mocks", mocks_expr),
+                        Stmt::Comment(format!("Inject failure at '{}'", node_id.0)),
+                        Stmt::Expr(Expr::var("mocks").method(
+                            "set_value",
+                            vec![
+                                Expr::Str(node_id.0.clone()),
+                                Expr::Str("response".to_string()),
+                                Expr::Value(ValueExpr::Str("<TRANSPORT_FAILURE>".to_string())),
+                            ],
+                        )),
+                        Stmt::Comment(
+                            "Execution may succeed or fail depending on graph semantics;"
+                                .to_string(),
+                        ),
+                        Stmt::Comment(
+                            "the key property is that it doesn't crash/hang.".to_string(),
+                        ),
+                        Stmt::let_bind(
+                            "_result",
+                            Expr::call(
+                                "execute_with_mode",
+                                vec![
+                                    Expr::var("dag").ref_of(),
+                                    Expr::call("ExecutionMode::DryRun", vec![Expr::var("mocks")]),
+                                ],
+                            ),
+                        ),
+                    ];
+
+                    tests.push(TestFn {
+                        name: test_name,
+                        doc: vec![
+                            format!("Single failure: '{}' transport fails.", node_id.0),
+                            String::new(),
+                            "Proves: failure propagation semantics are consistent.".to_string(),
+                        ],
+                        body,
+                    });
                 }
             }
         }
 
-        // C.3: Skip-path propagation — real tests
         let skip_obligations: Vec<_> = bucket
             .iter()
             .filter(|o| matches!(o.kind, Obligation::SkipPathPropagation { .. }))
             .collect();
-
         for obligation in &skip_obligations {
             if let Obligation::SkipPathPropagation { trigger_node } = &obligation.kind {
                 let test_name = format!(
@@ -966,21 +1075,13 @@ impl<'a, T> TestGenerator<'a, T> {
                     NamingCase::SnakeCase.apply(&trigger_node.0)
                 );
 
-                // Find the trigger node's output ports
-                let output_ports: Vec<_> = self
-                    .dag
-                    .nodes
+                let output_ports: Vec<_> = analysis
+                    .port_cardinalities
                     .iter()
-                    .find(|n| n.id.0 == trigger_node.0)
-                    .map(|n| {
-                        n.outputs
-                            .iter()
-                            .map(|p| (p.name.0.clone(), p.type_id.0.clone()))
-                            .collect()
-                    })
-                    .unwrap_or_default();
+                    .filter(|p| p.node_id == trigger_node.0 && !p.is_input)
+                    .map(|p| (p.port_name.clone(), p.type_id.0.clone()))
+                    .collect();
 
-                // Find downstream node IDs (nodes connected by edges from trigger)
                 let downstream: Vec<_> = self
                     .dag
                     .edges
@@ -989,56 +1090,66 @@ impl<'a, T> TestGenerator<'a, T> {
                     .map(|e| e.to_node.0.clone())
                     .collect();
 
-                code.push_str(&format!(
-                    "/// Skip propagation: '{}' returns Skipped → downstream handles it.\n",
-                    trigger_node.0
-                ));
-                code.push_str("///\n");
-                code.push_str(
-                    "/// Proves: when a transport's output is Skipped, downstream nodes\n",
-                );
-                code.push_str(
-                    "/// either skip themselves (guarded) or process the Skipped value\n",
-                );
-                code.push_str("/// without crashing.\n");
-                code.push_str("#[test]\n");
-                code.push_str(&format!("fn {}() {{\n", test_name));
-                code.push_str(&format!("    let dag = {};\n", graph_builder_fn));
-                if self.mock_spec_fn.is_some() {
-                    code.push_str("    let mut mocks = mock_spec().to_boundary_mocks();\n");
-                } else {
-                    code.push_str("    let mut mocks = default_mocks();\n");
-                }
+                let mocks_expr = self.dryrun_mocks_expr(analysis, "skip propagation tests");
 
-                // Mock all output ports of the trigger node as Skipped
+                let mut body = vec![
+                    Stmt::let_bind("dag", Expr::var(graph_builder_fn)),
+                    Stmt::let_mut("mocks", mocks_expr),
+                ];
+
                 for (port_name, _type_id) in &output_ports {
-                    code.push_str(&format!(
-                        "    mocks.set_value(\"{}\", \"{}\", Value::Skipped);\n",
-                        trigger_node.0, port_name
-                    ));
+                    body.push(Stmt::Expr(Expr::var("mocks").method(
+                        "set_value",
+                        vec![
+                            Expr::Str(trigger_node.0.clone()),
+                            Expr::Str(port_name.clone()),
+                            Expr::Value(ValueExpr::Skipped),
+                        ],
+                    )));
                 }
 
-                code.push_str(
-                    "    let log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks))\n",
+                let exec = Expr::call(
+                    "execute_with_mode",
+                    vec![
+                        Expr::var("dag").ref_of(),
+                        Expr::call("ExecutionMode::DryRun", vec![Expr::var("mocks")]),
+                    ],
+                )
+                .method(
+                    "expect",
+                    vec![Expr::Str(
+                        "skip propagation should not crash or hang".into(),
+                    )],
                 );
-                code.push_str(
-                    "        .expect(\"skip propagation should not crash or hang\");\n",
-                );
+                body.push(Stmt::let_bind("log", exec));
 
-                // Verify downstream nodes exist in the log (they ran, even if skipped)
                 for ds_node in &downstream {
-                    code.push_str(&format!(
-                        "    assert!(log.get(\"{}\").is_some(), \"downstream '{}' should still appear in log\");\n",
-                        ds_node, ds_node
-                    ));
+                    body.push(Stmt::Assert(Assert::True {
+                        expr: Expr::var("log")
+                            .method("get", vec![Expr::Str(ds_node.clone())])
+                            .method("is_some", vec![]),
+                        message: format!("downstream '{}' should still appear in log", ds_node),
+                    }));
                 }
 
-                code.push_str("}\n\n");
+                tests.push(TestFn {
+                    name: test_name,
+                    doc: vec![
+                        format!(
+                            "Skip propagation: '{}' returns Skipped → downstream handles it.",
+                            trigger_node.0
+                        ),
+                        String::new(),
+                        "Proves: when a transport's output is Skipped, downstream nodes"
+                            .to_string(),
+                        "either skip themselves (guarded) or process the Skipped value".to_string(),
+                        "without crashing.".to_string(),
+                    ],
+                    body,
+                });
             }
         }
 
-        // C.4: Guard/skip branch coverage — real tests for Bool guards,
-        //       structured comments for other guard types.
         let guard_obligations: Vec<_> = bucket
             .iter()
             .filter(|o| matches!(o.kind, Obligation::GuardBranchCoverage { .. }))
@@ -1050,535 +1161,871 @@ impl<'a, T> TestGenerator<'a, T> {
                 guard_port,
             } = &obligation.kind
             {
-                // Find the guarded port's type
-                let guard_type = self
-                    .dag
-                    .nodes
+                let guard_type = analysis
+                    .port_cardinalities
                     .iter()
-                    .find(|n| n.id.0 == node_id.0)
-                    .and_then(|n| n.inputs.iter().find(|p| p.name.0 == guard_port.0))
+                    .find(|p| p.node_id == node_id.0 && p.port_name == guard_port.0 && p.is_input)
                     .map(|p| p.type_id.0.as_str())
                     .unwrap_or("Unknown");
 
-                // Find the upstream edge that feeds this guarded port
                 let upstream_edge = self
                     .dag
                     .edges
                     .iter()
                     .find(|e| e.to_node.0 == node_id.0 && e.to_port.0 == guard_port.0);
 
-                // Check if upstream is a transport executor (mockable in DryRun)
                 let upstream_is_mockable = upstream_edge
                     .map(|e| {
-                        analysis
-                            .transport_executors
-                            .contains(&e.from_node.0)
+                        analysis.transport_executors.contains(&e.from_node.0)
                             || analysis.tool_env_nodes.contains(&e.from_node.0)
                     })
                     .unwrap_or(false);
 
                 if guard_type == "Bool" {
-                    // Bool guards: generate real two-scenario test
                     let test_name = format!(
                         "test_guard_{}_{}_branch_coverage",
                         NamingCase::SnakeCase.apply(&node_id.0),
                         NamingCase::SnakeCase.apply(&guard_port.0)
                     );
 
-                    code.push_str(&format!(
-                        "/// Guard branch coverage: '{}'.{} (Bool guard).\n",
-                        node_id.0, guard_port.0
-                    ));
-                    code.push_str("///\n");
-                    code.push_str(
-                        "/// Proves: one of {true, false} causes the node to execute,\n",
-                    );
-                    code.push_str(
-                        "/// the other causes it to skip (all outputs = Value::Skipped).\n",
-                    );
-                    code.push_str("#[test]\n");
-                    code.push_str(&format!("fn {}() {{\n", test_name));
-                    code.push_str(&format!("    let dag = {};\n", graph_builder_fn));
+                    let mut body = vec![Stmt::let_bind("dag", Expr::var(graph_builder_fn))];
 
                     if let Some(edge) = upstream_edge {
                         if upstream_is_mockable {
-                            // Upstream is a boundary node — we can mock its output
-                            code.push_str(
-                                "    // Guard value flows from a mockable boundary node.\n",
-                            );
-                            let mocks_init = if self.mock_spec_fn.is_some() {
-                                "mock_spec().to_boundary_mocks()"
-                            } else {
-                                "default_mocks()"
-                            };
-                            code.push_str("    // Test with true:\n");
-                            code.push_str(&format!("    let mut mocks_true = {};\n", mocks_init));
-                            code.push_str(&format!(
-                                "    mocks_true.set_value(\"{}\", \"{}\", Value::Bool(true));\n",
-                                edge.from_node.0, edge.from_port.0
-                            ));
-                            code.push_str(
-                                "    let log_true = execute_with_mode(&dag, ExecutionMode::DryRun(mocks_true))\n",
-                            );
-                            code.push_str(
-                                "        .expect(\"guard=true scenario should not crash\");\n",
-                            );
-                            code.push_str(&format!(
-                                "    let skipped_true = log_true.get(\"{}\")\n",
-                                node_id.0
-                            ));
-                            code.push_str(
-                                "        .map(|e| e.outputs.values().all(|v| v.is_skipped()))\n",
-                            );
-                            code.push_str("        .unwrap_or(true);\n\n");
+                            let mocks_init = self.dryrun_mocks_expr(analysis, "guard branch tests");
 
-                            code.push_str("    // Test with false:\n");
-                            code.push_str(&format!("    let mut mocks_false = {};\n", mocks_init));
-                            code.push_str(&format!(
-                                "    mocks_false.set_value(\"{}\", \"{}\", Value::Bool(false));\n",
-                                edge.from_node.0, edge.from_port.0
+                            body.push(Stmt::Comment(
+                                "Guard value flows from a mockable boundary node.".to_string(),
                             ));
-                            code.push_str(
-                                "    let log_false = execute_with_mode(&dag, ExecutionMode::DryRun(mocks_false))\n",
-                            );
-                            code.push_str(
-                                "        .expect(\"guard=false scenario should not crash\");\n",
-                            );
-                            code.push_str(&format!(
-                                "    let skipped_false = log_false.get(\"{}\")\n",
-                                node_id.0
-                            ));
-                            code.push_str(
-                                "        .map(|e| e.outputs.values().all(|v| v.is_skipped()))\n",
-                            );
-                            code.push_str("        .unwrap_or(true);\n\n");
 
-                            code.push_str(
-                                "    // Exactly one path should execute and the other should skip.\n",
+                            body.push(Stmt::Comment("Test with true:".to_string()));
+                            body.push(Stmt::let_mut("mocks_true", mocks_init.clone()));
+                            body.push(Stmt::Expr(Expr::var("mocks_true").method(
+                                "set_value",
+                                vec![
+                                    Expr::Str(edge.from_node.0.clone()),
+                                    Expr::Str(edge.from_port.0.clone()),
+                                    Expr::Value(ValueExpr::Bool(true)),
+                                ],
+                            )));
+                            let log_true = Expr::call(
+                                "execute_with_mode",
+                                vec![
+                                    Expr::var("dag").ref_of(),
+                                    Expr::call(
+                                        "ExecutionMode::DryRun",
+                                        vec![Expr::var("mocks_true")],
+                                    ),
+                                ],
+                            )
+                            .method(
+                                "expect",
+                                vec![Expr::Str("guard=true scenario should not crash".into())],
                             );
-                            code.push_str(&format!(
-                                "    assert_ne!(skipped_true, skipped_false,\n        \"guard on '{}'.{} should cause one branch to execute and the other to skip\");\n",
-                                node_id.0, guard_port.0
+                            body.push(Stmt::let_bind("log_true", log_true));
+
+                            let skipped_true = Expr::var("log_true")
+                                .method("get", vec![Expr::Str(node_id.0.clone())])
+                                .method(
+                                    "map",
+                                    vec![Expr::Closure {
+                                        args: vec!["e".to_string()],
+                                        body: Box::new(
+                                            Expr::var("e")
+                                                .field("outputs")
+                                                .method("values", vec![])
+                                                .method(
+                                                    "all",
+                                                    vec![Expr::Closure {
+                                                        args: vec!["v".to_string()],
+                                                        body: Box::new(
+                                                            Expr::var("v")
+                                                                .method("is_skipped", vec![]),
+                                                        ),
+                                                    }],
+                                                ),
+                                        ),
+                                    }],
+                                )
+                                .method("unwrap_or", vec![Expr::bool_lit(true)]);
+                            body.push(Stmt::let_bind("skipped_true", skipped_true));
+                            body.push(Stmt::Blank);
+
+                            body.push(Stmt::Comment("Test with false:".to_string()));
+                            body.push(Stmt::let_mut("mocks_false", mocks_init));
+                            body.push(Stmt::Expr(Expr::var("mocks_false").method(
+                                "set_value",
+                                vec![
+                                    Expr::Str(edge.from_node.0.clone()),
+                                    Expr::Str(edge.from_port.0.clone()),
+                                    Expr::Value(ValueExpr::Bool(false)),
+                                ],
+                            )));
+                            let log_false = Expr::call(
+                                "execute_with_mode",
+                                vec![
+                                    Expr::var("dag").ref_of(),
+                                    Expr::call(
+                                        "ExecutionMode::DryRun",
+                                        vec![Expr::var("mocks_false")],
+                                    ),
+                                ],
+                            )
+                            .method(
+                                "expect",
+                                vec![Expr::Str("guard=false scenario should not crash".into())],
+                            );
+                            body.push(Stmt::let_bind("log_false", log_false));
+
+                            let skipped_false = Expr::var("log_false")
+                                .method("get", vec![Expr::Str(node_id.0.clone())])
+                                .method(
+                                    "map",
+                                    vec![Expr::Closure {
+                                        args: vec!["e".to_string()],
+                                        body: Box::new(
+                                            Expr::var("e")
+                                                .field("outputs")
+                                                .method("values", vec![])
+                                                .method(
+                                                    "all",
+                                                    vec![Expr::Closure {
+                                                        args: vec!["v".to_string()],
+                                                        body: Box::new(
+                                                            Expr::var("v")
+                                                                .method("is_skipped", vec![]),
+                                                        ),
+                                                    }],
+                                                ),
+                                        ),
+                                    }],
+                                )
+                                .method("unwrap_or", vec![Expr::bool_lit(true)]);
+                            body.push(Stmt::let_bind("skipped_false", skipped_false));
+                            body.push(Stmt::Blank);
+
+                            body.push(Stmt::Comment(
+                                "Exactly one path should execute and the other should skip."
+                                    .to_string(),
                             ));
+                            body.push(Stmt::Expr(Expr::call(
+                                "assert_ne!",
+                                vec![
+                                    Expr::var("skipped_true"),
+                                    Expr::var("skipped_false"),
+                                    Expr::Str(format!(
+                                        "guard on '{}'.{} should cause one branch to execute and the other to skip",
+                                        node_id.0, guard_port.0
+                                    )),
+                                ],
+                            )));
                         } else {
-                            // Upstream is a pure node — can't directly mock, use structural assertion
-                            code.push_str(&format!(
-                                "    // Guard value flows from pure node '{}' — not directly mockable.\n",
+                            body.push(Stmt::Comment(format!(
+                                "Guard value flows from pure node '{}' — not directly mockable.",
                                 edge.from_node.0
+                            )));
+                            body.push(Stmt::Comment(
+                                "Structural check: guard port is connected and the node has outputs."
+                                    .to_string(),
                             ));
-                            code.push_str(
-                                "    // Structural check: guard port is connected and the node has outputs.\n",
-                            );
-                            code.push_str(&format!(
-                                "    let node = dag.get_node(&\"{}\".into()).expect(\"node should exist\");\n",
-                                node_id.0
+                            body.push(Stmt::let_bind(
+                                "node",
+                                Expr::var("dag")
+                                    .method(
+                                        "get_node",
+                                        vec![Expr::Str(node_id.0.clone())
+                                            .method("into", vec![])
+                                            .ref_of()],
+                                    )
+                                    .method("expect", vec![Expr::Str("node should exist".into())]),
                             ));
-                            code.push_str(&format!(
-                                "    let port = node.inputs.iter().find(|p| p.name.0 == \"{}\").expect(\"port should exist\");\n",
-                                guard_port.0
+                            body.push(Stmt::let_bind(
+                                "port",
+                                Expr::var("node")
+                                    .field("inputs")
+                                    .method("iter", vec![])
+                                    .method(
+                                        "find",
+                                        vec![Expr::Closure {
+                                            args: vec!["p".to_string()],
+                                            body: Box::new(
+                                                Expr::var("p")
+                                                    .field("name")
+                                                    .field("0")
+                                                    .bin_op("==", Expr::Str(guard_port.0.clone())),
+                                            ),
+                                        }],
+                                    )
+                                    .method("expect", vec![Expr::Str("port should exist".into())]),
                             ));
-                            code.push_str(
-                                "    assert!(port.has_guard(), \"port should have a guard\");\n",
-                            );
+                            body.push(Stmt::Assert(Assert::True {
+                                expr: Expr::var("port").method("has_guard", vec![]),
+                                message: "port should have a guard".to_string(),
+                            }));
                         }
                     } else {
-                        // No upstream edge — guard port is disconnected
-                        code.push_str(&format!(
-                            "    // WARNING: guard port '{}'.{} has no incoming edge.\n",
+                        body.push(Stmt::Comment(format!(
+                            "WARNING: guard port '{}'.{} has no incoming edge.",
                             node_id.0, guard_port.0
+                        )));
+                        body.push(Stmt::Comment(
+                            "The node will always skip (missing input → skip).".to_string(),
                         ));
-                        code.push_str(
-                            "    // The node will always skip (missing input → skip).\n",
+                        let mocks_expr =
+                            self.dryrun_mocks_expr(analysis, "guard disconnected tests");
+                        let exec = Expr::call(
+                            "execute_with_mode",
+                            vec![
+                                Expr::var("dag").ref_of(),
+                                Expr::call("ExecutionMode::DryRun", vec![mocks_expr]),
+                            ],
+                        )
+                        .method(
+                            "expect",
+                            vec![Expr::Str("execution should not crash".into())],
                         );
-                        let mocks_expr = if self.mock_spec_fn.is_some() {
-                            "mock_spec().to_boundary_mocks()"
-                        } else {
-                            "default_mocks()"
-                        };
-                        code.push_str(&format!(
-                            "    let log = execute_with_mode(&dag, ExecutionMode::DryRun({}))\n",
-                            mocks_expr
-                        ));
-                        code.push_str(
-                            "        .expect(\"execution should not crash\");\n",
-                        );
-                        code.push_str(&format!(
-                            "    if let Some(entry) = log.get(\"{}\") {{\n",
-                            node_id.0
-                        ));
-                        code.push_str(
-                            "        assert!(entry.outputs.values().all(|v| v.is_skipped()),\n",
-                        );
-                        code.push_str(
-                            "            \"disconnected guard → node should always skip\");\n",
-                        );
-                        code.push_str("    }\n");
+                        body.push(Stmt::let_bind("log", exec));
+
+                        let skipped = Expr::var("log")
+                            .method("get", vec![Expr::Str(node_id.0.clone())])
+                            .method(
+                                "map",
+                                vec![Expr::Closure {
+                                    args: vec!["e".to_string()],
+                                    body: Box::new(
+                                        Expr::var("e")
+                                            .field("outputs")
+                                            .method("values", vec![])
+                                            .method(
+                                                "all",
+                                                vec![Expr::Closure {
+                                                    args: vec!["v".to_string()],
+                                                    body: Box::new(
+                                                        Expr::var("v").method("is_skipped", vec![]),
+                                                    ),
+                                                }],
+                                            ),
+                                    ),
+                                }],
+                            )
+                            .method("unwrap_or", vec![Expr::bool_lit(true)]);
+                        body.push(Stmt::Assert(Assert::True {
+                            expr: skipped,
+                            message: "disconnected guard → node should always skip".to_string(),
+                        }));
                     }
 
-                    code.push_str("}\n\n");
+                    tests.push(TestFn {
+                        name: test_name,
+                        doc: vec![
+                            format!(
+                                "Guard branch coverage: '{}'.{} (Bool guard).",
+                                node_id.0, guard_port.0
+                            ),
+                            String::new(),
+                            "Proves: one of {true, false} causes the node to execute,".to_string(),
+                            "the other causes it to skip (all outputs = Value::Skipped)."
+                                .to_string(),
+                        ],
+                        body,
+                    });
                 } else {
-                    // Non-Bool guard: emit structured comment with details
-                    code.push_str(&format!(
-                        "// Guard branch: '{}'.{} (type: {})\n",
+                    notes.push(format!(
+                        "Guard branch: '{}'.{} (type: {})",
                         node_id.0, guard_port.0, guard_type
                     ));
                     if let Some(edge) = upstream_edge {
-                        code.push_str(&format!(
-                            "//   fed by: {}.{}\n",
+                        notes.push(format!(
+                            "  fed by: {}.{}",
                             edge.from_node.0, edge.from_port.0
                         ));
                         if upstream_is_mockable {
-                            code.push_str(
-                                "//   upstream is mockable — full branch test possible with Tier 1 infra\n",
+                            notes.push(
+                                "  upstream is mockable — full branch test possible with Tier 1 infra"
+                                    .to_string(),
                             );
                         } else {
-                            code.push_str(
-                                "//   upstream is pure — needs per-node isolation (Tier 1) for full test\n",
+                            notes.push(
+                                "  upstream is pure — needs per-node isolation (Tier 1) for full test"
+                                    .to_string(),
                             );
                         }
                     } else {
-                        code.push_str("//   WARNING: no incoming edge (disconnected guard)\n");
+                        notes.push("  WARNING: no incoming edge (disconnected guard)".to_string());
                     }
-                    code.push('\n');
+                    notes.push(String::new());
                 }
             }
         }
 
-        code
+        Some(TestSection {
+            title: "Bucket C: Scenario Coverage".to_string(),
+            notes,
+            tests,
+        })
     }
 
     // =======================================================================
     // Bucket D: Resource Hygiene + Simulation
     // =======================================================================
 
-    fn generate_resource_tests(
+    fn build_resource_sections(
         &self,
         _analysis: &DagAnalysis,
         obligations: &ObligationSet,
-    ) -> String {
+    ) -> Vec<TestSection> {
         let bucket = obligations.bucket_d();
-
-        // Also check for MockSpec resource simulation
         let has_mockspec_resources = self
             .mock_spec
             .as_ref()
             .is_some_and(|s| !s.resource_mocks.resources.is_empty());
 
         if bucket.is_empty() && !has_mockspec_resources {
-            return String::new();
+            return Vec::new();
         }
 
-        let mut code = String::new();
-        code.push_str(
-            "// ============================================================================\n",
-        );
-        code.push_str("// Bucket D: Resource Hygiene\n");
-        code.push_str("// Structural resource/tool wiring correctness + simulation tests.\n");
-        code.push_str(
-            "// ============================================================================\n\n",
-        );
+        let mut notes =
+            vec!["Structural resource/tool wiring correctness + simulation tests.".to_string()];
 
-        // D.1: Resource connectivity issues (undischarged = disconnected resource ports)
         let connectivity_issues: Vec<_> = bucket
             .iter()
             .filter(|o| matches!(o.kind, Obligation::ResourceInputConnected { .. }))
             .collect();
-
         if !connectivity_issues.is_empty() {
-            code.push_str("// Resource connectivity issues (disconnected resource ports):\n");
+            notes.push("Resource connectivity issues (disconnected resource ports):".to_string());
             for obligation in &connectivity_issues {
-                if let Obligation::ResourceInputConnected {
-                    node_id,
-                    port_name,
-                } = &obligation.kind
+                if let Obligation::ResourceInputConnected { node_id, port_name } = &obligation.kind
                 {
-                    code.push_str(&format!(
-                        "// WARNING: {}.{} — {}\n",
+                    notes.push(format!(
+                        "WARNING: {}.{} — {}",
                         node_id.0, port_name.0, obligation.reason
                     ));
                 }
             }
-            code.push('\n');
+            notes.push(String::new());
         }
 
-        // D.2: Resource orphans (acquired but never consumed)
         let orphan_issues: Vec<_> = bucket
             .iter()
             .filter(|o| matches!(o.kind, Obligation::ResourceOrphan { .. }))
             .collect();
-
         if !orphan_issues.is_empty() {
-            code.push_str("// Resource orphans (acquired but never consumed):\n");
+            notes.push("Resource orphans (acquired but never consumed):".to_string());
             for obligation in &orphan_issues {
-                if let Obligation::ResourceOrphan {
-                    node_id,
-                    port_name,
-                } = &obligation.kind
-                {
-                    code.push_str(&format!(
-                        "// WARNING: {}.{} — {}\n",
+                if let Obligation::ResourceOrphan { node_id, port_name } = &obligation.kind {
+                    notes.push(format!(
+                        "WARNING: {}.{} — {}",
                         node_id.0, port_name.0, obligation.reason
                     ));
                 }
             }
-            code.push('\n');
+            notes.push(String::new());
         }
 
-        // D.3: Resource conflict absence
         let conflict_obligations: Vec<_> = bucket
             .iter()
             .filter(|o| matches!(o.kind, Obligation::ResourceConflictAbsence { .. }))
             .collect();
-
         if !conflict_obligations.is_empty() {
             for obligation in &conflict_obligations {
                 if let Obligation::ResourceConflictAbsence { conflicts } = &obligation.kind {
                     if !conflicts.is_empty() {
-                        code.push_str("// RESOURCE CONFLICTS DETECTED:\n");
+                        notes.push("RESOURCE CONFLICTS DETECTED:".to_string());
                         for conflict in conflicts {
-                            code.push_str(&format!("// - {}\n", conflict));
+                            notes.push(format!("- {}", conflict));
                         }
-                        code.push('\n');
+                        notes.push(String::new());
                     }
                 }
             }
         }
 
-        // D.4: MockSpec-based resource simulation tests
         if has_mockspec_resources {
-            code.push_str(&self.generate_resource_simulation_tests());
+            notes.push("Resource simulation tests (MockSpec-based)".to_string());
         }
 
-        code
-    }
-
-    /// Generate MockSpec-based resource simulation tests.
-    fn generate_resource_simulation_tests(&self) -> String {
-        let mut code = String::new();
-
-        let Some(spec) = &self.mock_spec else {
-            return code;
+        let tests = if has_mockspec_resources {
+            self.build_resource_simulation_tests()
+        } else {
+            Vec::new()
         };
 
+        vec![TestSection {
+            title: "Bucket D: Resource Hygiene".to_string(),
+            notes,
+            tests,
+        }]
+    }
+
+    fn build_resource_simulation_tests(&self) -> Vec<TestFn> {
+        let Some(spec) = &self.mock_spec else {
+            return Vec::new();
+        };
         if spec.resource_mocks.resources.is_empty() {
-            return code;
+            return Vec::new();
         }
 
-        code.push_str("// Resource simulation tests (MockSpec-based)\n\n");
-
+        let mut tests = Vec::new();
         for resource in &spec.resource_mocks.resources {
             let test_name = format!(
                 "test_resource_{}_acquire",
                 sanitize_resource_id(&resource.resource_id)
             );
 
+            let mut doc = Vec::new();
             let resource_type = match &resource.resource_type {
                 gunbc_test::ResourceType::Lock => "Lock",
                 gunbc_test::ResourceType::Lease { duration_ms } => {
-                    code.push_str(&format!(
-                        "/// Test resource '{}' lease behavior ({}ms).\n",
+                    doc.push(format!(
+                        "Test resource '{}' lease behavior ({}ms).",
                         resource.resource_id, duration_ms
                     ));
                     "Lease"
                 }
                 gunbc_test::ResourceType::SharedLock { max_holders } => {
-                    code.push_str(&format!(
-                        "/// Test resource '{}' shared lock (max {} holders).\n",
+                    doc.push(format!(
+                        "Test resource '{}' shared lock (max {} holders).",
                         resource.resource_id, max_holders
                     ));
                     "SharedLock"
                 }
                 gunbc_test::ResourceType::PoolSlot { pool_size } => {
-                    code.push_str(&format!(
-                        "/// Test resource '{}' pool slot (pool size {}).\n",
+                    doc.push(format!(
+                        "Test resource '{}' pool slot (pool size {}).",
                         resource.resource_id, pool_size
                     ));
                     "PoolSlot"
                 }
             };
-
-            if !code.ends_with("///") {
-                code.push_str(&format!(
-                    "/// Test resource '{}' ({}) acquisition.\n",
-                    resource.resource_id, resource_type
-                ));
-            }
-            code.push_str("#[test]\n");
-            code.push_str(&format!("fn {}() {{\n", test_name));
-            code.push_str("    let spec = mock_spec();\n");
-            code.push_str(&format!(
-                "    let resource = spec.get_resource(\"{}\").expect(\"resource should exist\");\n",
-                resource.resource_id
+            doc.push(format!(
+                "Test resource '{}' ({}) acquisition.",
+                resource.resource_id, resource_type
             ));
-            code.push_str("    let result = resource.acquire();\n");
+
+            let mut body = vec![
+                Stmt::let_bind("spec", Expr::call("mock_spec", vec![])),
+                Stmt::let_bind(
+                    "resource",
+                    Expr::var("spec")
+                        .method(
+                            "get_resource",
+                            vec![Expr::Str(resource.resource_id.clone())],
+                        )
+                        .method("expect", vec![Expr::Str("resource should exist".into())]),
+                ),
+                Stmt::let_bind("result", Expr::var("resource").method("acquire", vec![])),
+            ];
 
             let has_fail = resource
                 .behaviors
                 .iter()
                 .any(|b| matches!(b, gunbc_test::ResourceBehavior::FailAcquire { .. }));
             if has_fail {
-                code.push_str(
-                    "    assert!(matches!(result, ResourceAcquireResult::Failed(_)), \"should fail to acquire\");\n",
-                );
+                body.push(Stmt::Expr(Expr::call(
+                    "assert!",
+                    vec![
+                        Expr::call(
+                            "matches!",
+                            vec![
+                                Expr::var("result"),
+                                Expr::var("ResourceAcquireResult::Failed(_)"),
+                            ],
+                        ),
+                        Expr::Str("should fail to acquire".into()),
+                    ],
+                )));
             } else {
-                code.push_str(
-                    "    assert!(matches!(result, ResourceAcquireResult::Acquired), \"should acquire successfully\");\n",
-                );
+                body.push(Stmt::Expr(Expr::call(
+                    "assert!",
+                    vec![
+                        Expr::call(
+                            "matches!",
+                            vec![
+                                Expr::var("result"),
+                                Expr::var("ResourceAcquireResult::Acquired"),
+                            ],
+                        ),
+                        Expr::Str("should acquire successfully".into()),
+                    ],
+                )));
             }
 
-            code.push_str("}\n\n");
+            tests.push(TestFn {
+                name: test_name,
+                doc,
+                body,
+            });
 
-            // Lease expiration test
             if let gunbc_test::ResourceType::Lease { duration_ms } = resource.resource_type {
                 let timeout_test = format!(
                     "test_resource_{}_timeout",
                     sanitize_resource_id(&resource.resource_id)
                 );
-                code.push_str(&format!(
-                    "/// Test resource '{}' lease expiration after {}ms.\n",
-                    resource.resource_id, duration_ms
-                ));
-                code.push_str("#[test]\n");
-                code.push_str(&format!("fn {}() {{\n", timeout_test));
-                code.push_str("    let spec = mock_spec();\n");
-                code.push_str(&format!(
-                    "    let resource = spec.get_resource(\"{}\").expect(\"resource should exist\");\n",
-                    resource.resource_id
-                ));
-                code.push_str(&format!(
-                    "    assert!(!resource.should_timeout({}), \"should not timeout before duration\");\n",
-                    duration_ms / 2
-                ));
-                code.push_str(&format!(
-                    "    assert!(resource.should_timeout({}), \"should timeout after duration\");\n",
-                    duration_ms + 1
-                ));
-                code.push_str("}\n\n");
+                let body = vec![
+                    Stmt::let_bind("spec", Expr::call("mock_spec", vec![])),
+                    Stmt::let_bind(
+                        "resource",
+                        Expr::var("spec")
+                            .method(
+                                "get_resource",
+                                vec![Expr::Str(resource.resource_id.clone())],
+                            )
+                            .method("expect", vec![Expr::Str("resource should exist".into())]),
+                    ),
+                    Stmt::Assert(Assert::True {
+                        expr: Expr::var("resource")
+                            .method("should_timeout", vec![Expr::int((duration_ms / 2) as i64)])
+                            .logical_not(),
+                        message: "should not timeout before duration".to_string(),
+                    }),
+                    Stmt::Assert(Assert::True {
+                        expr: Expr::var("resource")
+                            .method("should_timeout", vec![Expr::int((duration_ms + 1) as i64)]),
+                        message: "should timeout after duration".to_string(),
+                    }),
+                ];
+
+                tests.push(TestFn {
+                    name: timeout_test,
+                    doc: vec![format!(
+                        "Test resource '{}' lease expiration after {}ms.",
+                        resource.resource_id, duration_ms
+                    )],
+                    body,
+                });
             }
         }
 
-        code
+        tests
     }
 
     // =======================================================================
-    // Legacy test generators (preserved for backward compatibility)
+    // Helpers
     // =======================================================================
 
-    /// Get mock value for a boundary port, using MockSpec if available.
-    fn get_mock_value(&self, node: &str, port: &str, type_id: &str) -> String {
-        if let Some(spec) = &self.mock_spec {
-            if let Some(value) = spec.get_boundary_mock(node, port) {
-                return value_to_rust_literal(value);
-            }
+    /// Build the boundary mocks expression for DryRun tests.
+    ///
+    /// Boundary mocks are required when the DAG has boundary ports. If none exist,
+    /// we return an explicit empty mock set.
+    fn dryrun_mocks_expr(&self, analysis: &DagAnalysis, context: &str) -> Expr {
+        if analysis.boundaries.boundary_nodes.is_empty() {
+            return Expr::call("BoundaryMocks::new", vec![]);
         }
-        default_mock_for_type(type_id)
+        if self.mock_spec_fn.is_none() {
+            let boundary_nodes = analysis
+                .boundaries
+                .boundary_nodes
+                .iter()
+                .map(|n| n.0.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            panic!(
+                "MockSpec function required for {}: DAG has boundary nodes ({}), but no mock_spec_fn was provided.\n\
+                 Provide TestGenerator::with_mock_spec_fn(\"path::to::mock_spec()\") so generated tests can build explicit boundary mocks.",
+                context, boundary_nodes
+            );
+        }
+        Expr::call("mock_spec", vec![]).method("to_boundary_mocks", vec![])
     }
 
-    /// Generate flow verification tests.
-    fn generate_flow_tests(&self, _analysis: &DagAnalysis, graph_builder_fn: &str) -> String {
-        let mut code = String::new();
-
-        let Some(spec) = &self.mock_spec else {
-            return code;
+    /// Get mock value for a boundary port, using MockSpec only.
+    fn get_mock_value(
+        &self,
+        node: &str,
+        port: &str,
+        type_id: &str,
+        cardinality: Cardinality,
+    ) -> ValueExpr {
+        let spec = self.mock_spec.as_ref().unwrap_or_else(|| {
+            panic!(
+                "MockSpec required for boundary tests; missing spec while generating {}.{}",
+                node, port
+            )
+        });
+        let Some(value) = spec.get_boundary_mock(node, port) else {
+            panic!(
+                "MockSpec missing boundary mock for {}.{} (type: {}, cardinality: {}).\n\
+                 Add MockSpec::boundary(\"{}\", \"{}\", ...).",
+                node, port, type_id, cardinality, node, port
+            );
         };
+        ValueExpr::from(value)
+    }
 
+    fn build_flow_section(
+        &self,
+        _analysis: &DagAnalysis,
+        graph_builder_fn: &str,
+    ) -> Option<TestSection> {
+        let Some(spec) = &self.mock_spec else {
+            return None;
+        };
+        if self.mock_spec_fn.is_none() {
+            panic!(
+                "Flow tests require mock_spec_fn so generated tests can build boundary mocks.\n\
+                 Provide TestGenerator::with_mock_spec_fn(\"path::to::mock_spec()\") to enable flow tests."
+            );
+        }
         if !spec.has_flow_test_data() {
-            return code;
+            return None;
         }
 
-        code.push_str(
-            "// ============================================================================\n",
-        );
-        code.push_str("// Flow Verification Tests\n");
-        code.push_str(
-            "// These tests execute the full DAG in DryRun mode with mocked transport\n",
-        );
-        code.push_str(
-            "// responses, verifying that pure node logic produces expected outputs.\n",
-        );
-        code.push_str(
-            "// ============================================================================\n\n",
-        );
+        let test_name = format!("test_flow_{}", NamingCase::SnakeCase.apply(&spec.name));
 
-        let test_name = format!(
-            "test_flow_{}",
-            NamingCase::SnakeCase.apply(&spec.name)
-        );
-
-        code.push_str(&format!(
-            "/// Flow verification: {} scenario.\n",
-            spec.name
-        ));
-        code.push_str("///\n");
-        code.push_str("/// Builds the DAG, injects mocked transport responses via DryRun,\n");
-        code.push_str(
-            "/// and verifies that the pure node chain produces expected terminal outputs.\n",
-        );
-        code.push_str("#[test]\n");
-        code.push_str(&format!("fn {}() {{\n", test_name));
-        code.push_str(&format!("    let dag = {};\n", graph_builder_fn));
-        code.push_str("    let spec = mock_spec();\n");
-        code.push_str("    let mocks = spec.to_boundary_mocks();\n");
-        code.push_str(
-            "    let log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks))\n",
-        );
-        code.push_str("        .expect(\"DryRun execution should succeed\");\n");
-        code.push('\n');
+        let mut body = vec![
+            Stmt::let_bind("dag", Expr::var(graph_builder_fn)),
+            Stmt::let_bind("spec", Expr::call("mock_spec", vec![])),
+            Stmt::let_bind(
+                "mocks",
+                Expr::var("spec").method("to_boundary_mocks", vec![]),
+            ),
+            Stmt::let_bind(
+                "log",
+                Expr::call(
+                    "execute_with_mode",
+                    vec![
+                        Expr::var("dag").ref_of(),
+                        Expr::call("ExecutionMode::DryRun", vec![Expr::var("mocks")]),
+                    ],
+                )
+                .method(
+                    "expect",
+                    vec![Expr::Str("DryRun execution should succeed".into())],
+                ),
+            ),
+            Stmt::Blank,
+        ];
 
         for eo in &spec.expected_outputs {
-            code.push_str(&format!(
-                "    // Verify {}.{}\n",
-                eo.node, eo.port
+            body.push(Stmt::Comment(format!("Verify {}.{}", eo.node, eo.port)));
+            body.push(Stmt::let_bind(
+                "entry",
+                Expr::var("log")
+                    .method("get", vec![Expr::Str(eo.node.clone())])
+                    .method(
+                        "expect",
+                        vec![Expr::Str(format!(
+                            "node '{}' should be in execution log",
+                            eo.node
+                        ))],
+                    ),
             ));
-            code.push_str(&format!(
-                "    let entry = log.get(\"{}\").expect(\"node '{}' should be in execution log\");\n",
-                eo.node, eo.node
-            ));
-            code.push_str(&format!(
-                "    assert_eq!(\n        entry.outputs.get(\"{}\").expect(\"port '{}' should exist on '{}'\"),\n        &{},\n        \"flow verification: {}.{} mismatch\"\n    );\n",
-                eo.port, eo.port, eo.node,
-                value_to_rust_literal(&eo.expected),
-                eo.node, eo.port
-            ));
-            code.push('\n');
+
+            let left = Expr::var("entry")
+                .field("outputs")
+                .method("get", vec![Expr::Str(eo.port.clone())])
+                .method(
+                    "expect",
+                    vec![Expr::Str(format!(
+                        "port '{}' should exist on '{}'",
+                        eo.port, eo.node
+                    ))],
+                );
+            let right = Expr::Value(ValueExpr::from(&eo.expected)).ref_of();
+            body.push(Stmt::Assert(Assert::Eq {
+                left,
+                right,
+                message: format!("flow verification: {}.{} mismatch", eo.node, eo.port),
+            }));
+            body.push(Stmt::Blank);
         }
 
-        code.push_str("}\n\n");
-        code
+        Some(TestSection {
+            title: "Flow Verification Tests".to_string(),
+            notes: vec![
+                "These tests execute the full DAG in DryRun mode with mocked transport".to_string(),
+                "responses, verifying that pure node logic produces expected outputs.".to_string(),
+            ],
+            tests: vec![TestFn {
+                name: test_name,
+                doc: vec![
+                    format!("Flow verification: {} scenario.", spec.name),
+                    String::new(),
+                    "Builds the DAG, injects mocked transport responses via DryRun,".to_string(),
+                    "and verifies that the pure node chain produces expected terminal outputs."
+                        .to_string(),
+                ],
+                body,
+            }],
+        })
     }
 
-    /// Generate boundary tests.
-    fn generate_boundary_tests(&self, analysis: &DagAnalysis, graph_builder_fn: &str) -> String {
-        let mut code = String::new();
+    fn build_window_section(&self, graph_builder_fn: &str) -> Option<TestSection> {
+        self.mock_spec_fn.as_ref()?;
 
-        code.push_str(
-            "// ============================================================================\n",
-        );
-        code.push_str("// Boundary Tests (per-node mockability)\n");
-        code.push_str(
-            "// ============================================================================\n\n",
-        );
+        let max_nodes = self.config.window_max_nodes.unwrap_or(usize::MAX);
+        if max_nodes < 2 {
+            return None;
+        }
 
-        // Overall boundary test
-        let mocks_expr = if self.mock_spec_fn.is_some() {
-            "mock_spec().to_boundary_mocks()"
-        } else {
-            "default_mocks()"
-        };
-        code.push_str("/// Test that all boundaries can be mocked.\n");
-        code.push_str("#[test]\n");
-        code.push_str("fn test_boundaries_mockable() {\n");
-        code.push_str(&format!("    let dag = {};\n", graph_builder_fn));
-        code.push_str(&format!(
-            "    let result = assert_boundary_mockable(&dag, {});\n",
-            mocks_expr
-        ));
-        code.push_str(
-            "    assert!(result.is_ok(), \"Boundaries should be mockable: {:?}\", result.error);\n",
-        );
-        code.push_str("}\n\n");
+        let flat =
+            gunbc_exec::lower(self.dag).expect("window tests require DAG lowering to succeed");
+        let pure_nodes = collect_pure_nodes(&flat);
+        let windows = enumerate_window_specs(&flat, max_nodes, &pure_nodes);
+        if windows.is_empty() {
+            return None;
+        }
 
-        // Per-boundary-node tests
+        let mut used_names: HashSet<String> = HashSet::new();
+        let mut tests = Vec::new();
+
+        for (idx, spec) in windows.iter().enumerate() {
+            let base_name = format!(
+                "test_window_{}_through_{}",
+                NamingCase::SnakeCase.apply(&spec.first.0),
+                NamingCase::SnakeCase.apply(&spec.last.0)
+            );
+            let test_name = if used_names.insert(base_name.clone()) {
+                base_name
+            } else {
+                format!("{}_{}", base_name, idx)
+            };
+
+            let mut node_args = Vec::new();
+            for node in &spec.nodes {
+                node_args.push(Expr::Str(node.0.clone()));
+            }
+
+            let baseline = Expr::call(
+                "execute_with_mode",
+                vec![
+                    Expr::var("dag").ref_of(),
+                    Expr::call(
+                        "ExecutionMode::DryRun",
+                        vec![Expr::call("mock_spec", vec![]).method("to_boundary_mocks", vec![])],
+                    ),
+                ],
+            )
+            .method(
+                "expect",
+                vec![Expr::Str("baseline DryRun should succeed".into())],
+            );
+
+            let body = vec![
+                Stmt::let_bind("dag", Expr::var(graph_builder_fn)),
+                Stmt::let_bind(
+                    "flat",
+                    Expr::call("lower", vec![Expr::var("dag").ref_of()])
+                        .method("expect", vec![Expr::Str("lower should succeed".into())]),
+                ),
+                Stmt::let_bind("baseline", baseline),
+                Stmt::let_bind(
+                    "window",
+                    Expr::call(
+                        "Window::from_nodes",
+                        vec![Expr::var("flat").ref_of(), Expr::call("vec!", node_args)],
+                    ),
+                ),
+                Stmt::let_mut(
+                    "mocks",
+                    Expr::call("mock_spec", vec![]).method("to_boundary_mocks", vec![]),
+                ),
+                Stmt::Expr(
+                    Expr::call(
+                        "apply_window_inputs",
+                        vec![
+                            Expr::var("flat").ref_of(),
+                            Expr::var("window").ref_of(),
+                            Expr::var("baseline").ref_of(),
+                            Expr::var("mocks").ref_mut(),
+                        ],
+                    )
+                    .method(
+                        "expect",
+                        vec![Expr::Str(
+                            "window inputs should be derivable from baseline".into(),
+                        )],
+                    ),
+                ),
+                Stmt::let_bind(
+                    "window_dag",
+                    Expr::call(
+                        "window_subdag",
+                        vec![Expr::var("flat").ref_of(), Expr::var("window").ref_of()],
+                    ),
+                ),
+                Stmt::let_bind(
+                    "log",
+                    Expr::call(
+                        "execute_with_mode",
+                        vec![
+                            Expr::var("window_dag").ref_of(),
+                            Expr::call("ExecutionMode::DryRun", vec![Expr::var("mocks")]),
+                        ],
+                    )
+                    .method(
+                        "expect",
+                        vec![Expr::Str("window execution should succeed".into())],
+                    ),
+                ),
+                Stmt::Expr(
+                    Expr::call(
+                        "assert_window_outputs",
+                        vec![
+                            Expr::var("flat").ref_of(),
+                            Expr::var("window").ref_of(),
+                            Expr::var("baseline").ref_of(),
+                            Expr::var("log").ref_of(),
+                        ],
+                    )
+                    .method(
+                        "expect",
+                        vec![Expr::Str("window outputs should match baseline".into())],
+                    ),
+                ),
+            ];
+
+            tests.push(TestFn {
+                name: test_name,
+                doc: vec![format!("Window: {} -> {}", spec.first.0, spec.last.0)],
+                body,
+            });
+        }
+
+        Some(TestSection {
+            title: "Windowed Segment Tests".to_string(),
+            notes: vec![
+                "These tests execute contiguous windows of the DAG using baseline DryRun"
+                    .to_string(),
+                "values as injected inputs, then verify window exit outputs match baseline."
+                    .to_string(),
+            ],
+            tests,
+        })
+    }
+
+    fn build_boundary_section(
+        &self,
+        analysis: &DagAnalysis,
+        graph_builder_fn: &str,
+    ) -> Option<TestSection> {
+        let mut tests = Vec::new();
+
+        let mocks_expr = self.dryrun_mocks_expr(analysis, "boundary mockability tests");
+
+        tests.push(TestFn {
+            name: "test_boundaries_mockable".to_string(),
+            doc: vec!["Test that all boundaries can be mocked.".to_string()],
+            body: vec![
+                Stmt::let_bind("dag", Expr::var(graph_builder_fn)),
+                Stmt::let_bind(
+                    "result",
+                    Expr::call(
+                        "assert_boundary_mockable",
+                        vec![Expr::var("dag").ref_of(), mocks_expr],
+                    ),
+                ),
+                Stmt::Expr(Expr::call(
+                    "assert!",
+                    vec![
+                        Expr::var("result").method("is_ok", vec![]),
+                        Expr::Str("Boundaries should be mockable: {:?}".into()),
+                        Expr::var("result").field("error"),
+                    ],
+                )),
+            ],
+        });
+
         for boundary_node in &analysis.boundaries.boundary_nodes {
             let test_name = format!(
                 "test_boundary_{}_mockable",
@@ -1586,149 +2033,172 @@ impl<'a, T> TestGenerator<'a, T> {
             );
             let node_name = &boundary_node.0;
 
-            code.push_str(&format!(
-                "/// Test that {} boundary can be mocked.\n",
-                node_name
-            ));
-            code.push_str("#[test]\n");
-            code.push_str(&format!("fn {}() {{\n", test_name));
-            code.push_str(&format!("    let dag = {};\n", graph_builder_fn));
-            code.push_str("    let boundaries = detect_boundaries(&dag);\n");
-            code.push_str(&format!(
-                "    assert!(boundaries.is_boundary_node(&\"{}\".into()), \"{} should be a boundary\");\n",
-                node_name, node_name
-            ));
-            code.push_str("    \n");
-            code.push_str("    let mut mocks = BoundaryMocks::new();\n");
+            let mut body = vec![
+                Stmt::let_bind("dag", Expr::var(graph_builder_fn)),
+                Stmt::let_bind(
+                    "boundaries",
+                    Expr::call("detect_boundaries", vec![Expr::var("dag").ref_of()]),
+                ),
+                Stmt::Assert(Assert::True {
+                    expr: Expr::var("boundaries").method(
+                        "is_boundary_node",
+                        vec![Expr::Str(node_name.clone()).method("into", vec![]).ref_of()],
+                    ),
+                    message: format!("{} should be a boundary", node_name),
+                }),
+                Stmt::Blank,
+                Stmt::let_mut("mocks", Expr::call("BoundaryMocks::new", vec![])),
+            ];
 
             for (node_id, port_name) in &analysis.boundaries.boundary_ports {
                 if node_id == boundary_node {
-                    let type_id = self
-                        .dag
-                        .nodes
+                    let (type_id, cardinality) = analysis
+                        .port_cardinalities
                         .iter()
-                        .find(|n| n.id == *node_id)
-                        .and_then(|n| n.outputs.iter().find(|p| p.name == *port_name))
-                        .map(|p| p.type_id.0.as_str())
-                        .unwrap_or("String");
+                        .find(|p| {
+                            p.node_id == node_id.0 && p.port_name == port_name.0 && !p.is_input
+                        })
+                        .map(|p| (p.type_id.0.as_str(), p.cardinality))
+                        .unwrap_or(("String", Cardinality::ONE));
 
-                    let mock_value = self.get_mock_value(&node_id.0, &port_name.0, type_id);
-                    code.push_str(&format!(
-                        "    mocks.set_value(\"{}\", \"{}\", {});\n",
-                        node_id.0, port_name.0, mock_value
-                    ));
+                    let mock_value =
+                        self.get_mock_value(&node_id.0, &port_name.0, type_id, cardinality);
+                    body.push(Stmt::Expr(Expr::var("mocks").method(
+                        "set_value",
+                        vec![
+                            Expr::Str(node_id.0.clone()),
+                            Expr::Str(port_name.0.clone()),
+                            Expr::Value(mock_value),
+                        ],
+                    )));
                 }
             }
 
-            code.push_str("    \n");
-            code.push_str(
-                "    let log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).unwrap();\n",
-            );
-            code.push_str(&format!(
-                "    let entry = log.get(\"{}\").expect(\"node should be in log\");\n",
-                node_name
+            body.push(Stmt::Blank);
+            body.push(Stmt::let_bind(
+                "log",
+                Expr::call(
+                    "execute_with_mode",
+                    vec![
+                        Expr::var("dag").ref_of(),
+                        Expr::call("ExecutionMode::DryRun", vec![Expr::var("mocks")]),
+                    ],
+                )
+                .method("unwrap", vec![]),
             ));
-            code.push_str(
-                "    assert!(entry.was_intercepted, \"boundary should be intercepted in dry-run\");\n",
-            );
-            code.push_str("}\n\n");
+            body.push(Stmt::let_bind(
+                "entry",
+                Expr::var("log")
+                    .method("get", vec![Expr::Str(node_name.clone())])
+                    .method("expect", vec![Expr::Str("node should be in log".into())]),
+            ));
+            body.push(Stmt::Assert(Assert::True {
+                expr: Expr::var("entry").field("was_intercepted"),
+                message: "boundary should be intercepted in dry-run".to_string(),
+            }));
+
+            tests.push(TestFn {
+                name: test_name,
+                doc: vec![format!("Test that {} boundary can be mocked.", node_name)],
+                body,
+            });
         }
 
-        code
+        Some(TestSection {
+            title: "Boundary Tests (per-node mockability)".to_string(),
+            notes: Vec::new(),
+            tests,
+        })
     }
 
-    /// Generate chain validation tests.
-    fn generate_chain_tests(&self, _analysis: &DagAnalysis) -> String {
-        let mut code = String::new();
-
+    fn build_chain_section(&self, _analysis: &DagAnalysis) -> Option<TestSection> {
         let Some(spec) = &self.mock_spec else {
-            return code;
+            return None;
         };
-
+        if self.mock_spec_fn.is_none() {
+            panic!(
+                "Chain tests require mock_spec_fn so generated tests can access MockSpec at runtime.\n\
+                 Provide TestGenerator::with_mock_spec_fn(\"path::to::mock_spec()\") to enable chain tests."
+            );
+        }
         if spec.input_expectations.is_empty() && spec.boundary_mocks.is_empty() {
-            return code;
+            return None;
         }
 
-        code.push_str(
-            "// ============================================================================\n",
-        );
-        code.push_str("// Chain Validation Tests\n");
-        code.push_str(
-            "// These tests verify that mock outputs satisfy downstream input expectations.\n",
-        );
-        code.push_str(
-            "// ============================================================================\n\n",
-        );
+        let mut tests = Vec::new();
 
-        // Self-consistency
-        code.push_str("/// Test that this tool's mock spec is self-consistent.\n");
-        code.push_str("#[test]\n");
-        code.push_str("fn test_mock_spec_self_consistent() {\n");
-        code.push_str("    let spec = mock_spec();\n");
-        code.push_str("    // Verify all boundary mocks are present\n");
-
+        let mut body = vec![
+            Stmt::let_bind("spec", Expr::call("mock_spec", vec![])),
+            Stmt::Comment("Verify all boundary mocks are present".to_string()),
+        ];
         for mock in &spec.boundary_mocks {
-            code.push_str(&format!(
-                "    assert!(spec.get_boundary_mock(\"{}\", \"{}\").is_some(), \n",
-                mock.node, mock.port
-            ));
-            code.push_str(&format!(
-                "        \"MockSpec should have boundary mock for {}.{}\");\n",
-                mock.node, mock.port
-            ));
+            body.push(Stmt::Assert(Assert::True {
+                expr: Expr::var("spec")
+                    .method(
+                        "get_boundary_mock",
+                        vec![Expr::Str(mock.node.clone()), Expr::Str(mock.port.clone())],
+                    )
+                    .method("is_some", vec![]),
+                message: format!(
+                    "MockSpec should have boundary mock for {}.{}",
+                    mock.node, mock.port
+                ),
+            }));
         }
+        tests.push(TestFn {
+            name: "test_mock_spec_self_consistent".to_string(),
+            doc: vec!["Test that this tool's mock spec is self-consistent.".to_string()],
+            body,
+        });
 
-        code.push_str("}\n\n");
-
-        // Input expectations
         if !spec.input_expectations.is_empty() {
-            code.push_str("/// Test that input expectations are documented.\n");
-            code.push_str("#[test]\n");
-            code.push_str("fn test_input_expectations_documented() {\n");
-            code.push_str("    let spec = mock_spec();\n");
-
+            let mut body = vec![Stmt::let_bind("spec", Expr::call("mock_spec", vec![]))];
             for exp in &spec.input_expectations {
                 let constraint_str = match &exp.constraint {
                     gunbc_test::InputConstraint::NonEmpty => "NonEmpty",
                     gunbc_test::InputConstraint::Any => "Any",
                     gunbc_test::InputConstraint::OneOf(_) => "OneOf(...)",
                     gunbc_test::InputConstraint::TypePattern(_) => "TypePattern(...)",
-                    gunbc_test::InputConstraint::Custom { description, .. } => {
-                        description.as_str()
-                    }
+                    gunbc_test::InputConstraint::Custom { description, .. } => description.as_str(),
                 };
-                code.push_str(&format!(
-                    "    // Port '{}' expects: {}\n",
+                body.push(Stmt::Comment(format!(
+                    "Port '{}' expects: {}",
                     exp.port, constraint_str
-                ));
+                )));
             }
 
-            code.push_str(&format!(
-                "    assert_eq!(spec.input_expectations.len(), {});\n",
-                spec.input_expectations.len()
-            ));
-            code.push_str("}\n\n");
+            body.push(Stmt::Expr(Expr::call(
+                "assert_eq!",
+                vec![
+                    Expr::var("spec")
+                        .field("input_expectations")
+                        .method("len", vec![]),
+                    Expr::int(spec.input_expectations.len() as i64),
+                ],
+            )));
+
+            tests.push(TestFn {
+                name: "test_input_expectations_documented".to_string(),
+                doc: vec!["Test that input expectations are documented.".to_string()],
+                body,
+            });
         }
 
-        code
+        Some(TestSection {
+            title: "Chain Validation Tests".to_string(),
+            notes: vec![
+                "These tests verify that mock outputs satisfy downstream input expectations."
+                    .to_string(),
+            ],
+            tests,
+        })
     }
 
     // =======================================================================
     // Node I/O Example Tests
     // =======================================================================
 
-    /// Generate tests from MockSpec.node_examples and Node.examples.
-    ///
-    /// Examples come from two sources:
-    /// 1. `MockSpec.node_examples` — rich matchers (Contains, NonEmpty, Satisfies)
-    /// 2. `Node.examples` — exact Value matching (defined on the node itself)
-    ///
-    /// Each example produces a test that:
-    /// 1. Executes the single node with the given inputs
-    /// 2. Asserts outputs match the expected values/matchers
-    fn generate_node_example_tests(&self, graph_builder_fn: &str) -> String {
-        let mut code = String::new();
-
+    fn build_node_example_section(&self, graph_builder_fn: &str) -> Option<TestSection> {
         let mockspec_examples = self
             .mock_spec
             .as_ref()
@@ -1738,25 +2208,25 @@ impl<'a, T> TestGenerator<'a, T> {
         let has_node_examples = self.dag.nodes.iter().any(|n| !n.examples.is_empty());
 
         if mockspec_examples.is_empty() && !has_node_examples {
-            return code;
+            return None;
         }
 
-        code.push_str(
-            "// ============================================================================\n",
-        );
-        code.push_str("// Node I/O Example Tests\n");
-        code.push_str(
-            "// These tests verify individual node behavior against specified examples.\n",
-        );
-        code.push_str(
-            "// Each test executes a single node with given inputs and checks outputs.\n",
-        );
-        code.push_str(
-            "// ============================================================================\n\n",
-        );
+        let mut tests = Vec::new();
 
-        // 1. MockSpec-sourced examples (rich matchers)
         for (idx, example) in mockspec_examples.iter().enumerate() {
+            let has_satisfies = example
+                .outputs
+                .values()
+                .any(|matcher| matches!(matcher, OutputMatcher::Satisfies { .. }));
+            if has_satisfies && self.mock_spec_fn.is_none() {
+                panic!(
+                    "OutputMatcher::Satisfies requires mock_spec_fn so generated tests can access runtime matchers.\n\
+                     Example {} for node '{}' uses Satisfies, but no mock_spec_fn was provided.\n\
+                     Provide TestGenerator::with_mock_spec_fn(\"path::to::mock_spec\").",
+                    idx, example.node_id
+                );
+            }
+
             let test_name = if let Some(desc) = &example.description {
                 let sanitized_desc = sanitize_to_snake_case(desc);
                 format!(
@@ -1772,67 +2242,175 @@ impl<'a, T> TestGenerator<'a, T> {
                 )
             };
 
-            if let Some(desc) = &example.description {
-                code.push_str(&format!("/// Node example: {} - {}\n", example.node_id, desc));
+            let mut doc = if let Some(desc) = &example.description {
+                vec![format!("Node example: {} - {}", example.node_id, desc)]
             } else {
-                code.push_str(&format!(
-                    "/// Node example: {} (example {})\n",
+                vec![format!(
+                    "Node example: {} (example {})",
                     example.node_id, idx
-                ));
-            }
-            code.push_str("///\n");
-            code.push_str(&format!(
-                "/// Tests that node '{}' produces expected outputs for given inputs.\n",
+                )]
+            };
+            doc.push(String::new());
+            doc.push(format!(
+                "Tests that node '{}' produces expected outputs for given inputs.",
                 example.node_id
             ));
-            code.push_str("#[test]\n");
-            code.push_str(&format!("fn {}() {{\n", test_name));
-            code.push_str(&format!("    let dag = {};\n", graph_builder_fn));
 
+            let mut body = vec![Stmt::let_bind("dag", Expr::var(graph_builder_fn))];
+            if has_satisfies {
+                body.push(Stmt::let_bind("spec", Expr::call("mock_spec", vec![])));
+                body.push(Stmt::let_bind(
+                    "example_spec",
+                    Expr::var("spec")
+                        .field("node_examples")
+                        .method("get", vec![Expr::int(idx as i64)])
+                        .method(
+                            "expect",
+                            vec![Expr::Str(format!(
+                                "mock_spec missing node example {} for '{}'",
+                                idx, example.node_id
+                            ))],
+                        ),
+                ));
+                body.push(Stmt::Assert(Assert::Eq {
+                    left: Expr::var("example_spec")
+                        .field("node_id")
+                        .method("as_str", vec![]),
+                    right: Expr::Str(example.node_id.clone()),
+                    message: format!(
+                        "mock_spec example {} should match node id '{}'",
+                        idx, example.node_id
+                    ),
+                }));
+                if let Some(desc) = &example.description {
+                    body.push(Stmt::Assert(Assert::Eq {
+                        left: Expr::var("example_spec")
+                            .field("description")
+                            .method("as_deref", vec![]),
+                        right: Expr::call("Some", vec![Expr::Str(desc.clone())]),
+                        message: format!(
+                            "mock_spec example {} should match description '{}'",
+                            idx, desc
+                        ),
+                    }));
+                } else {
+                    body.push(Stmt::Assert(Assert::True {
+                        expr: Expr::var("example_spec")
+                            .field("description")
+                            .method("is_none", vec![]),
+                        message: format!("mock_spec example {} should have no description", idx),
+                    }));
+                }
+                body.push(Stmt::Blank);
+            }
             if example.inputs.is_empty() {
-                code.push_str("    let inputs = std::collections::HashMap::new();\n");
+                body.push(Stmt::let_bind(
+                    "inputs",
+                    Expr::call("std::collections::HashMap::new", vec![]),
+                ));
             } else {
-                code.push_str("    let mut inputs = std::collections::HashMap::new();\n");
+                body.push(Stmt::let_mut(
+                    "inputs",
+                    Expr::call("std::collections::HashMap::new", vec![]),
+                ));
             }
 
             let mut sorted_inputs: Vec<_> = example.inputs.iter().collect();
             sorted_inputs.sort_by_key(|(k, _)| k.as_str());
             for (port, value) in sorted_inputs {
-                code.push_str(&format!(
-                    "    inputs.insert(\"{}\".to_string(), {});\n",
-                    port,
-                    value_to_rust_literal(value)
-                ));
+                body.push(Stmt::Expr(Expr::var("inputs").method(
+                    "insert",
+                    vec![
+                        Expr::Str(port.clone()).method("to_string", vec![]),
+                        Expr::Value(ValueExpr::from(value)),
+                    ],
+                )));
             }
 
-            code.push_str(&format!(
-                "    let outputs = gunbc_exec::execute_single_node(&dag, \"{}\", inputs, gunbc_exec::ExecutionMode::Real)\n",
-                example.node_id
-            ));
-            code.push_str(&format!(
-                "        .expect(\"node '{}' should execute successfully\");\n\n",
-                example.node_id
-            ));
+            let outputs = Expr::call(
+                "gunbc_exec::execute_single_node",
+                vec![
+                    Expr::var("dag").ref_of(),
+                    Expr::Str(example.node_id.clone()),
+                    Expr::var("inputs"),
+                    Expr::Path(vec![
+                        "gunbc_exec".to_string(),
+                        "ExecutionMode".to_string(),
+                        "Real".to_string(),
+                    ]),
+                ],
+            )
+            .method(
+                "expect",
+                vec![Expr::Str(format!(
+                    "node '{}' should execute successfully",
+                    example.node_id
+                ))],
+            );
+            body.push(Stmt::let_bind("outputs", outputs));
+            body.push(Stmt::Blank);
 
             let mut sorted_outputs: Vec<_> = example.outputs.iter().collect();
             sorted_outputs.sort_by_key(|(k, _)| k.as_str());
             for (port, matcher) in sorted_outputs {
                 let var_name = NamingCase::SnakeCase.apply(port);
-                let prefix = if matcher.generates_assertion() { "" } else { "_" };
-                code.push_str(&format!("    // Check output port '{}'\n", port));
-                code.push_str(&format!(
-                    "    let {}output_{} = outputs.get(\"{}\").expect(\"output port '{}' should exist\");\n",
-                    prefix, var_name, port, port
+                let prefix = if matcher.generates_assertion() {
+                    ""
+                } else {
+                    "_"
+                };
+                let output_var = format!("{}output_{}", prefix, var_name);
+
+                body.push(Stmt::Comment(format!("Check output port '{}'", port)));
+                body.push(Stmt::let_bind(
+                    output_var.clone(),
+                    Expr::var("outputs")
+                        .method("get", vec![Expr::Str(port.clone())])
+                        .method(
+                            "expect",
+                            vec![Expr::Str(format!("output port '{}' should exist", port))],
+                        ),
                 ));
 
-                let check_code = render_output_matcher_check(matcher, &var_name);
-                code.push_str(&format!("    {}\n", check_code));
+                if matches!(matcher, OutputMatcher::Satisfies { .. }) {
+                    let matcher_var = format!("matcher_{}", var_name);
+                    body.push(Stmt::let_bind(
+                        matcher_var.clone(),
+                        Expr::var("example_spec")
+                            .field("outputs")
+                            .method("get", vec![Expr::Str(port.clone())])
+                            .method(
+                                "expect",
+                                vec![Expr::Str(format!(
+                                    "mock_spec example {} missing output matcher for port '{}'",
+                                    idx, port
+                                ))],
+                            ),
+                    ));
+                    body.push(Stmt::Expr(
+                        Expr::var(&matcher_var)
+                            .method("check", vec![Expr::var(&output_var)])
+                            .method(
+                                "expect",
+                                vec![Expr::Str(format!(
+                                    "output port '{}' failed satisfies matcher",
+                                    port
+                                ))],
+                            ),
+                    ));
+                } else {
+                    let mut stmts = render_output_matcher_check(matcher, &var_name);
+                    body.append(&mut stmts);
+                }
             }
 
-            code.push_str("}\n\n");
+            tests.push(TestFn {
+                name: test_name,
+                doc,
+                body,
+            });
         }
 
-        // 2. Node-sourced examples (exact Value matching)
         for node in &self.dag.nodes {
             for (idx, example) in node.examples.iter().enumerate() {
                 let test_name = if let Some(desc) = &example.description {
@@ -1850,68 +2428,104 @@ impl<'a, T> TestGenerator<'a, T> {
                     )
                 };
 
-                if let Some(desc) = &example.description {
-                    code.push_str(&format!(
-                        "/// Node I/O example: {} - {}\n",
-                        node.id.0, desc
-                    ));
+                let mut doc = if let Some(desc) = &example.description {
+                    vec![format!("Node I/O example: {} - {}", node.id.0, desc)]
                 } else {
-                    code.push_str(&format!(
-                        "/// Node I/O example: {} (example {})\n",
-                        node.id.0, idx
-                    ));
-                }
-                code.push_str("///\n");
-                code.push_str(&format!(
-                    "/// Tests that node '{}' produces expected outputs for given inputs (exact match).\n",
+                    vec![format!("Node I/O example: {} (example {})", node.id.0, idx)]
+                };
+                doc.push(String::new());
+                doc.push(format!(
+                    "Tests that node '{}' produces expected outputs for given inputs (exact match).",
                     node.id.0
                 ));
-                code.push_str("#[test]\n");
-                code.push_str(&format!("fn {}() {{\n", test_name));
-                code.push_str(&format!("    let dag = {};\n", graph_builder_fn));
 
+                let mut body = vec![Stmt::let_bind("dag", Expr::var(graph_builder_fn))];
                 if example.inputs.is_empty() {
-                    code.push_str("    let inputs = std::collections::HashMap::new();\n");
+                    body.push(Stmt::let_bind(
+                        "inputs",
+                        Expr::call("std::collections::HashMap::new", vec![]),
+                    ));
                 } else {
-                    code.push_str("    let mut inputs = std::collections::HashMap::new();\n");
+                    body.push(Stmt::let_mut(
+                        "inputs",
+                        Expr::call("std::collections::HashMap::new", vec![]),
+                    ));
                 }
 
                 let mut sorted_inputs: Vec<_> = example.inputs.iter().collect();
                 sorted_inputs.sort_by_key(|(k, _)| k.as_str());
                 for (port, value) in sorted_inputs {
-                    code.push_str(&format!(
-                        "    inputs.insert(\"{}\".to_string(), {});\n",
-                        port,
-                        value_to_rust_literal(value)
-                    ));
+                    body.push(Stmt::Expr(Expr::var("inputs").method(
+                        "insert",
+                        vec![
+                            Expr::Str(port.clone()).method("to_string", vec![]),
+                            Expr::Value(ValueExpr::from(value)),
+                        ],
+                    )));
                 }
 
-                code.push_str(&format!(
-                    "    let outputs = gunbc_exec::execute_single_node(&dag, \"{}\", inputs, gunbc_exec::ExecutionMode::Real)\n",
-                    node.id.0
-                ));
-                code.push_str(&format!(
-                    "        .expect(\"node '{}' should execute successfully\");\n\n",
-                    node.id.0
-                ));
+                let outputs = Expr::call(
+                    "gunbc_exec::execute_single_node",
+                    vec![
+                        Expr::var("dag").ref_of(),
+                        Expr::Str(node.id.0.clone()),
+                        Expr::var("inputs"),
+                        Expr::Path(vec![
+                            "gunbc_exec".to_string(),
+                            "ExecutionMode".to_string(),
+                            "Real".to_string(),
+                        ]),
+                    ],
+                )
+                .method(
+                    "expect",
+                    vec![Expr::Str(format!(
+                        "node '{}' should execute successfully",
+                        node.id.0
+                    ))],
+                );
+                body.push(Stmt::let_bind("outputs", outputs));
+                body.push(Stmt::Blank);
 
                 let mut sorted_outputs: Vec<_> = example.expected_outputs.iter().collect();
                 sorted_outputs.sort_by_key(|(k, _)| k.as_str());
                 for (port, expected) in sorted_outputs {
-                    code.push_str(&format!("    // Check output port '{}'\n", port));
-                    code.push_str(&format!(
-                        "    assert_eq!(\n        outputs.get(\"{}\").expect(\"output port '{}' should exist\"),\n        &{},\n        \"node '{}' port '{}' should match expected value\"\n    );\n",
-                        port, port,
-                        value_to_rust_literal(expected),
-                        node.id.0, port
-                    ));
+                    body.push(Stmt::Comment(format!("Check output port '{}'", port)));
+                    let left = Expr::var("outputs")
+                        .method("get", vec![Expr::Str(port.clone())])
+                        .method(
+                            "expect",
+                            vec![Expr::Str(format!("output port '{}' should exist", port))],
+                        );
+                    let right = Expr::Value(ValueExpr::from(expected)).ref_of();
+                    body.push(Stmt::Assert(Assert::Eq {
+                        left,
+                        right,
+                        message: format!(
+                            "node '{}' port '{}' should match expected value",
+                            node.id.0, port
+                        ),
+                    }));
                 }
 
-                code.push_str("}\n\n");
+                tests.push(TestFn {
+                    name: test_name,
+                    doc,
+                    body,
+                });
             }
         }
 
-        code
+        Some(TestSection {
+            title: "Node I/O Example Tests".to_string(),
+            notes: vec![
+                "These tests verify individual node behavior against specified examples."
+                    .to_string(),
+                "Each test executes a single node with given inputs and checks outputs."
+                    .to_string(),
+            ],
+            tests,
+        })
     }
 }
 
@@ -1968,171 +2582,193 @@ fn sanitize_resource_id(id: &str) -> String {
     result
 }
 
-/// Convert a Value to a Rust literal string via ValueExpr.
-///
-/// Uses the ValueExpr intermediate representation — every Value variant
-/// is handled exhaustively in `Value → ValueExpr`, and every ValueExpr
-/// variant is handled exhaustively in `RustRenderer::render_value`.
-/// No catch-all at either stage.
-fn value_to_rust_literal(value: &Value) -> String {
-    RustRenderer.render_value(&ValueExpr::from(value))
-}
-
 /// Render an output matcher assertion as a single line of Rust code.
 ///
 /// Uses the test IR (Assert, Expr) and RustRenderer to produce the assertion,
 /// replacing the old `OutputMatcher::to_check_code()` string interpolation.
 /// The `var_name` is the snake_case port name; the actual variable is `output_{var_name}`.
-fn render_output_matcher_check(matcher: &OutputMatcher, var_name: &str) -> String {
+fn render_output_matcher_check(matcher: &OutputMatcher, var_name: &str) -> Vec<Stmt> {
     let output_var = format!("output_{}", var_name);
-    let result = match matcher {
-        OutputMatcher::Exact(expected) => {
-            let assert = Assert::Eq {
-                left: Expr::var(&output_var).deref(),
-                right: Expr::Value(ValueExpr::from(expected)),
-                message: "expected exact value".to_string(),
-            };
-            RustRenderer.render_assert(&assert, 0)
-        }
-        OutputMatcher::Contains(substring) => {
-            let assert = Assert::Contains {
-                expr: Expr::var(&output_var),
-                substring: substring.clone(),
-                message: format!("expected to contain '{}', got: {{:?}}", substring),
-            };
-            RustRenderer.render_assert(&assert, 0)
-        }
-        OutputMatcher::NonEmpty => {
-            let assert = Assert::NonEmpty {
-                expr: Expr::var(&output_var),
-                message: "expected non-empty value".to_string(),
-            };
-            RustRenderer.render_assert(&assert, 0)
-        }
-        OutputMatcher::IsBool => {
-            let assert = Assert::True {
-                expr: Expr::var(&output_var).method("as_bool", vec![]).method("is_some", vec![]),
-                message: format!("expected Bool for {}", output_var),
-            };
-            RustRenderer.render_assert(&assert, 0)
-        }
-        OutputMatcher::IsInt => {
-            let assert = Assert::True {
-                expr: Expr::var(&output_var).method("as_int", vec![]).method("is_some", vec![]),
-                message: format!("expected Int for {}", output_var),
-            };
-            RustRenderer.render_assert(&assert, 0)
-        }
-        OutputMatcher::IsString => {
-            let assert = Assert::True {
-                expr: Expr::var(&output_var).method("as_str", vec![]).method("is_some", vec![]),
-                message: format!("expected String for {}", output_var),
-            };
-            RustRenderer.render_assert(&assert, 0)
-        }
-        OutputMatcher::IsRequest => {
-            let assert = Assert::True {
-                expr: Expr::var(&output_var).method("as_request", vec![]).method("is_some", vec![]),
-                message: format!("expected Request for {}", output_var),
-            };
-            RustRenderer.render_assert(&assert, 0)
-        }
-        OutputMatcher::IsResponse => {
-            let assert = Assert::True {
-                expr: Expr::var(&output_var).method("as_response", vec![]).method("is_some", vec![]),
-                message: format!("expected Response for {}", output_var),
-            };
-            RustRenderer.render_assert(&assert, 0)
-        }
-        OutputMatcher::IntGe(threshold) => {
-            let assert = Assert::True {
-                expr: Expr::var(&output_var)
-                    .method("as_int", vec![])
-                    .method("is_some_and", vec![
-                        Expr::Closure {
-                            args: vec!["n".to_string()],
-                            body: Box::new(Expr::var("n").bin_op(">=", Expr::int(*threshold))),
-                        },
-                    ]),
-                message: format!("expected Int >= {} for {}", threshold, output_var),
-            };
-            RustRenderer.render_assert(&assert, 0)
-        }
-        OutputMatcher::IntLe(threshold) => {
-            let assert = Assert::True {
-                expr: Expr::var(&output_var)
-                    .method("as_int", vec![])
-                    .method("is_some_and", vec![
-                        Expr::Closure {
-                            args: vec!["n".to_string()],
-                            body: Box::new(Expr::var("n").bin_op("<=", Expr::int(*threshold))),
-                        },
-                    ]),
-                message: format!("expected Int <= {} for {}", threshold, output_var),
-            };
-            RustRenderer.render_assert(&assert, 0)
-        }
-        OutputMatcher::Satisfies { description, .. } => {
-            format!("// Custom assertion: {}\n", description)
-        }
-        OutputMatcher::Any => {
-            format!("// Any value accepted for {}\n", output_var)
-        }
-    };
-    // render_assert appends \n; strip it since the call site adds its own \n
-    result.trim_end_matches('\n').to_string()
+    match matcher {
+        OutputMatcher::Exact(expected) => vec![Stmt::Assert(Assert::Eq {
+            left: Expr::var(&output_var).deref(),
+            right: Expr::Value(ValueExpr::from(expected)),
+            message: "expected exact value".to_string(),
+        })],
+        OutputMatcher::Contains(substring) => vec![Stmt::Assert(Assert::Contains {
+            expr: Expr::var(&output_var),
+            substring: substring.clone(),
+            message: format!("expected to contain '{}', got: {{:?}}", substring),
+        })],
+        OutputMatcher::NonEmpty => vec![Stmt::Assert(Assert::NonEmpty {
+            expr: Expr::var(&output_var),
+            message: "expected non-empty value".to_string(),
+        })],
+        OutputMatcher::IsBool => vec![Stmt::Assert(Assert::True {
+            expr: Expr::var(&output_var)
+                .method("as_bool", vec![])
+                .method("is_some", vec![]),
+            message: format!("expected Bool for {}", output_var),
+        })],
+        OutputMatcher::IsInt => vec![Stmt::Assert(Assert::True {
+            expr: Expr::var(&output_var)
+                .method("as_int", vec![])
+                .method("is_some", vec![]),
+            message: format!("expected Int for {}", output_var),
+        })],
+        OutputMatcher::IsString => vec![Stmt::Assert(Assert::True {
+            expr: Expr::var(&output_var)
+                .method("as_str", vec![])
+                .method("is_some", vec![]),
+            message: format!("expected String for {}", output_var),
+        })],
+        OutputMatcher::IsRequest => vec![Stmt::Assert(Assert::True {
+            expr: Expr::var(&output_var)
+                .method("as_request", vec![])
+                .method("is_some", vec![]),
+            message: format!("expected Request for {}", output_var),
+        })],
+        OutputMatcher::IsResponse => vec![Stmt::Assert(Assert::True {
+            expr: Expr::var(&output_var)
+                .method("as_response", vec![])
+                .method("is_some", vec![]),
+            message: format!("expected Response for {}", output_var),
+        })],
+        OutputMatcher::IntGe(threshold) => vec![Stmt::Assert(Assert::True {
+            expr: Expr::var(&output_var).method("as_int", vec![]).method(
+                "is_some_and",
+                vec![Expr::Closure {
+                    args: vec!["n".to_string()],
+                    body: Box::new(Expr::var("n").bin_op(">=", Expr::int(*threshold))),
+                }],
+            ),
+            message: format!("expected Int >= {} for {}", threshold, output_var),
+        })],
+        OutputMatcher::IntLe(threshold) => vec![Stmt::Assert(Assert::True {
+            expr: Expr::var(&output_var).method("as_int", vec![]).method(
+                "is_some_and",
+                vec![Expr::Closure {
+                    args: vec!["n".to_string()],
+                    body: Box::new(Expr::var("n").bin_op("<=", Expr::int(*threshold))),
+                }],
+            ),
+            message: format!("expected Int <= {} for {}", threshold, output_var),
+        })],
+        OutputMatcher::Satisfies { description, .. } => vec![Stmt::Expr(Expr::call(
+            "panic!",
+            vec![Expr::Str(format!(
+                "OutputMatcher::Satisfies requires runtime matcher checks: {}",
+                description
+            ))],
+        ))],
+        OutputMatcher::Any => vec![Stmt::Comment(format!(
+            "Any value accepted for {}",
+            output_var
+        ))],
+    }
 }
 
-/// Generate a mock value for a boundary count and type.
+/// Generate a mock value for a boundary count, type, and cardinality.
 ///
 /// Builds a ValueExpr and renders it via RustRenderer. The `count` is the
-/// number of elements (a boundary value from `Cardinality::test_cases()`).
+/// number of elements (a boundary value from `testgen::cardinality::fermi_test_cases()`).
 ///
 /// For count=0, scalar types emit `Value::Unit` (absence), not concrete
-/// "empty content" like `false` or `0`. Collection types emit empty
+/// "empty content" like `false` or `0`. List cardinalities emit empty
 /// collections (which correctly represent zero elements).
-fn boundary_count_mock_value(count: u32, type_id: &str) -> String {
-    let expr = match count {
-        0 => match type_id {
-            // Collection types: empty collection = zero elements (correct)
-            "List" => ValueExpr::List(vec![]),
-            "Set" => ValueExpr::List(vec![]), // rendered as empty set
-            // Scalar types: Value::Unit = absent (not a value with empty content)
-            _ => ValueExpr::Unit,
-        },
-        1 => match type_id {
-            "String" => ValueExpr::Str("<MOCK>".to_string()),
-            "Bool" => ValueExpr::Bool(true),
-            "Int" | "i64" | "i32" => ValueExpr::Int(1),
-            _ => ValueExpr::List(vec![ValueExpr::Str("<MOCK>".to_string())]),
-        },
-        n => {
-            // Generate `n` mock elements
-            let elements: Vec<ValueExpr> = (1..=n)
-                .map(|i| match type_id {
-                    "String" => ValueExpr::Str(format!("<MOCK_{}>", i)),
-                    "Bool" => ValueExpr::Bool(i % 2 == 1),
-                    "Int" | "i64" | "i32" => ValueExpr::Int(i as i64),
-                    _ => ValueExpr::Str(format!("<MOCK_{}>", i)),
-                })
-                .collect();
-            ValueExpr::List(elements)
-        }
-    };
-    RustRenderer.render_value(&expr)
+fn boundary_count_mock_value(count: u32, type_id: &str, cardinality: Cardinality) -> ValueExpr {
+    mock_value_expr_for_count(type_id, cardinality, count)
 }
 
-/// Generate a default mock value for a type.
+/// Generate a mock ValueExpr for a specific count and cardinality.
 ///
-/// Builds a ValueExpr and renders it via RustRenderer. Transport types
-/// are now modeled as Struct ValueExprs rather than hardcoded format strings.
-fn default_mock_for_type(type_id: &str) -> String {
-    let expr = match type_id {
-        "String" => ValueExpr::Str("<MOCK>".to_string()),
-        "Bool" => ValueExpr::Bool(true),
-        "Int" | "i64" | "i32" => ValueExpr::Int(0),
-        "List" => ValueExpr::List(vec![ValueExpr::Str("<MOCK>".to_string())]),
+/// Cardinality determines whether values are wrapped as lists. The `count`
+/// is the number of elements (from `testgen::cardinality::fermi_test_cases()`).
+fn mock_value_expr_for_count(type_id: &str, cardinality: Cardinality, count: u32) -> ValueExpr {
+    if cardinality.is_list() {
+        if count == 0 {
+            return ValueExpr::List(vec![]);
+        }
+        let elements: Vec<ValueExpr> = (1..=count)
+            .map(|i| mock_element_expr(type_id, Some(i)))
+            .collect();
+        return ValueExpr::List(elements);
+    }
+
+    match count {
+        0 => ValueExpr::Unit,
+        n => mock_element_expr(type_id, Some(n)),
+    }
+}
+
+/// Generate a mock ValueExpr for a single element of a type.
+///
+/// When `index` is provided, string/int/bool values are varied for readability.
+fn mock_element_expr(type_id: &str, index: Option<u32>) -> ValueExpr {
+    match type_id {
+        "String" => match index {
+            Some(1) | None => ValueExpr::Str("<MOCK>".to_string()),
+            Some(i) => ValueExpr::Str(format!("<MOCK_{}>", i)),
+        },
+        "Bool" => match index {
+            Some(i) => ValueExpr::Bool(i % 2 == 1),
+            None => ValueExpr::Bool(true),
+        },
+        "Int" | "i64" | "i32" => match index {
+            Some(i) => ValueExpr::Int(i as i64),
+            None => ValueExpr::Int(0),
+        },
+        "Unit" => ValueExpr::Unit,
+        "Json" => ValueExpr::Json(JsonValue::Null),
+        "Map" => ValueExpr::Map(vec![]),
         "Secret" => ValueExpr::Secret("<MOCK_SECRET>".to_string()),
+        "Any" => ValueExpr::Json(JsonValue::Null),
+        "S" => ValueExpr::Str("<MOCK>".to_string()),
+        "Path" => ValueExpr::Str("/tmp/mock".to_string()),
+        "Platform" => ValueExpr::Str("linux".to_string()),
+        "Error" => ValueExpr::Str("<ERROR>".to_string()),
+        "OptionalString" => ValueExpr::Str("<MOCK>".to_string()),
+        "StringList" => ValueExpr::List(vec![ValueExpr::Str("<MOCK>".to_string())]),
+        "NonEmptyStringList" => ValueExpr::List(vec![ValueExpr::Str("<MOCK>".to_string())]),
+        "Tier" => ValueExpr::Str("Ascii".to_string()),
+        "Unknown" => ValueExpr::Json(JsonValue::Null),
+        "ToolId" => ValueExpr::Str("clippy".to_string()),
+        "ToolHandle" => ValueExpr::Map(vec![
+            ("type".to_string(), ValueExpr::Str("tool_handle".to_string())),
+            ("id".to_string(), ValueExpr::Str("clippy".to_string())),
+            ("path".to_string(), ValueExpr::Str("/mock/clippy".to_string())),
+            ("cap".to_string(), ValueExpr::Secret("capability".to_string())),
+        ]),
+        "CliResult" => ValueExpr::Map(vec![
+            ("success".to_string(), ValueExpr::Bool(true)),
+            ("exit_code".to_string(), ValueExpr::Int(0)),
+            ("stdout".to_string(), ValueExpr::Str(String::new())),
+            ("stderr".to_string(), ValueExpr::Str(String::new())),
+        ]),
+        "Timestamp" => ValueExpr::Int(0),
+        "AuthToken" => ValueExpr::Map(vec![
+            ("service".to_string(), ValueExpr::Str("auth".to_string())),
+            ("env_var".to_string(), ValueExpr::Str("AUTH_TOKEN".to_string())),
+            ("token".to_string(), ValueExpr::Secret("mock-token".to_string())),
+            ("cap".to_string(), ValueExpr::Secret("capability".to_string())),
+        ]),
+        "FilesystemHandle" => ValueExpr::Map(vec![
+            ("type".to_string(), ValueExpr::Str("filesystem_handle".to_string())),
+            ("scope".to_string(), ValueExpr::Str("read".to_string())),
+            ("targets".to_string(), ValueExpr::List(vec![ValueExpr::Str("ext4".to_string())])),
+            ("replacement".to_string(), ValueExpr::Str("-".to_string())),
+            ("cap".to_string(), ValueExpr::Secret("capability".to_string())),
+        ]),
+        "TransportRequest" => ValueExpr::Struct {
+            name: "TransportRequest::Shell".to_string(),
+            fields: vec![
+                ("command".to_string(), ValueExpr::Str("true".to_string())),
+                ("args".to_string(), ValueExpr::List(vec![])),
+                ("env".to_string(), ValueExpr::Map(vec![])),
+                ("cwd".to_string(), ValueExpr::Unit),
+                ("stdin".to_string(), ValueExpr::Unit),
+            ],
+        },
         "TransportResponse" => ValueExpr::Struct {
             name: "TransportResponse::Shell".to_string(),
             fields: vec![
@@ -2141,15 +2777,208 @@ fn default_mock_for_type(type_id: &str) -> String {
                 ("stderr".to_string(), ValueExpr::Str(String::new())),
             ],
         },
-        _ => ValueExpr::Str("<MOCK>".to_string()),
-    };
-    RustRenderer.render_value(&expr)
+        "List" | "Set" => panic!(
+            "invalid type_id '{}' for mock value; use element type + cardinality instead",
+            type_id
+        ),
+        _ => panic!(
+            "no mock value for type_id '{}'; add a MockSpec boundary value or extend mock_element_expr",
+            type_id
+        ),
+    }
+}
+
+#[derive(Debug)]
+struct WindowSpec {
+    nodes: Vec<NodeId>,
+    first: NodeId,
+    last: NodeId,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct WindowSignature {
+    entry_ports: Vec<(String, String)>,
+    exit_ports: Vec<(String, String)>,
+}
+
+fn enumerate_window_specs<T>(
+    dag: &Dag<T>,
+    max_nodes: usize,
+    pure_nodes: &HashSet<NodeId>,
+) -> Vec<WindowSpec> {
+    let topo = gunbc_exec::topo_sort(dag);
+    let mut specs = Vec::new();
+    let mut seen: HashSet<WindowSignature> = HashSet::new();
+
+    if topo.len() < 2 {
+        return specs;
+    }
+
+    let max_size = max_nodes.min(topo.len());
+    for size in 2..=max_size {
+        for start in 0..=(topo.len() - size) {
+            let end = start + size - 1;
+            let slice = &topo[start..=end];
+            let node_set: HashSet<NodeId> = slice.iter().cloned().collect();
+
+            if !window_is_connected(dag, &node_set) {
+                continue;
+            }
+            if window_has_mixed_inputs(dag, &node_set) {
+                continue;
+            }
+            if !window_has_pure_node(&node_set, pure_nodes) {
+                continue;
+            }
+
+            let signature = window_signature(dag, &node_set);
+            if signature.exit_ports.is_empty() {
+                continue;
+            }
+            if !seen.insert(signature) {
+                continue;
+            }
+
+            specs.push(WindowSpec {
+                nodes: slice.to_vec(),
+                first: slice[0].clone(),
+                last: slice[slice.len() - 1].clone(),
+            });
+        }
+    }
+
+    specs
+}
+
+fn window_is_connected<T>(dag: &Dag<T>, nodes: &HashSet<NodeId>) -> bool {
+    if nodes.len() <= 1 {
+        return true;
+    }
+
+    let mut adj: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
+    for node in nodes {
+        adj.entry(node.clone()).or_default();
+    }
+
+    for edge in &dag.edges {
+        if nodes.contains(&edge.from_node) && nodes.contains(&edge.to_node) {
+            adj.entry(edge.from_node.clone())
+                .or_default()
+                .push(edge.to_node.clone());
+            adj.entry(edge.to_node.clone())
+                .or_default()
+                .push(edge.from_node.clone());
+        }
+    }
+
+    let start = nodes.iter().next().unwrap().clone();
+    let mut stack = vec![start];
+    let mut visited: HashSet<NodeId> = HashSet::new();
+
+    while let Some(node) = stack.pop() {
+        if !visited.insert(node.clone()) {
+            continue;
+        }
+        if let Some(neighbors) = adj.get(&node) {
+            for neighbor in neighbors {
+                if !visited.contains(neighbor) {
+                    stack.push(neighbor.clone());
+                }
+            }
+        }
+    }
+
+    visited.len() == nodes.len()
+}
+
+fn window_has_mixed_inputs<T>(dag: &Dag<T>, nodes: &HashSet<NodeId>) -> bool {
+    let mut seen: HashMap<(NodeId, PortName), (bool, bool)> = HashMap::new();
+
+    for edge in &dag.edges {
+        if nodes.contains(&edge.to_node) {
+            let entry = seen
+                .entry((edge.to_node.clone(), edge.to_port.clone()))
+                .or_insert((false, false));
+            if nodes.contains(&edge.from_node) {
+                entry.0 = true;
+            } else {
+                entry.1 = true;
+            }
+            if entry.0 && entry.1 {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
+fn window_has_pure_node(nodes: &HashSet<NodeId>, pure_nodes: &HashSet<NodeId>) -> bool {
+    nodes.iter().any(|n| pure_nodes.contains(n))
+}
+
+fn window_signature<T>(dag: &Dag<T>, nodes: &HashSet<NodeId>) -> WindowSignature {
+    let mut internal_incoming: HashSet<(NodeId, PortName)> = HashSet::new();
+    let mut internal_outgoing: HashSet<(NodeId, PortName)> = HashSet::new();
+
+    for edge in &dag.edges {
+        if nodes.contains(&edge.from_node) && nodes.contains(&edge.to_node) {
+            internal_incoming.insert((edge.to_node.clone(), edge.to_port.clone()));
+            internal_outgoing.insert((edge.from_node.clone(), edge.from_port.clone()));
+        }
+    }
+
+    let mut entry_ports: Vec<(String, String)> = Vec::new();
+    let mut exit_ports: Vec<(String, String)> = Vec::new();
+
+    for node in &dag.nodes {
+        if !nodes.contains(&node.id) {
+            continue;
+        }
+        for port in &node.inputs {
+            if !internal_incoming.contains(&(node.id.clone(), port.name.clone())) {
+                entry_ports.push((node.id.0.clone(), port.name.0.clone()));
+            }
+        }
+        for port in &node.outputs {
+            if !internal_outgoing.contains(&(node.id.clone(), port.name.clone())) {
+                exit_ports.push((node.id.0.clone(), port.name.0.clone()));
+            }
+        }
+    }
+
+    entry_ports.sort();
+    exit_ports.sort();
+
+    WindowSignature {
+        entry_ports,
+        exit_ports,
+    }
+}
+
+fn collect_pure_nodes<T>(dag: &Dag<T>) -> HashSet<NodeId> {
+    dag.nodes
+        .iter()
+        .filter(|node| is_pure_node(node))
+        .map(|node| node.id.clone())
+        .collect()
+}
+
+fn is_pure_node<T>(node: &gunbc_ir::Node<T>) -> bool {
+    let is_transport_executor = node
+        .inputs
+        .iter()
+        .any(|p| p.type_id.0 == "TransportRequest");
+    let is_tool_env = node.outputs.iter().any(|p| p.type_id.0 == "ToolHandle");
+    let is_tool_consumer = node.inputs.iter().any(|p| p.type_id.0 == "ToolHandle");
+
+    !is_transport_executor && !is_tool_env && !is_tool_consumer
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gunbc_ir::{build, build::*, Dag, Node, Value};
+    use gunbc_ir::{build, build::*, Cardinality, Dag, Node, Value, ValueExpr};
 
     #[test]
     fn test_generate_test_module() {
@@ -2169,9 +2998,12 @@ mod tests {
         dag.add_edge(edge("source", "out", "sink", "in"));
 
         let spec = MockSpec::new("example")
+            .boundary("sink", "result", Value::Str("<MOCK>".into()))
             .skip_node_example("source")
             .skip_node_example("sink");
-        let generator = TestGenerator::new(&dag).with_mock_spec(spec);
+        let generator = TestGenerator::new(&dag)
+            .with_mock_spec(spec)
+            .with_mock_spec_fn("crate::mock_spec()");
         let code = generator.generate_test_module("example", "build_example_graph()");
 
         // Should generate boundary tests (runtime behavior)
@@ -2187,7 +3019,10 @@ mod tests {
         assert!(code.contains("Proven by construction"));
 
         // Should have content hash in header
-        assert!(code.contains("Content-Hash:"), "should have content hash in header");
+        assert!(
+            code.contains("Content-Hash:"),
+            "should have content hash in header"
+        );
 
         // Should NOT generate composition tests (compiler proves these)
         assert!(!code.contains("test_all_edges_compatible"));
@@ -2212,9 +3047,12 @@ mod tests {
         dag.add_edge(edge("source", "out", "sink", "in"));
 
         let spec = MockSpec::new("example")
+            .boundary("sink", "result", Value::Str("<MOCK>".into()))
             .skip_node_example("source")
             .skip_node_example("sink");
-        let generator = TestGenerator::new(&dag).with_mock_spec(spec);
+        let generator = TestGenerator::new(&dag)
+            .with_mock_spec(spec)
+            .with_mock_spec_fn("crate::mock_spec()");
         let code1 = generator.generate_test_module("example", "build_example_graph()");
         let code2 = generator.generate_test_module("example", "build_example_graph()");
 
@@ -2222,12 +3060,16 @@ mod tests {
         assert_eq!(code1, code2, "content hash should be deterministic");
 
         // Extract the hash value
-        let hash_line = code1.lines()
+        let hash_line = code1
+            .lines()
             .find(|l| l.contains("Content-Hash:"))
             .expect("should have Content-Hash line");
         let hash = hash_line.split("Content-Hash: ").nth(1).unwrap().trim();
         assert_eq!(hash.len(), 16, "hash should be 16 hex chars");
-        assert!(hash.chars().all(|c| c.is_ascii_hexdigit()), "hash should be hex");
+        assert!(
+            hash.chars().all(|c| c.is_ascii_hexdigit()),
+            "hash should be hex"
+        );
     }
 
     #[test]
@@ -2252,7 +3094,9 @@ mod tests {
             .skip_node_example("source")
             .skip_node_example("sink");
 
-        let generator = TestGenerator::new(&dag).with_mock_spec(spec);
+        let generator = TestGenerator::new(&dag)
+            .with_mock_spec(spec)
+            .with_mock_spec_fn("crate::mock_spec()");
         let code = generator.generate_test_module("example", "build_example_graph()");
 
         // Should use mock spec value
@@ -2285,7 +3129,9 @@ mod tests {
             .skip_node_example("source")
             .skip_node_example("sink");
 
-        let generator = TestGenerator::new(&dag).with_mock_spec(spec);
+        let generator = TestGenerator::new(&dag)
+            .with_mock_spec(spec)
+            .with_mock_spec_fn("crate::mock_spec()");
         let code = generator.generate_test_module("example", "build_example_graph()");
 
         // Should have resource tests
@@ -2321,10 +3167,13 @@ mod tests {
         // MockSpec required for DAGs with transport executors
         let spec = MockSpec::new("example")
             .boundary("execute", "response", Value::Str("<MOCK_RESPONSE>".into()))
+            .boundary("parse", "result", Value::Str("<MOCK_RESULT>".into()))
             .skip_node_example("prepare")
             .skip_node_example("parse");
 
-        let generator = TestGenerator::new(&dag).with_mock_spec(spec);
+        let generator = TestGenerator::new(&dag)
+            .with_mock_spec(spec)
+            .with_mock_spec_fn("crate::mock_spec()");
         let code = generator.generate_test_module("example", "build_example_graph()");
 
         // Should have transport interception test
@@ -2347,6 +3196,18 @@ mod tests {
             code.contains("\"parse\""),
             "skip propagation test should verify downstream node 'parse'"
         );
+    }
+
+    #[test]
+    fn test_mock_value_respects_cardinality() {
+        let list_expr = mock_value_expr_for_count("String", Cardinality::ZERO_OR_MORE, 1);
+        assert_eq!(
+            list_expr,
+            ValueExpr::List(vec![ValueExpr::Str("<MOCK>".to_string())])
+        );
+
+        let opt_zero = mock_value_expr_for_count("String", Cardinality::ZERO_OR_ONE, 0);
+        assert_eq!(opt_zero, ValueExpr::Unit);
     }
 
     #[test]
@@ -2380,9 +3241,12 @@ mod tests {
         let spec = MockSpec::new("guarded")
             .boundary("check", "response", Value::Str("<MOCK>".into()))
             .boundary("check", "condition", Value::Bool(true))
+            .boundary("process", "result", Value::Str("<MOCK_RESULT>".into()))
             .skip_node_example("process");
 
-        let generator = TestGenerator::new(&dag).with_mock_spec(spec);
+        let generator = TestGenerator::new(&dag)
+            .with_mock_spec(spec)
+            .with_mock_spec_fn("crate::mock_spec()");
         let code = generator.generate_test_module("guarded", "build_guarded_graph()");
 
         // Should have guard branch coverage test
@@ -2428,9 +3292,12 @@ mod tests {
         dag.add_edge(edge("source", "status", "conditional", "status"));
 
         let spec = MockSpec::new("str_guard")
+            .boundary("conditional", "result", Value::Str("<MOCK_RESULT>".into()))
             .skip_node_example("source")
             .skip_node_example("conditional");
-        let generator = TestGenerator::new(&dag).with_mock_spec(spec);
+        let generator = TestGenerator::new(&dag)
+            .with_mock_spec(spec)
+            .with_mock_spec_fn("crate::mock_spec()");
         let code = generator.generate_test_module("str_guard", "build_graph()");
 
         // Non-Bool guard should emit a structured comment, not a test function
@@ -2461,8 +3328,10 @@ mod tests {
         ));
 
         // MockSpec provided but no examples and no skip — should panic
-        let spec = MockSpec::new("test");
-        let generator = TestGenerator::new(&dag).with_mock_spec(spec);
+        let spec = MockSpec::new("test").boundary("transform", "out", Value::Str("<MOCK>".into()));
+        let generator = TestGenerator::new(&dag)
+            .with_mock_spec(spec)
+            .with_mock_spec_fn("crate::mock_spec()");
         let _ = generator.generate_test_module("test", "build_test_graph()");
     }
 
@@ -2478,7 +3347,19 @@ mod tests {
         ));
 
         // No MockSpec provided - should panic
-        let generator = TestGenerator::new(&dag);
+        let config = TestConfig {
+            execution_tests: false,
+            contract_tests: false,
+            scenario_tests: false,
+            resource_tests: false,
+            boundary_tests: false,
+            chain_tests: false,
+            flow_tests: false,
+            example_tests: true,
+            window_max_nodes: Some(0),
+            ..TestConfig::default()
+        };
+        let generator = TestGenerator::new(&dag).with_config(config);
         let _ = generator.generate_test_module("test", "build_test_graph()");
     }
 
@@ -2502,10 +3383,13 @@ mod tests {
         // No transport MockSpec needed, but pure nodes still need examples or skip.
         // Provide a MockSpec that skips both pure nodes.
         let spec = MockSpec::new("pure")
+            .boundary("sink", "result", Value::Str("<MOCK>".into()))
             .skip_node_example("source")
             .skip_node_example("sink");
 
-        let generator = TestGenerator::new(&dag).with_mock_spec(spec);
+        let generator = TestGenerator::new(&dag)
+            .with_mock_spec(spec)
+            .with_mock_spec_fn("crate::mock_spec()");
         let code = generator.generate_test_module("pure", "build_pure_graph()");
 
         // Should generate tests without panicking
@@ -2542,7 +3426,9 @@ mod tests {
             .node_example(example)
             .skip_node_example("process");
 
-        let generator = TestGenerator::new(&dag).with_mock_spec(spec);
+        let generator = TestGenerator::new(&dag)
+            .with_mock_spec(spec)
+            .with_mock_spec_fn("crate::mock_spec()");
         let code = generator.generate_test_module("example", "build_example_graph()");
 
         // Should have node example tests section
@@ -2554,7 +3440,8 @@ mod tests {
         // Should generate test function (description sanitized to snake_case)
         assert!(
             code.contains("test_example_prepare_basic_input_processing"),
-            "should generate test with description-based name: {}", code
+            "should generate test with description-based name: {}",
+            code
         );
 
         // Should use execute_single_node
@@ -2596,7 +3483,9 @@ mod tests {
             .boundary("echo", "output", Value::Str("hello".into()))
             .node_example(example);
 
-        let generator = TestGenerator::new(&dag).with_mock_spec(spec);
+        let generator = TestGenerator::new(&dag)
+            .with_mock_spec(spec)
+            .with_mock_spec_fn("crate::mock_spec()");
         let code = generator.generate_test_module("exact", "build_exact_graph()");
 
         // Should have exact assertion
@@ -2604,6 +3493,42 @@ mod tests {
             code.contains("assert_eq!"),
             "should have exact match assertion"
         );
+    }
+
+    #[test]
+    fn test_generate_with_satisfies_matcher_uses_runtime_check() {
+        use gunbc_test::{NodeExample, OutputMatcher};
+
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque(
+            "echo",
+            vec![port("input", "String")],
+            vec![port("output", "String")],
+            (),
+        ));
+
+        let example = NodeExample::new("echo")
+            .input("input", Value::Str("hello".into()))
+            .output(
+                "output",
+                OutputMatcher::satisfies(
+                    "non-empty",
+                    |v| matches!(v, Value::Str(s) if !s.is_empty()),
+                ),
+            );
+
+        let spec = MockSpec::new("test")
+            .boundary("echo", "output", Value::Str("hello".into()))
+            .node_example(example);
+
+        let generator = TestGenerator::new(&dag)
+            .with_mock_spec(spec)
+            .with_mock_spec_fn("crate::mock_spec()");
+        let code = generator.generate_test_module("satisfies", "build_satisfies_graph()");
+
+        assert!(code.contains("mock_spec()"));
+        assert!(code.contains(".check("));
+        assert!(code.contains("example_spec"));
     }
 
     #[test]
@@ -2626,7 +3551,9 @@ mod tests {
             .boundary("format", "message", Value::Str("hello world".into()))
             .node_example(example);
 
-        let generator = TestGenerator::new(&dag).with_mock_spec(spec);
+        let generator = TestGenerator::new(&dag)
+            .with_mock_spec(spec)
+            .with_mock_spec_fn("crate::mock_spec()");
         let code = generator.generate_test_module("contains", "build_contains_graph()");
 
         // Should have contains assertion
@@ -2655,31 +3582,40 @@ mod tests {
             ),
         );
 
-        let generator = TestGenerator::new(&dag);
+        // MockSpec required for DAGs with boundary nodes
+        let spec = MockSpec::new("node_ex").boundary("upper", "output", Value::Str("HELLO".into()));
+
+        let generator = TestGenerator::new(&dag)
+            .with_mock_spec(spec)
+            .with_mock_spec_fn("crate::mock_spec()");
         let code = generator.generate_test_module("node_ex", "build_node_ex_graph()");
 
         // Should have example tests section
         assert!(
             code.contains("Node I/O Example Tests"),
-            "should have example tests section: {}", code
+            "should have example tests section: {}",
+            code
         );
 
         // Should generate test from node-sourced example
         assert!(
             code.contains("test_node_example_upper_basic_uppercase"),
-            "should generate test with node example name: {}", code
+            "should generate test with node example name: {}",
+            code
         );
 
         // Should use exact match (assert_eq!)
         assert!(
             code.contains("assert_eq!"),
-            "node examples should use exact match: {}", code
+            "node examples should use exact match: {}",
+            code
         );
 
         // Should reference the expected value
         assert!(
             code.contains("HELLO"),
-            "should contain expected output value: {}", code
+            "should contain expected output value: {}",
+            code
         );
     }
 }

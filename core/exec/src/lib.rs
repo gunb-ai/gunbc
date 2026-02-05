@@ -44,25 +44,24 @@ pub use ci_context::CiContext;
 pub use display::{execute_and_display, print_value};
 pub use error::{ExecError, ResultExt};
 pub use execute::{
-    execute, execute_single_node, execute_with_ci, execute_with_mode, execute_with_mode_and_ci,
-    execute_with_progress, execute_with_progress_and_mode, execute_with_all,
-    ExecutionLog, ExecutionMode, LogEntry,
+    execute, execute_single_node, execute_with_all, execute_with_ci, execute_with_mode,
+    execute_with_mode_and_ci, execute_with_mode_and_inputs, execute_with_progress,
+    execute_with_progress_and_mode, execute_with_progress_and_mode_and_inputs, ExecutionLog,
+    ExecutionMode, LogEntry,
 };
 pub use helpers::{
     optional_bool, optional_json, optional_map_str_str, optional_str, optional_str_list,
     propagate_skipped, require_bool, require_int, require_json, require_map_str_str,
-    require_request, require_response, require_str, require_str_list, require_value,
-    OutputMap, TransportResponseExt,
+    require_request, require_response, require_str, require_str_list, require_value, OutputMap,
+    TransportResponseExt,
 };
 pub use intercept::{BoundaryMock, BoundaryMocks};
 pub use lower::{lower, LowerError};
 pub use progress::{
-    DagProgress, DagSnapshot, EdgeProgress, EdgeState, FieldKind, FieldSummary, NodeProgress,
-    NodeState, OutputSummary, ProgressEvent, ProgressObserver, RecordingObserver, DagPhase,
+    DagPhase, DagProgress, DagSnapshot, EdgeProgress, EdgeState, FieldKind, FieldSummary,
+    NodeProgress, NodeState, OutputSummary, ProgressEvent, ProgressObserver, RecordingObserver,
 };
-pub use render::{
-    Animation, AnimationMode, FrameLoop, RenderMode, TerminalRenderer,
-};
+pub use render::{Animation, AnimationMode, FrameLoop, RenderMode, TerminalRenderer};
 pub use terminal::{Shell, TerminalProfile};
 pub use topo::topo_sort;
 

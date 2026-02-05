@@ -50,4 +50,4 @@ pub use config::{
     generate_clippy_toml, ClippyConfig, ClippyConfigRenderer, CrateAllowance, DisallowedMethod,
 };
 pub use graph::{build_clippy_dag, build_clippy_lint_all, build_clippy_upsert};
-pub use ops::{Clippy, CliToolOp};
+pub use ops::{CliToolOp, Clippy};

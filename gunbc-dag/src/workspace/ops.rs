@@ -14,7 +14,7 @@ use crate::makegen::MakegenOp;
 
 // Domain ops - external (general tools)
 use gunbc_clippy::CliToolOp;
-use gunbc_deps::DepsOp;
+use gunbc_deps::{DepsOp, PlatformEnv};
 use gunbc_gist::GistOps;
 use gunbc_ir::LanguageOp;
 
@@ -42,6 +42,8 @@ pub enum WorkspaceOp {
     Ci(CIOp),
     /// Dependency management operations
     Deps(DepsOp),
+    /// Dependency platform environment
+    DepsEnv(PlatformEnv),
     /// Makefile generation operations
     Makegen(MakegenOp),
     /// Gist operations
@@ -81,6 +83,7 @@ impl Executable for WorkspaceOp {
             // Domain ops
             WorkspaceOp::Ci(op) => op.execute(inputs),
             WorkspaceOp::Deps(op) => op.execute(inputs),
+            WorkspaceOp::DepsEnv(op) => op.execute(inputs),
             WorkspaceOp::Makegen(op) => op.execute(inputs),
             WorkspaceOp::Gist(op) => op.execute(inputs),
             WorkspaceOp::Bootstrap(op) => op.execute(inputs),

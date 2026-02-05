@@ -56,7 +56,7 @@ mod tests {
     fn test_clippy_upsert_is_subdag() {
         let node = build_clippy_upsert(&["--all-targets"]);
         assert_eq!(node.id.0, "clippy");
-        
+
         // Should be a SubDag, not an Opaque node
         assert!(
             matches!(node.body, NodeBody::SubDag(_)),
@@ -80,16 +80,28 @@ mod tests {
     #[test]
     fn test_subdag_contains_upsert_nodes() {
         let node = build_clippy_upsert(&[]);
-        
+
         if let NodeBody::SubDag(subdag) = &node.body {
             // Upsert pattern has 3 nodes: check, create, resolve
             assert_eq!(subdag.nodes.len(), 3);
-            
+
             // Verify node IDs follow upsert pattern
             let ids: Vec<&str> = subdag.nodes.iter().map(|n| n.id.0.as_str()).collect();
-            assert!(ids.contains(&"check"), "Expected 'check' node, got: {:?}", ids);
-            assert!(ids.contains(&"create"), "Expected 'create' node, got: {:?}", ids);
-            assert!(ids.contains(&"resolve"), "Expected 'resolve' node, got: {:?}", ids);
+            assert!(
+                ids.contains(&"check"),
+                "Expected 'check' node, got: {:?}",
+                ids
+            );
+            assert!(
+                ids.contains(&"create"),
+                "Expected 'create' node, got: {:?}",
+                ids
+            );
+            assert!(
+                ids.contains(&"resolve"),
+                "Expected 'resolve' node, got: {:?}",
+                ids
+            );
         } else {
             panic!("Expected SubDag");
         }

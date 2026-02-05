@@ -25,7 +25,7 @@ pub use gitignore::{
 };
 pub use html::{build_html_subdag, html_comment, render_html_document, HtmlConfig, HTML};
 pub use makefile::{
-    build_makefile_subdag, MakefileConfig, MakeTarget, DEFAULT_MAKEFILE_FILENAME, MAKEFILE,
+    build_makefile_subdag, MakeTarget, MakefileConfig, DEFAULT_MAKEFILE_FILENAME, MAKEFILE,
 };
 pub use markdown::{
     build_markdown_subdag, markdown_comment, render_code_block, MarkdownConfig, MARKDOWN,

@@ -120,22 +120,16 @@ impl<T: Clone> BranchBuilder<T> {
         let mut dag = Dag::new();
 
         // True branch: guarded by condition == true
-        dag.add_node(
-            Node::subdag("true_branch", true_dag)
-                .with_input_guard(
-                    self.condition_port_name.as_str(),
-                    Guard::Eq(Value::Bool(true)),
-                ),
-        );
+        dag.add_node(Node::subdag("true_branch", true_dag).with_input_guard(
+            self.condition_port_name.as_str(),
+            Guard::Eq(Value::Bool(true)),
+        ));
 
         // False branch: guarded by condition == false
-        dag.add_node(
-            Node::subdag("false_branch", false_dag)
-                .with_input_guard(
-                    self.condition_port_name.as_str(),
-                    Guard::Eq(Value::Bool(false)),
-                ),
-        );
+        dag.add_node(Node::subdag("false_branch", false_dag).with_input_guard(
+            self.condition_port_name.as_str(),
+            Guard::Eq(Value::Bool(false)),
+        ));
 
         // Merge node: collects result from whichever branch executed
         dag.add_node(Node::opaque(
@@ -145,7 +139,10 @@ impl<T: Clone> BranchBuilder<T> {
                 Port::optional("false_result", self.output_port_type.as_str()),
             ],
             vec![
-                Port::scalar(self.output_port_name.as_str(), self.output_port_type.as_str()),
+                Port::scalar(
+                    self.output_port_name.as_str(),
+                    self.output_port_type.as_str(),
+                ),
                 Port::scalar("branch_taken", "String"),
             ],
             T::from(PatternOp::BranchMerge {
@@ -222,20 +219,14 @@ impl<T: Clone> IfBuilder<T> {
         let mut dag = Dag::new();
 
         // Then branch: guarded by condition == true
-        dag.add_node(
-            Node::subdag("then_branch", then_dag)
-                .with_input_guard(
-                    self.condition_port_name.as_str(),
-                    Guard::Eq(Value::Bool(true)),
-                ),
-        );
+        dag.add_node(Node::subdag("then_branch", then_dag).with_input_guard(
+            self.condition_port_name.as_str(),
+            Guard::Eq(Value::Bool(true)),
+        ));
 
         // Create outer node — output is optional because condition may be false
         Node::subdag(self.name.as_str(), dag)
-            .with_output_cardinality(
-                self.output_port_name.as_str(),
-                Cardinality::ZERO_OR_ONE,
-            )
+            .with_output_cardinality(self.output_port_name.as_str(), Cardinality::ZERO_OR_ONE)
     }
 }
 
@@ -255,7 +246,9 @@ mod tests {
                 Port::scalar("condition", "Bool"),
             ],
             vec![Port::scalar("result", "String")],
-            PatternOp::BranchMerge { output_port: "result".into() },
+            PatternOp::BranchMerge {
+                output_port: "result".into(),
+            },
         ));
         dag
     }
@@ -269,7 +262,9 @@ mod tests {
                 Port::scalar("condition", "Bool"),
             ],
             vec![Port::scalar("output", "String")],
-            PatternOp::BranchMerge { output_port: "output".into() },
+            PatternOp::BranchMerge {
+                output_port: "output".into(),
+            },
         ));
         dag
     }
@@ -326,9 +321,7 @@ mod tests {
 
     #[test]
     fn test_if_builder() {
-        let node = IfBuilder::new("test_if")
-            .with_then(make_if_body())
-            .build();
+        let node = IfBuilder::new("test_if").with_then(make_if_body()).build();
 
         assert_eq!(node.id.0, "test_if");
         assert!(node.is_subdag());
@@ -366,12 +359,12 @@ mod tests {
                 Port::scalar("condition", "Bool"),
             ],
             vec![Port::scalar("output", "String")],
-            PatternOp::BranchMerge { output_port: "output".into() },
+            PatternOp::BranchMerge {
+                output_port: "output".into(),
+            },
         ));
 
-        let node = IfBuilder::new("test_if")
-            .with_then(then_dag)
-            .build();
+        let node = IfBuilder::new("test_if").with_then(then_dag).build();
 
         let mut dag: Dag<TestOp> = Dag::new();
         dag.add_node(node);
