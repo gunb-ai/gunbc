@@ -560,6 +560,51 @@ fn value_type_name(value: &Value) -> &'static str {
     }
 }
 
+/// Assert that all expected boundaries exist in a MockSpec.
+///
+/// This helper consolidates the common pattern of testing boundary mock presence:
+///
+/// ```ignore
+/// // Before (repeated for each boundary):
+/// assert!(spec.get_boundary_mock("node", "port").is_some(),
+///     "missing boundary mock for node.port");
+///
+/// // After:
+/// assert_boundaries(&spec, &[("node", "port"), ("other", "value")]);
+/// ```
+///
+/// # Panics
+///
+/// Panics if any expected boundary is missing from the MockSpec.
+pub fn assert_boundaries(spec: &MockSpec, expected: &[(&str, &str)]) {
+    for (node, port) in expected {
+        assert!(
+            spec.get_boundary_mock(node, port).is_some(),
+            "missing boundary mock for {}.{} in MockSpec '{}'",
+            node,
+            port,
+            spec.name
+        );
+    }
+}
+
+/// Assert that all expected transport mocks exist in a MockSpec.
+///
+/// Similar to `assert_boundaries` but for transport mocks.
+pub fn assert_transport_mocks(spec: &MockSpec, expected: &[(&str, &str)]) {
+    for (node, port) in expected {
+        let found = spec
+            .transport_mocks
+            .iter()
+            .any(|m| m.node == *node && m.port == *port);
+        assert!(
+            found,
+            "missing transport mock for {}.{} in MockSpec '{}'",
+            node, port, spec.name
+        );
+    }
+}
+
 /// Validate that upstream mock specs satisfy downstream expectations.
 ///
 /// Given a chain A -> B, verify that A's boundary mocks satisfy B's input expectations.
@@ -1017,5 +1062,48 @@ mod tests {
 
         assert_eq!(spec.node_examples.len(), 1);
         assert_eq!(spec.node_examples[0].node_id, "parse");
+    }
+
+    // ========================================================================
+    // assert_boundaries and assert_transport_mocks tests
+    // ========================================================================
+
+    #[test]
+    fn test_assert_boundaries_success() {
+        let spec = MockSpec::new("test")
+            .boundary("node1", "out1", Value::Str("a".into()))
+            .boundary("node2", "out2", Value::Bool(true));
+
+        // Should not panic
+        assert_boundaries(&spec, &[("node1", "out1"), ("node2", "out2")]);
+    }
+
+    #[test]
+    #[should_panic(expected = "missing boundary mock for node3.out3")]
+    fn test_assert_boundaries_failure() {
+        let spec = MockSpec::new("test").boundary("node1", "out1", Value::Str("a".into()));
+
+        // Should panic because node3.out3 is missing
+        assert_boundaries(&spec, &[("node1", "out1"), ("node3", "out3")]);
+    }
+
+    #[test]
+    fn test_assert_transport_mocks_success() {
+        let spec = MockSpec::new("test")
+            .transport_mock("execute1", "response", Value::Str("ok".into()))
+            .transport_mock("execute2", "response", Value::Str("done".into()));
+
+        // Should not panic
+        assert_transport_mocks(&spec, &[("execute1", "response"), ("execute2", "response")]);
+    }
+
+    #[test]
+    #[should_panic(expected = "missing transport mock for execute3.response")]
+    fn test_assert_transport_mocks_failure() {
+        let spec =
+            MockSpec::new("test").transport_mock("execute1", "response", Value::Str("ok".into()));
+
+        // Should panic because execute3.response is missing
+        assert_transport_mocks(&spec, &[("execute1", "response"), ("execute3", "response")]);
     }
 }

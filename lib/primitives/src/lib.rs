@@ -39,7 +39,7 @@ pub mod io;
 
 pub use collection::{CollectionOp, FilterOp, FirstOp, FoldOp, LastOp, MapOp, SetOp, SortOp};
 pub use control::{BranchOp, LoopOp};
-pub use data::{ConcatOp, ExtractOp, FormatOp, ParseOp, SplitOp};
+pub use data::{ConcatOp, ExtractOp, FormatMapOp, FormatOp, ParseOp, SplitOp, StableHashOp};
 pub use env::{ClockEnv, FsEnv};
 pub use io::{
     EmbeddedFileExistsOp, EmbeddedShellOp, HttpRequestOp, PrepareDirectoryListOp,
@@ -58,8 +58,10 @@ pub enum PrimitiveOp {
     Parse(ParseOp),
     Extract(ExtractOp),
     Format(FormatOp),
+    FormatMap(FormatMapOp),
     Concat(ConcatOp),
     Split(SplitOp),
+    StableHash(StableHashOp),
 
     // Collection primitives
     Map(MapOp),
@@ -94,8 +96,10 @@ impl Executable for PrimitiveOp {
             PrimitiveOp::Parse(op) => op.execute(inputs),
             PrimitiveOp::Extract(op) => op.execute(inputs),
             PrimitiveOp::Format(op) => op.execute(inputs),
+            PrimitiveOp::FormatMap(op) => op.execute(inputs),
             PrimitiveOp::Concat(op) => op.execute(inputs),
             PrimitiveOp::Split(op) => op.execute(inputs),
+            PrimitiveOp::StableHash(op) => op.execute(inputs),
 
             // Collection
             PrimitiveOp::Map(op) => op.execute(inputs),

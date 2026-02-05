@@ -13,7 +13,9 @@
 //! // request is now a TransportRequest ready to be executed via TransportOps::Execute
 //! ```
 
-use gunbc_exec::{optional_str, require_response, require_str, ExecError, Executable, OutputMap};
+use gunbc_exec::{
+    optional_str, require_response, require_str, ExecError, Executable, IntoExecResult, OutputMap,
+};
 use gunbc_ir::transport::gist::GistRequest;
 use gunbc_ir::transport::{ShellResponse, TransportRequest, TransportResponse};
 use gunbc_ir::{Timestamp, Value};
@@ -227,15 +229,14 @@ fn require_filesystem_handle(
         .get(key)
         .ok_or_else(|| ExecError::new(format!("missing '{}' input", key)))?;
     filename::FilesystemHandle::try_from(value)
-        .map_err(|e| ExecError::new(format!("invalid '{}' input: {}", key, e)))
+        .with_exec_context(|| format!("invalid '{}' input", key))
 }
 
 fn require_timestamp(inputs: &HashMap<String, Value>, key: &str) -> Result<Timestamp, ExecError> {
     let value = inputs
         .get(key)
         .ok_or_else(|| ExecError::new(format!("missing '{}' input", key)))?;
-    Timestamp::try_from(value)
-        .map_err(|e| ExecError::new(format!("invalid '{}' input: {}", key, e)))
+    Timestamp::try_from(value).with_exec_context(|| format!("invalid '{}' input", key))
 }
 
 /// Convert days since Unix epoch to (year, month, day).

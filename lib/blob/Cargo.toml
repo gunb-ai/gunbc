@@ -11,6 +11,8 @@ gunbc-exec = { path = "../../core/exec" }
 gunbc-lib-transport = { path = "../transport" }
 serde.workspace = true
 serde_json.workspace = true
+sha2 = "0.10"
+hex = "0.4"
 
 [dev-dependencies]
 gunbc-test = { path = "../../core/test" }

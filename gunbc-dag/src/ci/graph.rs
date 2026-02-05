@@ -35,7 +35,7 @@
 use crate::ci::env::EnvOp;
 use crate::ci::ops::CIOp;
 use gunbc_deps::DEFAULT_MANIFEST_FILENAME;
-use gunbc_exec::{require_bool, ExecError, Executable, OutputMap};
+use gunbc_exec::{require_bool, ExecError, Executable, IntoExecResult, OutputMap};
 use gunbc_ir::transport::cli::{CliToolOp, ToolHandle};
 use gunbc_ir::{
     build::*,
@@ -99,10 +99,9 @@ impl Executable for CIGraphOp {
                     let handle = ToolHandle::try_from(handle_val)
                         .map_err(|e| ExecError::new(e.to_string()))?;
                     op.execute_with_handle(&handle)
-                        .map_err(|e| ExecError::new(format!("CLI tool error: {}", e)))?
+                        .exec_context("CLI tool error")?
                 } else {
-                    op.execute()
-                        .map_err(|e| ExecError::new(format!("CLI tool error: {}", e)))?
+                    op.execute().exec_context("CLI tool error")?
                 };
 
                 // Copy tool outputs and add skip=false

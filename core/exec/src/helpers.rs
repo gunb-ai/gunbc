@@ -2,7 +2,7 @@
 //!
 //! These reduce boilerplate in the three most common patterns:
 //!
-//! 1. **Input extraction** — `require_str(inputs, "key")?` replaces
+//! 1. **Input extraction** — `inputs.require_str("key")?` replaces
 //!    `inputs.get("key").and_then(|v| v.as_str()).ok_or_else(|| ...)?`
 //!
 //! 2. **Output construction** — `OutputMap::new().str("k", v).ok()` replaces
@@ -10,6 +10,20 @@
 //!
 //! 3. **Response type matching** — `response.require_shell()?` replaces
 //!    `match response { TransportResponse::Shell(s) => s, _ => return Err(...) }`
+//!
+//! # InputsExt Trait
+//!
+//! The [`InputsExt`] trait provides method syntax for input extraction:
+//!
+//! ```ignore
+//! use gunbc_exec::InputsExt;
+//!
+//! fn execute(&self, inputs: HashMap<String, Value>) -> Result<..., ExecError> {
+//!     let name = inputs.require_str("name")?;
+//!     let count = inputs.optional_int("count").unwrap_or(10);
+//!     // ...
+//! }
+//! ```
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -147,6 +161,133 @@ pub fn optional_map_str_str(
     key: &str,
 ) -> Option<BTreeMap<String, String>> {
     inputs.get(key).and_then(|v| v.as_map_str_str())
+}
+
+// ---------------------------------------------------------------------------
+// InputsExt trait (method syntax for input extraction)
+// ---------------------------------------------------------------------------
+
+/// Extension trait for input maps, providing method syntax for extraction.
+///
+/// This trait provides the same functionality as the free functions above,
+/// but with method syntax that reduces import lists and reads more naturally:
+///
+/// ```ignore
+/// // Before (free functions):
+/// use gunbc_exec::{require_str, require_json, optional_bool};
+/// let name = require_str(&inputs, "name")?;
+///
+/// // After (trait methods):
+/// use gunbc_exec::InputsExt;
+/// let name = inputs.require_str("name")?;
+/// ```
+pub trait InputsExt {
+    /// Extract a required string input.
+    fn require_str(&self, key: &str) -> Result<&str, ExecError>;
+
+    /// Extract a required JSON input.
+    fn require_json(&self, key: &str) -> Result<&serde_json::Value, ExecError>;
+
+    /// Extract a required boolean input.
+    fn require_bool(&self, key: &str) -> Result<bool, ExecError>;
+
+    /// Extract a required integer input.
+    fn require_int(&self, key: &str) -> Result<i64, ExecError>;
+
+    /// Extract a required string list input.
+    fn require_str_list(&self, key: &str) -> Result<Vec<String>, ExecError>;
+
+    /// Extract a required map input.
+    fn require_map_str_str(&self, key: &str) -> Result<BTreeMap<String, String>, ExecError>;
+
+    /// Extract a required transport response input.
+    fn require_response(&self, key: &str) -> Result<&TransportResponse, ExecError>;
+
+    /// Extract a required transport request input.
+    fn require_request(&self, key: &str) -> Result<TransportRequest, ExecError>;
+
+    /// Extract a required Value input (any type).
+    fn require_value(&self, key: &str) -> Result<&Value, ExecError>;
+
+    /// Extract an optional string input.
+    fn optional_str(&self, key: &str) -> Option<&str>;
+
+    /// Extract an optional JSON input.
+    fn optional_json(&self, key: &str) -> Option<&serde_json::Value>;
+
+    /// Extract an optional boolean input.
+    fn optional_bool(&self, key: &str) -> Option<bool>;
+
+    /// Extract an optional integer input.
+    fn optional_int(&self, key: &str) -> Option<i64>;
+
+    /// Extract an optional string list input.
+    fn optional_str_list(&self, key: &str) -> Option<Vec<String>>;
+
+    /// Extract an optional map input.
+    fn optional_map_str_str(&self, key: &str) -> Option<BTreeMap<String, String>>;
+}
+
+impl InputsExt for HashMap<String, Value> {
+    fn require_str(&self, key: &str) -> Result<&str, ExecError> {
+        require_str(self, key)
+    }
+
+    fn require_json(&self, key: &str) -> Result<&serde_json::Value, ExecError> {
+        require_json(self, key)
+    }
+
+    fn require_bool(&self, key: &str) -> Result<bool, ExecError> {
+        require_bool(self, key)
+    }
+
+    fn require_int(&self, key: &str) -> Result<i64, ExecError> {
+        require_int(self, key)
+    }
+
+    fn require_str_list(&self, key: &str) -> Result<Vec<String>, ExecError> {
+        require_str_list(self, key)
+    }
+
+    fn require_map_str_str(&self, key: &str) -> Result<BTreeMap<String, String>, ExecError> {
+        require_map_str_str(self, key)
+    }
+
+    fn require_response(&self, key: &str) -> Result<&TransportResponse, ExecError> {
+        require_response(self, key)
+    }
+
+    fn require_request(&self, key: &str) -> Result<TransportRequest, ExecError> {
+        require_request(self, key)
+    }
+
+    fn require_value(&self, key: &str) -> Result<&Value, ExecError> {
+        require_value(self, key)
+    }
+
+    fn optional_str(&self, key: &str) -> Option<&str> {
+        optional_str(self, key)
+    }
+
+    fn optional_json(&self, key: &str) -> Option<&serde_json::Value> {
+        optional_json(self, key)
+    }
+
+    fn optional_bool(&self, key: &str) -> Option<bool> {
+        optional_bool(self, key)
+    }
+
+    fn optional_int(&self, key: &str) -> Option<i64> {
+        self.get(key).and_then(|v| v.as_int())
+    }
+
+    fn optional_str_list(&self, key: &str) -> Option<Vec<String>> {
+        optional_str_list(self, key)
+    }
+
+    fn optional_map_str_str(&self, key: &str) -> Option<BTreeMap<String, String>> {
+        optional_map_str_str(self, key)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -458,5 +599,59 @@ mod tests {
         let inputs = HashMap::new();
         let result = propagate_skipped(&inputs, "response", &["out1"]);
         assert!(result.is_none());
+    }
+
+    // -----------------------------------------------------------------------
+    // InputsExt trait tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn inputs_ext_require_str() {
+        let mut inputs = HashMap::new();
+        inputs.insert("name".to_string(), Value::Str("hello".to_string()));
+
+        // Method syntax via InputsExt
+        assert_eq!(inputs.require_str("name").unwrap(), "hello");
+    }
+
+    #[test]
+    fn inputs_ext_require_str_missing() {
+        let inputs: HashMap<String, Value> = HashMap::new();
+        let err = inputs.require_str("name").unwrap_err();
+        assert!(err.0.contains("missing or invalid 'name' input"));
+    }
+
+    #[test]
+    fn inputs_ext_optional_str() {
+        let mut inputs = HashMap::new();
+        inputs.insert("name".to_string(), Value::Str("hello".to_string()));
+
+        assert_eq!(inputs.optional_str("name"), Some("hello"));
+        assert_eq!(inputs.optional_str("missing"), None);
+    }
+
+    #[test]
+    fn inputs_ext_require_bool() {
+        let mut inputs = HashMap::new();
+        inputs.insert("flag".to_string(), Value::Bool(true));
+
+        assert_eq!(inputs.require_bool("flag").unwrap(), true);
+    }
+
+    #[test]
+    fn inputs_ext_require_int() {
+        let mut inputs = HashMap::new();
+        inputs.insert("count".to_string(), Value::Int(42));
+
+        assert_eq!(inputs.require_int("count").unwrap(), 42);
+    }
+
+    #[test]
+    fn inputs_ext_optional_int() {
+        let mut inputs = HashMap::new();
+        inputs.insert("count".to_string(), Value::Int(42));
+
+        assert_eq!(inputs.optional_int("count"), Some(42));
+        assert_eq!(inputs.optional_int("missing"), None);
     }
 }

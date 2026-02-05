@@ -42,7 +42,7 @@ pub mod topo;
 
 pub use ci_context::CiContext;
 pub use display::{execute_and_display, print_value};
-pub use error::{ExecError, ResultExt};
+pub use error::{ExecError, IntoExecResult, ResultExt};
 pub use execute::{
     execute, execute_single_node, execute_with_all, execute_with_ci, execute_with_mode,
     execute_with_mode_and_ci, execute_with_mode_and_inputs, execute_with_progress,
@@ -52,8 +52,8 @@ pub use execute::{
 pub use helpers::{
     optional_bool, optional_json, optional_map_str_str, optional_str, optional_str_list,
     propagate_skipped, require_bool, require_int, require_json, require_map_str_str,
-    require_request, require_response, require_str, require_str_list, require_value, OutputMap,
-    TransportResponseExt,
+    require_request, require_response, require_str, require_str_list, require_value, InputsExt,
+    OutputMap, TransportResponseExt,
 };
 pub use intercept::{BoundaryMock, BoundaryMocks};
 pub use lower::{lower, LowerError};
