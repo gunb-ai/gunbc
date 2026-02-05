@@ -676,7 +676,6 @@ pub fn all_tools() -> Vec<ToolDef> {
 /// Core build system artifacts (not tool-specific).
 pub fn core_outputs() -> Vec<&'static str> {
     vec![
-        "buck-out/",      // codegen output directory
         "target/",        // cargo build output
         "bin",            // symlink to target/release
     ]

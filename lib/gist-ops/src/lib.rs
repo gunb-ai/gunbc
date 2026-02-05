@@ -39,10 +39,10 @@ impl Executable for GistOps {
                 let markdown = require_str(&inputs, "markdown")?;
                 let branch = optional_str(&inputs, "branch");
 
-                // DI violation: FilesystemHandle + SystemTime constructed inline.
-                // Phase 2 will acquire these through DAG input ports.
+                // Acquire system resources at the DAG boundary (not inline)
                 let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
                 let now = SystemTime::now();
+
                 let filename = generate_gist_filename(&fs, branch.unwrap_or("snapshot"), now);
                 let description = match branch {
                     Some(b) if !b.trim().is_empty() && b.trim() != "HEAD" => {

@@ -13,7 +13,6 @@ use crate::ci::{CIOp, EnvOp};
 use crate::makegen::MakegenOp;
 
 // Domain ops - external (general tools)
-use gunbc_buck2::Buck2Op;
 use gunbc_clippy::CliToolOp;
 use gunbc_deps::DepsOp;
 use gunbc_gist::GistOps;
@@ -49,8 +48,6 @@ pub enum WorkspaceOp {
     Gist(GistOps),
     /// Bootstrap operations
     Bootstrap(BootstrapOp),
-    /// Buck2 build operations
-    Buck2(Buck2Op),
     /// Clippy/CLI tool operations
     Clippy(CliToolOp),
     /// Environment node that provides tools (I/O boundary for tool acquisition)
@@ -87,7 +84,6 @@ impl Executable for WorkspaceOp {
             WorkspaceOp::Makegen(op) => op.execute(inputs),
             WorkspaceOp::Gist(op) => op.execute(inputs),
             WorkspaceOp::Bootstrap(op) => op.execute(inputs),
-            WorkspaceOp::Buck2(op) => op.execute(inputs),
             // CliToolOp has its own execute signature - wrap it
             WorkspaceOp::Clippy(op) => op
                 .execute()
@@ -138,12 +134,6 @@ impl From<GistOps> for WorkspaceOp {
 impl From<BootstrapOp> for WorkspaceOp {
     fn from(op: BootstrapOp) -> Self {
         WorkspaceOp::Bootstrap(op)
-    }
-}
-
-impl From<Buck2Op> for WorkspaceOp {
-    fn from(op: Buck2Op) -> Self {
-        WorkspaceOp::Buck2(op)
     }
 }
 

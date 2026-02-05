@@ -4,7 +4,6 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 description = "Gist generation tool built on gunbc"
-default-run = "gunbc-gist"
 
 [dependencies]
 gunbc-ir = { path = "../../../core/ir" }
@@ -19,11 +18,3 @@ gunbc-test = { path = "../../../core/test" }
 [dev-dependencies]
 gunbc-test = { path = "../../../core/test" }
 serde_json = { workspace = true }
-
-[[bin]]
-name = "gunbc-gist"
-path = "../../../buck-out/gen/bin/gist/main.rs"
-
-[[bin]]
-name = "gunbc-gist-diff"
-path = "../../../buck-out/gen/bin/gist-diff/main.rs"

@@ -4,7 +4,6 @@
 //! enabling fractal composition into the Workspace DAG.
 
 pub mod bootstrap;
-pub mod buck2;
 pub mod ci;
 pub mod clippy;
 pub mod deps;
@@ -41,7 +40,6 @@ pub fn build_workspace_dag() -> Dag<WorkspaceOp> {
     dag.add_node(deps::build_deps_install_subdag());
     dag.add_node(deps::build_deps_generate_subdag());
     dag.add_node(bootstrap::build_bootstrap_subdag());
-    dag.add_node(buck2::build_buck2_subdag());
     dag.add_node(ci::build_ci_subdag());
     dag.add_node(gist::build_gist_rust_subdag());
 
@@ -66,7 +64,6 @@ mod tests {
         assert!(node_ids.contains(&"deps_install"));
         assert!(node_ids.contains(&"deps_generate"));
         assert!(node_ids.contains(&"bootstrap"));
-        assert!(node_ids.contains(&"buck2"));
         assert!(node_ids.contains(&"ci"));
         assert!(node_ids.contains(&"gist"));
         assert!(node_ids.contains(&"languages"));

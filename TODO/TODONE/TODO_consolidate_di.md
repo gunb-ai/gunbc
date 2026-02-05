@@ -12,86 +12,148 @@ transport executor), then pass it down as a parameter or DAG input.
 
 ---
 
-## 1. ~~FilesystemHandle — constructed inline in gist-ops~~ ✅ FIXED (Phase 1)
+## 1. FilesystemHandle — constructed inline in gist-ops
 
-**Where**: `lib/gist-ops/src/lib.rs`
+**Where**: `lib/gist-ops/src/lib.rs:113`
 
-**What was done**: Removed the non-injectable `sanitize_branch_for_filename(branch)`
-wrapper. The function now requires `&FilesystemHandle` as its first parameter:
-`sanitize_branch_for_filename(&fs, branch)`. The `GistOps::PrepareRequest::execute()`
-method now explicitly constructs the handle at the call site (visible DI violation
-for Phase 2 to wire through DAG edges). All tests updated.
+```rust
+pub fn sanitize_branch_for_filename(branch: &str) -> String {
+    let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
+    // ...
+}
+```
 
-**Remaining**: Phase 2 — add `FsEnv` node to the gist DAG to acquire the handle
-at the boundary instead of inline in execute().
+**Problem**: `sanitize_branch_for_filename` acquires a `FilesystemHandle`
+inside its body. The handle should be acquired by the DAG node (or
+environment) and passed in. Same for `generate_gist_filename` which
+calls `sanitize_branch_for_filename` at line 144.
 
----
+**Fix**: Accept `&FilesystemHandle` as a parameter. The `GistOps::PrepareRequest`
+node should acquire (or receive) the handle and pass it through.
 
-## 2. ~~Installer::new() calls Platform::detect() inline~~ ✅ FIXED (Phase 1)
-
-**Where**: `lib/tools/deps/src/installer.rs`, `lib/tools/deps/src/ops.rs`
-
-**What was done**: Removed `Installer::new()`. All call sites now use
-`Installer::for_platform(Platform::detect())` (production) or
-`Installer::for_platform(Platform::Linux)` (tests). The `Platform::detect()`
-call is now visible at the call site. `Default` impl updated to delegate
-to `for_platform(Platform::detect())`.
-
-**Remaining**: Phase 2 — add `PlatformEnv` node to the deps DAG to acquire
-the platform at the boundary instead of inline in execute().
+**Severity**: HIGH — this is the motivating example for this audit.
 
 ---
 
-## 3. ~~std::env::var() in transport executor (auth resolution)~~ ✅ FIXED (Phase 1)
+## 2. Installer::new() calls Platform::detect() inline
 
-**Where**: `lib/transport/src/executor.rs`, `lib/transport/src/ops.rs`
+**Where**: `lib/tools/deps/src/installer.rs:39-42`
 
-**What was done**: Added `AuthMethod::resolve_env_vars()` that takes an
-injectable lookup function and converts `EnvVar(name)` → `Bearer(value)`
-and `EnvVarHeader { header, env_var }` → `ApiKey { header, key }`.
-`RestRequest::resolve_auth()` wraps this for convenience.
+```rust
+pub fn new() -> Self {
+    Self {
+        platform: Platform::detect(),
+    }
+}
+```
 
-Resolution now happens in `TransportOps::Execute` (the DAG node in `ops.rs`)
-before calling into the transport executor. The executor (`executor.rs`)
-no longer reads env vars — `EnvVar`/`EnvVarHeader` arms hit a `debug_assert!`
-if they somehow reach the executor unresolved.
+**Called from**: `lib/tools/deps/src/ops.rs:211`
 
-Auth resolution is fully testable: tests pass mock lookup closures instead
-of setting real environment variables. 8 new tests cover all variants.
+```rust
+fn execute_generate_scripts(...) -> Result<...> {
+    let installer = Installer::new();  // Platform::detect() hidden inside
+    // ...
+}
+```
 
-**Remaining**: Phase 2 — pass resolved auth through DAG input ports instead
-of resolving inline in `TransportOps::Execute`.
+**Problem**: `execute_generate_scripts` is an `Executable` implementation
+(pure business logic). It should receive `Platform` as a DAG input, not
+detect it at execution time. `Installer::for_platform()` already exists
+at line 46 — just need to wire it up.
+
+**Fix**: Add a `platform` input port to the GenerateScripts node. The DAG
+should acquire platform at the environment boundary and feed it in.
+
+**Note**: `Platform::detect()` uses compile-time `cfg!` — same pattern we
+already fixed in `filename.rs`. The platform is a property of the target
+environment, not the build host.
+
+**Severity**: HIGH — same class of problem as the filesystem detection hack.
 
 ---
 
-## 4. ~~std::env in codegen-generated CI runners~~ ✅ FIXED (Phase 1)
+## 3. std::env::var() in transport executor (auth resolution)
 
-**Where**: `core/codegen/src/cli_gen.rs`
+**Where**: `lib/transport/src/executor.rs:81,97`
 
-**What was done**: Generated runner functions now accept
-`&HashMap<String, String>` instead of calling `env::vars()` directly.
-- `load_step_inputs_from_env(step_name, &env_dict)` iterates the dict
-- `emit_step_outputs(step_name, &outputs, &env_dict)` looks up
-  `GITHUB_OUTPUT` and `GITLAB_CI` from the dict
-- The single `env::vars().collect()` call happens once in the generated
-  `run_single_step()`, making the env capture point visible.
+```rust
+gunbc_ir::transport::AuthMethod::EnvVar(var) => {
+    if let Ok(token) = std::env::var(var) {        // line 81
+        http_req.headers.insert("Authorization".into(), format!("Bearer {}", token));
+    }
+}
+gunbc_ir::transport::AuthMethod::EnvVarHeader { header, env_var } => {
+    if let Ok(value) = std::env::var(env_var) {    // line 97
+        http_req.headers.insert(header.clone(), value);
+    }
+}
+```
 
-**Remaining**: Phase 2 — pass env dict through DAG input ports.
+**Problem**: The transport executor reads env vars inline during request
+execution. This makes it impossible to test auth handling without setting
+real environment variables, and couples the executor to OS state.
+
+**Fix**: The `AuthMethod::EnvVar` variant should be resolved *before*
+reaching the executor — at the DAG boundary where secrets are acquired.
+By the time the executor sees a request, all tokens should be concrete
+`AuthMethod::Bearer(token)` values. Alternatively, pass an env-var
+resolver function/trait to the executor.
+
+**Severity**: HIGH — security-sensitive path, hard to test.
 
 ---
 
-## 5. ~~SystemTime::now() in gist filename generation~~ ✅ FIXED (Phase 1)
+## 4. std::env in codegen-generated CI runners
 
-**Where**: `lib/gist-ops/src/lib.rs`
+**Where**: `core/codegen/src/cli_gen.rs:724,748,767`
 
-**What was done**: Removed the non-injectable `generate_gist_filename(branch)`
-wrapper. The function now requires `(&FilesystemHandle, &str, SystemTime)`:
-`generate_gist_filename(&fs, branch, now)`. The `GistOps::PrepareRequest::execute()`
-method now explicitly captures `SystemTime::now()` at the call site. All tests
-updated to use fixed timestamps, making them fully deterministic.
+```rust
+fn load_step_inputs_from_env(step_name: &str) -> HashMap<String, Value> {
+    for (key, value) in env::vars() { ... }        // line 724
+}
 
-**Remaining**: Phase 2 — add `ClockEnv` node to the gist DAG to acquire the
-timestamp at the boundary instead of inline in execute().
+fn emit_step_outputs(step_name: &str, outputs: &HashMap<String, Value>) {
+    if let Ok(output_file) = env::var("GITHUB_OUTPUT") { ... }  // line 748
+    } else if env::var("GITLAB_CI").is_ok() { ... }             // line 767
+}
+```
+
+**Problem**: Generated runner functions read env vars directly. Can't mock
+CI environments for testing generated code.
+
+**Fix**: Generated functions should accept an env dictionary parameter
+(`HashMap<String, String>`) instead of calling `env::vars()` directly.
+The actual `env::vars()` call happens once in the generated `main()`.
+
+**Severity**: MEDIUM — this is generated code, not library code. But it
+sets a bad pattern for anyone reading it as an example.
+
+---
+
+## 5. SystemTime::now() in gist filename generation
+
+**Where**: `lib/gist-ops/src/lib.rs:145`
+
+```rust
+pub fn generate_gist_filename(branch: &str) -> String {
+    let sanitized = sanitize_branch_for_filename(branch);
+    let timestamp = format_utc_timestamp(SystemTime::now());
+    format!("{}_{}.md", sanitized, timestamp)
+}
+```
+
+**Problem**: Implicit dependency on the system clock. Tests can't verify
+the timestamp format without race conditions, and the function is
+non-deterministic.
+
+**Fix**: Accept `SystemTime` as a parameter (or a clock trait). The DAG
+node should capture "now" at the boundary and pass it in:
+
+```rust
+pub fn generate_gist_filename(branch: &str, now: SystemTime) -> String
+```
+
+**Severity**: HIGH — non-deterministic public API.
 
 ---
 
@@ -120,20 +182,30 @@ pattern standard (item 4), this would naturally follow.
 
 ---
 
-## 7. ~~resolve_tool_path() shells out to `which`~~ ✅ FIXED (Phase 1)
+## 7. resolve_tool_path() shells out to `which`
 
-**Where**: `core/ir/src/transport/cli.rs`, `gunbc-dag/src/ci/env.rs`
+**Where**: `core/ir/src/transport/cli.rs:260-281`
 
-**What was done**: Added `ToolPathResolver` trait with `resolve(&self, binary)
--> Result<PathBuf, String>` and `WhichResolver` production implementation.
-`resolve_tool_path()` and `upsert_tool()` now accept `&dyn ToolPathResolver`.
+```rust
+pub fn resolve_tool_path(tool: &'static CliToolDef) -> Result<PathBuf, CliToolError> {
+    let output = Command::new("which")
+        .arg(binary)
+        .output()?;
+    // ...
+}
+```
 
-`EnvOp::execute()` (the I/O boundary) constructs `WhichResolver` and passes
-it to `upsert_tool()`. Tests can inject a mock resolver that returns fixed
-paths without shelling out.
+**Problem**: Direct system call to `which` — can't mock for testing, and
+`which` isn't available on all platforms (Windows uses `where`).
 
-**Remaining**: Phase 2 — acquire resolver through DAG input ports, and
-potentially add platform-aware resolution (Windows `where` vs Unix `which`).
+**Mitigating factor**: Called from `upsert_tool()` which is used at the
+EnvOp boundary (the correct I/O boundary for tool acquisition).
+
+**Fix**: Add a trait-based tool resolver that the transport layer can mock.
+Or use the existing transport pattern: build a `PrepareResolve` request
+and execute through the transport layer.
+
+**Severity**: MEDIUM — at the right boundary, but hard to test/mock.
 
 ---
 
@@ -141,19 +213,19 @@ potentially add platform-aware resolution (Windows `where` vs Unix `which`).
 
 | # | Resource | Location | Severity | Fix |
 |---|----------|----------|----------|-----|
-| 1 | ~~FilesystemHandle~~ | ~~gist-ops/lib.rs:113~~ | ~~HIGH~~ | ✅ Accept as parameter |
-| 2 | ~~Platform~~ | ~~installer.rs:39, ops.rs:211~~ | ~~HIGH~~ | ✅ DAG input port |
-| 3 | ~~Env vars (auth)~~ | ~~executor.rs:81,97~~ | ~~HIGH~~ | ✅ Resolve before executor |
-| 4 | ~~Env vars (codegen)~~ | ~~cli_gen.rs:724,748,767~~ | ~~MEDIUM~~ | ✅ Accept env dict param |
-| 5 | ~~SystemTime~~ | ~~gist-ops/lib.rs:145~~ | ~~HIGH~~ | ✅ Accept as parameter |
+| 1 | FilesystemHandle | gist-ops/lib.rs:113 | HIGH | Accept as parameter |
+| 2 | Platform | installer.rs:39, ops.rs:211 | HIGH | DAG input port |
+| 3 | Env vars (auth) | executor.rs:81,97 | HIGH | Resolve before executor |
+| 4 | Env vars (codegen) | cli_gen.rs:724,748,767 | MEDIUM | Accept env dict param |
+| 5 | SystemTime | gist-ops/lib.rs:145 | HIGH | Accept as parameter |
 | 6 | Env vars (CI detect) | provider.rs:79-99 | LOW | Already at boundary |
-| 7 | ~~which command~~ | ~~cli.rs:260-281~~ | ~~MEDIUM~~ | ✅ Trait-based resolver |
+| 7 | which command | cli.rs:260-281 | MEDIUM | Trait-based resolver |
 
 ## Tasks
 
 - [x] Item 1: Refactor `sanitize_branch_for_filename` to accept `&FilesystemHandle`
 - [x] Item 2: Add `platform` input port to GenerateScripts DAG node
-- [x] Item 3: Resolve `AuthMethod::EnvVar` to `AuthMethod::Bearer` at DAG boundary
+- [ ] Item 3: Resolve `AuthMethod::EnvVar` to `AuthMethod::Bearer` at DAG boundary — see [TODO_credential_lifecycle.md](TODO_credential_lifecycle.md)
 - [x] Item 4: Generate CI runner functions that accept env dict parameter
 - [x] Item 5: Add `SystemTime` parameter to `generate_gist_filename`
 - [x] Item 7: Abstract tool path resolution behind a trait

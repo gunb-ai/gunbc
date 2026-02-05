@@ -640,9 +640,8 @@ fn run_single_step(args: &[String]) {{
     
     // Build the graph
     let dag = {graph_builder_call};
-    
-    // DI: capture env vars once at the boundary, pass dict to helpers.
-    // Phase 2 will acquire env dict through DAG input ports.
+
+    // Capture environment once at the boundary
     let env_dict: HashMap<String, String> = env::vars().collect();
 
     // Load inputs from environment (CI step outputs from previous steps)
@@ -706,6 +705,9 @@ fn list_dag_steps() {{
 /// Load inputs from environment variables set by previous CI steps.
 ///
 /// Convention: STEP_<NODE>_<PORT> = value
+///
+/// Accepts an env dictionary captured at the boundary instead of reading
+/// env vars directly, making this function pure and testable.
 fn load_step_inputs_from_env(step_name: &str, env_dict: &HashMap<String, String>) -> HashMap<String, Value> {{
     let mut inputs = HashMap::new();
 
@@ -732,6 +734,9 @@ fn load_step_inputs_from_env(step_name: &str, env_dict: &HashMap<String, String>
 }}
 
 /// Emit outputs in CI provider format for next steps.
+///
+/// Accepts an env dictionary captured at the boundary instead of reading
+/// env vars directly, making this function pure and testable.
 fn emit_step_outputs(step_name: &str, outputs: &HashMap<String, Value>, env_dict: &HashMap<String, String>) {{
     // Check if we're in GitHub Actions
     if let Some(output_file) = env_dict.get("GITHUB_OUTPUT") {{

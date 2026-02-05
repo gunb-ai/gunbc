@@ -19,7 +19,6 @@ members = [
     
     # General tool definitions (reusable by any project)
     "lib/tools/gist",
-    "lib/tools/buck2",
     "lib/tools/deps",
     "lib/tools/clippy",
     

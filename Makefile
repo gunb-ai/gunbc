@@ -10,31 +10,15 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help codegen ensure-codegen build clean testgen testgen-check fmt-fix lint-fix test test-fix check check-fix clippy clippy-fix fmt fmt-check ci-yaml gist gist-dry gist-diff gist-diff-dry buck2 buck2-dry makegen makegen-dry deps deps-dry bootstrap bootstrap-dry ci ci-dry build-all build-all-dry
+.PHONY: help build clean testgen testgen-check fmt-fix lint-fix test test-fix check check-fix clippy clippy-fix fmt fmt-check ci-yaml gist gist-dry gist-diff gist-diff-dry makegen makegen-dry deps deps-dry bootstrap bootstrap-dry ci ci-dry build-all build-all-dry
 
-# Codegen source tracking: rebuild generated files when sources change
-CODEGEN_SOURCES := $(shell find core/codegen/src core/ir/src -name '*.rs' 2>/dev/null)
-
-# Stamp file tracks codegen freshness - rebuilds when sources change
-buck-out/gen/.codegen-stamp: $(CODEGEN_SOURCES)
-	@mkdir -p buck-out/gen && cargo run -p gunbc-codegen --release -- codegen && touch buck-out/gen/.codegen-stamp
-
-# Ensure codegen is up-to-date (upsert: create if missing, update if stale)
-ensure-codegen: buck-out/gen/.codegen-stamp
-
-# Force regenerate CLIs from DAG entrypoints
-codegen:
-	@cargo run -p gunbc-codegen --release -- codegen
-	@mkdir -p buck-out/gen && touch buck-out/gen/.codegen-stamp
-
-# Full build transaction: codegen → testgen → cargo build
-build: ensure-codegen testgen
+# Full build transaction: testgen → cargo build
+build: testgen
 	@cargo build --all-targets
 
-# Rollback transaction: remove all generated artifacts
+# Clean build artifacts
 clean:
-	@cargo run -p gunbc-codegen --release -- rollback
-	@rm -f buck-out/gen/.codegen-stamp
+	@cargo clean
 
 # Regenerate tests from DAG structures and MockSpecs
 testgen:
@@ -90,7 +74,7 @@ fmt-fix:
 	@cargo fmt
 
 # lint-fix: auto-fix lint issues where possible
-lint-fix: ensure-codegen
+lint-fix:
 	@cargo clippy --fix --workspace --allow-dirty --allow-staged -- -D warnings
 
 # test: Run all tests
@@ -102,7 +86,7 @@ test-fix: fmt-fix lint-fix build
 	@cargo test
 
 # check: Type check all targets
-check: ensure-codegen
+check:
 	@cargo check --all-targets
 
 # check-fix: auto-fix then verify
@@ -110,11 +94,11 @@ check-fix: fmt-fix ensure-codegen
 	@cargo check --all-targets
 
 # clippy: Run clippy linter
-clippy: ensure-codegen
+clippy:
 	@cargo clippy --all-targets -- -D warnings
 
 # clippy-fix: auto-fix then verify
-clippy-fix: ensure-codegen
+clippy-fix:
 	@cargo clippy --fix --workspace --allow-dirty --allow-staged -- -D warnings
 
 # fmt: Format all code
@@ -129,58 +113,51 @@ ci-yaml:
 	@cargo run -p gunbc-codegen --release -- cigen
 
 # gunbc-gist entrypoints: repo_path (String), extensions (List)
-gist: ensure-codegen
+gist:
 	@cargo run -p gunbc-gist -- $(if $(REPO),--repo-path $(REPO)) $(if $(EXT),--extensions $(EXT))
 
-gist-dry: ensure-codegen
+gist-dry:
 	@cargo run -p gunbc-gist -- --dry-run $(if $(REPO),--repo-path $(REPO)) $(if $(EXT),--extensions $(EXT))
 
 # gunbc-gist-diff entrypoints: repo_path (String), base_ref (String), extensions (List)
-gist-diff: ensure-codegen
+gist-diff:
 	@cargo run -p gunbc-gist --bin gunbc-gist-diff -- $(if $(REPO),--repo-path $(REPO)) $(if $(BASE),--base-ref $(BASE)) $(if $(EXT),--extensions $(EXT))
 
-gist-diff-dry: ensure-codegen
+gist-diff-dry:
 	@cargo run -p gunbc-gist --bin gunbc-gist-diff -- --dry-run $(if $(REPO),--repo-path $(REPO)) $(if $(BASE),--base-ref $(BASE)) $(if $(EXT),--extensions $(EXT))
 
-# gunbc-buck2 entrypoints: cargo_toml_path (String), output_path (String)
-buck2: ensure-codegen
-	@cargo run -p gunbc-buck2 -- $(if $(INPUT),--cargo-toml-path $(INPUT)) $(if $(OUTPUT),--output-path $(OUTPUT))
-
-buck2-dry: ensure-codegen
-	@cargo run -p gunbc-buck2 -- --dry-run $(if $(INPUT),--cargo-toml-path $(INPUT)) $(if $(OUTPUT),--output-path $(OUTPUT))
-
 # gunbc-makegen entrypoints: output_path (String)
-makegen: ensure-codegen
+makegen:
 	@cargo run -p gunbc-dag --bin gunbc-makegen -- $(if $(OUTPUT),--output-path $(OUTPUT))
 
-makegen-dry: ensure-codegen
+makegen-dry:
 	@cargo run -p gunbc-dag --bin gunbc-makegen -- --dry-run $(if $(OUTPUT),--output-path $(OUTPUT))
 
 # gunbc-deps entrypoints: manifest_path (String)
-deps: ensure-codegen
+deps:
 	@cargo run -p gunbc-deps -- $(if $(MANIFEST),--manifest-path $(MANIFEST))
 
-deps-dry: ensure-codegen
+deps-dry:
 	@cargo run -p gunbc-deps -- --dry-run $(if $(MANIFEST),--manifest-path $(MANIFEST))
 
 # gunbc-bootstrap entrypoints: 
-bootstrap: ensure-codegen
+bootstrap:
 	@cargo run -p gunbc-dag --bin gunbc-bootstrap --
 
-bootstrap-dry: ensure-codegen
+bootstrap-dry:
 	@cargo run -p gunbc-dag --bin gunbc-bootstrap -- --dry-run
 
 # gunbc-ci entrypoints: 
-ci: ensure-codegen
+ci:
 	@cargo run -p gunbc-dag --bin gunbc-ci --
 
-ci-dry: ensure-codegen
+ci-dry:
 	@cargo run -p gunbc-dag --bin gunbc-ci -- --dry-run
 
 # gunbc-build entrypoints: 
-build-all: ensure-codegen
+build-all:
 	@cargo run -p gunbc-dag --bin gunbc-build --
 
-build-all-dry: ensure-codegen
+build-all-dry:
 	@cargo run -p gunbc-dag --bin gunbc-build -- --dry-run
 
