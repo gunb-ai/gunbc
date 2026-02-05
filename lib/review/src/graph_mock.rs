@@ -1,12 +1,30 @@
 //! Mock specifications for review DAGs.
 //!
-//! Provides MockSpec definitions for dry-run testing and testgen.
+//! This file uses the typed mock builder pattern to construct MockSpecs
+//! that are "impossible by construction" — the DAG's requirements are
+//! extracted and mocks are type-checked at construction time.
+//!
+//! # Review Graphs
+//!
+//! Two main review graphs with different input modes:
+//! - `inline_review_mock_spec()`: For inline content review
+//! - `diff_review_mock_spec()`: For git diff review
+//!
+//! # Transport Mocks
+//!
+//! - `execute_llm`: LLM API call
+//! - `execute_diff`: Git diff command (diff graph only)
+//!
+//! # Resource Mocks
+//!
+//! - `auth_env`: Provides auth token for LLM provider
 
-use crate::{Check, Criteria, Finding, Location, ReviewOutput};
+use crate::graph::{build_diff_review_graph, build_inline_review_graph};
+use crate::{Check, Criteria};
 use gunbc_ir::transport::llm::mock;
-use gunbc_ir::transport::ShellResponse;
+use gunbc_ir::transport::{ShellResponse, TransportResponse};
 use gunbc_ir::{SecretString, Value};
-use gunbc_test::{InputConstraint, MockSpec};
+use gunbc_test::{extract_mock_requirements, InputConstraint, MockSpec};
 use std::collections::BTreeMap;
 
 fn mock_auth_token(service: &str, env_var: &str) -> Value {
@@ -76,8 +94,12 @@ pub fn default_criteria() -> Criteria {
 
 /// Mock specification for the inline review graph.
 ///
-/// Suitable for testing `build_inline_review_graph()`.
+/// Uses the typed mock builder pattern: the DAG is built first, requirements
+/// are extracted from its structure, and mocks are type-checked at construction.
 pub fn inline_review_mock_spec() -> MockSpec {
+    // Build the actual DAG to extract requirements
+    let dag = build_inline_review_graph();
+
     let review_json = serde_json::json!({
         "findings": [
             {
@@ -95,9 +117,17 @@ pub fn inline_review_mock_spec() -> MockSpec {
     let llm_response = mock::mock_openai_response(&llm_answer);
     let criteria = default_criteria();
 
-    MockSpec::new("review-inline")
-        // Input mocks for entrypoints (inline graph has NO config node —
-        // it's the low-level building block)
+    // Extract typed requirements from DAG structure
+    extract_mock_requirements(&dag, "review-inline")
+        // Resource: auth_env provides auth token
+        .boundary("auth_env", "auth:llm", mock_auth_token("openai", "OPENAI_API_KEY"))
+        .expect("auth_env auth:llm should match type")
+        // Transport: execute_llm (LLM API call)
+        .transport_response("execute_llm", "response", llm_response.into())
+        .expect("execute_llm response should match type")
+        // Build spec (pure terminal outputs like parse_response are computed, not mocked)
+        .build_unchecked()
+        // Input mocks for entrypoints (inline graph has NO config node)
         .input_mock(
             "prepare_prompt",
             "artifact",
@@ -110,57 +140,6 @@ pub fn inline_review_mock_spec() -> MockSpec {
         )
         .input_mock("prepare_llm", "provider", Value::Str("openai".into()))
         .input_mock("prepare_llm", "model", Value::Str("gpt-4o".into()))
-        // Env: resolved auth token
-        .boundary(
-            "auth_env",
-            "auth:llm",
-            mock_auth_token("openai", "OPENAI_API_KEY"),
-        )
-        // Transport mock: LLM execute
-        .transport_mock(
-            "execute_llm",
-            "response",
-            Value::Response(llm_response.clone().into()),
-        )
-        .boundary(
-            "execute_llm",
-            "response",
-            Value::Response(llm_response.into()),
-        )
-        // Boundary: parse_response outputs
-        .boundary(
-            "parse_response",
-            "output",
-            Value::Json(
-                serde_json::to_value(&ReviewOutput {
-                    schema_version: ReviewOutput::SCHEMA_VERSION.to_string(),
-                    criteria_name: "code-review".to_string(),
-                    source: "llm".to_string(),
-                    findings: vec![Finding {
-                        id: crate::hash_finding_id("unwrap_without_context", "correctness"),
-                        check_id: "correctness".to_string(),
-                        issue_key: "unwrap_without_context".to_string(),
-                        location: Location::FileLine {
-                            file: "src/main.rs".to_string(),
-                            line: 10,
-                        },
-                        observation: "Using unwrap() without context can make debugging difficult"
-                            .to_string(),
-                        candidate_fix: Some("Use .expect(\"reason\") or ? operator".to_string()),
-                    }],
-                    candidate_remediations: None,
-                    summary:
-                        "Found 1 issue: an unwrap() call that should use proper error handling."
-                            .to_string(),
-                })
-                .unwrap(),
-            ),
-        )
-        .boundary(
-            "parse_response",
-            "errors",
-            Value::Json(serde_json::json!([])),
-        )
         .expects_input("artifact", InputConstraint::NonEmpty)
         .expects_input("criteria", InputConstraint::NonEmpty)
         .expects_input("provider", InputConstraint::NonEmpty)
@@ -174,8 +153,12 @@ pub fn inline_review_mock_spec() -> MockSpec {
 
 /// Mock specification for the diff review graph.
 ///
-/// Suitable for testing `build_diff_review_graph()`.
+/// Uses the typed mock builder pattern: the DAG is built first, requirements
+/// are extracted from its structure, and mocks are type-checked at construction.
 pub fn diff_review_mock_spec() -> MockSpec {
+    // Build the actual DAG to extract requirements
+    let dag = build_diff_review_graph();
+
     let diff_output = "\
 diff --git a/src/main.rs b/src/main.rs
 --- a/src/main.rs
@@ -202,49 +185,24 @@ diff --git a/src/main.rs b/src/main.rs
     let llm_answer = serde_json::to_string_pretty(&review_json).unwrap();
     let llm_response = mock::mock_openai_response(&llm_answer);
 
-    MockSpec::new("review-diff")
-        // provider, model, criteria come from config node — no input mocks needed
-        // Env: resolved auth token
-        .boundary(
-            "auth_env",
-            "auth:llm",
-            mock_auth_token("openai", "OPENAI_API_KEY"),
-        )
-        // Transport mock: git diff execute
-        .transport_mock(
+    // Extract typed requirements from DAG structure
+    extract_mock_requirements(&dag, "review-diff")
+        // Resource: auth_env provides auth token
+        .boundary("auth_env", "auth:llm", mock_auth_token("openai", "OPENAI_API_KEY"))
+        .expect("auth_env auth:llm should match type")
+        // Transport: execute_diff (git diff command)
+        .transport_response(
             "execute_diff",
             "response",
-            Value::Response(ShellResponse::ok(diff_output).into()),
+            TransportResponse::Shell(ShellResponse::ok(diff_output)),
         )
-        .boundary(
-            "execute_diff",
-            "response",
-            Value::Response(ShellResponse::ok(diff_output).into()),
-        )
-        // Transport mock: LLM execute
-        .transport_mock(
-            "execute_llm",
-            "response",
-            Value::Response(llm_response.clone().into()),
-        )
-        .boundary(
-            "execute_llm",
-            "response",
-            Value::Response(llm_response.into()),
-        )
-        // Boundary: parse_response outputs
-        .boundary("parse_response", "output", Value::Json(review_json))
-        .boundary(
-            "parse_response",
-            "errors",
-            Value::Json(serde_json::json!([])),
-        )
-        // Boundary: parse_diff stats
-        .boundary(
-            "parse_diff",
-            "stats",
-            Value::Str("+2 -0 across 1 files".into()),
-        )
+        .expect("execute_diff response should match type")
+        // Transport: execute_llm (LLM API call)
+        .transport_response("execute_llm", "response", llm_response.into())
+        .expect("execute_llm response should match type")
+        // Build spec (pure terminal outputs are computed, not mocked)
+        .build_unchecked()
+        // No input mocks needed — provider, model, criteria come from config node
         .skip_node_example("auth_env")
 }
 
@@ -256,6 +214,10 @@ diff --git a/src/main.rs b/src/main.rs
 mod tests {
     use super::*;
 
+    // ========================================================================
+    // Mock spec tests (Pattern B - mock value properties)
+    // ========================================================================
+
     #[test]
     fn test_default_criteria() {
         let criteria = default_criteria();
@@ -263,5 +225,46 @@ mod tests {
         assert_eq!(criteria.checks.len(), 4);
         assert!(criteria.checks.iter().any(|c| c.id == "correctness"));
         assert!(criteria.checks.iter().any(|c| c.id == "security"));
+    }
+
+    #[test]
+    fn test_inline_mock_spec_has_transport_mock() {
+        let spec = inline_review_mock_spec();
+        // execute_llm transport mock should be present
+        assert!(spec.get_transport_mock("execute_llm", "response").is_some());
+    }
+
+    #[test]
+    fn test_inline_mock_spec_has_resource_mock() {
+        let spec = inline_review_mock_spec();
+        // auth_env provides auth token
+        let token = spec.get_boundary_mock("auth_env", "auth:llm").unwrap();
+        assert!(matches!(token, Value::Map(_)));
+    }
+
+    #[test]
+    fn test_diff_mock_spec_has_transport_mocks() {
+        let spec = diff_review_mock_spec();
+        // Both execute_diff and execute_llm should have transport mocks
+        assert!(spec.get_transport_mock("execute_diff", "response").is_some());
+        assert!(spec.get_transport_mock("execute_llm", "response").is_some());
+    }
+
+    #[test]
+    fn test_diff_mock_spec_has_resource_mock() {
+        let spec = diff_review_mock_spec();
+        // auth_env provides auth token
+        let token = spec.get_boundary_mock("auth_env", "auth:llm").unwrap();
+        assert!(matches!(token, Value::Map(_)));
+    }
+
+    #[test]
+    fn test_typed_builder_rejects_wrong_slot() {
+        let dag = build_inline_review_graph();
+        let reqs = extract_mock_requirements(&dag, "review-inline");
+
+        // Try to set a mock for a non-existent node
+        let result = reqs.boundary_str("nonexistent_node", "port", "value");
+        assert!(result.is_err());
     }
 }
