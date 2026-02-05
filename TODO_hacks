@@ -56,6 +56,67 @@ Files affected:
 - `gunbc-dag/src/bin/testgen.rs` — remove allow, use `gunbc_infra`
 - `clippy.toml` — no changes needed (rule stays for DAG code)
 
+**Also fixes:** Duplicate codegen hash logic (#6 below) — both sites would
+import from `gunbc_infra`.
+
+---
+
+## Resource model design issues (from code review 2026-02-05)
+
+These are valid design issues identified in the resource model implementation.
+Tracked here for future cleanup when doing the `gunbc-infra` extraction.
+
+### #6: Duplicate codegen hash logic (drift risk)
+
+`compute_codegen_input_hash()` is duplicated in:
+- `core/codegen/src/main.rs`
+- `gunbc-dag/src/ci/ops.rs`
+
+**Fix:** Move to shared location (will be `gunbc-infra`) and call from both.
+
+### #8: GUNBC_EXEC_MODE env var is a bridge hack
+
+The CI binary sets `GUNBC_EXEC_MODE` to propagate mode to ops. Downsides:
+- Global mutable process env (harder to test)
+- Implicit dependency (ops must know to read it)
+- Can leak into subprocesses unexpectedly
+
+**Fix:** Pass `ExecMode` through execution context or as DAG input value.
+For now: centralize env var name as a const, use `ExecMode::parse()`.
+
+### #9: ResourceHandle is forgeable as written
+
+- `ResourceHandle::acquire(...)` is `pub`, anyone can construct a handle
+- `Serialize/Deserialize` allows reconstructing without capability check
+- The cap marker is just a constant string
+
+**Fix:**
+- Make `acquire` `pub(crate)` (framework-only construction)
+- Gate `mock()` behind `#[cfg(test)]`
+- Remove serde impls or validate cap on deserialize
+
+### #10: ManagedResource::compute_key lacks manifest access
+
+`InputPattern::Resource(ResourceId)` requires including dependency's manifest
+key in the computed key. But `compute_key(&self)` has no manifest parameter.
+
+**Fix:** Change signature to `fn compute_key(&self, manifest: &ResourceManifest)`.
+
+### #11: SimpleResource silently returns empty hash
+
+`SimpleResource::compute_key()` returns `ContentHash::empty()` as placeholder.
+This can make resources incorrectly appear fresh.
+
+**Fix:** Return error or move to `#[cfg(test)]`.
+
+### #12: check_state computes keys even when manifest entry is missing
+
+`check_state()` calls `compute_key()` before checking if entry exists.
+This triggers unnecessary hashing for missing resources.
+
+**Fix:** Check `manifest.get(id)` first, only hash when entry exists and
+comparison needed.
+
 ---
 
 ## DAG builder functions referenced as strings

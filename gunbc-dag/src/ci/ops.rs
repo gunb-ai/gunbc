@@ -189,38 +189,51 @@ fn execute_parse_codegen_exists(
     // Get resource mode from environment (set by CI main.rs)
     let exec_mode = get_exec_mode_from_env();
 
-    // Primary check: manifest-based freshness
-    let manifest_result = check_codegen_manifest_freshness();
+    // Primary check: manifest-based freshness (now includes output existence check)
+    let manifest_result = check_codegen_manifest_freshness(file_exists);
 
-    // In verify mode, stale/missing resources are errors
+    // In verify mode, we require proof of freshness - no fallbacks
     if exec_mode == ExecMode::Verify {
         match &manifest_result {
+            ManifestCheckResult::Fresh => {
+                // OK - we have proof that inputs match and outputs exist
+            }
             ManifestCheckResult::Stale(reason) => {
                 return Err(ExecError::new(&format!(
                     "Generated code is stale: {} (run with --mode=ensure to fix)",
                     reason
                 )));
             }
-            ManifestCheckResult::Missing if !file_exists => {
+            ManifestCheckResult::Missing => {
+                // In verify mode, missing manifest = fail (can't prove freshness)
+                // Users should run --mode=ensure once to seed the manifest
                 return Err(ExecError::new(
-                    "Generated code missing and no manifest (run with --mode=ensure to fix)",
+                    "Cannot verify freshness: no manifest entry for codegen \
+                     (run with --mode=ensure to generate manifest)",
                 ));
             }
-            _ => {} // Fresh or missing-with-file-fallback is ok
+            ManifestCheckResult::Error(err) => {
+                // In verify mode, manifest errors are hard failures
+                return Err(ExecError::new(&format!(
+                    "Cannot verify freshness: {} (run with --mode=ensure to fix)",
+                    err
+                )));
+            }
         }
     }
 
     let (codegen_needed, message) = match manifest_result {
         ManifestCheckResult::Fresh => {
-            // Manifest says inputs haven't changed - codegen not needed
+            // Manifest says inputs haven't changed and outputs exist
             (false, "Generated code is fresh (manifest check passed)")
         }
         ManifestCheckResult::Stale(reason) => {
-            // Inputs changed - codegen needed even if files exist
+            // Inputs changed or outputs missing - codegen needed
             (true, reason)
         }
         ManifestCheckResult::Missing => {
             // No manifest - fall back to file existence check (bootstrap scenario)
+            // This is only reached in ensure mode (verify would have failed above)
             if file_exists {
                 (false, "Generated code exists (no manifest, using file fallback)")
             } else {
@@ -228,7 +241,7 @@ fn execute_parse_codegen_exists(
             }
         }
         ManifestCheckResult::Error(err) => {
-            // Error checking manifest - fall back to file existence
+            // Error checking manifest - fall back to file existence (ensure mode only)
             eprintln!("Warning: Manifest check failed: {}", err);
             if file_exists {
                 (false, "Generated code exists (manifest check failed, using file fallback)")
@@ -275,11 +288,22 @@ enum ManifestCheckResult {
 /// Check if codegen output is fresh based on the manifest.
 ///
 /// Computes a hash of codegen inputs and compares to the stored manifest key.
-fn check_codegen_manifest_freshness() -> ManifestCheckResult {
-    // Load manifest
+/// Also verifies that representative output files exist (manifest might be
+/// restored from cache without the actual generated files).
+fn check_codegen_manifest_freshness(output_exists: bool) -> ManifestCheckResult {
+    // Load manifest - distinguish "file not found" from parse/IO errors
     let manifest = match ResourceManifest::load_default() {
+        Ok(m) if m.is_empty() => return ManifestCheckResult::Missing,
         Ok(m) => m,
-        Err(_) => return ManifestCheckResult::Missing,
+        Err(e) => {
+            // Check if it's a "not found" error vs actual corruption
+            let kind = e.kind();
+            if kind == std::io::ErrorKind::NotFound {
+                return ManifestCheckResult::Missing;
+            }
+            // Actual error (parse failure, permission denied, etc.)
+            return ManifestCheckResult::Error(format!("manifest load failed: {}", e));
+        }
     };
 
     // Check for codegen entry
@@ -288,6 +312,12 @@ fn check_codegen_manifest_freshness() -> ManifestCheckResult {
         Some(e) => e,
         None => return ManifestCheckResult::Missing,
     };
+
+    // Even if manifest says fresh, verify output files exist
+    // (handles case where manifest restored from cache but files weren't)
+    if !output_exists {
+        return ManifestCheckResult::Stale("manifest present but output files missing");
+    }
 
     // Compute current input hash
     let current_hash = match compute_codegen_input_hash() {

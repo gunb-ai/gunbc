@@ -109,22 +109,50 @@ impl HashBuilder {
 
     /// Add a file's contents to the hash.
     ///
+    /// Includes the file path and content length to prevent boundary collisions.
+    /// Format: path_bytes + NUL + length_le64 + contents + NUL
+    ///
     /// Returns an error if the file cannot be read.
     #[allow(clippy::disallowed_methods)] // Infrastructure code needs direct fs access
-    pub fn update_file(self, path: impl AsRef<Path>) -> io::Result<Self> {
+    pub fn update_file(mut self, path: impl AsRef<Path>) -> io::Result<Self> {
+        let path = path.as_ref();
         let contents = fs::read(path)?;
-        Ok(self.update(&contents))
+
+        // Hash: path + NUL + length + contents + NUL
+        // This prevents boundary collisions (e.g., A="ab",B="c" vs A="a",B="bc")
+        self.hasher.update(path.to_string_lossy().as_bytes());
+        self.hasher.update(&[0u8]); // delimiter
+        self.hasher.update(&(contents.len() as u64).to_le_bytes());
+        self.hasher.update(&contents);
+        self.hasher.update(&[0u8]); // delimiter
+
+        Ok(self)
     }
 
     /// Add multiple files matching a glob pattern to the hash.
     ///
     /// Files are sorted by path for deterministic ordering.
+    /// Each file contributes: path + NUL + length + contents + NUL
+    /// The glob pattern itself is also hashed to distinguish "no matches" states.
+    ///
     /// Returns a tuple of (builder, count of files hashed), or an error.
     pub fn update_glob(mut self, pattern: &str) -> io::Result<(Self, usize)> {
-        let mut paths: Vec<_> = glob::glob(pattern)
+        // Hash the glob pattern itself so "no matches" is a distinct contribution
+        self.hasher.update(b"glob:");
+        self.hasher.update(pattern.as_bytes());
+        self.hasher.update(&[0u8]);
+
+        let entries: Result<Vec<_>, _> = glob::glob(pattern)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?
-            .filter_map(Result::ok)
             .collect();
+
+        // Propagate glob traversal errors instead of silently ignoring them
+        let mut paths: Vec<_> = entries.map_err(|e| {
+            io::Error::new(
+                io::ErrorKind::Other,
+                format!("glob traversal error: {}", e),
+            )
+        })?;
 
         // Sort for deterministic ordering
         paths.sort();
