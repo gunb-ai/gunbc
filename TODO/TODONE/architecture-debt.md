@@ -1,11 +1,12 @@
 # Architecture Debt: Root Cause Analysis
 
 > **Created**: 2026-02-05
-> **Status**: Phase A COMPLETE, Phase B COMPLETE, Phase C COMPLETE
-> **Priority**: Phase D — Extensions
+> **Completed**: 2026-02-05
+> **Status**: ALL PHASES COMPLETE — moved to TODONE
 >
 > This document consolidates all TODO debt under a unified root cause analysis.
-> Individual TODOs are tracked here with their relationship to the core issues.
+> Phases A–C resolved the structural debt. Remaining extension features and
+> known limitations migrated to `TODO/consolidation.md §16`.
 
 ## Executive Summary
 
@@ -18,7 +19,7 @@ The `gunbc-infra` crate extraction (Phase A) is now complete, which fixed:
 4. Incomplete abstractions (traits that can't access what they need) — still open
 5. ~~Non-uniform hashing~~ — **FIXED**: `hash_parts()` centralized in infra, blob uses `ContentHash`
 
-**Remaining**: Phase D (extensions).
+**Remaining extension work migrated to**: `TODO/consolidation.md §16`.
 
 ---
 

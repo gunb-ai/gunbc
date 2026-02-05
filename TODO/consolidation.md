@@ -910,6 +910,35 @@ This is fine; it's infrastructure code, not op code.
 
 ---
 
+## 16. Extension features (migrated from architecture-debt.md Phase D)
+
+Architecture debt Phases A–C are complete (moved to TODONE). These
+remaining items are feature work that builds on the infra extraction.
+
+| Feature | Depends On | Priority |
+|---------|-----------|----------|
+| Codegen content-hash manifest | Infra extraction | **High** |
+| deps.toml tracking | Infra extraction | High |
+| Makefile tracking | Infra extraction | Medium |
+| .gitignore tracking | Infra extraction | Medium |
+| Per-tool test tracking | Performance fixes | Low |
+| ToolHandle unification | Design fixes | Low |
+
+**Codegen content-hash manifest**: The current freshness check relies on
+glob patterns (`CODEGEN_GLOB_PATTERNS`, `CODEGEN_EXTRA_FILES`) to discover
+inputs. If inputs change in ways the globs don't capture (new crate dep,
+new config file), stale artifacts go undetected. Fix: store a content-hash
+manifest of all actual inputs consumed during codegen, and verify against
+it on next run. The infrastructure exists (`ContentHash`, `ManifestEntry`,
+`input_file_count`); the gap is recording the actual input set rather than
+a glob-derived approximation.
+
+**RUSTC_VERSION**: Hash computation includes `RUSTC_VERSION` from env,
+defaulting to "unknown". Proper fix: add a `RustcVersion` resource to the
+model. Current workaround: set `RUSTC_VERSION` in CI/build scripts.
+
+---
+
 ## Tasks
 
 **Completed tasks moved to**: `TODO/TODONE/consolidation-complete.md`
@@ -923,6 +952,14 @@ This is fine; it's infrastructure code, not op code.
 - [ ] Review hand-written tests for redundancy with testgen (Pattern 1, 5) — §7
 - [ ] Remove fragile node-count assertions from graph structure tests (Pattern 2) — §7
 - [ ] Design hermeticity annotation for `Shell` transport (see §8 design problem)
+
+### Remaining (extension features — from architecture-debt.md §16)
+
+- [ ] Codegen content-hash manifest (record actual inputs, not glob approximation) — §16
+- [ ] deps.toml tracking — §16
+- [ ] Makefile tracking — §16
+- [ ] .gitignore tracking — §16
+- [ ] RUSTC_VERSION as modeled resource — §16
 
 ### Remaining (new functionality — integration tests)
 
