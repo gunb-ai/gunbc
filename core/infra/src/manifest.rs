@@ -4,8 +4,8 @@
 //! storage" — comparing a resource's computed key to its manifest entry
 //! determines whether it's fresh or stale.
 
-use super::super::ResourceId;
-use super::hash::ContentHash;
+use crate::hash::ContentHash;
+use crate::ResourceId;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -37,6 +37,10 @@ pub struct ManifestEntry {
     /// When this entry was created (Unix timestamp milliseconds).
     pub created_at: i64,
 
+    /// Number of input files hashed when this entry was created.
+    /// Used by the mtime fast path to detect added/deleted files.
+    pub input_file_count: usize,
+
     /// Files this resource produced (for cleanup/reference).
     #[serde(default)]
     pub outputs: Vec<PathBuf>,
@@ -44,10 +48,11 @@ pub struct ManifestEntry {
 
 impl ManifestEntry {
     /// Create a new manifest entry.
-    pub fn new(key: ContentHash) -> Self {
+    pub fn new(key: ContentHash, input_file_count: usize) -> Self {
         Self {
             key,
             created_at: current_timestamp_millis(),
+            input_file_count,
             outputs: Vec::new(),
         }
     }
@@ -85,7 +90,6 @@ impl ResourceManifest {
     /// Load manifest from a file path.
     ///
     /// Returns an empty manifest if the file doesn't exist.
-    #[allow(clippy::disallowed_methods)] // Infrastructure code needs direct fs access
     pub fn load(path: impl AsRef<Path>) -> io::Result<Self> {
         let path = path.as_ref();
 
@@ -112,7 +116,6 @@ impl ResourceManifest {
     /// Save manifest atomically to a file path.
     ///
     /// Uses write-to-temp-then-rename for atomicity.
-    #[allow(clippy::disallowed_methods)] // Infrastructure code needs direct fs access
     pub fn save(&self, path: impl AsRef<Path>) -> io::Result<()> {
         let path = path.as_ref();
 
@@ -186,7 +189,6 @@ fn current_timestamp_millis() -> i64 {
 }
 
 #[cfg(test)]
-#[allow(clippy::disallowed_methods)] // Tests need direct fs access for cleanup
 mod tests {
     use super::*;
     use std::env;
@@ -211,7 +213,7 @@ mod tests {
     fn test_manifest_insert_get() {
         let mut manifest = ResourceManifest::new();
         let id = ResourceId::new("build:test");
-        let entry = ManifestEntry::new(ContentHash::from_bytes(b"test"));
+        let entry = ManifestEntry::new(ContentHash::from_bytes(b"test"), 0);
 
         manifest.insert(id.clone(), entry.clone());
 
@@ -229,7 +231,7 @@ mod tests {
         assert!(!manifest.is_fresh(&id, &key));
 
         // Add to manifest
-        manifest.insert(id.clone(), ManifestEntry::new(key.clone()));
+        manifest.insert(id.clone(), ManifestEntry::new(key.clone(), 0));
 
         // Same key — fresh
         assert!(manifest.is_fresh(&id, &key));
@@ -249,7 +251,7 @@ mod tests {
         // Create and save
         let mut manifest = ResourceManifest::new();
         let id = ResourceId::new("build:test");
-        manifest.insert(id.clone(), ManifestEntry::new(ContentHash::from_bytes(b"data")));
+        manifest.insert(id.clone(), ManifestEntry::new(ContentHash::from_bytes(b"data"), 0));
         manifest.save(&path).expect("save failed");
 
         // Load and verify
@@ -270,7 +272,7 @@ mod tests {
 
     #[test]
     fn test_manifest_entry_with_outputs() {
-        let entry = ManifestEntry::new(ContentHash::from_bytes(b"test"))
+        let entry = ManifestEntry::new(ContentHash::from_bytes(b"test"), 0)
             .with_outputs(vec![
                 PathBuf::from("output1.txt"),
                 PathBuf::from("output2.txt"),
@@ -283,7 +285,7 @@ mod tests {
     fn test_manifest_remove() {
         let mut manifest = ResourceManifest::new();
         let id = ResourceId::new("build:test");
-        manifest.insert(id.clone(), ManifestEntry::new(ContentHash::from_bytes(b"test")));
+        manifest.insert(id.clone(), ManifestEntry::new(ContentHash::from_bytes(b"test"), 0));
 
         assert_eq!(manifest.len(), 1);
         manifest.remove(&id);
@@ -295,11 +297,11 @@ mod tests {
         let mut manifest = ResourceManifest::new();
         manifest.insert(
             ResourceId::new("a"),
-            ManifestEntry::new(ContentHash::from_bytes(b"a")),
+            ManifestEntry::new(ContentHash::from_bytes(b"a"), 0),
         );
         manifest.insert(
             ResourceId::new("b"),
-            ManifestEntry::new(ContentHash::from_bytes(b"b")),
+            ManifestEntry::new(ContentHash::from_bytes(b"b"), 0),
         );
 
         let ids: Vec<_> = manifest.iter().map(|(id, _)| id.0.clone()).collect();

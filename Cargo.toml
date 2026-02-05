@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     # Core crates (handwritten foundation)
+    "core/infra",
     "core/ir",
     "core/exec",
     "core/codegen",

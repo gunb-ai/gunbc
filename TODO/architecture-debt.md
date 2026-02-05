@@ -1,26 +1,24 @@
 # Architecture Debt: Root Cause Analysis
 
 > **Created**: 2026-02-05
-> **Status**: Active tracking document
-> **Priority**: URGENT — Extract gunbc-infra as the next major task
+> **Status**: Phase A COMPLETE, Phase B in progress
+> **Priority**: Phase B — Fix naive hashing (mtime fast path)
 >
 > This document consolidates all TODO debt under a unified root cause analysis.
 > Individual TODOs are tracked here with their relationship to the core issues.
 
 ## Executive Summary
 
-The codebase has accumulated debt because **infrastructure code has no home**.
-Every feature that needs real I/O (hashing, manifests, file generation) gets
-wedged into crates designed for other purposes, leading to:
+The codebase had accumulated debt because **infrastructure code had no home**.
+The `gunbc-infra` crate extraction (Phase A) is now complete, which fixed:
 
-1. Lint fights (`#[allow]` pragmas everywhere)
-2. Code duplication (same logic in multiple places)
-3. Circular dependency workarounds (strings instead of function refs)
-4. Incomplete abstractions (traits that can't access what they need)
-5. **Non-uniform hashing** (different algorithms in different places)
+1. ~~Lint fights (`#[allow]` pragmas everywhere)~~ — **FIXED**: 5 pragmas eliminated
+2. ~~Code duplication (same logic in multiple places)~~ — **FIXED**: single `compute_codegen_input_hash()`
+3. Circular dependency workarounds (strings instead of function refs) — still open
+4. Incomplete abstractions (traits that can't access what they need) — still open
+5. ~~Non-uniform hashing~~ — **FIXED**: `hash_parts()` centralized in infra, blob uses `ContentHash`
 
-**The fix**: Extract `gunbc-infra` crate. This is a force multiplier that
-unblocks most other cleanups.
+**Remaining**: Phase B (mtime fast path) and Phase C (design fixes).
 
 ---
 
@@ -154,80 +152,23 @@ let (builder, _) = builder.update_glob("core/ir/src/**/*.rs")?;
 
 **Should be**: 0 file reads (mtime fast path) or ~3 file reads (only changed files).
 
-### Issue 5: Non-Uniform Hashing — Different Algorithms AND Encodings
+### Issue 5: Non-Uniform Hashing — ✅ RESOLVED
 
-**Hash implementations in the codebase:**
+All hashing is now centralized in `gunbc-infra::hash`:
 
-| Location | Algorithm | Encoding | Status |
-|----------|-----------|----------|--------|
-| `core/ir/src/resource/hash.rs` | SHA-256 | path+NUL+len+content+NUL | ✓ Fixed |
-| `lib/blob/src/lib.rs` | DefaultHasher (64-bit) | raw content | ⚠️ Wrong algorithm |
-| `lib/review/src/lib.rs` | SHA-256 | colon separator | ⚠️ Collision bug |
+| Caller | Hash Function | Status |
+|--------|--------------|--------|
+| `codegen/main.rs` | `gunbc_infra::codegen_hash::compute_codegen_input_hash()` | ✅ Canonical |
+| `ci/ops.rs` | Same as above (was duplicate, now single source) | ✅ Fixed |
+| `testgen.rs` | `compute_testgen_input_hash()` | ✅ Uses HashBuilder |
+| `lib/blob` | `gunbc_infra::hash::ContentHash::from_bytes()` | ✅ Fixed (was DefaultHasher) |
+| `lib/review` | `gunbc_infra::hash::hash_parts()` via StableHashOp | ✅ Fixed (was colon-separator) |
+| `lib/primitives` | `gunbc_infra::hash::hash_parts()` (StableHashOp delegates) | ✅ Canonical |
 
-**Problem 1: Different algorithms**
-
-1. **SHA-256 (resource model)** — Cryptographically strong, 256-bit, hex-encoded
-2. **DefaultHasher (blob)** — Fast but weak, 64-bit, collision-prone
-
-**lib/blob/src/lib.rs:158-166:**
-```rust
-fn compute_hash(content: &str) -> String {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-    // Simple hash for now - could use SHA256 later
-    let mut hasher = DefaultHasher::new();
-    content.hash(&mut hasher);
-    format!("{:016x}", hasher.finish())
-}
-```
-
-**Note**: Comment says "could use SHA256 later" — should be unified.
-
-**Problem 2: Boundary collision bugs in multiple places**
-
-The same boundary collision bug pattern exists/existed in multiple locations:
-
-| Location | Bug | Status |
-|----------|-----|--------|
-| `core/ir/src/resource/hash.rs` | `["ab","c"]` vs `["a","bc"]` same hash | ✅ Fixed (NUL+length prefix) |
-| `lib/review/src/lib.rs:523` | `check_id="a", issue_key="b:c"` vs `check_id="a:b", issue_key="c"` | ⚠️ Still buggy |
-
-**lib/review/src/lib.rs:523-531 (still has bug):**
-```rust
-pub fn hash_finding_id(issue_key: &str, check_id: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(check_id.as_bytes());
-    hasher.update(b":");           // <-- Simple colon separator
-    hasher.update(issue_key.as_bytes());
-    let result = hasher.finalize();
-    hex::encode(&result[..16])
-}
-```
-
-**Collision example:**
-- `check_id="a", issue_key="b:c"` → bytes: `a:b:c`
-- `check_id="a:b", issue_key="c"` → bytes: `a:b:c` (SAME!)
-
-**Root cause**: No central hashing utility. Each module implements its own hash
-function, each with subtly different encoding. Bugs get fixed in one place but
-the same bug exists elsewhere.
-
-**Hash/staleness call sites inventory:**
-
-| Caller | Hash Function | Inputs | Status |
-|--------|--------------|--------|--------|
-| `codegen/main.rs` | `compute_codegen_input_hash()` | codegen+ir sources | ✓ Uses HashBuilder |
-| `ci/ops.rs` | `compute_codegen_input_hash()` | (DUPLICATE of above) | ⚠️ Duplicate |
-| `testgen.rs` | `compute_testgen_input_hash()` | dag+ir+lib sources | ✓ Uses HashBuilder |
-| `lib/blob` | `BlobMeta::compute_hash()` | blob content | ⚠️ Wrong algorithm |
-| `lib/review` | `hash_finding_id()` | check_id + issue_key | ⚠️ Collision bug |
-
-**Post-infra extraction**:
-- Single `compute_codegen_input_hash()` in `gunbc-infra`
-- Single `hash_parts(&[&str])` utility with proper encoding
-- Migrate `BlobMeta` to use infra's `ContentHash` or keep separate (if perf-critical)
-- Migrate `hash_finding_id` to use infra utility
-- Document hash algorithm policy: SHA-256 for identity, length-prefix encoding for multi-part hashes
+**Hash algorithm policy (enforced by infra)**:
+- **Content hashing**: `ContentHash::from_bytes()` / `HashBuilder` — full SHA-256, 64 hex chars
+- **Multi-part ID hashing**: `hash_parts()` — SHA-256 with length-prefix encoding, truncated to 32 hex chars
+- **File hashing**: `HashBuilder::update_file()` — path+NUL+length+content+NUL encoding
 
 ---
 
@@ -317,17 +258,18 @@ fn check_freshness(resource_id: &ResourceId) -> ResourceState {
 
 ## Consolidated TODO Inventory
 
-### Tier 1: Blocking (Extract gunbc-infra)
+### Tier 1: ✅ DONE (Extract gunbc-infra)
 
-These all get fixed by the infra extraction:
+All resolved by infra extraction:
 
-| Issue | Current Location | After Extraction |
-|-------|-----------------|------------------|
-| `#[allow(disallowed_methods)]` pragmas | ir/resource/*.rs | Deleted (infra has no lint) |
-| Duplicate `compute_codegen_input_hash` | codegen + ci/ops.rs | Single fn in infra |
-| `ManagedResource::compute_key` lacks manifest | ir/resource/managed.rs | Can properly impl in infra |
-| `SimpleResource` silent empty hash | ir/resource/managed.rs | Proper impl or remove |
-| `check_state` computes keys when missing | ir/resource/managed.rs | Fix during move |
+| Issue | Status |
+|-------|--------|
+| `#[allow(disallowed_methods)]` pragmas in ir/resource/*.rs | ✅ 5 pragmas deleted |
+| Duplicate `compute_codegen_input_hash` | ✅ Single fn in `gunbc_infra::codegen_hash` |
+| Non-uniform hashing (blob, review, primitives) | ✅ All delegate to `gunbc_infra::hash` |
+| `ManagedResource::compute_key` lacks manifest | Open (move to infra in future) |
+| `SimpleResource` silent empty hash | Open (fix during future move) |
+| `check_state` computes keys when missing | ✅ Fixed (2026-02-05) |
 
 ### Tier 2: Design Fixes (After Infra Extraction)
 
@@ -335,7 +277,7 @@ These all get fixed by the infra extraction:
 |-------|-------------|-----|
 | Naive hashing | O(n) file reads per check | mtime fast path |
 | No hash caching | Same files hashed repeatedly | Per-file hash cache |
-| `ResourceHandle` forgeable | `acquire()` is pub | Make pub(crate) |
+| `ResourceHandle` forgeable | `acquire()` is pub | ✅ `acquire()` now `pub(crate)`; still need cap validation on deserialize |
 | `GUNBC_EXEC_MODE` env var | Global mutable state | Pass through context |
 | DAG builders as strings | Circular dep workaround | Registry in shared crate |
 | `PrepLevel→deps` hardcoded | Policy in renderer | Declarative resource model |
@@ -354,18 +296,16 @@ These all get fixed by the infra extraction:
 
 ## Recommended Execution Order
 
-### Phase A: Extract gunbc-infra (unblocks everything)
+### Phase A: ✅ DONE — Extract gunbc-infra
 
-1. Create `gunbc-infra` crate with its own `clippy.toml` (no disallowed_methods)
-2. Move `core/ir/src/resource/hash.rs` → `gunbc-infra/src/hash.rs`
-3. Move `core/ir/src/resource/manifest.rs` → `gunbc-infra/src/manifest.rs`
-4. Add `compute_codegen_input_hash()` to infra (single source)
-5. Update `gunbc-ir` to re-export from `gunbc-infra`
-6. Update `gunbc-codegen` and `gunbc-dag` to use infra
-7. Delete all `#[allow(clippy::disallowed_methods)]` pragmas
+Completed. `gunbc-infra` is a leaf crate with:
+- `hash.rs` — `ContentHash`, `HashBuilder`, `hash_parts()` (moved from ir + primitives)
+- `manifest.rs` — `ResourceManifest`, `ManifestEntry` (moved from ir)
+- `codegen_hash.rs` — `compute_codegen_input_hash()` (deduplicated from codegen + dag)
+- `lib.rs` — `ResourceId` (moved from ir)
 
-**Effort**: ~2-3 hours
-**Impact**: Unblocks Tier 2 and Tier 3
+Crates updated to use infra: `gunbc-ir`, `gunbc-codegen`, `gunbc-dag`, `gunbc-primitives`, `gunbc-lib-blob`.
+All re-exports preserved — zero downstream breakage.
 
 ### Phase B: Fix naive hashing
 
@@ -389,10 +329,12 @@ Add new resources to the model as needed. Infrastructure is in place.
 
 ## Metrics to Track
 
-| Metric | Current | After Phase A | After Phase B |
-|--------|---------|---------------|---------------|
-| `#[allow]` pragmas | 6+ | 0 | 0 |
-| Duplicate hash logic | 2 places | 1 place | 1 place |
+| Metric | Before Phase A | After Phase A | After Phase B |
+|--------|----------------|---------------|---------------|
+| `#[allow]` pragmas in ir/resource | 5 | ✅ 0 | 0 |
+| Duplicate hash logic | 2 places | ✅ 1 place | 1 place |
+| Crates with direct sha2/hex deps | 4 (ir, blob, primitives, infra) | ✅ 1 (infra) | 1 (infra) |
+| Hash implementations | 3 (ContentHash, DefaultHasher, StableHash) | ✅ 1 (all in infra) | 1 |
 | Freshness check time | ~500ms? | ~500ms | <10ms |
 | Files read per check | All matching | All matching | 0 (mtime) or changed only |
 
@@ -433,6 +375,7 @@ abstraction. Adding direct `Command::new("rustc")` calls would:
 ## References
 
 - `TODO_hacks` — Detailed hack descriptions
+- `TODO/refactor-pressure.md` — Recurring root patterns that cause rework
 - `TODO/design-unified-resource-model.md` — Resource model design
 - `TODO/design-resource-performance.md` — Performance considerations
 - `TODO/design-resource-acquisition.md` — Resource trait design

@@ -6,8 +6,7 @@
 
 use super::def::ResourceDef;
 use super::handle::ResourceHandle;
-use super::hash::ContentHash;
-use super::manifest::{ManifestEntry, ResourceManifest};
+use super::{ContentHash, ManifestEntry, ResourceManifest};
 use super::state::{ExecMode, ResourceState};
 use super::super::ResourceId;
 use thiserror::Error;
@@ -77,19 +76,24 @@ pub trait ManagedResource: Clone + Sized {
 
     /// Check current state against manifest.
     fn check_state(&self, manifest: &ResourceManifest) -> ResourceState {
+        let entry = match manifest.get(self.resource_id()) {
+            None => return ResourceState::Missing,
+            Some(entry) => entry,
+        };
+
         let current_key = match self.compute_key() {
             Ok(k) => k,
             Err(e) => return ResourceState::Error(e.to_string()),
         };
 
-        match manifest.get(self.resource_id()) {
-            None => ResourceState::Missing,
-            Some(entry) if entry.key != current_key => ResourceState::Stale {
+        if entry.key != current_key {
+            ResourceState::Stale {
                 reason: "inputs changed".into(),
                 stored_key: entry.key.clone(),
                 current_key,
-            },
-            Some(_) => ResourceState::Fresh,
+            }
+        } else {
+            ResourceState::Fresh
         }
     }
 
@@ -187,7 +191,7 @@ impl ManagedResource for SimpleResource {
 
         // In a real implementation, this would invoke the provider DAG
         // For now, return a placeholder entry
-        Ok(ManifestEntry::new(ContentHash::empty()))
+        Ok(ManifestEntry::new(ContentHash::empty(), 0))
     }
 }
 
@@ -235,7 +239,7 @@ mod tests {
         // Add entry with matching key (empty, since compute_key returns empty)
         manifest.insert(
             ResourceId::new("test:fresh"),
-            ManifestEntry::new(ContentHash::empty()),
+            ManifestEntry::new(ContentHash::empty(), 0),
         );
 
         let state = resource.check_state(&manifest);
@@ -253,7 +257,7 @@ mod tests {
         let mut manifest_with_entry = ResourceManifest::new();
         manifest_with_entry.insert(
             ResourceId::new("test:is_fresh"),
-            ManifestEntry::new(ContentHash::empty()),
+            ManifestEntry::new(ContentHash::empty(), 0),
         );
         assert!(resource.is_fresh(&manifest_with_entry));
     }
@@ -277,7 +281,7 @@ mod tests {
         // Pre-populate manifest
         manifest.insert(
             ResourceId::new("test:acquire_fresh"),
-            ManifestEntry::new(ContentHash::empty()),
+            ManifestEntry::new(ContentHash::empty(), 0),
         );
 
         let result = resource.acquire(ExecMode::Verify, &mut manifest);

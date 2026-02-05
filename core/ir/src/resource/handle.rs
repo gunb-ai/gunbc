@@ -8,7 +8,7 @@
 //! - The freshness key at time of acquisition (proof it was fresh)
 //! - A capability marker preventing forgery
 
-use super::hash::ContentHash;
+use super::ContentHash;
 use super::super::{ResourceId, Value};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -52,7 +52,7 @@ impl<R> ResourceHandle<R> {
     ///
     /// **Framework use only.** This should only be called by the resource
     /// acquisition framework after successfully verifying or creating a resource.
-    pub fn acquire(resource_id: ResourceId, key: ContentHash) -> Self {
+    pub(crate) fn acquire(resource_id: ResourceId, key: ContentHash) -> Self {
         Self {
             resource_id,
             key,
@@ -73,7 +73,8 @@ impl<R> ResourceHandle<R> {
     }
 
     /// Create a mock handle for testing/DryRun.
-    pub fn mock(resource_id: ResourceId) -> Self {
+    #[cfg(test)]
+    pub(crate) fn mock(resource_id: ResourceId) -> Self {
         Self {
             resource_id,
             key: ContentHash::empty(),

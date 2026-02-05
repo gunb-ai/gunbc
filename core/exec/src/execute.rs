@@ -502,6 +502,16 @@ fn execute_flat<T: Executable>(
     let mut node_outputs: HashMap<String, HashMap<String, Value>> = HashMap::new();
     let mut entries = Vec::new();
 
+    // Precompute canonical edge order and group by destination node.
+    let ordered_edges = canonical_edge_order(&dag.edges);
+    let mut edges_by_to_node: HashMap<NodeId, Vec<&gunbc_ir::Edge>> = HashMap::new();
+    for edge in ordered_edges {
+        edges_by_to_node
+            .entry(edge.to_node.clone())
+            .or_default()
+            .push(edge);
+    }
+
     // Wrap CI context and observer in cells for mutable access in the loop
     let mut ci_ctx = ci;
     let mut obs = observer;
@@ -536,8 +546,8 @@ fn execute_flat<T: Executable>(
             .map(|p| (p.name.0.as_str(), p.cardinality))
             .collect();
 
-        for edge in canonical_edge_order(&dag.edges) {
-            if edge.to_node == *node_id {
+        if let Some(edges) = edges_by_to_node.get(node_id) {
+            for &edge in edges {
                 if let Some(upstream) = node_outputs.get(&edge.from_node.0) {
                     if let Some(val) = upstream.get(&edge.from_port.0) {
                         if list_ports.contains_key(edge.to_port.0.as_str()) {

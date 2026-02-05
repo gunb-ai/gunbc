@@ -17,7 +17,11 @@ use gunbc_exec::{
     optional_bool, propagate_skipped, require_bool, require_response, require_str, ExecError,
     Executable, OutputMap, TransportResponseExt,
 };
-use gunbc_ir::resource::{ExecMode, HashBuilder, ResourceManifest};
+use gunbc_infra::codegen_hash::{
+    compute_codegen_input_hash, CODEGEN_EXTRA_FILES, CODEGEN_GLOB_PATTERNS,
+};
+use gunbc_infra::freshness::{check_freshness_mtime, MtimeResult};
+use gunbc_ir::resource::{ExecMode, ResourceManifest};
 use gunbc_ir::transport::{FileRequest, TransportRequest};
 use gunbc_ir::{ResourceId, Value, CODEGEN_BIN_DIR};
 use std::collections::HashMap;
@@ -320,8 +324,22 @@ fn check_codegen_manifest_freshness(output_exists: bool) -> ManifestCheckResult 
         return ManifestCheckResult::Stale("manifest present but output files missing");
     }
 
-    // Compute current input hash
-    let current_hash = match compute_codegen_input_hash() {
+    // Fast path: check file mtimes before doing full SHA-256 hashing
+    match check_freshness_mtime(entry, CODEGEN_GLOB_PATTERNS, CODEGEN_EXTRA_FILES) {
+        MtimeResult::Fresh => {
+            eprintln!(
+                "mtime fast path: all {} input files unchanged",
+                entry.input_file_count
+            );
+            return ManifestCheckResult::Fresh;
+        }
+        MtimeResult::MaybeStale(reason) => {
+            eprintln!("mtime fast path: {}, checking hash...", reason);
+        }
+    }
+
+    // Slow path: compute current input hash
+    let (current_hash, _count) = match compute_codegen_input_hash() {
         Ok(h) => h,
         Err(e) => return ManifestCheckResult::Error(e.to_string()),
     };
@@ -332,27 +350,6 @@ fn check_codegen_manifest_freshness(output_exists: bool) -> ManifestCheckResult 
     } else {
         ManifestCheckResult::Stale("inputs changed since last codegen")
     }
-}
-
-/// Compute hash of codegen inputs (same as in codegen main.rs).
-fn compute_codegen_input_hash() -> Result<gunbc_ir::resource::ContentHash, std::io::Error> {
-    let builder = HashBuilder::new();
-
-    // Hash codegen source files
-    let (builder, _) = builder.update_glob("core/codegen/src/**/*.rs")?;
-
-    // Hash IR source files
-    let (builder, _) = builder.update_glob("core/ir/src/**/*.rs")?;
-
-    // Hash relevant Cargo.toml files
-    let builder = builder.update_file("core/codegen/Cargo.toml")?;
-    let builder = builder.update_file("core/ir/Cargo.toml")?;
-
-    // Include Rust version
-    let rust_version = std::env::var("RUSTC_VERSION").unwrap_or_else(|_| "unknown".to_string());
-    let builder = builder.update_str(&rust_version);
-
-    Ok(builder.finalize())
 }
 
 /// Prepare the codegen shell command (pure).

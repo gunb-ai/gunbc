@@ -53,18 +53,16 @@
 // Submodules
 pub mod def;
 pub mod handle;
-pub mod hash;
 pub mod managed;
-pub mod manifest;
 pub mod registry;
 pub mod state;
 
 // Re-exports from submodules
 pub use def::{DagRef, InputPattern, ResourceDef, ResourceScope};
 pub use handle::{HandleParseError, ResourceHandle};
-pub use hash::{ContentHash, HashBuilder};
+pub use gunbc_infra::hash::{ContentHash, HashBuilder};
 pub use managed::{ManagedResource, ResourceError, SimpleResource};
-pub use manifest::{ManifestEntry, ResourceManifest, DEFAULT_MANIFEST_PATH};
+pub use gunbc_infra::manifest::{ManifestEntry, ResourceManifest, DEFAULT_MANIFEST_PATH};
 pub use registry::{ResolutionError, ResourceRegistry};
 pub use state::{ExecMode, ResourceState};
 
@@ -80,61 +78,7 @@ use std::collections::BTreeMap;
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-/// Unique identifier for a resource.
-///
-/// Resources can be files, locks, connections, or any other external state.
-/// Two accesses conflict if they reference the same ResourceId.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct ResourceId(pub String);
-
-impl ResourceId {
-    /// Create a new resource ID.
-    pub fn new(id: impl Into<String>) -> Self {
-        Self(id.into())
-    }
-
-    /// Create a file resource ID.
-    pub fn file(path: impl Into<String>) -> Self {
-        Self(format!("file:{}", path.into()))
-    }
-
-    /// Create a lock resource ID.
-    pub fn lock(name: impl Into<String>) -> Self {
-        Self(format!("lock:{}", name.into()))
-    }
-
-    /// Create a connection resource ID.
-    pub fn connection(name: impl Into<String>) -> Self {
-        Self(format!("conn:{}", name.into()))
-    }
-
-    /// Create a tool resource ID.
-    ///
-    /// Used for CLI tool capability tracking. When a node requires a tool,
-    /// it creates a resource access with this ID.
-    pub fn tool(name: impl Into<String>) -> Self {
-        Self(format!("tool:{}", name.into()))
-    }
-
-    /// Create a build resource ID.
-    ///
-    /// Used for build artifact tracking (codegen, testgen, etc.).
-    pub fn build(name: impl Into<String>) -> Self {
-        Self(format!("build:{}", name.into()))
-    }
-}
-
-impl From<&str> for ResourceId {
-    fn from(s: &str) -> Self {
-        Self(s.to_string())
-    }
-}
-
-impl std::fmt::Display for ResourceId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
+pub use gunbc_infra::ResourceId;
 
 /// How a resource is accessed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

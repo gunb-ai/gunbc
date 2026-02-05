@@ -33,7 +33,7 @@ use gunbc_ir::{Cardinality, Dag, NodeId, PortName, ValueExpr};
 use gunbc_test::{MockSpec, OutputMatcher};
 use serde_json::Value as JsonValue;
 use std::collections::{HashMap, HashSet};
-use std::hash::{Hash, Hasher};
+use gunbc_infra::hash::ContentHash;
 
 /// Configuration for test generation.
 ///
@@ -366,11 +366,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
 
         // Render body (no header) to compute content hash.
         let body = RustRenderer.render_file(&file);
-        let content_hash = {
-            let mut hasher = std::collections::hash_map::DefaultHasher::new();
-            body.hash(&mut hasher);
-            format!("{:016x}", hasher.finish())
-        };
+        let content_hash = ContentHash::from_bytes(body.as_bytes());
 
         let stats = obligations.stats();
         let generator = gunbc_ir::cargo::name("testgen");
@@ -383,7 +379,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             format!("Obligations: {}", stats),
             "Proven by construction: acyclicity, type compatibility, cardinality satisfaction."
                 .to_string(),
-            format!("Content-Hash: {}", content_hash),
+            format!("Content-Hash: {}", content_hash.as_str()),
         ];
 
         RustRenderer.render_file(&file)
@@ -3373,7 +3369,7 @@ mod tests {
             .find(|l| l.contains("Content-Hash:"))
             .expect("should have Content-Hash line");
         let hash = hash_line.split("Content-Hash: ").nth(1).unwrap().trim();
-        assert_eq!(hash.len(), 16, "hash should be 16 hex chars");
+        assert_eq!(hash.len(), 64, "hash should be 64 hex chars (SHA-256)");
         assert!(
             hash.chars().all(|c| c.is_ascii_hexdigit()),
             "hash should be hex"

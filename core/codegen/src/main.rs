@@ -32,8 +32,9 @@ use gunbc_clippy::ClippyConfigRenderer;
 use gunbc_codegen::{
     all_cleanable_outputs, all_tools, generate_cli_with_import, generate_graph_rs, FileWriter,
 };
+use gunbc_infra::codegen_hash::compute_codegen_input_hash;
 use gunbc_ir::resource::{
-    ContentHash, HashBuilder, ManifestEntry, ResourceManifest,
+    ContentHash, ManifestEntry, ResourceManifest,
 };
 use gunbc_ir::transport::ci::{
     yaml_block, CacheConfig, CiRenderer, GitHubActionsProvider, GitLabCiProvider, RenderConfig,
@@ -778,50 +779,16 @@ fn codegen_clis(dry_run: bool) -> bool {
 // Resource Manifest Support
 // ============================================================================
 
-/// Compute the content hash for codegen inputs.
-///
-/// This hashes the source files that affect codegen output:
-/// - core/codegen/src/**/*.rs (codegen implementation)
-/// - core/ir/src/**/*.rs (IR types used by codegen)
-/// - Cargo.toml files for these crates
-///
-/// Note: This is a simplified hash that may have false negatives (rebuild
-/// when not strictly necessary). Future optimization: use mtime-based caching.
-fn compute_codegen_input_hash() -> io::Result<ContentHash> {
-    let builder = HashBuilder::new();
-
-    // Hash codegen source files
-    let (builder, codegen_count) = builder.update_glob("core/codegen/src/**/*.rs")?;
-
-    // Hash IR source files (codegen depends on IR types)
-    let (builder, ir_count) = builder.update_glob("core/ir/src/**/*.rs")?;
-
-    // Hash relevant Cargo.toml files
-    let builder = builder.update_file("core/codegen/Cargo.toml")?;
-    let builder = builder.update_file("core/ir/Cargo.toml")?;
-
-    // Include Rust version as part of the hash
-    let rust_version = env::var("RUSTC_VERSION").unwrap_or_else(|_| "unknown".to_string());
-    let builder = builder.update_str(&rust_version);
-
-    println!(
-        "  Computed hash from {} codegen + {} IR source files",
-        codegen_count, ir_count
-    );
-
-    Ok(builder.finalize())
-}
-
 /// Write a manifest entry for the generated CLI resource.
 ///
 /// This records that codegen was successful with the given input hash.
 /// The CI system can later check this to determine if codegen needs to run.
 #[allow(clippy::disallowed_methods)]
-fn write_codegen_manifest(hash: ContentHash) -> io::Result<()> {
+fn write_codegen_manifest(hash: ContentHash, file_count: usize) -> io::Result<()> {
     let mut manifest = ResourceManifest::load_default()?;
 
     let resource_id = ResourceId::build("generated_cli");
-    let entry = ManifestEntry::new(hash).with_outputs(vec![
+    let entry = ManifestEntry::new(hash, file_count).with_outputs(vec![
         PathBuf::from(CODEGEN_BIN_DIR),
         PathBuf::from(CODEGEN_LIB_DIR),
     ]);
@@ -844,8 +811,8 @@ fn update_manifest_after_codegen(dry_run: bool) {
 
     println!("\n  Updating resource manifest...");
     match compute_codegen_input_hash() {
-        Ok(hash) => {
-            if let Err(e) = write_codegen_manifest(hash) {
+        Ok((hash, file_count)) => {
+            if let Err(e) = write_codegen_manifest(hash, file_count) {
                 eprintln!("  ERROR: Could not write manifest: {}", e);
                 eprintln!("  Codegen outputs exist but freshness cannot be verified.");
                 eprintln!("  CI --mode=verify will fail until manifest is written.");

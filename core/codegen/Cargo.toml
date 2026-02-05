@@ -6,6 +6,7 @@ license.workspace = true
 description = "Shared code generation utilities for gunbc"
 
 [dependencies]
+gunbc-infra = { path = "../infra" }
 gunbc-ir = { path = "../ir" }
 gunbc-test = { path = "../test" }
 gunbc-exec = { path = "../exec" }

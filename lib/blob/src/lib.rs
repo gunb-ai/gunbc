@@ -8,6 +8,7 @@
 //! All operations are PURE (no I/O). I/O happens through TransportOps::Execute nodes.
 
 use gunbc_exec::{require_json, require_response, ExecError, Executable, IntoExecResult, OutputMap};
+use gunbc_infra::hash::ContentHash;
 use gunbc_ir::resource::{AccessMode, ResourceId};
 use gunbc_ir::transport::{FileOp, FileRequest, ShellRequest, TransportRequest, TransportResponse};
 use gunbc_ir::Value;
@@ -157,12 +158,7 @@ impl BlobMeta {
 
     /// Compute SHA256 hash of content.
     fn compute_hash(content: &str) -> String {
-        use sha2::{Digest, Sha256};
-        let mut hasher = Sha256::new();
-        hasher.update(content.as_bytes());
-        let result = hasher.finalize();
-        // Use first 16 bytes as hex (32 chars), matching StableHashOp
-        hex::encode(&result[..16])
+        ContentHash::from_bytes(content.as_bytes()).as_str().to_string()
     }
 }
 

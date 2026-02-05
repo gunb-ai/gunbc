@@ -9,7 +9,6 @@ use gunbc_exec::{
 };
 use gunbc_ir::Value;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 
 /// Parse a string into structured data (JSON, TOML, YAML).
@@ -185,20 +184,10 @@ pub struct StableHashOp;
 impl StableHashOp {
     /// Compute a stable hash from parts.
     ///
-    /// This is the pure function that can be used directly without DAG execution.
+    /// Delegates to [`gunbc_infra::hash::hash_parts`] — the canonical
+    /// implementation of length-prefix multi-part hashing.
     pub fn hash_parts(parts: &[&str]) -> String {
-        let mut hasher = Sha256::new();
-        for part in parts.iter() {
-            // Length-prefix each part to prevent collision attacks.
-            // Without this, ["a", "b:c"] and ["a:b", "c"] would both hash
-            // to the same bytes "a:b:c" and produce identical hashes.
-            let len = part.len() as u64;
-            hasher.update(len.to_le_bytes());
-            hasher.update(part.as_bytes());
-        }
-        let result = hasher.finalize();
-        // Use first 16 bytes as hex (32 chars)
-        hex::encode(&result[..16])
+        gunbc_infra::hash::hash_parts(parts)
     }
 }
 

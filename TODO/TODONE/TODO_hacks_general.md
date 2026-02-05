@@ -31,3 +31,19 @@ pipeline, matching `GitOps::ParseDiff` output and existing mocks.
 
 Files:
 - `lib/gist-ops` / diff pipeline graph
+
+## check_state hashed missing resources
+
+**Resolved**: `check_state()` now returns `Missing` before computing keys,
+avoiding unnecessary hashing when no manifest entry exists.
+
+Files:
+- `core/ir/src/resource/managed.rs`
+
+## canonical_edge_order recomputed per node
+
+**Resolved**: `execute_flat()` now computes canonical edge order once and
+groups edges by destination node to avoid repeated sorting.
+
+Files:
+- `core/exec/src/execute.rs`

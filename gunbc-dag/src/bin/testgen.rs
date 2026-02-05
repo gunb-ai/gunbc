@@ -316,24 +316,43 @@ fn main() {
 // Resource Manifest Support
 // ============================================================================
 
+/// Glob patterns for testgen input source files.
+const TESTGEN_GLOB_PATTERNS: &[&str] = &[
+    "gunbc-dag/src/**/*.rs",
+    "core/ir/src/**/*.rs",
+    "lib/**/*.rs",
+];
+
+/// Extra individual files that affect testgen output.
+const TESTGEN_EXTRA_FILES: &[&str] = &[
+    "target/.resource-manifest.json", // catches codegen key changes
+];
+
 /// Compute the content hash for testgen inputs.
+///
+/// Returns `(hash, file_count)` where `file_count` is the total number of
+/// input files hashed (for the mtime fast path).
 ///
 /// This hashes the source files that affect testgen output:
 /// - gunbc-dag/src/**/*.rs (DAG definitions)
 /// - core/ir/src/**/*.rs (IR types)
 /// - lib/**/*.rs (library DAG definitions)
 /// - plus dependency on generated_cli (codegen must run first)
-fn compute_testgen_input_hash() -> io::Result<ContentHash> {
+fn compute_testgen_input_hash() -> io::Result<(ContentHash, usize)> {
     let builder = HashBuilder::new();
+    let mut file_count: usize = 0;
 
     // Hash gunbc-dag source files (DAG definitions)
-    let (builder, dag_count) = builder.update_glob("gunbc-dag/src/**/*.rs")?;
+    let (builder, dag_count) = builder.update_glob(TESTGEN_GLOB_PATTERNS[0])?;
+    file_count += dag_count;
 
     // Hash IR source files
-    let (builder, ir_count) = builder.update_glob("core/ir/src/**/*.rs")?;
+    let (builder, ir_count) = builder.update_glob(TESTGEN_GLOB_PATTERNS[1])?;
+    file_count += ir_count;
 
     // Hash library source files
-    let (builder, lib_count) = builder.update_glob("lib/**/*.rs")?;
+    let (builder, lib_count) = builder.update_glob(TESTGEN_GLOB_PATTERNS[2])?;
+    file_count += lib_count;
 
     // Include the codegen manifest key as a dependency
     // This ensures testgen is considered stale if codegen output changes
@@ -350,17 +369,20 @@ fn compute_testgen_input_hash() -> io::Result<ContentHash> {
         })?;
     let builder = builder.update_str(codegen_key);
 
+    // Count the manifest file as an extra file
+    file_count += TESTGEN_EXTRA_FILES.len();
+
     println!(
         "  Computed hash from {} dag + {} ir + {} lib source files",
         dag_count, ir_count, lib_count
     );
 
-    Ok(builder.finalize())
+    Ok((builder.finalize(), file_count))
 }
 
 /// Write a manifest entry for the generated tests resource.
 #[allow(clippy::disallowed_methods)]
-fn write_testgen_manifest(hash: ContentHash) -> io::Result<()> {
+fn write_testgen_manifest(hash: ContentHash, file_count: usize) -> io::Result<()> {
     let mut manifest = ResourceManifest::load_default()?;
 
     let resource_id = ResourceId::build("generated_tests");
@@ -372,7 +394,7 @@ fn write_testgen_manifest(hash: ContentHash) -> io::Result<()> {
         .map(|t| PathBuf::from(&t.config.output_path))
         .collect();
 
-    let entry = ManifestEntry::new(hash).with_outputs(outputs);
+    let entry = ManifestEntry::new(hash, file_count).with_outputs(outputs);
 
     manifest.insert(resource_id, entry);
     manifest.save_default()?;
@@ -386,8 +408,8 @@ fn update_manifest_after_testgen() {
     println!();
     println!("Updating resource manifest...");
     match compute_testgen_input_hash() {
-        Ok(hash) => {
-            if let Err(e) = write_testgen_manifest(hash) {
+        Ok((hash, file_count)) => {
+            if let Err(e) = write_testgen_manifest(hash, file_count) {
                 eprintln!("  ERROR: Could not write manifest: {}", e);
                 eprintln!("  Testgen outputs exist but freshness cannot be verified.");
                 eprintln!("  CI --mode=verify will fail until manifest is written.");

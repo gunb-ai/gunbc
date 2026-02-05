@@ -31,7 +31,6 @@ impl ContentHash {
     }
 
     /// Create a content hash from a file's contents.
-    #[allow(clippy::disallowed_methods)] // Infrastructure code needs direct fs access
     pub fn from_file(path: impl AsRef<Path>) -> io::Result<Self> {
         let contents = fs::read(path)?;
         Ok(Self::from_bytes(&contents))
@@ -113,7 +112,6 @@ impl HashBuilder {
     /// Format: path_bytes + NUL + length_le64 + contents + NUL
     ///
     /// Returns an error if the file cannot be read.
-    #[allow(clippy::disallowed_methods)] // Infrastructure code needs direct fs access
     pub fn update_file(mut self, path: impl AsRef<Path>) -> io::Result<Self> {
         let path = path.as_ref();
         let contents = fs::read(path)?;
@@ -168,6 +166,29 @@ impl HashBuilder {
     pub fn finalize(self) -> ContentHash {
         ContentHash(hex::encode(self.hasher.finalize()))
     }
+}
+
+/// Compute a stable hash from string parts.
+///
+/// Uses SHA-256 with length-prefix encoding to prevent boundary collisions.
+/// Returns the first 16 bytes as hex (32 chars) — suitable for stable IDs
+/// where a truncated hash is acceptable.
+///
+/// This is the canonical implementation — all multi-part hashing in the
+/// codebase should delegate here.
+pub fn hash_parts(parts: &[&str]) -> String {
+    let mut hasher = Sha256::new();
+    for part in parts {
+        // Length-prefix each part to prevent collision attacks.
+        // Without this, ["a", "b:c"] and ["a:b", "c"] would both hash
+        // to the same bytes "a:b:c" and produce identical hashes.
+        let len = part.len() as u64;
+        hasher.update(len.to_le_bytes());
+        hasher.update(part.as_bytes());
+    }
+    let result = hasher.finalize();
+    // Use first 16 bytes as hex (32 chars)
+    hex::encode(&result[..16])
 }
 
 #[cfg(test)]
@@ -231,5 +252,38 @@ mod tests {
         let hash = ContentHash::empty();
         assert_eq!(hash.as_str().len(), 64);
         assert!(hash.as_str().chars().all(|c| c == '0'));
+    }
+
+    #[test]
+    fn test_hash_parts_deterministic() {
+        let hash1 = hash_parts(&["check_id", "issue_key"]);
+        let hash2 = hash_parts(&["check_id", "issue_key"]);
+        assert_eq!(hash1, hash2);
+        assert_eq!(hash1.len(), 32); // 16 bytes as hex
+    }
+
+    #[test]
+    fn test_hash_parts_different_inputs() {
+        let hash1 = hash_parts(&["a", "b"]);
+        let hash2 = hash_parts(&["c", "d"]);
+        assert_ne!(hash1, hash2);
+    }
+
+    #[test]
+    fn test_hash_parts_order_matters() {
+        let hash1 = hash_parts(&["a", "b"]);
+        let hash2 = hash_parts(&["b", "a"]);
+        assert_ne!(hash1, hash2);
+    }
+
+    #[test]
+    fn test_hash_parts_no_delimiter_collision() {
+        let hash1 = hash_parts(&["a", "b:c"]);
+        let hash2 = hash_parts(&["a:b", "c"]);
+        assert_ne!(hash1, hash2);
+
+        let hash3 = hash_parts(&["a", "b", "c"]);
+        assert_ne!(hash1, hash3);
+        assert_ne!(hash2, hash3);
     }
 }

@@ -177,6 +177,7 @@ dependencies = [
  "cargo_metadata",
  "gunbc-clippy",
  "gunbc-exec",
+ "gunbc-infra",
  "gunbc-ir",
  "gunbc-test",
  "serde_json",
@@ -192,6 +193,7 @@ dependencies = [
  "gunbc-deps",
  "gunbc-exec",
  "gunbc-gist",
+ "gunbc-infra",
  "gunbc-ir",
  "gunbc-lib-gist-ops",
  "gunbc-lib-llm-ops",
@@ -240,15 +242,25 @@ dependencies = [
 ]
 
 [[package]]
-name = "gunbc-ir"
+name = "gunbc-infra"
 version = "0.1.0"
 dependencies = [
  "glob",
  "hex",
- "proptest",
  "serde",
  "serde_json",
  "sha2",
+ "thiserror",
+]
+
+[[package]]
+name = "gunbc-ir"
+version = "0.1.0"
+dependencies = [
+ "gunbc-infra",
+ "proptest",
+ "serde",
+ "serde_json",
  "thiserror",
 ]
 
@@ -257,13 +269,12 @@ name = "gunbc-lib-blob"
 version = "0.1.0"
 dependencies = [
  "gunbc-exec",
+ "gunbc-infra",
  "gunbc-ir",
  "gunbc-lib-transport",
  "gunbc-test",
- "hex",
  "serde",
  "serde_json",
- "sha2",
 ]
 
 [[package]]
@@ -337,11 +348,10 @@ name = "gunbc-primitives"
 version = "0.1.0"
 dependencies = [
  "gunbc-exec",
+ "gunbc-infra",
  "gunbc-ir",
- "hex",
  "serde",
  "serde_json",
- "sha2",
  "tempfile",
  "toml",
 ]

@@ -3,7 +3,7 @@
 //! This module defines the states a managed resource can be in and the
 //! execution modes that determine how to handle stale resources.
 
-use super::hash::ContentHash;
+use super::ContentHash;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
