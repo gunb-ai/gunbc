@@ -22,6 +22,131 @@ unblocks most other cleanups.
 
 ---
 
+## Concrete Evidence from Codebase
+
+### Issue 1: Lint Fights — 20+ `#[allow]` Pragmas
+
+The `clippy.toml` disallows `std::fs::*` and `Command::new` to enforce transport
+abstraction. But infrastructure code legitimately needs these, so we have pragmas:
+
+**In `core/ir/` (should be I/O-free):**
+```
+core/ir/src/resource/hash.rs:34:    #[allow(clippy::disallowed_methods)]
+core/ir/src/resource/hash.rs:116:   #[allow(clippy::disallowed_methods)]
+core/ir/src/resource/manifest.rs:88:  #[allow(clippy::disallowed_methods)]
+core/ir/src/resource/manifest.rs:115: #[allow(clippy::disallowed_methods)]
+core/ir/src/resource/manifest.rs:189: #[allow(clippy::disallowed_methods)]
+core/ir/src/transport/cli.rs:326:     #[allow(clippy::disallowed_methods)]
+core/ir/src/transport/cli.rs:417:     #[allow(clippy::disallowed_methods)]
+core/ir/src/transport/cli.rs:426:     #[allow(clippy::disallowed_methods)]
+core/ir/src/transport/cli.rs:665:     #[allow(clippy::disallowed_methods)]
+core/ir/src/transport/cli.rs:687:     #[allow(clippy::disallowed_methods)]
+core/ir/src/transport/cli.rs:727:     #[allow(clippy::disallowed_methods)]
+core/ir/src/transport/cli.rs:762:     #[allow(clippy::disallowed_methods)]
+core/ir/src/transport/github/cli.rs:182: #[allow(clippy::disallowed_methods)]
+core/ir/src/transport/github/cli.rs:196: #[allow(clippy::disallowed_methods)]
+core/ir/src/transport/github/cli.rs:219: #[allow(clippy::disallowed_methods)]
+```
+
+**In binaries/generators:**
+```
+core/codegen/src/main.rs:135:  #[allow(clippy::disallowed_methods)]
+core/codegen/src/main.rs:152:  #[allow(clippy::disallowed_methods)]
+core/codegen/src/main.rs:190:  #[allow(clippy::disallowed_methods)]
+core/codegen/src/main.rs:577:  #[allow(clippy::disallowed_methods)]
+core/codegen/src/main.rs:819:  #[allow(clippy::disallowed_methods)]
+gunbc-dag/src/bin/testgen.rs:190: #[allow(clippy::disallowed_methods)]
+gunbc-dag/src/bin/testgen.rs:356: #[allow(clippy::disallowed_methods)]
+```
+
+**Pattern**: Infrastructure code scattered across crates, each needing exemptions.
+
+### Issue 2: Duplicate Code — Same Hash Logic in Two Places
+
+**core/codegen/src/main.rs:790-813:**
+```rust
+fn compute_codegen_input_hash() -> io::Result<ContentHash> {
+    let builder = HashBuilder::new();
+    let (builder, codegen_count) = builder.update_glob("core/codegen/src/**/*.rs")?;
+    let (builder, ir_count) = builder.update_glob("core/ir/src/**/*.rs")?;
+    let builder = builder.update_file("core/codegen/Cargo.toml")?;
+    let builder = builder.update_file("core/ir/Cargo.toml")?;
+    let rust_version = env::var("RUSTC_VERSION").unwrap_or_else(|_| "unknown".to_string());
+    let builder = builder.update_str(&rust_version);
+    Ok(builder.finalize())
+}
+```
+
+**gunbc-dag/src/ci/ops.rs:337-355:** (nearly identical)
+```rust
+fn compute_codegen_input_hash() -> Result<ContentHash, std::io::Error> {
+    let builder = HashBuilder::new();
+    let (builder, _) = builder.update_glob("core/codegen/src/**/*.rs")?;
+    let (builder, _) = builder.update_glob("core/ir/src/**/*.rs")?;
+    let builder = builder.update_file("core/codegen/Cargo.toml")?;
+    let builder = builder.update_file("core/ir/Cargo.toml")?;
+    let rust_version = std::env::var("RUSTC_VERSION").unwrap_or_else(|_| "unknown".to_string());
+    let builder = builder.update_str(&rust_version);
+    Ok(builder.finalize())
+}
+```
+
+**Why duplicated?** `gunbc-dag` can't import from `gunbc-codegen` (would create
+dependency on code generator). Should be in shared `gunbc-infra` crate.
+
+### Issue 3: String-Based Function References (Circular Dep Workaround)
+
+**core/codegen/src/cli_gen.rs:22-25:**
+```rust
+pub struct CliBinaryDef {
+    pub tool_name: String,
+    pub description: String,
+    pub graph_builder: String,  // "build_gist_graph" as STRING
+    pub graph_builder_args: String,
+}
+```
+
+**gunbc-dag/src/bin/testgen.rs:110-152:** (hardcoded dispatch)
+```rust
+targets.push(TestgenTarget {
+    dag: gunbc_dag::build_bootstrap_graph().unwrap(),  // ACTUAL function
+    ...
+});
+targets.push(TestgenTarget {
+    dag: gunbc_dag::build_ci_graph().unwrap(),  // ACTUAL function
+    ...
+});
+```
+
+**Why strings?** `gunbc-codegen` (registry) can't reference `gunbc-dag` (builders)
+because that would be circular. So registry stores string names, testgen has
+hardcoded function calls. Renaming a builder silently breaks at runtime.
+
+### Issue 4: Naive Hashing — O(n) File Reads Per Check
+
+**Current call sites hash everything:**
+
+```rust
+// codegen/main.rs - hashes ~100 files
+let (builder, codegen_count) = builder.update_glob("core/codegen/src/**/*.rs")?;
+let (builder, ir_count) = builder.update_glob("core/ir/src/**/*.rs")?;
+
+// testgen.rs - hashes ~200 files
+let (builder, dag_count) = builder.update_glob("gunbc-dag/src/**/*.rs")?;
+let (builder, ir_count) = builder.update_glob("core/ir/src/**/*.rs")?;
+let (builder, lib_count) = builder.update_glob("lib/**/src/**/*.rs")?;
+
+// ci/ops.rs - hashes same ~100 files AGAIN
+let (builder, _) = builder.update_glob("core/codegen/src/**/*.rs")?;
+let (builder, _) = builder.update_glob("core/ir/src/**/*.rs")?;
+```
+
+**Total per CI run**: ~400 file reads even when nothing changed.
+
+**Should be**: 0 file reads (mtime fast path) or ~3 file reads (only changed files).
+
+---
+
 ## Core Issue: Missing Infrastructure Layer
 
 ### Current Crate Structure
