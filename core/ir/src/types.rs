@@ -147,9 +147,10 @@ impl Cardinality {
         // Min (lowest valid value)
         cases.push(self.min);
         // Min + 1 (just above min, if in range)
-        let min_plus = self.min + 1;
-        if self.allows_count(min_plus) && Some(min_plus) != self.max {
-            cases.push(min_plus);
+        if let Some(min_plus) = self.min.checked_add(1) {
+            if self.allows_count(min_plus) && Some(min_plus) != self.max {
+                cases.push(min_plus);
+            }
         }
         if let Some(max) = self.max {
             // Max (highest valid value)
@@ -157,10 +158,12 @@ impl Cardinality {
                 cases.push(max);
             }
             // Above max (invalid boundary — should fail)
-            cases.push(max + 1);
+            if let Some(above) = max.checked_add(1) {
+                cases.push(above);
+            }
         } else {
             // Unbounded: test with a "large" value
-            cases.push(self.min + 10);
+            cases.push(self.min.saturating_add(10));
         }
         cases.sort();
         cases.dedup();
@@ -181,7 +184,7 @@ impl Cardinality {
 
     /// Check if the given count is within this cardinality's interval.
     pub fn allows_count(&self, count: u32) -> bool {
-        count >= self.min && self.max.map_or(true, |max| count <= max)
+        count >= self.min && self.max.is_none_or(|max| count <= max)
     }
 
     // =========================================================================
