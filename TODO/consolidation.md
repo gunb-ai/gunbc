@@ -894,46 +894,20 @@ This is fine; it's infrastructure code, not op code.
 
 ## Tasks
 
-### High priority (widespread, low effort) — DONE
-- [x] Add `require_str`, `require_json`, `optional_str` input helpers (80 call sites) — `core/exec/src/helpers.rs`
-- [x] Add `OutputMap` builder (164 call sites) — `core/exec/src/helpers.rs`
-- [x] Add `TransportResponseExt::require_shell/rest/file` methods (51 call sites) — `core/exec/src/helpers.rs`
-- [x] Add `ShellRequest::into_transport_request()` — `core/ir/src/transport/mod.rs`
+**Completed tasks moved to**: `TODO/TODONE/consolidation-complete.md`
 
-### High priority (new — widespread, low effort) — DONE
-- [x] Add `propagate_skipped` helper (8 call sites across 3 files) — §12
-- [x] Add `ExecError::context()` + `ResultExt` trait (27 call sites across 10 files) — §13
-- [x] Add `ShellResponse::ok()` / `ShellResponse::failed()` constructors (39 sites, 16 files) — §14
-- [x] Add `From<ShellRequest> for TransportRequest` (+ FileRequest, RestRequest, etc.) — all 5 request types + 5 response types
+### Remaining (blocked on design/dependencies)
 
-### High priority (remaining)
-- [x] Add `InputsExt` trait to replace free-function `require_*/optional_*` calls — shrinks import lists
-- [x] Migrate call sites to use `propagate_skipped` (8 sites, 3 files)
-- [x] Migrate call sites to use `ShellResponse::ok()/failed()` + `From` impls (graph_mock, bin, ops, tests)
-- [x] Migrate remaining call sites to use `ExecError::context()` / `ResultExt` / `IntoExecResult` (~42 sites, 12 files)
-
-### Medium priority
-- [x] Migrate remaining raw `HashMap::new()` output construction to `OutputMap` — §15
-  - Migrated: `lib/tools/cargo/src/ops.rs` (3 sites), `lib/tools/deps/src/graph.rs` (2 sites), `lib/primitives/src/collection.rs` (1 site)
-  - Remaining: `core/ir/src/transport/cli.rs` (4 sites, can't use OutputMap — core/ir doesn't depend on core/exec), `core/exec/src/execute.rs` (1 test helper), `core/test/src/mock.rs` (1 test helper)
-- [x] Add `assert_boundaries` test helper to `core/test` (8 files) — §11
-- [x] Collapse `default_mock_for_type` into `cardinality_case_mock_value` in testgen codegen — single type→mock mapping
-- [x] Extract `hash_finding_id` to `lib/primitives` as `StableHashOp` — §1
-- [x] Unify blob hash with review hash (both should use SHA256) — §1
-- [x] Extract `FormatDiffArtifact` to `lib/primitives` as `FormatMapOp` — §1
-
-### Lower priority / blocked
 - [ ] Consider `ToolGraphOp<D>` generic wrapper (dag-pattern-ux.md Phase 4) — §3
 - [ ] Split `MergeOutputs` dedup from cardinality handling (blocked on engine work) — §1
 - [ ] Design rendering DAG for Makefile generation (when adding Justfile) — §2
 - [ ] Design rendering DAG for CI workflow generation (when adding second provider) — §2
 - [ ] Review hand-written tests for redundancy with testgen (Pattern 1, 5) — §7
 - [ ] Remove fragile node-count assertions from graph structure tests (Pattern 2) — §7
-- [x] Eliminate `type_id == "List"` dual encoding (see §5) — already resolved: loop_pattern uses element type + cardinality, debug_assert guards CliEntrypoint
-- [x] Replace string-based builder references with enum keys (see §6) — `GraphBuilderId` enum in `cli_gen.rs`
-- [x] Extract `buck-out/gen` to a single constant (see §6) — was `target/codegen`, constants already exist, migrated CI ops
-- [x] Fix CODEGEN_SOURCES hardcoded path list (see §6) — already resolved per `TODO/TODONE/TODO_hacks_general.md`
 - [ ] Design hermeticity annotation for `Shell` transport (see §8 design problem)
+
+### Remaining (new functionality — integration tests)
+
 - [ ] Add integration tests: `File` transport executor (all 6 FileOp variants) — §8
 - [ ] Add integration tests: `Shell` transport executor (stdout, stderr, exit codes) — §8
 - [ ] Add integration tests: Git transport (`GitRequest` variants against temp repo) — §8
