@@ -56,6 +56,7 @@ pub mod handle;
 pub mod hash;
 pub mod managed;
 pub mod manifest;
+pub mod registry;
 pub mod state;
 
 // Re-exports from submodules
@@ -64,6 +65,7 @@ pub use handle::{HandleParseError, ResourceHandle};
 pub use hash::{ContentHash, HashBuilder};
 pub use managed::{ManagedResource, ResourceError, SimpleResource};
 pub use manifest::{ManifestEntry, ResourceManifest, DEFAULT_MANIFEST_PATH};
+pub use registry::{ResolutionError, ResourceRegistry};
 pub use state::{ExecMode, ResourceState};
 
 // ============================================================================
