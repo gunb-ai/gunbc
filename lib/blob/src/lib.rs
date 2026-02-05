@@ -7,7 +7,7 @@
 //!
 //! All operations are PURE (no I/O). I/O happens through TransportOps::Execute nodes.
 
-use gunbc_exec::{require_json, require_response, ExecError, Executable, OutputMap};
+use gunbc_exec::{require_json, require_response, ExecError, Executable, IntoExecResult, OutputMap};
 use gunbc_ir::resource::{AccessMode, ResourceId};
 use gunbc_ir::transport::{FileOp, FileRequest, ShellRequest, TransportRequest, TransportResponse};
 use gunbc_ir::Value;
@@ -157,12 +157,12 @@ impl BlobMeta {
 
     /// Compute SHA256 hash of content.
     fn compute_hash(content: &str) -> String {
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
-        // Simple hash for now - could use SHA256 later
-        let mut hasher = DefaultHasher::new();
-        content.hash(&mut hasher);
-        format!("{:016x}", hasher.finish())
+        use sha2::{Digest, Sha256};
+        let mut hasher = Sha256::new();
+        hasher.update(content.as_bytes());
+        let result = hasher.finalize();
+        // Use first 16 bytes as hex (32 chars), matching StableHashOp
+        hex::encode(&result[..16])
     }
 }
 
@@ -325,7 +325,7 @@ impl Executable for BlobOps {
                 let source_json = require_json(&inputs, "source")?;
 
                 let source: BlobSource = serde_json::from_value(source_json.clone())
-                    .map_err(|e| ExecError::new(format!("invalid source: {}", e)))?;
+                    .exec_context("invalid source")?;
 
                 match &source.source {
                     // Inline: no I/O needed, return handle directly
@@ -375,7 +375,7 @@ impl Executable for BlobOps {
                 let source_json = require_json(&inputs, "source")?;
 
                 let source: BlobSource = serde_json::from_value(source_json.clone())
-                    .map_err(|e| ExecError::new(format!("invalid source: {}", e)))?;
+                    .exec_context("invalid source")?;
 
                 let response = require_response(&inputs, "response")?;
 

@@ -24,11 +24,12 @@ pub mod graph;
 pub mod graph_mock;
 
 use gunbc_exec::{
-    optional_str, require_json, require_map_str_str, require_str, ExecError, Executable, OutputMap,
+    optional_str, require_json, require_map_str_str, require_str, ExecError, Executable,
+    IntoExecResult, OutputMap,
 };
 use gunbc_ir::Value;
+use gunbc_primitives::{FormatMapOp, StableHashOp};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 
 // ============================================================================
@@ -316,7 +317,7 @@ fn execute_load_pipeline_config(
     config: &ReviewPipelineConfig,
 ) -> Result<HashMap<String, Value>, ExecError> {
     let criteria_json = serde_json::to_value(&config.criteria)
-        .map_err(|e| ExecError::new(format!("failed to serialize criteria: {}", e)))?;
+        .exec_context("failed to serialize criteria")?;
 
     OutputMap::new()
         .str("provider", config.provider.clone())
@@ -332,7 +333,7 @@ fn execute_prepare_review_prompt(
     let _artifact = require_str(&inputs, "artifact")?;
 
     let criteria: Criteria = serde_json::from_value(require_json(&inputs, "criteria")?.clone())
-        .map_err(|e| ExecError::new(format!("invalid 'criteria' JSON: {}", e)))?;
+        .exec_context("invalid 'criteria' JSON")?;
 
     let context = optional_str(&inputs, "context").unwrap_or("");
 
@@ -381,7 +382,7 @@ fn execute_parse_review_response(
     let answer = require_str(&inputs, "answer")?;
 
     let criteria: Criteria = serde_json::from_value(require_json(&inputs, "criteria")?.clone())
-        .map_err(|e| ExecError::new(format!("invalid 'criteria' JSON: {}", e)))?;
+        .exec_context("invalid 'criteria' JSON")?;
 
     let mut errors = Vec::new();
 
@@ -440,7 +441,7 @@ fn execute_merge_outputs(
                     .as_json()
                     .ok_or_else(|| ExecError::new(format!("outputs[{}] is not JSON", i)))?;
                 let output: ReviewOutput = serde_json::from_value(j.clone())
-                    .map_err(|e| ExecError::new(format!("invalid outputs[{}]: {}", i, e)))?;
+                    .with_exec_context(|| format!("invalid outputs[{}]", i))?;
                 outputs.push(output);
             }
             outputs
@@ -500,17 +501,8 @@ fn execute_format_diff_artifact(
 ) -> Result<HashMap<String, Value>, ExecError> {
     let diff_files = require_map_str_str(&inputs, "diff_files")?;
 
-    // Format each file's diff into a readable artifact
-    let mut parts = Vec::new();
-    for (file, diff_chunk) in &diff_files {
-        parts.push(format!("--- {}\n{}", file, diff_chunk));
-    }
-
-    let artifact = if parts.is_empty() {
-        "(no changes)".to_string()
-    } else {
-        parts.join("\n\n")
-    };
+    // Use FormatMapOp::DiffArtifact for consistent formatting
+    let artifact = FormatMapOp::DiffArtifact.format_entries(&diff_files);
 
     OutputMap::new().str("artifact", artifact).ok()
 }
@@ -520,14 +512,13 @@ fn execute_format_diff_artifact(
 // ============================================================================
 
 /// Generate a stable finding ID from issue_key and check_id.
+///
+/// Uses `StableHashOp::hash_parts` internally for consistent hashing across
+/// the codebase. The order is `[check_id, issue_key]` to maintain compatibility
+/// with the original implementation.
 pub fn hash_finding_id(issue_key: &str, check_id: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(check_id.as_bytes());
-    hasher.update(b":");
-    hasher.update(issue_key.as_bytes());
-    let result = hasher.finalize();
-    // Use first 16 bytes as hex (32 chars)
-    hex::encode(&result[..16])
+    // Note: check_id comes first in the hash for historical reasons
+    StableHashOp::hash_parts(&[check_id, issue_key])
 }
 
 /// Try to extract JSON from an LLM response.
@@ -695,13 +686,6 @@ fn parse_location(loc: Option<&serde_json::Value>) -> Result<Location, String> {
     }
 
     Ok(Location::Unlocated)
-}
-
-// Hex encoding helper
-mod hex {
-    pub fn encode(bytes: &[u8]) -> String {
-        bytes.iter().map(|b| format!("{:02x}", b)).collect()
-    }
 }
 
 // ============================================================================

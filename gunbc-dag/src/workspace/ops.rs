@@ -3,7 +3,7 @@
 //! This enum wraps all domain operations, primitives, and transport ops
 //! into a single type that can be used throughout the workspace DAG.
 
-use gunbc_exec::{ExecError, Executable};
+use gunbc_exec::{ExecError, Executable, IntoExecResult};
 use gunbc_ir::Value;
 use std::collections::HashMap;
 
@@ -88,9 +88,7 @@ impl Executable for WorkspaceOp {
             WorkspaceOp::Gist(op) => op.execute(inputs),
             WorkspaceOp::Bootstrap(op) => op.execute(inputs),
             // CliToolOp has its own execute signature - wrap it
-            WorkspaceOp::Clippy(op) => op
-                .execute()
-                .map_err(|e| ExecError::new(format!("CliToolOp error: {}", e))),
+            WorkspaceOp::Clippy(op) => op.execute().exec_context("CliToolOp error"),
             // Env node does tool acquisition
             WorkspaceOp::Env(op) => op.execute(inputs),
             // Language ops

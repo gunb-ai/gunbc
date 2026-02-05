@@ -11,6 +11,42 @@
 use gunbc_ir::language::{rust_type as lang_rust_type, NamingCase};
 use gunbc_ir::Cardinality;
 
+/// Identifier for a graph builder function.
+///
+/// This enum provides compile-time safety for graph builder references.
+/// Instead of storing function names as strings (which silently break if
+/// renamed), we use an enum that maps to the function name in one place.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GraphBuilderId {
+    /// `build_gist_graph` - gist and gist-diff tools
+    Gist,
+    /// `build_makegen_graph` - Makefile generator
+    Makegen,
+    /// `build_deps_graph` - dependency installer
+    Deps,
+    /// `build_diff_review_graph` - LLM code review
+    Review,
+    /// `build_bootstrap_graph` - bootstrap Makefile and gitignore
+    Bootstrap,
+}
+
+impl GraphBuilderId {
+    /// Get the function name as a string for code generation.
+    ///
+    /// This is the single source of truth for function name → string mapping.
+    /// If a function is renamed, update this method and the generated code
+    /// will use the new name.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            GraphBuilderId::Gist => "build_gist_graph",
+            GraphBuilderId::Makegen => "build_makegen_graph",
+            GraphBuilderId::Deps => "build_deps_graph",
+            GraphBuilderId::Review => "build_diff_review_graph",
+            GraphBuilderId::Bootstrap => "build_bootstrap_graph",
+        }
+    }
+}
+
 /// Metadata about a tool for CLI generation.
 #[derive(Debug, Clone)]
 pub struct ToolMeta {
@@ -20,8 +56,8 @@ pub struct ToolMeta {
     pub tool_name: String,
     /// Short description
     pub description: String,
-    /// The function to call to build the graph (e.g., "build_gist_graph")
-    pub graph_builder: String,
+    /// The graph builder function to call (compile-time safe enum key).
+    pub graph_builder: GraphBuilderId,
     /// Arguments to pass to graph builder (e.g., "extensions.clone(), public")
     pub graph_builder_args: String,
     /// Whether the graph builder returns Result<Dag, BuilderError>
@@ -213,6 +249,7 @@ pub fn generate_cli_with_import(
     };
 
     // Generate the graph builder call - handle Result-returning builders
+    let graph_builder_fn = tool.graph_builder.as_str();
     let graph_builder_call = if tool.returns_result {
         if tool.graph_builder_args.is_empty() {
             format!(
@@ -223,7 +260,7 @@ pub fn generate_cli_with_import(
             process::exit(1);
         }}
     }}"#,
-                tool.graph_builder
+                graph_builder_fn
             )
         } else {
             format!(
@@ -234,13 +271,13 @@ pub fn generate_cli_with_import(
             process::exit(1);
         }}
     }}"#,
-                tool.graph_builder, tool.graph_builder_args
+                graph_builder_fn, tool.graph_builder_args
             )
         }
     } else if tool.graph_builder_args.is_empty() {
-        format!("{}()", tool.graph_builder)
+        format!("{}()", graph_builder_fn)
     } else {
-        format!("{}({})", tool.graph_builder, tool.graph_builder_args)
+        format!("{}({})", graph_builder_fn, tool.graph_builder_args)
     };
 
     let success_port_arg = match &tool.success_port {
@@ -625,6 +662,7 @@ fn generate_cli_with_step_mode(
     };
 
     // Generate the graph builder call - handle Result-returning builders
+    let graph_builder_fn = tool.graph_builder.as_str();
     let graph_builder_call = if tool.returns_result {
         if tool.graph_builder_args.is_empty() {
             format!(
@@ -635,7 +673,7 @@ fn generate_cli_with_step_mode(
             process::exit(1);
         }}
     }}"#,
-                tool.graph_builder
+                graph_builder_fn
             )
         } else {
             format!(
@@ -646,13 +684,13 @@ fn generate_cli_with_step_mode(
             process::exit(1);
         }}
     }}"#,
-                tool.graph_builder, tool.graph_builder_args
+                graph_builder_fn, tool.graph_builder_args
             )
         }
     } else if tool.graph_builder_args.is_empty() {
-        format!("{}()", tool.graph_builder)
+        format!("{}()", graph_builder_fn)
     } else {
-        format!("{}({})", tool.graph_builder, tool.graph_builder_args)
+        format!("{}({})", graph_builder_fn, tool.graph_builder_args)
     };
 
     let success_port_arg = match &tool.success_port {
@@ -933,7 +971,7 @@ mod tests {
             crate_name: "gunbc-gist".to_string(),
             tool_name: "gist".to_string(),
             description: "Create gist from files".to_string(),
-            graph_builder: "build_gist_graph".to_string(),
+            graph_builder: GraphBuilderId::Gist,
             graph_builder_args: "extensions.clone(), public".to_string(),
             returns_result: false,
             success_port: None,

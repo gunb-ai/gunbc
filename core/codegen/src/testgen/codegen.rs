@@ -1109,7 +1109,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                         count
                     );
 
-                    let mock_value = boundary_count_mock_value(count, type_id, *cardinality);
+                    let mock_value = mock_value_expr_for_count(type_id, *cardinality, count);
                     let mocks_expr = self.dryrun_mocks_expr(analysis, "cardinality coverage tests");
 
                     let exec = Expr::call(
@@ -2984,22 +2984,14 @@ fn render_output_matcher_check(matcher: &OutputMatcher, var_name: &str) -> Vec<S
     }
 }
 
-/// Generate a mock value for a boundary count, type, and cardinality.
-///
-/// Builds a ValueExpr and renders it via RustRenderer. The `count` is the
-/// number of elements (a boundary value from `testgen::cardinality::fermi_test_cases()`).
-///
-/// For count=0, scalar types emit `Value::Unit` (absence), not concrete
-/// "empty content" like `false` or `0`. List cardinalities emit empty
-/// collections (which correctly represent zero elements).
-fn boundary_count_mock_value(count: u32, type_id: &str, cardinality: Cardinality) -> ValueExpr {
-    mock_value_expr_for_count(type_id, cardinality, count)
-}
-
 /// Generate a mock ValueExpr for a specific count and cardinality.
 ///
 /// Cardinality determines whether values are wrapped as lists. The `count`
 /// is the number of elements (from `testgen::cardinality::fermi_test_cases()`).
+///
+/// For count=0, scalar types emit `Value::Unit` (absence), not concrete
+/// "empty content" like `false` or `0`. List cardinalities emit empty
+/// collections (which correctly represent zero elements).
 fn mock_value_expr_for_count(type_id: &str, cardinality: Cardinality, count: u32) -> ValueExpr {
     if cardinality.is_list() {
         if count == 0 {

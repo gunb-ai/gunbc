@@ -4,11 +4,12 @@
 //! They are the building blocks for parsing, extraction, and formatting.
 
 use gunbc_exec::{
-    optional_map_str_str, optional_str, require_json, require_str, require_str_list, ExecError,
-    Executable, OutputMap,
+    optional_map_str_str, optional_str, require_json, require_map_str_str, require_str,
+    require_str_list, ExecError, Executable, IntoExecResult, OutputMap,
 };
 use gunbc_ir::Value;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 
 /// Parse a string into structured data (JSON, TOML, YAML).
@@ -33,13 +34,11 @@ impl Executable for ParseOp {
         let input = require_str(&inputs, "input")?;
 
         let json_value: serde_json::Value = match self {
-            ParseOp::Json => serde_json::from_str(input)
-                .map_err(|e| ExecError::new(format!("JSON parse error: {}", e)))?,
+            ParseOp::Json => serde_json::from_str(input).exec_context("JSON parse error")?,
             ParseOp::Toml => {
-                let toml_value: toml::Value = toml::from_str(input)
-                    .map_err(|e| ExecError::new(format!("TOML parse error: {}", e)))?;
-                serde_json::to_value(toml_value)
-                    .map_err(|e| ExecError::new(format!("TOML to JSON conversion error: {}", e)))?
+                let toml_value: toml::Value =
+                    toml::from_str(input).exec_context("TOML parse error")?;
+                serde_json::to_value(toml_value).exec_context("TOML to JSON conversion error")?
             }
             ParseOp::Yaml => {
                 return Err(ExecError::new("YAML parsing not yet implemented"));
@@ -161,6 +160,117 @@ impl Executable for SplitOp {
     }
 }
 
+/// Generate a stable hash from string inputs.
+///
+/// This operation computes a SHA256 hash of the concatenation of input strings,
+/// useful for generating deterministic IDs from multiple keys. The hash is
+/// truncated to 32 hex characters (16 bytes) for readability while maintaining
+/// sufficient collision resistance.
+///
+/// Inputs:
+/// - `parts`: List of strings to hash (concatenated with ":" separator)
+///
+/// Outputs:
+/// - `hash`: 32-character hex string (first 16 bytes of SHA256)
+///
+/// # Example
+///
+/// ```ignore
+/// // Input: ["check_id", "issue_key"]
+/// // Output: "a1b2c3d4e5f6..." (32 hex chars)
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct StableHashOp;
+
+impl StableHashOp {
+    /// Compute a stable hash from parts.
+    ///
+    /// This is the pure function that can be used directly without DAG execution.
+    pub fn hash_parts(parts: &[&str]) -> String {
+        let mut hasher = Sha256::new();
+        for part in parts.iter() {
+            // Length-prefix each part to prevent collision attacks.
+            // Without this, ["a", "b:c"] and ["a:b", "c"] would both hash
+            // to the same bytes "a:b:c" and produce identical hashes.
+            let len = part.len() as u64;
+            hasher.update(len.to_le_bytes());
+            hasher.update(part.as_bytes());
+        }
+        let result = hasher.finalize();
+        // Use first 16 bytes as hex (32 chars)
+        hex::encode(&result[..16])
+    }
+}
+
+impl Executable for StableHashOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        let parts = require_str_list(&inputs, "parts")?;
+
+        let refs: Vec<&str> = parts.iter().map(|s| s.as_str()).collect();
+        let hash = Self::hash_parts(&refs);
+
+        OutputMap::new().str("hash", hash).ok()
+    }
+}
+
+/// Format a map of key-value pairs into a single output string.
+///
+/// This operation takes a map of string→string entries and formats each
+/// entry using a configurable format, then joins them with a separator.
+///
+/// Inputs:
+/// - `entries`: Map of string keys to string values
+///
+/// Outputs:
+/// - `output`: Formatted string
+///
+/// # Variants
+///
+/// - `DiffArtifact`: Formats as "--- {key}\n{value}" with "\n\n" separator,
+///   suitable for displaying diff files. Returns "(no changes)" if empty.
+///
+/// # Example
+///
+/// ```ignore
+/// // Input: {"src/main.rs": "@@ ...", "src/lib.rs": "@@ ..."}
+/// // Output with DiffArtifact format:
+/// // "--- src/main.rs\n@@ ...\n\n--- src/lib.rs\n@@ ..."
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum FormatMapOp {
+    /// Format as diff artifact: "--- {key}\n{value}" joined with "\n\n"
+    DiffArtifact,
+}
+
+impl FormatMapOp {
+    /// Format entries using the configured format.
+    pub fn format_entries(
+        &self,
+        entries: &std::collections::BTreeMap<String, String>,
+    ) -> String {
+        match self {
+            FormatMapOp::DiffArtifact => {
+                if entries.is_empty() {
+                    return "(no changes)".to_string();
+                }
+                let parts: Vec<String> = entries
+                    .iter()
+                    .map(|(key, value)| format!("--- {}\n{}", key, value))
+                    .collect();
+                parts.join("\n\n")
+            }
+        }
+    }
+}
+
+impl Executable for FormatMapOp {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        let entries = require_map_str_str(&inputs, "entries")?;
+        let output = self.format_entries(&entries);
+        OutputMap::new().str("output", output).ok()
+    }
+}
+
 /// Convert a serde_json::Value to a gunbc_ir::Value.
 fn json_to_value(json: serde_json::Value) -> Value {
     match json {
@@ -275,5 +385,109 @@ mod tests {
                 "c".to_string()
             ]))
         );
+    }
+
+    #[test]
+    fn test_stable_hash_deterministic() {
+        // Same inputs produce same hash
+        let hash1 = StableHashOp::hash_parts(&["check_id", "issue_key"]);
+        let hash2 = StableHashOp::hash_parts(&["check_id", "issue_key"]);
+        assert_eq!(hash1, hash2);
+
+        // Different inputs produce different hash
+        let hash3 = StableHashOp::hash_parts(&["other_check", "issue_key"]);
+        assert_ne!(hash1, hash3);
+    }
+
+    #[test]
+    fn test_stable_hash_op() {
+        let op = StableHashOp;
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "parts".to_string(),
+            Value::str_list(vec!["check_id".to_string(), "issue_key".to_string()]),
+        );
+
+        let result = op.execute(inputs).unwrap();
+        let hash = result.get("hash").unwrap();
+
+        // Should be a 32-char hex string
+        if let Value::Str(s) = hash {
+            assert_eq!(s.len(), 32);
+            assert!(s.chars().all(|c| c.is_ascii_hexdigit()));
+        } else {
+            panic!("expected string output");
+        }
+    }
+
+    #[test]
+    fn test_stable_hash_order_matters() {
+        // Order of parts matters
+        let hash1 = StableHashOp::hash_parts(&["a", "b"]);
+        let hash2 = StableHashOp::hash_parts(&["b", "a"]);
+        assert_ne!(hash1, hash2);
+    }
+
+    #[test]
+    fn test_stable_hash_no_delimiter_collision() {
+        // Parts containing delimiters must not collide with different part boundaries.
+        // Without length-prefix encoding, these would both produce "a:b:c" bytes.
+        let hash1 = StableHashOp::hash_parts(&["a", "b:c"]);
+        let hash2 = StableHashOp::hash_parts(&["a:b", "c"]);
+        assert_ne!(hash1, hash2);
+
+        // Also test the three-part case
+        let hash3 = StableHashOp::hash_parts(&["a", "b", "c"]);
+        assert_ne!(hash1, hash3);
+        assert_ne!(hash2, hash3);
+    }
+
+    #[test]
+    fn test_format_map_diff_artifact() {
+        use std::collections::BTreeMap;
+
+        let mut entries = BTreeMap::new();
+        entries.insert(
+            "src/main.rs".to_string(),
+            "@@ -1,3 +1,4 @@\n fn main() {}".to_string(),
+        );
+        entries.insert(
+            "src/lib.rs".to_string(),
+            "@@ -1 +1,2 @@\n pub fn foo() {}".to_string(),
+        );
+
+        let result = FormatMapOp::DiffArtifact.format_entries(&entries);
+
+        assert!(result.contains("--- src/main.rs"));
+        assert!(result.contains("--- src/lib.rs"));
+        assert!(result.contains("fn main()"));
+    }
+
+    #[test]
+    fn test_format_map_diff_artifact_empty() {
+        use std::collections::BTreeMap;
+
+        let entries = BTreeMap::new();
+        let result = FormatMapOp::DiffArtifact.format_entries(&entries);
+
+        assert_eq!(result, "(no changes)");
+    }
+
+    #[test]
+    fn test_format_map_op_execute() {
+        use std::collections::BTreeMap;
+
+        let op = FormatMapOp::DiffArtifact;
+        let mut inputs = HashMap::new();
+
+        let mut entries = BTreeMap::new();
+        entries.insert("file.rs".to_string(), "content".to_string());
+        inputs.insert("entries".to_string(), Value::str_map(entries));
+
+        let result = op.execute(inputs).unwrap();
+        let output = result.get("output").unwrap().as_str().unwrap();
+
+        assert!(output.contains("--- file.rs"));
+        assert!(output.contains("content"));
     }
 }

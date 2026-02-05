@@ -27,7 +27,7 @@
 //! Boundary detection (`BoundaryInfo`) is still used for signature inference
 //! and workflow interface detection, but NOT for DryRun interception.
 
-use crate::error::ExecError;
+use crate::error::{ExecError, IntoExecResult};
 use crate::intercept::BoundaryMocks;
 use crate::lower::lower;
 use crate::progress::{DagSnapshot, OutputSummary, ProgressObserver};
@@ -241,7 +241,7 @@ pub fn execute_with_mode_and_inputs<T: Executable + Clone>(
     input_mocks: Option<&BoundaryMocks>,
 ) -> Result<ExecutionLog, ExecError> {
     // Lower sub-DAGs first
-    let flat = lower(dag).map_err(|e| ExecError::new(format!("lowering failed: {e}")))?;
+    let flat = lower(dag).exec_context("lowering failed")?;
 
     // Detect boundaries
     let boundaries = detect_boundaries(&flat);
@@ -278,7 +278,7 @@ pub fn execute_with_mode_and_ci<T: Executable + Clone>(
     ci: &mut crate::CiContext,
 ) -> Result<ExecutionLog, ExecError> {
     // Lower sub-DAGs first
-    let flat = lower(dag).map_err(|e| ExecError::new(format!("lowering failed: {e}")))?;
+    let flat = lower(dag).exec_context("lowering failed")?;
 
     // Detect boundaries
     let boundaries = detect_boundaries(&flat);
@@ -314,7 +314,7 @@ pub fn execute_with_progress_and_mode<T: Executable + Clone>(
     mode: ExecutionMode,
     observer: &mut dyn ProgressObserver,
 ) -> Result<ExecutionLog, ExecError> {
-    let flat = lower(dag).map_err(|e| ExecError::new(format!("lowering failed: {e}")))?;
+    let flat = lower(dag).exec_context("lowering failed")?;
     let boundaries = detect_boundaries(&flat);
     execute_flat(&flat, &boundaries, &mode, None, Some(observer), None)
 }
@@ -326,7 +326,7 @@ pub fn execute_with_progress_and_mode_and_inputs<T: Executable + Clone>(
     observer: &mut dyn ProgressObserver,
     input_mocks: Option<&BoundaryMocks>,
 ) -> Result<ExecutionLog, ExecError> {
-    let flat = lower(dag).map_err(|e| ExecError::new(format!("lowering failed: {e}")))?;
+    let flat = lower(dag).exec_context("lowering failed")?;
     let boundaries = detect_boundaries(&flat);
     execute_flat(&flat, &boundaries, &mode, None, Some(observer), input_mocks)
 }
@@ -338,7 +338,7 @@ pub fn execute_with_all<T: Executable + Clone>(
     ci: &mut crate::CiContext,
     observer: &mut dyn ProgressObserver,
 ) -> Result<ExecutionLog, ExecError> {
-    let flat = lower(dag).map_err(|e| ExecError::new(format!("lowering failed: {e}")))?;
+    let flat = lower(dag).exec_context("lowering failed")?;
     let boundaries = detect_boundaries(&flat);
     execute_flat(&flat, &boundaries, &mode, Some(ci), Some(observer), None)
 }
@@ -378,7 +378,7 @@ pub fn execute_single_node<T: Executable + Clone>(
     mode: ExecutionMode,
 ) -> Result<HashMap<String, Value>, ExecError> {
     // Lower sub-DAGs first (in case the target node is inside a sub-DAG)
-    let flat = lower(dag).map_err(|e| ExecError::new(format!("lowering failed: {e}")))?;
+    let flat = lower(dag).exec_context("lowering failed")?;
 
     // Find the node
     let node = flat
@@ -427,7 +427,7 @@ pub fn simulate<T: Executable + Clone>(
     config: SimConfig,
 ) -> Result<SimulationResult, ExecError> {
     // Lower sub-DAGs first
-    let flat = lower(dag).map_err(|e| ExecError::new(format!("lowering failed: {e}")))?;
+    let flat = lower(dag).exec_context("lowering failed")?;
 
     // Detect boundaries
     let boundaries = detect_boundaries(&flat);
