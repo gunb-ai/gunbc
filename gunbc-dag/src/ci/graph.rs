@@ -147,6 +147,7 @@ pub fn ci_signature() -> WorkflowSignature {
         // Note: test_stdout is no longer a boundary output - it's wired to report node
         .with_output("lint_skipped", "Bool", Cardinality::ONE)
         .with_output("lint_stdout", "String", Cardinality::ONE)
+        .with_output("skip_reason", "String", Cardinality::ZERO_OR_ONE)
         .with_output("overall_success", "Bool", Cardinality::ONE)
         .with_output("report", "String", Cardinality::ONE)
 }

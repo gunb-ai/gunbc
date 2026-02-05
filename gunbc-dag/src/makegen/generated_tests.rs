@@ -168,7 +168,7 @@ fn test_flow_makegen() {
 
     // Verify load_registry.tool_count
     let entry = log.get("load_registry").expect("node 'load_registry' should be in execution log");
-    assert_eq!(entry.outputs.get("tool_count").expect("port 'tool_count' should exist on 'load_registry'"), &Value::Int(7), "flow verification: load_registry.tool_count mismatch");
+    assert_eq!(entry.outputs.get("tool_count").expect("port 'tool_count' should exist on 'load_registry'"), &Value::Int(8), "flow verification: load_registry.tool_count mismatch");
 
 }
 

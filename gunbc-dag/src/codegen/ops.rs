@@ -182,6 +182,10 @@ fn check_codegen_manifest_freshness(output_exists: bool) -> ManifestFreshness {
 fn execute_prepare_codegen_command(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
+    if let Some(result) = propagate_skipped(&inputs, "codegen_needed", &["skip"]) {
+        return result;
+    }
+
     let codegen_needed = require_bool(&inputs, "codegen_needed")?;
 
     if !codegen_needed {
@@ -203,9 +207,12 @@ fn execute_prepare_codegen_command(
 fn execute_parse_codegen_result(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
+    // Check skip flag first: when codegen was skipped (already present),
+    // response is Value::Skipped but we still know the outcome.
+    // If skip itself is Skipped (skip propagation), propagate to all outputs.
     if let Some(result) = propagate_skipped(
         &inputs,
-        "response",
+        "skip",
         &["prep_success", "codegen_ran", "prep_message"],
     ) {
         return result;
@@ -218,6 +225,14 @@ fn execute_parse_codegen_result(
             .bool("codegen_ran", false)
             .str("prep_message", "Codegen skipped (already present)")
             .ok();
+    }
+
+    if let Some(result) = propagate_skipped(
+        &inputs,
+        "response",
+        &["prep_success", "codegen_ran", "prep_message"],
+    ) {
+        return result;
     }
 
     let response = require_response(&inputs, "response")?;
@@ -240,6 +255,10 @@ fn execute_parse_codegen_result(
 fn execute_prepare_stamp_write(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
+    if let Some(result) = propagate_skipped(&inputs, "prep_success", &["skip"]) {
+        return result;
+    }
+
     let prep_success = require_bool(&inputs, "prep_success")?;
     if !prep_success {
         return OutputMap::new().bool("skip", true).ok();

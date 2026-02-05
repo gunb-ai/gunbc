@@ -9,12 +9,12 @@ if [[ ! -f "$allowlist_file" ]]; then
   exit 1
 fi
 
-pattern='^[[:space:]]*#\!?\[allow\(clippy::disallowed_methods\)\]'
+pattern='^[[:space:]]*#!?\[allow\(clippy::disallowed_methods\)\]'
 
 declare -A found_counts
 
 if command -v rg >/dev/null 2>&1; then
-  matches_cmd=(rg -n "$pattern" -g'*.rs' "$root_dir")
+  matches_cmd=(rg -n --no-ignore-vcs "$pattern" -g'*.rs' "$root_dir")
 else
   matches_cmd=(
     grep -R -n -E "$pattern" "$root_dir"
@@ -22,7 +22,6 @@ else
     --exclude-dir=.git
     --exclude-dir=target
     --exclude-dir=buck-out
-    --exclude-dir=bin
   )
 fi
 

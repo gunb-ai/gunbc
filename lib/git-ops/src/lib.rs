@@ -539,7 +539,7 @@ diff --git a/src/main.rs b/src/main.rs
 
         let result = GitOps::ParseRemoteBranchesAtHead.execute(inputs).unwrap();
         // No remote branch found — output should be absent
-        assert!(result.get("remote_branch").is_none());
+        assert!(!result.contains_key("remote_branch"));
     }
 
     #[test]
@@ -551,7 +551,7 @@ diff --git a/src/main.rs b/src/main.rs
         );
 
         let result = GitOps::ParseRemoteBranchesAtHead.execute(inputs).unwrap();
-        assert!(result.get("remote_branch").is_none());
+        assert!(!result.contains_key("remote_branch"));
     }
 
     // ========================================================================
@@ -622,6 +622,6 @@ diff --git a/src/main.rs b/src/main.rs
 
         let result = GitOps::ParseRevListBefore.execute(inputs).unwrap();
         // No commit found — output should be absent
-        assert!(result.get("base_ref").is_none());
+        assert!(!result.contains_key("base_ref"));
     }
 }

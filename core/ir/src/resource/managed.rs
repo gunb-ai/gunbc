@@ -408,7 +408,6 @@ impl ManagedResource for SimpleResource {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
     use std::path::{Path, PathBuf};
     use std::sync::Mutex;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -584,10 +583,7 @@ mod tests {
             }
 
             fn create(&self, manifest: &ResourceManifest) -> Result<ManifestEntry, ResourceError> {
-                if let Some(parent) = self.output.parent() {
-                    fs::create_dir_all(parent)?;
-                }
-                fs::write(&self.output, &self.contents)?;
+                gunbc_infra::test_utils::write_file(&self.output, &self.contents);
                 let (key, file_count) = compute_key_from_def(&self.def, manifest)?;
                 Ok(ManifestEntry::new(key, file_count).with_outputs(vec![self.output.clone()]))
             }
@@ -632,30 +628,15 @@ mod tests {
     }
 
     fn temp_dir(label: &str) -> PathBuf {
-        let mut dir = std::env::temp_dir();
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos();
-        dir.push(format!(
-            "gunbc-resource-{}-{}-{}",
-            label,
-            std::process::id(),
-            nanos
-        ));
-        fs::create_dir_all(&dir).expect("create temp dir");
-        dir
+        gunbc_infra::test_utils::temp_dir(label)
     }
 
     fn write_file(path: &Path, contents: &str) {
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).expect("create file parent");
-        }
-        fs::write(path, contents).expect("write file");
+        gunbc_infra::test_utils::write_file(path, contents);
     }
 
     fn cleanup_dir(path: &Path) {
-        let _ = fs::remove_dir_all(path);
+        gunbc_infra::test_utils::cleanup_dir(path);
     }
 
     fn restore_env(key: &str, old: Option<String>) {

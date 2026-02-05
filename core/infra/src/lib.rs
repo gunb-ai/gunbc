@@ -65,3 +65,4 @@ impl fmt::Display for ResourceId {
 pub mod freshness;
 pub mod hash;
 pub mod manifest;
+pub mod test_utils;

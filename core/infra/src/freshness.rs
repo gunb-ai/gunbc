@@ -154,9 +154,7 @@ mod tests {
     use std::thread;
 
     fn temp_dir() -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("freshness-test-{}", std::process::id()));
-        let _ = fs::create_dir_all(&dir);
-        dir
+        crate::test_utils::temp_dir("freshness")
     }
 
     #[test]

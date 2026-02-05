@@ -58,7 +58,7 @@ pub fn makegen_mock_spec() -> MockSpec {
         // Resource: file write lock
         .resource_lock("fs:Makefile")
         // Expected outputs for verification
-        .expected_output("load_registry", "tool_count", Value::Int(7))
+        .expected_output("load_registry", "tool_count", Value::Int(8))
         // Node I/O examples: verify pure node behavior
         .node_example(
             NodeExample::new("load_registry")
