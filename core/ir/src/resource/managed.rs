@@ -9,6 +9,7 @@ use super::handle::ResourceHandle;
 use super::state::{ExecMode, ResourceState};
 use super::{ContentHash, HashBuilder, ManifestEntry, ResourceManifest};
 use super::super::ResourceId;
+use gunbc_infra::freshness::{check_freshness_mtime, MtimeResult};
 use thiserror::Error;
 
 /// Error type for resource operations.
@@ -43,6 +44,19 @@ pub enum ResourceError {
     Io(#[from] std::io::Error),
 }
 
+/// Error type for updating resource manifests.
+#[derive(Debug, Error)]
+pub enum ManifestUpdateError {
+    #[error("Failed to load manifest: {0}")]
+    Load(std::io::Error),
+
+    #[error("Failed to update manifest entry: {0}")]
+    Acquire(ResourceError),
+
+    #[error("Failed to save manifest: {0}")]
+    Save(std::io::Error),
+}
+
 /// A resource that can be acquired with freshness checking.
 ///
 /// This trait unifies tools, build artifacts, and other acquirable things.
@@ -66,7 +80,17 @@ pub trait ManagedResource: Clone + Sized {
     /// The default implementation derives the key from declared inputs.
     /// Implementations may override this if they have custom key computation.
     fn compute_key(&self, manifest: &ResourceManifest) -> Result<ContentHash, ResourceError> {
-        Ok(compute_key_from_def(self.definition(), manifest)?.0)
+        Ok(self.compute_key_with_stats(manifest)?.0)
+    }
+
+    /// Compute the freshness key and input file count from declared inputs.
+    ///
+    /// The default implementation derives both from declared inputs.
+    fn compute_key_with_stats(
+        &self,
+        manifest: &ResourceManifest,
+    ) -> Result<(ContentHash, usize), ResourceError> {
+        compute_key_from_def(self.definition(), manifest)
     }
 
     /// Create or regenerate this resource.
@@ -181,7 +205,7 @@ impl SimpleResource {
 ///
 /// Returns `(key, input_file_count)` where `input_file_count` is the number of
 /// files hashed (used by mtime fast paths).
-pub fn compute_key_from_def(
+fn compute_key_from_def(
     def: &ResourceDef,
     manifest: &ResourceManifest,
 ) -> Result<(ContentHash, usize), ResourceError> {
@@ -225,17 +249,17 @@ pub fn compute_key_from_def(
 
 /// Inputs that can be checked via the mtime fast path.
 #[derive(Debug, Clone)]
-pub struct MtimeInputs {
-    pub glob_patterns: Vec<String>,
-    pub files: Vec<String>,
-    pub has_non_file_inputs: bool,
+struct MtimeInputs {
+    glob_patterns: Vec<String>,
+    files: Vec<String>,
+    has_non_file_inputs: bool,
 }
 
 /// Extract mtime-checkable inputs from a resource definition.
 ///
 /// Returns glob patterns and file paths, plus a flag indicating whether the
 /// definition includes non-file inputs (env/resource) that require full hashing.
-pub fn mtime_inputs_from_def(def: &ResourceDef) -> MtimeInputs {
+fn mtime_inputs_from_def(def: &ResourceDef) -> MtimeInputs {
     let mut glob_patterns = Vec::new();
     let mut files = Vec::new();
     let mut has_non_file_inputs = false;
@@ -255,6 +279,101 @@ pub fn mtime_inputs_from_def(def: &ResourceDef) -> MtimeInputs {
         files,
         has_non_file_inputs,
     }
+}
+
+/// Result of checking manifest freshness for a resource.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ManifestFreshness {
+    Fresh,
+    Stale(String),
+    Missing,
+    Error(String),
+}
+
+/// Options for manifest freshness checks.
+#[derive(Debug, Clone, Copy)]
+pub struct FreshnessOptions {
+    pub output_exists: Option<bool>,
+    pub use_mtime: bool,
+}
+
+impl Default for FreshnessOptions {
+    fn default() -> Self {
+        Self {
+            output_exists: None,
+            use_mtime: true,
+        }
+    }
+}
+
+/// Check manifest freshness for a resource.
+///
+/// This is a shared helper for tooling that needs:
+/// - manifest presence checks
+/// - optional output existence checks
+/// - optional mtime fast path
+/// - full hash comparison on fallback
+pub fn check_manifest_freshness<R: ManagedResource>(
+    resource: &R,
+    manifest: &ResourceManifest,
+    options: FreshnessOptions,
+) -> ManifestFreshness {
+    let def = resource.definition();
+
+    let entry = match manifest.get(&def.id) {
+        Some(e) => e,
+        None => return ManifestFreshness::Missing,
+    };
+
+    if matches!(options.output_exists, Some(false)) {
+        return ManifestFreshness::Stale("manifest present but output files missing".into());
+    }
+
+    if options.use_mtime {
+        let mtime_inputs = mtime_inputs_from_def(def);
+        if !mtime_inputs.has_non_file_inputs {
+            let glob_refs: Vec<&str> = mtime_inputs
+                .glob_patterns
+                .iter()
+                .map(|s| s.as_str())
+                .collect();
+            let file_refs: Vec<&str> = mtime_inputs.files.iter().map(|s| s.as_str()).collect();
+            match check_freshness_mtime(entry, &glob_refs, &file_refs) {
+                MtimeResult::Fresh => return ManifestFreshness::Fresh,
+                MtimeResult::MaybeStale(_) => {
+                    // Fall through to full hash comparison.
+                }
+            }
+        }
+    }
+
+    let current_key = match resource.compute_key(manifest) {
+        Ok(k) => k,
+        Err(e) => return ManifestFreshness::Error(e.to_string()),
+    };
+
+    if entry.key == current_key {
+        ManifestFreshness::Fresh
+    } else {
+        ManifestFreshness::Stale("inputs changed since last update".into())
+    }
+}
+
+/// Update the default resource manifest for a managed resource.
+///
+/// Loads the default manifest, ensures the resource is fresh (creating it if
+/// needed), and saves the manifest back to disk.
+pub fn update_resource_manifest<R: ManagedResource>(
+    resource: &R,
+) -> Result<(), ManifestUpdateError> {
+    let mut manifest = ResourceManifest::load_default().map_err(ManifestUpdateError::Load)?;
+    resource
+        .acquire(ExecMode::Ensure, &mut manifest)
+        .map_err(ManifestUpdateError::Acquire)?;
+    manifest
+        .save_default()
+        .map_err(ManifestUpdateError::Save)?;
+    Ok(())
 }
 
 fn update_tagged_str(mut builder: HashBuilder, tag: &str, value: &str) -> HashBuilder {

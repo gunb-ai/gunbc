@@ -1,7 +1,7 @@
 # Design: DAG Environment Model
 
-**Status**: Design / Open Questions
-**Date**: 2026-02-04
+**Status**: Phases 1-2 COMPLETE, Phase 3 open questions
+**Date**: 2026-02-04 (updated 2026-02-05)
 
 ## Ownership
 - [x] Taken by Codex (2026-02-05)
@@ -317,42 +317,19 @@ Proposal: Distinguish between:
 
 ---
 
-## Where Violations Live Today
+## Completed Phases
 
-(Cross-reference with `TODONE/TODO_consolidate_di.md` for details)
+**Phase 1 (Make violations explicit)** and **Phase 2 (Environment acquisition
+in graphs)** are both complete. All six original violation sites are resolved:
+filesystem handles, platform detection, clock snapshots, and env var resolution
+now flow through DAG edges via per-resource env nodes (FsEnv, PlatformEnv,
+ClockEnv, AuthEnv). DryRun requires explicit mocks for all intercepted nodes.
 
-| Resource | Violation site | What happens | What should happen |
-|----------|---------------|--------------|-------------------|
-| Filesystem | `gist-ops/lib.rs:113` | Constructs handle inline | Receive through input port |
-| Platform | `deps/installer.rs:39` | `Platform::detect()` in constructor | Receive through input port |
-| Platform | `deps/ops.rs:211` | `Installer::new()` in Executable | Receive Platform as DAG input |
-| Clock | `gist-ops/lib.rs:145` | `SystemTime::now()` inline | Receive timestamp as input |
-| Env vars | `transport/executor.rs:81,97` | `std::env::var()` in executor | Resolve before executor |
-| Env vars | `codegen/cli_gen.rs:724,748` | `env::vars()` in generated code | Accept env dict parameter |
+See `TODO/TODONE/design-resource-acquisition.md` for the full design.
 
 ---
 
 ## Incremental Plan
-
-This doesn't need to be solved all at once. Incremental steps:
-
-### Phase 1: Make violations explicit (mechanical)
-- [x] `sanitize_branch_for_filename(&FilesystemHandle, &str) → String`
-- [x] `generate_gist_filename(&FilesystemHandle, &str, SystemTime) → String`
-- [x] `Installer::for_platform(Platform)` everywhere (drop `::new()`)
-- [x] Resolve `AuthMethod::EnvVar` before executor
-
-These are pure refactors — change function signatures, thread the
-values from callers. No new DAG infrastructure needed.
-
-### Phase 2: Add environment acquisition to graphs
-- [x] Add `FsEnv` node to gist graph (emits `FilesystemHandle`)
-- [x] Add `PlatformEnv` node to deps graph (emits `Platform`)
-- [x] Add `ClockEnv` node where timestamps are needed
-- [x] Wire edges from env nodes to consumers
-- [x] DryRun interception for new env node types
-- [x] Resolve LLM auth explicitly via `ResolveAuth` → `AuthEnv` (no provider fallback)
-- [x] Require explicit mocks in DryRun (no implicit defaults for intercepted nodes)
 
 ### Phase 3: Generalize to RuntimeEnv (if needed)
 - [ ] Decide Q1 (single vs many env nodes)

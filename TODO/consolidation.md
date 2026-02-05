@@ -926,12 +926,11 @@ This is fine; it's infrastructure code, not op code.
 
 ### Remaining (new functionality — integration tests)
 
-- [x] Add integration tests: `File` transport executor (all 6 FileOp variants) — `lib/transport/src/executor.rs`
-- [x] Add integration tests: `Shell` transport executor (stdout, stderr, exit codes) — `lib/transport/src/executor.rs`
-- [x] Add integration tests: Git transport (`GitRequest` variants against temp repo) — `lib/transport/src/executor.rs::git_integration`
-- [x] Add integration tests: CLI tool resolution (`resolve_tool_path`, `upsert_tool`) — `core/ir/src/transport/cli.rs`
 - [ ] Add `make test-integration` target (hermetic transport tests) — deferred: tests run as part of normal `cargo test`
 - [ ] Add `make test-external` target (non-hermetic transport tests, scheduled CI) — deferred: no external tests yet
+
+**Completed** (moved to `TODONE/consolidation-complete.md`): File/Shell/Git/CLI
+integration tests all added.
 
 ## Notes
 

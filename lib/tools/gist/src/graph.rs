@@ -458,11 +458,13 @@ pub fn gist_signature(mode: &GistMode) -> WorkflowSignature {
         .with_input("repo_path", "String", Cardinality::ZERO_OR_ONE)
         .with_output("url", "String", Cardinality::ONE);
 
-    if matches!(mode, GistMode::Diff { .. }) {
+    // base_ref is an entrypoint in snapshot and diff modes (unwired optional on
+    // prepare_gist_request / prepare_diff). In recent mode, base_ref is wired
+    // from parse_rev_list → not an entrypoint.
+    if !matches!(mode, GistMode::Recent) {
         sig = sig.with_input("base_ref", "String", Cardinality::ZERO_OR_ONE);
     }
 
-    // Recent mode has same signature as Snapshot (just repo_path?)
     sig
 }
 
@@ -515,10 +517,15 @@ pub fn build_gist_graph(
     // ========================================================================
     // Both modes produce a render_markdown node handle that outputs "markdown".
 
-    let render_markdown = match mode {
-        GistMode::Snapshot => build_snapshot_acquire(&mut builder, extensions)?,
-        GistMode::Diff { base_ref } => build_diff_acquire(&mut builder, &base_ref, extensions)?,
-        GistMode::Recent => build_recent_acquire(&mut builder, extensions)?,
+    let (render_markdown, recent_parse_rev_list) = match mode {
+        GistMode::Snapshot => (build_snapshot_acquire(&mut builder, extensions)?, None),
+        GistMode::Diff { base_ref } => {
+            (build_diff_acquire(&mut builder, &base_ref, extensions)?, None)
+        }
+        GistMode::Recent => {
+            let (md, rev) = build_recent_acquire(&mut builder, extensions)?;
+            (md, Some(rev))
+        }
     };
 
     // ========================================================================
@@ -624,6 +631,7 @@ pub fn build_gist_graph(
                 scalar("markdown", "String"),
                 optional("branch", "String"),
                 optional("remote_branch", "String"),
+                optional("base_ref", "String"),
                 scalar("res:fs", "FilesystemHandle"),
                 scalar("res:clock", "Timestamp"),
             ],
@@ -676,6 +684,13 @@ pub fn build_gist_graph(
         clock_env.out("clock"),
         prepare_gist_request.in_port("res:clock"),
     )?;
+    // Wire commit range (recent mode only) so filename reflects the diff range
+    if let Some(ref parse_rev_list) = recent_parse_rev_list {
+        builder.add_edge(
+            parse_rev_list.out("base_ref"),
+            prepare_gist_request.in_port("base_ref"),
+        )?;
+    }
     builder.add_edge(
         prepare_gist_request.out("request"),
         execute_gist.in_port("request"),
@@ -878,11 +893,18 @@ fn build_diff_acquire(
 /// If the repo is younger than 7 days (empty rev-list output), PrepareDiff
 /// falls back to its default base_ref of "HEAD", producing an empty diff.
 ///
-/// Returns the render_markdown node ref (output: "markdown").
+/// Returns `(render_markdown, parse_rev_list)` — the caller wires `parse_rev_list`
+/// to `prepare_gist_request` so the commit range appears in the gist filename.
 fn build_recent_acquire(
     builder: &mut DagBuilder<GistGraphOp>,
     extensions: Vec<String>,
-) -> Result<gunbc_ir::builder::NodeRef<GistGraphOp>, BuilderError> {
+) -> Result<
+    (
+        gunbc_ir::builder::NodeRef<GistGraphOp>,
+        gunbc_ir::builder::NodeRef<GistGraphOp>,
+    ),
+    BuilderError,
+> {
     // ========================================================================
     // Rev-list chain: find commit from 7 days ago
     // ========================================================================
@@ -998,7 +1020,7 @@ fn build_recent_acquire(
     )?;
     builder.add_edge(parse_diff.out("stats"), render_markdown.in_port("stats"))?;
 
-    Ok(render_markdown)
+    Ok((render_markdown, parse_rev_list))
 }
 
 // Mockable implementation for test generation
@@ -1249,9 +1271,9 @@ mod tests {
         let dag = build_gist_graph(GistMode::Snapshot, vec![], false).expect("graph should build");
         let inferred = infer_signature(&dag);
 
-        // Should have four inputs (repo_path on prepare_list_files, prepare_read_files,
-        // prepare_current_branch, and prepare_remote_branches)
-        assert_eq!(inferred.inputs.len(), 4);
+        // Should have five inputs (repo_path on prepare_list_files, prepare_read_files,
+        // prepare_current_branch, prepare_remote_branches, and base_ref on prepare_gist_request)
+        assert_eq!(inferred.inputs.len(), 5);
 
         // Should have one output (url from parse_gist_response)
         assert_eq!(inferred.outputs.len(), 1);
@@ -1406,9 +1428,10 @@ mod tests {
         .expect("diff graph should build");
         let inferred = infer_signature(&dag);
 
-        // Should have four inputs (repo_path and base_ref on prepare_diff,
-        // repo_path on prepare_current_branch, repo_path on prepare_remote_branches)
-        assert_eq!(inferred.inputs.len(), 4);
+        // Should have five inputs (repo_path and base_ref on prepare_diff,
+        // repo_path on prepare_current_branch, repo_path on prepare_remote_branches,
+        // base_ref on prepare_gist_request)
+        assert_eq!(inferred.inputs.len(), 5);
 
         // Should have one output (url from parse_gist_response)
         assert_eq!(inferred.outputs.len(), 1);
@@ -1504,10 +1527,11 @@ mod tests {
         //           prepare_remote_branches, execute_remote_branches, parse_remote_branches,
         //           prepare_gist, execute_gist, parse_gist_response
         assert_eq!(dag.nodes.len(), 18);
-        // 18 edges: 2 (rev-list chain) + 1 (rev-list→diff) + 4 (diff chain)
+        // 19 edges: 2 (rev-list chain) + 1 (rev-list→diff) + 4 (diff chain)
         //         + 2 (branch chain) + 2 (remote chain)
         //         + 7 (gist tail: markdown→gist, branch→gist, remote→gist, fs→gist, clock→gist, gist→execute, execute→parse)
-        assert_eq!(dag.edges.len(), 18);
+        //         + 1 (parse_rev_list→prepare_gist_request base_ref)
+        assert_eq!(dag.edges.len(), 19);
     }
 
     #[test]

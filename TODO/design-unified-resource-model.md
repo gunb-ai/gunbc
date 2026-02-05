@@ -1,7 +1,7 @@
 # Design: Unified Resource Model
 
 > **Consolidates:** TODONE/URGENT_codegen_upsert.md, TODONE/design-build-resource-chain.md,
-> design-resource-acquisition.md (Phases 4-5), and related TODO_hacks items.
+> TODONE/design-resource-acquisition.md (Phases 4-5), and related TODO_hacks items.
 >
 > **Principle:** All acquirable things—tools, build artifacts, filesystem handles,
 > auth tokens—are **resources** with the same upsert semantics: Check → Create → Resolve.
@@ -837,7 +837,7 @@ is already correct for tools.
 
 **Update:**
 - `TODO_hacks` — Mark resolved items
-- `design-resource-acquisition.md` — Mark phases 4-5 complete
+- `TODONE/design-resource-acquisition.md` — Mark phases 4-5 complete
 - `README.md` — Document `--mode` flag
 
 **Estimated scope:** Documentation only

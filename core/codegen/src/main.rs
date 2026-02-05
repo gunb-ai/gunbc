@@ -33,8 +33,8 @@ use gunbc_codegen::{
     all_cleanable_outputs, all_tools, generate_cli_with_import, generate_graph_rs, FileWriter,
 };
 use gunbc_ir::resource::{
-    codegen_resource_def, compute_key_from_def, ExecMode, ManagedResource, ManifestEntry,
-    ResourceDef, ResourceError, ResourceManifest,
+    codegen_resource_def, update_resource_manifest, ManagedResource, ManifestEntry,
+    ManifestUpdateError, ResourceDef, ResourceError, ResourceManifest,
 };
 use gunbc_ir::transport::ci::{
     yaml_block, CacheConfig, CiRenderer, GitHubActionsProvider, GitLabCiProvider, RenderConfig,
@@ -800,7 +800,7 @@ impl ManagedResource for CodegenResource {
     }
 
     fn create(&self, manifest: &ResourceManifest) -> Result<ManifestEntry, ResourceError> {
-        let (key, file_count) = compute_key_from_def(&self.def, manifest)?;
+        let (key, file_count) = self.compute_key_with_stats(manifest)?;
         Ok(ManifestEntry::new(key, file_count).with_outputs(self.outputs.clone()))
     }
 }
@@ -816,29 +816,24 @@ fn update_manifest_after_codegen(dry_run: bool) {
 
     println!("\n  Updating resource manifest...");
     let resource = CodegenResource::new();
-    let mut manifest = match ResourceManifest::load_default() {
-        Ok(m) => m,
-        Err(e) => {
+
+    match update_resource_manifest(&resource) {
+        Ok(()) => {
+            println!("  Updated resource manifest: target/.resource-manifest.json");
+        }
+        Err(ManifestUpdateError::Load(e)) => {
             eprintln!("  ERROR: Could not load manifest: {}", e);
             eprintln!("  Codegen outputs exist but freshness cannot be verified.");
             eprintln!("  CI --mode=verify will fail until manifest is written.");
-            return;
         }
-    };
-
-    match resource.acquire(ExecMode::Ensure, &mut manifest) {
-        Ok(_) => {
-            if let Err(e) = manifest.save_default() {
-                eprintln!("  ERROR: Could not write manifest: {}", e);
-                eprintln!("  Codegen outputs exist but freshness cannot be verified.");
-                eprintln!("  CI --mode=verify will fail until manifest is written.");
-                // Don't exit(1) - codegen outputs are valid, just untracked.
-                // Next run should succeed in writing the manifest.
-            } else {
-                println!("  Updated resource manifest: target/.resource-manifest.json");
-            }
+        Err(ManifestUpdateError::Save(e)) => {
+            eprintln!("  ERROR: Could not write manifest: {}", e);
+            eprintln!("  Codegen outputs exist but freshness cannot be verified.");
+            eprintln!("  CI --mode=verify will fail until manifest is written.");
+            // Don't exit(1) - codegen outputs are valid, just untracked.
+            // Next run should succeed in writing the manifest.
         }
-        Err(e) => {
+        Err(ManifestUpdateError::Acquire(e)) => {
             eprintln!("  ERROR: Could not update manifest: {}", e);
             eprintln!("  Codegen outputs exist but freshness cannot be verified.");
             eprintln!("  CI --mode=verify will fail until manifest is written.");

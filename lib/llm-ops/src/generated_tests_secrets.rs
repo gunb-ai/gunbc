@@ -4,7 +4,7 @@
 // DO NOT EDIT - regenerate with: make testgen
 // Obligations: 21 obligations (7 discharged, 14 testable: A=6, B=5, C=3, D=0)
 // Proven by construction: acyclicity, type compatibility, cardinality satisfaction.
-// Content-Hash: 2a33f4b000d4a723
+// Content-Hash: f498274f8184de1da7779c64162dd7175ccfcd92ab877a5e680e4ab8bf739cef
 
 
 use gunbc_exec::{execute_with_mode, lower, BoundaryMocks, ExecutionMode};
@@ -154,7 +154,6 @@ fn test_mock_spec_self_consistent() {
     let spec = mock_spec();
     // Verify all boundary mocks are present
     assert!(spec.get_boundary_mock("auth_env", "auth:llm").is_some(), "MockSpec should have boundary mock for auth_env.auth:llm");
-    assert!(spec.get_boundary_mock("resolve_api_key", "api_key").is_some(), "MockSpec should have boundary mock for resolve_api_key.api_key");
     assert!(spec.get_boundary_mock("execute", "response").is_some(), "MockSpec should have boundary mock for execute.response");
     assert!(spec.get_boundary_mock("parse", "content").is_some(), "MockSpec should have boundary mock for parse.content");
     assert!(spec.get_boundary_mock("parse", "model").is_some(), "MockSpec should have boundary mock for parse.model");

@@ -57,6 +57,7 @@ impl Executable for GistOps {
                 let markdown = require_str(&inputs, "markdown")?;
                 let branch = optional_str(&inputs, "branch");
                 let remote_branch = optional_str(&inputs, "remote_branch");
+                let base_ref = optional_str(&inputs, "base_ref");
 
                 // Acquire system resources at the DAG boundary (not inline)
                 let fs = require_filesystem_handle(&inputs, "res:fs")?;
@@ -69,13 +70,44 @@ impl Executable for GistOps {
                 // - Neither is set for arbitrary detached commits
                 let effective_branch = branch.or(remote_branch);
 
-                let filename =
-                    generate_gist_filename(&fs, effective_branch.unwrap_or("snapshot"), now);
-                let description = match effective_branch {
-                    Some(b) if !b.trim().is_empty() && b.trim() != "HEAD" => {
-                        format!("Code snapshot of {} created by gunbc-gist", b)
-                    }
-                    _ => "Code snapshot created by gunbc-gist".to_string(),
+                let (filename, description) = if let Some(sha) = base_ref {
+                    // Recent mode: base_ref is the SHA from rev-list
+                    let short_sha = &sha[..sha.len().min(7)];
+                    let branch_label = effective_branch.unwrap_or("snapshot");
+                    let prefix = format!(
+                        "{}_recent-7d_{}..HEAD",
+                        sanitize_branch_for_filename(&fs, branch_label),
+                        short_sha
+                    );
+                    let filename = generate_gist_filename_with_prefix(&fs, &prefix, now);
+                    let description = match effective_branch {
+                        Some(b) if !b.trim().is_empty() && b.trim() != "HEAD" => {
+                            format!(
+                                "Recent changes (7d) {}..HEAD on {} created by gunbc-gist",
+                                short_sha, b
+                            )
+                        }
+                        _ => format!(
+                            "Recent changes (7d) {}..HEAD created by gunbc-gist",
+                            short_sha
+                        ),
+                    };
+                    (filename, description)
+                } else {
+                    // Snapshot/diff mode, or recent mode with young repo
+                    // (young repo: parse_rev_list produces no output → absent from inputs)
+                    let filename = generate_gist_filename(
+                        &fs,
+                        effective_branch.unwrap_or("snapshot"),
+                        now,
+                    );
+                    let description = match effective_branch {
+                        Some(b) if !b.trim().is_empty() && b.trim() != "HEAD" => {
+                            format!("Code snapshot of {} created by gunbc-gist", b)
+                        }
+                        _ => "Code snapshot created by gunbc-gist".to_string(),
+                    };
+                    (filename, description)
                 };
 
                 let request = prepare_gist_request(markdown, *public, &description, &filename);
@@ -195,6 +227,39 @@ pub fn generate_gist_filename(
         sanitized[..end].trim_end_matches(fs.replacement())
     } else {
         &sanitized
+    };
+
+    if truncated.is_empty() {
+        format!("snapshot{}", suffix)
+    } else {
+        format!("{}{}", truncated, suffix)
+    }
+}
+
+/// Generate a gist filename from a pre-built prefix and timestamp.
+///
+/// Unlike `generate_gist_filename`, the caller supplies the full prefix
+/// (already sanitized). This is used when the prefix contains extra
+/// metadata like a commit range (e.g., `main_recent-7d_abc123d..HEAD`).
+pub fn generate_gist_filename_with_prefix(
+    fs: &filename::FilesystemHandle,
+    prefix: &str,
+    now: Timestamp,
+) -> String {
+    let timestamp = format_utc_timestamp(now.to_system_time());
+    let suffix = format!("_{}.md", timestamp);
+
+    let max_bytes = fs.max_component_bytes();
+    let prefix_budget = max_bytes.saturating_sub(suffix.len());
+
+    let truncated = if prefix.len() > prefix_budget {
+        let mut end = prefix_budget;
+        while end > 0 && !prefix.is_char_boundary(end) {
+            end -= 1;
+        }
+        prefix[..end].trim_end_matches(fs.replacement())
+    } else {
+        prefix
     };
 
     if truncated.is_empty() {
@@ -673,5 +738,86 @@ mod tests {
             filename
         );
         assert!(filename.ends_with("_2024-01-15_13-30-00.md"));
+    }
+
+    // ========================================================================
+    // Recent mode (base_ref) tests
+    // ========================================================================
+
+    #[test]
+    fn test_gist_ops_prepare_with_base_ref() {
+        let mut inputs = HashMap::new();
+        inputs.insert("markdown".to_string(), Value::Str("# Diff".to_string()));
+        inputs.insert("branch".to_string(), Value::Str("main".to_string()));
+        inputs.insert(
+            "base_ref".to_string(),
+            Value::Str("abc123def456".to_string()),
+        );
+        let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
+        let ts = Timestamp::from_system_time(SystemTime::UNIX_EPOCH);
+        inputs.insert("res:fs".to_string(), fs.into());
+        inputs.insert("res:clock".to_string(), ts.into());
+
+        let op = GistOps::PrepareRequest { public: false };
+        let result = op.execute(inputs).unwrap();
+
+        match result.get("request") {
+            Some(Value::Request(TransportRequest::Shell(req))) => {
+                // Filename should contain recent-7d and short SHA
+                let f_arg = req
+                    .args
+                    .iter()
+                    .find(|a| a.contains("recent-7d") && a.contains("abc123d..HEAD"));
+                assert!(
+                    f_arg.is_some(),
+                    "expected recent-mode filename with commit range, got args: {:?}",
+                    req.args
+                );
+                assert!(f_arg.unwrap().starts_with("main_recent-7d_abc123d..HEAD_"));
+                assert!(f_arg.unwrap().ends_with(".md"));
+
+                // Description should mention the commit range
+                let desc_idx = req.args.iter().position(|a| a == "--desc").unwrap();
+                let desc = &req.args[desc_idx + 1];
+                assert!(
+                    desc.contains("Recent changes (7d) abc123d..HEAD on main"),
+                    "description should contain commit range and branch, got: {}",
+                    desc
+                );
+            }
+            _ => panic!("expected shell request"),
+        }
+    }
+
+    #[test]
+    fn test_gist_ops_prepare_without_base_ref_unchanged() {
+        // Verify that snapshot/diff mode behavior is unchanged
+        let mut inputs = HashMap::new();
+        inputs.insert("markdown".to_string(), Value::Str("# Test".to_string()));
+        inputs.insert("branch".to_string(), Value::Str("main".to_string()));
+        // No base_ref — snapshot/diff mode
+        let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
+        let ts = Timestamp::from_system_time(SystemTime::UNIX_EPOCH);
+        inputs.insert("res:fs".to_string(), fs.into());
+        inputs.insert("res:clock".to_string(), ts.into());
+
+        let op = GistOps::PrepareRequest { public: false };
+        let result = op.execute(inputs).unwrap();
+
+        match result.get("request") {
+            Some(Value::Request(TransportRequest::Shell(req))) => {
+                // Should NOT contain recent-7d
+                let has_recent = req.args.iter().any(|a| a.contains("recent-7d"));
+                assert!(
+                    !has_recent,
+                    "snapshot mode should not have recent-7d, got args: {:?}",
+                    req.args
+                );
+                // Should start with branch name
+                let f_arg = req.args.iter().find(|a| a.starts_with("main_"));
+                assert!(f_arg.is_some());
+            }
+            _ => panic!("expected shell request"),
+        }
     }
 }

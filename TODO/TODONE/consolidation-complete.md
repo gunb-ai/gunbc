@@ -47,6 +47,19 @@ reference material (patterns, architecture notes).
 - [x] Extract `buck-out/gen` to a single constant — was `target/codegen`, constants already exist, migrated CI ops
 - [x] Fix CODEGEN_SOURCES hardcoded path list — already resolved per `TODO/TODONE/TODO_hacks_general.md`
 
+## Test cleanup
+
+- [x] Delete 16 redundant `graph_mock.rs` Pattern A (boundary presence) and Pattern D
+  (resource acquire) tests — testgen generates equivalent tests. 8 `graph_mock.rs` files
+  reduced from 49 to ~33 hand-written tests.
+- [x] Migration details for §13: `IntoExecResult::exec_context()` in `core/exec/src/error.rs`.
+  Migrated `lib/llm-ops/src/lib.rs` (4 sites), `lib/tools/cargo/src/ops.rs` (1),
+  `gunbc-dag/src/ci/graph.rs` (1). Remaining sites lower-urgency.
+- [x] Migration details for §14: `ShellResponse::ok()/failed()` migrated across 3 binaries
+  (codegen, bootstrap, build), gist graph_mock (6), deps graph_mock (1), gist graph (1),
+  build/ops tests (2), codegen registry templates (~10). Only `executor.rs:422` kept raw.
+- [x] Migration details for §15: `gunbc-dag/src/build/ops.rs` (7 sites) migrated to `OutputMap`.
+
 ---
 
 ## Summary of Infrastructure Added

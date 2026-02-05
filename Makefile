@@ -10,7 +10,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help ensure-codegen codegen build clean testgen testgen-check fmt-fix lint-fix test test-fix check check-fix clippy clippy-fix fmt fmt-check ci-yaml gist gist-dry gist-diff gist-diff-dry makegen makegen-dry deps deps-dry bootstrap bootstrap-dry ci ci-dry build-all build-all-dry
+.PHONY: help ensure-codegen codegen build clean testgen testgen-check fmt-fix lint-fix test test-fix check check-fix clippy clippy-fix fmt fmt-check ci-yaml gist gist-dry gist-diff gist-diff-dry gist-recent gist-recent-dry makegen makegen-dry deps deps-dry bootstrap bootstrap-dry ci ci-dry build-all build-all-dry
 
 # Ensure CLI entrypoints exist (bootstrap-safe)
 ensure-codegen:
@@ -65,6 +65,7 @@ help:
 	@echo "Tools:"
 	@echo "  gist [REPO=.] [EXT=...]  - Create a GitHub gist from code files"
 	@echo "  gist-diff [REPO=.] [BASE=main] [EXT=...]  - Create a GitHub gist from branch diff"
+	@echo "  gist-recent [REPO=.] [EXT=...]  - Create a GitHub gist from recent changes (last 7 days)"
 	@echo "  makegen [OUTPUT=Makefile]  - Generate Makefile from tool registry"
 	@echo "  deps [MANIFEST=deps.toml]  - Install tool dependencies"
 	@echo "  bootstrap   - Generate Makefile and .gitignore"
@@ -133,6 +134,13 @@ gist-diff: ensure-codegen
 
 gist-diff-dry: ensure-codegen
 	@RUSTFLAGS="-D warnings" cargo run -p gunbc-gist --bin gunbc-gist-diff -- --dry-run $(if $(REPO),--repo-path $(REPO)) $(if $(BASE),--base-ref $(BASE)) $(if $(EXT),--extensions $(EXT))
+
+# gunbc-gist-recent entrypoints: repo_path (String), extensions (String)
+gist-recent: ensure-codegen
+	@RUSTFLAGS="-D warnings" cargo run -p gunbc-gist --bin gunbc-gist-recent -- $(if $(REPO),--repo-path $(REPO)) $(if $(EXT),--extensions $(EXT))
+
+gist-recent-dry: ensure-codegen
+	@RUSTFLAGS="-D warnings" cargo run -p gunbc-gist --bin gunbc-gist-recent -- --dry-run $(if $(REPO),--repo-path $(REPO)) $(if $(EXT),--extensions $(EXT))
 
 # gunbc-makegen entrypoints: output_path (String)
 makegen: ensure-codegen

@@ -64,8 +64,8 @@ pub use defs::{codegen_resource_def, CODEGEN_INPUT_ENVS, CODEGEN_INPUT_FILES, CO
 pub use handle::{HandleParseError, ResourceHandle};
 pub use gunbc_infra::hash::{ContentHash, HashBuilder};
 pub use managed::{
-    compute_key_from_def, mtime_inputs_from_def, ManagedResource, MtimeInputs, ResourceError,
-    SimpleResource,
+    check_manifest_freshness, update_resource_manifest, FreshnessOptions, ManagedResource,
+    ManifestFreshness, ManifestUpdateError, ResourceError, SimpleResource,
 };
 pub use gunbc_infra::manifest::{ManifestEntry, ResourceManifest, DEFAULT_MANIFEST_PATH};
 pub use registry::{ResolutionError, ResourceRegistry};

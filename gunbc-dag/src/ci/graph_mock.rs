@@ -152,6 +152,13 @@ pub fn ci_mock_spec() -> MockSpec {
                 .description("Skip path: codegen exists → prep_success, not ran"),
         )
         .node_example(
+            NodeExample::new("prepare_stamp_write")
+                .input("prep_success", Value::Bool(true))
+                .output("request", OutputMatcher::non_empty())
+                .output("skip", OutputMatcher::exact(Value::Bool(false)))
+                .description("Prep success → stamp write request"),
+        )
+        .node_example(
             NodeExample::new("parse_testgen")
                 .input(
                     "response",

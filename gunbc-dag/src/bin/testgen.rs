@@ -13,8 +13,8 @@ use gunbc_codegen::{FileWriter, TestgenTargetDef};
 use gunbc_dag::testgen_resource_def;
 use gunbc_exec::Executable;
 use gunbc_ir::resource::{
-    compute_key_from_def, ExecMode, ManagedResource, ManifestEntry, ResourceDef, ResourceError,
-    ResourceManifest,
+    update_resource_manifest, ManagedResource, ManifestEntry, ManifestUpdateError, ResourceDef,
+    ResourceError, ResourceManifest,
 };
 use gunbc_ir::Dag;
 use gunbc_test::MockSpec;
@@ -336,22 +336,12 @@ fn update_manifest_after_testgen() {
         }
 
         fn create(&self, manifest: &ResourceManifest) -> Result<ManifestEntry, ResourceError> {
-            let (key, file_count) = compute_key_from_def(&self.def, manifest)?;
+            let (key, file_count) = self.compute_key_with_stats(manifest)?;
             Ok(ManifestEntry::new(key, file_count).with_outputs(self.outputs.clone()))
         }
     }
 
     let def = testgen_resource_def();
-    let mut manifest = match ResourceManifest::load_default() {
-        Ok(m) => m,
-        Err(e) => {
-            eprintln!("  ERROR: Could not load manifest: {}", e);
-            eprintln!("  Testgen outputs exist but freshness cannot be verified.");
-            eprintln!("  CI --mode=verify will fail until manifest is written.");
-            return;
-        }
-    };
-
     // Collect output paths from all targets
     let targets = build_targets();
     let outputs: Vec<PathBuf> = targets
@@ -360,17 +350,21 @@ fn update_manifest_after_testgen() {
         .collect();
 
     let resource = TestgenResource { def, outputs };
-    match resource.acquire(ExecMode::Ensure, &mut manifest) {
-        Ok(_) => {
-            if let Err(e) = manifest.save_default() {
-                eprintln!("  ERROR: Could not write manifest: {}", e);
-                eprintln!("  Testgen outputs exist but freshness cannot be verified.");
-                eprintln!("  CI --mode=verify will fail until manifest is written.");
-            } else {
-                println!("  Updated resource manifest: target/.resource-manifest.json");
-            }
+    match update_resource_manifest(&resource) {
+        Ok(()) => {
+            println!("  Updated resource manifest: target/.resource-manifest.json");
         }
-        Err(e) => {
+        Err(ManifestUpdateError::Load(e)) => {
+            eprintln!("  ERROR: Could not load manifest: {}", e);
+            eprintln!("  Testgen outputs exist but freshness cannot be verified.");
+            eprintln!("  CI --mode=verify will fail until manifest is written.");
+        }
+        Err(ManifestUpdateError::Save(e)) => {
+            eprintln!("  ERROR: Could not write manifest: {}", e);
+            eprintln!("  Testgen outputs exist but freshness cannot be verified.");
+            eprintln!("  CI --mode=verify will fail until manifest is written.");
+        }
+        Err(ManifestUpdateError::Acquire(e)) => {
             eprintln!("  ERROR: Could not update manifest: {}", e);
             eprintln!("  Testgen outputs exist but freshness cannot be verified.");
             eprintln!("  CI --mode=verify will fail until manifest is written.");

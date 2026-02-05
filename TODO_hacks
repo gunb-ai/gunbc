@@ -243,7 +243,7 @@ would then fail loudly instead of silently working with defaults.
 
 Files:
   - core/exec/src/execute.rs (DryRun mock injection)
-  - TODO/design-resource-acquisition.md (resource modeling)
+  - TODO/TODONE/design-resource-acquisition.md (resource modeling, DONE)
 
 ---
 
@@ -324,7 +324,7 @@ Also: `EnvVars` as observation resource risks spilling secrets unless it's a
 filtered projection (the `AuthEnv` approach is safer).
 
 Files:
-  - TODO/design-resource-acquisition.md (Resource trait proposal)
+  - TODO/TODONE/design-resource-acquisition.md (Resource trait proposal, DONE)
 
 ---
 
@@ -382,7 +382,7 @@ The following items are tracked in other docs:
 - **`buck-out/gen` hardcoded in 16 locations** → TODO/consolidation.md §6
 - **CODEGEN_SOURCES path list is static** → TODO/consolidation.md §6
 - **Environment/resource modeling (inline handle construction)** →
-  TODO/design-resource-acquisition.md (comprehensive design)
+  TODO/TODONE/design-resource-acquisition.md (comprehensive design, DONE)
 - **IR completeness for generated code** → TODO/design-codegen-quality.md
 
 ## Resolved Items (2026-02-05)

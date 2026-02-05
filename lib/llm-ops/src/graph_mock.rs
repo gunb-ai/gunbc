@@ -408,11 +408,6 @@ pub fn secret_api_key_mock_spec() -> MockSpec {
             )),
         )
         .boundary(
-            "resolve_api_key",
-            "api_key",
-            Value::Secret(SecretString::new("<MOCK_API_KEY>")),
-        )
-        .boundary(
             "execute",
             "response",
             Value::Response(gunbc_ir::transport::TransportResponse::Rest(response)),
@@ -573,14 +568,16 @@ mod tests {
     fn test_secret_api_key_mock_spec() {
         let spec = secret_api_key_mock_spec();
 
-        // Secret value should be present
-        let api_key = spec
-            .get_boundary_mock("resolve_api_key", "api_key")
-            .unwrap();
-        assert!(matches!(api_key, Value::Secret(_)));
+        // Secret value should be present in auth token map
+        let auth = spec.get_boundary_mock("auth_env", "auth:llm").unwrap();
+        let token = match auth {
+            Value::Map(map) => map.get("token").cloned().unwrap(),
+            _ => panic!("Expected auth:llm to be a map"),
+        };
+        assert!(matches!(token, Value::Secret(_)));
 
         // Secret should be redacted in display
-        assert_eq!(format!("{}", api_key), "***");
+        assert_eq!(format!("{}", token), "***");
 
         // API key lease should be present
         assert!(spec.get_resource("api:openai_key").is_some());

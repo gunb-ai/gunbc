@@ -123,7 +123,7 @@ one place (not sprinkled `#[allow]` at call sites). Approved categories:
       string-based builder dispatch.)
 - [ ] Resource acquisition completion. Done when Phases 4-5 are landed:
       sub-DAG delegation + resource accounting/auto-derive `ResourceAccess`.
-      (Note: Phases 1-3 complete per design-resource-acquisition.md.)
+      (Note: Phases 1-3 complete per TODONE/design-resource-acquisition.md.)
 - [ ] Type/cardinality unification. Done when cardinality has a single
       source of truth (TypeContract or equivalent) and port cardinality
       is derived or validated with no fallback semantics.

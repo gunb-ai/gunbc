@@ -596,6 +596,36 @@ fn test_recent_mode_dry_run() {
         Some(Value::Str(url)) => assert!(url.contains("mock"), "expected mock URL"),
         _ => panic!("expected url output"),
     }
+
+    // Verify commit range appears in gist filename
+    let prepare_gist = log
+        .get("prepare_gist_request")
+        .expect("prepare_gist_request should be in log");
+    match prepare_gist.outputs.get("request") {
+        Some(Value::Request(gunbc_ir::transport::TransportRequest::Shell(req))) => {
+            let filename_arg = req
+                .args
+                .iter()
+                .find(|a| a.contains("recent-7d") && a.contains("abc123d..HEAD"));
+            assert!(
+                filename_arg.is_some(),
+                "expected recent-mode filename with commit range, got args: {:?}",
+                req.args
+            );
+            // Description should mention the commit range
+            let desc_idx = req.args.iter().position(|a| a == "--desc").unwrap();
+            let desc = &req.args[desc_idx + 1];
+            assert!(
+                desc.contains("Recent changes (7d) abc123d..HEAD on main"),
+                "expected recent-mode description, got: {}",
+                desc
+            );
+        }
+        other => panic!(
+            "expected shell request from prepare_gist_request, got: {:?}",
+            other
+        ),
+    }
 }
 
 /// Test that recent mode with young repo (empty rev-list) produces graceful empty diff.
@@ -649,7 +679,7 @@ fn test_recent_mode_young_repo() {
         .get("parse_rev_list")
         .expect("parse_rev_list should be in log");
     assert!(
-        parse_rev_list.outputs.get("base_ref").is_none(),
+        !parse_rev_list.outputs.contains_key("base_ref"),
         "young repo should produce no base_ref"
     );
 
@@ -658,9 +688,36 @@ fn test_recent_mode_young_repo() {
         .get("parse_gist_response")
         .expect("parse_gist_response should be in log");
     assert!(
-        parse_gist.outputs.get("url").is_some(),
+        parse_gist.outputs.contains_key("url"),
         "gist should still produce a URL even with empty diff"
     );
+
+    // Young repo has no base_ref → falls back to snapshot-style filename
+    let prepare_gist = log
+        .get("prepare_gist_request")
+        .expect("prepare_gist_request should be in log");
+    match prepare_gist.outputs.get("request") {
+        Some(Value::Request(gunbc_ir::transport::TransportRequest::Shell(req))) => {
+            // Should NOT contain recent-7d (no base_ref to form commit range)
+            let has_recent = req.args.iter().any(|a| a.contains("recent-7d"));
+            assert!(
+                !has_recent,
+                "young repo should fall back to snapshot-style filename, got args: {:?}",
+                req.args
+            );
+            // Should use branch name "main" as prefix
+            let f_arg = req.args.iter().find(|a| a.starts_with("main_"));
+            assert!(
+                f_arg.is_some(),
+                "expected main-prefixed filename for young repo, got args: {:?}",
+                req.args
+            );
+        }
+        other => panic!(
+            "expected shell request from prepare_gist_request, got: {:?}",
+            other
+        ),
+    }
 }
 
 /// Test that detached HEAD with no remote branch falls back to "snapshot".
