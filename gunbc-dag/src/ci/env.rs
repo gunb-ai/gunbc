@@ -19,7 +19,9 @@
 //! The env node is the I/O boundary - it gets mocked in DryRun mode.
 
 use gunbc_exec::{ExecError, Executable};
-use gunbc_ir::transport::cli::{upsert_tool, get_tool_by_id, ToolHandle, WhichResolver};
+use gunbc_ir::transport::cli::{
+    get_tool_by_id, upsert_tool_with, ToolHandle, ToolPathResolver, WhichResolver,
+};
 use gunbc_ir::Value;
 use std::collections::HashMap;
 
@@ -51,31 +53,39 @@ impl EnvOp {
     pub fn output_ports(&self) -> Vec<String> {
         self.tools.iter().map(|t| format!("tool:{}", t)).collect()
     }
-}
 
-impl Executable for EnvOp {
-    fn execute(&self, _inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+    /// Execute tool acquisition with a specific path resolver.
+    ///
+    /// This is the injectable variant for testing. Pass a [`MockResolver`]
+    /// to avoid shelling out to `which`.
+    ///
+    /// [`MockResolver`]: gunbc_ir::transport::cli::MockResolver
+    pub fn execute_with_resolver(
+        &self,
+        resolver: &dyn ToolPathResolver,
+    ) -> Result<HashMap<String, Value>, ExecError> {
         let mut outputs = HashMap::new();
 
         for tool_id in &self.tools {
-            // Look up the tool definition
             let tool = get_tool_by_id(tool_id).ok_or_else(|| {
                 ExecError::new(format!("Unknown tool '{}' in environment", tool_id))
             })?;
 
-            // DI violation: WhichResolver constructed inline.
-            // Phase 2 will acquire path resolution through DAG input ports.
-            let resolver = WhichResolver;
-            let path = upsert_tool(tool, &resolver)
+            let path = upsert_tool_with(tool, resolver)
                 .map_err(|e| ExecError::new(format!("Failed to acquire tool '{}': {}", tool_id, e)))?;
 
-            // Create handle and add to outputs
             let handle = ToolHandle::acquire(tool, path);
             let port_name = format!("tool:{}", tool_id);
             outputs.insert(port_name, handle.into());
         }
 
         Ok(outputs)
+    }
+}
+
+impl Executable for EnvOp {
+    fn execute(&self, _inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        self.execute_with_resolver(&WhichResolver)
     }
 }
 

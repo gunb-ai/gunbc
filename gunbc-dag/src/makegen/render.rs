@@ -8,7 +8,6 @@
 use crate::makegen::registry::{
     BuildConfig, EntrypointParam, ExtraTarget, MetaTarget, PrepLevel, ToolInfo, ToolRegistry,
 };
-use gunbc_ir::CargoInvocation;
 use gunbc_ir::language::MAKEFILE;
 use gunbc_ir::Renderable;
 
@@ -102,7 +101,7 @@ fn render_makefile_content(registry: &ToolRegistry, config: &BuildConfig) -> Str
     output.push_str(".DEFAULT_GOAL := help\n\n");
 
     // Phony targets - include core targets, meta targets, and tool targets
-    output.push_str(".PHONY: help codegen ensure-codegen build clean testgen testgen-check fmt-fix lint-fix");
+    output.push_str(".PHONY: help build clean testgen testgen-check fmt-fix lint-fix");
 
     // Add meta targets (with check and fix variants)
     for meta in &registry.meta_targets {
@@ -149,46 +148,15 @@ fn render_makefile_content(registry: &ToolRegistry, config: &BuildConfig) -> Str
 fn render_core_targets(config: &BuildConfig) -> String {
     let mut output = String::new();
 
-    // Codegen source tracking: find all Rust sources that affect generated output.
-    // When any source in core/codegen or core/ir changes, the stamp becomes stale
-    // and Make will re-run codegen before building any dependent target.
-    output.push_str("# Codegen source tracking: rebuild generated files when sources change\n");
-    output.push_str("CODEGEN_SOURCES := $(shell find core/codegen/src core/ir/src -name '*.rs' 2>/dev/null)\n\n");
-
-    // Stamp file as a real Make target with source dependencies.
-    // Make compares timestamps: if any source is newer than the stamp, codegen runs.
-    output.push_str("# Stamp file tracks codegen freshness - rebuilds when sources change\n");
-    output.push_str("buck-out/gen/.codegen-stamp: $(CODEGEN_SOURCES)\n");
-    output.push_str(&format!(
-        "{}@mkdir -p buck-out/gen && {} && touch buck-out/gen/.codegen-stamp\n\n",
-        INDENT, config.codegen.to_shell()
-    ));
-
-    // Ensure codegen is up-to-date (convenience alias for stamp dependency).
-    // Phony so Make always checks, but the real work is in the stamp target.
-    output.push_str("# Ensure codegen is up-to-date (upsert: create if missing, update if stale)\n");
-    output.push_str("ensure-codegen: buck-out/gen/.codegen-stamp\n\n");
-
-    // Force regenerate CLIs from DAG entrypoints (also updates stamp)
-    output.push_str("# Force regenerate CLIs from DAG entrypoints\n");
-    output.push_str("codegen:\n");
-    output.push_str(&format!("{}{}\n", INDENT, config.codegen_shell()));
-    output.push_str(&format!("{}@mkdir -p buck-out/gen && touch buck-out/gen/.codegen-stamp\n\n", INDENT));
-
-    // Full build transaction: codegen → testgen → cargo build → symlink
-    output.push_str("# Full build transaction: codegen → testgen → cargo build\n");
-    output.push_str("build: ensure-codegen testgen\n");
+    // Full build transaction: testgen → cargo build
+    output.push_str("# Full build transaction: testgen → cargo build\n");
+    output.push_str("build: testgen\n");
     output.push_str(&format!("{}{}\n\n", INDENT, config.build_shell()));
 
-    // Rollback transaction: remove all generated artifacts
-    output.push_str("# Rollback transaction: remove all generated artifacts\n");
+    // Clean build artifacts
+    output.push_str("# Clean build artifacts\n");
     output.push_str("clean:\n");
-    output.push_str(&format!(
-        "{}@{} --release -- rollback\n",
-        INDENT,
-        CargoInvocation::standalone("codegen").command(),
-    ));
-    output.push_str(&format!("{}@rm -f buck-out/gen/.codegen-stamp\n\n", INDENT));
+    output.push_str(&format!("{}@cargo clean\n\n", INDENT));
 
     // Testgen: regenerate tests from DAGs
     output.push_str("# Regenerate tests from DAG structures and MockSpecs\n");
@@ -216,10 +184,9 @@ fn render_help_target(registry: &ToolRegistry) -> String {
     output.push_str("\t@echo \"\"\n");
     
     // Build transactions section
-    output.push_str("\t@echo \"Build transactions:\"\n");
-    output.push_str("\t@echo \"  build    - Commit: codegen → cargo build\"\n");
-    output.push_str("\t@echo \"  clean    - Rollback: remove all generated artifacts\"\n");
-    output.push_str("\t@echo \"  codegen  - Partial commit: just generate CLIs\"\n");
+    output.push_str("\t@echo \"Build commands:\"\n");
+    output.push_str("\t@echo \"  build    - testgen → cargo build\"\n");
+    output.push_str("\t@echo \"  clean    - Remove build artifacts\"\n");
     output.push_str("\t@echo \"  testgen  - Regenerate tests from DAG structures\"\n");
     output.push_str("\t@echo \"  testgen-check  - Check if generated tests are stale\"\n");
     output.push_str("\t@echo \"\"\n");
@@ -310,7 +277,7 @@ fn render_fix_alias_targets(config: &BuildConfig) -> String {
 
     // lint-fix: run clippy with --fix
     output.push_str("# lint-fix: auto-fix lint issues where possible\n");
-    output.push_str("lint-fix: ensure-codegen\n");
+    output.push_str("lint-fix:\n");
     output.push_str(&format!("{}{}\n\n", INDENT, config.lint_fix_shell()));
 
     output
@@ -323,7 +290,7 @@ fn render_meta_target(meta: &MetaTarget, config: &BuildConfig) -> String {
     // Determine dependency based on prep level
     let mut deps = match meta.prep_level {
         PrepLevel::None => String::new(),
-        PrepLevel::Codegen => " ensure-codegen".to_string(),
+        PrepLevel::Codegen => String::new(),
         PrepLevel::Full => " build".to_string(),
     };
 
@@ -350,7 +317,7 @@ fn render_meta_check_variant(meta: &MetaTarget, config: &BuildConfig) -> String 
     if let Some(check_cmd) = meta.get_check_command(config) {
         let mut deps = match meta.prep_level {
             PrepLevel::None => String::new(),
-            PrepLevel::Codegen => " ensure-codegen".to_string(),
+            PrepLevel::Codegen => String::new(),
             PrepLevel::Full => " build".to_string(),
         };
 
@@ -388,8 +355,7 @@ fn render_meta_fix_variant(meta: &MetaTarget, config: &BuildConfig) -> String {
 
     // Add prep dependency based on prep level
     match meta.prep_level {
-        PrepLevel::None => {}
-        PrepLevel::Codegen => deps.push("ensure-codegen".to_string()),
+        PrepLevel::None | PrepLevel::Codegen => {}
         PrepLevel::Full => deps.push("build".to_string()),
     }
 
@@ -442,8 +408,7 @@ fn render_tool_target(tool: &ToolInfo) -> String {
         .join(", ");
     output.push_str(&format!("# {} entrypoints: {}\n", tool.binary_name(), port_list));
 
-    // Target with ensure-codegen dependency
-    output.push_str(&format!("{}: ensure-codegen\n", tool.short_name));
+    output.push_str(&format!("{}:\n", tool.short_name));
     output.push_str(&format!(
         "\t@{} --{}",
         tool.invocation.command(),
@@ -458,7 +423,7 @@ fn render_tool_target(tool: &ToolInfo) -> String {
 fn render_dry_run_target(tool: &ToolInfo) -> String {
     let mut output = String::new();
 
-    output.push_str(&format!("{}-dry: ensure-codegen\n", tool.short_name));
+    output.push_str(&format!("{}-dry:\n", tool.short_name));
     output.push_str(&format!(
         "\t@{} -- --dry-run{}",
         tool.invocation.command(),
@@ -525,10 +490,8 @@ mod tests {
         let registry = ToolRegistry::default_registry();
         let makefile = render_makefile(&registry);
 
-        assert!(makefile.contains("gist: ensure-codegen"));
-        assert!(makefile.contains("gist-dry: ensure-codegen"));
-        assert!(makefile.contains("buck2: ensure-codegen"));
-        assert!(makefile.contains("buck2-dry: ensure-codegen"));
+        assert!(makefile.contains("gist:"));
+        assert!(makefile.contains("gist-dry:"));
     }
 
     #[test]
@@ -546,50 +509,8 @@ mod tests {
         let registry = ToolRegistry::default_registry();
         let makefile = render_makefile(&registry);
 
-        assert!(makefile.contains("ensure-codegen:"));
-        assert!(makefile.contains("codegen:"));
-        assert!(makefile.contains("build: ensure-codegen testgen"));
+        assert!(makefile.contains("build: testgen"));
         assert!(makefile.contains("clean:"));
-    }
-
-    #[test]
-    fn test_render_makefile_codegen_source_tracking() {
-        let registry = ToolRegistry::default_registry();
-        let makefile = render_makefile(&registry);
-
-        // Should track codegen and IR sources for staleness detection
-        assert!(
-            makefile.contains("CODEGEN_SOURCES"),
-            "should define CODEGEN_SOURCES variable"
-        );
-        assert!(
-            makefile.contains("$(shell find core/codegen/src core/ir/src -name '*.rs'"),
-            "should find .rs files in codegen and IR source dirs"
-        );
-
-        // Stamp file should depend on source files
-        assert!(
-            makefile.contains("buck-out/gen/.codegen-stamp: $(CODEGEN_SOURCES)"),
-            "stamp should depend on CODEGEN_SOURCES"
-        );
-
-        // ensure-codegen should depend on stamp (not use shell if-check)
-        assert!(
-            makefile.contains("ensure-codegen: buck-out/gen/.codegen-stamp"),
-            "ensure-codegen should depend on stamp file target"
-        );
-
-        // Force codegen should also update stamp
-        assert!(
-            makefile.contains("touch buck-out/gen/.codegen-stamp"),
-            "codegen should touch stamp after regenerating"
-        );
-
-        // Clean should remove stamp
-        assert!(
-            makefile.contains("rm -f buck-out/gen/.codegen-stamp"),
-            "clean should remove stamp file"
-        );
     }
 
     #[test]
@@ -603,11 +524,11 @@ mod tests {
         // Individual meta targets
         assert!(makefile.contains("test: build testgen-check"), "test should depend on build and testgen-check");
         assert!(makefile.contains("@cargo test"));
-        
-        assert!(makefile.contains("check: ensure-codegen"));
+
+        assert!(makefile.contains("check:"));
         assert!(makefile.contains("@cargo check --all-targets"));
-        
-        assert!(makefile.contains("clippy: ensure-codegen"));
+
+        assert!(makefile.contains("clippy:"));
         assert!(makefile.contains("@cargo clippy"));
         
         assert!(makefile.contains("fmt:"));
@@ -620,7 +541,7 @@ mod tests {
         let registry = ToolRegistry::default_registry();
         let makefile = render_makefile(&registry);
 
-        assert!(makefile.contains("Build transactions:"));
+        assert!(makefile.contains("Build commands:"));
         assert!(makefile.contains("Development:"));
         assert!(makefile.contains("Tools:"));
     }

@@ -69,6 +69,10 @@ pub use rest::{AuthMethod, RestRequest, RestResponse};
 pub use tcp::{TcpRequest, TcpResponse};
 pub use cli::{
     build_cli_ensure, build_cli_upsert, CliToolDef, CliToolError, CliToolOp, ToolHandle,
+    // Tool path resolution trait + implementations
+    ToolPathResolver, WhichResolver, MockResolver,
+    // Resolver-aware entry points
+    resolve_tool_path_with, upsert_tool_with,
     // CLI Tool definitions (use these with node.requires())
     CLIPPY as CLI_CLIPPY, RUSTFMT as CLI_RUSTFMT, CARGO as CLI_CARGO, GIT as CLI_GIT, GH as CLI_GH,
 };

@@ -316,7 +316,7 @@ Proposal: Distinguish between:
 
 ## Where Violations Live Today
 
-(Cross-reference with `TODO_consolidate_di.md` for details)
+(Cross-reference with `TODONE/TODO_consolidate_di.md` for details)
 
 | Resource | Violation site | What happens | What should happen |
 |----------|---------------|--------------|-------------------|

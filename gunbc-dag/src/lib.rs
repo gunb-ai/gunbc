@@ -32,7 +32,7 @@ pub use makegen::{
 };
 pub use workspace::{
     WorkspaceOp, build_workspace_dag,
-    build_bootstrap_subdag, build_buck2_subdag, build_ci_subdag,
+    build_bootstrap_subdag, build_ci_subdag,
     build_clippy_lint_all_subdag, build_clippy_subdag,
     build_deps_generate_subdag, build_deps_install_subdag,
     build_gist_rust_subdag, build_gist_subdag,

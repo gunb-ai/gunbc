@@ -131,9 +131,13 @@ fn execute_parse_deps_exists(inputs: HashMap<String, Value>) -> Result<HashMap<S
 // ============================================================================
 
 /// Prepare file exists check for codegen directory (pure).
+///
+/// Note: Codegen infrastructure was removed. This always returns that
+/// codegen exists (no codegen needed) for backwards compatibility with
+/// the CI DAG structure.
 fn execute_prepare_codegen_exists_check(_inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-    // Check if the codegen output directory exists
-    let request = TransportRequest::File(FileRequest::exists("buck-out/gen/bin"));
+    // Codegen is no longer used - always return that it exists
+    let request = TransportRequest::File(FileRequest::exists("Cargo.toml"));
 
     OutputMap::new()
         .request("request", request)
@@ -499,7 +503,7 @@ impl Mockable for CIOp {
             }
             CIOp::PrepareCodegenExistsCheck => {
                 OutputMap::new()
-                    .request("request", TransportRequest::File(FileRequest::exists("buck-out/gen/bin")))
+                    .request("request", TransportRequest::File(FileRequest::exists("Cargo.toml")))
                     .build()
             }
             CIOp::ParseCodegenExists => {

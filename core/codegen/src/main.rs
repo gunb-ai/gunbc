@@ -235,7 +235,7 @@ fn cmd_daggen(dry_run: bool) {
     
     let writer = FileWriter::new(dry_run);
     let tools = all_tools();
-    let output_dir = "buck-out/gen/lib";
+    let output_dir = "target/codegen/lib";
     
     let mut generated = 0;
     let mut skipped = 0;
@@ -442,7 +442,7 @@ fn generate_gitlab_ci_template(config: &RenderConfig) -> String {
 fn codegen_clis(dry_run: bool) -> bool {
     let writer = FileWriter::new(dry_run);
     let tools = all_tools();
-    let output_dir = "buck-out/gen/bin";
+    let output_dir = "target/codegen/bin";
     
     let mut success = true;
     

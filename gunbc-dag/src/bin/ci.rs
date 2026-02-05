@@ -60,10 +60,10 @@ fn main() {
             }.into()
         ));
 
-        // execute_codegen_exists: file exists check for buck-out/gen/bin
+        // execute_codegen_exists: file exists check (codegen removed, use Cargo.toml)
         mocks.set_value("execute_codegen_exists", "response", Value::Response(
             FileResponse {
-                path: "buck-out/gen/bin".to_string(),
+                path: "Cargo.toml".to_string(),
                 operation: FileOp::Exists,
                 success: true,
                 content: None,
