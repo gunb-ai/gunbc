@@ -141,8 +141,9 @@ fn execute_parse_deps_exists(
 
 /// Prepare file exists check for codegen directory (pure).
 ///
-/// Checks for a representative generated CLI file to verify codegen has run.
-/// The `deps` tool's CLI entry point is a good canary since it's always generated.
+/// HACK: Checks for a representative generated CLI file to verify codegen has run.
+/// This is brittle and doesn't detect stale outputs. See TODO/URGENT_codegen_upsert.md
+/// for the proper fix (content hash manifest as upsert key).
 fn execute_prepare_codegen_exists_check(
     _inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
