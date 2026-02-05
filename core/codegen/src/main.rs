@@ -846,13 +846,17 @@ fn update_manifest_after_codegen(dry_run: bool) {
     match compute_codegen_input_hash() {
         Ok(hash) => {
             if let Err(e) = write_codegen_manifest(hash) {
-                eprintln!("  Warning: Could not write manifest: {}", e);
-                // Non-fatal - codegen still succeeded
+                eprintln!("  ERROR: Could not write manifest: {}", e);
+                eprintln!("  Codegen outputs exist but freshness cannot be verified.");
+                eprintln!("  CI --mode=verify will fail until manifest is written.");
+                // Don't exit(1) - codegen outputs are valid, just untracked.
+                // Next run should succeed in writing the manifest.
             }
         }
         Err(e) => {
-            eprintln!("  Warning: Could not compute input hash: {}", e);
-            // Non-fatal - codegen still succeeded
+            eprintln!("  ERROR: Could not compute input hash: {}", e);
+            eprintln!("  Codegen outputs exist but freshness cannot be verified.");
+            eprintln!("  CI --mode=verify will fail until manifest is written.");
         }
     }
 }

@@ -314,6 +314,38 @@ Add new resources to the model as needed. Infrastructure is in place.
 
 ---
 
+## Known Limitations
+
+### RUSTC_VERSION Environment Variable
+
+The hash computation for codegen includes `RUSTC_VERSION` from the environment:
+
+```rust
+let rust_version = env::var("RUSTC_VERSION").unwrap_or_else(|_| "unknown".to_string());
+let builder = builder.update_str(&rust_version);
+```
+
+**Limitation**: If `RUSTC_VERSION` is not set, hash defaults to "unknown". This means:
+- Hash doesn't change when rustc version changes (unless env var is set)
+- CI must set `RUSTC_VERSION` explicitly for proper cache invalidation
+
+**Why not run `rustc --version` directly?**
+
+The codebase uses a resource/upsert model where all I/O goes through the transport
+abstraction. Adding direct `Command::new("rustc")` calls would:
+1. Bypass the transport abstraction (lint violation)
+2. Add another `#[allow(clippy::disallowed_methods)]` pragma
+3. Contradict the design goal of making I/O observable
+
+**Proper fix (post-infra extraction)**:
+- Add a `RustcVersion` resource to the model
+- Have gunbc-infra provide a `compute_rustc_version()` function
+- Let the resource system cache and track this like any other input
+
+**Current workaround**: Set `RUSTC_VERSION` in CI/build scripts.
+
+---
+
 ## References
 
 - `TODO_hacks` — Detailed hack descriptions

@@ -338,10 +338,16 @@ fn compute_testgen_input_hash() -> io::Result<ContentHash> {
     // Include the codegen manifest key as a dependency
     // This ensures testgen is considered stale if codegen output changes
     let manifest = ResourceManifest::load_default()?;
+    let codegen_resource = ResourceId::build("generated_cli");
     let codegen_key = manifest
-        .get(&ResourceId::build("generated_cli"))
+        .get(&codegen_resource)
         .map(|e| e.key.as_str())
-        .unwrap_or("missing");
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                "Codegen manifest entry missing - run codegen first (cargo run -p gunbc-codegen)",
+            )
+        })?;
     let builder = builder.update_str(codegen_key);
 
     println!(
@@ -382,11 +388,15 @@ fn update_manifest_after_testgen() {
     match compute_testgen_input_hash() {
         Ok(hash) => {
             if let Err(e) = write_testgen_manifest(hash) {
-                eprintln!("  Warning: Could not write manifest: {}", e);
+                eprintln!("  ERROR: Could not write manifest: {}", e);
+                eprintln!("  Testgen outputs exist but freshness cannot be verified.");
+                eprintln!("  CI --mode=verify will fail until manifest is written.");
             }
         }
         Err(e) => {
-            eprintln!("  Warning: Could not compute input hash: {}", e);
+            eprintln!("  ERROR: Could not compute input hash: {}", e);
+            eprintln!("  Testgen outputs exist but freshness cannot be verified.");
+            eprintln!("  CI --mode=verify will fail until manifest is written.");
         }
     }
 }
