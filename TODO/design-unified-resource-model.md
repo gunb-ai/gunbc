@@ -907,3 +907,112 @@ The current manual wiring continues to work; simplification is a future optimiza
 - [x] Update TODO_hacks
 - [x] Mark resolved TODOs in TODONE
 - [ ] Update README (deferred)
+
+---
+
+## 11. Extension Candidates (Future Work)
+
+The following patterns were identified via codebase scan (2026-02-05) as candidates
+for the unified resource model. These are ordered by impact/priority.
+
+### 11.1 High Priority
+
+**Makefile/Gitignore Generation (bootstrap, makegen)**
+
+The bootstrap and makegen tools generate `Makefile` and `.gitignore` files but
+currently have no freshness tracking. Changes to the generator require manual
+re-runs, and CI doesn't verify they're up to date.
+
+Files:
+- `gunbc-dag/src/bootstrap/` - Generates Makefile, .gitignore
+- `gunbc-dag/src/makegen/` - Generates Makefile from registry
+
+Resource candidates:
+- `build:makefile` — inputs: makegen source, registry; outputs: Makefile
+- `build:gitignore` — inputs: bootstrap source; outputs: .gitignore
+
+**deps.toml Generation**
+
+The dependency configuration in `deps.toml` is referenced by CI but has no
+staleness tracking against the actual project dependencies.
+
+Files:
+- `gunbc-dag/src/ci/ops.rs` — Reads deps.toml
+- Root `deps.toml` file
+
+Resource candidate:
+- `build:deps_config` — inputs: Cargo.toml files; outputs: deps.toml
+
+### 11.2 Medium Priority
+
+**Per-Tool Library File Tracking**
+
+Currently testgen tracks all outputs as a single resource (`build:generated_tests`).
+Finer granularity would allow partial regeneration when only one DAG changes.
+
+Files:
+- `gunbc-dag/src/bin/testgen.rs` — build_targets() function
+
+Resource candidates:
+- `build:tests_bootstrap` — inputs: bootstrap DAG sources; outputs: bootstrap/generated_tests.rs
+- `build:tests_ci` — inputs: ci DAG sources; outputs: ci/generated_tests.rs
+- `build:tests_makegen` — inputs: makegen DAG sources; outputs: makegen/generated_tests.rs
+- etc.
+
+Trade-off: More manifest entries vs finer rebuild granularity. Current coarse
+granularity is acceptable until rebuild time becomes an issue.
+
+**Binary/Symlink Management**
+
+Tool binaries installed via cargo have no explicit freshness tracking beyond
+the existing `ToolHandle` pattern.
+
+Files:
+- `core/ir/src/transport/cli.rs` — ToolHandle acquisition
+
+This is already partially covered by Phase 7 (ToolHandle unification). The
+`ResourceHandle<ToolResource>` pattern would make tool freshness explicit
+in the manifest.
+
+**CI YAML Generation**
+
+If CI workflow files (`.github/workflows/*.yml`) are generated, they should
+have freshness tracking like other generated artifacts.
+
+Currently N/A — CI YAML is hand-written. Future candidate if we add CI
+generation.
+
+### 11.3 Low Priority / Deferred
+
+**Per-Test-File Tracking**
+
+Even finer granularity than per-tool: track each generated test file
+individually. This would enable O(1) rebuild on small DAG changes.
+
+Trade-off: Manifest would grow to ~50+ entries for test files alone.
+Unlikely to be worth it unless rebuild time is >30s.
+
+**Coverage Report Artifacts**
+
+Test coverage reports could be tracked as resources with freshness based
+on test source changes.
+
+Currently N/A — no coverage report generation. Future candidate.
+
+### 11.4 Already Implemented
+
+The following are already on the resource model:
+
+| Resource | Manifest ID | Location |
+|----------|-------------|----------|
+| Generated CLI code | `build:generated_cli` | `core/codegen/src/main.rs` |
+| Generated test code | `build:generated_tests` | `gunbc-dag/src/bin/testgen.rs` |
+| CI freshness check | (uses above) | `gunbc-dag/src/ci/ops.rs` |
+
+### 11.5 Recommended Extension Order
+
+1. **deps.toml tracking** — Small scope, immediate CI benefit
+2. **Makefile tracking** — Medium scope, prevents stale Makefile issues
+3. **.gitignore tracking** — Same as Makefile
+4. **Per-tool test tracking** — Only if rebuild time becomes a problem
+5. **ToolHandle unification** — Completes the model but low urgency
