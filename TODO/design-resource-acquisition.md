@@ -438,12 +438,18 @@ Use the resource constructors to build explicit mock values:
 
 ### Phase 4: Sub-DAG Delegation
 
+> **Note:** Tracked in `TODO/design-unified-resource-model.md` which consolidates
+> this with build resource management.
+
 - [ ] Add `with_resource_input()` to `LoopBuilder`
 - [ ] Add resource delegation wiring in graph builders
 - [ ] Validate: no `res:*` entrypoints in body DAGs (must be delegated)
 - [ ] Handle write-capability delegation in loops (clone or serialize)
 
 ### Phase 5: Resource Accounting
+
+> **Note:** Tracked in `TODO/design-unified-resource-model.md` which consolidates
+> this with build resource management.
 
 - [ ] Auto-derive `ResourceAccess` from port types + edges
 - [ ] Integrate with `detect_conflicts()` for compile-time conflict checking
