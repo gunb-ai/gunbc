@@ -2,6 +2,7 @@
 
 > **Created**: 2026-02-05
 > **Status**: Active tracking document
+> **Priority**: URGENT — Extract gunbc-infra as the next major task
 >
 > This document consolidates all TODO debt under a unified root cause analysis.
 > Individual TODOs are tracked here with their relationship to the core issues.
@@ -16,6 +17,7 @@ wedged into crates designed for other purposes, leading to:
 2. Code duplication (same logic in multiple places)
 3. Circular dependency workarounds (strings instead of function refs)
 4. Incomplete abstractions (traits that can't access what they need)
+5. **Non-uniform hashing** (different algorithms in different places)
 
 **The fix**: Extract `gunbc-infra` crate. This is a force multiplier that
 unblocks most other cleanups.
@@ -144,6 +146,48 @@ let (builder, _) = builder.update_glob("core/ir/src/**/*.rs")?;
 **Total per CI run**: ~400 file reads even when nothing changed.
 
 **Should be**: 0 file reads (mtime fast path) or ~3 file reads (only changed files).
+
+### Issue 5: Non-Uniform Hashing — Different Algorithms in Different Places
+
+**Hash implementations in the codebase:**
+
+| Location | Algorithm | Purpose |
+|----------|-----------|---------|
+| `core/ir/src/resource/hash.rs` | SHA-256 (sha2 crate) | Resource freshness keys |
+| `lib/blob/src/lib.rs` | `DefaultHasher` (64-bit) | BlobMeta content hash |
+
+**Problem**: Two different hashing strategies for content identity:
+
+1. **SHA-256 (resource model)** — Cryptographically strong, 256-bit, hex-encoded
+2. **DefaultHasher (blob)** — Fast but weak, 64-bit, collision-prone
+
+**lib/blob/src/lib.rs:158-166:**
+```rust
+fn compute_hash(content: &str) -> String {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    // Simple hash for now - could use SHA256 later
+    let mut hasher = DefaultHasher::new();
+    content.hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
+}
+```
+
+**Note**: Comment says "could use SHA256 later" — should be unified.
+
+**Hash/staleness call sites inventory:**
+
+| Caller | Hash Function | Inputs | Output |
+|--------|--------------|--------|--------|
+| `codegen/main.rs` | `compute_codegen_input_hash()` | codegen+ir sources, Cargo.toml, RUSTC_VERSION | manifest `build:generated_cli` |
+| `ci/ops.rs` | `compute_codegen_input_hash()` | (DUPLICATE of above) | freshness check |
+| `testgen.rs` | `compute_testgen_input_hash()` | dag+ir+lib sources, codegen key | manifest `build:generated_tests` |
+| `lib/blob` | `BlobMeta::compute_hash()` | blob content | metadata field |
+
+**Post-infra extraction**:
+- Single `compute_codegen_input_hash()` in `gunbc-infra`
+- Migrate `BlobMeta` to use infra's `ContentHash` or keep separate (if perf-critical)
+- Document hash algorithm policy: SHA-256 for identity, DefaultHasher only for perf-critical non-security uses
 
 ---
 
