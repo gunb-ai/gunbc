@@ -188,10 +188,12 @@ impl StableHashOp {
     /// This is the pure function that can be used directly without DAG execution.
     pub fn hash_parts(parts: &[&str]) -> String {
         let mut hasher = Sha256::new();
-        for (i, part) in parts.iter().enumerate() {
-            if i > 0 {
-                hasher.update(b":");
-            }
+        for part in parts.iter() {
+            // Length-prefix each part to prevent collision attacks.
+            // Without this, ["a", "b:c"] and ["a:b", "c"] would both hash
+            // to the same bytes "a:b:c" and produce identical hashes.
+            let len = part.len() as u64;
+            hasher.update(len.to_le_bytes());
             hasher.update(part.as_bytes());
         }
         let result = hasher.finalize();
@@ -424,6 +426,20 @@ mod tests {
         let hash1 = StableHashOp::hash_parts(&["a", "b"]);
         let hash2 = StableHashOp::hash_parts(&["b", "a"]);
         assert_ne!(hash1, hash2);
+    }
+
+    #[test]
+    fn test_stable_hash_no_delimiter_collision() {
+        // Parts containing delimiters must not collide with different part boundaries.
+        // Without length-prefix encoding, these would both produce "a:b:c" bytes.
+        let hash1 = StableHashOp::hash_parts(&["a", "b:c"]);
+        let hash2 = StableHashOp::hash_parts(&["a:b", "c"]);
+        assert_ne!(hash1, hash2);
+
+        // Also test the three-part case
+        let hash3 = StableHashOp::hash_parts(&["a", "b", "c"]);
+        assert_ne!(hash1, hash3);
+        assert_ne!(hash2, hash3);
     }
 
     #[test]
