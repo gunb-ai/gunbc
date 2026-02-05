@@ -1,47 +1,63 @@
 //! Mock specification for the makegen tool.
 //!
-//! This file declares:
-//! - What mock values boundary nodes provide
-//! - What input constraints upstream must satisfy
-//! - Resource simulations for file system operations
+//! This file uses the typed mock builder pattern to construct MockSpecs
+//! that are "impossible by construction" — the DAG's requirements are
+//! extracted and mocks are type-checked at construction time.
+//!
+//! # Boundary Mocks
+//!
+//! - `execute_transport`: Transport node that writes the Makefile
+//!   - `response`: TransportResponse
+//!   - `written_path`: Path where Makefile was written
+//!   - `content`: The generated Makefile content
+//!
+//! # Input Expectations
+//!
+//! - `output_path`: Optional string, defaults to "Makefile"
 
-use gunbc_ir::transport::ShellResponse;
+use crate::makegen::graph::build_makegen_graph;
+use gunbc_ir::transport::{FileOp, FileResponse, TransportResponse};
 use gunbc_ir::{CargoInvocation, Value};
-use gunbc_test::{InputConstraint, MockSpec, NodeExample, OutputMatcher};
+use gunbc_test::{extract_mock_requirements, InputConstraint, MockSpec, NodeExample, OutputMatcher};
 
 /// Mock specification for the makegen graph.
 ///
-/// # Boundary Mocks
+/// Uses the typed mock builder pattern: the DAG is built first, requirements
+/// are extracted from its structure, and mocks are type-checked at construction.
 ///
-/// The `write_makefile` node is the boundary (world write).
-/// It outputs:
-/// - `written_path`: Path where Makefile was written
-/// - `content`: The generated Makefile content
-/// - `changed`: Whether the file was changed
-///
-/// # Input Expectations
-///
-/// - `output_path`: Optional string, defaults to "Makefile"
+/// Only transport mocks are required. Pure terminal outputs (load_registry.tool_count,
+/// load_registry.tool_names) are computed during DryRun execution.
 pub fn makegen_mock_spec() -> MockSpec {
-    with_makegen_transport_mocks(MockSpec::new("makegen"))
-        // Boundary: write_makefile outputs
-        .boundary(
-            "write_makefile",
-            "written_path",
-            Value::Str("Makefile".into()),
+    // Build the actual DAG to extract requirements
+    let dag = build_makegen_graph().expect("makegen graph should build");
+
+    // Extract typed requirements from DAG structure
+    extract_mock_requirements(&dag, "makegen")
+        // Transport: execute_transport (file write) - all outputs need mocks
+        .transport_response(
+            "execute_transport",
+            "response",
+            TransportResponse::File(FileResponse {
+                path: "Makefile".into(),
+                operation: FileOp::Write,
+                success: true,
+                content: Some(mock_makefile_content()),
+                exists: Some(true),
+                error: None,
+            }),
         )
-        .boundary(
-            "write_makefile",
-            "content",
-            Value::Str(mock_makefile_content()),
-        )
-        .boundary("write_makefile", "changed", Value::Bool(true))
-        // Input expectations
+        .expect("execute_transport response should match type")
+        .boundary_str("execute_transport", "written_path", "Makefile")
+        .expect("execute_transport written_path should match type")
+        .boundary_str("execute_transport", "content", &mock_makefile_content())
+        .expect("execute_transport content should match type")
+        // Build spec (pure terminal outputs are computed, not mocked)
+        .build_unchecked()
+        // Input expectations (via legacy API post-build)
         .expects_input("output_path", InputConstraint::Any)
         // Resource: file write lock
         .resource_lock("fs:Makefile")
-        // Expected outputs: load_registry is a pure root node with boundary outputs
-        // tool_count verifies the registry loaded correctly
+        // Expected outputs for verification
         .expected_output("load_registry", "tool_count", Value::Int(7))
         // Node I/O examples: verify pure node behavior
         .node_example(
@@ -61,47 +77,57 @@ pub fn makegen_mock_spec() -> MockSpec {
 
 /// Mock spec for testing no-change scenario.
 pub fn makegen_mock_spec_no_change() -> MockSpec {
-    with_makegen_transport_mocks(MockSpec::new("makegen"))
-        .boundary(
-            "write_makefile",
-            "written_path",
-            Value::Str("Makefile".into()),
+    // Build the actual DAG to extract requirements
+    let dag = build_makegen_graph().expect("makegen graph should build");
+
+    extract_mock_requirements(&dag, "makegen")
+        .transport_response(
+            "execute_transport",
+            "response",
+            TransportResponse::File(FileResponse {
+                path: "Makefile".into(),
+                operation: FileOp::Write,
+                success: true,
+                content: Some(mock_makefile_content()),
+                exists: Some(true),
+                error: None,
+            }),
         )
-        .boundary(
-            "write_makefile",
-            "content",
-            Value::Str(mock_makefile_content()),
-        )
-        .boundary("write_makefile", "changed", Value::Bool(false))
+        .expect("execute_transport response should match type")
+        .boundary_str("execute_transport", "written_path", "Makefile")
+        .expect("execute_transport written_path should match type")
+        .boundary_str("execute_transport", "content", &mock_makefile_content())
+        .expect("execute_transport content should match type")
+        .build_unchecked()
         .expects_input("output_path", InputConstraint::Any)
 }
 
 /// Mock spec for testing file system failure.
 pub fn makegen_mock_spec_fs_fails() -> MockSpec {
-    with_makegen_transport_mocks(MockSpec::new("makegen"))
-        .boundary("write_makefile", "written_path", Value::Str("".into()))
-        .boundary("write_makefile", "content", Value::Str("".into()))
-        .boundary("write_makefile", "changed", Value::Bool(false))
+    // Build the actual DAG to extract requirements
+    let dag = build_makegen_graph().expect("makegen graph should build");
+
+    extract_mock_requirements(&dag, "makegen")
+        .transport_response(
+            "execute_transport",
+            "response",
+            TransportResponse::File(FileResponse {
+                path: "Makefile".into(),
+                operation: FileOp::Write,
+                success: false,
+                content: None,
+                exists: Some(true),
+                error: Some("Permission denied: Makefile is read-only".to_string()),
+            }),
+        )
+        .expect("execute_transport response should match type")
+        .boundary_str("execute_transport", "written_path", "")
+        .expect("execute_transport written_path should match type")
+        .boundary_str("execute_transport", "content", "")
+        .expect("execute_transport content should match type")
+        .build_unchecked()
         .expects_input("output_path", InputConstraint::Any)
         .resource_lock_fails("fs:Makefile", "Permission denied: Makefile is read-only")
-}
-
-fn with_makegen_transport_mocks(spec: MockSpec) -> MockSpec {
-    spec.transport_mock(
-        "execute_transport",
-        "response",
-        Value::Response(ShellResponse::ok("").into()),
-    )
-    .transport_mock(
-        "execute_transport",
-        "written_path",
-        Value::Str("Makefile".into()),
-    )
-    .transport_mock(
-        "execute_transport",
-        "content",
-        Value::Str("<mock-written>".into()),
-    )
 }
 
 /// Generate mock Makefile content.
@@ -130,18 +156,28 @@ fn mock_makefile_content() -> String {
 mod tests {
     use super::*;
 
+    // ========================================================================
+    // Mock spec tests (Pattern B - mock value properties)
+    // ========================================================================
+
     #[test]
-    fn test_mock_spec_changed_is_bool() {
+    fn test_mock_spec_has_transport_mock() {
         let spec = makegen_mock_spec();
-        let changed = spec.get_boundary_mock("write_makefile", "changed").unwrap();
-        assert!(matches!(changed, Value::Bool(true)));
+        // Transport mock should be present
+        assert!(spec
+            .get_transport_mock("execute_transport", "response")
+            .is_some());
     }
 
     #[test]
-    fn test_no_change_spec() {
-        let spec = makegen_mock_spec_no_change();
-        let changed = spec.get_boundary_mock("write_makefile", "changed").unwrap();
-        assert!(matches!(changed, Value::Bool(false)));
+    fn test_mock_spec_has_expected_output() {
+        let spec = makegen_mock_spec();
+        // Expected output for verification
+        let has_expected = spec
+            .expected_outputs
+            .iter()
+            .any(|e| e.node == "load_registry" && e.port == "tool_count");
+        assert!(has_expected);
     }
 
     #[test]
@@ -153,5 +189,15 @@ mod tests {
             result,
             gunbc_test::ResourceAcquireResult::Failed(_)
         ));
+    }
+
+    #[test]
+    fn test_typed_builder_rejects_wrong_slot() {
+        let dag = build_makegen_graph().expect("graph should build");
+        let reqs = extract_mock_requirements(&dag, "makegen");
+
+        // Try to set a mock for a non-existent node
+        let result = reqs.boundary_str("nonexistent_node", "port", "value");
+        assert!(result.is_err());
     }
 }

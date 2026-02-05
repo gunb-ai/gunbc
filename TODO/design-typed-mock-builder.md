@@ -147,12 +147,12 @@ pub struct MockIncompleteError {
 | Tool | Status | Notes |
 |------|--------|-------|
 | gist | ✅ Migrated | Full pattern: DAG → extract → type-check → build |
-| deps | ⏳ Pending | Has `build_deps_graph()`, good candidate |
+| deps | ✅ Migrated | Transport + resource mocks only |
+| makegen | ✅ Migrated | Transport node with multiple outputs |
 | llm-ops | ⏳ Pending | Multiple providers, may need different approach |
 | review | ⏳ Pending | Multiple modes, similar to gist |
 | bootstrap | ⏳ Pending | |
 | ci | ⏳ Pending | |
-| makegen | ⏳ Pending | |
 
 ## Relation to Phase 9 DagSpec
 
