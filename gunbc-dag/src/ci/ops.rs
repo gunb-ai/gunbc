@@ -17,8 +17,9 @@ use gunbc_exec::{
     optional_bool, propagate_skipped, require_bool, require_response, require_str, ExecError,
     Executable, OutputMap, TransportResponseExt,
 };
+use gunbc_ir::resource::{HashBuilder, ResourceManifest};
 use gunbc_ir::transport::{FileRequest, TransportRequest};
-use gunbc_ir::Value;
+use gunbc_ir::{ResourceId, Value};
 use std::collections::HashMap;
 
 // ============================================================================
@@ -141,19 +142,28 @@ fn execute_parse_deps_exists(
 
 /// Prepare file exists check for codegen directory (pure).
 ///
-/// HACK: Checks for a representative generated CLI file to verify codegen has run.
-/// This is brittle and doesn't detect stale outputs. See TODO/URGENT_codegen_upsert.md
-/// for the proper fix (content hash manifest as upsert key).
+/// This is a fallback check - the primary freshness check uses the manifest.
+/// The file check runs in parallel and serves as a bootstrap fallback when
+/// the manifest doesn't exist yet.
 fn execute_prepare_codegen_exists_check(
     _inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
     // Check for a representative generated file - deps CLI is always generated
+    // This is a fallback for when the manifest doesn't exist (first run)
     let request = TransportRequest::File(FileRequest::exists("target/codegen/bin/deps/main.rs"));
 
     OutputMap::new().request("request", request).ok()
 }
 
-/// Parse the codegen exists check result (pure).
+/// Parse the codegen exists check result with manifest-based freshness (pure).
+///
+/// Uses a two-tier freshness check:
+/// 1. **Manifest check** (primary): Compare stored hash to computed input hash
+/// 2. **File existence** (fallback): If manifest is missing, use file existence
+///
+/// Codegen is needed if:
+/// - Manifest is missing or stale (inputs changed)
+/// - AND file doesn't exist (for bootstrap scenario)
 fn execute_parse_codegen_exists(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
@@ -173,21 +183,115 @@ fn execute_parse_codegen_exists(
     let response = require_response(&inputs, "response")?;
 
     let file_resp = response.require_file()?;
-    let codegen_exists = file_resp
+    let file_exists = file_resp
         .exists
         .ok_or_else(|| ExecError::new("codegen exists check missing 'exists' field"))?;
 
-    let mut out = OutputMap::new().bool("codegen_needed", !codegen_exists);
+    // Primary check: manifest-based freshness
+    let manifest_result = check_codegen_manifest_freshness();
 
-    // If codegen exists, prep is already successful
-    if codegen_exists {
+    let (codegen_needed, message) = match manifest_result {
+        ManifestCheckResult::Fresh => {
+            // Manifest says inputs haven't changed - codegen not needed
+            (false, "Generated code is fresh (manifest check passed)")
+        }
+        ManifestCheckResult::Stale(reason) => {
+            // Inputs changed - codegen needed even if files exist
+            (true, reason)
+        }
+        ManifestCheckResult::Missing => {
+            // No manifest - fall back to file existence check (bootstrap scenario)
+            if file_exists {
+                (false, "Generated code exists (no manifest, using file fallback)")
+            } else {
+                (true, "Generated code missing (no manifest)")
+            }
+        }
+        ManifestCheckResult::Error(err) => {
+            // Error checking manifest - fall back to file existence
+            eprintln!("Warning: Manifest check failed: {}", err);
+            if file_exists {
+                (false, "Generated code exists (manifest check failed, using file fallback)")
+            } else {
+                (true, "Generated code missing (manifest check failed)")
+            }
+        }
+    };
+
+    let mut out = OutputMap::new().bool("codegen_needed", codegen_needed);
+
+    if !codegen_needed {
         out = out
             .bool("prep_success", true)
             .bool("codegen_ran", false)
-            .str("prep_message", "Generated code already exists");
+            .str("prep_message", message);
     }
 
     out.ok()
+}
+
+/// Result of checking the codegen manifest for freshness.
+enum ManifestCheckResult {
+    /// Manifest exists and inputs are unchanged
+    Fresh,
+    /// Manifest exists but inputs have changed
+    Stale(&'static str),
+    /// Manifest doesn't exist
+    Missing,
+    /// Error reading manifest or computing hash
+    Error(String),
+}
+
+/// Check if codegen output is fresh based on the manifest.
+///
+/// Computes a hash of codegen inputs and compares to the stored manifest key.
+fn check_codegen_manifest_freshness() -> ManifestCheckResult {
+    // Load manifest
+    let manifest = match ResourceManifest::load_default() {
+        Ok(m) => m,
+        Err(_) => return ManifestCheckResult::Missing,
+    };
+
+    // Check for codegen entry
+    let resource_id = ResourceId::build("generated_cli");
+    let entry = match manifest.get(&resource_id) {
+        Some(e) => e,
+        None => return ManifestCheckResult::Missing,
+    };
+
+    // Compute current input hash
+    let current_hash = match compute_codegen_input_hash() {
+        Ok(h) => h,
+        Err(e) => return ManifestCheckResult::Error(e.to_string()),
+    };
+
+    // Compare
+    if entry.key == current_hash {
+        ManifestCheckResult::Fresh
+    } else {
+        ManifestCheckResult::Stale("inputs changed since last codegen")
+    }
+}
+
+/// Compute hash of codegen inputs (same as in codegen main.rs).
+fn compute_codegen_input_hash() -> Result<gunbc_ir::resource::ContentHash, std::io::Error> {
+    let builder = HashBuilder::new();
+
+    // Hash codegen source files
+    let (builder, _) = builder.update_glob("core/codegen/src/**/*.rs")?;
+
+    // Hash IR source files
+    let (builder, _) = builder.update_glob("core/ir/src/**/*.rs")?;
+
+    // Hash relevant Cargo.toml files
+    let builder = builder.update_file("core/codegen/Cargo.toml")?;
+    let builder = builder.update_file("core/ir/Cargo.toml")?;
+
+    // Include Rust version
+    let rust_version = std::env::var("RUSTC_VERSION").unwrap_or_else(|_| "unknown".to_string());
+    let builder = builder.update_str(&rust_version);
+
+    Ok(builder.finalize())
 }
 
 /// Prepare the codegen shell command (pure).
