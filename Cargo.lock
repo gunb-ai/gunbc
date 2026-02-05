@@ -156,6 +156,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "glob"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0cc23270f6e1808e30a928bdc84dea0b9b4136a8bc82338574f23baf47bbd280"
+
+[[package]]
 name = "gunbc-clippy"
 version = "0.1.0"
 dependencies = [
@@ -237,9 +243,12 @@ dependencies = [
 name = "gunbc-ir"
 version = "0.1.0"
 dependencies = [
+ "glob",
+ "hex",
  "proptest",
  "serde",
  "serde_json",
+ "sha2",
  "thiserror",
 ]
 
@@ -347,6 +356,12 @@ name = "hashbrown"
 version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "841d1cc9bed7f9236f321df977030373f4a4163ae1a7dbfe1a51a2c1a51d9100"
+
+[[package]]
+name = "hex"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
 name = "indexmap"

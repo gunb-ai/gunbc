@@ -1,34 +1,74 @@
-//! Resource types and conflict detection.
+//! Resource types, conflict detection, and unified resource management.
 //!
-//! Resources represent external state (files, locks, connections, etc.) that
-//! nodes may access. When resources are passed through edges, ordering is
-//! explicit. When resources are accessed "out of band" (e.g., two nodes access
-//! the same file without an edge between them), conflicts must be detected.
+//! This module provides:
 //!
-//! # Resource Model
+//! ## Core Resource Types
+//! - [`ResourceId`]: Unique identifier for a resource instance
+//! - [`AccessMode`]: How the resource is accessed (Read, Write, Exclusive)
+//! - [`ResourceKind`]: Capability vs Observation distinction
+//! - [`Resource`]: Trait for resources passed through DAG edges
 //!
-//! Resources are typed values with identity:
-//! - `ResourceId`: Unique identifier for a resource instance
-//! - `AccessMode`: How the resource is accessed (Read, Write, Exclusive)
-//! - `ResourceOp`: Operations that interact with resources
+//! ## Managed Resources (Upsert Pattern)
+//! - [`ManagedResource`]: Trait for resources with freshness checking
+//! - [`ResourceHandle`]: Proof of resource acquisition (unified for tools and build artifacts)
+//! - [`ResourceDef`]: Declaration of a resource's inputs and outputs
+//! - [`ResourceState`]: Fresh, Stale, Missing, or Error
+//! - [`ExecMode`]: Verify (fail on stale) vs Ensure (fix stale)
 //!
-//! # Conflict Detection
+//! ## Manifest
+//! - [`ResourceManifest`]: On-disk storage of resource freshness keys
+//! - [`ManifestEntry`]: Entry for a single resource
+//! - [`ContentHash`]: SHA-256 hash for freshness keys
 //!
-//! A resource conflict occurs when:
-//! 1. Two nodes access the same resource (same `ResourceId`)
-//! 2. At least one access is Write or Exclusive
-//! 3. There is no edge ordering between the nodes (they could run in parallel)
+//! ## Conflict Detection
+//! - [`detect_conflicts`]: Find resource access conflicts in a DAG
+//! - [`ResourceAccess`]: A resource access by a node
+//! - [`ResourceConflict`]: Detected conflict between two nodes
+//!
+//! # Unified Resource Model
+//!
+//! All acquirable things—tools, build artifacts, filesystem handles, auth tokens—
+//! are resources with the same upsert semantics: Check → Create → Resolve.
+//! The only difference is how freshness is determined:
+//!
+//! - **Tools**: Binary exists on PATH
+//! - **Build artifacts**: Content hash of inputs matches manifest
+//! - **Auth tokens**: Environment variable is set
 //!
 //! # Example
 //!
 //! ```ignore
-//! use gunbc_ir::resource::{ResourceId, AccessMode, detect_conflicts};
+//! use gunbc_ir::resource::{ResourceManifest, ExecMode, ManagedResource};
 //!
-//! // Node A writes to file.txt
-//! // Node B reads from file.txt
-//! // If no edge A → B, this is a conflict
-//! let conflicts = detect_conflicts(&dag, &resource_accesses);
+//! // Load manifest
+//! let mut manifest = ResourceManifest::load_default()?;
+//!
+//! // Acquire a resource (checks freshness, creates if needed based on mode)
+//! let handle = my_resource.acquire(ExecMode::Ensure, &mut manifest)?;
+//!
+//! // Save updated manifest
+//! manifest.save_default()?;
 //! ```
+
+// Submodules
+pub mod def;
+pub mod handle;
+pub mod hash;
+pub mod managed;
+pub mod manifest;
+pub mod state;
+
+// Re-exports from submodules
+pub use def::{DagRef, InputPattern, ResourceDef, ResourceScope};
+pub use handle::{HandleParseError, ResourceHandle};
+pub use hash::{ContentHash, HashBuilder};
+pub use managed::{ManagedResource, ResourceError, SimpleResource};
+pub use manifest::{ManifestEntry, ResourceManifest, DEFAULT_MANIFEST_PATH};
+pub use state::{ExecMode, ResourceState};
+
+// ============================================================================
+// Original resource.rs content below (conflict detection, Resource trait, etc.)
+// ============================================================================
 
 use crate::dag::Dag;
 use crate::types::NodeId;
@@ -72,6 +112,13 @@ impl ResourceId {
     /// it creates a resource access with this ID.
     pub fn tool(name: impl Into<String>) -> Self {
         Self(format!("tool:{}", name.into()))
+    }
+
+    /// Create a build resource ID.
+    ///
+    /// Used for build artifact tracking (codegen, testgen, etc.).
+    pub fn build(name: impl Into<String>) -> Self {
+        Self(format!("build:{}", name.into()))
     }
 }
 
@@ -580,6 +627,9 @@ mod tests {
 
         let conn = ResourceId::connection("db");
         assert!(conn.0.starts_with("conn:"));
+
+        let build = ResourceId::build("codegen");
+        assert!(build.0.starts_with("build:"));
     }
 
     #[test]

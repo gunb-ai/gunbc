@@ -9,6 +9,9 @@ description = "Core IR types for gunbc: Node, Dag, Edge, Port, and boundary dete
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+glob = { workspace = true }
 
 [dev-dependencies]
 proptest = { workspace = true }
