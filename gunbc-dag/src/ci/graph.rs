@@ -138,7 +138,7 @@ pub fn ci_signature() -> WorkflowSignature {
         .with_output("build_stdout", "String", Cardinality::ONE)
         .with_output("skip_reason", "String", Cardinality::ZERO_OR_ONE)
         .with_output("test_skipped", "Bool", Cardinality::ONE)
-        .with_output("test_stdout", "String", Cardinality::ONE)
+        // Note: test_stdout is no longer a boundary output - it's wired to report node
         .with_output("lint_skipped", "Bool", Cardinality::ONE)
         .with_output("lint_stdout", "String", Cardinality::ONE)
         .with_output("overall_success", "Bool", Cardinality::ONE)
@@ -521,6 +521,7 @@ pub fn build_ci_graph() -> Result<Dag<CIGraphOp>, BuilderError> {
                 port("test_success", "Bool"),
                 port("lint_success", "Bool"),
                 optional("build_stderr", "String"),
+                optional("test_stdout", "String"),
                 optional("test_stderr", "String"),
                 optional("lint_stderr", "String"),
             ],
@@ -643,6 +644,7 @@ pub fn build_ci_graph() -> Result<Dag<CIGraphOp>, BuilderError> {
         parse_build.out("build_stderr"),
         report.in_port("build_stderr"),
     )?;
+    builder.add_edge(parse_test.out("test_stdout"), report.in_port("test_stdout"))?;
     builder.add_edge(parse_test.out("test_stderr"), report.in_port("test_stderr"))?;
     builder.add_edge(parse_lint.out("lint_stderr"), report.in_port("lint_stderr"))?;
 

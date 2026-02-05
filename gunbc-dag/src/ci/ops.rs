@@ -141,14 +141,13 @@ fn execute_parse_deps_exists(
 
 /// Prepare file exists check for codegen directory (pure).
 ///
-/// Note: Codegen infrastructure was removed. This always returns that
-/// codegen exists (no codegen needed) for backwards compatibility with
-/// the CI DAG structure.
+/// Checks for a representative generated CLI file to verify codegen has run.
+/// The `deps` tool's CLI entry point is a good canary since it's always generated.
 fn execute_prepare_codegen_exists_check(
     _inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    // Codegen is no longer used - always return that it exists
-    let request = TransportRequest::File(FileRequest::exists("Cargo.toml"));
+    // Check for a representative generated file - deps CLI is always generated
+    let request = TransportRequest::File(FileRequest::exists("target/codegen/bin/deps/main.rs"));
 
     OutputMap::new().request("request", request).ok()
 }
@@ -565,7 +564,7 @@ impl Mockable for CIOp {
             CIOp::PrepareCodegenExistsCheck => OutputMap::new()
                 .request(
                     "request",
-                    TransportRequest::File(FileRequest::exists("Cargo.toml")),
+                    TransportRequest::File(FileRequest::exists("target/codegen/bin/deps/main.rs")),
                 )
                 .build(),
             CIOp::ParseCodegenExists => OutputMap::new()
