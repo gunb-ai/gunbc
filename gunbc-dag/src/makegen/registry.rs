@@ -798,10 +798,10 @@ impl MetaTarget {
 /// - `make test-fix` runs fmt-fix + lint-fix, then tests (dev uses this)
 pub fn default_meta_targets() -> Vec<MetaTarget> {
     vec![
-        // test - run all tests (requires full prep + testgen freshness check)
+        // test - run all tests (requires full prep + testgen upsert)
         // test-fix: fmt-fix + lint-fix first, then test
         MetaTarget::new("test", "Run all tests", PrepLevel::Full, ConfigField::Test)
-            .with_extra_deps(vec!["testgen-check"])
+            .with_extra_deps(vec!["testgen"])
             .with_fix_variant(vec!["fmt-fix", "lint-fix"]),
         // check - type check without building (requires codegen)
         // check-fix: fmt-fix first, then check

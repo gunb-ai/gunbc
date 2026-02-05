@@ -386,14 +386,10 @@ fn render_meta_fix_variant(meta: &MetaTarget, config: &BuildConfig) -> String {
         deps.push(prep.to_string());
     }
 
-    // Add extra dependencies, transforming verify targets to ensure targets.
-    // For fix variants, we want to regenerate (e.g., testgen) not just verify
-    // (e.g., testgen-check). This follows the convention:
-    //   - make test: depends on testgen-check (fail if stale)
-    //   - make test-fix: depends on testgen (regenerate if stale)
+    // Add extra dependencies for the fix variant.
+    // If any end with "-check", transform to the ensure variant.
     for dep in &meta.extra_deps {
         let fix_dep = if dep.ends_with("-check") {
-            // Transform verify target to ensure target (testgen-check → testgen)
             dep.trim_end_matches("-check").to_string()
         } else {
             dep.to_string()
@@ -585,8 +581,8 @@ mod tests {
 
         // Individual meta targets
         assert!(
-            makefile.contains("test: codegen testgen-check"),
-            "test should depend on codegen and testgen-check"
+            makefile.contains("test: codegen testgen"),
+            "test should depend on codegen and testgen"
         );
         assert!(makefile.contains("gunbc-build"));
 

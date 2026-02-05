@@ -87,7 +87,7 @@ lint-fix:
 	@cargo clippy --fix --workspace --allow-dirty --allow-staged -- -D warnings
 
 # test: Run all tests
-test: codegen testgen-check
+test: codegen testgen
 	@cargo run -p gunbc-dag --bin gunbc-build --release
 
 # test-fix: auto-fix then verify
