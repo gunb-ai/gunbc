@@ -152,7 +152,7 @@ pub struct MockIncompleteError {
 | bootstrap | ✅ Migrated | Multiple transport nodes (scan, makefile, gitignore) |
 | ci | ✅ Migrated | Complex graph with transport + resource + CliTool nodes |
 | review | ✅ Migrated | Two graphs: inline and diff, both with LLM transport |
-| llm-ops | ⏳ Pending | Multiple providers, may need different approach |
+| llm-ops | ⏸️ Skipped | No DAG builder - mock specs define expected patterns for testing |
 
 ## Relation to Phase 9 DagSpec
 
