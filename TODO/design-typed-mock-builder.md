@@ -151,8 +151,8 @@ pub struct MockIncompleteError {
 | makegen | ✅ Migrated | Transport node with multiple outputs |
 | bootstrap | ✅ Migrated | Multiple transport nodes (scan, makefile, gitignore) |
 | ci | ✅ Migrated | Complex graph with transport + resource + CliTool nodes |
+| review | ✅ Migrated | Two graphs: inline and diff, both with LLM transport |
 | llm-ops | ⏳ Pending | Multiple providers, may need different approach |
-| review | ⏳ Pending | Multiple modes, similar to gist |
 
 ## Relation to Phase 9 DagSpec
 
