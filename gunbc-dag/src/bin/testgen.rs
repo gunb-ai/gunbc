@@ -11,9 +11,11 @@
 use gunbc_codegen::testgen::{TestConfig, TestGenerator};
 use gunbc_codegen::{FileWriter, TestgenTargetDef};
 use gunbc_exec::Executable;
-use gunbc_ir::Dag;
+use gunbc_ir::resource::{ContentHash, HashBuilder, ManifestEntry, ResourceManifest};
+use gunbc_ir::{Dag, ResourceId};
 use gunbc_test::MockSpec;
 use std::env;
+use std::io;
 use std::path::PathBuf;
 use std::process;
 
@@ -300,8 +302,102 @@ fn main() {
         }
     }
 
+    // Update manifest after successful generation
+    if errors == 0 && mode == Mode::Generate {
+        update_manifest_after_testgen();
+    }
+
     if errors > 0 || stale > 0 {
         process::exit(1);
+    }
+}
+
+// ============================================================================
+// Resource Manifest Support
+// ============================================================================
+
+/// Compute the content hash for testgen inputs.
+///
+/// This hashes the source files that affect testgen output:
+/// - gunbc-dag/src/**/*.rs (DAG definitions)
+/// - core/ir/src/**/*.rs (IR types)
+/// - lib/**/*.rs (library DAG definitions)
+/// - plus dependency on generated_cli (codegen must run first)
+fn compute_testgen_input_hash() -> io::Result<ContentHash> {
+    let builder = HashBuilder::new();
+
+    // Hash gunbc-dag source files (DAG definitions)
+    let (builder, dag_count) = builder.update_glob("gunbc-dag/src/**/*.rs")?;
+
+    // Hash IR source files
+    let (builder, ir_count) = builder.update_glob("core/ir/src/**/*.rs")?;
+
+    // Hash library source files
+    let (builder, lib_count) = builder.update_glob("lib/**/*.rs")?;
+
+    // Include the codegen manifest key as a dependency
+    // This ensures testgen is considered stale if codegen output changes
+    let manifest = ResourceManifest::load_default()?;
+    let codegen_resource = ResourceId::build("generated_cli");
+    let codegen_key = manifest
+        .get(&codegen_resource)
+        .map(|e| e.key.as_str())
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                "Codegen manifest entry missing - run codegen first (cargo run -p gunbc-codegen)",
+            )
+        })?;
+    let builder = builder.update_str(codegen_key);
+
+    println!(
+        "  Computed hash from {} dag + {} ir + {} lib source files",
+        dag_count, ir_count, lib_count
+    );
+
+    Ok(builder.finalize())
+}
+
+/// Write a manifest entry for the generated tests resource.
+#[allow(clippy::disallowed_methods)]
+fn write_testgen_manifest(hash: ContentHash) -> io::Result<()> {
+    let mut manifest = ResourceManifest::load_default()?;
+
+    let resource_id = ResourceId::build("generated_tests");
+
+    // Collect output paths from all targets
+    let targets = build_targets();
+    let outputs: Vec<PathBuf> = targets
+        .iter()
+        .map(|t| PathBuf::from(&t.config.output_path))
+        .collect();
+
+    let entry = ManifestEntry::new(hash).with_outputs(outputs);
+
+    manifest.insert(resource_id, entry);
+    manifest.save_default()?;
+
+    println!("  Updated resource manifest: target/.resource-manifest.json");
+    Ok(())
+}
+
+/// Update the resource manifest after successful testgen.
+fn update_manifest_after_testgen() {
+    println!();
+    println!("Updating resource manifest...");
+    match compute_testgen_input_hash() {
+        Ok(hash) => {
+            if let Err(e) = write_testgen_manifest(hash) {
+                eprintln!("  ERROR: Could not write manifest: {}", e);
+                eprintln!("  Testgen outputs exist but freshness cannot be verified.");
+                eprintln!("  CI --mode=verify will fail until manifest is written.");
+            }
+        }
+        Err(e) => {
+            eprintln!("  ERROR: Could not compute input hash: {}", e);
+            eprintln!("  Testgen outputs exist but freshness cannot be verified.");
+            eprintln!("  CI --mode=verify will fail until manifest is written.");
+        }
     }
 }
 

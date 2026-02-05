@@ -1,0 +1,314 @@
+//! Unified resource handle type.
+//!
+//! `ResourceHandle<R>` is proof of resource acquisition that flows through DAG edges.
+//! This unifies `ToolHandle` and build resource handles under a single abstraction.
+//!
+//! The handle carries:
+//! - The resource it refers to
+//! - The freshness key at time of acquisition (proof it was fresh)
+//! - A capability marker preventing forgery
+
+use super::hash::ContentHash;
+use super::super::{ResourceId, Value};
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
+use std::marker::PhantomData;
+
+/// Secret marker for capability values.
+const RESOURCE_HANDLE_MARKER: &str = "resource_handle";
+
+/// A handle proving a resource has been acquired and is fresh.
+///
+/// This is the **only way** to depend on a resource in a DAG. You cannot
+/// construct this directly — it only comes from successful resource acquisition
+/// via the framework.
+///
+/// # Design
+///
+/// The capability pattern enforces that:
+/// 1. You cannot use a resource without acquiring it first
+/// 2. Acquisition happens via the resource framework
+/// 3. The handle carries the freshness key as proof
+///
+/// # Unification
+///
+/// Both tools and build resources use the same handle type:
+/// - `ResourceHandle<ToolResource>` — carries resolved path
+/// - `ResourceHandle<BuildResource>` — carries proof of freshness
+///
+/// The "payload" differs, but the handle pattern is identical.
+#[derive(Debug, Clone)]
+pub struct ResourceHandle<R> {
+    /// The resource this handle refers to.
+    resource_id: ResourceId,
+    /// The freshness key at time of acquisition.
+    key: ContentHash,
+    /// Marker for the resource type.
+    _marker: PhantomData<R>,
+}
+
+impl<R> ResourceHandle<R> {
+    /// Create a new handle after successful acquisition.
+    ///
+    /// **Framework use only.** This should only be called by the resource
+    /// acquisition framework after successfully verifying or creating a resource.
+    pub fn acquire(resource_id: ResourceId, key: ContentHash) -> Self {
+        Self {
+            resource_id,
+            key,
+            _marker: PhantomData,
+        }
+    }
+
+    /// Get the resource ID this handle refers to.
+    pub fn resource_id(&self) -> &ResourceId {
+        &self.resource_id
+    }
+
+    /// Get the freshness key at time of acquisition.
+    ///
+    /// This is proof that the resource was fresh when acquired.
+    pub fn key(&self) -> &ContentHash {
+        &self.key
+    }
+
+    /// Create a mock handle for testing/DryRun.
+    pub fn mock(resource_id: ResourceId) -> Self {
+        Self {
+            resource_id,
+            key: ContentHash::empty(),
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<R> PartialEq for ResourceHandle<R> {
+    fn eq(&self, other: &Self) -> bool {
+        self.resource_id == other.resource_id && self.key == other.key
+    }
+}
+
+impl<R> Eq for ResourceHandle<R> {}
+
+/// Convert a ResourceHandle to a Value for passing through DAG edges.
+impl<R> From<ResourceHandle<R>> for Value {
+    fn from(handle: ResourceHandle<R>) -> Self {
+        let mut map = BTreeMap::new();
+        map.insert(
+            "type".to_string(),
+            Value::Str(RESOURCE_HANDLE_MARKER.to_string()),
+        );
+        map.insert(
+            "resource_id".to_string(),
+            Value::Str(handle.resource_id.0.clone()),
+        );
+        map.insert("key".to_string(), Value::Str(handle.key.as_str().to_string()));
+        map.insert(
+            "cap".to_string(),
+            Value::Secret(super::super::SecretString::new(RESOURCE_HANDLE_MARKER)),
+        );
+        Value::Map(map)
+    }
+}
+
+/// Error when parsing a ResourceHandle from a Value.
+#[derive(Debug, Clone)]
+pub struct HandleParseError {
+    pub message: String,
+}
+
+impl std::fmt::Display for HandleParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "ResourceHandle parse error: {}", self.message)
+    }
+}
+
+impl std::error::Error for HandleParseError {}
+
+/// Try to reconstruct a ResourceHandle from a Value.
+///
+/// The Value must be a map with:
+/// - type = "resource_handle"
+/// - resource_id = string
+/// - key = string (hex hash)
+/// - cap = secret marker
+impl<R> TryFrom<&Value> for ResourceHandle<R> {
+    type Error = HandleParseError;
+
+    fn try_from(value: &Value) -> Result<Self, Self::Error> {
+        let map = match value {
+            Value::Map(m) => m,
+            _ => {
+                return Err(HandleParseError {
+                    message: "Expected map value".to_string(),
+                })
+            }
+        };
+
+        // Check capability marker
+        match map.get("cap") {
+            Some(Value::Secret(s)) if s.expose() == RESOURCE_HANDLE_MARKER => {}
+            _ => {
+                return Err(HandleParseError {
+                    message: "Missing or invalid capability marker".to_string(),
+                })
+            }
+        }
+
+        // Check type field
+        let type_field = map.get("type").and_then(Value::as_str).unwrap_or("");
+        if type_field != RESOURCE_HANDLE_MARKER {
+            return Err(HandleParseError {
+                message: format!(
+                    "Invalid type: expected '{}', got '{}'",
+                    RESOURCE_HANDLE_MARKER, type_field
+                ),
+            });
+        }
+
+        // Extract resource_id
+        let resource_id_str = map
+            .get("resource_id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| HandleParseError {
+                message: "Missing 'resource_id'".to_string(),
+            })?;
+
+        // Extract key
+        let key_str = map
+            .get("key")
+            .and_then(Value::as_str)
+            .ok_or_else(|| HandleParseError {
+                message: "Missing 'key'".to_string(),
+            })?;
+
+        Ok(ResourceHandle {
+            resource_id: ResourceId::new(resource_id_str),
+            key: ContentHash::new(key_str),
+            _marker: PhantomData,
+        })
+    }
+}
+
+impl<R> TryFrom<Value> for ResourceHandle<R> {
+    type Error = HandleParseError;
+
+    fn try_from(value: Value) -> Result<Self, Self::Error> {
+        ResourceHandle::try_from(&value)
+    }
+}
+
+/// Serialization support for ResourceHandle.
+impl<R> Serialize for ResourceHandle<R> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+
+        let mut state = serializer.serialize_struct("ResourceHandle", 2)?;
+        state.serialize_field("resource_id", &self.resource_id)?;
+        state.serialize_field("key", &self.key)?;
+        state.end()
+    }
+}
+
+/// Deserialization support for ResourceHandle.
+impl<'de, R> Deserialize<'de> for ResourceHandle<R> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct HandleData {
+            resource_id: ResourceId,
+            key: ContentHash,
+        }
+
+        let data = HandleData::deserialize(deserializer)?;
+        Ok(ResourceHandle {
+            resource_id: data.resource_id,
+            key: data.key,
+            _marker: PhantomData,
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Marker type for testing
+    #[derive(Debug, Clone)]
+    struct TestResource;
+
+    #[test]
+    fn test_handle_acquire() {
+        let id = ResourceId::new("test:resource");
+        let key = ContentHash::from_bytes(b"test");
+        let handle: ResourceHandle<TestResource> = ResourceHandle::acquire(id.clone(), key.clone());
+
+        assert_eq!(handle.resource_id(), &id);
+        assert_eq!(handle.key(), &key);
+    }
+
+    #[test]
+    fn test_handle_mock() {
+        let handle: ResourceHandle<TestResource> =
+            ResourceHandle::mock(ResourceId::new("test:mock"));
+
+        assert_eq!(handle.resource_id().0, "test:mock");
+        assert_eq!(handle.key(), &ContentHash::empty());
+    }
+
+    #[test]
+    fn test_handle_to_value() {
+        let handle: ResourceHandle<TestResource> = ResourceHandle::acquire(
+            ResourceId::new("test:value"),
+            ContentHash::from_bytes(b"data"),
+        );
+
+        let value: Value = handle.into();
+        assert!(matches!(value, Value::Map(_)));
+    }
+
+    #[test]
+    fn test_handle_roundtrip() {
+        let original: ResourceHandle<TestResource> = ResourceHandle::acquire(
+            ResourceId::new("test:roundtrip"),
+            ContentHash::from_bytes(b"roundtrip"),
+        );
+
+        let value: Value = original.clone().into();
+        let restored: ResourceHandle<TestResource> = value.try_into().expect("parse failed");
+
+        assert_eq!(original.resource_id(), restored.resource_id());
+        assert_eq!(original.key(), restored.key());
+    }
+
+    #[test]
+    fn test_handle_parse_invalid() {
+        let value = Value::Str("not a map".to_string());
+        let result: Result<ResourceHandle<TestResource>, _> = value.try_into();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_handle_equality() {
+        let h1: ResourceHandle<TestResource> = ResourceHandle::acquire(
+            ResourceId::new("test:eq"),
+            ContentHash::from_bytes(b"same"),
+        );
+        let h2: ResourceHandle<TestResource> = ResourceHandle::acquire(
+            ResourceId::new("test:eq"),
+            ContentHash::from_bytes(b"same"),
+        );
+        let h3: ResourceHandle<TestResource> = ResourceHandle::acquire(
+            ResourceId::new("test:eq"),
+            ContentHash::from_bytes(b"different"),
+        );
+
+        assert_eq!(h1, h2);
+        assert_ne!(h1, h3);
+    }
+}
