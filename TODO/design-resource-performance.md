@@ -1,6 +1,57 @@
 # Resource System Performance Considerations
 
-Tracking performance issues to address after core modeling is solid.
+> **Key Insight**: The current design hashes everything on every check.
+> This is fundamentally wrong. Make solved this in 1976: use mtime as fast path.
+>
+> See `TODO/architecture-debt.md` for the consolidated view of all debt.
+
+## The Problem
+
+Current freshness check:
+1. Expand all glob patterns (filesystem walk)
+2. Read every matching file into memory
+3. Hash all file contents
+4. Compare to stored key
+
+This is **O(files × file_size)** on every check, even when nothing changed.
+
+For codegen alone, this means reading ~100+ Rust files on every CI run,
+even when the code hasn't changed since the last run.
+
+## The Solution: mtime Fast Path
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Fast Path (99% of checks, O(1))                            │
+│                                                             │
+│  1. Get manifest entry mtime                                │
+│  2. Get max(source file mtimes) — can cache stat results    │
+│  3. If manifest_mtime > max_source_mtime → Fresh            │
+│     (nothing changed since we last wrote the manifest)      │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│  Slow Path (only when sources actually changed)             │
+│                                                             │
+│  1. Identify which files changed (mtime > manifest_mtime)   │
+│  2. Re-hash only changed files                              │
+│  3. Combine with cached hashes for unchanged files          │
+│  4. Compare computed key to stored key                      │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## Even Better: Git-Aware Freshness
+
+In a git repo, we can ask git directly:
+
+```bash
+git status --porcelain -- 'core/codegen/src/**/*.rs' 'core/ir/src/**/*.rs'
+```
+
+If output is empty → nothing in our input patterns changed → Fresh.
+
+This is faster than walking the filesystem ourselves and handles
+edge cases (new files, deleted files, renamed files) correctly.
 
 ## Current Design (Phase 1)
 
