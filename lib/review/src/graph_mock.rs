@@ -2,11 +2,23 @@
 //!
 //! Provides MockSpec definitions for dry-run testing and testgen.
 
-use crate::{Criteria, Check, ReviewOutput, Finding, Location};
+use crate::{Check, Criteria, Finding, Location, ReviewOutput};
 use gunbc_ir::transport::llm::mock;
 use gunbc_ir::transport::ShellResponse;
-use gunbc_ir::Value;
+use gunbc_ir::{SecretString, Value};
 use gunbc_test::{InputConstraint, MockSpec};
+use std::collections::BTreeMap;
+
+fn mock_auth_token(service: &str, env_var: &str) -> Value {
+    let mut map = BTreeMap::new();
+    map.insert("service".to_string(), Value::Str(service.to_string()));
+    map.insert("env_var".to_string(), Value::Str(env_var.to_string()));
+    map.insert(
+        "token".to_string(),
+        Value::Secret(SecretString::new("<MOCK_API_KEY>")),
+    );
+    Value::Map(map)
+}
 
 // ============================================================================
 // Default review criteria (for testing and CLI defaults)
@@ -98,6 +110,12 @@ pub fn inline_review_mock_spec() -> MockSpec {
         )
         .input_mock("prepare_llm", "provider", Value::Str("openai".into()))
         .input_mock("prepare_llm", "model", Value::Str("gpt-4o".into()))
+        // Env: resolved auth token
+        .boundary(
+            "auth_env",
+            "auth:llm",
+            mock_auth_token("openai", "OPENAI_API_KEY"),
+        )
         // Transport mock: LLM execute
         .transport_mock(
             "execute_llm",
@@ -113,29 +131,30 @@ pub fn inline_review_mock_spec() -> MockSpec {
         .boundary(
             "parse_response",
             "output",
-            Value::Json(serde_json::to_value(&ReviewOutput {
-                schema_version: ReviewOutput::SCHEMA_VERSION.to_string(),
-                criteria_name: "code-review".to_string(),
-                source: "llm".to_string(),
-                findings: vec![Finding {
-                    id: crate::hash_finding_id("unwrap_without_context", "correctness"),
-                    check_id: "correctness".to_string(),
-                    issue_key: "unwrap_without_context".to_string(),
-                    location: Location::FileLine {
-                        file: "src/main.rs".to_string(),
-                        line: 10,
-                    },
-                    observation: "Using unwrap() without context can make debugging difficult"
-                        .to_string(),
-                    candidate_fix: Some(
-                        "Use .expect(\"reason\") or ? operator".to_string(),
-                    ),
-                }],
-                candidate_remediations: None,
-                summary: "Found 1 issue: an unwrap() call that should use proper error handling."
-                    .to_string(),
-            })
-            .unwrap()),
+            Value::Json(
+                serde_json::to_value(&ReviewOutput {
+                    schema_version: ReviewOutput::SCHEMA_VERSION.to_string(),
+                    criteria_name: "code-review".to_string(),
+                    source: "llm".to_string(),
+                    findings: vec![Finding {
+                        id: crate::hash_finding_id("unwrap_without_context", "correctness"),
+                        check_id: "correctness".to_string(),
+                        issue_key: "unwrap_without_context".to_string(),
+                        location: Location::FileLine {
+                            file: "src/main.rs".to_string(),
+                            line: 10,
+                        },
+                        observation: "Using unwrap() without context can make debugging difficult"
+                            .to_string(),
+                        candidate_fix: Some("Use .expect(\"reason\") or ? operator".to_string()),
+                    }],
+                    candidate_remediations: None,
+                    summary:
+                        "Found 1 issue: an unwrap() call that should use proper error handling."
+                            .to_string(),
+                })
+                .unwrap(),
+            ),
         )
         .boundary(
             "parse_response",
@@ -146,6 +165,7 @@ pub fn inline_review_mock_spec() -> MockSpec {
         .expects_input("criteria", InputConstraint::NonEmpty)
         .expects_input("provider", InputConstraint::NonEmpty)
         .expects_input("model", InputConstraint::NonEmpty)
+        .skip_node_example("auth_env")
 }
 
 // ============================================================================
@@ -184,6 +204,12 @@ diff --git a/src/main.rs b/src/main.rs
 
     MockSpec::new("review-diff")
         // provider, model, criteria come from config node — no input mocks needed
+        // Env: resolved auth token
+        .boundary(
+            "auth_env",
+            "auth:llm",
+            mock_auth_token("openai", "OPENAI_API_KEY"),
+        )
         // Transport mock: git diff execute
         .transport_mock(
             "execute_diff",
@@ -207,11 +233,7 @@ diff --git a/src/main.rs b/src/main.rs
             Value::Response(llm_response.into()),
         )
         // Boundary: parse_response outputs
-        .boundary(
-            "parse_response",
-            "output",
-            Value::Json(review_json),
-        )
+        .boundary("parse_response", "output", Value::Json(review_json))
         .boundary(
             "parse_response",
             "errors",
@@ -223,6 +245,7 @@ diff --git a/src/main.rs b/src/main.rs
             "stats",
             Value::Str("+2 -0 across 1 files".into()),
         )
+        .skip_node_example("auth_env")
 }
 
 // ============================================================================
@@ -241,5 +264,4 @@ mod tests {
         assert!(criteria.checks.iter().any(|c| c.id == "correctness"));
         assert!(criteria.checks.iter().any(|c| c.id == "security"));
     }
-
 }

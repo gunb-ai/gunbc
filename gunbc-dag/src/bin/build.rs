@@ -74,7 +74,7 @@ fn main() {
     println!();
 
     // Execute and display (progress or classic based on terminal)
-    execute_and_display(&dag, mode, &profile, Some("overall_success"));
+    execute_and_display(&dag, mode, &profile, Some("overall_success"), None);
 }
 
 fn print_help() {

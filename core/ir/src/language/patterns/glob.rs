@@ -13,8 +13,8 @@
 //! - `negated`: Bool - Is this a negation pattern (starts with !)
 
 use crate::dag::{Dag, Port};
-use crate::node::Node;
 use crate::language::LanguageOp;
+use crate::node::Node;
 
 /// Build the GlobPatterns SubDag node.
 ///
@@ -44,20 +44,17 @@ pub fn build_glob_subdag() -> Node<LanguageOp> {
         "glob_match",
         vec![
             Port::scalar("pattern", "String"),
-            Port::scalar("files", "List"),
+            Port::list("files", "String"),
         ],
         vec![
-            Port::scalar("matched", "List"),
+            Port::list("matched", "String"),
             Port::scalar("negated", "Bool"),
         ],
         LanguageOp::GlobMatch,
     ));
 
     // Create the SubDag node with interface
-    Node::subdag(
-        "glob",
-        inner,
-    )
+    Node::subdag("glob", inner)
 }
 
 /// Convert a glob pattern to a regex pattern.

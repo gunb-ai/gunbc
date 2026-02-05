@@ -7,7 +7,7 @@ pub mod ops;
 
 pub mod graph_mock;
 
-pub use graph::{build_bootstrap_graph, bootstrap_signature, BootstrapGraphOp};
+pub use graph::{bootstrap_signature, build_bootstrap_graph, BootstrapGraphOp};
 pub use ops::BootstrapOp;
 
 #[cfg(test)]

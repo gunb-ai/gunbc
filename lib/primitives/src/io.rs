@@ -244,7 +244,10 @@ impl EmbeddedFileExistsOp {
 }
 
 impl Executable for EmbeddedFileExistsOp {
-    fn execute(&self, _inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+    fn execute(
+        &self,
+        _inputs: HashMap<String, Value>,
+    ) -> Result<HashMap<String, Value>, ExecError> {
         let request = TransportRequest::File(FileRequest::exists(&self.path));
 
         OutputMap::new().request("request", request).ok()
@@ -289,7 +292,10 @@ impl EmbeddedShellOp {
 }
 
 impl Executable for EmbeddedShellOp {
-    fn execute(&self, _inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+    fn execute(
+        &self,
+        _inputs: HashMap<String, Value>,
+    ) -> Result<HashMap<String, Value>, ExecError> {
         let request = TransportRequest::Shell(ShellRequest {
             command: self.command.clone(),
             args: self.args.clone(),

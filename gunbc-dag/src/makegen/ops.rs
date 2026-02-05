@@ -34,11 +34,17 @@ impl Executable for MakegenOp {
 }
 
 /// Load the default tool registry.
-fn execute_load_registry(_inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+fn execute_load_registry(
+    _inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
     let registry = ToolRegistry::default_registry();
 
     // Serialize tool names for downstream
-    let tool_names: Vec<String> = registry.tools.iter().map(|t| t.short_name.clone()).collect();
+    let tool_names: Vec<String> = registry
+        .tools
+        .iter()
+        .map(|t| t.short_name.clone())
+        .collect();
 
     // Store registry as JSON for downstream
     let registry_json = serde_json::json!({
@@ -69,7 +75,9 @@ fn execute_load_registry(_inputs: HashMap<String, Value>) -> Result<HashMap<Stri
 }
 
 /// Render the Makefile content.
-fn execute_render_makefile(_inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+fn execute_render_makefile(
+    _inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
     // For now, use the default registry directly
     // In a more sophisticated version, we'd deserialize from inputs
     let registry = ToolRegistry::default_registry();
@@ -88,23 +96,23 @@ use gunbc_test::{CardinalityTestInput, ErrorTestCase, Mockable};
 impl Mockable for MakegenOp {
     fn mock_outputs(&self) -> HashMap<String, Value> {
         match self {
-            MakegenOp::LoadRegistry => {
-                OutputMap::new()
-                    .int("tool_count", 3)
-                    .str_list("tool_names", vec![
-                        "gist".to_string(),
-                        "deps".to_string(),
-                        "buck2".to_string(),
-                    ])
-                    .json("registry", serde_json::json!({
+            MakegenOp::LoadRegistry => OutputMap::new()
+                .int("tool_count", 3)
+                .str_list(
+                    "tool_names",
+                    vec!["gist".to_string(), "deps".to_string(), "buck2".to_string()],
+                )
+                .json(
+                    "registry",
+                    serde_json::json!({
                         "tools": [
                             {"binary_name": cargo::name("gist"), "short_name": "gist"},
                             {"binary_name": cargo::name("deps"), "short_name": "deps"},
                             {"binary_name": cargo::name("buck2"), "short_name": "buck2"},
                         ]
-                    }))
-                    .build()
-            }
+                    }),
+                )
+                .build(),
             MakegenOp::RenderMakefile => {
                 let gist = CargoInvocation::standalone("gist").command();
                 let deps = CargoInvocation::standalone("deps").command();
@@ -164,7 +172,7 @@ mod tests {
         match result.get("tool_names").and_then(|v| v.as_str_list()) {
             Some(names) => {
                 assert!(names.contains(&"gist".to_string()));
-                assert!(names.contains(&"buck2".to_string()));
+                assert!(names.contains(&"deps".to_string()));
             }
             _ => panic!("expected tool names"),
         }
@@ -177,7 +185,7 @@ mod tests {
         match result.get("makefile_content") {
             Some(Value::Str(content)) => {
                 assert!(content.contains("gist:"));
-                assert!(content.contains("buck2:"));
+                assert!(content.contains("deps:"));
             }
             _ => panic!("expected makefile content"),
         }

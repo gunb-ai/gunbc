@@ -30,10 +30,7 @@ use std::collections::HashSet;
 ///
 /// This bridges the gap between the declarative `InstallInputs` and the
 /// legacy `PlatformInstall` that the `Installer` expects.
-pub fn install_inputs_to_platform_install(
-    pm_id: &str,
-    inputs: &InstallInputs,
-) -> PlatformInstall {
+pub fn install_inputs_to_platform_install(pm_id: &str, inputs: &InstallInputs) -> PlatformInstall {
     let packages = inputs
         .packages
         .map(|pkgs| pkgs.iter().map(|s| s.to_string()).collect())
@@ -88,8 +85,12 @@ pub fn generate_tool_install_cmd(
     available_pms: &HashSet<&str>,
     installer: &Installer,
 ) -> Result<String, String> {
-    let platform_install = tool_to_platform_install(tool, available_pms)
-        .ok_or_else(|| format!("no install option for {} with available PMs: {:?}", tool.id, available_pms))?;
+    let platform_install = tool_to_platform_install(tool, available_pms).ok_or_else(|| {
+        format!(
+            "no install option for {} with available PMs: {:?}",
+            tool.id, available_pms
+        )
+    })?;
 
     installer.generate_install_cmd(&platform_install)
 }
@@ -137,7 +138,11 @@ verify = "{}"
 
     // Add depends_on if present
     if !tool.depends_on.is_empty() {
-        let deps: Vec<_> = tool.depends_on.iter().map(|d| format!("\"{}\"", d)).collect();
+        let deps: Vec<_> = tool
+            .depends_on
+            .iter()
+            .map(|d| format!("\"{}\"", d))
+            .collect();
         entry.push_str(&format!("depends_on = [{}]\n", deps.join(", ")));
     }
 
@@ -229,7 +234,7 @@ pub fn generate_deps_toml_from_registry() -> String {
 mod tests {
     use super::*;
     use crate::platform::Platform;
-    use gunbc_ir::transport::{GIT, GH_TOOL};
+    use gunbc_ir::transport::{GH_TOOL, GIT};
 
     #[test]
     fn test_install_inputs_to_platform_install_packages() {

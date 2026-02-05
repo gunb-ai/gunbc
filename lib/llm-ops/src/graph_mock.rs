@@ -15,8 +15,20 @@
 //! the `parse` node then converts to unified outputs.
 
 use gunbc_ir::transport::llm::mock;
-use gunbc_ir::{Value, SecretString};
+use gunbc_ir::{SecretString, Value};
 use gunbc_test::{InputConstraint, MockSpec, NodeExample, OutputMatcher};
+use std::collections::BTreeMap;
+
+fn mock_auth_token(service: &str, env_var: &str) -> Value {
+    let mut map = BTreeMap::new();
+    map.insert("service".to_string(), Value::Str(service.to_string()));
+    map.insert("env_var".to_string(), Value::Str(env_var.to_string()));
+    map.insert(
+        "token".to_string(),
+        Value::Secret(SecretString::new("<MOCK_API_KEY>")),
+    );
+    Value::Map(map)
+}
 
 /// Mock specification for OpenAI chat completion.
 ///
@@ -37,14 +49,26 @@ pub fn openai_mock_spec() -> MockSpec {
         // Input mocks for DAG entry points (dangling inputs on prepare node)
         .input_mock("prepare", "provider", Value::Str("openai".into()))
         .input_mock("prepare", "model", Value::Str("gpt-4o".into()))
-        .input_mock("prepare", "messages", Value::Json(serde_json::json!([
-            {"role": "user", "content": "Review this code: fn main() {}"}
-        ])))
+        .input_mock(
+            "prepare",
+            "messages",
+            Value::Json(serde_json::json!([
+                {"role": "user", "content": "Review this code: fn main() {}"}
+            ])),
+        )
+        // Env: resolved auth token
+        .boundary(
+            "auth_env",
+            "auth:llm",
+            mock_auth_token("openai", "OPENAI_API_KEY"),
+        )
         // Transport mock: execute node response (DryRun interception)
         .transport_mock(
             "execute",
             "response",
-            Value::Response(gunbc_ir::transport::TransportResponse::Rest(response.clone())),
+            Value::Response(gunbc_ir::transport::TransportResponse::Rest(
+                response.clone(),
+            )),
         )
         // Boundary: execute (transport) outputs (for documentation/chain validation)
         .boundary(
@@ -58,20 +82,15 @@ pub fn openai_mock_spec() -> MockSpec {
             "content",
             Value::Str("The code looks good. No issues found.".into()),
         )
-        .boundary(
-            "parse",
-            "model",
-            Value::Str("gpt-4o".into()),
-        )
-        .boundary(
-            "parse",
-            "finish_reason",
-            Value::Str("Stop".into()),
-        )
+        .boundary("parse", "model", Value::Str("gpt-4o".into()))
+        .boundary("parse", "finish_reason", Value::Str("Stop".into()))
         .boundary("parse", "input_tokens", Value::Int(10))
         .boundary("parse", "output_tokens", Value::Int(20))
         // Input expectations
-        .expects_input("provider", InputConstraint::OneOf(vec![Value::Str("openai".into())]))
+        .expects_input(
+            "provider",
+            InputConstraint::OneOf(vec![Value::Str("openai".into())]),
+        )
         .expects_input("model", InputConstraint::NonEmpty)
         .expects_input("messages", InputConstraint::NonEmpty)
         // Node I/O examples: verify pure node behavior
@@ -81,20 +100,40 @@ pub fn openai_mock_spec() -> MockSpec {
                 .input("model", Value::Str("gpt-4o".into()))
                 .input("messages", Value::Str("Hello".into()))
                 .output("request", OutputMatcher::non_empty())
-                .output("provider", OutputMatcher::exact(Value::Str("openai".into())))
+                .output(
+                    "provider",
+                    OutputMatcher::exact(Value::Str("openai".into())),
+                )
                 .description("OpenAI prepare emits REST request and echoes provider"),
+        )
+        .node_example(
+            NodeExample::new("resolve_auth")
+                .input("provider", Value::Str("openai".into()))
+                .output("service", OutputMatcher::exact(Value::Str("openai".into())))
+                .output(
+                    "env_var",
+                    OutputMatcher::exact(Value::Str("OPENAI_API_KEY".into())),
+                )
+                .description("Resolve auth maps OpenAI provider to API key env var"),
         )
         .node_example(
             NodeExample::new("parse")
                 .input("provider", Value::Str("openai".into()))
-                .input("response", Value::Response(
-                    gunbc_ir::transport::TransportResponse::Rest(
-                        mock::mock_openai_response("Test response content.")
-                    )
-                ))
-                .output("content", OutputMatcher::exact(Value::Str("Test response content.".into())))
+                .input(
+                    "response",
+                    Value::Response(gunbc_ir::transport::TransportResponse::Rest(
+                        mock::mock_openai_response("Test response content."),
+                    )),
+                )
+                .output(
+                    "content",
+                    OutputMatcher::exact(Value::Str("Test response content.".into())),
+                )
                 .output("model", OutputMatcher::exact(Value::Str("gpt-4o".into())))
-                .output("finish_reason", OutputMatcher::exact(Value::Str("Stop".into())))
+                .output(
+                    "finish_reason",
+                    OutputMatcher::exact(Value::Str("Stop".into())),
+                )
                 .output("input_tokens", OutputMatcher::exact(Value::Int(10)))
                 .output("output_tokens", OutputMatcher::exact(Value::Int(20)))
                 .description("OpenAI parse extracts content, model, tokens from REST response"),
@@ -107,6 +146,7 @@ pub fn openai_mock_spec() -> MockSpec {
                 .output("model", OutputMatcher::Any)
                 .description("OpenAI parse handles skipped transport response"),
         )
+        .skip_node_example("auth_env")
 }
 
 /// Mock specification for Anthropic chat completion.
@@ -122,15 +162,31 @@ pub fn anthropic_mock_spec() -> MockSpec {
     MockSpec::new("llm-anthropic")
         // Input mocks for DAG entry points (dangling inputs on prepare node)
         .input_mock("prepare", "provider", Value::Str("anthropic".into()))
-        .input_mock("prepare", "model", Value::Str("claude-sonnet-4-20250514".into()))
-        .input_mock("prepare", "messages", Value::Json(serde_json::json!([
-            {"role": "user", "content": "Review this function for edge cases"}
-        ])))
+        .input_mock(
+            "prepare",
+            "model",
+            Value::Str("claude-sonnet-4-20250514".into()),
+        )
+        .input_mock(
+            "prepare",
+            "messages",
+            Value::Json(serde_json::json!([
+                {"role": "user", "content": "Review this function for edge cases"}
+            ])),
+        )
+        // Env: resolved auth token
+        .boundary(
+            "auth_env",
+            "auth:llm",
+            mock_auth_token("anthropic", "ANTHROPIC_API_KEY"),
+        )
         // Transport mock: execute node response (DryRun interception)
         .transport_mock(
             "execute",
             "response",
-            Value::Response(gunbc_ir::transport::TransportResponse::Rest(response.clone())),
+            Value::Response(gunbc_ir::transport::TransportResponse::Rest(
+                response.clone(),
+            )),
         )
         // Boundary: execute (transport) outputs (for documentation/chain validation)
         .boundary(
@@ -151,11 +207,7 @@ pub fn anthropic_mock_spec() -> MockSpec {
             "model",
             Value::Str("claude-sonnet-4-20250514".into()),
         )
-        .boundary(
-            "parse",
-            "finish_reason",
-            Value::Str("Stop".into()),
-        )
+        .boundary("parse", "finish_reason", Value::Str("Stop".into()))
         .boundary("parse", "input_tokens", Value::Int(10))
         .boundary("parse", "output_tokens", Value::Int(20))
         // Input expectations
@@ -172,20 +224,46 @@ pub fn anthropic_mock_spec() -> MockSpec {
                 .input("model", Value::Str("claude-sonnet-4-20250514".into()))
                 .input("messages", Value::Str("Hello".into()))
                 .output("request", OutputMatcher::non_empty())
-                .output("provider", OutputMatcher::exact(Value::Str("anthropic".into())))
+                .output(
+                    "provider",
+                    OutputMatcher::exact(Value::Str("anthropic".into())),
+                )
                 .description("Anthropic prepare emits REST request and echoes provider"),
+        )
+        .node_example(
+            NodeExample::new("resolve_auth")
+                .input("provider", Value::Str("anthropic".into()))
+                .output(
+                    "service",
+                    OutputMatcher::exact(Value::Str("anthropic".into())),
+                )
+                .output(
+                    "env_var",
+                    OutputMatcher::exact(Value::Str("ANTHROPIC_API_KEY".into())),
+                )
+                .description("Resolve auth maps Anthropic provider to API key env var"),
         )
         .node_example(
             NodeExample::new("parse")
                 .input("provider", Value::Str("anthropic".into()))
-                .input("response", Value::Response(
-                    gunbc_ir::transport::TransportResponse::Rest(
-                        mock::mock_anthropic_response("Anthropic test response.")
-                    )
-                ))
-                .output("content", OutputMatcher::exact(Value::Str("Anthropic test response.".into())))
-                .output("model", OutputMatcher::exact(Value::Str("claude-sonnet-4-20250514".into())))
-                .output("finish_reason", OutputMatcher::exact(Value::Str("Stop".into())))
+                .input(
+                    "response",
+                    Value::Response(gunbc_ir::transport::TransportResponse::Rest(
+                        mock::mock_anthropic_response("Anthropic test response."),
+                    )),
+                )
+                .output(
+                    "content",
+                    OutputMatcher::exact(Value::Str("Anthropic test response.".into())),
+                )
+                .output(
+                    "model",
+                    OutputMatcher::exact(Value::Str("claude-sonnet-4-20250514".into())),
+                )
+                .output(
+                    "finish_reason",
+                    OutputMatcher::exact(Value::Str("Stop".into())),
+                )
                 .output("input_tokens", OutputMatcher::exact(Value::Int(10)))
                 .output("output_tokens", OutputMatcher::exact(Value::Int(20)))
                 .description("Anthropic parse extracts content, model, tokens from REST response"),
@@ -198,6 +276,7 @@ pub fn anthropic_mock_spec() -> MockSpec {
                 .output("model", OutputMatcher::Any)
                 .description("Anthropic parse handles skipped transport response"),
         )
+        .skip_node_example("auth_env")
 }
 
 /// Mock specification for code review workflow.
@@ -224,6 +303,12 @@ Overall: The code is clean and well-structured. Minor fixes recommended.";
             {"role": "system", "content": "You are a code reviewer. Review the following code."},
             {"role": "user", "content": "fn main() { let x = Some(1); x.unwrap(); }"}
         ])))
+        // Env: resolved auth token
+        .boundary(
+            "auth_env",
+            "auth:llm",
+            mock_auth_token("openai", "OPENAI_API_KEY"),
+        )
         // Transport mock: execute node response
         .transport_mock(
             "execute",
@@ -258,6 +343,16 @@ Overall: The code is clean and well-structured. Minor fixes recommended.";
                 .description("Code review prepare emits REST request"),
         )
         .node_example(
+            NodeExample::new("resolve_auth")
+                .input("provider", Value::Str("openai".into()))
+                .output("service", OutputMatcher::exact(Value::Str("openai".into())))
+                .output(
+                    "env_var",
+                    OutputMatcher::exact(Value::Str("OPENAI_API_KEY".into())),
+                )
+                .description("Resolve auth maps OpenAI provider to API key env var"),
+        )
+        .node_example(
             NodeExample::new("parse")
                 .input("provider", Value::Str("openai".into()))
                 .input("response", Value::Response(
@@ -277,6 +372,7 @@ Overall: The code is clean and well-structured. Minor fixes recommended.";
                 .output("model", OutputMatcher::Any)
                 .description("Code review parse handles skipped transport response"),
         )
+        .skip_node_example("auth_env")
 }
 
 /// Mock specification for testing API key as secret.
@@ -290,14 +386,26 @@ pub fn secret_api_key_mock_spec() -> MockSpec {
         // Input mocks for DAG entry points
         .input_mock("prepare", "provider", Value::Str("openai".into()))
         .input_mock("prepare", "model", Value::Str("gpt-4o".into()))
-        .input_mock("prepare", "messages", Value::Json(serde_json::json!([
-            {"role": "user", "content": "Hello with auth"}
-        ])))
+        .input_mock(
+            "prepare",
+            "messages",
+            Value::Json(serde_json::json!([
+                {"role": "user", "content": "Hello with auth"}
+            ])),
+        )
+        // Env: resolved auth token
+        .boundary(
+            "auth_env",
+            "auth:llm",
+            mock_auth_token("openai", "OPENAI_API_KEY"),
+        )
         // Transport mock: execute node response
         .transport_mock(
             "execute",
             "response",
-            Value::Response(gunbc_ir::transport::TransportResponse::Rest(response.clone())),
+            Value::Response(gunbc_ir::transport::TransportResponse::Rest(
+                response.clone(),
+            )),
         )
         .boundary(
             "resolve_api_key",
@@ -333,14 +441,28 @@ pub fn secret_api_key_mock_spec() -> MockSpec {
                 .description("Secret auth prepare emits REST request"),
         )
         .node_example(
+            NodeExample::new("resolve_auth")
+                .input("provider", Value::Str("openai".into()))
+                .output("service", OutputMatcher::exact(Value::Str("openai".into())))
+                .output(
+                    "env_var",
+                    OutputMatcher::exact(Value::Str("OPENAI_API_KEY".into())),
+                )
+                .description("Resolve auth maps OpenAI provider to API key env var"),
+        )
+        .node_example(
             NodeExample::new("parse")
                 .input("provider", Value::Str("openai".into()))
-                .input("response", Value::Response(
-                    gunbc_ir::transport::TransportResponse::Rest(
-                        mock::mock_openai_response("Authenticated response.")
-                    )
-                ))
-                .output("content", OutputMatcher::exact(Value::Str("Authenticated response.".into())))
+                .input(
+                    "response",
+                    Value::Response(gunbc_ir::transport::TransportResponse::Rest(
+                        mock::mock_openai_response("Authenticated response."),
+                    )),
+                )
+                .output(
+                    "content",
+                    OutputMatcher::exact(Value::Str("Authenticated response.".into())),
+                )
                 .output("model", OutputMatcher::exact(Value::Str("gpt-4o".into())))
                 .description("Secret auth parse extracts content from REST response"),
         )
@@ -352,6 +474,7 @@ pub fn secret_api_key_mock_spec() -> MockSpec {
                 .output("model", OutputMatcher::Any)
                 .description("Secret auth parse handles skipped transport response"),
         )
+        .skip_node_example("auth_env")
 }
 
 /// Mock specification for testing rate limiting / error scenarios.
@@ -366,14 +489,26 @@ pub fn rate_limited_mock_spec() -> MockSpec {
         // Input mocks for DAG entry points
         .input_mock("prepare", "provider", Value::Str("openai".into()))
         .input_mock("prepare", "model", Value::Str("gpt-4o".into()))
-        .input_mock("prepare", "messages", Value::Json(serde_json::json!([
-            {"role": "user", "content": "This request will be rate limited"}
-        ])))
+        .input_mock(
+            "prepare",
+            "messages",
+            Value::Json(serde_json::json!([
+                {"role": "user", "content": "This request will be rate limited"}
+            ])),
+        )
+        // Env: resolved auth token
+        .boundary(
+            "auth_env",
+            "auth:llm",
+            mock_auth_token("openai", "OPENAI_API_KEY"),
+        )
         // Transport mock: execute node returns error response
         .transport_mock(
             "execute",
             "response",
-            Value::Response(gunbc_ir::transport::TransportResponse::Rest(error_response.clone())),
+            Value::Response(gunbc_ir::transport::TransportResponse::Rest(
+                error_response.clone(),
+            )),
         )
         .boundary(
             "execute",
@@ -383,6 +518,17 @@ pub fn rate_limited_mock_spec() -> MockSpec {
         .expects_input("provider", InputConstraint::NonEmpty)
         .expects_input("model", InputConstraint::NonEmpty)
         .expects_input("messages", InputConstraint::NonEmpty)
+        .node_example(
+            NodeExample::new("resolve_auth")
+                .input("provider", Value::Str("openai".into()))
+                .output("service", OutputMatcher::exact(Value::Str("openai".into())))
+                .output(
+                    "env_var",
+                    OutputMatcher::exact(Value::Str("OPENAI_API_KEY".into())),
+                )
+                .description("Resolve auth maps OpenAI provider to API key env var"),
+        )
+        .skip_node_example("auth_env")
 }
 
 #[cfg(test)]
@@ -454,7 +600,7 @@ mod tests {
 
         // Should not timeout before duration
         assert!(!resource.should_timeout(1_800_000)); // 30 min
-        // Should timeout after duration
+                                                      // Should timeout after duration
         assert!(resource.should_timeout(3_600_001)); // 1 hour + 1ms
     }
 }

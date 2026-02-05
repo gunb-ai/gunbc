@@ -153,7 +153,11 @@ impl<T: Clone> LoopBuilder<T> {
         dag.add_node(Node::opaque(
             "pack",
             vec![
-                Port::with_cardinality("result", self.element_port_type.as_str(), self.input_cardinality),
+                Port::with_cardinality(
+                    "result",
+                    self.element_port_type.as_str(),
+                    self.input_cardinality,
+                ),
                 Port::scalar("count", "Int"),
             ],
             vec![
@@ -170,7 +174,12 @@ impl<T: Clone> LoopBuilder<T> {
         ));
 
         // Wire the internal nodes
-        dag.add_edge(Edge::new("unpack", self.element_port_name.as_str(), "body", self.element_port_name.as_str()));
+        dag.add_edge(Edge::new(
+            "unpack",
+            self.element_port_name.as_str(),
+            "body",
+            self.element_port_name.as_str(),
+        ));
         dag.add_edge(Edge::new("body", "result", "pack", "result"));
         dag.add_edge(Edge::new("unpack", "count", "pack", "count"));
 
@@ -192,7 +201,9 @@ mod tests {
             "transform",
             vec![Port::scalar("element", "String")],
             vec![Port::scalar("result", "String")],
-            PatternOp::LoopPack { output_port: "result".into() },
+            PatternOp::LoopPack {
+                output_port: "result".into(),
+            },
         ));
         dag
     }
@@ -214,9 +225,7 @@ mod tests {
 
     #[test]
     fn test_loop_subdag_structure() {
-        let node = LoopBuilder::new("test")
-            .with_body(make_loop_body())
-            .build();
+        let node = LoopBuilder::new("test").with_body(make_loop_body()).build();
 
         match &node.body {
             NodeBody::SubDag(dag) => {
@@ -251,9 +260,7 @@ mod tests {
     fn test_loop_interface_validates() {
         use crate::validate::validate_subdag_interfaces;
 
-        let node = LoopBuilder::new("loop")
-            .with_body(make_loop_body())
-            .build();
+        let node = LoopBuilder::new("loop").with_body(make_loop_body()).build();
 
         let mut dag: Dag<TestOp> = Dag::new();
         dag.add_node(node);

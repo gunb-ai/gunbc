@@ -308,9 +308,7 @@ mod tests {
 
     #[test]
     fn test_file_location_builder() {
-        let loc = FileLocation::new("src/main.rs")
-            .with_line(42)
-            .with_col(10);
+        let loc = FileLocation::new("src/main.rs").with_line(42).with_col(10);
 
         assert_eq!(loc.file, "src/main.rs");
         assert_eq!(loc.line, Some(42));
@@ -320,10 +318,18 @@ mod tests {
     #[test]
     fn test_workflow_command_constructors() {
         let group = WorkflowCommand::group_start("test");
-        assert!(matches!(group, WorkflowCommand::GroupStart { name, collapsed } 
-            if name == "test" && !collapsed));
+        assert!(
+            matches!(group, WorkflowCommand::GroupStart { name, collapsed } 
+            if name == "test" && !collapsed)
+        );
 
         let error = WorkflowCommand::error("oops");
-        assert!(matches!(error, WorkflowCommand::Annotation { level: AnnotationLevel::Error, .. }));
+        assert!(matches!(
+            error,
+            WorkflowCommand::Annotation {
+                level: AnnotationLevel::Error,
+                ..
+            }
+        ));
     }
 }

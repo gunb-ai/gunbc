@@ -2,11 +2,11 @@
 //!
 //! Wraps the makegen tool as a SubDag node using WorkspaceOp.
 
+use crate::makegen::MakegenOp;
 use crate::workspace::WorkspaceOp;
 use gunbc_ir::build::*;
 use gunbc_ir::{DagBuilder, Node};
 use gunbc_lib_transport::TransportOps;
-use crate::makegen::MakegenOp;
 use gunbc_primitives::PrepareFileWriteOp;
 
 /// Build the makegen SubDag node.
@@ -35,7 +35,7 @@ pub fn build_makegen_subdag() -> Node<WorkspaceOp> {
             vec![],
             vec![
                 scalar("tool_count", "Int"),
-                non_empty_list("tool_names", "List"),
+                non_empty_list("tool_names", "String"),
                 scalar("registry", "Json"),
             ],
             WorkspaceOp::Makegen(MakegenOp::LoadRegistry),
@@ -110,10 +110,7 @@ pub fn build_makegen_subdag() -> Node<WorkspaceOp> {
     let inner_dag = builder.build();
 
     // Wrap as SubDag with explicit I/O interface
-    Node::subdag(
-        "makegen",
-        inner_dag,
-    )
+    Node::subdag("makegen", inner_dag)
 }
 
 #[cfg(test)]

@@ -3,8 +3,10 @@
 use gunbc_exec::{execute_with_mode, BoundaryMocks, ExecutionMode};
 use gunbc_gist::{build_gist_graph, GistMode};
 use gunbc_ir::transport::{ShellResponse, TransportResponse};
-use gunbc_ir::{detect_boundaries, Value};
+use gunbc_ir::{detect_boundaries, Timestamp, Value};
+use gunbc_primitives::filename;
 use gunbc_test::assert_boundary_mockable;
+use std::time::SystemTime;
 
 /// Helper: mock for execute_current_branch boundary.
 fn mock_current_branch(mocks: &mut BoundaryMocks, branch: &str) {
@@ -19,13 +21,22 @@ fn mock_current_branch(mocks: &mut BoundaryMocks, branch: &str) {
     );
 }
 
+fn mock_env(mocks: &mut BoundaryMocks) {
+    let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
+    mocks.set_value("fs_env", "fs:write", fs.into());
+    let clock = Timestamp::from_system_time(SystemTime::UNIX_EPOCH);
+    mocks.set_value("clock_env", "clock", clock.into());
+}
+
 /// Test that dry-run mode intercepts the transport boundaries.
 #[test]
 fn test_dry_run_intercepts_transport() {
-    let dag = build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
+    let dag =
+        build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
 
     // Set up dry-run mode with mocks for all transport boundaries
     let mut mocks = BoundaryMocks::new();
+    mock_env(&mut mocks);
 
     // Mock for execute_list_files (list files transport)
     mocks.set_value(
@@ -44,7 +55,9 @@ fn test_dry_run_intercepts_transport() {
         "response",
         Value::Response(TransportResponse::Shell(ShellResponse {
             exit_code: 0,
-            stdout: "===GUNBC_FILE:src/main.rs===\nfn main() {}\n===GUNBC_FILE:README.md===\n# README\n".to_string(),
+            stdout:
+                "===GUNBC_FILE:src/main.rs===\nfn main() {}\n===GUNBC_FILE:README.md===\n# README\n"
+                    .to_string(),
             stderr: String::new(),
         })),
     );
@@ -103,7 +116,10 @@ fn test_dry_run_intercepts_transport() {
         .get("parse_gist_response")
         .expect("parse_gist_response should be in log");
     match parse_gist_entry.outputs.get("url") {
-        Some(Value::Str(url)) => assert!(url.contains("mock.gist"), "expected URL to contain mock.gist"),
+        Some(Value::Str(url)) => assert!(
+            url.contains("mock.gist"),
+            "expected URL to contain mock.gist"
+        ),
         _ => panic!("expected url output"),
     }
 
@@ -128,7 +144,8 @@ fn test_dry_run_intercepts_transport() {
 /// Test that the graph structure correctly identifies boundaries.
 #[test]
 fn test_boundary_detection() {
-    let dag = build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
+    let dag =
+        build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
     let boundaries = detect_boundaries(&dag);
 
     // parse_gist_response is the terminal boundary (outputs url)
@@ -146,10 +163,12 @@ fn test_boundary_detection() {
 /// Test that the gist graph passes the boundary mockable test.
 #[test]
 fn test_gist_graph_boundary_mockable() {
-    let dag = build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
+    let dag =
+        build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
 
     // Need proper typed mocks for all transport boundaries
     let mut mocks = BoundaryMocks::new();
+    mock_env(&mut mocks);
 
     // Mock execute_list_files
     mocks.set_value(
@@ -197,13 +216,16 @@ fn test_gist_graph_boundary_mockable() {
     // execute_gist is a transport executor boundary
     assert!(result.boundary_nodes.contains(&"execute_gist".to_string()));
     // execute_current_branch is also a transport boundary
-    assert!(result.boundary_nodes.contains(&"execute_current_branch".to_string()));
+    assert!(result
+        .boundary_nodes
+        .contains(&"execute_current_branch".to_string()));
 }
 
 /// Test that real mode does NOT intercept boundaries.
 #[test]
 fn test_real_mode_no_interception() {
-    let dag = build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
+    let dag =
+        build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
 
     // Real mode - note: this will fail at transport nodes if gh isn't authenticated,
     // but we can still verify that pure nodes executed without interception
@@ -237,9 +259,11 @@ fn test_real_mode_no_interception() {
 /// gist request creation with the branch-based filename.
 #[test]
 fn test_branch_name_in_gist_filename() {
-    let dag = build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
+    let dag =
+        build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
 
     let mut mocks = BoundaryMocks::new();
+    mock_env(&mut mocks);
 
     mocks.set_value(
         "execute_list_files",
@@ -280,7 +304,10 @@ fn test_branch_name_in_gist_filename() {
     match prepare_gist.outputs.get("request") {
         Some(Value::Request(gunbc_ir::transport::TransportRequest::Shell(req))) => {
             // The filename should contain the sanitized branch name (slashes → hyphens)
-            let filename_arg = req.args.iter().find(|a| a.contains("claude-improve-gist-filename"));
+            let filename_arg = req
+                .args
+                .iter()
+                .find(|a| a.contains("claude-improve-gist-filename"));
             assert!(
                 filename_arg.is_some(),
                 "expected sanitized branch name in filename, got args: {:?}",
@@ -297,7 +324,10 @@ fn test_branch_name_in_gist_filename() {
                 "filename should contain timestamp separators"
             );
         }
-        other => panic!("expected shell request from prepare_gist_request, got: {:?}", other),
+        other => panic!(
+            "expected shell request from prepare_gist_request, got: {:?}",
+            other
+        ),
     }
 }
 
@@ -322,10 +352,10 @@ fn test_platform_challenging_branch_names() {
     ];
 
     for (branch, expected_prefix) in challenging_branches {
-        let dag = build_gist_graph(GistMode::Snapshot, vec![], false)
-            .expect("graph should build");
+        let dag = build_gist_graph(GistMode::Snapshot, vec![], false).expect("graph should build");
 
         let mut mocks = BoundaryMocks::new();
+        mock_env(&mut mocks);
         mocks.set_value(
             "execute_list_files",
             "response",
@@ -366,10 +396,15 @@ fn test_platform_challenging_branch_names() {
                 assert!(
                     filename_arg.is_some(),
                     "branch '{}': expected filename starting with '{}', got args: {:?}",
-                    branch, expected_prefix, req.args
+                    branch,
+                    expected_prefix,
+                    req.args
                 );
             }
-            other => panic!("branch '{}': expected shell request, got: {:?}", branch, other),
+            other => panic!(
+                "branch '{}': expected shell request, got: {:?}",
+                branch, other
+            ),
         }
     }
 }

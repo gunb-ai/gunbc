@@ -4,7 +4,7 @@
 //! Provides both install and generate workflows.
 
 use crate::workspace::WorkspaceOp;
-use gunbc_deps::DepsOp;
+use gunbc_deps::{DepsOp, PlatformEnv};
 use gunbc_ir::build::*;
 use gunbc_ir::{DagBuilder, Node};
 use gunbc_lib_transport::TransportOps;
@@ -31,6 +31,16 @@ use gunbc_primitives::PrepareFileWriteOp;
 /// - `script`: String - Generated install script
 pub fn build_deps_install_subdag() -> Node<WorkspaceOp> {
     let mut builder: DagBuilder<WorkspaceOp> = DagBuilder::new();
+
+    // Platform env (resource acquisition)
+    let platform_env = builder
+        .add_root_node(Node::opaque(
+            "platform_env",
+            vec![],
+            vec![port("platform", "Platform")],
+            WorkspaceOp::DepsEnv(PlatformEnv),
+        ))
+        .expect("platform_env node");
 
     // Node: PrepareLoadManifest (PURE)
     let prepare_load = builder
@@ -69,7 +79,7 @@ pub fn build_deps_install_subdag() -> Node<WorkspaceOp> {
                 ],
                 vec![
                     scalar("dep_count", "Int"),
-                    list("dep_names", "List"),
+                    list("dep_names", "String"),
                     scalar("manifest_path", "String"),
                     scalar("manifest_content", "String"),
                 ],
@@ -84,11 +94,14 @@ pub fn build_deps_install_subdag() -> Node<WorkspaceOp> {
         .add_node_after(
             Node::opaque(
                 "generate_scripts",
-                vec![scalar("manifest_content", "String")],
+                vec![
+                    scalar("manifest_content", "String"),
+                    scalar("res:platform", "Platform"),
+                ],
                 vec![
                     scalar("install_script", "String"),
-                    list("already_installed", "List"),
-                    list("needs_install", "List"),
+                    list("already_installed", "String"),
+                    list("needs_install", "String"),
                     scalar("platform", "String"),
                 ],
                 WorkspaceOp::Deps(DepsOp::GenerateScripts),
@@ -103,7 +116,10 @@ pub fn build_deps_install_subdag() -> Node<WorkspaceOp> {
             Node::opaque(
                 "prepare_execute_installs",
                 vec![scalar("install_script", "String")],
-                vec![port("request", "TransportRequest"), port("script", "String")],
+                vec![
+                    port("request", "TransportRequest"),
+                    port("script", "String"),
+                ],
                 WorkspaceOp::Deps(DepsOp::PrepareExecuteInstalls),
             ),
             &generate_scripts,
@@ -147,10 +163,7 @@ pub fn build_deps_install_subdag() -> Node<WorkspaceOp> {
 
     // Wire up the pipeline
     builder
-        .add_edge(
-            prepare_load.out("request"),
-            execute_load.in_port("request"),
-        )
+        .add_edge(prepare_load.out("request"), execute_load.in_port("request"))
         .expect("request edge");
     builder
         .add_edge(
@@ -170,6 +183,12 @@ pub fn build_deps_install_subdag() -> Node<WorkspaceOp> {
             generate_scripts.in_port("manifest_content"),
         )
         .expect("manifest_content edge");
+    builder
+        .add_edge(
+            platform_env.out("platform"),
+            generate_scripts.in_port("res:platform"),
+        )
+        .expect("platform edge");
     builder
         .add_edge(
             generate_scripts.out("install_script"),
@@ -198,10 +217,7 @@ pub fn build_deps_install_subdag() -> Node<WorkspaceOp> {
     let inner_dag = builder.build();
 
     // Wrap as SubDag with explicit I/O interface
-    Node::subdag(
-        "deps_install",
-        inner_dag,
-    )
+    Node::subdag("deps_install", inner_dag)
 }
 
 /// Build the deps generate SubDag node.
@@ -229,7 +245,7 @@ pub fn build_deps_generate_subdag() -> Node<WorkspaceOp> {
             vec![],
             vec![
                 scalar("tool_count", "Int"),
-                non_empty_list("tool_names", "List"),
+                non_empty_list("tool_names", "String"),
             ],
             WorkspaceOp::Deps(DepsOp::LoadToolRegistry),
         ))
@@ -253,7 +269,10 @@ pub fn build_deps_generate_subdag() -> Node<WorkspaceOp> {
         .add_node_after(
             Node::opaque(
                 "prepare_file_write",
-                vec![scalar("content", "String"), optional("output_path", "String")],
+                vec![
+                    scalar("content", "String"),
+                    optional("output_path", "String"),
+                ],
                 vec![port("request", "TransportRequest")],
                 WorkspaceOp::Primitive(gunbc_primitives::PrimitiveOp::PrepareFileWrite(
                     PrepareFileWriteOp,
@@ -296,10 +315,7 @@ pub fn build_deps_generate_subdag() -> Node<WorkspaceOp> {
 
     let inner_dag = builder.build();
 
-    Node::subdag(
-        "deps_generate",
-        inner_dag,
-    )
+    Node::subdag("deps_generate", inner_dag)
 }
 
 #[cfg(test)]
@@ -320,8 +336,8 @@ mod tests {
 
         match &node.body {
             NodeBody::SubDag(dag) => {
-                // 7 nodes in install pipeline
-                assert_eq!(dag.nodes.len(), 7);
+                // 8 nodes in install pipeline (includes platform_env)
+                assert_eq!(dag.nodes.len(), 8);
             }
             _ => panic!("Expected SubDag"),
         }

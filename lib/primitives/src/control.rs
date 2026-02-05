@@ -63,7 +63,10 @@ impl Executable for BranchOp {
 
         // Get both possible values
         let if_true = inputs.get("if_true").cloned().unwrap_or(Value::Bool(true));
-        let if_false = inputs.get("if_false").cloned().unwrap_or(Value::Bool(false));
+        let if_false = inputs
+            .get("if_false")
+            .cloned()
+            .unwrap_or(Value::Bool(false));
 
         let output = if condition { if_true } else { if_false };
         let branch = if condition { "true" } else { "false" };

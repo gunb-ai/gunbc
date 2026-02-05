@@ -14,8 +14,8 @@
 #![allow(dead_code)]
 
 use crate::dag::{Dag, Port};
-use crate::node::Node;
 use crate::language::LanguageOp;
+use crate::node::Node;
 
 /// Type mappings for a specific language.
 #[derive(Debug, Clone)]
@@ -97,10 +97,7 @@ pub fn build_type_system_mapping_subdag() -> Node<LanguageOp> {
     ));
 
     // Create the SubDag node with interface
-    Node::subdag(
-        "type_system",
-        inner,
-    )
+    Node::subdag("type_system", inner)
 }
 
 /// Map an abstract type to a language-specific type.
@@ -177,8 +174,14 @@ mod tests {
         assert_eq!(map_type("String", "rust"), Some("String".to_string()));
         assert_eq!(map_type("Int", "rust"), Some("i64".to_string()));
         assert_eq!(map_type("Bool", "rust"), Some("bool".to_string()));
-        assert_eq!(map_type("List<String>", "rust"), Some("Vec<String>".to_string()));
-        assert_eq!(map_type("Optional<Int>", "rust"), Some("Option<i64>".to_string()));
+        assert_eq!(
+            map_type("List<String>", "rust"),
+            Some("Vec<String>".to_string())
+        );
+        assert_eq!(
+            map_type("Optional<Int>", "rust"),
+            Some("Option<i64>".to_string())
+        );
     }
 
     #[test]
@@ -186,15 +189,24 @@ mod tests {
         assert_eq!(map_type("String", "python"), Some("str".to_string()));
         assert_eq!(map_type("Int", "python"), Some("int".to_string()));
         assert_eq!(map_type("Bool", "python"), Some("bool".to_string()));
-        assert_eq!(map_type("List<String>", "python"), Some("list[str]".to_string()));
-        assert_eq!(map_type("Optional<Int>", "python"), Some("int | None".to_string()));
+        assert_eq!(
+            map_type("List<String>", "python"),
+            Some("list[str]".to_string())
+        );
+        assert_eq!(
+            map_type("Optional<Int>", "python"),
+            Some("int | None".to_string())
+        );
     }
 
     #[test]
     fn test_map_type_typescript() {
         assert_eq!(map_type("String", "typescript"), Some("string".to_string()));
         assert_eq!(map_type("Int", "typescript"), Some("number".to_string()));
-        assert_eq!(map_type("List<String>", "typescript"), Some("string[]".to_string()));
+        assert_eq!(
+            map_type("List<String>", "typescript"),
+            Some("string[]".to_string())
+        );
     }
 
     #[test]

@@ -3,8 +3,8 @@
 //! - [`TuringComplete`]: Programming languages (Rust, Python, TypeScript)
 //! - [`ConfigFormat`]: Configuration file formats (Makefile, gitignore, YAML)
 
-mod turing;
 mod config;
+mod turing;
 
-pub use turing::build_turing_complete_subdag;
 pub use config::build_config_format_subdag;
+pub use turing::build_turing_complete_subdag;

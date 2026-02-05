@@ -34,14 +34,16 @@ pub struct Import {
 pub struct HelperFn {
     pub name: String,
     pub return_type: String,
-    /// The function body as a single expression (e.g., "crate::graph_mock::mock_spec()").
-    pub body_expr: String,
+    /// The function body as statements.
+    pub body: Vec<Stmt>,
 }
 
 /// A group of related tests with a section header.
 pub struct TestSection {
     /// Section title (e.g., "Bucket A: Execution semantics").
     pub title: String,
+    /// Comment lines immediately under the section header.
+    pub notes: Vec<String>,
     pub tests: Vec<TestFn>,
 }
 
@@ -79,6 +81,10 @@ pub enum Stmt {
     Comment(String),
     /// Blank line for readability.
     Blank,
+    /// Explicit return statement.
+    Return(Expr),
+    /// Implicit return: final expression without semicolon (Rust idiom).
+    TailExpr(Expr),
 }
 
 // ===========================================================================
@@ -86,6 +92,7 @@ pub enum Stmt {
 // ===========================================================================
 
 /// An expression in generated code.
+#[derive(Clone)]
 pub enum Expr {
     /// A value literal.
     Value(ValueExpr),
@@ -94,10 +101,7 @@ pub enum Expr {
     /// A string literal (for keys, messages, identifiers — not Value::Str).
     Str(String),
     /// Function call: `func(args...)`.
-    Call {
-        func: Box<Expr>,
-        args: Vec<Expr>,
-    },
+    Call { func: Box<Expr>, args: Vec<Expr> },
     /// Method call: `receiver.method(args...)`.
     MethodCall {
         receiver: Box<Expr>,
@@ -110,6 +114,8 @@ pub enum Expr {
     Deref(Box<Expr>),
     /// Reference: `&expr`.
     Ref(Box<Expr>),
+    /// Mutable reference: `&mut expr`.
+    RefMut(Box<Expr>),
     /// Path expression: `path::to::Item` (for enum variants, associated fns).
     Path(Vec<String>),
     /// Struct construction: `Name { field: value, ... }`.
@@ -118,19 +124,20 @@ pub enum Expr {
         fields: Vec<(String, Expr)>,
     },
     /// Closure/lambda: `|args| body` / `lambda args: body`.
-    Closure {
-        args: Vec<String>,
-        body: Box<Expr>,
-    },
+    Closure { args: Vec<String>, body: Box<Expr> },
     /// Binary operation: `left op right` (e.g., `n >= 2`, `a == b`).
     BinOp {
         left: Box<Expr>,
         op: String,
         right: Box<Expr>,
     },
+    /// Unary operation: `op expr` (e.g., `!flag`).
+    UnaryOp { op: String, expr: Box<Expr> },
     /// Bare integer literal (not `Value::Int`). For use in expressions
     /// operating on unwrapped values (e.g., closure bodies after `as_int()`).
     IntLit(i64),
+    /// Bare boolean literal (true/false).
+    BoolLit(bool),
 }
 
 // ===========================================================================
@@ -146,15 +153,9 @@ pub enum Assert {
         message: String,
     },
     /// Truthiness: `assert!(expr, message)`.
-    True {
-        expr: Expr,
-        message: String,
-    },
+    True { expr: Expr, message: String },
     /// Non-emptiness: `assert!(!expr.is_empty(), message)`.
-    NonEmpty {
-        expr: Expr,
-        message: String,
-    },
+    NonEmpty { expr: Expr, message: String },
     /// String containment: `assert!(expr.contains(substring), message)`.
     Contains {
         expr: Expr,
@@ -200,6 +201,11 @@ impl Expr {
         }
     }
 
+    /// Shorthand for field access: `self.field`.
+    pub fn field(self, field: impl Into<String>) -> Self {
+        Expr::Field(Box::new(self), field.into())
+    }
+
     /// Shorthand for `.expect("message")`.
     pub fn expect(self, msg: impl Into<String>) -> Self {
         self.method("expect", vec![Expr::Str(msg.into())])
@@ -215,6 +221,11 @@ impl Expr {
         Expr::Ref(Box::new(self))
     }
 
+    /// Shorthand for `&mut self`.
+    pub fn ref_mut(self) -> Self {
+        Expr::RefMut(Box::new(self))
+    }
+
     /// Shorthand for `self op right` (e.g., `n.ge(Expr::int(2))`).
     pub fn bin_op(self, op: impl Into<String>, right: Expr) -> Self {
         Expr::BinOp {
@@ -224,9 +235,27 @@ impl Expr {
         }
     }
 
+    /// Shorthand for unary operations (e.g., `!expr`).
+    pub fn unary(self, op: impl Into<String>) -> Self {
+        Expr::UnaryOp {
+            op: op.into(),
+            expr: Box::new(self),
+        }
+    }
+
+    /// Shorthand for logical not: `!expr`.
+    pub fn logical_not(self) -> Self {
+        self.unary("!")
+    }
+
     /// Shorthand for a bare integer literal (renders as `n`, not `Value::Int(n)`).
     pub fn int(n: i64) -> Self {
         Expr::IntLit(n)
+    }
+
+    /// Shorthand for a bare boolean literal.
+    pub fn bool_lit(b: bool) -> Self {
+        Expr::BoolLit(b)
     }
 }
 
@@ -252,5 +281,15 @@ impl Stmt {
     /// A comment line.
     pub fn comment(text: impl Into<String>) -> Self {
         Stmt::Comment(text.into())
+    }
+
+    /// `return expr;`
+    pub fn ret(expr: Expr) -> Self {
+        Stmt::Return(expr)
+    }
+
+    /// Implicit return: `expr` (no semicolon, no return keyword).
+    pub fn tail(expr: Expr) -> Self {
+        Stmt::TailExpr(expr)
     }
 }

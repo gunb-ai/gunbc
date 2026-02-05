@@ -35,12 +35,14 @@
 //! let result = check.execute()?;
 //! ```
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::marker::PhantomData;
 use std::path::PathBuf;
 use std::process::Command;
 
-use crate::resource::{AccessMode, ResourceId};
+use crate::resource::{
+    capability_marker, ensure_capability_marker, AccessMode, Resource, ResourceId, ResourceKind,
+};
 
 /// Definition of a CLI tool for the upsert pattern.
 ///
@@ -56,21 +58,21 @@ use crate::resource::{AccessMode, ResourceId};
 pub struct CliToolDef {
     /// Unique identifier for this tool
     pub id: &'static str,
-    
+
     /// Command to check if tool is installed.
     /// Typically `["tool", "--version"]` or similar.
     pub check_cmd: &'static [&'static str],
-    
+
     /// Command to install the tool, if automatic installation is supported.
     /// None means the tool must be installed manually.
     pub install_cmd: Option<&'static [&'static str]>,
-    
+
     /// Base command to run the tool. Arguments are appended to this.
     pub run_cmd: &'static [&'static str],
-    
+
     /// Human-readable description
     pub description: &'static str,
-    
+
     /// Resource access mode for this tool (default: Read = parallel-safe).
     /// Tools that modify global state should use Exclusive.
     /// Consumers don't need to know this - the framework handles scheduling.
@@ -176,12 +178,30 @@ impl ToolHandle {
 /// Convert a ToolHandle to a Value for passing through DAG edges.
 impl From<ToolHandle> for crate::Value {
     fn from(handle: ToolHandle) -> Self {
-        // Encode as "tool_handle:{id}:{path}" for reconstruction
-        crate::Value::Str(format!(
-            "tool_handle:{}:{}",
-            handle.tool.id,
-            handle.path.display()
-        ))
+        let mut map = BTreeMap::new();
+        map.insert(
+            "type".to_string(),
+            crate::Value::Str("tool_handle".to_string()),
+        );
+        map.insert(
+            "id".to_string(),
+            crate::Value::Str(handle.tool.id.to_string()),
+        );
+        map.insert(
+            "path".to_string(),
+            crate::Value::Str(handle.path.display().to_string()),
+        );
+        map.insert("cap".to_string(), crate::Value::Secret(capability_marker()));
+        crate::Value::Map(map)
+    }
+}
+
+/// Allow reconstructing a ToolHandle from an owned Value.
+impl TryFrom<crate::Value> for ToolHandle {
+    type Error = ToolHandleParseError;
+
+    fn try_from(value: crate::Value) -> Result<Self, Self::Error> {
+        ToolHandle::try_from(&value)
     }
 }
 
@@ -201,30 +221,46 @@ impl std::error::Error for ToolHandleParseError {}
 
 /// Try to reconstruct a ToolHandle from a Value.
 ///
-/// The Value must be a string in the format "tool_handle:{id}:{path}".
+/// The Value must be a map with a capability marker:
+/// { type = "tool_handle", id = "...", path = "...", cap = <secret> }.
 /// The tool ID must match a known static tool definition.
 impl TryFrom<&crate::Value> for ToolHandle {
     type Error = ToolHandleParseError;
 
     fn try_from(value: &crate::Value) -> Result<Self, Self::Error> {
-        let s = match value {
-            crate::Value::Str(s) => s,
+        let map = match value {
+            crate::Value::Map(m) => m,
             _ => {
                 return Err(ToolHandleParseError {
-                    message: "Expected string value".to_string(),
+                    message: "Expected map value".to_string(),
                 })
             }
         };
 
-        let parts: Vec<&str> = s.splitn(3, ':').collect();
-        if parts.len() != 3 || parts[0] != "tool_handle" {
+        if let Err(e) = ensure_capability_marker(map, "ToolHandle") {
+            return Err(ToolHandleParseError { message: e });
+        }
+
+        let type_field = map.get("type").and_then(crate::Value::as_str).unwrap_or("");
+        if type_field != "tool_handle" {
             return Err(ToolHandleParseError {
-                message: format!("Invalid format: expected 'tool_handle:id:path', got '{}'", s),
+                message: format!("Invalid type: expected 'tool_handle', got '{}'", type_field),
             });
         }
 
-        let tool_id = parts[1];
-        let path = PathBuf::from(parts[2]);
+        let tool_id = map
+            .get("id")
+            .and_then(crate::Value::as_str)
+            .ok_or_else(|| ToolHandleParseError {
+                message: "ToolHandle missing 'id'".to_string(),
+            })?;
+        let path_str = map
+            .get("path")
+            .and_then(crate::Value::as_str)
+            .ok_or_else(|| ToolHandleParseError {
+                message: "ToolHandle missing 'path'".to_string(),
+            })?;
+        let path = PathBuf::from(path_str);
 
         // Look up the static tool definition
         let tool = get_tool_by_id(tool_id).ok_or_else(|| ToolHandleParseError {
@@ -236,6 +272,20 @@ impl TryFrom<&crate::Value> for ToolHandle {
             path,
             _acquired: PhantomData,
         })
+    }
+}
+
+impl Resource for ToolHandle {
+    fn resource_id(&self) -> ResourceId {
+        self.tool.resource_id()
+    }
+
+    fn access_mode(&self) -> AccessMode {
+        self.tool.access_mode
+    }
+
+    fn kind(&self) -> ResourceKind {
+        ResourceKind::Capability
     }
 }
 
@@ -276,14 +326,13 @@ pub struct WhichResolver;
 #[allow(clippy::disallowed_methods)]
 impl ToolPathResolver for WhichResolver {
     fn resolve(&self, tool: &'static CliToolDef) -> Result<PathBuf, CliToolError> {
-        let binary = tool.binary_name().ok_or_else(|| {
-            CliToolError::new(tool, "resolve", "No binary name defined")
-        })?;
+        let binary = tool
+            .binary_name()
+            .ok_or_else(|| CliToolError::new(tool, "resolve", "No binary name defined"))?;
 
-        let output = Command::new("which")
-            .arg(binary)
-            .output()
-            .map_err(|e| CliToolError::new(tool, "resolve", format!("Failed to run which: {}", e)))?;
+        let output = Command::new("which").arg(binary).output().map_err(|e| {
+            CliToolError::new(tool, "resolve", format!("Failed to run which: {}", e))
+        })?;
 
         if !output.status.success() {
             return Err(CliToolError::new(
@@ -321,7 +370,9 @@ impl Default for MockResolver {
 impl MockResolver {
     /// Create an empty mock resolver (all resolutions will fail).
     pub fn new() -> Self {
-        Self { paths: HashMap::new() }
+        Self {
+            paths: HashMap::new(),
+        }
     }
 
     /// Register a resolved path for a tool ID.
@@ -443,11 +494,11 @@ pub enum CliToolOp {
     /// Check if the tool is installed.
     /// Outputs: exists (Bool), output (String)
     Check { tool: &'static CliToolDef },
-    
+
     /// Install the tool.
     /// Outputs: success (Bool), error (String if failed)
     Install { tool: &'static CliToolDef },
-    
+
     /// Run the tool with arguments.
     /// Outputs: success (Bool), stdout (String), stderr (String), exit_code (Int)
     Run {
@@ -461,12 +512,12 @@ impl CliToolOp {
     pub fn check(tool: &'static CliToolDef) -> Self {
         Self::Check { tool }
     }
-    
+
     /// Create an Install operation.
     pub fn install(tool: &'static CliToolDef) -> Self {
         Self::Install { tool }
     }
-    
+
     /// Create a Run operation.
     pub fn run(tool: &'static CliToolDef, args: &[&str]) -> Self {
         Self::Run {
@@ -474,14 +525,14 @@ impl CliToolOp {
             args: args.iter().map(|s| s.to_string()).collect(),
         }
     }
-    
+
     /// Get the tool this operation is for.
     pub fn tool(&self) -> &'static CliToolDef {
         match self {
             Self::Check { tool } | Self::Install { tool } | Self::Run { tool, .. } => tool,
         }
     }
-    
+
     /// Execute the operation, returning outputs as a HashMap.
     ///
     /// This is the core execution logic for CLI tools.
@@ -520,7 +571,6 @@ impl CliToolOp {
             _ => self.execute(),
         }
     }
-    
 }
 
 // ============================================================================
@@ -593,7 +643,11 @@ impl std::fmt::Display for CliToolError {
 impl std::error::Error for CliToolError {}
 
 impl CliToolError {
-    pub fn new(tool: &'static CliToolDef, operation: &'static str, message: impl Into<String>) -> Self {
+    pub fn new(
+        tool: &'static CliToolDef,
+        operation: &'static str,
+        message: impl Into<String>,
+    ) -> Self {
         Self {
             tool_id: tool.id,
             operation,
@@ -613,17 +667,17 @@ fn execute_check(tool: &'static CliToolDef) -> Result<HashMap<String, crate::Val
     if tool.check_cmd.is_empty() {
         return Err(CliToolError::new(tool, "check", "No check command defined"));
     }
-    
+
     let (cmd, args) = tool.check_cmd.split_first().unwrap();
-    
+
     let output = Command::new(cmd)
         .args(args)
         .output()
         .map_err(|e| CliToolError::new(tool, "check", format!("Failed to execute: {}", e)))?;
-    
+
     let exists = output.status.success();
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    
+
     let mut out = HashMap::new();
     out.insert("exists".to_string(), crate::Value::Bool(exists));
     out.insert("output".to_string(), crate::Value::Str(stdout));
@@ -631,7 +685,9 @@ fn execute_check(tool: &'static CliToolDef) -> Result<HashMap<String, crate::Val
 }
 
 #[allow(clippy::disallowed_methods)]
-fn execute_install(tool: &'static CliToolDef) -> Result<HashMap<String, crate::Value>, CliToolError> {
+fn execute_install(
+    tool: &'static CliToolDef,
+) -> Result<HashMap<String, crate::Value>, CliToolError> {
     let install_cmd = tool.install_cmd.ok_or_else(|| {
         CliToolError::new(
             tool,
@@ -642,27 +698,27 @@ fn execute_install(tool: &'static CliToolDef) -> Result<HashMap<String, crate::V
             ),
         )
     })?;
-    
+
     if install_cmd.is_empty() {
         return Err(CliToolError::new(tool, "install", "Empty install command"));
     }
-    
+
     println!("Installing {}...", tool.id);
-    
+
     let (cmd, args) = install_cmd.split_first().unwrap();
-    
+
     let output = Command::new(cmd)
         .args(args)
         .output()
         .map_err(|e| CliToolError::new(tool, "install", format!("Failed to execute: {}", e)))?;
-    
+
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(CliToolError::new(tool, "install", stderr.to_string()));
     }
-    
+
     println!("{} installed successfully", tool.id);
-    
+
     let mut out = HashMap::new();
     out.insert("success".to_string(), crate::Value::Bool(true));
     Ok(out)
@@ -676,24 +732,24 @@ fn execute_run(
     if tool.run_cmd.is_empty() {
         return Err(CliToolError::new(tool, "run", "No run command defined"));
     }
-    
+
     let (cmd, base_args) = tool.run_cmd.split_first().unwrap();
-    
+
     let mut full_args: Vec<&str> = base_args.to_vec();
     full_args.extend(args.iter().map(|s| s.as_str()));
-    
+
     println!("Running: {} {}", cmd, full_args.join(" "));
-    
+
     let output = Command::new(cmd)
         .args(&full_args)
         .output()
         .map_err(|e| CliToolError::new(tool, "run", format!("Failed to execute: {}", e)))?;
-    
+
     let success = output.status.success();
     let exit_code = output.status.code().unwrap_or(-1);
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-    
+
     let mut out = HashMap::new();
     out.insert("success".to_string(), crate::Value::Bool(success));
     out.insert("exit_code".to_string(), crate::Value::Int(exit_code as i64));
@@ -717,16 +773,13 @@ pub fn execute_run_with_path(
     let mut full_args: Vec<String> = base_args.iter().map(|s| s.to_string()).collect();
     full_args.extend_from_slice(args);
 
-    let output = Command::new(path)
-        .args(&full_args)
-        .output()
-        .map_err(|e| {
-            CliToolError::new(
-                tool,
-                "run",
-                format!("Failed to execute '{}': {}", path.display(), e),
-            )
-        })?;
+    let output = Command::new(path).args(&full_args).output().map_err(|e| {
+        CliToolError::new(
+            tool,
+            "run",
+            format!("Failed to execute '{}': {}", path.display(), e),
+        )
+    })?;
 
     let success = output.status.success();
     let exit_code = output.status.code().unwrap_or(-1);
@@ -802,25 +855,25 @@ pub static GH: CliToolDef = CliToolDef {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_clippy_def() {
         assert_eq!(CLIPPY.id, "clippy");
         assert!(CLIPPY.install_cmd.is_some());
     }
-    
+
     #[test]
     fn test_cargo_no_auto_install() {
         assert!(CARGO.install_cmd.is_none());
     }
-    
+
     #[test]
     fn test_tool_check_op() {
         let op = CLIPPY.check();
         assert!(matches!(op, CliToolOp::Check { .. }));
         assert_eq!(op.tool().id, "clippy");
     }
-    
+
     #[test]
     fn test_tool_run_op() {
         let op = CLIPPY.run(&["--", "-D", "warnings"]);

@@ -109,9 +109,7 @@ pub fn build_anthropic_request(chat: &ChatRequest) -> RestRequest {
     // If any system message uses content blocks (for cache_control), we emit
     // the full content block array format. Otherwise, a simple string.
     let system_msgs = chat.system_messages();
-    let has_blocks = system_msgs
-        .iter()
-        .any(|m| m.content.is_blocks());
+    let has_blocks = system_msgs.iter().any(|m| m.content.is_blocks());
 
     let system_value = if system_msgs.is_empty() {
         None
@@ -130,11 +128,9 @@ pub fn build_anthropic_request(chat: &ChatRequest) -> RestRequest {
                             cache_control,
                         } = block
                         {
-                            let mut obj =
-                                serde_json::json!({"type": "text", "text": text});
+                            let mut obj = serde_json::json!({"type": "text", "text": text});
                             if let Some(CacheControl { .. }) = cache_control {
-                                obj["cache_control"] =
-                                    serde_json::json!({"type": "ephemeral"});
+                                obj["cache_control"] = serde_json::json!({"type": "ephemeral"});
                             }
                             blocks.push(obj);
                         }
@@ -191,10 +187,7 @@ pub fn build_anthropic_request(chat: &ChatRequest) -> RestRequest {
     }
 
     let mut headers = std::collections::HashMap::new();
-    headers.insert(
-        "Content-Type".to_string(),
-        "application/json".to_string(),
-    );
+    headers.insert("Content-Type".to_string(), "application/json".to_string());
     for (k, v) in &provider.extra_headers {
         headers.insert(k.clone(), v.clone());
     }
@@ -301,20 +294,12 @@ pub fn parse_anthropic_response(response: &RestResponse) -> Result<ChatResponse,
         .body
         .get("usage")
         .map(|u| Usage {
-            input_tokens: u
-                .get("input_tokens")
-                .and_then(|t| t.as_u64())
-                .unwrap_or(0),
-            output_tokens: u
-                .get("output_tokens")
-                .and_then(|t| t.as_u64())
-                .unwrap_or(0),
+            input_tokens: u.get("input_tokens").and_then(|t| t.as_u64()).unwrap_or(0),
+            output_tokens: u.get("output_tokens").and_then(|t| t.as_u64()).unwrap_or(0),
             cache_creation_input_tokens: u
                 .get("cache_creation_input_tokens")
                 .and_then(|t| t.as_u64()),
-            cache_read_input_tokens: u
-                .get("cache_read_input_tokens")
-                .and_then(|t| t.as_u64()),
+            cache_read_input_tokens: u.get("cache_read_input_tokens").and_then(|t| t.as_u64()),
             cached_tokens: None,
             reasoning_tokens: None,
         })
@@ -367,9 +352,9 @@ pub fn response_to_message(response: &ChatResponse) -> ChatMessage {
                     thinking: thinking.clone(),
                     signature: signature.clone().unwrap_or_default(),
                 },
-                ResponseBlock::RedactedThinking { data } => ContentBlock::RedactedThinking {
-                    data: data.clone(),
-                },
+                ResponseBlock::RedactedThinking { data } => {
+                    ContentBlock::RedactedThinking { data: data.clone() }
+                }
             })
             .collect();
         ChatMessage::assistant_blocks(blocks)
@@ -471,12 +456,9 @@ mod tests {
     #[test]
     fn test_build_anthropic_request_thinking() {
         let req = build_anthropic_request(
-            &ChatRequest::new(
-                "claude-sonnet-4-5",
-                vec![ChatMessage::user("Think hard.")],
-            )
-            .max_tokens(16000)
-            .thinking(ThinkingConfig::anthropic(10000)),
+            &ChatRequest::new("claude-sonnet-4-5", vec![ChatMessage::user("Think hard.")])
+                .max_tokens(16000)
+                .thinking(ThinkingConfig::anthropic(10000)),
         );
 
         let body = req.body.unwrap();

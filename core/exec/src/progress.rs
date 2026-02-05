@@ -312,7 +312,10 @@ impl DagProgress {
         self.nodes.values().all(|n| {
             matches!(
                 n.state,
-                NodeState::Completed | NodeState::Failed | NodeState::Skipped | NodeState::Intercepted
+                NodeState::Completed
+                    | NodeState::Failed
+                    | NodeState::Skipped
+                    | NodeState::Intercepted
             )
         })
     }
@@ -321,7 +324,10 @@ impl DagProgress {
     fn flow_edges_from(&mut self, node_id: &NodeId) {
         for edge in &self.snapshot.edges {
             if edge.from_node == *node_id {
-                if let Some(ep) = self.edges.get_mut(&(edge.from_node.clone(), edge.to_node.clone())) {
+                if let Some(ep) = self
+                    .edges
+                    .get_mut(&(edge.from_node.clone(), edge.to_node.clone()))
+                {
                     ep.state = EdgeState::Flowing;
                 }
             }
@@ -332,7 +338,10 @@ impl DagProgress {
     fn settle_edges_to(&mut self, node_id: &NodeId) {
         for edge in &self.snapshot.edges {
             if edge.to_node == *node_id {
-                if let Some(ep) = self.edges.get_mut(&(edge.from_node.clone(), edge.to_node.clone())) {
+                if let Some(ep) = self
+                    .edges
+                    .get_mut(&(edge.from_node.clone(), edge.to_node.clone()))
+                {
                     if ep.state == EdgeState::Flowing {
                         ep.state = EdgeState::Done;
                     }
@@ -345,7 +354,10 @@ impl DagProgress {
     fn kill_edges_from(&mut self, node_id: &NodeId) {
         for edge in &self.snapshot.edges {
             if edge.from_node == *node_id {
-                if let Some(ep) = self.edges.get_mut(&(edge.from_node.clone(), edge.to_node.clone())) {
+                if let Some(ep) = self
+                    .edges
+                    .get_mut(&(edge.from_node.clone(), edge.to_node.clone()))
+                {
                     ep.state = EdgeState::Dead;
                 }
             }
@@ -501,8 +513,10 @@ impl ProgressObserver for RecordingObserver {
             .push(ProgressEvent::NodeComplete(node_id.clone()));
     }
     fn on_node_failed(&mut self, node_id: &NodeId, error: &str) {
-        self.events
-            .push(ProgressEvent::NodeFailed(node_id.clone(), error.to_string()));
+        self.events.push(ProgressEvent::NodeFailed(
+            node_id.clone(),
+            error.to_string(),
+        ));
     }
     fn on_node_skipped(&mut self, node_id: &NodeId) {
         self.events
@@ -529,20 +543,12 @@ mod tests {
     fn simple_snapshot() -> DagSnapshot {
         // A → B → C
         DagSnapshot {
-            node_ids: vec![
-                NodeId::from("A"),
-                NodeId::from("B"),
-                NodeId::from("C"),
-            ],
+            node_ids: vec![NodeId::from("A"), NodeId::from("B"), NodeId::from("C")],
             edges: vec![
                 Edge::new("A", "out", "B", "in"),
                 Edge::new("B", "out", "C", "in"),
             ],
-            topo_order: vec![
-                NodeId::from("A"),
-                NodeId::from("B"),
-                NodeId::from("C"),
-            ],
+            topo_order: vec![NodeId::from("A"), NodeId::from("B"), NodeId::from("C")],
             boundary_nodes: vec![],
             labels: [
                 (NodeId::from("A"), "A".to_string()),
@@ -571,10 +577,7 @@ mod tests {
             .nodes
             .values()
             .all(|n| n.state == NodeState::Pending));
-        assert!(progress
-            .edges
-            .values()
-            .all(|e| e.state == EdgeState::Idle));
+        assert!(progress.edges.values().all(|e| e.state == EdgeState::Idle));
     }
 
     #[test]
@@ -626,10 +629,7 @@ mod tests {
         assert!(progress.all_terminal());
 
         // All edges should be Done
-        assert!(progress
-            .edges
-            .values()
-            .all(|e| e.state == EdgeState::Done));
+        assert!(progress.edges.values().all(|e| e.state == EdgeState::Done));
     }
 
     #[test]
@@ -662,10 +662,7 @@ mod tests {
         progress.on_node_start(&NodeId::from("A"));
         progress.on_node_skipped(&NodeId::from("A"));
 
-        assert_eq!(
-            progress.nodes[&NodeId::from("A")].state,
-            NodeState::Skipped
-        );
+        assert_eq!(progress.nodes[&NodeId::from("A")].state, NodeState::Skipped);
         assert_eq!(
             progress.edges[&(NodeId::from("A"), NodeId::from("B"))].state,
             EdgeState::Dead
@@ -708,11 +705,7 @@ mod tests {
 
         assert_eq!(
             observer.node_starts(),
-            vec![
-                NodeId::from("A"),
-                NodeId::from("B"),
-                NodeId::from("C")
-            ]
+            vec![NodeId::from("A"), NodeId::from("B"), NodeId::from("C")]
         );
         assert!(observer.all_terminal(3));
         assert_eq!(observer.events.len(), 8); // 1 start + 3*(start+complete) + 1 complete
@@ -726,8 +719,14 @@ mod tests {
             "url".to_string(),
             Value::Str("https://example.com".to_string()),
         );
-        outputs.insert("items".to_string(), Value::List(vec![Value::Int(1), Value::Int(2)]));
-        outputs.insert("secret".to_string(), Value::Secret(gunbc_ir::SecretString::new("s3cr3t")));
+        outputs.insert(
+            "items".to_string(),
+            Value::List(vec![Value::Int(1), Value::Int(2)]),
+        );
+        outputs.insert(
+            "secret".to_string(),
+            Value::Secret(gunbc_ir::SecretString::new("s3cr3t")),
+        );
         outputs.insert("skipped".to_string(), Value::Skipped);
 
         let summary = OutputSummary::from_outputs(&outputs, Duration::from_millis(100));

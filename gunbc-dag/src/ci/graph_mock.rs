@@ -4,6 +4,7 @@
 //! - What mock values boundary nodes provide
 //! - Resource simulations for CI operations
 
+use gunbc_ir::transport::cli::{ToolHandle, CLIPPY};
 use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse};
 use gunbc_ir::Value;
 use gunbc_test::{MockSpec, NodeExample, OutputMatcher};
@@ -26,7 +27,7 @@ use gunbc_test::{MockSpec, NodeExample, OutputMatcher};
 /// - Build lock: Only one cargo build at a time
 /// - Test parallelism: Cargo test uses multiple threads
 pub fn ci_mock_spec() -> MockSpec {
-    MockSpec::new("ci")
+    with_ci_intercept_mocks(MockSpec::new("ci"))
         // Boundary: report outputs
         .boundary("report", "overall_success", Value::Bool(true))
         .boundary("report", "report", Value::Str(mock_ci_report_success()))
@@ -34,57 +35,6 @@ pub fn ci_mock_spec() -> MockSpec {
         .resource_lock("cargo:build")
         .resource_lock("cargo:test")
         .resource_lock("cargo:clippy")
-        // Transport mocks: values returned by intercepted transport executor nodes
-        // -- SetupDeps: deps.toml exists
-        .transport_mock(
-            "execute_deps_exists",
-            "response",
-            Value::Response(FileResponse {
-                path: "deps.toml".into(),
-                operation: FileOp::Exists,
-                success: true,
-                content: None,
-                exists: Some(true),
-                error: None,
-            }.into()),
-        )
-        // -- Prep: codegen output already exists
-        .transport_mock(
-            "execute_codegen_exists",
-            "response",
-            Value::Response(FileResponse {
-                path: "Cargo.toml".into(),
-                operation: FileOp::Exists,
-                success: true,
-                content: None,
-                exists: Some(true),
-                error: None,
-            }.into()),
-        )
-        // -- Codegen: skipped (already exists)
-        .transport_mock("execute_codegen", "response", Value::Skipped)
-        .transport_mock("execute_codegen", "skip", Value::Bool(true))
-        // -- Build: succeeds
-        .transport_mock(
-            "execute_build",
-            "response",
-            Value::Response(ShellResponse::ok("Compiling gunbc v0.1.0\n    Finished dev target(s)").into()),
-        )
-        .transport_mock("execute_build", "skip", Value::Bool(false))
-        .transport_mock("execute_build", "skip_reason", Value::Str(String::new()))
-        // -- Test: succeeds
-        .transport_mock(
-            "execute_test",
-            "response",
-            Value::Response(ShellResponse::ok("running 42 tests\ntest result: ok. 42 passed").into()),
-        )
-        .transport_mock("execute_test", "skip", Value::Bool(false))
-        .transport_mock("execute_test", "skip_reason", Value::Str(String::new()))
-        // -- Clippy lint: succeeds (intercepted because it consumes ToolHandle)
-        .transport_mock("clippy_lint", "success", Value::Bool(true))
-        .transport_mock("clippy_lint", "stdout", Value::Str("Checking gunbc v0.1.0\n    Finished dev".into()))
-        .transport_mock("clippy_lint", "stderr", Value::Str(String::new()))
-        .transport_mock("clippy_lint", "skip", Value::Bool(false))
         // Expected outputs: verified after DryRun execution
         .expected_output("report", "overall_success", Value::Bool(true))
         // Node I/O examples: verify pure node behavior
@@ -100,8 +50,16 @@ pub fn ci_mock_spec() -> MockSpec {
         .node_example(
             NodeExample::new("report")
                 .input("build_success", Value::Bool(false))
+                .input(
+                    "build_stderr",
+                    Value::Str("error: compilation failed".into()),
+                )
                 .input("test_success", Value::Bool(true))
+                .input("test_stdout", Value::Str(String::new()))
+                .input("test_stderr", Value::Str(String::new()))
                 .input("lint_success", Value::Bool(true))
+                .input("lint_stdout", Value::Str(String::new()))
+                .input("lint_stderr", Value::Str(String::new()))
                 .output("overall_success", OutputMatcher::exact(Value::Bool(false)))
                 .output("report", OutputMatcher::contains("FAILURE"))
                 .description("Build failure → overall failure"),
@@ -111,14 +69,20 @@ pub fn ci_mock_spec() -> MockSpec {
         // Parse nodes now test both real transport responses AND skip propagation.
         .node_example(
             NodeExample::new("parse_deps_exists")
-                .input("response", Value::Response(FileResponse {
-                    path: "deps.toml".into(),
-                    operation: FileOp::Exists,
-                    success: true,
-                    content: None,
-                    exists: Some(true),
-                    error: None,
-                }.into()))
+                .input(
+                    "response",
+                    Value::Response(
+                        FileResponse {
+                            path: "deps.toml".into(),
+                            operation: FileOp::Exists,
+                            success: true,
+                            content: None,
+                            exists: Some(true),
+                            error: None,
+                        }
+                        .into(),
+                    ),
+                )
                 .output("deps_exists", OutputMatcher::exact(Value::Bool(true)))
                 .output("deps_checked", OutputMatcher::exact(Value::Bool(true)))
                 .output("deps_installed", OutputMatcher::exact(Value::Int(0)))
@@ -133,14 +97,20 @@ pub fn ci_mock_spec() -> MockSpec {
         )
         .node_example(
             NodeExample::new("parse_codegen_exists")
-                .input("response", Value::Response(FileResponse {
-                    path: "Cargo.toml".into(),
-                    operation: FileOp::Exists,
-                    success: true,
-                    content: None,
-                    exists: Some(true),
-                    error: None,
-                }.into()))
+                .input(
+                    "response",
+                    Value::Response(
+                        FileResponse {
+                            path: "Cargo.toml".into(),
+                            operation: FileOp::Exists,
+                            success: true,
+                            content: None,
+                            exists: Some(true),
+                            error: None,
+                        }
+                        .into(),
+                    ),
+                )
                 .output("codegen_needed", OutputMatcher::exact(Value::Bool(false)))
                 .output("prep_success", OutputMatcher::exact(Value::Bool(true)))
                 .output("codegen_ran", OutputMatcher::exact(Value::Bool(false)))
@@ -154,7 +124,10 @@ pub fn ci_mock_spec() -> MockSpec {
         )
         .node_example(
             NodeExample::new("parse_codegen_result")
-                .input("response", Value::Response(ShellResponse::ok("Generated 3 files").into()))
+                .input(
+                    "response",
+                    Value::Response(ShellResponse::ok("Generated 3 files").into()),
+                )
                 .input("skip", Value::Bool(false))
                 .output("prep_success", OutputMatcher::exact(Value::Bool(true)))
                 .output("codegen_ran", OutputMatcher::exact(Value::Bool(true)))
@@ -170,7 +143,12 @@ pub fn ci_mock_spec() -> MockSpec {
         )
         .node_example(
             NodeExample::new("parse_build")
-                .input("response", Value::Response(ShellResponse::ok("Compiling gunbc v0.1.0\n    Finished dev").into()))
+                .input(
+                    "response",
+                    Value::Response(
+                        ShellResponse::ok("Compiling gunbc v0.1.0\n    Finished dev").into(),
+                    ),
+                )
                 .input("skip", Value::Bool(false))
                 .output("build_success", OutputMatcher::exact(Value::Bool(true)))
                 .output("build_skipped", OutputMatcher::exact(Value::Bool(false)))
@@ -180,13 +158,22 @@ pub fn ci_mock_spec() -> MockSpec {
         .node_example(
             NodeExample::new("parse_build")
                 .input("skip", Value::Bool(true))
+                .input(
+                    "skip_reason",
+                    Value::Str("Skipped due to prep failure".into()),
+                )
                 .output("build_success", OutputMatcher::exact(Value::Bool(false)))
                 .output("build_skipped", OutputMatcher::exact(Value::Bool(true)))
                 .description("Skip path: build skipped → success false, skipped true"),
         )
         .node_example(
             NodeExample::new("parse_test")
-                .input("response", Value::Response(ShellResponse::ok("running 42 tests\ntest result: ok. 42 passed").into()))
+                .input(
+                    "response",
+                    Value::Response(
+                        ShellResponse::ok("running 42 tests\ntest result: ok. 42 passed").into(),
+                    ),
+                )
                 .input("skip", Value::Bool(false))
                 .output("test_success", OutputMatcher::exact(Value::Bool(true)))
                 .output("test_skipped", OutputMatcher::exact(Value::Bool(false)))
@@ -196,6 +183,10 @@ pub fn ci_mock_spec() -> MockSpec {
         .node_example(
             NodeExample::new("parse_test")
                 .input("skip", Value::Bool(true))
+                .input(
+                    "skip_reason",
+                    Value::Str("Skipped due to build failure".into()),
+                )
                 .output("test_success", OutputMatcher::exact(Value::Bool(false)))
                 .output("test_skipped", OutputMatcher::exact(Value::Bool(true)))
                 .description("Skip path: test skipped → success false, skipped true"),
@@ -207,16 +198,19 @@ pub fn ci_mock_spec() -> MockSpec {
         )
         .node_example(
             NodeExample::new("prepare_codegen_cmd")
+                .input("codegen_needed", Value::Bool(false))
                 .output("skip", OutputMatcher::IsBool)
                 .description("Codegen command prepare emits skip flag"),
         )
         .node_example(
             NodeExample::new("prepare_build")
+                .input("prep_success", Value::Bool(true))
                 .output("skip", OutputMatcher::IsBool)
                 .description("Build prepare emits skip flag"),
         )
         .node_example(
             NodeExample::new("prepare_test")
+                .input("build_success", Value::Bool(true))
                 .output("skip", OutputMatcher::IsBool)
                 .description("Test prepare emits skip flag"),
         )
@@ -234,6 +228,10 @@ pub fn ci_mock_spec() -> MockSpec {
         )
         .node_example(
             NodeExample::new("parse_clippy_lint")
+                .input("skip", Value::Bool(false))
+                .input("success", Value::Bool(true))
+                .input("stdout", Value::Str("Checking gunbc".into()))
+                .input("stderr", Value::Str(String::new()))
                 .output("lint_success", OutputMatcher::IsBool)
                 .output("lint_skipped", OutputMatcher::IsBool)
                 .description("Clippy result parse produces success/skipped flags"),
@@ -244,7 +242,7 @@ pub fn ci_mock_spec() -> MockSpec {
 
 /// Mock spec for testing CI failure.
 pub fn ci_mock_spec_test_fails() -> MockSpec {
-    MockSpec::new("ci")
+    with_ci_intercept_mocks(MockSpec::new("ci"))
         .boundary("report", "overall_success", Value::Bool(false))
         .boundary("report", "report", Value::Str(mock_ci_report_test_fail()))
         .resource_lock("cargo:build")
@@ -254,7 +252,7 @@ pub fn ci_mock_spec_test_fails() -> MockSpec {
 
 /// Mock spec for testing build failure.
 pub fn ci_mock_spec_build_fails() -> MockSpec {
-    MockSpec::new("ci")
+    with_ci_intercept_mocks(MockSpec::new("ci"))
         .boundary("report", "overall_success", Value::Bool(false))
         .boundary("report", "report", Value::Str(mock_ci_report_build_fail()))
         .resource_lock("cargo:build")
@@ -262,7 +260,7 @@ pub fn ci_mock_spec_build_fails() -> MockSpec {
 
 /// Mock spec for testing prep/codegen failure.
 pub fn ci_mock_spec_prep_fails() -> MockSpec {
-    MockSpec::new("ci")
+    with_ci_intercept_mocks(MockSpec::new("ci"))
         .boundary("prep", "prep_success", Value::Bool(false))
         .boundary("prep", "codegen_ran", Value::Bool(true))
         .boundary("prep", "prep_message", Value::Str("Codegen failed".into()))
@@ -272,7 +270,7 @@ pub fn ci_mock_spec_prep_fails() -> MockSpec {
 
 /// Mock spec for testing lint failure.
 pub fn ci_mock_spec_lint_fails() -> MockSpec {
-    MockSpec::new("ci")
+    with_ci_intercept_mocks(MockSpec::new("ci"))
         .boundary("report", "overall_success", Value::Bool(false))
         .boundary("report", "report", Value::Str(mock_ci_report_lint_fail()))
         .resource_lock("cargo:build")
@@ -282,10 +280,89 @@ pub fn ci_mock_spec_lint_fails() -> MockSpec {
 
 /// Mock spec with build lock contention.
 pub fn ci_mock_spec_build_contended() -> MockSpec {
-    MockSpec::new("ci")
+    with_ci_intercept_mocks(MockSpec::new("ci"))
         .boundary("report", "overall_success", Value::Bool(false))
-        .boundary("report", "report", Value::Str("Build blocked: another build in progress".into()))
+        .boundary(
+            "report",
+            "report",
+            Value::Str("Build blocked: another build in progress".into()),
+        )
         .resource_lock_fails("cargo:build", "Another cargo build is in progress")
+}
+
+fn with_ci_intercept_mocks(spec: MockSpec) -> MockSpec {
+    spec
+        // Env: tool acquisition
+        .boundary(
+            "runner_env",
+            "tool:clippy",
+            ToolHandle::mock(&CLIPPY).into(),
+        )
+        // Transport mocks: values returned by intercepted transport executor nodes
+        // -- SetupDeps: deps.toml exists
+        .transport_mock(
+            "execute_deps_exists",
+            "response",
+            Value::Response(
+                FileResponse {
+                    path: "deps.toml".into(),
+                    operation: FileOp::Exists,
+                    success: true,
+                    content: None,
+                    exists: Some(true),
+                    error: None,
+                }
+                .into(),
+            ),
+        )
+        // -- Prep: codegen output already exists
+        .transport_mock(
+            "execute_codegen_exists",
+            "response",
+            Value::Response(
+                FileResponse {
+                    path: "Cargo.toml".into(),
+                    operation: FileOp::Exists,
+                    success: true,
+                    content: None,
+                    exists: Some(true),
+                    error: None,
+                }
+                .into(),
+            ),
+        )
+        // -- Codegen: skipped (already exists)
+        .transport_mock("execute_codegen", "response", Value::Skipped)
+        .transport_mock("execute_codegen", "skip", Value::Bool(true))
+        // -- Build: succeeds
+        .transport_mock(
+            "execute_build",
+            "response",
+            Value::Response(
+                ShellResponse::ok("Compiling gunbc v0.1.0\n    Finished dev target(s)").into(),
+            ),
+        )
+        .transport_mock("execute_build", "skip", Value::Bool(false))
+        .transport_mock("execute_build", "skip_reason", Value::Str(String::new()))
+        // -- Test: succeeds
+        .transport_mock(
+            "execute_test",
+            "response",
+            Value::Response(
+                ShellResponse::ok("running 42 tests\ntest result: ok. 42 passed").into(),
+            ),
+        )
+        .transport_mock("execute_test", "skip", Value::Bool(false))
+        .transport_mock("execute_test", "skip_reason", Value::Str(String::new()))
+        // -- Clippy lint: succeeds (intercepted because it consumes ToolHandle)
+        .transport_mock("clippy_lint", "success", Value::Bool(true))
+        .transport_mock(
+            "clippy_lint",
+            "stdout",
+            Value::Str("Checking gunbc v0.1.0\n    Finished dev".into()),
+        )
+        .transport_mock("clippy_lint", "stderr", Value::Str(String::new()))
+        .transport_mock("clippy_lint", "skip", Value::Bool(false))
 }
 
 fn mock_ci_report_success() -> String {
@@ -367,7 +444,10 @@ mod tests {
         let spec = ci_mock_spec_build_contended();
         let build = spec.get_resource("cargo:build").unwrap();
         let result = build.acquire();
-        assert!(matches!(result, gunbc_test::ResourceAcquireResult::Failed(_)));
+        assert!(matches!(
+            result,
+            gunbc_test::ResourceAcquireResult::Failed(_)
+        ));
     }
 
     #[test]

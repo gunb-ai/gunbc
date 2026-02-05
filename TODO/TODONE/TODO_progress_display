@@ -3,6 +3,8 @@
 # DAG progress visualization with "power flow" rendering.
 # Replace verbose log-line dumps with a live DAG display showing nodes
 # lighting up as execution progresses (SimCity 2013 power grid style).
+#
+# Status: ✅ Implemented (2026-02-05)
 
 ## Problem
 

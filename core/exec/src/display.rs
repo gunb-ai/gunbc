@@ -10,13 +10,17 @@
 //! ```text
 //! TerminalProfile::detect() → supports_progress?
 //!   yes → lower → layout → snapshot → execute → animated replay
-//!   no  → execute_with_mode → print log entries
+//!   no  → execute_with_mode_and_inputs → print log entries
 //! ```
 
+use crate::intercept::BoundaryMocks;
 use crate::progress::{DagPhase, DagProgress, DagSnapshot, OutputSummary, ProgressObserver};
 use crate::render::{FrameLoop, TerminalRenderer};
 use crate::terminal::TerminalProfile;
-use crate::{execute_with_mode, execute_with_progress_and_mode, lower, topo_sort, Executable, ExecutionMode, NodeState};
+use crate::{
+    execute_with_mode_and_inputs, execute_with_progress_and_mode_and_inputs, lower, topo_sort,
+    Executable, ExecutionMode, NodeState,
+};
 use gunbc_ir::layout::compute_layout;
 use gunbc_ir::symbols::STANDARD;
 use gunbc_ir::{detect_boundaries, Dag, NodeId, Value};
@@ -40,16 +44,18 @@ use std::time::Duration;
 /// - `mode`: Execution mode (real or dry-run with mocks).
 /// - `profile`: Terminal profile from `TerminalProfile::detect()`.
 /// - `success_port`: Optional port name to check for `false` → exit(1).
+/// - `input_mocks`: Optional input overrides for entrypoint ports.
 pub fn execute_and_display<T: Executable + Clone>(
     dag: &Dag<T>,
     mode: ExecutionMode,
     profile: &TerminalProfile,
     success_port: Option<&str>,
+    input_mocks: Option<&BoundaryMocks>,
 ) {
     if profile.supports_progress {
-        run_with_progress(dag, mode, profile, success_port);
+        run_with_progress(dag, mode, profile, success_port, input_mocks);
     } else {
-        run_classic(dag, mode, success_port);
+        run_classic(dag, mode, success_port, input_mocks);
     }
 }
 
@@ -58,8 +64,9 @@ fn run_classic<T: Executable + Clone>(
     dag: &Dag<T>,
     mode: ExecutionMode,
     success_port: Option<&str>,
+    input_mocks: Option<&BoundaryMocks>,
 ) {
-    match execute_with_mode(dag, mode) {
+    match execute_with_mode_and_inputs(dag, mode, input_mocks) {
         Ok(log) => {
             for entry in &log.entries {
                 let marker = if entry.was_intercepted {
@@ -95,6 +102,7 @@ fn run_with_progress<T: Executable + Clone>(
     mode: ExecutionMode,
     profile: &TerminalProfile,
     success_port: Option<&str>,
+    input_mocks: Option<&BoundaryMocks>,
 ) {
     // Lower the DAG to get flat topology for layout
     let flat = match lower(dag) {
@@ -124,7 +132,7 @@ fn run_with_progress<T: Executable + Clone>(
     // Create progress tracker and execute (instant)
     let snapshot = DagSnapshot::from_dag(&flat, &topo_order, &boundaries);
     let mut progress = DagProgress::new(snapshot.clone());
-    let result = execute_with_progress_and_mode(dag, mode, &mut progress);
+    let result = execute_with_progress_and_mode_and_inputs(dag, mode, &mut progress, input_mocks);
 
     // Capture actual final state per node (for failure detection)
     let final_states: HashMap<NodeId, NodeState> = progress
@@ -216,12 +224,7 @@ fn run_with_progress<T: Executable + Clone>(
     match result {
         Ok(log) => {
             // Check final node states for hard failures
-            let any_failed = final_states
-                .values()
-                .any(|s| *s == NodeState::Failed);
-            if any_failed {
-                process::exit(1);
-            }
+            let mut should_fail = final_states.values().any(|s| *s == NodeState::Failed);
 
             // Check success port from execution log — same policy as classic path.
             // A node can complete successfully (NodeState::Completed) while still
@@ -229,9 +232,18 @@ fn run_with_progress<T: Executable + Clone>(
             if let Some(port) = success_port {
                 for entry in &log.entries {
                     if let Some(Value::Bool(false)) = entry.outputs.get(port) {
-                        process::exit(1);
+                        should_fail = true;
+                        break;
                     }
                 }
+            }
+
+            // Surface boundary outputs after progress render so users see
+            // the actual tool results (e.g., gist URL) instead of only the DAG view.
+            print_boundary_outputs(&log, &boundaries);
+
+            if should_fail {
+                process::exit(1);
             }
         }
         Err(e) => {
@@ -249,6 +261,9 @@ pub fn print_value(port: &str, value: &Value) {
                 if !s.is_empty() {
                     println!("  {}: {}", port, s);
                 }
+            } else if s.contains('\n') {
+                // Multi-line values (reports, etc.) — print in full
+                println!("  {}: {}", port, s);
             } else if s.len() < 80 {
                 println!("  {}: {}", port, s);
             } else {
@@ -262,6 +277,25 @@ pub fn print_value(port: &str, value: &Value) {
         Value::Map(map) => println!("  {}: {{{} entries}}", port, map.len()),
         Value::Json(_) => println!("  {}: <JSON>", port),
         _ => {}
+    }
+}
+
+/// Print outputs for DAG boundary ports (terminal outputs).
+fn print_boundary_outputs(log: &crate::ExecutionLog, boundaries: &gunbc_ir::BoundaryInfo) {
+    if boundaries.boundary_ports.is_empty() {
+        return;
+    }
+
+    println!();
+    println!("Outputs:");
+
+    for (node_id, port_name) in &boundaries.boundary_ports {
+        let entry = log.get(&node_id.0);
+        let value = entry.and_then(|e| e.outputs.get(&port_name.0));
+        if let Some(value) = value {
+            let label = format!("{}.{}", node_id.0, port_name.0);
+            print_value(&label, value);
+        }
     }
 }
 

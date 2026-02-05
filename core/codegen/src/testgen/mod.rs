@@ -21,6 +21,7 @@
 //! | **D** | Resource hygiene (connectivity, ownership, conflicts) |
 
 pub mod analyze;
+pub mod cardinality;
 pub mod codegen;
 pub mod obligation;
 pub mod render;

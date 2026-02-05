@@ -211,8 +211,11 @@ impl Renderable for GitignoreRenderer<'_> {
         let mut output = String::new();
 
         // Rule comment at top
-        output.push_str("# Rule: Ignore anything that is (a) reproducible from committed source-of-truth\n");
-        output.push_str("# files, or (b) environment-specific and not shared across developers.\n\n");
+        output.push_str(
+            "# Rule: Ignore anything that is (a) reproducible from committed source-of-truth\n",
+        );
+        output
+            .push_str("# files, or (b) environment-specific and not shared across developers.\n\n");
 
         // Render each category with provenance
         for category in &self.categories {

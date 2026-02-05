@@ -157,7 +157,10 @@ mod tests {
 
         assert_eq!(req.method, HttpMethod::Post);
         assert_eq!(req.url, "https://api.example.com");
-        assert_eq!(req.headers.get("Content-Type"), Some(&"application/json".to_string()));
+        assert_eq!(
+            req.headers.get("Content-Type"),
+            Some(&"application/json".to_string())
+        );
         assert_eq!(req.body, Some(r#"{"test": true}"#.to_string()));
         assert_eq!(req.timeout_ms, Some(5000));
     }

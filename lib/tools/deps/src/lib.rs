@@ -31,6 +31,7 @@
 //!
 //! Mock specs are in `graph_mock.rs` for test generation.
 
+pub mod env;
 pub mod graph;
 pub mod installer;
 pub mod manifest;
@@ -42,6 +43,7 @@ pub mod upsert;
 #[cfg(test)]
 pub mod graph_mock;
 
+pub use env::PlatformEnv;
 pub use graph::{
     build_deps_generate_graph, build_deps_graph, deps_generate_signature, deps_signature,
 };

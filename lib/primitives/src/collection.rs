@@ -8,7 +8,6 @@ use gunbc_ir::Value;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-
 /// Wrapper enum for all collection operations.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum CollectionOp {
@@ -113,17 +112,21 @@ impl Executable for FilterOp {
         let list = require_str_list(&inputs, "input")?;
 
         let result: Vec<String> = match self {
-            FilterOp::Contains(pattern) => {
-                list.iter().filter(|s| s.contains(pattern)).cloned().collect()
-            }
+            FilterOp::Contains(pattern) => list
+                .iter()
+                .filter(|s| s.contains(pattern))
+                .cloned()
+                .collect(),
             FilterOp::StartsWith(pattern) => list
                 .iter()
                 .filter(|s| s.starts_with(pattern))
                 .cloned()
                 .collect(),
-            FilterOp::EndsWith(pattern) => {
-                list.iter().filter(|s| s.ends_with(pattern)).cloned().collect()
-            }
+            FilterOp::EndsWith(pattern) => list
+                .iter()
+                .filter(|s| s.ends_with(pattern))
+                .cloned()
+                .collect(),
             FilterOp::NonEmpty => list.iter().filter(|s| !s.is_empty()).cloned().collect(),
             FilterOp::Equals(value) => list.iter().filter(|s| *s == value).cloned().collect(),
             FilterOp::All => list.clone(),
@@ -170,10 +173,7 @@ impl Executable for FoldOp {
             FoldOp::Join(sep) => Value::Str(list.join(sep)),
             FoldOp::Count => Value::Int(list.len() as i64),
             FoldOp::Sum => {
-                let sum: i64 = list
-                    .iter()
-                    .filter_map(|s| s.parse::<i64>().ok())
-                    .sum();
+                let sum: i64 = list.iter().filter_map(|s| s.parse::<i64>().ok()).sum();
                 Value::Int(sum)
             }
             FoldOp::Min => {
@@ -362,19 +362,18 @@ impl Executable for SetOp {
                 }
                 out
             }
-            SetOp::Intersection => left
-                .iter()
-                .filter(|v| right.contains(v))
-                .cloned()
-                .collect(),
+            SetOp::Intersection => left.iter().filter(|v| right.contains(v)).cloned().collect(),
             SetOp::Difference => left
                 .iter()
                 .filter(|v| !right.contains(v))
                 .cloned()
                 .collect(),
             SetOp::SymmetricDifference => {
-                let mut out: Vec<Value> =
-                    left.iter().filter(|v| !right.contains(v)).cloned().collect();
+                let mut out: Vec<Value> = left
+                    .iter()
+                    .filter(|v| !right.contains(v))
+                    .cloned()
+                    .collect();
                 for v in &right {
                     if !left.contains(v) {
                         out.push(v.clone());
@@ -408,7 +407,10 @@ mod tests {
         let result = op.execute(inputs).unwrap();
         assert_eq!(
             result.get("output"),
-            Some(&Value::str_list(vec!["HELLO".to_string(), "WORLD".to_string()]))
+            Some(&Value::str_list(vec![
+                "HELLO".to_string(),
+                "WORLD".to_string()
+            ]))
         );
     }
 
@@ -428,7 +430,10 @@ mod tests {
         let result = op.execute(inputs).unwrap();
         assert_eq!(
             result.get("output"),
-            Some(&Value::str_list(vec!["main.rs".to_string(), "lib.rs".to_string()]))
+            Some(&Value::str_list(vec![
+                "main.rs".to_string(),
+                "lib.rs".to_string()
+            ]))
         );
     }
 
@@ -457,7 +462,11 @@ mod tests {
         let result = op.execute(inputs).unwrap();
         assert_eq!(
             result.get("output"),
-            Some(&Value::str_list(vec!["a".to_string(), "b".to_string(), "c".to_string()]))
+            Some(&Value::str_list(vec![
+                "a".to_string(),
+                "b".to_string(),
+                "c".to_string()
+            ]))
         );
     }
 
@@ -537,10 +546,7 @@ mod tests {
             "left".to_string(),
             Value::str_set(vec!["a".to_string(), "b".to_string(), "c".to_string()]),
         );
-        inputs.insert(
-            "right".to_string(),
-            Value::str_set(vec!["b".to_string()]),
-        );
+        inputs.insert("right".to_string(), Value::str_set(vec!["b".to_string()]));
 
         let result = op.execute(inputs).unwrap();
         let output = result.get("output").unwrap().as_set().unwrap();

@@ -8,7 +8,11 @@ description = "Shared code generation utilities for gunbc"
 [dependencies]
 gunbc-ir = { path = "../ir" }
 gunbc-test = { path = "../test" }
+gunbc-exec = { path = "../exec" }
 gunbc-clippy = { path = "../../lib/tools/clippy" }
+serde_json = { workspace = true }
+cargo_metadata = "0.18"
+toml_edit = "0.22"
 
 [[bin]]
 name = "gunbc-codegen"

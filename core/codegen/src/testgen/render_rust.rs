@@ -53,9 +53,13 @@ impl TestRenderer for RustRenderer {
         // Helper functions
         for helper in &file.helpers {
             out.push_str(&format!(
-                "fn {}() -> {} {{\n    {}\n}}\n\n",
-                helper.name, helper.return_type, helper.body_expr
+                "fn {}() -> {} {{\n",
+                helper.name, helper.return_type
             ));
+            for stmt in &helper.body {
+                out.push_str(&self.render_stmt(stmt, 1));
+            }
+            out.push_str("}\n\n");
         }
 
         // Test sections
@@ -66,6 +70,13 @@ impl TestRenderer for RustRenderer {
                  // =========================================================================\n\n",
                 section.title
             ));
+
+            for note in &section.notes {
+                out.push_str(&format!("// {}\n", note));
+            }
+            if !section.notes.is_empty() {
+                out.push('\n');
+            }
 
             for test_fn in &section.tests {
                 // Doc comments
@@ -112,6 +123,7 @@ impl TestRenderer for RustRenderer {
             }
             Expr::Deref(expr) => format!("*{}", self.render_expr(expr)),
             Expr::Ref(expr) => format!("&{}", self.render_expr(expr)),
+            Expr::RefMut(expr) => format!("&mut {}", self.render_expr(expr)),
             Expr::Path(segments) => segments.join("::"),
             Expr::Struct { name, fields } => {
                 let field_strs: Vec<String> = fields
@@ -129,9 +141,18 @@ impl TestRenderer for RustRenderer {
                 }
             }
             Expr::BinOp { left, op, right } => {
-                format!("{} {} {}", self.render_expr(left), op, self.render_expr(right))
+                format!(
+                    "{} {} {}",
+                    self.render_expr(left),
+                    op,
+                    self.render_expr(right)
+                )
+            }
+            Expr::UnaryOp { op, expr } => {
+                format!("{}{}", op, self.render_expr(expr))
             }
             Expr::IntLit(n) => n.to_string(),
+            Expr::BoolLit(b) => b.to_string(),
         }
     }
 
@@ -159,6 +180,12 @@ impl TestRenderer for RustRenderer {
                 }
             }
             Stmt::Blank => "\n".to_string(),
+            Stmt::Return(expr) => {
+                format!("{}return {};\n", pad, self.render_expr(expr))
+            }
+            Stmt::TailExpr(expr) => {
+                format!("{}{}\n", pad, self.render_expr(expr))
+            }
         }
     }
 
@@ -231,9 +258,7 @@ impl RustRenderer {
     fn render_value_inner(&self, expr: &ValueExpr, mode: ValueMode) -> String {
         let bare = mode == ValueMode::Bare;
         match expr {
-            ValueExpr::Unit => {
-                if bare { "None" } else { "Value::Unit" }.to_string()
-            }
+            ValueExpr::Unit => if bare { "None" } else { "Value::Unit" }.to_string(),
             ValueExpr::Bool(b) => {
                 if bare {
                     format!("{}", b)
@@ -285,10 +310,7 @@ impl RustRenderer {
                             )
                         })
                         .collect();
-                    format!(
-                        "std::collections::HashMap::from([{}])",
-                        rendered.join(", ")
-                    )
+                    format!("std::collections::HashMap::from([{}])", rendered.join(", "))
                 } else {
                     if entries.is_empty() {
                         return "Value::Map(std::collections::BTreeMap::new())".to_string();
@@ -321,9 +343,7 @@ impl RustRenderer {
                 if bare {
                     let field_strs: Vec<String> = fields
                         .iter()
-                        .map(|(k, v)| {
-                            format!("{}: {}", k, self.render_value_inner(v, mode))
-                        })
+                        .map(|(k, v)| format!("{}: {}", k, self.render_value_inner(v, mode)))
                         .collect();
                     format!("{} {{ {} }}", name, field_strs.join(", "))
                 } else {
@@ -371,7 +391,11 @@ impl RustRenderer {
         let field_strs: Vec<String> = fields
             .iter()
             .map(|(k, v)| {
-                format!("{}: {}", k, self.render_value_inner(v, ValueMode::Bare))
+                if let Some(rendered) = self.render_transport_field(&struct_type, k, v) {
+                    rendered
+                } else {
+                    format!("{}: {}", k, self.render_value_inner(v, ValueMode::Bare))
+                }
             })
             .collect();
 
@@ -381,6 +405,88 @@ impl RustRenderer {
             Some(w) => format!("{}({}({}))", w, enum_path, struct_lit),
             None => struct_lit,
         }
+    }
+
+    fn render_transport_field(
+        &self,
+        struct_type: &str,
+        field: &str,
+        value: &ValueExpr,
+    ) -> Option<String> {
+        match struct_type {
+            "gunbc_ir::transport::FileRequest" => match field {
+                "operation" => Some(format!("{}: {}", field, self.render_file_op(value))),
+                "content" => Some(format!("{}: {}", field, self.render_option_value(value))),
+                _ => None,
+            },
+            "gunbc_ir::transport::FileResponse" => match field {
+                "operation" => Some(format!("{}: {}", field, self.render_file_op(value))),
+                "content" | "exists" | "error" => {
+                    Some(format!("{}: {}", field, self.render_option_value(value)))
+                }
+                _ => None,
+            },
+            "gunbc_ir::transport::ShellRequest" => match field {
+                "cwd" | "stdin" => Some(format!("{}: {}", field, self.render_option_value(value))),
+                _ => None,
+            },
+            "gunbc_ir::transport::TcpRequest" => match field {
+                "data" => Some(format!("{}: {}", field, self.render_option_value(value))),
+                _ => None,
+            },
+            "gunbc_ir::transport::TcpResponse" => match field {
+                "data" | "error" => Some(format!("{}: {}", field, self.render_option_value(value))),
+                _ => None,
+            },
+            "gunbc_ir::transport::HttpRequest" => match field {
+                "method" => Some(format!("{}: {}", field, self.render_http_method(value))),
+                "body" | "timeout_ms" => {
+                    Some(format!("{}: {}", field, self.render_option_value(value)))
+                }
+                _ => None,
+            },
+            "gunbc_ir::transport::RestRequest" => match field {
+                "method" => Some(format!("{}: {}", field, self.render_http_method(value))),
+                "body" | "auth" | "timeout_ms" => {
+                    Some(format!("{}: {}", field, self.render_option_value(value)))
+                }
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    fn render_option_value(&self, value: &ValueExpr) -> String {
+        match value {
+            ValueExpr::Unit => "None".to_string(),
+            _ => format!("Some({})", self.render_value_inner(value, ValueMode::Bare)),
+        }
+    }
+
+    fn render_file_op(&self, value: &ValueExpr) -> String {
+        let variant = match value {
+            ValueExpr::Str(s) => s.as_str(),
+            _ => "",
+        };
+        format!("gunbc_ir::transport::FileOp::{}", variant)
+    }
+
+    fn render_http_method(&self, value: &ValueExpr) -> String {
+        let variant = match value {
+            ValueExpr::Str(s) => s.as_str(),
+            _ => "",
+        };
+        let method = match variant {
+            "Get" | "GET" => "Get",
+            "Post" | "POST" => "Post",
+            "Put" | "PUT" => "Put",
+            "Patch" | "PATCH" => "Patch",
+            "Delete" | "DELETE" => "Delete",
+            "Head" | "HEAD" => "Head",
+            "Options" | "OPTIONS" => "Options",
+            _ => variant,
+        };
+        format!("gunbc_ir::transport::HttpMethod::{}", method)
     }
 }
 
@@ -399,7 +505,10 @@ mod tests {
         );
         assert_eq!(r.render_value(&ValueExpr::Int(42)), "Value::Int(42)");
         assert_eq!(
-            r.render_value(&ValueExpr::List(vec![ValueExpr::Int(1), ValueExpr::Bool(true)])),
+            r.render_value(&ValueExpr::List(vec![
+                ValueExpr::Int(1),
+                ValueExpr::Bool(true)
+            ])),
             "Value::List(vec![Value::Int(1), Value::Bool(true)])"
         );
         assert_eq!(r.render_value(&ValueExpr::Skipped), "Value::Skipped");
@@ -434,7 +543,10 @@ mod tests {
             "42"
         );
         assert_eq!(
-            r.render_value_inner(&ValueExpr::List(vec![ValueExpr::Str("a".into())]), ValueMode::Bare),
+            r.render_value_inner(
+                &ValueExpr::List(vec![ValueExpr::Str("a".into())]),
+                ValueMode::Bare
+            ),
             "vec![\"a\".to_string()]"
         );
     }
@@ -442,12 +554,14 @@ mod tests {
     #[test]
     fn render_expr_method_chain() {
         let r = RustRenderer;
-        let expr = Expr::var("mocks")
-            .method("insert", vec![
+        let expr = Expr::var("mocks").method(
+            "insert",
+            vec![
                 Expr::str_lit("node"),
                 Expr::str_lit("port"),
                 Expr::Value(ValueExpr::Bool(true)),
-            ]);
+            ],
+        );
         assert_eq!(
             r.render_expr(&expr),
             "mocks.insert(\"node\", \"port\", Value::Bool(true))"
@@ -471,10 +585,7 @@ mod tests {
     fn render_let_stmt() {
         let r = RustRenderer;
         let stmt = Stmt::let_bind("dag", Expr::call("gist_graph", vec![]));
-        assert_eq!(
-            r.render_stmt(&stmt, 1),
-            "    let dag = gist_graph();\n"
-        );
+        assert_eq!(r.render_stmt(&stmt, 1), "    let dag = gist_graph();\n");
     }
 
     #[test]
@@ -507,17 +618,13 @@ mod tests {
     #[test]
     fn render_bin_op_in_closure() {
         let r = RustRenderer;
-        let expr = Expr::var("x")
-            .method("as_int", vec![])
-            .method("is_some_and", vec![
-                Expr::Closure {
-                    args: vec!["n".to_string()],
-                    body: Box::new(Expr::var("n").bin_op(">=", Expr::int(2))),
-                },
-            ]);
-        assert_eq!(
-            r.render_expr(&expr),
-            "x.as_int().is_some_and(|n| n >= 2)"
+        let expr = Expr::var("x").method("as_int", vec![]).method(
+            "is_some_and",
+            vec![Expr::Closure {
+                args: vec!["n".to_string()],
+                body: Box::new(Expr::var("n").bin_op(">=", Expr::int(2))),
+            }],
         );
+        assert_eq!(r.render_expr(&expr), "x.as_int().is_some_and(|n| n >= 2)");
     }
 }

@@ -69,10 +69,7 @@ impl Executable for PatternOp {
                     .ok()
             }
             PatternOp::RetryCollector { output_port } => {
-                let attempt = inputs
-                    .get("attempt")
-                    .and_then(|v| v.as_int())
-                    .unwrap_or(1);
+                let attempt = inputs.get("attempt").and_then(|v| v.as_int()).unwrap_or(1);
 
                 let result = inputs.get("result").cloned().unwrap_or(Value::Skipped);
 
@@ -87,9 +84,7 @@ impl Executable for PatternOp {
             PatternOp::WhileInit { input_port } => {
                 let state = require_value(&inputs, input_port)?;
 
-                OutputMap::new()
-                    .value("state_out", state.clone())
-                    .ok()
+                OutputMap::new().value("state_out", state.clone()).ok()
             }
             PatternOp::WhileController { max_iterations } => {
                 let continue_flag = require_bool(&inputs, "continue")?;

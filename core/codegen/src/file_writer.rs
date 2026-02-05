@@ -69,7 +69,11 @@ impl FileWriter {
     /// Write content to a file.
     ///
     /// In dry-run mode, returns what would be written without actually writing.
-    pub fn write(&self, path: impl AsRef<Path>, content: impl Into<String>) -> io::Result<WriteResult> {
+    pub fn write(
+        &self,
+        path: impl AsRef<Path>,
+        content: impl Into<String>,
+    ) -> io::Result<WriteResult> {
         let path = path.as_ref();
         let content = content.into();
         let path_str = path.display().to_string();
@@ -93,7 +97,11 @@ impl FileWriter {
     }
 
     /// Write content only if it differs from existing file.
-    pub fn write_if_changed(&self, path: impl AsRef<Path>, content: impl Into<String>) -> io::Result<WriteResult> {
+    pub fn write_if_changed(
+        &self,
+        path: impl AsRef<Path>,
+        content: impl Into<String>,
+    ) -> io::Result<WriteResult> {
         let path = path.as_ref();
         let content = content.into();
         let path_str = path.display().to_string();

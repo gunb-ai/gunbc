@@ -24,7 +24,7 @@ pub fn topo_sort<T>(dag: &Dag<T>) -> Vec<NodeId> {
         .filter(|(_, &d)| d == 0)
         .map(|(&id, _)| id)
         .collect();
-    
+
     // Sort initial queue for deterministic ordering
     let mut initial: Vec<&str> = queue.drain(..).collect();
     initial.sort();
@@ -59,13 +59,18 @@ mod tests {
     fn test_topo_sort_simple_chain() {
         let mut dag: Dag<()> = Dag::new();
         dag.add_node(Node::opaque("A", vec![], vec![port("out", "S")], ()));
-        dag.add_node(Node::opaque("B", vec![port("in", "S")], vec![port("out", "S")], ()));
+        dag.add_node(Node::opaque(
+            "B",
+            vec![port("in", "S")],
+            vec![port("out", "S")],
+            (),
+        ));
         dag.add_node(Node::opaque("C", vec![port("in", "S")], vec![], ()));
         dag.add_edge(edge("A", "out", "B", "in"));
         dag.add_edge(edge("B", "out", "C", "in"));
 
         let order = topo_sort(&dag);
-        
+
         assert_eq!(order.len(), 3);
         assert_eq!(order[0].0, "A");
         assert_eq!(order[1].0, "B");
@@ -80,7 +85,7 @@ mod tests {
         dag.add_node(Node::opaque("B", vec![], vec![], ()));
 
         let order = topo_sort(&dag);
-        
+
         // Should be sorted alphabetically when there are no dependencies
         assert_eq!(order.len(), 3);
         assert_eq!(order[0].0, "A");

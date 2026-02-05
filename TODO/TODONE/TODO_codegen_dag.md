@@ -1,7 +1,13 @@
 # Codegen-on-DAG Migration
 
-**Status**: Design
-**Date**: 2026-02-03
+**Status**: ✅ Implemented
+**Date**: 2026-02-03 (completed 2026-02-05)
+
+Implemented in:
+- `core/codegen/src/testgen/test_ir.rs` (ValueExpr/Expr/Stmt/Assert test IR)
+- `core/codegen/src/testgen/render.rs` + `render_rust.rs` (renderer backends)
+- `core/codegen/src/testgen/render_python.rs`, `render_ts.rs` (stub backends)
+- `core/codegen/src/testgen/codegen.rs` (phase generators emit IR, no stringly fallbacks)
 
 ## Problem
 

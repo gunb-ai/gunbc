@@ -16,8 +16,8 @@
 #![allow(dead_code)]
 
 use crate::dag::{Dag, Port};
-use crate::node::Node;
 use crate::language::LanguageOp;
+use crate::node::Node;
 
 /// Default Makefile filename - the canonical name for generated Makefiles.
 pub const DEFAULT_MAKEFILE_FILENAME: &str = "Makefile";
@@ -65,7 +65,7 @@ pub fn build_makefile_subdag() -> Node<LanguageOp> {
         vec![],
         vec![
             Port::scalar("id", "String"),
-            Port::scalar("file_patterns", "List"),
+            Port::list("file_patterns", "String"),
             Port::scalar("comment_prefix", "String"),
             Port::scalar("indent", "String"),
         ],
@@ -84,10 +84,7 @@ pub fn build_makefile_subdag() -> Node<LanguageOp> {
     ));
 
     // Create the SubDag node with interface
-    Node::subdag(
-        "makefile",
-        inner,
-    )
+    Node::subdag("makefile", inner)
 }
 
 /// A Makefile target definition.

@@ -3,7 +3,7 @@
 //! All I/O happens through explicit `TransportOps::Execute` nodes in the DAG.
 //! The ops here are PURE (no I/O) - they prepare requests and parse responses.
 
-use gunbc_exec::{ExecError, Executable, OutputMap, propagate_skipped, require_response};
+use gunbc_exec::{propagate_skipped, require_response, ExecError, Executable, OutputMap};
 use gunbc_ir::transport::{ShellRequest, TransportRequest, TransportResponse};
 use gunbc_ir::Value;
 use std::collections::HashMap;
@@ -46,7 +46,9 @@ impl Executable for BootstrapOp {
 // ============================================================================
 
 /// Prepare workspace scan request (PURE - no I/O).
-fn execute_prepare_scan_workspace(_inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+fn execute_prepare_scan_workspace(
+    _inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
     // Use find to list directories in crates/
     let request = TransportRequest::Shell(ShellRequest {
         command: "find".to_string(),
@@ -64,9 +66,7 @@ fn execute_prepare_scan_workspace(_inputs: HashMap<String, Value>) -> Result<Has
         stdin: None,
     });
 
-    OutputMap::new()
-        .request("request", request)
-        .ok()
+    OutputMap::new().request("request", request).ok()
 }
 
 // ============================================================================
@@ -74,7 +74,9 @@ fn execute_prepare_scan_workspace(_inputs: HashMap<String, Value>) -> Result<Has
 // ============================================================================
 
 /// Parse scan result (PURE - no I/O).
-fn execute_parse_scan_result(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+fn execute_parse_scan_result(
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
     if let Some(result) = propagate_skipped(&inputs, "response", &["crate_count", "crate_names"]) {
         return result;
     }
@@ -114,15 +116,15 @@ fn execute_parse_scan_result(inputs: HashMap<String, Value>) -> Result<HashMap<S
 /// - Dev UX convention: `<target>` verifies, `<target>-fix` auto-fixes
 /// - All registered tools with their entrypoint parameters
 /// - Meta targets (test, check, fmt, clippy) with variants
-fn execute_generate_makefile(_inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-    use crate::makegen::{render::render_makefile, registry::ToolRegistry};
+fn execute_generate_makefile(
+    _inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    use crate::makegen::{registry::ToolRegistry, render::render_makefile};
 
     let registry = ToolRegistry::default_registry();
     let makefile = render_makefile(&registry);
 
-    OutputMap::new()
-        .str("makefile_content", makefile)
-        .ok()
+    OutputMap::new().str("makefile_content", makefile).ok()
 }
 
 /// Generate .gitignore content using the makegen renderer.
@@ -131,15 +133,15 @@ fn execute_generate_makefile(_inputs: HashMap<String, Value>) -> Result<HashMap<
 /// - Patterns derived from `BuildConfig.build_system` (Cargo, Buck2, etc.)
 /// - Section comments showing provenance (from the-gunbai pattern)
 /// - Universal categories (editor, OS, secrets, generators)
-fn execute_generate_gitignore(_inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-    use crate::makegen::{registry::default_build_config, gitignore::render_gitignore};
+fn execute_generate_gitignore(
+    _inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    use crate::makegen::{gitignore::render_gitignore, registry::default_build_config};
 
     let config = default_build_config();
     let gitignore = render_gitignore(&config);
 
-    OutputMap::new()
-        .str("gitignore_content", gitignore)
-        .ok()
+    OutputMap::new().str("gitignore_content", gitignore).ok()
 }
 
 // Mockable implementation for test generation
@@ -148,33 +150,31 @@ use gunbc_test::Mockable;
 impl Mockable for BootstrapOp {
     fn mock_outputs(&self) -> HashMap<String, Value> {
         match self {
-            BootstrapOp::PrepareScanWorkspace => {
-                OutputMap::new()
-                    .request("request", TransportRequest::Shell(ShellRequest {
+            BootstrapOp::PrepareScanWorkspace => OutputMap::new()
+                .request(
+                    "request",
+                    TransportRequest::Shell(ShellRequest {
                         command: "find".to_string(),
                         args: vec!["crates".to_string()],
                         cwd: None,
                         env: HashMap::new(),
                         stdin: None,
-                    }))
-                    .build()
-            }
-            BootstrapOp::ParseScanResult => {
-                OutputMap::new()
-                    .int("crate_count", 5)
-                    .str_list("crate_names", vec!["lib-a".to_string(), "lib-b".to_string()])
-                    .build()
-            }
-            BootstrapOp::GenerateMakefile => {
-                OutputMap::new()
-                    .str("makefile_content", "# Mock Makefile")
-                    .build()
-            }
-            BootstrapOp::GenerateGitignore => {
-                OutputMap::new()
-                    .str("gitignore_content", "# Mock .gitignore\n/target/")
-                    .build()
-            }
+                    }),
+                )
+                .build(),
+            BootstrapOp::ParseScanResult => OutputMap::new()
+                .int("crate_count", 5)
+                .str_list(
+                    "crate_names",
+                    vec!["lib-a".to_string(), "lib-b".to_string()],
+                )
+                .build(),
+            BootstrapOp::GenerateMakefile => OutputMap::new()
+                .str("makefile_content", "# Mock Makefile")
+                .build(),
+            BootstrapOp::GenerateGitignore => OutputMap::new()
+                .str("gitignore_content", "# Mock .gitignore\n/target/")
+                .build(),
         }
     }
 }

@@ -18,9 +18,7 @@ fn convert_language_node(node: Node<LanguageOp>) -> Node<WorkspaceOp> {
         inputs: node.inputs,
         outputs: node.outputs,
         body: match node.body {
-            gunbc_ir::NodeBody::Opaque(op) => {
-                gunbc_ir::NodeBody::Opaque(WorkspaceOp::Language(op))
-            }
+            gunbc_ir::NodeBody::Opaque(op) => gunbc_ir::NodeBody::Opaque(WorkspaceOp::Language(op)),
             gunbc_ir::NodeBody::SubDag(dag) => {
                 gunbc_ir::NodeBody::SubDag(convert_language_dag(dag))
             }

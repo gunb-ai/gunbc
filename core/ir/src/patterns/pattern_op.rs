@@ -14,7 +14,10 @@ pub enum PatternOp {
     /// Merge results from a Branch true/false subdag.
     BranchMerge { output_port: String },
     /// Unpack a list input for Loop patterns.
-    LoopUnpack { input_port: String, element_port: String },
+    LoopUnpack {
+        input_port: String,
+        element_port: String,
+    },
     /// Pack Loop results back into a list.
     LoopPack { output_port: String },
     /// Retry controller (single-pass semantics; carries policy/classifier).

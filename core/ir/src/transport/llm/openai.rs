@@ -34,9 +34,7 @@
 //! Chat Completions. It supports reasoning summaries, persisted reasoning between
 //! tool calls, and built-in tools. See `openai_responses.rs` for that endpoint.
 
-use super::chat::{
-    ChatRequest, ChatResponse, FinishReason, MessageContent, ThinkingConfig, Usage,
-};
+use super::chat::{ChatRequest, ChatResponse, FinishReason, MessageContent, ThinkingConfig, Usage};
 use super::provider::openai_provider;
 use crate::transport::http::HttpMethod;
 use crate::transport::rest::{AuthMethod, RestRequest, RestResponse};
@@ -179,10 +177,7 @@ pub fn parse_openai_response(response: &RestResponse) -> Result<ChatResponse, St
                 .and_then(|t| t.as_u64());
 
             Usage {
-                input_tokens: u
-                    .get("prompt_tokens")
-                    .and_then(|t| t.as_u64())
-                    .unwrap_or(0),
+                input_tokens: u.get("prompt_tokens").and_then(|t| t.as_u64()).unwrap_or(0),
                 output_tokens: u
                     .get("completion_tokens")
                     .and_then(|t| t.as_u64())
@@ -406,10 +401,7 @@ mod tests {
         let chat = sample_request();
         let req = build_openai_compatible_request(&chat, "http://localhost:11434", "OLLAMA_KEY");
 
-        assert_eq!(
-            req.url,
-            "http://localhost:11434/v1/chat/completions"
-        );
+        assert_eq!(req.url, "http://localhost:11434/v1/chat/completions");
         assert!(matches!(req.auth, Some(AuthMethod::EnvVar(ref v)) if v == "OLLAMA_KEY"));
     }
 }

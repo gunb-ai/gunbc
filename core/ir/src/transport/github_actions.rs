@@ -174,11 +174,7 @@ pub struct Integration {
 
 impl Integration {
     /// Create a new integration.
-    pub fn new(
-        id: &'static str,
-        uses: &'static str,
-        description: &'static str,
-    ) -> Self {
+    pub fn new(id: &'static str, uses: &'static str, description: &'static str) -> Self {
         Self {
             id,
             uses,
@@ -728,11 +724,8 @@ mod tests {
 
     #[test]
     fn test_workflow_config_new() {
-        let config = WorkflowConfig::new(
-            "Test",
-            ubuntu_latest(),
-            vec![checkout(), rust_toolchain()],
-        );
+        let config =
+            WorkflowConfig::new("Test", ubuntu_latest(), vec![checkout(), rust_toolchain()]);
 
         assert_eq!(config.name, "Test");
         assert_eq!(config.runner.id, "ubuntu-latest");
@@ -743,24 +736,16 @@ mod tests {
 
     #[test]
     fn test_workflow_config_with_run_command() {
-        let config = WorkflowConfig::new(
-            "CI",
-            ubuntu_latest(),
-            vec![checkout()],
-        )
-        .with_run_command("cargo test");
+        let config = WorkflowConfig::new("CI", ubuntu_latest(), vec![checkout()])
+            .with_run_command("cargo test");
 
         assert_eq!(config.run_command, "cargo test");
     }
 
     #[test]
     fn test_workflow_config_render() {
-        let config = WorkflowConfig::new(
-            "CI",
-            ubuntu_latest(),
-            vec![checkout(), rust_toolchain()],
-        )
-        .with_run_command("cargo test");
+        let config = WorkflowConfig::new("CI", ubuntu_latest(), vec![checkout(), rust_toolchain()])
+            .with_run_command("cargo test");
 
         let yaml = config.render();
 
@@ -778,12 +763,8 @@ mod tests {
 
     #[test]
     fn test_workflow_config_render_content_only() {
-        let config = WorkflowConfig::new(
-            "CI",
-            ubuntu_latest(),
-            vec![checkout()],
-        )
-        .with_run_command("cargo build");
+        let config = WorkflowConfig::new("CI", ubuntu_latest(), vec![checkout()])
+            .with_run_command("cargo build");
 
         let content = config.render_content();
 
@@ -799,11 +780,7 @@ mod tests {
 
     #[test]
     fn test_workflow_config_available_tools() {
-        let config = WorkflowConfig::new(
-            "CI",
-            ubuntu_latest(),
-            vec![checkout(), rust_toolchain()],
-        );
+        let config = WorkflowConfig::new("CI", ubuntu_latest(), vec![checkout(), rust_toolchain()]);
 
         let tools = config.available_tools();
 
@@ -819,14 +796,12 @@ mod tests {
 
     #[test]
     fn test_workflow_config_check_satisfiability() {
-        let config = WorkflowConfig::new(
-            "CI",
-            ubuntu_latest(),
-            vec![checkout(), rust_toolchain()],
-        );
+        let config = WorkflowConfig::new("CI", ubuntu_latest(), vec![checkout(), rust_toolchain()]);
 
         // Should be satisfied - all tools available
-        assert!(config.check_satisfiability(&["cargo", "git", "clippy"]).is_ok());
+        assert!(config
+            .check_satisfiability(&["cargo", "git", "clippy"])
+            .is_ok());
 
         // Should fail - missing tool
         let result = config.check_satisfiability(&["cargo", "nonexistent"]);

@@ -337,9 +337,7 @@ mod tests {
         assert!(!commands.is_empty());
 
         // Find gist create and verify it's required
-        let gist_create = commands
-            .iter()
-            .find(|c| c.subcommand == ["gist", "create"]);
+        let gist_create = commands.iter().find(|c| c.subcommand == ["gist", "create"]);
         assert!(gist_create.is_some());
         assert!(gist_create.unwrap().required);
     }
@@ -377,12 +375,8 @@ mod tests {
     #[test]
     fn test_install_method_variants() {
         // Just ensure all variants are constructable
-        let _apt = InstallMethod::Apt {
-            packages: &["gh"],
-        };
-        let _brew = InstallMethod::Brew {
-            packages: &["gh"],
-        };
+        let _apt = InstallMethod::Apt { packages: &["gh"] };
+        let _brew = InstallMethod::Brew { packages: &["gh"] };
         let _script = InstallMethod::Script {
             script: "curl | sh",
         };
@@ -414,11 +408,11 @@ mod tests {
 
     #[test]
     fn test_gh_tool_satisfiable() {
-        use crate::transport::tool::{is_satisfiable, default_tool_registry};
+        use crate::transport::tool::{default_tool_registry, is_satisfiable};
         use std::collections::HashSet;
 
         let registry = default_tool_registry();
-        
+
         // gh should be satisfiable via apt (ubuntu)
         let apt_available: HashSet<&str> = ["apt"].into_iter().collect();
         assert!(is_satisfiable(&GH_TOOL, &apt_available, &registry).is_ok());

@@ -122,10 +122,10 @@ impl CiProvider for GitLabCiProvider {
                 location,
             } => {
                 let (color, prefix) = match level {
-                    AnnotationLevel::Error => ("\x1b[31m", "[ERROR]"),     // Red
+                    AnnotationLevel::Error => ("\x1b[31m", "[ERROR]"), // Red
                     AnnotationLevel::Warning => ("\x1b[33m", "[WARNING]"), // Yellow
-                    AnnotationLevel::Notice => ("\x1b[36m", "[NOTICE]"),   // Cyan
-                    AnnotationLevel::Debug => ("\x1b[90m", "[DEBUG]"),     // Gray
+                    AnnotationLevel::Notice => ("\x1b[36m", "[NOTICE]"), // Cyan
+                    AnnotationLevel::Debug => ("\x1b[90m", "[DEBUG]"), // Gray
                 };
                 let reset = "\x1b[0m";
 
@@ -227,10 +227,14 @@ fn render_gitlab_ci(steps: &[SharedStep], config: &RenderConfig) -> String {
     yaml.push_str(&format!("\n\nimage: {}\n\n", config.runner.id));
 
     // Variables — derived from cargo env + manual overrides
-    yaml_block(&mut yaml, "variables:", &config.all_env(), |(k, v)| format!("  {}: \"{}\"", k, v));
+    yaml_block(&mut yaml, "variables:", &config.all_env(), |(k, v)| {
+        format!("  {}: \"{}\"", k, v)
+    });
 
     // Stages — computed from DAG structure
-    yaml_block(&mut yaml, "stages:", &compute_stages(steps), |s| format!("  - {}", s));
+    yaml_block(&mut yaml, "stages:", &compute_stages(steps), |s| {
+        format!("  - {}", s)
+    });
 
     for step in steps {
         yaml.push_str(&render_gitlab_job(step, config));
@@ -257,7 +261,11 @@ fn compute_stages(steps: &[SharedStep]) -> Vec<String> {
                     seen_checkout = true;
                 }
             }
-            SharedStep::DagStep { node_id, depends_on, .. } => {
+            SharedStep::DagStep {
+                node_id,
+                depends_on,
+                ..
+            } => {
                 // If no dependencies (other than checkout), it's a "build" stage
                 // Otherwise, determine stage based on depth
                 let stage_name = if depends_on.is_empty() {
@@ -313,7 +321,10 @@ fn render_gitlab_job(step: &SharedStep, _config: &RenderConfig) -> String {
         } => {
             let mut yaml = format!(
                 "{}:\n  stage: {}\n  script:\n    - {} step {}\n",
-                node_id.0, node_id.0, tool.command(), node_id.0
+                node_id.0,
+                node_id.0,
+                tool.command(),
+                node_id.0
             );
 
             // Add dependencies using `needs`
@@ -338,7 +349,9 @@ fn render_gitlab_job(step: &SharedStep, _config: &RenderConfig) -> String {
             let stage_name = format!("{}-run", NamingCase::SnakeCase.apply(&tool.binary));
             format!(
                 "{}:\n  stage: {}\n  script:\n    - {}\n\n",
-                stage_name, stage_name, tool.command()
+                stage_name,
+                stage_name,
+                tool.command()
             )
         }
     }

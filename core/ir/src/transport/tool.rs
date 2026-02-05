@@ -408,7 +408,14 @@ pub fn plan_installation(
         // Visit dependencies first
         for dep_id in tool.depends_on {
             if let Some(dep) = registry.get(dep_id) {
-                visit(dep, available_pms, registry, install_order, install_via, visited);
+                visit(
+                    dep,
+                    available_pms,
+                    registry,
+                    install_order,
+                    install_via,
+                    visited,
+                );
             }
         }
 
@@ -651,7 +658,7 @@ pub static MACOS: PlatformDef = PlatformDef {
 /// Create a tool registry with all built-in package managers and tools.
 pub fn default_tool_registry() -> ToolRegistry {
     use crate::transport::github::cli::GH_TOOL;
-    
+
     let mut registry = ToolRegistry::new();
     // Package managers
     registry.register(&APT);
@@ -877,7 +884,10 @@ mod tests {
 
         // git should come before tool_with_dep (dependency order)
         let git_pos = plan.install_order.iter().position(|&t| t == "git");
-        let tool_pos = plan.install_order.iter().position(|&t| t == "tool_with_dep");
+        let tool_pos = plan
+            .install_order
+            .iter()
+            .position(|&t| t == "tool_with_dep");
         assert!(git_pos.is_some());
         assert!(tool_pos.is_some());
         assert!(git_pos.unwrap() < tool_pos.unwrap());
@@ -921,7 +931,7 @@ mod tests {
     fn test_git_satisfiable_on_macos() {
         let registry = super::default_tool_registry();
         let available: HashSet<&str> = ["brew"].into_iter().collect();
-        
+
         assert!(super::is_satisfiable(&super::GIT, &available, &registry).is_ok());
     }
 
@@ -929,7 +939,7 @@ mod tests {
     fn test_rust_satisfiable_on_macos() {
         let registry = super::default_tool_registry();
         let available: HashSet<&str> = ["brew"].into_iter().collect();
-        
+
         assert!(super::is_satisfiable(&super::RUST, &available, &registry).is_ok());
     }
 

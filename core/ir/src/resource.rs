@@ -32,8 +32,11 @@
 
 use crate::dag::Dag;
 use crate::types::NodeId;
+use crate::{SecretString, Value};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::collections::{HashMap, HashSet};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 /// Unique identifier for a resource.
 ///
@@ -62,7 +65,7 @@ impl ResourceId {
     pub fn connection(name: impl Into<String>) -> Self {
         Self(format!("conn:{}", name.into()))
     }
-    
+
     /// Create a tool resource ID.
     ///
     /// Used for CLI tool capability tracking. When a node requires a tool,
@@ -111,6 +114,229 @@ impl AccessMode {
     }
 }
 
+/// Resource kind: capability vs observation.
+///
+/// Capabilities are active handles that grant permission to perform actions.
+/// Observations are passive snapshots of world state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ResourceKind {
+    /// Active handle — permission to perform operations.
+    Capability,
+    /// Snapshot value — immutable fact about the world.
+    Observation,
+}
+
+/// Secret marker used to indicate a capability value was minted by the framework.
+///
+/// This prevents JSON/user-supplied values from masquerading as capabilities.
+const CAPABILITY_MARKER: &str = "capability";
+
+/// Create a secret capability marker value.
+pub fn capability_marker() -> SecretString {
+    SecretString::new(CAPABILITY_MARKER)
+}
+
+/// Validate that a map contains the capability marker.
+pub fn ensure_capability_marker(map: &BTreeMap<String, Value>, kind: &str) -> Result<(), String> {
+    match map.get("cap") {
+        Some(Value::Secret(s)) if s.expose() == CAPABILITY_MARKER => Ok(()),
+        _ => Err(format!(
+            "{} value missing capability marker (expected secret field 'cap')",
+            kind
+        )),
+    }
+}
+
+/// A resource acquired at a DAG boundary and flowed through edges.
+///
+/// Resources unify tools, filesystem handles, platform info, clocks, and env vars.
+/// Capability resources should include the secret `cap` marker in their Value
+/// encoding to prevent JSON/user-supplied values from forging capabilities.
+pub trait Resource: Into<Value> + TryFrom<Value> {
+    /// Unique identifier for this resource kind.
+    fn resource_id(&self) -> ResourceId;
+    /// Access mode for conflict detection.
+    fn access_mode(&self) -> AccessMode;
+    /// Whether this is a capability or observation.
+    fn kind(&self) -> ResourceKind;
+}
+
+/// Resolved authentication token acquired from the environment.
+///
+/// Carries both the env var name (for matching) and the secret value.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AuthToken {
+    env_var: String,
+    service: String,
+    secret: SecretString,
+}
+
+impl AuthToken {
+    /// Create a new auth token for a service/env var.
+    pub fn new(
+        service: impl Into<String>,
+        env_var: impl Into<String>,
+        secret: SecretString,
+    ) -> Self {
+        Self {
+            service: service.into(),
+            env_var: env_var.into(),
+            secret,
+        }
+    }
+
+    /// Service identifier (e.g., "github", "openai").
+    pub fn service(&self) -> &str {
+        &self.service
+    }
+
+    /// Environment variable name used to resolve this token.
+    pub fn env_var(&self) -> &str {
+        &self.env_var
+    }
+
+    /// Secret token value (redacted in Debug/Display).
+    pub fn secret(&self) -> &SecretString {
+        &self.secret
+    }
+}
+
+impl Resource for AuthToken {
+    fn resource_id(&self) -> ResourceId {
+        ResourceId::new(format!("auth:{}", self.service))
+    }
+
+    fn access_mode(&self) -> AccessMode {
+        AccessMode::Read
+    }
+
+    fn kind(&self) -> ResourceKind {
+        ResourceKind::Capability
+    }
+}
+
+impl From<AuthToken> for Value {
+    fn from(val: AuthToken) -> Self {
+        let mut map = BTreeMap::new();
+        map.insert("service".to_string(), Value::Str(val.service));
+        map.insert("env_var".to_string(), Value::Str(val.env_var));
+        map.insert("token".to_string(), Value::Secret(val.secret));
+        map.insert("cap".to_string(), Value::Secret(capability_marker()));
+        Value::Map(map)
+    }
+}
+
+impl TryFrom<&Value> for AuthToken {
+    type Error = String;
+
+    fn try_from(value: &Value) -> Result<Self, Self::Error> {
+        let map = match value {
+            Value::Map(m) => m,
+            _ => return Err("expected map for AuthToken".to_string()),
+        };
+
+        ensure_capability_marker(map, "AuthToken")?;
+
+        let service = map
+            .get("service")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "AuthToken missing 'service'".to_string())?;
+        let env_var = map
+            .get("env_var")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "AuthToken missing 'env_var'".to_string())?;
+        let token = match map.get("token") {
+            Some(Value::Secret(s)) => s.clone(),
+            _ => return Err("AuthToken missing 'token' secret".to_string()),
+        };
+
+        Ok(AuthToken {
+            service: service.to_string(),
+            env_var: env_var.to_string(),
+            secret: token,
+        })
+    }
+}
+
+impl TryFrom<Value> for AuthToken {
+    type Error = String;
+
+    fn try_from(value: Value) -> Result<Self, Self::Error> {
+        AuthToken::try_from(&value)
+    }
+}
+
+/// Timestamp snapshot (milliseconds since Unix epoch).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Timestamp {
+    millis: i64,
+}
+
+impl Timestamp {
+    /// Current time snapshot.
+    pub fn now() -> Self {
+        Self::from_system_time(SystemTime::now())
+    }
+
+    /// Create from a SystemTime.
+    pub fn from_system_time(time: SystemTime) -> Self {
+        let millis = time
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_else(|_| Duration::from_secs(0))
+            .as_millis() as i64;
+        Self { millis }
+    }
+
+    /// Convert to SystemTime.
+    pub fn to_system_time(self) -> SystemTime {
+        UNIX_EPOCH + Duration::from_millis(self.millis.max(0) as u64)
+    }
+
+    /// Milliseconds since epoch.
+    pub fn millis(&self) -> i64 {
+        self.millis
+    }
+}
+
+impl Resource for Timestamp {
+    fn resource_id(&self) -> ResourceId {
+        ResourceId::new("clock")
+    }
+
+    fn access_mode(&self) -> AccessMode {
+        AccessMode::Read
+    }
+
+    fn kind(&self) -> ResourceKind {
+        ResourceKind::Observation
+    }
+}
+
+impl From<Timestamp> for Value {
+    fn from(val: Timestamp) -> Self {
+        Value::Int(val.millis)
+    }
+}
+
+impl TryFrom<&Value> for Timestamp {
+    type Error = String;
+
+    fn try_from(value: &Value) -> Result<Self, Self::Error> {
+        match value {
+            Value::Int(millis) => Ok(Timestamp { millis: *millis }),
+            _ => Err("expected Int for Timestamp".to_string()),
+        }
+    }
+}
+
+impl TryFrom<Value> for Timestamp {
+    type Error = String;
+
+    fn try_from(value: Value) -> Result<Self, Self::Error> {
+        Timestamp::try_from(&value)
+    }
+}
+
 /// A resource access by a node.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResourceAccess {
@@ -124,7 +350,11 @@ pub struct ResourceAccess {
 
 impl ResourceAccess {
     /// Create a new resource access.
-    pub fn new(node_id: impl Into<NodeId>, resource_id: impl Into<ResourceId>, mode: AccessMode) -> Self {
+    pub fn new(
+        node_id: impl Into<NodeId>,
+        resource_id: impl Into<ResourceId>,
+        mode: AccessMode,
+    ) -> Self {
         Self {
             node_id: node_id.into(),
             resource_id: resource_id.into(),
@@ -255,7 +485,7 @@ fn compute_ordered_pairs<T>(dag: &Dag<T>) -> HashSet<(&NodeId, &NodeId)> {
 
     // Compute transitive closure
     let node_ids: Vec<&NodeId> = dag.nodes.iter().map(|n| &n.id).collect();
-    
+
     // Floyd-Warshall style transitive closure
     loop {
         let mut added = false;
@@ -303,7 +533,7 @@ mod tests {
 
     fn test_dag() -> Dag<String> {
         let mut dag = Dag::new();
-        
+
         dag.add_node(Node::opaque(
             "a",
             vec![],
@@ -322,31 +552,21 @@ mod tests {
             vec![],
             "op_c".to_string(),
         ));
-        
+
         // a → b → c
         dag.add_edge(Edge::new("a", "out", "b", "in"));
         dag.add_edge(Edge::new("b", "out", "c", "in"));
-        
+
         dag
     }
 
     fn parallel_dag() -> Dag<String> {
         let mut dag = Dag::new();
-        
+
         // Two independent nodes
-        dag.add_node(Node::opaque(
-            "a",
-            vec![],
-            vec![],
-            "op_a".to_string(),
-        ));
-        dag.add_node(Node::opaque(
-            "b",
-            vec![],
-            vec![],
-            "op_b".to_string(),
-        ));
-        
+        dag.add_node(Node::opaque("a", vec![], vec![], "op_a".to_string()));
+        dag.add_node(Node::opaque("b", vec![], vec![], "op_b".to_string()));
+
         dag
     }
 
@@ -376,13 +596,13 @@ mod tests {
     #[test]
     fn test_no_conflict_when_ordered() {
         let dag = test_dag();
-        
+
         // a writes, then b reads — ordered, no conflict
         let accesses = vec![
             ResourceAccess::write("a", "file.txt"),
             ResourceAccess::read("b", "file.txt"),
         ];
-        
+
         let conflicts = detect_conflicts(&dag, &accesses);
         assert!(conflicts.is_empty());
     }
@@ -390,13 +610,13 @@ mod tests {
     #[test]
     fn test_conflict_when_parallel() {
         let dag = parallel_dag();
-        
+
         // a and b both write — parallel, conflict!
         let accesses = vec![
             ResourceAccess::write("a", "file.txt"),
             ResourceAccess::write("b", "file.txt"),
         ];
-        
+
         let conflicts = detect_conflicts(&dag, &accesses);
         assert_eq!(conflicts.len(), 1);
         assert_eq!(conflicts[0].resource_id.0, "file.txt");
@@ -405,13 +625,13 @@ mod tests {
     #[test]
     fn test_no_conflict_for_parallel_reads() {
         let dag = parallel_dag();
-        
+
         // a and b both read — parallel, but reads don't conflict
         let accesses = vec![
             ResourceAccess::read("a", "file.txt"),
             ResourceAccess::read("b", "file.txt"),
         ];
-        
+
         let conflicts = detect_conflicts(&dag, &accesses);
         assert!(conflicts.is_empty());
     }
@@ -419,13 +639,13 @@ mod tests {
     #[test]
     fn test_conflict_read_write_parallel() {
         let dag = parallel_dag();
-        
+
         // a reads, b writes — parallel, conflict!
         let accesses = vec![
             ResourceAccess::read("a", "file.txt"),
             ResourceAccess::write("b", "file.txt"),
         ];
-        
+
         let conflicts = detect_conflicts(&dag, &accesses);
         assert_eq!(conflicts.len(), 1);
     }
@@ -433,13 +653,13 @@ mod tests {
     #[test]
     fn test_transitive_ordering() {
         let dag = test_dag(); // a → b → c
-        
+
         // a writes, c reads — transitively ordered through b
         let accesses = vec![
             ResourceAccess::write("a", "file.txt"),
             ResourceAccess::read("c", "file.txt"),
         ];
-        
+
         let conflicts = detect_conflicts(&dag, &accesses);
         assert!(conflicts.is_empty());
     }
@@ -447,13 +667,13 @@ mod tests {
     #[test]
     fn test_multiple_resources() {
         let dag = parallel_dag();
-        
+
         // a writes to file1, b writes to file2 — different resources, no conflict
         let accesses = vec![
             ResourceAccess::write("a", "file1.txt"),
             ResourceAccess::write("b", "file2.txt"),
         ];
-        
+
         let conflicts = detect_conflicts(&dag, &accesses);
         assert!(conflicts.is_empty());
     }
@@ -461,14 +681,14 @@ mod tests {
     #[test]
     fn test_validate_resource_ordering() {
         let dag = parallel_dag();
-        
+
         // Valid: parallel reads
         let read_accesses = vec![
             ResourceAccess::read("a", "file.txt"),
             ResourceAccess::read("b", "file.txt"),
         ];
         assert!(validate_resource_ordering(&dag, &read_accesses).is_ok());
-        
+
         // Invalid: parallel writes
         let write_accesses = vec![
             ResourceAccess::write("a", "file.txt"),

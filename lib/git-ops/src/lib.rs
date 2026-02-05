@@ -115,12 +115,14 @@ impl Executable for GitOps {
             // ================================================================
             // diff
             // ================================================================
-            GitOps::PrepareDiff { base_ref, extensions } => {
+            GitOps::PrepareDiff {
+                base_ref,
+                extensions,
+            } => {
                 let repo_path = optional_str(&inputs, "repo_path").unwrap_or(".");
 
                 // Allow runtime override of base_ref
-                let effective_ref =
-                    optional_str(&inputs, "base_ref").unwrap_or(base_ref.as_str());
+                let effective_ref = optional_str(&inputs, "base_ref").unwrap_or(base_ref.as_str());
 
                 let mut req = GitRequest::diff(effective_ref);
                 if !extensions.is_empty() {
@@ -146,18 +148,23 @@ impl Executable for GitOps {
 
                 OutputMap::new()
                     .map_str_str("diff_files", chunks)
-                    .str("stats", format!("+{} -{} across {} files", adds, dels, count))
+                    .str(
+                        "stats",
+                        format!("+{} -{} across {} files", adds, dels, count),
+                    )
                     .ok()
             }
 
             // ================================================================
             // diff --name-only
             // ================================================================
-            GitOps::PrepareDiffNameOnly { base_ref, extensions } => {
+            GitOps::PrepareDiffNameOnly {
+                base_ref,
+                extensions,
+            } => {
                 let repo_path = optional_str(&inputs, "repo_path").unwrap_or(".");
 
-                let effective_ref =
-                    optional_str(&inputs, "base_ref").unwrap_or(base_ref.as_str());
+                let effective_ref = optional_str(&inputs, "base_ref").unwrap_or(base_ref.as_str());
 
                 let mut req = GitRequest::diff_name_only(effective_ref);
                 if !extensions.is_empty() {
@@ -240,7 +247,9 @@ mod tests {
     #[test]
     fn test_prepare_ls_files_default() {
         let inputs = HashMap::new();
-        let result = GitOps::PrepareLsFiles { extensions: vec![] }.execute(inputs).unwrap();
+        let result = GitOps::PrepareLsFiles { extensions: vec![] }
+            .execute(inputs)
+            .unwrap();
 
         let request = result.get("request").unwrap();
         match request {
@@ -258,7 +267,9 @@ mod tests {
         let mut inputs = HashMap::new();
         inputs.insert("repo_path".to_string(), Value::Str("/my/repo".to_string()));
 
-        let result = GitOps::PrepareLsFiles { extensions: vec![] }.execute(inputs).unwrap();
+        let result = GitOps::PrepareLsFiles { extensions: vec![] }
+            .execute(inputs)
+            .unwrap();
         let request = result.get("request").unwrap();
         match request {
             Value::Request(TransportRequest::Shell(req)) => {
@@ -323,10 +334,7 @@ mod tests {
     #[test]
     fn test_prepare_diff_runtime_override() {
         let mut inputs = HashMap::new();
-        inputs.insert(
-            "base_ref".to_string(),
-            Value::Str("develop".to_string()),
-        );
+        inputs.insert("base_ref".to_string(), Value::Str("develop".to_string()));
 
         let op = GitOps::PrepareDiff {
             base_ref: "main".to_string(),

@@ -214,9 +214,9 @@ mod tests {
 
         // Find the path port and check its type
         let path_port = ports.iter().find(|(_, p, _)| p.0 == "path").unwrap();
-        assert_eq!(path_port.2.0, "String");
+        assert_eq!(path_port.2 .0, "String");
 
         let count_port = ports.iter().find(|(_, p, _)| p.0 == "count").unwrap();
-        assert_eq!(count_port.2.0, "Int");
+        assert_eq!(count_port.2 .0, "Int");
     }
 }

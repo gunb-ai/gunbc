@@ -9,9 +9,7 @@
 
 use gunbc_exec::{require_json, require_response, ExecError, Executable, OutputMap};
 use gunbc_ir::resource::{AccessMode, ResourceId};
-use gunbc_ir::transport::{
-    FileOp, FileRequest, ShellRequest, TransportRequest, TransportResponse,
-};
+use gunbc_ir::transport::{FileOp, FileRequest, ShellRequest, TransportRequest, TransportResponse};
 use gunbc_ir::Value;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -382,9 +380,7 @@ impl Executable for BlobOps {
                 let response = require_response(&inputs, "response")?;
 
                 let data = match response {
-                    TransportResponse::File(file_resp)
-                        if file_resp.operation == FileOp::Read =>
-                    {
+                    TransportResponse::File(file_resp) if file_resp.operation == FileOp::Read => {
                         file_resp.content.clone().ok_or_else(|| {
                             ExecError::new(format!(
                                 "file read failed: {}",
@@ -394,10 +390,7 @@ impl Executable for BlobOps {
                     }
                     TransportResponse::Shell(shell) => {
                         if !shell.success() {
-                            return Err(ExecError::new(format!(
-                                "fetch failed: {}",
-                                shell.stderr
-                            )));
+                            return Err(ExecError::new(format!("fetch failed: {}", shell.stderr)));
                         }
                         shell.stdout.clone()
                     }

@@ -40,16 +40,13 @@ pub fn build_toml_subdag() -> Node<LanguageOp> {
         vec![
             Port::scalar("id", "String"),
             Port::scalar("name", "String"),
-            Port::scalar("extensions", "List"),
+            Port::list("extensions", "String"),
             Port::scalar("comment_prefix", "String"),
         ],
         LanguageOp::TomlConfig,
     ));
 
-    Node::subdag(
-        "toml",
-        inner,
-    )
+    Node::subdag("toml", inner)
 }
 
 /// Generate TOML comment.

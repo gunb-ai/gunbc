@@ -11,6 +11,7 @@
 //! Generates deps.toml from the tool registry:
 //! - LoadToolRegistry -> RenderDepsToml -> PrepareFileWrite -> ExecuteTransport
 
+use crate::env::PlatformEnv;
 use crate::manifest::DEFAULT_MANIFEST_FILENAME;
 use crate::ops::DepsOp;
 use gunbc_exec::{ExecError, Executable, OutputMap};
@@ -28,6 +29,8 @@ use std::collections::HashMap;
 pub enum DepsGraphOp {
     /// Deps-specific operations (all PURE)
     Deps(DepsOp),
+    /// Environment ops (resource acquisition)
+    Env(PlatformEnv),
     /// Prepare file write (primitive - PURE)
     PrepareFileWrite(PrepareFileWriteOp),
     /// Transport operations (boundary - actual I/O)
@@ -38,6 +41,7 @@ impl Executable for DepsGraphOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         match self {
             DepsGraphOp::Deps(op) => op.execute(inputs),
+            DepsGraphOp::Env(op) => op.execute(inputs),
             DepsGraphOp::PrepareFileWrite(op) => op.execute(inputs),
             DepsGraphOp::Transport(op) => op.execute(inputs),
         }
@@ -49,12 +53,11 @@ pub fn deps_signature() -> WorkflowSignature {
     WorkflowSignature::new()
         // Inputs
         .with_input("manifest_path", "String", Cardinality::ZERO_OR_ONE)
-        .with_input("platform", "String", Cardinality::ZERO_OR_ONE)
         // Outputs - boundary outputs from terminal nodes
         .with_output("dep_count", "Int", Cardinality::ONE)
-        .with_output("dep_names", "List", Cardinality::ZERO_OR_MORE)
-        .with_output("already_installed", "List", Cardinality::ZERO_OR_MORE)
-        .with_output("needs_install", "List", Cardinality::ZERO_OR_MORE)
+        .with_output("dep_names", "String", Cardinality::ZERO_OR_MORE)
+        .with_output("already_installed", "String", Cardinality::ZERO_OR_MORE)
+        .with_output("needs_install", "String", Cardinality::ZERO_OR_MORE)
         .with_output("platform", "String", Cardinality::ONE)
         .with_output("executed", "Bool", Cardinality::ONE)
         .with_output("success", "Bool", Cardinality::ONE)
@@ -71,6 +74,17 @@ pub fn deps_signature() -> WorkflowSignature {
 /// ```
 pub fn build_deps_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
     let mut builder = DagBuilder::new();
+
+    // ========================================================================
+    // Environment: Platform
+    // ========================================================================
+
+    let platform_env = builder.add_root_node(Node::opaque(
+        "platform_env",
+        vec![],
+        vec![port("platform", "Platform")],
+        DepsGraphOp::Env(PlatformEnv),
+    ))?;
 
     // ========================================================================
     // LoadManifest chain: PrepareLoadManifest -> Execute -> ParseManifest
@@ -108,9 +122,9 @@ pub fn build_deps_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
             ],
             vec![
                 scalar("dep_count", "Int"),
-                list("dep_names", "List"),
+                list("dep_names", "String"),
                 scalar("manifest_path", "String"),
-                scalar("manifest_content", "String"),  // Pass content to GenerateScripts
+                scalar("manifest_content", "String"), // Pass content to GenerateScripts
             ],
             DepsGraphOp::Deps(DepsOp::ParseManifest),
         ),
@@ -126,13 +140,13 @@ pub fn build_deps_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
         Node::opaque(
             "generate_scripts",
             vec![
-                scalar("manifest_content", "String"),   // Receives content, not path
-                optional("platform", "String"),          // Platform acquired at boundary
+                scalar("manifest_content", "String"), // Receives content, not path
+                scalar("res:platform", "Platform"),   // Platform acquired at boundary
             ],
             vec![
                 scalar("install_script", "String"),
-                list("already_installed", "List"),
-                list("needs_install", "List"),
+                list("already_installed", "String"),
+                list("needs_install", "String"),
                 scalar("platform", "String"),
             ],
             DepsGraphOp::Deps(DepsOp::GenerateScripts),
@@ -195,19 +209,51 @@ pub fn build_deps_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
 
     // LoadManifest chain
     builder.add_edge(prepare_load.out("request"), execute_load.in_port("request"))?;
-    builder.add_edge(execute_load.out("response"), parse_manifest.in_port("response"))?;
-    builder.add_edge(prepare_load.out("manifest_path"), parse_manifest.in_port("manifest_path"))?;
+    builder.add_edge(
+        execute_load.out("response"),
+        parse_manifest.in_port("response"),
+    )?;
+    builder.add_edge(
+        prepare_load.out("manifest_path"),
+        parse_manifest.in_port("manifest_path"),
+    )?;
 
     // To GenerateScripts (now receives manifest_content instead of path)
-    builder.add_edge(parse_manifest.out("manifest_content"), generate_scripts.in_port("manifest_content"))?;
+    builder.add_edge(
+        parse_manifest.out("manifest_content"),
+        generate_scripts.in_port("manifest_content"),
+    )?;
+    builder.add_edge(
+        platform_env.out("platform"),
+        generate_scripts.in_port("res:platform"),
+    )?;
 
     // ExecuteInstalls chain
-    builder.add_edge(generate_scripts.out("install_script"), prepare_execute.in_port("install_script"))?;
-    builder.add_edge(prepare_execute.out("request"), execute_installs.in_port("request"))?;
-    builder.add_edge(execute_installs.out("response"), parse_result.in_port("response"))?;
-    builder.add_edge(prepare_execute.out("script"), parse_result.in_port("script"))?;
+    builder.add_edge(
+        generate_scripts.out("install_script"),
+        prepare_execute.in_port("install_script"),
+    )?;
+    builder.add_edge(
+        prepare_execute.out("request"),
+        execute_installs.in_port("request"),
+    )?;
+    builder.add_edge(
+        execute_installs.out("response"),
+        parse_result.in_port("response"),
+    )?;
+    builder.add_edge(
+        prepare_execute.out("script"),
+        parse_result.in_port("script"),
+    )?;
 
-    Ok(builder.build())
+    let dag = builder.build();
+    if let Some(unwired) = gunbc_ir::validate_resource_wiring(&dag).first() {
+        return Err(BuilderError::UnwiredResourceInput {
+            node: unwired.node.clone(),
+            port: unwired.port.clone(),
+        });
+    }
+    Ok(dag)
 }
 
 // ============================================================================
@@ -225,7 +271,7 @@ pub fn deps_generate_signature() -> WorkflowSignature {
         .with_output("content", "String", Cardinality::ONE)
         // Informational outputs from load_tool_registry
         .with_output("tool_count", "Int", Cardinality::ONE)
-        .with_output("tool_names", "List", Cardinality::ONE_OR_MORE)
+        .with_output("tool_names", "String", Cardinality::ONE_OR_MORE)
 }
 
 /// Build the deps generate graph.
@@ -251,7 +297,7 @@ pub fn build_deps_generate_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
         vec![],
         vec![
             scalar("tool_count", "Int"),
-            non_empty_list("tool_names", "List"),
+            non_empty_list("tool_names", "String"),
         ],
         DepsGraphOp::Deps(DepsOp::LoadToolRegistry),
     ))?;
@@ -306,12 +352,25 @@ pub fn build_deps_generate_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
     // ========================================================================
 
     // RenderDepsToml -> PrepareFileWrite
-    builder.add_edge(render_deps_toml.out("deps_toml_content"), prepare_write.in_port("content"))?;
+    builder.add_edge(
+        render_deps_toml.out("deps_toml_content"),
+        prepare_write.in_port("content"),
+    )?;
 
     // PrepareFileWrite -> ExecuteTransport
-    builder.add_edge(prepare_write.out("request"), execute_transport.in_port("request"))?;
+    builder.add_edge(
+        prepare_write.out("request"),
+        execute_transport.in_port("request"),
+    )?;
 
-    Ok(builder.build())
+    let dag = builder.build();
+    if let Some(unwired) = gunbc_ir::validate_resource_wiring(&dag).first() {
+        return Err(BuilderError::UnwiredResourceInput {
+            node: unwired.node.clone(),
+            port: unwired.port.clone(),
+        });
+    }
+    Ok(dag)
 }
 
 // Mockable implementation
@@ -321,6 +380,7 @@ impl Mockable for DepsGraphOp {
     fn mock_outputs(&self) -> HashMap<String, Value> {
         match self {
             DepsGraphOp::Deps(op) => op.mock_outputs(),
+            DepsGraphOp::Env(op) => op.mock_outputs(),
             DepsGraphOp::PrepareFileWrite(_) => OutputMap::new()
                 .request(
                     "request",
@@ -359,9 +419,9 @@ mod tests {
     #[test]
     fn test_graph_builds_successfully() {
         let dag = build_deps_graph().expect("graph should build");
-        // 7 nodes: prepare_load, execute_load, parse_manifest, generate_scripts,
-        //          prepare_execute, execute_installs, parse_result
-        assert_eq!(dag.nodes.len(), 7);
+        // 8 nodes: platform_env + prepare_load, execute_load, parse_manifest,
+        //          generate_scripts, prepare_execute, execute_installs, parse_result
+        assert_eq!(dag.nodes.len(), 8);
     }
 
     #[test]
@@ -379,7 +439,8 @@ mod tests {
         let entrypoints = detect_entrypoints(&dag);
 
         // manifest_path is an entrypoint
-        assert!(entrypoints.is_entrypoint_port(&"prepare_load_manifest".into(), &"manifest_path".into()));
+        assert!(entrypoints
+            .is_entrypoint_port(&"prepare_load_manifest".into(), &"manifest_path".into()));
     }
 
     #[test]

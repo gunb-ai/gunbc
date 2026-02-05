@@ -91,7 +91,8 @@ impl WorkflowSignature {
         type_id: impl Into<TypeId>,
         cardinality: Cardinality,
     ) -> Self {
-        self.inputs.push(SignaturePort::new(name, type_id, cardinality));
+        self.inputs
+            .push(SignaturePort::new(name, type_id, cardinality));
         self
     }
 
@@ -102,7 +103,8 @@ impl WorkflowSignature {
         type_id: impl Into<TypeId>,
         cardinality: Cardinality,
     ) -> Self {
-        self.outputs.push(SignaturePort::new(name, type_id, cardinality));
+        self.outputs
+            .push(SignaturePort::new(name, type_id, cardinality));
         self
     }
 
@@ -124,45 +126,63 @@ impl WorkflowSignature {
     /// Returns `Err(SignatureError)` with details about the mismatch.
     pub fn validate<T>(&self, dag: &Dag<T>) -> Result<(), SignatureError> {
         let inferred = infer_signature(dag);
-        
+
         // Check inputs
-        let declared_inputs: HashSet<_> = self.inputs.iter()
+        let declared_inputs: HashSet<_> = self
+            .inputs
+            .iter()
             .map(|p| (&p.name, &p.type_id, p.cardinality))
             .collect();
-        let inferred_inputs: HashSet<_> = inferred.inputs.iter()
+        let inferred_inputs: HashSet<_> = inferred
+            .inputs
+            .iter()
             .map(|p| (&p.name, &p.type_id, p.cardinality))
             .collect();
 
         let missing_inputs: Vec<_> = inferred_inputs
             .difference(&declared_inputs)
-            .map(|(name, type_id, card)| SignaturePort::new((*name).clone(), (*type_id).clone(), *card))
+            .map(|(name, type_id, card)| {
+                SignaturePort::new((*name).clone(), (*type_id).clone(), *card)
+            })
             .collect();
 
         let extra_inputs: Vec<_> = declared_inputs
             .difference(&inferred_inputs)
-            .map(|(name, type_id, card)| SignaturePort::new((*name).clone(), (*type_id).clone(), *card))
+            .map(|(name, type_id, card)| {
+                SignaturePort::new((*name).clone(), (*type_id).clone(), *card)
+            })
             .collect();
 
         // Check outputs
-        let declared_outputs: HashSet<_> = self.outputs.iter()
+        let declared_outputs: HashSet<_> = self
+            .outputs
+            .iter()
             .map(|p| (&p.name, &p.type_id, p.cardinality))
             .collect();
-        let inferred_outputs: HashSet<_> = inferred.outputs.iter()
+        let inferred_outputs: HashSet<_> = inferred
+            .outputs
+            .iter()
             .map(|p| (&p.name, &p.type_id, p.cardinality))
             .collect();
 
         let missing_outputs: Vec<_> = inferred_outputs
             .difference(&declared_outputs)
-            .map(|(name, type_id, card)| SignaturePort::new((*name).clone(), (*type_id).clone(), *card))
+            .map(|(name, type_id, card)| {
+                SignaturePort::new((*name).clone(), (*type_id).clone(), *card)
+            })
             .collect();
 
         let extra_outputs: Vec<_> = declared_outputs
             .difference(&inferred_outputs)
-            .map(|(name, type_id, card)| SignaturePort::new((*name).clone(), (*type_id).clone(), *card))
+            .map(|(name, type_id, card)| {
+                SignaturePort::new((*name).clone(), (*type_id).clone(), *card)
+            })
             .collect();
 
-        if missing_inputs.is_empty() && extra_inputs.is_empty() 
-            && missing_outputs.is_empty() && extra_outputs.is_empty() 
+        if missing_inputs.is_empty()
+            && extra_inputs.is_empty()
+            && missing_outputs.is_empty()
+            && extra_outputs.is_empty()
         {
             Ok(())
         } else {
@@ -195,7 +215,7 @@ pub fn infer_signature<T>(dag: &Dag<T>) -> WorkflowSignature {
         if port_name.0.starts_with("tool:") {
             continue;
         }
-        
+
         if let Some(node) = dag.get_node(node_id) {
             if let Some(port) = node.inputs.iter().find(|p| &p.name == port_name) {
                 inputs.push(SignaturePort::new(
@@ -240,35 +260,57 @@ pub struct SignatureError {
 impl fmt::Display for SignatureError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "Signature mismatch:")?;
-        
+
         if !self.missing_inputs.is_empty() {
-            writeln!(f, "  Missing input declarations (found in DAG but not declared):")?;
+            writeln!(
+                f,
+                "  Missing input declarations (found in DAG but not declared):"
+            )?;
             for port in &self.missing_inputs {
-                writeln!(f, "    - {} ({}, {:?})", port.name, port.type_id, port.cardinality)?;
+                writeln!(
+                    f,
+                    "    - {} ({}, {:?})",
+                    port.name, port.type_id, port.cardinality
+                )?;
             }
         }
-        
+
         if !self.extra_inputs.is_empty() {
             writeln!(f, "  Extra input declarations (declared but not in DAG):")?;
             for port in &self.extra_inputs {
-                writeln!(f, "    - {} ({}, {:?})", port.name, port.type_id, port.cardinality)?;
+                writeln!(
+                    f,
+                    "    - {} ({}, {:?})",
+                    port.name, port.type_id, port.cardinality
+                )?;
             }
         }
-        
+
         if !self.missing_outputs.is_empty() {
-            writeln!(f, "  Missing output declarations (found in DAG but not declared):")?;
+            writeln!(
+                f,
+                "  Missing output declarations (found in DAG but not declared):"
+            )?;
             for port in &self.missing_outputs {
-                writeln!(f, "    - {} ({}, {:?})", port.name, port.type_id, port.cardinality)?;
+                writeln!(
+                    f,
+                    "    - {} ({}, {:?})",
+                    port.name, port.type_id, port.cardinality
+                )?;
             }
         }
-        
+
         if !self.extra_outputs.is_empty() {
             writeln!(f, "  Extra output declarations (declared but not in DAG):")?;
             for port in &self.extra_outputs {
-                writeln!(f, "    - {} ({}, {:?})", port.name, port.type_id, port.cardinality)?;
+                writeln!(
+                    f,
+                    "    - {} ({}, {:?})",
+                    port.name, port.type_id, port.cardinality
+                )?;
             }
         }
-        
+
         Ok(())
     }
 }
@@ -284,8 +326,14 @@ mod tests {
     fn test_node(id: &str, inputs: Vec<(&str, &str)>, outputs: Vec<(&str, &str)>) -> Node<String> {
         Node::opaque(
             id,
-            inputs.into_iter().map(|(name, ty)| Port::new(name, ty)).collect(),
-            outputs.into_iter().map(|(name, ty)| Port::new(name, ty)).collect(),
+            inputs
+                .into_iter()
+                .map(|(name, ty)| Port::new(name, ty))
+                .collect(),
+            outputs
+                .into_iter()
+                .map(|(name, ty)| Port::new(name, ty))
+                .collect(),
             format!("op_{}", id),
         )
     }
@@ -293,22 +341,34 @@ mod tests {
     #[test]
     fn test_infer_signature_simple() {
         let mut dag: Dag<String> = Dag::new();
-        
+
         // A -> B -> C
         // A has entrypoint input, C has boundary output
-        dag.add_node(test_node("a", vec![("in", "String")], vec![("out", "String")]));
-        dag.add_node(test_node("b", vec![("in", "String")], vec![("out", "String")]));
-        dag.add_node(test_node("c", vec![("in", "String")], vec![("result", "String")]));
-        
+        dag.add_node(test_node(
+            "a",
+            vec![("in", "String")],
+            vec![("out", "String")],
+        ));
+        dag.add_node(test_node(
+            "b",
+            vec![("in", "String")],
+            vec![("out", "String")],
+        ));
+        dag.add_node(test_node(
+            "c",
+            vec![("in", "String")],
+            vec![("result", "String")],
+        ));
+
         dag.add_edge(crate::dag::Edge::new("a", "out", "b", "in"));
         dag.add_edge(crate::dag::Edge::new("b", "out", "c", "in"));
-        
+
         let sig = infer_signature(&dag);
-        
+
         assert_eq!(sig.inputs.len(), 1);
         assert_eq!(sig.inputs[0].name.0, "in");
         assert_eq!(sig.inputs[0].type_id.0, "String");
-        
+
         assert_eq!(sig.outputs.len(), 1);
         assert_eq!(sig.outputs[0].name.0, "result");
         assert_eq!(sig.outputs[0].type_id.0, "String");
@@ -317,24 +377,31 @@ mod tests {
     #[test]
     fn test_validate_signature_match() {
         let mut dag: Dag<String> = Dag::new();
-        dag.add_node(test_node("a", vec![("in", "String")], vec![("out", "String")]));
-        
+        dag.add_node(test_node(
+            "a",
+            vec![("in", "String")],
+            vec![("out", "String")],
+        ));
+
         let sig = WorkflowSignature::new()
             .with_input("in", "String", Cardinality::ONE)
             .with_output("out", "String", Cardinality::ONE);
-        
+
         assert!(sig.validate(&dag).is_ok());
     }
 
     #[test]
     fn test_validate_signature_missing_input() {
         let mut dag: Dag<String> = Dag::new();
-        dag.add_node(test_node("a", vec![("in", "String")], vec![("out", "String")]));
-        
+        dag.add_node(test_node(
+            "a",
+            vec![("in", "String")],
+            vec![("out", "String")],
+        ));
+
         // Signature missing the input declaration
-        let sig = WorkflowSignature::new()
-            .with_output("out", "String", Cardinality::ONE);
-        
+        let sig = WorkflowSignature::new().with_output("out", "String", Cardinality::ONE);
+
         let err = sig.validate(&dag).unwrap_err();
         assert_eq!(err.missing_inputs.len(), 1);
         assert_eq!(err.missing_inputs[0].name.0, "in");
@@ -343,13 +410,13 @@ mod tests {
     #[test]
     fn test_validate_signature_extra_input() {
         let mut dag: Dag<String> = Dag::new();
-        dag.add_node(test_node("a", vec![], vec![("out", "String")]));  // No input port
-        
+        dag.add_node(test_node("a", vec![], vec![("out", "String")])); // No input port
+
         // Signature declares an input that doesn't exist
         let sig = WorkflowSignature::new()
             .with_input("phantom", "String", Cardinality::ONE)
             .with_output("out", "String", Cardinality::ONE);
-        
+
         let err = sig.validate(&dag).unwrap_err();
         assert_eq!(err.extra_inputs.len(), 1);
         assert_eq!(err.extra_inputs[0].name.0, "phantom");
@@ -358,12 +425,15 @@ mod tests {
     #[test]
     fn test_validate_signature_missing_output() {
         let mut dag: Dag<String> = Dag::new();
-        dag.add_node(test_node("a", vec![("in", "String")], vec![("out", "String")]));
-        
+        dag.add_node(test_node(
+            "a",
+            vec![("in", "String")],
+            vec![("out", "String")],
+        ));
+
         // Signature missing the output declaration
-        let sig = WorkflowSignature::new()
-            .with_input("in", "String", Cardinality::ONE);
-        
+        let sig = WorkflowSignature::new().with_input("in", "String", Cardinality::ONE);
+
         let err = sig.validate(&dag).unwrap_err();
         assert_eq!(err.missing_outputs.len(), 1);
         assert_eq!(err.missing_outputs[0].name.0, "out");
@@ -374,17 +444,17 @@ mod tests {
         let mut dag: Dag<String> = Dag::new();
         let node = Node::opaque(
             "a",
-            vec![Port::scalar("in", "String")],  // One
-            vec![Port::optional("out", "String")],  // ZeroOrOne
+            vec![Port::scalar("in", "String")],    // One
+            vec![Port::optional("out", "String")], // ZeroOrOne
             "op_a".to_string(),
         );
         dag.add_node(node);
-        
+
         // Signature declares wrong cardinality
         let sig = WorkflowSignature::new()
             .with_input("in", "String", Cardinality::ONE)
-            .with_output("out", "String", Cardinality::ONE);  // Wrong! Should be ZeroOrOne
-        
+            .with_output("out", "String", Cardinality::ONE); // Wrong! Should be ZeroOrOne
+
         let err = sig.validate(&dag).unwrap_err();
         // The ZeroOrOne output is "missing" (we declared One instead)
         assert_eq!(err.missing_outputs.len(), 1);
@@ -398,12 +468,12 @@ mod tests {
     fn test_validate_signature_type_mismatch() {
         let mut dag: Dag<String> = Dag::new();
         dag.add_node(test_node("a", vec![("in", "String")], vec![("out", "Int")]));
-        
+
         // Signature declares wrong type
         let sig = WorkflowSignature::new()
             .with_input("in", "String", Cardinality::ONE)
-            .with_output("out", "String", Cardinality::ONE);  // Wrong! Should be Int
-        
+            .with_output("out", "String", Cardinality::ONE); // Wrong! Should be Int
+
         let err = sig.validate(&dag).unwrap_err();
         assert_eq!(err.missing_outputs.len(), 1);
         assert_eq!(err.missing_outputs[0].type_id.0, "Int");
@@ -419,7 +489,7 @@ mod tests {
             missing_outputs: vec![],
             extra_outputs: vec![SignaturePort::scalar("extra_out", "Int")],
         };
-        
+
         let msg = format!("{}", err);
         assert!(msg.contains("missing_in"));
         assert!(msg.contains("extra_out"));
@@ -431,7 +501,7 @@ mod tests {
             .with_input("a", "String", Cardinality::ONE)
             .with_input("b", "Int", Cardinality::ZERO_OR_ONE)
             .with_output("result", "Bool", Cardinality::ONE);
-        
+
         assert_eq!(sig.inputs.len(), 2);
         assert_eq!(sig.outputs.len(), 1);
     }
@@ -440,13 +510,13 @@ mod tests {
     fn test_signature_port_helpers() {
         let scalar = SignaturePort::scalar("s", "String");
         assert_eq!(scalar.cardinality, Cardinality::ONE);
-        
+
         let optional = SignaturePort::optional("o", "String");
         assert_eq!(optional.cardinality, Cardinality::ZERO_OR_ONE);
-        
+
         let list = SignaturePort::list("l", "String");
         assert_eq!(list.cardinality, Cardinality::ZERO_OR_MORE);
-        
+
         let non_empty = SignaturePort::non_empty_list("n", "String");
         assert_eq!(non_empty.cardinality, Cardinality::ONE_OR_MORE);
     }

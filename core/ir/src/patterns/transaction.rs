@@ -136,7 +136,10 @@ impl<T: Clone> TransactionBuilder<T> {
         // Begin node: initialize transaction
         dag.add_node(Node::opaque(
             "begin",
-            vec![Port::scalar(self.input_port_name.as_str(), self.input_port_type.as_str())],
+            vec![Port::scalar(
+                self.input_port_name.as_str(),
+                self.input_port_type.as_str(),
+            )],
             vec![
                 Port::scalar("txn_id", "String"),
                 Port::scalar(self.input_port_name.as_str(), self.input_port_type.as_str()),
@@ -231,8 +234,14 @@ mod tests {
         let mut dag = Dag::new();
         dag.add_node(Node::opaque(
             "op",
-            vec![Port::scalar("txn_id", "String"), Port::scalar("input", "Any")],
-            vec![Port::scalar("success", "Bool"), Port::scalar("output", "Any")],
+            vec![
+                Port::scalar("txn_id", "String"),
+                Port::scalar("input", "Any"),
+            ],
+            vec![
+                Port::scalar("success", "Bool"),
+                Port::scalar("output", "Any"),
+            ],
             TestOp::BodyOp,
         ));
         dag
@@ -281,12 +290,20 @@ mod tests {
 
                 // Check commit has guard
                 let commit_node = dag.get_node(&"commit".into()).unwrap();
-                let success_port = commit_node.inputs.iter().find(|p| p.name.0 == "success").unwrap();
+                let success_port = commit_node
+                    .inputs
+                    .iter()
+                    .find(|p| p.name.0 == "success")
+                    .unwrap();
                 assert!(success_port.guard.is_some());
 
                 // Check rollback has guard
                 let rollback_node = dag.get_node(&"rollback".into()).unwrap();
-                let success_port = rollback_node.inputs.iter().find(|p| p.name.0 == "success").unwrap();
+                let success_port = rollback_node
+                    .inputs
+                    .iter()
+                    .find(|p| p.name.0 == "success")
+                    .unwrap();
                 assert!(success_port.guard.is_some());
             }
             _ => panic!("Expected SubDag"),
@@ -310,6 +327,10 @@ mod tests {
         dag.add_node(node);
 
         let errors = validate_subdag_interfaces(&dag);
-        assert!(errors.is_empty(), "transaction interface errors: {:?}", errors);
+        assert!(
+            errors.is_empty(),
+            "transaction interface errors: {:?}",
+            errors
+        );
     }
 }

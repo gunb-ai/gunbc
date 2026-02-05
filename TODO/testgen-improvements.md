@@ -2,7 +2,7 @@
 
 **Status**: In Progress
 **Date**: 2026-02-02
-**Updated**: 2026-02-03
+**Updated**: 2026-02-05
 
 ## Problem Statement
 
@@ -153,7 +153,7 @@ how values flow between nodes. Windowed testing covers the space between unit te
 captured values can seed any arbitrary window — no additional mocks needed for pure
 nodes, and transport nodes are already intercepted by DryRun.
 
-**TODO 5.1: Define `Window` type**
+**TODO 5.1: Define `Window` type** ✅ (added in `gunbc-test::window`)
 ```rust
 pub struct Window {
     /// Entry-point nodes of this window (inputs severed and injected)
@@ -165,30 +165,30 @@ pub struct Window {
 }
 ```
 
-**TODO 5.2: Window enumeration**
-- [ ] Given a DAG, enumerate all valid windows (contiguous sub-DAG slices)
-- [ ] For a linear DAG of n nodes, this is O(n^2) windows (sliding window)
-- [ ] For branching DAGs, enumerate by cut boundaries — sever incoming edges at
+**TODO 5.2: Window enumeration** ✅ (topo-slice windows + connectivity + mixed-input filter)
+- [x] Given a DAG, enumerate all valid windows (contiguous sub-DAG slices)
+- [x] For a linear DAG of n nodes, this is O(n^2) windows (sliding window)
+- [x] For branching DAGs, enumerate by cut boundaries — sever incoming edges at
       entry nodes, capture outgoing edges at exit nodes
-- [ ] Optionally limit window size (e.g., max 5 nodes) to control test explosion
+- [x] Optionally limit window size (e.g., max 5 nodes) to control test explosion
 
-**TODO 5.3: DryRun value capture**
-- [ ] Run full DryRun with existing MockSpec → `ExecutionLog`
-- [ ] Extract per-port values at window entry boundaries from the log
-- [ ] These become the injected inputs for the windowed execution
+**TODO 5.3: DryRun value capture** ✅ (baseline log per test; caching TBD)
+- [x] Run full DryRun with existing MockSpec → `ExecutionLog`
+- [x] Extract per-port values at window entry boundaries from the log
+- [x] These become the injected inputs for the windowed execution
 
-**TODO 5.4: Windowed execution**
-- [ ] For each window, construct a sub-DAG or use `input_mock()` injection at
+**TODO 5.4: Windowed execution** ✅ (window sub-DAG + injected inputs)
+- [x] For each window, construct a sub-DAG or use `input_mock()` injection at
       the severed entry edges
-- [ ] Execute the window with DryRun mode (transport nodes still intercepted)
-- [ ] Pure nodes execute for real — this is where integration bugs surface
-- [ ] Compare window exit-port values against the full DryRun expected values
+- [x] Execute the window with DryRun mode (transport nodes still intercepted)
+- [x] Pure nodes execute for real — this is where integration bugs surface
+- [x] Compare window exit-port values against the full DryRun expected values
 
-**TODO 5.5: Test generation**
-- [ ] For each enumerated window, generate a test function
-- [ ] Test name encodes the window: `test_window_B_through_D`
-- [ ] Inputs derived from DryRun log, outputs verified against DryRun log
-- [ ] Consider grouping by window size or DAG region to organize output
+**TODO 5.5: Test generation** ✅ (auto-generated; default max window size = 5)
+- [x] For each enumerated window, generate a test function
+- [x] Test name encodes the window: `test_window_B_through_D`
+- [x] Inputs derived from DryRun log, outputs verified against DryRun log
+- [x] Consider grouping by window size or DAG region to organize output
 
 **Open design questions for Phase 5:**
 - **Test explosion**: O(n^2) can be large. Should we sample windows, use a max
@@ -410,8 +410,8 @@ Requires new testgen assertion (see TODO 8.2 below).
 - [ ] This replaces per-tool boundary presence tests (Pattern A)
 - [ ] Subsumes ~25 of the 49 tests
 
-**TODO 8.2: Add signature validation assertion to testgen**
-- [ ] If a `TestgenTargetDef` includes a signature, emit a test that
+**TODO 8.2: Add signature validation assertion to testgen** ✅
+- [x] If a `TestgenTargetDef` includes a signature, emit a test that
       calls `signature.validate(&dag)`
 - [ ] Optionally: `infer_signature(&dag)` matches declared signature
 - [ ] This replaces per-tool signature tests (Pattern E, consolidation §7 Pattern 3)
@@ -501,6 +501,22 @@ the credential design that drives these requirements.
 - [ ] Generate Bucket C scenarios specific to credential flows:
       acquire-fails, use-with-expired, refresh-succeeds, revoke-then-use
 - [ ] Use Phase 5 windows to test sub-segments of the credential flow
+
+---
+
+## Phase 11: IR Completeness & Language Idioms
+
+**See [design-codegen-quality.md](design-codegen-quality.md)** for the full
+treatment of this topic. It applies to all code generation, not just testgen.
+
+**Summary**: The test IR must model idiomatic Rust patterns. When clippy fires
+on generated code, it usually reveals an IR modeling gap (e.g., missing
+`Stmt::TailExpr` for implicit returns). The IR should be complete enough that
+generated code passes all linters with no `#[allow(...)]` escapes.
+
+**Case study**: The `needless_return` bug (2026-02-05) showed that `Stmt::Return`
+was insufficient — we needed `Stmt::TailExpr` for Rust's idiomatic tail expression
+pattern. Fixed by adding the variant and using `Stmt::tail()` in helper generation.
 
 ## References
 

@@ -69,7 +69,10 @@ impl<T> Dag<T> {
 
         // Create a subgraph for this DAG
         let subgraph_id = name.replace(['-', ' '], "_");
-        out.push_str(&format!("{}subgraph {}[\"{}\"]\n", indent, subgraph_id, name));
+        out.push_str(&format!(
+            "{}subgraph {}[\"{}\"]\n",
+            indent, subgraph_id, name
+        ));
 
         // Render nodes
         for node in &self.nodes {
@@ -90,7 +93,10 @@ impl<T> Dag<T> {
             let from_id = format!("{}_{}", subgraph_id, edge.from_node.0.replace('-', "_"));
             let to_id = format!("{}_{}", subgraph_id, edge.to_node.0.replace('-', "_"));
             let label = format!("{}:{}", edge.from_port.0, edge.to_port.0);
-            out.push_str(&format!("{}    {} -->|{}| {}\n", indent, from_id, label, to_id));
+            out.push_str(&format!(
+                "{}    {} -->|{}| {}\n",
+                indent, from_id, label, to_id
+            ));
         }
 
         out.push_str(&format!("{}end\n", indent));
@@ -104,7 +110,10 @@ impl<T> Dag<T> {
                 // Link parent node to subgraph
                 let parent_node_id = format!("{}_{}", subgraph_id, node.id.0.replace('-', "_"));
                 let child_subgraph_id = subdag_name.replace(['-', ' ', ':'], "_");
-                out.push_str(&format!("{}    {} -.-> {}\n", indent, parent_node_id, child_subgraph_id));
+                out.push_str(&format!(
+                    "{}    {} -.-> {}\n",
+                    indent, parent_node_id, child_subgraph_id
+                ));
             }
         }
 
@@ -411,7 +420,13 @@ pub mod build {
     }
 
     /// Create an edge with explicit index.
-    pub fn edge_indexed(from_node: &str, from_port: &str, to_node: &str, to_port: &str, index: usize) -> Edge {
+    pub fn edge_indexed(
+        from_node: &str,
+        from_port: &str,
+        to_node: &str,
+        to_port: &str,
+        index: usize,
+    ) -> Edge {
         Edge::with_index(from_node, from_port, to_node, to_port, index)
     }
 
@@ -442,7 +457,7 @@ mod tests {
         ];
 
         let sorted = canonical_edge_order(&edges);
-        
+
         assert_eq!(sorted[0].from_node.0, "a");
         assert_eq!(sorted[1].from_node.0, "b");
         assert_eq!(sorted[2].from_node.0, "c");
@@ -457,7 +472,7 @@ mod tests {
         ];
 
         let sorted = canonical_edge_order(&edges);
-        
+
         assert_eq!(sorted[0].from_port.0, "a_port");
         assert_eq!(sorted[1].from_port.0, "m_port");
         assert_eq!(sorted[2].from_port.0, "z_port");
@@ -473,7 +488,7 @@ mod tests {
         ];
 
         let sorted = canonical_edge_order(&edges);
-        
+
         assert_eq!(sorted[0].index, 0);
         assert_eq!(sorted[1].index, 1);
         assert_eq!(sorted[2].index, 2);
@@ -483,16 +498,16 @@ mod tests {
     fn test_edges_to_port() {
         let edges = vec![
             Edge::with_index("a", "out", "target", "in", 0),
-            Edge::with_index("b", "out", "other", "in", 1),   // Different target
+            Edge::with_index("b", "out", "other", "in", 1), // Different target
             Edge::with_index("c", "out", "target", "in", 2),
-            Edge::with_index("d", "out", "target", "other_port", 3),  // Different port
+            Edge::with_index("d", "out", "target", "other_port", 3), // Different port
         ];
 
         let target_node = NodeId("target".to_string());
         let target_port = PortName("in".to_string());
-        
+
         let matching = edges_to_port(&edges, &target_node, &target_port);
-        
+
         assert_eq!(matching.len(), 2);
         assert_eq!(matching[0].from_node.0, "a");
         assert_eq!(matching[1].from_node.0, "c");
@@ -502,7 +517,7 @@ mod tests {
     fn test_edge_sort_key() {
         let edge = Edge::with_index("node", "port", "target", "in", 5);
         let (node, port, index) = edge.sort_key();
-        
+
         assert_eq!(node.0, "node");
         assert_eq!(port.0, "port");
         assert_eq!(index, 5);
@@ -522,7 +537,10 @@ mod tests {
         let mut registry = TypeRegistry::with_primitives();
         registry.register("OptionalString", type_lib::optional(type_lib::string()));
         registry.register("StringList", type_lib::list(type_lib::string()));
-        registry.register("NonEmptyStringList", type_lib::non_empty_list(type_lib::string()));
+        registry.register(
+            "NonEmptyStringList",
+            type_lib::non_empty_list(type_lib::string()),
+        );
 
         // Port with registered type - should infer cardinality
         let port1 = Port::scalar("p1", "String");
@@ -532,7 +550,10 @@ mod tests {
         assert_eq!(port2.infer_cardinality(&registry), Cardinality::ZERO_OR_ONE);
 
         let port3 = Port::scalar("p3", "StringList");
-        assert_eq!(port3.infer_cardinality(&registry), Cardinality::ZERO_OR_MORE);
+        assert_eq!(
+            port3.infer_cardinality(&registry),
+            Cardinality::ZERO_OR_MORE
+        );
 
         let port4 = Port::scalar("p4", "NonEmptyStringList");
         assert_eq!(port4.infer_cardinality(&registry), Cardinality::ONE_OR_MORE);

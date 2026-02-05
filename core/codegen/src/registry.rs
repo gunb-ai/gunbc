@@ -25,7 +25,7 @@ use gunbc_ir::types::Cardinality;
 pub struct PortDef {
     /// Port name
     pub name: String,
-    /// Type identifier (e.g., "String", "List", "Json")
+    /// Type identifier (e.g., "String", "Json")
     pub type_id: String,
     /// Cardinality (interval struct, not a string)
     pub cardinality: Cardinality,
@@ -175,7 +175,8 @@ impl DagDef {
 
     /// Add an edge to the DAG.
     pub fn edge(mut self, from_node: &str, from_port: &str, to_node: &str, to_port: &str) -> Self {
-        self.edges.push(EdgeDef::new(from_node, from_port, to_node, to_port));
+        self.edges
+            .push(EdgeDef::new(from_node, from_port, to_node, to_port));
         self
     }
 }
@@ -216,12 +217,16 @@ pub struct TestgenTargetDef {
     pub mock_spec_path: String,
     /// DAG builder call expression (e.g., "crate::build_graph().unwrap()")
     pub dag_builder_call: String,
+    /// Signature function path (e.g., "crate::makegen_signature()")
+    pub signature_path: Option<String>,
     /// Enable boundary tests
     pub boundary_tests: bool,
     /// Enable chain tests
     pub chain_tests: bool,
     /// Enable flow tests
     pub flow_tests: bool,
+    /// Max window size for windowed tests (None = no limit)
+    pub window_max_nodes: Option<usize>,
 }
 
 impl TestgenTargetDef {
@@ -233,9 +238,11 @@ impl TestgenTargetDef {
             module_name: module_name.to_string(),
             mock_spec_path: String::new(),
             dag_builder_call: String::new(),
+            signature_path: None,
             boundary_tests: true,
             chain_tests: true,
             flow_tests: false,
+            window_max_nodes: Some(5),
         }
     }
 
@@ -251,11 +258,23 @@ impl TestgenTargetDef {
         self
     }
 
+    /// Set the signature function path.
+    pub fn signature(mut self, path: &str) -> Self {
+        self.signature_path = Some(path.to_string());
+        self
+    }
+
     /// Enable flow tests (and disable boundary/chain tests).
     pub fn flow_tests(mut self) -> Self {
         self.boundary_tests = false;
         self.chain_tests = false;
         self.flow_tests = true;
+        self
+    }
+
+    /// Set the max window size for windowed tests.
+    pub fn window_max_nodes(mut self, max: usize) -> Self {
+        self.window_max_nodes = Some(max);
         self
     }
 
@@ -389,7 +408,7 @@ pub fn all_tools() -> Vec<ToolDef> {
             "GistMode::Snapshot, extensions.clone(), public",
         )
         .returns_result()
-        .invocation(cargo::CargoInvocation::standalone("gist"))
+        .invocation(cargo::CargoInvocation::composed("gist", "gist"))
         .import("use gunbc_gist::{build_gist_graph, GistMode};")
         .entrypoint(
             CliEntrypoint::new("repo_path", "String")
@@ -399,7 +418,8 @@ pub fn all_tools() -> Vec<ToolDef> {
                 .make_var("REPO"),
         )
         .entrypoint(
-            CliEntrypoint::new("extensions", "List")
+            CliEntrypoint::new("extensions", "String")
+                .with_cardinality(Cardinality::ZERO_OR_MORE)
                 .short('e')
                 .help("File extensions to include (can be repeated)")
                 .make_var("EXT"),
@@ -408,6 +428,18 @@ pub fn all_tools() -> Vec<ToolDef> {
             CliEntrypoint::new("public", "Bool")
                 .short('p')
                 .help("Make gist public"),
+        )
+        .boundary(
+            "fs_env",
+            vec![
+                ("fs:write", "gunbc_primitives::filename::FilesystemHandle::cross_platform(gunbc_primitives::filename::Scope::Write).into()"),
+            ],
+        )
+        .boundary(
+            "clock_env",
+            vec![
+                ("clock", "gunbc_ir::Timestamp::from_system_time(std::time::SystemTime::UNIX_EPOCH).into()"),
+            ],
         )
         .boundary(
             "execute_list_files",
@@ -461,7 +493,8 @@ pub fn all_tools() -> Vec<ToolDef> {
                 .make_var("BASE"),
         )
         .entrypoint(
-            CliEntrypoint::new("extensions", "List")
+            CliEntrypoint::new("extensions", "String")
+                .with_cardinality(Cardinality::ZERO_OR_MORE)
                 .short('e')
                 .help("File extensions to include (can be repeated)")
                 .make_var("EXT"),
@@ -470,6 +503,18 @@ pub fn all_tools() -> Vec<ToolDef> {
             CliEntrypoint::new("public", "Bool")
                 .short('p')
                 .help("Make gist public"),
+        )
+        .boundary(
+            "fs_env",
+            vec![
+                ("fs:write", "gunbc_primitives::filename::FilesystemHandle::cross_platform(gunbc_primitives::filename::Scope::Write).into()"),
+            ],
+        )
+        .boundary(
+            "clock_env",
+            vec![
+                ("clock", "gunbc_ir::Timestamp::from_system_time(std::time::SystemTime::UNIX_EPOCH).into()"),
+            ],
         )
         .boundary(
             "execute_diff",
@@ -490,40 +535,6 @@ pub fn all_tools() -> Vec<ToolDef> {
                 ("response", "Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: String::new(), stderr: String::new() }))"),
             ],
         ), // gist-diff creates a remote gist from branch diff
-
-        // gunbc-buck2 (uses DagBuilder - returns Result)
-        ToolDef::new(
-            &cargo::name("buck2"),
-            "buck2",
-            "Generate BUCK file from Cargo.toml",
-            "build_buck2_graph",
-            "",
-        )
-        .returns_result()
-        .invocation(cargo::CargoInvocation::standalone("buck2"))
-        .entrypoint(
-            CliEntrypoint::new("cargo_toml_path", "String")
-                .short('i')
-                .default("Cargo.toml")
-                .help("Path to Cargo.toml")
-                .make_var("INPUT"),
-        )
-        .entrypoint(
-            CliEntrypoint::new("output_path", "String")
-                .short('o')
-                .default("BUCK")
-                .help("Output BUCK file path")
-                .make_var("OUTPUT"),
-        )
-        .output("BUCK")  // default output
-        .boundary(
-            "execute_transport",
-            vec![
-                ("written_path", "Value::Str(\"<DRY-RUN>\".to_string())"),
-                ("content", "Value::Str(\"<DRY-RUN>\".to_string())"),
-                ("response", "Value::Response(gunbc_ir::transport::TransportResponse::File(gunbc_ir::transport::FileResponse::written(\"BUCK\")))"),
-            ],
-        ),
 
         // gunbc-makegen (uses DagBuilder - returns Result)
         ToolDef::new(
@@ -546,6 +557,7 @@ pub fn all_tools() -> Vec<ToolDef> {
             )
             .dag_builder("crate::build_makegen_graph().unwrap()")
             .mock_spec("crate::makegen::graph_mock::makegen_mock_spec()")
+            .signature("crate::makegen_signature()")
             .flow_tests(),
         )
         .entrypoint(
@@ -556,11 +568,11 @@ pub fn all_tools() -> Vec<ToolDef> {
                 .make_var("OUTPUT"),
         )
         .boundary(
-            "write_makefile",
+            "execute_transport",
             vec![
-                ("written_path", "Value::Str(\"<DRY-RUN>\".to_string())"),
+                ("response", "Value::Response(gunbc_ir::transport::TransportResponse::File(gunbc_ir::transport::FileResponse { path: \"Makefile\".to_string(), operation: gunbc_ir::transport::FileOp::Write, success: true, content: None, exists: None, error: None }))"),
+                ("written_path", "Value::Str(\"Makefile\".to_string())"),
                 ("content", "Value::Str(\"<DRY-RUN>\".to_string())"),
-                ("changed", "Value::Bool(true)"),
             ],
         ),
 
@@ -583,10 +595,21 @@ pub fn all_tools() -> Vec<ToolDef> {
                 .make_var("MANIFEST"),
         )
         .boundary(
+            "platform_env",
+            vec![
+                ("platform", "gunbc_deps::Platform::Linux.into()"),
+            ],
+        )
+        .boundary(
+            "execute_load_manifest",
+            vec![
+                ("response", "Value::Response(gunbc_ir::transport::TransportResponse::File(gunbc_ir::transport::FileResponse { path: \"deps.toml\".to_string(), operation: gunbc_ir::transport::FileOp::Read, success: true, content: Some(\"[dependency]\\nname = \\\"ripgrep\\\"\\nverify_cmd = \\\"rg --version\\\"\\ninstall_cmd = \\\"cargo install ripgrep\\\"\\n\".to_string()), exists: Some(true), error: None }))"),
+            ],
+        )
+        .boundary(
             "execute_installs",
             vec![
-                ("executed", "Value::Bool(true)"),
-                ("script", "Value::Str(\"<DRY-RUN>\".to_string())"),
+                ("response", "Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: \"Dependencies installed\".to_string(), stderr: String::new() }))"),
             ],
         ),
 
@@ -610,6 +633,12 @@ pub fn all_tools() -> Vec<ToolDef> {
                 .short('b')
                 .default("main")
                 .help("Base branch for diff (default: main)"),
+        )
+        .boundary(
+            "auth_env",
+            vec![
+                ("auth:llm", "gunbc_ir::AuthToken::new(\"openai\", \"OPENAI_API_KEY\", gunbc_ir::SecretString::new(\"<MOCK_API_KEY>\")).into()"),
+            ],
         )
         .boundary(
             "execute_diff",
@@ -648,18 +677,29 @@ pub fn all_tools() -> Vec<ToolDef> {
             )
             .dag_builder("crate::build_bootstrap_graph().unwrap()")
             .mock_spec("crate::bootstrap::graph_mock::bootstrap_mock_spec()")
+            .signature("crate::bootstrap_signature()")
             .flow_tests(),
         )
         .boundary(
-            "write_makefile",
+            "execute_scan_workspace",
             vec![
-                ("written_path", "Value::Str(\"<DRY-RUN>\".to_string())"),
+                ("response", "Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: \"crates/bar\\ncrates/foo\\n\".to_string(), stderr: String::new() }))"),
             ],
         )
         .boundary(
-            "write_gitignore",
+            "execute_makefile_transport",
             vec![
-                ("written_path", "Value::Str(\"<DRY-RUN>\".to_string())"),
+                ("makefile_response", "Value::Response(gunbc_ir::transport::TransportResponse::File(gunbc_ir::transport::FileResponse { path: \"Makefile\".to_string(), operation: gunbc_ir::transport::FileOp::Write, success: true, content: None, exists: None, error: None }))"),
+                ("makefile_written_path", "Value::Str(\"Makefile\".to_string())"),
+                ("makefile_content", "Value::Str(\"<DRY-RUN>\".to_string())"),
+            ],
+        )
+        .boundary(
+            "execute_gitignore_transport",
+            vec![
+                ("gitignore_response", "Value::Response(gunbc_ir::transport::TransportResponse::File(gunbc_ir::transport::FileResponse { path: \".gitignore\".to_string(), operation: gunbc_ir::transport::FileOp::Write, success: true, content: None, exists: None, error: None }))"),
+                ("gitignore_written_path", "Value::Str(\".gitignore\".to_string())"),
+                ("gitignore_content", "Value::Str(\"<DRY-RUN>\".to_string())"),
             ],
         ),
         // NOTE: prep tool has been removed - its functionality is now
@@ -676,8 +716,8 @@ pub fn all_tools() -> Vec<ToolDef> {
 /// Core build system artifacts (not tool-specific).
 pub fn core_outputs() -> Vec<&'static str> {
     vec![
-        "target/",        // cargo build output
-        "bin",            // symlink to target/release
+        "target/", // cargo build output
+        "bin",     // symlink to target/release
     ]
 }
 
@@ -690,10 +730,8 @@ pub fn core_outputs() -> Vec<&'static str> {
 /// which DAGs produce generated tests. The actual test generation is
 /// driven by the `target!()` macro in `gunbc-dag/src/bin/testgen.rs`.
 pub fn all_testgen_targets() -> Vec<TestgenTargetDef> {
-    let mut targets: Vec<TestgenTargetDef> = all_tools()
-        .into_iter()
-        .filter_map(|t| t.testgen)
-        .collect();
+    let mut targets: Vec<TestgenTargetDef> =
+        all_tools().into_iter().filter_map(|t| t.testgen).collect();
 
     // Library DAGs (not tools — no ToolDef, just testgen targets)
     targets.extend(library_testgen_targets());
@@ -719,6 +757,7 @@ fn library_testgen_targets() -> Vec<TestgenTargetDef> {
         )
         .dag_builder("crate::build_ci_graph().unwrap()")
         .mock_spec("crate::ci::graph_mock::ci_mock_spec()")
+        .signature("crate::ci_signature()")
         .flow_tests(),
         // ====================================================================
         // Library DAGs (composable sub-DAGs)
@@ -779,15 +818,12 @@ fn library_testgen_targets() -> Vec<TestgenTargetDef> {
 
 /// Get all cleanable artifacts from tools and core.
 pub fn all_cleanable_outputs() -> Vec<String> {
-    let mut outputs: Vec<String> = core_outputs()
-        .into_iter()
-        .map(|s| s.to_string())
-        .collect();
-    
+    let mut outputs: Vec<String> = core_outputs().into_iter().map(|s| s.to_string()).collect();
+
     for tool in all_tools() {
         outputs.extend(tool.outputs);
     }
-    
+
     // Deduplicate
     outputs.sort();
     outputs.dedup();
@@ -814,14 +850,14 @@ fn makegen_dag() -> DagDef {
                 .output(PortDef::scalar("tool_count", "Int"))
                 .output(PortDef::list_nonempty("tool_names", "String"))
                 .output(PortDef::scalar("registry", "Json"))
-                .op("", "MakegenOp", "MakegenOp::LoadRegistry")
+                .op("", "MakegenOp", "MakegenOp::LoadRegistry"),
         )
         // Node: RenderMakefile - registry input, content output
         .node(
             NodeDef::new("render_makefile")
                 .input(PortDef::scalar("registry", "Json"))
                 .output(PortDef::scalar("makefile_content", "String"))
-                .op("", "MakegenOp", "MakegenOp::RenderMakefile")
+                .op("", "MakegenOp", "MakegenOp::RenderMakefile"),
         )
         // Node: WriteMakefile - BOUNDARY (world write)
         .node(
@@ -831,10 +867,14 @@ fn makegen_dag() -> DagDef {
                 .output(PortDef::scalar("written_path", "String"))
                 .output(PortDef::scalar("content", "String"))
                 .output(PortDef::scalar("changed", "Bool"))
-                .op("", "MakegenOp", "MakegenOp::WriteMakefile")
+                .op("", "MakegenOp", "MakegenOp::WriteMakefile"),
         )
         // Wire up the pipeline
         .edge("load_registry", "registry", "render_makefile", "registry")
-        .edge("render_makefile", "makefile_content", "write_makefile", "makefile_content")
+        .edge(
+            "render_makefile",
+            "makefile_content",
+            "write_makefile",
+            "makefile_content",
+        )
 }
-

@@ -11,18 +11,18 @@
 //! - Gist creation: PrepareRequest -> Execute
 
 use gunbc_exec::{
-    ExecError, Executable, OutputMap, TransportResponseExt,
-    optional_str, optional_str_list,
-    require_response, require_str, require_str_list,
+    optional_str, optional_str_list, require_response, require_str, require_str_list, ExecError,
+    Executable, OutputMap, TransportResponseExt,
 };
 use gunbc_ir::transport::{ShellRequest, TransportRequest, TransportResponse};
 use gunbc_ir::{
     build::*, BuilderError, Cardinality, Dag, DagBuilder, Node, Value, WorkflowSignature,
 };
-use gunbc_lib_git_ops::GitOps;
 use gunbc_lib_gist_ops::GistOps;
+use gunbc_lib_git_ops::GitOps;
 use gunbc_lib_markdown::MarkdownOp;
 use gunbc_lib_transport::TransportOps;
+use gunbc_primitives::filename;
 use std::collections::{BTreeMap, HashMap};
 
 /// Gist content acquisition mode.
@@ -105,10 +105,7 @@ pub enum GistGraphOp {
 }
 
 impl Executable for GistGraphOp {
-    fn execute(
-        &self,
-        inputs: HashMap<String, Value>,
-    ) -> Result<HashMap<String, Value>, ExecError> {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         match self {
             // Git operations (delegated to git-ops crate)
             GistGraphOp::Git(op) => op.execute(inputs),
@@ -388,10 +385,10 @@ fn execute_collect_file_contents(
 /// ```ignore
 /// let body = build_read_file_body_dag();
 /// let loop_node = LoopBuilder::new("read_files_loop")
-///     .with_input("files", "List", Cardinality::ZERO_OR_MORE)
+///     .with_input("files", "String", Cardinality::ZERO_OR_MORE)
 ///     .with_element("filename", "String")
 ///     .with_body(body)
-///     .with_output("contents", "List")
+///     .with_output("contents", "String")
 ///     .build();
 /// ```
 pub fn build_read_file_body_dag() -> Dag<GistGraphOp> {
@@ -401,7 +398,10 @@ pub fn build_read_file_body_dag() -> Dag<GistGraphOp> {
     dag.add_node(Node::opaque(
         "prepare",
         vec![port("filename", "String")],
-        vec![port("request", "TransportRequest"), port("filename", "String")],
+        vec![
+            port("request", "TransportRequest"),
+            port("filename", "String"),
+        ],
         GistGraphOp::PrepareReadFile,
     ));
 
@@ -416,15 +416,24 @@ pub fn build_read_file_body_dag() -> Dag<GistGraphOp> {
     // ParseReadFile node
     dag.add_node(Node::opaque(
         "parse",
-        vec![port("response", "TransportResponse"), port("filename", "String")],
+        vec![
+            port("response", "TransportResponse"),
+            port("filename", "String"),
+        ],
         vec![port("filename", "String"), port("content", "String")],
         GistGraphOp::ParseReadFile,
     ));
 
     // Wire the pipeline
-    dag.add_edge(gunbc_ir::Edge::new("prepare", "request", "execute", "request"));
-    dag.add_edge(gunbc_ir::Edge::new("execute", "response", "parse", "response"));
-    dag.add_edge(gunbc_ir::Edge::new("prepare", "filename", "parse", "filename"));
+    dag.add_edge(gunbc_ir::Edge::new(
+        "prepare", "request", "execute", "request",
+    ));
+    dag.add_edge(gunbc_ir::Edge::new(
+        "execute", "response", "parse", "response",
+    ));
+    dag.add_edge(gunbc_ir::Edge::new(
+        "prepare", "filename", "parse", "filename",
+    ));
 
     dag
 }
@@ -471,17 +480,33 @@ pub fn build_gist_graph(
     let mut builder = DagBuilder::new();
 
     // ========================================================================
+    // Environment: filesystem + clock
+    // ========================================================================
+
+    let fs_env = builder.add_root_node(Node::opaque(
+        "fs_env",
+        vec![],
+        vec![port("fs:write", "FilesystemHandle")],
+        GistGraphOp::Gist(GistOps::FsEnv {
+            scope: filename::Scope::Write,
+        }),
+    ))?;
+
+    let clock_env = builder.add_root_node(Node::opaque(
+        "clock_env",
+        vec![],
+        vec![port("clock", "Timestamp")],
+        GistGraphOp::Gist(GistOps::ClockEnv),
+    ))?;
+
+    // ========================================================================
     // Content acquisition (mode-dependent)
     // ========================================================================
     // Both modes produce a render_markdown node handle that outputs "markdown".
 
     let render_markdown = match mode {
-        GistMode::Snapshot => {
-            build_snapshot_acquire(&mut builder, extensions)?
-        }
-        GistMode::Diff { base_ref } => {
-            build_diff_acquire(&mut builder, &base_ref, extensions)?
-        }
+        GistMode::Snapshot => build_snapshot_acquire(&mut builder, extensions)?,
+        GistMode::Diff { base_ref } => build_diff_acquire(&mut builder, &base_ref, extensions)?,
     };
 
     // ========================================================================
@@ -536,7 +561,12 @@ pub fn build_gist_graph(
     let prepare_gist_request = builder.add_node_after(
         Node::opaque(
             "prepare_gist_request",
-            vec![scalar("markdown", "String"), optional("branch", "String")],
+            vec![
+                scalar("markdown", "String"),
+                optional("branch", "String"),
+                scalar("res:fs", "FilesystemHandle"),
+                scalar("res:clock", "Timestamp"),
+            ],
             vec![scalar("request", "TransportRequest")],
             GistGraphOp::Gist(GistOps::PrepareRequest { public }),
         ),
@@ -575,6 +605,14 @@ pub fn build_gist_graph(
         prepare_gist_request.in_port("branch"),
     )?;
     builder.add_edge(
+        fs_env.out("fs:write"),
+        prepare_gist_request.in_port("res:fs"),
+    )?;
+    builder.add_edge(
+        clock_env.out("clock"),
+        prepare_gist_request.in_port("res:clock"),
+    )?;
+    builder.add_edge(
         prepare_gist_request.out("request"),
         execute_gist.in_port("request"),
     )?;
@@ -583,7 +621,14 @@ pub fn build_gist_graph(
         parse_gist_response.in_port("response"),
     )?;
 
-    Ok(builder.build())
+    let dag = builder.build();
+    if let Some(unwired) = gunbc_ir::validate_resource_wiring(&dag).first() {
+        return Err(BuilderError::UnwiredResourceInput {
+            node: unwired.node.clone(),
+            port: unwired.port.clone(),
+        });
+    }
+    Ok(dag)
 }
 
 /// Build the snapshot-mode acquisition subgraph.
@@ -617,7 +662,7 @@ fn build_snapshot_acquire(
         Node::opaque(
             "parse_list_files",
             vec![port("response", "TransportResponse")],
-            vec![list("files", "List")],
+            vec![list("files", "String")],
             GistGraphOp::Git(GitOps::ParseLsFiles),
         ),
         &execute_list_files,
@@ -627,7 +672,7 @@ fn build_snapshot_acquire(
     let prepare_read_files = builder.add_node_after(
         Node::opaque(
             "prepare_read_files",
-            vec![list("files", "List"), optional("repo_path", "String")],
+            vec![list("files", "String"), optional("repo_path", "String")],
             vec![port("request", "TransportRequest")],
             GistGraphOp::PrepareReadFiles,
         ),
@@ -650,7 +695,7 @@ fn build_snapshot_acquire(
         Node::opaque(
             "parse_read_files",
             vec![port("response", "TransportResponse")],
-            vec![list("contents", "Map")],
+            vec![port("contents", "Map")],
             GistGraphOp::ParseReadFiles,
         ),
         &execute_read_files,
@@ -660,7 +705,7 @@ fn build_snapshot_acquire(
     let render_markdown = builder.add_node_after(
         Node::opaque(
             "render_markdown",
-            vec![list("contents", "Map")],
+            vec![port("contents", "Map")],
             vec![scalar("markdown", "String")],
             GistGraphOp::Markdown(MarkdownOp::RenderCodeSnapshot),
         ),
@@ -676,7 +721,10 @@ fn build_snapshot_acquire(
         execute_list_files.out("response"),
         parse_list_files.in_port("response"),
     )?;
-    builder.add_edge(parse_list_files.out("files"), prepare_read_files.in_port("files"))?;
+    builder.add_edge(
+        parse_list_files.out("files"),
+        prepare_read_files.in_port("files"),
+    )?;
     builder.add_edge(
         prepare_read_files.out("request"),
         execute_read_files.in_port("request"),
@@ -685,7 +733,10 @@ fn build_snapshot_acquire(
         execute_read_files.out("response"),
         parse_read_files.in_port("response"),
     )?;
-    builder.add_edge(parse_read_files.out("contents"), render_markdown.in_port("contents"))?;
+    builder.add_edge(
+        parse_read_files.out("contents"),
+        render_markdown.in_port("contents"),
+    )?;
 
     Ok(render_markdown)
 }
@@ -728,10 +779,7 @@ fn build_diff_acquire(
         Node::opaque(
             "parse_diff",
             vec![port("response", "TransportResponse")],
-            vec![
-                list("diff_files", "Map"),
-                scalar("stats", "String"),
-            ],
+            vec![port("diff_files", "Map"), scalar("stats", "String")],
             GistGraphOp::Git(GitOps::ParseDiff),
         ),
         &execute_diff,
@@ -741,10 +789,7 @@ fn build_diff_acquire(
     let render_markdown = builder.add_node_after(
         Node::opaque(
             "render_markdown",
-            vec![
-                list("diff_files", "Map"),
-                optional("stats", "String"),
-            ],
+            vec![port("diff_files", "Map"), optional("stats", "String")],
             vec![scalar("markdown", "String")],
             GistGraphOp::Markdown(MarkdownOp::RenderDiffSnapshot),
         ),
@@ -752,22 +797,13 @@ fn build_diff_acquire(
     )?;
 
     // Wire diff pipeline
-    builder.add_edge(
-        prepare_diff.out("request"),
-        execute_diff.in_port("request"),
-    )?;
-    builder.add_edge(
-        execute_diff.out("response"),
-        parse_diff.in_port("response"),
-    )?;
+    builder.add_edge(prepare_diff.out("request"), execute_diff.in_port("request"))?;
+    builder.add_edge(execute_diff.out("response"), parse_diff.in_port("response"))?;
     builder.add_edge(
         parse_diff.out("diff_files"),
         render_markdown.in_port("diff_files"),
     )?;
-    builder.add_edge(
-        parse_diff.out("stats"),
-        render_markdown.in_port("stats"),
-    )?;
+    builder.add_edge(parse_diff.out("stats"), render_markdown.in_port("stats"))?;
 
     Ok(render_markdown)
 }
@@ -783,57 +819,52 @@ impl Mockable for GistGraphOp {
                 // Return appropriate mock outputs based on the git op variant
                 match op {
                     GitOps::PrepareLsFiles { .. } => {
-                        let request = gunbc_ir::transport::git::GitRequest::ls_files()
-                            .to_shell_request();
+                        let request =
+                            gunbc_ir::transport::git::GitRequest::ls_files().to_shell_request();
                         OutputMap::new().request("request", request).build()
                     }
-                    GitOps::ParseLsFiles => {
-                        OutputMap::new()
-                            .str_list("files", vec![
-                                "src/main.rs".to_string(),
-                                "README.md".to_string(),
-                            ])
-                            .build()
-                    }
-                    GitOps::PrepareDiff { .. } | GitOps::PrepareDiffNameOnly { .. }
-                    | GitOps::PrepareCurrentBranch => {
-                        OutputMap::new()
-                            .request("request", TransportRequest::Shell(ShellRequest {
+                    GitOps::ParseLsFiles => OutputMap::new()
+                        .str_list(
+                            "files",
+                            vec!["src/main.rs".to_string(), "README.md".to_string()],
+                        )
+                        .build(),
+                    GitOps::PrepareDiff { .. }
+                    | GitOps::PrepareDiffNameOnly { .. }
+                    | GitOps::PrepareCurrentBranch => OutputMap::new()
+                        .request(
+                            "request",
+                            TransportRequest::Shell(ShellRequest {
                                 command: "git".to_string(),
                                 args: vec!["mock".to_string()],
                                 cwd: None,
                                 env: HashMap::new(),
                                 stdin: None,
-                            }))
-                            .build()
-                    }
-                    GitOps::ParseDiff => {
-                        OutputMap::new()
-                            .map_str_str("diff_files", std::collections::BTreeMap::new())
-                            .str("stats", "+0 -0 across 0 files")
-                            .build()
-                    }
-                    GitOps::ParseDiffNameOnly => {
-                        OutputMap::new().str_list("files", vec![]).build()
-                    }
-                    GitOps::ParseCurrentBranch => {
-                        OutputMap::new().str("branch", "main").build()
-                    }
+                            }),
+                        )
+                        .build(),
+                    GitOps::ParseDiff => OutputMap::new()
+                        .map_str_str("diff_files", std::collections::BTreeMap::new())
+                        .str("stats", "+0 -0 across 0 files")
+                        .build(),
+                    GitOps::ParseDiffNameOnly => OutputMap::new().str_list("files", vec![]).build(),
+                    GitOps::ParseCurrentBranch => OutputMap::new().str("branch", "main").build(),
                 }
             }
 
             // ReadFiles chain
-            GistGraphOp::PrepareReadFiles => {
-                OutputMap::new()
-                    .request("request", TransportRequest::Shell(ShellRequest {
+            GistGraphOp::PrepareReadFiles => OutputMap::new()
+                .request(
+                    "request",
+                    TransportRequest::Shell(ShellRequest {
                         command: "sh".to_string(),
                         args: vec!["-c".to_string(), "echo file contents".to_string()],
                         cwd: None,
                         env: HashMap::new(),
                         stdin: None,
-                    }))
-                    .build()
-            }
+                    }),
+                )
+                .build(),
             GistGraphOp::ParseReadFiles => {
                 let mut contents = std::collections::BTreeMap::new();
                 contents.insert("src/main.rs".to_string(), "fn main() {}".to_string());
@@ -841,24 +872,23 @@ impl Mockable for GistGraphOp {
             }
 
             // Single-file operations
-            GistGraphOp::PrepareReadFile => {
-                OutputMap::new()
-                    .request("request", TransportRequest::Shell(ShellRequest {
+            GistGraphOp::PrepareReadFile => OutputMap::new()
+                .request(
+                    "request",
+                    TransportRequest::Shell(ShellRequest {
                         command: "cat".to_string(),
                         args: vec!["src/main.rs".to_string()],
                         cwd: None,
                         env: HashMap::new(),
                         stdin: None,
-                    }))
-                    .str("filename", "src/main.rs")
-                    .build()
-            }
-            GistGraphOp::ParseReadFile => {
-                OutputMap::new()
-                    .str("filename", "src/main.rs")
-                    .str("content", "fn main() {}")
-                    .build()
-            }
+                    }),
+                )
+                .str("filename", "src/main.rs")
+                .build(),
+            GistGraphOp::ParseReadFile => OutputMap::new()
+                .str("filename", "src/main.rs")
+                .str("content", "fn main() {}")
+                .build(),
             GistGraphOp::CollectFileContents => {
                 let mut contents = std::collections::BTreeMap::new();
                 contents.insert("src/main.rs".to_string(), "fn main() {}".to_string());
@@ -866,42 +896,51 @@ impl Mockable for GistGraphOp {
             }
 
             // Pure ops
-            GistGraphOp::Markdown(_) => {
-                OutputMap::new()
-                    .str("markdown", "# Code Snapshot\n```rust\nfn main() {}\n```")
-                    .build()
-            }
+            GistGraphOp::Markdown(_) => OutputMap::new()
+                .str("markdown", "# Code Snapshot\n```rust\nfn main() {}\n```")
+                .build(),
             GistGraphOp::Gist(op) => match op {
-                GistOps::PrepareRequest { .. } => {
-                    OutputMap::new()
-                        .request("request", TransportRequest::Shell(ShellRequest {
+                GistOps::FsEnv { scope } => {
+                    let fs = filename::FilesystemHandle::cross_platform(*scope);
+                    let port = match scope {
+                        filename::Scope::Read => "fs:read",
+                        filename::Scope::Write => "fs:write",
+                    };
+                    OutputMap::new().value(port, fs.into()).build()
+                }
+                GistOps::ClockEnv => {
+                    let ts =
+                        gunbc_ir::Timestamp::from_system_time(std::time::SystemTime::UNIX_EPOCH);
+                    OutputMap::new().value("clock", ts.into()).build()
+                }
+                GistOps::PrepareRequest { .. } => OutputMap::new()
+                    .request(
+                        "request",
+                        TransportRequest::Shell(ShellRequest {
                             command: "gh".to_string(),
                             args: vec!["gist".to_string(), "create".to_string()],
                             cwd: None,
                             env: HashMap::new(),
                             stdin: None,
-                        }))
-                        .build()
-                }
-                GistOps::ParseGistResponse => {
-                    OutputMap::new()
-                        .str("url", "https://gist.github.com/mock/123")
-                        .build()
-                }
-            }
+                        }),
+                    )
+                    .build(),
+                GistOps::ParseGistResponse => OutputMap::new()
+                    .str("url", "https://gist.github.com/mock/123")
+                    .build(),
+            },
 
             // Transport boundary
-            GistGraphOp::Transport(_) => {
-                OutputMap::new()
-                    .response("response", TransportResponse::Shell(
-                        gunbc_ir::transport::ShellResponse {
-                            exit_code: 0,
-                            stdout: "src/main.rs\nREADME.md\n".to_string(),
-                            stderr: String::new(),
-                        },
-                    ))
-                    .build()
-            }
+            GistGraphOp::Transport(_) => OutputMap::new()
+                .response(
+                    "response",
+                    TransportResponse::Shell(gunbc_ir::transport::ShellResponse {
+                        exit_code: 0,
+                        stdout: "src/main.rs\nREADME.md\n".to_string(),
+                        stderr: String::new(),
+                    }),
+                )
+                .build(),
         }
     }
 }
@@ -917,21 +956,19 @@ mod tests {
 
     #[test]
     fn test_snapshot_graph_builds_successfully() {
-        let dag = build_gist_graph(GistMode::Snapshot, vec![], false)
-            .expect("graph should build");
-        // 13 nodes: prepare_list, execute_list, parse_list,
+        let dag = build_gist_graph(GistMode::Snapshot, vec![], false).expect("graph should build");
+        // 15 nodes: fs_env, clock_env, prepare_list, execute_list, parse_list,
         //           prepare_read, execute_read, parse_read, render_markdown,
         //           prepare_current_branch, execute_current_branch, parse_current_branch,
         //           prepare_gist, execute_gist, parse_gist_response
-        assert_eq!(dag.nodes.len(), 13);
-        // 12 edges: 6 snapshot + 3 branch chain + 3 gist tail (markdown, branch, request→execute, response)
-        assert_eq!(dag.edges.len(), 12);
+        assert_eq!(dag.nodes.len(), 15);
+        // 14 edges across snapshot, branch, and gist tail wiring
+        assert_eq!(dag.edges.len(), 14);
     }
 
     #[test]
     fn test_snapshot_graph_has_transport_boundaries() {
-        let dag = build_gist_graph(GistMode::Snapshot, vec![], false)
-            .expect("graph should build");
+        let dag = build_gist_graph(GistMode::Snapshot, vec![], false).expect("graph should build");
 
         assert!(dag.get_node(&"execute_list_files".into()).is_some());
         assert!(dag.get_node(&"execute_read_files".into()).is_some());
@@ -941,19 +978,19 @@ mod tests {
 
     #[test]
     fn test_snapshot_graph_has_entrypoints() {
-        let dag = build_gist_graph(GistMode::Snapshot, vec![], false)
-            .expect("graph should build");
+        let dag = build_gist_graph(GistMode::Snapshot, vec![], false).expect("graph should build");
         let entrypoints = detect_entrypoints(&dag);
 
         assert!(entrypoints.is_entrypoint_port(&"prepare_list_files".into(), &"repo_path".into()));
         assert!(entrypoints.is_entrypoint_port(&"prepare_read_files".into(), &"repo_path".into()));
-        assert!(entrypoints.is_entrypoint_port(&"prepare_current_branch".into(), &"repo_path".into()));
+        assert!(
+            entrypoints.is_entrypoint_port(&"prepare_current_branch".into(), &"repo_path".into())
+        );
     }
 
     #[test]
     fn test_snapshot_pure_nodes_not_boundaries() {
-        let dag = build_gist_graph(GistMode::Snapshot, vec![], false)
-            .expect("graph should build");
+        let dag = build_gist_graph(GistMode::Snapshot, vec![], false).expect("graph should build");
         let boundaries = detect_boundaries(&dag);
 
         assert!(!boundaries.is_boundary_node(&"prepare_list_files".into()));
@@ -970,23 +1007,33 @@ mod tests {
 
     #[test]
     fn test_snapshot_transport_nodes_have_correct_ports() {
-        let dag = build_gist_graph(GistMode::Snapshot, vec![], false)
-            .expect("graph should build");
+        let dag = build_gist_graph(GistMode::Snapshot, vec![], false).expect("graph should build");
 
         let execute_list = dag.get_node(&"execute_list_files".into()).unwrap();
-        assert!(execute_list.inputs.iter().any(|p| p.type_id.0 == "TransportRequest"));
-        assert!(execute_list.outputs.iter().any(|p| p.type_id.0 == "TransportResponse"));
+        assert!(execute_list
+            .inputs
+            .iter()
+            .any(|p| p.type_id.0 == "TransportRequest"));
+        assert!(execute_list
+            .outputs
+            .iter()
+            .any(|p| p.type_id.0 == "TransportResponse"));
 
         let execute_read = dag.get_node(&"execute_read_files".into()).unwrap();
-        assert!(execute_read.inputs.iter().any(|p| p.type_id.0 == "TransportRequest"));
-        assert!(execute_read.outputs.iter().any(|p| p.type_id.0 == "TransportResponse"));
+        assert!(execute_read
+            .inputs
+            .iter()
+            .any(|p| p.type_id.0 == "TransportRequest"));
+        assert!(execute_read
+            .outputs
+            .iter()
+            .any(|p| p.type_id.0 == "TransportResponse"));
     }
 
     #[test]
     fn test_snapshot_signature_matches_dag() {
         let mode = GistMode::Snapshot;
-        let dag = build_gist_graph(mode.clone(), vec![], false)
-            .expect("graph should build");
+        let dag = build_gist_graph(mode.clone(), vec![], false).expect("graph should build");
         let sig = gist_signature(&mode);
 
         sig.validate(&dag).expect("signature should match DAG");
@@ -994,8 +1041,7 @@ mod tests {
 
     #[test]
     fn test_snapshot_inferred_signature() {
-        let dag = build_gist_graph(GistMode::Snapshot, vec![], false)
-            .expect("graph should build");
+        let dag = build_gist_graph(GistMode::Snapshot, vec![], false).expect("graph should build");
         let inferred = infer_signature(&dag);
 
         // Should have three inputs (repo_path on prepare_list_files, prepare_read_files, and prepare_current_branch)
@@ -1014,26 +1060,32 @@ mod tests {
     #[test]
     fn test_diff_graph_builds_successfully() {
         let dag = build_gist_graph(
-            GistMode::Diff { base_ref: "main".to_string() },
+            GistMode::Diff {
+                base_ref: "main".to_string(),
+            },
             vec![],
             false,
-        ).expect("diff graph should build");
-        // 10 nodes: prepare_diff, execute_diff, parse_diff,
+        )
+        .expect("diff graph should build");
+        // 12 nodes: fs_env, clock_env, prepare_diff, execute_diff, parse_diff,
         //           render_markdown,
         //           prepare_current_branch, execute_current_branch, parse_current_branch,
         //           prepare_gist, execute_gist, parse_gist_response
-        assert_eq!(dag.nodes.len(), 10);
-        // 10 edges: 4 diff pipeline + 3 branch chain + 3 gist tail (markdown, branch, request→execute, response)
-        assert_eq!(dag.edges.len(), 10);
+        assert_eq!(dag.nodes.len(), 12);
+        // 12 edges across diff, branch, and gist tail wiring
+        assert_eq!(dag.edges.len(), 12);
     }
 
     #[test]
     fn test_diff_graph_has_transport_boundaries() {
         let dag = build_gist_graph(
-            GistMode::Diff { base_ref: "main".to_string() },
+            GistMode::Diff {
+                base_ref: "main".to_string(),
+            },
             vec![],
             false,
-        ).expect("diff graph should build");
+        )
+        .expect("diff graph should build");
 
         assert!(dag.get_node(&"execute_diff".into()).is_some());
         assert!(dag.get_node(&"execute_current_branch".into()).is_some());
@@ -1043,24 +1095,32 @@ mod tests {
     #[test]
     fn test_diff_graph_has_entrypoints() {
         let dag = build_gist_graph(
-            GistMode::Diff { base_ref: "main".to_string() },
+            GistMode::Diff {
+                base_ref: "main".to_string(),
+            },
             vec![],
             false,
-        ).expect("diff graph should build");
+        )
+        .expect("diff graph should build");
         let entrypoints = detect_entrypoints(&dag);
 
         assert!(entrypoints.is_entrypoint_port(&"prepare_diff".into(), &"repo_path".into()));
         assert!(entrypoints.is_entrypoint_port(&"prepare_diff".into(), &"base_ref".into()));
-        assert!(entrypoints.is_entrypoint_port(&"prepare_current_branch".into(), &"repo_path".into()));
+        assert!(
+            entrypoints.is_entrypoint_port(&"prepare_current_branch".into(), &"repo_path".into())
+        );
     }
 
     #[test]
     fn test_diff_graph_node_ids() {
         let dag = build_gist_graph(
-            GistMode::Diff { base_ref: "main".to_string() },
+            GistMode::Diff {
+                base_ref: "main".to_string(),
+            },
             vec![".rs".to_string()],
             false,
-        ).expect("diff graph should build");
+        )
+        .expect("diff graph should build");
 
         let expected_nodes = vec![
             "prepare_diff",
@@ -1087,10 +1147,13 @@ mod tests {
     #[test]
     fn test_diff_pure_nodes_not_boundaries() {
         let dag = build_gist_graph(
-            GistMode::Diff { base_ref: "main".to_string() },
+            GistMode::Diff {
+                base_ref: "main".to_string(),
+            },
             vec![],
             false,
-        ).expect("diff graph should build");
+        )
+        .expect("diff graph should build");
         let boundaries = detect_boundaries(&dag);
 
         assert!(!boundaries.is_boundary_node(&"prepare_diff".into()));
@@ -1105,9 +1168,10 @@ mod tests {
 
     #[test]
     fn test_diff_signature_matches_dag() {
-        let mode = GistMode::Diff { base_ref: "main".to_string() };
-        let dag = build_gist_graph(mode.clone(), vec![], false)
-            .expect("diff graph should build");
+        let mode = GistMode::Diff {
+            base_ref: "main".to_string(),
+        };
+        let dag = build_gist_graph(mode.clone(), vec![], false).expect("diff graph should build");
         let sig = gist_signature(&mode);
 
         sig.validate(&dag).expect("diff signature should match DAG");
@@ -1116,10 +1180,13 @@ mod tests {
     #[test]
     fn test_diff_inferred_signature() {
         let dag = build_gist_graph(
-            GistMode::Diff { base_ref: "main".to_string() },
+            GistMode::Diff {
+                base_ref: "main".to_string(),
+            },
             vec![],
             false,
-        ).expect("diff graph should build");
+        )
+        .expect("diff graph should build");
         let inferred = infer_signature(&dag);
 
         // Should have three inputs (repo_path and base_ref on prepare_diff, repo_path on prepare_current_branch)
@@ -1137,28 +1204,42 @@ mod tests {
 
     #[test]
     fn test_both_modes_share_gist_tail() {
-        let snap = build_gist_graph(GistMode::Snapshot, vec![], false)
-            .expect("snapshot should build");
+        let snap =
+            build_gist_graph(GistMode::Snapshot, vec![], false).expect("snapshot should build");
         let diff = build_gist_graph(
-            GistMode::Diff { base_ref: "main".to_string() },
+            GistMode::Diff {
+                base_ref: "main".to_string(),
+            },
             vec![],
             false,
-        ).expect("diff should build");
+        )
+        .expect("diff should build");
 
         // Both must have the same gist tail + branch acquisition nodes
         for node_id in &[
-            "prepare_current_branch", "execute_current_branch", "parse_current_branch",
-            "prepare_gist_request", "execute_gist", "parse_gist_response",
+            "prepare_current_branch",
+            "execute_current_branch",
+            "parse_current_branch",
+            "prepare_gist_request",
+            "execute_gist",
+            "parse_gist_response",
         ] {
-            assert!(snap.get_node(&(*node_id).into()).is_some(), "snapshot missing {}", node_id);
-            assert!(diff.get_node(&(*node_id).into()).is_some(), "diff missing {}", node_id);
+            assert!(
+                snap.get_node(&(*node_id).into()).is_some(),
+                "snapshot missing {}",
+                node_id
+            );
+            assert!(
+                diff.get_node(&(*node_id).into()).is_some(),
+                "diff missing {}",
+                node_id
+            );
         }
     }
 
     #[test]
     fn test_snapshot_has_no_diff_nodes() {
-        let dag = build_gist_graph(GistMode::Snapshot, vec![], false)
-            .expect("graph should build");
+        let dag = build_gist_graph(GistMode::Snapshot, vec![], false).expect("graph should build");
 
         assert!(dag.get_node(&"prepare_diff".into()).is_none());
         assert!(dag.get_node(&"execute_diff".into()).is_none());
@@ -1167,10 +1248,13 @@ mod tests {
     #[test]
     fn test_diff_has_no_snapshot_nodes() {
         let dag = build_gist_graph(
-            GistMode::Diff { base_ref: "main".to_string() },
+            GistMode::Diff {
+                base_ref: "main".to_string(),
+            },
             vec![],
             false,
-        ).expect("graph should build");
+        )
+        .expect("graph should build");
 
         assert!(dag.get_node(&"prepare_list_files".into()).is_none());
         assert!(dag.get_node(&"execute_list_files".into()).is_none());

@@ -38,6 +38,15 @@ use std::collections::HashMap;
 /// All operations are PURE - no I/O. Use `TransportOps::Execute` for actual I/O.
 #[derive(Debug, Clone)]
 pub enum LlmOps {
+    /// Resolve provider auth requirements (PURE).
+    ///
+    /// Inputs:
+    /// - `provider`: String - provider ID (e.g., "openai", "anthropic")
+    ///
+    /// Outputs:
+    /// - `service`: String - canonical provider/service ID
+    /// - `env_var`: String - environment variable for the API key
+    ResolveAuth,
     /// Build a chat completion REST request from inputs.
     ///
     /// Inputs:
@@ -70,7 +79,6 @@ pub enum LlmOps {
     // ========================================================================
     // Simple request/response (string in → string out)
     // ========================================================================
-
     /// Prepare a simple LLM request: content + question → request.
     ///
     /// This is a convenience wrapper that builds a single-turn chat request.
@@ -101,12 +109,26 @@ pub enum LlmOps {
 impl Executable for LlmOps {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         match self {
+            LlmOps::ResolveAuth => execute_resolve_auth(inputs),
             LlmOps::PrepareChatRequest => execute_prepare_chat_request(inputs),
             LlmOps::ParseChatResponse => execute_parse_chat_response(inputs),
             LlmOps::PrepareSimpleRequest => execute_prepare_simple_request(inputs),
             LlmOps::ParseSimpleResponse => execute_parse_simple_response(inputs),
         }
     }
+}
+
+fn execute_resolve_auth(
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    let provider_id = require_str(&inputs, "provider")?;
+    let provider = llm::provider_by_id(provider_id)
+        .ok_or_else(|| ExecError::new(format!("unknown provider '{}'", provider_id)))?;
+
+    OutputMap::new()
+        .str("service", provider.id)
+        .str("env_var", provider.api_key_env.0)
+        .ok()
 }
 
 /// Build a `ChatRequest` from DAG inputs and convert it to a `RestRequest`.
@@ -153,8 +175,7 @@ fn execute_prepare_chat_request(
     }
 
     // Convert to REST request via provider-specific builder
-    let rest_request = llm::build_chat_request(&provider_id, &chat)
-        .map_err(ExecError::new)?;
+    let rest_request = llm::build_chat_request(&provider_id, &chat).map_err(ExecError::new)?;
 
     OutputMap::new()
         .request("request", TransportRequest::Rest(rest_request))
@@ -166,7 +187,17 @@ fn execute_prepare_chat_request(
 fn execute_parse_chat_response(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    if let Some(result) = propagate_skipped(&inputs, "response", &["content", "model", "finish_reason", "input_tokens", "output_tokens"]) {
+    if let Some(result) = propagate_skipped(
+        &inputs,
+        "response",
+        &[
+            "content",
+            "model",
+            "finish_reason",
+            "input_tokens",
+            "output_tokens",
+        ],
+    ) {
         return result;
     }
 
@@ -174,13 +205,16 @@ fn execute_parse_chat_response(
     let response = require_response(&inputs, "response")?;
     let rest_response = response.require_rest()?;
 
-    let chat_response = llm::parse_chat_response(provider_id, rest_response)
-        .map_err(ExecError::new)?;
+    let chat_response =
+        llm::parse_chat_response(provider_id, rest_response).map_err(ExecError::new)?;
 
     OutputMap::new()
         .str("content", chat_response.content)
         .str("model", chat_response.model)
-        .str("finish_reason", format!("{:?}", chat_response.finish_reason))
+        .str(
+            "finish_reason",
+            format!("{:?}", chat_response.finish_reason),
+        )
         .int("input_tokens", chat_response.usage.input_tokens as i64)
         .int("output_tokens", chat_response.usage.output_tokens as i64)
         .ok()
@@ -218,8 +252,7 @@ fn execute_prepare_simple_request(
     let chat = ChatRequest::new(model, messages);
 
     // Convert to REST request
-    let rest_request =
-        llm::build_chat_request(&provider_id, &chat).map_err(ExecError::new)?;
+    let rest_request = llm::build_chat_request(&provider_id, &chat).map_err(ExecError::new)?;
 
     OutputMap::new()
         .request("request", TransportRequest::Rest(rest_request))
@@ -242,9 +275,7 @@ fn execute_parse_simple_response(
     let chat_response =
         llm::parse_chat_response(provider_id, rest_response).map_err(ExecError::new)?;
 
-    OutputMap::new()
-        .str("answer", chat_response.content)
-        .ok()
+    OutputMap::new().str("answer", chat_response.content).ok()
 }
 
 /// Parse chat messages from a JSON value.
@@ -252,19 +283,14 @@ fn execute_parse_simple_response(
 /// Accepts either:
 /// - A JSON array of `{role: string, content: string}` objects
 /// - A single string (interpreted as a user message)
-fn parse_messages_from_json(
-    json: &serde_json::Value,
-) -> Result<Vec<ChatMessage>, ExecError> {
+fn parse_messages_from_json(json: &serde_json::Value) -> Result<Vec<ChatMessage>, ExecError> {
     match json {
         serde_json::Value::Array(arr) => {
             let mut messages = Vec::with_capacity(arr.len());
             for (i, item) in arr.iter().enumerate() {
-                let role_str = item
-                    .get("role")
-                    .and_then(|r| r.as_str())
-                    .ok_or_else(|| {
-                        ExecError::new(format!("message[{}]: missing or invalid 'role'", i))
-                    })?;
+                let role_str = item.get("role").and_then(|r| r.as_str()).ok_or_else(|| {
+                    ExecError::new(format!("message[{}]: missing or invalid 'role'", i))
+                })?;
 
                 let role = Role::parse(role_str).ok_or_else(|| {
                     ExecError::new(format!(
@@ -308,8 +334,7 @@ pub fn code_review_request(
     code: &str,
     context: &str,
 ) -> Result<ChatRequest, String> {
-    llm::provider_by_id(provider_id)
-        .ok_or_else(|| format!("unknown provider: {}", provider_id))?;
+    llm::provider_by_id(provider_id).ok_or_else(|| format!("unknown provider: {}", provider_id))?;
 
     let system = "You are an expert code reviewer. Analyze the code for:\n\
                   - Correctness and potential bugs\n\
@@ -329,10 +354,7 @@ pub fn code_review_request(
 
     Ok(ChatRequest::new(
         model,
-        vec![
-            ChatMessage::system(system),
-            ChatMessage::user(user_message),
-        ],
+        vec![ChatMessage::system(system), ChatMessage::user(user_message)],
     )
     .temperature(0.3)
     .max_tokens(4096))
@@ -347,8 +369,7 @@ pub fn code_generation_request(
     description: &str,
     language: &str,
 ) -> Result<ChatRequest, String> {
-    llm::provider_by_id(provider_id)
-        .ok_or_else(|| format!("unknown provider: {}", provider_id))?;
+    llm::provider_by_id(provider_id).ok_or_else(|| format!("unknown provider: {}", provider_id))?;
 
     let system = format!(
         "You are an expert {} programmer. Generate clean, idiomatic code \
@@ -359,10 +380,7 @@ pub fn code_generation_request(
 
     Ok(ChatRequest::new(
         model,
-        vec![
-            ChatMessage::system(system),
-            ChatMessage::user(description),
-        ],
+        vec![ChatMessage::system(system), ChatMessage::user(description)],
     )
     .temperature(0.2)
     .max_tokens(4096))
@@ -409,10 +427,7 @@ mod tests {
     #[test]
     fn test_prepare_chat_request_anthropic() {
         let mut inputs = HashMap::new();
-        inputs.insert(
-            "provider".to_string(),
-            Value::Str("anthropic".to_string()),
-        );
+        inputs.insert("provider".to_string(), Value::Str("anthropic".to_string()));
         inputs.insert(
             "model".to_string(),
             Value::Str("claude-sonnet-4-20250514".to_string()),
@@ -444,10 +459,7 @@ mod tests {
     fn test_prepare_chat_request_with_string_message() {
         let mut inputs = HashMap::new();
         inputs.insert("provider".to_string(), Value::Str("openai".to_string()));
-        inputs.insert(
-            "model".to_string(),
-            Value::Str("gpt-4o-mini".to_string()),
-        );
+        inputs.insert("model".to_string(), Value::Str("gpt-4o-mini".to_string()));
         inputs.insert(
             "messages".to_string(),
             Value::Str("What is 2+2?".to_string()),
@@ -482,16 +494,15 @@ mod tests {
 
     #[test]
     fn test_parse_chat_response_openai() {
-        let response = TransportResponse::Rest(
-            gunbc_ir::transport::RestResponse::ok(serde_json::json!({
+        let response =
+            TransportResponse::Rest(gunbc_ir::transport::RestResponse::ok(serde_json::json!({
                 "model": "gpt-4o",
                 "choices": [{
                     "message": {"role": "assistant", "content": "Hello!"},
                     "finish_reason": "stop"
                 }],
                 "usage": {"prompt_tokens": 5, "completion_tokens": 2, "total_tokens": 7}
-            })),
-        );
+            })));
 
         let mut inputs = HashMap::new();
         inputs.insert("provider".to_string(), Value::Str("openai".to_string()));
@@ -503,30 +514,23 @@ mod tests {
             result.get("content"),
             Some(&Value::Str("Hello!".to_string()))
         );
-        assert_eq!(
-            result.get("model"),
-            Some(&Value::Str("gpt-4o".to_string()))
-        );
+        assert_eq!(result.get("model"), Some(&Value::Str("gpt-4o".to_string())));
         assert_eq!(result.get("input_tokens"), Some(&Value::Int(5)));
         assert_eq!(result.get("output_tokens"), Some(&Value::Int(2)));
     }
 
     #[test]
     fn test_parse_chat_response_anthropic() {
-        let response = TransportResponse::Rest(
-            gunbc_ir::transport::RestResponse::ok(serde_json::json!({
+        let response =
+            TransportResponse::Rest(gunbc_ir::transport::RestResponse::ok(serde_json::json!({
                 "content": [{"type": "text", "text": "Hello!"}],
                 "model": "claude-sonnet-4-20250514",
                 "stop_reason": "end_turn",
                 "usage": {"input_tokens": 5, "output_tokens": 2}
-            })),
-        );
+            })));
 
         let mut inputs = HashMap::new();
-        inputs.insert(
-            "provider".to_string(),
-            Value::Str("anthropic".to_string()),
-        );
+        inputs.insert("provider".to_string(), Value::Str("anthropic".to_string()));
         inputs.insert("response".to_string(), Value::Response(response));
 
         let result = LlmOps::ParseChatResponse.execute(inputs).unwrap();
@@ -534,6 +538,31 @@ mod tests {
             result.get("content"),
             Some(&Value::Str("Hello!".to_string()))
         );
+    }
+
+    #[test]
+    fn test_resolve_auth_openai() {
+        let mut inputs = HashMap::new();
+        inputs.insert("provider".to_string(), Value::Str("openai".to_string()));
+
+        let result = LlmOps::ResolveAuth.execute(inputs).unwrap();
+        assert_eq!(
+            result.get("service"),
+            Some(&Value::Str("openai".to_string()))
+        );
+        assert_eq!(
+            result.get("env_var"),
+            Some(&Value::Str("OPENAI_API_KEY".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_resolve_auth_unknown_provider_errors() {
+        let mut inputs = HashMap::new();
+        inputs.insert("provider".to_string(), Value::Str("unknown".to_string()));
+
+        let err = LlmOps::ResolveAuth.execute(inputs).unwrap_err();
+        assert!(err.0.contains("unknown provider"));
     }
 
     #[test]
@@ -569,8 +598,13 @@ mod tests {
 
     #[test]
     fn test_code_review_request() {
-        let req = code_review_request("openai", "gpt-4o", "fn add(a: i32, b: i32) -> i32 { a + b }", "")
-            .unwrap();
+        let req = code_review_request(
+            "openai",
+            "gpt-4o",
+            "fn add(a: i32, b: i32) -> i32 { a + b }",
+            "",
+        )
+        .unwrap();
 
         assert_eq!(req.model, "gpt-4o");
         assert_eq!(req.messages.len(), 2);
@@ -581,17 +615,21 @@ mod tests {
 
     #[test]
     fn test_code_review_request_with_context() {
-        let req =
-            code_review_request("anthropic", "claude-sonnet-4-20250514", "x = 1", "Python code").unwrap();
+        let req = code_review_request(
+            "anthropic",
+            "claude-sonnet-4-20250514",
+            "x = 1",
+            "Python code",
+        )
+        .unwrap();
 
         assert!(req.messages[1].text().contains("Python code"));
     }
 
     #[test]
     fn test_code_generation_request() {
-        let req =
-            code_generation_request("openai", "gpt-4o", "A function to sort a list", "Rust")
-                .unwrap();
+        let req = code_generation_request("openai", "gpt-4o", "A function to sort a list", "Rust")
+            .unwrap();
 
         assert_eq!(req.messages.len(), 2);
         assert!(req.messages[0].text().contains("Rust"));
@@ -706,16 +744,15 @@ mod tests {
 
     #[test]
     fn test_parse_simple_response_openai() {
-        let response = TransportResponse::Rest(
-            gunbc_ir::transport::RestResponse::ok(serde_json::json!({
+        let response =
+            TransportResponse::Rest(gunbc_ir::transport::RestResponse::ok(serde_json::json!({
                 "model": "gpt-4o",
                 "choices": [{
                     "message": {"role": "assistant", "content": "This function adds two integers."},
                     "finish_reason": "stop"
                 }],
                 "usage": {"prompt_tokens": 20, "completion_tokens": 10, "total_tokens": 30}
-            })),
-        );
+            })));
 
         let mut inputs = HashMap::new();
         inputs.insert("provider".to_string(), Value::Str("openai".to_string()));
@@ -736,14 +773,13 @@ mod tests {
 
     #[test]
     fn test_parse_simple_response_anthropic() {
-        let response = TransportResponse::Rest(
-            gunbc_ir::transport::RestResponse::ok(serde_json::json!({
+        let response =
+            TransportResponse::Rest(gunbc_ir::transport::RestResponse::ok(serde_json::json!({
                 "content": [{"type": "text", "text": "The function returns the sum."}],
                 "model": "claude-sonnet-4-20250514",
                 "stop_reason": "end_turn",
                 "usage": {"input_tokens": 15, "output_tokens": 8}
-            })),
-        );
+            })));
 
         let mut inputs = HashMap::new();
         inputs.insert("provider".to_string(), Value::Str("anthropic".to_string()));

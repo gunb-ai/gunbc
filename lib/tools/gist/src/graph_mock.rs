@@ -9,8 +9,19 @@
 //! - Chain validation with other tools
 
 use crate::graph::GistMode;
-use gunbc_ir::Value;
+use gunbc_ir::{Timestamp, Value};
+use gunbc_primitives::filename;
 use gunbc_test::{InputConstraint, MockSpec};
+use std::time::SystemTime;
+
+fn mock_fs_handle() -> Value {
+    let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
+    fs.into()
+}
+
+fn mock_clock() -> Value {
+    Timestamp::from_system_time(SystemTime::UNIX_EPOCH).into()
+}
 
 /// Build a mock specification for the gist graph.
 ///
@@ -34,7 +45,10 @@ use gunbc_test::{InputConstraint, MockSpec};
 /// - `repo_path`: Optional string (both modes)
 /// - `base_ref`: Optional string (diff mode only)
 pub fn gist_mock_spec(mode: &GistMode) -> MockSpec {
-    let mut spec = MockSpec::new("gist");
+    let mut spec = MockSpec::new("gist")
+        // Env: filesystem + clock
+        .boundary("fs_env", "fs:write", mock_fs_handle())
+        .boundary("clock_env", "clock", mock_clock());
 
     match mode {
         GistMode::Snapshot => {
@@ -76,16 +90,15 @@ pub fn gist_mock_spec(mode: &GistMode) -> MockSpec {
     }
 
     // Shared branch acquisition boundary (both modes)
-    spec = spec
-        .boundary(
-            "execute_current_branch",
-            "response",
-            Value::Json(serde_json::json!({
-                "exit_code": 0,
-                "stdout": "main\n",
-                "stderr": ""
-            })),
-        );
+    spec = spec.boundary(
+        "execute_current_branch",
+        "response",
+        Value::Json(serde_json::json!({
+            "exit_code": 0,
+            "stdout": "main\n",
+            "stderr": ""
+        })),
+    );
 
     // Shared gist boundary (both modes)
     spec = spec
@@ -118,14 +131,12 @@ pub fn gist_mock_spec(mode: &GistMode) -> MockSpec {
 ///
 /// Use this when testing tools that acquire file locks before reading.
 pub fn gist_mock_spec_with_fs_lock() -> MockSpec {
-    gist_mock_spec(&GistMode::Snapshot)
-        .resource_lock("fs:read")
+    gist_mock_spec(&GistMode::Snapshot).resource_lock("fs:read")
 }
 
 /// Mock spec for testing lease expiration scenarios.
 pub fn gist_mock_spec_lease_expires() -> MockSpec {
-    gist_mock_spec(&GistMode::Snapshot)
-        .resource_lease_expires("github:api_token", 5000)
+    gist_mock_spec(&GistMode::Snapshot).resource_lease_expires("github:api_token", 5000)
 }
 
 #[cfg(test)]
@@ -142,9 +153,15 @@ mod tests {
     fn test_snapshot_mock_spec_has_boundaries() {
         let spec = gist_mock_spec(&GistMode::Snapshot);
 
-        assert!(spec.get_boundary_mock("execute_list_files", "response").is_some());
-        assert!(spec.get_boundary_mock("execute_read_files", "response").is_some());
-        assert!(spec.get_boundary_mock("execute_current_branch", "response").is_some());
+        assert!(spec
+            .get_boundary_mock("execute_list_files", "response")
+            .is_some());
+        assert!(spec
+            .get_boundary_mock("execute_read_files", "response")
+            .is_some());
+        assert!(spec
+            .get_boundary_mock("execute_current_branch", "response")
+            .is_some());
         assert!(spec.get_boundary_mock("execute_gist", "url").is_some());
         assert!(spec.get_boundary_mock("execute_gist", "response").is_some());
     }
@@ -182,27 +199,39 @@ mod tests {
 
     #[test]
     fn test_diff_mock_spec_has_boundaries() {
-        let mode = GistMode::Diff { base_ref: "main".to_string() };
+        let mode = GistMode::Diff {
+            base_ref: "main".to_string(),
+        };
         let spec = gist_mock_spec(&mode);
 
         assert!(spec.get_boundary_mock("execute_diff", "response").is_some());
-        assert!(spec.get_boundary_mock("execute_current_branch", "response").is_some());
+        assert!(spec
+            .get_boundary_mock("execute_current_branch", "response")
+            .is_some());
         assert!(spec.get_boundary_mock("execute_gist", "url").is_some());
         assert!(spec.get_boundary_mock("execute_gist", "response").is_some());
     }
 
     #[test]
     fn test_diff_mock_spec_no_snapshot_boundaries() {
-        let mode = GistMode::Diff { base_ref: "main".to_string() };
+        let mode = GistMode::Diff {
+            base_ref: "main".to_string(),
+        };
         let spec = gist_mock_spec(&mode);
 
-        assert!(spec.get_boundary_mock("execute_list_files", "response").is_none());
-        assert!(spec.get_boundary_mock("execute_read_files", "response").is_none());
+        assert!(spec
+            .get_boundary_mock("execute_list_files", "response")
+            .is_none());
+        assert!(spec
+            .get_boundary_mock("execute_read_files", "response")
+            .is_none());
     }
 
     #[test]
     fn test_diff_mock_spec_url_is_valid() {
-        let mode = GistMode::Diff { base_ref: "main".to_string() };
+        let mode = GistMode::Diff {
+            base_ref: "main".to_string(),
+        };
         let spec = gist_mock_spec(&mode);
         let url = spec.get_boundary_mock("execute_gist", "url").unwrap();
 
@@ -215,7 +244,9 @@ mod tests {
 
     #[test]
     fn test_diff_chain_validation_self() {
-        let mode = GistMode::Diff { base_ref: "main".to_string() };
+        let mode = GistMode::Diff {
+            base_ref: "main".to_string(),
+        };
         let spec = gist_mock_spec(&mode);
         let mapping = HashMap::new();
         let result = validate_chain(&spec, &spec, &mapping);

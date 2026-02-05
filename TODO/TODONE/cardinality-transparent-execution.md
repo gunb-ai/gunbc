@@ -634,24 +634,24 @@ Concrete failure classes this would catch:
 
 ## Tasks
 
-- [ ] Implement `Cardinality` struct with interval representation
-- [ ] Implement derived queries (allows_empty, is_list, etc.)
-- [ ] Implement `satisfies()` as interval containment
-- [ ] Implement lattice algebra (join, meet, product)
-- [ ] Implement `can_coerce_to()`
-- [ ] Property-based tests for algebraic laws
-- [ ] Serde compat (named strings + {min, max} fallback)
-- [ ] Add `Value::List` variant
-- [ ] Cardinality-aware input gathering in execute.rs
-- [ ] Coercion compiler pass
-- [ ] Map semantics design (Track D scope decision)
-- [ ] Embed cardinality in type system (Part 3)
-- [ ] Migrate call sites (One → ONE, etc.)
-- [ ] Migrate `MergeOutputs` to use engine-guaranteed list inputs
-- [ ] Replace `CardinalityCase` enum with computed boundary values
-- [ ] Add cardinality obligations to testgen obligation model
-- [ ] Wire `port_cardinalities` into codegen (currently unused/underscore)
-- [ ] Generate coercion coverage tests for compiler pass output
+- [x] Implement `Cardinality` struct with interval representation
+- [x] Implement derived queries (allows_empty, is_list, etc.)
+- [x] Implement `satisfies()` as interval containment
+- [x] Implement lattice algebra (join, meet, product)
+- [x] Implement `can_coerce_to()`
+- [x] Property-based tests for algebraic laws
+- [x] Serde compat (named strings + {min, max} fallback)
+- [x] Add `Value::List` variant
+- [x] Cardinality-aware input gathering in execute.rs
+- [x] Coercion compiler pass
+- [x] Map semantics design (Track D scope decision) — resolved in design-type-coercion.md: explicit only, no implicit auto-iteration
+- [x] Embed cardinality in type system (Part 3) — resolved in design-type-coercion.md: TypeContract as source of truth
+- [x] Migrate call sites (One → ONE, etc.)
+- [x] Migrate `MergeOutputs` to use engine-guaranteed list inputs
+- [x] Replace `CardinalityCase` enum with computed boundary values
+- [x] Add cardinality obligations to testgen obligation model
+- [x] Wire `port_cardinalities` into codegen (currently unused/underscore)
+- [x] Generate coercion coverage tests for compiler pass output
 
 ## Notes
 

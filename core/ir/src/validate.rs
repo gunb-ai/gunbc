@@ -74,7 +74,11 @@ impl fmt::Display for PortDirection {
 impl fmt::Display for SubDagError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            SubDagError::NoInnerEntrypoint { node, port, available } => {
+            SubDagError::NoInnerEntrypoint {
+                node,
+                port,
+                available,
+            } => {
                 write!(
                     f,
                     "SubDag '{}': input port '{}' has no matching entrypoint in inner DAG (available: [{}])",
@@ -82,7 +86,11 @@ impl fmt::Display for SubDagError {
                     available.iter().map(|p| p.0.as_str()).collect::<Vec<_>>().join(", ")
                 )
             }
-            SubDagError::NoInnerBoundary { node, port, available } => {
+            SubDagError::NoInnerBoundary {
+                node,
+                port,
+                available,
+            } => {
                 write!(
                     f,
                     "SubDag '{}': output port '{}' has no matching boundary in inner DAG (available: [{}])",
@@ -90,7 +98,11 @@ impl fmt::Display for SubDagError {
                     available.iter().map(|p| p.0.as_str()).collect::<Vec<_>>().join(", ")
                 )
             }
-            SubDagError::UnexposedEntrypoint { node, inner_port, parent_inputs } => {
+            SubDagError::UnexposedEntrypoint {
+                node,
+                inner_port,
+                parent_inputs,
+            } => {
                 write!(
                     f,
                     "SubDag '{}': inner entrypoint '{}' has no matching parent input port (parent inputs: [{}])",
@@ -98,7 +110,11 @@ impl fmt::Display for SubDagError {
                     parent_inputs.iter().map(|p| p.0.as_str()).collect::<Vec<_>>().join(", ")
                 )
             }
-            SubDagError::UnexposedBoundary { node, inner_port, parent_outputs } => {
+            SubDagError::UnexposedBoundary {
+                node,
+                inner_port,
+                parent_outputs,
+            } => {
                 write!(
                     f,
                     "SubDag '{}': inner boundary '{}' has no matching parent output port (parent outputs: [{}])",
@@ -106,7 +122,13 @@ impl fmt::Display for SubDagError {
                     parent_outputs.iter().map(|p| p.0.as_str()).collect::<Vec<_>>().join(", ")
                 )
             }
-            SubDagError::TypeMismatch { node, port, direction, parent_type, inner_type } => {
+            SubDagError::TypeMismatch {
+                node,
+                port,
+                direction,
+                parent_type,
+                inner_type,
+            } => {
                 write!(
                     f,
                     "SubDag '{}': {} port '{}' type mismatch: parent declares '{}', inner has '{}'",
@@ -122,6 +144,19 @@ impl fmt::Display for SubDagError {
 
 impl std::error::Error for SubDagError {}
 
+/// Unwired resource input (res:* entrypoint) discovered in a DAG.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnwiredResource {
+    pub node: NodeId,
+    pub port: PortName,
+}
+
+impl fmt::Display for UnwiredResource {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "unwired resource input: {}:{}", self.node, self.port)
+    }
+}
+
 /// Validate all SubDag interfaces in a DAG, recursively.
 ///
 /// For each SubDag node, checks that:
@@ -134,6 +169,21 @@ pub fn validate_subdag_interfaces<T>(dag: &Dag<T>) -> Vec<SubDagError> {
     let mut errors = Vec::new();
     validate_dag_recursive(dag, &mut errors);
     errors
+}
+
+/// Validate that all `res:*` input ports are wired.
+///
+/// Returns a list of unwired resource inputs (unconnected entrypoints).
+pub fn validate_resource_wiring<T>(dag: &Dag<T>) -> Vec<UnwiredResource> {
+    detect_entrypoints(dag)
+        .entrypoint_ports
+        .iter()
+        .filter(|(_, port_name, _)| port_name.0.starts_with("res:"))
+        .map(|(node_id, port_name, _)| UnwiredResource {
+            node: node_id.clone(),
+            port: port_name.clone(),
+        })
+        .collect()
 }
 
 fn validate_dag_recursive<T>(dag: &Dag<T>, errors: &mut Vec<SubDagError>) {
@@ -304,10 +354,7 @@ mod tests {
         ));
 
         let mut dag: Dag<()> = Dag::new();
-        dag.add_node(Node::subdag(
-            "wrapper",
-            inner,
-        ));
+        dag.add_node(Node::subdag("wrapper", inner));
 
         let errors = validate_subdag_interfaces(&dag);
         assert!(errors.is_empty(), "expected no errors, got: {:?}", errors);
@@ -363,7 +410,9 @@ mod tests {
         let errors = validate_subdag_interfaces(&dag);
         // 2 errors: parent "data" not in inner + inner "config" not on parent
         assert_eq!(errors.len(), 2, "expected 2 errors, got: {:?}", errors);
-        assert!(errors.iter().any(|e| matches!(e, SubDagError::NoInnerEntrypoint { port, .. } if port.0 == "data")));
+        assert!(errors
+            .iter()
+            .any(|e| matches!(e, SubDagError::NoInnerEntrypoint { port, .. } if port.0 == "data")));
         assert!(errors.iter().any(|e| matches!(e, SubDagError::UnexposedEntrypoint { inner_port, .. } if inner_port.0 == "config")));
     }
 
@@ -392,7 +441,9 @@ mod tests {
         let errors = validate_subdag_interfaces(&dag);
         // 2 errors: parent "result" not in inner + inner "output" not on parent
         assert_eq!(errors.len(), 2, "expected 2 errors, got: {:?}", errors);
-        assert!(errors.iter().any(|e| matches!(e, SubDagError::NoInnerBoundary { port, .. } if port.0 == "result")));
+        assert!(errors
+            .iter()
+            .any(|e| matches!(e, SubDagError::NoInnerBoundary { port, .. } if port.0 == "result")));
         assert!(errors.iter().any(|e| matches!(e, SubDagError::UnexposedBoundary { inner_port, .. } if inner_port.0 == "output")));
     }
 
@@ -422,7 +473,10 @@ mod tests {
         assert_eq!(errors.len(), 1);
         assert!(matches!(
             &errors[0],
-            SubDagError::TypeMismatch { direction: PortDirection::Input, .. }
+            SubDagError::TypeMismatch {
+                direction: PortDirection::Input,
+                ..
+            }
         ));
     }
 
@@ -452,7 +506,10 @@ mod tests {
         assert_eq!(errors.len(), 1);
         assert!(matches!(
             &errors[0],
-            SubDagError::TypeMismatch { direction: PortDirection::Output, .. }
+            SubDagError::TypeMismatch {
+                direction: PortDirection::Output,
+                ..
+            }
         ));
     }
 
@@ -496,10 +553,7 @@ mod tests {
         ));
 
         let mut dag: Dag<()> = Dag::new();
-        dag.add_node(Node::subdag(
-            "wrapper",
-            inner,
-        ));
+        dag.add_node(Node::subdag("wrapper", inner));
 
         let errors = validate_subdag_interfaces(&dag);
         assert!(errors.is_empty(), "expected no errors, got: {:?}", errors);
@@ -524,10 +578,7 @@ mod tests {
         inner.add_edge(Edge::new("a", "mid", "b", "mid"));
 
         let mut dag: Dag<()> = Dag::new();
-        dag.add_node(Node::subdag(
-            "wrapper",
-            inner,
-        ));
+        dag.add_node(Node::subdag("wrapper", inner));
 
         let errors = validate_subdag_interfaces(&dag);
         assert!(errors.is_empty(), "expected no errors, got: {:?}", errors);
@@ -681,7 +732,10 @@ mod tests {
         assert_eq!(errors.len(), 1, "expected 1 error, got: {:?}", errors);
         assert!(matches!(
             &errors[0],
-            SubDagError::TypeMismatch { direction: PortDirection::Output, .. }
+            SubDagError::TypeMismatch {
+                direction: PortDirection::Output,
+                ..
+            }
         ));
     }
 }

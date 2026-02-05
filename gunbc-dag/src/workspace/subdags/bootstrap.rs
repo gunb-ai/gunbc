@@ -2,8 +2,8 @@
 //!
 //! Wraps the bootstrap tool as a SubDag node using WorkspaceOp.
 
-use crate::workspace::WorkspaceOp;
 use crate::bootstrap::BootstrapOp;
+use crate::workspace::WorkspaceOp;
 use gunbc_ir::build::*;
 use gunbc_ir::{DagBuilder, Node};
 use gunbc_lib_transport::TransportOps;
@@ -58,10 +58,7 @@ pub fn build_bootstrap_subdag() -> Node<WorkspaceOp> {
             Node::opaque(
                 "parse_scan_result",
                 vec![port("response", "TransportResponse")],
-                vec![
-                    port("crate_count", "Int"),
-                    port("crate_names", "List"),
-                ],
+                vec![port("crate_count", "Int"), list("crate_names", "String")],
                 WorkspaceOp::Bootstrap(BootstrapOp::ParseScanResult),
             ),
             &execute_scan,
@@ -74,7 +71,7 @@ pub fn build_bootstrap_subdag() -> Node<WorkspaceOp> {
         .add_node_after(
             Node::opaque(
                 "generate_makefile",
-                vec![port("crate_names", "List")],
+                vec![list("crate_names", "String")],
                 vec![port("makefile_content", "String")],
                 WorkspaceOp::Bootstrap(BootstrapOp::GenerateMakefile),
             ),
@@ -118,7 +115,7 @@ pub fn build_bootstrap_subdag() -> Node<WorkspaceOp> {
         .add_node_after(
             Node::opaque(
                 "generate_gitignore",
-                vec![port("crate_names", "List")],
+                vec![list("crate_names", "String")],
                 vec![port("gitignore_content", "String")],
                 WorkspaceOp::Bootstrap(BootstrapOp::GenerateGitignore),
             ),
@@ -209,10 +206,7 @@ pub fn build_bootstrap_subdag() -> Node<WorkspaceOp> {
 
     let inner_dag = builder.build();
 
-    Node::subdag(
-        "bootstrap",
-        inner_dag,
-    )
+    Node::subdag("bootstrap", inner_dag)
 }
 
 #[cfg(test)]

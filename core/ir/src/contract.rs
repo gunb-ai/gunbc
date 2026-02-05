@@ -28,7 +28,7 @@
 use crate::dag::Dag;
 use crate::node::NodeBody;
 use crate::type_op::{Predicate, TypeOp, WrapperKind};
-use crate::types::{Cardinality, CardinalityCase};
+use crate::types::Cardinality;
 use crate::value::Value;
 
 /// L1: Extract cardinality from a type DAG.
@@ -93,13 +93,11 @@ pub fn predicates(type_dag: &Dag<TypeOp>) -> Vec<Predicate> {
 ///
 /// 1. **Base type** determines the shape (String, Int, Bool, etc.)
 /// 2. **Predicates** refine the base witness (NonEmpty, InRange, etc.)
-/// 3. **Cardinality** generates boundary cases (Empty, One, Many)
+/// 3. **Cardinality** generates boundary values from the interval
 ///
-/// Returns one witness per cardinality case the type allows.
-/// For a `List<String>` (cardinality `[0,∞)`), this produces:
-/// - Empty → `Value::List(vec![])`
-/// - One   → `Value::List(vec![Value::Str("example")])`
-/// - Many  → `Value::List(vec![Value::Str("example_1"), Value::Str("example_2")])`
+/// Returns one witness per boundary value the cardinality accepts.
+/// For a `List<String>` (cardinality `[0,∞)`), this produces witnesses
+/// at counts 0 and 1 (the in-range boundary values).
 pub fn witnesses(type_dag: &Dag<TypeOp>) -> Vec<BoundaryWitness> {
     let card = cardinality(type_dag);
     let base = base_type(type_dag);
@@ -108,21 +106,17 @@ pub fn witnesses(type_dag: &Dag<TypeOp>) -> Vec<BoundaryWitness> {
 
     let scalar_witness = scalar_witness_for_base(&base, &preds);
 
-    card.test_cases()
+    card.test_cases_for_tests()
         .into_iter()
-        .map(|case| {
-            let value = match case {
-                CardinalityCase::Empty => match &wrapper {
+        .map(|count| {
+            let value = match count {
+                0 => match &wrapper {
                     Some(WrapperKind::Optional) => Value::Unit,
-                    Some(WrapperKind::List | WrapperKind::NonEmptyList) => {
-                        Value::List(vec![])
-                    }
-                    Some(WrapperKind::Set | WrapperKind::NonEmptySet) => {
-                        Value::Set(vec![])
-                    }
+                    Some(WrapperKind::List | WrapperKind::NonEmptyList) => Value::List(vec![]),
+                    Some(WrapperKind::Set | WrapperKind::NonEmptySet) => Value::Set(vec![]),
                     None => Value::Unit, // Scalar empty = absent
                 },
-                CardinalityCase::One => match &wrapper {
+                1 => match &wrapper {
                     Some(WrapperKind::List | WrapperKind::NonEmptyList) => {
                         Value::List(vec![scalar_witness.clone()])
                     }
@@ -131,29 +125,27 @@ pub fn witnesses(type_dag: &Dag<TypeOp>) -> Vec<BoundaryWitness> {
                     }
                     _ => scalar_witness.clone(),
                 },
-                CardinalityCase::Many => {
-                    let witnesses = many_witnesses(&scalar_witness);
+                n => {
+                    let witnesses = n_witnesses(&scalar_witness, n);
                     match &wrapper {
                         Some(WrapperKind::List | WrapperKind::NonEmptyList) => {
                             Value::List(witnesses)
                         }
-                        Some(WrapperKind::Set | WrapperKind::NonEmptySet) => {
-                            Value::set(witnesses)
-                        }
+                        Some(WrapperKind::Set | WrapperKind::NonEmptySet) => Value::set(witnesses),
                         _ => Value::List(witnesses), // fallback
                     }
                 }
             };
-            BoundaryWitness { case, value }
+            BoundaryWitness { count, value }
         })
         .collect()
 }
 
-/// A boundary witness: a cardinality case paired with an example value.
+/// A boundary witness: a boundary value count paired with an example value.
 #[derive(Debug, Clone)]
 pub struct BoundaryWitness {
-    /// Which cardinality boundary this tests.
-    pub case: CardinalityCase,
+    /// Number of elements at this boundary.
+    pub count: u32,
     /// An example value satisfying the type contract at this boundary.
     pub value: Value,
 }
@@ -233,31 +225,32 @@ fn refine_witness(witness: Value, pred: &Predicate, base: &str) -> Value {
     }
 }
 
-/// Generate multiple distinct witnesses for the Many cardinality case.
-fn many_witnesses(scalar: &Value) -> Vec<Value> {
-    match scalar {
-        Value::Str(s) => vec![
-            Value::Str(format!("{}_1", s)),
-            Value::Str(format!("{}_2", s)),
-        ],
-        Value::Int(i) => vec![Value::Int(*i), Value::Int(*i + 1)],
-        Value::Bool(_) => vec![Value::Bool(true), Value::Bool(false)],
-        other => vec![other.clone(), other.clone()],
-    }
+/// Generate `n` distinct witness values based on a scalar witness.
+fn n_witnesses(scalar: &Value, n: u32) -> Vec<Value> {
+    (0..n)
+        .map(|i| match scalar {
+            Value::Str(s) => Value::Str(format!("{}_{}", s, i + 1)),
+            Value::Int(v) => Value::Int(*v + i as i64),
+            Value::Bool(_) => Value::Bool(i % 2 == 0),
+            other => other.clone(),
+        })
+        .collect()
 }
 
 /// Check if a type DAG has any validation predicates.
 pub fn has_predicates(type_dag: &Dag<TypeOp>) -> bool {
-    type_dag.nodes.iter().any(|n| {
-        matches!(&n.body, NodeBody::Opaque(TypeOp::Validate(_)))
-    })
+    type_dag
+        .nodes
+        .iter()
+        .any(|n| matches!(&n.body, NodeBody::Opaque(TypeOp::Validate(_))))
 }
 
 /// Check if a type is a container type (Optional, List, NonEmptyList, Set, NonEmptySet).
 pub fn is_container(type_dag: &Dag<TypeOp>) -> bool {
-    type_dag.nodes.iter().any(|n| {
-        matches!(&n.body, NodeBody::Opaque(TypeOp::Wrap(_)))
-    })
+    type_dag
+        .nodes
+        .iter()
+        .any(|n| matches!(&n.body, NodeBody::Opaque(TypeOp::Wrap(_))))
 }
 
 /// Get the wrapper kind if this is a container type.
@@ -333,7 +326,7 @@ mod tests {
         let url_type = type_lib::url();
 
         assert!(predicates(&string_type).is_empty());
-        
+
         let url_preds = predicates(&url_type);
         assert!(!url_preds.is_empty());
         assert!(url_preds.iter().any(|p| matches!(p, Predicate::NonEmpty)));
@@ -369,7 +362,10 @@ mod tests {
         assert_eq!(wrapper_kind(&string_type), None);
         assert_eq!(wrapper_kind(&optional_type), Some(WrapperKind::Optional));
         assert_eq!(wrapper_kind(&list_type), Some(WrapperKind::List));
-        assert_eq!(wrapper_kind(&non_empty_type), Some(WrapperKind::NonEmptyList));
+        assert_eq!(
+            wrapper_kind(&non_empty_type),
+            Some(WrapperKind::NonEmptyList)
+        );
     }
 
     #[test]
@@ -391,9 +387,9 @@ mod tests {
         let string_type = type_lib::string();
         let w = witnesses(&string_type);
 
-        // Scalar (cardinality ONE) → exactly one witness (the One case)
+        // Scalar (cardinality ONE) → exactly one witness (count=1)
         assert_eq!(w.len(), 1);
-        assert_eq!(w[0].case, CardinalityCase::One);
+        assert_eq!(w[0].count, 1);
         assert!(matches!(&w[0].value, Value::Str(_)));
     }
 
@@ -403,7 +399,7 @@ mod tests {
         let w = witnesses(&int_type);
 
         assert_eq!(w.len(), 1);
-        assert_eq!(w[0].case, CardinalityCase::One);
+        assert_eq!(w[0].count, 1);
         assert!(matches!(&w[0].value, Value::Int(_)));
     }
 
@@ -412,11 +408,11 @@ mod tests {
         let opt_type = type_lib::optional(type_lib::string());
         let w = witnesses(&opt_type);
 
-        // Optional (cardinality [0,1]) → Empty + One
+        // Optional (cardinality [0,1]) → count=0 + count=1
         assert_eq!(w.len(), 2);
-        assert_eq!(w[0].case, CardinalityCase::Empty);
+        assert_eq!(w[0].count, 0);
         assert_eq!(w[0].value, Value::Unit);
-        assert_eq!(w[1].case, CardinalityCase::One);
+        assert_eq!(w[1].count, 1);
     }
 
     #[test]
@@ -424,14 +420,12 @@ mod tests {
         let list_type = type_lib::list(type_lib::string());
         let w = witnesses(&list_type);
 
-        // List (cardinality [0,∞)) → Empty + One + Many
-        assert_eq!(w.len(), 3);
-        assert_eq!(w[0].case, CardinalityCase::Empty);
+        // List (cardinality [0,∞)) → count=0, count=1
+        assert_eq!(w.len(), 2);
+        assert_eq!(w[0].count, 0);
         assert_eq!(w[0].value, Value::List(vec![]));
-        assert_eq!(w[1].case, CardinalityCase::One);
+        assert_eq!(w[1].count, 1);
         assert!(matches!(&w[1].value, Value::List(v) if v.len() == 1));
-        assert_eq!(w[2].case, CardinalityCase::Many);
-        assert!(matches!(&w[2].value, Value::List(v) if v.len() == 2));
     }
 
     #[test]
@@ -439,10 +433,10 @@ mod tests {
         let ne_list = type_lib::non_empty_list(type_lib::string());
         let w = witnesses(&ne_list);
 
-        // NonEmptyList (cardinality [1,∞)) → One + Many (no Empty)
+        // NonEmptyList (cardinality [1,∞)) → count=1, count=2
         assert_eq!(w.len(), 2);
-        assert_eq!(w[0].case, CardinalityCase::One);
-        assert_eq!(w[1].case, CardinalityCase::Many);
+        assert_eq!(w[0].count, 1);
+        assert_eq!(w[1].count, 2);
     }
 
     #[test]
@@ -451,7 +445,7 @@ mod tests {
         let w = witnesses(&url_type);
 
         assert_eq!(w.len(), 1); // scalar
-        // URL has Matches predicate with "http" — should produce URL-like witness
+                                // URL has Matches predicate with "http" — should produce URL-like witness
         if let Value::Str(s) = &w[0].value {
             assert!(s.contains("http"), "URL witness should contain http: {}", s);
         } else {
@@ -464,14 +458,12 @@ mod tests {
         let set_type = type_lib::set(type_lib::string());
         let w = witnesses(&set_type);
 
-        // Set (cardinality [0,∞)) → Empty + One + Many
-        assert_eq!(w.len(), 3);
-        assert_eq!(w[0].case, CardinalityCase::Empty);
+        // Set (cardinality [0,∞)) → count=0, count=1
+        assert_eq!(w.len(), 2);
+        assert_eq!(w[0].count, 0);
         assert!(matches!(&w[0].value, Value::Set(v) if v.is_empty()));
-        assert_eq!(w[1].case, CardinalityCase::One);
+        assert_eq!(w[1].count, 1);
         assert!(matches!(&w[1].value, Value::Set(v) if v.len() == 1));
-        assert_eq!(w[2].case, CardinalityCase::Many);
-        assert!(matches!(&w[2].value, Value::Set(v) if v.len() == 2));
     }
 
     #[test]
@@ -481,21 +473,27 @@ mod tests {
         // for non-String/Int/Bool scalars (the `other` fallback branch).
         let duplicates = vec![Value::Unit, Value::Unit];
         let deduped = Value::set(duplicates);
-        assert!(matches!(&deduped, Value::Set(v) if v.len() == 1),
-            "Value::set() should deduplicate identical Unit values");
+        assert!(
+            matches!(&deduped, Value::Set(v) if v.len() == 1),
+            "Value::set() should deduplicate identical Unit values"
+        );
 
         let json_dups = vec![
             Value::Json(serde_json::json!({"key": "value"})),
             Value::Json(serde_json::json!({"key": "value"})),
         ];
         let deduped_json = Value::set(json_dups);
-        assert!(matches!(&deduped_json, Value::Set(v) if v.len() == 1),
-            "Value::set() should deduplicate identical Json values");
+        assert!(
+            matches!(&deduped_json, Value::Set(v) if v.len() == 1),
+            "Value::set() should deduplicate identical Json values"
+        );
 
         // Distinct values should be preserved
         let distinct = vec![Value::Int(1), Value::Int(2)];
         let kept = Value::set(distinct);
-        assert!(matches!(&kept, Value::Set(v) if v.len() == 2),
-            "Value::set() should preserve distinct values");
+        assert!(
+            matches!(&kept, Value::Set(v) if v.len() == 2),
+            "Value::set() should preserve distinct values"
+        );
     }
 }

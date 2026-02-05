@@ -1,5 +1,7 @@
 //! Platform detection.
 
+use gunbc_ir::resource::{AccessMode, Resource, ResourceId, ResourceKind};
+use gunbc_ir::Value;
 use serde::{Deserialize, Serialize};
 
 /// Target platform.
@@ -52,6 +54,45 @@ impl Platform {
 impl std::fmt::Display for Platform {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.name())
+    }
+}
+
+impl Resource for Platform {
+    fn resource_id(&self) -> ResourceId {
+        ResourceId::new("platform")
+    }
+
+    fn access_mode(&self) -> AccessMode {
+        AccessMode::Read
+    }
+
+    fn kind(&self) -> ResourceKind {
+        ResourceKind::Observation
+    }
+}
+
+impl From<Platform> for Value {
+    fn from(val: Platform) -> Self {
+        Value::Str(val.name().to_string())
+    }
+}
+
+impl TryFrom<&Value> for Platform {
+    type Error = String;
+
+    fn try_from(value: &Value) -> Result<Self, Self::Error> {
+        let s = value
+            .as_str()
+            .ok_or_else(|| "expected string for Platform".to_string())?;
+        Ok(Platform::parse(s))
+    }
+}
+
+impl TryFrom<Value> for Platform {
+    type Error = String;
+
+    fn try_from(value: Value) -> Result<Self, Self::Error> {
+        Platform::try_from(&value)
     }
 }
 

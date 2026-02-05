@@ -23,7 +23,7 @@ use crate::progress::{DagPhase, DagProgress, EdgeState, NodeState};
 use gunbc_ir::layout::DagLayout;
 use gunbc_ir::symbols::{SemanticColor, SymbolId, SymbolSet, Tier};
 use gunbc_ir::NodeId;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::io::Write;
 use std::time::Duration;
 
@@ -142,7 +142,10 @@ impl Animation {
 
     /// Get the current frame content.
     pub fn frame(&self) -> &str {
-        self.frames.get(self.current).map(|s| s.as_str()).unwrap_or("")
+        self.frames
+            .get(self.current)
+            .map(|s| s.as_str())
+            .unwrap_or("")
     }
 
     /// Check if the animation has finished (only meaningful for Once mode).
@@ -262,17 +265,29 @@ impl<W: Write> TerminalRenderer<W> {
 
     /// ANSI color start code, or empty string if color is disabled.
     fn color(&self, c: SemanticColor) -> &'static str {
-        if self.color_enabled { c.ansi() } else { "" }
+        if self.color_enabled {
+            c.ansi()
+        } else {
+            ""
+        }
     }
 
     /// ANSI reset code, or empty string if color is disabled.
     fn reset(&self) -> &'static str {
-        if self.color_enabled { "\x1b[0m" } else { "" }
+        if self.color_enabled {
+            "\x1b[0m"
+        } else {
+            ""
+        }
     }
 
     /// ANSI bold code, or empty string if color is disabled.
     fn bold(&self) -> &'static str {
-        if self.color_enabled { "\x1b[1m" } else { "" }
+        if self.color_enabled {
+            "\x1b[1m"
+        } else {
+            ""
+        }
     }
 
     /// Semantic color for a node state.
@@ -292,7 +307,10 @@ impl<W: Write> TerminalRenderer<W> {
         let color = self.state_color(state);
         // Bold for completed/failed/running, dim stays dim
         let bold = match state {
-            NodeState::Completed | NodeState::Failed | NodeState::Running | NodeState::Intercepted => self.bold(),
+            NodeState::Completed
+            | NodeState::Failed
+            | NodeState::Running
+            | NodeState::Intercepted => self.bold(),
             _ => "",
         };
         format!("{}{}[{}]{}", bold, self.color(color), text, self.reset())
@@ -308,7 +326,6 @@ impl<W: Write> TerminalRenderer<W> {
             NodeState::Pending => "\u{25CB}",                            // ○
         }
     }
-
 
     /// Move cursor up to overwrite previous frame (TTY only).
     fn cursor_up(&mut self) {
@@ -358,12 +375,7 @@ impl<W: Write> TerminalRenderer<W> {
         let completed = progress
             .nodes
             .values()
-            .filter(|n| {
-                matches!(
-                    n.state,
-                    NodeState::Completed | NodeState::Intercepted
-                )
-            })
+            .filter(|n| matches!(n.state, NodeState::Completed | NodeState::Intercepted))
             .count();
         let failed = progress
             .nodes
@@ -410,110 +422,50 @@ impl<W: Write> TerminalRenderer<W> {
         }
 
         let num_cols = self.layout.levels.len();
-        let (node_track, num_tracks) = self.assign_tracks(progress);
+        let num_tracks = self.layout.tracks;
+        let col_w = self.layout.box_width as usize;
+        let gap_w = self.layout.gap_width as usize;
 
-        // Build (track, column) → NodeId grid
-        let mut grid: HashMap<(usize, usize), NodeId> = HashMap::new();
-        for (col, level) in self.layout.levels.iter().enumerate() {
-            for node in level {
-                if let Some(&track) = node_track.get(node) {
-                    grid.insert((track, col), node.clone());
-                }
-            }
-        }
-
-        // Build parent → children and child → parents adjacency
-        let mut children_of: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
-        let mut parents_of: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
-        for edge in &progress.snapshot.edges {
-            children_of
-                .entry(edge.from_node.clone())
-                .or_default()
-                .push(edge.to_node.clone());
-            parents_of
-                .entry(edge.to_node.clone())
-                .or_default()
-                .push(edge.from_node.clone());
-        }
-
-        // Assign single-letter labels (A, B, C, ...) in topological order
-        let mut node_letter: HashMap<NodeId, String> = HashMap::new();
-        let mut letter_idx: usize = 0;
-        for level in &self.layout.levels {
-            let mut sorted = level.clone();
-            sorted.sort_by_key(|n| node_track.get(n).copied().unwrap_or(0));
-            for node in &sorted {
-                let letter = letter_for_index(letter_idx);
-                node_letter.insert(node.clone(), letter);
-                letter_idx += 1;
-            }
-        }
-
-        // Column dimensions: all boxes are uniform [X] = letter + 2 brackets
-        let max_letter_w = node_letter.values().map(|l| l.len()).max().unwrap_or(1);
-        let col_w = max_letter_w + 2; // [X] = 1 + letter + 1
-
-        // Gap widths: 5 for fan-out or merge columns, 3 otherwise
-        let mut gap_widths: Vec<usize> = vec![3; num_cols.saturating_sub(1)];
-        for (col, gw) in gap_widths.iter_mut().enumerate() {
-            for track in 0..num_tracks {
-                // Fan-out: node at (track, col) has >1 children
-                if let Some(node) = grid.get(&(track, col)) {
-                    if children_of.get(node).map(|c| c.len()).unwrap_or(0) > 1 {
-                        *gw = 5;
-                        break;
-                    }
-                }
-                // Merge: node at (track, col+1) has parents on different tracks
-                if let Some(node) = grid.get(&(track, col + 1)) {
-                    if let Some(pars) = parents_of.get(node) {
-                        let par_tracks: HashSet<usize> = pars
-                            .iter()
-                            .filter_map(|p| node_track.get(p).copied())
-                            .collect();
-                        if par_tracks.len() > 1 {
-                            *gw = 5;
-                            break;
-                        }
-                    }
-                }
-            }
-        }
+        let visible_levels = &self.layout.overflow.visible_levels;
+        let start_col = visible_levels.start;
+        let end_col = visible_levels.end.min(num_cols);
 
         // Render each track as a horizontal line
         for track in 0..num_tracks {
             let mut line = String::new();
             #[allow(clippy::needless_range_loop)]
-            for col in 0..num_cols {
-                if let Some(node) = grid.get(&(track, col)) {
+            for col in start_col..end_col {
+                if let Some(node) = self.layout.grid.get(&(track, col)) {
                     let state = progress
                         .nodes
                         .get(node)
                         .map(|np| np.state)
                         .unwrap_or(NodeState::Pending);
-                    let letter = node_letter.get(node).map(|s| s.as_str()).unwrap_or("?");
-                    line.push_str(&self.colored_box(letter, state));
-                    let vis_w = display_width(letter) + 2; // [X]
+                    let label = self
+                        .layout
+                        .node_letters
+                        .get(node)
+                        .map(|s| s.as_str())
+                        .unwrap_or("?");
+                    line.push_str(&self.colored_box(label, state));
+                    let vis_w = display_width(label) + 2; // [label]
                     let pad = col_w.saturating_sub(vis_w);
                     line.push_str(&" ".repeat(pad));
                 } else {
                     line.push_str(&" ".repeat(col_w));
                 }
 
-                if col < num_cols - 1 {
-                    let conn = self.horizontal_connector(
-                        track,
-                        col,
-                        &grid,
-                        &children_of,
-                        &parents_of,
-                        &node_track,
-                        num_tracks,
-                        gap_widths[col],
-                    );
-                    let edge_state = self.connector_state(
-                        track, col, &grid, &children_of, &node_track, progress,
-                    );
+                if col + 1 < end_col {
+                    let cell = self
+                        .layout
+                        .connectors
+                        .get(col)
+                        .and_then(|row| row.get(track));
+                    let glyph = cell.map(|c| c.glyph).unwrap_or(' ');
+                    let conn = pad_connector(&format!(" {} ", glyph), gap_w);
+                    let edge_state = cell
+                        .map(|c| self.connector_cell_state(&c.edges, progress))
+                        .unwrap_or(EdgeState::Idle);
                     let colored = self.color_connector(&conn, edge_state);
                     line.push_str(&colored);
                 }
@@ -531,26 +483,30 @@ impl<W: Write> TerminalRenderer<W> {
         const LEGEND_LINES: usize = 3;
 
         // Collect running/failed entries (highest priority)
-        let mut active_entries: Vec<(NodeState, &str, String, Option<Duration>)> = Vec::new();
+        let mut active_entries: Vec<(NodeState, String, String, Option<Duration>)> = Vec::new();
         // Collect completed/intercepted entries in reverse topo order (most recent last)
-        let mut done_entries: Vec<(NodeState, &str, String, Option<Duration>)> = Vec::new();
+        let mut done_entries: Vec<(NodeState, String, String, Option<Duration>)> = Vec::new();
 
         for level in &self.layout.levels {
             for node in level {
                 let np = progress.nodes.get(node);
                 let state = np.map(|n| n.state).unwrap_or(NodeState::Pending);
-                let letter = node_letter.get(node).map(|s| s.as_str()).unwrap_or("?");
+                let short = self
+                    .layout
+                    .node_letters
+                    .get(node)
+                    .cloned()
+                    .unwrap_or_else(|| "?".to_string());
                 let label = full_label(node, &progress.snapshot.labels);
-                let elapsed = np.and_then(|n| {
-                    n.elapsed.or_else(|| n.start_time.map(|t| t.elapsed()))
-                });
+                let elapsed =
+                    np.and_then(|n| n.elapsed.or_else(|| n.start_time.map(|t| t.elapsed())));
 
                 match state {
                     NodeState::Running | NodeState::Failed => {
-                        active_entries.push((state, letter, label, elapsed));
+                        active_entries.push((state, short, label, elapsed));
                     }
                     NodeState::Completed | NodeState::Intercepted => {
-                        done_entries.push((state, letter, label, elapsed));
+                        done_entries.push((state, short, label, elapsed));
                     }
                     _ => {}
                 }
@@ -558,7 +514,7 @@ impl<W: Write> TerminalRenderer<W> {
         }
 
         // Build final legend: active first, then fill remaining with most recent done
-        let mut legend: Vec<(NodeState, &str, String, Option<Duration>)> = Vec::new();
+        let mut legend: Vec<(NodeState, String, String, Option<Duration>)> = Vec::new();
         legend.extend(active_entries.into_iter().take(LEGEND_LINES));
         let remaining = LEGEND_LINES.saturating_sub(legend.len());
         if remaining > 0 {
@@ -567,16 +523,32 @@ impl<W: Write> TerminalRenderer<W> {
         }
 
         let visible = legend.len().min(LEGEND_LINES);
-        for (state, letter, label, elapsed) in legend.iter().take(visible) {
+        for (state, short, label, elapsed) in legend.iter().take(visible) {
             let sym = self.legend_symbol(*state);
             let color = self.state_color(*state);
             let time_str = elapsed
                 .map(|d| format!(" [{}]", format_duration(d)))
                 .unwrap_or_default();
-            lines.push(format!(
-                "  {}{} {}: {}{}{}",
-                self.color(color), sym, letter, label, time_str, self.reset()
-            ));
+            if short == label {
+                lines.push(format!(
+                    "  {}{} {}{}{}",
+                    self.color(color),
+                    sym,
+                    label,
+                    time_str,
+                    self.reset()
+                ));
+            } else {
+                lines.push(format!(
+                    "  {}{} {}: {}{}{}",
+                    self.color(color),
+                    sym,
+                    short,
+                    label,
+                    time_str,
+                    self.reset()
+                ));
+            }
         }
         // Pad remaining legend slots with empty lines to keep frame height stable
         for _ in visible..LEGEND_LINES {
@@ -597,7 +569,10 @@ impl<W: Write> TerminalRenderer<W> {
         let elapsed = format_duration(progress.elapsed());
         match &progress.phase {
             DagPhase::NotStarted => {
-                format!("{} DAG pending", self.colored_symbol(SymbolId::DagNotStarted))
+                format!(
+                    "{} DAG pending",
+                    self.colored_symbol(SymbolId::DagNotStarted)
+                )
             }
             DagPhase::Running { current_node } => {
                 let label = progress
@@ -617,15 +592,16 @@ impl<W: Write> TerminalRenderer<W> {
                 let icon = match self.tier {
                     Tier::Emoji => {
                         let animal = random_animal(*e);
-                        format!("{}{}{}", self.color(SemanticColor::Success), animal, self.reset())
+                        format!(
+                            "{}{}{}",
+                            self.color(SemanticColor::Success),
+                            animal,
+                            self.reset()
+                        )
                     }
                     _ => self.colored_symbol(SymbolId::DagCompleted),
                 };
-                format!(
-                    "{} Completed [{}]",
-                    icon,
-                    format_duration(*e)
-                )
+                format!("{} Completed [{}]", icon, format_duration(*e))
             }
             DagPhase::Failed { node, error } => {
                 let label = progress
@@ -636,356 +612,48 @@ impl<W: Write> TerminalRenderer<W> {
                     .unwrap_or(&node.0);
                 let icon = match self.tier {
                     Tier::Emoji => {
-                        format!("{}\u{274C}{}", self.color(SemanticColor::Error), self.reset()) // ❌
+                        format!(
+                            "{}\u{274C}{}",
+                            self.color(SemanticColor::Error),
+                            self.reset()
+                        ) // ❌
                     }
                     _ => self.colored_symbol(SymbolId::DagFailed),
                 };
-                format!(
-                    "{} Failed at {}: {} [{}]",
-                    icon,
-                    label,
-                    error,
-                    elapsed
-                )
+                format!("{} Failed at {}: {} [{}]", icon, label, error, elapsed)
             }
         }
     }
 
     // ------------------------------------------------------------------
-    // Horizontal layout helpers
+    // Connector helpers
     // ------------------------------------------------------------------
 
-    /// Assign each node to a horizontal track (row in the output).
-    ///
-    /// Track 0 is the main path. When a node fans out, the first child stays
-    /// on the parent's track; additional children get new tracks below.
-    fn assign_tracks(
+    /// Determine the dominant edge state for a connector cell.
+    fn connector_cell_state(
         &self,
-        progress: &DagProgress,
-    ) -> (HashMap<NodeId, usize>, usize) {
-        let mut parents_of: HashMap<&NodeId, Vec<&NodeId>> = HashMap::new();
-        for edge in &progress.snapshot.edges {
-            parents_of
-                .entry(&edge.to_node)
-                .or_default()
-                .push(&edge.from_node);
-        }
-
-        let mut node_track: HashMap<NodeId, usize> = HashMap::new();
-        let mut next_track: usize = 0;
-
-        for level in &self.layout.levels {
-            let mut claimed = HashSet::new();
-
-            // Sort: nodes whose parents are on lower tracks go first
-            let mut sorted = level.clone();
-            sorted.sort_by_key(|n| {
-                parents_of
-                    .get(n)
-                    .and_then(|ps| {
-                        ps.iter()
-                            .filter_map(|p| node_track.get(*p))
-                            .min()
-                            .copied()
-                    })
-                    .unwrap_or(usize::MAX)
-            });
-
-            for node in &sorted {
-                let inherited = parents_of.get(node).and_then(|parents| {
-                    let mut tracks: Vec<usize> = parents
-                        .iter()
-                        .filter_map(|p| node_track.get(*p).copied())
-                        .collect();
-                    tracks.sort();
-                    tracks.dedup();
-                    tracks.into_iter().find(|t| !claimed.contains(t))
-                });
-
-                if let Some(track) = inherited {
-                    node_track.insert(node.clone(), track);
-                    claimed.insert(track);
-                } else {
-                    while claimed.contains(&next_track) {
-                        next_track += 1;
-                    }
-                    node_track.insert(node.clone(), next_track);
-                    claimed.insert(next_track);
-                    next_track += 1;
-                }
-            }
-        }
-
-        let num_tracks = node_track
-            .values()
-            .max()
-            .copied()
-            .map(|m| m + 1)
-            .unwrap_or(1);
-        (node_track, num_tracks)
-    }
-
-    /// Compute the connector string between column `col` and `col+1` for a track.
-    #[allow(clippy::too_many_arguments)]
-    fn horizontal_connector(
-        &self,
-        track: usize,
-        col: usize,
-        grid: &HashMap<(usize, usize), NodeId>,
-        children_of: &HashMap<NodeId, Vec<NodeId>>,
-        parents_of: &HashMap<NodeId, Vec<NodeId>>,
-        node_track: &HashMap<NodeId, usize>,
-        num_tracks: usize,
-        gap: usize,
-    ) -> String {
-        let has_here = grid.contains_key(&(track, col));
-        let has_next = grid.contains_key(&(track, col + 1));
-
-        // Check if the next node is a merge (has parents on multiple tracks)
-        let next_is_merge = has_next && {
-            let next_node = &grid[&(track, col + 1)];
-            parents_of.get(next_node).map(|pars| {
-                let par_tracks: HashSet<usize> = pars
-                    .iter()
-                    .filter_map(|p| node_track.get(p).copied())
-                    .collect();
-                par_tracks.len() > 1
-            }).unwrap_or(false)
-        };
-
-        if has_here {
-            let node = &grid[&(track, col)];
-            let mut child_tracks: Vec<usize> = children_of
-                .get(node)
-                .map(|cs| cs.iter().filter_map(|c| node_track.get(c).copied()).collect())
-                .unwrap_or_default();
-            // Deduplicate: multi-port edges to the same child produce duplicate tracks
-            child_tracks.sort();
-            child_tracks.dedup();
-
-            if child_tracks.is_empty() {
-                " ".repeat(gap)
-            } else if child_tracks.len() > 1 && !child_tracks.iter().all(|&t| t == track) {
-                // Fan-out: children on multiple different tracks
-                self.fanout_top_str(gap)
-            } else if has_next || child_tracks.contains(&track) {
-                // Straight through on same track (or next node on this track)
-                if next_is_merge {
-                    self.merge_top_str(gap)
-                } else {
-                    self.arrow_str(gap)
-                }
-            } else if child_tracks.iter().all(|&t| t < track) {
-                // All children above — merge up ─┘
-                self.merge_up_str(gap)
-            } else {
-                // Children below — merge down ─┬
-                self.merge_down_str(gap)
-            }
-        } else if has_next {
-            // No node here but node at next col — check if it's a merge target
-            let next_node = &grid[&(track, col + 1)];
-
-            // Is this a fan-out branch from a parent on another track?
-            let is_branch = (0..num_tracks).any(|t| {
-                t != track
-                    && grid
-                        .get(&(t, col))
-                        .and_then(|p| children_of.get(p))
-                        .map(|cs| cs.contains(next_node))
-                        .unwrap_or(false)
-            });
-
-            // Is this a merge branch from a node below merging up?
-            let is_merge_branch = parents_of.get(next_node).map(|pars| {
-                pars.iter().any(|p| {
-                    node_track.get(p).copied().unwrap_or(0) > track
-                })
-            }).unwrap_or(false);
-
-            if is_branch {
-                self.fanout_branch_str(
-                    track, col, grid, children_of, node_track, num_tracks, gap,
-                )
-            } else if is_merge_branch && next_is_merge {
-                // Merge branch entering from below
-                self.merge_branch_str(
-                    track, col, grid, parents_of, node_track, num_tracks, gap,
-                )
-            } else {
-                " ".repeat(gap)
-            }
-        } else {
-            // Empty cell — check for vertical pass-through
-            if self.needs_vertical(track, col, grid, children_of, node_track) {
-                self.vertical_str(gap)
-            } else {
-                " ".repeat(gap)
-            }
-        }
-    }
-
-    /// Check if a vertical pass-through │ is needed at (track, col gap).
-    fn needs_vertical(
-        &self,
-        track: usize,
-        col: usize,
-        grid: &HashMap<(usize, usize), NodeId>,
-        children_of: &HashMap<NodeId, Vec<NodeId>>,
-        node_track: &HashMap<NodeId, usize>,
-    ) -> bool {
-        for src_track in 0..track {
-            if let Some(parent) = grid.get(&(src_track, col)) {
-                if let Some(children) = children_of.get(parent) {
-                    let child_tracks: Vec<usize> = children
-                        .iter()
-                        .filter_map(|c| node_track.get(c).copied())
-                        .collect();
-                    if child_tracks.iter().any(|&t| t > track) {
-                        return true;
-                    }
-                }
-            }
-        }
-        false
-    }
-
-    /// Arrow connector padded to `w`: ` → `.
-    fn arrow_str(&self, w: usize) -> String {
-        pad_connector(" → ", w)
-    }
-
-    /// Fan-out top: ` ─┬─ `.
-    fn fanout_top_str(&self, w: usize) -> String {
-        pad_connector(" \u{2500}\u{252C}\u{2500} ", w) // ─┬─
-    }
-
-    /// Fan-out branch: `  └─ `, with `├─` for middle branches.
-    #[allow(clippy::too_many_arguments)]
-    fn fanout_branch_str(
-        &self,
-        track: usize,
-        col: usize,
-        grid: &HashMap<(usize, usize), NodeId>,
-        children_of: &HashMap<NodeId, Vec<NodeId>>,
-        _node_track: &HashMap<NodeId, usize>,
-        num_tracks: usize,
-        w: usize,
-    ) -> String {
-        let has_more_below = (track + 1..num_tracks).any(|t| {
-            grid.get(&(t, col + 1))
-                .map(|next| {
-                    (0..track).any(|st| {
-                        grid.get(&(st, col))
-                            .and_then(|p| children_of.get(p))
-                            .map(|cs| cs.contains(next))
-                            .unwrap_or(false)
-                    })
-                })
-                .unwrap_or(false)
-        });
-
-        if has_more_below {
-            pad_connector("  \u{251C}\u{2500} ", w) // ├─
-        } else {
-            pad_connector("  \u{2514}\u{2500} ", w) // └─
-        }
-    }
-
-    /// Vertical pass-through: `  │  `.
-    fn vertical_str(&self, w: usize) -> String {
-        pad_connector("  \u{2502}  ", w) // │
-    }
-
-    /// Merge-down connector (node's children are only on tracks below): ` ─┬ `.
-    fn merge_down_str(&self, w: usize) -> String {
-        pad_connector(" \u{2500}\u{252C}  ", w) // ─┬
-    }
-
-    /// Merge-up connector: node's child is on a track above: ` ─┘ `.
-    fn merge_up_str(&self, w: usize) -> String {
-        pad_connector(" \u{2500}\u{2518}  ", w) // ─┘
-    }
-
-    /// Merge-top connector: node on this track receives edges from below: ` ─┴─ `.
-    fn merge_top_str(&self, w: usize) -> String {
-        pad_connector(" \u{2500}\u{2534}\u{2500} ", w) // ─┴─
-    }
-
-    /// Merge-branch connector: lower track merges into node above: `  └─ `.
-    #[allow(clippy::too_many_arguments)]
-    fn merge_branch_str(
-        &self,
-        _track: usize,
-        _col: usize,
-        _grid: &HashMap<(usize, usize), NodeId>,
-        _parents_of: &HashMap<NodeId, Vec<NodeId>>,
-        _node_track: &HashMap<NodeId, usize>,
-        _num_tracks: usize,
-        w: usize,
-    ) -> String {
-        pad_connector("  \u{2514}\u{2500} ", w) // └─
-    }
-
-    /// Look up the edge state between two nodes from progress.
-    fn connector_edge_state(
-        &self,
-        from: &NodeId,
-        to: &NodeId,
+        edges: &[(NodeId, NodeId)],
         progress: &DagProgress,
     ) -> EdgeState {
-        progress
-            .edges
-            .get(&(from.clone(), to.clone()))
-            .map(|ep| ep.state)
-            .unwrap_or(EdgeState::Idle)
-    }
-
-    /// Determine the dominant edge state for a connector between col and col+1 on a track.
-    fn connector_state(
-        &self,
-        track: usize,
-        col: usize,
-        grid: &HashMap<(usize, usize), NodeId>,
-        children_of: &HashMap<NodeId, Vec<NodeId>>,
-        node_track: &HashMap<NodeId, usize>,
-        progress: &DagProgress,
-    ) -> EdgeState {
-        // Find the source node at (track, col) or earlier
-        if let Some(src) = grid.get(&(track, col)) {
-            // Find target at (track, col+1) or find child on this track
-            if let Some(dst) = grid.get(&(track, col + 1)) {
-                return self.connector_edge_state(src, dst, progress);
-            }
-            // Check if src has children on other tracks
-            if let Some(children) = children_of.get(src) {
-                for child in children {
-                    if let Some(&ct) = node_track.get(child) {
-                        if ct == track {
-                            return self.connector_edge_state(src, child, progress);
-                        }
-                    }
-                }
-                // Any child — use first
-                if let Some(child) = children.first() {
-                    return self.connector_edge_state(src, child, progress);
+        let mut has_done = false;
+        let mut has_dead = false;
+        for (from, to) in edges {
+            if let Some(ep) = progress.edges.get(&(from.clone(), to.clone())) {
+                match ep.state {
+                    EdgeState::Flowing => return EdgeState::Flowing,
+                    EdgeState::Dead => has_dead = true,
+                    EdgeState::Done => has_done = true,
+                    EdgeState::Idle => {}
                 }
             }
         }
-        // Branch target — find which parent fans out to the node on col+1
-        if let Some(dst) = grid.get(&(track, col + 1)) {
-            // Find parent on an earlier track at this column
-            for parent_track in 0..track + 1 {
-                if let Some(parent) = grid.get(&(parent_track, col)) {
-                    if let Some(children) = children_of.get(parent) {
-                        if children.contains(dst) {
-                            return self.connector_edge_state(parent, dst, progress);
-                        }
-                    }
-                }
-            }
+        if has_dead {
+            EdgeState::Dead
+        } else if has_done {
+            EdgeState::Done
+        } else {
+            EdgeState::Idle
         }
-        EdgeState::Idle
     }
 
     /// Wrap a connector string in ANSI color based on edge state (respects `color_enabled`).
@@ -1042,7 +710,13 @@ impl<W: Write> TerminalRenderer<W> {
             _ => format_duration(progress.elapsed()),
         };
 
-        format!("{} — {}/{} [{}]", summary_parts.join(", "), completed + failed + skipped, total, elapsed)
+        format!(
+            "{} — {}/{} [{}]",
+            summary_parts.join(", "),
+            completed + failed + skipped,
+            total,
+            elapsed
+        )
     }
 }
 
@@ -1105,63 +779,13 @@ fn format_duration(d: Duration) -> String {
     }
 }
 
-/// Convert an index to a letter label: 0→A, 1→B, ..., 25→Z, 26→AA, etc.
-fn letter_for_index(idx: usize) -> String {
-    if idx < 26 {
-        return String::from((b'A' + idx as u8) as char);
-    }
-    let mut result = String::new();
-    let mut n = idx;
-    loop {
-        result.insert(0, (b'A' + (n % 26) as u8) as char);
-        if n < 26 {
-            break;
-        }
-        n = n / 26 - 1;
-    }
-    result
-}
-
 /// Get the full label for a node (no truncation).
-fn full_label(
-    node_id: &NodeId,
-    labels: &HashMap<NodeId, String>,
-) -> String {
+fn full_label(node_id: &NodeId, labels: &HashMap<NodeId, String>) -> String {
     labels
         .get(node_id)
         .map(|s| s.as_str())
         .unwrap_or(&node_id.0)
         .to_string()
-}
-
-/// Shorten a node label to fit within `max_width`.
-#[cfg(test)]
-fn short_label(
-    node_id: &NodeId,
-    labels: &HashMap<NodeId, String>,
-    max_width: usize,
-) -> String {
-    let full = labels
-        .get(node_id)
-        .map(|s| s.as_str())
-        .unwrap_or(&node_id.0);
-    if full.len() <= max_width {
-        return full.to_string();
-    }
-    // Strip common verb prefixes
-    for prefix in &["prepare_", "execute_", "generate_", "parse_", "write_"] {
-        if let Some(rest) = full.strip_prefix(prefix) {
-            if rest.len() <= max_width {
-                return rest.to_string();
-            }
-        }
-    }
-    // Truncate
-    if max_width > 1 {
-        format!("{}~", &full[..max_width - 1])
-    } else {
-        full[..max_width].to_string()
-    }
 }
 
 /// Pad or truncate a connector string to exactly `w` display characters.
@@ -1203,7 +827,8 @@ fn char_width(c: char) -> usize {
         || cp == 0x200B                      // Zero Width Space
         || cp == 0x200C                      // Zero Width Non-Joiner
         || cp == 0x200D                      // Zero Width Joiner
-        || cp == 0xFEFF                      // Zero Width No-Break Space (BOM)
+        || cp == 0xFEFF
+    // Zero Width No-Break Space (BOM)
     {
         return 0;
     }
@@ -1220,7 +845,8 @@ fn char_width(c: char) -> usize {
         || (0xFF01..=0xFF60).contains(&cp)  // Fullwidth ASCII
         || (0xFFE0..=0xFFE6).contains(&cp)  // Fullwidth Signs
         || (0x20000..=0x2FFFF).contains(&cp) // CJK Unified Ideographs Extension B+
-        || (0x30000..=0x3FFFF).contains(&cp) // CJK Unified Ideographs Extension G+
+        || (0x30000..=0x3FFFF).contains(&cp)
+    // CJK Unified Ideographs Extension G+
     {
         return 2;
     }
@@ -1283,12 +909,7 @@ mod tests {
         let progress = DagProgress::new(snap.clone());
 
         let vp = Viewport::new(80, 24, ViewportUnit::Chars);
-        let layout = compute_layout(
-            &snap.topo_order,
-            &snap.edges,
-            &snap.labels,
-            &vp,
-        );
+        let layout = compute_layout(&snap.topo_order, &snap.edges, &snap.labels, &vp);
 
         let mut buf = Vec::new();
         {
@@ -1298,7 +919,7 @@ mod tests {
 
         let output = String::from_utf8(buf).unwrap();
         assert!(!output.is_empty());
-        // Should contain letter-boxed nodes
+        // Should contain lettered nodes
         assert!(output.contains("[A]"), "Missing [A]\n{}", output);
         assert!(output.contains("[B]"), "Missing [B]\n{}", output);
         assert!(output.contains("[C]"), "Missing [C]\n{}", output);
@@ -1312,12 +933,7 @@ mod tests {
         progress.on_node_start(&NodeId::from("lint"));
 
         let vp = Viewport::new(80, 24, ViewportUnit::Chars);
-        let layout = compute_layout(
-            &snap.topo_order,
-            &snap.edges,
-            &snap.labels,
-            &vp,
-        );
+        let layout = compute_layout(&snap.topo_order, &snap.edges, &snap.labels, &vp);
 
         let mut buf = Vec::new();
         {
@@ -1345,12 +961,7 @@ mod tests {
         progress.on_dag_complete(Duration::from_millis(200));
 
         let vp = Viewport::new(80, 24, ViewportUnit::Chars);
-        let layout = compute_layout(
-            &snap.topo_order,
-            &snap.edges,
-            &snap.labels,
-            &vp,
-        );
+        let layout = compute_layout(&snap.topo_order, &snap.edges, &snap.labels, &vp);
 
         let mut buf = Vec::new();
         {
@@ -1373,12 +984,7 @@ mod tests {
         progress.on_dag_complete(Duration::from_millis(100));
 
         let vp = Viewport::new(80, 24, ViewportUnit::Chars);
-        let layout = compute_layout(
-            &snap.topo_order,
-            &snap.edges,
-            &snap.labels,
-            &vp,
-        );
+        let layout = compute_layout(&snap.topo_order, &snap.edges, &snap.labels, &vp);
 
         let mut buf = Vec::new();
         {
@@ -1400,12 +1006,7 @@ mod tests {
         progress.on_node_complete(&NodeId::from("lint"), empty_summary());
 
         let vp = Viewport::new(80, 24, ViewportUnit::Chars);
-        let layout = compute_layout(
-            &snap.topo_order,
-            &snap.edges,
-            &snap.labels,
-            &vp,
-        );
+        let layout = compute_layout(&snap.topo_order, &snap.edges, &snap.labels, &vp);
 
         let mut buf = Vec::new();
         {
@@ -1508,12 +1109,7 @@ mod tests {
         progress.on_node_complete(&NodeId::from("A"), empty_summary());
 
         let vp = Viewport::new(80, 24, ViewportUnit::Chars);
-        let layout = compute_layout(
-            &snap.topo_order,
-            &snap.edges,
-            &snap.labels,
-            &vp,
-        );
+        let layout = compute_layout(&snap.topo_order, &snap.edges, &snap.labels, &vp);
 
         let mut buf = Vec::new();
         {
@@ -1536,12 +1132,7 @@ mod tests {
         let progress = DagProgress::new(snap.clone());
 
         let vp = Viewport::new(80, 24, ViewportUnit::Chars);
-        let layout = compute_layout(
-            &snap.topo_order,
-            &snap.edges,
-            &snap.labels,
-            &vp,
-        );
+        let layout = compute_layout(&snap.topo_order, &snap.edges, &snap.labels, &vp);
 
         let mut buf = Vec::new();
         {
@@ -1551,13 +1142,13 @@ mod tests {
 
         let output = String::from_utf8(buf).unwrap();
         let lines: Vec<&str> = output.lines().collect();
-        // All letter-boxes on one DAG line (boxes contain [A], [B], [C] with ANSI wrapping)
-        let has_all_on_one_line = lines.iter().any(|line| {
-            line.contains("[A]") && line.contains("[B]") && line.contains("[C]")
-        });
+        // All labeled boxes on one DAG line (boxes contain [A], [B], [C] with ANSI wrapping)
+        let has_all_on_one_line = lines
+            .iter()
+            .any(|line| line.contains("[A]") && line.contains("[B]") && line.contains("[C]"));
         assert!(
             has_all_on_one_line,
-            "Linear chain should render all letter-boxes on one line, got:\n{}",
+            "Linear chain should render all labeled boxes on one line, got:\n{}",
             output
         );
     }
@@ -1566,20 +1157,12 @@ mod tests {
     fn test_horizontal_fanout_two_tracks() {
         // A → B, A → C : should produce two tracks
         let snap = DagSnapshot {
-            node_ids: vec![
-                NodeId::from("A"),
-                NodeId::from("B"),
-                NodeId::from("C"),
-            ],
+            node_ids: vec![NodeId::from("A"), NodeId::from("B"), NodeId::from("C")],
             edges: vec![
                 Edge::new("A", "out", "B", "in"),
                 Edge::new("A", "out", "C", "in"),
             ],
-            topo_order: vec![
-                NodeId::from("A"),
-                NodeId::from("B"),
-                NodeId::from("C"),
-            ],
+            topo_order: vec![NodeId::from("A"), NodeId::from("B"), NodeId::from("C")],
             boundary_nodes: vec![],
             labels: [
                 (NodeId::from("A"), "A".to_string()),
@@ -1596,12 +1179,7 @@ mod tests {
         progress.on_node_complete(&NodeId::from("A"), empty_summary());
 
         let vp = Viewport::new(80, 24, ViewportUnit::Chars);
-        let layout = compute_layout(
-            &snap.topo_order,
-            &snap.edges,
-            &snap.labels,
-            &vp,
-        );
+        let layout = compute_layout(&snap.topo_order, &snap.edges, &snap.labels, &vp);
 
         let mut buf = Vec::new();
         {
@@ -1614,37 +1192,21 @@ mod tests {
         // B and C should be on different DAG lines (look for [B] and [C] with ANSI)
         let b_line = output.lines().find(|l| l.contains("[B]"));
         let c_line = output.lines().find(|l| l.contains("[C]"));
-        assert!(b_line.is_some(), "B box should appear in output:\n{}", output);
-        assert!(c_line.is_some(), "C box should appear in output:\n{}", output);
+        assert!(
+            b_line.is_some(),
+            "B box should appear in output:\n{}",
+            output
+        );
+        assert!(
+            c_line.is_some(),
+            "C box should appear in output:\n{}",
+            output
+        );
         assert_ne!(
             b_line.unwrap(),
             c_line.unwrap(),
             "Fan-out should put B and C boxes on different lines"
         );
-    }
-
-    #[test]
-    fn test_short_label_truncation() {
-        let labels: HashMap<NodeId, String> = [
-            (NodeId::from("prepare_scan_workspace"), "prepare_scan_workspace".to_string()),
-            (NodeId::from("short"), "short".to_string()),
-        ]
-        .into_iter()
-        .collect();
-
-        // Short label fits
-        assert_eq!(
-            short_label(&NodeId::from("short"), &labels, 10),
-            "short"
-        );
-
-        // Long label with prefix strip: "prepare_" removed → "scan_workspace" (14 chars ≤ 15)
-        let result = short_label(&NodeId::from("prepare_scan_workspace"), &labels, 15);
-        assert_eq!(result, "scan_workspace");
-
-        // Truncation with ~
-        let result = short_label(&NodeId::from("prepare_scan_workspace"), &labels, 8);
-        assert_eq!(result, "prepare~");
     }
 
     #[test]

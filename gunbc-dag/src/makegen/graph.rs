@@ -27,10 +27,7 @@ pub enum MakegenGraphOp {
 }
 
 impl Executable for MakegenGraphOp {
-    fn execute(
-        &self,
-        inputs: HashMap<String, Value>,
-    ) -> Result<HashMap<String, Value>, ExecError> {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         match self {
             MakegenGraphOp::Makegen(op) => op.execute(inputs),
             MakegenGraphOp::PrepareFileWrite(op) => op.execute(inputs),
@@ -50,7 +47,7 @@ pub fn makegen_signature() -> WorkflowSignature {
         .with_output("content", "String", Cardinality::ONE)
         // Informational outputs from load_registry (secondary boundaries)
         .with_output("tool_count", "Int", Cardinality::ONE)
-        .with_output("tool_names", "List", Cardinality::ONE_OR_MORE)
+        .with_output("tool_names", "String", Cardinality::ONE_OR_MORE)
 }
 
 /// Build the makegen graph using DagBuilder.
@@ -83,7 +80,7 @@ pub fn build_makegen_graph() -> Result<Dag<MakegenGraphOp>, BuilderError> {
         vec![],
         vec![
             scalar("tool_count", "Int"),
-            non_empty_list("tool_names", "List"),
+            non_empty_list("tool_names", "String"),
             scalar("registry", "Json"),
         ],
         MakegenGraphOp::Makegen(MakegenOp::LoadRegistry),
@@ -108,10 +105,7 @@ pub fn build_makegen_graph() -> Result<Dag<MakegenGraphOp>, BuilderError> {
     let prepare_file_write = builder.add_node_after(
         Node::opaque(
             "prepare_file_write",
-            vec![
-                port("content", "String"),
-                optional("output_path", "String"),
-            ],
+            vec![port("content", "String"), optional("output_path", "String")],
             vec![port("request", "TransportRequest")],
             MakegenGraphOp::PrepareFileWrite(PrepareFileWriteOp),
         ),
@@ -136,9 +130,18 @@ pub fn build_makegen_graph() -> Result<Dag<MakegenGraphOp>, BuilderError> {
     )?;
 
     // Wire up the pipeline
-    builder.add_edge(load_registry.out("registry"), render_makefile.in_port("registry"))?;
-    builder.add_edge(render_makefile.out("makefile_content"), prepare_file_write.in_port("content"))?;
-    builder.add_edge(prepare_file_write.out("request"), execute_transport.in_port("request"))?;
+    builder.add_edge(
+        load_registry.out("registry"),
+        render_makefile.in_port("registry"),
+    )?;
+    builder.add_edge(
+        render_makefile.out("makefile_content"),
+        prepare_file_write.in_port("content"),
+    )?;
+    builder.add_edge(
+        prepare_file_write.out("request"),
+        execute_transport.in_port("request"),
+    )?;
 
     Ok(builder.build())
 }
@@ -164,7 +167,7 @@ mod tests {
 
         // ExecuteTransport is the primary boundary (actual I/O)
         assert!(boundaries.is_boundary_node(&"execute_transport".into()));
-        
+
         // load_registry also has unconnected outputs (tool_count, tool_names)
         // which are informational secondary boundaries - that's expected
     }
@@ -207,7 +210,7 @@ mod tests {
     fn test_inferred_signature() {
         let dag = build_makegen_graph().expect("graph should build");
         let inferred = infer_signature(&dag);
-        
+
         // 1 input (output_path)
         assert_eq!(inferred.inputs.len(), 1);
         // Boundary outputs: execute_transport (3) + load_registry informational (2)

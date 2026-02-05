@@ -151,7 +151,11 @@ impl RenderConfig {
     /// Uses the language module's `generated_header` for consistency
     /// with all other generated files in the workspace.
     pub fn header(&self, comment_prefix: &str) -> String {
-        generated_header(&self.generator_name, &self.regenerate_command, comment_prefix)
+        generated_header(
+            &self.generator_name,
+            &self.regenerate_command,
+            comment_prefix,
+        )
     }
 
     /// Set the runner image (selected from the provider's catalog).
@@ -313,7 +317,11 @@ impl SharedStep {
     }
 
     /// Create a DAG step execution.
-    pub fn dag_step(tool: CargoInvocation, node_id: impl Into<NodeId>, depends_on: Vec<NodeId>) -> Self {
+    pub fn dag_step(
+        tool: CargoInvocation,
+        node_id: impl Into<NodeId>,
+        depends_on: Vec<NodeId>,
+    ) -> Self {
         Self::DagStep {
             tool,
             node_id: node_id.into(),
@@ -352,7 +360,11 @@ pub fn dag_to_shared_steps<T>(dag: &Dag<T>, config: &RenderConfig) -> Vec<Shared
 
         for node in &dag.nodes {
             let deps = depends_on.get(&node.id).cloned().unwrap_or_default();
-            steps.push(SharedStep::dag_step(config.tool.clone(), node.id.clone(), deps));
+            steps.push(SharedStep::dag_step(
+                config.tool.clone(),
+                node.id.clone(),
+                deps,
+            ));
         }
     } else {
         // 3. Single step: run the full DAG

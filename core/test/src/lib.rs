@@ -41,17 +41,18 @@ pub mod mock;
 pub mod mock_spec;
 pub mod mockable;
 pub mod simulator;
+pub mod window;
 
-pub use boundary::{assert_boundary_mockable, default_mocks, mocks_with_values, BoundaryTestResult};
+pub use boundary::{
+    assert_boundary_mockable, default_mocks, mocks_with_values, BoundaryTestResult,
+};
 pub use composition::{assert_types_compatible, TypeCompatibility};
 pub use mock::{MockBehavior, MockOp, ScriptedDagBuilder};
 pub use mock_spec::{
     validate_chain, BoundaryMock, ChainError, ChainValidationResult, ExpectedOutput,
-    InputConstraint, InputExpectation, MockSpec, NodeExample, OutputMatcher,
-    ResourceAcquireResult, ResourceBehavior, ResourceMocks, ResourceSimulation,
-    ResourceType, TransportMock,
+    InputConstraint, InputExpectation, MockSpec, NodeExample, OutputMatcher, ResourceAcquireResult,
+    ResourceBehavior, ResourceMocks, ResourceSimulation, ResourceType, TransportMock,
 };
-pub use mockable::{
-    CardinalityTestInput, ErrorTestCase, ExpectedBehavior, Mockable,
-};
+pub use mockable::{CardinalityTestInput, ErrorTestCase, ExpectedBehavior, Mockable};
 pub use simulator::{IoContract, Simulator};
+pub use window::{apply_window_inputs, assert_window_outputs, window_subdag, Window, WindowError};

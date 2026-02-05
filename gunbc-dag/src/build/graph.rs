@@ -33,10 +33,7 @@ pub enum BuildGraphOp {
 }
 
 impl Executable for BuildGraphOp {
-    fn execute(
-        &self,
-        inputs: HashMap<String, Value>,
-    ) -> Result<HashMap<String, Value>, ExecError> {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         match self {
             BuildGraphOp::Build(op) => op.execute(inputs),
             BuildGraphOp::Transport(op) => op.execute(inputs),
@@ -208,10 +205,7 @@ pub fn build_build_graph() -> Result<Dag<BuildGraphOp>, BuilderError> {
                 optional("test_stderr", "String"),
                 optional("clippy_stderr", "String"),
             ],
-            vec![
-                port("overall_success", "Bool"),
-                port("report", "String"),
-            ],
+            vec![port("overall_success", "Bool"), port("report", "String")],
             BuildGraphOp::Build(BuildOp::Summary),
         ),
         &[&parse_test, &parse_clippy],
@@ -222,30 +216,66 @@ pub fn build_build_graph() -> Result<Dag<BuildGraphOp>, BuilderError> {
     // ========================================================================
 
     // Build stage
-    builder.add_edge(prepare_build.out("request"), execute_build.in_port("request"))?;
-    builder.add_edge(execute_build.out("response"), parse_build.in_port("response"))?;
+    builder.add_edge(
+        prepare_build.out("request"),
+        execute_build.in_port("request"),
+    )?;
+    builder.add_edge(
+        execute_build.out("response"),
+        parse_build.in_port("response"),
+    )?;
 
     // Test stage
-    builder.add_edge(parse_build.out("build_success"), prepare_test.in_port("build_success"))?;
+    builder.add_edge(
+        parse_build.out("build_success"),
+        prepare_test.in_port("build_success"),
+    )?;
     builder.add_edge(prepare_test.out("request"), execute_test.in_port("request"))?;
     builder.add_edge(prepare_test.out("skip"), execute_test.in_port("skip"))?;
     builder.add_edge(execute_test.out("response"), parse_test.in_port("response"))?;
     builder.add_edge(execute_test.out("skip"), parse_test.in_port("skip"))?;
 
     // Clippy stage
-    builder.add_edge(parse_build.out("build_success"), prepare_clippy.in_port("build_success"))?;
-    builder.add_edge(prepare_clippy.out("request"), execute_clippy.in_port("request"))?;
+    builder.add_edge(
+        parse_build.out("build_success"),
+        prepare_clippy.in_port("build_success"),
+    )?;
+    builder.add_edge(
+        prepare_clippy.out("request"),
+        execute_clippy.in_port("request"),
+    )?;
     builder.add_edge(prepare_clippy.out("skip"), execute_clippy.in_port("skip"))?;
-    builder.add_edge(execute_clippy.out("response"), parse_clippy.in_port("response"))?;
+    builder.add_edge(
+        execute_clippy.out("response"),
+        parse_clippy.in_port("response"),
+    )?;
     builder.add_edge(execute_clippy.out("skip"), parse_clippy.in_port("skip"))?;
 
     // Summary stage
-    builder.add_edge(parse_build.out("build_success"), summary.in_port("build_success"))?;
-    builder.add_edge(parse_test.out("test_success"), summary.in_port("test_success"))?;
-    builder.add_edge(parse_clippy.out("clippy_success"), summary.in_port("clippy_success"))?;
-    builder.add_edge(parse_build.out("build_stderr"), summary.in_port("build_stderr"))?;
-    builder.add_edge(parse_test.out("test_stderr"), summary.in_port("test_stderr"))?;
-    builder.add_edge(parse_clippy.out("clippy_stderr"), summary.in_port("clippy_stderr"))?;
+    builder.add_edge(
+        parse_build.out("build_success"),
+        summary.in_port("build_success"),
+    )?;
+    builder.add_edge(
+        parse_test.out("test_success"),
+        summary.in_port("test_success"),
+    )?;
+    builder.add_edge(
+        parse_clippy.out("clippy_success"),
+        summary.in_port("clippy_success"),
+    )?;
+    builder.add_edge(
+        parse_build.out("build_stderr"),
+        summary.in_port("build_stderr"),
+    )?;
+    builder.add_edge(
+        parse_test.out("test_stderr"),
+        summary.in_port("test_stderr"),
+    )?;
+    builder.add_edge(
+        parse_clippy.out("clippy_stderr"),
+        summary.in_port("clippy_stderr"),
+    )?;
 
     Ok(builder.build())
 }

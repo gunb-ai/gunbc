@@ -71,8 +71,9 @@ impl EnvOp {
                 ExecError::new(format!("Unknown tool '{}' in environment", tool_id))
             })?;
 
-            let path = upsert_tool_with(tool, resolver)
-                .map_err(|e| ExecError::new(format!("Failed to acquire tool '{}': {}", tool_id, e)))?;
+            let path = upsert_tool_with(tool, resolver).map_err(|e| {
+                ExecError::new(format!("Failed to acquire tool '{}': {}", tool_id, e))
+            })?;
 
             let handle = ToolHandle::acquire(tool, path);
             let port_name = format!("tool:{}", tool_id);
@@ -84,7 +85,10 @@ impl EnvOp {
 }
 
 impl Executable for EnvOp {
-    fn execute(&self, _inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+    fn execute(
+        &self,
+        _inputs: HashMap<String, Value>,
+    ) -> Result<HashMap<String, Value>, ExecError> {
         self.execute_with_resolver(&WhichResolver)
     }
 }

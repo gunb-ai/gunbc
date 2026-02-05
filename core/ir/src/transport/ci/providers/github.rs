@@ -18,9 +18,7 @@ use crate::transport::ci::command::{AnnotationLevel, WorkflowCommand};
 use crate::transport::ci::provider::CiProvider;
 use crate::transport::ci::render::{dag_to_shared_steps, CiRenderer, RenderConfig, SharedStep};
 use crate::transport::ci::runner::Runner;
-use crate::transport::github_actions::{
-    ubuntu_22_04, ubuntu_24_04, ubuntu_latest, RunnerImage,
-};
+use crate::transport::github_actions::{ubuntu_22_04, ubuntu_24_04, ubuntu_latest, RunnerImage};
 use crate::Dag;
 
 /// GitHub Actions CI provider.
@@ -46,9 +44,7 @@ impl CiProvider for GitHubActionsProvider {
                 format!("::group::{}", name)
             }
 
-            WorkflowCommand::GroupEnd { .. } => {
-                "::endgroup::".to_string()
-            }
+            WorkflowCommand::GroupEnd { .. } => "::endgroup::".to_string(),
 
             WorkflowCommand::Annotation {
                 level,
@@ -185,12 +181,18 @@ fn render_github_workflow(steps: &[SharedStep], config: &RenderConfig) -> String
     // Triggers — derived from git config
     let branches = config.git.ci_branches();
     yaml.push_str("on:\n  push:\n");
-    yaml_block(&mut yaml, "    branches:", &branches, |b| format!("      - {}", b));
+    yaml_block(&mut yaml, "    branches:", &branches, |b| {
+        format!("      - {}", b)
+    });
     yaml.push_str("  pull_request:\n");
-    yaml_block(&mut yaml, "    branches:", &branches, |b| format!("      - {}", b));
+    yaml_block(&mut yaml, "    branches:", &branches, |b| {
+        format!("      - {}", b)
+    });
 
     // Environment — derived from cargo env + manual overrides
-    yaml_block(&mut yaml, "env:", &config.all_env(), |(k, v)| format!("  {}: {}", k, v));
+    yaml_block(&mut yaml, "env:", &config.all_env(), |(k, v)| {
+        format!("  {}: {}", k, v)
+    });
 
     // Job
     yaml.push_str(&format!(
@@ -224,10 +226,7 @@ fn render_github_step(step: &SharedStep, _config: &RenderConfig) -> String {
         }
 
         SharedStep::Run { name, command } => {
-            format!(
-                "      - name: {}\n        run: {}\n",
-                name, command
-            )
+            format!("      - name: {}\n        run: {}\n", name, command)
         }
 
         SharedStep::DagStep {
@@ -237,7 +236,10 @@ fn render_github_step(step: &SharedStep, _config: &RenderConfig) -> String {
         } => {
             let mut yaml = format!(
                 "      - name: {}\n        id: {}\n        run: {} step {}\n",
-                node_id.0, node_id.0, tool.command(), node_id.0
+                node_id.0,
+                node_id.0,
+                tool.command(),
+                node_id.0
             );
 
             // Add environment variables for dependencies
@@ -260,7 +262,8 @@ fn render_github_step(step: &SharedStep, _config: &RenderConfig) -> String {
         SharedStep::DagRun { tool } => {
             format!(
                 "      - name: Run {}\n        run: {}\n",
-                tool.binary, tool.command()
+                tool.binary,
+                tool.command()
             )
         }
     }

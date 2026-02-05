@@ -109,7 +109,7 @@ pub fn verify_all_edges_compatible<T>(dag: &Dag<T>) {
 mod tests {
     use super::*;
     use gunbc_ir::build::*;
-    use gunbc_ir::{Node, Dag};
+    use gunbc_ir::{Dag, Node};
 
     #[test]
     fn test_compatible_types() {

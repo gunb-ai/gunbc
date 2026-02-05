@@ -34,7 +34,7 @@ use std::fmt;
 /// Secrets are normal I/O that get resolved (upserted/ensured) at
 /// execution time. Between DAG nodes they flow as values, but any
 /// logging or display shows `***` instead of the actual content.
-#[derive(Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SecretString {
     #[serde(rename = "secret")]
     inner: String,
@@ -137,11 +137,7 @@ impl Value {
     /// This is the compositional replacement for the old `MapStrStr` variant.
     /// Equivalent to `Value::Map(map.into_iter().map(|(k, v)| (k, Value::Str(v))).collect())`.
     pub fn str_map(map: BTreeMap<String, String>) -> Self {
-        Value::Map(
-            map.into_iter()
-                .map(|(k, v)| (k, Value::Str(v)))
-                .collect(),
-        )
+        Value::Map(map.into_iter().map(|(k, v)| (k, Value::Str(v))).collect())
     }
 
     /// Create a set from a vector of values, deduplicating via `PartialEq`.
@@ -217,8 +213,7 @@ impl Value {
     pub fn set_symmetric_difference(&self, other: &Value) -> Option<Value> {
         match (self, other) {
             (Value::Set(a), Value::Set(b)) => {
-                let mut result: Vec<Value> =
-                    a.iter().filter(|v| !b.contains(v)).cloned().collect();
+                let mut result: Vec<Value> = a.iter().filter(|v| !b.contains(v)).cloned().collect();
                 for v in b {
                     if !a.contains(v) {
                         result.push(v.clone());
@@ -271,8 +266,11 @@ impl Value {
             Value::List(v) | Value::Set(v) => v.is_empty(),
             Value::Map(m) => m.is_empty(),
             Value::Secret(s) => s.is_empty(),
-            Value::Bool(_) | Value::Int(_) | Value::Json(_)
-            | Value::Request(_) | Value::Response(_) => false,
+            Value::Bool(_)
+            | Value::Int(_)
+            | Value::Json(_)
+            | Value::Request(_)
+            | Value::Response(_) => false,
         }
     }
 
@@ -480,9 +478,7 @@ impl PartialEq for Value {
             (Value::Str(a), Value::Str(b)) => a == b,
             (Value::Int(a), Value::Int(b)) => a == b,
             (Value::List(a), Value::List(b)) => a == b,
-            (Value::Set(a), Value::Set(b)) => {
-                a.len() == b.len() && a.iter().all(|v| b.contains(v))
-            }
+            (Value::Set(a), Value::Set(b)) => a.len() == b.len() && a.iter().all(|v| b.contains(v)),
             (Value::Map(a), Value::Map(b)) => a == b,
             (Value::Json(a), Value::Json(b)) => a == b,
             (Value::Request(a), Value::Request(b)) => a == b,

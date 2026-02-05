@@ -127,10 +127,7 @@ mod tests {
     fn test_openai_provider() {
         let p = openai_provider();
         assert_eq!(p.id, "openai");
-        assert_eq!(
-            p.chat_url(),
-            "https://api.openai.com/v1/chat/completions"
-        );
+        assert_eq!(p.chat_url(), "https://api.openai.com/v1/chat/completions");
         assert!(matches!(p.auth_style, LlmAuthStyle::BearerToken));
         assert_eq!(p.api_key_env.0, "OPENAI_API_KEY");
     }
@@ -140,10 +137,7 @@ mod tests {
         let p = anthropic_provider();
         assert_eq!(p.id, "anthropic");
         assert_eq!(p.chat_url(), "https://api.anthropic.com/v1/messages");
-        assert!(matches!(
-            p.auth_style,
-            LlmAuthStyle::CustomHeader { .. }
-        ));
+        assert!(matches!(p.auth_style, LlmAuthStyle::CustomHeader { .. }));
         assert_eq!(p.api_key_env.0, "ANTHROPIC_API_KEY");
         assert!(!p.extra_headers.is_empty());
     }

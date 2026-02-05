@@ -27,7 +27,10 @@ use crate::ExecError;
 // ---------------------------------------------------------------------------
 
 /// Extract a required string input.
-pub fn require_str<'a>(inputs: &'a HashMap<String, Value>, key: &str) -> Result<&'a str, ExecError> {
+pub fn require_str<'a>(
+    inputs: &'a HashMap<String, Value>,
+    key: &str,
+) -> Result<&'a str, ExecError> {
     inputs
         .get(key)
         .and_then(|v| v.as_str())

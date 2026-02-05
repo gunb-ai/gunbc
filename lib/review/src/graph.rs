@@ -15,7 +15,7 @@ use gunbc_ir::{build::*, Dag, Node, Value};
 use gunbc_lib_blob::BlobOps;
 use gunbc_lib_git_ops::GitOps;
 use gunbc_lib_llm_ops::LlmOps;
-use gunbc_lib_transport::TransportOps;
+use gunbc_lib_transport::{AuthEnv, TransportOps};
 use std::collections::HashMap;
 
 use crate::{ReviewOps, ReviewPipelineConfig};
@@ -37,6 +37,8 @@ pub enum ReviewGraphOp {
     Review(ReviewOps),
     /// LLM chat operations (PURE)
     Llm(LlmOps),
+    /// Auth environment (BOUNDARY - resolves provider auth)
+    Env(AuthEnv),
     /// Transport execution (BOUNDARY - actual I/O)
     Transport(TransportOps),
 }
@@ -48,6 +50,7 @@ impl Executable for ReviewGraphOp {
             ReviewGraphOp::Git(op) => op.execute(inputs),
             ReviewGraphOp::Review(op) => op.execute(inputs),
             ReviewGraphOp::Llm(op) => op.execute(inputs),
+            ReviewGraphOp::Env(op) => op.execute(inputs),
             ReviewGraphOp::Transport(op) => op.execute(inputs),
         }
     }
@@ -78,7 +81,7 @@ impl Executable for ReviewGraphOp {
 ///                                     ↓
 ///                              prepare_prompt
 ///                                     ↓
-///                              prepare_llm → [execute_llm] → parse_llm
+///                              prepare_llm → resolve_auth → auth_env → [execute_llm] → parse_llm
 ///                                                                ↓
 ///                                                         parse_response
 /// ```
@@ -99,8 +102,8 @@ pub fn build_review_phase_graph() -> Dag<ReviewGraphOp> {
         vec![
             port("request", "TransportRequest"),
             port("skip_fetch", "Bool"),
-            port("handle", "Json"),    // Present if inline
-            port("source", "Json"),    // Echo for parse
+            port("handle", "Json"), // Present if inline
+            port("source", "Json"), // Echo for parse
         ],
         ReviewGraphOp::Blob(BlobOps::PrepareFetch),
     ));
@@ -121,10 +124,7 @@ pub fn build_review_phase_graph() -> Dag<ReviewGraphOp> {
             port("source", "Json"),
             port("response", "TransportResponse"),
         ],
-        vec![
-            port("handle", "Json"),
-            port("meta", "Json"),
-        ],
+        vec![port("handle", "Json"), port("meta", "Json")],
         ReviewGraphOp::Blob(BlobOps::ParseFetch),
     ));
 
@@ -140,10 +140,7 @@ pub fn build_review_phase_graph() -> Dag<ReviewGraphOp> {
             port("criteria", "Json"),
             optional("context", "String"),
         ],
-        vec![
-            port("question", "String"),
-            port("system_prompt", "String"),
-        ],
+        vec![port("question", "String"), port("system_prompt", "String")],
         ReviewGraphOp::Review(ReviewOps::PrepareReviewPrompt),
     ));
 
@@ -168,15 +165,37 @@ pub fn build_review_phase_graph() -> Dag<ReviewGraphOp> {
         ReviewGraphOp::Llm(LlmOps::PrepareSimpleRequest),
     ));
 
-    // Node 6: Execute LLM call (I/O boundary)
+    // Node 6: Resolve auth requirements (pure)
+    dag.add_node(Node::opaque(
+        "resolve_auth",
+        vec![port("provider", "String")],
+        vec![port("service", "String"), port("env_var", "String")],
+        ReviewGraphOp::Llm(LlmOps::ResolveAuth),
+    ));
+
+    // Node 7: Auth environment (resolves provider auth)
+    let auth_port = "auth:llm";
+    let auth_env = AuthEnv::from_inputs(auth_port);
+    let auth_inputs = vec![port("service", "String"), port("env_var", "String")];
+    dag.add_node(Node::opaque(
+        "auth_env",
+        auth_inputs,
+        vec![port(auth_port, "AuthToken")],
+        ReviewGraphOp::Env(auth_env),
+    ));
+
+    // Node 8: Execute LLM call (I/O boundary)
     dag.add_node(Node::opaque(
         "execute_llm",
-        vec![port("request", "TransportRequest")],
+        vec![
+            port("request", "TransportRequest"),
+            port("res:auth", "AuthToken"),
+        ],
         vec![port("response", "TransportResponse")],
         ReviewGraphOp::Transport(TransportOps::Execute),
     ));
 
-    // Node 7: ParseSimpleResponse - extracts answer
+    // Node 9: ParseSimpleResponse - extracts answer
     dag.add_node(Node::opaque(
         "parse_llm",
         vec![
@@ -191,17 +210,11 @@ pub fn build_review_phase_graph() -> Dag<ReviewGraphOp> {
     // Review Response Parsing
     // ========================================================================
 
-    // Node 8: ParseReviewResponse - converts answer to ReviewOutput
+    // Node 10: ParseReviewResponse - converts answer to ReviewOutput
     dag.add_node(Node::opaque(
         "parse_response",
-        vec![
-            port("answer", "String"),
-            port("criteria", "Json"),
-        ],
-        vec![
-            port("output", "Json"),
-            port("errors", "Json"),
-        ],
+        vec![port("answer", "String"), port("criteria", "Json")],
+        vec![port("output", "Json"), port("errors", "Json")],
         ReviewGraphOp::Review(ReviewOps::ParseReviewResponse),
     ));
 
@@ -224,9 +237,23 @@ pub fn build_review_phase_graph() -> Dag<ReviewGraphOp> {
     // A full implementation would use an Extract node to get blob.data.
 
     // LLM flow
-    dag.add_edge(edge("prepare_prompt", "question", "prepare_llm", "question"));
-    dag.add_edge(edge("prepare_prompt", "system_prompt", "prepare_llm", "system_prompt"));
+    dag.add_edge(edge(
+        "prepare_prompt",
+        "question",
+        "prepare_llm",
+        "question",
+    ));
+    dag.add_edge(edge(
+        "prepare_prompt",
+        "system_prompt",
+        "prepare_llm",
+        "system_prompt",
+    ));
     dag.add_edge(edge("prepare_llm", "request", "execute_llm", "request"));
+    dag.add_edge(edge("prepare_llm", "provider", "resolve_auth", "provider"));
+    dag.add_edge(edge("resolve_auth", "service", "auth_env", "service"));
+    dag.add_edge(edge("resolve_auth", "env_var", "auth_env", "env_var"));
+    dag.add_edge(edge("auth_env", auth_port, "execute_llm", "res:auth"));
     dag.add_edge(edge("execute_llm", "response", "parse_llm", "response"));
     dag.add_edge(edge("prepare_llm", "provider", "parse_llm", "provider"));
 
@@ -261,10 +288,7 @@ pub fn build_inline_review_graph() -> Dag<ReviewGraphOp> {
             port("criteria", "Json"),
             optional("context", "String"),
         ],
-        vec![
-            port("question", "String"),
-            port("system_prompt", "String"),
-        ],
+        vec![port("question", "String"), port("system_prompt", "String")],
         ReviewGraphOp::Review(ReviewOps::PrepareReviewPrompt),
     ));
 
@@ -285,15 +309,37 @@ pub fn build_inline_review_graph() -> Dag<ReviewGraphOp> {
         ReviewGraphOp::Llm(LlmOps::PrepareSimpleRequest),
     ));
 
-    // Node 3: Execute LLM (I/O boundary)
+    // Node 3: Resolve auth requirements (pure)
+    dag.add_node(Node::opaque(
+        "resolve_auth",
+        vec![port("provider", "String")],
+        vec![port("service", "String"), port("env_var", "String")],
+        ReviewGraphOp::Llm(LlmOps::ResolveAuth),
+    ));
+
+    // Node 4: Auth environment (resolves provider auth)
+    let auth_port = "auth:llm";
+    let auth_env = AuthEnv::from_inputs(auth_port);
+    let auth_inputs = vec![port("service", "String"), port("env_var", "String")];
+    dag.add_node(Node::opaque(
+        "auth_env",
+        auth_inputs,
+        vec![port(auth_port, "AuthToken")],
+        ReviewGraphOp::Env(auth_env),
+    ));
+
+    // Node 5: Execute LLM (I/O boundary)
     dag.add_node(Node::opaque(
         "execute_llm",
-        vec![port("request", "TransportRequest")],
+        vec![
+            port("request", "TransportRequest"),
+            port("res:auth", "AuthToken"),
+        ],
         vec![port("response", "TransportResponse")],
         ReviewGraphOp::Transport(TransportOps::Execute),
     ));
 
-    // Node 4: ParseSimpleResponse
+    // Node 6: ParseSimpleResponse
     dag.add_node(Node::opaque(
         "parse_llm",
         vec![
@@ -304,24 +350,32 @@ pub fn build_inline_review_graph() -> Dag<ReviewGraphOp> {
         ReviewGraphOp::Llm(LlmOps::ParseSimpleResponse),
     ));
 
-    // Node 5: ParseReviewResponse
+    // Node 7: ParseReviewResponse
     dag.add_node(Node::opaque(
         "parse_response",
-        vec![
-            port("answer", "String"),
-            port("criteria", "Json"),
-        ],
-        vec![
-            port("output", "Json"),
-            port("errors", "Json"),
-        ],
+        vec![port("answer", "String"), port("criteria", "Json")],
+        vec![port("output", "Json"), port("errors", "Json")],
         ReviewGraphOp::Review(ReviewOps::ParseReviewResponse),
     ));
 
     // Edges
-    dag.add_edge(edge("prepare_prompt", "question", "prepare_llm", "question"));
-    dag.add_edge(edge("prepare_prompt", "system_prompt", "prepare_llm", "system_prompt"));
+    dag.add_edge(edge(
+        "prepare_prompt",
+        "question",
+        "prepare_llm",
+        "question",
+    ));
+    dag.add_edge(edge(
+        "prepare_prompt",
+        "system_prompt",
+        "prepare_llm",
+        "system_prompt",
+    ));
     dag.add_edge(edge("prepare_llm", "request", "execute_llm", "request"));
+    dag.add_edge(edge("prepare_llm", "provider", "resolve_auth", "provider"));
+    dag.add_edge(edge("resolve_auth", "service", "auth_env", "service"));
+    dag.add_edge(edge("resolve_auth", "env_var", "auth_env", "env_var"));
+    dag.add_edge(edge("auth_env", auth_port, "execute_llm", "res:auth"));
     dag.add_edge(edge("execute_llm", "response", "parse_llm", "response"));
     dag.add_edge(edge("prepare_llm", "provider", "parse_llm", "provider"));
     dag.add_edge(edge("parse_llm", "answer", "parse_response", "answer"));
@@ -367,7 +421,7 @@ pub fn build_diff_review_graph() -> Dag<ReviewGraphOp> {
 ///                                                    ↓
 ///                                             prepare_prompt
 ///                                                    ↓
-///                                             prepare_llm → [execute_llm] → parse_llm
+///                                             prepare_llm → resolve_auth → auth_env → [execute_llm] → parse_llm
 ///                                                                               ↓
 ///                                                                        parse_response
 /// ```
@@ -375,9 +429,7 @@ pub fn build_diff_review_graph() -> Dag<ReviewGraphOp> {
 /// I/O Classification:
 /// - Two TransportOps::Execute calls: git diff (read), LLM (read)
 /// - Phase overall: Read-only
-pub fn build_diff_review_graph_with(
-    config: ReviewPipelineConfig,
-) -> Dag<ReviewGraphOp> {
+pub fn build_diff_review_graph_with(config: ReviewPipelineConfig) -> Dag<ReviewGraphOp> {
     let mut dag = Dag::new();
 
     let default_branch = config.default_branch.clone();
@@ -429,10 +481,7 @@ pub fn build_diff_review_graph_with(
     dag.add_node(Node::opaque(
         "parse_diff",
         vec![port("response", "TransportResponse")],
-        vec![
-            port("diff_files", "Map"),
-            port("stats", "String"),
-        ],
+        vec![port("diff_files", "Map"), port("stats", "String")],
         ReviewGraphOp::Git(GitOps::ParseDiff),
     ));
 
@@ -458,10 +507,7 @@ pub fn build_diff_review_graph_with(
             port("criteria", "Json"),
             optional("context", "String"),
         ],
-        vec![
-            port("question", "String"),
-            port("system_prompt", "String"),
-        ],
+        vec![port("question", "String"), port("system_prompt", "String")],
         ReviewGraphOp::Review(ReviewOps::PrepareReviewPrompt),
     ));
 
@@ -486,8 +532,28 @@ pub fn build_diff_review_graph_with(
     ));
 
     dag.add_node(Node::opaque(
+        "resolve_auth",
+        vec![port("provider", "String")],
+        vec![port("service", "String"), port("env_var", "String")],
+        ReviewGraphOp::Llm(LlmOps::ResolveAuth),
+    ));
+
+    let auth_port = "auth:llm";
+    let auth_env = AuthEnv::from_inputs(auth_port);
+    let auth_inputs = vec![port("service", "String"), port("env_var", "String")];
+    dag.add_node(Node::opaque(
+        "auth_env",
+        auth_inputs,
+        vec![port(auth_port, "AuthToken")],
+        ReviewGraphOp::Env(auth_env),
+    ));
+
+    dag.add_node(Node::opaque(
         "execute_llm",
-        vec![port("request", "TransportRequest")],
+        vec![
+            port("request", "TransportRequest"),
+            port("res:auth", "AuthToken"),
+        ],
         vec![port("response", "TransportResponse")],
         ReviewGraphOp::Transport(TransportOps::Execute),
     ));
@@ -508,14 +574,8 @@ pub fn build_diff_review_graph_with(
 
     dag.add_node(Node::opaque(
         "parse_response",
-        vec![
-            port("answer", "String"),
-            port("criteria", "Json"),
-        ],
-        vec![
-            port("output", "Json"),
-            port("errors", "Json"),
-        ],
+        vec![port("answer", "String"), port("criteria", "Json")],
+        vec![port("output", "Json"), port("errors", "Json")],
         ReviewGraphOp::Review(ReviewOps::ParseReviewResponse),
     ));
 
@@ -528,22 +588,51 @@ pub fn build_diff_review_graph_with(
     dag.add_edge(edge("config", "model", "prepare_llm", "model"));
     dag.add_edge(edge("config", "criteria", "prepare_prompt", "criteria"));
     dag.add_edge(edge("config", "criteria", "parse_response", "criteria"));
+    dag.add_edge(edge("config", "provider", "resolve_auth", "provider"));
 
     // Git diff flow
     dag.add_edge(edge("prepare_diff", "request", "execute_diff", "request"));
     dag.add_edge(edge("execute_diff", "response", "parse_diff", "response"));
 
     // Diff → artifact formatting
-    dag.add_edge(edge("parse_diff", "diff_files", "format_artifact", "diff_files"));
+    dag.add_edge(edge(
+        "parse_diff",
+        "diff_files",
+        "format_artifact",
+        "diff_files",
+    ));
 
     // Artifact → review prompt + LLM content
-    dag.add_edge(edge("format_artifact", "artifact", "prepare_prompt", "artifact"));
-    dag.add_edge(edge("format_artifact", "artifact", "prepare_llm", "content"));
+    dag.add_edge(edge(
+        "format_artifact",
+        "artifact",
+        "prepare_prompt",
+        "artifact",
+    ));
+    dag.add_edge(edge(
+        "format_artifact",
+        "artifact",
+        "prepare_llm",
+        "content",
+    ));
 
     // LLM flow
-    dag.add_edge(edge("prepare_prompt", "question", "prepare_llm", "question"));
-    dag.add_edge(edge("prepare_prompt", "system_prompt", "prepare_llm", "system_prompt"));
+    dag.add_edge(edge(
+        "prepare_prompt",
+        "question",
+        "prepare_llm",
+        "question",
+    ));
+    dag.add_edge(edge(
+        "prepare_prompt",
+        "system_prompt",
+        "prepare_llm",
+        "system_prompt",
+    ));
     dag.add_edge(edge("prepare_llm", "request", "execute_llm", "request"));
+    dag.add_edge(edge("resolve_auth", "service", "auth_env", "service"));
+    dag.add_edge(edge("resolve_auth", "env_var", "auth_env", "env_var"));
+    dag.add_edge(edge("auth_env", auth_port, "execute_llm", "res:auth"));
     dag.add_edge(edge("execute_llm", "response", "parse_llm", "response"));
     dag.add_edge(edge("prepare_llm", "provider", "parse_llm", "provider"));
 
@@ -581,16 +670,15 @@ pub fn build_diff_review_graph_with(
 ///                  └──(future sources)──▶ [MergeOutputs]
 /// ```
 ///
-/// MergeOutputs accepts both a single ReviewOutput object and an array,
-/// so each source can wire directly without wrapper nodes.
+/// MergeOutputs declares a list port for `outputs` — the engine collects
+/// fan-in edges into `Value::List` automatically. Each source wires
+/// directly to the merge node without wrapper nodes.
 pub fn build_multi_source_review_graph() -> Dag<ReviewGraphOp> {
     build_multi_source_review_graph_with(ReviewPipelineConfig::gunbc_default())
 }
 
 /// Build a MultiSourceReviewPhase DAG with explicit pipeline config.
-pub fn build_multi_source_review_graph_with(
-    config: ReviewPipelineConfig,
-) -> Dag<ReviewGraphOp> {
+pub fn build_multi_source_review_graph_with(config: ReviewPipelineConfig) -> Dag<ReviewGraphOp> {
     let mut dag = Dag::new();
 
     // ========================================================================
@@ -619,10 +707,7 @@ pub fn build_multi_source_review_graph_with(
             port("criteria", "Json"),
             optional("context", "String"),
         ],
-        vec![
-            port("question", "String"),
-            port("system_prompt", "String"),
-        ],
+        vec![port("question", "String"), port("system_prompt", "String")],
         ReviewGraphOp::Review(ReviewOps::PrepareReviewPrompt),
     ));
 
@@ -643,8 +728,28 @@ pub fn build_multi_source_review_graph_with(
     ));
 
     dag.add_node(Node::opaque(
+        "resolve_auth",
+        vec![port("provider", "String")],
+        vec![port("service", "String"), port("env_var", "String")],
+        ReviewGraphOp::Llm(LlmOps::ResolveAuth),
+    ));
+
+    let auth_port = "auth:llm";
+    let auth_env = AuthEnv::from_inputs(auth_port);
+    let auth_inputs = vec![port("service", "String"), port("env_var", "String")];
+    dag.add_node(Node::opaque(
+        "auth_env",
+        auth_inputs,
+        vec![port(auth_port, "AuthToken")],
+        ReviewGraphOp::Env(auth_env),
+    ));
+
+    dag.add_node(Node::opaque(
         "execute_llm",
-        vec![port("request", "TransportRequest")],
+        vec![
+            port("request", "TransportRequest"),
+            port("res:auth", "AuthToken"),
+        ],
         vec![port("response", "TransportResponse")],
         ReviewGraphOp::Transport(TransportOps::Execute),
     ));
@@ -661,14 +766,8 @@ pub fn build_multi_source_review_graph_with(
 
     dag.add_node(Node::opaque(
         "parse_response",
-        vec![
-            port("answer", "String"),
-            port("criteria", "Json"),
-        ],
-        vec![
-            port("output", "Json"),
-            port("errors", "Json"),
-        ],
+        vec![port("answer", "String"), port("criteria", "Json")],
+        vec![port("output", "Json"), port("errors", "Json")],
         ReviewGraphOp::Review(ReviewOps::ParseReviewResponse),
     ));
 
@@ -678,11 +777,8 @@ pub fn build_multi_source_review_graph_with(
 
     dag.add_node(Node::opaque(
         "merge",
-        vec![port("outputs", "Json")],
-        vec![
-            port("bundle", "Json"),
-            port("conflicts", "Json"),
-        ],
+        vec![list("outputs", "Json")],
+        vec![port("bundle", "Json"), port("conflicts", "Json")],
         ReviewGraphOp::Review(ReviewOps::MergeOutputs),
     ));
 
@@ -695,16 +791,30 @@ pub fn build_multi_source_review_graph_with(
     dag.add_edge(edge("config", "model", "prepare_llm", "model"));
     dag.add_edge(edge("config", "criteria", "prepare_prompt", "criteria"));
     dag.add_edge(edge("config", "criteria", "parse_response", "criteria"));
+    dag.add_edge(edge("config", "provider", "resolve_auth", "provider"));
 
     // LLM review flow
-    dag.add_edge(edge("prepare_prompt", "question", "prepare_llm", "question"));
-    dag.add_edge(edge("prepare_prompt", "system_prompt", "prepare_llm", "system_prompt"));
+    dag.add_edge(edge(
+        "prepare_prompt",
+        "question",
+        "prepare_llm",
+        "question",
+    ));
+    dag.add_edge(edge(
+        "prepare_prompt",
+        "system_prompt",
+        "prepare_llm",
+        "system_prompt",
+    ));
     dag.add_edge(edge("prepare_llm", "request", "execute_llm", "request"));
+    dag.add_edge(edge("resolve_auth", "service", "auth_env", "service"));
+    dag.add_edge(edge("resolve_auth", "env_var", "auth_env", "env_var"));
+    dag.add_edge(edge("auth_env", auth_port, "execute_llm", "res:auth"));
     dag.add_edge(edge("execute_llm", "response", "parse_llm", "response"));
     dag.add_edge(edge("prepare_llm", "provider", "parse_llm", "provider"));
     dag.add_edge(edge("parse_llm", "answer", "parse_response", "answer"));
 
-    // Review output → merge (MergeOutputs accepts single object or array)
+    // Review output → merge (list port collects fan-in automatically)
     dag.add_edge(edge("parse_response", "output", "merge", "outputs"));
 
     dag
@@ -722,7 +832,7 @@ mod tests {
     #[test]
     fn test_review_phase_graph_structure() {
         let dag = build_review_phase_graph();
-        assert_eq!(dag.nodes.len(), 8);
+        assert_eq!(dag.nodes.len(), 10);
     }
 
     #[test]
@@ -770,7 +880,7 @@ mod tests {
     #[test]
     fn test_inline_review_graph_structure() {
         let dag = build_inline_review_graph();
-        assert_eq!(dag.nodes.len(), 5);
+        assert_eq!(dag.nodes.len(), 7);
         // No blob nodes - content provided directly
     }
 
@@ -811,6 +921,8 @@ mod tests {
             ReviewGraphOp::Git(GitOps::ParseDiff),
             ReviewGraphOp::Review(ReviewOps::HashFinding),
             ReviewGraphOp::Llm(LlmOps::PrepareSimpleRequest),
+            ReviewGraphOp::Llm(LlmOps::ResolveAuth),
+            ReviewGraphOp::Env(AuthEnv::from_inputs("auth:llm")),
             ReviewGraphOp::Transport(TransportOps::Execute),
         ];
 
@@ -829,10 +941,10 @@ mod tests {
     #[test]
     fn test_diff_review_graph_structure() {
         let dag = build_diff_review_graph();
-        // 10 nodes: config, prepare_diff, execute_diff, parse_diff,
+        // 12 nodes: config, prepare_diff, execute_diff, parse_diff,
         //           format_artifact, prepare_prompt, prepare_llm,
-        //           execute_llm, parse_llm, parse_response
-        assert_eq!(dag.nodes.len(), 10);
+        //           resolve_auth, auth_env, execute_llm, parse_llm, parse_response
+        assert_eq!(dag.nodes.len(), 12);
     }
 
     #[test]
@@ -887,9 +999,18 @@ mod tests {
         let transport_nodes: Vec<_> = dag
             .nodes
             .iter()
-            .filter(|n| matches!(n.body, gunbc_ir::NodeBody::Opaque(ReviewGraphOp::Transport(_))))
+            .filter(|n| {
+                matches!(
+                    n.body,
+                    gunbc_ir::NodeBody::Opaque(ReviewGraphOp::Transport(_))
+                )
+            })
             .collect();
-        assert_eq!(transport_nodes.len(), 2, "should have execute_diff and execute_llm");
+        assert_eq!(
+            transport_nodes.len(),
+            2,
+            "should have execute_diff and execute_llm"
+        );
     }
 
     #[test]
@@ -901,7 +1022,7 @@ mod tests {
             default_branch: "develop".to_string(),
         };
         let dag = build_diff_review_graph_with(config);
-        assert_eq!(dag.nodes.len(), 10);
+        assert_eq!(dag.nodes.len(), 12);
     }
 
     // ========================================================================
@@ -911,9 +1032,9 @@ mod tests {
     #[test]
     fn test_multi_source_review_graph_structure() {
         let dag = build_multi_source_review_graph();
-        // 7 nodes: config, prepare_prompt, prepare_llm, execute_llm,
-        //          parse_llm, parse_response, merge
-        assert_eq!(dag.nodes.len(), 7);
+        // 9 nodes: config, prepare_prompt, prepare_llm, resolve_auth, auth_env,
+        //          execute_llm, parse_llm, parse_response, merge
+        assert_eq!(dag.nodes.len(), 9);
     }
 
     #[test]

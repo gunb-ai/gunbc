@@ -38,6 +38,9 @@ pub struct Cardinality {
 }
 
 impl Cardinality {
+    /// Default cap for test-case generation (prevents huge vectors in tests).
+    pub const TEST_CASE_CAP: u32 = 64;
+
     /// ∅ — signal-only, no data.
     pub const ZERO: Self = Self {
         min: 0,
@@ -57,16 +60,10 @@ impl Cardinality {
     };
 
     /// {x}* — Kleene star (zero or more, list).
-    pub const ZERO_OR_MORE: Self = Self {
-        min: 0,
-        max: None,
-    };
+    pub const ZERO_OR_MORE: Self = Self { min: 0, max: None };
 
     /// {x}+ — Kleene plus (one or more, non-empty list).
-    pub const ONE_OR_MORE: Self = Self {
-        min: 1,
-        max: None,
-    };
+    pub const ONE_OR_MORE: Self = Self { min: 1, max: None };
 
     /// Create a new cardinality with explicit bounds.
     ///
@@ -127,24 +124,89 @@ impl Cardinality {
     // Test case generation
     // =========================================================================
 
+    /// Returns boundary values that should be tested for this cardinality.
+    ///
+    /// Computes boundary values from the interval using standard boundary-value
+    /// analysis: min, min+1 (if distinct from max), max, plus below-min and
+    /// above-max when applicable. For standard cardinalities, this produces
+    /// the same coverage as the old `Empty/One/Many` enum but also handles
+    /// arbitrary intervals like `[2, 5]` → `{1, 2, 3, 5, 6}`.
+    ///
+    /// Values within the interval represent valid inputs (should succeed).
+    /// Values outside represent invalid inputs (should fail/skip).
+    /// Use `allows_count(n)` to distinguish the two.
+    pub fn boundary_values(&self) -> Vec<u32> {
+        let mut cases = Vec::new();
+        // Below min (invalid boundary — should fail)
+        if self.min > 0 {
+            cases.push(self.min - 1);
+        }
+        // Min (lowest valid value)
+        cases.push(self.min);
+        // Min + 1 (just above min, if in range)
+        if let Some(min_plus) = self.min.checked_add(1) {
+            if self.allows_count(min_plus) && Some(min_plus) != self.max {
+                cases.push(min_plus);
+            }
+        }
+        if let Some(max) = self.max {
+            // Max (highest valid value)
+            if max > self.min {
+                cases.push(max);
+            }
+            // Above max (invalid boundary — should fail)
+            if let Some(above) = max.checked_add(1) {
+                cases.push(above);
+            }
+        } else {
+            // Unbounded: no synthetic "large" value here.
+            // Test generators can choose a fermi-sized "many" case explicitly.
+        }
+        cases.sort();
+        cases.dedup();
+        cases
+    }
+
     /// Returns the test cases that should be generated for this cardinality.
     ///
-    /// Maps interval boundaries to the three canonical test cases:
-    /// - `Empty` when min == 0
-    /// - `One` when the interval includes 1
-    /// - `Many` when the interval includes 2+
-    pub fn test_cases(&self) -> Vec<CardinalityCase> {
-        let mut cases = Vec::new();
-        if self.allows_empty() {
-            cases.push(CardinalityCase::Empty);
+    /// Returns in-range boundary values only (values that the cardinality
+    /// accepts). For out-of-range boundary testing, use `boundary_values()`
+    /// and filter with `allows_count()`.
+    pub fn test_cases(&self) -> Vec<u32> {
+        self.boundary_values()
+            .into_iter()
+            .filter(|&n| self.allows_count(n))
+            .collect()
+    }
+
+    /// Returns test cases with a cap for large counts.
+    ///
+    /// This keeps boundary coverage while avoiding enormous test vectors when
+    /// a bounded max is very large. If `cap` is below the minimum, no capping
+    /// occurs (to preserve validity).
+    pub fn test_cases_capped(&self, cap: u32) -> Vec<u32> {
+        let mut cases = self.test_cases();
+        if cap < self.min {
+            return cases;
         }
-        if self.allows_one() {
-            cases.push(CardinalityCase::One);
+        for n in &mut cases {
+            if *n > cap {
+                *n = cap;
+            }
         }
-        if self.allows_many() {
-            cases.push(CardinalityCase::Many);
-        }
+        cases.sort();
+        cases.dedup();
         cases
+    }
+
+    /// Default test cases used by generators (with a safe cap).
+    pub fn test_cases_for_tests(&self) -> Vec<u32> {
+        self.test_cases_capped(Self::TEST_CASE_CAP)
+    }
+
+    /// Check if the given count is within this cardinality's interval.
+    pub fn allows_count(&self, count: u32) -> bool {
+        count >= self.min && self.max.is_none_or(|max| count <= max)
     }
 
     // =========================================================================
@@ -220,9 +282,7 @@ impl Cardinality {
             format!(
                 "output might have many elements (max={}) but input accepts at most {}",
                 self.max.map_or("∞".to_string(), |m| m.to_string()),
-                input
-                    .max
-                    .map_or("∞".to_string(), |m| m.to_string())
+                input.max.map_or("∞".to_string(), |m| m.to_string())
             )
         } else {
             format!("cardinality {} cannot satisfy {}", self, input)
@@ -347,7 +407,9 @@ impl<'de> Deserialize<'de> for Cardinality {
             type Value = Cardinality;
 
             fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                f.write_str("a cardinality string (\"Zero\", \"One\", ...) or {\"min\": N, \"max\": N}")
+                f.write_str(
+                    "a cardinality string (\"Zero\", \"One\", ...) or {\"min\": N, \"max\": N}",
+                )
             }
 
             fn visit_str<E: de::Error>(self, value: &str) -> Result<Cardinality, E> {
@@ -431,18 +493,18 @@ pub struct CardinalityMismatch {
 }
 
 // =============================================================================
-// CardinalityCase (unchanged — used by testgen)
+// Cardinality case helpers
 // =============================================================================
 
-/// A specific cardinality case for test generation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum CardinalityCase {
-    /// Test with zero elements (empty list, None, etc.)
-    Empty,
-    /// Test with exactly one element
-    One,
-    /// Test with multiple elements (typically 2-3)
-    Many,
+/// Human-readable label for a boundary value count.
+///
+/// Used by codegen and test generation to produce readable test names.
+pub fn boundary_label(count: u32) -> &'static str {
+    match count {
+        0 => "empty",
+        1 => "one",
+        _ => "many",
+    }
 }
 
 // =============================================================================
@@ -619,24 +681,71 @@ mod tests {
 
     #[test]
     fn test_test_cases() {
-        assert_eq!(Cardinality::ZERO.test_cases(), vec![CardinalityCase::Empty]);
-        assert_eq!(Cardinality::ONE.test_cases(), vec![CardinalityCase::One]);
+        // ZERO [0,0]: only 0 is in-range
+        assert_eq!(Cardinality::ZERO.test_cases(), vec![0]);
+        // ONE [1,1]: only 1 is in-range
+        assert_eq!(Cardinality::ONE.test_cases(), vec![1]);
+        // ZERO_OR_ONE [0,1]: 0 and 1 are in-range
+        assert_eq!(Cardinality::ZERO_OR_ONE.test_cases(), vec![0, 1]);
+        // ZERO_OR_MORE [0,∞): 0 and 1 are in-range
+        assert_eq!(Cardinality::ZERO_OR_MORE.test_cases(), vec![0, 1]);
+        // ONE_OR_MORE [1,∞): 1 and 2 are in-range
+        assert_eq!(Cardinality::ONE_OR_MORE.test_cases(), vec![1, 2]);
+    }
+
+    #[test]
+    fn test_test_cases_capped() {
+        // Large bounded max should be capped.
+        let bounded = Cardinality::new(0, Some(1000));
+        assert_eq!(bounded.test_cases_capped(10), vec![0, 1, 10]);
+
+        // Cap within range for non-zero min.
+        let bounded = Cardinality::new(50, Some(1000));
+        assert_eq!(bounded.test_cases_capped(60), vec![50, 51, 60]);
+
+        // If cap < min, do not cap (preserve validity).
+        let bounded = Cardinality::new(70, Some(1000));
+        assert_eq!(bounded.test_cases_capped(60), vec![70, 71, 1000]);
+
+        // Unbounded: no synthetic "large" values are added here.
+        let unbounded = Cardinality::new(0, None);
+        assert_eq!(unbounded.test_cases_capped(5), vec![0, 1]);
+    }
+
+    #[test]
+    fn test_boundary_values() {
+        // ZERO [0,0]: {0, 1(above-max)}
+        assert_eq!(Cardinality::ZERO.boundary_values(), vec![0, 1]);
+        // ONE [1,1]: {0(below-min), 1, 2(above-max)}
+        assert_eq!(Cardinality::ONE.boundary_values(), vec![0, 1, 2]);
+        // ZERO_OR_ONE [0,1]: {0, 1, 2(above-max)}
+        assert_eq!(Cardinality::ZERO_OR_ONE.boundary_values(), vec![0, 1, 2]);
+        // ZERO_OR_MORE [0,∞): {0, 1}
+        assert_eq!(Cardinality::ZERO_OR_MORE.boundary_values(), vec![0, 1]);
+        // ONE_OR_MORE [1,∞): {0(below-min), 1, 2}
+        assert_eq!(Cardinality::ONE_OR_MORE.boundary_values(), vec![0, 1, 2]);
+        // Custom [2,5]: {1(below-min), 2, 3(min+1), 5, 6(above-max)}
         assert_eq!(
-            Cardinality::ZERO_OR_ONE.test_cases(),
-            vec![CardinalityCase::Empty, CardinalityCase::One]
+            Cardinality::new(2, Some(5)).boundary_values(),
+            vec![1, 2, 3, 5, 6]
         );
-        assert_eq!(
-            Cardinality::ZERO_OR_MORE.test_cases(),
-            vec![
-                CardinalityCase::Empty,
-                CardinalityCase::One,
-                CardinalityCase::Many,
-            ]
-        );
-        assert_eq!(
-            Cardinality::ONE_OR_MORE.test_cases(),
-            vec![CardinalityCase::One, CardinalityCase::Many]
-        );
+    }
+
+    #[test]
+    fn test_allows_count() {
+        assert!(Cardinality::ONE.allows_count(1));
+        assert!(!Cardinality::ONE.allows_count(0));
+        assert!(!Cardinality::ONE.allows_count(2));
+
+        assert!(Cardinality::ZERO_OR_MORE.allows_count(0));
+        assert!(Cardinality::ZERO_OR_MORE.allows_count(100));
+
+        let custom = Cardinality::new(2, Some(5));
+        assert!(!custom.allows_count(1));
+        assert!(custom.allows_count(2));
+        assert!(custom.allows_count(3));
+        assert!(custom.allows_count(5));
+        assert!(!custom.allows_count(6));
     }
 
     // --- Satisfaction tests (verify the 25-case truth table) ---
@@ -807,10 +916,7 @@ mod tests {
             serde_json::to_string(&Cardinality::ZERO).unwrap(),
             "\"Zero\""
         );
-        assert_eq!(
-            serde_json::to_string(&Cardinality::ONE).unwrap(),
-            "\"One\""
-        );
+        assert_eq!(serde_json::to_string(&Cardinality::ONE).unwrap(), "\"One\"");
         assert_eq!(
             serde_json::to_string(&Cardinality::ZERO_OR_ONE).unwrap(),
             "\"ZeroOrOne\""

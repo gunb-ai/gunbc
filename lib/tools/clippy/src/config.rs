@@ -88,13 +88,15 @@ impl ClippyConfig {
 
     /// Add a disallowed method.
     pub fn disallow(mut self, path: &'static str, reason: &'static str) -> Self {
-        self.disallowed_methods.push(DisallowedMethod::new(path, reason));
+        self.disallowed_methods
+            .push(DisallowedMethod::new(path, reason));
         self
     }
 
     /// Add a crate allowance.
     pub fn allow_crate(mut self, crate_name: &'static str, reason: &'static str) -> Self {
-        self.crate_allowances.push(CrateAllowance::new(crate_name, reason));
+        self.crate_allowances
+            .push(CrateAllowance::new(crate_name, reason));
         self
     }
 
@@ -193,7 +195,9 @@ pub fn generate_clippy_toml(config: &ClippyConfig) -> String {
 
     // Large error threshold comment
     if config.large_error_threshold.is_some() {
-        output.push_str("# BuilderError is intentionally large (144 bytes) to contain diagnostic info.\n");
+        output.push_str(
+            "# BuilderError is intentionally large (144 bytes) to contain diagnostic info.\n",
+        );
         output.push_str("# Increase the threshold to allow it in Result types.\n");
     }
 
@@ -220,10 +224,15 @@ pub fn generate_clippy_toml(config: &ClippyConfig) -> String {
         output.push_str("#\n");
         output.push_str("# APPROVED EXCEPTIONS (must have documented reason):\n");
         for allowance in &config.crate_allowances {
-            output.push_str(&format!("#   - {} ({})\n", allowance.crate_name, allowance.reason));
+            output.push_str(&format!(
+                "#   - {} ({})\n",
+                allowance.crate_name, allowance.reason
+            ));
         }
         output.push_str("#\n");
-        output.push_str("# To add an exception: #[allow(clippy::disallowed_methods)] with comment.\n");
+        output.push_str(
+            "# To add an exception: #[allow(clippy::disallowed_methods)] with comment.\n",
+        );
         output.push('\n');
     }
 
@@ -250,7 +259,9 @@ pub fn generate_clippy_toml(config: &ClippyConfig) -> String {
 
         // Filesystem operations
         if !fs_methods.is_empty() {
-            output.push_str("    # Filesystem operations - use PrepareFileReadOp/PrepareFileWriteOp instead\n");
+            output.push_str(
+                "    # Filesystem operations - use PrepareFileReadOp/PrepareFileWriteOp instead\n",
+            );
             for method in &fs_methods {
                 output.push_str(&format!(
                     "    {{ path = \"{}\", reason = \"{}\" }},\n",
@@ -262,8 +273,12 @@ pub fn generate_clippy_toml(config: &ClippyConfig) -> String {
 
         // Process execution
         if !process_methods.is_empty() {
-            output.push_str("    # Process execution - use node.requires(&cli::TOOL) for tool dependencies\n");
-            output.push_str("    # Direct Command::new should only be in transport executor and cli.rs\n");
+            output.push_str(
+                "    # Process execution - use node.requires(&cli::TOOL) for tool dependencies\n",
+            );
+            output.push_str(
+                "    # Direct Command::new should only be in transport executor and cli.rs\n",
+            );
             for method in &process_methods {
                 output.push_str(&format!(
                     "    {{ path = \"{}\", reason = \"{}\" }},\n",

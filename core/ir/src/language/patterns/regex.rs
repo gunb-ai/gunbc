@@ -13,8 +13,8 @@
 //! - `matches`: List (optional) - Matched substrings
 
 use crate::dag::{Dag, Port};
-use crate::node::Node;
 use crate::language::LanguageOp;
+use crate::node::Node;
 
 /// Build the Regex SubDag node.
 ///
@@ -47,15 +47,12 @@ pub fn build_regex_subdag() -> Node<LanguageOp> {
             Port::scalar("pattern", "String"),
             Port::scalar("text", "String"),
         ],
-        vec![Port::scalar("matches", "List")],
+        vec![Port::list("matches", "String")],
         LanguageOp::RegexMatch,
     ));
 
     // Create the SubDag node with interface
-    Node::subdag(
-        "regex",
-        inner,
-    )
+    Node::subdag("regex", inner)
 }
 
 #[cfg(test)]

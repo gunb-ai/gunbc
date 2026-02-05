@@ -39,13 +39,12 @@ pub struct ToolMeta {
 pub struct CliEntrypoint {
     /// The port name (becomes --port-name flag)
     pub port_name: String,
-    /// The type (String, Int, Bool, List, etc.)
+    /// The type (String, Int, Bool, etc.)
     pub type_id: String,
     /// Cardinality of this entrypoint's port.
     ///
     /// Used to determine CLI behavior: `allows_many()` → repeatable flag,
-    /// `allows_empty()` → optional argument. This replaces string matching
-    /// on `type_id == "List"` with proper cardinality queries.
+    /// `allows_empty()` → optional argument.
     pub cardinality: Cardinality,
     /// Short flag (e.g., "-r" for repo_path)
     pub short_flag: Option<char>,
@@ -63,22 +62,19 @@ impl CliEntrypoint {
     /// Create a new CLI entrypoint.
     ///
     /// Cardinality defaults to `ONE` (scalar). Use `with_cardinality()` to
-    /// set it explicitly, or use `list()` / `set()` constructors for
-    /// collection entrypoints.
+    /// set it explicitly for collection entrypoints.
     pub fn new(port_name: impl Into<String>, type_id: impl Into<String>) -> Self {
         let port = port_name.into();
         let type_id_str = type_id.into();
         let help = format!("Value for {} port", port);
-        // Infer cardinality from type_id for backward compatibility.
-        // New code should use with_cardinality() or the typed constructors.
-        let cardinality = match type_id_str.as_str() {
-            "List" | "Set" => Cardinality::ZERO_OR_MORE,
-            _ => Cardinality::ONE,
-        };
+        debug_assert!(
+            type_id_str != "List" && type_id_str != "Set",
+            "use explicit cardinality with element type (e.g., String)"
+        );
         Self {
             port_name: port,
             type_id: type_id_str,
-            cardinality,
+            cardinality: Cardinality::ONE,
             short_flag: None,
             default_value: None,
             help,
@@ -139,10 +135,7 @@ impl CliEntrypoint {
     pub fn rust_type(&self) -> String {
         if self.cardinality.allows_many() {
             // Collection entrypoint — element type is type_id
-            let element = match self.type_id.as_str() {
-                "List" | "Set" => "String", // Legacy: "List"/"Set" as type_id means list-of-strings
-                other => other,
-            };
+            let element = self.type_id.as_str();
             lang_rust_type(&format!("List<{}>", element))
         } else {
             lang_rust_type(&self.type_id)
@@ -202,17 +195,22 @@ pub fn generate_cli_with_import(
     if tool.enable_step_mode {
         return generate_cli_with_step_mode(tool, entrypoints, boundaries, custom_import);
     }
-    
+
     // Convert crate name (kebab-case) to module name (snake_case)
     let crate_module = NamingCase::SnakeCase.apply(&tool.crate_name);
     let arg_parsing = generate_arg_parsing(entrypoints);
     let mock_setup = generate_mock_setup(boundaries);
     let print_inputs = generate_print_inputs(entrypoints);
+    let input_mocks = generate_input_mocks(entrypoints);
     let help_options = generate_help_options(entrypoints);
-    
+
     let import_line = custom_import.unwrap_or("").to_string();
     let default_import = format!("use {}::build_{}_graph;", crate_module, tool.tool_name);
-    let actual_import = if import_line.is_empty() { default_import } else { import_line };
+    let actual_import = if import_line.is_empty() {
+        default_import
+    } else {
+        import_line
+    };
 
     // Generate the graph builder call - handle Result-returning builders
     let graph_builder_call = if tool.returns_result {
@@ -257,8 +255,9 @@ pub fn generate_cli_with_import(
 //! Regenerate with: make codegen
 
 use gunbc_exec::{{execute_and_display, BoundaryMocks, ExecutionMode, TerminalProfile}};
-use gunbc_ir::Value;
+use gunbc_ir::{{detect_entrypoints, Value}};
 {import_line}
+use std::collections::HashMap;
 use std::env;
 use std::process;
 
@@ -273,6 +272,8 @@ fn main() {{
 
     // Build the graph
     let dag = {graph_builder_call};
+
+{input_mocks}
 
     // Set up execution mode
     let mode = if dry_run {{
@@ -290,7 +291,7 @@ fn main() {{
     println!();
 
     // Execute and display (progress or classic based on terminal)
-    execute_and_display(&dag, mode, &profile, {success_port_arg});
+    execute_and_display(&dag, mode, &profile, {success_port_arg}, Some(&input_mocks));
 }}
 
 fn print_help() {{
@@ -311,6 +312,7 @@ fn print_help() {{
         import_line = actual_import,
         arg_parsing = arg_parsing,
         graph_builder_call = graph_builder_call,
+        input_mocks = input_mocks,
         mock_setup = mock_setup,
         print_inputs = print_inputs,
         success_port_arg = success_port_arg,
@@ -327,26 +329,48 @@ fn generate_arg_parsing(entrypoints: &[CliEntrypoint]) -> String {
         let default = ep.default_value.as_deref().unwrap_or_default();
         if ep.is_repeatable() {
             // Collection entrypoints: Vec<String>
-            code.push_str(&format!("    let mut {}: Vec<String> = vec![];\n", ep.var_name()));
+            code.push_str(&format!(
+                "    let mut {}: Vec<String> = vec![];\n",
+                ep.var_name()
+            ));
         } else {
             match ep.type_id.as_str() {
                 "String" => {
                     if default.is_empty() {
-                        code.push_str(&format!("    let mut {}: Option<String> = None;\n", ep.var_name()));
+                        code.push_str(&format!(
+                            "    let mut {}: Option<String> = None;\n",
+                            ep.var_name()
+                        ));
                     } else {
-                        code.push_str(&format!("    let mut {} = \"{}\".to_string();\n", ep.var_name(), default));
+                        code.push_str(&format!(
+                            "    let mut {} = \"{}\".to_string();\n",
+                            ep.var_name(),
+                            default
+                        ));
                     }
                 }
                 "Bool" => {
                     let default_bool = default == "true";
-                    code.push_str(&format!("    let mut {} = {};\n", ep.var_name(), default_bool));
+                    code.push_str(&format!(
+                        "    let mut {} = {};\n",
+                        ep.var_name(),
+                        default_bool
+                    ));
                 }
                 "Int" => {
                     let default_int = default.parse::<i64>().unwrap_or(0);
-                    code.push_str(&format!("    let mut {} = {}i64;\n", ep.var_name(), default_int));
+                    code.push_str(&format!(
+                        "    let mut {} = {}i64;\n",
+                        ep.var_name(),
+                        default_int
+                    ));
                 }
                 _ => {
-                    code.push_str(&format!("    let mut {} = \"{}\".to_string();\n", ep.var_name(), default));
+                    code.push_str(&format!(
+                        "    let mut {} = \"{}\".to_string();\n",
+                        ep.var_name(),
+                        default
+                    ));
                 }
             }
         }
@@ -361,14 +385,14 @@ fn generate_arg_parsing(entrypoints: &[CliEntrypoint]) -> String {
 
     for ep in entrypoints {
         let flag = ep.flag_name();
-        let short = ep.short_flag.map(|c| format!("\"-{}\" | ", c)).unwrap_or_default();
+        let short = ep
+            .short_flag
+            .map(|c| format!("\"-{}\" | ", c))
+            .unwrap_or_default();
 
         if ep.is_repeatable() {
             // Repeatable flags: --flag val --flag val2
-            code.push_str(&format!(
-                "            {}\"--{}\" => {{\n",
-                short, flag
-            ));
+            code.push_str(&format!("            {}\"--{}\" => {{\n", short, flag));
             code.push_str("                i += 1;\n");
             code.push_str(&format!(
                 "                if i < args.len() {{ {}.push(args[i].clone()); }}\n",
@@ -380,20 +404,23 @@ fn generate_arg_parsing(entrypoints: &[CliEntrypoint]) -> String {
                 "Bool" => {
                     code.push_str(&format!(
                         "            {}\"--{}\" => {} = true,\n",
-                        short, flag, ep.var_name()
+                        short,
+                        flag,
+                        ep.var_name()
                     ));
                 }
                 _ => {
-                    code.push_str(&format!(
-                        "            {}\"--{}\" => {{\n",
-                        short, flag
-                    ));
+                    code.push_str(&format!("            {}\"--{}\" => {{\n", short, flag));
                     code.push_str("                i += 1;\n");
                     if ep.default_value.is_some() || ep.type_id != "String" {
                         code.push_str(&format!(
                             "                if i < args.len() {{ {} = args[i].clone(){}; }}\n",
                             ep.var_name(),
-                            if ep.type_id == "Int" { ".parse().unwrap_or(0)" } else { "" }
+                            if ep.type_id == "Int" {
+                                ".parse().unwrap_or(0)"
+                            } else {
+                                ""
+                            }
                         ));
                     } else {
                         code.push_str(&format!(
@@ -436,21 +463,24 @@ fn generate_print_inputs(entrypoints: &[CliEntrypoint]) -> String {
         if ep.is_repeatable() {
             code.push_str(&format!(
                 "    println!(\"  {}: {{:?}}\", {});\n",
-                ep.port_name, ep.var_name()
+                ep.port_name,
+                ep.var_name()
             ));
         } else {
             match ep.type_id.as_str() {
                 "Bool" => {
                     code.push_str(&format!(
                         "    println!(\"  {}: {{}}\", {});\n",
-                        ep.port_name, ep.var_name()
+                        ep.port_name,
+                        ep.var_name()
                     ));
                 }
                 _ => {
                     if ep.default_value.is_some() {
                         code.push_str(&format!(
                             "    println!(\"  {}: {{}}\", {});\n",
-                            ep.port_name, ep.var_name()
+                            ep.port_name,
+                            ep.var_name()
                         ));
                     } else {
                         code.push_str(&format!(
@@ -465,11 +495,83 @@ fn generate_print_inputs(entrypoints: &[CliEntrypoint]) -> String {
     code
 }
 
+fn generate_input_mocks(entrypoints: &[CliEntrypoint]) -> String {
+    let mut code = String::new();
+
+    code.push_str("    let mut cli_inputs: HashMap<String, Value> = HashMap::new();\n");
+
+    for ep in entrypoints {
+        let port_name = &ep.port_name;
+        let var_name = ep.var_name();
+        if ep.is_repeatable() {
+            code.push_str(&format!(
+                "    if !{var}.is_empty() {{ cli_inputs.insert(\"{port}\".to_string(), Value::str_list({var}.clone())); }}\n",
+                var = var_name,
+                port = port_name
+            ));
+            continue;
+        }
+
+        match ep.type_id.as_str() {
+            "String" => {
+                let default = ep.default_value.as_deref().unwrap_or("");
+                if default.is_empty() {
+                    code.push_str(&format!(
+                        "    if let Some(value) = &{var} {{ cli_inputs.insert(\"{port}\".to_string(), Value::Str(value.clone())); }}\n",
+                        var = var_name,
+                        port = port_name
+                    ));
+                } else {
+                    code.push_str(&format!(
+                        "    cli_inputs.insert(\"{port}\".to_string(), Value::Str({var}.clone()));\n",
+                        var = var_name,
+                        port = port_name
+                    ));
+                }
+            }
+            "Bool" => {
+                code.push_str(&format!(
+                    "    cli_inputs.insert(\"{port}\".to_string(), Value::Bool({var}));\n",
+                    var = var_name,
+                    port = port_name
+                ));
+            }
+            "Int" => {
+                code.push_str(&format!(
+                    "    cli_inputs.insert(\"{port}\".to_string(), Value::Int({var}));\n",
+                    var = var_name,
+                    port = port_name
+                ));
+            }
+            _ => {
+                code.push_str(&format!(
+                    "    cli_inputs.insert(\"{port}\".to_string(), Value::Str({var}.clone()));\n",
+                    var = var_name,
+                    port = port_name
+                ));
+            }
+        }
+    }
+
+    code.push_str("\n    let entrypoints = detect_entrypoints(&dag);\n");
+    code.push_str("    let mut input_mocks = BoundaryMocks::new();\n");
+    code.push_str("    for (node_id, port_name, _) in entrypoints.entrypoint_ports {\n");
+    code.push_str("        if let Some(value) = cli_inputs.get(&port_name.0) {\n");
+    code.push_str("            input_mocks.set_input(node_id.0.clone(), port_name.0.clone(), value.clone());\n");
+    code.push_str("        }\n");
+    code.push_str("    }\n");
+
+    code
+}
+
 fn generate_help_options(entrypoints: &[CliEntrypoint]) -> String {
     let mut code = String::new();
     for ep in entrypoints {
         let flag = ep.flag_name();
-        let short = ep.short_flag.map(|c| format!("-{}, ", c)).unwrap_or_else(|| "    ".to_string());
+        let short = ep
+            .short_flag
+            .map(|c| format!("-{}, ", c))
+            .unwrap_or_else(|| "    ".to_string());
         let type_hint = if ep.is_repeatable() {
             " <VAL>..."
         } else {
@@ -481,7 +583,10 @@ fn generate_help_options(entrypoints: &[CliEntrypoint]) -> String {
         };
         code.push_str(&format!(
             "    println!(\"    {}--{}{:width$}  {}\");\n",
-            short, flag, type_hint, ep.help,
+            short,
+            flag,
+            type_hint,
+            ep.help,
             width = 20 - flag.len()
         ));
     }
@@ -500,17 +605,24 @@ fn generate_help_options(entrypoints: &[CliEntrypoint]) -> String {
 /// - `list-steps`: List all available steps in topological order
 fn generate_cli_with_step_mode(
     tool: &ToolMeta,
-    _entrypoints: &[CliEntrypoint],
+    entrypoints: &[CliEntrypoint],
     boundaries: &[CliBoundary],
     custom_import: Option<&str>,
 ) -> String {
     // Convert crate name (kebab-case) to module name (snake_case)
     let crate_module = NamingCase::SnakeCase.apply(&tool.crate_name);
+    let arg_parsing = generate_arg_parsing(entrypoints);
     let mock_setup = generate_mock_setup(boundaries);
+    let print_inputs = generate_print_inputs(entrypoints);
+    let input_mocks = generate_input_mocks(entrypoints);
 
     let import_line = custom_import.unwrap_or("").to_string();
     let default_import = format!("use {}::build_{}_graph;", crate_module, tool.tool_name);
-    let actual_import = if import_line.is_empty() { default_import } else { import_line };
+    let actual_import = if import_line.is_empty() {
+        default_import
+    } else {
+        import_line
+    };
 
     // Generate the graph builder call - handle Result-returning builders
     let graph_builder_call = if tool.returns_result {
@@ -560,11 +672,11 @@ fn generate_cli_with_step_mode(
 //! - list-steps: List all available steps
 
 use gunbc_exec::{{execute_and_display, execute_single_node, print_value, BoundaryMocks, ExecutionMode, TerminalProfile}};
-use gunbc_ir::Value;
+use gunbc_ir::{{detect_entrypoints, Value}};
 {import_line}
+use std::collections::HashMap;
 use std::env;
 use std::process;
-use std::collections::HashMap;
 
 fn main() {{
     let args: Vec<String> = env::args().collect();
@@ -584,22 +696,20 @@ fn main() {{
     }}
 }}
 
-fn run_full_dag(args: &[String]) {{
-    let mut dry_run = false;
+fn run_full_dag(raw_args: &[String]) {{
+    let mut args: Vec<String> = Vec::new();
+    args.push("run".to_string());
+    args.extend_from_slice(raw_args);
 
-    for arg in args {{
-        match arg.as_str() {{
-            "-n" | "--dry-run" => dry_run = true,
-            "-h" | "--help" => {{ print_help(); return; }}
-            _ => {{}}
-        }}
-    }}
+{arg_parsing}
 
     // Detect terminal environment
     let profile = TerminalProfile::detect();
 
     // Build the graph
     let dag = {graph_builder_call};
+
+{input_mocks}
 
     // Set up execution mode
     let mode = if dry_run {{
@@ -612,11 +722,12 @@ fn run_full_dag(args: &[String]) {{
 
     // Print header
     println!("{tool_name}");
+{print_inputs}
     println!("  mode: {{}}", if dry_run {{ "dry-run" }} else {{ "real" }});
     println!();
 
     // Execute and display (progress or classic based on terminal)
-    execute_and_display(&dag, mode, &profile, {success_port_arg});
+    execute_and_display(&dag, mode, &profile, {success_port_arg}, Some(&input_mocks));
 }}
 
 fn run_single_step(args: &[String]) {{
@@ -795,8 +906,11 @@ fn print_help() {{
 "#,
         tool_name = tool.tool_name,
         import_line = actual_import,
+        arg_parsing = arg_parsing,
         graph_builder_call = graph_builder_call,
+        input_mocks = input_mocks,
         mock_setup = mock_setup,
+        print_inputs = print_inputs,
         success_port_arg = success_port_arg,
         description = tool.description,
         success_port_or_empty = tool.success_port.as_deref().unwrap_or(""),
@@ -826,18 +940,17 @@ mod tests {
             enable_step_mode: false,
         };
 
-        let entrypoints = vec![
-            CliEntrypoint::new("repo_path", "String")
-                .short('r')
-                .default(".")
-                .help("Repository path"),
-        ];
+        let entrypoints = vec![CliEntrypoint::new("repo_path", "String")
+            .short('r')
+            .default(".")
+            .help("Repository path")];
 
         let boundaries = vec![CliBoundary {
             node_id: "execute_transport".to_string(),
-            mock_outputs: vec![
-                ("url".to_string(), "Value::Str(\"<DRY-RUN>\".to_string())".to_string()),
-            ],
+            mock_outputs: vec![(
+                "url".to_string(),
+                "Value::Str(\"<DRY-RUN>\".to_string())".to_string(),
+            )],
         }];
 
         let code = generate_cli(&tool, &entrypoints, &boundaries);

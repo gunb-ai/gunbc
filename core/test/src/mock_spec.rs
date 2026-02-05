@@ -100,11 +100,7 @@ impl MockSpec {
     }
 
     /// Add an input expectation (what this node requires from upstream).
-    pub fn expects_input(
-        mut self,
-        port: impl Into<String>,
-        constraint: InputConstraint,
-    ) -> Self {
+    pub fn expects_input(mut self, port: impl Into<String>, constraint: InputConstraint) -> Self {
         self.input_expectations.push(InputExpectation {
             port: port.into(),
             constraint,
@@ -205,10 +201,14 @@ impl MockSpec {
 
     /// Convert this MockSpec into BoundaryMocks suitable for `execute_with_mode`.
     ///
-    /// Maps transport_mocks to port-level output mocks and input_mocks to
-    /// port-level input mocks (for DAG entry points) in the resulting BoundaryMocks.
+    /// Maps boundary_mocks + transport_mocks to output mocks and input_mocks to
+    /// input mocks (for DAG entry points) in the resulting BoundaryMocks.
     pub fn to_boundary_mocks(&self) -> BoundaryMocks {
         let mut mocks = BoundaryMocks::new();
+        // Boundary mocks for output interception (env nodes, explicit boundaries, etc.)
+        for bm in &self.boundary_mocks {
+            mocks.set_value(&bm.node, &bm.port, bm.value.clone());
+        }
         // Transport mocks for output interception
         for tm in &self.transport_mocks {
             mocks.set_value(&tm.node, &tm.port, tm.value.clone());
@@ -235,10 +235,7 @@ impl MockSpec {
 
     /// Check if a value satisfies input expectations for a port.
     pub fn satisfies_input(&self, port: &str, value: &Value) -> Result<(), String> {
-        let expectation = self
-            .input_expectations
-            .iter()
-            .find(|e| e.port == port);
+        let expectation = self.input_expectations.iter().find(|e| e.port == port);
 
         match expectation {
             Some(exp) => exp.constraint.check(value),
@@ -372,7 +369,10 @@ impl InputConstraint {
                     Err(format!("expected type '{}', got '{}'", pattern, type_name))
                 }
             }
-            InputConstraint::Custom { description, predicate } => {
+            InputConstraint::Custom {
+                description,
+                predicate,
+            } => {
                 if predicate(value) {
                     Ok(())
                 } else {
@@ -505,7 +505,8 @@ impl ResourceMocks {
 
     /// Add a lock simulation.
     pub fn lock(mut self, id: impl Into<String>) -> Self {
-        self.resources.push(ResourceSimulation::new(id, ResourceType::Lock));
+        self.resources
+            .push(ResourceSimulation::new(id, ResourceType::Lock));
         self
     }
 
@@ -520,8 +521,11 @@ impl ResourceMocks {
 
     /// Add a lock that fails to acquire.
     pub fn lock_fails(mut self, id: impl Into<String>, error: impl Into<String>) -> Self {
-        let sim = ResourceSimulation::new(id, ResourceType::Lock)
-            .with_behavior(ResourceBehavior::FailAcquire { error: error.into() });
+        let sim = ResourceSimulation::new(id, ResourceType::Lock).with_behavior(
+            ResourceBehavior::FailAcquire {
+                error: error.into(),
+            },
+        );
         self.resources.push(sim);
         self
     }
@@ -628,10 +632,7 @@ pub enum ChainError {
         error: String,
     },
     /// Upstream doesn't provide a mock for required port
-    MissingMock {
-        upstream: String,
-        port: String,
-    },
+    MissingMock { upstream: String, port: String },
 }
 
 // ============================================================================
@@ -732,8 +733,9 @@ pub enum OutputMatcher {
     /// Output must satisfy a custom predicate.
     ///
     /// Prefer typed matchers (IsBool, IntGe, etc.) when possible, since
-    /// codegen can emit real assertions for them. `Satisfies` currently
-    /// emits a comment in generated tests.
+    /// codegen can emit real assertions for them. `Satisfies` is supported
+    /// in generated tests via a runtime matcher check when `mock_spec()` is
+    /// available (i.e., TestGenerator was given `with_mock_spec_fn`).
     Satisfies {
         description: String,
         predicate: fn(&Value) -> bool,
@@ -841,7 +843,10 @@ impl OutputMatcher {
                 Value::Int(n) => Err(format!("expected Int <= {}, got {}", threshold, n)),
                 _ => Err(format!("expected Int, got {:?}", value)),
             },
-            OutputMatcher::Satisfies { description, predicate } => {
+            OutputMatcher::Satisfies {
+                description,
+                predicate,
+            } => {
                 if predicate(value) {
                     Ok(())
                 } else {
@@ -856,9 +861,9 @@ impl OutputMatcher {
     ///
     /// Used by codegen to decide whether to prefix the output variable with `_`.
     /// All typed matchers (IsBool, IntGe, etc.) generate real assertions.
-    /// Only `Satisfies` and `Any` don't.
+    /// Only `Any` doesn't.
     pub fn generates_assertion(&self) -> bool {
-        !matches!(self, OutputMatcher::Satisfies { .. } | OutputMatcher::Any)
+        !matches!(self, OutputMatcher::Any)
     }
 }
 
@@ -869,7 +874,11 @@ mod tests {
     #[test]
     fn test_mock_spec_builder() {
         let spec = MockSpec::new("gist")
-            .boundary("create_gist", "url", Value::Str("https://example.com".into()))
+            .boundary(
+                "create_gist",
+                "url",
+                Value::Str("https://example.com".into()),
+            )
             .expects_input("files", InputConstraint::non_empty());
 
         assert_eq!(spec.name, "gist");
@@ -879,8 +888,7 @@ mod tests {
 
     #[test]
     fn test_get_boundary_mock() {
-        let spec = MockSpec::new("test")
-            .boundary("node1", "out", Value::Str("value".into()));
+        let spec = MockSpec::new("test").boundary("node1", "out", Value::Str("value".into()));
 
         assert!(spec.get_boundary_mock("node1", "out").is_some());
         assert!(spec.get_boundary_mock("node1", "other").is_none());
@@ -898,11 +906,11 @@ mod tests {
 
     #[test]
     fn test_chain_validation() {
-        let upstream = MockSpec::new("producer")
-            .boundary("output_node", "data", Value::Str("hello".into()));
+        let upstream =
+            MockSpec::new("producer").boundary("output_node", "data", Value::Str("hello".into()));
 
-        let downstream = MockSpec::new("consumer")
-            .expects_input("input", InputConstraint::non_empty());
+        let downstream =
+            MockSpec::new("consumer").expects_input("input", InputConstraint::non_empty());
 
         let mut mapping = HashMap::new();
         mapping.insert("data".to_string(), "input".to_string());
@@ -913,11 +921,11 @@ mod tests {
 
     #[test]
     fn test_chain_validation_failure() {
-        let upstream = MockSpec::new("producer")
-            .boundary("output_node", "data", Value::Str("".into())); // Empty!
+        let upstream =
+            MockSpec::new("producer").boundary("output_node", "data", Value::Str("".into())); // Empty!
 
-        let downstream = MockSpec::new("consumer")
-            .expects_input("input", InputConstraint::non_empty());
+        let downstream =
+            MockSpec::new("consumer").expects_input("input", InputConstraint::non_empty());
 
         let mut mapping = HashMap::new();
         mapping.insert("data".to_string(), "input".to_string());
@@ -963,9 +971,8 @@ mod tests {
 
     #[test]
     fn test_output_matcher_satisfies() {
-        let matcher = OutputMatcher::satisfies("is positive", |v| {
-            matches!(v, Value::Int(n) if *n > 0)
-        });
+        let matcher =
+            OutputMatcher::satisfies("is positive", |v| matches!(v, Value::Int(n) if *n > 0));
 
         assert!(matcher.check(&Value::Int(42)).is_ok());
         assert!(matcher.check(&Value::Int(-1)).is_err());
@@ -992,7 +999,10 @@ mod tests {
         assert_eq!(example.node_id, "prepare_prompt");
         assert_eq!(example.inputs.len(), 2);
         assert_eq!(example.outputs.len(), 2);
-        assert_eq!(example.description, Some("Test with security criteria".to_string()));
+        assert_eq!(
+            example.description,
+            Some("Test with security criteria".to_string())
+        );
     }
 
     #[test]
@@ -1008,5 +1018,4 @@ mod tests {
         assert_eq!(spec.node_examples.len(), 1);
         assert_eq!(spec.node_examples[0].node_id, "parse");
     }
-
 }

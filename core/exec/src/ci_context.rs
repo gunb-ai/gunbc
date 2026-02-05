@@ -263,8 +263,7 @@ mod tests {
     fn capture_context() -> (CiContext, Arc<Mutex<Vec<u8>>>) {
         let buffer = Arc::new(Mutex::new(Vec::new()));
         let writer = CaptureWriter(Arc::clone(&buffer));
-        let ctx = CiContext::new(Box::new(PlainTextProvider))
-            .with_writer(Box::new(writer));
+        let ctx = CiContext::new(Box::new(PlainTextProvider)).with_writer(Box::new(writer));
         (ctx, buffer)
     }
 
