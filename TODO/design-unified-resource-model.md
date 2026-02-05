@@ -5,7 +5,7 @@
 >
 > **Principle:** All acquirable things—tools, build artifacts, filesystem handles,
 > auth tokens—are **resources** with the same upsert semantics: Check → Create → Resolve.
-> The only difference is how "freshness" is determined.
+> Freshness keys are **derived from declared inputs**, not configured.
 
 ## Ownership
 - [ ] Unassigned
@@ -46,83 +46,391 @@ generalize it to all resources, not reinvent it for each resource type.
 
 ## 2. Design Principles
 
-1. **One trait, one pattern.** The existing `Resource` trait and `UpsertBuilder`
-   pattern apply to ALL acquirable things.
+1. **Deduce over configure.** If something can be computed from the model, compute it.
+   Hash scope, staleness propagation, and dependencies should all be derived from
+   proper modeling, not hardcoded or configured.
 
-2. **Freshness is a key computation.** Tools use "does binary exist on PATH?"
-   Build artifacts use "does output exist AND input_hash == stored_hash?"
+2. **Unify patterns.** `ToolHandle` and build resource handles are the **same abstraction**.
+   Both are `ResourceHandle<R>` — proof of acquisition that flows through DAG edges.
+   The only difference is the key computation (path existence vs content hash).
 
-3. **Mode flows through edges.** `ExecMode::Verify` fails on stale.
-   `ExecMode::Ensure` regenerates. Same as DryRun/Real for transport.
+3. **Safe/slow first.** Be conservative now, optimize with proper understanding later.
+   If we can't deduce something, be safe (assume stale). No premature optimization.
 
-4. **Declarative dependencies.** DAGs declare `provides`/`needs`, the framework
-   resolves the dependency chain. No manual `extra_deps`.
+4. **Leverage DAG infrastructure.** Transactions, DryRun, hermeticity come from the
+   DAG execution model, not special-cased code. The DAG is pure; the executor handles I/O.
 
-## 3. Unified Resource Abstraction
+5. **Mode is executor context.** Like DryRun, `ExecMode` (Verify/Ensure) is ambient
+   context from the executor, not modeled in DAG structure. The DAG declares dependencies;
+   the executor decides how to handle staleness.
 
-### 3.1 Extending the Existing Resource Trait
+## 3. Key Design Decisions
 
-The `Resource` trait already exists in `core/ir/src/resource.rs`:
+### 3.1 Hash Scope: Derived from Declared Inputs
+
+**Decision:** Hash scope is **not a configuration choice**. It's derived from the
+resource's declared inputs, similar to Bazel's action graph.
 
 ```rust
-pub trait Resource: Into<Value> + TryFrom<Value> {
-    fn resource_id(&self) -> ResourceId;
-    fn access_mode(&self) -> AccessMode;
-    fn kind(&self) -> ResourceKind;
+/// A resource definition declares its inputs and outputs explicitly.
+pub struct ResourceDef {
+    pub id: ResourceId,
+    /// Input patterns — these determine the freshness key
+    pub inputs: Vec<InputPattern>,
+    /// Output patterns — these are produced when the resource is created
+    pub outputs: Vec<PathBuf>,
+    /// The DAG that creates this resource (if creatable)
+    pub provider: Option<DagRef>,
+}
+
+pub enum InputPattern {
+    /// Glob pattern for source files
+    Glob(String),
+    /// Another resource's outputs (transitive dependency)
+    Resource(ResourceId),
+    /// Environment value (e.g., toolchain version)
+    Env(String),
 }
 ```
 
-We extend it with freshness semantics:
+Then hash computation is simply:
 
 ```rust
-/// Extended resource trait with freshness checking.
-pub trait ManagedResource: Resource {
-    /// The key type for this resource (determines freshness).
-    type Key: Eq + Hash + Serialize + Deserialize;
-
-    /// Compute the current key from inputs.
-    /// For tools: binary path existence.
-    /// For build artifacts: content hash of input files.
-    fn compute_key(&self) -> Self::Key;
-
-    /// Check if the resource is fresh given a stored key.
-    fn is_fresh(&self, stored: &Self::Key) -> bool {
-        self.compute_key() == *stored
+fn compute_key(def: &ResourceDef) -> ContentHash {
+    let mut hasher = Sha256::new();
+    for input in &def.inputs {
+        match input {
+            InputPattern::Glob(pattern) => {
+                for path in glob(pattern) {
+                    hasher.update(&fs::read(path)?);
+                }
+            }
+            InputPattern::Resource(id) => {
+                // Include dependency's key (transitive freshness)
+                hasher.update(manifest.get(id)?.key.as_bytes());
+            }
+            InputPattern::Env(var) => {
+                hasher.update(env::var(var)?.as_bytes());
+            }
+        }
     }
+    ContentHash(hasher.finalize())
 }
 ```
 
-### 3.2 Resource State (Unified)
+**Rationale:** No "narrow vs wide" choice needed. The inputs are the inputs.
+If you want to invalidate on toolchain changes, declare `Env("RUSTC_VERSION")`.
+
+### 3.2 Staleness Propagation: Falls Out of DAG Edges
+
+**Decision:** Each resource checks its own inputs. Staleness propagates naturally
+through `InputPattern::Resource` dependencies.
+
+If resource B depends on resource A:
+```rust
+ResourceDef {
+    id: "build:generated_tests",
+    inputs: vec![
+        Glob("gunbc-dag/src/**/*.rs"),
+        Resource("build:generated_cli"),  // <-- includes A's key
+    ],
+    ...
+}
+```
+
+When A becomes stale:
+1. A's manifest key changes
+2. B's hash computation includes A's key
+3. B's computed key differs from stored key
+4. B is stale
+
+**No special staleness propagation logic needed** — it falls out of the model.
+
+### 3.3 Granularity: Flexible ResourceScope
+
+**Decision:** Resources can be as granular as needed. A resource might be:
+- A single file
+- A glob pattern
+- A named logical resource
 
 ```rust
-/// State of any managed resource.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ResourceState {
-    /// Resource doesn't exist.
-    Missing,
-    /// Resource exists but key doesn't match (stale).
-    Stale { reason: String },
-    /// Resource exists and key matches (fresh).
-    Fresh,
+pub enum ResourceScope {
+    /// Single file (finest granularity)
+    File(PathBuf),
+    /// Glob pattern (e.g., "target/codegen/bin/**/*.rs")
+    Pattern(String),
+    /// Named logical resource (e.g., "generated_cli")
+    Named(String),
+}
+```
+
+Codegen can generate resource definitions if there are many. We don't need to
+manually enumerate every file.
+
+### 3.4 Bootstrap: Special-Cased (For Now)
+
+**Decision:** The bootstrap codegen (`ensure-codegen`) remains special-cased.
+It uses a simple cargo run, not the manifest system.
+
+**Rationale:** The codebase isn't mature enough for self-referential resource
+management. Bootstrap is already working. Don't overcomplicate.
+
+**Future:** Once the resource model is stable, bootstrap could become the first
+resource in the chain with `inputs: []` (no dependencies).
+
+### 3.5 Unified ResourceHandle
+
+**Decision:** `ToolHandle` and build resource handles are unified under
+`ResourceHandle<R>`. Both are **proof of acquisition** that flows through edges.
+
+```rust
+/// A handle proving a resource has been acquired and is fresh.
+/// This is the ONLY way to depend on a resource in a DAG.
+pub struct ResourceHandle<R: ManagedResource> {
+    /// The resource this handle refers to
+    resource: R,
+    /// The key at time of acquisition (proves freshness)
+    key: ContentHash,
+    /// Capability marker (prevents forgery)
+    _acquired: PhantomData<()>,
 }
 
-/// Execution mode for resource acquisition.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+impl<R: ManagedResource> ResourceHandle<R> {
+    /// Framework use only — creates a handle after successful acquisition.
+    pub(crate) fn acquire(resource: R, key: ContentHash) -> Self {
+        Self { resource, key, _acquired: PhantomData }
+    }
+
+    /// Get the resource this handle refers to.
+    pub fn resource(&self) -> &R { &self.resource }
+
+    /// Get the freshness key at time of acquisition.
+    pub fn key(&self) -> &ContentHash { &self.key }
+}
+```
+
+For tools, the handle also carries the resolved path:
+```rust
+impl ResourceHandle<ToolResource> {
+    pub fn path(&self) -> &Path { &self.resource.path }
+}
+```
+
+For build resources, the handle carries proof of freshness (the key).
+The "payload" may be Unit, but **the handle itself is the proof**.
+
+```rust
+// Both are ResourceHandle — same pattern
+let tool: ResourceHandle<ToolResource> = inputs.get("res:clippy")?;
+let codegen: ResourceHandle<BuildResource> = inputs.get("res:generated_cli")?;
+
+// Tool has path
+tool.path();
+
+// Build has proof (handle existence = resource is fresh)
+codegen.key();  // Can verify if needed, but having the handle is the proof
+```
+
+### 3.6 Mode as Executor Context
+
+**Decision:** `ExecMode` (Verify/Ensure) is **executor context**, not DAG structure.
+Similar to `DryRun`.
+
+```rust
+pub struct ExecutorContext {
+    pub dry_run: bool,
+    pub mode: ExecMode,
+    // ...
+}
+
 pub enum ExecMode {
-    /// Check that resources are fresh, fail if stale (CI mode).
-    #[default]
+    /// Assert resources are fresh, fail if stale (CI mode)
     Verify,
-    /// Ensure resources are fresh, regenerate if stale (dev mode).
+    /// Make resources fresh if stale (dev mode)
     Ensure,
 }
 ```
 
-### 3.3 Build Resource Enum
+The DAG declares what resources it needs. The executor decides:
+- **Verify:** Check freshness, fail if stale
+- **Ensure:** Check freshness, regenerate if stale
+
+**Rationale:** Mode is about "what to do when stale" — that's execution policy,
+not graph structure. The same DAG runs in both CI (Verify) and dev (Ensure).
+
+### 3.7 Transactions: DAG is Pure, Executor Handles I/O
+
+**Decision:** The DAG is pure. Manifest updates are **outputs**, not side effects.
 
 ```rust
-/// A build-time resource (artifact from a build stage).
+// DAG node output includes manifest update instruction
+pub struct ResourceAcquisitionOutput {
+    pub handle: ResourceHandle<R>,
+    pub manifest_update: Option<ManifestEntry>,
+}
+
+// Executor applies manifest updates atomically
+impl Executor {
+    fn apply_manifest_updates(&self, updates: Vec<ManifestEntry>) -> Result<()> {
+        if self.context.dry_run {
+            return Ok(());  // Don't write in DryRun
+        }
+        // Write to .manifest.tmp, rename on success (atomic)
+        let tmp = manifest_path().with_extension("tmp");
+        write_manifest(&tmp, updates)?;
+        fs::rename(tmp, manifest_path())?;
+        Ok(())
+    }
+}
+```
+
+**Rationale:** Keeps DAG execution hermetic. The DAG computes what should happen;
+the executor makes it happen. Same pattern as DryRun.
+
+## 4. Unified Resource Abstraction
+
+### 4.1 The ManagedResource Trait
+
+```rust
+/// A resource that can be acquired with freshness checking.
+///
+/// This trait unifies tools, build artifacts, and other acquirable things.
+/// All follow the same pattern: Check → Create → Resolve.
+pub trait ManagedResource: Resource + Sized {
+    /// The definition of this resource (inputs, outputs, provider).
+    fn definition(&self) -> &ResourceDef;
+
+    /// Compute the current freshness key from declared inputs.
+    fn compute_key(&self) -> Result<ContentHash, ResourceError> {
+        compute_key_from_def(self.definition())
+    }
+
+    /// Check current state against manifest.
+    fn check_state(&self, manifest: &ResourceManifest) -> ResourceState {
+        let current_key = match self.compute_key() {
+            Ok(k) => k,
+            Err(e) => return ResourceState::Error(e.to_string()),
+        };
+
+        match manifest.get(&self.definition().id) {
+            None => ResourceState::Missing,
+            Some(entry) if entry.key != current_key => {
+                ResourceState::Stale {
+                    reason: "inputs changed".into(),
+                    stored_key: entry.key.clone(),
+                    current_key,
+                }
+            }
+            Some(_) => ResourceState::Fresh,
+        }
+    }
+
+    /// Create/regenerate this resource.
+    /// Returns the manifest entry to store.
+    fn create(&self, ctx: &ExecutorContext) -> Result<ManifestEntry, ResourceError>;
+
+    /// Acquire a handle to this resource.
+    /// Checks freshness, creates if needed (based on mode), returns handle.
+    fn acquire(&self, ctx: &ExecutorContext, manifest: &ResourceManifest)
+        -> Result<ResourceHandle<Self>, ResourceError>
+    {
+        let state = self.check_state(manifest);
+
+        match (state, ctx.mode) {
+            (ResourceState::Fresh, _) => {
+                let key = self.compute_key()?;
+                Ok(ResourceHandle::acquire(self.clone(), key))
+            }
+            (_, ExecMode::Ensure) => {
+                let entry = self.create(ctx)?;
+                Ok(ResourceHandle::acquire(self.clone(), entry.key.clone()))
+            }
+            (ResourceState::Missing, ExecMode::Verify) => {
+                Err(ResourceError::Missing(self.definition().id.clone()))
+            }
+            (ResourceState::Stale { reason, .. }, ExecMode::Verify) => {
+                Err(ResourceError::Stale {
+                    id: self.definition().id.clone(),
+                    reason,
+                })
+            }
+            (ResourceState::Error(e), _) => {
+                Err(ResourceError::CheckFailed(e))
+            }
+        }
+    }
+}
+```
+
+### 4.2 ResourceState
+
+```rust
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ResourceState {
+    /// Resource doesn't exist in manifest.
+    Missing,
+    /// Resource exists but key doesn't match (inputs changed).
+    Stale {
+        reason: String,
+        stored_key: ContentHash,
+        current_key: ContentHash,
+    },
+    /// Resource exists and key matches.
+    Fresh,
+    /// Error computing state (e.g., can't read input file).
+    Error(String),
+}
+```
+
+### 4.3 Concrete Resource Types
+
+```rust
+/// A tool resource (binary on PATH).
+pub struct ToolResource {
+    pub def: &'static CliToolDef,
+    pub path: PathBuf,
+}
+
+impl ManagedResource for ToolResource {
+    fn definition(&self) -> &ResourceDef {
+        // Tools use path existence as the "input"
+        ResourceDef {
+            id: ResourceId::tool(self.def.id),
+            inputs: vec![],  // No file inputs
+            outputs: vec![self.path.clone()],
+            provider: None,  // Created externally
+        }
+    }
+
+    fn compute_key(&self) -> Result<ContentHash, ResourceError> {
+        // For tools, key is just "does the binary exist at this path"
+        if self.path.exists() {
+            Ok(ContentHash::from_path(&self.path))
+        } else {
+            Err(ResourceError::Missing(self.definition().id.clone()))
+        }
+    }
+
+    fn create(&self, ctx: &ExecutorContext) -> Result<ManifestEntry, ResourceError> {
+        // Run install command
+        execute_install(self.def)?;
+        let path = resolve_tool_path(self.def)?;
+        Ok(ManifestEntry {
+            key: ContentHash::from_path(&path),
+            created_at: ctx.now(),
+            outputs: vec![path],
+        })
+    }
+}
+
+/// A build resource (generated artifact).
+pub struct BuildResource {
+    pub kind: BuildResourceKind,
+    pub def: ResourceDef,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum BuildResource {
+pub enum BuildResourceKind {
     GeneratedCli,
     GeneratedTests,
     FormattedCode,
@@ -133,203 +441,155 @@ pub enum BuildResource {
 }
 
 impl ManagedResource for BuildResource {
-    type Key = ContentHash;  // SHA-256 of input files
+    fn definition(&self) -> &ResourceDef {
+        &self.def
+    }
 
-    fn compute_key(&self) -> ContentHash {
-        match self {
-            Self::GeneratedCli => hash_codegen_inputs(),
-            Self::GeneratedTests => hash_testgen_inputs(),
-            Self::FormattedCode => hash_source_files(),
-            // ...
-        }
+    fn create(&self, ctx: &ExecutorContext) -> Result<ManifestEntry, ResourceError> {
+        // Run the provider DAG
+        let provider = self.def.provider.as_ref()
+            .ok_or(ResourceError::NoProvider(self.def.id.clone()))?;
+
+        execute_dag(provider, ctx)?;
+
+        Ok(ManifestEntry {
+            key: self.compute_key()?,
+            created_at: ctx.now(),
+            outputs: self.def.outputs.clone(),
+        })
     }
 }
 ```
 
-## 4. Manifest: The Upsert Key Storage
+## 5. Resource Registry
 
-### 4.1 Manifest Schema
+### 5.1 Declaring Resources
 
-The manifest stores computed keys for each resource:
+Resources are declared in the tool registry with explicit inputs/outputs:
 
 ```rust
-/// Manifest for tracking resource freshness.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ResourceManifest {
-    /// Version of the manifest format.
-    pub version: u32,
-    /// When the manifest was last updated.
-    pub updated_at: Timestamp,
-    /// Resource keys by resource ID.
-    pub resources: HashMap<ResourceId, ResourceEntry>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ResourceEntry {
-    /// The computed key when this resource was last created.
-    pub key: String,  // Hex-encoded hash
-    /// When this resource was last created.
-    pub created_at: Timestamp,
-    /// Files this resource produced (for cleanup).
-    pub outputs: Vec<PathBuf>,
+pub fn build_resources() -> Vec<ResourceDef> {
+    vec![
+        ResourceDef {
+            id: ResourceId::build("generated_cli"),
+            inputs: vec![
+                InputPattern::Glob("core/codegen/src/**/*.rs"),
+                InputPattern::Glob("core/codegen/Cargo.toml"),
+                InputPattern::Env("CARGO_PKG_VERSION"),
+            ],
+            outputs: vec![PathBuf::from("target/codegen/bin")],
+            provider: Some(DagRef::new("codegen")),
+        },
+        ResourceDef {
+            id: ResourceId::build("generated_tests"),
+            inputs: vec![
+                InputPattern::Glob("gunbc-dag/src/**/*.rs"),
+                InputPattern::Resource(ResourceId::build("generated_cli")),
+            ],
+            outputs: vec![PathBuf::from("target/codegen/lib/*/tests.rs")],
+            provider: Some(DagRef::new("testgen")),
+        },
+        // ... more resources
+    ]
 }
 ```
 
-Location: `target/.resource-manifest.json`
-
-### 4.2 Key Computation
-
-For build artifacts, the key is a content hash of all inputs:
-
-```rust
-fn hash_codegen_inputs() -> ContentHash {
-    let mut hasher = Sha256::new();
-
-    // Hash codegen tool version
-    hasher.update(env!("CARGO_PKG_VERSION").as_bytes());
-
-    // Hash all registry source files
-    for path in glob("core/codegen/src/**/*.rs") {
-        hasher.update(&std::fs::read(path)?);
-    }
-
-    // Hash all tool definitions
-    for path in glob("gunbc-dag/src/*/registry.rs") {
-        hasher.update(&std::fs::read(path)?);
-    }
-
-    ContentHash(hasher.finalize())
-}
-```
-
-## 5. Unified Upsert Pattern
-
-### 5.1 ResourceEnvOp (Generalized EnvOp)
-
-```rust
-/// Environment operation that acquires any managed resource.
-///
-/// This generalizes EnvOp (tools) to all resource types.
-pub struct ResourceEnvOp<R: ManagedResource> {
-    pub resource: R,
-    pub mode: ExecMode,
-}
-
-impl<R: ManagedResource> Executable for ResourceEnvOp<R> {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<OutputMap, ExecError> {
-        let manifest = load_manifest()?;
-        let current_key = self.resource.compute_key();
-
-        let state = match manifest.get(&self.resource.resource_id()) {
-            None => ResourceState::Missing,
-            Some(entry) if entry.key != current_key.to_string() => {
-                ResourceState::Stale { reason: "inputs changed".into() }
-            }
-            Some(_) => ResourceState::Fresh,
-        };
-
-        match (state, self.mode) {
-            // Fresh in any mode: return existing
-            (ResourceState::Fresh, _) => {
-                Ok(OutputMap::new().state("state", ResourceState::Fresh))
-            }
-
-            // Missing/Stale in Ensure mode: create
-            (_, ExecMode::Ensure) => {
-                self.resource.create()?;
-                save_manifest_entry(&self.resource, &current_key)?;
-                Ok(OutputMap::new().state("state", ResourceState::Fresh))
-            }
-
-            // Missing/Stale in Verify mode: fail
-            (ResourceState::Missing, ExecMode::Verify) => {
-                Err(ExecError::new(format!(
-                    "Resource {} is missing (run with --mode=ensure)",
-                    self.resource.resource_id()
-                )))
-            }
-            (ResourceState::Stale { reason }, ExecMode::Verify) => {
-                Err(ExecError::new(format!(
-                    "Resource {} is stale: {} (run with --mode=ensure)",
-                    self.resource.resource_id(), reason
-                )))
-            }
-        }
-    }
-}
-```
-
-### 5.2 Comparison: Tool vs Build Resource
-
-| Aspect | ToolHandle | BuildResource |
-|--------|------------|---------------|
-| Check | `which {binary}` | manifest.key == hash(inputs) |
-| Create | `cargo install` | Run provider DAG |
-| Resolve | Return path | Return success + update manifest |
-| Key | Binary path | Content hash |
-| Storage | None (stateless) | `.resource-manifest.json` |
-
-The pattern is identical—only the key computation differs.
-
-## 6. Dependency Declaration
-
-### 6.1 DAG Resource Contract
-
-Each DAG declares what it provides and needs:
-
-```rust
-/// A DAG's resource contract.
-#[derive(Debug, Clone, Default)]
-pub struct ResourceContract {
-    /// Resource this DAG provides (if any).
-    pub provides: Option<BuildResource>,
-    /// Resources this DAG needs before it can run.
-    pub needs: Vec<BuildResource>,
-}
-```
-
-### 6.2 Tool Registry Integration
-
-```rust
-// In all_tools()
-ToolDef::new("codegen", "Generate CLI entrypoints")
-    .provides(BuildResource::GeneratedCli)
-    .needs(vec![])  // Bootstrap, no deps
-
-ToolDef::new("testgen", "Generate tests from DAGs")
-    .provides(BuildResource::GeneratedTests)
-    .needs(vec![BuildResource::GeneratedCli])
-
-ToolDef::new("test", "Run all tests")
-    .provides(BuildResource::TestedCode)
-    .needs(vec![
-        BuildResource::GeneratedCli,
-        BuildResource::GeneratedTests,
-        BuildResource::CompiledCode,
-    ])
-```
-
-### 6.3 Automatic Dependency Resolution
+### 5.2 Automatic Resolution
 
 ```rust
 impl ResourceRegistry {
-    /// Resolve the execution order for acquiring a target resource.
-    pub fn resolve(&self, target: BuildResource) -> Vec<BuildResource> {
-        // Topological sort of the dependency graph
+    /// Resolve all resources needed to acquire a target.
+    /// Returns topologically sorted list (dependencies first).
+    pub fn resolve(&self, target: &ResourceId) -> Result<Vec<ResourceId>, CycleError> {
         let mut result = Vec::new();
         let mut visited = HashSet::new();
-        self.visit(target, &mut visited, &mut result);
-        result
+        let mut stack = HashSet::new();  // For cycle detection
+
+        self.visit(target, &mut visited, &mut stack, &mut result)?;
+        Ok(result)
     }
 
-    fn visit(&self, r: BuildResource, visited: &mut HashSet<BuildResource>, order: &mut Vec<BuildResource>) {
-        if visited.contains(&r) { return; }
-        visited.insert(r);
-
-        for dep in self.get_contract(r).needs {
-            self.visit(dep, visited, order);
+    fn visit(
+        &self,
+        id: &ResourceId,
+        visited: &mut HashSet<ResourceId>,
+        stack: &mut HashSet<ResourceId>,
+        order: &mut Vec<ResourceId>,
+    ) -> Result<(), CycleError> {
+        if visited.contains(id) {
+            return Ok(());
         }
-        order.push(r);
+        if stack.contains(id) {
+            return Err(CycleError::new(id.clone()));
+        }
+
+        stack.insert(id.clone());
+
+        let def = self.get(id)?;
+        for input in &def.inputs {
+            if let InputPattern::Resource(dep_id) = input {
+                self.visit(dep_id, visited, stack, order)?;
+            }
+        }
+
+        stack.remove(id);
+        visited.insert(id.clone());
+        order.push(id.clone());
+
+        Ok(())
+    }
+}
+```
+
+## 6. Manifest
+
+### 6.1 Schema
+
+```rust
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ResourceManifest {
+    /// Schema version for forward compatibility.
+    pub version: u32,
+    /// Resources by ID.
+    pub resources: HashMap<ResourceId, ManifestEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ManifestEntry {
+    /// Content hash of inputs when resource was created.
+    pub key: ContentHash,
+    /// When this entry was created.
+    pub created_at: Timestamp,
+    /// Files this resource produced.
+    pub outputs: Vec<PathBuf>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct ContentHash(String);  // Hex-encoded SHA-256
+```
+
+### 6.2 Location
+
+```
+target/.resource-manifest.json
+```
+
+### 6.3 Atomic Updates
+
+```rust
+impl ResourceManifest {
+    pub fn save(&self) -> Result<(), io::Error> {
+        let path = Path::new("target/.resource-manifest.json");
+        let tmp = path.with_extension("json.tmp");
+
+        // Write to temp file
+        let content = serde_json::to_string_pretty(self)?;
+        fs::write(&tmp, content)?;
+
+        // Atomic rename
+        fs::rename(tmp, path)?;
+
+        Ok(())
     }
 }
 ```
@@ -341,183 +601,306 @@ impl ResourceRegistry {
 ```makefile
 # Complex manual wiring
 test: codegen testgen-check
-	@cargo run -p gunbc-dag --bin gunbc-build --release
+	@cargo run -p gunbc-dag --bin gunbc-test --release
 
-test-fix: fmt-fix lint-fix codegen testgen-check
-	@cargo run -p gunbc-dag --bin gunbc-build --release
+test-fix: fmt-fix lint-fix codegen testgen
+	@cargo run -p gunbc-dag --bin gunbc-test --release
 ```
 
 ### 7.2 After (With Resource Model)
 
 ```makefile
-# Simple mode flags
+# Mode flag only — dependencies resolved automatically
 test:
-	@cargo run -p gunbc-dag --bin gunbc-build --release -- --mode=verify
+	@cargo run -p gunbc-dag --bin gunbc-test --release -- --mode=verify
 
 test-fix:
-	@cargo run -p gunbc-dag --bin gunbc-build --release -- --mode=ensure
+	@cargo run -p gunbc-dag --bin gunbc-test --release -- --mode=ensure
 ```
 
-The build DAG internally:
+The test binary internally:
 1. Declares `needs: [GeneratedCli, GeneratedTests, CompiledCode]`
-2. Mode flag propagates to all dependency checks
-3. Verify mode fails fast on stale resources
-4. Ensure mode regenerates as needed
+2. Calls `registry.resolve("build:tested_code")`
+3. Acquires each resource in order (checks freshness, creates if needed per mode)
+4. Runs the actual tests
 
 ### 7.3 Elimination of Manual Wiring
 
 | Removed | Replaced By |
 |---------|-------------|
-| `extra_deps: Vec<String>` | `ResourceContract.needs` |
-| `fix_deps: Vec<String>` | `ExecMode::Ensure` |
-| `PrepLevel` enum | `ResourceContract.needs` |
-| `prep_dep_name()` | Automatic resolution |
-| `testgen` vs `testgen-check` | Single target + mode |
-| `fmt` vs `fmt-fix` | Single target + mode |
+| `extra_deps: Vec<String>` | `ResourceDef.inputs` with `InputPattern::Resource` |
+| `fix_deps: Vec<String>` | `ExecMode::Ensure` (single flag) |
+| `PrepLevel` enum | Automatic resolution from declared dependencies |
+| `prep_dep_name()` function | `ResourceRegistry.resolve()` |
+| `testgen` vs `testgen-check` | Single target + `--mode` flag |
+| `fmt` vs `fmt-fix` | Single target + `--mode` flag |
 
-## 8. CI Integration (Codegen Upsert Fix)
+## 8. Implementation Plan
 
-### 8.1 Current (Brittle)
+### Phase 1: Core Types (Foundation)
 
-```rust
-// ci/ops.rs:151
-fn execute_prepare_codegen_exists_check(_inputs: ...) -> ... {
-    // HACK: Check arbitrary file
-    let request = TransportRequest::File(
-        FileRequest::exists("target/codegen/bin/deps/main.rs")
-    );
-    ...
-}
-```
+**Goal:** Establish the type system without changing behavior.
 
-### 8.2 New (Content Hash)
+**New files:**
+- `core/ir/src/resource/managed.rs` — `ManagedResource` trait
+- `core/ir/src/resource/handle.rs` — `ResourceHandle<R>` (unified)
+- `core/ir/src/resource/state.rs` — `ResourceState` enum
+- `core/ir/src/resource/manifest.rs` — `ResourceManifest`, `ManifestEntry`
+- `core/ir/src/resource/def.rs` — `ResourceDef`, `InputPattern`
+- `core/ir/src/resource/hash.rs` — `ContentHash`, hash computation
 
-```rust
-fn execute_prepare_codegen_check(_inputs: ...) -> ... {
-    let manifest = load_manifest()?;
-    let current_hash = hash_codegen_inputs();
+**Modify:**
+- `core/ir/src/resource.rs` — Re-export new types, keep existing `Resource` trait
+- `core/ir/src/lib.rs` — Export `resource` module
 
-    let fresh = manifest
-        .get(&ResourceId::new("build:generated_cli"))
-        .map(|e| e.key == current_hash.to_string())
-        .unwrap_or(false);
+**Tests:**
+- Unit tests for `ContentHash` computation
+- Unit tests for `ResourceState` transitions
+- Unit tests for manifest serialization
 
-    OutputMap::new()
-        .bool("codegen_fresh", fresh)
-        .str("current_hash", current_hash.to_string())
-        .ok()
-}
-```
+**Estimated scope:** ~500 LOC new, ~50 LOC modified
 
-## 9. Implementation Plan
+---
 
-### Phase 1: Core Infrastructure (Non-Breaking)
+### Phase 2: Resource Registry
 
-**Files to create:**
-- `core/ir/src/managed_resource.rs` — `ManagedResource` trait, `ResourceState`, `ExecMode`
-- `core/ir/src/manifest.rs` — `ResourceManifest`, load/save functions
+**Goal:** Declare resources with explicit inputs/outputs.
 
-**Files to modify:**
-- `core/ir/src/lib.rs` — Export new types
-- `core/ir/src/resource.rs` — Add `ResourceId::build()` constructor
+**New files:**
+- `core/ir/src/resource/registry.rs` — `ResourceRegistry`, resolution logic
 
-### Phase 2: Build Resource Types
+**Modify:**
+- `core/codegen/src/registry.rs` — Add `ResourceDef` to `ToolDef`
 
-**Files to create:**
-- `core/ir/src/build_resource.rs` — `BuildResource` enum, `ResourceContract`
+**Codegen changes:**
+- Generate `build_resources()` function from tool registry
+- Include input patterns derived from existing knowledge
 
-**Files to modify:**
-- `core/codegen/src/registry.rs` — Add `provides`/`needs` to `ToolDef`
+**Tests:**
+- Test dependency resolution (topological sort)
+- Test cycle detection
+- Test transitive dependency inclusion
 
-### Phase 3: Content Hash Implementation
+**Estimated scope:** ~300 LOC new, ~100 LOC modified
 
-**Files to create:**
-- `gunbc-dag/src/resource_hash.rs` — Hash computation for each `BuildResource`
+---
 
-**Files to modify:**
+### Phase 3: Manifest Integration
+
+**Goal:** Write and read manifest during codegen.
+
+**Modify:**
 - `core/codegen/src/main.rs` — Write manifest after successful codegen
+- `gunbc-dag/src/bin/testgen.rs` — Write manifest after successful testgen
+
+**New behavior:**
+- After `cargo run -p gunbc-codegen`, `target/.resource-manifest.json` exists
+- Manifest contains entry for `build:generated_cli` with computed hash
+
+**Tests:**
+- Integration test: run codegen, verify manifest written
+- Integration test: modify source, verify hash changes
+- Integration test: run codegen again, verify manifest updated
+
+**Estimated scope:** ~100 LOC new, ~50 LOC modified
+
+---
+
+### Phase 4: CI Integration (Fix Brittle Check)
+
+**Goal:** Replace file existence check with manifest check.
+
+**Modify:**
+- `gunbc-dag/src/ci/ops.rs` — Replace `PrepareCodegenExistsCheck` with manifest-based check
+- `gunbc-dag/src/ci/graph.rs` — Update graph if needed
+
+**Old behavior:**
+```rust
+FileRequest::exists("target/codegen/bin/deps/main.rs")
+```
+
+**New behavior:**
+```rust
+let manifest = load_manifest()?;
+let fresh = manifest.check_fresh(&ResourceId::build("generated_cli"), &compute_hash());
+```
+
+**Tests:**
+- Test CI graph with fresh manifest (skips codegen)
+- Test CI graph with stale manifest (runs codegen)
+- Test CI graph with missing manifest (runs codegen)
+
+**Estimated scope:** ~50 LOC modified
+
+---
+
+### Phase 5: ExecMode Integration
+
+**Goal:** Add `--mode=verify|ensure` flag to build tools.
+
+**Modify:**
+- `gunbc-dag/src/bin/testgen.rs` — Replace `--check` with `--mode=verify`
+- `core/exec/src/context.rs` — Add `ExecMode` to `ExecutorContext`
+- Other bin files as needed
+
+**New CLI:**
+```
+gunbc-testgen                    # default: --mode=ensure
+gunbc-testgen --mode=verify      # CI mode (fail if stale)
+gunbc-testgen --mode=ensure      # Dev mode (regenerate if stale)
+```
+
+**Deprecate:**
+- `--check` flag (replaced by `--mode=verify`)
+
+**Tests:**
+- Test `--mode=verify` fails on stale
+- Test `--mode=ensure` regenerates on stale
+- Test backward compat for `--check` → `--mode=verify`
+
+**Estimated scope:** ~100 LOC modified
+
+---
+
+### Phase 6: Makefile Simplification
+
+**Goal:** Remove manual dependency wiring from makegen.
+
+**Modify:**
+- `gunbc-dag/src/makegen/registry.rs`:
+  - Remove `extra_deps` field from `MetaTarget`
+  - Remove `fix_deps` field from `MetaTarget`
+  - Remove `PrepLevel` enum (or deprecate)
+  - Add `resources: Vec<ResourceId>` to `MetaTarget`
+
+- `gunbc-dag/src/makegen/render.rs`:
+  - Remove `prep_dep_name()` function
+  - Remove fix variant dependency transformation
+  - Emit `--mode=verify` for base targets
+  - Emit `--mode=ensure` for `-fix` targets
+
+**Before:**
+```rust
+MetaTarget::new("test", ...)
+    .with_extra_deps(vec!["testgen-check"])
+    .with_fix_variant(vec!["fmt-fix", "lint-fix"])
+```
+
+**After:**
+```rust
+MetaTarget::new("test", ...)
+    .with_resources(vec![
+        ResourceId::build("generated_cli"),
+        ResourceId::build("generated_tests"),
+    ])
+// Fix variant automatically uses --mode=ensure
+```
+
+**Tests:**
+- Verify generated Makefile has correct targets
+- Verify `make test` uses `--mode=verify`
+- Verify `make test-fix` uses `--mode=ensure`
+
+**Estimated scope:** ~200 LOC modified, ~100 LOC deleted
+
+---
+
+### Phase 7: ToolHandle Unification
+
+**Goal:** Migrate `ToolHandle` to use `ResourceHandle<ToolResource>`.
+
+**Modify:**
+- `core/ir/src/transport/cli.rs`:
+  - `ToolHandle` becomes type alias for `ResourceHandle<ToolResource>`
+  - Keep backward-compatible API
+
+**This is optional/deferred** — can be done incrementally since the pattern
+is already correct for tools.
+
+**Estimated scope:** ~100 LOC modified
+
+---
+
+### Phase 8: Cleanup
+
+**Goal:** Remove obsolete code and update docs.
+
+**Remove/archive:**
+- Already done: `URGENT_codegen_upsert.md` → TODONE
+- Already done: `design-build-resource-chain.md` → TODONE
+
+**Update:**
+- `TODO_hacks` — Mark resolved items
+- `design-resource-acquisition.md` — Mark phases 4-5 complete
+- `README.md` — Document `--mode` flag
+
+**Estimated scope:** Documentation only
+
+---
+
+## 9. Summary: What Changes Where
+
+| File | Change |
+|------|--------|
+| `core/ir/src/resource/*.rs` | New: managed.rs, handle.rs, state.rs, manifest.rs, def.rs, hash.rs, registry.rs |
+| `core/ir/src/resource.rs` | Re-export new types |
+| `core/codegen/src/main.rs` | Write manifest after codegen |
+| `core/codegen/src/registry.rs` | Add `ResourceDef` to `ToolDef` |
+| `gunbc-dag/src/bin/testgen.rs` | Write manifest, replace `--check` with `--mode` |
+| `gunbc-dag/src/ci/ops.rs` | Replace file check with manifest check |
+| `gunbc-dag/src/makegen/registry.rs` | Remove extra_deps, fix_deps, PrepLevel |
+| `gunbc-dag/src/makegen/render.rs` | Emit `--mode` flags instead of dep chains |
+| `core/exec/src/context.rs` | Add `ExecMode` to context |
+
+## 10. Checklist
+
+### Phase 1: Core Types
+- [ ] `ManagedResource` trait
+- [ ] `ResourceHandle<R>` struct
+- [ ] `ResourceState` enum
+- [ ] `ResourceManifest` struct
+- [ ] `ManifestEntry` struct
+- [ ] `ResourceDef` struct
+- [ ] `InputPattern` enum
+- [ ] `ContentHash` struct and computation
+- [ ] Unit tests for all types
+
+### Phase 2: Resource Registry
+- [ ] `ResourceRegistry` struct
+- [ ] `resolve()` with topological sort
+- [ ] Cycle detection
+- [ ] `ResourceDef` in `ToolDef`
+- [ ] `build_resources()` function
+- [ ] Unit tests for resolution
+
+### Phase 3: Manifest Integration
+- [ ] Manifest write in codegen
+- [ ] Manifest write in testgen
+- [ ] Integration tests
 
 ### Phase 4: CI Integration
+- [ ] Replace file check in ci/ops.rs
+- [ ] Test with fresh/stale/missing manifest
 
-**Files to modify:**
-- `gunbc-dag/src/ci/ops.rs` — Replace file existence check with manifest check
-- `gunbc-dag/src/ci/graph.rs` — Update graph to use new ops
-
-### Phase 5: Makefile Simplification
-
-**Files to modify:**
-- `gunbc-dag/src/makegen/registry.rs` — Remove `extra_deps`, `fix_deps`, `PrepLevel`
-- `gunbc-dag/src/makegen/render.rs` — Emit `--mode` flags instead of dep chains
-- `gunbc-dag/src/bin/*.rs` — Add `--mode` flag parsing
-
-### Phase 6: Cleanup
-
-**Files to remove/archive:**
-- `TODO/URGENT_codegen_upsert.md` → TODONE
-- `TODO/design-build-resource-chain.md` → TODONE (consolidated here)
-- `TODO/design-resource-acquisition.md` Phases 4-5 → mark complete
-
-**Files to update:**
-- `TODO_hacks` — Remove resolved items (PrepLevel, extra_deps, fix_deps)
-
-## 10. Consolidated TODO Items
-
-### From URGENT_codegen_upsert.md
-- [x] Problem identified: file existence check is brittle
-- [ ] Implement content hash manifest
-- [ ] Update CI ops to use manifest
-
-### From design-build-resource-chain.md
-- [ ] `BuildResource` enum
-- [ ] `ResourceState` enum
+### Phase 5: ExecMode Integration
 - [ ] `ExecMode` enum
-- [ ] `ResourceContract` struct
-- [ ] Resource registry and resolver
-- [ ] `--mode` flag in build tools
-- [ ] Makefile simplification
+- [ ] Add to `ExecutorContext`
+- [ ] `--mode` flag in testgen
+- [ ] `--mode` flag in other bins
+- [ ] Deprecate `--check` flag
 
-### From design-resource-acquisition.md (Phases 4-5)
-- [ ] Sub-DAG zero-based delegation
-- [ ] Resource accounting integration
-
-### From TODO_hacks
-- [ ] PrepLevel→deps mapping hardcoded (§32-45) — replaced by ResourceContract
-- [ ] Meta-target dependency strings not verified (§65-80) — replaced by typed refs
-- [ ] Tool targets blanket-depend on ensure-codegen (§49-61) — replaced by needs
-
-## 11. Checklist
-
-### Phase 1
-- [ ] Create `ManagedResource` trait
-- [ ] Create `ResourceState` enum
-- [ ] Create `ExecMode` enum
-- [ ] Create `ResourceManifest` struct
-- [ ] Implement manifest load/save
-
-### Phase 2
-- [ ] Create `BuildResource` enum
-- [ ] Create `ResourceContract` struct
-- [ ] Add `provides`/`needs` to `ToolDef`
-- [ ] Implement `ResourceRegistry`
-
-### Phase 3
-- [ ] Implement `hash_codegen_inputs()`
-- [ ] Implement `hash_testgen_inputs()`
-- [ ] Update codegen to write manifest
-
-### Phase 4
-- [ ] Update `PrepareCodegenExistsCheck` to use manifest
-- [ ] Update `ParseCodegenExists` to use hash comparison
-- [ ] Test CI with new check
-
-### Phase 5
-- [ ] Add `--mode` flag to build tools
+### Phase 6: Makefile Simplification
 - [ ] Remove `extra_deps` from `MetaTarget`
 - [ ] Remove `fix_deps` from `MetaTarget`
-- [ ] Remove `PrepLevel` enum
-- [ ] Update Makefile renderer
+- [ ] Remove/deprecate `PrepLevel`
+- [ ] Remove `prep_dep_name()`
+- [ ] Emit `--mode` in renderer
+- [ ] Test generated Makefile
 
-### Phase 6
-- [ ] Move obsolete TODOs to TODONE
+### Phase 7: ToolHandle Unification (Optional)
+- [ ] `ToolHandle` as `ResourceHandle<ToolResource>`
+
+### Phase 8: Cleanup
 - [ ] Update TODO_hacks
-- [ ] Update tests
+- [ ] Update design-resource-acquisition.md
+- [ ] Update README
