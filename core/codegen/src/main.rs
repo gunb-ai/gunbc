@@ -35,6 +35,7 @@ use gunbc_ir::transport::ci::{
     yaml_block, CacheConfig, CiRenderer, GitHubActionsProvider, GitLabCiProvider, RenderConfig,
 };
 use gunbc_ir::Renderable;
+use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::io;
@@ -438,7 +439,88 @@ fn generate_gitlab_ci_template(config: &RenderConfig) -> String {
     yaml
 }
 
-/// Generate CLI main.rs files for all tools
+/// Check if a Cargo.toml already contains a `[[bin]]` entry for the given binary name.
+///
+/// Parses section headers to distinguish `[[bin]]` entries from `[package]`
+/// name fields, avoiding false positives.
+fn has_bin_entry(cargo_content: &str, binary_name: &str) -> bool {
+    let target = format!("\"{}\"", binary_name);
+    let mut in_bin = false;
+    for line in cargo_content.lines() {
+        let trimmed = line.trim();
+        if trimmed == "[[bin]]" {
+            in_bin = true;
+        } else if trimmed.starts_with('[') {
+            in_bin = false;
+        } else if in_bin && trimmed.starts_with("name") && trimmed.contains(&target) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Resolve workspace package names to their directory paths.
+///
+/// Reads the workspace root `Cargo.toml`, extracts member directories, and
+/// reads each member's `Cargo.toml` to extract the package name.
+///
+/// Returns a map of `package_name → member_dir` (relative to workspace root).
+#[allow(clippy::disallowed_methods)]
+fn resolve_workspace_packages() -> HashMap<String, String> {
+    let mut packages = HashMap::new();
+
+    let workspace_toml = match fs::read_to_string("Cargo.toml") {
+        Ok(content) => content,
+        Err(_) => return packages,
+    };
+
+    // Find the members = [...] block
+    let Some(members_start) = workspace_toml.find("members = [") else {
+        return packages;
+    };
+    let rest = &workspace_toml[members_start..];
+    let Some(members_end) = rest.find(']') else {
+        return packages;
+    };
+    let members_text = &rest[..members_end];
+
+    // Extract quoted member paths
+    for line in members_text.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('#') || trimmed.starts_with("//") {
+            continue;
+        }
+        let Some(start) = trimmed.find('"') else {
+            continue;
+        };
+        let Some(end) = trimmed[start + 1..].find('"') else {
+            continue;
+        };
+        let member_dir = &trimmed[start + 1..start + 1 + end];
+
+        // Read this member's Cargo.toml to get the package name
+        let member_toml_path = format!("{}/Cargo.toml", member_dir);
+        if let Ok(member_content) = fs::read_to_string(&member_toml_path) {
+            for member_line in member_content.lines() {
+                let mt = member_line.trim();
+                if mt.starts_with("name") && mt.contains('=') && mt.contains('"') {
+                    if let Some(ns) = mt.find('"') {
+                        if let Some(ne) = mt[ns + 1..].find('"') {
+                            let name = &mt[ns + 1..ns + 1 + ne];
+                            packages.insert(name.to_string(), member_dir.to_string());
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
+    packages
+}
+
+/// Generate CLI main.rs files for all tools and register binary targets.
+#[allow(clippy::disallowed_methods)]
 fn codegen_clis(dry_run: bool) -> bool {
     let writer = FileWriter::new(dry_run);
     let tools = all_tools();
@@ -471,7 +553,97 @@ fn codegen_clis(dry_run: bool) -> bool {
             }
         }
     }
-    
+
+    // Step 2: Ensure [[bin]] entries exist in target Cargo.toml files.
+    //
+    // Rule: if codegen generates a binary entrypoint (main.rs), it also
+    // ensures the corresponding [[bin]] entry exists in the target crate's
+    // Cargo.toml. The path points from the crate directory to the generated
+    // file under target/codegen/bin/.
+    //
+    // Tools with handwritten [[bin]] entries (e.g., in gunbc-dag) are
+    // detected and skipped.
+    println!();
+    println!("  Registering binary targets...");
+
+    let package_dirs = resolve_workspace_packages();
+
+    for tool in &tools {
+        let Some(inv) = &tool.invocation else {
+            continue;
+        };
+        let package_name = inv.package.as_ref().unwrap_or(&inv.binary);
+
+        let Some(crate_dir) = package_dirs.get(package_name.as_str()) else {
+            eprintln!(
+                "  [{}] WARNING: package '{}' not found in workspace",
+                tool.meta.tool_name, package_name
+            );
+            continue;
+        };
+
+        let cargo_toml_path = format!("{}/Cargo.toml", crate_dir);
+        let cargo_content = match fs::read_to_string(&cargo_toml_path) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!(
+                    "  [{}] WARNING: could not read {}: {}",
+                    tool.meta.tool_name, cargo_toml_path, e
+                );
+                continue;
+            }
+        };
+
+        // Skip if [[bin]] entry already exists for this binary
+        if has_bin_entry(&cargo_content, &inv.binary) {
+            println!(
+                "  [{}] {} (already registered)",
+                tool.meta.tool_name, cargo_toml_path
+            );
+            continue;
+        }
+
+        // Compute relative path from crate dir to generated main.rs
+        let depth = crate_dir.split('/').count();
+        let prefix = "../".repeat(depth);
+        let bin_path = format!(
+            "{}target/codegen/bin/{}/main.rs",
+            prefix, tool.meta.tool_name
+        );
+
+        // Append [[bin]] entry
+        let bin_entry = format!(
+            "\n[[bin]]\nname = \"{}\"\npath = \"{}\"\n",
+            inv.binary, bin_path
+        );
+        let new_content = format!("{}{}", cargo_content, bin_entry);
+
+        match writer.write(Path::new(&cargo_toml_path), &new_content) {
+            Ok(result) => {
+                let status = if result.written {
+                    if result.changed {
+                        "registered"
+                    } else {
+                        "unchanged"
+                    }
+                } else {
+                    "dry-run"
+                };
+                println!(
+                    "  [{}] {} → {} ({})",
+                    tool.meta.tool_name, inv.binary, cargo_toml_path, status
+                );
+            }
+            Err(e) => {
+                eprintln!(
+                    "  [{}] ERROR writing {}: {}",
+                    tool.meta.tool_name, cargo_toml_path, e
+                );
+                success = false;
+            }
+        }
+    }
+
     success
 }
 

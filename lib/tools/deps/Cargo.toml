@@ -17,3 +17,7 @@ toml = "0.8"
 
 [dev-dependencies]
 gunbc-test = { path = "../../../core/test" }
+
+[[bin]]
+name = "gunbc-deps"
+path = "../../../target/codegen/bin/deps/main.rs"

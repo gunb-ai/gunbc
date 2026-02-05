@@ -389,7 +389,7 @@ pub fn all_tools() -> Vec<ToolDef> {
             "GistMode::Snapshot, extensions.clone(), public",
         )
         .returns_result()
-        .invocation(cargo::CargoInvocation::standalone("gist"))
+        .invocation(cargo::CargoInvocation::composed("gist", "gist"))
         .import("use gunbc_gist::{build_gist_graph, GistMode};")
         .entrypoint(
             CliEntrypoint::new("repo_path", "String")
