@@ -894,52 +894,26 @@ This is fine; it's infrastructure code, not op code.
 
 ## Tasks
 
-### High priority (widespread, low effort) — DONE
-- [x] Add `require_str`, `require_json`, `optional_str` input helpers (80 call sites) — `core/exec/src/helpers.rs`
-- [x] Add `OutputMap` builder (164 call sites) — `core/exec/src/helpers.rs`
-- [x] Add `TransportResponseExt::require_shell/rest/file` methods (51 call sites) — `core/exec/src/helpers.rs`
-- [x] Add `ShellRequest::into_transport_request()` — `core/ir/src/transport/mod.rs`
+**Completed tasks moved to**: `TODO/TODONE/consolidation-complete.md`
 
-### High priority (new — widespread, low effort) — DONE
-- [x] Add `propagate_skipped` helper (8 call sites across 3 files) — §12
-- [x] Add `ExecError::context()` + `ResultExt` trait (27 call sites across 10 files) — §13
-- [x] Add `ShellResponse::ok()` / `ShellResponse::failed()` constructors (39 sites, 16 files) — §14
-- [x] Add `From<ShellRequest> for TransportRequest` (+ FileRequest, RestRequest, etc.) — all 5 request types + 5 response types
+### Remaining (blocked on design/dependencies)
 
-### High priority (remaining)
-- [ ] Add `InputsExt` trait to replace free-function `require_*/optional_*` calls — shrinks import lists
-- [x] Migrate call sites to use `propagate_skipped` (8 sites, 3 files)
-- [x] Migrate call sites to use `ShellResponse::ok()/failed()` + `From` impls (graph_mock, bin, ops, tests)
-- [ ] Migrate remaining call sites to use `ExecError::context()` / `ResultExt` (~42 sites, 12 files)
-
-### Medium priority
-- [x] Migrate remaining raw `HashMap::new()` output construction to `OutputMap` — §15
-  - Migrated: `lib/tools/cargo/src/ops.rs` (3 sites), `lib/tools/deps/src/graph.rs` (2 sites), `lib/primitives/src/collection.rs` (1 site)
-  - Remaining: `core/ir/src/transport/cli.rs` (4 sites, can't use OutputMap — core/ir doesn't depend on core/exec), `core/exec/src/execute.rs` (1 test helper), `core/test/src/mock.rs` (1 test helper)
-- [ ] Add `assert_boundaries` test helper to `core/test` (8 files) — §11
-- [ ] Collapse `default_mock_for_type` into `cardinality_case_mock_value` in testgen codegen — single type→mock mapping
-- [ ] Extract `hash_finding_id` to `lib/primitives` as `StableHashOp` — §1
-- [ ] Unify blob hash with review hash (both should use SHA256) — §1
-- [ ] Extract `FormatDiffArtifact` to `lib/primitives` as `FormatMapOp` — §1
-
-### Lower priority / blocked
 - [ ] Consider `ToolGraphOp<D>` generic wrapper (dag-pattern-ux.md Phase 4) — §3
 - [ ] Split `MergeOutputs` dedup from cardinality handling (blocked on engine work) — §1
 - [ ] Design rendering DAG for Makefile generation (when adding Justfile) — §2
 - [ ] Design rendering DAG for CI workflow generation (when adding second provider) — §2
 - [ ] Review hand-written tests for redundancy with testgen (Pattern 1, 5) — §7
 - [ ] Remove fragile node-count assertions from graph structure tests (Pattern 2) — §7
-- [ ] Eliminate `type_id == "List"` dual encoding (see §5, incremental migration)
-- [ ] Replace string-based builder references with enum keys (see §6)
-- [ ] Extract `buck-out/gen` to a single constant (see §6, 16 occurrences)
-- [ ] Fix CODEGEN_SOURCES hardcoded path list (see §6)
 - [ ] Design hermeticity annotation for `Shell` transport (see §8 design problem)
-- [ ] Add integration tests: `File` transport executor (all 6 FileOp variants) — §8
-- [ ] Add integration tests: `Shell` transport executor (stdout, stderr, exit codes) — §8
-- [ ] Add integration tests: Git transport (`GitRequest` variants against temp repo) — §8
-- [ ] Add integration tests: CLI tool resolution (`resolve_tool_path`, `upsert_tool`) — §8
-- [ ] Add `make test-integration` target (hermetic transport tests) — §8
-- [ ] Add `make test-external` target (non-hermetic transport tests, scheduled CI) — §8
+
+### Remaining (new functionality — integration tests)
+
+- [x] Add integration tests: `File` transport executor (all 6 FileOp variants) — `lib/transport/src/executor.rs`
+- [x] Add integration tests: `Shell` transport executor (stdout, stderr, exit codes) — `lib/transport/src/executor.rs`
+- [x] Add integration tests: Git transport (`GitRequest` variants against temp repo) — `lib/transport/src/executor.rs::git_integration`
+- [x] Add integration tests: CLI tool resolution (`resolve_tool_path`, `upsert_tool`) — `core/ir/src/transport/cli.rs`
+- [ ] Add `make test-integration` target (hermetic transport tests) — deferred: tests run as part of normal `cargo test`
+- [ ] Add `make test-external` target (non-hermetic transport tests, scheduled CI) — deferred: no external tests yet
 
 ## Notes
 

@@ -38,6 +38,7 @@
 pub mod boundary;
 pub mod composition;
 pub mod mock;
+pub mod mock_requirements;
 pub mod mock_spec;
 pub mod mockable;
 pub mod simulator;
@@ -49,9 +50,14 @@ pub use boundary::{
 pub use composition::{assert_types_compatible, TypeCompatibility};
 pub use mock::{MockBehavior, MockOp, ScriptedDagBuilder};
 pub use mock_spec::{
-    validate_chain, BoundaryMock, ChainError, ChainValidationResult, ExpectedOutput,
-    InputConstraint, InputExpectation, MockSpec, NodeExample, OutputMatcher, ResourceAcquireResult,
-    ResourceBehavior, ResourceMocks, ResourceSimulation, ResourceType, TransportMock,
+    assert_boundaries, assert_transport_mocks, validate_chain, BoundaryMock, ChainError,
+    ChainValidationResult, ExpectedOutput, InputConstraint, InputExpectation, MockSpec,
+    NodeExample, OutputMatcher, ResourceAcquireResult, ResourceBehavior, ResourceMocks,
+    ResourceSimulation, ResourceType, TransportMock,
+};
+pub use mock_requirements::{
+    extract_mock_requirements, MockIncompleteError, MockRequirements, MockSlot, MockSlotKind,
+    MockTypeError,
 };
 pub use mockable::{CardinalityTestInput, ErrorTestCase, ExpectedBehavior, Mockable};
 pub use simulator::{IoContract, Simulator};

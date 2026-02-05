@@ -1,46 +1,79 @@
 //! Mock specification for the deps tool.
 //!
-//! This file declares:
-//! - What mock values boundary nodes provide
-//! - What input constraints upstream must satisfy
-//! - Resource simulations for package manager operations
+//! This file uses the typed mock builder pattern to construct MockSpecs
+//! that are "impossible by construction" — the DAG's requirements are
+//! extracted and mocks are type-checked at construction time.
+//!
+//! # Boundary Mocks
+//!
+//! - `execute_load_manifest`: Reads the deps.toml manifest
+//! - `execute_installs`: Runs the install script (world write)
+//!
+//! # Input Expectations
+//!
+//! - `manifest_path`: Optional string, defaults to "deps.toml"
+//!
+//! # Resource Simulations
+//!
+//! - Package manager lock: Ensures only one install runs at a time
+//! - Sudo lease: Time-bounded privilege elevation
 
+use crate::graph::build_deps_graph;
 use crate::Platform;
-use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse};
-use gunbc_ir::Value;
-use gunbc_test::{InputConstraint, MockSpec};
+use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse, TransportResponse};
+use gunbc_test::{extract_mock_requirements, InputConstraint, MockSpec};
+
+fn mock_manifest() -> &'static str {
+    r#"[dependency]
+name = "ripgrep"
+verify_cmd = "rg --version"
+install_cmd = "cargo install ripgrep"
+"#
+}
 
 /// Mock specification for the deps graph.
 ///
-/// # Boundary Mocks
+/// Uses the typed mock builder pattern: the DAG is built first, requirements
+/// are extracted from its structure, and mocks are type-checked at construction.
 ///
-/// The `execute_installs` node is the boundary (world write).
-/// It outputs:
-/// - `executed`: Whether the install script was run
-/// - `script`: The script that was executed
-///
-/// # Input Expectations
-///
-/// - `manifest_path`: Optional string, defaults to "deps.toml"
-///
-/// # Resource Simulations
-///
-/// - Package manager lock: Ensures only one install runs at a time
-/// - Sudo lease: Time-bounded privilege elevation
+/// Only transport and resource mocks are required. Pure terminal outputs
+/// (parse_manifest.*, generate_scripts.*, parse_execute_result.*) are
+/// computed during DryRun execution, not mocked.
 pub fn deps_mock_spec() -> MockSpec {
-    with_deps_transport_mocks(MockSpec::new("deps"))
-        // Env: resolved platform
-        .boundary("platform_env", "platform", Platform::Linux.into())
-        // Boundary: execute_installs outputs
-        .boundary("execute_installs", "executed", Value::Bool(true))
-        .boundary(
-            "execute_installs",
-            "script",
-            Value::Str("# Mock install script\necho 'Dependencies installed'".into()),
+    // Build the actual DAG to extract requirements
+    let dag = build_deps_graph().expect("deps graph should build");
+
+    // Extract typed requirements from DAG structure
+    extract_mock_requirements(&dag, "deps")
+        // Resource: platform environment
+        .boundary("platform_env", "platform", Platform::Linux)
+        .expect("platform mock should match type")
+        // Transport: load manifest
+        .transport_response(
+            "execute_load_manifest",
+            "response",
+            TransportResponse::File(FileResponse {
+                path: "deps.toml".into(),
+                operation: FileOp::Read,
+                success: true,
+                content: Some(mock_manifest().to_string()),
+                exists: Some(true),
+                error: None,
+            }),
         )
-        // Input expectations
+        .expect("execute_load_manifest response should match type")
+        // Transport: execute installs
+        .transport_response(
+            "execute_installs",
+            "response",
+            TransportResponse::Shell(ShellResponse::ok("Dependencies installed")),
+        )
+        .expect("execute_installs response should match type")
+        // Build spec (pure terminal outputs are computed, not mocked)
+        .build_unchecked()
+        // Input expectations (via legacy API post-build)
         .expects_input("manifest_path", InputConstraint::Any)
-        // Resource: package manager lock (only one apt/brew at a time)
+        // Resource: package manager lock
         .resource_lock("pkg:manager")
 }
 
@@ -55,59 +88,76 @@ pub fn deps_mock_spec_with_sudo() -> MockSpec {
 
 /// Mock spec for testing package manager failure.
 pub fn deps_mock_spec_pkg_fails() -> MockSpec {
-    with_deps_transport_mocks(MockSpec::new("deps"))
-        // Env: resolved platform
-        .boundary("platform_env", "platform", Platform::Linux.into())
-        .boundary("execute_installs", "executed", Value::Bool(false))
-        .boundary(
-            "execute_installs",
-            "script",
-            Value::Str("# Failed install script".into()),
-        )
-        .expects_input("manifest_path", InputConstraint::Any)
-        .resource_lock_fails("pkg:manager", "Package manager locked by another process")
-}
+    // Build the actual DAG to extract requirements
+    let dag = build_deps_graph().expect("deps graph should build");
 
-fn with_deps_transport_mocks(spec: MockSpec) -> MockSpec {
-    let manifest = r#"[dependency]
-name = "ripgrep"
-verify_cmd = "rg --version"
-install_cmd = "cargo install ripgrep"
-"#;
-
-    spec.transport_mock(
-        "execute_load_manifest",
-        "response",
-        Value::Response(
-            FileResponse {
+    // Extract typed requirements from DAG structure
+    extract_mock_requirements(&dag, "deps")
+        // Resource: platform environment
+        .boundary("platform_env", "platform", Platform::Linux)
+        .expect("platform mock should match type")
+        // Transport: load manifest (succeeds)
+        .transport_response(
+            "execute_load_manifest",
+            "response",
+            TransportResponse::File(FileResponse {
                 path: "deps.toml".into(),
                 operation: FileOp::Read,
                 success: true,
-                content: Some(manifest.to_string()),
+                content: Some(mock_manifest().to_string()),
                 exists: Some(true),
                 error: None,
-            }
-            .into(),
-        ),
-    )
-    .transport_mock(
-        "execute_installs",
-        "response",
-        Value::Response(ShellResponse::ok("Dependencies installed").into()),
-    )
+            }),
+        )
+        .expect("execute_load_manifest response should match type")
+        // Transport: execute installs (fails)
+        .transport_response(
+            "execute_installs",
+            "response",
+            TransportResponse::Shell(ShellResponse {
+                exit_code: 1,
+                stdout: String::new(),
+                stderr: "Package manager locked by another process".to_string(),
+            }),
+        )
+        .expect("execute_installs response should match type")
+        // Build spec
+        .build_unchecked()
+        .expects_input("manifest_path", InputConstraint::Any)
+        .resource_lock_fails("pkg:manager", "Package manager locked by another process")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gunbc_ir::Value;
+
+    // ========================================================================
+    // Mock spec tests (Pattern B - mock value properties)
+    // ========================================================================
+    //
+    // These tests verify specific mock value properties. Pattern A (presence),
+    // C (self-chain), and D (resource presence) tests are auto-generated by
+    // testgen and have been removed.
 
     #[test]
-    fn test_mock_spec_executed_is_bool() {
+    fn test_mock_spec_has_transport_mocks() {
         let spec = deps_mock_spec();
-        let executed = spec
-            .get_boundary_mock("execute_installs", "executed")
-            .unwrap();
-        assert!(matches!(executed, Value::Bool(true)));
+        // Transport mocks should be present
+        assert!(spec
+            .get_transport_mock("execute_load_manifest", "response")
+            .is_some());
+        assert!(spec
+            .get_transport_mock("execute_installs", "response")
+            .is_some());
+    }
+
+    #[test]
+    fn test_mock_spec_platform_is_boundary() {
+        let spec = deps_mock_spec();
+        let platform = spec.get_boundary_mock("platform_env", "platform").unwrap();
+        // Platform converts to Value::Str
+        assert!(matches!(platform, Value::Str(_)));
     }
 
     #[test]
@@ -131,5 +181,18 @@ mod tests {
             result,
             gunbc_test::ResourceAcquireResult::Failed(_)
         ));
+    }
+
+    #[test]
+    fn test_typed_builder_rejects_wrong_slot() {
+        // This test verifies that setting an unknown slot fails
+        let dag = build_deps_graph().expect("graph should build");
+        let reqs = extract_mock_requirements(&dag, "deps");
+
+        // Try to set a mock for a non-existent node
+        let result = reqs.boundary_str("nonexistent_node", "port", "value");
+
+        // This should fail with UnknownSlot
+        assert!(result.is_err());
     }
 }

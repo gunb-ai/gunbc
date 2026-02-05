@@ -186,6 +186,97 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             );
         }
 
+        // Validate transport mock coverage: every transport executor output port
+        // that is connected downstream must have a mock in MockSpec.
+        //
+        // This replaces manual "boundary presence" tests in graph_mock.rs files.
+        // If a transport output is used but not mocked, DryRun will fail at runtime.
+        // Catching this early at test generation time gives a better error message.
+        if let Some(spec) = &self.mock_spec {
+            let missing_mocks = self.find_missing_transport_mocks(&analysis, spec);
+            if !missing_mocks.is_empty() {
+                panic!(
+                    "Transport mock coverage incomplete: DAG '{}' has {} transport output port(s) \
+                     connected downstream but not mocked:\n\
+                     \n\
+                     {}\n\
+                     \n\
+                     Each transport executor output that flows to downstream nodes needs a mock.\n\
+                     Add the missing mocks to your MockSpec:\n\
+                     \n\
+                     ```rust\n\
+                     MockSpec::new(\"{}\")\n\
+                     {}\n\
+                     ```",
+                    module_name,
+                    missing_mocks.len(),
+                    missing_mocks
+                        .iter()
+                        .map(|(node, port)| format!("  - {}.{}", node, port))
+                        .collect::<Vec<_>>()
+                        .join("\n"),
+                    module_name,
+                    missing_mocks
+                        .iter()
+                        .map(|(node, port)| {
+                            format!("    .transport_mock(\"{}\", \"{}\", mock_value())", node, port)
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n"),
+                );
+            }
+
+            // Validate that all mocks reference existing nodes and ports.
+            //
+            // This catches typos and stale mocks that reference renamed/removed nodes.
+            let unknown_slots = self.find_unknown_mock_slots(spec);
+            if !unknown_slots.is_empty() {
+                panic!(
+                    "Unknown mock slots: DAG '{}' has {} mock(s) referencing unknown nodes/ports:\n\
+                     \n\
+                     {}\n\
+                     \n\
+                     Each mock must reference an existing node output port.\n\
+                     Check for typos or remove stale mocks.",
+                    module_name,
+                    unknown_slots.len(),
+                    unknown_slots
+                        .iter()
+                        .map(|(node, port, reason)| {
+                            format!("  - {}.{}: {}", node, port, reason)
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n"),
+                );
+            }
+
+            // Validate mock-value type compatibility: every mock value's type should
+            // be compatible with the corresponding port's TypeId.
+            //
+            // This catches type drift between MockSpec and DAG port definitions.
+            // Contract-level check: "mock is Bool-typed" not "mock == Bool(true)".
+            let type_mismatches = self.find_mock_type_mismatches(spec);
+            if !type_mismatches.is_empty() {
+                panic!(
+                    "Mock value type mismatch: DAG '{}' has {} mock value(s) with incompatible types:\n\
+                     \n\
+                     {}\n\
+                     \n\
+                     Each mock value's type must be compatible with the port's declared type.\n\
+                     Update the MockSpec with correctly-typed values.",
+                    module_name,
+                    type_mismatches.len(),
+                    type_mismatches
+                        .iter()
+                        .map(|(node, port, expected, actual)| {
+                            format!("  - {}.{}: expected {}, got {}", node, port, expected, actual)
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n"),
+                );
+            }
+        }
+
         // Validate that all pure nodes have I/O examples or are explicitly skipped.
         //
         // Pure nodes (non-transport, non-tool-env) contain domain logic that
@@ -296,6 +387,231 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
         ];
 
         RustRenderer.render_file(&file)
+    }
+
+    /// Find transport executor output ports that are connected downstream but lack mocks.
+    ///
+    /// Returns a list of (node_id, port_name) pairs that need transport_mock entries.
+    fn find_missing_transport_mocks(
+        &self,
+        analysis: &DagAnalysis,
+        spec: &MockSpec,
+    ) -> Vec<(String, String)> {
+        let mut missing = Vec::new();
+
+        // Build a set of (node, port) pairs that have mocks
+        let mocked_ports: HashSet<(&str, &str)> = spec
+            .transport_mocks
+            .iter()
+            .map(|m| (m.node.as_str(), m.port.as_str()))
+            .chain(
+                spec.boundary_mocks
+                    .iter()
+                    .map(|m| (m.node.as_str(), m.port.as_str())),
+            )
+            .collect();
+
+        // For each transport executor, check if its connected output ports have mocks
+        for transport_id in &analysis.transport_executors {
+            if let Some(node) = self.dag.get_node(&NodeId(transport_id.clone())) {
+                for output_port in &node.outputs {
+                    // Check if this output port is connected to any downstream node
+                    let is_connected = self.dag.edges.iter().any(|e| {
+                        e.from_node.0 == *transport_id && e.from_port.0 == output_port.name.0
+                    });
+
+                    if is_connected {
+                        // Check if there's a mock for this (node, port)
+                        let has_mock =
+                            mocked_ports.contains(&(transport_id.as_str(), output_port.name.0.as_str()));
+
+                        if !has_mock {
+                            missing.push((transport_id.clone(), output_port.name.0.clone()));
+                        }
+                    }
+                }
+            }
+        }
+
+        missing
+    }
+
+    /// Find mock values whose types don't match the port's declared TypeId.
+    ///
+    /// Returns a list of (node_id, port_name, expected_type, actual_type) tuples.
+    fn find_mock_type_mismatches(
+        &self,
+        spec: &MockSpec,
+    ) -> Vec<(String, String, String, String)> {
+        use gunbc_ir::Value;
+
+        let mut mismatches = Vec::new();
+
+        // Helper to get type name from a Value
+        let value_type_name = |v: &Value| -> &'static str {
+            match v {
+                Value::Unit => "Unit",
+                Value::Bool(_) => "Bool",
+                Value::Str(_) => "String",
+                Value::Int(_) => "Int",
+                Value::List(_) => "List",
+                Value::Set(_) => "Set",
+                Value::Map(_) => "Map",
+                Value::Json(_) => "Json",
+                Value::Request(_) => "TransportRequest",
+                Value::Response(_) => "TransportResponse",
+                Value::Secret(_) => "Secret",
+                Value::Skipped => "Skipped", // Skipped is compatible with anything
+            }
+        };
+
+        // Helper to check type compatibility
+        // NOTE: This must match MockRequirements::types_compatible in gunbc-test
+        let types_compatible = |port_type: &str, value_type: &str| -> bool {
+            // Exact match
+            if port_type == value_type {
+                return true;
+            }
+            // Any matches anything
+            if port_type == "Any" || value_type == "Any" {
+                return true;
+            }
+            // Skipped is a control flow value, compatible with any type
+            if value_type == "Skipped" {
+                return true;
+            }
+            // Json is flexible - can hold structured data that might be typed differently
+            // NOTE: This is intentionally permissive; consider tightening if type drift is a concern
+            if port_type == "Json" || value_type == "Json" {
+                return true;
+            }
+            // Map-backed types: ToolHandle, AuthToken, FilesystemHandle
+            // These types serialize to/from Map when stored as Value
+            if value_type == "Map" {
+                let map_backed_types = ["ToolHandle", "AuthToken", "FilesystemHandle"];
+                if map_backed_types.contains(&port_type) {
+                    return true;
+                }
+            }
+            // Int-backed types: Timestamp stores milliseconds as Int
+            if value_type == "Int" && port_type == "Timestamp" {
+                return true;
+            }
+            // String-backed types: Platform serializes as String
+            if value_type == "String" && port_type == "Platform" {
+                return true;
+            }
+            // Map can also represent Platform (for structured platform info)
+            if value_type == "Map" && port_type == "Platform" {
+                return true;
+            }
+            false
+        };
+
+        // Check transport mocks
+        for tm in &spec.transport_mocks {
+            if let Some(node) = self.dag.get_node(&NodeId(tm.node.clone())) {
+                if let Some(port) = node.outputs.iter().find(|p| p.name.0 == tm.port) {
+                    let expected = &port.type_id.0;
+                    let actual = value_type_name(&tm.value);
+                    if !types_compatible(expected, actual) {
+                        mismatches.push((
+                            tm.node.clone(),
+                            tm.port.clone(),
+                            expected.clone(),
+                            actual.to_string(),
+                        ));
+                    }
+                }
+            }
+        }
+
+        // Check boundary mocks
+        for bm in &spec.boundary_mocks {
+            if let Some(node) = self.dag.get_node(&NodeId(bm.node.clone())) {
+                if let Some(port) = node.outputs.iter().find(|p| p.name.0 == bm.port) {
+                    let expected = &port.type_id.0;
+                    let actual = value_type_name(&bm.value);
+                    if !types_compatible(expected, actual) {
+                        mismatches.push((
+                            bm.node.clone(),
+                            bm.port.clone(),
+                            expected.clone(),
+                            actual.to_string(),
+                        ));
+                    }
+                }
+            }
+        }
+
+        mismatches
+    }
+
+    /// Find mocks that reference non-existent nodes or ports.
+    ///
+    /// Returns a list of (node_id, port_name, reason) tuples.
+    fn find_unknown_mock_slots(&self, spec: &MockSpec) -> Vec<(String, String, String)> {
+        let mut unknown = Vec::new();
+
+        // Check transport mocks
+        for tm in &spec.transport_mocks {
+            match self.dag.get_node(&NodeId(tm.node.clone())) {
+                None => {
+                    unknown.push((
+                        tm.node.clone(),
+                        tm.port.clone(),
+                        "node does not exist".to_string(),
+                    ));
+                }
+                Some(node) => {
+                    if !node.outputs.iter().any(|p| p.name.0 == tm.port) {
+                        unknown.push((
+                            tm.node.clone(),
+                            tm.port.clone(),
+                            format!(
+                                "port does not exist on node (available: {})",
+                                node.outputs
+                                    .iter()
+                                    .map(|p| p.name.0.as_str())
+                                    .collect::<Vec<_>>()
+                                    .join(", ")
+                            ),
+                        ));
+                    }
+                }
+            }
+        }
+
+        // Check boundary mocks
+        for bm in &spec.boundary_mocks {
+            match self.dag.get_node(&NodeId(bm.node.clone())) {
+                None => {
+                    unknown.push((
+                        bm.node.clone(),
+                        bm.port.clone(),
+                        "node does not exist".to_string(),
+                    ));
+                }
+                Some(node) => {
+                    if !node.outputs.iter().any(|p| p.name.0 == bm.port) {
+                        unknown.push((
+                            bm.node.clone(),
+                            bm.port.clone(),
+                            format!(
+                                "port does not exist on node (available: {})",
+                                node.outputs
+                                    .iter()
+                                    .map(|p| p.name.0.as_str())
+                                    .collect::<Vec<_>>()
+                                    .join(", ")
+                            ),
+                        ));
+                    }
+                }
+            }
+        }
+
+        unknown
     }
 
     /// Generate the full test file (header excluded).
@@ -793,7 +1109,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                         count
                     );
 
-                    let mock_value = boundary_count_mock_value(count, type_id, *cardinality);
+                    let mock_value = mock_value_expr_for_count(type_id, *cardinality, count);
                     let mocks_expr = self.dryrun_mocks_expr(analysis, "cardinality coverage tests");
 
                     let exec = Expr::call(
@@ -2668,22 +2984,14 @@ fn render_output_matcher_check(matcher: &OutputMatcher, var_name: &str) -> Vec<S
     }
 }
 
-/// Generate a mock value for a boundary count, type, and cardinality.
-///
-/// Builds a ValueExpr and renders it via RustRenderer. The `count` is the
-/// number of elements (a boundary value from `testgen::cardinality::fermi_test_cases()`).
-///
-/// For count=0, scalar types emit `Value::Unit` (absence), not concrete
-/// "empty content" like `false` or `0`. List cardinalities emit empty
-/// collections (which correctly represent zero elements).
-fn boundary_count_mock_value(count: u32, type_id: &str, cardinality: Cardinality) -> ValueExpr {
-    mock_value_expr_for_count(type_id, cardinality, count)
-}
-
 /// Generate a mock ValueExpr for a specific count and cardinality.
 ///
 /// Cardinality determines whether values are wrapped as lists. The `count`
 /// is the number of elements (from `testgen::cardinality::fermi_test_cases()`).
+///
+/// For count=0, scalar types emit `Value::Unit` (absence), not concrete
+/// "empty content" like `false` or `0`. List cardinalities emit empty
+/// collections (which correctly represent zero elements).
 fn mock_value_expr_for_count(type_id: &str, cardinality: Cardinality, count: u32) -> ValueExpr {
     if cardinality.is_list() {
         if count == 0 {
@@ -3166,7 +3474,13 @@ mod tests {
 
         // MockSpec required for DAGs with transport executors
         let spec = MockSpec::new("example")
-            .boundary("execute", "response", Value::Str("<MOCK_RESPONSE>".into()))
+            .transport_mock(
+                "execute",
+                "response",
+                Value::Response(gunbc_ir::transport::TransportResponse::Rest(
+                    gunbc_ir::transport::RestResponse::ok(serde_json::json!({})),
+                )),
+            )
             .boundary("parse", "result", Value::Str("<MOCK_RESULT>".into()))
             .skip_node_example("prepare")
             .skip_node_example("parse");
@@ -3239,8 +3553,14 @@ mod tests {
 
         // MockSpec required for DAGs with transport executors
         let spec = MockSpec::new("guarded")
-            .boundary("check", "response", Value::Str("<MOCK>".into()))
-            .boundary("check", "condition", Value::Bool(true))
+            .transport_mock(
+                "check",
+                "response",
+                Value::Response(gunbc_ir::transport::TransportResponse::Rest(
+                    gunbc_ir::transport::RestResponse::ok(serde_json::json!({})),
+                )),
+            )
+            .transport_mock("check", "condition", Value::Bool(true))
             .boundary("process", "result", Value::Str("<MOCK_RESULT>".into()))
             .skip_node_example("process");
 
@@ -3361,6 +3681,180 @@ mod tests {
         };
         let generator = TestGenerator::new(&dag).with_config(config);
         let _ = generator.generate_test_module("test", "build_test_graph()");
+    }
+
+    #[test]
+    #[should_panic(expected = "Transport mock coverage incomplete")]
+    fn test_transport_mock_coverage_required() {
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque(
+            "prepare",
+            vec![],
+            vec![port("request", "TransportRequest")],
+            (),
+        ));
+        dag.add_node(Node::opaque(
+            "execute",
+            vec![port("request", "TransportRequest")],
+            vec![
+                port("response", "TransportResponse"),
+                port("status", "Int"),
+            ],
+            (),
+        ));
+        dag.add_node(Node::opaque(
+            "parse",
+            vec![
+                port("response", "TransportResponse"),
+                port("status", "Int"),
+            ],
+            vec![port("result", "String")],
+            (),
+        ));
+        dag.add_edge(edge("prepare", "request", "execute", "request"));
+        dag.add_edge(edge("execute", "response", "parse", "response"));
+        dag.add_edge(edge("execute", "status", "parse", "status"));
+
+        // MockSpec provided but only mocks "response", not "status"
+        let spec = MockSpec::new("test")
+            .transport_mock(
+                "execute",
+                "response",
+                Value::Response(gunbc_ir::transport::TransportResponse::Rest(
+                    gunbc_ir::transport::RestResponse::ok(serde_json::json!({})),
+                )),
+            )
+            // Missing: .transport_mock("execute", "status", Value::Int(200))
+            .skip_node_example("prepare")
+            .skip_node_example("parse");
+
+        let config = TestConfig {
+            example_tests: true,
+            ..TestConfig::default()
+        };
+        let generator = TestGenerator::new(&dag)
+            .with_mock_spec(spec)
+            .with_config(config)
+            .with_mock_spec_fn("crate::mock_spec()");
+        let _ = generator.generate_test_module("test", "build_test_graph()");
+    }
+
+    #[test]
+    fn test_transport_mock_coverage_passes_when_complete() {
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque(
+            "execute",
+            vec![port("request", "TransportRequest")],
+            vec![
+                port("response", "TransportResponse"),
+                port("status", "Int"),
+            ],
+            (),
+        ));
+        dag.add_node(Node::opaque(
+            "parse",
+            vec![
+                port("response", "TransportResponse"),
+                port("status", "Int"),
+            ],
+            vec![port("result", "String")],
+            (),
+        ));
+        dag.add_edge(edge("execute", "response", "parse", "response"));
+        dag.add_edge(edge("execute", "status", "parse", "status"));
+
+        // MockSpec with all connected outputs mocked
+        let spec = MockSpec::new("test")
+            .transport_mock(
+                "execute",
+                "response",
+                Value::Response(gunbc_ir::transport::TransportResponse::Rest(
+                    gunbc_ir::transport::RestResponse::ok(serde_json::json!({})),
+                )),
+            )
+            .transport_mock("execute", "status", Value::Int(200))
+            .boundary("parse", "result", Value::Str("<RESULT>".into()))
+            .skip_node_example("parse");
+
+        let config = TestConfig {
+            example_tests: true,
+            ..TestConfig::default()
+        };
+        let generator = TestGenerator::new(&dag)
+            .with_mock_spec(spec)
+            .with_config(config)
+            .with_mock_spec_fn("crate::mock_spec()");
+        // Should not panic
+        let code = generator.generate_test_module("test", "build_test_graph()");
+        assert!(code.contains("test_"));
+    }
+
+    #[test]
+    #[should_panic(expected = "Mock value type mismatch")]
+    fn test_mock_type_mismatch_detected() {
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque(
+            "transform",
+            vec![port("input", "String")],
+            vec![port("output", "Int")], // <-- output is Int
+            (),
+        ));
+
+        // MockSpec provides a String for an Int port
+        let spec = MockSpec::new("test")
+            .boundary("transform", "output", Value::Str("wrong type".into())) // <-- String, not Int
+            .skip_node_example("transform");
+
+        let generator = TestGenerator::new(&dag)
+            .with_mock_spec(spec)
+            .with_mock_spec_fn("crate::mock_spec()");
+        let _ = generator.generate_test_module("test", "build_test_graph()");
+    }
+
+    #[test]
+    fn test_mock_type_compatibility_accepts_skipped() {
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque(
+            "transform",
+            vec![port("input", "String")],
+            vec![port("output", "Int")],
+            (),
+        ));
+
+        // Value::Skipped is compatible with any type
+        let spec = MockSpec::new("test")
+            .boundary("transform", "output", Value::Skipped)
+            .skip_node_example("transform");
+
+        let generator = TestGenerator::new(&dag)
+            .with_mock_spec(spec)
+            .with_mock_spec_fn("crate::mock_spec()");
+        // Should not panic
+        let code = generator.generate_test_module("test", "build_test_graph()");
+        assert!(code.contains("test_"));
+    }
+
+    #[test]
+    fn test_mock_type_compatibility_accepts_json() {
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque(
+            "transform",
+            vec![port("input", "String")],
+            vec![port("output", "Json")],
+            (),
+        ));
+
+        // Json port accepts Int value (flexible typing)
+        let spec = MockSpec::new("test")
+            .boundary("transform", "output", Value::Int(42))
+            .skip_node_example("transform");
+
+        let generator = TestGenerator::new(&dag)
+            .with_mock_spec(spec)
+            .with_mock_spec_fn("crate::mock_spec()");
+        // Should not panic
+        let code = generator.generate_test_module("test", "build_test_graph()");
+        assert!(code.contains("test_"));
     }
 
     #[test]

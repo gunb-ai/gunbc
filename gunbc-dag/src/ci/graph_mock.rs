@@ -1,36 +1,51 @@
 //! Mock specification for the CI tool.
 //!
-//! This file declares:
-//! - What mock values boundary nodes provide
-//! - Resource simulations for CI operations
+//! This file uses the typed mock builder pattern to construct MockSpecs
+//! that are "impossible by construction" — the DAG's requirements are
+//! extracted and mocks are type-checked at construction time.
+//!
+//! # Boundary Mocks
+//!
+//! The `report` node is the boundary (world write):
+//! - `overall_success`: Whether CI passed
+//! - `report`: Human-readable CI report
+//!
+//! # Transport Mocks
+//!
+//! Multiple transport nodes for CI stages:
+//! - `execute_deps_exists`: Check deps.toml exists
+//! - `execute_codegen_exists`: Check codegen output exists
+//! - `execute_codegen`: Run codegen if needed
+//! - `execute_build`: Run cargo build
+//! - `execute_test`: Run cargo test
+//!
+//! # CLI Tool Mocks
+//!
+//! - `clippy_lint`: Clippy linting (uses ToolHandle from env)
+//!
+//! # Resource Simulations
+//!
+//! - Build lock: Only one cargo build at a time
+//! - Test parallelism: Cargo test uses multiple threads
 
+use crate::ci::graph::build_ci_graph;
 use gunbc_ir::transport::cli::{ToolHandle, CLIPPY};
-use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse};
+use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse, TransportResponse};
 use gunbc_ir::Value;
-use gunbc_test::{MockSpec, NodeExample, OutputMatcher};
+use gunbc_test::{extract_mock_requirements, MockSpec, NodeExample, OutputMatcher};
 
 /// Mock specification for the CI graph.
 ///
-/// # Boundary Mocks
-///
-/// The `report` node is the boundary (world write).
-/// It outputs:
-/// - `overall_success`: Whether CI passed
-/// - `report`: Human-readable CI report
-///
-/// # Input Expectations
-///
-/// No external inputs - CI runs from workspace root.
-///
-/// # Resource Simulations
-///
-/// - Build lock: Only one cargo build at a time
-/// - Test parallelism: Cargo test uses multiple threads
+/// Uses the typed mock builder pattern: the DAG is built first, requirements
+/// are extracted from its structure, and mocks are type-checked at construction.
 pub fn ci_mock_spec() -> MockSpec {
-    with_ci_intercept_mocks(MockSpec::new("ci"))
-        // Boundary: report outputs
-        .boundary("report", "overall_success", Value::Bool(true))
-        .boundary("report", "report", Value::Str(mock_ci_report_success()))
+    // Build the actual DAG to extract requirements
+    let dag = build_ci_graph().expect("ci graph should build");
+
+    // Extract typed requirements and fill transport mocks
+    // All mocks (including clippy_lint) are now handled by with_ci_typed_mocks
+    with_ci_typed_mocks(extract_mock_requirements(&dag, "ci"))
+        .build_unchecked()
         // Resources
         .resource_lock("cargo:build")
         .resource_lock("cargo:test")
@@ -240,39 +255,323 @@ pub fn ci_mock_spec() -> MockSpec {
         .skip_node_example("prepare_deps_exists")
 }
 
-/// Mock spec for testing CI failure.
+/// Mock spec for testing test failure.
+///
+/// Uses explicit mocks to model execute_test returning a failed response.
 pub fn ci_mock_spec_test_fails() -> MockSpec {
-    with_ci_intercept_mocks(MockSpec::new("ci"))
-        .boundary("report", "overall_success", Value::Bool(false))
-        .boundary("report", "report", Value::Str(mock_ci_report_test_fail()))
+    let dag = build_ci_graph().expect("ci graph should build");
+
+    extract_mock_requirements(&dag, "ci")
+        // Resource: runner_env provides tool handles
+        .boundary("runner_env", "tool:clippy", ToolHandle::mock(&CLIPPY))
+        .expect("runner_env tool:clippy should match type")
+        // Transport: execute_deps_exists (success)
+        .transport_response(
+            "execute_deps_exists",
+            "response",
+            TransportResponse::File(FileResponse {
+                path: "deps.toml".into(),
+                operation: FileOp::Exists,
+                success: true,
+                content: None,
+                exists: Some(true),
+                error: None,
+            }),
+        )
+        .expect("execute_deps_exists response should match type")
+        // Transport: execute_codegen_exists (success)
+        .transport_response(
+            "execute_codegen_exists",
+            "response",
+            TransportResponse::File(FileResponse {
+                path: "Cargo.toml".into(),
+                operation: FileOp::Exists,
+                success: true,
+                content: None,
+                exists: Some(true),
+                error: None,
+            }),
+        )
+        .expect("execute_codegen_exists response should match type")
+        // Transport: execute_codegen (skipped)
+        .boundary("execute_codegen", "response", Value::Skipped)
+        .expect("execute_codegen response should match type")
+        .boundary_bool("execute_codegen", "skip", true)
+        .expect("execute_codegen skip should match type")
+        // Transport: execute_build (success)
+        .transport_response(
+            "execute_build",
+            "response",
+            TransportResponse::Shell(ShellResponse::ok(
+                "Compiling gunbc v0.1.0\n    Finished dev target(s)",
+            )),
+        )
+        .expect("execute_build response should match type")
+        .boundary_bool("execute_build", "skip", false)
+        .expect("execute_build skip should match type")
+        .boundary_str("execute_build", "skip_reason", "")
+        .expect("execute_build skip_reason should match type")
+        // Transport: execute_test (FAILS)
+        .transport_response(
+            "execute_test",
+            "response",
+            TransportResponse::Shell(ShellResponse::failed(
+                1,
+                "running 42 tests\ntest tests::test_something ... FAILED\n\nfailures:\n    tests::test_something\n\ntest failed",
+            )),
+        )
+        .expect("execute_test response should match type")
+        .boundary_bool("execute_test", "skip", false)
+        .expect("execute_test skip should match type")
+        .boundary_str("execute_test", "skip_reason", "")
+        .expect("execute_test skip_reason should match type")
+        // CliTool: clippy_lint (success)
+        .boundary_bool("clippy_lint", "success", true)
+        .expect("clippy_lint success should match type")
+        .boundary_str("clippy_lint", "stdout", "Checking gunbc v0.1.0\n    Finished dev")
+        .expect("clippy_lint stdout should match type")
+        .boundary_str("clippy_lint", "stderr", "")
+        .expect("clippy_lint stderr should match type")
+        .boundary_bool("clippy_lint", "skip", false)
+        .expect("clippy_lint skip should match type")
+        .build_unchecked()
         .resource_lock("cargo:build")
         .resource_lock("cargo:test")
         .resource_lock("cargo:clippy")
 }
 
 /// Mock spec for testing build failure.
+///
+/// Uses explicit mocks to model execute_build returning a failed response.
 pub fn ci_mock_spec_build_fails() -> MockSpec {
-    with_ci_intercept_mocks(MockSpec::new("ci"))
-        .boundary("report", "overall_success", Value::Bool(false))
-        .boundary("report", "report", Value::Str(mock_ci_report_build_fail()))
+    let dag = build_ci_graph().expect("ci graph should build");
+
+    extract_mock_requirements(&dag, "ci")
+        // Resource: runner_env provides tool handles
+        .boundary("runner_env", "tool:clippy", ToolHandle::mock(&CLIPPY))
+        .expect("runner_env tool:clippy should match type")
+        // Transport: execute_deps_exists (success)
+        .transport_response(
+            "execute_deps_exists",
+            "response",
+            TransportResponse::File(FileResponse {
+                path: "deps.toml".into(),
+                operation: FileOp::Exists,
+                success: true,
+                content: None,
+                exists: Some(true),
+                error: None,
+            }),
+        )
+        .expect("execute_deps_exists response should match type")
+        // Transport: execute_codegen_exists (success)
+        .transport_response(
+            "execute_codegen_exists",
+            "response",
+            TransportResponse::File(FileResponse {
+                path: "Cargo.toml".into(),
+                operation: FileOp::Exists,
+                success: true,
+                content: None,
+                exists: Some(true),
+                error: None,
+            }),
+        )
+        .expect("execute_codegen_exists response should match type")
+        // Transport: execute_codegen (skipped)
+        .boundary("execute_codegen", "response", Value::Skipped)
+        .expect("execute_codegen response should match type")
+        .boundary_bool("execute_codegen", "skip", true)
+        .expect("execute_codegen skip should match type")
+        // Transport: execute_build (FAILS)
+        .transport_response(
+            "execute_build",
+            "response",
+            TransportResponse::Shell(ShellResponse::failed(
+                1,
+                "error[E0382]: borrow of moved value: `x`\n  --> src/main.rs:5:13",
+            )),
+        )
+        .expect("execute_build response should match type")
+        .boundary_bool("execute_build", "skip", false)
+        .expect("execute_build skip should match type")
+        .boundary_str("execute_build", "skip_reason", "")
+        .expect("execute_build skip_reason should match type")
+        // Transport: execute_test (skipped due to build failure)
+        .boundary("execute_test", "response", Value::Skipped)
+        .expect("execute_test response should match type")
+        .boundary_bool("execute_test", "skip", true)
+        .expect("execute_test skip should match type")
+        .boundary_str("execute_test", "skip_reason", "Build failed")
+        .expect("execute_test skip_reason should match type")
+        // CliTool: clippy_lint (skipped due to build failure)
+        .boundary_bool("clippy_lint", "success", false)
+        .expect("clippy_lint success should match type")
+        .boundary_str("clippy_lint", "stdout", "")
+        .expect("clippy_lint stdout should match type")
+        .boundary_str("clippy_lint", "stderr", "")
+        .expect("clippy_lint stderr should match type")
+        .boundary_bool("clippy_lint", "skip", true)
+        .expect("clippy_lint skip should match type")
+        .build_unchecked()
         .resource_lock("cargo:build")
 }
 
 /// Mock spec for testing prep/codegen failure.
+///
+/// Uses explicit mocks to model execute_codegen returning a failed response.
 pub fn ci_mock_spec_prep_fails() -> MockSpec {
-    with_ci_intercept_mocks(MockSpec::new("ci"))
-        .boundary("prep", "prep_success", Value::Bool(false))
-        .boundary("prep", "codegen_ran", Value::Bool(true))
-        .boundary("prep", "prep_message", Value::Str("Codegen failed".into()))
-        .boundary("report", "overall_success", Value::Bool(false))
-        .boundary("report", "report", Value::Str(mock_ci_report_prep_fail()))
+    let dag = build_ci_graph().expect("ci graph should build");
+
+    extract_mock_requirements(&dag, "ci")
+        // Resource: runner_env provides tool handles
+        .boundary("runner_env", "tool:clippy", ToolHandle::mock(&CLIPPY))
+        .expect("runner_env tool:clippy should match type")
+        // Transport: execute_deps_exists (success)
+        .transport_response(
+            "execute_deps_exists",
+            "response",
+            TransportResponse::File(FileResponse {
+                path: "deps.toml".into(),
+                operation: FileOp::Exists,
+                success: true,
+                content: None,
+                exists: Some(true),
+                error: None,
+            }),
+        )
+        .expect("execute_deps_exists response should match type")
+        // Transport: execute_codegen_exists (codegen needed)
+        .transport_response(
+            "execute_codegen_exists",
+            "response",
+            TransportResponse::File(FileResponse {
+                path: "Cargo.toml".into(),
+                operation: FileOp::Exists,
+                success: true,
+                content: None,
+                exists: Some(false), // Codegen output doesn't exist
+                error: None,
+            }),
+        )
+        .expect("execute_codegen_exists response should match type")
+        // Transport: execute_codegen (FAILS)
+        .transport_response(
+            "execute_codegen",
+            "response",
+            TransportResponse::Shell(ShellResponse::failed(
+                1,
+                "error: codegen failed: template not found",
+            )),
+        )
+        .expect("execute_codegen response should match type")
+        .boundary_bool("execute_codegen", "skip", false)
+        .expect("execute_codegen skip should match type")
+        // Transport: execute_build (skipped)
+        .boundary("execute_build", "response", Value::Skipped)
+        .expect("execute_build response should match type")
+        .boundary_bool("execute_build", "skip", true)
+        .expect("execute_build skip should match type")
+        .boundary_str("execute_build", "skip_reason", "Prep failed")
+        .expect("execute_build skip_reason should match type")
+        // Transport: execute_test (skipped)
+        .boundary("execute_test", "response", Value::Skipped)
+        .expect("execute_test response should match type")
+        .boundary_bool("execute_test", "skip", true)
+        .expect("execute_test skip should match type")
+        .boundary_str("execute_test", "skip_reason", "Prep failed")
+        .expect("execute_test skip_reason should match type")
+        // CliTool: clippy_lint (skipped)
+        .boundary_bool("clippy_lint", "success", false)
+        .expect("clippy_lint success should match type")
+        .boundary_str("clippy_lint", "stdout", "")
+        .expect("clippy_lint stdout should match type")
+        .boundary_str("clippy_lint", "stderr", "")
+        .expect("clippy_lint stderr should match type")
+        .boundary_bool("clippy_lint", "skip", true)
+        .expect("clippy_lint skip should match type")
+        .build_unchecked()
 }
 
 /// Mock spec for testing lint failure.
+///
+/// Uses explicit mocks to model clippy_lint returning a failure.
 pub fn ci_mock_spec_lint_fails() -> MockSpec {
-    with_ci_intercept_mocks(MockSpec::new("ci"))
-        .boundary("report", "overall_success", Value::Bool(false))
-        .boundary("report", "report", Value::Str(mock_ci_report_lint_fail()))
+    let dag = build_ci_graph().expect("ci graph should build");
+
+    extract_mock_requirements(&dag, "ci")
+        // Resource: runner_env provides tool handles
+        .boundary("runner_env", "tool:clippy", ToolHandle::mock(&CLIPPY))
+        .expect("runner_env tool:clippy should match type")
+        // Transport: execute_deps_exists (success)
+        .transport_response(
+            "execute_deps_exists",
+            "response",
+            TransportResponse::File(FileResponse {
+                path: "deps.toml".into(),
+                operation: FileOp::Exists,
+                success: true,
+                content: None,
+                exists: Some(true),
+                error: None,
+            }),
+        )
+        .expect("execute_deps_exists response should match type")
+        // Transport: execute_codegen_exists (success)
+        .transport_response(
+            "execute_codegen_exists",
+            "response",
+            TransportResponse::File(FileResponse {
+                path: "Cargo.toml".into(),
+                operation: FileOp::Exists,
+                success: true,
+                content: None,
+                exists: Some(true),
+                error: None,
+            }),
+        )
+        .expect("execute_codegen_exists response should match type")
+        // Transport: execute_codegen (skipped)
+        .boundary("execute_codegen", "response", Value::Skipped)
+        .expect("execute_codegen response should match type")
+        .boundary_bool("execute_codegen", "skip", true)
+        .expect("execute_codegen skip should match type")
+        // Transport: execute_build (success)
+        .transport_response(
+            "execute_build",
+            "response",
+            TransportResponse::Shell(ShellResponse::ok(
+                "Compiling gunbc v0.1.0\n    Finished dev target(s)",
+            )),
+        )
+        .expect("execute_build response should match type")
+        .boundary_bool("execute_build", "skip", false)
+        .expect("execute_build skip should match type")
+        .boundary_str("execute_build", "skip_reason", "")
+        .expect("execute_build skip_reason should match type")
+        // Transport: execute_test (success)
+        .transport_response(
+            "execute_test",
+            "response",
+            TransportResponse::Shell(ShellResponse::ok(
+                "running 42 tests\ntest result: ok. 42 passed",
+            )),
+        )
+        .expect("execute_test response should match type")
+        .boundary_bool("execute_test", "skip", false)
+        .expect("execute_test skip should match type")
+        .boundary_str("execute_test", "skip_reason", "")
+        .expect("execute_test skip_reason should match type")
+        // CliTool: clippy_lint (FAILS)
+        .boundary_bool("clippy_lint", "success", false)
+        .expect("clippy_lint success should match type")
+        .boundary_str("clippy_lint", "stdout", "")
+        .expect("clippy_lint stdout should match type")
+        .boundary_str("clippy_lint", "stderr", "error: unused variable `x`\n  --> src/main.rs:3:9\n   |\n3  |     let x = 1;\n   |         ^ help: if this is intentional, prefix it with an underscore: `_x`\n   |\n   = note: `-D unused-variables` implied by `-D warnings`")
+        .expect("clippy_lint stderr should match type")
+        .boundary_bool("clippy_lint", "skip", false)
+        .expect("clippy_lint skip should match type")
+        .build_unchecked()
         .resource_lock("cargo:build")
         .resource_lock("cargo:test")
         .resource_lock("cargo:clippy")
@@ -280,163 +579,126 @@ pub fn ci_mock_spec_lint_fails() -> MockSpec {
 
 /// Mock spec with build lock contention.
 pub fn ci_mock_spec_build_contended() -> MockSpec {
-    with_ci_intercept_mocks(MockSpec::new("ci"))
-        .boundary("report", "overall_success", Value::Bool(false))
-        .boundary(
-            "report",
-            "report",
-            Value::Str("Build blocked: another build in progress".into()),
-        )
+    let dag = build_ci_graph().expect("ci graph should build");
+
+    // All mocks (including clippy_lint) are handled by with_ci_typed_mocks
+    with_ci_typed_mocks(extract_mock_requirements(&dag, "ci"))
+        .build_unchecked()
         .resource_lock_fails("cargo:build", "Another cargo build is in progress")
 }
 
-fn with_ci_intercept_mocks(spec: MockSpec) -> MockSpec {
-    spec
-        // Env: tool acquisition
-        .boundary(
-            "runner_env",
-            "tool:clippy",
-            ToolHandle::mock(&CLIPPY).into(),
-        )
-        // Transport mocks: values returned by intercepted transport executor nodes
-        // -- SetupDeps: deps.toml exists
-        .transport_mock(
+/// Helper to fill common CI transport mocks using typed builder.
+///
+/// This fills all the required slots for transport, resource, and CLI tool nodes
+/// in the CI graph. Includes clippy_lint which is now detected as a CliTool node
+/// (has ToolHandle input).
+fn with_ci_typed_mocks(
+    reqs: gunbc_test::MockRequirements,
+) -> gunbc_test::MockRequirements {
+    reqs
+        // Resource: runner_env provides tool handles
+        .boundary("runner_env", "tool:clippy", ToolHandle::mock(&CLIPPY))
+        .expect("runner_env tool:clippy should match type")
+        // Transport: execute_deps_exists (check deps.toml)
+        .transport_response(
             "execute_deps_exists",
             "response",
-            Value::Response(
-                FileResponse {
-                    path: "deps.toml".into(),
-                    operation: FileOp::Exists,
-                    success: true,
-                    content: None,
-                    exists: Some(true),
-                    error: None,
-                }
-                .into(),
-            ),
+            TransportResponse::File(FileResponse {
+                path: "deps.toml".into(),
+                operation: FileOp::Exists,
+                success: true,
+                content: None,
+                exists: Some(true),
+                error: None,
+            }),
         )
-        // -- Prep: codegen output already exists
-        .transport_mock(
+        .expect("execute_deps_exists response should match type")
+        // Transport: execute_codegen_exists (check codegen output)
+        .transport_response(
             "execute_codegen_exists",
             "response",
-            Value::Response(
-                FileResponse {
-                    path: "Cargo.toml".into(),
-                    operation: FileOp::Exists,
-                    success: true,
-                    content: None,
-                    exists: Some(true),
-                    error: None,
-                }
-                .into(),
-            ),
+            TransportResponse::File(FileResponse {
+                path: "Cargo.toml".into(),
+                operation: FileOp::Exists,
+                success: true,
+                content: None,
+                exists: Some(true),
+                error: None,
+            }),
         )
-        // -- Codegen: skipped (already exists)
-        .transport_mock("execute_codegen", "response", Value::Skipped)
-        .transport_mock("execute_codegen", "skip", Value::Bool(true))
-        // -- Build: succeeds
-        .transport_mock(
+        .expect("execute_codegen_exists response should match type")
+        // Transport: execute_codegen (skipped - already exists)
+        .boundary("execute_codegen", "response", Value::Skipped)
+        .expect("execute_codegen response should match type")
+        .boundary_bool("execute_codegen", "skip", true)
+        .expect("execute_codegen skip should match type")
+        // Transport: execute_build (succeeds)
+        .transport_response(
             "execute_build",
             "response",
-            Value::Response(
-                ShellResponse::ok("Compiling gunbc v0.1.0\n    Finished dev target(s)").into(),
-            ),
+            TransportResponse::Shell(ShellResponse::ok(
+                "Compiling gunbc v0.1.0\n    Finished dev target(s)",
+            )),
         )
-        .transport_mock("execute_build", "skip", Value::Bool(false))
-        .transport_mock("execute_build", "skip_reason", Value::Str(String::new()))
-        // -- Test: succeeds
-        .transport_mock(
+        .expect("execute_build response should match type")
+        .boundary_bool("execute_build", "skip", false)
+        .expect("execute_build skip should match type")
+        .boundary_str("execute_build", "skip_reason", "")
+        .expect("execute_build skip_reason should match type")
+        // Transport: execute_test (succeeds)
+        .transport_response(
             "execute_test",
             "response",
-            Value::Response(
-                ShellResponse::ok("running 42 tests\ntest result: ok. 42 passed").into(),
-            ),
+            TransportResponse::Shell(ShellResponse::ok(
+                "running 42 tests\ntest result: ok. 42 passed",
+            )),
         )
-        .transport_mock("execute_test", "skip", Value::Bool(false))
-        .transport_mock("execute_test", "skip_reason", Value::Str(String::new()))
-        // -- Clippy lint: succeeds (intercepted because it consumes ToolHandle)
-        .transport_mock("clippy_lint", "success", Value::Bool(true))
-        .transport_mock(
-            "clippy_lint",
-            "stdout",
-            Value::Str("Checking gunbc v0.1.0\n    Finished dev".into()),
-        )
-        .transport_mock("clippy_lint", "stderr", Value::Str(String::new()))
-        .transport_mock("clippy_lint", "skip", Value::Bool(false))
-}
-
-fn mock_ci_report_success() -> String {
-    r#"CI Report
-=========
-Build:  PASS
-Test:   PASS (42 tests)
-Lint:   PASS
-
-Overall: SUCCESS"#
-        .to_string()
-}
-
-fn mock_ci_report_test_fail() -> String {
-    r#"CI Report
-=========
-Build:  PASS
-Test:   FAIL (2 failures)
-Lint:   PASS
-
-Overall: FAILURE"#
-        .to_string()
-}
-
-fn mock_ci_report_build_fail() -> String {
-    r#"CI Report
-=========
-Build:  FAIL (compilation error)
-Test:   SKIPPED
-Lint:   SKIPPED
-
-Overall: FAILURE"#
-        .to_string()
-}
-
-fn mock_ci_report_prep_fail() -> String {
-    r#"CI Report
-=========
-Prep:   FAIL (codegen error)
-Build:  SKIPPED
-Test:   SKIPPED
-Lint:   SKIPPED
-
-Overall: FAILURE"#
-        .to_string()
-}
-
-fn mock_ci_report_lint_fail() -> String {
-    r#"CI Report
-=========
-Build:  PASS
-Test:   PASS (42 tests)
-Lint:   FAIL (3 warnings as errors)
-
-Overall: FAILURE"#
-        .to_string()
+        .expect("execute_test response should match type")
+        .boundary_bool("execute_test", "skip", false)
+        .expect("execute_test skip should match type")
+        .boundary_str("execute_test", "skip_reason", "")
+        .expect("execute_test skip_reason should match type")
+        // CliTool: clippy_lint (succeeds) - now detected by extract_mock_requirements
+        .boundary_bool("clippy_lint", "success", true)
+        .expect("clippy_lint success should match type")
+        .boundary_str("clippy_lint", "stdout", "Checking gunbc v0.1.0\n    Finished dev")
+        .expect("clippy_lint stdout should match type")
+        .boundary_str("clippy_lint", "stderr", "")
+        .expect("clippy_lint stderr should match type")
+        .boundary_bool("clippy_lint", "skip", false)
+        .expect("clippy_lint skip should match type")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    // ========================================================================
+    // Mock spec tests (Pattern B - mock value properties)
+    // ========================================================================
+
     #[test]
-    fn test_mock_spec_success() {
+    fn test_mock_spec_has_transport_mocks() {
         let spec = ci_mock_spec();
-        let success = spec.get_boundary_mock("report", "overall_success").unwrap();
-        assert!(matches!(success, Value::Bool(true)));
+        // All transport mocks should be present
+        assert!(spec
+            .get_transport_mock("execute_deps_exists", "response")
+            .is_some());
+        assert!(spec
+            .get_transport_mock("execute_codegen_exists", "response")
+            .is_some());
+        assert!(spec.get_transport_mock("execute_build", "response").is_some());
+        assert!(spec.get_transport_mock("execute_test", "response").is_some());
+        // CliTool mocks
+        assert!(spec.get_transport_mock("clippy_lint", "success").is_some());
     }
 
     #[test]
-    fn test_mock_spec_failure() {
-        let spec = ci_mock_spec_test_fails();
-        let success = spec.get_boundary_mock("report", "overall_success").unwrap();
-        assert!(matches!(success, Value::Bool(false)));
+    fn test_mock_spec_has_resource_mock() {
+        let spec = ci_mock_spec();
+        // runner_env provides tool:clippy
+        let handle = spec.get_boundary_mock("runner_env", "tool:clippy").unwrap();
+        assert!(matches!(handle, Value::Map(_)));
     }
 
     #[test]
@@ -451,14 +713,12 @@ mod tests {
     }
 
     #[test]
-    fn test_report_contains_status() {
-        let spec = ci_mock_spec();
-        let report = spec.get_boundary_mock("report", "report").unwrap();
-        if let Value::Str(s) = report {
-            assert!(s.contains("SUCCESS"));
-            assert!(s.contains("Build:  PASS"));
-        } else {
-            panic!("Expected string report");
-        }
+    fn test_typed_builder_rejects_wrong_slot() {
+        let dag = build_ci_graph().expect("graph should build");
+        let reqs = extract_mock_requirements(&dag, "ci");
+
+        // Try to set a mock for a non-existent node
+        let result = reqs.boundary_str("nonexistent_node", "port", "value");
+        assert!(result.is_err());
     }
 }

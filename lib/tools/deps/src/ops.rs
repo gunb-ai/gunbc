@@ -7,7 +7,7 @@ use crate::installer::Installer;
 use crate::manifest::DepsManifest;
 use crate::upsert::upsert_dry_run;
 use gunbc_exec::{
-    optional_str, require_response, require_str, ExecError, Executable, OutputMap,
+    optional_str, require_response, require_str, ExecError, Executable, IntoExecResult, OutputMap,
     TransportResponseExt,
 };
 use gunbc_ir::transport::{FileRequest, ShellRequest, TransportRequest, TransportResponse};
@@ -190,7 +190,7 @@ fn execute_parse_manifest(
 
     // Domain-specific: Use DepsManifest for structured extraction
     let manifest = DepsManifest::parse(&content)
-        .map_err(|e| ExecError::new(format!("failed to parse manifest: {}", e)))?;
+        .exec_context("failed to parse manifest")?;
 
     let dep_names: Vec<String> = manifest.dependency.iter().map(|d| d.name.clone()).collect();
 
@@ -216,7 +216,7 @@ fn execute_generate_scripts(
 
     // Parse the manifest content (no file I/O)
     let manifest = DepsManifest::parse(manifest_content)
-        .map_err(|e| ExecError::new(format!("failed to parse manifest: {}", e)))?;
+        .exec_context("failed to parse manifest")?;
 
     // Use platform from DAG input (acquired at boundary)
     let platform_str = require_str(&inputs, "res:platform")?;

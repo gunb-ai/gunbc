@@ -15,7 +15,7 @@
 //! This structural enforcement ensures all I/O goes through visible DAG nodes.
 
 use crate::executor::execute_transport;
-use gunbc_exec::{optional_bool, require_request, ExecError, Executable, OutputMap};
+use gunbc_exec::{optional_bool, require_request, ExecError, Executable, IntoExecResult, OutputMap};
 use gunbc_ir::transport::{AuthMethod, TransportRequest, TransportResponse};
 use gunbc_ir::{AuthToken, Value};
 use std::collections::HashMap;
@@ -97,7 +97,7 @@ impl Executable for TransportOps {
 /// This function is NOT exported - it's only callable from within this crate.
 /// External code must use `TransportOps::Execute` nodes in a DAG.
 pub(crate) fn execute_request(request: &TransportRequest) -> Result<TransportResponse, ExecError> {
-    execute_transport(request).map_err(|e| ExecError::new(format!("transport error: {}", e)))
+    execute_transport(request).exec_context("transport error")
 }
 
 fn resolve_auth_with_token(auth: &AuthMethod, token: &AuthToken) -> Result<AuthMethod, ExecError> {

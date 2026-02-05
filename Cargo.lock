@@ -260,8 +260,10 @@ dependencies = [
  "gunbc-ir",
  "gunbc-lib-transport",
  "gunbc-test",
+ "hex",
  "serde",
  "serde_json",
+ "sha2",
 ]
 
 [[package]]
@@ -314,10 +316,10 @@ dependencies = [
  "gunbc-lib-git-ops",
  "gunbc-lib-llm-ops",
  "gunbc-lib-transport",
+ "gunbc-primitives",
  "gunbc-test",
  "serde",
  "serde_json",
- "sha2",
 ]
 
 [[package]]
@@ -336,8 +338,10 @@ version = "0.1.0"
 dependencies = [
  "gunbc-exec",
  "gunbc-ir",
+ "hex",
  "serde",
  "serde_json",
+ "sha2",
  "tempfile",
  "toml",
 ]
