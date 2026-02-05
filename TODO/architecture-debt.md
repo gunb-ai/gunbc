@@ -63,6 +63,13 @@ gunbc-dag/src/bin/testgen.rs:356: #[allow(clippy::disallowed_methods)]
 
 **Pattern**: Infrastructure code scattered across crates, each needing exemptions.
 
+**Recent commits adding more exemptions:**
+```
+c3d753c (2026-01-31) "Add clippy::disallowed_methods exemption for testgen binary
+                      (code generator needs direct filesystem access)"
+```
+Comment in code: "same exemption as gunbc-codegen" — showing the pattern continues.
+
 ### Issue 2: Duplicate Code — Same Hash Logic in Two Places
 
 **core/codegen/src/main.rs:790-813:**
@@ -147,16 +154,17 @@ let (builder, _) = builder.update_glob("core/ir/src/**/*.rs")?;
 
 **Should be**: 0 file reads (mtime fast path) or ~3 file reads (only changed files).
 
-### Issue 5: Non-Uniform Hashing — Different Algorithms in Different Places
+### Issue 5: Non-Uniform Hashing — Different Algorithms AND Encodings
 
 **Hash implementations in the codebase:**
 
-| Location | Algorithm | Purpose |
-|----------|-----------|---------|
-| `core/ir/src/resource/hash.rs` | SHA-256 (sha2 crate) | Resource freshness keys |
-| `lib/blob/src/lib.rs` | `DefaultHasher` (64-bit) | BlobMeta content hash |
+| Location | Algorithm | Encoding | Status |
+|----------|-----------|----------|--------|
+| `core/ir/src/resource/hash.rs` | SHA-256 | path+NUL+len+content+NUL | ✓ Fixed |
+| `lib/blob/src/lib.rs` | DefaultHasher (64-bit) | raw content | ⚠️ Wrong algorithm |
+| `lib/review/src/lib.rs` | SHA-256 | colon separator | ⚠️ Collision bug |
 
-**Problem**: Two different hashing strategies for content identity:
+**Problem 1: Different algorithms**
 
 1. **SHA-256 (resource model)** — Cryptographically strong, 256-bit, hex-encoded
 2. **DefaultHasher (blob)** — Fast but weak, 64-bit, collision-prone
@@ -175,19 +183,51 @@ fn compute_hash(content: &str) -> String {
 
 **Note**: Comment says "could use SHA256 later" — should be unified.
 
+**Problem 2: Boundary collision bugs in multiple places**
+
+The same boundary collision bug pattern exists/existed in multiple locations:
+
+| Location | Bug | Status |
+|----------|-----|--------|
+| `core/ir/src/resource/hash.rs` | `["ab","c"]` vs `["a","bc"]` same hash | ✅ Fixed (NUL+length prefix) |
+| `lib/review/src/lib.rs:523` | `check_id="a", issue_key="b:c"` vs `check_id="a:b", issue_key="c"` | ⚠️ Still buggy |
+
+**lib/review/src/lib.rs:523-531 (still has bug):**
+```rust
+pub fn hash_finding_id(issue_key: &str, check_id: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(check_id.as_bytes());
+    hasher.update(b":");           // <-- Simple colon separator
+    hasher.update(issue_key.as_bytes());
+    let result = hasher.finalize();
+    hex::encode(&result[..16])
+}
+```
+
+**Collision example:**
+- `check_id="a", issue_key="b:c"` → bytes: `a:b:c`
+- `check_id="a:b", issue_key="c"` → bytes: `a:b:c` (SAME!)
+
+**Root cause**: No central hashing utility. Each module implements its own hash
+function, each with subtly different encoding. Bugs get fixed in one place but
+the same bug exists elsewhere.
+
 **Hash/staleness call sites inventory:**
 
-| Caller | Hash Function | Inputs | Output |
+| Caller | Hash Function | Inputs | Status |
 |--------|--------------|--------|--------|
-| `codegen/main.rs` | `compute_codegen_input_hash()` | codegen+ir sources, Cargo.toml, RUSTC_VERSION | manifest `build:generated_cli` |
-| `ci/ops.rs` | `compute_codegen_input_hash()` | (DUPLICATE of above) | freshness check |
-| `testgen.rs` | `compute_testgen_input_hash()` | dag+ir+lib sources, codegen key | manifest `build:generated_tests` |
-| `lib/blob` | `BlobMeta::compute_hash()` | blob content | metadata field |
+| `codegen/main.rs` | `compute_codegen_input_hash()` | codegen+ir sources | ✓ Uses HashBuilder |
+| `ci/ops.rs` | `compute_codegen_input_hash()` | (DUPLICATE of above) | ⚠️ Duplicate |
+| `testgen.rs` | `compute_testgen_input_hash()` | dag+ir+lib sources | ✓ Uses HashBuilder |
+| `lib/blob` | `BlobMeta::compute_hash()` | blob content | ⚠️ Wrong algorithm |
+| `lib/review` | `hash_finding_id()` | check_id + issue_key | ⚠️ Collision bug |
 
 **Post-infra extraction**:
 - Single `compute_codegen_input_hash()` in `gunbc-infra`
+- Single `hash_parts(&[&str])` utility with proper encoding
 - Migrate `BlobMeta` to use infra's `ContentHash` or keep separate (if perf-critical)
-- Document hash algorithm policy: SHA-256 for identity, DefaultHasher only for perf-critical non-security uses
+- Migrate `hash_finding_id` to use infra utility
+- Document hash algorithm policy: SHA-256 for identity, length-prefix encoding for multi-part hashes
 
 ---
 
