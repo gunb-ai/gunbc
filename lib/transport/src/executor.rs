@@ -430,7 +430,7 @@ fn execute_shell(request: &ShellRequest) -> Result<ShellResponse, TransportError
 mod tests {
     use super::*;
     use std::env::temp_dir;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
 
     /// Generate a unique temp file path for testing.
     fn temp_path(name: &str) -> PathBuf {
@@ -884,7 +884,7 @@ mod tests {
         }
 
         /// Helper: add a file and commit it.
-        fn add_and_commit(repo: &PathBuf, filename: &str, content: &str, message: &str) {
+        fn add_and_commit(repo: &Path, filename: &str, content: &str, message: &str) {
             let filepath = repo.join(filename);
             if let Some(parent) = filepath.parent() {
                 fs::create_dir_all(parent).ok();
