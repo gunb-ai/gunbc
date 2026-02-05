@@ -907,20 +907,20 @@ This is fine; it's infrastructure code, not op code.
 - [x] Add `From<ShellRequest> for TransportRequest` (+ FileRequest, RestRequest, etc.) — all 5 request types + 5 response types
 
 ### High priority (remaining)
-- [ ] Add `InputsExt` trait to replace free-function `require_*/optional_*` calls — shrinks import lists
+- [x] Add `InputsExt` trait to replace free-function `require_*/optional_*` calls — shrinks import lists
 - [x] Migrate call sites to use `propagate_skipped` (8 sites, 3 files)
 - [x] Migrate call sites to use `ShellResponse::ok()/failed()` + `From` impls (graph_mock, bin, ops, tests)
-- [ ] Migrate remaining call sites to use `ExecError::context()` / `ResultExt` (~42 sites, 12 files)
+- [x] Migrate remaining call sites to use `ExecError::context()` / `ResultExt` / `IntoExecResult` (~42 sites, 12 files)
 
 ### Medium priority
 - [x] Migrate remaining raw `HashMap::new()` output construction to `OutputMap` — §15
   - Migrated: `lib/tools/cargo/src/ops.rs` (3 sites), `lib/tools/deps/src/graph.rs` (2 sites), `lib/primitives/src/collection.rs` (1 site)
   - Remaining: `core/ir/src/transport/cli.rs` (4 sites, can't use OutputMap — core/ir doesn't depend on core/exec), `core/exec/src/execute.rs` (1 test helper), `core/test/src/mock.rs` (1 test helper)
-- [ ] Add `assert_boundaries` test helper to `core/test` (8 files) — §11
-- [ ] Collapse `default_mock_for_type` into `cardinality_case_mock_value` in testgen codegen — single type→mock mapping
-- [ ] Extract `hash_finding_id` to `lib/primitives` as `StableHashOp` — §1
-- [ ] Unify blob hash with review hash (both should use SHA256) — §1
-- [ ] Extract `FormatDiffArtifact` to `lib/primitives` as `FormatMapOp` — §1
+- [x] Add `assert_boundaries` test helper to `core/test` (8 files) — §11
+- [x] Collapse `default_mock_for_type` into `cardinality_case_mock_value` in testgen codegen — single type→mock mapping
+- [x] Extract `hash_finding_id` to `lib/primitives` as `StableHashOp` — §1
+- [x] Unify blob hash with review hash (both should use SHA256) — §1
+- [x] Extract `FormatDiffArtifact` to `lib/primitives` as `FormatMapOp` — §1
 
 ### Lower priority / blocked
 - [ ] Consider `ToolGraphOp<D>` generic wrapper (dag-pattern-ux.md Phase 4) — §3
