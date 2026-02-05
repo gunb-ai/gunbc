@@ -7,6 +7,57 @@
 # Note: resolved items have been moved to `TODO/TODONE/TODO_hacks.md`
 # and `TODO/TODONE/TODO_hacks_general.md`.
 
+## URGENT: Lint config doesn't match crate boundaries
+
+**Problem:** The `disallowed_methods` lint (no direct `std::fs::*`) applies
+crate-wide, but the architectural boundary (DAG runtime vs build infrastructure)
+doesn't align with crate boundaries. Result: infrastructure code scattered
+across `gunbc-ir` and `gunbc-codegen` requires per-function `#[allow]` pragmas.
+
+Current pragmas (all should be removed after fix):
+- `core/ir/src/resource/hash.rs` — `from_file`, `update_file`
+- `core/ir/src/resource/manifest.rs` — `load`, `save`, tests module
+- `core/codegen/src/main.rs` — `write_codegen_manifest` (plus crate-level allow)
+- `gunbc-dag/src/bin/testgen.rs` — `write_testgen_manifest`
+
+**Root cause:** Two execution contexts with different I/O rules:
+1. **DAG runtime** — Must use transport layer (hermeticity, dry-run, testability)
+2. **Build infrastructure** — Runs outside DAG, needs real fs (codegen, manifest)
+
+These are mixed in the same crates, so we fight the lint system.
+
+**Fix:** Extract infrastructure into a separate crate with different lint config:
+
+```
+gunbc-infra/           # New crate, NO disallowed_methods rule
+  src/
+    hash.rs            # ContentHash, HashBuilder (moved from ir/resource/)
+    manifest.rs        # ResourceManifest (moved from ir/resource/)
+    lib.rs
+  Cargo.toml
+  clippy.toml          # No disallowed_methods for std::fs
+```
+
+Then:
+- `gunbc-ir` depends on `gunbc-infra` for hash/manifest types
+- `gunbc-codegen` depends on `gunbc-infra` for manifest writing
+- Remove all `#[allow(clippy::disallowed_methods)]` pragmas
+- Lint rule correctly applies only to DAG/runtime code
+
+**Benefits:**
+- No more allow pragmas fighting the lint system
+- Clear architectural boundary enforced by crate structure
+- Infrastructure code can freely use `std::fs` without exemptions
+
+Files affected:
+- `core/ir/src/resource/hash.rs` → move to `gunbc-infra`
+- `core/ir/src/resource/manifest.rs` → move to `gunbc-infra`
+- `core/codegen/src/main.rs` — remove allow, use `gunbc_infra`
+- `gunbc-dag/src/bin/testgen.rs` — remove allow, use `gunbc_infra`
+- `clippy.toml` — no changes needed (rule stays for DAG code)
+
+---
+
 ## DAG builder functions referenced as strings
 
 The codegen registry stores graph builder names as strings:
