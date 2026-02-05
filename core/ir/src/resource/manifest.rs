@@ -85,6 +85,7 @@ impl ResourceManifest {
     /// Load manifest from a file path.
     ///
     /// Returns an empty manifest if the file doesn't exist.
+    #[allow(clippy::disallowed_methods)] // Infrastructure code needs direct fs access
     pub fn load(path: impl AsRef<Path>) -> io::Result<Self> {
         let path = path.as_ref();
 
@@ -111,6 +112,7 @@ impl ResourceManifest {
     /// Save manifest atomically to a file path.
     ///
     /// Uses write-to-temp-then-rename for atomicity.
+    #[allow(clippy::disallowed_methods)] // Infrastructure code needs direct fs access
     pub fn save(&self, path: impl AsRef<Path>) -> io::Result<()> {
         let path = path.as_ref();
 
@@ -184,6 +186,7 @@ fn current_timestamp_millis() -> i64 {
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)] // Tests need direct fs access for cleanup
 mod tests {
     use super::*;
     use std::env;

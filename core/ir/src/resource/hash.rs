@@ -31,6 +31,7 @@ impl ContentHash {
     }
 
     /// Create a content hash from a file's contents.
+    #[allow(clippy::disallowed_methods)] // Infrastructure code needs direct fs access
     pub fn from_file(path: impl AsRef<Path>) -> io::Result<Self> {
         let contents = fs::read(path)?;
         Ok(Self::from_bytes(&contents))
@@ -109,6 +110,7 @@ impl HashBuilder {
     /// Add a file's contents to the hash.
     ///
     /// Returns an error if the file cannot be read.
+    #[allow(clippy::disallowed_methods)] // Infrastructure code needs direct fs access
     pub fn update_file(self, path: impl AsRef<Path>) -> io::Result<Self> {
         let contents = fs::read(path)?;
         Ok(self.update(&contents))
