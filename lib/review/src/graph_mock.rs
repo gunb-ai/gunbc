@@ -228,37 +228,6 @@ mod tests {
     }
 
     #[test]
-    fn test_inline_mock_spec_has_transport_mock() {
-        let spec = inline_review_mock_spec();
-        // execute_llm transport mock should be present
-        assert!(spec.get_transport_mock("execute_llm", "response").is_some());
-    }
-
-    #[test]
-    fn test_inline_mock_spec_has_resource_mock() {
-        let spec = inline_review_mock_spec();
-        // auth_env provides auth token
-        let token = spec.get_boundary_mock("auth_env", "auth:llm").unwrap();
-        assert!(matches!(token, Value::Map(_)));
-    }
-
-    #[test]
-    fn test_diff_mock_spec_has_transport_mocks() {
-        let spec = diff_review_mock_spec();
-        // Both execute_diff and execute_llm should have transport mocks
-        assert!(spec.get_transport_mock("execute_diff", "response").is_some());
-        assert!(spec.get_transport_mock("execute_llm", "response").is_some());
-    }
-
-    #[test]
-    fn test_diff_mock_spec_has_resource_mock() {
-        let spec = diff_review_mock_spec();
-        // auth_env provides auth token
-        let token = spec.get_boundary_mock("auth_env", "auth:llm").unwrap();
-        assert!(matches!(token, Value::Map(_)));
-    }
-
-    #[test]
     fn test_typed_builder_rejects_wrong_slot() {
         let dag = build_inline_review_graph();
         let reqs = extract_mock_requirements(&dag, "review-inline");

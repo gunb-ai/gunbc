@@ -397,14 +397,16 @@ deleted or reduced to edge-case-only suites.
 
 ### Pattern 6: graph_mock.rs Test Blocks
 
-49 hand-written tests across 8 `graph_mock.rs` files. These test
-MockSpec properties (boundary presence, mock value content, chain
-validation, resources). All are mechanically generatable.
+~33 hand-written tests remain across 8 `graph_mock.rs` files (down from
+49 after consolidation cleanup deleted 16 Pattern A/D tests). These test
+MockSpec properties (mock value content, chain validation, typed builder
+rejection). See `testgen-improvements.md` Phase 8 for the full extraction
+plan and updated per-file test counts.
 
-**See**: `testgen-improvements.md` Phase 8 for the full extraction
-plan. Patterns A (boundary presence) and C (`validate_chain`)
-are safe to delete now — testgen already generates equivalent tests.
-Pattern E (signature validation) needs TODO 8.2 first.
+**Completed**: Patterns A (boundary presence) and D (resource acquire)
+tests deleted — testgen generates equivalent tests.
+**Remaining**: Pattern B (content validation), Pattern E (typed builder),
+and utility tests.
 
 ---
 
@@ -788,6 +790,11 @@ if let Some(result) = propagate_skipped(&inputs, "response",
 
 ## 13. Error mapping boilerplate — 23 `.map_err` + 4 `.map_err(ExecError::new)` across 10 files
 
+**Status**: `IntoExecResult::exec_context()` implemented in `core/exec/src/error.rs`.
+Migrated: `lib/llm-ops/src/lib.rs` (4 sites), `lib/tools/cargo/src/ops.rs` (1),
+`gunbc-dag/src/ci/graph.rs` (1). Remaining sites in review, primitives, blob, deps,
+transport, env, workspace are lower-urgency (existing code works).
+
 **Where**: `lib/review/src/lib.rs` (5), `lib/llm-ops/src/lib.rs` (4),
 `core/exec/src/execute.rs` (4), `lib/primitives/src/data.rs` (3),
 `gunbc-dag/src/ci/graph.rs` (3), `lib/blob/src/lib.rs` (2),
@@ -834,6 +841,13 @@ serde_json::from_str(&text).exec_context("JSON parse error")?;
 
 ## 14. ShellResponse construction — 39 direct constructions across 16 files
 
+**Status**: `ShellResponse::ok()` and `ShellResponse::failed()` constructors
+already existed in `core/ir/src/transport/mod.rs:249-264`. Migrated all non-test,
+non-generated sites: 3 binaries (codegen, bootstrap, build), gist graph_mock (6),
+deps graph_mock (1), gist graph (1), build/ops tests (2), codegen registry
+templates (~10). Only `lib/transport/src/executor.rs:422` kept (needs both
+stdout AND stderr from real process output).
+
 **Where**: `core/codegen/src/registry.rs` (6),
 `lib/tools/gist/tests/integration.rs` (6),
 `lib/tools/gist/tests/generated_tests.rs` (6),
@@ -874,6 +888,10 @@ impl ShellResponse {
 ---
 
 ## 15. Unmigrated ops still using raw HashMap — 13 sites across 7 files
+
+**Status**: `gunbc-dag/src/build/ops.rs` (7 sites) migrated to `OutputMap`.
+`gunbc-dag/src/ci/ops.rs` was already migrated earlier. Remaining sites
+below are in mock/infra code where `OutputMap` is unavailable or unnecessary.
 
 **Where**: `lib/tools/cargo/src/ops.rs` (3 in `mock_outputs`),
 `lib/tools/deps/src/graph.rs` (2 in mock closures),
@@ -939,9 +957,11 @@ This is fine; it's infrastructure code, not op code.
 - Testgen already subsumes most hand-written integration tests
   (Pattern 5). Focus hand-written tests on edge cases only.
 - graph_mock.rs files should become data-only (MockSpec + examples).
-  49 tests across 8 files are deletable once testgen Phase 8 lands.
-  Watch: some library targets call `.no_boundary_tests()` — verify
-  generated suite still covers those invariants before deleting.
+  ~33 tests remain across 8 files (down from 49 after Pattern A/D
+  deletion). Remaining are Pattern B (content), Pattern E (typed builder),
+  and utility tests. Watch: some library targets call
+  `.no_boundary_tests()` — verify generated suite still covers those
+  invariants before deleting.
 - Makefile gen and CI gen should read `all_testgen_targets()` to
   auto-generate check targets (testgen-improvements.md TODO 6.3).
   This makes "add a new tool" a single edit instead of 3+.

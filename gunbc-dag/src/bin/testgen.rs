@@ -10,12 +10,15 @@
 
 use gunbc_codegen::testgen::{TestConfig, TestGenerator};
 use gunbc_codegen::{FileWriter, TestgenTargetDef};
+use gunbc_dag::testgen_resource_def;
 use gunbc_exec::Executable;
-use gunbc_ir::resource::{ContentHash, HashBuilder, ManifestEntry, ResourceManifest};
-use gunbc_ir::{Dag, ResourceId};
+use gunbc_ir::resource::{
+    compute_key_from_def, ExecMode, ManagedResource, ManifestEntry, ResourceDef, ResourceError,
+    ResourceManifest,
+};
+use gunbc_ir::Dag;
 use gunbc_test::MockSpec;
 use std::env;
-use std::io;
 use std::path::PathBuf;
 use std::process;
 
@@ -316,76 +319,38 @@ fn main() {
 // Resource Manifest Support
 // ============================================================================
 
-/// Glob patterns for testgen input source files.
-const TESTGEN_GLOB_PATTERNS: &[&str] = &[
-    "gunbc-dag/src/**/*.rs",
-    "core/ir/src/**/*.rs",
-    "lib/**/*.rs",
-];
+/// Update the resource manifest after successful testgen.
+fn update_manifest_after_testgen() {
+    println!();
+    println!("Updating resource manifest...");
 
-/// Extra individual files that affect testgen output.
-const TESTGEN_EXTRA_FILES: &[&str] = &[
-    "target/.resource-manifest.json", // catches codegen key changes
-];
+    #[derive(Clone)]
+    struct TestgenResource {
+        def: ResourceDef,
+        outputs: Vec<PathBuf>,
+    }
 
-/// Compute the content hash for testgen inputs.
-///
-/// Returns `(hash, file_count)` where `file_count` is the total number of
-/// input files hashed (for the mtime fast path).
-///
-/// This hashes the source files that affect testgen output:
-/// - gunbc-dag/src/**/*.rs (DAG definitions)
-/// - core/ir/src/**/*.rs (IR types)
-/// - lib/**/*.rs (library DAG definitions)
-/// - plus dependency on generated_cli (codegen must run first)
-fn compute_testgen_input_hash() -> io::Result<(ContentHash, usize)> {
-    let builder = HashBuilder::new();
-    let mut file_count: usize = 0;
+    impl ManagedResource for TestgenResource {
+        fn definition(&self) -> &ResourceDef {
+            &self.def
+        }
 
-    // Hash gunbc-dag source files (DAG definitions)
-    let (builder, dag_count) = builder.update_glob(TESTGEN_GLOB_PATTERNS[0])?;
-    file_count += dag_count;
+        fn create(&self, manifest: &ResourceManifest) -> Result<ManifestEntry, ResourceError> {
+            let (key, file_count) = compute_key_from_def(&self.def, manifest)?;
+            Ok(ManifestEntry::new(key, file_count).with_outputs(self.outputs.clone()))
+        }
+    }
 
-    // Hash IR source files
-    let (builder, ir_count) = builder.update_glob(TESTGEN_GLOB_PATTERNS[1])?;
-    file_count += ir_count;
-
-    // Hash library source files
-    let (builder, lib_count) = builder.update_glob(TESTGEN_GLOB_PATTERNS[2])?;
-    file_count += lib_count;
-
-    // Include the codegen manifest key as a dependency
-    // This ensures testgen is considered stale if codegen output changes
-    let manifest = ResourceManifest::load_default()?;
-    let codegen_resource = ResourceId::build("generated_cli");
-    let codegen_key = manifest
-        .get(&codegen_resource)
-        .map(|e| e.key.as_str())
-        .ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::NotFound,
-                "Codegen manifest entry missing - run codegen first (cargo run -p gunbc-codegen)",
-            )
-        })?;
-    let builder = builder.update_str(codegen_key);
-
-    // Count the manifest file as an extra file
-    file_count += TESTGEN_EXTRA_FILES.len();
-
-    println!(
-        "  Computed hash from {} dag + {} ir + {} lib source files",
-        dag_count, ir_count, lib_count
-    );
-
-    Ok((builder.finalize(), file_count))
-}
-
-/// Write a manifest entry for the generated tests resource.
-#[allow(clippy::disallowed_methods)]
-fn write_testgen_manifest(hash: ContentHash, file_count: usize) -> io::Result<()> {
-    let mut manifest = ResourceManifest::load_default()?;
-
-    let resource_id = ResourceId::build("generated_tests");
+    let def = testgen_resource_def();
+    let mut manifest = match ResourceManifest::load_default() {
+        Ok(m) => m,
+        Err(e) => {
+            eprintln!("  ERROR: Could not load manifest: {}", e);
+            eprintln!("  Testgen outputs exist but freshness cannot be verified.");
+            eprintln!("  CI --mode=verify will fail until manifest is written.");
+            return;
+        }
+    };
 
     // Collect output paths from all targets
     let targets = build_targets();
@@ -394,29 +359,19 @@ fn write_testgen_manifest(hash: ContentHash, file_count: usize) -> io::Result<()
         .map(|t| PathBuf::from(&t.config.output_path))
         .collect();
 
-    let entry = ManifestEntry::new(hash, file_count).with_outputs(outputs);
-
-    manifest.insert(resource_id, entry);
-    manifest.save_default()?;
-
-    println!("  Updated resource manifest: target/.resource-manifest.json");
-    Ok(())
-}
-
-/// Update the resource manifest after successful testgen.
-fn update_manifest_after_testgen() {
-    println!();
-    println!("Updating resource manifest...");
-    match compute_testgen_input_hash() {
-        Ok((hash, file_count)) => {
-            if let Err(e) = write_testgen_manifest(hash, file_count) {
+    let resource = TestgenResource { def, outputs };
+    match resource.acquire(ExecMode::Ensure, &mut manifest) {
+        Ok(_) => {
+            if let Err(e) = manifest.save_default() {
                 eprintln!("  ERROR: Could not write manifest: {}", e);
                 eprintln!("  Testgen outputs exist but freshness cannot be verified.");
                 eprintln!("  CI --mode=verify will fail until manifest is written.");
+            } else {
+                println!("  Updated resource manifest: target/.resource-manifest.json");
             }
         }
         Err(e) => {
-            eprintln!("  ERROR: Could not compute input hash: {}", e);
+            eprintln!("  ERROR: Could not update manifest: {}", e);
             eprintln!("  Testgen outputs exist but freshness cannot be verified.");
             eprintln!("  CI --mode=verify will fail until manifest is written.");
         }

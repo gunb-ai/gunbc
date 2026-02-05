@@ -284,51 +284,6 @@ pub fn bootstrap_mock_spec_all_fail() -> MockSpec {
 mod tests {
     use super::*;
 
-    // ========================================================================
-    // Mock spec tests (Pattern B - mock value properties)
-    // ========================================================================
-
-    #[test]
-    fn test_mock_spec_has_transport_mocks() {
-        let spec = bootstrap_mock_spec();
-        // All three transport mocks should be present
-        assert!(spec
-            .get_transport_mock("execute_scan_workspace", "response")
-            .is_some());
-        assert!(spec
-            .get_transport_mock("execute_makefile_transport", "makefile_response")
-            .is_some());
-        assert!(spec
-            .get_transport_mock("execute_gitignore_transport", "gitignore_response")
-            .is_some());
-    }
-
-    #[test]
-    fn test_mock_spec_has_expected_output() {
-        let spec = bootstrap_mock_spec();
-        let has_expected = spec
-            .expected_outputs
-            .iter()
-            .any(|e| e.node == "parse_scan_result" && e.port == "crate_count");
-        assert!(has_expected);
-    }
-
-    #[test]
-    fn test_makefile_fails_spec() {
-        let spec = bootstrap_mock_spec_makefile_fails();
-        let makefile = spec.get_resource("fs:Makefile").unwrap();
-        let gitignore = spec.get_resource("fs:.gitignore").unwrap();
-
-        assert!(matches!(
-            makefile.acquire(),
-            gunbc_test::ResourceAcquireResult::Failed(_)
-        ));
-        assert!(matches!(
-            gitignore.acquire(),
-            gunbc_test::ResourceAcquireResult::Acquired
-        ));
-    }
-
     #[test]
     fn test_typed_builder_rejects_wrong_slot() {
         let dag = build_bootstrap_graph().expect("graph should build");

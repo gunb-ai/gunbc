@@ -1,0 +1,11 @@
+# Paths and counts for #[allow(clippy::disallowed_methods)] occurrences.
+# Format: path:count
+core/codegen/src/lib.rs:1
+core/codegen/src/main.rs:4
+core/ir/src/transport/cli.rs:7
+core/ir/src/transport/github/cli.rs:3
+gunbc-dag/src/bin/testgen.rs:1
+lib/tools/deps/src/installer.rs:1
+lib/tools/deps/src/manifest.rs:1
+lib/transport/src/executor.rs:1
+lib/transport/src/lib.rs:1

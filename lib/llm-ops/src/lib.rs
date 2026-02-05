@@ -26,7 +26,7 @@ pub mod graph_mock;
 
 use gunbc_exec::{
     optional_str, propagate_skipped, require_response, require_str, ExecError, Executable,
-    OutputMap, TransportResponseExt,
+    IntoExecResult, OutputMap, TransportResponseExt,
 };
 use gunbc_ir::transport::llm::{self, ChatMessage, ChatRequest, MessageContent, Role};
 use gunbc_ir::transport::TransportRequest;
@@ -175,7 +175,7 @@ fn execute_prepare_chat_request(
     }
 
     // Convert to REST request via provider-specific builder
-    let rest_request = llm::build_chat_request(&provider_id, &chat).map_err(ExecError::new)?;
+    let rest_request = llm::build_chat_request(&provider_id, &chat).exec_context("build chat request")?;
 
     OutputMap::new()
         .request("request", TransportRequest::Rest(rest_request))
@@ -206,7 +206,7 @@ fn execute_parse_chat_response(
     let rest_response = response.require_rest()?;
 
     let chat_response =
-        llm::parse_chat_response(provider_id, rest_response).map_err(ExecError::new)?;
+        llm::parse_chat_response(provider_id, rest_response).exec_context("parse chat response")?;
 
     OutputMap::new()
         .str("content", chat_response.content)
@@ -252,7 +252,7 @@ fn execute_prepare_simple_request(
     let chat = ChatRequest::new(model, messages);
 
     // Convert to REST request
-    let rest_request = llm::build_chat_request(&provider_id, &chat).map_err(ExecError::new)?;
+    let rest_request = llm::build_chat_request(&provider_id, &chat).exec_context("build chat request")?;
 
     OutputMap::new()
         .request("request", TransportRequest::Rest(rest_request))
@@ -273,7 +273,7 @@ fn execute_parse_simple_response(
     let rest_response = response.require_rest()?;
 
     let chat_response =
-        llm::parse_chat_response(provider_id, rest_response).map_err(ExecError::new)?;
+        llm::parse_chat_response(provider_id, rest_response).exec_context("parse chat response")?;
 
     OutputMap::new().str("answer", chat_response.content).ok()
 }

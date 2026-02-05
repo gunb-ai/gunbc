@@ -16,6 +16,7 @@ use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::{
     build::*, BuilderError, Cardinality, Dag, DagBuilder, Node, Value, WorkflowSignature,
 };
+use gunbc_ir::resource::ExecMode;
 use gunbc_lib_transport::TransportOps;
 use std::collections::HashMap;
 
@@ -51,6 +52,12 @@ pub fn codegen_signature() -> WorkflowSignature {
 /// Build the codegen prep graph.
 #[allow(clippy::result_large_err)]
 pub fn build_codegen_graph() -> Result<Dag<CodegenGraphOp>, BuilderError> {
+    build_codegen_graph_with_mode(ExecMode::Ensure)
+}
+
+/// Build the codegen prep graph with a specific resource mode.
+#[allow(clippy::result_large_err)]
+pub fn build_codegen_graph_with_mode(mode: ExecMode) -> Result<Dag<CodegenGraphOp>, BuilderError> {
     let mut builder = DagBuilder::new();
 
     // ========================================================================
@@ -79,7 +86,7 @@ pub fn build_codegen_graph() -> Result<Dag<CodegenGraphOp>, BuilderError> {
             "parse_codegen_exists",
             vec![port("response", "TransportResponse")],
             vec![port("codegen_needed", "Bool")],
-            CodegenGraphOp::Codegen(CodegenOp::ParseCodegenExists),
+            CodegenGraphOp::Codegen(CodegenOp::ParseCodegenExists(mode)),
         ),
         &execute_codegen_exists,
     )?;

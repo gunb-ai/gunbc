@@ -9,6 +9,7 @@ use std::collections::HashMap;
 
 // Domain ops - local (repo-specific)
 use crate::bootstrap::BootstrapOp;
+use crate::codegen::CodegenOp;
 use crate::ci::{CIOp, EnvOp};
 use crate::makegen::MakegenOp;
 
@@ -40,6 +41,8 @@ pub enum WorkspaceOp {
     // ========================================================================
     /// CI workflow operations
     Ci(CIOp),
+    /// Codegen workflow operations
+    Codegen(CodegenOp),
     /// Dependency management operations
     Deps(DepsOp),
     /// Dependency platform environment
@@ -82,6 +85,7 @@ impl Executable for WorkspaceOp {
         match self {
             // Domain ops
             WorkspaceOp::Ci(op) => op.execute(inputs),
+            WorkspaceOp::Codegen(op) => op.execute(inputs),
             WorkspaceOp::Deps(op) => op.execute(inputs),
             WorkspaceOp::DepsEnv(op) => op.execute(inputs),
             WorkspaceOp::Makegen(op) => op.execute(inputs),
@@ -111,6 +115,12 @@ impl Executable for WorkspaceOp {
 impl From<CIOp> for WorkspaceOp {
     fn from(op: CIOp) -> Self {
         WorkspaceOp::Ci(op)
+    }
+}
+
+impl From<CodegenOp> for WorkspaceOp {
+    fn from(op: CodegenOp) -> Self {
+        WorkspaceOp::Codegen(op)
     }
 }
 

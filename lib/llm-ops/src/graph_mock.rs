@@ -587,13 +587,6 @@ mod tests {
     }
 
     #[test]
-    fn test_rate_limited_mock_spec() {
-        let spec = rate_limited_mock_spec();
-        let response = spec.get_boundary_mock("execute", "response").unwrap();
-        assert!(matches!(response, Value::Response(_)));
-    }
-
-    #[test]
     fn test_secret_lease_expiration() {
         let spec = secret_api_key_mock_spec();
         let resource = spec.get_resource("api:openai_key").unwrap();

@@ -7,7 +7,7 @@
 //! Note: Cargo does not support automatic installation (requires rustup.rs),
 //! so the Install operation will fail with a helpful error message.
 
-use gunbc_exec::{ExecError, Executable, OutputMap};
+use gunbc_exec::{ExecError, Executable, IntoExecResult, OutputMap};
 use gunbc_ir::resource::AccessMode;
 use gunbc_ir::transport::cli::{self, CliToolOp};
 use gunbc_ir::Value;
@@ -91,7 +91,7 @@ impl Executable for CargoOp {
     fn execute(&self, _inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         self.to_cli_op()
             .execute()
-            .map_err(|e| ExecError::new(e.to_string()))
+            .exec_context("CLI tool execution")
     }
 }
 

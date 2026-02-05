@@ -6,7 +6,7 @@
 //! Uses `MAKEFILE.indent` from the language module for tab indentation.
 
 use crate::makegen::registry::{
-    BuildConfig, EntrypointParam, ExtraTarget, MetaTarget, PrepLevel, ToolInfo, ToolRegistry,
+    BuildConfig, EntrypointParam, ExtraTarget, MetaTarget, ToolInfo, ToolRegistry,
 };
 use gunbc_ir::cargo::Warnings;
 use gunbc_ir::language::MAKEFILE;
@@ -293,28 +293,11 @@ fn render_meta_targets(registry: &ToolRegistry, config: &BuildConfig) -> String 
     output
 }
 
-/// Map prep level to its Make dependency target.
-fn prep_dep_name(prep: PrepLevel, config: &BuildConfig) -> Option<&'static str> {
-    match prep {
-        PrepLevel::None => None,
-        PrepLevel::Codegen => Some("ensure-codegen"),
-        PrepLevel::Full => {
-            if config.use_dag_entrypoints {
-                // DAG entrypoints already include build/test/lint stages.
-                // Avoid running the full pipeline twice.
-                Some("codegen")
-            } else {
-                Some("build")
-            }
-        }
-    }
-}
-
 /// Build the dependency string for a meta target (with leading space).
 fn meta_target_deps(meta: &MetaTarget, config: &BuildConfig) -> String {
     let mut deps: Vec<String> = Vec::new();
 
-    if let Some(prep) = prep_dep_name(meta.prep_level, config) {
+    if let Some(prep) = meta.prep_level.dep_name(config.use_dag_entrypoints) {
         deps.push(prep.to_string());
     }
 
@@ -399,7 +382,7 @@ fn render_meta_fix_variant(meta: &MetaTarget, config: &BuildConfig) -> String {
     }
 
     // Add prep dependency based on prep level
-    if let Some(prep) = prep_dep_name(meta.prep_level, config) {
+    if let Some(prep) = meta.prep_level.dep_name(config.use_dag_entrypoints) {
         deps.push(prep.to_string());
     }
 

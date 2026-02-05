@@ -45,22 +45,14 @@ fn main() {
     let mode = if dry_run {
         let mut mocks = BoundaryMocks::new();
         let ok_shell = || {
-            Value::Response(TransportResponse::Shell(ShellResponse {
-                exit_code: 0,
-                stdout: String::new(),
-                stderr: String::new(),
-            }))
+            Value::Response(TransportResponse::Shell(ShellResponse::ok("")))
         };
 
         // Scan workspace: returns a mock directory listing
         mocks.set_value(
             "execute_scan_workspace",
             "response",
-            Value::Response(TransportResponse::Shell(ShellResponse {
-                exit_code: 0,
-                stdout: "crates/example\n".to_string(),
-                stderr: String::new(),
-            })),
+            Value::Response(TransportResponse::Shell(ShellResponse::ok("crates/example\n"))),
         );
 
         // Makefile transport executor

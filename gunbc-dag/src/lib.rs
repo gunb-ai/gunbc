@@ -21,18 +21,23 @@ pub mod build;
 pub mod ci;
 pub mod codegen;
 pub mod makegen;
+pub mod resources;
 pub mod workspace;
 
 // Re-exports for convenience
 pub use bootstrap::{bootstrap_signature, build_bootstrap_graph, BootstrapGraphOp, BootstrapOp};
 pub use build::{build_build_graph, build_signature, BuildGraphOp, BuildOp};
-pub use ci::{build_ci_graph, ci_signature, ci_workflow_config, CIGraphOp, CIOp};
-pub use codegen::{build_codegen_graph, codegen_signature, CodegenGraphOp, CodegenOp};
+pub use ci::{build_ci_graph, build_ci_graph_with_mode, ci_signature, ci_workflow_config, CIGraphOp, CIOp};
+pub use codegen::{
+    build_codegen_graph, build_codegen_graph_with_mode, codegen_signature, CodegenGraphOp,
+    CodegenOp,
+};
 pub use gunbc_ir::CODEGEN_STAMP_PATH;
 pub use makegen::{
     build_makegen_graph, default_build_config, makegen_signature, render_gitignore,
     render_makefile, BuildConfig, MakegenGraphOp, MakegenOp,
 };
+pub use resources::testgen_resource_def;
 pub use workspace::{
     build_bootstrap_subdag, build_ci_subdag, build_clippy_lint_all_subdag, build_clippy_subdag,
     build_deps_generate_subdag, build_deps_install_subdag, build_gist_rust_subdag,

@@ -361,18 +361,18 @@ that testgen already generates (or could generate with small additions).
 Goal: make `graph_mock.rs` files **data-only** (MockSpec + NodeExamples
 + resources) and delete the `#[cfg(test)]` blocks.
 
-**graph_mock.rs test counts:**
+**graph_mock.rs test counts (after consolidation cleanup):**
 
-| File | Tests | Patterns |
-|------|-------|----------|
-| `bootstrap/graph_mock.rs` | 5 | boundary presence, mock values |
-| `ci/graph_mock.rs` | 6 | boundary presence, mock values |
-| `makegen/graph_mock.rs` | 5 | boundary presence, resource locks |
-| `lib/llm-ops/graph_mock.rs` | 9 | content contains, chain validation |
-| `lib/tools/gist/graph_mock.rs` | 9 | URL validity, chain validation, modes |
-| `lib/tools/buck2/graph_mock.rs` | 7 | boundary presence |
-| `lib/tools/deps/graph_mock.rs` | 4 | boundary presence |
-| `lib/review/graph_mock.rs` | 4 | boundary presence |
+| File | Tests | Kept | Patterns |
+|------|-------|------|----------|
+| `bootstrap/graph_mock.rs` | 5→1 | 1 | typed builder (Pattern E) |
+| `ci/graph_mock.rs` | 6→1 | 1 | typed builder (Pattern E) |
+| `makegen/graph_mock.rs` | 5→1 | 1 | typed builder (Pattern E) |
+| `lib/llm-ops/graph_mock.rs` | 9→5 | 5 | content validation, secret/lease |
+| `lib/tools/gist/graph_mock.rs` | 9→5 | 5 | URL validity, mode-specific (Pattern B), typed builder (Pattern E) |
+| `lib/tools/buck2/graph_mock.rs` | 7 | 7 | boundary presence (not yet cleaned) |
+| `lib/tools/deps/graph_mock.rs` | 4→3 | 3 | content check, lease type, typed builder |
+| `lib/review/graph_mock.rs` | 4→2 | 2 | utility, typed builder (Pattern E) |
 
 **Patterns to absorb** (maps to testgen features needed):
 
@@ -425,9 +425,9 @@ Requires new testgen assertion (see TODO 8.2 below).
 - *Implemented in `codegen.rs:230-254` + `find_mock_type_mismatches()` helper*
 
 **TODO 8.4: Delete redundant graph_mock.rs tests**
-- [x] Delete Pattern A tests (boundary presence) — 12 tests deleted (10 earlier + 2 gist)
+- [x] Delete Pattern A tests (boundary presence) — 22 tests deleted (10 earlier + 2 gist + 10 consolidation round: 3 bootstrap + 3 ci + 3 makegen + 2 deps + 4 review)
 - [x] Delete Pattern C tests (self-chain) — 3 tests deleted (1 llm-ops + 2 gist)
-- [x] Delete Pattern D tests (resource presence) — 5 tests deleted (4 earlier + 1 gist)
+- [x] Delete Pattern D tests (resource presence) — 11 tests deleted (4 earlier + 1 gist + 6 consolidation round: 1 bootstrap + 2 ci + 1 makegen + 1 deps + 1 llm-ops)
 - [ ] Migrate Pattern B tests to NodeExamples — then delete
 - [ ] Delete Pattern E tests — once TODO 8.2 lands
 - [ ] Goal: graph_mock.rs files contain only `pub fn mock_spec()` + data

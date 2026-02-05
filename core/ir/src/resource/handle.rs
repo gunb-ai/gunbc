@@ -13,9 +13,24 @@ use super::super::{ResourceId, Value};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::marker::PhantomData;
+use std::sync::LazyLock;
 
-/// Secret marker for capability values.
+/// Type marker used in the map's `type` field (not a secret).
 const RESOURCE_HANDLE_MARKER: &str = "resource_handle";
+
+/// Per-process random secret for capability validation.
+///
+/// This prevents forgery: even though `SecretString::new()` is public,
+/// constructing a `Value::Secret` with the right contents requires
+/// knowing this random value, which changes every process start.
+static PROCESS_SECRET: LazyLock<String> = LazyLock::new(|| {
+    use std::collections::hash_map::RandomState;
+    use std::hash::{BuildHasher, Hasher};
+    let s = RandomState::new();
+    let mut h = s.build_hasher();
+    h.write_u64(std::process::id() as u64);
+    format!("rh_{}", h.finish())
+});
 
 /// A handle proving a resource has been acquired and is fresh.
 ///
@@ -106,7 +121,7 @@ impl<R> From<ResourceHandle<R>> for Value {
         map.insert("key".to_string(), Value::Str(handle.key.as_str().to_string()));
         map.insert(
             "cap".to_string(),
-            Value::Secret(super::super::SecretString::new(RESOURCE_HANDLE_MARKER)),
+            Value::Secret(super::super::SecretString::new(&*PROCESS_SECRET)),
         );
         Value::Map(map)
     }
@@ -146,9 +161,9 @@ impl<R> TryFrom<&Value> for ResourceHandle<R> {
             }
         };
 
-        // Check capability marker
+        // Check capability marker (per-process secret prevents forgery)
         match map.get("cap") {
-            Some(Value::Secret(s)) if s.expose() == RESOURCE_HANDLE_MARKER => {}
+            Some(Value::Secret(s)) if s.expose() == *PROCESS_SECRET => {}
             _ => {
                 return Err(HandleParseError {
                     message: "Missing or invalid capability marker".to_string(),
@@ -292,6 +307,36 @@ mod tests {
         let value = Value::Str("not a map".to_string());
         let result: Result<ResourceHandle<TestResource>, _> = value.try_into();
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_handle_forgery_rejected() {
+        // Construct a Value::Map that looks like a handle but has a fake cap
+        let mut map = BTreeMap::new();
+        map.insert(
+            "type".to_string(),
+            Value::Str("resource_handle".to_string()),
+        );
+        map.insert(
+            "resource_id".to_string(),
+            Value::Str("forged:resource".to_string()),
+        );
+        map.insert("key".to_string(), Value::Str("deadbeef".to_string()));
+        map.insert(
+            "cap".to_string(),
+            Value::Secret(crate::SecretString::new("resource_handle")),
+        );
+
+        let value = Value::Map(map);
+        let result: Result<ResourceHandle<TestResource>, _> = ResourceHandle::try_from(&value);
+        assert!(result.is_err(), "forged handle should be rejected");
+        assert!(
+            result
+                .unwrap_err()
+                .message
+                .contains("capability marker"),
+            "error should mention capability marker"
+        );
     }
 
     #[test]

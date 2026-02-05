@@ -16,8 +16,8 @@
 //!   PrepareFileExists(deps.toml) -> Execute -> ParseDepsExists
 //!
 //! Prep Stage:
-//!   PrepareCodegenExistsCheck -> Execute -> ParseCodegenExists
-//!   -> (if needed) PrepareCodegenCommand -> Execute -> ParseCodegenResult
+//!   (Inlined Codegen DAG) -> ParseCodegenResult
+//!   -> PrepareTestgenCommand -> Execute -> ParseTestgenResult
 //!
 //! Build Stage:
 //!   PrepareBuildCommand -> Execute -> ParseBuildResult
@@ -28,21 +28,27 @@
 //! Lint Stage:
 //!   PrepareClippyLint -> ClippyLint (uses ToolHandle from env) -> ParseClippyLint
 //!
+//! Guardrails Stage:
+//!   PrepareGuardrailCheck -> Execute -> ParseGuardrailResult
+//!
 //! Report:
 //!   Report (pure)
 //! ```
 
 use crate::ci::env::EnvOp;
 use crate::ci::ops::CIOp;
+use crate::codegen::{build_codegen_graph_with_mode, CodegenGraphOp, CodegenOp};
 use gunbc_deps::DEFAULT_MANIFEST_FILENAME;
 use gunbc_exec::{require_bool, ExecError, Executable, IntoExecResult, OutputMap};
+use gunbc_ir::resource::ExecMode;
 use gunbc_ir::transport::cli::{CliToolOp, ToolHandle};
 use gunbc_ir::{
     build::*,
     transport::github_actions::{
         checkout, rust_toolchain, ubuntu_latest, Integration, Permissions, WorkflowConfig,
     },
-    BuilderError, Cardinality, Dag, DagBuilder, Node, Value, WorkflowSignature,
+    BuilderError, Cardinality, Dag, DagBuilder, Node, NodeBody, NodeId, NodeRef, Value,
+    WorkflowSignature,
 };
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::EmbeddedFileExistsOp;
@@ -56,6 +62,7 @@ use std::collections::HashMap;
 ///
 /// This follows the MakegenGraphOp pattern:
 /// - `CI(CIOp)` - domain-specific pure operations
+/// - `Codegen(CodegenOp)` - inlined codegen DAG operations
 /// - `PrepareFileExists` - embedded primitive for file existence checks (from gunbc-primitives)
 /// - `Transport` - boundary for actual I/O
 /// - `CliTool` - CLI tool operations (for SubDag integration)
@@ -64,6 +71,8 @@ use std::collections::HashMap;
 pub enum CIGraphOp {
     /// CI-specific pure operations
     CI(CIOp),
+    /// Codegen DAG operations (inlined into CI)
+    Codegen(CodegenOp),
     /// Prepare file exists check (pure - path embedded, from primitives)
     PrepareFileExists(EmbeddedFileExistsOp),
     /// Transport operations (boundary - actual I/O)
@@ -78,6 +87,7 @@ impl Executable for CIGraphOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         match self {
             CIGraphOp::CI(op) => op.execute(inputs),
+            CIGraphOp::Codegen(op) => op.execute(inputs),
             CIGraphOp::PrepareFileExists(op) => op.execute(inputs),
             CIGraphOp::Transport(op) => op.execute(inputs),
             CIGraphOp::Env(op) => op.execute(inputs),
@@ -97,7 +107,7 @@ impl Executable for CIGraphOp {
                         ExecError::new(format!("missing required tool handle input '{port_name}'"))
                     })?;
                     let handle = ToolHandle::try_from(handle_val)
-                        .map_err(|e| ExecError::new(e.to_string()))?;
+                        .exec_context("tool handle conversion")?;
                     op.execute_with_handle(&handle)
                         .exec_context("CLI tool error")?
                 } else {
@@ -126,16 +136,13 @@ pub fn ci_signature() -> WorkflowSignature {
         .with_output("deps_checked", "Bool", Cardinality::ONE)
         .with_output("deps_installed", "Int", Cardinality::ONE)
         .with_output("message", "String", Cardinality::ONE)
-        // Optional prep outputs from parse_codegen_exists (only when codegen already present)
-        .with_output("prep_success", "Bool", Cardinality::ZERO_OR_ONE)
-        .with_output("codegen_ran", "Bool", Cardinality::ZERO_OR_ONE)
-        .with_output("prep_message", "String", Cardinality::ZERO_OR_ONE)
-        // Final prep outputs from parse_codegen_result
+        // Codegen summary and stamp-write boundary outputs
         .with_output("codegen_ran", "Bool", Cardinality::ONE)
         .with_output("prep_message", "String", Cardinality::ONE)
+        .with_output("response", "TransportResponse", Cardinality::ZERO_OR_ONE)
+        .with_output("skip", "Bool", Cardinality::ONE)
         .with_output("build_skipped", "Bool", Cardinality::ONE)
         .with_output("build_stdout", "String", Cardinality::ONE)
-        .with_output("skip_reason", "String", Cardinality::ZERO_OR_ONE)
         .with_output("test_skipped", "Bool", Cardinality::ONE)
         // Note: test_stdout is no longer a boundary output - it's wired to report node
         .with_output("lint_skipped", "Bool", Cardinality::ONE)
@@ -155,10 +162,9 @@ pub fn ci_integrations() -> Vec<Integration> {
 
 /// Get the complete workflow configuration for CI.
 pub fn ci_workflow_config() -> WorkflowConfig {
-    let codegen_cmd = gunbc_ir::CargoInvocation::standalone("codegen").command();
     let ci_cmd = gunbc_ir::CargoInvocation::composed("ci", "dag").command();
     WorkflowConfig::new("CI", ubuntu_latest(), ci_integrations()).with_run_command(format!(
-        "|\n          {codegen_cmd} -- codegen\n          {ci_cmd} -- run"
+        "|\n          {ci_cmd} -- run"
     ))
 }
 
@@ -179,15 +185,29 @@ pub fn ci_workflow_permissions() -> Permissions {
 /// Pipeline:
 /// ```text
 /// SetupDeps: PrepareFileExists -> Execute -> ParseDepsExists
-/// Prep:      PrepareCodegenExists -> Execute -> ParseCodegenExists
-///            -> PrepareCodegenCmd -> Execute -> ParseCodegenResult
+/// Prep:      (Inlined Codegen DAG) -> ParseCodegenResult
+///            -> PrepareTestgenCmd -> Execute -> ParseTestgenResult
 /// Build:     PrepareBuildCommand -> Execute -> ParseBuildResult
 /// Test:      PrepareTestCommand -> Execute -> ParseTestResult
 /// Lint:      PrepareLintCommand -> Execute -> ParseLintResult
+/// Guardrails: PrepareGuardrailCheck -> Execute -> ParseGuardrailResult
 /// Report:    Report (pure)
 /// ```
+/// Build the CI graph with default exec mode (`ExecMode::Ensure`).
+///
+/// This is a convenience wrapper around [`build_ci_graph_with_mode`] that
+/// avoids churn on existing callers.
 #[allow(clippy::result_large_err)]
 pub fn build_ci_graph() -> Result<Dag<CIGraphOp>, BuilderError> {
+    build_ci_graph_with_mode(ExecMode::Ensure)
+}
+
+/// Build the CI graph with the specified execution mode.
+///
+/// The `mode` parameter is embedded into the inlined codegen DAG, eliminating
+/// the need for the `GUNBC_EXEC_MODE` environment variable.
+#[allow(clippy::result_large_err)]
+pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, BuilderError> {
     let mut builder = DagBuilder::new();
 
     // ========================================================================
@@ -244,65 +264,37 @@ pub fn build_ci_graph() -> Result<Dag<CIGraphOp>, BuilderError> {
     )?;
 
     // ========================================================================
-    // Prep Stage: Check codegen exists, run if needed
+    // Prep Stage: Inline Codegen DAG
     // ========================================================================
 
-    // PrepareCodegenExistsCheck - pure
-    let prepare_codegen_exists = builder.add_node_after(
-        Node::opaque(
-            "prepare_codegen_exists",
-            vec![],
-            vec![port("request", "TransportRequest")],
-            CIGraphOp::CI(CIOp::PrepareCodegenExistsCheck),
-        ),
-        &parse_deps_exists,
-    )?;
+    let codegen_nodes = inline_codegen_dag(&mut builder, mode)?;
+    let parse_codegen_result = codegen_nodes
+        .get(&NodeId::from("parse_codegen_result"))
+        .expect("codegen DAG should include parse_codegen_result");
 
-    // Execute - transport boundary
-    let execute_codegen_exists = builder.add_node_after(
-        Node::opaque(
-            "execute_codegen_exists",
-            vec![port("request", "TransportRequest")],
-            vec![port("response", "TransportResponse")],
-            CIGraphOp::Transport(TransportOps::Execute),
-        ),
-        &prepare_codegen_exists,
-    )?;
+    // ========================================================================
+    // Testgen Stage
+    // ========================================================================
 
-    // ParseCodegenExists - pure (outputs codegen_needed, maybe prep_success)
-    let parse_codegen_exists = builder.add_node_after(
+    // PrepareTestgenCommand - pure
+    let prepare_testgen = builder.add_node_after(
         Node::opaque(
-            "parse_codegen_exists",
-            vec![port("response", "TransportResponse")],
-            vec![
-                port("codegen_needed", "Bool"),
-                optional("prep_success", "Bool"),
-                optional("codegen_ran", "Bool"),
-                optional("prep_message", "String"),
-            ],
-            CIGraphOp::CI(CIOp::ParseCodegenExists),
-        ),
-        &execute_codegen_exists,
-    )?;
-
-    // PrepareCodegenCommand - pure (may skip)
-    let prepare_codegen_cmd = builder.add_node_after(
-        Node::opaque(
-            "prepare_codegen_cmd",
-            vec![port("codegen_needed", "Bool")],
+            "prepare_testgen",
+            vec![port("prep_success", "Bool")],
             vec![
                 optional("request", "TransportRequest"),
                 port("skip", "Bool"),
+                optional("skip_reason", "String"),
             ],
-            CIGraphOp::CI(CIOp::PrepareCodegenCommand),
+            CIGraphOp::CI(CIOp::PrepareTestgenCommand),
         ),
-        &parse_codegen_exists,
+        parse_codegen_result,
     )?;
 
-    // Execute codegen - transport boundary (may be skipped by downstream)
-    let execute_codegen = builder.add_node_after(
+    // Execute testgen - transport boundary
+    let execute_testgen = builder.add_node_after(
         Node::opaque(
-            "execute_codegen",
+            "execute_testgen",
             vec![
                 optional("request", "TransportRequest"),
                 port("skip", "Bool"),
@@ -310,28 +302,26 @@ pub fn build_ci_graph() -> Result<Dag<CIGraphOp>, BuilderError> {
             vec![
                 optional("response", "TransportResponse"),
                 port("skip", "Bool"),
+                optional("skip_reason", "String"),
             ],
             CIGraphOp::Transport(TransportOps::Execute),
         ),
-        &prepare_codegen_cmd,
+        &prepare_testgen,
     )?;
 
-    // ParseCodegenResult - pure
-    let parse_codegen_result = builder.add_node_after(
+    // ParseTestgenResult - pure
+    let parse_testgen = builder.add_node_after(
         Node::opaque(
-            "parse_codegen_result",
+            "parse_testgen",
             vec![
                 optional("response", "TransportResponse"),
                 port("skip", "Bool"),
+                optional("skip_reason", "String"),
             ],
-            vec![
-                port("prep_success", "Bool"),
-                port("codegen_ran", "Bool"),
-                port("prep_message", "String"),
-            ],
-            CIGraphOp::CI(CIOp::ParseCodegenResult),
+            vec![port("testgen_success", "Bool"), port("testgen_stderr", "String")],
+            CIGraphOp::CI(CIOp::ParseTestgenResult),
         ),
-        &execute_codegen,
+        &execute_testgen,
     )?;
 
     // ========================================================================
@@ -342,7 +332,7 @@ pub fn build_ci_graph() -> Result<Dag<CIGraphOp>, BuilderError> {
     let prepare_build = builder.add_node_after(
         Node::opaque(
             "prepare_build",
-            vec![port("prep_success", "Bool")],
+            vec![port("prep_success", "Bool"), port("testgen_success", "Bool")],
             vec![
                 optional("request", "TransportRequest"),
                 port("skip", "Bool"),
@@ -350,7 +340,7 @@ pub fn build_ci_graph() -> Result<Dag<CIGraphOp>, BuilderError> {
             ],
             CIGraphOp::CI(CIOp::PrepareBuildCommand),
         ),
-        &parse_codegen_result,
+        &parse_testgen,
     )?;
 
     // Execute build - transport boundary
@@ -509,6 +499,55 @@ pub fn build_ci_graph() -> Result<Dag<CIGraphOp>, BuilderError> {
     )?;
 
     // ========================================================================
+    // Guardrails Stage (parallel with Test/Lint after testgen)
+    // ========================================================================
+
+    let prepare_guardrail = builder.add_node_after(
+        Node::opaque(
+            "prepare_guardrail_check",
+            vec![port("testgen_success", "Bool")],
+            vec![
+                optional("request", "TransportRequest"),
+                port("skip", "Bool"),
+                optional("skip_reason", "String"),
+            ],
+            CIGraphOp::CI(CIOp::PrepareGuardrailCheck),
+        ),
+        &parse_testgen,
+    )?;
+
+    let execute_guardrail = builder.add_node_after(
+        Node::opaque(
+            "execute_guardrail_check",
+            vec![
+                optional("request", "TransportRequest"),
+                port("skip", "Bool"),
+            ],
+            vec![
+                optional("response", "TransportResponse"),
+                port("skip", "Bool"),
+                optional("skip_reason", "String"),
+            ],
+            CIGraphOp::Transport(TransportOps::Execute),
+        ),
+        &prepare_guardrail,
+    )?;
+
+    let parse_guardrail = builder.add_node_after(
+        Node::opaque(
+            "parse_guardrail_check",
+            vec![
+                optional("response", "TransportResponse"),
+                port("skip", "Bool"),
+                optional("skip_reason", "String"),
+            ],
+            vec![port("guardrail_success", "Bool"), port("guardrail_stderr", "String")],
+            CIGraphOp::CI(CIOp::ParseGuardrailResult),
+        ),
+        &execute_guardrail,
+    )?;
+
+    // ========================================================================
     // Report Stage
     // ========================================================================
 
@@ -519,15 +558,19 @@ pub fn build_ci_graph() -> Result<Dag<CIGraphOp>, BuilderError> {
                 port("build_success", "Bool"),
                 port("test_success", "Bool"),
                 port("lint_success", "Bool"),
+                port("testgen_success", "Bool"),
+                port("guardrail_success", "Bool"),
                 optional("build_stderr", "String"),
+                optional("testgen_stderr", "String"),
                 optional("test_stdout", "String"),
                 optional("test_stderr", "String"),
                 optional("lint_stderr", "String"),
+                optional("guardrail_stderr", "String"),
             ],
             vec![port("overall_success", "Bool"), port("report", "String")],
             CIGraphOp::CI(CIOp::Report),
         ),
-        &[&parse_test, &parse_lint],
+        &[&parse_test, &parse_lint, &parse_guardrail],
     )?;
 
     // ========================================================================
@@ -544,40 +587,36 @@ pub fn build_ci_graph() -> Result<Dag<CIGraphOp>, BuilderError> {
         parse_deps_exists.in_port("response"),
     )?;
 
-    // Prep stage
+    // Codegen DAG edges are wired during inlining.
+
+    // Testgen stage
     builder.add_edge(
-        prepare_codegen_exists.out("request"),
-        execute_codegen_exists.in_port("request"),
+        parse_codegen_result.out("prep_success"),
+        prepare_testgen.in_port("prep_success"),
     )?;
     builder.add_edge(
-        execute_codegen_exists.out("response"),
-        parse_codegen_exists.in_port("response"),
+        prepare_testgen.out("request"),
+        execute_testgen.in_port("request"),
     )?;
+    builder.add_edge(prepare_testgen.out("skip"), execute_testgen.in_port("skip"))?;
     builder.add_edge(
-        parse_codegen_exists.out("codegen_needed"),
-        prepare_codegen_cmd.in_port("codegen_needed"),
+        execute_testgen.out("response"),
+        parse_testgen.in_port("response"),
     )?;
+    builder.add_edge(execute_testgen.out("skip"), parse_testgen.in_port("skip"))?;
     builder.add_edge(
-        prepare_codegen_cmd.out("request"),
-        execute_codegen.in_port("request"),
-    )?;
-    builder.add_edge(
-        prepare_codegen_cmd.out("skip"),
-        execute_codegen.in_port("skip"),
-    )?;
-    builder.add_edge(
-        execute_codegen.out("response"),
-        parse_codegen_result.in_port("response"),
-    )?;
-    builder.add_edge(
-        execute_codegen.out("skip"),
-        parse_codegen_result.in_port("skip"),
+        prepare_testgen.out("skip_reason"),
+        parse_testgen.in_port("skip_reason"),
     )?;
 
     // Build stage
     builder.add_edge(
         parse_codegen_result.out("prep_success"),
         prepare_build.in_port("prep_success"),
+    )?;
+    builder.add_edge(
+        parse_testgen.out("testgen_success"),
+        prepare_build.in_port("testgen_success"),
     )?;
     builder.add_edge(
         prepare_build.out("request"),
@@ -626,6 +665,32 @@ pub fn build_ci_graph() -> Result<Dag<CIGraphOp>, BuilderError> {
         parse_lint.in_port("skip_reason"),
     )?;
 
+    // Guardrails stage (parallel with test/lint after testgen)
+    builder.add_edge(
+        parse_testgen.out("testgen_success"),
+        prepare_guardrail.in_port("testgen_success"),
+    )?;
+    builder.add_edge(
+        prepare_guardrail.out("request"),
+        execute_guardrail.in_port("request"),
+    )?;
+    builder.add_edge(
+        prepare_guardrail.out("skip"),
+        execute_guardrail.in_port("skip"),
+    )?;
+    builder.add_edge(
+        execute_guardrail.out("response"),
+        parse_guardrail.in_port("response"),
+    )?;
+    builder.add_edge(
+        execute_guardrail.out("skip"),
+        parse_guardrail.in_port("skip"),
+    )?;
+    builder.add_edge(
+        prepare_guardrail.out("skip_reason"),
+        parse_guardrail.in_port("skip_reason"),
+    )?;
+
     // Report - success flags and stderr for failure details
     builder.add_edge(
         parse_build.out("build_success"),
@@ -640,14 +705,101 @@ pub fn build_ci_graph() -> Result<Dag<CIGraphOp>, BuilderError> {
         report.in_port("lint_success"),
     )?;
     builder.add_edge(
+        parse_testgen.out("testgen_success"),
+        report.in_port("testgen_success"),
+    )?;
+    builder.add_edge(
+        parse_guardrail.out("guardrail_success"),
+        report.in_port("guardrail_success"),
+    )?;
+    builder.add_edge(
         parse_build.out("build_stderr"),
         report.in_port("build_stderr"),
+    )?;
+    builder.add_edge(
+        parse_testgen.out("testgen_stderr"),
+        report.in_port("testgen_stderr"),
     )?;
     builder.add_edge(parse_test.out("test_stdout"), report.in_port("test_stdout"))?;
     builder.add_edge(parse_test.out("test_stderr"), report.in_port("test_stderr"))?;
     builder.add_edge(parse_lint.out("lint_stderr"), report.in_port("lint_stderr"))?;
+    builder.add_edge(
+        parse_guardrail.out("guardrail_stderr"),
+        report.in_port("guardrail_stderr"),
+    )?;
 
     Ok(builder.build())
+}
+
+fn inline_codegen_dag(
+    builder: &mut DagBuilder<CIGraphOp>,
+    mode: ExecMode,
+) -> Result<HashMap<NodeId, NodeRef<CIGraphOp>>, BuilderError> {
+    let dag = build_codegen_graph_with_mode(mode)?;
+    let mut incoming: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
+
+    for edge in &dag.edges {
+        incoming
+            .entry(edge.to_node.clone())
+            .or_default()
+            .push(edge.from_node.clone());
+    }
+
+    let mut node_refs: HashMap<NodeId, NodeRef<CIGraphOp>> = HashMap::new();
+
+    for node in &dag.nodes {
+        let deps = incoming.get(&node.id).cloned().unwrap_or_default();
+
+        let op = match &node.body {
+            NodeBody::Opaque(op) => op,
+            NodeBody::SubDag(_) => {
+                unreachable!("codegen DAG should not contain sub-dags");
+            }
+        };
+
+        let mapped = match op {
+            CodegenGraphOp::Codegen(op) => CIGraphOp::Codegen(op.clone()),
+            CodegenGraphOp::Transport(op) => CIGraphOp::Transport(op.clone()),
+        };
+
+        let mapped_node = Node::opaque(node.id.clone(), node.inputs.clone(), node.outputs.clone(), mapped);
+
+        let node_ref = if deps.is_empty() {
+            builder.add_root_node(mapped_node)?
+        } else if deps.len() == 1 {
+            let dep_ref = node_refs
+                .get(&deps[0])
+                .expect("codegen DAG dependency should be present");
+            builder.add_node_after(mapped_node, dep_ref)?
+        } else {
+            let dep_refs: Vec<&NodeRef<CIGraphOp>> = deps
+                .iter()
+                .map(|id| {
+                    node_refs
+                        .get(id)
+                        .expect("codegen DAG dependency should be present")
+                })
+                .collect();
+            builder.add_node_after_all(mapped_node, &dep_refs)?
+        };
+
+        node_refs.insert(node.id.clone(), node_ref);
+    }
+
+    for edge in &dag.edges {
+        let from_ref = node_refs
+            .get(&edge.from_node)
+            .expect("codegen DAG source node missing");
+        let to_ref = node_refs
+            .get(&edge.to_node)
+            .expect("codegen DAG target node missing");
+        builder.add_edge(
+            from_ref.out(edge.from_port.clone()),
+            to_ref.in_port(edge.to_port.clone()),
+        )?;
+    }
+
+    Ok(node_refs)
 }
 
 // ============================================================================

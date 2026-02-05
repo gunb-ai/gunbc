@@ -5,7 +5,12 @@ use gunbc_exec::{
     propagate_skipped, require_bool, require_response, ExecError, Executable, OutputMap,
     TransportResponseExt,
 };
+use gunbc_infra::freshness::{check_freshness_mtime, MtimeResult};
 use gunbc_ir::cargo::{CargoCommand, CargoInvocation, Subcommand};
+use gunbc_ir::resource::{
+    codegen_resource_def, compute_key_from_def, mtime_inputs_from_def, ExecMode,
+    ResourceManifest,
+};
 use gunbc_ir::transport::{FileRequest, ShellRequest, TransportRequest};
 use gunbc_ir::Value;
 use gunbc_ir::{CODEGEN_BIN_DIR, CODEGEN_STAMP_PATH};
@@ -17,7 +22,7 @@ pub enum CodegenOp {
     /// Prepare a shell request that checks for generated CLI files.
     PrepareCodegenExists,
     /// Parse the exists check response.
-    ParseCodegenExists,
+    ParseCodegenExists(ExecMode),
     /// Prepare the codegen shell command.
     PrepareCodegenCommand,
     /// Parse the codegen command response.
@@ -30,7 +35,7 @@ impl Executable for CodegenOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         match self {
             CodegenOp::PrepareCodegenExists => execute_prepare_codegen_exists(inputs),
-            CodegenOp::ParseCodegenExists => execute_parse_codegen_exists(inputs),
+            CodegenOp::ParseCodegenExists(mode) => execute_parse_codegen_exists(*mode, inputs),
             CodegenOp::PrepareCodegenCommand => execute_prepare_codegen_command(inputs),
             CodegenOp::ParseCodegenResult => execute_parse_codegen_result(inputs),
             CodegenOp::PrepareStampWrite => execute_prepare_stamp_write(inputs),
@@ -76,6 +81,7 @@ fn execute_prepare_codegen_exists(
 }
 
 fn execute_parse_codegen_exists(
+    mode: ExecMode,
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
     if let Some(result) = propagate_skipped(&inputs, "response", &["codegen_needed"]) {
@@ -84,9 +90,111 @@ fn execute_parse_codegen_exists(
 
     let response = require_response(&inputs, "response")?;
     let shell = response.require_shell()?;
-    let exists = shell.exit_code == 0;
+    let output_exists = shell.exit_code == 0;
 
-    OutputMap::new().bool("codegen_needed", !exists).ok()
+    let manifest_result = check_codegen_manifest_freshness(output_exists);
+
+    if mode == ExecMode::Verify {
+        match &manifest_result {
+            ManifestCheckResult::Fresh => {}
+            ManifestCheckResult::Stale(reason) => {
+                return Err(ExecError::new(format!(
+                    "Generated code is stale: {} (run with --mode=ensure to fix)",
+                    reason
+                )));
+            }
+            ManifestCheckResult::Missing => {
+                return Err(ExecError::new(
+                    "Cannot verify freshness: no manifest entry for codegen \
+                     (run with --mode=ensure to generate manifest)",
+                ));
+            }
+            ManifestCheckResult::Error(err) => {
+                return Err(ExecError::new(format!(
+                    "Cannot verify freshness: {} (run with --mode=ensure to fix)",
+                    err
+                )));
+            }
+        }
+    }
+
+    let codegen_needed = match manifest_result {
+        ManifestCheckResult::Fresh => false,
+        ManifestCheckResult::Stale(_) => true,
+        ManifestCheckResult::Missing => !output_exists,
+        ManifestCheckResult::Error(_) => !output_exists,
+    };
+
+    OutputMap::new().bool("codegen_needed", codegen_needed).ok()
+}
+
+/// Result of checking the codegen manifest for freshness.
+enum ManifestCheckResult {
+    /// Manifest exists and inputs are unchanged
+    Fresh,
+    /// Manifest exists but inputs have changed
+    Stale(&'static str),
+    /// Manifest doesn't exist
+    Missing,
+    /// Error reading manifest or computing hash
+    Error(String),
+}
+
+/// Check if codegen output is fresh based on the manifest.
+///
+/// Computes a hash of codegen inputs and compares to the stored manifest key.
+/// Also verifies that representative output files exist (manifest might be
+/// restored from cache without the actual generated files).
+fn check_codegen_manifest_freshness(output_exists: bool) -> ManifestCheckResult {
+    let manifest = match ResourceManifest::load_default() {
+        Ok(m) if m.is_empty() => return ManifestCheckResult::Missing,
+        Ok(m) => m,
+        Err(e) => {
+            let kind = e.kind();
+            if kind == std::io::ErrorKind::NotFound {
+                return ManifestCheckResult::Missing;
+            }
+            return ManifestCheckResult::Error(format!("manifest load failed: {}", e));
+        }
+    };
+
+    let def = codegen_resource_def();
+    let entry = match manifest.get(&def.id) {
+        Some(e) => e,
+        None => return ManifestCheckResult::Missing,
+    };
+
+    if !output_exists {
+        return ManifestCheckResult::Stale("manifest present but output files missing");
+    }
+
+    let mtime_inputs = mtime_inputs_from_def(&def);
+    if !mtime_inputs.has_non_file_inputs {
+        let glob_refs: Vec<&str> = mtime_inputs
+            .glob_patterns
+            .iter()
+            .map(|s| s.as_str())
+            .collect();
+        let file_refs: Vec<&str> = mtime_inputs
+            .files
+            .iter()
+            .map(|s| s.as_str())
+            .collect();
+        if let MtimeResult::Fresh = check_freshness_mtime(entry, &glob_refs, &file_refs) {
+            return ManifestCheckResult::Fresh;
+        }
+    }
+
+    let (current_hash, _count) = match compute_key_from_def(&def, &manifest) {
+        Ok(h) => h,
+        Err(e) => return ManifestCheckResult::Error(e.to_string()),
+    };
+
+    if entry.key == current_hash {
+        ManifestCheckResult::Fresh
+    } else {
+        ManifestCheckResult::Stale("inputs changed since last codegen")
+    }
 }
 
 fn execute_prepare_codegen_command(

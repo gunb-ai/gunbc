@@ -26,3 +26,7 @@ path = "../../../target/codegen/bin/gist/main.rs"
 [[bin]]
 name = "gunbc-gist-diff"
 path = "../../../target/codegen/bin/gist-diff/main.rs"
+
+[[bin]]
+name = "gunbc-gist-recent"
+path = "../../../target/codegen/bin/gist-recent/main.rs"

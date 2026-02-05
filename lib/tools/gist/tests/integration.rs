@@ -21,6 +21,22 @@ fn mock_current_branch(mocks: &mut BoundaryMocks, branch: &str) {
     );
 }
 
+/// Helper: mock for execute_remote_branches boundary.
+///
+/// Simulates `git branch -r --points-at HEAD` output.
+/// Pass empty string to simulate no remote branches at HEAD.
+fn mock_remote_branches(mocks: &mut BoundaryMocks, remote_output: &str) {
+    mocks.set_value(
+        "execute_remote_branches",
+        "response",
+        Value::Response(TransportResponse::Shell(ShellResponse {
+            exit_code: 0,
+            stdout: remote_output.to_string(),
+            stderr: String::new(),
+        })),
+    );
+}
+
 fn mock_env(mocks: &mut BoundaryMocks) {
     let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
     mocks.set_value("fs_env", "fs:write", fs.into());
@@ -64,6 +80,8 @@ fn test_dry_run_intercepts_transport() {
 
     // Mock for execute_current_branch (branch name acquisition)
     mock_current_branch(&mut mocks, "feature/test-branch");
+    // Mock for execute_remote_branches (empty — we're on a local branch)
+    mock_remote_branches(&mut mocks, "");
 
     // Mock for execute_gist (gist creation transport - only has response output now)
     mocks.set_value(
@@ -194,6 +212,8 @@ fn test_gist_graph_boundary_mockable() {
 
     // Mock execute_current_branch
     mock_current_branch(&mut mocks, "main");
+    // Mock execute_remote_branches (empty — on a local branch)
+    mock_remote_branches(&mut mocks, "");
 
     // Mock execute_gist (only has response output now)
     mocks.set_value(
@@ -219,6 +239,10 @@ fn test_gist_graph_boundary_mockable() {
     assert!(result
         .boundary_nodes
         .contains(&"execute_current_branch".to_string()));
+    // execute_remote_branches is also a transport boundary
+    assert!(result
+        .boundary_nodes
+        .contains(&"execute_remote_branches".to_string()));
 }
 
 /// Test that real mode does NOT intercept boundaries.
@@ -285,6 +309,7 @@ fn test_branch_name_in_gist_filename() {
     );
     // Use a branch name with slashes (common in git workflows)
     mock_current_branch(&mut mocks, "claude/improve-gist-filename");
+    mock_remote_branches(&mut mocks, "");
     mocks.set_value(
         "execute_gist",
         "response",
@@ -375,6 +400,7 @@ fn test_platform_challenging_branch_names() {
             })),
         );
         mock_current_branch(&mut mocks, branch);
+        mock_remote_branches(&mut mocks, "");
         mocks.set_value(
             "execute_gist",
             "response",
@@ -406,5 +432,298 @@ fn test_platform_challenging_branch_names() {
                 branch, other
             ),
         }
+    }
+}
+
+// ============================================================================
+// Detached HEAD → remote branch resolution tests
+// ============================================================================
+
+/// Test that detached HEAD at a remote branch uses the remote branch name.
+///
+/// Simulates `git checkout origin/main` — HEAD is detached, so
+/// `rev-parse --abbrev-ref HEAD` returns "HEAD", but
+/// `git branch -r --points-at HEAD` returns "  origin/main".
+/// The gist filename should use "main" (remote prefix stripped).
+#[test]
+fn test_detached_head_uses_remote_branch_name() {
+    let dag =
+        build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
+
+    let mut mocks = BoundaryMocks::new();
+    mock_env(&mut mocks);
+
+    mocks.set_value(
+        "execute_list_files",
+        "response",
+        Value::Response(TransportResponse::Shell(ShellResponse {
+            exit_code: 0,
+            stdout: "src/main.rs\n".to_string(),
+            stderr: String::new(),
+        })),
+    );
+    mocks.set_value(
+        "execute_read_files",
+        "response",
+        Value::Response(TransportResponse::Shell(ShellResponse {
+            exit_code: 0,
+            stdout: "===GUNBC_FILE:src/main.rs===\nfn main() {}\n".to_string(),
+            stderr: String::new(),
+        })),
+    );
+
+    // Detached HEAD — rev-parse returns "HEAD"
+    mock_current_branch(&mut mocks, "HEAD");
+    // Remote branch points at HEAD
+    mock_remote_branches(&mut mocks, "  origin/main\n");
+
+    mocks.set_value(
+        "execute_gist",
+        "response",
+        Value::Response(TransportResponse::Shell(ShellResponse {
+            exit_code: 0,
+            stdout: "https://gist.github.com/mock/detached".to_string(),
+            stderr: String::new(),
+        })),
+    );
+
+    let log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).unwrap();
+
+    let prepare_gist = log
+        .get("prepare_gist_request")
+        .expect("prepare_gist_request should be in log");
+    match prepare_gist.outputs.get("request") {
+        Some(Value::Request(gunbc_ir::transport::TransportRequest::Shell(req))) => {
+            // Should use remote branch name "main" for filename
+            let filename_arg = req.args.iter().find(|a| a.starts_with("main_"));
+            assert!(
+                filename_arg.is_some(),
+                "expected remote branch 'main' in filename, got args: {:?}",
+                req.args
+            );
+            assert!(filename_arg.unwrap().ends_with(".md"));
+        }
+        other => panic!(
+            "expected shell request from prepare_gist_request, got: {:?}",
+            other
+        ),
+    }
+}
+
+// ============================================================================
+// Recent mode integration tests
+// ============================================================================
+
+/// Test that recent mode dry-run works: mock rev-list returning a SHA,
+/// verify diff runs against it.
+#[test]
+fn test_recent_mode_dry_run() {
+    let dag =
+        build_gist_graph(GistMode::Recent, vec![], false).expect("Failed to build gist graph");
+
+    let mut mocks = BoundaryMocks::new();
+    mock_env(&mut mocks);
+
+    // Mock execute_rev_list: return a SHA (repo is older than 7 days)
+    mocks.set_value(
+        "execute_rev_list",
+        "response",
+        Value::Response(TransportResponse::Shell(ShellResponse {
+            exit_code: 0,
+            stdout: "abc123def456\n".to_string(),
+            stderr: String::new(),
+        })),
+    );
+
+    // Mock execute_diff: return sample diff
+    mocks.set_value(
+        "execute_diff",
+        "response",
+        Value::Response(TransportResponse::Shell(ShellResponse {
+            exit_code: 0,
+            stdout: "diff --git a/src/main.rs b/src/main.rs\n--- a/src/main.rs\n+++ b/src/main.rs\n@@ -1,3 +1,4 @@\n fn main() {\n+    println!(\"hello\");\n }\n".to_string(),
+            stderr: String::new(),
+        })),
+    );
+
+    mock_current_branch(&mut mocks, "main");
+    mock_remote_branches(&mut mocks, "");
+
+    mocks.set_value(
+        "execute_gist",
+        "response",
+        Value::Response(TransportResponse::Shell(ShellResponse {
+            exit_code: 0,
+            stdout: "https://gist.github.com/mock/recent123".to_string(),
+            stderr: String::new(),
+        })),
+    );
+
+    let log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).unwrap();
+
+    // Verify rev-list was intercepted
+    let rev_list_entry = log
+        .get("execute_rev_list")
+        .expect("execute_rev_list should be in log");
+    assert!(
+        rev_list_entry.was_intercepted,
+        "execute_rev_list should be intercepted in dry-run"
+    );
+
+    // Verify diff was intercepted
+    let diff_entry = log
+        .get("execute_diff")
+        .expect("execute_diff should be in log");
+    assert!(
+        diff_entry.was_intercepted,
+        "execute_diff should be intercepted in dry-run"
+    );
+
+    // Verify the parsed rev-list SHA flowed to prepare_diff as base_ref
+    let parse_rev_list = log
+        .get("parse_rev_list")
+        .expect("parse_rev_list should be in log");
+    match parse_rev_list.outputs.get("base_ref") {
+        Some(Value::Str(sha)) => assert_eq!(sha, "abc123def456"),
+        _ => panic!("expected base_ref output from parse_rev_list"),
+    }
+
+    // Verify gist URL was produced
+    let parse_gist = log
+        .get("parse_gist_response")
+        .expect("parse_gist_response should be in log");
+    match parse_gist.outputs.get("url") {
+        Some(Value::Str(url)) => assert!(url.contains("mock"), "expected mock URL"),
+        _ => panic!("expected url output"),
+    }
+}
+
+/// Test that recent mode with young repo (empty rev-list) produces graceful empty diff.
+#[test]
+fn test_recent_mode_young_repo() {
+    let dag =
+        build_gist_graph(GistMode::Recent, vec![], false).expect("Failed to build gist graph");
+
+    let mut mocks = BoundaryMocks::new();
+    mock_env(&mut mocks);
+
+    // Mock execute_rev_list: empty output (repo < 7 days old)
+    mocks.set_value(
+        "execute_rev_list",
+        "response",
+        Value::Response(TransportResponse::Shell(ShellResponse {
+            exit_code: 0,
+            stdout: "".to_string(),
+            stderr: String::new(),
+        })),
+    );
+
+    // Mock execute_diff: empty diff (HEAD...HEAD produces nothing)
+    mocks.set_value(
+        "execute_diff",
+        "response",
+        Value::Response(TransportResponse::Shell(ShellResponse {
+            exit_code: 0,
+            stdout: "".to_string(),
+            stderr: String::new(),
+        })),
+    );
+
+    mock_current_branch(&mut mocks, "main");
+    mock_remote_branches(&mut mocks, "");
+
+    mocks.set_value(
+        "execute_gist",
+        "response",
+        Value::Response(TransportResponse::Shell(ShellResponse {
+            exit_code: 0,
+            stdout: "https://gist.github.com/mock/young".to_string(),
+            stderr: String::new(),
+        })),
+    );
+
+    let log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).unwrap();
+
+    // parse_rev_list should produce no base_ref (empty output)
+    let parse_rev_list = log
+        .get("parse_rev_list")
+        .expect("parse_rev_list should be in log");
+    assert!(
+        parse_rev_list.outputs.get("base_ref").is_none(),
+        "young repo should produce no base_ref"
+    );
+
+    // Gist should still complete (empty diff is valid)
+    let parse_gist = log
+        .get("parse_gist_response")
+        .expect("parse_gist_response should be in log");
+    assert!(
+        parse_gist.outputs.get("url").is_some(),
+        "gist should still produce a URL even with empty diff"
+    );
+}
+
+/// Test that detached HEAD with no remote branch falls back to "snapshot".
+#[test]
+fn test_detached_head_no_remote_uses_snapshot() {
+    let dag =
+        build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
+
+    let mut mocks = BoundaryMocks::new();
+    mock_env(&mut mocks);
+
+    mocks.set_value(
+        "execute_list_files",
+        "response",
+        Value::Response(TransportResponse::Shell(ShellResponse {
+            exit_code: 0,
+            stdout: "src/main.rs\n".to_string(),
+            stderr: String::new(),
+        })),
+    );
+    mocks.set_value(
+        "execute_read_files",
+        "response",
+        Value::Response(TransportResponse::Shell(ShellResponse {
+            exit_code: 0,
+            stdout: "===GUNBC_FILE:src/main.rs===\nfn main() {}\n".to_string(),
+            stderr: String::new(),
+        })),
+    );
+
+    // Detached HEAD — rev-parse returns "HEAD"
+    mock_current_branch(&mut mocks, "HEAD");
+    // No remote branches point at HEAD
+    mock_remote_branches(&mut mocks, "");
+
+    mocks.set_value(
+        "execute_gist",
+        "response",
+        Value::Response(TransportResponse::Shell(ShellResponse {
+            exit_code: 0,
+            stdout: "https://gist.github.com/mock/orphan".to_string(),
+            stderr: String::new(),
+        })),
+    );
+
+    let log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).unwrap();
+
+    let prepare_gist = log
+        .get("prepare_gist_request")
+        .expect("prepare_gist_request should be in log");
+    match prepare_gist.outputs.get("request") {
+        Some(Value::Request(gunbc_ir::transport::TransportRequest::Shell(req))) => {
+            // Should fall back to "snapshot" for filename
+            let filename_arg = req.args.iter().find(|a| a.starts_with("snapshot_"));
+            assert!(
+                filename_arg.is_some(),
+                "expected 'snapshot' filename for orphan detached HEAD, got args: {:?}",
+                req.args
+            );
+        }
+        other => panic!(
+            "expected shell request from prepare_gist_request, got: {:?}",
+            other
+        ),
     }
 }

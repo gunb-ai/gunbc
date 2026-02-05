@@ -56,13 +56,22 @@ impl Executable for GistOps {
             GistOps::PrepareRequest { public } => {
                 let markdown = require_str(&inputs, "markdown")?;
                 let branch = optional_str(&inputs, "branch");
+                let remote_branch = optional_str(&inputs, "remote_branch");
 
                 // Acquire system resources at the DAG boundary (not inline)
                 let fs = require_filesystem_handle(&inputs, "res:fs")?;
                 let now = require_timestamp(&inputs, "res:clock")?;
 
-                let filename = generate_gist_filename(&fs, branch.unwrap_or("snapshot"), now);
-                let description = match branch {
+                // Explicit priority: local branch > remote branch > "snapshot".
+                // - `branch` is set when HEAD points to a local branch
+                // - `remote_branch` is set when HEAD is detached at a remote
+                //   tracking branch (e.g., after `git checkout origin/main`)
+                // - Neither is set for arbitrary detached commits
+                let effective_branch = branch.or(remote_branch);
+
+                let filename =
+                    generate_gist_filename(&fs, effective_branch.unwrap_or("snapshot"), now);
+                let description = match effective_branch {
                     Some(b) if !b.trim().is_empty() && b.trim() != "HEAD" => {
                         format!("Code snapshot of {} created by gunbc-gist", b)
                     }
@@ -379,6 +388,79 @@ mod tests {
                 assert!(
                     desc.contains("feature/cool-thing"),
                     "description should include original branch name"
+                );
+            }
+            _ => panic!("expected shell request"),
+        }
+    }
+
+    #[test]
+    fn test_gist_ops_prepare_with_remote_branch_when_detached() {
+        let mut inputs = HashMap::new();
+        inputs.insert("markdown".to_string(), Value::Str("# Test".to_string()));
+        // No local "branch" — simulates detached HEAD
+        inputs.insert(
+            "remote_branch".to_string(),
+            Value::Str("main".to_string()),
+        );
+        let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
+        let ts = Timestamp::from_system_time(SystemTime::UNIX_EPOCH);
+        inputs.insert("res:fs".to_string(), fs.into());
+        inputs.insert("res:clock".to_string(), ts.into());
+
+        let op = GistOps::PrepareRequest { public: false };
+        let result = op.execute(inputs).unwrap();
+
+        match result.get("request") {
+            Some(Value::Request(TransportRequest::Shell(req))) => {
+                // Should use remote_branch ("main") for filename, not "snapshot"
+                let f_arg = req.args.iter().find(|a| a.starts_with("main_"));
+                assert!(
+                    f_arg.is_some(),
+                    "expected remote-branch-based filename, got args: {:?}",
+                    req.args
+                );
+                // Description should mention the branch
+                let desc_idx = req.args.iter().position(|a| a == "--desc").unwrap();
+                let desc = &req.args[desc_idx + 1];
+                assert!(
+                    desc.contains("main"),
+                    "description should include remote branch name"
+                );
+            }
+            _ => panic!("expected shell request"),
+        }
+    }
+
+    #[test]
+    fn test_gist_ops_local_branch_preferred_over_remote() {
+        let mut inputs = HashMap::new();
+        inputs.insert("markdown".to_string(), Value::Str("# Test".to_string()));
+        // Both local and remote — local should win
+        inputs.insert(
+            "branch".to_string(),
+            Value::Str("my-feature".to_string()),
+        );
+        inputs.insert(
+            "remote_branch".to_string(),
+            Value::Str("main".to_string()),
+        );
+        let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
+        let ts = Timestamp::from_system_time(SystemTime::UNIX_EPOCH);
+        inputs.insert("res:fs".to_string(), fs.into());
+        inputs.insert("res:clock".to_string(), ts.into());
+
+        let op = GistOps::PrepareRequest { public: false };
+        let result = op.execute(inputs).unwrap();
+
+        match result.get("request") {
+            Some(Value::Request(TransportRequest::Shell(req))) => {
+                // Should use local branch, not remote
+                let f_arg = req.args.iter().find(|a| a.starts_with("my-feature_"));
+                assert!(
+                    f_arg.is_some(),
+                    "local branch should take priority, got args: {:?}",
+                    req.args
                 );
             }
             _ => panic!("expected shell request"),

@@ -32,14 +32,14 @@ use gunbc_clippy::ClippyConfigRenderer;
 use gunbc_codegen::{
     all_cleanable_outputs, all_tools, generate_cli_with_import, generate_graph_rs, FileWriter,
 };
-use gunbc_infra::codegen_hash::compute_codegen_input_hash;
 use gunbc_ir::resource::{
-    ContentHash, ManifestEntry, ResourceManifest,
+    codegen_resource_def, compute_key_from_def, ExecMode, ManagedResource, ManifestEntry,
+    ResourceDef, ResourceError, ResourceManifest,
 };
 use gunbc_ir::transport::ci::{
     yaml_block, CacheConfig, CiRenderer, GitHubActionsProvider, GitLabCiProvider, RenderConfig,
 };
-use gunbc_ir::{Renderable, ResourceId, CODEGEN_BIN_DIR, CODEGEN_LIB_DIR};
+use gunbc_ir::{Renderable, CODEGEN_BIN_DIR, CODEGEN_LIB_DIR};
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fs;
@@ -779,25 +779,30 @@ fn codegen_clis(dry_run: bool) -> bool {
 // Resource Manifest Support
 // ============================================================================
 
-/// Write a manifest entry for the generated CLI resource.
-///
-/// This records that codegen was successful with the given input hash.
-/// The CI system can later check this to determine if codegen needs to run.
-#[allow(clippy::disallowed_methods)]
-fn write_codegen_manifest(hash: ContentHash, file_count: usize) -> io::Result<()> {
-    let mut manifest = ResourceManifest::load_default()?;
+#[derive(Clone)]
+struct CodegenResource {
+    def: ResourceDef,
+    outputs: Vec<PathBuf>,
+}
 
-    let resource_id = ResourceId::build("generated_cli");
-    let entry = ManifestEntry::new(hash, file_count).with_outputs(vec![
-        PathBuf::from(CODEGEN_BIN_DIR),
-        PathBuf::from(CODEGEN_LIB_DIR),
-    ]);
+impl CodegenResource {
+    fn new() -> Self {
+        Self {
+            def: codegen_resource_def(),
+            outputs: vec![PathBuf::from(CODEGEN_BIN_DIR), PathBuf::from(CODEGEN_LIB_DIR)],
+        }
+    }
+}
 
-    manifest.insert(resource_id, entry);
-    manifest.save_default()?;
+impl ManagedResource for CodegenResource {
+    fn definition(&self) -> &ResourceDef {
+        &self.def
+    }
 
-    println!("  Updated resource manifest: target/.resource-manifest.json");
-    Ok(())
+    fn create(&self, manifest: &ResourceManifest) -> Result<ManifestEntry, ResourceError> {
+        let (key, file_count) = compute_key_from_def(&self.def, manifest)?;
+        Ok(ManifestEntry::new(key, file_count).with_outputs(self.outputs.clone()))
+    }
 }
 
 /// Update the resource manifest after successful codegen.
@@ -810,18 +815,31 @@ fn update_manifest_after_codegen(dry_run: bool) {
     }
 
     println!("\n  Updating resource manifest...");
-    match compute_codegen_input_hash() {
-        Ok((hash, file_count)) => {
-            if let Err(e) = write_codegen_manifest(hash, file_count) {
+    let resource = CodegenResource::new();
+    let mut manifest = match ResourceManifest::load_default() {
+        Ok(m) => m,
+        Err(e) => {
+            eprintln!("  ERROR: Could not load manifest: {}", e);
+            eprintln!("  Codegen outputs exist but freshness cannot be verified.");
+            eprintln!("  CI --mode=verify will fail until manifest is written.");
+            return;
+        }
+    };
+
+    match resource.acquire(ExecMode::Ensure, &mut manifest) {
+        Ok(_) => {
+            if let Err(e) = manifest.save_default() {
                 eprintln!("  ERROR: Could not write manifest: {}", e);
                 eprintln!("  Codegen outputs exist but freshness cannot be verified.");
                 eprintln!("  CI --mode=verify will fail until manifest is written.");
                 // Don't exit(1) - codegen outputs are valid, just untracked.
                 // Next run should succeed in writing the manifest.
+            } else {
+                println!("  Updated resource manifest: target/.resource-manifest.json");
             }
         }
         Err(e) => {
-            eprintln!("  ERROR: Could not compute input hash: {}", e);
+            eprintln!("  ERROR: Could not update manifest: {}", e);
             eprintln!("  Codegen outputs exist but freshness cannot be verified.");
             eprintln!("  CI --mode=verify will fail until manifest is written.");
         }

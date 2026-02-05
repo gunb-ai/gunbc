@@ -8,7 +8,8 @@
 
 use crate::makegen::BuildConfig;
 use gunbc_exec::{
-    require_bool, require_response, require_str, ExecError, Executable, TransportResponseExt,
+    require_bool, require_response, require_str, ExecError, Executable, OutputMap,
+    TransportResponseExt,
 };
 use gunbc_ir::transport::TransportRequest;
 use gunbc_ir::Value;
@@ -57,22 +58,19 @@ fn exec_prepare_build(
     let config = BuildConfig::cargo();
     let request = TransportRequest::Shell(config.build.to_shell_request());
 
-    let mut out = HashMap::new();
-    out.insert("request".to_string(), Value::Request(request));
-    Ok(out)
+    OutputMap::new().request("request", request).ok()
 }
 
 fn exec_parse_build(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-    let mut out = HashMap::new();
-
     let response = require_response(&inputs, "response")?;
     let shell = response.require_shell()?;
     let success = shell.exit_code == 0;
-    out.insert("build_success".to_string(), Value::Bool(success));
-    out.insert("build_stdout".to_string(), Value::Str(shell.stdout.clone()));
-    out.insert("build_stderr".to_string(), Value::Str(shell.stderr.clone()));
 
-    Ok(out)
+    OutputMap::new()
+        .bool("build_success", success)
+        .str("build_stdout", shell.stdout.clone())
+        .str("build_stderr", shell.stderr.clone())
+        .ok()
 }
 
 // ============================================================================
@@ -82,46 +80,41 @@ fn exec_parse_build(inputs: HashMap<String, Value>) -> Result<HashMap<String, Va
 fn exec_prepare_test(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
     let build_success = require_bool(&inputs, "build_success")?;
 
-    let mut out = HashMap::new();
-
     if !build_success {
-        out.insert("skip".to_string(), Value::Bool(true));
-        return Ok(out);
+        return OutputMap::new().bool("skip", true).ok();
     }
 
     let config = BuildConfig::cargo();
     let request = TransportRequest::Shell(config.test.to_shell_request());
 
-    out.insert("request".to_string(), Value::Request(request));
-    out.insert("skip".to_string(), Value::Bool(false));
-    Ok(out)
+    OutputMap::new()
+        .request("request", request)
+        .bool("skip", false)
+        .ok()
 }
 
 fn exec_parse_test(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-    let mut out = HashMap::new();
-
     let skip = require_bool(&inputs, "skip")?;
 
     if skip {
-        out.insert("test_success".to_string(), Value::Bool(false));
-        out.insert("test_skipped".to_string(), Value::Bool(true));
-        out.insert("test_stdout".to_string(), Value::Str(String::new()));
-        out.insert(
-            "test_stderr".to_string(),
-            Value::Str("skipped: build failed".to_string()),
-        );
-        return Ok(out);
+        return OutputMap::new()
+            .bool("test_success", false)
+            .bool("test_skipped", true)
+            .str("test_stdout", "")
+            .str("test_stderr", "skipped: build failed")
+            .ok();
     }
 
     let response = require_response(&inputs, "response")?;
     let shell = response.require_shell()?;
     let success = shell.exit_code == 0;
-    out.insert("test_success".to_string(), Value::Bool(success));
-    out.insert("test_skipped".to_string(), Value::Bool(false));
-    out.insert("test_stdout".to_string(), Value::Str(shell.stdout.clone()));
-    out.insert("test_stderr".to_string(), Value::Str(shell.stderr.clone()));
 
-    Ok(out)
+    OutputMap::new()
+        .bool("test_success", success)
+        .bool("test_skipped", false)
+        .str("test_stdout", shell.stdout.clone())
+        .str("test_stderr", shell.stderr.clone())
+        .ok()
 }
 
 // ============================================================================
@@ -133,52 +126,41 @@ fn exec_prepare_clippy(
 ) -> Result<HashMap<String, Value>, ExecError> {
     let build_success = require_bool(&inputs, "build_success")?;
 
-    let mut out = HashMap::new();
-
     if !build_success {
-        out.insert("skip".to_string(), Value::Bool(true));
-        return Ok(out);
+        return OutputMap::new().bool("skip", true).ok();
     }
 
     let config = BuildConfig::cargo();
     let request = TransportRequest::Shell(config.lint.to_shell_request());
 
-    out.insert("request".to_string(), Value::Request(request));
-    out.insert("skip".to_string(), Value::Bool(false));
-    Ok(out)
+    OutputMap::new()
+        .request("request", request)
+        .bool("skip", false)
+        .ok()
 }
 
 fn exec_parse_clippy(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-    let mut out = HashMap::new();
-
     let skip = require_bool(&inputs, "skip")?;
 
     if skip {
-        out.insert("clippy_success".to_string(), Value::Bool(false));
-        out.insert("clippy_skipped".to_string(), Value::Bool(true));
-        out.insert("clippy_stdout".to_string(), Value::Str(String::new()));
-        out.insert(
-            "clippy_stderr".to_string(),
-            Value::Str("skipped: build failed".to_string()),
-        );
-        return Ok(out);
+        return OutputMap::new()
+            .bool("clippy_success", false)
+            .bool("clippy_skipped", true)
+            .str("clippy_stdout", "")
+            .str("clippy_stderr", "skipped: build failed")
+            .ok();
     }
 
     let response = require_response(&inputs, "response")?;
     let shell = response.require_shell()?;
     let success = shell.exit_code == 0;
-    out.insert("clippy_success".to_string(), Value::Bool(success));
-    out.insert("clippy_skipped".to_string(), Value::Bool(false));
-    out.insert(
-        "clippy_stdout".to_string(),
-        Value::Str(shell.stdout.clone()),
-    );
-    out.insert(
-        "clippy_stderr".to_string(),
-        Value::Str(shell.stderr.clone()),
-    );
 
-    Ok(out)
+    OutputMap::new()
+        .bool("clippy_success", success)
+        .bool("clippy_skipped", false)
+        .str("clippy_stdout", shell.stdout.clone())
+        .str("clippy_stderr", shell.stderr.clone())
+        .ok()
 }
 
 // ============================================================================
@@ -210,10 +192,10 @@ fn exec_summary(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>
         report.push_str("All checks passed.");
     }
 
-    let mut out = HashMap::new();
-    out.insert("overall_success".to_string(), Value::Bool(overall));
-    out.insert("report".to_string(), Value::Str(report));
-    Ok(out)
+    OutputMap::new()
+        .bool("overall_success", overall)
+        .str("report", report)
+        .ok()
 }
 
 #[cfg(test)]
@@ -233,11 +215,7 @@ mod tests {
         let mut inputs = HashMap::new();
         inputs.insert(
             "response".to_string(),
-            Value::Response(TransportResponse::Shell(ShellResponse {
-                exit_code: 0,
-                stdout: "ok".to_string(),
-                stderr: String::new(),
-            })),
+            Value::Response(TransportResponse::Shell(ShellResponse::ok("ok"))),
         );
         let out = exec_parse_build(inputs).unwrap();
         assert_eq!(out["build_success"], Value::Bool(true));
@@ -248,11 +226,7 @@ mod tests {
         let mut inputs = HashMap::new();
         inputs.insert(
             "response".to_string(),
-            Value::Response(TransportResponse::Shell(ShellResponse {
-                exit_code: 1,
-                stdout: String::new(),
-                stderr: "error[E0308]".to_string(),
-            })),
+            Value::Response(TransportResponse::Shell(ShellResponse::failed(1, "error[E0308]"))),
         );
         let out = exec_parse_build(inputs).unwrap();
         assert_eq!(out["build_success"], Value::Bool(false));

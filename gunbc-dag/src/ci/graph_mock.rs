@@ -16,8 +16,11 @@
 //! - `execute_deps_exists`: Check deps.toml exists
 //! - `execute_codegen_exists`: Check codegen output exists
 //! - `execute_codegen`: Run codegen if needed
+//! - `execute_stamp_write`: Write codegen stamp file
+//! - `execute_testgen`: Run testgen after codegen
 //! - `execute_build`: Run cargo build
 //! - `execute_test`: Run cargo test
+//! - `execute_guardrail_check`: Check disallowed-methods allowlist
 //!
 //! # CLI Tool Mocks
 //!
@@ -58,6 +61,8 @@ pub fn ci_mock_spec() -> MockSpec {
                 .input("build_success", Value::Bool(true))
                 .input("test_success", Value::Bool(true))
                 .input("lint_success", Value::Bool(true))
+                .input("testgen_success", Value::Bool(true))
+                .input("guardrail_success", Value::Bool(true))
                 .output("overall_success", OutputMatcher::exact(Value::Bool(true)))
                 .output("report", OutputMatcher::contains("SUCCESS"))
                 .description("All stages pass → overall success"),
@@ -75,6 +80,8 @@ pub fn ci_mock_spec() -> MockSpec {
                 .input("lint_success", Value::Bool(true))
                 .input("lint_stdout", Value::Str(String::new()))
                 .input("lint_stderr", Value::Str(String::new()))
+                .input("testgen_success", Value::Bool(true))
+                .input("guardrail_success", Value::Bool(true))
                 .output("overall_success", OutputMatcher::exact(Value::Bool(false)))
                 .output("report", OutputMatcher::contains("FAILURE"))
                 .description("Build failure → overall failure"),
@@ -114,22 +121,10 @@ pub fn ci_mock_spec() -> MockSpec {
             NodeExample::new("parse_codegen_exists")
                 .input(
                     "response",
-                    Value::Response(
-                        FileResponse {
-                            path: "Cargo.toml".into(),
-                            operation: FileOp::Exists,
-                            success: true,
-                            content: None,
-                            exists: Some(true),
-                            error: None,
-                        }
-                        .into(),
-                    ),
+                    Value::Response(ShellResponse::ok("").into()),
                 )
                 .output("codegen_needed", OutputMatcher::exact(Value::Bool(false)))
-                .output("prep_success", OutputMatcher::exact(Value::Bool(true)))
-                .output("codegen_ran", OutputMatcher::exact(Value::Bool(false)))
-                .description("File exists: codegen dir found → codegen not needed"),
+                .description("Shell exists check success → codegen not needed"),
         )
         .node_example(
             NodeExample::new("parse_codegen_exists")
@@ -155,6 +150,26 @@ pub fn ci_mock_spec() -> MockSpec {
                 .output("prep_success", OutputMatcher::exact(Value::Bool(true)))
                 .output("codegen_ran", OutputMatcher::exact(Value::Bool(false)))
                 .description("Skip path: codegen exists → prep_success, not ran"),
+        )
+        .node_example(
+            NodeExample::new("parse_testgen")
+                .input(
+                    "response",
+                    Value::Response(ShellResponse::ok("Generated tests").into()),
+                )
+                .input("skip", Value::Bool(false))
+                .output("testgen_success", OutputMatcher::exact(Value::Bool(true)))
+                .description("Testgen shell success → testgen_success true"),
+        )
+        .node_example(
+            NodeExample::new("parse_testgen")
+                .input("skip", Value::Bool(true))
+                .input(
+                    "skip_reason",
+                    Value::Str("Skipped due to prep failure".into()),
+                )
+                .output("testgen_success", OutputMatcher::exact(Value::Bool(false)))
+                .description("Skip path: testgen skipped → success false"),
         )
         .node_example(
             NodeExample::new("parse_build")
@@ -212,14 +227,21 @@ pub fn ci_mock_spec() -> MockSpec {
                 .description("Prepares file-exists check for codegen dir"),
         )
         .node_example(
-            NodeExample::new("prepare_codegen_cmd")
+            NodeExample::new("prepare_codegen_command")
                 .input("codegen_needed", Value::Bool(false))
                 .output("skip", OutputMatcher::IsBool)
                 .description("Codegen command prepare emits skip flag"),
         )
         .node_example(
+            NodeExample::new("prepare_testgen")
+                .input("prep_success", Value::Bool(true))
+                .output("skip", OutputMatcher::IsBool)
+                .description("Testgen prepare emits skip flag"),
+        )
+        .node_example(
             NodeExample::new("prepare_build")
                 .input("prep_success", Value::Bool(true))
+                .input("testgen_success", Value::Bool(true))
                 .output("skip", OutputMatcher::IsBool)
                 .description("Build prepare emits skip flag"),
         )
@@ -228,6 +250,12 @@ pub fn ci_mock_spec() -> MockSpec {
                 .input("build_success", Value::Bool(true))
                 .output("skip", OutputMatcher::IsBool)
                 .description("Test prepare emits skip flag"),
+        )
+        .node_example(
+            NodeExample::new("prepare_guardrail_check")
+                .input("testgen_success", Value::Bool(true))
+                .output("skip", OutputMatcher::IsBool)
+                .description("Guardrail prepare emits skip flag"),
         )
         .node_example(
             NodeExample::new("prepare_clippy_lint")
@@ -250,6 +278,13 @@ pub fn ci_mock_spec() -> MockSpec {
                 .output("lint_success", OutputMatcher::IsBool)
                 .output("lint_skipped", OutputMatcher::IsBool)
                 .description("Clippy result parse produces success/skipped flags"),
+        )
+        .node_example(
+            NodeExample::new("parse_guardrail_check")
+                .input("skip", Value::Bool(false))
+                .input("response", Value::Response(ShellResponse::ok("OK").into()))
+                .output("guardrail_success", OutputMatcher::exact(Value::Bool(true)))
+                .description("Guardrail check success → guardrail_success true"),
         )
         // Primitive nodes — tested in their own crates
         .skip_node_example("prepare_deps_exists")
@@ -283,14 +318,7 @@ pub fn ci_mock_spec_test_fails() -> MockSpec {
         .transport_response(
             "execute_codegen_exists",
             "response",
-            TransportResponse::File(FileResponse {
-                path: "Cargo.toml".into(),
-                operation: FileOp::Exists,
-                success: true,
-                content: None,
-                exists: Some(true),
-                error: None,
-            }),
+            TransportResponse::Shell(ShellResponse::ok("")),
         )
         .expect("execute_codegen_exists response should match type")
         // Transport: execute_codegen (skipped)
@@ -298,6 +326,33 @@ pub fn ci_mock_spec_test_fails() -> MockSpec {
         .expect("execute_codegen response should match type")
         .boundary_bool("execute_codegen", "skip", true)
         .expect("execute_codegen skip should match type")
+        // Transport: execute_stamp_write (succeeds)
+        .transport_response(
+            "execute_stamp_write",
+            "response",
+            TransportResponse::File(FileResponse {
+                path: "target/.codegen-stamp".into(),
+                operation: FileOp::Write,
+                success: true,
+                content: None,
+                exists: None,
+                error: None,
+            }),
+        )
+        .expect("execute_stamp_write response should match type")
+        .boundary_bool("execute_stamp_write", "skip", false)
+        .expect("execute_stamp_write skip should match type")
+        // Transport: execute_testgen (success)
+        .transport_response(
+            "execute_testgen",
+            "response",
+            TransportResponse::Shell(ShellResponse::ok("Generated tests")),
+        )
+        .expect("execute_testgen response should match type")
+        .boundary_bool("execute_testgen", "skip", false)
+        .expect("execute_testgen skip should match type")
+        .boundary_str("execute_testgen", "skip_reason", "")
+        .expect("execute_testgen skip_reason should match type")
         // Transport: execute_build (success)
         .transport_response(
             "execute_build",
@@ -325,6 +380,17 @@ pub fn ci_mock_spec_test_fails() -> MockSpec {
         .expect("execute_test skip should match type")
         .boundary_str("execute_test", "skip_reason", "")
         .expect("execute_test skip_reason should match type")
+        // Transport: execute_guardrail_check (success)
+        .transport_response(
+            "execute_guardrail_check",
+            "response",
+            TransportResponse::Shell(ShellResponse::ok("OK")),
+        )
+        .expect("execute_guardrail_check response should match type")
+        .boundary_bool("execute_guardrail_check", "skip", false)
+        .expect("execute_guardrail_check skip should match type")
+        .boundary_str("execute_guardrail_check", "skip_reason", "")
+        .expect("execute_guardrail_check skip_reason should match type")
         // CliTool: clippy_lint (success)
         .boundary_bool("clippy_lint", "success", true)
         .expect("clippy_lint success should match type")
@@ -368,14 +434,7 @@ pub fn ci_mock_spec_build_fails() -> MockSpec {
         .transport_response(
             "execute_codegen_exists",
             "response",
-            TransportResponse::File(FileResponse {
-                path: "Cargo.toml".into(),
-                operation: FileOp::Exists,
-                success: true,
-                content: None,
-                exists: Some(true),
-                error: None,
-            }),
+            TransportResponse::Shell(ShellResponse::ok("")),
         )
         .expect("execute_codegen_exists response should match type")
         // Transport: execute_codegen (skipped)
@@ -383,6 +442,33 @@ pub fn ci_mock_spec_build_fails() -> MockSpec {
         .expect("execute_codegen response should match type")
         .boundary_bool("execute_codegen", "skip", true)
         .expect("execute_codegen skip should match type")
+        // Transport: execute_stamp_write (succeeds)
+        .transport_response(
+            "execute_stamp_write",
+            "response",
+            TransportResponse::File(FileResponse {
+                path: "target/.codegen-stamp".into(),
+                operation: FileOp::Write,
+                success: true,
+                content: None,
+                exists: None,
+                error: None,
+            }),
+        )
+        .expect("execute_stamp_write response should match type")
+        .boundary_bool("execute_stamp_write", "skip", false)
+        .expect("execute_stamp_write skip should match type")
+        // Transport: execute_testgen (success)
+        .transport_response(
+            "execute_testgen",
+            "response",
+            TransportResponse::Shell(ShellResponse::ok("Generated tests")),
+        )
+        .expect("execute_testgen response should match type")
+        .boundary_bool("execute_testgen", "skip", false)
+        .expect("execute_testgen skip should match type")
+        .boundary_str("execute_testgen", "skip_reason", "")
+        .expect("execute_testgen skip_reason should match type")
         // Transport: execute_build (FAILS)
         .transport_response(
             "execute_build",
@@ -404,6 +490,17 @@ pub fn ci_mock_spec_build_fails() -> MockSpec {
         .expect("execute_test skip should match type")
         .boundary_str("execute_test", "skip_reason", "Build failed")
         .expect("execute_test skip_reason should match type")
+        // Transport: execute_guardrail_check (success)
+        .transport_response(
+            "execute_guardrail_check",
+            "response",
+            TransportResponse::Shell(ShellResponse::ok("OK")),
+        )
+        .expect("execute_guardrail_check response should match type")
+        .boundary_bool("execute_guardrail_check", "skip", false)
+        .expect("execute_guardrail_check skip should match type")
+        .boundary_str("execute_guardrail_check", "skip_reason", "")
+        .expect("execute_guardrail_check skip_reason should match type")
         // CliTool: clippy_lint (skipped due to build failure)
         .boundary_bool("clippy_lint", "success", false)
         .expect("clippy_lint success should match type")
@@ -445,14 +542,7 @@ pub fn ci_mock_spec_prep_fails() -> MockSpec {
         .transport_response(
             "execute_codegen_exists",
             "response",
-            TransportResponse::File(FileResponse {
-                path: "Cargo.toml".into(),
-                operation: FileOp::Exists,
-                success: true,
-                content: None,
-                exists: Some(false), // Codegen output doesn't exist
-                error: None,
-            }),
+            TransportResponse::Shell(ShellResponse::failed(1, "missing")),
         )
         .expect("execute_codegen_exists response should match type")
         // Transport: execute_codegen (FAILS)
@@ -467,6 +557,18 @@ pub fn ci_mock_spec_prep_fails() -> MockSpec {
         .expect("execute_codegen response should match type")
         .boundary_bool("execute_codegen", "skip", false)
         .expect("execute_codegen skip should match type")
+        // Transport: execute_stamp_write (skipped due to prep failure)
+        .boundary("execute_stamp_write", "response", Value::Skipped)
+        .expect("execute_stamp_write response should match type")
+        .boundary_bool("execute_stamp_write", "skip", true)
+        .expect("execute_stamp_write skip should match type")
+        // Transport: execute_testgen (skipped due to prep failure)
+        .boundary("execute_testgen", "response", Value::Skipped)
+        .expect("execute_testgen response should match type")
+        .boundary_bool("execute_testgen", "skip", true)
+        .expect("execute_testgen skip should match type")
+        .boundary_str("execute_testgen", "skip_reason", "Prep failed")
+        .expect("execute_testgen skip_reason should match type")
         // Transport: execute_build (skipped)
         .boundary("execute_build", "response", Value::Skipped)
         .expect("execute_build response should match type")
@@ -481,6 +583,17 @@ pub fn ci_mock_spec_prep_fails() -> MockSpec {
         .expect("execute_test skip should match type")
         .boundary_str("execute_test", "skip_reason", "Prep failed")
         .expect("execute_test skip_reason should match type")
+        // Transport: execute_guardrail_check (skipped due to testgen failure)
+        .boundary("execute_guardrail_check", "response", Value::Skipped)
+        .expect("execute_guardrail_check response should match type")
+        .boundary_bool("execute_guardrail_check", "skip", true)
+        .expect("execute_guardrail_check skip should match type")
+        .boundary_str(
+            "execute_guardrail_check",
+            "skip_reason",
+            "Skipped due to testgen failure",
+        )
+        .expect("execute_guardrail_check skip_reason should match type")
         // CliTool: clippy_lint (skipped)
         .boundary_bool("clippy_lint", "success", false)
         .expect("clippy_lint success should match type")
@@ -521,14 +634,7 @@ pub fn ci_mock_spec_lint_fails() -> MockSpec {
         .transport_response(
             "execute_codegen_exists",
             "response",
-            TransportResponse::File(FileResponse {
-                path: "Cargo.toml".into(),
-                operation: FileOp::Exists,
-                success: true,
-                content: None,
-                exists: Some(true),
-                error: None,
-            }),
+            TransportResponse::Shell(ShellResponse::ok("")),
         )
         .expect("execute_codegen_exists response should match type")
         // Transport: execute_codegen (skipped)
@@ -536,6 +642,33 @@ pub fn ci_mock_spec_lint_fails() -> MockSpec {
         .expect("execute_codegen response should match type")
         .boundary_bool("execute_codegen", "skip", true)
         .expect("execute_codegen skip should match type")
+        // Transport: execute_stamp_write (succeeds)
+        .transport_response(
+            "execute_stamp_write",
+            "response",
+            TransportResponse::File(FileResponse {
+                path: "target/.codegen-stamp".into(),
+                operation: FileOp::Write,
+                success: true,
+                content: None,
+                exists: None,
+                error: None,
+            }),
+        )
+        .expect("execute_stamp_write response should match type")
+        .boundary_bool("execute_stamp_write", "skip", false)
+        .expect("execute_stamp_write skip should match type")
+        // Transport: execute_testgen (success)
+        .transport_response(
+            "execute_testgen",
+            "response",
+            TransportResponse::Shell(ShellResponse::ok("Generated tests")),
+        )
+        .expect("execute_testgen response should match type")
+        .boundary_bool("execute_testgen", "skip", false)
+        .expect("execute_testgen skip should match type")
+        .boundary_str("execute_testgen", "skip_reason", "")
+        .expect("execute_testgen skip_reason should match type")
         // Transport: execute_build (success)
         .transport_response(
             "execute_build",
@@ -562,6 +695,17 @@ pub fn ci_mock_spec_lint_fails() -> MockSpec {
         .expect("execute_test skip should match type")
         .boundary_str("execute_test", "skip_reason", "")
         .expect("execute_test skip_reason should match type")
+        // Transport: execute_guardrail_check (success)
+        .transport_response(
+            "execute_guardrail_check",
+            "response",
+            TransportResponse::Shell(ShellResponse::ok("OK")),
+        )
+        .expect("execute_guardrail_check response should match type")
+        .boundary_bool("execute_guardrail_check", "skip", false)
+        .expect("execute_guardrail_check skip should match type")
+        .boundary_str("execute_guardrail_check", "skip_reason", "")
+        .expect("execute_guardrail_check skip_reason should match type")
         // CliTool: clippy_lint (FAILS)
         .boundary_bool("clippy_lint", "success", false)
         .expect("clippy_lint success should match type")
@@ -617,14 +761,7 @@ fn with_ci_typed_mocks(
         .transport_response(
             "execute_codegen_exists",
             "response",
-            TransportResponse::File(FileResponse {
-                path: "Cargo.toml".into(),
-                operation: FileOp::Exists,
-                success: true,
-                content: None,
-                exists: Some(true),
-                error: None,
-            }),
+            TransportResponse::Shell(ShellResponse::ok("")),
         )
         .expect("execute_codegen_exists response should match type")
         // Transport: execute_codegen (skipped - already exists)
@@ -632,6 +769,33 @@ fn with_ci_typed_mocks(
         .expect("execute_codegen response should match type")
         .boundary_bool("execute_codegen", "skip", true)
         .expect("execute_codegen skip should match type")
+        // Transport: execute_stamp_write (succeeds)
+        .transport_response(
+            "execute_stamp_write",
+            "response",
+            TransportResponse::File(FileResponse {
+                path: "target/.codegen-stamp".into(),
+                operation: FileOp::Write,
+                success: true,
+                content: None,
+                exists: None,
+                error: None,
+            }),
+        )
+        .expect("execute_stamp_write response should match type")
+        .boundary_bool("execute_stamp_write", "skip", false)
+        .expect("execute_stamp_write skip should match type")
+        // Transport: execute_testgen (succeeds)
+        .transport_response(
+            "execute_testgen",
+            "response",
+            TransportResponse::Shell(ShellResponse::ok("Generated tests")),
+        )
+        .expect("execute_testgen response should match type")
+        .boundary_bool("execute_testgen", "skip", false)
+        .expect("execute_testgen skip should match type")
+        .boundary_str("execute_testgen", "skip_reason", "")
+        .expect("execute_testgen skip_reason should match type")
         // Transport: execute_build (succeeds)
         .transport_response(
             "execute_build",
@@ -658,6 +822,17 @@ fn with_ci_typed_mocks(
         .expect("execute_test skip should match type")
         .boundary_str("execute_test", "skip_reason", "")
         .expect("execute_test skip_reason should match type")
+        // Transport: execute_guardrail_check (succeeds)
+        .transport_response(
+            "execute_guardrail_check",
+            "response",
+            TransportResponse::Shell(ShellResponse::ok("OK")),
+        )
+        .expect("execute_guardrail_check response should match type")
+        .boundary_bool("execute_guardrail_check", "skip", false)
+        .expect("execute_guardrail_check skip should match type")
+        .boundary_str("execute_guardrail_check", "skip_reason", "")
+        .expect("execute_guardrail_check skip_reason should match type")
         // CliTool: clippy_lint (succeeds) - now detected by extract_mock_requirements
         .boundary_bool("clippy_lint", "success", true)
         .expect("clippy_lint success should match type")
@@ -672,45 +847,6 @@ fn with_ci_typed_mocks(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // ========================================================================
-    // Mock spec tests (Pattern B - mock value properties)
-    // ========================================================================
-
-    #[test]
-    fn test_mock_spec_has_transport_mocks() {
-        let spec = ci_mock_spec();
-        // All transport mocks should be present
-        assert!(spec
-            .get_transport_mock("execute_deps_exists", "response")
-            .is_some());
-        assert!(spec
-            .get_transport_mock("execute_codegen_exists", "response")
-            .is_some());
-        assert!(spec.get_transport_mock("execute_build", "response").is_some());
-        assert!(spec.get_transport_mock("execute_test", "response").is_some());
-        // CliTool mocks
-        assert!(spec.get_transport_mock("clippy_lint", "success").is_some());
-    }
-
-    #[test]
-    fn test_mock_spec_has_resource_mock() {
-        let spec = ci_mock_spec();
-        // runner_env provides tool:clippy
-        let handle = spec.get_boundary_mock("runner_env", "tool:clippy").unwrap();
-        assert!(matches!(handle, Value::Map(_)));
-    }
-
-    #[test]
-    fn test_build_contended_spec() {
-        let spec = ci_mock_spec_build_contended();
-        let build = spec.get_resource("cargo:build").unwrap();
-        let result = build.acquire();
-        assert!(matches!(
-            result,
-            gunbc_test::ResourceAcquireResult::Failed(_)
-        ));
-    }
 
     #[test]
     fn test_typed_builder_rejects_wrong_slot() {

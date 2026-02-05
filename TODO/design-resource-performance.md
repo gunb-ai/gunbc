@@ -53,10 +53,13 @@ If output is empty → nothing in our input patterns changed → Fresh.
 This is faster than walking the filesystem ourselves and handles
 edge cases (new files, deleted files, renamed files) correctly.
 
-## Current Design (Phase 1)
+## Current Design
 
-The current design prioritizes correctness and clear modeling over performance.
-This is intentional - we want robust abstractions before optimizing.
+**Status (updated 2026-02-05):** The mtime fast path is now implemented in
+`core/infra/src/freshness.rs` via `check_freshness_mtime()`. It returns
+`MtimeResult::Fresh` (skip hashing) or `MaybeStale(reason)` (proceed to hash).
+`ManifestEntry.input_file_count` tracks expected file count for fast invalidation.
+See `architecture-debt.md` Phase B for details.
 
 ## Known Performance Issues
 

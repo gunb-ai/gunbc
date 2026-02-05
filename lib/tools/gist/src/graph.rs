@@ -49,6 +49,16 @@ pub enum GistMode {
         /// The branch to diff against (e.g., "main", "origin/main").
         base_ref: String,
     },
+
+    /// Recent mode: diff of changes from the last 7 days.
+    ///
+    /// The full pipeline:
+    /// `rev-list → execute → parse-rev-list → diff → execute → parse-diff → render-diff → gist`
+    ///
+    /// Uses `git rev-list -1 --before="7 days ago" HEAD` to find the base commit,
+    /// then diffs against it. If the repo is younger than 7 days (empty rev-list),
+    /// the diff runs against HEAD → producing an empty diff.
+    Recent,
 }
 
 /// The operation type for gist graphs - a union of pure ops, library ops, and transport.
@@ -452,6 +462,7 @@ pub fn gist_signature(mode: &GistMode) -> WorkflowSignature {
         sig = sig.with_input("base_ref", "String", Cardinality::ZERO_OR_ONE);
     }
 
+    // Recent mode has same signature as Snapshot (just repo_path?)
     sig
 }
 
@@ -507,6 +518,7 @@ pub fn build_gist_graph(
     let render_markdown = match mode {
         GistMode::Snapshot => build_snapshot_acquire(&mut builder, extensions)?,
         GistMode::Diff { base_ref } => build_diff_acquire(&mut builder, &base_ref, extensions)?,
+        GistMode::Recent => build_recent_acquire(&mut builder, extensions)?,
     };
 
     // ========================================================================
@@ -554,6 +566,53 @@ pub fn build_gist_graph(
     )?;
 
     // ========================================================================
+    // Remote branch resolution (parallel — for detached HEAD)
+    // ========================================================================
+    // This is a separate question from "what branch are we on?". When HEAD
+    // is detached (e.g., `git checkout origin/main`), this chain resolves
+    // which remote tracking branch points at the current commit.
+
+    // Node: PrepareRemoteBranches (PURE - builds git branch -r --points-at HEAD request)
+    let prepare_remote_branches = builder.add_root_node(Node::opaque(
+        "prepare_remote_branches",
+        vec![optional("repo_path", "String")],
+        vec![port("request", "TransportRequest")],
+        GistGraphOp::Git(GitOps::PrepareRemoteBranchesAtHead),
+    ))?;
+
+    // Node: ExecuteRemoteBranches (BOUNDARY - actual I/O)
+    let execute_remote_branches = builder.add_node_after(
+        Node::opaque(
+            "execute_remote_branches",
+            vec![port("request", "TransportRequest")],
+            vec![port("response", "TransportResponse")],
+            GistGraphOp::Transport(TransportOps::Execute),
+        ),
+        &prepare_remote_branches,
+    )?;
+
+    // Node: ParseRemoteBranches (PURE - extracts remote branch name)
+    let parse_remote_branches = builder.add_node_after(
+        Node::opaque(
+            "parse_remote_branches",
+            vec![port("response", "TransportResponse")],
+            vec![optional("remote_branch", "String")],
+            GistGraphOp::Git(GitOps::ParseRemoteBranchesAtHead),
+        ),
+        &execute_remote_branches,
+    )?;
+
+    // Wire remote branch chain
+    builder.add_edge(
+        prepare_remote_branches.out("request"),
+        execute_remote_branches.in_port("request"),
+    )?;
+    builder.add_edge(
+        execute_remote_branches.out("response"),
+        parse_remote_branches.in_port("response"),
+    )?;
+
+    // ========================================================================
     // Shared gist creation tail
     // ========================================================================
 
@@ -564,6 +623,7 @@ pub fn build_gist_graph(
             vec![
                 scalar("markdown", "String"),
                 optional("branch", "String"),
+                optional("remote_branch", "String"),
                 scalar("res:fs", "FilesystemHandle"),
                 scalar("res:clock", "Timestamp"),
             ],
@@ -603,6 +663,10 @@ pub fn build_gist_graph(
     builder.add_edge(
         parse_current_branch.out("branch"),
         prepare_gist_request.in_port("branch"),
+    )?;
+    builder.add_edge(
+        parse_remote_branches.out("remote_branch"),
+        prepare_gist_request.in_port("remote_branch"),
     )?;
     builder.add_edge(
         fs_env.out("fs:write"),
@@ -808,6 +872,135 @@ fn build_diff_acquire(
     Ok(render_markdown)
 }
 
+/// Build the recent-mode acquisition subgraph.
+///
+/// Resolves the commit from 7 days ago via `git rev-list`, then diffs against it.
+/// If the repo is younger than 7 days (empty rev-list output), PrepareDiff
+/// falls back to its default base_ref of "HEAD", producing an empty diff.
+///
+/// Returns the render_markdown node ref (output: "markdown").
+fn build_recent_acquire(
+    builder: &mut DagBuilder<GistGraphOp>,
+    extensions: Vec<String>,
+) -> Result<gunbc_ir::builder::NodeRef<GistGraphOp>, BuilderError> {
+    // ========================================================================
+    // Rev-list chain: find commit from 7 days ago
+    // ========================================================================
+
+    // Node: PrepareRevListBefore (PURE)
+    let prepare_rev_list = builder.add_root_node(Node::opaque(
+        "prepare_rev_list",
+        vec![optional("repo_path", "String")],
+        vec![port("request", "TransportRequest")],
+        GistGraphOp::Git(GitOps::PrepareRevListBefore {
+            before: "7 days ago".to_string(),
+        }),
+    ))?;
+
+    // Node: ExecuteRevList (BOUNDARY)
+    let execute_rev_list = builder.add_node_after(
+        Node::opaque(
+            "execute_rev_list",
+            vec![port("request", "TransportRequest")],
+            vec![port("response", "TransportResponse")],
+            GistGraphOp::Transport(TransportOps::Execute),
+        ),
+        &prepare_rev_list,
+    )?;
+
+    // Node: ParseRevListBefore (PURE)
+    let parse_rev_list = builder.add_node_after(
+        Node::opaque(
+            "parse_rev_list",
+            vec![port("response", "TransportResponse")],
+            vec![optional("base_ref", "String")],
+            GistGraphOp::Git(GitOps::ParseRevListBefore),
+        ),
+        &execute_rev_list,
+    )?;
+
+    // Wire rev-list chain
+    builder.add_edge(
+        prepare_rev_list.out("request"),
+        execute_rev_list.in_port("request"),
+    )?;
+    builder.add_edge(
+        execute_rev_list.out("response"),
+        parse_rev_list.in_port("response"),
+    )?;
+
+    // ========================================================================
+    // Diff chain: diff against the resolved base_ref
+    // ========================================================================
+
+    // Node: PrepareDiff (PURE - default base_ref is "HEAD" for young repos)
+    let prepare_diff = builder.add_node_after(
+        Node::opaque(
+            "prepare_diff",
+            vec![
+                optional("repo_path", "String"),
+                optional("base_ref", "String"),
+            ],
+            vec![port("request", "TransportRequest")],
+            GistGraphOp::Git(GitOps::PrepareDiff {
+                base_ref: "HEAD".to_string(),
+                extensions,
+            }),
+        ),
+        &parse_rev_list,
+    )?;
+
+    // Node: Execute diff (BOUNDARY)
+    let execute_diff = builder.add_node_after(
+        Node::opaque(
+            "execute_diff",
+            vec![port("request", "TransportRequest")],
+            vec![port("response", "TransportResponse")],
+            GistGraphOp::Transport(TransportOps::Execute),
+        ),
+        &prepare_diff,
+    )?;
+
+    // Node: ParseDiff (PURE)
+    let parse_diff = builder.add_node_after(
+        Node::opaque(
+            "parse_diff",
+            vec![port("response", "TransportResponse")],
+            vec![port("diff_files", "Map"), scalar("stats", "String")],
+            GistGraphOp::Git(GitOps::ParseDiff),
+        ),
+        &execute_diff,
+    )?;
+
+    // Node: RenderDiffSnapshot (PURE)
+    let render_markdown = builder.add_node_after(
+        Node::opaque(
+            "render_markdown",
+            vec![port("diff_files", "Map"), optional("stats", "String")],
+            vec![scalar("markdown", "String")],
+            GistGraphOp::Markdown(MarkdownOp::RenderDiffSnapshot),
+        ),
+        &parse_diff,
+    )?;
+
+    // Wire rev-list → diff (base_ref flows from parse_rev_list to prepare_diff)
+    builder.add_edge(
+        parse_rev_list.out("base_ref"),
+        prepare_diff.in_port("base_ref"),
+    )?;
+
+    // Wire diff pipeline
+    builder.add_edge(prepare_diff.out("request"), execute_diff.in_port("request"))?;
+    builder.add_edge(execute_diff.out("response"), parse_diff.in_port("response"))?;
+    builder.add_edge(
+        parse_diff.out("diff_files"),
+        render_markdown.in_port("diff_files"),
+    )?;
+    builder.add_edge(parse_diff.out("stats"), render_markdown.in_port("stats"))?;
+
+    Ok(render_markdown)
+}
+
 // Mockable implementation for test generation
 use gunbc_test::Mockable;
 
@@ -831,7 +1024,9 @@ impl Mockable for GistGraphOp {
                         .build(),
                     GitOps::PrepareDiff { .. }
                     | GitOps::PrepareDiffNameOnly { .. }
-                    | GitOps::PrepareCurrentBranch => OutputMap::new()
+                    | GitOps::PrepareCurrentBranch
+                    | GitOps::PrepareRemoteBranchesAtHead
+                    | GitOps::PrepareRevListBefore { .. } => OutputMap::new()
                         .request(
                             "request",
                             TransportRequest::Shell(ShellRequest {
@@ -849,6 +1044,12 @@ impl Mockable for GistGraphOp {
                         .build(),
                     GitOps::ParseDiffNameOnly => OutputMap::new().str_list("files", vec![]).build(),
                     GitOps::ParseCurrentBranch => OutputMap::new().str("branch", "main").build(),
+                    GitOps::ParseRemoteBranchesAtHead => {
+                        OutputMap::new().str("remote_branch", "main").build()
+                    }
+                    GitOps::ParseRevListBefore => {
+                        OutputMap::new().str("base_ref", "abc123def456").build()
+                    }
                 }
             }
 
@@ -934,11 +1135,7 @@ impl Mockable for GistGraphOp {
             GistGraphOp::Transport(_) => OutputMap::new()
                 .response(
                     "response",
-                    TransportResponse::Shell(gunbc_ir::transport::ShellResponse {
-                        exit_code: 0,
-                        stdout: "src/main.rs\nREADME.md\n".to_string(),
-                        stderr: String::new(),
-                    }),
+                    TransportResponse::Shell(gunbc_ir::transport::ShellResponse::ok("src/main.rs\nREADME.md\n")),
                 )
                 .build(),
         }
@@ -957,13 +1154,14 @@ mod tests {
     #[test]
     fn test_snapshot_graph_builds_successfully() {
         let dag = build_gist_graph(GistMode::Snapshot, vec![], false).expect("graph should build");
-        // 15 nodes: fs_env, clock_env, prepare_list, execute_list, parse_list,
+        // 18 nodes: fs_env, clock_env, prepare_list, execute_list, parse_list,
         //           prepare_read, execute_read, parse_read, render_markdown,
         //           prepare_current_branch, execute_current_branch, parse_current_branch,
+        //           prepare_remote_branches, execute_remote_branches, parse_remote_branches,
         //           prepare_gist, execute_gist, parse_gist_response
-        assert_eq!(dag.nodes.len(), 15);
-        // 14 edges across snapshot, branch, and gist tail wiring
-        assert_eq!(dag.edges.len(), 14);
+        assert_eq!(dag.nodes.len(), 18);
+        // 17 edges across snapshot, branch, remote branch, and gist tail wiring
+        assert_eq!(dag.edges.len(), 17);
     }
 
     #[test]
@@ -973,6 +1171,7 @@ mod tests {
         assert!(dag.get_node(&"execute_list_files".into()).is_some());
         assert!(dag.get_node(&"execute_read_files".into()).is_some());
         assert!(dag.get_node(&"execute_current_branch".into()).is_some());
+        assert!(dag.get_node(&"execute_remote_branches".into()).is_some());
         assert!(dag.get_node(&"execute_gist".into()).is_some());
     }
 
@@ -985,6 +1184,10 @@ mod tests {
         assert!(entrypoints.is_entrypoint_port(&"prepare_read_files".into(), &"repo_path".into()));
         assert!(
             entrypoints.is_entrypoint_port(&"prepare_current_branch".into(), &"repo_path".into())
+        );
+        assert!(
+            entrypoints
+                .is_entrypoint_port(&"prepare_remote_branches".into(), &"repo_path".into())
         );
     }
 
@@ -1000,6 +1203,8 @@ mod tests {
         assert!(!boundaries.is_boundary_node(&"render_markdown".into()));
         assert!(!boundaries.is_boundary_node(&"prepare_current_branch".into()));
         assert!(!boundaries.is_boundary_node(&"parse_current_branch".into()));
+        assert!(!boundaries.is_boundary_node(&"prepare_remote_branches".into()));
+        assert!(!boundaries.is_boundary_node(&"parse_remote_branches".into()));
         assert!(!boundaries.is_boundary_node(&"prepare_gist_request".into()));
         // parse_gist_response is a terminal node, so it's a boundary
         assert!(boundaries.is_boundary_node(&"parse_gist_response".into()));
@@ -1044,8 +1249,9 @@ mod tests {
         let dag = build_gist_graph(GistMode::Snapshot, vec![], false).expect("graph should build");
         let inferred = infer_signature(&dag);
 
-        // Should have three inputs (repo_path on prepare_list_files, prepare_read_files, and prepare_current_branch)
-        assert_eq!(inferred.inputs.len(), 3);
+        // Should have four inputs (repo_path on prepare_list_files, prepare_read_files,
+        // prepare_current_branch, and prepare_remote_branches)
+        assert_eq!(inferred.inputs.len(), 4);
 
         // Should have one output (url from parse_gist_response)
         assert_eq!(inferred.outputs.len(), 1);
@@ -1067,13 +1273,14 @@ mod tests {
             false,
         )
         .expect("diff graph should build");
-        // 12 nodes: fs_env, clock_env, prepare_diff, execute_diff, parse_diff,
+        // 15 nodes: fs_env, clock_env, prepare_diff, execute_diff, parse_diff,
         //           render_markdown,
         //           prepare_current_branch, execute_current_branch, parse_current_branch,
+        //           prepare_remote_branches, execute_remote_branches, parse_remote_branches,
         //           prepare_gist, execute_gist, parse_gist_response
-        assert_eq!(dag.nodes.len(), 12);
-        // 12 edges across diff, branch, and gist tail wiring
-        assert_eq!(dag.edges.len(), 12);
+        assert_eq!(dag.nodes.len(), 15);
+        // 15 edges across diff, branch, remote branch, and gist tail wiring
+        assert_eq!(dag.edges.len(), 15);
     }
 
     #[test]
@@ -1089,6 +1296,7 @@ mod tests {
 
         assert!(dag.get_node(&"execute_diff".into()).is_some());
         assert!(dag.get_node(&"execute_current_branch".into()).is_some());
+        assert!(dag.get_node(&"execute_remote_branches".into()).is_some());
         assert!(dag.get_node(&"execute_gist".into()).is_some());
     }
 
@@ -1108,6 +1316,10 @@ mod tests {
         assert!(entrypoints.is_entrypoint_port(&"prepare_diff".into(), &"base_ref".into()));
         assert!(
             entrypoints.is_entrypoint_port(&"prepare_current_branch".into(), &"repo_path".into())
+        );
+        assert!(
+            entrypoints
+                .is_entrypoint_port(&"prepare_remote_branches".into(), &"repo_path".into())
         );
     }
 
@@ -1130,6 +1342,9 @@ mod tests {
             "prepare_current_branch",
             "execute_current_branch",
             "parse_current_branch",
+            "prepare_remote_branches",
+            "execute_remote_branches",
+            "parse_remote_branches",
             "prepare_gist_request",
             "execute_gist",
             "parse_gist_response",
@@ -1161,6 +1376,8 @@ mod tests {
         assert!(!boundaries.is_boundary_node(&"render_markdown".into()));
         assert!(!boundaries.is_boundary_node(&"prepare_current_branch".into()));
         assert!(!boundaries.is_boundary_node(&"parse_current_branch".into()));
+        assert!(!boundaries.is_boundary_node(&"prepare_remote_branches".into()));
+        assert!(!boundaries.is_boundary_node(&"parse_remote_branches".into()));
         assert!(!boundaries.is_boundary_node(&"prepare_gist_request".into()));
         // parse_gist_response is terminal → boundary
         assert!(boundaries.is_boundary_node(&"parse_gist_response".into()));
@@ -1189,8 +1406,9 @@ mod tests {
         .expect("diff graph should build");
         let inferred = infer_signature(&dag);
 
-        // Should have three inputs (repo_path and base_ref on prepare_diff, repo_path on prepare_current_branch)
-        assert_eq!(inferred.inputs.len(), 3);
+        // Should have four inputs (repo_path and base_ref on prepare_diff,
+        // repo_path on prepare_current_branch, repo_path on prepare_remote_branches)
+        assert_eq!(inferred.inputs.len(), 4);
 
         // Should have one output (url from parse_gist_response)
         assert_eq!(inferred.outputs.len(), 1);
@@ -1203,7 +1421,7 @@ mod tests {
     // ========================================================================
 
     #[test]
-    fn test_both_modes_share_gist_tail() {
+    fn test_all_modes_share_gist_tail() {
         let snap =
             build_gist_graph(GistMode::Snapshot, vec![], false).expect("snapshot should build");
         let diff = build_gist_graph(
@@ -1214,12 +1432,17 @@ mod tests {
             false,
         )
         .expect("diff should build");
+        let recent =
+            build_gist_graph(GistMode::Recent, vec![], false).expect("recent should build");
 
-        // Both must have the same gist tail + branch acquisition nodes
+        // All must have the same gist tail + branch/remote acquisition nodes
         for node_id in &[
             "prepare_current_branch",
             "execute_current_branch",
             "parse_current_branch",
+            "prepare_remote_branches",
+            "execute_remote_branches",
+            "parse_remote_branches",
             "prepare_gist_request",
             "execute_gist",
             "parse_gist_response",
@@ -1232,6 +1455,11 @@ mod tests {
             assert!(
                 diff.get_node(&(*node_id).into()).is_some(),
                 "diff missing {}",
+                node_id
+            );
+            assert!(
+                recent.get_node(&(*node_id).into()).is_some(),
+                "recent missing {}",
                 node_id
             );
         }
@@ -1259,6 +1487,136 @@ mod tests {
         assert!(dag.get_node(&"prepare_list_files".into()).is_none());
         assert!(dag.get_node(&"execute_list_files".into()).is_none());
         assert!(dag.get_node(&"execute_read_files".into()).is_none());
+    }
+
+    // ========================================================================
+    // Recent mode tests
+    // ========================================================================
+
+    #[test]
+    fn test_recent_graph_builds_successfully() {
+        let dag =
+            build_gist_graph(GistMode::Recent, vec![], false).expect("recent graph should build");
+        // 18 nodes: fs_env, clock_env,
+        //           prepare_rev_list, execute_rev_list, parse_rev_list,
+        //           prepare_diff, execute_diff, parse_diff, render_markdown,
+        //           prepare_current_branch, execute_current_branch, parse_current_branch,
+        //           prepare_remote_branches, execute_remote_branches, parse_remote_branches,
+        //           prepare_gist, execute_gist, parse_gist_response
+        assert_eq!(dag.nodes.len(), 18);
+        // 18 edges: 2 (rev-list chain) + 1 (rev-list→diff) + 4 (diff chain)
+        //         + 2 (branch chain) + 2 (remote chain)
+        //         + 7 (gist tail: markdown→gist, branch→gist, remote→gist, fs→gist, clock→gist, gist→execute, execute→parse)
+        assert_eq!(dag.edges.len(), 18);
+    }
+
+    #[test]
+    fn test_recent_graph_has_transport_boundaries() {
+        let dag =
+            build_gist_graph(GistMode::Recent, vec![], false).expect("recent graph should build");
+
+        assert!(dag.get_node(&"execute_rev_list".into()).is_some());
+        assert!(dag.get_node(&"execute_diff".into()).is_some());
+        assert!(dag.get_node(&"execute_current_branch".into()).is_some());
+        assert!(dag.get_node(&"execute_remote_branches".into()).is_some());
+        assert!(dag.get_node(&"execute_gist".into()).is_some());
+    }
+
+    #[test]
+    fn test_recent_graph_has_entrypoints() {
+        let dag =
+            build_gist_graph(GistMode::Recent, vec![], false).expect("recent graph should build");
+        let entrypoints = detect_entrypoints(&dag);
+
+        assert!(
+            entrypoints.is_entrypoint_port(&"prepare_rev_list".into(), &"repo_path".into())
+        );
+        assert!(
+            entrypoints.is_entrypoint_port(&"prepare_current_branch".into(), &"repo_path".into())
+        );
+        assert!(
+            entrypoints
+                .is_entrypoint_port(&"prepare_remote_branches".into(), &"repo_path".into())
+        );
+    }
+
+    #[test]
+    fn test_recent_graph_node_ids() {
+        let dag =
+            build_gist_graph(GistMode::Recent, vec![], false).expect("recent graph should build");
+
+        let expected_nodes = vec![
+            "prepare_rev_list",
+            "execute_rev_list",
+            "parse_rev_list",
+            "prepare_diff",
+            "execute_diff",
+            "parse_diff",
+            "render_markdown",
+            "prepare_current_branch",
+            "execute_current_branch",
+            "parse_current_branch",
+            "prepare_remote_branches",
+            "execute_remote_branches",
+            "parse_remote_branches",
+            "prepare_gist_request",
+            "execute_gist",
+            "parse_gist_response",
+        ];
+
+        for name in expected_nodes {
+            assert!(
+                dag.get_node(&name.into()).is_some(),
+                "missing node: {}",
+                name
+            );
+        }
+    }
+
+    #[test]
+    fn test_recent_pure_nodes_not_boundaries() {
+        let dag =
+            build_gist_graph(GistMode::Recent, vec![], false).expect("recent graph should build");
+        let boundaries = detect_boundaries(&dag);
+
+        assert!(!boundaries.is_boundary_node(&"prepare_rev_list".into()));
+        assert!(!boundaries.is_boundary_node(&"parse_rev_list".into()));
+        assert!(!boundaries.is_boundary_node(&"prepare_diff".into()));
+        assert!(!boundaries.is_boundary_node(&"parse_diff".into()));
+        assert!(!boundaries.is_boundary_node(&"render_markdown".into()));
+        assert!(!boundaries.is_boundary_node(&"prepare_gist_request".into()));
+        // parse_gist_response is terminal → boundary
+        assert!(boundaries.is_boundary_node(&"parse_gist_response".into()));
+    }
+
+    #[test]
+    fn test_recent_signature_matches_dag() {
+        let mode = GistMode::Recent;
+        let dag = build_gist_graph(mode.clone(), vec![], false).expect("recent graph should build");
+        let sig = gist_signature(&mode);
+
+        sig.validate(&dag)
+            .expect("recent signature should match DAG");
+    }
+
+    #[test]
+    fn test_recent_has_no_snapshot_nodes() {
+        let dag =
+            build_gist_graph(GistMode::Recent, vec![], false).expect("recent graph should build");
+
+        assert!(dag.get_node(&"prepare_list_files".into()).is_none());
+        assert!(dag.get_node(&"execute_list_files".into()).is_none());
+        assert!(dag.get_node(&"execute_read_files".into()).is_none());
+    }
+
+    #[test]
+    fn test_recent_has_rev_list_nodes() {
+        let dag =
+            build_gist_graph(GistMode::Recent, vec![], false).expect("recent graph should build");
+
+        assert!(dag.get_node(&"prepare_rev_list".into()).is_some());
+        assert!(dag.get_node(&"execute_rev_list".into()).is_some());
+        assert!(dag.get_node(&"parse_rev_list".into()).is_some());
     }
 
     #[test]

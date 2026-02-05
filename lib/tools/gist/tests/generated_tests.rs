@@ -26,6 +26,19 @@ fn mock_current_branch(mocks: &mut BoundaryMocks) {
     );
 }
 
+/// Helper: mock for execute_remote_branches boundary.
+fn mock_remote_branches(mocks: &mut BoundaryMocks) {
+    mocks.set_value(
+        "execute_remote_branches",
+        "response",
+        Value::Response(TransportResponse::Shell(ShellResponse {
+            exit_code: 0,
+            stdout: "".to_string(),
+            stderr: String::new(),
+        })),
+    );
+}
+
 fn mock_env(mocks: &mut BoundaryMocks) {
     let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
     mocks.set_value("fs_env", "fs:write", fs.into());
@@ -71,6 +84,8 @@ fn test_boundaries_mockable() {
 
     // Mock execute_current_branch
     mock_current_branch(&mut mocks);
+    // Mock execute_remote_branches
+    mock_remote_branches(&mut mocks);
 
     // Mock execute_gist (only has response output now)
     mocks.set_value(
@@ -127,6 +142,8 @@ fn test_boundary_parse_gist_response_mockable() {
     );
     // Mock execute_current_branch
     mock_current_branch(&mut mocks);
+    // Mock execute_remote_branches
+    mock_remote_branches(&mut mocks);
     // Mock execute_gist (only has response output now)
     mocks.set_value(
         "execute_gist",
@@ -326,4 +343,91 @@ fn test_edge_parse_current_branch_to_prepare_gist_request() {
         .edges
         .iter()
         .any(|e| e.from_node.0 == "parse_current_branch" && e.to_node.0 == "prepare_gist_request"));
+}
+
+// ============================================================================
+// REMOTE BRANCH ACQUISITION EDGE TESTS
+// ============================================================================
+
+/// Test edge prepare_remote_branches.request -> execute_remote_branches.request type compatibility.
+#[test]
+fn test_edge_prepare_remote_branches_to_execute_remote_branches() {
+    let dag =
+        build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
+    assert!(dag
+        .edges
+        .iter()
+        .any(|e| e.from_node.0 == "prepare_remote_branches"
+            && e.to_node.0 == "execute_remote_branches"));
+}
+
+/// Test edge execute_remote_branches.response -> parse_remote_branches.response type compatibility.
+#[test]
+fn test_edge_execute_remote_branches_to_parse_remote_branches() {
+    let dag =
+        build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
+    assert!(dag.edges.iter().any(
+        |e| e.from_node.0 == "execute_remote_branches"
+            && e.to_node.0 == "parse_remote_branches"
+    ));
+}
+
+/// Test edge parse_remote_branches.remote_branch -> prepare_gist_request.remote_branch type compatibility.
+#[test]
+fn test_edge_parse_remote_branches_to_prepare_gist_request() {
+    let dag =
+        build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
+    assert!(dag.edges.iter().any(
+        |e| e.from_node.0 == "parse_remote_branches"
+            && e.to_node.0 == "prepare_gist_request"
+    ));
+}
+
+// ============================================================================
+// RECENT MODE EDGE TESTS
+// ============================================================================
+
+/// Test edge prepare_rev_list.request -> execute_rev_list.request type compatibility.
+#[test]
+fn test_edge_prepare_rev_list_to_execute_rev_list() {
+    let dag =
+        build_gist_graph(GistMode::Recent, vec![], false).expect("Failed to build gist graph");
+    assert!(dag
+        .edges
+        .iter()
+        .any(|e| e.from_node.0 == "prepare_rev_list" && e.to_node.0 == "execute_rev_list"));
+}
+
+/// Test edge execute_rev_list.response -> parse_rev_list.response type compatibility.
+#[test]
+fn test_edge_execute_rev_list_to_parse_rev_list() {
+    let dag =
+        build_gist_graph(GistMode::Recent, vec![], false).expect("Failed to build gist graph");
+    assert!(dag
+        .edges
+        .iter()
+        .any(|e| e.from_node.0 == "execute_rev_list" && e.to_node.0 == "parse_rev_list"));
+}
+
+/// Test edge parse_rev_list.base_ref -> prepare_diff.base_ref type compatibility.
+#[test]
+fn test_edge_parse_rev_list_to_prepare_diff() {
+    let dag =
+        build_gist_graph(GistMode::Recent, vec![], false).expect("Failed to build gist graph");
+    assert!(dag
+        .edges
+        .iter()
+        .any(|e| e.from_node.0 == "parse_rev_list" && e.to_node.0 == "prepare_diff"));
+}
+
+/// Test that execute_rev_list is NOT a boundary node (its output is consumed by parse_rev_list).
+#[test]
+fn test_execute_rev_list_not_boundary() {
+    let dag =
+        build_gist_graph(GistMode::Recent, vec![], false).expect("Failed to build gist graph");
+    let boundaries = detect_boundaries(&dag);
+    assert!(
+        !boundaries.is_boundary_node(&"execute_rev_list".into()),
+        "execute_rev_list should NOT be a boundary (output consumed by parse_rev_list)"
+    );
 }

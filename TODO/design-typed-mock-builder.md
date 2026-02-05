@@ -111,14 +111,19 @@ The following type compatibilities are implemented:
 
 ## MockSlotKind
 
-Four kinds of interceptable nodes are detected:
+Three slot kinds exist in the enum. Four conceptual kinds of interceptable nodes
+are detected, but CliTool nodes are classified as `Transport` internally:
 
 1. **Boundary** - Unconnected output ports (world writes) - Optional mocks
-2. **Transport** - Transport executor outputs (consume TransportRequest) - Required mocks
+2. **Transport** - Transport executor outputs (consume TransportRequest) AND CLI tool nodes (consume ToolHandle but not TransportRequest, e.g., `clippy_lint`) - Required mocks
 3. **Resource** - Environment/resource node outputs (emit capability tokens) - Required mocks
-4. **CliTool** - CLI tool nodes (consume ToolHandle but not TransportRequest) - Required mocks (e.g., `clippy_lint`)
 
-All transport and CLI tool outputs require mocks because DryRun interception returns mocked values for the entire node.
+Note: CliTool detection logic exists in `extract_mock_requirements()` but assigns
+`MockSlotKind::Transport` rather than a dedicated variant. This is sufficient
+since both transport and CliTool nodes require mocks with the same semantics.
+
+All transport, CliTool, and resource outputs require mocks because DryRun
+interception returns mocked values for the entire node.
 
 ## Error Handling
 

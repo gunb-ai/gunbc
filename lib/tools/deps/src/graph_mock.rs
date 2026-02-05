@@ -114,11 +114,7 @@ pub fn deps_mock_spec_pkg_fails() -> MockSpec {
         .transport_response(
             "execute_installs",
             "response",
-            TransportResponse::Shell(ShellResponse {
-                exit_code: 1,
-                stdout: String::new(),
-                stderr: "Package manager locked by another process".to_string(),
-            }),
+            TransportResponse::Shell(ShellResponse::failed(1, "Package manager locked by another process")),
         )
         .expect("execute_installs response should match type")
         // Build spec
@@ -141,18 +137,6 @@ mod tests {
     // testgen and have been removed.
 
     #[test]
-    fn test_mock_spec_has_transport_mocks() {
-        let spec = deps_mock_spec();
-        // Transport mocks should be present
-        assert!(spec
-            .get_transport_mock("execute_load_manifest", "response")
-            .is_some());
-        assert!(spec
-            .get_transport_mock("execute_installs", "response")
-            .is_some());
-    }
-
-    #[test]
     fn test_mock_spec_platform_is_boundary() {
         let spec = deps_mock_spec();
         let platform = spec.get_boundary_mock("platform_env", "platform").unwrap();
@@ -169,17 +153,6 @@ mod tests {
             gunbc_test::ResourceType::Lease {
                 duration_ms: 300_000
             }
-        ));
-    }
-
-    #[test]
-    fn test_pkg_fails_spec() {
-        let spec = deps_mock_spec_pkg_fails();
-        let resource = spec.get_resource("pkg:manager").unwrap();
-        let result = resource.acquire();
-        assert!(matches!(
-            result,
-            gunbc_test::ResourceAcquireResult::Failed(_)
         ));
     }
 

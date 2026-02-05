@@ -62,7 +62,6 @@ impl fmt::Display for ResourceId {
     }
 }
 
-pub mod codegen_hash;
 pub mod freshness;
 pub mod hash;
 pub mod manifest;

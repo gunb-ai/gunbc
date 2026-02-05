@@ -156,41 +156,6 @@ fn mock_makefile_content() -> String {
 mod tests {
     use super::*;
 
-    // ========================================================================
-    // Mock spec tests (Pattern B - mock value properties)
-    // ========================================================================
-
-    #[test]
-    fn test_mock_spec_has_transport_mock() {
-        let spec = makegen_mock_spec();
-        // Transport mock should be present
-        assert!(spec
-            .get_transport_mock("execute_transport", "response")
-            .is_some());
-    }
-
-    #[test]
-    fn test_mock_spec_has_expected_output() {
-        let spec = makegen_mock_spec();
-        // Expected output for verification
-        let has_expected = spec
-            .expected_outputs
-            .iter()
-            .any(|e| e.node == "load_registry" && e.port == "tool_count");
-        assert!(has_expected);
-    }
-
-    #[test]
-    fn test_fs_fails_spec() {
-        let spec = makegen_mock_spec_fs_fails();
-        let resource = spec.get_resource("fs:Makefile").unwrap();
-        let result = resource.acquire();
-        assert!(matches!(
-            result,
-            gunbc_test::ResourceAcquireResult::Failed(_)
-        ));
-    }
-
     #[test]
     fn test_typed_builder_rejects_wrong_slot() {
         let dag = build_makegen_graph().expect("graph should build");

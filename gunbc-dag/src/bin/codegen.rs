@@ -46,18 +46,10 @@ fn main() {
     let mode = if dry_run {
         let mut mocks = BoundaryMocks::new();
         let ok_shell = || {
-            Value::Response(TransportResponse::Shell(ShellResponse {
-                exit_code: 0,
-                stdout: String::new(),
-                stderr: String::new(),
-            }))
+            Value::Response(TransportResponse::Shell(ShellResponse::ok("")))
         };
         let missing_shell = || {
-            Value::Response(TransportResponse::Shell(ShellResponse {
-                exit_code: 1,
-                stdout: String::new(),
-                stderr: "missing".to_string(),
-            }))
+            Value::Response(TransportResponse::Shell(ShellResponse::failed(1, "missing")))
         };
 
         // Simulate missing codegen outputs so the codegen step runs.

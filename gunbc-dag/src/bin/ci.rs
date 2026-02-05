@@ -20,11 +20,12 @@
 //! This gives visibility into each step (prep, build, test, lint, report)
 //! without requiring separate workflow steps.
 
-use gunbc_dag::build_ci_graph;
+use gunbc_dag::build_ci_graph_with_mode;
 use gunbc_exec::{execute_with_mode_and_ci, BoundaryMocks, CiContext, ExecutionMode};
 use gunbc_ir::resource::ExecMode;
 use gunbc_ir::transport::cli::{ToolHandle, CLIPPY};
 use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse};
+use gunbc_ir::CODEGEN_STAMP_PATH;
 use gunbc_ir::Value;
 use std::env;
 use std::process;
@@ -42,15 +43,8 @@ fn main() {
         return;
     }
 
-    // Set environment variable for the mode so the freshness check can read it.
-    // This avoids having to modify the DAG structure to pass the mode through.
-    match resource_mode {
-        ExecMode::Verify => env::set_var("GUNBC_EXEC_MODE", "verify"),
-        ExecMode::Ensure => env::set_var("GUNBC_EXEC_MODE", "ensure"),
-    }
-
-    // Build the CI graph
-    let dag = match build_ci_graph() {
+    // Build the CI graph with the exec mode embedded in the inlined codegen DAG
+    let dag = match build_ci_graph_with_mode(resource_mode) {
         Ok(d) => d,
         Err(e) => {
             eprintln!("Error building CI graph: {}", e);
@@ -90,21 +84,11 @@ fn main() {
             ),
         );
 
-        // execute_codegen_exists: file exists check (codegen removed, use Cargo.toml)
+        // execute_codegen_exists: shell exists check
         mocks.set_value(
             "execute_codegen_exists",
             "response",
-            Value::Response(
-                FileResponse {
-                    path: "Cargo.toml".to_string(),
-                    operation: FileOp::Exists,
-                    success: true,
-                    content: None,
-                    exists: Some(true), // Pretend codegen already exists
-                    error: None,
-                }
-                .into(),
-            ),
+            Value::Response(ShellResponse::ok("").into()),
         );
 
         // execute_codegen: shell command (skipped when codegen exists)
@@ -114,6 +98,24 @@ fn main() {
             Value::Response(ShellResponse::ok("").into()),
         );
         mocks.set_value("execute_codegen", "skip", Value::Bool(true));
+
+        // execute_stamp_write: file write (codegen prep succeeded)
+        mocks.set_value(
+            "execute_stamp_write",
+            "response",
+            Value::Response(
+                FileResponse {
+                    path: CODEGEN_STAMP_PATH.to_string(),
+                    operation: FileOp::Write,
+                    success: true,
+                    content: None,
+                    exists: None,
+                    error: None,
+                }
+                .into(),
+            ),
+        );
+        mocks.set_value("execute_stamp_write", "skip", Value::Bool(false));
 
         // execute_build: shell command for cargo build
         mocks.set_value(

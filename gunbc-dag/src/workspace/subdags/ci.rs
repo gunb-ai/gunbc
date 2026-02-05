@@ -24,6 +24,7 @@ fn convert_ci_node(node: Node<CIGraphOp>) -> Node<WorkspaceOp> {
 fn convert_ci_op(op: CIGraphOp) -> WorkspaceOp {
     match op {
         CIGraphOp::CI(ci_op) => WorkspaceOp::Ci(ci_op),
+        CIGraphOp::Codegen(codegen_op) => WorkspaceOp::Codegen(codegen_op),
         CIGraphOp::PrepareFileExists(pfe) => {
             WorkspaceOp::Primitive(gunbc_primitives::PrimitiveOp::EmbeddedFileExists(pfe))
         }

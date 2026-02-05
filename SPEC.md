@@ -28,6 +28,17 @@ at write time, but they compile away during lowering.
 
 ---
 
+## Refactor-Pressure Checklist (PR Gate)
+
+- Single source of truth for any new concept.
+- No stringly references for node/target/resource names.
+- All env/IO modeled as resources or env nodes (no hidden access).
+- No ambient globals for exec mode or policy flags.
+- Freshness/check logic must declare fast and slow paths.
+- Generated code linting fixes go to IR or clippy config, never `#[allow]`.
+
+---
+
 ## 1. Core Types
 
 ### 1.1 Node

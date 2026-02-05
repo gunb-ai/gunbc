@@ -593,6 +593,27 @@ pub enum PrepLevel {
     Full,
 }
 
+impl PrepLevel {
+    /// Map this prep level to its Make dependency target name.
+    ///
+    /// Returns `None` for `PrepLevel::None` (no dependency needed).
+    /// When `use_dag_entrypoints` is true, `Full` maps to `"codegen"` instead of
+    /// `"build"` because DAG entrypoints already include the build/test/lint stages.
+    pub fn dep_name(&self, use_dag_entrypoints: bool) -> Option<&'static str> {
+        match self {
+            PrepLevel::None => None,
+            PrepLevel::Codegen => Some("ensure-codegen"),
+            PrepLevel::Full => {
+                if use_dag_entrypoints {
+                    Some("codegen")
+                } else {
+                    Some("build")
+                }
+            }
+        }
+    }
+}
+
 /// Which BuildConfig field to use for a meta target.
 ///
 /// This allows MetaTarget to reference commands from BuildConfig

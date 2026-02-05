@@ -30,18 +30,33 @@ use std::collections::HashMap;
 /// This is the I/O boundary for tool acquisition. On execute:
 /// 1. For each tool ID, run the upsert pattern (check/install)
 /// 2. Emit ToolHandles with resolved paths
+/// 3. Optionally emit an `exec_mode` string for downstream nodes
 ///
 /// In DryRun mode, this node should be intercepted with mock ToolHandles.
 #[derive(Debug, Clone)]
 pub struct EnvOp {
     /// Tool IDs that this environment provides
     pub tools: Vec<&'static str>,
+    /// Optional exec mode string to emit as an output (e.g., "ensure", "verify").
+    /// When set, the env node emits this as the `exec_mode` output port.
+    pub exec_mode: Option<String>,
 }
 
 impl EnvOp {
     /// Create a new environment op that provides the given tools.
     pub fn new(tools: Vec<&'static str>) -> Self {
-        Self { tools }
+        Self {
+            tools,
+            exec_mode: None,
+        }
+    }
+
+    /// Create an environment op with an exec mode to emit.
+    pub fn with_exec_mode(tools: Vec<&'static str>, mode_str: &str) -> Self {
+        Self {
+            tools,
+            exec_mode: Some(mode_str.to_string()),
+        }
     }
 
     /// Create an environment for CI (provides common CI tools).
@@ -51,7 +66,11 @@ impl EnvOp {
 
     /// Get the output port names for this environment.
     pub fn output_ports(&self) -> Vec<String> {
-        self.tools.iter().map(|t| format!("tool:{}", t)).collect()
+        let mut ports: Vec<String> = self.tools.iter().map(|t| format!("tool:{}", t)).collect();
+        if self.exec_mode.is_some() {
+            ports.push("exec_mode".to_string());
+        }
+        ports
     }
 
     /// Execute tool acquisition with a specific path resolver.
@@ -80,6 +99,10 @@ impl EnvOp {
             outputs.insert(port_name, handle.into());
         }
 
+        if let Some(ref mode) = self.exec_mode {
+            outputs.insert("exec_mode".to_string(), Value::Str(mode.clone()));
+        }
+
         Ok(outputs)
     }
 }
@@ -95,7 +118,8 @@ impl Executable for EnvOp {
 
 /// Create mock outputs for EnvOp in DryRun mode.
 ///
-/// Returns mock ToolHandles for each tool the environment provides.
+/// Returns mock ToolHandles for each tool the environment provides,
+/// plus the `exec_mode` output if configured.
 pub fn mock_env_outputs(env: &EnvOp) -> HashMap<String, Value> {
     let mut outputs = HashMap::new();
 
@@ -105,6 +129,10 @@ pub fn mock_env_outputs(env: &EnvOp) -> HashMap<String, Value> {
             let port_name = format!("tool:{}", tool_id);
             outputs.insert(port_name, handle.into());
         }
+    }
+
+    if let Some(ref mode) = env.exec_mode {
+        outputs.insert("exec_mode".to_string(), Value::Str(mode.clone()));
     }
 
     outputs

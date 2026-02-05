@@ -860,24 +860,24 @@ is already correct for tools.
 
 ## 10. Checklist
 
-### Phase 1: Core Types
-- [ ] `ManagedResource` trait
-- [ ] `ResourceHandle<R>` struct
-- [ ] `ResourceState` enum
-- [ ] `ResourceManifest` struct
-- [ ] `ManifestEntry` struct
-- [ ] `ResourceDef` struct
-- [ ] `InputPattern` enum
-- [ ] `ContentHash` struct and computation
-- [ ] Unit tests for all types
+### Phase 1: Core Types ✓
+- [x] `ManagedResource` trait — `core/ir/src/resource/managed.rs`
+- [x] `ResourceHandle<R>` struct — `core/ir/src/resource/handle.rs` (with per-process secret)
+- [x] `ResourceState` enum — `core/ir/src/resource/state.rs`
+- [x] `ResourceManifest` struct — `core/infra/src/manifest.rs`
+- [x] `ManifestEntry` struct — `core/infra/src/manifest.rs`
+- [x] `ResourceDef` struct — `core/ir/src/resource/def.rs`
+- [x] `InputPattern` enum — `core/ir/src/resource/def.rs`
+- [x] `ContentHash` struct and computation — `core/infra/src/hash.rs`
+- [x] Unit tests for all types
 
-### Phase 2: Resource Registry
-- [ ] `ResourceRegistry` struct
-- [ ] `resolve()` with topological sort
-- [ ] Cycle detection
-- [ ] `ResourceDef` in `ToolDef`
-- [ ] `build_resources()` function
-- [ ] Unit tests for resolution
+### Phase 2: Resource Registry ✓
+- [x] `ResourceRegistry` struct — `core/ir/src/resource/registry.rs`
+- [x] `resolve()` with topological sort
+- [x] Cycle detection
+- [x] `ResourceDef` in `ToolDef` — `core/ir/src/resource/defs.rs`
+- [x] `build_resources()` function
+- [x] Unit tests for resolution
 
 ### Phase 3: Manifest Integration ✓
 - [x] Manifest write in codegen

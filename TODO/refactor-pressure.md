@@ -1,4 +1,4 @@
-# Refactor Pressure: Missing Structural Patterns
+# Refactor Pressure: Structural Gaps That Drive Churn
 
 **Status**: Draft
 **Date**: 2026-02-05
@@ -9,83 +9,142 @@ Reduce refactor churn by identifying the recurring structural gaps that
 force rework and by adding lightweight guardrails that prevent regressions.
 
 This doc is **adjacent to** `TODO/architecture-debt.md`:
-- Architecture debt explains *what* is broken and why.
-- This doc explains *how we keep re‑creating similar debt* and the
+- Architecture debt explains what is broken and why.
+- This doc explains how we keep re-creating similar debt and the
   project-level rules to stop it.
 
-## Observed Patterns (Root Causes)
+## One-sentence root cause
 
-1. **Multiple sources of truth**
-   - Same concept defined in more than one place (registries, DAG targets,
-     meta-target deps, string builder names).
-   - Leads to rename drift and silent breakage.
+> We keep refactoring because the system still allows key behavior and
+> meaning to exist outside the model (DAG/resources/types/IR), and the
+> resulting duplicate sources of truth drift until they force a
+> structural cleanup.
 
-2. **Environment access outside the DAG**
-   - IO or resource acquisition happens inside nodes rather than via
-     explicit resource/env nodes.
-   - Breaks testability, DryRun, and dependency reasoning.
+## Root Causes
 
-3. **Split semantics (dual encoding)**
-   - Cardinality lives both in `type_id` and on `Port`.
-   - Coercion analysis diverges from runtime behavior.
-   - Type semantics drift and require repeated fixes.
+### A) Model is not closed (behavior exists outside the DAG/declared inputs)
 
-4. **IR is syntactically complete but idiomatically incomplete**
-   - Generated code is valid but not idiomatic → lint failures →
-     IR extensions after the fact.
+Any time code reaches out to the environment implicitly (env vars, clock,
+platform detection, filesystem handles), the DAG cannot see or control
+that input. This breaks DryRun interception, testability, and dependency
+reasoning, which then forces late refactors to re-model the behavior.
 
-5. **Performance fast paths are added late**
-   - Correctness-first is good, but missing fast paths cause
-     post‑merge refactors (e.g., hashing, freshness checks).
+Explains: resource acquisition not fully structural, hidden inputs/global
+context, performance model bolted on, and part of the "tests detached
+from DAGs" churn.
 
-6. **Ambient global state / hidden inputs**
-   - Env vars or implicit dependencies leak behavior outside the model.
+Current state: Resource acquisition Phases 1-3 are complete; remaining
+gaps are sub-DAG delegation and resource accounting/auto-derive
+`ResourceAccess` (Phases 4-5).
 
-7. **Tests partially detached from DAG structure**
-   - Mock/spec coverage lags real DAG structure, creating constant
-     testgen and mock refactors.
+### B) Invariants are not enforced by construction (policy exists, but the system allows escape hatches)
 
-## Guardrails (Process Rules)
+We have strong invariants (no backdoors, no fallbacks, no warnings), but
+churn happens when the codebase can violate them and only finds out later
+(review, lint, runtime). Enforcement must be structural, not social.
 
-1. **Single Source of Truth Gate**
-   - Every new concept must answer: *Where is the single source of truth?*
-   - Derived artifacts must be generated from it, not hand‑maintained.
+Explains: lint fights, crate-boundary debt, fast paths added late, and
+IR/modeling gaps that surface as generated-code lints.
 
-2. **No new stringly‑typed references**
-   - Builder names, target deps, and registry IDs must be typed
-     or generated from symbols in one place.
+### C) Semantics are duplicated across layers (two sources of truth)
 
-3. **Every environment touchpoint is a resource**
-   - IO happens only in env/resource nodes; nodes consume capabilities
-     via ports.
+When the same meaning lives in two places, they drift. Examples include
+cardinality split between ports and type contracts, duplicated hash
+logic, and registry/dependency definitions across multiple lists.
 
-4. **IR completeness checklist**
-   - If a lint fires on generated code, first fix the IR (not the output).
+Explains: multiple sources of truth, split semantics (dual encoding),
+string-based references, and rename drift.
 
-5. **Fast path required for checks**
-   - Any new freshness or validation check defines a fast path up front.
+Proven pattern to copy: Makefile/gitignore generation already uses a
+single source of truth via `ToolRegistry` + `BuildConfig`. Apply that
+pattern to DagSpec/registry dispatch/meta-target deps.
 
-6. **No ambient globals**
-   - Execution mode, toolchain info, and other context must be explicit
-     inputs (resource or executor context).
+### D) Cross-cutting concerns appear before they have a home
 
-## Tasks
+Shared concerns (hashing/manifest, registry metadata, build artifact
+policy, resource dependency rules) get wedged into a convenient crate
+until the third duplication forces a refactor. The rule is to create a
+proper crate/module boundary early, not after drift.
 
-- [ ] Add a short “Refactor‑Pressure Checklist” to `AGENT.md` and/or `SPEC.md`
-      (single source of truth, no stringly refs, env access via resources).
-- [ ] Add CI guardrails:
-      - Fail if new `#[allow(clippy::disallowed_methods)]` appears in `core/ir`
-      - Fail if new generated code lints appear (regenerate + clippy)
-- [ ] Replace string‑based DAG builder registry with a typed registry
-      (DagSpec or equivalent single source of truth).
-- [ ] Complete resource acquisition Phases 4–5
-      (sub‑DAG delegation + derived `ResourceAccess`).
-- [ ] Merge type/cardinality semantics into a single source of truth
-      (TypeContract‑based coercion and validation).
-- [ ] Define explicit fast paths for resource freshness checks
-      (mtime + per‑file cache, optional git‑aware).
+## Decision Rules (PR Gate)
+
+- Single source of truth: if a PR introduces the same concept in two
+  places, refactor before merge or add a scoped exception with a linked
+  TODO.
+- No new stringly references: any new string that names a node/target/
+  resource/registry must be replaced with a typed ref or a macro that
+  derives the string from a symbol (renames must fail at compile time).
+- No hidden env or IO: any `std::env::var`, `SystemTime::now`, platform
+  detection, or `FilesystemHandle` creation outside env/resource nodes
+  is a hard fail (unless listed in Exceptions).
+- Fast path declaration: any new freshness/check logic must state its
+  fast path and slow path in the PR description and encode the contract
+  in code.
+- Generated code linting: if a generated file triggers a lint, fix the
+  IR or clippy config. Never add `#[allow]` in generated output.
+- No ambient globals: exec mode, toolchain info, and policy flags must
+  be explicit inputs (resource or executor context), not global state.
+- Sub-DAGs receive only delegated resources: no implicit inheritance of
+  the parent environment.
+
+## Signals and Metrics
+
+- Count of stringly builder/registry references (target: trend to zero).
+- Count of manual registries or duplicate lists for the same concept.
+- Count of `std::env::var`/`SystemTime::now` outside env/resource nodes.
+- Count of generated-code lints in CI (target: zero).
+- Count of `#[allow(clippy::disallowed_methods)]` in runtime crates
+  outside explicit exceptions (target: zero).
+- Freshness-check p95 when inputs unchanged (target: <10ms).
+- Percent of DAGs with typed MockSpecs and node examples (target: 100%).
+
+## Exceptions (Explicit and Scoped)
+
+Exceptions are allowed only when they are crate-scoped and documented in
+one place (not sprinkled `#[allow]` at call sites). Approved categories:
+
+- Bootstrap/codegen/testgen (the generators themselves).
+- Dev-only introspection tools (e.g., DAG visualizers).
+- One-off migration scripts.
+
+## Tasks (Acceptance Criteria)
+
+- [x] Add a short "Refactor-Pressure Checklist" to `AGENT.md` and/or
+      `SPEC.md`. ✅ Both files contain the checklist (AGENT.md, SPEC.md).
+- [ ] CI guardrail: generated code linting. Done when CI runs
+      `make codegen && make testgen && cargo clippy --all-targets -- -D warnings`
+      and fails on any lint in generated output.
+- [ ] CI guardrail: boundary erosion. Done when CI fails if new
+      `#[allow(clippy::disallowed_methods)]` appears in runtime crates
+      outside the explicit exceptions list.
+- [ ] DagSpec / typed registry. Done when testgen, makegen, and CI
+      generation all consume DagSpec, and registry dispatch is no longer
+      string-based. (Note: `GraphBuilderId` enum already eliminates
+      string-based builder dispatch.)
+- [ ] Resource acquisition completion. Done when Phases 4-5 are landed:
+      sub-DAG delegation + resource accounting/auto-derive `ResourceAccess`.
+      (Note: Phases 1-3 complete per design-resource-acquisition.md.)
+- [ ] Type/cardinality unification. Done when cardinality has a single
+      source of truth (TypeContract or equivalent) and port cardinality
+      is derived or validated with no fallback semantics.
+- [x] Fast path for freshness checks. ✅ mtime fast path in
+      `core/infra/src/freshness.rs`. `ManifestEntry.input_file_count` tracks
+      file count for fast invalidation.
+- [x] Remove `GUNBC_EXEC_MODE` global. ✅ exec_mode threaded via DAG edges.
+
+## Quick Scans (rg)
+
+- `rg 'graph_builder:\s*String'`
+- `rg '"build_.*_graph"'`
+- `rg 'extra_deps|fix_deps|PrepLevel'`
+- `rg 'std::env::var\(|env::var\('`
+- `rg 'SystemTime::now\('`
+- `rg 'Platform::detect\('`
+- `rg 'FilesystemHandle::'`
+- `rg '#\[allow\(clippy::disallowed_methods\)\]'`
+- `rg 'TypeId\(|type_id:|Cardinality::'`
 
 ## Notes
 
-This doc should be revisited quarterly to validate that new work
-is not re‑introducing these structural gaps.
+Review quarterly to confirm new work is not re-introducing these
+structural gaps.

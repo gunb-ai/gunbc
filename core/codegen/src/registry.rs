@@ -444,26 +444,26 @@ pub fn all_tools() -> Vec<ToolDef> {
         .boundary(
             "execute_list_files",
             vec![
-                ("response", "Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: \"src/main.rs\\n\".to_string(), stderr: String::new() }))"),
+                ("response", "Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse::ok(\"src/main.rs\\n\")))"),
             ],
         )
         .boundary(
             "execute_read_files",
             vec![
-                ("response", "Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: \"===GUNBC_FILE:src/main.rs===\\nfn main() {}\\n\".to_string(), stderr: String::new() }))"),
+                ("response", "Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse::ok(\"===GUNBC_FILE:src/main.rs===\\nfn main() {}\\n\")))"),
             ],
         )
         .boundary(
             "execute_current_branch",
             vec![
-                ("response", "Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: \"main\\n\".to_string(), stderr: String::new() }))"),
+                ("response", "Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse::ok(\"main\\n\")))"),
             ],
         )
         .boundary(
             "execute_gist",
             vec![
                 ("url", "Value::Str(\"<DRY-RUN: gist URL>\".to_string())"),
-                ("response", "Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: String::new(), stderr: String::new() }))"),
+                ("response", "Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse::ok(\"\")))"),
             ],
         ), // gist creates a remote gist, no local output
 
@@ -519,22 +519,90 @@ pub fn all_tools() -> Vec<ToolDef> {
         .boundary(
             "execute_diff",
             vec![
-                ("response", "Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: \"diff --git a/src/main.rs b/src/main.rs\\n--- a/src/main.rs\\n+++ b/src/main.rs\\n@@ -1 +1,2 @@\\n fn main() {}\\n+// changed\\n\".to_string(), stderr: String::new() }))"),
+                ("response", "Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse::ok(\"diff --git a/src/main.rs b/src/main.rs\\n--- a/src/main.rs\\n+++ b/src/main.rs\\n@@ -1 +1,2 @@\\n fn main() {}\\n+// changed\\n\")))"),
             ],
         )
         .boundary(
             "execute_current_branch",
             vec![
-                ("response", "Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: \"main\\n\".to_string(), stderr: String::new() }))"),
+                ("response", "Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse::ok(\"main\\n\")))"),
             ],
         )
         .boundary(
             "execute_gist",
             vec![
                 ("url", "Value::Str(\"<DRY-RUN: gist URL>\".to_string())"),
-                ("response", "Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: String::new(), stderr: String::new() }))"),
+                ("response", "Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse::ok(\"\")))"),
             ],
         ), // gist-diff creates a remote gist from branch diff
+
+        // gunbc-gist-recent (recent mode variant - same package, different binary)
+        ToolDef::new(
+            &cargo::name("gist"),
+            "gist-recent",
+            "Create a GitHub gist from recent changes (last 7 days)",
+            GraphBuilderId::Gist,
+            "GistMode::Recent, extensions.clone(), public",
+        )
+        .returns_result()
+        .invocation(cargo::CargoInvocation::composed("gist-recent", "gist"))
+        .import("use gunbc_gist::{build_gist_graph, GistMode};")
+        .entrypoint(
+            CliEntrypoint::new("repo_path", "String")
+                .short('r')
+                .default(".")
+                .help("Repository path to scan")
+                .make_var("REPO"),
+        )
+        .entrypoint(
+            CliEntrypoint::new("extensions", "String")
+                .with_cardinality(Cardinality::ZERO_OR_MORE)
+                .short('e')
+                .help("File extensions to include (can be repeated)")
+                .make_var("EXT"),
+        )
+        .entrypoint(
+            CliEntrypoint::new("public", "Bool")
+                .short('p')
+                .help("Make gist public"),
+        )
+        .boundary(
+            "fs_env",
+            vec![
+                ("fs:write", "gunbc_primitives::filename::FilesystemHandle::cross_platform(gunbc_primitives::filename::Scope::Write).into()"),
+            ],
+        )
+        .boundary(
+            "clock_env",
+            vec![
+                ("clock", "gunbc_ir::Timestamp::from_system_time(std::time::SystemTime::UNIX_EPOCH).into()"),
+            ],
+        )
+        .boundary(
+            "execute_rev_list",
+            vec![
+                ("response", "Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse::ok(\"abc123def456\\n\")))"),
+            ],
+        )
+        .boundary(
+            "execute_diff",
+            vec![
+                ("response", "Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse::ok(\"diff --git a/src/main.rs b/src/main.rs\\n--- a/src/main.rs\\n+++ b/src/main.rs\\n@@ -1 +1,2 @@\\n fn main() {}\\n+// changed\\n\")))"),
+            ],
+        )
+        .boundary(
+            "execute_current_branch",
+            vec![
+                ("response", "Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse::ok(\"main\\n\")))"),
+            ],
+        )
+        .boundary(
+            "execute_gist",
+            vec![
+                ("url", "Value::Str(\"<DRY-RUN: gist URL>\".to_string())"),
+                ("response", "Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse::ok(\"\")))"),
+            ],
+        ), // gist-recent creates a remote gist from recent changes
 
         // gunbc-makegen (uses DagBuilder - returns Result)
         ToolDef::new(
@@ -609,7 +677,7 @@ pub fn all_tools() -> Vec<ToolDef> {
         .boundary(
             "execute_installs",
             vec![
-                ("response", "Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: \"Dependencies installed\".to_string(), stderr: String::new() }))"),
+                ("response", "Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse::ok(\"Dependencies installed\")))"),
             ],
         ),
 
@@ -643,7 +711,7 @@ pub fn all_tools() -> Vec<ToolDef> {
         .boundary(
             "execute_diff",
             vec![
-                ("response", "Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: \"diff --git a/src/main.rs b/src/main.rs\\n--- a/src/main.rs\\n+++ b/src/main.rs\\n@@ -1 +1,2 @@\\n fn main() {}\\n+// changed\\n\".to_string(), stderr: String::new() }))"),
+                ("response", "Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse::ok(\"diff --git a/src/main.rs b/src/main.rs\\n--- a/src/main.rs\\n+++ b/src/main.rs\\n@@ -1 +1,2 @@\\n fn main() {}\\n+// changed\\n\")))"),
             ],
         )
         .boundary(
@@ -683,7 +751,7 @@ pub fn all_tools() -> Vec<ToolDef> {
         .boundary(
             "execute_scan_workspace",
             vec![
-                ("response", "Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: \"crates/bar\\ncrates/foo\\n\".to_string(), stderr: String::new() }))"),
+                ("response", "Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse::ok(\"crates/bar\\ncrates/foo\\n\")))"),
             ],
         )
         .boundary(

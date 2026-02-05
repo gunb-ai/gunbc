@@ -52,6 +52,7 @@
 
 // Submodules
 pub mod def;
+pub mod defs;
 pub mod handle;
 pub mod managed;
 pub mod registry;
@@ -59,9 +60,13 @@ pub mod state;
 
 // Re-exports from submodules
 pub use def::{DagRef, InputPattern, ResourceDef, ResourceScope};
+pub use defs::{codegen_resource_def, CODEGEN_INPUT_ENVS, CODEGEN_INPUT_FILES, CODEGEN_INPUT_GLOBS};
 pub use handle::{HandleParseError, ResourceHandle};
 pub use gunbc_infra::hash::{ContentHash, HashBuilder};
-pub use managed::{ManagedResource, ResourceError, SimpleResource};
+pub use managed::{
+    compute_key_from_def, mtime_inputs_from_def, ManagedResource, MtimeInputs, ResourceError,
+    SimpleResource,
+};
 pub use gunbc_infra::manifest::{ManifestEntry, ResourceManifest, DEFAULT_MANIFEST_PATH};
 pub use registry::{ResolutionError, ResourceRegistry};
 pub use state::{ExecMode, ResourceState};

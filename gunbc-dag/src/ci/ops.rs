@@ -17,13 +17,8 @@ use gunbc_exec::{
     optional_bool, propagate_skipped, require_bool, require_response, require_str, ExecError,
     Executable, OutputMap, TransportResponseExt,
 };
-use gunbc_infra::codegen_hash::{
-    compute_codegen_input_hash, CODEGEN_EXTRA_FILES, CODEGEN_GLOB_PATTERNS,
-};
-use gunbc_infra::freshness::{check_freshness_mtime, MtimeResult};
-use gunbc_ir::resource::{ExecMode, ResourceManifest};
-use gunbc_ir::transport::{FileRequest, TransportRequest};
-use gunbc_ir::{ResourceId, Value, CODEGEN_BIN_DIR};
+use gunbc_ir::transport::{ShellRequest, TransportRequest};
+use gunbc_ir::Value;
 use std::collections::HashMap;
 
 // ============================================================================
@@ -40,18 +35,11 @@ pub enum CIOp {
     /// Parse the deps.toml exists check result (pure)
     ParseDepsExists,
 
-    // ========== Prep stage ==========
-    /// Prepare file exists check for codegen directory (pure)
-    /// Outputs: request: TransportRequest
-    PrepareCodegenExistsCheck,
-    /// Parse the codegen exists check result and decide if codegen needed (pure)
-    /// Outputs: codegen_needed: Bool, prep_success: Bool (if exists)
-    ParseCodegenExists,
-    /// Prepare the codegen shell command (pure)
-    /// Outputs: request: TransportRequest
-    PrepareCodegenCommand,
-    /// Parse the codegen shell response (pure)
-    ParseCodegenResult,
+    // ========== Testgen stage ==========
+    /// Prepare the testgen shell command (pure)
+    PrepareTestgenCommand,
+    /// Parse the testgen shell response (pure)
+    ParseTestgenResult,
 
     // ========== Build stage ==========
     /// Prepare the build shell command (pure)
@@ -79,6 +67,12 @@ pub enum CIOp {
     /// Outputs: lint_success, lint_skipped, lint_stdout, lint_stderr
     ParseClippyLintResult,
 
+    // ========== Guardrails stage ==========
+    /// Prepare disallowed-methods check (pure)
+    PrepareGuardrailCheck,
+    /// Parse disallowed-methods check response (pure)
+    ParseGuardrailResult,
+
     // ========== Report stage (already pure) ==========
     /// Generate CI report (pure)
     Report,
@@ -88,16 +82,16 @@ impl Executable for CIOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         match self {
             CIOp::ParseDepsExists => execute_parse_deps_exists(inputs),
-            CIOp::PrepareCodegenExistsCheck => execute_prepare_codegen_exists_check(inputs),
-            CIOp::ParseCodegenExists => execute_parse_codegen_exists(inputs),
-            CIOp::PrepareCodegenCommand => execute_prepare_codegen_command(inputs),
-            CIOp::ParseCodegenResult => execute_parse_codegen_result(inputs),
+            CIOp::PrepareTestgenCommand => execute_prepare_testgen_command(inputs),
+            CIOp::ParseTestgenResult => execute_parse_testgen_result(inputs),
             CIOp::PrepareBuildCommand => execute_prepare_build_command(inputs),
             CIOp::ParseBuildResult => execute_parse_build_result(inputs),
             CIOp::PrepareTestCommand => execute_prepare_test_command(inputs),
             CIOp::ParseTestResult => execute_parse_test_result(inputs),
             CIOp::PrepareClippyLint => execute_prepare_clippy_lint(inputs),
             CIOp::ParseClippyLintResult => execute_parse_clippy_lint_result(inputs),
+            CIOp::PrepareGuardrailCheck => execute_prepare_guardrail_check(inputs),
+            CIOp::ParseGuardrailResult => execute_parse_guardrail_result(inputs),
             CIOp::Report => execute_report(inputs),
         }
     }
@@ -141,231 +135,24 @@ fn execute_parse_deps_exists(
 }
 
 // ============================================================================
-// Prep Stage - Pure Operations
+// Testgen Stage - Pure Operations
 // ============================================================================
 
-/// Prepare file exists check for codegen directory (pure).
-///
-/// This is a fallback check - the primary freshness check uses the manifest.
-/// The file check runs in parallel and serves as a bootstrap fallback when
-/// the manifest doesn't exist yet.
-fn execute_prepare_codegen_exists_check(
-    _inputs: HashMap<String, Value>,
-) -> Result<HashMap<String, Value>, ExecError> {
-    // Check for a representative generated file - deps CLI is always generated
-    // This is a fallback for when the manifest doesn't exist (first run)
-    let path = format!("{}/deps/main.rs", CODEGEN_BIN_DIR);
-    let request = TransportRequest::File(FileRequest::exists(&path));
-
-    OutputMap::new().request("request", request).ok()
-}
-
-/// Parse the codegen exists check result with manifest-based freshness (pure).
-///
-/// Uses a two-tier freshness check:
-/// 1. **Manifest check** (primary): Compare stored hash to computed input hash
-/// 2. **File existence** (fallback): If manifest is missing, use file existence
-///
-/// In **verify mode** (`--mode=verify`), stale/missing resources cause immediate failure.
-/// In **ensure mode** (`--mode=ensure`, default), stale/missing resources trigger codegen.
-fn execute_parse_codegen_exists(
+/// Prepare the testgen shell command (pure).
+fn execute_prepare_testgen_command(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    if let Some(result) = propagate_skipped(
-        &inputs,
-        "response",
-        &[
-            "codegen_needed",
-            "prep_success",
-            "codegen_ran",
-            "prep_message",
-        ],
-    ) {
-        return result;
-    }
+    let prep_success = optional_bool(&inputs, "prep_success").unwrap_or(false);
 
-    let response = require_response(&inputs, "response")?;
-
-    let file_resp = response.require_file()?;
-    let file_exists = file_resp
-        .exists
-        .ok_or_else(|| ExecError::new("codegen exists check missing 'exists' field"))?;
-
-    // Get resource mode from environment (set by CI main.rs)
-    let exec_mode = get_exec_mode_from_env();
-
-    // Primary check: manifest-based freshness (now includes output existence check)
-    let manifest_result = check_codegen_manifest_freshness(file_exists);
-
-    // In verify mode, we require proof of freshness - no fallbacks
-    if exec_mode == ExecMode::Verify {
-        match &manifest_result {
-            ManifestCheckResult::Fresh => {
-                // OK - we have proof that inputs match and outputs exist
-            }
-            ManifestCheckResult::Stale(reason) => {
-                return Err(ExecError::new(format!(
-                    "Generated code is stale: {} (run with --mode=ensure to fix)",
-                    reason
-                )));
-            }
-            ManifestCheckResult::Missing => {
-                // In verify mode, missing manifest = fail (can't prove freshness)
-                // Users should run --mode=ensure once to seed the manifest
-                return Err(ExecError::new(
-                    "Cannot verify freshness: no manifest entry for codegen \
-                     (run with --mode=ensure to generate manifest)",
-                ));
-            }
-            ManifestCheckResult::Error(err) => {
-                // In verify mode, manifest errors are hard failures
-                return Err(ExecError::new(format!(
-                    "Cannot verify freshness: {} (run with --mode=ensure to fix)",
-                    err
-                )));
-            }
-        }
-    }
-
-    let (codegen_needed, message) = match manifest_result {
-        ManifestCheckResult::Fresh => {
-            // Manifest says inputs haven't changed and outputs exist
-            (false, "Generated code is fresh (manifest check passed)")
-        }
-        ManifestCheckResult::Stale(reason) => {
-            // Inputs changed or outputs missing - codegen needed
-            (true, reason)
-        }
-        ManifestCheckResult::Missing => {
-            // No manifest - fall back to file existence check (bootstrap scenario)
-            // This is only reached in ensure mode (verify would have failed above)
-            if file_exists {
-                (false, "Generated code exists (no manifest, using file fallback)")
-            } else {
-                (true, "Generated code missing (no manifest)")
-            }
-        }
-        ManifestCheckResult::Error(err) => {
-            // Error checking manifest - fall back to file existence (ensure mode only)
-            eprintln!("Warning: Manifest check failed: {}", err);
-            if file_exists {
-                (false, "Generated code exists (manifest check failed, using file fallback)")
-            } else {
-                (true, "Generated code missing (manifest check failed)")
-            }
-        }
-    };
-
-    let mut out = OutputMap::new().bool("codegen_needed", codegen_needed);
-
-    if !codegen_needed {
-        out = out
-            .bool("prep_success", true)
-            .bool("codegen_ran", false)
-            .str("prep_message", message);
-    }
-
-    out.ok()
-}
-
-/// Get the execution mode from environment variable.
-///
-/// Reads `GUNBC_EXEC_MODE` which is set by the CI main.rs based on --mode flag.
-fn get_exec_mode_from_env() -> ExecMode {
-    match std::env::var("GUNBC_EXEC_MODE").as_deref() {
-        Ok("verify") => ExecMode::Verify,
-        _ => ExecMode::Ensure, // "ensure" or any other value defaults to Ensure
-    }
-}
-
-/// Result of checking the codegen manifest for freshness.
-enum ManifestCheckResult {
-    /// Manifest exists and inputs are unchanged
-    Fresh,
-    /// Manifest exists but inputs have changed
-    Stale(&'static str),
-    /// Manifest doesn't exist
-    Missing,
-    /// Error reading manifest or computing hash
-    Error(String),
-}
-
-/// Check if codegen output is fresh based on the manifest.
-///
-/// Computes a hash of codegen inputs and compares to the stored manifest key.
-/// Also verifies that representative output files exist (manifest might be
-/// restored from cache without the actual generated files).
-fn check_codegen_manifest_freshness(output_exists: bool) -> ManifestCheckResult {
-    // Load manifest - distinguish "file not found" from parse/IO errors
-    let manifest = match ResourceManifest::load_default() {
-        Ok(m) if m.is_empty() => return ManifestCheckResult::Missing,
-        Ok(m) => m,
-        Err(e) => {
-            // Check if it's a "not found" error vs actual corruption
-            let kind = e.kind();
-            if kind == std::io::ErrorKind::NotFound {
-                return ManifestCheckResult::Missing;
-            }
-            // Actual error (parse failure, permission denied, etc.)
-            return ManifestCheckResult::Error(format!("manifest load failed: {}", e));
-        }
-    };
-
-    // Check for codegen entry
-    let resource_id = ResourceId::build("generated_cli");
-    let entry = match manifest.get(&resource_id) {
-        Some(e) => e,
-        None => return ManifestCheckResult::Missing,
-    };
-
-    // Even if manifest says fresh, verify output files exist
-    // (handles case where manifest restored from cache but files weren't)
-    if !output_exists {
-        return ManifestCheckResult::Stale("manifest present but output files missing");
-    }
-
-    // Fast path: check file mtimes before doing full SHA-256 hashing
-    match check_freshness_mtime(entry, CODEGEN_GLOB_PATTERNS, CODEGEN_EXTRA_FILES) {
-        MtimeResult::Fresh => {
-            eprintln!(
-                "mtime fast path: all {} input files unchanged",
-                entry.input_file_count
-            );
-            return ManifestCheckResult::Fresh;
-        }
-        MtimeResult::MaybeStale(reason) => {
-            eprintln!("mtime fast path: {}, checking hash...", reason);
-        }
-    }
-
-    // Slow path: compute current input hash
-    let (current_hash, _count) = match compute_codegen_input_hash() {
-        Ok(h) => h,
-        Err(e) => return ManifestCheckResult::Error(e.to_string()),
-    };
-
-    // Compare
-    if entry.key == current_hash {
-        ManifestCheckResult::Fresh
-    } else {
-        ManifestCheckResult::Stale("inputs changed since last codegen")
-    }
-}
-
-/// Prepare the codegen shell command (pure).
-fn execute_prepare_codegen_command(
-    inputs: HashMap<String, Value>,
-) -> Result<HashMap<String, Value>, ExecError> {
-    // Use optional_bool to handle Value::Skipped gracefully.
-    // If codegen_needed is missing/Skipped, skip codegen.
-    let codegen_needed = optional_bool(&inputs, "codegen_needed").unwrap_or(false);
-
-    if !codegen_needed {
-        return OutputMap::new().bool("skip", true).ok();
+    if !prep_success {
+        return OutputMap::new()
+            .bool("skip", true)
+            .str("skip_reason", "Skipped due to prep failure")
+            .ok();
     }
 
     let config = BuildConfig::cargo();
-    let request = TransportRequest::Shell(config.codegen.to_shell_request());
+    let request = TransportRequest::Shell(config.testgen.to_shell_request());
 
     OutputMap::new()
         .request("request", request)
@@ -373,46 +160,30 @@ fn execute_prepare_codegen_command(
         .ok()
 }
 
-/// Parse the codegen shell response (pure).
-fn execute_parse_codegen_result(
+/// Parse the testgen shell response (pure).
+fn execute_parse_testgen_result(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    // Use optional_bool to handle Value::Skipped gracefully (for skip propagation tests).
-    // If skip is missing/Skipped, default to false and let propagate_skipped handle it.
-    let skip = optional_bool(&inputs, "skip").unwrap_or(false);
-
-    if skip {
-        // Codegen was skipped because it already exists
-        return OutputMap::new()
-            .bool("prep_success", true)
-            .bool("codegen_ran", false)
-            .str("prep_message", "Generated code already exists")
-            .ok();
+    if let Some(result) = propagate_skipped(&inputs, "response", &["testgen_success", "testgen_stderr"]) {
+        return result;
     }
 
-    // Propagate skipped if response is Skipped
-    if let Some(result) = propagate_skipped(
-        &inputs,
-        "response",
-        &["prep_success", "codegen_ran", "prep_message"],
-    ) {
-        return result;
+    let skip = require_bool(&inputs, "skip")?;
+
+    if skip {
+        let reason = require_str(&inputs, "skip_reason")?;
+        return OutputMap::new()
+            .bool("testgen_success", false)
+            .str("testgen_stderr", reason)
+            .ok();
     }
 
     let response = require_response(&inputs, "response")?;
     let shell = response.require_shell()?;
-    let success = shell.success();
-
-    let message = if success {
-        "Codegen completed successfully".to_string()
-    } else {
-        format!("Codegen failed: {}", shell.stderr)
-    };
 
     OutputMap::new()
-        .bool("prep_success", success)
-        .bool("codegen_ran", true)
-        .str("prep_message", message)
+        .bool("testgen_success", shell.success())
+        .str("testgen_stderr", shell.stderr.clone())
         .ok()
 }
 
@@ -427,11 +198,12 @@ fn execute_prepare_build_command(
     // Use optional_bool to handle Value::Skipped gracefully.
     // If prep_success is missing/Skipped, skip the build.
     let prep_success = optional_bool(&inputs, "prep_success").unwrap_or(false);
+    let testgen_success = optional_bool(&inputs, "testgen_success").unwrap_or(false);
 
-    if !prep_success {
+    if !prep_success || !testgen_success {
         return OutputMap::new()
             .bool("skip", true)
-            .str("skip_reason", "Skipped due to prep failure")
+            .str("skip_reason", "Skipped due to prep/testgen failure")
             .ok();
     }
 
@@ -605,6 +377,64 @@ fn execute_parse_clippy_lint_result(
 }
 
 // ============================================================================
+// Guardrails Stage - Pure Operations
+// ============================================================================
+
+/// Prepare the disallowed-methods check (pure).
+fn execute_prepare_guardrail_check(
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    let testgen_success = optional_bool(&inputs, "testgen_success").unwrap_or(false);
+
+    if !testgen_success {
+        return OutputMap::new()
+            .bool("skip", true)
+            .str("skip_reason", "Skipped due to testgen failure")
+            .ok();
+    }
+
+    let request = TransportRequest::Shell(
+        ShellRequest::new("bash").args(["-lc", "tools/check-disallowed-methods.sh"]),
+    );
+
+    OutputMap::new()
+        .request("request", request)
+        .bool("skip", false)
+        .ok()
+}
+
+/// Parse the disallowed-methods check response (pure).
+fn execute_parse_guardrail_result(
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    if let Some(result) = propagate_skipped(
+        &inputs,
+        "response",
+        &["guardrail_success", "guardrail_stderr"],
+    ) {
+        return result;
+    }
+
+    let skip = require_bool(&inputs, "skip")?;
+
+    if skip {
+        let reason = require_str(&inputs, "skip_reason")?;
+        return OutputMap::new()
+            .bool("guardrail_success", false)
+            .str("guardrail_stderr", reason)
+            .ok();
+    }
+
+    let response = require_response(&inputs, "response")?;
+    let shell = response.require_shell()?;
+
+    OutputMap::new()
+        .bool("guardrail_success", shell.success())
+        .str("guardrail_stderr", shell.stderr.clone())
+        .ok()
+}
+
+// ============================================================================
 // Report Stage - Already Pure
 // ============================================================================
 
@@ -620,8 +450,11 @@ fn execute_report(inputs: HashMap<String, Value>) -> Result<HashMap<String, Valu
     let build_success = optional_bool(&inputs, "build_success").unwrap_or(true);
     let test_success = optional_bool(&inputs, "test_success").unwrap_or(true);
     let lint_success = optional_bool(&inputs, "lint_success").unwrap_or(true);
+    let testgen_success = optional_bool(&inputs, "testgen_success").unwrap_or(true);
+    let guardrail_success = optional_bool(&inputs, "guardrail_success").unwrap_or(true);
 
-    let overall_success = build_success && test_success && lint_success;
+    let overall_success =
+        build_success && test_success && lint_success && testgen_success && guardrail_success;
 
     let mut report = format!(
         "\nCI Report\n\
@@ -629,11 +462,17 @@ fn execute_report(inputs: HashMap<String, Value>) -> Result<HashMap<String, Valu
          Build: {}\n\
          Test:  {}\n\
          Lint:  {}\n\
+         Guardrails: {}\n\
          ---------\n\
          Overall: {}\n",
         if build_success { "PASS" } else { "FAIL" },
         if test_success { "PASS" } else { "FAIL" },
         if lint_success { "PASS" } else { "FAIL" },
+        if testgen_success && guardrail_success {
+            "PASS"
+        } else {
+            "FAIL"
+        },
         if overall_success {
             "SUCCESS"
         } else {
@@ -673,6 +512,20 @@ fn execute_report(inputs: HashMap<String, Value>) -> Result<HashMap<String, Valu
         let stderr = require_str(&inputs, "lint_stderr")?;
         if !stderr.is_empty() {
             report.push_str(&format!("\n--- Lint stderr ---\n{stderr}\n"));
+        }
+    }
+
+    if !testgen_success {
+        let stderr = require_str(&inputs, "testgen_stderr")?;
+        if !stderr.is_empty() {
+            report.push_str(&format!("\n--- Testgen stderr ---\n{stderr}\n"));
+        }
+    }
+
+    if !guardrail_success {
+        let stderr = require_str(&inputs, "guardrail_stderr")?;
+        if !stderr.is_empty() {
+            report.push_str(&format!("\n--- Guardrails stderr ---\n{stderr}\n"));
         }
     }
 
@@ -724,26 +577,17 @@ impl Mockable for CIOp {
                 .int("deps_installed", 0)
                 .str("message", "No deps.toml found")
                 .build(),
-            CIOp::PrepareCodegenExistsCheck => {
-                let path = format!("{}/deps/main.rs", CODEGEN_BIN_DIR);
+            CIOp::PrepareTestgenCommand => {
+                let config = BuildConfig::cargo();
+                let request = TransportRequest::Shell(config.testgen.to_shell_request());
                 OutputMap::new()
-                    .request(
-                        "request",
-                        TransportRequest::File(FileRequest::exists(&path)),
-                    )
+                    .request("request", request)
+                    .bool("skip", false)
                     .build()
             }
-            CIOp::ParseCodegenExists => OutputMap::new()
-                .bool("codegen_needed", false)
-                .bool("prep_success", true)
-                .bool("codegen_ran", false)
-                .str("prep_message", "Generated code exists")
-                .build(),
-            CIOp::PrepareCodegenCommand => OutputMap::new().bool("skip", true).build(),
-            CIOp::ParseCodegenResult => OutputMap::new()
-                .bool("prep_success", true)
-                .bool("codegen_ran", false)
-                .str("prep_message", "Generated code exists")
+            CIOp::ParseTestgenResult => OutputMap::new()
+                .bool("testgen_success", true)
+                .str("testgen_stderr", "")
                 .build(),
             CIOp::PrepareBuildCommand => {
                 let config = BuildConfig::cargo();
@@ -772,6 +616,19 @@ impl Mockable for CIOp {
                 .bool("test_skipped", false)
                 .str("test_stdout", "All tests passed")
                 .str("test_stderr", "")
+                .build(),
+            CIOp::PrepareGuardrailCheck => {
+                let request = TransportRequest::Shell(
+                    ShellRequest::new("bash").args(["-lc", "tools/check-disallowed-methods.sh"]),
+                );
+                OutputMap::new()
+                    .request("request", request)
+                    .bool("skip", false)
+                    .build()
+            }
+            CIOp::ParseGuardrailResult => OutputMap::new()
+                .bool("guardrail_success", true)
+                .str("guardrail_stderr", "")
                 .build(),
             CIOp::PrepareClippyLint => OutputMap::new().bool("skip", false).build(),
             CIOp::ParseClippyLintResult => OutputMap::new()
@@ -847,6 +704,7 @@ mod tests {
     fn test_prepare_build_command_success() {
         let mut inputs = HashMap::new();
         inputs.insert("prep_success".to_string(), Value::Bool(true));
+        inputs.insert("testgen_success".to_string(), Value::Bool(true));
 
         let result = execute_prepare_build_command(inputs).unwrap();
         assert_eq!(result.get("skip").and_then(|v| v.as_bool()), Some(false));

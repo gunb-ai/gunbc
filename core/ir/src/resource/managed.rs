@@ -4,10 +4,10 @@
 //! artifacts, and other acquirable resources under a single pattern:
 //! Check → Create → Resolve.
 
-use super::def::ResourceDef;
+use super::def::{InputPattern, ResourceDef};
 use super::handle::ResourceHandle;
-use super::{ContentHash, ManifestEntry, ResourceManifest};
 use super::state::{ExecMode, ResourceState};
+use super::{ContentHash, HashBuilder, ManifestEntry, ResourceManifest};
 use super::super::ResourceId;
 use thiserror::Error;
 
@@ -25,6 +25,10 @@ pub enum ResourceError {
     /// Resource has no provider configured.
     #[error("Resource '{0}' has no provider configured")]
     NoProvider(ResourceId),
+
+    /// A dependency resource required for hashing is missing.
+    #[error("Resource '{resource}' depends on missing resource '{dependency}'")]
+    MissingDependency { resource: ResourceId, dependency: ResourceId },
 
     /// Error while checking resource state.
     #[error("Failed to check resource '{0}': {1}")]
@@ -47,9 +51,9 @@ pub enum ResourceError {
 /// # Implementation Notes
 ///
 /// - `definition()` returns the resource's inputs/outputs declaration
-/// - `compute_key()` derives the freshness key from declared inputs
+/// - `compute_key()` derives the freshness key from declared inputs + manifest
 /// - `check_state()` compares computed key to manifest entry
-/// - `create()` runs the provider to create/regenerate the resource
+/// - `create()` runs the provider to create/regenerate the resource (may read manifest)
 ///
 /// The trait provides default implementations for most methods; implementations
 /// typically only need to provide `definition()` and `create()`.
@@ -59,15 +63,17 @@ pub trait ManagedResource: Clone + Sized {
 
     /// Compute the current freshness key from declared inputs.
     ///
-    /// The default implementation requires an external hash function.
+    /// The default implementation derives the key from declared inputs.
     /// Implementations may override this if they have custom key computation.
-    fn compute_key(&self) -> Result<ContentHash, ResourceError>;
+    fn compute_key(&self, manifest: &ResourceManifest) -> Result<ContentHash, ResourceError> {
+        Ok(compute_key_from_def(self.definition(), manifest)?.0)
+    }
 
     /// Create or regenerate this resource.
     ///
     /// Called when the resource is missing or stale and mode is `Ensure`.
     /// Returns the manifest entry to store.
-    fn create(&self) -> Result<ManifestEntry, ResourceError>;
+    fn create(&self, manifest: &ResourceManifest) -> Result<ManifestEntry, ResourceError>;
 
     /// Get the resource ID.
     fn resource_id(&self) -> &ResourceId {
@@ -81,7 +87,7 @@ pub trait ManagedResource: Clone + Sized {
             Some(entry) => entry,
         };
 
-        let current_key = match self.compute_key() {
+        let current_key = match self.compute_key(manifest) {
             Ok(k) => k,
             Err(e) => return ResourceState::Error(e.to_string()),
         };
@@ -119,13 +125,13 @@ pub trait ManagedResource: Clone + Sized {
         match (state, mode) {
             // Fresh in any mode: return handle with current key
             (ResourceState::Fresh, _) => {
-                let key = self.compute_key()?;
+                let key = self.compute_key(manifest)?;
                 Ok(ResourceHandle::acquire(self.resource_id().clone(), key))
             }
 
             // Missing/Stale in Ensure mode: create, update manifest, return handle
             (ResourceState::Missing | ResourceState::Stale { .. }, ExecMode::Ensure) => {
-                let entry = self.create()?;
+                let entry = self.create(manifest)?;
                 let key = entry.key.clone();
                 manifest.insert(self.resource_id().clone(), entry);
                 Ok(ResourceHandle::acquire(self.resource_id().clone(), key))
@@ -171,33 +177,124 @@ impl SimpleResource {
     }
 }
 
+/// Compute a resource key from its declared inputs.
+///
+/// Returns `(key, input_file_count)` where `input_file_count` is the number of
+/// files hashed (used by mtime fast paths).
+pub fn compute_key_from_def(
+    def: &ResourceDef,
+    manifest: &ResourceManifest,
+) -> Result<(ContentHash, usize), ResourceError> {
+    let mut builder = HashBuilder::new();
+    let mut file_count: usize = 0;
+
+    for input in &def.inputs {
+        match input {
+            InputPattern::Glob(pattern) => {
+                // Tag the input kind, then delegate to the glob helper (sorted).
+                builder = builder.update(b"glob\0");
+                let (next, count) = builder.update_glob(pattern)?;
+                builder = next;
+                file_count += count;
+            }
+            InputPattern::File(path) => {
+                builder = builder.update(b"file\0");
+                builder = builder.update_file(path)?;
+                file_count += 1;
+            }
+            InputPattern::Env(var) => {
+                let value = std::env::var(var).unwrap_or_default();
+                builder = update_tagged_str(builder, "env", var);
+                builder = update_len_prefixed(builder, &value);
+            }
+            InputPattern::Resource(dep_id) => {
+                let entry = manifest.get(dep_id).ok_or_else(|| {
+                    ResourceError::MissingDependency {
+                        resource: def.id.clone(),
+                        dependency: dep_id.clone(),
+                    }
+                })?;
+                builder = update_tagged_str(builder, "resource", dep_id.0.as_str());
+                builder = update_len_prefixed(builder, entry.key.as_str());
+            }
+        }
+    }
+
+    Ok((builder.finalize(), file_count))
+}
+
+/// Inputs that can be checked via the mtime fast path.
+#[derive(Debug, Clone)]
+pub struct MtimeInputs {
+    pub glob_patterns: Vec<String>,
+    pub files: Vec<String>,
+    pub has_non_file_inputs: bool,
+}
+
+/// Extract mtime-checkable inputs from a resource definition.
+///
+/// Returns glob patterns and file paths, plus a flag indicating whether the
+/// definition includes non-file inputs (env/resource) that require full hashing.
+pub fn mtime_inputs_from_def(def: &ResourceDef) -> MtimeInputs {
+    let mut glob_patterns = Vec::new();
+    let mut files = Vec::new();
+    let mut has_non_file_inputs = false;
+
+    for input in &def.inputs {
+        match input {
+            InputPattern::Glob(pattern) => glob_patterns.push(pattern.clone()),
+            InputPattern::File(path) => files.push(path.to_string_lossy().to_string()),
+            InputPattern::Env(_) | InputPattern::Resource(_) => {
+                has_non_file_inputs = true;
+            }
+        }
+    }
+
+    MtimeInputs {
+        glob_patterns,
+        files,
+        has_non_file_inputs,
+    }
+}
+
+fn update_tagged_str(mut builder: HashBuilder, tag: &str, value: &str) -> HashBuilder {
+    builder = builder.update(tag.as_bytes()).update(&[0u8]);
+    update_len_prefixed(builder, value)
+}
+
+fn update_len_prefixed(mut builder: HashBuilder, value: &str) -> HashBuilder {
+    let len = (value.len() as u64).to_le_bytes();
+    builder = builder.update(&len);
+    builder.update(value.as_bytes())
+}
+
 impl ManagedResource for SimpleResource {
     fn definition(&self) -> &ResourceDef {
         &self.def
     }
 
-    fn compute_key(&self) -> Result<ContentHash, ResourceError> {
-        // For simple resources, this needs to be implemented based on the definition
-        // In a real implementation, this would use HashBuilder to process InputPatterns
-        // For now, return an empty hash as a placeholder
-        Ok(ContentHash::empty())
-    }
-
-    fn create(&self) -> Result<ManifestEntry, ResourceError> {
+    fn create(&self, manifest: &ResourceManifest) -> Result<ManifestEntry, ResourceError> {
         // Simple resources can't be created without a provider
         if self.def.provider.is_none() {
             return Err(ResourceError::NoProvider(self.def.id.clone()));
         }
 
-        // In a real implementation, this would invoke the provider DAG
-        // For now, return a placeholder entry
-        Ok(ManifestEntry::new(ContentHash::empty(), 0))
+        // In a real implementation, this would invoke the provider DAG.
+        // For now, return a computed entry based on declared inputs.
+        let (key, file_count) = compute_key_from_def(&self.def, manifest)?;
+        Ok(ManifestEntry::new(key, file_count))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use std::path::{Path, PathBuf};
+    use std::sync::Mutex;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn test_resource_error_display() {
@@ -216,7 +313,7 @@ mod tests {
         let def = ResourceDef::new(ResourceId::new("test"));
         let resource = SimpleResource::new(def);
 
-        let result = resource.create();
+        let result = resource.create(&ResourceManifest::new());
         assert!(matches!(result, Err(ResourceError::NoProvider(_))));
     }
 
@@ -236,10 +333,11 @@ mod tests {
         let resource = SimpleResource::new(def);
         let mut manifest = ResourceManifest::new();
 
-        // Add entry with matching key (empty, since compute_key returns empty)
+        // Add entry with matching key
+        let (key, file_count) = compute_key_from_def(resource.definition(), &manifest).unwrap();
         manifest.insert(
             ResourceId::new("test:fresh"),
-            ManifestEntry::new(ContentHash::empty(), 0),
+            ManifestEntry::new(key, file_count),
         );
 
         let state = resource.check_state(&manifest);
@@ -255,9 +353,11 @@ mod tests {
         assert!(!resource.is_fresh(&manifest)); // Not in manifest
 
         let mut manifest_with_entry = ResourceManifest::new();
+        let (key, file_count) =
+            compute_key_from_def(resource.definition(), &manifest_with_entry).unwrap();
         manifest_with_entry.insert(
             ResourceId::new("test:is_fresh"),
-            ManifestEntry::new(ContentHash::empty(), 0),
+            ManifestEntry::new(key, file_count),
         );
         assert!(resource.is_fresh(&manifest_with_entry));
     }
@@ -279,12 +379,170 @@ mod tests {
         let mut manifest = ResourceManifest::new();
 
         // Pre-populate manifest
+        let (key, file_count) = compute_key_from_def(resource.definition(), &manifest).unwrap();
         manifest.insert(
             ResourceId::new("test:acquire_fresh"),
-            ManifestEntry::new(ContentHash::empty(), 0),
+            ManifestEntry::new(key, file_count),
         );
 
         let result = resource.acquire(ExecMode::Verify, &mut manifest);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_compute_key_missing_dependency() {
+        let def = ResourceDef::new(ResourceId::new("test:missing_dep"))
+            .with_input(InputPattern::resource(ResourceId::new("dep:missing")));
+        let manifest = ResourceManifest::new();
+
+        let err = compute_key_from_def(&def, &manifest).unwrap_err();
+        assert!(matches!(err, ResourceError::MissingDependency { .. }));
+    }
+
+    #[test]
+    fn test_compute_key_changes_with_dependency() {
+        let dep_id = ResourceId::new("dep:one");
+        let def = ResourceDef::new(ResourceId::new("test:dep_key"))
+            .with_input(InputPattern::resource(dep_id.clone()));
+        let mut manifest = ResourceManifest::new();
+
+        manifest.insert(dep_id.clone(), ManifestEntry::new(ContentHash::from_bytes(b"one"), 0));
+        let (key1, _) = compute_key_from_def(&def, &manifest).unwrap();
+
+        manifest.insert(dep_id.clone(), ManifestEntry::new(ContentHash::from_bytes(b"two"), 0));
+        let (key2, _) = compute_key_from_def(&def, &manifest).unwrap();
+
+        assert_ne!(key1, key2);
+    }
+
+    #[test]
+    fn test_compute_key_env_and_file() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let env_key = unique_env_key("GUNBC_TEST_ENV_HASH");
+
+        let dir = temp_dir("env_file");
+        let input = dir.join("input.txt");
+        write_file(&input, "alpha");
+
+        let def = ResourceDef::new(ResourceId::new("test:env_file"))
+            .with_input(InputPattern::file(&input))
+            .with_input(InputPattern::env(&env_key));
+
+        let manifest = ResourceManifest::new();
+        let old = std::env::var(&env_key).ok();
+
+        std::env::set_var(&env_key, "A");
+        let (key1, file_count1) = compute_key_from_def(&def, &manifest).unwrap();
+        assert_eq!(file_count1, 1);
+
+        std::env::set_var(&env_key, "B");
+        let (key2, file_count2) = compute_key_from_def(&def, &manifest).unwrap();
+        assert_eq!(file_count2, 1);
+        assert_ne!(key1, key2);
+
+        write_file(&input, "beta");
+        let (key3, _) = compute_key_from_def(&def, &manifest).unwrap();
+        assert_ne!(key2, key3);
+
+        restore_env(&env_key, old);
+        cleanup_dir(&dir);
+    }
+
+    #[test]
+    fn test_provider_example_creates_manifest_entry() {
+        use super::super::def::{DagRef, ResourceScope};
+
+        #[derive(Clone)]
+        struct TestProviderResource {
+            def: ResourceDef,
+            output: PathBuf,
+            contents: String,
+        }
+
+        impl ManagedResource for TestProviderResource {
+            fn definition(&self) -> &ResourceDef {
+                &self.def
+            }
+
+            fn create(&self, manifest: &ResourceManifest) -> Result<ManifestEntry, ResourceError> {
+                if let Some(parent) = self.output.parent() {
+                    fs::create_dir_all(parent)?;
+                }
+                fs::write(&self.output, &self.contents)?;
+                let (key, file_count) = compute_key_from_def(&self.def, manifest)?;
+                Ok(ManifestEntry::new(key, file_count).with_outputs(vec![self.output.clone()]))
+            }
+        }
+
+        let _guard = ENV_LOCK.lock().unwrap();
+        let env_key = unique_env_key("GUNBC_TEST_PROVIDER_INPUT");
+
+        let dir = temp_dir("provider");
+        let output = dir.join("out.txt");
+        let def = ResourceDef::new(ResourceId::new("test:provider"))
+            .with_input(InputPattern::env(&env_key))
+            .with_output(ResourceScope::file(&output))
+            .with_provider(DagRef::new("test_provider"));
+
+        let old = std::env::var(&env_key).ok();
+        std::env::set_var(&env_key, "v1");
+
+        let resource = TestProviderResource {
+            def,
+            output: output.clone(),
+            contents: "hello".to_string(),
+        };
+        let mut manifest = ResourceManifest::new();
+        let handle = resource.acquire(ExecMode::Ensure, &mut manifest).unwrap();
+
+        assert!(output.exists());
+        let entry = manifest.get(&ResourceId::new("test:provider")).unwrap();
+        assert_eq!(entry.outputs, vec![output.clone()]);
+        assert_eq!(handle.key(), &entry.key);
+
+        restore_env(&env_key, old);
+        cleanup_dir(&dir);
+    }
+
+    fn unique_env_key(prefix: &str) -> String {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        format!("{}_{}", prefix, nanos)
+    }
+
+    fn temp_dir(label: &str) -> PathBuf {
+        let mut dir = std::env::temp_dir();
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        dir.push(format!(
+            "gunbc-resource-{}-{}-{}",
+            label,
+            std::process::id(),
+            nanos
+        ));
+        fs::create_dir_all(&dir).expect("create temp dir");
+        dir
+    }
+
+    fn write_file(path: &Path, contents: &str) {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).expect("create file parent");
+        }
+        fs::write(path, contents).expect("write file");
+    }
+
+    fn cleanup_dir(path: &Path) {
+        let _ = fs::remove_dir_all(path);
+    }
+
+    fn restore_env(key: &str, old: Option<String>) {
+        match old {
+            Some(value) => std::env::set_var(key, value),
+            None => std::env::remove_var(key),
+        }
     }
 }

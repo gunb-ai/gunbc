@@ -12,6 +12,17 @@ This document captures project structure, design philosophy, and implementation 
 
 ---
 
+## Refactor-Pressure Checklist (PR Gate)
+
+- Single source of truth: new concepts must have exactly one authoritative definition.
+- No stringly references: names of nodes/targets/resources must be typed or derived.
+- No hidden env/IO: env vars, clock, platform, and FS handles only via env/resource nodes.
+- No ambient globals: exec mode and policy flags are explicit inputs.
+- Fast path declared: any freshness/check logic documents fast and slow paths.
+- Generated code linting: fix IR or clippy config, never add `#[allow]` in generated output.
+
+---
+
 ## Related Projects
 
 ### the-gunbai

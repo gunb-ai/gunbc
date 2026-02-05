@@ -65,22 +65,14 @@ pub fn gist_mock_spec(mode: &GistMode) -> MockSpec {
                 .transport_response(
                     "execute_list_files",
                     "response",
-                    TransportResponse::Shell(ShellResponse {
-                        exit_code: 0,
-                        stdout: "src/main.rs\nREADME.md\n".to_string(),
-                        stderr: String::new(),
-                    }),
+                    TransportResponse::Shell(ShellResponse::ok("src/main.rs\nREADME.md\n")),
                 )
                 .expect("execute_list_files response should match type")
                 // execute_read_files transport response
                 .transport_response(
                     "execute_read_files",
                     "response",
-                    TransportResponse::Shell(ShellResponse {
-                        exit_code: 0,
-                        stdout: "===GUNBC_FILE:src/main.rs===\nfn main() {}\n===GUNBC_FILE:README.md===\n# README\n".to_string(),
-                        stderr: String::new(),
-                    }),
+                    TransportResponse::Shell(ShellResponse::ok("===GUNBC_FILE:src/main.rs===\nfn main() {}\n===GUNBC_FILE:README.md===\n# README\n")),
                 )
                 .expect("execute_read_files response should match type");
         }
@@ -90,11 +82,24 @@ pub fn gist_mock_spec(mode: &GistMode) -> MockSpec {
                 .transport_response(
                     "execute_diff",
                     "response",
-                    TransportResponse::Shell(ShellResponse {
-                        exit_code: 0,
-                        stdout: "diff --git a/src/main.rs b/src/main.rs\n--- a/src/main.rs\n+++ b/src/main.rs\n@@ -1,3 +1,4 @@\n fn main() {\n+    println!(\"hello\");\n }\n".to_string(),
-                        stderr: String::new(),
-                    }),
+                    TransportResponse::Shell(ShellResponse::ok("diff --git a/src/main.rs b/src/main.rs\n--- a/src/main.rs\n+++ b/src/main.rs\n@@ -1,3 +1,4 @@\n fn main() {\n+    println!(\"hello\");\n }\n")),
+                )
+                .expect("execute_diff response should match type");
+        }
+        GistMode::Recent => {
+            reqs = reqs
+                // execute_rev_list transport response (SHA of commit 7 days ago)
+                .transport_response(
+                    "execute_rev_list",
+                    "response",
+                    TransportResponse::Shell(ShellResponse::ok("abc123def456\n")),
+                )
+                .expect("execute_rev_list response should match type")
+                // execute_diff transport response
+                .transport_response(
+                    "execute_diff",
+                    "response",
+                    TransportResponse::Shell(ShellResponse::ok("diff --git a/src/main.rs b/src/main.rs\n--- a/src/main.rs\n+++ b/src/main.rs\n@@ -1,3 +1,4 @@\n fn main() {\n+    println!(\"hello\");\n }\n")),
                 )
                 .expect("execute_diff response should match type");
         }
@@ -105,30 +110,33 @@ pub fn gist_mock_spec(mode: &GistMode) -> MockSpec {
         .transport_response(
             "execute_current_branch",
             "response",
-            TransportResponse::Shell(ShellResponse {
-                exit_code: 0,
-                stdout: "main\n".to_string(),
-                stderr: String::new(),
-            }),
+            TransportResponse::Shell(ShellResponse::ok("main\n")),
         )
         .expect("execute_current_branch response should match type");
+
+    // Shared: remote branch resolution (for detached HEAD)
+    reqs = reqs
+        .transport_response(
+            "execute_remote_branches",
+            "response",
+            TransportResponse::Shell(ShellResponse::ok("  origin/main\n")),
+        )
+        .expect("execute_remote_branches response should match type");
 
     // Shared: gist creation
     reqs = reqs
         .transport_response(
             "execute_gist",
             "response",
-            TransportResponse::Shell(ShellResponse {
-                exit_code: 0,
-                stdout: serde_json::json!({
+            TransportResponse::Shell(ShellResponse::ok(
+                serde_json::json!({
                     "id": "abc123def456",
                     "html_url": "https://gist.github.com/mock/abc123def456",
                     "files": {},
                     "public": false
                 })
                 .to_string(),
-                stderr: String::new(),
-            }),
+            )),
         )
         .expect("execute_gist response should match type");
 
@@ -223,6 +231,42 @@ mod tests {
         };
         let spec = gist_mock_spec(&mode);
         let url = spec.get_boundary_mock("parse_gist_response", "url").unwrap();
+
+        if let Value::Str(s) = url {
+            assert!(s.starts_with("https://gist.github.com/"));
+        } else {
+            panic!("Expected string URL");
+        }
+    }
+
+    #[test]
+    fn test_recent_mock_spec_no_snapshot_boundaries() {
+        let spec = gist_mock_spec(&GistMode::Recent);
+
+        // execute_list_files and execute_read_files don't exist in recent mode
+        assert!(spec
+            .get_transport_mock("execute_list_files", "response")
+            .is_none());
+        assert!(spec
+            .get_transport_mock("execute_read_files", "response")
+            .is_none());
+    }
+
+    #[test]
+    fn test_recent_mock_spec_has_rev_list() {
+        let spec = gist_mock_spec(&GistMode::Recent);
+
+        assert!(spec
+            .get_transport_mock("execute_rev_list", "response")
+            .is_some());
+    }
+
+    #[test]
+    fn test_recent_mock_spec_url_is_valid() {
+        let spec = gist_mock_spec(&GistMode::Recent);
+        let url = spec
+            .get_boundary_mock("parse_gist_response", "url")
+            .unwrap();
 
         if let Value::Str(s) = url {
             assert!(s.starts_with("https://gist.github.com/"));

@@ -88,12 +88,31 @@ pub enum GitSubcommand {
     /// Returns the current branch name (or "HEAD" if detached).
     CurrentBranch,
 
+    /// `git branch -r --points-at HEAD`
+    ///
+    /// Lists remote tracking branches that point at the current HEAD commit.
+    /// Useful for resolving the remote branch name when HEAD is detached
+    /// (e.g., after `git checkout origin/main`).
+    ///
+    /// Returns one remote ref per line (e.g., "  origin/main") or empty
+    /// if no remote branches point at HEAD.
+    RemoteBranchesAtHead,
+
     /// `git merge-base <base_ref> HEAD`
     ///
     /// Returns the common ancestor commit hash.
     MergeBase {
         /// The ref to find the merge base with.
         base_ref: String,
+    },
+
+    /// `git rev-list -1 --before="<before>" HEAD`
+    ///
+    /// Returns the most recent commit SHA before the given date.
+    /// Empty output means no commits exist before that date.
+    RevListBefore {
+        /// Date expression (e.g., "7 days ago").
+        before: String,
     },
 }
 
@@ -142,11 +161,31 @@ impl GitRequest {
         }
     }
 
+    /// Remote tracking branches at HEAD (for detached HEAD resolution).
+    pub fn remote_branches_at_head() -> Self {
+        Self {
+            subcommand: GitSubcommand::RemoteBranchesAtHead,
+            cwd: None,
+            pathspecs: Vec::new(),
+        }
+    }
+
     /// Common ancestor commit between base_ref and HEAD.
     pub fn merge_base(base_ref: impl Into<String>) -> Self {
         Self {
             subcommand: GitSubcommand::MergeBase {
                 base_ref: base_ref.into(),
+            },
+            cwd: None,
+            pathspecs: Vec::new(),
+        }
+    }
+
+    /// Most recent commit before the given date expression.
+    pub fn rev_list_before(before: impl Into<String>) -> Self {
+        Self {
+            subcommand: GitSubcommand::RevListBefore {
+                before: before.into(),
             },
             cwd: None,
             pathspecs: Vec::new(),
@@ -233,8 +272,18 @@ impl GitRequest {
             GitSubcommand::CurrentBranch => {
                 req = req.args(["rev-parse", "--abbrev-ref", "HEAD"]);
             }
+            GitSubcommand::RemoteBranchesAtHead => {
+                req = req.args(["branch", "-r", "--points-at", "HEAD"]);
+            }
             GitSubcommand::MergeBase { base_ref } => {
                 req = req.arg("merge-base").arg(base_ref.as_str()).arg("HEAD");
+            }
+            GitSubcommand::RevListBefore { before } => {
+                req = req
+                    .arg("rev-list")
+                    .arg("-1")
+                    .arg(format!("--before={}", before))
+                    .arg("HEAD");
             }
         }
 
@@ -388,8 +437,40 @@ pub fn parse_current_branch(stdout: &str) -> String {
     stdout.trim().to_string()
 }
 
+/// Parse remote branches from `git branch -r --points-at HEAD` output.
+///
+/// Returns the best remote branch name with the remote prefix stripped
+/// (e.g., `"origin/main"` → `"main"`, `"origin/feature/foo"` → `"feature/foo"`).
+///
+/// Filters out `HEAD` pointer entries (e.g., `"origin/HEAD"`).
+/// Returns empty string if no matching remote branches found.
+pub fn parse_remote_branches_at_head(stdout: &str) -> String {
+    stdout
+        .lines()
+        .map(|l| l.trim())
+        .find(|l| !l.is_empty() && !l.ends_with("/HEAD"))
+        .map(|remote_ref| {
+            // Strip remote prefix: "origin/main" → "main"
+            if let Some(pos) = remote_ref.find('/') {
+                &remote_ref[pos + 1..]
+            } else {
+                remote_ref
+            }
+        })
+        .unwrap_or("")
+        .to_string()
+}
+
 /// Parse a commit hash from `git merge-base` output.
 pub fn parse_merge_base(stdout: &str) -> String {
+    stdout.trim().to_string()
+}
+
+/// Parse a commit SHA from `git rev-list -1 --before=...` output.
+///
+/// Returns the trimmed SHA, or empty string if no commit was found
+/// (repo younger than the requested time period).
+pub fn parse_rev_list_before(stdout: &str) -> String {
     stdout.trim().to_string()
 }
 
@@ -615,6 +696,7 @@ mod tests {
             GitRequest::ls_files().to_shell_request(),
             GitRequest::diff("main").to_shell_request(),
             GitRequest::current_branch().to_shell_request(),
+            GitRequest::remote_branches_at_head().to_shell_request(),
         ];
 
         for req in requests {
@@ -730,6 +812,21 @@ new file mode 100644
     }
 
     #[test]
+    fn test_remote_branches_at_head_request() {
+        let req = GitRequest::remote_branches_at_head().to_shell_request();
+
+        match req {
+            TransportRequest::Shell(shell) => {
+                assert!(shell.args.contains(&"branch".to_string()));
+                assert!(shell.args.contains(&"-r".to_string()));
+                assert!(shell.args.contains(&"--points-at".to_string()));
+                assert!(shell.args.contains(&"HEAD".to_string()));
+            }
+            _ => panic!("expected Shell request"),
+        }
+    }
+
+    #[test]
     fn test_parse_current_branch() {
         assert_eq!(parse_current_branch("main\n"), "main");
         assert_eq!(parse_current_branch("feature/foo\n"), "feature/foo");
@@ -737,8 +834,80 @@ new file mode 100644
     }
 
     #[test]
+    fn test_parse_remote_branches_at_head_single() {
+        assert_eq!(
+            parse_remote_branches_at_head("  origin/main\n"),
+            "main"
+        );
+    }
+
+    #[test]
+    fn test_parse_remote_branches_at_head_with_nested_branch() {
+        assert_eq!(
+            parse_remote_branches_at_head("  origin/feature/foo\n"),
+            "feature/foo"
+        );
+    }
+
+    #[test]
+    fn test_parse_remote_branches_at_head_filters_head_pointer() {
+        // origin/HEAD is a symbolic ref, not a real branch
+        assert_eq!(
+            parse_remote_branches_at_head("  origin/HEAD\n  origin/main\n"),
+            "main"
+        );
+    }
+
+    #[test]
+    fn test_parse_remote_branches_at_head_empty() {
+        assert_eq!(parse_remote_branches_at_head(""), "");
+        assert_eq!(parse_remote_branches_at_head("\n"), "");
+    }
+
+    #[test]
+    fn test_parse_remote_branches_at_head_multiple_remotes() {
+        // Multiple remotes — picks first non-HEAD entry
+        assert_eq!(
+            parse_remote_branches_at_head("  origin/main\n  upstream/main\n"),
+            "main"
+        );
+    }
+
+    #[test]
     fn test_parse_merge_base() {
         assert_eq!(parse_merge_base("abc123def456\n"), "abc123def456");
+    }
+
+    #[test]
+    fn test_rev_list_before_request() {
+        let req = GitRequest::rev_list_before("7 days ago")
+            .cwd("/repo")
+            .to_shell_request();
+
+        match req {
+            TransportRequest::Shell(shell) => {
+                assert!(shell.args.contains(&"rev-list".to_string()));
+                assert!(shell.args.contains(&"-1".to_string()));
+                assert!(shell.args.contains(&"--before=7 days ago".to_string()));
+                assert!(shell.args.contains(&"HEAD".to_string()));
+                assert_eq!(shell.cwd, Some("/repo".to_string()));
+            }
+            _ => panic!("expected Shell request"),
+        }
+    }
+
+    #[test]
+    fn test_parse_rev_list_before() {
+        assert_eq!(
+            parse_rev_list_before("abc123def456\n"),
+            "abc123def456"
+        );
+    }
+
+    #[test]
+    fn test_parse_rev_list_before_empty() {
+        assert_eq!(parse_rev_list_before(""), "");
+        assert_eq!(parse_rev_list_before("\n"), "");
     }
 
     #[test]

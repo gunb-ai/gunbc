@@ -76,6 +76,30 @@ pub enum GitOps {
     PrepareCurrentBranch,
     /// Parse current branch name (PURE)
     ParseCurrentBranch,
+
+    /// Build a `git branch -r --points-at HEAD` request (PURE)
+    ///
+    /// Queries which remote tracking branches point at the current commit.
+    /// This is a separate question from "what branch are we on?" — it
+    /// resolves the remote ref when HEAD is detached.
+    PrepareRemoteBranchesAtHead,
+    /// Parse remote branches response, extracting the branch name
+    /// with remote prefix stripped (PURE)
+    ParseRemoteBranchesAtHead,
+
+    // ========================================================================
+    // rev-list chain
+    // ========================================================================
+    /// Build a `git rev-list -1 --before="<before>" HEAD` request (PURE)
+    PrepareRevListBefore {
+        /// Date expression (e.g., "7 days ago").
+        before: String,
+    },
+    /// Parse rev-list response into optional commit SHA (PURE)
+    ///
+    /// Emits `base_ref` output only if a commit was found. Empty output
+    /// (repo younger than the requested period) produces no output.
+    ParseRevListBefore,
 }
 
 impl Executable for GitOps {
@@ -211,11 +235,71 @@ impl Executable for GitOps {
                 let branch = git::parse_current_branch(&shell.stdout);
 
                 // Treat empty, whitespace-only, and "HEAD" (detached) as unknown.
-                // Downstream consumers (GistOps::PrepareRequest) handle missing branch
-                // gracefully — they fall back to "snapshot" for the filename.
+                // When detached, the parallel RemoteBranchesAtHead chain handles
+                // resolution — this node only reports local branch state.
                 let mut out = OutputMap::new();
                 if !branch.is_empty() && branch != "HEAD" {
                     out = out.str("branch", branch);
+                }
+                out.ok()
+            }
+
+            // ================================================================
+            // Remote branches at HEAD
+            // ================================================================
+            GitOps::PrepareRemoteBranchesAtHead => {
+                let repo_path = optional_str(&inputs, "repo_path").unwrap_or(".");
+
+                let mut req = GitRequest::remote_branches_at_head();
+                if repo_path != "." {
+                    req = req.cwd(repo_path);
+                }
+                let request = req.to_shell_request();
+
+                OutputMap::new().request("request", request).ok()
+            }
+            GitOps::ParseRemoteBranchesAtHead => {
+                let response = require_response(&inputs, "response")?;
+                let shell = response.require_shell()?;
+
+                let remote_branch = if shell.exit_code == 0 {
+                    git::parse_remote_branches_at_head(&shell.stdout)
+                } else {
+                    String::new()
+                };
+
+                // Only emit if a remote branch was found
+                let mut out = OutputMap::new();
+                if !remote_branch.is_empty() {
+                    out = out.str("remote_branch", remote_branch);
+                }
+                out.ok()
+            }
+
+            // ================================================================
+            // rev-list
+            // ================================================================
+            GitOps::PrepareRevListBefore { before } => {
+                let repo_path = optional_str(&inputs, "repo_path").unwrap_or(".");
+
+                let mut req = GitRequest::rev_list_before(before.as_str());
+                if repo_path != "." {
+                    req = req.cwd(repo_path);
+                }
+                let request = req.to_shell_request();
+
+                OutputMap::new().request("request", request).ok()
+            }
+            GitOps::ParseRevListBefore => {
+                let response = require_response(&inputs, "response")?;
+                let shell = response.require_shell()?;
+
+                let sha = git::parse_rev_list_before(&shell.stdout);
+
+                // Only emit base_ref if a commit was found
+                let mut out = OutputMap::new();
+                if !sha.is_empty() {
+                    out = out.str("base_ref", sha);
                 }
                 out.ok()
             }
@@ -411,5 +495,133 @@ diff --git a/src/main.rs b/src/main.rs
         let result = GitOps::ParseCurrentBranch.execute(inputs).unwrap();
         let branch = result.get("branch").unwrap().as_str().unwrap();
         assert_eq!(branch, "feature/my-branch");
+    }
+
+    // ========================================================================
+    // PrepareRemoteBranchesAtHead
+    // ========================================================================
+
+    #[test]
+    fn test_prepare_remote_branches_at_head() {
+        let inputs = HashMap::new();
+        let result = GitOps::PrepareRemoteBranchesAtHead.execute(inputs).unwrap();
+
+        match result.get("request").unwrap() {
+            Value::Request(TransportRequest::Shell(req)) => {
+                assert!(req.args.contains(&"branch".to_string()));
+                assert!(req.args.contains(&"-r".to_string()));
+                assert!(req.args.contains(&"--points-at".to_string()));
+            }
+            _ => panic!("expected shell request"),
+        }
+    }
+
+    #[test]
+    fn test_parse_remote_branches_at_head_found() {
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "response".to_string(),
+            Value::Response(shell_response("  origin/main\n")),
+        );
+
+        let result = GitOps::ParseRemoteBranchesAtHead.execute(inputs).unwrap();
+        let remote = result.get("remote_branch").unwrap().as_str().unwrap();
+        assert_eq!(remote, "main");
+    }
+
+    #[test]
+    fn test_parse_remote_branches_at_head_empty() {
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "response".to_string(),
+            Value::Response(shell_response("")),
+        );
+
+        let result = GitOps::ParseRemoteBranchesAtHead.execute(inputs).unwrap();
+        // No remote branch found — output should be absent
+        assert!(result.get("remote_branch").is_none());
+    }
+
+    #[test]
+    fn test_parse_remote_branches_at_head_failure() {
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "response".to_string(),
+            Value::Response(failed_shell_response()),
+        );
+
+        let result = GitOps::ParseRemoteBranchesAtHead.execute(inputs).unwrap();
+        assert!(result.get("remote_branch").is_none());
+    }
+
+    // ========================================================================
+    // PrepareRevListBefore
+    // ========================================================================
+
+    #[test]
+    fn test_prepare_rev_list_before() {
+        let inputs = HashMap::new();
+        let op = GitOps::PrepareRevListBefore {
+            before: "7 days ago".to_string(),
+        };
+        let result = op.execute(inputs).unwrap();
+
+        match result.get("request").unwrap() {
+            Value::Request(TransportRequest::Shell(req)) => {
+                assert!(req.args.contains(&"rev-list".to_string()));
+                assert!(req.args.contains(&"-1".to_string()));
+                assert!(req.args.contains(&"--before=7 days ago".to_string()));
+                assert_eq!(req.cwd, None);
+            }
+            _ => panic!("expected shell request"),
+        }
+    }
+
+    #[test]
+    fn test_prepare_rev_list_before_with_path() {
+        let mut inputs = HashMap::new();
+        inputs.insert("repo_path".to_string(), Value::Str("/my/repo".to_string()));
+
+        let op = GitOps::PrepareRevListBefore {
+            before: "7 days ago".to_string(),
+        };
+        let result = op.execute(inputs).unwrap();
+
+        match result.get("request").unwrap() {
+            Value::Request(TransportRequest::Shell(req)) => {
+                assert_eq!(req.cwd, Some("/my/repo".to_string()));
+            }
+            _ => panic!("expected shell request"),
+        }
+    }
+
+    // ========================================================================
+    // ParseRevListBefore
+    // ========================================================================
+
+    #[test]
+    fn test_parse_rev_list_before_found() {
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "response".to_string(),
+            Value::Response(shell_response("abc123def456\n")),
+        );
+
+        let result = GitOps::ParseRevListBefore.execute(inputs).unwrap();
+        let base_ref = result.get("base_ref").unwrap().as_str().unwrap();
+        assert_eq!(base_ref, "abc123def456");
+    }
+
+    #[test]
+    fn test_parse_rev_list_before_empty() {
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "response".to_string(),
+            Value::Response(shell_response("")),
+        );
+
+        let result = GitOps::ParseRevListBefore.execute(inputs).unwrap();
+        // No commit found — output should be absent
+        assert!(result.get("base_ref").is_none());
     }
 }
