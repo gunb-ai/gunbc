@@ -117,6 +117,14 @@ one place (not sprinkled `#[allow]` at call sites). Approved categories:
 - [ ] CI guardrail: boundary erosion. Done when CI fails if new
       `#[allow(clippy::disallowed_methods)]` appears in runtime crates
       outside the explicit exceptions list.
+- [ ] **CI guardrail: generated artifact drift.** Done when CI verifies
+      generated files (CI YAML, Makefile, clippy.toml) match their
+      generator output. Without this, hand-edits silently reintroduce
+      drift — the exact "multiple sources of truth" pattern this doc
+      exists to prevent. See `consolidation.md §2` for the generators.
+      Minimum: `make verify` target that re-generates and diffs.
+      **Priority: HIGH** — this is the guardrail that prevents relapse
+      on the single-source-of-truth work already done.
 - [ ] DagSpec / typed registry. Done when testgen, makegen, and CI
       generation all consume DagSpec, and registry dispatch is no longer
       string-based. (Note: `GraphBuilderId` enum already eliminates
@@ -127,6 +135,9 @@ one place (not sprinkled `#[allow]` at call sites). Approved categories:
 - [ ] Type/cardinality unification. Done when cardinality has a single
       source of truth (TypeContract or equivalent) and port cardinality
       is derived or validated with no fallback semantics.
+      **Decision needed:** interval model (property-based) vs current enum.
+      See `TODO_hacks` "Cardinality constants are flat" and type coercion
+      design doc. Deciding this unblocks the remaining dual-encoding cleanup.
 - [x] Fast path for freshness checks. ✅ mtime fast path in
       `core/infra/src/freshness.rs`. `ManifestEntry.input_file_count` tracks
       file count for fast invalidation.

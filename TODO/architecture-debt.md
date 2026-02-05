@@ -44,11 +44,58 @@ For full evidence and migration details, see git history (2026-02-05 commits).
 
 | Feature | Depends On | Priority |
 |---------|-----------|----------|
+| Codegen content-hash manifest | Infra extraction | **High** |
 | deps.toml tracking | Infra extraction | High |
 | Makefile tracking | Infra extraction | Medium |
 | .gitignore tracking | Infra extraction | Medium |
 | Per-tool test tracking | Performance fixes | Low |
 | ToolHandle unification | Design fixes | Low |
+
+**Codegen content-hash manifest**: The current freshness check relies on
+glob patterns (`CODEGEN_GLOB_PATTERNS`, `CODEGEN_EXTRA_FILES`) to discover
+inputs. If inputs change in ways the globs don't capture (new crate dep,
+new config file), stale artifacts go undetected. Fix: store a content-hash
+manifest of all actual inputs consumed during codegen, and verify against
+it on next run. The infrastructure exists (`ContentHash`, `ManifestEntry`,
+`input_file_count`); the gap is recording the actual input set rather than
+a glob-derived approximation.
+
+---
+
+## Weekly Signal (2026-02-05): What the last week's changes reveal
+
+The week's diff confirms one meta-root-cause that unifies all four
+completed phases:
+
+> **When a concept lacks a typed, structural home (IR/model/registry/
+> resource), it leaks into templates, env access, string IDs, and
+> ad-hoc rules — and then we refactor later to pull it back into
+> structure.**
+
+The week's work pulled multiple leaks back into structure:
+
+| Leak type | What leaked | Structural fix |
+|-----------|-------------|----------------|
+| Emission | `format!()` codegen | `ValueExpr` IR + renderer |
+| Registry | String-based builder refs | `GraphBuilderId` enum, dual-encoding removal |
+| Config | Manual CI YAML / Makefile | Generated from DAG/tool model |
+| Environment | Inline `SystemTime::now()`, `Platform::detect()` | Explicit env nodes (FsEnv, ClockEnv, PlatformEnv) |
+| Hashing | Per-crate hash impls | Unified via `gunbc-infra::hash` |
+
+### Coherence with existing plans
+
+Strongly coherent with `refactor-pressure.md` root causes (A–D) and
+the decision rules (single source of truth, no stringly refs, no
+hidden env/IO). Two watchpoints for drift:
+
+1. **Generated artifact verification** — CI doesn't yet verify that
+   generated files match their generator output. First hand-edit
+   re-introduces drift. Tracked in `refactor-pressure.md` tasks.
+
+2. **Codegen freshness** — manifest-based model works (Phases 1-5)
+   but the codegen upsert key still has a brittle path if inputs
+   change in ways the glob patterns don't capture. Content-hash
+   manifest (Phase D item) is the structural fix.
 
 ---
 

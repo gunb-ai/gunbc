@@ -331,6 +331,21 @@ See `TODO/TODONE/design-resource-acquisition.md` for the full design.
 
 ## Incremental Plan
 
+### Phase 2.5: Resolve auth env var at DAG boundary (HIGH PRIORITY)
+
+Q5 is the last remaining high-severity DI violation. The transport
+executor reads `std::env::var()` inline to resolve `AuthMethod::EnvVar`
+→ bearer token. This must move to a DAG boundary node so:
+- DryRun can intercept it (currently it can't)
+- The executor receives concrete tokens, not env var names
+- The auth resolution is visible in the graph
+
+- [ ] Resolve `AuthMethod::EnvVar` → concrete bearer token at the DAG
+      boundary (before transport executor). Options from Q5 above:
+      resolve in an `AuthEnv` node, or resolve in PrepareRequest.
+      See also `TODO_credential_lifecycle.md` for the unified design.
+      **Files**: `lib/transport/src/executor.rs:81,97`
+
 ### Phase 3: Generalize to RuntimeEnv (if needed)
 - [ ] Decide Q1 (single vs many env nodes)
 - [ ] Decide Q2 (declaration mechanism)
