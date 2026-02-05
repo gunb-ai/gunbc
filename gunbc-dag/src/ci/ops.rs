@@ -17,7 +17,7 @@ use gunbc_exec::{
     optional_bool, propagate_skipped, require_bool, require_response, require_str, ExecError,
     Executable, OutputMap, TransportResponseExt,
 };
-use gunbc_ir::resource::{HashBuilder, ResourceManifest};
+use gunbc_ir::resource::{ExecMode, HashBuilder, ResourceManifest};
 use gunbc_ir::transport::{FileRequest, TransportRequest};
 use gunbc_ir::{ResourceId, Value};
 use std::collections::HashMap;
@@ -161,9 +161,8 @@ fn execute_prepare_codegen_exists_check(
 /// 1. **Manifest check** (primary): Compare stored hash to computed input hash
 /// 2. **File existence** (fallback): If manifest is missing, use file existence
 ///
-/// Codegen is needed if:
-/// - Manifest is missing or stale (inputs changed)
-/// - AND file doesn't exist (for bootstrap scenario)
+/// In **verify mode** (`--mode=verify`), stale/missing resources cause immediate failure.
+/// In **ensure mode** (`--mode=ensure`, default), stale/missing resources trigger codegen.
 fn execute_parse_codegen_exists(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
@@ -187,8 +186,29 @@ fn execute_parse_codegen_exists(
         .exists
         .ok_or_else(|| ExecError::new("codegen exists check missing 'exists' field"))?;
 
+    // Get resource mode from environment (set by CI main.rs)
+    let exec_mode = get_exec_mode_from_env();
+
     // Primary check: manifest-based freshness
     let manifest_result = check_codegen_manifest_freshness();
+
+    // In verify mode, stale/missing resources are errors
+    if exec_mode == ExecMode::Verify {
+        match &manifest_result {
+            ManifestCheckResult::Stale(reason) => {
+                return Err(ExecError::new(&format!(
+                    "Generated code is stale: {} (run with --mode=ensure to fix)",
+                    reason
+                )));
+            }
+            ManifestCheckResult::Missing if !file_exists => {
+                return Err(ExecError::new(
+                    "Generated code missing and no manifest (run with --mode=ensure to fix)",
+                ));
+            }
+            _ => {} // Fresh or missing-with-file-fallback is ok
+        }
+    }
 
     let (codegen_needed, message) = match manifest_result {
         ManifestCheckResult::Fresh => {
@@ -228,6 +248,16 @@ fn execute_parse_codegen_exists(
     }
 
     out.ok()
+}
+
+/// Get the execution mode from environment variable.
+///
+/// Reads `GUNBC_EXEC_MODE` which is set by the CI main.rs based on --mode flag.
+fn get_exec_mode_from_env() -> ExecMode {
+    match std::env::var("GUNBC_EXEC_MODE").as_deref() {
+        Ok("verify") => ExecMode::Verify,
+        Ok("ensure") | _ => ExecMode::Ensure,
+    }
 }
 
 /// Result of checking the codegen manifest for freshness.

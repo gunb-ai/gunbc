@@ -7,6 +7,12 @@
 //! The CI pipeline uses the resource acquisition pattern internally - the
 //! `prep` node checks if codegen is needed and runs it if so.
 //!
+//! # Resource Mode
+//!
+//! The `--mode` flag controls how stale resources are handled:
+//! - `--mode=ensure` (default): Run codegen if stale/missing
+//! - `--mode=verify`: Fail if codegen is stale/missing (CI strict mode)
+//!
 //! # GitHub Actions Integration
 //!
 //! When running in GitHub Actions, this tool emits `::group::` commands
@@ -16,6 +22,7 @@
 
 use gunbc_dag::build_ci_graph;
 use gunbc_exec::{execute_with_mode_and_ci, BoundaryMocks, CiContext, ExecutionMode};
+use gunbc_ir::resource::ExecMode;
 use gunbc_ir::transport::cli::{ToolHandle, CLIPPY};
 use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse};
 use gunbc_ir::Value;
@@ -27,9 +34,19 @@ fn main() {
 
     let dry_run = args.iter().any(|a| a == "-n" || a == "--dry-run");
 
+    // Parse resource mode: --mode=verify or --mode=ensure
+    let resource_mode = parse_resource_mode(&args);
+
     if args.iter().any(|a| a == "-h" || a == "--help") {
         print_help();
         return;
+    }
+
+    // Set environment variable for the mode so the freshness check can read it.
+    // This avoids having to modify the DAG structure to pass the mode through.
+    match resource_mode {
+        ExecMode::Verify => env::set_var("GUNBC_EXEC_MODE", "verify"),
+        ExecMode::Ensure => env::set_var("GUNBC_EXEC_MODE", "ensure"),
     }
 
     // Build the CI graph
@@ -133,7 +150,17 @@ fn main() {
 
     // Print header
     println!("{}", gunbc_ir::cargo::name("ci"));
-    println!("  mode: {}", if dry_run { "dry-run" } else { "real" });
+    println!(
+        "  exec: {}",
+        if dry_run { "dry-run" } else { "real" }
+    );
+    println!(
+        "  resource_mode: {}",
+        match resource_mode {
+            ExecMode::Verify => "verify (fail on stale)",
+            ExecMode::Ensure => "ensure (fix stale)",
+        }
+    );
     // Show CI provider if detected (not "plain")
     if ci.provider_id() != "plain" {
         println!("  ci: {}", ci.provider_name());
@@ -159,6 +186,26 @@ fn main() {
     }
 }
 
+/// Parse the resource mode from command-line arguments.
+///
+/// Defaults to `Ensure` (dev-friendly behavior).
+fn parse_resource_mode(args: &[String]) -> ExecMode {
+    for arg in args {
+        if let Some(mode_str) = arg.strip_prefix("--mode=") {
+            return match mode_str {
+                "verify" => ExecMode::Verify,
+                "ensure" => ExecMode::Ensure,
+                other => {
+                    eprintln!("Warning: Unknown mode '{}', using 'ensure'", other);
+                    ExecMode::Ensure
+                }
+            };
+        }
+    }
+    // Default: ensure mode (run codegen if needed)
+    ExecMode::Ensure
+}
+
 fn print_help() {
     let name = gunbc_ir::cargo::name("ci");
     println!("{name} - CI orchestration tool");
@@ -167,11 +214,20 @@ fn print_help() {
     println!("    {name} [OPTIONS]");
     println!();
     println!("OPTIONS:");
-    println!("    -n, --dry-run    Don't perform actual I/O");
-    println!("    -h, --help       Print this help");
+    println!("    -n, --dry-run       Don't perform actual I/O");
+    println!("    --mode=MODE         Resource acquisition mode:");
+    println!("                          ensure - run codegen if stale/missing (default)");
+    println!("                          verify - fail if codegen is stale/missing");
+    println!("    -h, --help          Print this help");
+    println!();
+    println!("EXAMPLES:");
+    println!("    {name}              # Run CI with auto-codegen if needed");
+    println!("    {name} --mode=verify  # Strict mode: fail if codegen stale");
+    println!("    {name} --dry-run    # Preview without I/O");
     println!();
     println!("The CI pipeline runs: SetupDeps -> Prep -> Build -> Test/Lint -> Report");
     println!();
-    println!("The Prep stage automatically runs codegen if generated files are missing.");
-    println!("This is the resource acquisition (upsert) pattern - check -> create if needed.");
+    println!("The Prep stage uses manifest-based freshness checking.");
+    println!("In 'ensure' mode, stale resources are regenerated automatically.");
+    println!("In 'verify' mode, stale resources cause CI to fail immediately.");
 }
