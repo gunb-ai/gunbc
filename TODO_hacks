@@ -182,6 +182,104 @@ Files:
 
 ---
 
+## canonical_edge_order called per node (performance)
+
+In `execute_flat()`, `canonical_edge_order(&dag.edges)` is called inside the
+per-node loop, which likely means sorting/allocating repeatedly.
+
+**Fix:** Compute once outside the node loop:
+```rust
+let ordered_edges = canonical_edge_order(&dag.edges);
+for node_id in topo {
+    for edge in ordered_edges.iter().filter(|e| e.to_node == *node_id) { ... }
+}
+```
+Or build an adjacency map keyed by `to_node` once.
+
+Files:
+  - core/exec/src/execute.rs (execute_flat, line ~539)
+
+---
+
+## Test type/cardinality mismatch in fan_in test — FIXED 2026-02-05
+
+In `test_fan_in_to_list_port_collects_values`, node C declares:
+- Input: `list("items", "String")` (list port)
+- Output: `port("items", "String")` (scalar port)
+- `TestOp::echo()` returns inputs verbatim
+
+So the op returns a `Value::List` on a scalar output port — a type violation
+that currently passes because output port cardinality isn't enforced at runtime.
+
+**Fix:** Changed output to `list("items", "String")` to match input.
+
+Files:
+  - core/exec/src/execute.rs (test around line 1150)
+
+---
+
+## Coercion coverage tests don't verify actual coercion (only "doesn't crash")
+
+`build_coercion_coverage_tests()` generates tests that:
+1. Build the DAG
+2. Execute in DryRun
+3. Assert via `.expect()` that it didn't crash
+
+This is useful as a smoke test but won't catch "nested lists vs flat lists"
+or other shape bugs if downstream ops are mocked or loosely typed.
+
+**Suggested fix:** Either:
+- Inject a tiny "assert shape" node in test graphs, or
+- Have the test inspect downstream node's received inputs, or
+- Add explicit assertions on output value shapes after execution.
+
+Files:
+  - core/codegen/src/testgen/codegen.rs (build_coercion_coverage_tests, line ~848)
+
+---
+
+## Coercion analysis may be ahead of runtime implementation
+
+`core/ir/src/coerce.rs` classifies coercions as:
+- `WrapScalar` (scalar → list)
+- `OptionalToList` (optional → list)
+- `Widen` (cardinality widening)
+
+The executor (execute.rs) now handles list→list concat and optional→list skip,
+but may not implement all classified coercion kinds. This can cause:
+- Obligations/tests generated for coercion kinds the engine doesn't perform
+- Subtle bugs where analysis says "safe" but runtime shape is wrong
+
+**Action:** Audit `classify_coercion()` kinds against actual executor behavior.
+Either implement missing coercions or constrain analysis to emit only supported kinds.
+
+Files:
+  - core/ir/src/coerce.rs (classify_coercion)
+  - core/exec/src/execute.rs (fan-in logic)
+
+---
+
+## Resource capabilities potentially forgeable via TryFrom<Value>
+
+The resource acquisition design proposes:
+```rust
+pub trait Resource: Into<Value> + TryFrom<Value>
+```
+
+If `TryFrom<Value>` accepts any token-like value, capabilities become forgeable.
+A malicious/buggy node could construct a fake handle from data.
+
+**Suggested fix:** Runtime guard ensuring only env nodes can mint capability handles
+(e.g., internal IDs stored in executor-side handle table, not in Value itself).
+
+Also: `EnvVars` as observation resource risks spilling secrets unless it's a
+filtered projection (the `AuthEnv` approach is safer).
+
+Files:
+  - TODO/design-resource-acquisition.md (Resource trait proposal)
+
+---
+
 ## Cross-references (tracked elsewhere)
 
 The following items are tracked in other docs:

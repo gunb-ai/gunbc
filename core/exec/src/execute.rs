@@ -1150,7 +1150,7 @@ mod tests {
         dag.add_node(Node::opaque(
             "C",
             vec![list("items", "String")], // list port: cardinality ZeroOrMore
-            vec![port("items", "String")], // echo: passes inputs through as outputs
+            vec![list("items", "String")], // echo: passes inputs through as outputs (list→list)
             TestOp::echo(),
         ));
         // Two edges to the same list port, with explicit indices for ordering
