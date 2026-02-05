@@ -929,10 +929,10 @@ This is fine; it's infrastructure code, not op code.
 - [ ] Design rendering DAG for CI workflow generation (when adding second provider) — §2
 - [ ] Review hand-written tests for redundancy with testgen (Pattern 1, 5) — §7
 - [ ] Remove fragile node-count assertions from graph structure tests (Pattern 2) — §7
-- [ ] Eliminate `type_id == "List"` dual encoding (see §5, incremental migration)
-- [ ] Replace string-based builder references with enum keys (see §6)
-- [ ] Extract `buck-out/gen` to a single constant (see §6, 16 occurrences)
-- [ ] Fix CODEGEN_SOURCES hardcoded path list (see §6)
+- [x] Eliminate `type_id == "List"` dual encoding (see §5) — already resolved: loop_pattern uses element type + cardinality, debug_assert guards CliEntrypoint
+- [x] Replace string-based builder references with enum keys (see §6) — `GraphBuilderId` enum in `cli_gen.rs`
+- [x] Extract `buck-out/gen` to a single constant (see §6) — was `target/codegen`, constants already exist, migrated CI ops
+- [x] Fix CODEGEN_SOURCES hardcoded path list (see §6) — already resolved per `TODO/TODONE/TODO_hacks_general.md`
 - [ ] Design hermeticity annotation for `Shell` transport (see §8 design problem)
 - [ ] Add integration tests: `File` transport executor (all 6 FileOp variants) — §8
 - [ ] Add integration tests: `Shell` transport executor (stdout, stderr, exit codes) — §8

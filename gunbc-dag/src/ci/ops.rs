@@ -18,7 +18,7 @@ use gunbc_exec::{
     Executable, OutputMap, TransportResponseExt,
 };
 use gunbc_ir::transport::{FileRequest, TransportRequest};
-use gunbc_ir::Value;
+use gunbc_ir::{Value, CODEGEN_BIN_DIR};
 use std::collections::HashMap;
 
 // ============================================================================
@@ -148,7 +148,8 @@ fn execute_prepare_codegen_exists_check(
     _inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
     // Check for a representative generated file - deps CLI is always generated
-    let request = TransportRequest::File(FileRequest::exists("target/codegen/bin/deps/main.rs"));
+    let path = format!("{}/deps/main.rs", CODEGEN_BIN_DIR);
+    let request = TransportRequest::File(FileRequest::exists(&path));
 
     OutputMap::new().request("request", request).ok()
 }
@@ -562,12 +563,15 @@ impl Mockable for CIOp {
                 .int("deps_installed", 0)
                 .str("message", "No deps.toml found")
                 .build(),
-            CIOp::PrepareCodegenExistsCheck => OutputMap::new()
-                .request(
-                    "request",
-                    TransportRequest::File(FileRequest::exists("target/codegen/bin/deps/main.rs")),
-                )
-                .build(),
+            CIOp::PrepareCodegenExistsCheck => {
+                let path = format!("{}/deps/main.rs", CODEGEN_BIN_DIR);
+                OutputMap::new()
+                    .request(
+                        "request",
+                        TransportRequest::File(FileRequest::exists(&path)),
+                    )
+                    .build()
+            }
             CIOp::ParseCodegenExists => OutputMap::new()
                 .bool("codegen_needed", false)
                 .bool("prep_success", true)
