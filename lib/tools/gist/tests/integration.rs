@@ -36,7 +36,7 @@ fn mock_env(mocks: &mut BoundaryMocks) {
     mocks.set_value("clock_env", "clock", clock.into());
     // Entry inputs (repo_path) for all gist modes
     mocks.set_input("prepare_list_files", "repo_path", Value::Str(".".into()));
-    mocks.set_input("prepare_read_files", "repo_path", Value::Str(".".into()));
+    mocks.set_input("read_files_loop", "repo_path", Value::Str(".".into()));
     mocks.set_input("prepare_current_branch", "repo_path", Value::Str(".".into()));
     mocks.set_input("prepare_remote_branches", "repo_path", Value::Str(".".into()));
     mocks.set_input("prepare_diff", "repo_path", Value::Str(".".into()));
@@ -60,14 +60,7 @@ fn test_dry_run_intercepts_transport() {
         Value::Response(TransportResponse::Shell(ShellResponse::ok("src/main.rs\nREADME.md\n"))),
     );
 
-    // Mock for execute_read_files (read files transport)
-    mocks.set_value(
-        "execute_read_files",
-        "response",
-        Value::Response(TransportResponse::Shell(ShellResponse::ok(
-                "===GUNBC_FILE:src/main.rs===\nfn main() {}\n===GUNBC_FILE:README.md===\n# README\n",
-            ))),
-    );
+    // Loop body transport nodes are auto-intercepted in DryRun mode
 
     // Mock for execute_current_branch (branch name acquisition)
     mock_current_branch(&mut mocks, "feature/test-branch");
@@ -90,14 +83,6 @@ fn test_dry_run_intercepts_transport() {
     assert!(
         list_entry.was_intercepted,
         "execute_list_files should be intercepted in dry-run"
-    );
-
-    let read_entry = log
-        .get("execute_read_files")
-        .expect("execute_read_files should be in log");
-    assert!(
-        read_entry.was_intercepted,
-        "execute_read_files should be intercepted in dry-run"
     );
 
     let branch_entry = log
@@ -159,8 +144,7 @@ fn test_boundary_detection() {
     // Pure intermediate nodes should not be boundaries
     assert!(!boundaries.is_boundary_node(&"prepare_list_files".into()));
     assert!(!boundaries.is_boundary_node(&"parse_list_files".into()));
-    assert!(!boundaries.is_boundary_node(&"prepare_read_files".into()));
-    assert!(!boundaries.is_boundary_node(&"parse_read_files".into()));
+    assert!(!boundaries.is_boundary_node(&"collect_file_contents".into()));
     assert!(!boundaries.is_boundary_node(&"render_markdown".into()));
     assert!(!boundaries.is_boundary_node(&"prepare_gist_request".into()));
 }
@@ -182,12 +166,7 @@ fn test_gist_graph_boundary_mockable() {
         Value::Response(TransportResponse::Shell(ShellResponse::ok("src/main.rs\n"))),
     );
 
-    // Mock execute_read_files
-    mocks.set_value(
-        "execute_read_files",
-        "response",
-        Value::Response(TransportResponse::Shell(ShellResponse::ok("===GUNBC_FILE:src/main.rs===\nfn main() {}\n"))),
-    );
+    // Loop body transport nodes are auto-intercepted in DryRun mode
 
     // Mock execute_current_branch
     mock_current_branch(&mut mocks, "main");
@@ -269,11 +248,7 @@ fn test_branch_name_in_gist_filename() {
         "response",
         Value::Response(TransportResponse::Shell(ShellResponse::ok("src/main.rs\n"))),
     );
-    mocks.set_value(
-        "execute_read_files",
-        "response",
-        Value::Response(TransportResponse::Shell(ShellResponse::ok("===GUNBC_FILE:src/main.rs===\nfn main() {}\n"))),
-    );
+    // Loop body transport nodes are auto-intercepted in DryRun mode
     // Use a branch name with slashes (common in git workflows)
     mock_current_branch(&mut mocks, "claude/improve-gist-filename");
     mock_remote_branches(&mut mocks, "");
@@ -349,11 +324,7 @@ fn test_platform_challenging_branch_names() {
             "response",
             Value::Response(TransportResponse::Shell(ShellResponse::ok("src/main.rs\n"))),
         );
-        mocks.set_value(
-            "execute_read_files",
-            "response",
-            Value::Response(TransportResponse::Shell(ShellResponse::ok("===GUNBC_FILE:src/main.rs===\nfn main() {}\n"))),
-        );
+        // Loop body transport nodes are auto-intercepted in DryRun mode
         mock_current_branch(&mut mocks, branch);
         mock_remote_branches(&mut mocks, "");
         mocks.set_value(
@@ -409,11 +380,7 @@ fn test_detached_head_uses_remote_branch_name() {
         "response",
         Value::Response(TransportResponse::Shell(ShellResponse::ok("src/main.rs\n"))),
     );
-    mocks.set_value(
-        "execute_read_files",
-        "response",
-        Value::Response(TransportResponse::Shell(ShellResponse::ok("===GUNBC_FILE:src/main.rs===\nfn main() {}\n"))),
-    );
+    // Loop body transport nodes are auto-intercepted in DryRun mode
 
     // Detached HEAD — rev-parse returns "HEAD"
     mock_current_branch(&mut mocks, "HEAD");
@@ -649,11 +616,7 @@ fn test_detached_head_no_remote_uses_snapshot() {
         "response",
         Value::Response(TransportResponse::Shell(ShellResponse::ok("src/main.rs\n"))),
     );
-    mocks.set_value(
-        "execute_read_files",
-        "response",
-        Value::Response(TransportResponse::Shell(ShellResponse::ok("===GUNBC_FILE:src/main.rs===\nfn main() {}\n"))),
-    );
+    // Loop body transport nodes are auto-intercepted in DryRun mode
 
     // Detached HEAD — rev-parse returns "HEAD"
     mock_current_branch(&mut mocks, "HEAD");

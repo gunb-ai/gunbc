@@ -24,8 +24,8 @@ pub mod graph;
 pub mod graph_mock;
 
 use gunbc_exec::{
-    optional_str, require_json, require_map_str_str, require_str, ExecError, Executable,
-    IntoExecResult, OutputMap,
+    optional_str, propagate_skipped, require_json, require_map_str_str, require_str, ExecError,
+    Executable, IntoExecResult, OutputMap,
 };
 use gunbc_ir::Value;
 use gunbc_primitives::{FormatMapOp, StableHashOp};
@@ -379,6 +379,10 @@ fn execute_prepare_review_prompt(
 fn execute_parse_review_response(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
+    if let Some(result) = propagate_skipped(&inputs, "answer", &["output", "errors"]) {
+        return result;
+    }
+
     let answer = require_str(&inputs, "answer")?;
 
     let criteria: Criteria = serde_json::from_value(require_json(&inputs, "criteria")?.clone())
@@ -499,7 +503,10 @@ fn execute_hash_finding(
 fn execute_format_diff_artifact(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    let diff_files = require_map_str_str(&inputs, "diff_files")?;
+    let diff_files = match inputs.get("diff_files") {
+        Some(Value::Skipped) => std::collections::BTreeMap::new(),
+        _ => require_map_str_str(&inputs, "diff_files")?,
+    };
 
     // Use FormatMapOp::DiffArtifact for consistent formatting
     let artifact = FormatMapOp::DiffArtifact.format_entries(&diff_files);

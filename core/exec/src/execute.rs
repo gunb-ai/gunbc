@@ -252,11 +252,14 @@ pub fn execute_with_mode_and_inputs<T: Executable + Clone>(
     });
     let effective_mocks = remapped_mocks.as_ref().or(input_mocks);
 
+    // Remap DryRun/Simulate mode input mocks too
+    let effective_mode = remap_mode_inputs(mode, &lowered.input_remaps);
+
     // Detect boundaries
     let boundaries = detect_boundaries(&lowered.dag);
 
     // Execute the flat DAG
-    execute_flat(&lowered.dag, &boundaries, &mode, None, None, effective_mocks, &lowered.loops)
+    execute_flat(&lowered.dag, &boundaries, &effective_mode, None, None, effective_mocks, &lowered.loops)
 }
 
 /// Execute a DAG with CI context for workflow command emission.
@@ -340,11 +343,12 @@ pub fn execute_with_progress_and_mode_and_inputs<T: Executable + Clone>(
         remap_input_mocks(mocks, &lowered.input_remaps)
     });
     let effective_mocks = remapped_mocks.as_ref().or(input_mocks);
+    let effective_mode = remap_mode_inputs(mode, &lowered.input_remaps);
     let boundaries = detect_boundaries(&lowered.dag);
     execute_flat(
         &lowered.dag,
         &boundaries,
-        &mode,
+        &effective_mode,
         None,
         Some(observer),
         effective_mocks,
@@ -545,6 +549,22 @@ fn remap_input_mocks(
         }
     }
     result
+}
+
+/// Remap input mocks embedded in DryRun/Simulate execution modes.
+fn remap_mode_inputs(
+    mode: ExecutionMode,
+    input_remaps: &HashMap<(String, String), Vec<(String, String)>>,
+) -> ExecutionMode {
+    if input_remaps.is_empty() {
+        return mode;
+    }
+    match mode {
+        ExecutionMode::DryRun(mocks) => {
+            ExecutionMode::DryRun(remap_input_mocks(&mocks, input_remaps))
+        }
+        other => other,
+    }
 }
 
 /// Execute a flat (fully lowered) DAG.

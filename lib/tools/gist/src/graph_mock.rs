@@ -29,10 +29,6 @@ fn mock_diff_response() -> &'static str {
     "diff --git a/src/main.rs b/src/main.rs\n--- a/src/main.rs\n+++ b/src/main.rs\n@@ -1,3 +1,4 @@\n fn main() {\n+    println!(\"hello\");\n }\n"
 }
 
-fn mock_read_files_response() -> &'static str {
-    "===GUNBC_FILE:src/main.rs===\nfn main() {}\n===GUNBC_FILE:README.md===\n# README\n"
-}
-
 fn mock_diff_files_value() -> Value {
     let mut map = BTreeMap::new();
     map.insert("src/main.rs".to_string(), mock_diff_response().to_string());
@@ -65,7 +61,7 @@ fn mock_gist_response_json() -> String {
 ///
 /// **Snapshot mode:**
 /// - `execute_list_files`: Lists files via git ls-files
-/// - `execute_read_files`: Reads file contents via batch read
+/// - `read_files_loop`: Per-file reads via LoopBuilder (transport inside loop body)
 /// - `execute_gist`: Creates the gist (world write)
 ///
 /// **Diff mode:**
@@ -99,14 +95,7 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
                     "response",
                     TransportResponse::Shell(ShellResponse::ok("src/main.rs\nREADME.md\n")),
                 )
-                .expect("execute_list_files response should match type")
-                // execute_read_files transport response
-                .transport_response(
-                    "execute_read_files",
-                    "response",
-                    TransportResponse::Shell(ShellResponse::ok("===GUNBC_FILE:src/main.rs===\nfn main() {}\n===GUNBC_FILE:README.md===\n# README\n")),
-                )
-                .expect("execute_read_files response should match type");
+                .expect("execute_list_files response should match type");
         }
         GistMode::Diff { .. } => {
             reqs = reqs
@@ -189,7 +178,7 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
         GistMode::Snapshot => {
             spec = spec
                 .input_mock("prepare_list_files", "repo_path", Value::Str(".".into()))
-                .input_mock("prepare_read_files", "repo_path", Value::Str(".".into()));
+                .input_mock("read_files_loop", "repo_path", Value::Str(".".into()));
         }
         GistMode::Diff { .. } => {
             spec = spec.input_mock("prepare_diff", "repo_path", Value::Str(".".into()));
@@ -289,25 +278,6 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
                             ])),
                         )
                         .description("Parses git ls-files output into a file list"),
-                )
-                .node_example(
-                    NodeExample::new("prepare_read_files")
-                        .input(
-                            "files",
-                            Value::str_list(vec!["src/main.rs".into(), "README.md".into()]),
-                        )
-                        .input("repo_path", Value::Str(".".into()))
-                        .output("request", OutputMatcher::IsRequest)
-                        .description("Prepares batch file read request"),
-                )
-                .node_example(
-                    NodeExample::new("parse_read_files")
-                        .input(
-                            "response",
-                            Value::Response(ShellResponse::ok(mock_read_files_response()).into()),
-                        )
-                        .output("contents", OutputMatcher::Any)
-                        .description("Parses batch file read response into contents map"),
                 )
                 .node_example(
                     NodeExample::new("render_markdown")

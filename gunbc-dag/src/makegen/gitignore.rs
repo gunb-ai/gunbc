@@ -44,6 +44,12 @@ pub fn derive_categories(config: &BuildConfig) -> Vec<Category> {
                     "Local Cargo cache may include git checkouts; not project state".to_string(),
                 ),
             });
+            categories.push(Category {
+                name: "Codegen bin symlink".to_string(),
+                source: Some("codegen".to_string()),
+                items: vec!["/bin/".to_string()],
+                rationale: Some("Symlink to target/release created by codegen".to_string()),
+            });
         }
         BuildSystem::Buck2 => {
             // Buck2 uses both cargo (for codegen) and buck2 (for build)
@@ -60,6 +66,12 @@ pub fn derive_categories(config: &BuildConfig) -> Vec<Category> {
                 rationale: Some(
                     "Local Cargo cache may include git checkouts; not project state".to_string(),
                 ),
+            });
+            categories.push(Category {
+                name: "Codegen bin symlink".to_string(),
+                source: Some("codegen".to_string()),
+                items: vec!["/bin/".to_string()],
+                rationale: Some("Symlink to target/release created by codegen".to_string()),
             });
             categories.push(Category {
                 name: "Buck2 build artifacts".to_string(),

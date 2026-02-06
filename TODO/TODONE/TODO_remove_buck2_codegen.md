@@ -32,7 +32,7 @@ was planned but never actually used. Removed all of it.
 - [x] Changed output paths from `buck-out/gen/` to `target/codegen/` in main.rs
 - [x] Removed codegen stamp logic from makegen/render.rs
 - [x] Changed ci/ops.rs existence check to use Cargo.toml
-- [x] Removed `ensure-codegen` targets and dependencies from Makefile
+- [x] Removed `ensure-codegen` targets and dependencies from Makefile (later reintroduced)
 - [x] Removed `buck-out/` from registry.rs core_outputs()
 
 ### Phase 4: Remaining references ✓
@@ -40,7 +40,14 @@ was planned but never actually used. Removed all of it.
 - [x] Updated graph_mock.rs to use Cargo.toml
 - [x] Updated ci.rs mock to use Cargo.toml
 - [x] Updated all tests in render.rs
-- [x] Kept `.gitignore` entry (harmless)
+- [x] Kept `.gitignore` entry (harmless) (later removed)
+
+---
+
+## Post-completion changes (2026-02-06+)
+
+- `ensure-codegen` was reintroduced in `Makefile` as the bootstrap-safe entrypoint.
+- `.gitignore` no longer includes `/buck-out/` because Buck2 outputs were fully removed.
 
 ---
 

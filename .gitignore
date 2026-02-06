@@ -13,6 +13,10 @@
 # Local Cargo cache may include git checkouts; not project state
 /.cargo-home/
 
+# --- Codegen bin symlink (from codegen) ---
+# Symlink to target/release created by codegen
+/bin/
+
 # --- Coverage reports (from cargo-tarpaulin) ---
 # Generated, often large, reproducible
 tarpaulin-report.html

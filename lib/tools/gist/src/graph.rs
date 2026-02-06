@@ -75,9 +75,7 @@ pub enum GistGraphOp {
 
     // ========================================================================
     // ReadFiles chain (batch): PrepareReadFiles -> Execute -> ParseReadFiles
-    // Note: This uses a batch approach for efficiency. A LoopBuilder-based
-    // approach with per-file reads would provide better observability at the
-    // cost of N shell calls instead of 1.
+    // Legacy batch approach — retained for potential bulk-read scenarios.
     // ========================================================================
     /// Prepare batch file read request (PURE - no I/O)
     /// Takes file list and repo_path, outputs shell command to read files
@@ -87,8 +85,7 @@ pub enum GistGraphOp {
     ParseReadFiles,
 
     // ========================================================================
-    // Single-file operations (for LoopBuilder integration)
-    // These can be used with LoopBuilder for per-file observability.
+    // Single-file operations (used by LoopBuilder in snapshot mode)
     // ========================================================================
     /// Prepare single file read request (PURE - no I/O)
     /// Takes filename and repo_path, outputs shell command to read one file
@@ -365,7 +362,7 @@ fn execute_parse_read_file(
 
     OutputMap::new()
         .str("filename", filename)
-        .str("content", content)
+        .str("result", content)
         .ok()
 }
 
@@ -399,10 +396,10 @@ fn execute_collect_file_contents(
 }
 
 // ============================================================================
-// LoopBuilder Integration (Future Enhancement)
+// LoopBuilder body DAG
 // ============================================================================
 
-/// Build a body DAG for single-file read (for LoopBuilder integration).
+/// Build a body DAG for single-file read (used by LoopBuilder in snapshot mode).
 ///
 /// This creates a DAG that reads a single file:
 /// ```text
@@ -410,25 +407,9 @@ fn execute_collect_file_contents(
 /// ```
 ///
 /// The DAG has:
-/// - Input: `filename: String` (from LoopBuilder's unpack node)
-/// - Output: `result: String` (content, for LoopBuilder's pack node)
-///
-/// # Note
-///
-/// This is provided for documentation and future use. The current graph
-/// uses the batch approach (PrepareReadFiles -> Execute -> ParseReadFiles)
-/// for efficiency (single shell call instead of N calls).
-///
-/// When LoopBuilder integration is needed, use this with:
-/// ```ignore
-/// let body = build_read_file_body_dag();
-/// let loop_node = LoopBuilder::new("read_files_loop")
-///     .with_input("files", "String", Cardinality::ZERO_OR_MORE)
-///     .with_element("filename", "String")
-///     .with_body(body)
-///     .with_output("contents", "String")
-///     .build();
-/// ```
+/// - Input: `filename: String` (element from LoopBuilder's unpack node)
+/// - Input: `repo_path: String` (extra input, auto-detected by lowering)
+/// - Output: `result: String` (content, collected by LoopBuilder's pack node)
 pub fn build_read_file_body_dag() -> Dag<GistGraphOp> {
     let mut dag = Dag::new();
 
@@ -458,7 +439,7 @@ pub fn build_read_file_body_dag() -> Dag<GistGraphOp> {
             port("response", "TransportResponse"),
             port("filename", "String"),
         ],
-        vec![port("filename", "String"), port("content", "String")],
+        vec![port("filename", "String"), port("result", "String")],
         GistGraphOp::ParseReadFile,
     ));
 
@@ -500,9 +481,9 @@ pub fn gist_signature(mode: &GistMode) -> WorkflowSignature {
 ///
 /// The mode determines the content acquisition strategy:
 ///
-/// **Snapshot mode** (3 boundaries):
+/// **Snapshot mode** (uses LoopBuilder for per-file reads):
 /// ```text
-/// PrepareLsFiles → Execute → ParseLsFiles → PrepareReadFiles → Execute → ParseReadFiles → RenderCode → PrepareGist → Execute → ParseGistResponse
+/// PrepareLsFiles → Execute → ParseLsFiles → LoopBuilder(PrepareReadFile → Execute → ParseReadFile) → CollectFileContents → RenderCode → PrepareGist → Execute → ParseGistResponse
 /// ```
 ///
 /// **Diff mode** (2 boundaries):
@@ -775,37 +756,28 @@ fn build_snapshot_acquire(
         &execute_list_files,
     )?;
 
-    // Node: PrepareReadFiles (PURE - builds batch read shell command)
-    let prepare_read_files = builder.add_node_after(
-        Node::opaque(
-            "prepare_read_files",
-            vec![list("files", "String"), port("repo_path", "String")],
-            vec![port("request", "TransportRequest")],
-            GistGraphOp::PrepareReadFiles,
-        ),
-        &parse_list_files,
-    )?;
+    // Node: LoopBuilder for per-file reading
+    use gunbc_ir::patterns::LoopBuilder;
 
-    // Node: Execute read files (BOUNDARY)
-    let execute_read_files = builder.add_node_after(
-        Node::opaque(
-            "execute_read_files",
-            vec![port("request", "TransportRequest")],
-            vec![port("response", "TransportResponse")],
-            GistGraphOp::Transport(TransportOps::Execute),
-        ),
-        &prepare_read_files,
-    )?;
+    let body = build_read_file_body_dag();
+    let loop_node: Node<GistGraphOp> = LoopBuilder::new("read_files_loop")
+        .with_input("files", "String", Cardinality::ZERO_OR_MORE)
+        .with_element("filename", "String")
+        .with_body(body)
+        .with_output("contents", "String")
+        .build();
 
-    // Node: ParseReadFiles (PURE)
-    let parse_read_files = builder.add_node_after(
+    let read_files_loop = builder.add_node_after(loop_node, &parse_list_files)?;
+
+    // Node: CollectFileContents (PURE - zips filenames + contents into Map)
+    let collect_file_contents = builder.add_node_after(
         Node::opaque(
-            "parse_read_files",
-            vec![port("response", "TransportResponse")],
+            "collect_file_contents",
+            vec![list("filenames", "String"), list("contents_list", "String")],
             vec![port("contents", "Map")],
-            GistGraphOp::ParseReadFiles,
+            GistGraphOp::CollectFileContents,
         ),
-        &execute_read_files,
+        &read_files_loop,
     )?;
 
     // Node: RenderCodeSnapshot (PURE)
@@ -816,7 +788,7 @@ fn build_snapshot_acquire(
             vec![scalar("markdown", "String")],
             GistGraphOp::Markdown(MarkdownOp::RenderCodeSnapshot),
         ),
-        &parse_read_files,
+        &collect_file_contents,
     )?;
 
     // Wire snapshot pipeline
@@ -830,18 +802,18 @@ fn build_snapshot_acquire(
     )?;
     builder.add_edge(
         parse_list_files.out("files"),
-        prepare_read_files.in_port("files"),
+        read_files_loop.in_port("files"),
     )?;
     builder.add_edge(
-        prepare_read_files.out("request"),
-        execute_read_files.in_port("request"),
+        parse_list_files.out("files"),
+        collect_file_contents.in_port("filenames"),
     )?;
     builder.add_edge(
-        execute_read_files.out("response"),
-        parse_read_files.in_port("response"),
+        read_files_loop.out("contents"),
+        collect_file_contents.in_port("contents_list"),
     )?;
     builder.add_edge(
-        parse_read_files.out("contents"),
+        collect_file_contents.out("contents"),
         render_markdown.in_port("contents"),
     )?;
 
@@ -1138,7 +1110,7 @@ impl Mockable for GistGraphOp {
                 .build(),
             GistGraphOp::ParseReadFile => OutputMap::new()
                 .str("filename", "src/main.rs")
-                .str("content", "fn main() {}")
+                .str("result", "fn main() {}")
                 .build(),
             GistGraphOp::CollectFileContents => {
                 let mut contents = std::collections::BTreeMap::new();
@@ -1221,12 +1193,12 @@ mod tests {
     #[test]
     fn test_snapshot_graph_builds_successfully() {
         let dag = build_gist_graph(GistMode::Snapshot, vec![], false).expect("graph should build");
-        // 18 nodes: fs_env, clock_env, prepare_list, execute_list, parse_list,
-        //           prepare_read, execute_read, parse_read, render_markdown,
+        // 17 nodes: fs_env, clock_env, prepare_list, execute_list, parse_list,
+        //           read_files_loop (SubDag), collect_file_contents, render_markdown,
         //           prepare_current_branch, execute_current_branch, parse_current_branch,
         //           prepare_remote_branches, execute_remote_branches, parse_remote_branches,
         //           prepare_gist, execute_gist, parse_gist_response
-        assert_eq!(dag.nodes.len(), 18);
+        assert_eq!(dag.nodes.len(), 17);
         // 17 edges across snapshot, branch, remote branch, and gist tail wiring
         assert_eq!(dag.edges.len(), 17);
     }
@@ -1236,7 +1208,7 @@ mod tests {
         let dag = build_gist_graph(GistMode::Snapshot, vec![], false).expect("graph should build");
 
         assert!(dag.get_node(&"execute_list_files".into()).is_some());
-        assert!(dag.get_node(&"execute_read_files".into()).is_some());
+        assert!(dag.get_node(&"read_files_loop".into()).is_some());
         assert!(dag.get_node(&"execute_current_branch".into()).is_some());
         assert!(dag.get_node(&"execute_remote_branches".into()).is_some());
         assert!(dag.get_node(&"execute_gist".into()).is_some());
@@ -1248,7 +1220,7 @@ mod tests {
         let entrypoints = detect_entrypoints(&dag);
 
         assert!(entrypoints.is_entrypoint_port(&"prepare_list_files".into(), &"repo_path".into()));
-        assert!(entrypoints.is_entrypoint_port(&"prepare_read_files".into(), &"repo_path".into()));
+        assert!(entrypoints.is_entrypoint_port(&"read_files_loop".into(), &"repo_path".into()));
         assert!(
             entrypoints.is_entrypoint_port(&"prepare_current_branch".into(), &"repo_path".into())
         );
@@ -1265,8 +1237,7 @@ mod tests {
 
         assert!(!boundaries.is_boundary_node(&"prepare_list_files".into()));
         assert!(!boundaries.is_boundary_node(&"parse_list_files".into()));
-        assert!(!boundaries.is_boundary_node(&"prepare_read_files".into()));
-        assert!(!boundaries.is_boundary_node(&"parse_read_files".into()));
+        assert!(!boundaries.is_boundary_node(&"collect_file_contents".into()));
         assert!(!boundaries.is_boundary_node(&"render_markdown".into()));
         assert!(!boundaries.is_boundary_node(&"prepare_current_branch".into()));
         assert!(!boundaries.is_boundary_node(&"parse_current_branch".into()));
@@ -1291,15 +1262,7 @@ mod tests {
             .iter()
             .any(|p| p.type_id.0 == "TransportResponse"));
 
-        let execute_read = dag.get_node(&"execute_read_files".into()).unwrap();
-        assert!(execute_read
-            .inputs
-            .iter()
-            .any(|p| p.type_id.0 == "TransportRequest"));
-        assert!(execute_read
-            .outputs
-            .iter()
-            .any(|p| p.type_id.0 == "TransportResponse"));
+        // read_files_loop is a SubDag (LoopBuilder) — transport node is inside
     }
 
     #[test]
@@ -1316,7 +1279,7 @@ mod tests {
         let dag = build_gist_graph(GistMode::Snapshot, vec![], false).expect("graph should build");
         let inferred = infer_signature(&dag);
 
-        // Should have five inputs (repo_path on prepare_list_files, prepare_read_files,
+        // Should have five inputs (repo_path on prepare_list_files, read_files_loop,
         // prepare_current_branch, prepare_remote_branches, and base_ref on prepare_gist_request)
         assert_eq!(inferred.inputs.len(), 5);
 
@@ -1554,7 +1517,7 @@ mod tests {
 
         assert!(dag.get_node(&"prepare_list_files".into()).is_none());
         assert!(dag.get_node(&"execute_list_files".into()).is_none());
-        assert!(dag.get_node(&"execute_read_files".into()).is_none());
+        assert!(dag.get_node(&"read_files_loop".into()).is_none());
     }
 
     // ========================================================================
@@ -1675,7 +1638,7 @@ mod tests {
 
         assert!(dag.get_node(&"prepare_list_files".into()).is_none());
         assert!(dag.get_node(&"execute_list_files".into()).is_none());
-        assert!(dag.get_node(&"execute_read_files".into()).is_none());
+        assert!(dag.get_node(&"read_files_loop".into()).is_none());
     }
 
     #[test]
