@@ -32,6 +32,8 @@ pub mod ci_context;
 pub mod display;
 pub mod error;
 pub mod execute;
+pub mod frame_build;
+pub mod frame_write;
 pub mod helpers;
 pub mod intercept;
 pub mod lower;
