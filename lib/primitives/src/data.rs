@@ -4,8 +4,8 @@
 //! They are the building blocks for parsing, extraction, and formatting.
 
 use gunbc_exec::{
-    optional_map_str_str, optional_str, require_json, require_map_str_str, require_str,
-    require_str_list, ExecError, Executable, IntoExecResult, OutputMap,
+    optional_map_str_str_strict, optional_str_strict, require_json, require_map_str_str,
+    require_str, require_str_list, ExecError, Executable, IntoExecResult, OutputMap,
 };
 use gunbc_ir::Value;
 use serde::{Deserialize, Serialize};
@@ -102,7 +102,7 @@ impl Executable for FormatOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         let template = require_str(&inputs, "template")?;
 
-        let values = optional_map_str_str(&inputs, "values").unwrap_or_default();
+        let values = optional_map_str_str_strict(&inputs, "values")?.unwrap_or_default();
 
         let result = format_template(template, &values);
 
@@ -163,7 +163,7 @@ impl Executable for ConcatOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         let list = require_str_list(&inputs, "input")?;
 
-        let separator = optional_str(&inputs, "separator").unwrap_or("");
+        let separator = optional_str_strict(&inputs, "separator")?.unwrap_or("");
 
         let result = list.join(separator);
 

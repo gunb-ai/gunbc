@@ -156,7 +156,12 @@ mod tests {
                         }
                     }
                 }
-                if line.contains("MIGRATION:") {
+                if (trimmed.starts_with("//")
+                    || trimmed.starts_with("///")
+                    || trimmed.starts_with("/*")
+                    || trimmed.starts_with('*'))
+                    && trimmed.contains("MIGRATION:")
+                {
                     migration_tags.push(format!("{}:{}", rel, line_no));
                 }
             }

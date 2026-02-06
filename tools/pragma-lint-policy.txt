@@ -5,4 +5,5 @@
 # (none)
 
 [allow.lints]
-# (none)
+clippy::too_many_arguments
+unused_variables

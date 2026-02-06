@@ -199,6 +199,20 @@ node that checks the filesystem through a resource handle.
 Files:
   - gunbc-dag/src/codegen/ops.rs (`execute_prepare_codegen_exists`, ~line 41)
 
+### TransportOps::Execute skip default is implicit
+
+`TransportOps::Execute` currently treats a missing `skip` input as `false`.
+That keeps wiring minimal, but it also means a missing `skip` edge and an
+intentional "do not skip" are indistinguishable at runtime.
+
+We tightened wrong-type handling (strict optional), but the broader question
+remains: should transport nodes require an explicit `skip` input to make
+skippability visible in the graph? If yes, this needs a helper or defaulting
+mechanism at the DAG-builder layer to avoid wiring churn.
+
+Files:
+  - lib/transport/src/ops.rs (`TransportOps::Execute`, ~line 25)
+
 ### Common theme
 
 Both cases use shell as a "poor man's executor" for operations that Rust

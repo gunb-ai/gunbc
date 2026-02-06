@@ -34,7 +34,7 @@ pub fn build_bootstrap_subdag() -> Node<WorkspaceOp> {
         .add_root_node(Node::opaque(
             "prepare_scan_workspace",
             vec![],
-            vec![port("request", "TransportRequest")],
+            vec![port("request", "TransportRequest"), port("skip", "Bool")],
             WorkspaceOp::Bootstrap(BootstrapOp::PrepareScanWorkspace),
         ))
         .expect("prepare_scan_workspace node");
@@ -44,7 +44,7 @@ pub fn build_bootstrap_subdag() -> Node<WorkspaceOp> {
         .add_node_after(
             Node::opaque(
                 "execute_scan_workspace",
-                vec![port("request", "TransportRequest")],
+                vec![port("request", "TransportRequest"), port("skip", "Bool")],
                 vec![port("response", "TransportResponse")],
                 WorkspaceOp::Transport(TransportOps::Execute),
             ),
@@ -84,7 +84,7 @@ pub fn build_bootstrap_subdag() -> Node<WorkspaceOp> {
             Node::opaque(
                 "prepare_makefile_write",
                 vec![port("path", "String"), port("content", "String")],
-                vec![port("request", "TransportRequest")],
+                vec![port("request", "TransportRequest"), port("skip", "Bool")],
                 WorkspaceOp::Primitive(gunbc_primitives::PrimitiveOp::PrepareFileWrite(
                     PrepareFileWriteOp,
                 )),
@@ -97,7 +97,7 @@ pub fn build_bootstrap_subdag() -> Node<WorkspaceOp> {
         .add_node_after(
             Node::opaque(
                 "execute_makefile_transport",
-                vec![port("request", "TransportRequest")],
+                vec![port("request", "TransportRequest"), port("skip", "Bool")],
                 vec![
                     port("makefile_response", "TransportResponse"),
                     port("makefile_written_path", "String"),
@@ -128,7 +128,7 @@ pub fn build_bootstrap_subdag() -> Node<WorkspaceOp> {
             Node::opaque(
                 "prepare_gitignore_write",
                 vec![port("path", "String"), port("content", "String")],
-                vec![port("request", "TransportRequest")],
+                vec![port("request", "TransportRequest"), port("skip", "Bool")],
                 WorkspaceOp::Primitive(gunbc_primitives::PrimitiveOp::PrepareFileWrite(
                     PrepareFileWriteOp,
                 )),
@@ -141,7 +141,7 @@ pub fn build_bootstrap_subdag() -> Node<WorkspaceOp> {
         .add_node_after(
             Node::opaque(
                 "execute_gitignore_transport",
-                vec![port("request", "TransportRequest")],
+                vec![port("request", "TransportRequest"), port("skip", "Bool")],
                 vec![
                     port("gitignore_response", "TransportResponse"),
                     port("gitignore_written_path", "String"),
@@ -157,6 +157,9 @@ pub fn build_bootstrap_subdag() -> Node<WorkspaceOp> {
     builder
         .add_edge(prepare_scan.out("request"), execute_scan.in_port("request"))
         .expect("scan request edge");
+    builder
+        .add_edge(prepare_scan.out("skip"), execute_scan.in_port("skip"))
+        .expect("scan skip edge");
     builder
         .add_edge(
             execute_scan.out("response"),
@@ -183,6 +186,12 @@ pub fn build_bootstrap_subdag() -> Node<WorkspaceOp> {
             execute_makefile.in_port("request"),
         )
         .expect("makefile request edge");
+    builder
+        .add_edge(
+            prepare_makefile.out("skip"),
+            execute_makefile.in_port("skip"),
+        )
+        .expect("makefile skip edge");
 
     // Wire up the Gitignore chain
     builder
@@ -203,6 +212,12 @@ pub fn build_bootstrap_subdag() -> Node<WorkspaceOp> {
             _execute_gitignore.in_port("request"),
         )
         .expect("gitignore request edge");
+    builder
+        .add_edge(
+            prepare_gitignore.out("skip"),
+            _execute_gitignore.in_port("skip"),
+        )
+        .expect("gitignore skip edge");
 
     let inner_dag = builder.build();
 

@@ -9,8 +9,8 @@
 
 #![deny(dead_code)]
 use gunbc_exec::{
-    optional_bool, optional_json, optional_str, require_json, require_response, ExecError,
-    Executable, IntoExecResult, OutputMap,
+    optional_bool_strict, optional_json_strict, optional_str_strict, require_json,
+    require_response, ExecError, Executable, IntoExecResult, OutputMap,
 };
 use gunbc_infra::hash::ContentHash;
 use gunbc_ir::resource::{AccessMode, ResourceId};
@@ -368,6 +368,7 @@ impl Executable for BlobOps {
                         OutputMap::new()
                             .value("handle", handle.encode())
                             .bool("skip_fetch", true)
+                            .bool("skip", true)
                             .ok()
                     }
 
@@ -378,22 +379,20 @@ impl Executable for BlobOps {
                         OutputMap::new()
                             .request("request", request)
                             .bool("skip_fetch", false)
+                            .bool("skip", false)
                             .json("source", serde_json::to_value(&source).unwrap())
                             .ok()
                     }
 
                     // Git blob: prepare git show command
                     SourceSpec::GitBlob { ref_, path } => {
-                        let request = TransportRequest::Shell(ShellRequest {
-                            command: "git".to_string(),
-                            args: vec!["show".to_string(), format!("{}:{}", ref_, path)],
-                            cwd: None,
-                            env: HashMap::new(),
-                            stdin: None,
-                        });
+                        let request = ShellRequest::new("git")
+                            .args(["show", &format!("{}:{}", ref_, path)])
+                            .into_transport_request();
                         OutputMap::new()
                             .request("request", request)
                             .bool("skip_fetch", false)
+                            .bool("skip", false)
                             .json("source", serde_json::to_value(&source).unwrap())
                             .ok()
                     }
@@ -406,6 +405,18 @@ impl Executable for BlobOps {
             }
 
             BlobOps::ParseFetch => {
+                let skip = optional_bool_strict(&inputs, "skip")?.unwrap_or(false);
+                if skip {
+                    let handle_json = require_json(&inputs, "handle")?;
+                    let handle = BlobHandle::decode(&Value::Json(handle_json.clone())).map_err(
+                        |e| ExecError::new(format!("invalid handle: {}", e)),
+                    )?;
+                    return OutputMap::new()
+                        .value("handle", handle.encode())
+                        .json("meta", serde_json::to_value(handle.meta()).unwrap())
+                        .ok();
+                }
+
                 let source_json = require_json(&inputs, "source")?;
 
                 let source: BlobSource = serde_json::from_value(source_json.clone())
@@ -442,12 +453,12 @@ impl Executable for BlobOps {
             }
 
             BlobOps::CompareContent => {
-                let check_mode = optional_bool(&inputs, "check_mode").unwrap_or(false);
+                let check_mode = optional_bool_strict(&inputs, "check_mode")?.unwrap_or(false);
 
                 // --- Resolve actual content + hash ---
                 // Priority: actual (BlobHandle) > actual_content (String) > response
                 let (actual_data, actual_hash): (Option<String>, Option<String>) =
-                    if let Some(json) = optional_json(&inputs, "actual") {
+                    if let Some(json) = optional_json_strict(&inputs, "actual")? {
                         let handle = BlobHandle::decode(&Value::Json(json.clone())).map_err(
                             |e| ExecError::new(format!("invalid actual handle: {}", e)),
                         )?;
@@ -455,7 +466,7 @@ impl Executable for BlobOps {
                             Some(handle.data().to_string()),
                             handle.meta().hash.clone(),
                         )
-                    } else if let Some(s) = optional_str(&inputs, "actual_content") {
+                    } else if let Some(s) = optional_str_strict(&inputs, "actual_content")? {
                         (Some(s.to_string()), None)
                     } else {
                         // Extract from file read response (string compat path)
@@ -470,7 +481,7 @@ impl Executable for BlobOps {
                 // --- Resolve expected content + hash ---
                 // Priority: expected (BlobHandle) > expected_hash > expected_content
                 let (expected_data, expected_hash): (Option<String>, Option<String>) =
-                    if let Some(json) = optional_json(&inputs, "expected") {
+                    if let Some(json) = optional_json_strict(&inputs, "expected")? {
                         let handle = BlobHandle::decode(&Value::Json(json.clone())).map_err(
                             |e| ExecError::new(format!("invalid expected handle: {}", e)),
                         )?;
@@ -478,9 +489,9 @@ impl Executable for BlobOps {
                             Some(handle.data().to_string()),
                             handle.meta().hash.clone(),
                         )
-                    } else if let Some(h) = optional_str(&inputs, "expected_hash") {
+                    } else if let Some(h) = optional_str_strict(&inputs, "expected_hash")? {
                         (None, Some(h.to_string()))
-                    } else if let Some(c) = optional_str(&inputs, "expected_content") {
+                    } else if let Some(c) = optional_str_strict(&inputs, "expected_content")? {
                         (Some(c.to_string()), None)
                     } else {
                         (None, None)
@@ -577,13 +588,9 @@ pub fn prepare_blob_fetch(source: &BlobSource) -> (Option<TransportRequest>, Opt
             (Some(request), None)
         }
         SourceSpec::GitBlob { ref_, path } => {
-            let request = TransportRequest::Shell(ShellRequest {
-                command: "git".to_string(),
-                args: vec!["show".to_string(), format!("{}:{}", ref_, path)],
-                cwd: None,
-                env: HashMap::new(),
-                stdin: None,
-            });
+            let request = ShellRequest::new("git")
+                .args(["show", &format!("{}:{}", ref_, path)])
+                .into_transport_request();
             (Some(request), None)
         }
         SourceSpec::S3 { .. } | SourceSpec::Http { .. } => {

@@ -3,7 +3,7 @@
 //! These operations work on collections (List, Json arrays) and
 //! respect cardinality constraints for automatic test generation.
 
-use gunbc_exec::{require_str_list, ExecError, Executable, OutputMap};
+use gunbc_exec::{require_str_list, require_value, ExecError, Executable, OutputMap};
 use gunbc_ir::Value;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -342,12 +342,8 @@ impl SetOp {
 
 impl Executable for SetOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let left_val = inputs
-            .get("left")
-            .ok_or_else(|| ExecError::new("missing 'left' input"))?;
-        let right_val = inputs
-            .get("right")
-            .ok_or_else(|| ExecError::new("missing 'right' input"))?;
+        let left_val = require_value(&inputs, "left")?;
+        let right_val = require_value(&inputs, "right")?;
 
         let left = Self::extract_set(left_val)?;
         let right = Self::extract_set(right_val)?;

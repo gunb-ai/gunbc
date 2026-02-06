@@ -65,14 +65,14 @@ pub fn build_codegen_graph_with_mode(mode: ExecMode) -> Result<Dag<CodegenGraphO
     let prepare_codegen_exists = builder.add_root_node(Node::opaque(
         "prepare_codegen_exists",
         vec![],
-        vec![port("request", "TransportRequest")],
+        vec![port("request", "TransportRequest"), port("skip", "Bool")],
         CodegenGraphOp::Codegen(CodegenOp::PrepareCodegenExists),
     ))?;
 
     let execute_codegen_exists = builder.add_node_after(
         Node::opaque(
             "execute_codegen_exists",
-            vec![port("request", "TransportRequest")],
+            vec![port("request", "TransportRequest"), port("skip", "Bool")],
             vec![port("response", "TransportResponse")],
             CodegenGraphOp::Transport(TransportOps::Execute),
         ),
@@ -179,6 +179,10 @@ pub fn build_codegen_graph_with_mode(mode: ExecMode) -> Result<Dag<CodegenGraphO
     builder.add_edge(
         prepare_codegen_exists.out("request"),
         execute_codegen_exists.in_port("request"),
+    )?;
+    builder.add_edge(
+        prepare_codegen_exists.out("skip"),
+        execute_codegen_exists.in_port("skip"),
     )?;
     builder.add_edge(
         execute_codegen_exists.out("response"),

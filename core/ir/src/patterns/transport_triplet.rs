@@ -123,14 +123,16 @@ pub fn add_skippable_transport_triplet<T>(
 /// Add a non-skippable transport triplet: prepare → execute → parse.
 ///
 /// The execute node has the standard shape:
-///   inputs:  `[port("request", "TransportRequest")]`
+///   inputs:  `[port("request", "TransportRequest"), port("skip", "Bool")]`
 ///   outputs: `[port("response", "TransportResponse")]`
 ///
 /// Standard wiring: `prepare.request → execute.request`,
+/// `prepare.skip → execute.skip`,
 /// `execute.response → parse.response`.
 ///
 /// `prepare_inputs` are the *extra* inputs for the prepare node — the helper
-/// automatically appends `port("request", "TransportRequest")` to outputs.
+/// automatically appends `port("request", "TransportRequest")` and
+/// `port("skip", "Bool")` to outputs.
 ///
 /// `parse_outputs` are the *extra* outputs for the parse node — the helper
 /// automatically prepends `port("response", "TransportResponse")` to inputs.
@@ -147,19 +149,19 @@ pub fn add_transport_triplet<T>(
     let execute_name = format!("execute_{name}");
     let parse_name = format!("parse_{name}");
 
-    // Prepare node: caller inputs + request output
+    // Prepare node: caller inputs + request + skip output
     let prepare = builder.add_root_node(Node::opaque(
         prepare_name.as_str(),
         prepare_inputs,
-        vec![port("request", "TransportRequest")],
+        vec![port("request", "TransportRequest"), port("skip", "Bool")],
         prepare_op,
     ))?;
 
-    // Execute node: standard non-skippable transport shape
+    // Execute node: standard transport shape (skip wired to false upstream)
     let execute = builder.add_node_after(
         Node::opaque(
             execute_name.as_str(),
-            vec![port("request", "TransportRequest")],
+            vec![port("request", "TransportRequest"), port("skip", "Bool")],
             vec![port("response", "TransportResponse")],
             transport_op,
         ),
@@ -179,6 +181,7 @@ pub fn add_transport_triplet<T>(
 
     // Wire up internal edges
     builder.add_edge(prepare.out("request"), execute.in_port("request"))?;
+    builder.add_edge(prepare.out("skip"), execute.in_port("skip"))?;
     builder.add_edge(execute.out("response"), parse.in_port("response"))?;
 
     Ok(TransportTriplet {

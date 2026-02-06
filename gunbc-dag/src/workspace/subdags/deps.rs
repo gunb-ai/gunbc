@@ -50,6 +50,7 @@ pub fn build_deps_install_subdag() -> Node<WorkspaceOp> {
             vec![
                 port("request", "TransportRequest"),
                 port("manifest_path", "String"),
+                port("skip", "Bool"),
             ],
             WorkspaceOp::Deps(DepsOp::PrepareLoadManifest),
         ))
@@ -60,7 +61,7 @@ pub fn build_deps_install_subdag() -> Node<WorkspaceOp> {
         .add_node_after(
             Node::opaque(
                 "execute_load_manifest",
-                vec![port("request", "TransportRequest")],
+                vec![port("request", "TransportRequest"), port("skip", "Bool")],
                 vec![port("response", "TransportResponse")],
                 WorkspaceOp::Transport(TransportOps::Execute),
             ),
@@ -119,6 +120,7 @@ pub fn build_deps_install_subdag() -> Node<WorkspaceOp> {
                 vec![
                     port("request", "TransportRequest"),
                     port("script", "String"),
+                    port("skip", "Bool"),
                 ],
                 WorkspaceOp::Deps(DepsOp::PrepareExecuteInstalls),
             ),
@@ -131,7 +133,7 @@ pub fn build_deps_install_subdag() -> Node<WorkspaceOp> {
         .add_node_after(
             Node::opaque(
                 "execute_installs",
-                vec![port("request", "TransportRequest")],
+                vec![port("request", "TransportRequest"), port("skip", "Bool")],
                 vec![port("response", "TransportResponse")],
                 WorkspaceOp::Transport(TransportOps::Execute),
             ),
@@ -165,6 +167,9 @@ pub fn build_deps_install_subdag() -> Node<WorkspaceOp> {
     builder
         .add_edge(prepare_load.out("request"), execute_load.in_port("request"))
         .expect("request edge");
+    builder
+        .add_edge(prepare_load.out("skip"), execute_load.in_port("skip"))
+        .expect("skip edge");
     builder
         .add_edge(
             execute_load.out("response"),
@@ -201,6 +206,9 @@ pub fn build_deps_install_subdag() -> Node<WorkspaceOp> {
             execute_installs.in_port("request"),
         )
         .expect("execute request edge");
+    builder
+        .add_edge(prepare_execute.out("skip"), execute_installs.in_port("skip"))
+        .expect("execute skip edge");
     builder
         .add_edge(
             execute_installs.out("response"),

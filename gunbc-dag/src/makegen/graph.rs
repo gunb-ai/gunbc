@@ -114,7 +114,7 @@ pub fn build_makegen_graph() -> Result<Dag<MakegenGraphOp>, BuilderError> {
         Node::opaque(
             "prepare_file_read",
             vec![port("path", "String")],
-            vec![port("request", "TransportRequest")],
+            vec![port("request", "TransportRequest"), port("skip", "Bool")],
             MakegenGraphOp::PrepareFileRead(PrepareFileReadOp),
         ),
         &render_makefile,
@@ -124,7 +124,7 @@ pub fn build_makegen_graph() -> Result<Dag<MakegenGraphOp>, BuilderError> {
     let execute_read = builder.add_node_after(
         Node::opaque(
             "execute_read",
-            vec![port("request", "TransportRequest")],
+            vec![port("request", "TransportRequest"), port("skip", "Bool")],
             vec![port("response", "TransportResponse")],
             MakegenGraphOp::Transport(TransportOps::Execute),
         ),
@@ -211,6 +211,10 @@ pub fn build_makegen_graph() -> Result<Dag<MakegenGraphOp>, BuilderError> {
     builder.add_edge(
         prepare_file_read.out("request"),
         execute_read.in_port("request"),
+    )?;
+    builder.add_edge(
+        prepare_file_read.out("skip"),
+        execute_read.in_port("skip"),
     )?;
 
     // ExecuteRead -> CompareContent

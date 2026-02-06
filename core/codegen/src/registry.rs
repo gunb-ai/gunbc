@@ -381,27 +381,9 @@ impl ToolDef {
 
 }
 
-/// Single source of truth for mock_spec_call expressions.
-///
-/// Maps tool name → fully-qualified Rust expression that returns a MockSpec.
-/// The `#[tool_target]` annotation carries the same value; the validation test
-/// in `tool_registration.rs` ensures they stay in sync.
-fn mock_spec_for(tool_name: &str) -> Option<&'static str> {
-    match tool_name {
-        "gist" => Some("gunbc_gist::graph_mock::gist_snapshot_mock_spec()"),
-        "gist-diff" => Some("gunbc_gist::graph_mock::gist_diff_mock_spec()"),
-        "gist-recent" => Some("gunbc_gist::graph_mock::gist_recent_mock_spec()"),
-        "makegen" => Some("gunbc_dag::makegen::graph_mock::makegen_mock_spec()"),
-        "deps" => Some("gunbc_deps::graph_mock::deps_mock_spec()"),
-        "review" => Some("gunbc_lib_review::graph_mock::diff_review_mock_spec()"),
-        "bootstrap" => Some("gunbc_dag::bootstrap::graph_mock::bootstrap_mock_spec()"),
-        _ => None,
-    }
-}
-
 /// Get all tool definitions for CLI generation.
 pub fn all_tools() -> Vec<ToolDef> {
-    let mut tools = vec![
+    let tools = vec![
         // gunbc-gist (uses DagBuilder - returns Result)
         ToolDef::new(
             &cargo::name("gist"),
@@ -411,6 +393,7 @@ pub fn all_tools() -> Vec<ToolDef> {
             "GistMode::Snapshot, extensions.clone(), public",
         )
         .returns_result()
+        .mock_spec_call("gunbc_gist::graph_mock::gist_snapshot_mock_spec()")
         .invocation(cargo::CargoInvocation::composed("gist", "gist"))
         .import("use gunbc_gist::{build_gist_graph, GistMode};")
         .entrypoint(
@@ -442,6 +425,7 @@ pub fn all_tools() -> Vec<ToolDef> {
             "GistMode::Diff { base_ref: base_ref.clone() }, extensions.clone(), public",
         )
         .returns_result()
+        .mock_spec_call("gunbc_gist::graph_mock::gist_diff_mock_spec()")
         .invocation(cargo::CargoInvocation::composed("gist-diff", "gist"))
         .import("use gunbc_gist::{build_gist_graph, GistMode};")
         .entrypoint(
@@ -480,6 +464,7 @@ pub fn all_tools() -> Vec<ToolDef> {
             "GistMode::Recent, extensions.clone(), public",
         )
         .returns_result()
+        .mock_spec_call("gunbc_gist::graph_mock::gist_recent_mock_spec()")
         .invocation(cargo::CargoInvocation::composed("gist-recent", "gist"))
         .import("use gunbc_gist::{build_gist_graph, GistMode};")
         .entrypoint(
@@ -511,6 +496,7 @@ pub fn all_tools() -> Vec<ToolDef> {
             "",
         )
         .returns_result()
+        .mock_spec_call("gunbc_dag::makegen::graph_mock::makegen_mock_spec()")
         .invocation(cargo::CargoInvocation::composed("makegen", "dag"))
         .import("use gunbc_makegen::build_makegen_graph;")
         // Declarative DAG definition (POC for graph generation)
@@ -532,6 +518,7 @@ pub fn all_tools() -> Vec<ToolDef> {
             "",
         )
         .returns_result()
+        .mock_spec_call("gunbc_deps::graph_mock::deps_mock_spec()")
         .invocation(cargo::CargoInvocation::standalone("deps"))
         .import("use gunbc_deps::build_deps_graph;")
         .entrypoint(
@@ -555,6 +542,7 @@ pub fn all_tools() -> Vec<ToolDef> {
             "build_diff_review_graph",
             "",
         )
+        .mock_spec_call("gunbc_lib_review::graph_mock::diff_review_mock_spec()")
         .import("use gunbc_lib_review::graph::build_diff_review_graph;")
         .entrypoint(
             CliEntrypoint::new("repo_path", "String")
@@ -583,6 +571,7 @@ pub fn all_tools() -> Vec<ToolDef> {
             "",
         )
         .returns_result()
+        .mock_spec_call("gunbc_dag::bootstrap::graph_mock::bootstrap_mock_spec()")
         .invocation(cargo::CargoInvocation::composed("bootstrap", "dag"))
         .import("use gunbc_bootstrap::build_bootstrap_graph;")
         ,
@@ -595,13 +584,6 @@ pub fn all_tools() -> Vec<ToolDef> {
         // conflicting with the core "build" Make target (cargo build --all-targets).
         // See gunbc-dag/src/bin/build.rs
     ];
-
-    // Auto-populate mock_spec_call from the centralized lookup.
-    for tool in &mut tools {
-        if tool.meta.mock_spec_call.is_none() {
-            tool.meta.mock_spec_call = mock_spec_for(&tool.meta.tool_name).map(|s| s.to_string());
-        }
-    }
 
     tools
 }

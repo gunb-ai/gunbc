@@ -24,8 +24,8 @@ pub mod graph;
 pub mod graph_mock;
 
 use gunbc_exec::{
-    optional_str, propagate_skipped, require_json, require_map_str_str, require_str, ExecError,
-    Executable, IntoExecResult, OutputMap,
+    optional_str_strict, propagate_skipped, require_json, require_map_str_str, require_str,
+    ExecError, Executable, IntoExecResult, OutputMap,
 };
 use gunbc_ir::Value;
 use gunbc_primitives::{FormatMapOp, StableHashOp};
@@ -335,7 +335,7 @@ fn execute_prepare_review_prompt(
     let criteria: Criteria = serde_json::from_value(require_json(&inputs, "criteria")?.clone())
         .exec_context("invalid 'criteria' JSON")?;
 
-    let context = optional_str(&inputs, "context").unwrap_or("");
+    let context = optional_str_strict(&inputs, "context")?.unwrap_or("");
 
     // Build the question from criteria
     let mut question_parts = vec![format!(

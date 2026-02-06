@@ -438,13 +438,11 @@ impl CargoCommand {
     /// Convert to a `ShellRequest` for transport execution.
     pub fn to_shell_request(&self) -> crate::transport::ShellRequest {
         let args = self.to_args();
-        crate::transport::ShellRequest {
-            command: args[0].clone(),
-            args: args[1..].to_vec(),
-            cwd: None,
-            env: self.env().into_iter().collect(),
-            stdin: None,
+        let mut req = crate::transport::ShellRequest::new(&args[0]).args(args[1..].iter().cloned());
+        for (k, v) in self.env() {
+            req = req.env(k, v);
         }
+        req
     }
 }
 

@@ -570,136 +570,45 @@ Concrete test suites:
 
 ---
 
-## 9. Executable boilerplate across ops
+## 9. Executable boilerplate across ops — DONE
 
-Patterns repeated in every `Executable::execute` implementation.
-These are the highest-impact consolidation targets by occurrence count.
+All three boilerplate patterns are fully migrated. Helpers live in
+`core/exec/src/helpers.rs` and are re-exported from `gunbc_exec`.
 
-### Input extraction — 80 occurrences across 18 files
+### Input extraction — DONE
 
-**Pattern**: Every op manually extracts inputs with identical
-error-handling boilerplate:
+Helpers: `require_str`, `require_json`, `require_bool`, `require_int`,
+`require_str_list`, `require_map_str_str`, `require_value`, `require_request`,
+`require_response`, `optional_str`, `optional_json`, `optional_bool`,
+`optional_int`, `optional_str_list`, `optional_map_str_str` (plus `_strict`
+variants).
 
-```rust
-let x = inputs.get("x")
-    .and_then(|v| v.as_str())
-    .ok_or_else(|| ExecError::new("missing or invalid 'x' input"))?;
-```
+Remaining `inputs.get(...)` calls are intentional:
+- Semantic pattern matching (Skipped/variant checks in blob, review, llm-ops, ci/ops)
+- Optional presence checks with complex logic (transport/ops, pattern_op BranchMerge)
+- Code that can't depend on `core/exec` (core/ir/transport/cli.rs)
+- Test/mock code, doc comments, generated code strings
 
-70 "missing or invalid" error messages, 80 `.ok_or_else(|| ExecError::new`
-calls across the codebase. The heaviest files:
-- `lib/tools/deps/src/ops.rs` (9)
-- `lib/llm-ops/src/lib.rs` (10)
-- `lib/primitives/src/data.rs` (7)
-- `lib/review/src/lib.rs` (7)
-- `lib/primitives/src/collection.rs` (6)
-- `core/exec/src/pattern_op.rs` (6)
+### Output map construction — DONE
 
-**Proposed**: Helper functions on the input map:
+`OutputMap` builder used by all production `execute()` methods.
+Remaining `HashMap::new()` sites: see §15.
 
-```rust
-// In core/exec or core/ir
-pub fn require_str(inputs: &HashMap<String, Value>, key: &str) -> Result<&str, ExecError>;
-pub fn require_json(inputs: &HashMap<String, Value>, key: &str) -> Result<&Value, ExecError>;
-pub fn optional_str(inputs: &HashMap<String, Value>, key: &str) -> Option<&str>;
-```
+### Response type matching — DONE
 
-These compose: `let x = require_str(inputs, "x")?;` replaces
-3 chained method calls. Error messages become consistent automatically.
-
-### Output map construction — 164 occurrences across 24 files
-
-**Pattern**: Every op builds its output HashMap manually:
-
-```rust
-let mut out = HashMap::new();
-out.insert("key".to_string(), Value::Str(content.to_string()));
-out.insert("other".to_string(), Value::Bool(true));
-Ok(out)
-```
-
-164 `let mut out = HashMap::new()` across 24 files. The heaviest:
-- `gunbc-dag/src/ci/ops.rs` (29)
-- `lib/tools/deps/src/ops.rs` (22)
-- `lib/tools/gist/src/graph.rs` (20)
-- `core/exec/src/pattern_op.rs` (9)
-
-**Proposed**: Builder or helper macro:
-
-```rust
-// Option A: builder
-OutputMap::new()
-    .str("key", content)
-    .bool("other", true)
-    .build()
-
-// Option B: macro
-outputs! {
-    "key" => Value::Str(content.to_string()),
-    "other" => Value::Bool(true),
-}
-```
-
-### Response type matching — 51 occurrences across 17 files
-
-**Pattern**: Parse ops extract the response variant with identical
-match + error fallback:
-
-```rust
-match response {
-    TransportResponse::Shell(shell) => { /* use shell.stdout */ }
-    _ => return Err(ExecError::new("unexpected response type")),
-}
-```
-
-51 `TransportResponse::Shell(` matches, 11 "unexpected response type"
-errors. No convenience methods exist on `TransportResponse`.
-
-**Proposed**: Add typed extraction methods:
-
-```rust
-impl TransportResponse {
-    pub fn require_shell(&self) -> Result<&ShellResponse, ExecError>;
-    pub fn require_rest(&self) -> Result<&RestResponse, ExecError>;
-    pub fn require_file(&self) -> Result<&FileResponse, ExecError>;
-}
-```
-
-Each returns a consistent error. Callers become:
-`let shell = response.require_shell()?;`
+`require_shell()`, `require_rest()`, `require_file()` on `TransportResponse`.
+All production parse ops migrated.
 
 ---
 
-## 10. ShellRequest construction — 20 occurrences across 6 files
+## 10. ShellRequest construction — DONE
 
-**Where**: `lib/blob/`, `lib/tools/deps/`, `lib/tools/gist/`,
-`lib/primitives/src/io.rs`, `gunbc-dag/src/bootstrap/`
-
-**Problem**: Raw struct construction with repeated field patterns:
-
-```rust
-TransportRequest::Shell(ShellRequest {
-    command: "git".to_string(),
-    args: vec!["diff".to_string(), ...],
-    cwd: Some(repo_path.to_string()),
-    env: HashMap::new(),
-    stdin: None,
-})
-```
-
-Some transports have builders (`GitRequest::to_shell_request`,
-`CargoCommand::to_shell_request`) but most callers construct raw.
-
-**Proposed**: Builder on `ShellRequest`:
-
-```rust
-ShellRequest::new("git")
-    .args(["diff", &base_ref])
-    .cwd(repo_path)
-    .into_transport_request()
-```
-
-Consumers: blob fetch, deps ops, gist ops, bootstrap ops, io primitives.
+`ShellRequest::new()` builder with `.arg()`, `.args()`, `.cwd()`,
+`.stdin()`, `.env()`, `.into_transport_request()` in `core/ir/src/transport/mod.rs`.
+All struct literal sites migrated: blob (2), gist graph (5 production + 4 mock),
+deps ops (3 production + 3 mock), primitives/io (3), codegen ops (2),
+bootstrap ops (1 production + 1 mock), makegen registry (1), cargo.rs (1),
+transport/ops test (1).
 
 ---
 
@@ -734,179 +643,44 @@ This could live in `core/test/` alongside existing test infrastructure.
 
 ---
 
-## 12. Skipped-value propagation boilerplate — 8 occurrences across 3 files
+## 12. Skipped-value propagation boilerplate — DONE
 
-**Where**: `gunbc-dag/src/ci/ops.rs` (5), `lib/llm-ops/src/lib.rs` (2),
-`gunbc-dag/src/bootstrap/ops.rs` (1)
-
-**Problem**: Every parse op that receives a transport response must
-check if the upstream was skipped and propagate `Value::Skipped` to
-all outputs. This produces 5–8 lines of identical boilerplate per op:
-
-```rust
-if matches!(inputs.get("response"), Some(Value::Skipped)) {
-    return OutputMap::new()
-        .value("field_a", Value::Skipped)
-        .value("field_b", Value::Skipped)
-        .value("field_c", Value::Skipped)
-        .ok();
-}
-```
-
-The only thing that varies is the list of output field names.
-
-**Proposed**: Helper function in `core/exec/src/helpers.rs`:
-
-```rust
-/// If the given input key is `Value::Skipped`, return all output
-/// fields as `Value::Skipped`. Otherwise return `None`.
-pub fn propagate_skipped(
-    inputs: &HashMap<String, Value>,
-    input_key: &str,
-    output_keys: &[&str],
-) -> Option<Result<HashMap<String, Value>, ExecError>> {
-    if matches!(inputs.get(input_key), Some(Value::Skipped)) {
-        let mut map = OutputMap::new();
-        for key in output_keys {
-            map = map.value(key, Value::Skipped);
-        }
-        Some(map.ok())
-    } else {
-        None
-    }
-}
-```
-
-Callers become:
-
-```rust
-if let Some(result) = propagate_skipped(&inputs, "response",
-    &["field_a", "field_b", "field_c"]) {
-    return result;
-}
-```
+`propagate_skipped()` helper in `core/exec/src/helpers.rs`, re-exported
+from `gunbc_exec`. All call sites migrated across ci/ops, bootstrap/ops,
+llm-ops, git-ops, review, gist, deps, markdown, codegen, pattern_op.
 
 ---
 
-## 13. Error mapping boilerplate — 23 `.map_err` + 4 `.map_err(ExecError::new)` across 10 files
+## 13. Error mapping boilerplate — DONE
 
-**Status**: `IntoExecResult::exec_context()` implemented in `core/exec/src/error.rs`.
-Migrated: `lib/llm-ops/src/lib.rs` (4 sites), `lib/tools/cargo/src/ops.rs` (1),
-`gunbc-dag/src/ci/graph.rs` (1). Remaining sites in review, primitives, blob, deps,
-transport, env, workspace are lower-urgency (existing code works).
-
-**Where**: `lib/review/src/lib.rs` (5), `lib/llm-ops/src/lib.rs` (4),
-`core/exec/src/execute.rs` (4), `lib/primitives/src/data.rs` (3),
-`gunbc-dag/src/ci/graph.rs` (3), `lib/blob/src/lib.rs` (2),
-`lib/tools/deps/src/ops.rs` (2), `lib/transport/src/ops.rs` (1),
-`gunbc-dag/src/ci/env.rs` (1), `gunbc-dag/src/workspace/ops.rs` (1),
-`lib/tools/cargo/src/ops.rs` (1)
-
-**Pattern**: Repeated `.map_err(|e| ExecError::new(format!("context: {}", e)))?`
-chains for wrapping parse/serialize errors:
-
-```rust
-serde_json::from_str(&text)
-    .map_err(|e| ExecError::new(format!("JSON parse error: {}", e)))?;
-```
-
-**Proposed**: Context-wrapping method on `ExecError`:
-
-```rust
-impl ExecError {
-    /// Wrap any Display error with a context message.
-    pub fn context<E: std::fmt::Display>(msg: &str, err: E) -> Self {
-        ExecError::new(format!("{}: {}", msg, err))
-    }
-}
-
-// Plus a Result extension trait:
-pub trait ResultExt<T> {
-    fn exec_context(self, msg: &str) -> Result<T, ExecError>;
-}
-impl<T, E: std::fmt::Display> ResultExt<T> for Result<T, E> {
-    fn exec_context(self, msg: &str) -> Result<T, ExecError> {
-        self.map_err(|e| ExecError::context(msg, e))
-    }
-}
-```
-
-Callers become:
-
-```rust
-serde_json::from_str(&text).exec_context("JSON parse error")?;
-```
+`IntoExecResult::exec_context()` and `ResultExt::context()` in
+`core/exec/src/error.rs`. All `.map_err(|e| ExecError::new(format!(...)))`
+sites migrated. Two remaining `.map_err(|e| ExecError::new(e.to_string()))`
+sites (credential.rs, execute.rs) are context-free error conversions — not
+worth adding artificial context messages.
 
 ---
 
-## 14. ShellResponse construction — 39 direct constructions across 16 files
+## 14. ShellResponse construction — DONE
 
-**Status**: `ShellResponse::ok()` and `ShellResponse::failed()` constructors
-already existed in `core/ir/src/transport/mod.rs:249-264`. Migrated all non-test,
-non-generated sites: 3 binaries (codegen, bootstrap, build), gist graph_mock (6),
-deps graph_mock (1), gist graph (1), build/ops tests (2), codegen registry
-templates (~10). Only `lib/transport/src/executor.rs:422` kept (needs both
-stdout AND stderr from real process output).
-
-**Where**: `core/codegen/src/registry.rs` (6),
-`lib/tools/gist/tests/integration.rs` (6),
-`lib/tools/gist/tests/generated_tests.rs` (6),
-`gunbc-dag/src/bin/ci.rs` (3), `gunbc-dag/src/bootstrap/graph_mock.rs` (3),
-`lib/git-ops/src/lib.rs` (2), `gunbc-dag/src/ci/graph_mock.rs` (2),
-`lib/review/src/graph_mock.rs` (2), and 8 more files with 1 each.
-
-**Problem**: `ShellResponse` has no convenience constructors, unlike
-`FileResponse` which has `written()`, `read_ok()`, `error()`.
-Every construction site writes the full struct literal:
-
-```rust
-ShellResponse {
-    exit_code: 0,
-    stdout: output.to_string(),
-    stderr: String::new(),
-}
-```
-
-Most (>80%) are success cases with empty stderr.
-
-**Proposed**: Convenience constructors on `ShellResponse`:
-
-```rust
-impl ShellResponse {
-    /// Command succeeded (exit_code 0) with given stdout.
-    pub fn ok(stdout: impl Into<String>) -> Self {
-        Self { exit_code: 0, stdout: stdout.into(), stderr: String::new() }
-    }
-
-    /// Command failed with given exit code and stderr.
-    pub fn failed(exit_code: i32, stderr: impl Into<String>) -> Self {
-        Self { exit_code, stdout: String::new(), stderr: stderr.into() }
-    }
-}
-```
+`ShellResponse::ok()` and `ShellResponse::failed()` constructors in
+`core/ir/src/transport/mod.rs`. All production code migrated. Remaining
+struct literals are in generated test files (regenerated by codegen),
+`lib/transport/src/executor.rs` (needs both stdout+stderr from real
+process), and `lib/tools/gist/tests/` (test code).
 
 ---
 
-## 15. Unmigrated ops still using raw HashMap — 13 sites across 7 files
+## 15. Unmigrated ops still using raw HashMap — DONE
 
-**Status**: `gunbc-dag/src/build/ops.rs` (7 sites) migrated to `OutputMap`.
-`gunbc-dag/src/ci/ops.rs` was already migrated earlier. Remaining sites
-below are in mock/infra code where `OutputMap` is unavailable or unnecessary.
+All production `execute()` methods use `OutputMap`. Remaining
+`HashMap::new()` sites are in non-migratable locations:
+- `core/ir/src/transport/cli.rs` (4) — can't depend on `core/exec`
+- `core/exec/src/execute.rs` (test code)
+- `core/test/src/mock.rs` (test code)
+- `core/exec/src/helpers.rs` (internal impl, doc comment)
 
-**Where**: `lib/tools/cargo/src/ops.rs` (3 in `mock_outputs`),
-`lib/tools/deps/src/graph.rs` (2 in mock closures),
-`gunbc-dag/src/ci/graph.rs` (1), `core/exec/src/execute.rs` (1),
-`core/test/src/mock.rs` (1), `core/ir/src/transport/cli.rs` (4),
-`core/exec/src/helpers.rs` (1 — internal, fine)
-
-These files still use `let mut out = HashMap::new()` instead of
-`OutputMap`. Most are in secondary locations (mock impls, graph
-dispatch, CLI tool infra) rather than primary `execute()` methods.
-
-**Proposed**: Migrate to `OutputMap` for consistency.
-`core/ir/src/transport/cli.rs` is special — it's in `core/ir`
-which doesn't depend on `core/exec`, so it can't use `OutputMap`.
-This is fine; it's infrastructure code, not op code.
+These are intentional and not worth migrating.
 
 ---
 

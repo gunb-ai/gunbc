@@ -15,7 +15,7 @@
 //! This structural enforcement ensures all I/O goes through visible DAG nodes.
 
 use crate::executor::execute_transport;
-use gunbc_exec::{optional_bool, require_request, ExecError, Executable, IntoExecResult, OutputMap};
+use gunbc_exec::{require_bool, require_request, ExecError, Executable, IntoExecResult, OutputMap};
 use gunbc_ir::transport::{TransportRequest, TransportResponse};
 use gunbc_ir::{Credential, Value};
 use std::collections::HashMap;
@@ -31,10 +31,12 @@ impl Executable for TransportOps {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         match self {
             TransportOps::Execute => {
-                let skip = optional_bool(&inputs, "skip").unwrap_or(false);
+                let skip = require_bool(&inputs, "skip")?;
 
                 if skip {
-                    let mut out = OutputMap::new().bool("skip", true);
+                    let mut out = OutputMap::new()
+                        .bool("skip", true)
+                        .value("response", Value::Skipped);
                     if let Some(reason) = inputs.get("skip_reason") {
                         out = out.value("skip_reason", reason.clone());
                     }
@@ -178,13 +180,9 @@ mod tests {
 
     #[test]
     fn test_transport_ops_shell_outputs() {
-        let request = TransportRequest::Shell(ShellRequest {
-            command: "echo".to_string(),
-            args: vec!["hello".to_string()],
-            cwd: None,
-            env: HashMap::new(),
-            stdin: None,
-        });
+        let request = ShellRequest::new("echo")
+            .arg("hello")
+            .into_transport_request();
 
         let mut inputs = HashMap::new();
         inputs.insert("request".to_string(), Value::Request(request));

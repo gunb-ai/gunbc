@@ -11,8 +11,8 @@
 //! which is properly intercepted in DryRun mode.
 
 use gunbc_exec::{
-    optional_bool, optional_map_str_str, optional_str, optional_str_list, require_str, ExecError,
-    Executable, OutputMap,
+    optional_bool_strict, optional_map_str_str_strict, optional_str_list_strict,
+    optional_str_strict, require_str, ExecError, Executable, OutputMap,
 };
 use gunbc_ir::transport::{FileRequest, HttpMethod, RestRequest, ShellRequest, TransportRequest};
 use gunbc_ir::Value;
@@ -39,16 +39,16 @@ impl Executable for HttpRequestOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         let url = require_str(&inputs, "url")?;
 
-        let http_method = match optional_str(&inputs, "method") {
+        let http_method = match optional_str_strict(&inputs, "method")? {
             None => HttpMethod::Get,
             Some(method) => HttpMethod::parse(method).ok_or_else(|| {
                 ExecError::new(format!("unsupported http method '{}'", method))
             })?,
         };
 
-        let body = optional_str(&inputs, "body");
+        let body = optional_str_strict(&inputs, "body")?;
 
-        let headers = optional_map_str_str(&inputs, "headers").unwrap_or_default();
+        let headers = optional_map_str_str_strict(&inputs, "headers")?.unwrap_or_default();
 
         // Build transport request
         let request = TransportRequest::Rest(RestRequest {
@@ -61,7 +61,10 @@ impl Executable for HttpRequestOp {
             timeout_ms: None,
         });
 
-        OutputMap::new().request("request", request).ok()
+        OutputMap::new()
+            .request("request", request)
+            .bool("skip", false)
+            .ok()
     }
 }
 
@@ -87,7 +90,10 @@ impl Executable for PrepareFileWriteOp {
 
         let request = TransportRequest::File(FileRequest::write(path, content));
 
-        OutputMap::new().request("request", request).ok()
+        OutputMap::new()
+            .request("request", request)
+            .bool("skip", false)
+            .ok()
     }
 }
 
@@ -110,7 +116,10 @@ impl Executable for PrepareFileReadOp {
 
         let request = TransportRequest::File(FileRequest::read(path));
 
-        OutputMap::new().request("request", request).ok()
+        OutputMap::new()
+            .request("request", request)
+            .bool("skip", false)
+            .ok()
     }
 }
 
@@ -130,7 +139,10 @@ impl Executable for PrepareFileExistsOp {
 
         let request = TransportRequest::File(FileRequest::exists(path));
 
-        OutputMap::new().request("request", request).ok()
+        OutputMap::new()
+            .request("request", request)
+            .bool("skip", false)
+            .ok()
     }
 }
 
@@ -153,19 +165,20 @@ impl Executable for PrepareShellOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         let command = require_str(&inputs, "command")?;
 
-        let args = optional_str_list(&inputs, "args").unwrap_or_default();
+        let args = optional_str_list_strict(&inputs, "args")?.unwrap_or_default();
 
-        let cwd = optional_str(&inputs, "cwd");
+        let cwd = optional_str_strict(&inputs, "cwd")?;
 
-        let request = TransportRequest::Shell(ShellRequest {
-            command: command.to_string(),
-            args,
-            cwd: cwd.map(|s| s.to_string()),
-            env: std::collections::HashMap::new(),
-            stdin: None,
-        });
+        let mut req = ShellRequest::new(command).args(args);
+        if let Some(dir) = cwd {
+            req = req.cwd(dir);
+        }
+        let request = req.into_transport_request();
 
-        OutputMap::new().request("request", request).ok()
+        OutputMap::new()
+            .request("request", request)
+            .bool("skip", false)
+            .ok()
     }
 }
 
@@ -187,7 +200,7 @@ impl Executable for PrepareDirectoryListOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         let path = require_str(&inputs, "path")?;
 
-        let recursive = optional_bool(&inputs, "recursive").unwrap_or(false);
+        let recursive = optional_bool_strict(&inputs, "recursive")?.unwrap_or(false);
 
         // Use find for recursive, ls for non-recursive
         let (command, args) = if recursive {
@@ -199,15 +212,14 @@ impl Executable for PrepareDirectoryListOp {
             ("ls", vec!["-1".to_string(), path.to_string()])
         };
 
-        let request = TransportRequest::Shell(ShellRequest {
-            command: command.to_string(),
-            args,
-            cwd: None,
-            env: std::collections::HashMap::new(),
-            stdin: None,
-        });
+        let request = ShellRequest::new(command)
+            .args(args)
+            .into_transport_request();
 
-        OutputMap::new().request("request", request).ok()
+        OutputMap::new()
+            .request("request", request)
+            .bool("skip", false)
+            .ok()
     }
 }
 
@@ -242,7 +254,10 @@ impl Executable for EmbeddedFileExistsOp {
     ) -> Result<HashMap<String, Value>, ExecError> {
         let request = TransportRequest::File(FileRequest::exists(&self.path));
 
-        OutputMap::new().request("request", request).ok()
+        OutputMap::new()
+            .request("request", request)
+            .bool("skip", false)
+            .ok()
     }
 }
 
@@ -273,15 +288,14 @@ impl Executable for EmbeddedShellOp {
         &self,
         _inputs: HashMap<String, Value>,
     ) -> Result<HashMap<String, Value>, ExecError> {
-        let request = TransportRequest::Shell(ShellRequest {
-            command: self.command.clone(),
-            args: self.args.clone(),
-            cwd: None,
-            env: std::collections::HashMap::new(),
-            stdin: None,
-        });
+        let request = ShellRequest::new(&self.command)
+            .args(self.args.iter().map(|s| s.as_str()))
+            .into_transport_request();
 
-        OutputMap::new().request("request", request).ok()
+        OutputMap::new()
+            .request("request", request)
+            .bool("skip", false)
+            .ok()
     }
 }
 

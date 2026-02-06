@@ -26,7 +26,7 @@ pub mod graph;
 pub mod graph_mock;
 
 use gunbc_exec::{
-    optional_str, propagate_skipped, require_response, require_str, ExecError, Executable,
+    optional_str_strict, propagate_skipped, require_response, require_str, ExecError, Executable,
     IntoExecResult, OutputMap, TransportResponseExt,
 };
 use gunbc_ir::transport::llm::{self, ChatMessage, ChatRequest, MessageContent, Role};
@@ -159,7 +159,7 @@ fn execute_prepare_chat_request(
     let mut messages = Vec::new();
 
     // Optional system prompt (convenience: added as first system message)
-    if let Some(system_prompt) = optional_str(&inputs, "system_prompt") {
+    if let Some(system_prompt) = optional_str_strict(&inputs, "system_prompt")? {
         if !system_prompt.is_empty() {
             messages.push(ChatMessage::system(system_prompt));
         }
@@ -197,6 +197,7 @@ fn execute_prepare_chat_request(
     OutputMap::new()
         .request("request", TransportRequest::Rest(rest_request))
         .str("provider", provider_id)
+        .bool("skip", false)
         .ok()
 }
 
@@ -257,7 +258,7 @@ fn execute_prepare_simple_request(
     let mut messages = Vec::new();
 
     // Optional system prompt
-    if let Some(system_prompt) = optional_str(&inputs, "system_prompt") {
+    if let Some(system_prompt) = optional_str_strict(&inputs, "system_prompt")? {
         if !system_prompt.is_empty() {
             messages.push(ChatMessage::system(system_prompt));
         }
@@ -274,6 +275,7 @@ fn execute_prepare_simple_request(
     OutputMap::new()
         .request("request", TransportRequest::Rest(rest_request))
         .str("provider", provider_id)
+        .bool("skip", false)
         .ok()
 }
 

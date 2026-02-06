@@ -139,7 +139,7 @@ fn add_upsert_chain(
         Node::opaque(
             prep_read_id.as_str(),
             vec![port("path", "String")],
-            vec![port("request", "TransportRequest")],
+            vec![port("request", "TransportRequest"), port("skip", "Bool")],
             TestgenGraphOp::PrepareFileRead(PrepareFileReadOp),
         ),
         &generate,
@@ -148,7 +148,7 @@ fn add_upsert_chain(
     let execute_read = builder.add_node_after(
         Node::opaque(
             exec_read_id.as_str(),
-            vec![port("request", "TransportRequest")],
+            vec![port("request", "TransportRequest"), port("skip", "Bool")],
             vec![port("response", "TransportResponse")],
             TestgenGraphOp::Transport(TransportOps::Execute),
         ),
@@ -209,6 +209,7 @@ fn add_upsert_chain(
     builder.add_edge(generate.out("content"), compare.in_port("expected_content"))?;
     builder.add_edge(generate.out("content"), prepare_write.in_port("content"))?;
     builder.add_edge(prepare_read.out("request"), execute_read.in_port("request"))?;
+    builder.add_edge(prepare_read.out("skip"), execute_read.in_port("skip"))?;
     builder.add_edge(execute_read.out("response"), compare.in_port("response"))?;
     builder.add_edge(compare.out("skip"), execute_write.in_port("skip"))?;
     builder.add_edge(compare.out("skip_reason"), execute_write.in_port("skip_reason"))?;

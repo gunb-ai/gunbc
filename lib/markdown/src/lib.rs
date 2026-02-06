@@ -17,7 +17,7 @@
 
 #![deny(dead_code)]
 use gunbc_exec::{
-    optional_str, propagate_skipped, require_map_str_str, ExecError, Executable, OutputMap,
+    optional_str_strict, propagate_skipped, require_map_str_str, ExecError, Executable, OutputMap,
 };
 use gunbc_ir::language::markdown_language_id;
 use gunbc_ir::Value;
@@ -51,7 +51,7 @@ impl Executable for MarkdownOp {
                 }
                 let diff_files = require_map_str_str(&inputs, "diff_files")?;
 
-                let stats = optional_str(&inputs, "stats").unwrap_or("");
+                let stats = optional_str_strict(&inputs, "stats")?.unwrap_or("");
 
                 let markdown = render_diff_snapshot(&diff_files, stats);
 

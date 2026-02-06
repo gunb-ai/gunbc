@@ -72,24 +72,14 @@ test (`gunbc-dag/tests/tool_registration.rs`) verifies bidirectional
 consistency and testgen coverage. Next step: derive `all_tools()` from the
 registry to eliminate the manual list.
 
-**R2. Eliminate boundary dual-source** (high effort, high value)
+**R2. Eliminate boundary dual-source** ~~(high effort, high value)~~ **DONE (mock_spec_call inlined)**
 
-The boundary mock data should have a single authoritative source. Options:
-
-*Option A*: MockSpec is the source of truth. CLI generator reads from MockSpec
-(or a shared `BoundaryDef` extracted from it) instead of maintaining its own
-`.boundary()` calls on `ToolDef`.
-
-*Option B*: `ToolDef` carries the full boundary spec, and MockSpec derives
-from it. MockSpec builder gets a `.from_tool_def(&def)` that auto-populates
-boundaries.
-
-*Option C*: Both derive from a shared `BoundarySpec` type defined alongside
-the graph builder, registered via `#[tool_target]`.
-
-Recommendation: **Option C** — aligns with the unified registration direction.
-The `#[tool_target]` macro already has a `builder` attribute; extending it
-with boundary metadata keeps everything co-located with the graph definition.
+`mock_spec_call` was dual-sourced: `mock_spec_for()` lookup in `registry.rs`
+and `#[tool_target]` annotations. Now each `ToolDef` sets `.mock_spec_call()`
+inline — the `mock_spec_for()` function and auto-populate loop are deleted.
+The validation test in `tool_registration.rs` still ensures ToolDef and
+`#[tool_target]` stay in sync. Full boundary unification (Option C above)
+remains a future opportunity but the immediate dual-source is eliminated.
 
 **R3. ResourceDef registration** (low priority)
 
@@ -132,15 +122,12 @@ Steps:
 2. Render via `CodeRenderer<PlainText>` (Rust output)
 3. Validate output stability via snapshot/golden file tests
 
-**E2. Migrate Makegen to IR + renderer** (medium effort)
+**E2. Migrate Makegen to IR + renderer** ~~(medium effort)~~ **DONE**
 
-Makegen produces a Makefile from `ToolRegistry` + `BuildConfig`. Currently
-direct string building in `gunbc-dag/src/makegen/render.rs`.
-
-Steps:
-1. Define `MakefileIR` types (target, rule, variable, phony declaration)
-2. Implement `StructuredRenderer` for Makefile output
-3. Validate via `make makegen --check`
+All targets use `StructuredBlock::Target`. The 4 remaining `Raw` blocks
+are correctly non-target content (header comments, variable definitions,
+phony declarations). A test validates that all target blocks use the
+structured representation.
 
 **E3. Terminal emission** (low priority)
 
@@ -244,13 +231,12 @@ stdout, stderr from runtime values) — not a candidate for `ok()`/`failed()`.
 6 sites in `buck-out/gen/` are generated code — will be fixed when
 codegen regenerates.
 
-**D4. Quarantine `"List"` type_id** (medium effort)
+**D4. Quarantine `"List"` type_id** ~~(medium effort)~~ **DONE**
 
-Cardinality is the canonical shape layer, but `"List"` is still used as
-a `type_id` in some places (dual-encoding shape). Progress has been made
-(CLI gen, makegen, loop patterns, deps graphs all fixed). Remaining:
-finish removing `StringList`/`OptionalString` type_ids once the type
-registry refactor lands. Mock generation already hard-fails on `List`/`Set`.
+No production `type_id` usage of `"List"` remains. Only defensive guards
+(mock generation hard-fails on `List`/`Set`) and comments exist. The
+`StringList`/`OptionalString` type_ids have been eliminated from all
+active code paths.
 
 ---
 
@@ -307,9 +293,9 @@ causes a test failure.
 
 | ID | Item | Effort | Impact |
 |----|------|--------|--------|
-| R2 | Eliminate boundary dual-source | H | Fixes the drift-prone ToolDef/MockSpec boundary split |
-| E2 | Makegen → IR + renderer | M | Second emission system unified |
-| D4 | Quarantine "List" type_id | M | Blocked on type registry refactor |
+| R2 | Eliminate boundary dual-source | H | **DONE** — `mock_spec_call` inlined on each ToolDef; `mock_spec_for()` deleted |
+| E2 | Makegen → IR + renderer | M | **DONE** — All targets use `StructuredBlock::Target`; 4 remaining `Raw` blocks are correctly non-target content |
+| D4 | Quarantine "List" type_id | M | **DONE** — No production `type_id` usage remains; only defensive guards and comments |
 
 ### Not prioritized (defer)
 

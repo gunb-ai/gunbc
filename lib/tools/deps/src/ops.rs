@@ -7,7 +7,7 @@ use crate::installer::Installer;
 use crate::manifest::DepsManifest;
 use crate::upsert::upsert_dry_run;
 use gunbc_exec::{
-    optional_str, propagate_skipped, require_response, require_str, ExecError, Executable,
+    optional_str_strict, propagate_skipped, require_response, require_str, ExecError, Executable,
     IntoExecResult, OutputMap, TransportResponseExt,
 };
 use gunbc_ir::transport::{FileRequest, ShellRequest, TransportRequest, TransportResponse};
@@ -159,6 +159,7 @@ fn execute_prepare_load_manifest(
     OutputMap::new()
         .request("request", request)
         .str("manifest_path", manifest_path)
+        .bool("skip", false)
         .ok()
 }
 
@@ -284,22 +285,19 @@ fn execute_prepare_execute_installs(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
     if let Some(result) = propagate_skipped(&inputs, "install_script", &["request", "script"]) {
-        return result;
+        return OutputMap::new().bool("skip", true).ok();
     }
 
     let script = require_str(&inputs, "install_script")?;
 
-    let request = TransportRequest::Shell(ShellRequest {
-        command: "sh".to_string(),
-        args: vec!["-c".to_string(), script.to_string()],
-        cwd: None,
-        env: HashMap::new(),
-        stdin: None,
-    });
+    let request = ShellRequest::new("sh")
+        .args(["-c", script])
+        .into_transport_request();
 
     OutputMap::new()
         .request("request", request)
         .str("script", script)
+        .bool("skip", false)
         .ok()
 }
 
@@ -320,7 +318,7 @@ fn execute_parse_execute_result(
     }
 
     let response = require_response(&inputs, "response")?;
-    let script = optional_str(&inputs, "script").unwrap_or("");
+    let script = optional_str_strict(&inputs, "script")?.unwrap_or("");
 
     let shell = response.require_shell()?;
     let (success, stdout, stderr) = (shell.success(), shell.stdout.clone(), shell.stderr.clone());
@@ -356,13 +354,9 @@ fn execute_prepare_check_installed(
     let dep_name = require_str(&inputs, "dep_name")?;
     let verify_cmd = require_str(&inputs, "verify_cmd")?;
 
-    let request = TransportRequest::Shell(ShellRequest {
-        command: "sh".to_string(),
-        args: vec!["-c".to_string(), verify_cmd.to_string()],
-        cwd: None,
-        env: HashMap::new(),
-        stdin: None,
-    });
+    let request = ShellRequest::new("sh")
+        .args(["-c", verify_cmd])
+        .into_transport_request();
 
     OutputMap::new()
         .request("request", request)
@@ -385,7 +379,7 @@ fn execute_parse_check_installed(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
     let response = require_response(&inputs, "response")?;
-    let dep_name = optional_str(&inputs, "dep_name").unwrap_or("unknown");
+    let dep_name = optional_str_strict(&inputs, "dep_name")?.unwrap_or("unknown");
 
     let exists = match response {
         TransportResponse::Shell(shell) => shell.success(),
@@ -416,13 +410,9 @@ fn execute_prepare_install(
     let dep_name = require_str(&inputs, "dep_name")?;
     let install_cmd = require_str(&inputs, "install_cmd")?;
 
-    let request = TransportRequest::Shell(ShellRequest {
-        command: "sh".to_string(),
-        args: vec!["-c".to_string(), install_cmd.to_string()],
-        cwd: None,
-        env: HashMap::new(),
-        stdin: None,
-    });
+    let request = ShellRequest::new("sh")
+        .args(["-c", install_cmd])
+        .into_transport_request();
 
     OutputMap::new()
         .request("request", request)
@@ -445,7 +435,7 @@ fn execute_parse_install(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
     let response = require_response(&inputs, "response")?;
-    let dep_name = optional_str(&inputs, "dep_name").unwrap_or("unknown");
+    let dep_name = optional_str_strict(&inputs, "dep_name")?.unwrap_or("unknown");
 
     let installed = match response {
         TransportResponse::Shell(shell) => shell.success(),
@@ -534,13 +524,9 @@ echo "Installing git..."
                 OutputMap::new()
                     .request(
                         "request",
-                        TransportRequest::Shell(ShellRequest {
-                            command: "sh".to_string(),
-                            args: vec!["-c".to_string(), "echo mock".to_string()],
-                            cwd: None,
-                            env: HashMap::new(),
-                            stdin: None,
-                        }),
+                        ShellRequest::new("sh")
+                            .args(["-c", "echo mock"])
+                            .into_transport_request(),
                     )
                     .str("script", "echo mock")
                     .build()
@@ -559,13 +545,9 @@ echo "Installing git..."
                 OutputMap::new()
                     .request(
                         "request",
-                        TransportRequest::Shell(ShellRequest {
-                            command: "sh".to_string(),
-                            args: vec!["-c".to_string(), "which mock-dep".to_string()],
-                            cwd: None,
-                            env: HashMap::new(),
-                            stdin: None,
-                        }),
+                        ShellRequest::new("sh")
+                            .args(["-c", "which mock-dep"])
+                            .into_transport_request(),
                     )
                     .str("dep_name", "mock-dep")
                     .build()
@@ -580,13 +562,9 @@ echo "Installing git..."
                 OutputMap::new()
                     .request(
                         "request",
-                        TransportRequest::Shell(ShellRequest {
-                            command: "sh".to_string(),
-                            args: vec!["-c".to_string(), "echo 'installing mock-dep'".to_string()],
-                            cwd: None,
-                            env: HashMap::new(),
-                            stdin: None,
-                        }),
+                        ShellRequest::new("sh")
+                            .args(["-c", "echo 'installing mock-dep'"])
+                            .into_transport_request(),
                     )
                     .str("dep_name", "mock-dep")
                     .build()

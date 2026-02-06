@@ -100,6 +100,7 @@ pub fn build_deps_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
         vec![
             port("request", "TransportRequest"),
             port("manifest_path", "String"),
+            port("skip", "Bool"),
         ],
         DepsGraphOp::Deps(DepsOp::PrepareLoadManifest),
     ))?;
@@ -108,7 +109,7 @@ pub fn build_deps_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
     let execute_load = builder.add_node_after(
         Node::opaque(
             "execute_load_manifest",
-            vec![port("request", "TransportRequest")],
+            vec![port("request", "TransportRequest"), port("skip", "Bool")],
             vec![port("response", "TransportResponse")],
             DepsGraphOp::Transport(TransportOps::Execute),
         ),
@@ -169,6 +170,7 @@ pub fn build_deps_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
             vec![
                 port("request", "TransportRequest"),
                 port("script", "String"),
+                port("skip", "Bool"),
             ],
             DepsGraphOp::Deps(DepsOp::PrepareExecuteInstalls),
         ),
@@ -179,7 +181,7 @@ pub fn build_deps_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
     let execute_installs = builder.add_node_after(
         Node::opaque(
             "execute_installs",
-            vec![port("request", "TransportRequest")],
+            vec![port("request", "TransportRequest"), port("skip", "Bool")],
             vec![port("response", "TransportResponse")],
             DepsGraphOp::Transport(TransportOps::Execute),
         ),
@@ -212,6 +214,7 @@ pub fn build_deps_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
 
     // LoadManifest chain
     builder.add_edge(prepare_load.out("request"), execute_load.in_port("request"))?;
+    builder.add_edge(prepare_load.out("skip"), execute_load.in_port("skip"))?;
     builder.add_edge(
         execute_load.out("response"),
         parse_manifest.in_port("response"),
@@ -239,6 +242,10 @@ pub fn build_deps_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
     builder.add_edge(
         prepare_execute.out("request"),
         execute_installs.in_port("request"),
+    )?;
+    builder.add_edge(
+        prepare_execute.out("skip"),
+        execute_installs.in_port("skip"),
     )?;
     builder.add_edge(
         execute_installs.out("response"),

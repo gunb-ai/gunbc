@@ -4,7 +4,7 @@
 //! The ops here are PURE (no I/O) - they prepare requests and parse responses.
 
 use gunbc_exec::{propagate_skipped, require_response, ExecError, Executable, OutputMap};
-use gunbc_ir::transport::{ShellRequest, TransportRequest, TransportResponse};
+use gunbc_ir::transport::{ShellRequest, TransportResponse};
 use gunbc_ir::Value;
 use std::collections::HashMap;
 
@@ -50,23 +50,14 @@ fn execute_prepare_scan_workspace(
     _inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
     // Use find to list directories in crates/
-    let request = TransportRequest::Shell(ShellRequest {
-        command: "find".to_string(),
-        args: vec![
-            "crates".to_string(),
-            "-maxdepth".to_string(),
-            "1".to_string(),
-            "-mindepth".to_string(),
-            "1".to_string(),
-            "-type".to_string(),
-            "d".to_string(),
-        ],
-        cwd: None,
-        env: HashMap::new(),
-        stdin: None,
-    });
+    let request = ShellRequest::new("find")
+        .args(["crates", "-maxdepth", "1", "-mindepth", "1", "-type", "d"])
+        .into_transport_request();
 
-    OutputMap::new().request("request", request).ok()
+    OutputMap::new()
+        .request("request", request)
+        .bool("skip", false)
+        .ok()
 }
 
 // ============================================================================
@@ -153,13 +144,9 @@ impl Mockable for BootstrapOp {
             BootstrapOp::PrepareScanWorkspace => OutputMap::new()
                 .request(
                     "request",
-                    TransportRequest::Shell(ShellRequest {
-                        command: "find".to_string(),
-                        args: vec!["crates".to_string()],
-                        cwd: None,
-                        env: HashMap::new(),
-                        stdin: None,
-                    }),
+                    ShellRequest::new("find")
+                        .arg("crates")
+                        .into_transport_request(),
                 )
                 .build(),
             BootstrapOp::ParseScanResult => OutputMap::new()

@@ -11,10 +11,10 @@
 //! - Gist creation: PrepareRequest -> Execute
 
 use gunbc_exec::{
-    optional_str, optional_str_list, propagate_skipped, require_response, require_str,
-    require_str_list, ExecError, Executable, OutputMap, TransportResponseExt,
+    optional_str_list_strict, optional_str_strict, propagate_skipped, require_response,
+    require_str, require_str_list, ExecError, Executable, OutputMap, TransportResponseExt,
 };
-use gunbc_ir::transport::{ShellRequest, TransportRequest, TransportResponse};
+use gunbc_ir::transport::{ShellRequest, TransportResponse};
 use gunbc_ir::patterns::PatternOp;
 use gunbc_ir::{
     build::*, BuilderError, Cardinality, Dag, DagBuilder, Node, Value, WorkflowSignature,
@@ -211,13 +211,9 @@ fn execute_prepare_read_files(
         .collect::<Vec<_>>()
         .join("; ");
 
-    let request = TransportRequest::Shell(ShellRequest {
-        command: "sh".to_string(),
-        args: vec!["-c".to_string(), script],
-        cwd: None,
-        env: HashMap::new(),
-        stdin: None,
-    });
+    let request = ShellRequest::new("sh")
+        .args(["-c", &script])
+        .into_transport_request();
 
     OutputMap::new().request("request", request).ok()
 }
@@ -307,23 +303,18 @@ fn execute_prepare_read_file(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
     let filename = require_str(&inputs, "filename")?;
-    let repo_path = optional_str(&inputs, "repo_path").unwrap_or(".");
+    let repo_path = optional_str_strict(&inputs, "repo_path")?.unwrap_or(".");
 
-    let request = TransportRequest::Shell(ShellRequest {
-        command: "cat".to_string(),
-        args: vec![filename.to_string()],
-        cwd: if repo_path == "." {
-            None
-        } else {
-            Some(repo_path.to_string())
-        },
-        env: HashMap::new(),
-        stdin: None,
-    });
+    let mut req = ShellRequest::new("cat").arg(filename);
+    if repo_path != "." {
+        req = req.cwd(repo_path);
+    }
+    let request = req.into_transport_request();
 
     OutputMap::new()
         .request("request", request)
         .str("filename", filename)
+        .bool("skip", false)
         .ok()
 }
 
@@ -378,8 +369,8 @@ fn execute_collect_file_contents(
     // For now, this expects a list of filename/content pairs
     // The actual format depends on how LoopBuilder outputs results
     // This is a placeholder for when LoopBuilder integration is complete
-    let filenames = optional_str_list(&inputs, "filenames").unwrap_or_default();
-    let contents_list = optional_str_list(&inputs, "contents_list").unwrap_or_default();
+    let filenames = optional_str_list_strict(&inputs, "filenames")?.unwrap_or_default();
+    let contents_list = optional_str_list_strict(&inputs, "contents_list")?.unwrap_or_default();
 
     let mut contents = BTreeMap::new();
     for (filename, content) in filenames.iter().zip(contents_list.iter()) {
@@ -1047,13 +1038,7 @@ impl Mockable for GistGraphOp {
                     | GitOps::PrepareRevListBefore { .. } => OutputMap::new()
                         .request(
                             "request",
-                            TransportRequest::Shell(ShellRequest {
-                                command: "git".to_string(),
-                                args: vec!["mock".to_string()],
-                                cwd: None,
-                                env: HashMap::new(),
-                                stdin: None,
-                            }),
+                            ShellRequest::new("git").arg("mock").into_transport_request(),
                         )
                         .build(),
                     GitOps::ParseDiff => OutputMap::new()
@@ -1075,13 +1060,9 @@ impl Mockable for GistGraphOp {
             GistGraphOp::PrepareReadFiles => OutputMap::new()
                 .request(
                     "request",
-                    TransportRequest::Shell(ShellRequest {
-                        command: "sh".to_string(),
-                        args: vec!["-c".to_string(), "echo file contents".to_string()],
-                        cwd: None,
-                        env: HashMap::new(),
-                        stdin: None,
-                    }),
+                    ShellRequest::new("sh")
+                        .args(["-c", "echo file contents"])
+                        .into_transport_request(),
                 )
                 .build(),
             GistGraphOp::ParseReadFiles => {
@@ -1094,13 +1075,9 @@ impl Mockable for GistGraphOp {
             GistGraphOp::PrepareReadFile => OutputMap::new()
                 .request(
                     "request",
-                    TransportRequest::Shell(ShellRequest {
-                        command: "cat".to_string(),
-                        args: vec!["src/main.rs".to_string()],
-                        cwd: None,
-                        env: HashMap::new(),
-                        stdin: None,
-                    }),
+                    ShellRequest::new("cat")
+                        .arg("src/main.rs")
+                        .into_transport_request(),
                 )
                 .str("filename", "src/main.rs")
                 .build(),
@@ -1152,13 +1129,9 @@ impl Mockable for GistGraphOp {
                 GistOps::PrepareRequest { .. } => OutputMap::new()
                     .request(
                         "request",
-                        TransportRequest::Shell(ShellRequest {
-                            command: "gh".to_string(),
-                            args: vec!["gist".to_string(), "create".to_string()],
-                            cwd: None,
-                            env: HashMap::new(),
-                            stdin: None,
-                        }),
+                        ShellRequest::new("gh")
+                            .args(["gist", "create"])
+                            .into_transport_request(),
                     )
                     .build(),
                 GistOps::ParseGistResponse => OutputMap::new()

@@ -58,7 +58,10 @@ fn exec_prepare_build(
     let config = BuildConfig::cargo();
     let request = TransportRequest::Shell(config.build.to_shell_request());
 
-    OutputMap::new().request("request", request).ok()
+    OutputMap::new()
+        .request("request", request)
+        .bool("skip", false)
+        .ok()
 }
 
 fn exec_parse_build(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {

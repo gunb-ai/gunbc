@@ -102,6 +102,7 @@ pub fn build_review_phase_graph() -> Dag<ReviewGraphOp> {
         vec![
             port("request", "TransportRequest"),
             port("skip_fetch", "Bool"),
+            port("skip", "Bool"),
             port("handle", "Json"), // Present if inline
             port("source", "Json"), // Echo for parse
         ],
@@ -112,7 +113,7 @@ pub fn build_review_phase_graph() -> Dag<ReviewGraphOp> {
     // Note: This is skipped for inline sources (skip_fetch=true)
     dag.add_node(Node::opaque(
         "execute_blob",
-        vec![port("request", "TransportRequest")],
+        vec![port("request", "TransportRequest"), port("skip", "Bool")],
         vec![port("response", "TransportResponse")],
         ReviewGraphOp::Transport(TransportOps::Execute),
     ));
@@ -123,6 +124,8 @@ pub fn build_review_phase_graph() -> Dag<ReviewGraphOp> {
         vec![
             port("source", "Json"),
             port("response", "TransportResponse"),
+            optional("handle", "Json"),
+            port("skip", "Bool"),
         ],
         vec![port("handle", "Json"), port("meta", "Json")],
         ReviewGraphOp::Blob(BlobOps::ParseFetch),
@@ -232,8 +235,11 @@ pub fn build_review_phase_graph() -> Dag<ReviewGraphOp> {
 
     // Blob acquisition flow
     dag.add_edge(edge("prepare_blob", "request", "execute_blob", "request"));
+    dag.add_edge(edge("prepare_blob", "skip", "execute_blob", "skip"));
     dag.add_edge(edge("execute_blob", "response", "parse_blob", "response"));
     dag.add_edge(edge("prepare_blob", "source", "parse_blob", "source"));
+    dag.add_edge(edge("prepare_blob", "handle", "parse_blob", "handle"));
+    dag.add_edge(edge("prepare_blob", "skip", "parse_blob", "skip"));
 
     // Note: For inline sources, we need a way to bypass execute_blob.
     // This is handled by the skip_fetch flag - the executor should check this.

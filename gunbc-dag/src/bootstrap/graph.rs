@@ -89,14 +89,14 @@ pub fn build_bootstrap_graph() -> Result<Dag<BootstrapGraphOp>, BuilderError> {
     let prepare_scan = builder.add_root_node(Node::opaque(
         "prepare_scan_workspace",
         vec![],
-        vec![port("request", "TransportRequest")],
+        vec![port("request", "TransportRequest"), port("skip", "Bool")],
         BootstrapGraphOp::Bootstrap(BootstrapOp::PrepareScanWorkspace),
     ))?;
 
     let execute_scan = builder.add_node_after(
         Node::opaque(
             "execute_scan_workspace",
-            vec![port("request", "TransportRequest")],
+            vec![port("request", "TransportRequest"), port("skip", "Bool")],
             vec![port("response", "TransportResponse")],
             BootstrapGraphOp::Transport(TransportOps::Execute),
         ),
@@ -133,7 +133,7 @@ pub fn build_bootstrap_graph() -> Result<Dag<BootstrapGraphOp>, BuilderError> {
         Node::opaque(
             "prepare_makefile_read",
             vec![port("path", "String")],
-            vec![port("request", "TransportRequest")],
+            vec![port("request", "TransportRequest"), port("skip", "Bool")],
             BootstrapGraphOp::PrepareFileRead(PrepareFileReadOp),
         ),
         &generate_makefile,
@@ -142,7 +142,7 @@ pub fn build_bootstrap_graph() -> Result<Dag<BootstrapGraphOp>, BuilderError> {
     let execute_makefile_read = builder.add_node_after(
         Node::opaque(
             "execute_makefile_read",
-            vec![port("request", "TransportRequest")],
+            vec![port("request", "TransportRequest"), port("skip", "Bool")],
             vec![port("response", "TransportResponse")],
             BootstrapGraphOp::Transport(TransportOps::Execute),
         ),
@@ -219,7 +219,7 @@ pub fn build_bootstrap_graph() -> Result<Dag<BootstrapGraphOp>, BuilderError> {
         Node::opaque(
             "prepare_gitignore_read",
             vec![port("path", "String")],
-            vec![port("request", "TransportRequest")],
+            vec![port("request", "TransportRequest"), port("skip", "Bool")],
             BootstrapGraphOp::PrepareFileRead(PrepareFileReadOp),
         ),
         &generate_gitignore,
@@ -228,7 +228,7 @@ pub fn build_bootstrap_graph() -> Result<Dag<BootstrapGraphOp>, BuilderError> {
     let execute_gitignore_read = builder.add_node_after(
         Node::opaque(
             "execute_gitignore_read",
-            vec![port("request", "TransportRequest")],
+            vec![port("request", "TransportRequest"), port("skip", "Bool")],
             vec![port("response", "TransportResponse")],
             BootstrapGraphOp::Transport(TransportOps::Execute),
         ),
@@ -289,6 +289,7 @@ pub fn build_bootstrap_graph() -> Result<Dag<BootstrapGraphOp>, BuilderError> {
     // Wire up the ScanWorkspace chain
     // ========================================================================
     builder.add_edge(prepare_scan.out("request"), execute_scan.in_port("request"))?;
+    builder.add_edge(prepare_scan.out("skip"), execute_scan.in_port("skip"))?;
     builder.add_edge(
         execute_scan.out("response"),
         scan_workspace.in_port("response"),
@@ -320,6 +321,10 @@ pub fn build_bootstrap_graph() -> Result<Dag<BootstrapGraphOp>, BuilderError> {
     builder.add_edge(
         prepare_makefile_read.out("request"),
         execute_makefile_read.in_port("request"),
+    )?;
+    builder.add_edge(
+        prepare_makefile_read.out("skip"),
+        execute_makefile_read.in_port("skip"),
     )?;
 
     // ExecuteReadMakefile -> CompareMakefileContent
@@ -372,6 +377,10 @@ pub fn build_bootstrap_graph() -> Result<Dag<BootstrapGraphOp>, BuilderError> {
     builder.add_edge(
         prepare_gitignore_read.out("request"),
         execute_gitignore_read.in_port("request"),
+    )?;
+    builder.add_edge(
+        prepare_gitignore_read.out("skip"),
+        execute_gitignore_read.in_port("skip"),
     )?;
 
     // ExecuteReadGitignore -> CompareGitignoreContent

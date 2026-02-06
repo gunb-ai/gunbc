@@ -1,7 +1,8 @@
 //! Executable semantics for pattern-internal operations.
 
 use crate::helpers::{
-    propagate_skipped, require_bool, require_int, require_str_list, require_value, OutputMap,
+    optional_int, propagate_skipped, require_bool, require_int, require_str_list, require_value,
+    OutputMap,
 };
 use crate::{ExecError, Executable};
 use gunbc_ir::patterns::PatternOp;
@@ -60,10 +61,7 @@ impl Executable for PatternOp {
             PatternOp::LoopPack { output_port } => {
                 let list = require_str_list(&inputs, "result")?;
 
-                let count = inputs
-                    .get("count")
-                    .and_then(|v| v.as_int())
-                    .unwrap_or(list.len() as i64);
+                let count = optional_int(&inputs, "count").unwrap_or(list.len() as i64);
 
                 OutputMap::new()
                     .str_list(output_port, list)
@@ -87,7 +85,7 @@ impl Executable for PatternOp {
                     .ok()
             }
             PatternOp::RetryCollector { output_port } => {
-                let attempt = inputs.get("attempt").and_then(|v| v.as_int()).unwrap_or(1);
+                let attempt = optional_int(&inputs, "attempt").unwrap_or(1);
 
                 let result = inputs.get("result").cloned().unwrap_or(Value::Skipped);
 

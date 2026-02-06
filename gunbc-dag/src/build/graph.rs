@@ -59,14 +59,14 @@ pub fn build_build_graph() -> Result<Dag<BuildGraphOp>, BuilderError> {
     let prepare_build = builder.add_root_node(Node::opaque(
         "prepare_build",
         vec![],
-        vec![port("request", "TransportRequest")],
+        vec![port("request", "TransportRequest"), port("skip", "Bool")],
         BuildGraphOp::Build(BuildOp::PrepareBuild),
     ))?;
 
     let execute_build = builder.add_node_after(
         Node::opaque(
             "execute_build",
-            vec![port("request", "TransportRequest")],
+            vec![port("request", "TransportRequest"), port("skip", "Bool")],
             vec![port("response", "TransportResponse")],
             BuildGraphOp::Transport(TransportOps::Execute),
         ),
@@ -219,6 +219,7 @@ pub fn build_build_graph() -> Result<Dag<BuildGraphOp>, BuilderError> {
         prepare_build.out("request"),
         execute_build.in_port("request"),
     )?;
+    builder.add_edge(prepare_build.out("skip"), execute_build.in_port("skip"))?;
     builder.add_edge(
         execute_build.out("response"),
         parse_build.in_port("response"),

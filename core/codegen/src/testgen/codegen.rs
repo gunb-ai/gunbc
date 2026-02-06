@@ -70,6 +70,8 @@ pub struct TestConfig {
     pub flow_tests: bool,
     /// Generate per-node I/O example tests (from MockSpec.node_examples)
     pub example_tests: bool,
+    /// Generate optional-input behavior tests (missing + wrong-type)
+    pub optional_input_tests: bool,
     /// Max window size for windowed tests (None = no limit)
     pub window_max_nodes: Option<usize>,
     /// Test module visibility
@@ -87,6 +89,7 @@ impl Default for TestConfig {
             chain_tests: true,
             flow_tests: false,
             example_tests: true,
+            optional_input_tests: false,
             window_max_nodes: Some(5),
             visibility: "pub".to_string(),
         }
@@ -1423,7 +1426,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
         obligations: &ObligationSet,
         graph_builder_fn: &str,
     ) -> Vec<TestFn> {
-        if !self.config.example_tests {
+        if !self.config.optional_input_tests {
             return Vec::new();
         }
         let optional_obligations = obligations.optional_input_obligations();

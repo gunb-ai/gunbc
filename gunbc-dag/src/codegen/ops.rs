@@ -49,14 +49,11 @@ fn execute_prepare_codegen_exists(
 
     // If no tools are registered, treat as "exists".
     if paths.is_empty() {
-        let request = TransportRequest::Shell(ShellRequest {
-            command: "true".to_string(),
-            args: Vec::new(),
-            cwd: None,
-            env: HashMap::new(),
-            stdin: None,
-        });
-        return OutputMap::new().request("request", request).ok();
+        let request = ShellRequest::new("true").into_transport_request();
+        return OutputMap::new()
+            .request("request", request)
+            .bool("skip", false)
+            .ok();
     }
 
     let mut cmd = String::new();
@@ -68,15 +65,14 @@ fn execute_prepare_codegen_exists(
         cmd.push_str(&shell_quote(&path));
     }
 
-    let request = TransportRequest::Shell(ShellRequest {
-        command: "sh".to_string(),
-        args: vec!["-c".to_string(), cmd],
-        cwd: None,
-        env: HashMap::new(),
-        stdin: None,
-    });
+    let request = ShellRequest::new("sh")
+        .args(["-c", &cmd])
+        .into_transport_request();
 
-    OutputMap::new().request("request", request).ok()
+    OutputMap::new()
+        .request("request", request)
+        .bool("skip", false)
+        .ok()
 }
 
 fn execute_parse_codegen_exists(

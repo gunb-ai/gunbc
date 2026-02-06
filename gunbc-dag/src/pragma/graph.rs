@@ -102,7 +102,7 @@ pub fn build_pragma_graph() -> Result<Dag<PragmaGraphOp>, BuilderError> {
         Node::opaque(
             "prepare_read_clippy",
             vec![port("path", "String")],
-            vec![port("request", "TransportRequest")],
+            vec![port("request", "TransportRequest"), port("skip", "Bool")],
             PragmaGraphOp::PrepareFileRead(PrepareFileReadOp),
         ),
         &render_clippy,
@@ -111,7 +111,7 @@ pub fn build_pragma_graph() -> Result<Dag<PragmaGraphOp>, BuilderError> {
     let execute_read_clippy = builder.add_node_after(
         Node::opaque(
             "execute_read_clippy",
-            vec![port("request", "TransportRequest")],
+            vec![port("request", "TransportRequest"), port("skip", "Bool")],
             vec![port("response", "TransportResponse")],
             PragmaGraphOp::Transport(TransportOps::Execute),
         ),
@@ -185,7 +185,7 @@ pub fn build_pragma_graph() -> Result<Dag<PragmaGraphOp>, BuilderError> {
         Node::opaque(
             "prepare_read_allowlist",
             vec![port("path", "String")],
-            vec![port("request", "TransportRequest")],
+            vec![port("request", "TransportRequest"), port("skip", "Bool")],
             PragmaGraphOp::PrepareFileRead(PrepareFileReadOp),
         ),
         &render_allowlist,
@@ -194,7 +194,7 @@ pub fn build_pragma_graph() -> Result<Dag<PragmaGraphOp>, BuilderError> {
     let execute_read_allowlist = builder.add_node_after(
         Node::opaque(
             "execute_read_allowlist",
-            vec![port("request", "TransportRequest")],
+            vec![port("request", "TransportRequest"), port("skip", "Bool")],
             vec![port("response", "TransportResponse")],
             PragmaGraphOp::Transport(TransportOps::Execute),
         ),
@@ -268,7 +268,7 @@ pub fn build_pragma_graph() -> Result<Dag<PragmaGraphOp>, BuilderError> {
         Node::opaque(
             "prepare_read_policy",
             vec![port("path", "String")],
-            vec![port("request", "TransportRequest")],
+            vec![port("request", "TransportRequest"), port("skip", "Bool")],
             PragmaGraphOp::PrepareFileRead(PrepareFileReadOp),
         ),
         &render_policy,
@@ -277,7 +277,7 @@ pub fn build_pragma_graph() -> Result<Dag<PragmaGraphOp>, BuilderError> {
     let execute_read_policy = builder.add_node_after(
         Node::opaque(
             "execute_read_policy",
-            vec![port("request", "TransportRequest")],
+            vec![port("request", "TransportRequest"), port("skip", "Bool")],
             vec![port("response", "TransportResponse")],
             PragmaGraphOp::Transport(TransportOps::Execute),
         ),
@@ -355,6 +355,10 @@ pub fn build_pragma_graph() -> Result<Dag<PragmaGraphOp>, BuilderError> {
         prepare_read_clippy.out("request"),
         execute_read_clippy.in_port("request"),
     )?;
+    builder.add_edge(
+        prepare_read_clippy.out("skip"),
+        execute_read_clippy.in_port("skip"),
+    )?;
 
     // ExecuteRead -> Compare
     builder.add_edge(
@@ -401,6 +405,10 @@ pub fn build_pragma_graph() -> Result<Dag<PragmaGraphOp>, BuilderError> {
         prepare_read_allowlist.out("request"),
         execute_read_allowlist.in_port("request"),
     )?;
+    builder.add_edge(
+        prepare_read_allowlist.out("skip"),
+        execute_read_allowlist.in_port("skip"),
+    )?;
 
     // ExecuteRead -> Compare
     builder.add_edge(
@@ -446,6 +454,10 @@ pub fn build_pragma_graph() -> Result<Dag<PragmaGraphOp>, BuilderError> {
     builder.add_edge(
         prepare_read_policy.out("request"),
         execute_read_policy.in_port("request"),
+    )?;
+    builder.add_edge(
+        prepare_read_policy.out("skip"),
+        execute_read_policy.in_port("skip"),
     )?;
 
     // ExecuteRead -> Compare

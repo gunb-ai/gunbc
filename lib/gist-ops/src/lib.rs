@@ -15,7 +15,7 @@
 
 #![deny(dead_code)]
 use gunbc_exec::{
-    optional_str, propagate_skipped, require_response, require_str, ExecError, Executable,
+    optional_str_strict, propagate_skipped, require_response, require_str, ExecError, Executable,
     IntoExecResult, OutputMap,
 };
 use gunbc_ir::transport::gist::GistRequest;
@@ -60,9 +60,9 @@ impl Executable for GistOps {
                     return result;
                 }
                 let markdown = require_str(&inputs, "markdown")?;
-                let branch = optional_str(&inputs, "branch");
-                let remote_branch = optional_str(&inputs, "remote_branch");
-                let base_ref = optional_str(&inputs, "base_ref");
+                let branch = optional_str_strict(&inputs, "branch")?;
+                let remote_branch = optional_str_strict(&inputs, "remote_branch")?;
+                let base_ref = optional_str_strict(&inputs, "base_ref")?;
 
                 // Acquire system resources at the DAG boundary (not inline)
                 let fs = require_filesystem_handle(&inputs, "res:fs")?;
@@ -117,7 +117,10 @@ impl Executable for GistOps {
 
                 let request = prepare_gist_request(markdown, *public, &description, &filename);
 
-                OutputMap::new().request("request", request).ok()
+                OutputMap::new()
+                    .request("request", request)
+                    .bool("skip", false)
+                    .ok()
             }
             GistOps::ParseGistResponse => {
                 let response = require_response(&inputs, "response")?;

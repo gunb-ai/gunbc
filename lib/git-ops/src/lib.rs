@@ -19,7 +19,7 @@
 
 #![deny(dead_code)]
 use gunbc_exec::{
-    optional_str, propagate_skipped, require_response, require_str, ExecError, Executable,
+    optional_str_strict, propagate_skipped, require_response, require_str, ExecError, Executable,
     OutputMap, TransportResponseExt,
 };
 use gunbc_ir::transport::git::{self, GitRequest};
@@ -122,7 +122,10 @@ impl Executable for GitOps {
                 }
                 let request = req.to_shell_request();
 
-                OutputMap::new().request("request", request).ok()
+                OutputMap::new()
+                    .request("request", request)
+                    .bool("skip", false)
+                    .ok()
             }
             GitOps::ParseLsFiles => {
                 if let Some(result) = propagate_skipped(&inputs, "response", &["files"]) {
@@ -151,7 +154,8 @@ impl Executable for GitOps {
                 let repo_path = require_str(&inputs, "repo_path")?;
 
                 // Allow runtime override of base_ref
-                let effective_ref = optional_str(&inputs, "base_ref").unwrap_or(base_ref.as_str());
+                let effective_ref = optional_str_strict(&inputs, "base_ref")?
+                    .unwrap_or(base_ref.as_str());
 
                 let mut req = GitRequest::diff(effective_ref);
                 if !extensions.is_empty() {
@@ -162,7 +166,10 @@ impl Executable for GitOps {
                 }
                 let request = req.to_shell_request();
 
-                OutputMap::new().request("request", request).ok()
+                OutputMap::new()
+                    .request("request", request)
+                    .bool("skip", false)
+                    .ok()
             }
             GitOps::ParseDiff => {
                 if let Some(result) = propagate_skipped(&inputs, "response", &["diff_files", "stats"]) {
@@ -196,7 +203,8 @@ impl Executable for GitOps {
             } => {
                 let repo_path = require_str(&inputs, "repo_path")?;
 
-                let effective_ref = optional_str(&inputs, "base_ref").unwrap_or(base_ref.as_str());
+                let effective_ref = optional_str_strict(&inputs, "base_ref")?
+                    .unwrap_or(base_ref.as_str());
 
                 let mut req = GitRequest::diff_name_only(effective_ref);
                 if !extensions.is_empty() {
@@ -207,7 +215,10 @@ impl Executable for GitOps {
                 }
                 let request = req.to_shell_request();
 
-                OutputMap::new().request("request", request).ok()
+                OutputMap::new()
+                    .request("request", request)
+                    .bool("skip", false)
+                    .ok()
             }
             GitOps::ParseDiffNameOnly => {
                 if let Some(result) = propagate_skipped(&inputs, "response", &["files"]) {
@@ -237,7 +248,10 @@ impl Executable for GitOps {
                 }
                 let request = req.to_shell_request();
 
-                OutputMap::new().request("request", request).ok()
+                OutputMap::new()
+                    .request("request", request)
+                    .bool("skip", false)
+                    .ok()
             }
             GitOps::ParseCurrentBranch => {
                 if let Some(result) = propagate_skipped(&inputs, "response", &["branch"]) {
@@ -270,7 +284,10 @@ impl Executable for GitOps {
                 }
                 let request = req.to_shell_request();
 
-                OutputMap::new().request("request", request).ok()
+                OutputMap::new()
+                    .request("request", request)
+                    .bool("skip", false)
+                    .ok()
             }
             GitOps::ParseRemoteBranchesAtHead => {
                 if let Some(result) = propagate_skipped(&inputs, "response", &["remote_branch"]) {
@@ -305,7 +322,10 @@ impl Executable for GitOps {
                 }
                 let request = req.to_shell_request();
 
-                OutputMap::new().request("request", request).ok()
+                OutputMap::new()
+                    .request("request", request)
+                    .bool("skip", false)
+                    .ok()
             }
             GitOps::ParseRevListBefore => {
                 if let Some(result) = propagate_skipped(&inputs, "response", &["base_ref"]) {

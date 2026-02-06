@@ -17,7 +17,6 @@ use gunbc_ir::cargo::{CargoCommand, Subcommand, Warnings};
 use gunbc_ir::resource::ExecMode;
 use gunbc_ir::transport::ShellRequest;
 use gunbc_ir::CargoInvocation;
-use std::collections::HashMap;
 
 // ============================================================================
 // Build Configuration - Single source of truth for build commands
@@ -61,13 +60,7 @@ impl BuildCommand {
             BuildCommand::Cargo(cmd) => cmd.to_shell_request(),
             BuildCommand::Shell(parts) => {
                 let (command, args) = parts.split_first().expect("empty command");
-                ShellRequest {
-                    command: command.clone(),
-                    args: args.to_vec(),
-                    cwd: None,
-                    env: HashMap::new(),
-                    stdin: None,
-                }
+                ShellRequest::new(command).args(args.iter().cloned())
             }
         }
     }

@@ -137,6 +137,21 @@ pub fn optional_str<'a>(inputs: &'a HashMap<String, Value>, key: &str) -> Option
     inputs.get(key).and_then(|v| v.as_str())
 }
 
+/// Extract an optional string input (strict).
+///
+/// Missing key → Ok(None). Present but wrong type → Err.
+pub fn optional_str_strict<'a>(
+    inputs: &'a HashMap<String, Value>,
+    key: &str,
+) -> Result<Option<&'a str>, ExecError> {
+    match inputs.get(key) {
+        None => Ok(None),
+        Some(v) => v.as_str().map(Some).ok_or_else(|| {
+            ExecError::new(format!("invalid '{}' input: expected String", key))
+        }),
+    }
+}
+
 /// Extract an optional JSON input.
 pub fn optional_json<'a>(
     inputs: &'a HashMap<String, Value>,
@@ -145,14 +160,64 @@ pub fn optional_json<'a>(
     inputs.get(key).and_then(|v| v.as_json())
 }
 
+/// Extract an optional JSON input (strict).
+///
+/// Missing key → Ok(None). Present but wrong type → Err.
+pub fn optional_json_strict<'a>(
+    inputs: &'a HashMap<String, Value>,
+    key: &str,
+) -> Result<Option<&'a serde_json::Value>, ExecError> {
+    match inputs.get(key) {
+        None => Ok(None),
+        Some(v) => v.as_json().map(Some).ok_or_else(|| {
+            ExecError::new(format!("invalid '{}' input: expected Json", key))
+        }),
+    }
+}
+
+/// Extract an optional integer input.
+pub fn optional_int(inputs: &HashMap<String, Value>, key: &str) -> Option<i64> {
+    inputs.get(key).and_then(|v| v.as_int())
+}
+
 /// Extract an optional boolean input.
 pub fn optional_bool(inputs: &HashMap<String, Value>, key: &str) -> Option<bool> {
     inputs.get(key).and_then(|v| v.as_bool())
 }
 
+/// Extract an optional boolean input (strict).
+///
+/// Missing key → Ok(None). Present but wrong type → Err.
+pub fn optional_bool_strict(
+    inputs: &HashMap<String, Value>,
+    key: &str,
+) -> Result<Option<bool>, ExecError> {
+    match inputs.get(key) {
+        None => Ok(None),
+        Some(v) => v.as_bool().map(Some).ok_or_else(|| {
+            ExecError::new(format!("invalid '{}' input: expected Bool", key))
+        }),
+    }
+}
+
 /// Extract an optional string list input.
 pub fn optional_str_list(inputs: &HashMap<String, Value>, key: &str) -> Option<Vec<String>> {
     inputs.get(key).and_then(|v| v.as_str_list())
+}
+
+/// Extract an optional string list input (strict).
+///
+/// Missing key → Ok(None). Present but wrong type → Err.
+pub fn optional_str_list_strict(
+    inputs: &HashMap<String, Value>,
+    key: &str,
+) -> Result<Option<Vec<String>>, ExecError> {
+    match inputs.get(key) {
+        None => Ok(None),
+        Some(v) => v.as_str_list().map(Some).ok_or_else(|| {
+            ExecError::new(format!("invalid '{}' input: expected StringList", key))
+        }),
+    }
 }
 
 /// Extract an optional map input.
@@ -161,6 +226,21 @@ pub fn optional_map_str_str(
     key: &str,
 ) -> Option<BTreeMap<String, String>> {
     inputs.get(key).and_then(|v| v.as_map_str_str())
+}
+
+/// Extract an optional map input (strict).
+///
+/// Missing key → Ok(None). Present but wrong type → Err.
+pub fn optional_map_str_str_strict(
+    inputs: &HashMap<String, Value>,
+    key: &str,
+) -> Result<Option<BTreeMap<String, String>>, ExecError> {
+    match inputs.get(key) {
+        None => Ok(None),
+        Some(v) => v.as_map_str_str().map(Some).ok_or_else(|| {
+            ExecError::new(format!("invalid '{}' input: expected Map<String,String>", key))
+        }),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -212,11 +292,20 @@ pub trait InputsExt {
     /// Extract an optional string input.
     fn optional_str(&self, key: &str) -> Option<&str>;
 
+    /// Extract an optional string input (strict).
+    fn optional_str_strict(&self, key: &str) -> Result<Option<&str>, ExecError>;
+
     /// Extract an optional JSON input.
     fn optional_json(&self, key: &str) -> Option<&serde_json::Value>;
 
+    /// Extract an optional JSON input (strict).
+    fn optional_json_strict(&self, key: &str) -> Result<Option<&serde_json::Value>, ExecError>;
+
     /// Extract an optional boolean input.
     fn optional_bool(&self, key: &str) -> Option<bool>;
+
+    /// Extract an optional boolean input (strict).
+    fn optional_bool_strict(&self, key: &str) -> Result<Option<bool>, ExecError>;
 
     /// Extract an optional integer input.
     fn optional_int(&self, key: &str) -> Option<i64>;
@@ -224,8 +313,17 @@ pub trait InputsExt {
     /// Extract an optional string list input.
     fn optional_str_list(&self, key: &str) -> Option<Vec<String>>;
 
+    /// Extract an optional string list input (strict).
+    fn optional_str_list_strict(&self, key: &str) -> Result<Option<Vec<String>>, ExecError>;
+
     /// Extract an optional map input.
     fn optional_map_str_str(&self, key: &str) -> Option<BTreeMap<String, String>>;
+
+    /// Extract an optional map input (strict).
+    fn optional_map_str_str_strict(
+        &self,
+        key: &str,
+    ) -> Result<Option<BTreeMap<String, String>>, ExecError>;
 }
 
 impl InputsExt for HashMap<String, Value> {
@@ -269,12 +367,24 @@ impl InputsExt for HashMap<String, Value> {
         optional_str(self, key)
     }
 
+    fn optional_str_strict(&self, key: &str) -> Result<Option<&str>, ExecError> {
+        optional_str_strict(self, key)
+    }
+
     fn optional_json(&self, key: &str) -> Option<&serde_json::Value> {
         optional_json(self, key)
     }
 
+    fn optional_json_strict(&self, key: &str) -> Result<Option<&serde_json::Value>, ExecError> {
+        optional_json_strict(self, key)
+    }
+
     fn optional_bool(&self, key: &str) -> Option<bool> {
         optional_bool(self, key)
+    }
+
+    fn optional_bool_strict(&self, key: &str) -> Result<Option<bool>, ExecError> {
+        optional_bool_strict(self, key)
     }
 
     fn optional_int(&self, key: &str) -> Option<i64> {
@@ -285,8 +395,19 @@ impl InputsExt for HashMap<String, Value> {
         optional_str_list(self, key)
     }
 
+    fn optional_str_list_strict(&self, key: &str) -> Result<Option<Vec<String>>, ExecError> {
+        optional_str_list_strict(self, key)
+    }
+
     fn optional_map_str_str(&self, key: &str) -> Option<BTreeMap<String, String>> {
         optional_map_str_str(self, key)
+    }
+
+    fn optional_map_str_str_strict(
+        &self,
+        key: &str,
+    ) -> Result<Option<BTreeMap<String, String>>, ExecError> {
+        optional_map_str_str_strict(self, key)
     }
 }
 
@@ -538,6 +659,28 @@ mod tests {
     }
 
     #[test]
+    fn optional_str_strict_missing_is_ok() {
+        let inputs = HashMap::new();
+        assert_eq!(optional_str_strict(&inputs, "name").unwrap(), None);
+    }
+
+    #[test]
+    fn optional_str_strict_wrong_type_errors() {
+        let mut inputs = HashMap::new();
+        inputs.insert("name".to_string(), Value::Bool(true));
+        let err = optional_str_strict(&inputs, "name").unwrap_err();
+        assert!(err.0.contains("expected String"));
+    }
+
+    #[test]
+    fn optional_bool_strict_wrong_type_errors() {
+        let mut inputs = HashMap::new();
+        inputs.insert("flag".to_string(), Value::Str("nope".to_string()));
+        let err = optional_bool_strict(&inputs, "flag").unwrap_err();
+        assert!(err.0.contains("expected Bool"));
+    }
+
+    #[test]
     fn output_map_builds_correctly() {
         let map = OutputMap::new()
             .str("name", "hello")
@@ -628,6 +771,15 @@ mod tests {
 
         assert_eq!(inputs.optional_str("name"), Some("hello"));
         assert_eq!(inputs.optional_str("missing"), None);
+    }
+
+    #[test]
+    fn inputs_ext_optional_str_strict() {
+        let mut inputs = HashMap::new();
+        inputs.insert("name".to_string(), Value::Str("hello".to_string()));
+
+        assert_eq!(inputs.optional_str_strict("name").unwrap(), Some("hello"));
+        assert_eq!(inputs.optional_str_strict("missing").unwrap(), None);
     }
 
     #[test]

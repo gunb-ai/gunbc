@@ -72,6 +72,7 @@ pub fn build_chat_completion_graph() -> Dag<LlmGraphOp> {
         vec![
             port("request", "TransportRequest"),
             port("provider", "String"),
+            port("skip", "Bool"),
         ],
         LlmGraphOp::Llm(LlmOps::PrepareChatRequest),
     ));
@@ -109,6 +110,7 @@ pub fn build_chat_completion_graph() -> Dag<LlmGraphOp> {
         vec![
             port("request", "TransportRequest"),
             resource("credential", "Credential", AccessMode::Read),
+            port("skip", "Bool"),
         ],
         vec![port("response", "TransportResponse")],
         LlmGraphOp::Transport(TransportOps::Execute),
@@ -133,6 +135,7 @@ pub fn build_chat_completion_graph() -> Dag<LlmGraphOp> {
 
     // Edges: prepare -> resolve_auth -> credential_env -> execute -> parse
     dag.add_edge(edge("prepare", "request", "execute", "request"));
+    dag.add_edge(edge("prepare", "skip", "execute", "skip"));
     dag.add_edge(edge("execute", "response", "parse", "response"));
     dag.add_edge(edge("prepare", "provider", "parse", "provider"));
     dag.add_edge(edge("prepare", "provider", "resolve_auth", "provider"));
