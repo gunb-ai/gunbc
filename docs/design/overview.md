@@ -922,7 +922,10 @@ fn validate(input: &Input) -> Result<ValidInput, ValidationError> {
 
 ## Structural I/O Enforcement
 
-> **Status**: Completed. All tools migrated, escape hatch closed.
+> **Status**: Partially complete. Escape hatch (`execute_transport()`) removed
+> from public API. Clippy enforcement active. CI tool fully migrated. Remaining
+> tools (gist, deps, buck2, bootstrap) still have hidden I/O in opaque ops.
+> See Current State table below.
 
 ### The Problem (Solved)
 

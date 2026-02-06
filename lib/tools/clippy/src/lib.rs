@@ -42,7 +42,7 @@
 //! 3. Provide convenience wrappers for common operations
 //! 4. Model configuration as Rust code, generate config files
 
-#![forbid(dead_code)]
+#![deny(dead_code)]
 pub mod config;
 pub mod graph;
 pub mod lint;

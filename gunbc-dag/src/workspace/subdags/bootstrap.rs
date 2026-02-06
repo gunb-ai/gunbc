@@ -83,7 +83,7 @@ pub fn build_bootstrap_subdag() -> Node<WorkspaceOp> {
         .add_node_after(
             Node::opaque(
                 "prepare_makefile_write",
-                vec![port("content", "String")],
+                vec![port("path", "String"), port("content", "String")],
                 vec![port("request", "TransportRequest")],
                 WorkspaceOp::Primitive(gunbc_primitives::PrimitiveOp::PrepareFileWrite(
                     PrepareFileWriteOp,
@@ -127,7 +127,7 @@ pub fn build_bootstrap_subdag() -> Node<WorkspaceOp> {
         .add_node_after(
             Node::opaque(
                 "prepare_gitignore_write",
-                vec![port("content", "String")],
+                vec![port("path", "String"), port("content", "String")],
                 vec![port("request", "TransportRequest")],
                 WorkspaceOp::Primitive(gunbc_primitives::PrimitiveOp::PrepareFileWrite(
                     PrepareFileWriteOp,

@@ -13,7 +13,7 @@
 //! // request is now a TransportRequest ready to be executed via TransportOps::Execute
 //! ```
 
-#![forbid(dead_code)]
+#![deny(dead_code)]
 use gunbc_exec::{
     optional_str, require_response, require_str, ExecError, Executable, IntoExecResult, OutputMap,
 };

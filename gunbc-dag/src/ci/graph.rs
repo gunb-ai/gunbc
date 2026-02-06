@@ -548,6 +548,58 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
     )?;
 
     // ========================================================================
+    // Verify Stage (after codegen, parallel with build/test/lint)
+    // ========================================================================
+
+    // PrepareVerifyCheck - pure
+    let prepare_verify = builder.add_node_after(
+        Node::opaque(
+            "prepare_verify_check",
+            vec![port("prep_success", "Bool")],
+            vec![
+                optional("request", "TransportRequest"),
+                port("skip", "Bool"),
+                optional("skip_reason", "String"),
+            ],
+            CIGraphOp::CI(CIOp::PrepareVerifyCheck),
+        ),
+        parse_codegen_result,
+    )?;
+
+    // Execute verify - transport boundary
+    let execute_verify = builder.add_node_after(
+        Node::opaque(
+            "execute_verify_check",
+            vec![
+                optional("request", "TransportRequest"),
+                port("skip", "Bool"),
+            ],
+            vec![
+                optional("response", "TransportResponse"),
+                port("skip", "Bool"),
+                optional("skip_reason", "String"),
+            ],
+            CIGraphOp::Transport(TransportOps::Execute),
+        ),
+        &prepare_verify,
+    )?;
+
+    // ParseVerifyResult - pure
+    let parse_verify = builder.add_node_after(
+        Node::opaque(
+            "parse_verify_check",
+            vec![
+                optional("response", "TransportResponse"),
+                port("skip", "Bool"),
+                optional("skip_reason", "String"),
+            ],
+            vec![port("verify_success", "Bool"), port("verify_stderr", "String")],
+            CIGraphOp::CI(CIOp::ParseVerifyResult),
+        ),
+        &execute_verify,
+    )?;
+
+    // ========================================================================
     // Report Stage
     // ========================================================================
 
@@ -560,17 +612,19 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
                 port("lint_success", "Bool"),
                 port("testgen_success", "Bool"),
                 port("guardrail_success", "Bool"),
+                port("verify_success", "Bool"),
                 optional("build_stderr", "String"),
                 optional("testgen_stderr", "String"),
                 optional("test_stdout", "String"),
                 optional("test_stderr", "String"),
                 optional("lint_stderr", "String"),
                 optional("guardrail_stderr", "String"),
+                optional("verify_stderr", "String"),
             ],
             vec![port("overall_success", "Bool"), port("report", "String")],
             CIGraphOp::CI(CIOp::Report),
         ),
-        &[&parse_test, &parse_lint, &parse_guardrail],
+        &[&parse_test, &parse_lint, &parse_guardrail, &parse_verify],
     )?;
 
     // ========================================================================
@@ -691,6 +745,26 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
         parse_guardrail.in_port("skip_reason"),
     )?;
 
+    // Verify stage (parallel with build/test/lint, depends on codegen)
+    builder.add_edge(
+        parse_codegen_result.out("prep_success"),
+        prepare_verify.in_port("prep_success"),
+    )?;
+    builder.add_edge(
+        prepare_verify.out("request"),
+        execute_verify.in_port("request"),
+    )?;
+    builder.add_edge(prepare_verify.out("skip"), execute_verify.in_port("skip"))?;
+    builder.add_edge(
+        execute_verify.out("response"),
+        parse_verify.in_port("response"),
+    )?;
+    builder.add_edge(execute_verify.out("skip"), parse_verify.in_port("skip"))?;
+    builder.add_edge(
+        prepare_verify.out("skip_reason"),
+        parse_verify.in_port("skip_reason"),
+    )?;
+
     // Report - success flags and stderr for failure details
     builder.add_edge(
         parse_build.out("build_success"),
@@ -726,6 +800,14 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
     builder.add_edge(
         parse_guardrail.out("guardrail_stderr"),
         report.in_port("guardrail_stderr"),
+    )?;
+    builder.add_edge(
+        parse_verify.out("verify_success"),
+        report.in_port("verify_success"),
+    )?;
+    builder.add_edge(
+        parse_verify.out("verify_stderr"),
+        report.in_port("verify_stderr"),
     )?;
 
     Ok(builder.build())

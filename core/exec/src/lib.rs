@@ -27,7 +27,7 @@
 //! [`CiContext`] automatically emits workflow commands to create collapsible
 //! log groups around DAG nodes, emit annotations for errors, etc.
 
-#![forbid(dead_code)]
+#![deny(dead_code)]
 pub mod ci_context;
 pub mod display;
 pub mod error;

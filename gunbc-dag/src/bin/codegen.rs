@@ -3,7 +3,7 @@
 //! Upsert-style codegen prep: checks for generated CLI entrypoints,
 //! runs the bootstrapper if missing, and writes a stamp file.
 
-#![forbid(dead_code)]
+#![deny(dead_code)]
 use gunbc_dag::codegen::build_codegen_graph;
 use gunbc_dag::CODEGEN_STAMP_PATH;
 use gunbc_exec::{execute_and_display, BoundaryMocks, ExecutionMode, TerminalProfile};

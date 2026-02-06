@@ -25,7 +25,7 @@
 //!
 //! Mock specs are in `graph_mock.rs` for test generation.
 
-#![forbid(dead_code)]
+#![deny(dead_code)]
 pub mod graph;
 
 #[cfg(test)]

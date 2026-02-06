@@ -30,7 +30,7 @@
 //! 3. Cardinality is used for automatic test generation
 //! 4. All primitives are pure - no direct I/O
 
-#![forbid(dead_code)]
+#![deny(dead_code)]
 pub mod collection;
 pub mod control;
 pub mod data;

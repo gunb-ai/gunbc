@@ -40,5 +40,5 @@ disallowed-methods = [
     
     # Process execution - use node.requires(&cli::TOOL) for tool dependencies
     # Direct Command::new should only be in transport executor and cli.rs
-    { path = "std::process::Command::new", reason = "I6: No escape hatches. Use node.requires(&cli::TOOL). Command::new only in transport executor/cli." },
+    { path = "std::process::Command::new", reason = "I6: No escape hatches. Use env nodes + tool handles. Command::new only in transport executor/cli." },
 ]

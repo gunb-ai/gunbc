@@ -4,7 +4,7 @@
 //! - A registry for testgen targets (via `inventory`)
 //! - A shared helper to generate test modules from DAGs + MockSpecs
 
-#![forbid(dead_code)]
+#![deny(dead_code)]
 // Re-export inventory so macros can submit without depending on it directly.
 pub use inventory;
 

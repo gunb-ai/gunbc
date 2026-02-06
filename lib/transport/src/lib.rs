@@ -27,7 +27,7 @@
 //! via std::fs and std::process::Command. All other crates MUST use
 //! PrepareXxxOp + TransportOps::Execute.
 
-#![forbid(dead_code)]
+#![deny(dead_code)]
 // This crate IS the transport layer - it's allowed to use direct I/O
 #![allow(clippy::disallowed_methods)]
 

@@ -50,6 +50,7 @@ pub mod boundary;
 pub mod builder;
 pub mod cargo;
 pub mod coerce;
+pub mod code_ir;
 pub mod compose;
 pub mod contract;
 pub mod dag;
@@ -60,6 +61,7 @@ pub mod layout;
 pub mod node;
 pub mod patterns;
 pub mod render;
+pub mod render_ir;
 pub mod resource;
 pub mod signature;
 pub mod symbols;
@@ -106,6 +108,16 @@ pub use patterns::{
     ResourceInput, RetryBuilder, TransactionBuilder, UpsertBuilder, WhileBuilder,
 };
 pub use render::Renderable;
+pub use render_ir::{
+    AnsiText, Block, Category, CodeRenderer, CursorAction, DataNode, DataValue, Document,
+    DocumentBody, DocumentRenderer, FileHeader, Frame, FrameRenderer, GraphicsElement,
+    GraphicsMedium, HtmlText, Line, MarkupNode, MarkupRenderer, OutputMedium, PlainText,
+    RenderSurface, Span, SpanStyle, StructuredBlock, StructuredRenderer, Target, TextMedium,
+};
+pub use code_ir::{
+    Assert, EnumDef, Expr, FnDef, HelperFn, ImplBlock, Import, Item, MatchArm, SourceFile, Stmt,
+    StructDef, TestFile, TestFn, TestSection,
+};
 pub use resource::{
     detect_resource_conflicts, derive_resource_accesses, AccessMode, Resource, ResourceAccess,
     ResourceConflict, ResourceId, ResourceKind, Timestamp,

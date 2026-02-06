@@ -22,8 +22,8 @@
 
 use crate::testgen::analyze::{analyze_dag, DagAnalysis};
 use crate::testgen::obligation::{collect_obligations, DischargeStatus, Obligation, ObligationSet};
-use crate::testgen::render::TestRenderer;
-use crate::testgen::render_rust::RustRenderer;
+use crate::testgen::render_rust::plain_rust_renderer;
+use gunbc_ir::render_ir::CodeRenderer;
 use crate::testgen::test_ir::{
     Assert, Expr, HelperFn, Import, Stmt, TestFile, TestFn, TestSection,
 };
@@ -365,7 +365,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
         let mut file = self.generate_test_file(&analysis, &obligations, graph_builder_fn);
 
         // Render body (no header) to compute content hash.
-        let body = RustRenderer.render_file(&file);
+        let body = plain_rust_renderer().render_file(&file);
         let content_hash = ContentHash::from_bytes(body.as_bytes());
 
         let stats = obligations.stats();
@@ -382,7 +382,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             format!("Content-Hash: {}", content_hash.as_str()),
         ];
 
-        RustRenderer.render_file(&file)
+        plain_rust_renderer().render_file(&file)
     }
 
     /// Find transport executor output ports that are connected downstream but lack mocks.
@@ -876,6 +876,13 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             Stmt::Assert(assert) => Self::collect_idents_from_assert(assert, used),
             Stmt::Comment(_) | Stmt::Blank => {}
             Stmt::Return(expr) | Stmt::TailExpr(expr) => Self::collect_idents_from_expr(expr, used),
+            Stmt::For { iter, body, .. } => {
+                Self::collect_idents_from_expr(iter, used);
+                for s in body {
+                    Self::collect_idents_from_stmt(s, used);
+                }
+            }
+            Stmt::Item(_) => {}
         }
     }
 
@@ -938,6 +945,43 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                 Self::collect_idents_from_expr(right, used);
             }
             Expr::UnaryOp { expr, .. } => Self::collect_idents_from_expr(expr, used),
+            Expr::Match { expr, arms } => {
+                Self::collect_idents_from_expr(expr, used);
+                for arm in arms {
+                    for s in &arm.body {
+                        Self::collect_idents_from_stmt(s, used);
+                    }
+                }
+            }
+            Expr::If { cond, then_body, else_body } => {
+                Self::collect_idents_from_expr(cond, used);
+                for s in then_body {
+                    Self::collect_idents_from_stmt(s, used);
+                }
+                if let Some(eb) = else_body {
+                    for s in eb {
+                        Self::collect_idents_from_stmt(s, used);
+                    }
+                }
+            }
+            Expr::Block(stmts) => {
+                for s in stmts {
+                    Self::collect_idents_from_stmt(s, used);
+                }
+            }
+            Expr::FormatStr { args, .. } | Expr::MacroCall { args, .. } => {
+                for arg in args {
+                    Self::collect_idents_from_expr(arg, used);
+                }
+            }
+            Expr::Tuple(exprs) | Expr::Array(exprs) => {
+                for e in exprs {
+                    Self::collect_idents_from_expr(e, used);
+                }
+            }
+            Expr::RawCode(code) => {
+                Self::record_ident(code, used);
+            }
         }
     }
 

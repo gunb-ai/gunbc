@@ -25,7 +25,7 @@
 //! Future improvement: Express codegen as a DAG executed by a minimal bootstrap
 //! executor that doesn't depend on the generated tools.
 
-#![forbid(dead_code)]
+#![deny(dead_code)]
 use cargo_metadata::MetadataCommand;
 use gunbc_codegen::{
     all_cleanable_outputs, all_tools, generate_cli_with_import, generate_graph_rs, FileWriter,

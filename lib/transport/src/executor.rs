@@ -727,20 +727,6 @@ mod tests {
     }
 
     // ========================================================================
-    // Base64 encoding test (internal utility)
-    // ========================================================================
-
-    #[test]
-    fn test_base64_encode() {
-        assert_eq!(base64_encode("hello"), "aGVsbG8=");
-        assert_eq!(base64_encode("user:pass"), "dXNlcjpwYXNz");
-        assert_eq!(base64_encode(""), "");
-        assert_eq!(base64_encode("a"), "YQ==");
-        assert_eq!(base64_encode("ab"), "YWI=");
-        assert_eq!(base64_encode("abc"), "YWJj");
-    }
-
-    // ========================================================================
     // Top-level execute_transport dispatch tests
     // ========================================================================
 

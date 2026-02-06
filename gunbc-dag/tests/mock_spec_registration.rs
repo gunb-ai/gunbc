@@ -2,6 +2,7 @@ use glob::glob;
 use std::fs;
 use std::path::Path;
 
+#[allow(clippy::disallowed_methods)] // Test reads source files to validate registration
 #[test]
 fn all_mock_specs_are_registered() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -30,8 +31,8 @@ fn all_mock_specs_are_registered() {
             {
                 let mut has_attr = false;
                 let start = idx.saturating_sub(16);
-                for j in start..idx {
-                    if lines[j].contains("testgen_target") {
+                for preceding_line in &lines[start..idx] {
+                    if preceding_line.contains("testgen_target") {
                         has_attr = true;
                         break;
                     }

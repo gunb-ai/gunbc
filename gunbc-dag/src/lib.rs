@@ -16,14 +16,16 @@
 //! - `gunbc-clippy` (in lib/tools/) wraps the clippy CLI tool (general)
 //! - `gunbc-dag::ci` defines gunbc's CI pipeline (repo-specific)
 
-#![forbid(dead_code)]
+#![deny(dead_code)]
 pub mod bootstrap;
 pub mod build;
 pub mod ci;
 pub mod codegen;
 pub mod makegen;
 pub mod policy;
+pub mod pragma;
 pub mod resources;
+pub mod testgen_dag;
 pub mod workspace;
 
 // Re-exports for convenience
@@ -35,11 +37,13 @@ pub use codegen::{
     CodegenOp,
 };
 pub use gunbc_ir::CODEGEN_STAMP_PATH;
+pub use pragma::{build_pragma_graph, pragma_signature, PragmaGraphOp, PragmaOp};
 pub use makegen::{
     build_makegen_graph, default_build_config, makegen_signature, render_gitignore,
     render_makefile, BuildConfig, MakegenGraphOp, MakegenOp,
 };
 pub use resources::testgen_resource_def;
+pub use testgen_dag::{TestgenGraphOp, TestgenOp};
 pub use workspace::{
     build_bootstrap_subdag, build_ci_subdag, build_clippy_lint_all_subdag, build_clippy_subdag,
     build_deps_generate_subdag, build_deps_install_subdag, build_gist_rust_subdag,

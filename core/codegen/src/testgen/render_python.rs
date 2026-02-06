@@ -1,18 +1,26 @@
-//! Python stub backend for test rendering.
+//! Python stub backend for code rendering.
 //!
-//! This stub exists at Phase 0 to validate the `TestRenderer` trait surface.
+//! This stub exists to validate the `CodeRenderer` trait surface.
 //! Every method compiles but panics at runtime. If a method signature can't
 //! be cleanly implemented for Python, the abstraction is wrong.
 
-use super::render::TestRenderer;
-use super::test_ir::*;
+use gunbc_ir::code_ir::*;
+use gunbc_ir::render_ir::{CodeRenderer, OutputMedium, TextMedium};
 use gunbc_ir::ValueExpr;
 
-pub struct PythonRenderer;
+pub struct PythonCodeRenderer<M: OutputMedium> {
+    medium: M,
+}
 
-impl TestRenderer for PythonRenderer {
-    fn extension(&self) -> &str {
-        "py"
+impl<M: OutputMedium> PythonCodeRenderer<M> {
+    pub fn new(medium: M) -> Self {
+        Self { medium }
+    }
+}
+
+impl<M: TextMedium> CodeRenderer<M> for PythonCodeRenderer<M> {
+    fn medium(&self) -> &M {
+        &self.medium
     }
 
     fn render_value(&self, _expr: &ValueExpr) -> String {
@@ -21,6 +29,10 @@ impl TestRenderer for PythonRenderer {
 
     fn render_file(&self, _file: &TestFile) -> String {
         todo!("Python file rendering not yet implemented")
+    }
+
+    fn render_source_file(&self, _file: &SourceFile) -> String {
+        todo!("Python source file rendering not yet implemented")
     }
 
     fn render_expr(&self, _expr: &Expr) -> String {
@@ -37,5 +49,9 @@ impl TestRenderer for PythonRenderer {
 
     fn render_import(&self, _import: &Import) -> String {
         todo!("Python import rendering not yet implemented")
+    }
+
+    fn render_item(&self, _item: &Item, _indent: usize) -> String {
+        todo!("Python item rendering not yet implemented")
     }
 }

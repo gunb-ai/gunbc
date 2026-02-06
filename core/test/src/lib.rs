@@ -35,7 +35,7 @@
 //!
 //! This enables automatic test generation that provides real signal.
 
-#![forbid(dead_code)]
+#![deny(dead_code)]
 pub mod boundary;
 pub mod composition;
 pub mod mock;

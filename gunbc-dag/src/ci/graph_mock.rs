@@ -21,6 +21,7 @@
 //! - `execute_build`: Run cargo build
 //! - `execute_test`: Run cargo test
 //! - `execute_guardrail_check`: Check disallowed-methods allowlist
+//! - `execute_verify_check`: Run make verify checks (makegen, bootstrap, testgen, pragma)
 //!
 //! # CLI Tool Mocks
 //!
@@ -71,6 +72,7 @@ pub fn ci_mock_spec() -> MockSpec {
                 .input("lint_success", Value::Bool(true))
                 .input("testgen_success", Value::Bool(true))
                 .input("guardrail_success", Value::Bool(true))
+                .input("verify_success", Value::Bool(true))
                 .output("overall_success", OutputMatcher::exact(Value::Bool(true)))
                 .output("report", OutputMatcher::contains("SUCCESS"))
                 .description("All stages pass → overall success"),
@@ -90,6 +92,7 @@ pub fn ci_mock_spec() -> MockSpec {
                 .input("lint_stderr", Value::Str(String::new()))
                 .input("testgen_success", Value::Bool(true))
                 .input("guardrail_success", Value::Bool(true))
+                .input("verify_success", Value::Bool(true))
                 .output("overall_success", OutputMatcher::exact(Value::Bool(false)))
                 .output("report", OutputMatcher::contains("FAILURE"))
                 .description("Build failure → overall failure"),
@@ -301,6 +304,19 @@ pub fn ci_mock_spec() -> MockSpec {
                 .output("guardrail_success", OutputMatcher::exact(Value::Bool(true)))
                 .description("Guardrail check success → guardrail_success true"),
         )
+        .node_example(
+            NodeExample::new("prepare_verify_check")
+                .input("prep_success", Value::Bool(true))
+                .output("skip", OutputMatcher::IsBool)
+                .description("Verify prepare emits skip flag"),
+        )
+        .node_example(
+            NodeExample::new("parse_verify_check")
+                .input("skip", Value::Bool(false))
+                .input("response", Value::Response(ShellResponse::ok("All checks passed").into()))
+                .output("verify_success", OutputMatcher::exact(Value::Bool(true)))
+                .description("Verify check success → verify_success true"),
+        )
         // Primitive nodes — tested in their own crates
         .skip_node_example("prepare_deps_exists")
 }
@@ -407,6 +423,17 @@ pub fn ci_mock_spec_test_fails() -> MockSpec {
         .expect("execute_guardrail_check skip should match type")
         .boundary_str("execute_guardrail_check", "skip_reason", "")
         .expect("execute_guardrail_check skip_reason should match type")
+        // Transport: execute_verify_check (success)
+        .transport_response(
+            "execute_verify_check",
+            "response",
+            TransportResponse::Shell(ShellResponse::ok("All checks passed")),
+        )
+        .expect("execute_verify_check response should match type")
+        .boundary_bool("execute_verify_check", "skip", false)
+        .expect("execute_verify_check skip should match type")
+        .boundary_str("execute_verify_check", "skip_reason", "")
+        .expect("execute_verify_check skip_reason should match type")
         // CliTool: clippy_lint (success)
         .boundary_bool("clippy_lint", "success", true)
         .expect("clippy_lint success should match type")
@@ -518,6 +545,17 @@ pub fn ci_mock_spec_build_fails() -> MockSpec {
         .expect("execute_guardrail_check skip should match type")
         .boundary_str("execute_guardrail_check", "skip_reason", "")
         .expect("execute_guardrail_check skip_reason should match type")
+        // Transport: execute_verify_check (success - parallel with build, depends on codegen)
+        .transport_response(
+            "execute_verify_check",
+            "response",
+            TransportResponse::Shell(ShellResponse::ok("All checks passed")),
+        )
+        .expect("execute_verify_check response should match type")
+        .boundary_bool("execute_verify_check", "skip", false)
+        .expect("execute_verify_check skip should match type")
+        .boundary_str("execute_verify_check", "skip_reason", "")
+        .expect("execute_verify_check skip_reason should match type")
         // CliTool: clippy_lint (skipped due to build failure)
         .boundary_bool("clippy_lint", "success", false)
         .expect("clippy_lint success should match type")
@@ -612,6 +650,13 @@ pub fn ci_mock_spec_prep_fails() -> MockSpec {
             "Skipped due to testgen failure",
         )
         .expect("execute_guardrail_check skip_reason should match type")
+        // Transport: execute_verify_check (skipped due to prep failure)
+        .boundary("execute_verify_check", "response", Value::Skipped)
+        .expect("execute_verify_check response should match type")
+        .boundary_bool("execute_verify_check", "skip", true)
+        .expect("execute_verify_check skip should match type")
+        .boundary_str("execute_verify_check", "skip_reason", "Prep failed")
+        .expect("execute_verify_check skip_reason should match type")
         // CliTool: clippy_lint (skipped)
         .boundary_bool("clippy_lint", "success", false)
         .expect("clippy_lint success should match type")
@@ -725,6 +770,17 @@ pub fn ci_mock_spec_lint_fails() -> MockSpec {
         .expect("execute_guardrail_check skip should match type")
         .boundary_str("execute_guardrail_check", "skip_reason", "")
         .expect("execute_guardrail_check skip_reason should match type")
+        // Transport: execute_verify_check (success)
+        .transport_response(
+            "execute_verify_check",
+            "response",
+            TransportResponse::Shell(ShellResponse::ok("All checks passed")),
+        )
+        .expect("execute_verify_check response should match type")
+        .boundary_bool("execute_verify_check", "skip", false)
+        .expect("execute_verify_check skip should match type")
+        .boundary_str("execute_verify_check", "skip_reason", "")
+        .expect("execute_verify_check skip_reason should match type")
         // CliTool: clippy_lint (FAILS)
         .boundary_bool("clippy_lint", "success", false)
         .expect("clippy_lint success should match type")
@@ -853,6 +909,17 @@ fn with_ci_typed_mocks(
         .expect("execute_guardrail_check skip should match type")
         .boundary_str("execute_guardrail_check", "skip_reason", "")
         .expect("execute_guardrail_check skip_reason should match type")
+        // Transport: execute_verify_check (succeeds)
+        .transport_response(
+            "execute_verify_check",
+            "response",
+            TransportResponse::Shell(ShellResponse::ok("All checks passed")),
+        )
+        .expect("execute_verify_check response should match type")
+        .boundary_bool("execute_verify_check", "skip", false)
+        .expect("execute_verify_check skip should match type")
+        .boundary_str("execute_verify_check", "skip_reason", "")
+        .expect("execute_verify_check skip_reason should match type")
         // CliTool: clippy_lint (succeeds) - now detected by extract_mock_requirements
         .boundary_bool("clippy_lint", "success", true)
         .expect("clippy_lint success should match type")

@@ -172,7 +172,7 @@ pub fn build_bootstrap_graph() -> Result<Dag<BootstrapGraphOp>, BuilderError> {
     let prepare_makefile = builder.add_node_after(
         Node::opaque(
             "prepare_makefile_write",
-            vec![port("content", "String")],
+            vec![port("path", "String"), port("content", "String")],
             vec![port("request", "TransportRequest")],
             BootstrapGraphOp::PrepareFileWrite(PrepareFileWriteOp),
         ),
@@ -258,7 +258,7 @@ pub fn build_bootstrap_graph() -> Result<Dag<BootstrapGraphOp>, BuilderError> {
     let prepare_gitignore = builder.add_node_after(
         Node::opaque(
             "prepare_gitignore_write",
-            vec![port("content", "String")],
+            vec![port("path", "String"), port("content", "String")],
             vec![port("request", "TransportRequest")],
             BootstrapGraphOp::PrepareFileWrite(PrepareFileWriteOp),
         ),
@@ -477,7 +477,9 @@ mod tests {
         let dag = build_bootstrap_graph().expect("graph should build");
         let inferred = infer_signature(&dag);
 
-        // 4 inputs: makefile path, gitignore path, makefile check_mode, gitignore check_mode
-        assert_eq!(inferred.inputs.len(), 4);
+        // 6 inputs: makefile read path, gitignore read path,
+        //           makefile write path, gitignore write path,
+        //           makefile check_mode, gitignore check_mode
+        assert_eq!(inferred.inputs.len(), 6);
     }
 }

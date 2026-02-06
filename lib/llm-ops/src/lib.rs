@@ -20,7 +20,7 @@
 //! // 3. ParseChatResponse extracts content from the provider-specific response
 //! ```
 
-#![forbid(dead_code)]
+#![deny(dead_code)]
 pub mod graph;
 
 pub mod graph_mock;

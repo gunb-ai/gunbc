@@ -127,6 +127,19 @@ pub fn map_type(abstract_type: &str, language: &str) -> Option<String> {
             let inner_type = map_type(inner, language)?;
             mapping.optional_template.replace("{0}", &inner_type)
         }
+        _ if abstract_type.starts_with("Map<") => {
+            let inner = &abstract_type[4..abstract_type.len() - 1];
+            if let Some((key, val)) = inner.split_once(", ") {
+                let key_type = map_type(key, language)?;
+                let val_type = map_type(val, language)?;
+                mapping
+                    .map_template
+                    .replace("{0}", &key_type)
+                    .replace("{1}", &val_type)
+            } else {
+                abstract_type.to_string()
+            }
+        }
         _ => abstract_type.to_string(), // Pass through unknown types
     };
 

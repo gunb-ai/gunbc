@@ -2,9 +2,12 @@
 //!
 //! Generates Makefile from tool registry.
 
-#![forbid(dead_code)]
+#![deny(dead_code)]
 use gunbc_dag::build_makegen_graph;
-use gunbc_exec::{execute_with_mode_and_inputs, BoundaryMocks, ExecutionMode};
+use gunbc_exec::{
+    execute_and_display, execute_with_mode_and_inputs, BoundaryMocks, ExecutionMode,
+    TerminalProfile,
+};
 use gunbc_ir::transport::{FileOp, FileResponse, TransportResponse};
 use gunbc_ir::{detect_entrypoints, Value};
 use std::env;
@@ -122,25 +125,10 @@ fn main() {
         ExecutionMode::Real
     };
 
-    // Print header
-    if !check {
-        println!("makegen");
-        println!("  output_path: {}", output_path);
-        println!(
-            "  mode: {}",
-            if dry_run && !check {
-                "dry-run"
-            } else {
-                "real"
-            }
-        );
-        println!();
-    }
-
-    // Execute
-    match execute_with_mode_and_inputs(&dag, mode, Some(&input_mocks)) {
-        Ok(log) => {
-            if check {
+    if check {
+        // Check mode: bypass display, use execute_with_mode_and_inputs directly
+        match execute_with_mode_and_inputs(&dag, mode, Some(&input_mocks)) {
+            Ok(log) => {
                 // Scan log for compare_content.fresh
                 let fresh = log
                     .entries
@@ -157,48 +145,27 @@ fn main() {
                     eprintln!("  DRIFT  {}", output_path);
                     process::exit(1);
                 }
-            } else {
-                for entry in &log.entries {
-                    let marker = if entry.was_intercepted {
-                        " [DRY-RUN]"
-                    } else {
-                        ""
-                    };
-                    println!("[{}]{}", entry.node_id, marker);
-
-                    for (port, value) in &entry.outputs {
-                        print_value(port, value);
-                    }
-                }
+            }
+            Err(e) => {
+                eprintln!("Error: {}", e);
+                process::exit(1);
             }
         }
-        Err(e) => {
-            eprintln!("Error: {}", e);
-            process::exit(1);
-        }
-    }
-}
+    } else {
+        // Detect terminal environment
+        let profile = TerminalProfile::detect();
 
-fn print_value(port: &str, value: &Value) {
-    match value {
-        Value::Str(s) => {
-            if port.ends_with("stderr") || port.ends_with("stdout") {
-                if !s.is_empty() {
-                    println!("  {}: {}", port, s);
-                }
-            } else if s.len() < 80 {
-                println!("  {}: {}", port, s);
-            } else {
-                println!("  {}: {}...", port, &s[..60.min(s.len())]);
-            }
-        }
-        Value::Int(i) => println!("  {}: {}", port, i),
-        Value::Bool(b) => println!("  {}: {}", port, b),
-        Value::List(list) => println!("  {}: [{} items]", port, list.len()),
-        Value::Set(set) => println!("  {}: {{{} items}}", port, set.len()),
-        Value::Map(map) => println!("  {}: {{{} entries}}", port, map.len()),
-        Value::Json(_) => println!("  {}: <JSON>", port),
-        _ => {}
+        // Print header
+        println!("makegen");
+        println!("  output_path: {}", output_path);
+        println!(
+            "  mode: {}",
+            if dry_run { "dry-run" } else { "real" }
+        );
+        println!();
+
+        // Execute and display (progress or classic based on terminal)
+        execute_and_display(&dag, mode, &profile, None, Some(&input_mocks));
     }
 }
 

@@ -1,10 +1,10 @@
-//! Rust backend for test rendering.
+//! Rust backend for code rendering.
 //!
-//! Renders `TestFile` → valid Rust source compatible with `#[test]` and
-//! the gunbc test harness.
+//! Renders `TestFile`/`SourceFile` → valid Rust source via
+//! `CodeRenderer<M>` where `M: TextMedium`.
 
-use super::render::TestRenderer;
-use super::test_ir::*;
+use gunbc_ir::code_ir::*;
+use gunbc_ir::render_ir::{CodeRenderer, OutputMedium, TextMedium};
 use gunbc_ir::ValueExpr;
 
 /// Escape a string for embedding in a Rust string literal.
@@ -12,21 +12,30 @@ fn escape_rust_str(s: &str) -> String {
     s.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
-pub struct RustRenderer;
+/// Generic Rust code renderer parameterized over output medium.
+pub struct RustCodeRenderer<M: OutputMedium> {
+    medium: M,
+}
+
+impl<M: OutputMedium> RustCodeRenderer<M> {
+    pub fn new(medium: M) -> Self {
+        Self { medium }
+    }
+}
 
 /// Whether to render a ValueExpr as a `Value::X(...)` constructor or as a
 /// bare Rust type (for transport struct fields).
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum ValueMode {
+pub(crate) enum ValueMode {
     /// Render as `Value` enum constructor: `Value::Str("x".to_string())`
     Wrapped,
     /// Render as bare Rust type: `"x".to_string()`
     Bare,
 }
 
-impl TestRenderer for RustRenderer {
-    fn extension(&self) -> &str {
-        "rs"
+impl<M: TextMedium> CodeRenderer<M> for RustCodeRenderer<M> {
+    fn medium(&self) -> &M {
+        &self.medium
     }
 
     fn render_value(&self, expr: &ValueExpr) -> String {
@@ -99,6 +108,25 @@ impl TestRenderer for RustRenderer {
         out
     }
 
+    fn render_source_file(&self, file: &SourceFile) -> String {
+        let mut out = String::new();
+
+        // Module-level doc comments
+        for line in &file.doc {
+            out.push_str(&format!("//! {}\n", line));
+        }
+        if !file.doc.is_empty() {
+            out.push('\n');
+        }
+
+        for item in &file.items {
+            out.push_str(&self.render_item(item, 0));
+            out.push('\n');
+        }
+
+        out
+    }
+
     fn render_expr(&self, expr: &Expr) -> String {
         match expr {
             Expr::Value(v) => self.render_value(v),
@@ -153,6 +181,70 @@ impl TestRenderer for RustRenderer {
             }
             Expr::IntLit(n) => n.to_string(),
             Expr::BoolLit(b) => b.to_string(),
+            Expr::Match { expr, arms } => {
+                let mut out = format!("match {} {{\n", self.render_expr(expr));
+                for arm in arms {
+                    out.push_str(&format!("    {} => {{\n", arm.pattern));
+                    for stmt in &arm.body {
+                        out.push_str(&self.render_stmt(stmt, 2));
+                    }
+                    out.push_str("    }\n");
+                }
+                out.push('}');
+                out
+            }
+            Expr::If {
+                cond,
+                then_body,
+                else_body,
+            } => {
+                let mut out = format!("if {} {{\n", self.render_expr(cond));
+                for stmt in then_body {
+                    out.push_str(&self.render_stmt(stmt, 1));
+                }
+                if let Some(else_stmts) = else_body {
+                    out.push_str("} else {\n");
+                    for stmt in else_stmts {
+                        out.push_str(&self.render_stmt(stmt, 1));
+                    }
+                }
+                out.push('}');
+                out
+            }
+            Expr::Block(stmts) => {
+                let mut out = "{\n".to_string();
+                for stmt in stmts {
+                    out.push_str(&self.render_stmt(stmt, 1));
+                }
+                out.push('}');
+                out
+            }
+            Expr::FormatStr { template, args } => {
+                if args.is_empty() {
+                    format!("format!(\"{}\")", escape_rust_str(template))
+                } else {
+                    let args_str: Vec<String> =
+                        args.iter().map(|a| self.render_expr(a)).collect();
+                    format!(
+                        "format!(\"{}\", {})",
+                        escape_rust_str(template),
+                        args_str.join(", ")
+                    )
+                }
+            }
+            Expr::MacroCall { name, args } => {
+                let args_str: Vec<String> = args.iter().map(|a| self.render_expr(a)).collect();
+                format!("{}!({})", name, args_str.join(", "))
+            }
+            Expr::Tuple(items) => {
+                let items_str: Vec<String> = items.iter().map(|e| self.render_expr(e)).collect();
+                format!("({})", items_str.join(", "))
+            }
+            Expr::Array(items) => {
+                let items_str: Vec<String> = items.iter().map(|e| self.render_expr(e)).collect();
+                format!("[{}]", items_str.join(", "))
+            }
+            Expr::RawCode(code) => code.clone(),
         }
     }
 
@@ -186,6 +278,24 @@ impl TestRenderer for RustRenderer {
             Stmt::TailExpr(expr) => {
                 format!("{}{}\n", pad, self.render_expr(expr))
             }
+            Stmt::For {
+                binding,
+                iter,
+                body,
+            } => {
+                let mut out = format!(
+                    "{}for {} in {} {{\n",
+                    pad,
+                    binding,
+                    self.render_expr(iter)
+                );
+                for stmt in body {
+                    out.push_str(&self.render_stmt(stmt, indent + 1));
+                }
+                out.push_str(&format!("{}}}\n", pad));
+                out
+            }
+            Stmt::Item(item) => self.render_item(item, indent),
         }
     }
 
@@ -248,14 +358,26 @@ impl TestRenderer for RustRenderer {
             format!("use {}::{{{}}};", path, import.items.join(", "))
         }
     }
+
+    fn render_item(&self, item: &Item, indent: usize) -> String {
+        let pad = "    ".repeat(indent);
+        match item {
+            Item::Use(import) => format!("{}{}\n", pad, self.render_import(import)),
+            Item::Fn(f) => self.render_fn_def(f, indent),
+            Item::Enum(e) => self.render_enum_def(e, indent),
+            Item::Impl(i) => self.render_impl_block(i, indent),
+            Item::Struct(s) => self.render_struct_def(s, indent),
+            Item::Raw(code) => format!("{}{}\n", pad, code),
+        }
+    }
 }
 
-impl RustRenderer {
+impl<M: TextMedium> RustCodeRenderer<M> {
     /// Core value rendering: a single exhaustive match over ValueExpr.
     ///
     /// `Wrapped` mode emits `Value::X(...)` constructors (for test assertions).
     /// `Bare` mode emits native Rust types (for transport struct fields).
-    fn render_value_inner(&self, expr: &ValueExpr, mode: ValueMode) -> String {
+    pub(crate) fn render_value_inner(&self, expr: &ValueExpr, mode: ValueMode) -> String {
         let bare = mode == ValueMode::Bare;
         match expr {
             ValueExpr::Unit => if bare { "None" } else { "Value::Unit" }.to_string(),
@@ -364,13 +486,7 @@ impl RustRenderer {
     }
 
     /// Render a struct-typed ValueExpr to Rust source.
-    ///
-    /// Handles transport types (TransportRequest::Shell, etc.) by
-    /// emitting fully-qualified Rust struct construction wrapped in
-    /// Value::Request/Response.
     fn render_rust_struct(&self, name: &str, fields: &[(String, ValueExpr)]) -> String {
-        // Parse transport variant name once to determine all three values:
-        // wrapper (Value::Request/Response), enum path, and inner struct type.
         let (wrapper, enum_path, struct_type) =
             if let Some(variant) = name.strip_prefix("TransportRequest::") {
                 (
@@ -488,15 +604,164 @@ impl RustRenderer {
         };
         format!("gunbc_ir::transport::HttpMethod::{}", method)
     }
+
+    fn render_fn_def(&self, f: &FnDef, indent: usize) -> String {
+        let pad = "    ".repeat(indent);
+        let mut out = String::new();
+
+        // Doc comments
+        for line in &f.doc {
+            out.push_str(&format!("{}/// {}\n", pad, line));
+        }
+
+        // Attributes
+        for attr in &f.attributes {
+            out.push_str(&format!("{}{}\n", pad, attr));
+        }
+
+        // Signature
+        let vis = if f.is_pub { "pub " } else { "" };
+        let params: Vec<String> = f
+            .params
+            .iter()
+            .map(|(name, ty)| {
+                if ty.is_empty() {
+                    name.clone()
+                } else {
+                    format!("{}: {}", name, ty)
+                }
+            })
+            .collect();
+        let ret = match &f.return_type {
+            Some(ty) => format!(" -> {}", ty),
+            None => String::new(),
+        };
+        out.push_str(&format!(
+            "{}{}fn {}({}){} {{\n",
+            pad,
+            vis,
+            f.name,
+            params.join(", "),
+            ret
+        ));
+
+        // Body
+        for stmt in &f.body {
+            out.push_str(&self.render_stmt(stmt, indent + 1));
+        }
+
+        out.push_str(&format!("{}}}\n", pad));
+        out
+    }
+
+    fn render_enum_def(&self, e: &EnumDef, indent: usize) -> String {
+        let pad = "    ".repeat(indent);
+        let mut out = String::new();
+
+        // Doc comments
+        for line in &e.doc {
+            out.push_str(&format!("{}/// {}\n", pad, line));
+        }
+
+        // Derives
+        if !e.derives.is_empty() {
+            out.push_str(&format!(
+                "{}#[derive({})]\n",
+                pad,
+                e.derives.join(", ")
+            ));
+        }
+
+        // Enum header
+        let vis = if e.is_pub { "pub " } else { "" };
+        out.push_str(&format!("{}{}enum {} {{\n", pad, vis, e.name));
+
+        // Variants
+        for variant in &e.variants {
+            out.push_str(&format!("{}    {},\n", pad, variant));
+        }
+
+        out.push_str(&format!("{}}}\n", pad));
+        out
+    }
+
+    fn render_impl_block(&self, i: &ImplBlock, indent: usize) -> String {
+        let pad = "    ".repeat(indent);
+        let mut out = String::new();
+
+        let header = match &i.trait_name {
+            Some(tr) => format!("{}impl {} for {} {{\n", pad, tr, i.type_name),
+            None => format!("{}impl {} {{\n", pad, i.type_name),
+        };
+        out.push_str(&header);
+
+        for (idx, func) in i.items.iter().enumerate() {
+            if idx > 0 {
+                out.push('\n');
+            }
+            out.push_str(&self.render_fn_def(func, indent + 1));
+        }
+
+        out.push_str(&format!("{}}}\n", pad));
+        out
+    }
+
+    fn render_struct_def(&self, s: &StructDef, indent: usize) -> String {
+        let pad = "    ".repeat(indent);
+        let mut out = String::new();
+
+        // Doc comments
+        for line in &s.doc {
+            out.push_str(&format!("{}/// {}\n", pad, line));
+        }
+
+        // Derives
+        if !s.derives.is_empty() {
+            out.push_str(&format!(
+                "{}#[derive({})]\n",
+                pad,
+                s.derives.join(", ")
+            ));
+        }
+
+        // Struct header
+        let vis = if s.is_pub { "pub " } else { "" };
+        out.push_str(&format!("{}{}struct {} {{\n", pad, vis, s.name));
+
+        // Fields
+        for (name, ty, is_pub) in &s.fields {
+            let field_vis = if *is_pub { "pub " } else { "" };
+            out.push_str(&format!("{}    {}{}: {},\n", pad, field_vis, name, ty));
+        }
+
+        out.push_str(&format!("{}}}\n", pad));
+        out
+    }
+}
+
+// Backward-compatible type alias
+pub type RustRenderer = RustCodeRenderer<gunbc_ir::render_ir::PlainText>;
+
+/// Create a RustCodeRenderer with PlainText medium (most common usage).
+pub fn plain_rust_renderer() -> RustCodeRenderer<gunbc_ir::render_ir::PlainText> {
+    RustCodeRenderer::new(gunbc_ir::render_ir::PlainText {
+        tier: gunbc_ir::symbols::Tier::Ascii,
+        symbol_set: &gunbc_ir::symbols::STANDARD,
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gunbc_ir::render_ir::CodeRenderer;
+
+    fn r() -> RustCodeRenderer<gunbc_ir::render_ir::PlainText> {
+        plain_rust_renderer()
+    }
 
     #[test]
     fn render_value_covers_all_variants() {
-        let r = RustRenderer;
+        let r = r();
         assert_eq!(r.render_value(&ValueExpr::Unit), "Value::Unit");
         assert_eq!(r.render_value(&ValueExpr::Bool(true)), "Value::Bool(true)");
         assert_eq!(
@@ -516,7 +781,7 @@ mod tests {
 
     #[test]
     fn render_value_string_escaping() {
-        let r = RustRenderer;
+        let r = r();
         assert_eq!(
             r.render_value(&ValueExpr::Str("say \"hi\"".into())),
             "Value::Str(\"say \\\"hi\\\"\".to_string())"
@@ -525,7 +790,7 @@ mod tests {
 
     #[test]
     fn render_bare_value_no_wrapper() {
-        let r = RustRenderer;
+        let r = r();
         assert_eq!(
             r.render_value_inner(&ValueExpr::Unit, ValueMode::Bare),
             "None"
@@ -553,7 +818,7 @@ mod tests {
 
     #[test]
     fn render_expr_method_chain() {
-        let r = RustRenderer;
+        let r = r();
         let expr = Expr::var("mocks").method(
             "insert",
             vec![
@@ -570,7 +835,7 @@ mod tests {
 
     #[test]
     fn render_import() {
-        let r = RustRenderer;
+        let r = r();
         let imp = Import {
             path: vec!["gunbc_exec".into()],
             items: vec!["execute_with_mode".into(), "BoundaryMocks".into()],
@@ -583,14 +848,14 @@ mod tests {
 
     #[test]
     fn render_let_stmt() {
-        let r = RustRenderer;
+        let r = r();
         let stmt = Stmt::let_bind("dag", Expr::call("gist_graph", vec![]));
         assert_eq!(r.render_stmt(&stmt, 1), "    let dag = gist_graph();\n");
     }
 
     #[test]
     fn render_assert_eq() {
-        let r = RustRenderer;
+        let r = r();
         let a = Assert::Eq {
             left: Expr::var("output").deref(),
             right: Expr::Value(ValueExpr::Int(42)),
@@ -604,7 +869,7 @@ mod tests {
 
     #[test]
     fn render_assert_non_empty() {
-        let r = RustRenderer;
+        let r = r();
         let a = Assert::NonEmpty {
             expr: Expr::var("output"),
             message: "expected non-empty value".into(),
@@ -617,7 +882,7 @@ mod tests {
 
     #[test]
     fn render_bin_op_in_closure() {
-        let r = RustRenderer;
+        let r = r();
         let expr = Expr::var("x").method("as_int", vec![]).method(
             "is_some_and",
             vec![Expr::Closure {

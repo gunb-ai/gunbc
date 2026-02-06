@@ -113,6 +113,12 @@ pub struct BuildConfig {
     pub testgen: BuildCommand,
     /// Command to check if generated tests are stale
     pub testgen_check: BuildCommand,
+    /// Command to check if generated Makefile is stale
+    pub makegen_check: BuildCommand,
+    /// Command to check if generated bootstrap files are stale
+    pub bootstrap_check: BuildCommand,
+    /// Command to check if generated pragma/clippy config is stale
+    pub pragma_check: BuildCommand,
 }
 
 impl BuildConfig {
@@ -173,6 +179,33 @@ impl BuildConfig {
             testgen_check: c(
                 CargoCommand::new(Subcommand::Run(CargoInvocation::in_package(
                     "gunbc-testgen",
+                    "gunbc-dag",
+                )))
+                .release()
+                .trailing_arg("--check")
+                .warnings(w),
+            ),
+            makegen_check: c(
+                CargoCommand::new(Subcommand::Run(CargoInvocation::in_package(
+                    "gunbc-makegen",
+                    "gunbc-dag",
+                )))
+                .release()
+                .trailing_arg("--check")
+                .warnings(w),
+            ),
+            bootstrap_check: c(
+                CargoCommand::new(Subcommand::Run(CargoInvocation::in_package(
+                    "gunbc-bootstrap",
+                    "gunbc-dag",
+                )))
+                .release()
+                .trailing_arg("--check")
+                .warnings(w),
+            ),
+            pragma_check: c(
+                CargoCommand::new(Subcommand::Run(CargoInvocation::in_package(
+                    "gunbc-pragma",
                     "gunbc-dag",
                 )))
                 .release()
@@ -259,6 +292,33 @@ impl BuildConfig {
             testgen_check: c(
                 CargoCommand::new(Subcommand::Run(CargoInvocation::in_package(
                     "gunbc-testgen",
+                    "gunbc-dag",
+                )))
+                .release()
+                .trailing_arg("--check")
+                .warnings(w),
+            ),
+            makegen_check: c(
+                CargoCommand::new(Subcommand::Run(CargoInvocation::in_package(
+                    "gunbc-makegen",
+                    "gunbc-dag",
+                )))
+                .release()
+                .trailing_arg("--check")
+                .warnings(w),
+            ),
+            bootstrap_check: c(
+                CargoCommand::new(Subcommand::Run(CargoInvocation::in_package(
+                    "gunbc-bootstrap",
+                    "gunbc-dag",
+                )))
+                .release()
+                .trailing_arg("--check")
+                .warnings(w),
+            ),
+            pragma_check: c(
+                CargoCommand::new(Subcommand::Run(CargoInvocation::in_package(
+                    "gunbc-pragma",
                     "gunbc-dag",
                 )))
                 .release()

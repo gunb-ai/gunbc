@@ -13,12 +13,13 @@
 //! | `ToolDef` | `transport/tool.rs` | Platform-aware satisfiability checking |
 //! | `CliToolDef` | `transport/cli.rs` | Runtime tool acquisition (`node.requires()`) |
 //!
-//! **For runtime tool acquisition, use `CliToolDef` with `.requires()`:**
+//! **For runtime tool acquisition, use `CliToolDef` via resource ports:**
 //!
 //! ```ignore
 //! use gunbc_ir::transport::cli;
-//! Node::opaque("lint", inputs, outputs, LintOp)
-//!     .requires(&cli::CLIPPY)  // Uses CliToolDef for runtime acquisition
+//! // Declare the tool as a resource input on the node's port:
+//! Port::resource("clippy", TypeId::Tool, AccessMode::Read)
+//! // The environment node for the tool provides it via res:clippy
 //! ```
 //!
 //! # Architecture (ToolDef)

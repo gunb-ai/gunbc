@@ -20,9 +20,12 @@
 //! This gives visibility into each step (prep, build, test, lint, report)
 //! without requiring separate workflow steps.
 
-#![forbid(dead_code)]
+#![deny(dead_code)]
 use gunbc_dag::build_ci_graph_with_mode;
-use gunbc_exec::{execute_with_mode_and_ci, BoundaryMocks, CiContext, ExecutionMode};
+use gunbc_exec::{
+    execute_and_display, execute_with_mode_and_ci, BoundaryMocks, CiContext, ExecutionMode,
+    TerminalProfile,
+};
 use gunbc_ir::resource::ExecMode;
 use gunbc_ir::transport::cli::{ToolHandle, CLIPPY};
 use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse};
@@ -145,11 +148,9 @@ fn main() {
         ExecutionMode::Real
     };
 
-    // Detect CI environment and create context for workflow commands
-    // In GitHub Actions: emits ::group:: for collapsible sections
-    // In GitLab CI: emits section_start/end escape sequences
-    // Locally: just prints plain text
-    let mut ci = CiContext::detect();
+    // Detect CI environment
+    let ci = CiContext::detect();
+    let is_ci = ci.provider_id() != "plain";
 
     // Print header
     println!("{}", gunbc_ir::cargo::name("ci"));
@@ -164,28 +165,31 @@ fn main() {
             ExecMode::Ensure => "ensure (fix stale)",
         }
     );
-    // Show CI provider if detected (not "plain")
-    if ci.provider_id() != "plain" {
+    if is_ci {
         println!("  ci: {}", ci.provider_name());
     }
     println!();
 
-    // Execute the CI pipeline with CI context for step visibility.
-    // Node outputs are printed inside their CI groups by the executor,
-    // except for the "report" node which prints directly (no group).
-    match execute_with_mode_and_ci(&dag, mode, &mut ci) {
-        Ok(log) => {
-            // Check overall_success and exit with appropriate code
-            for entry in &log.entries {
-                if let Some(Value::Bool(false)) = entry.outputs.get("overall_success") {
-                    process::exit(1);
+    if is_ci {
+        // CI environment: use CI context for workflow commands (::group::, etc.)
+        let mut ci = ci;
+        match execute_with_mode_and_ci(&dag, mode, &mut ci) {
+            Ok(log) => {
+                for entry in &log.entries {
+                    if let Some(Value::Bool(false)) = entry.outputs.get("overall_success") {
+                        process::exit(1);
+                    }
                 }
             }
+            Err(e) => {
+                eprintln!("Error: {}", e);
+                process::exit(1);
+            }
         }
-        Err(e) => {
-            eprintln!("Error: {}", e);
-            process::exit(1);
-        }
+    } else {
+        // Local environment: use progress display
+        let profile = TerminalProfile::detect();
+        execute_and_display(&dag, mode, &profile, Some("overall_success"), None);
     }
 }
 

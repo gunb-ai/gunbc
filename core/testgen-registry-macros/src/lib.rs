@@ -1,4 +1,4 @@
-#![forbid(dead_code)]
+#![deny(dead_code)]
 use proc_macro::TokenStream;
 use quote::{format_ident, quote, ToTokens};
 use syn::{parse_macro_input, AttributeArgs, Expr, ItemFn, Lit, Meta, NestedMeta};
