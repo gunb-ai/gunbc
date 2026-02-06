@@ -173,37 +173,23 @@ impl CliEntrypoint {
     }
 }
 
-/// A boundary node that gets mocked in dry-run.
-#[derive(Debug, Clone)]
-pub struct CliBoundary {
-    /// Node ID
-    pub node_id: String,
-    /// Output ports to mock
-    pub mock_outputs: Vec<(String, String)>, // (port_name, mock_value_expr)
-}
-
 /// Generate a complete main.rs for a tool.
-pub fn generate_cli(
-    tool: &ToolMeta,
-    entrypoints: &[CliEntrypoint],
-    boundaries: &[CliBoundary],
-) -> String {
-    generate_cli_with_import(tool, entrypoints, boundaries, None)
+pub fn generate_cli(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> String {
+    generate_cli_with_import(tool, entrypoints, None)
 }
 
 /// Generate a complete main.rs for a tool with optional custom import.
 pub fn generate_cli_with_import(
     tool: &ToolMeta,
     entrypoints: &[CliEntrypoint],
-    boundaries: &[CliBoundary],
     custom_import: Option<&str>,
 ) -> String {
     // If step mode is enabled, use the step-mode template
     if tool.enable_step_mode {
-        return generate_cli_with_step_mode(tool, entrypoints, boundaries, custom_import);
+        return generate_cli_with_step_mode(tool, entrypoints, custom_import);
     }
 
-    let file = build_cli_source_file(tool, entrypoints, boundaries, custom_import);
+    let file = build_cli_source_file(tool, entrypoints, custom_import);
     plain_rust_renderer().render_source_file(&file)
 }
 
@@ -211,17 +197,15 @@ pub fn generate_cli_with_import(
 fn build_cli_source_file(
     tool: &ToolMeta,
     entrypoints: &[CliEntrypoint],
-    boundaries: &[CliBoundary],
     custom_import: Option<&str>,
 ) -> SourceFile {
     // Convert crate name (kebab-case) to module name (snake_case)
     let crate_module = NamingCase::SnakeCase.apply(&tool.crate_name);
     let arg_parsing = generate_arg_parsing(entrypoints);
-    let mock_setup = generate_mock_setup(boundaries, tool.mock_spec_call.as_deref());
+    let mock_setup = generate_mock_setup(&tool.mock_spec_call);
     let print_inputs = generate_print_inputs(entrypoints);
     let input_mocks = generate_input_mocks(entrypoints);
     let help_options = generate_help_options(entrypoints);
-    let uses_mock_spec = tool.mock_spec_call.is_some();
 
     let import_line = custom_import.unwrap_or("").to_string();
     let default_import = format!("use {}::build_{}_graph;", crate_module, tool.tool_name);
@@ -229,13 +213,6 @@ fn build_cli_source_file(
         default_import
     } else {
         import_line
-    };
-
-    // When using mock_spec_call, we need gunbc_test::MockSpec import
-    let extra_import = if uses_mock_spec {
-        "\nuse gunbc_test::MockSpec;"
-    } else {
-        ""
     };
 
     // Generate the graph builder call - handle Result-returning builders
@@ -247,33 +224,20 @@ fn build_cli_source_file(
         None => "None".to_string(),
     };
 
-    // Build the dry-run block differently based on mock_spec_call
-    let dry_run_block = if uses_mock_spec {
-        format!(
-            "    let mode = if dry_run {{\n\
-             {mock_setup}\n\
-             \x20   }} else {{\n\
-             \x20       ExecutionMode::Real\n\
-             \x20   }};",
-            mock_setup = mock_setup
-        )
-    } else {
-        format!(
-            "    let mode = if dry_run {{\n\
-             \x20       let mut mocks = BoundaryMocks::new();\n\
-             {mock_setup}\
-             \x20       ExecutionMode::DryRun(mocks)\n\
-             \x20   }} else {{\n\
-             \x20       ExecutionMode::Real\n\
-             \x20   }};",
-            mock_setup = mock_setup
-        )
-    };
+    let dry_run_block = format!(
+        "    let mode = if dry_run {{\n\
+         {mock_setup}\n\
+         \x20   }} else {{\n\
+         \x20       ExecutionMode::Real\n\
+         \x20   }};",
+        mock_setup = mock_setup
+    );
 
     let body = format!(
         r#"use gunbc_exec::{{execute_and_display, BoundaryMocks, ExecutionMode, TerminalProfile}};
 use gunbc_ir::{{detect_entrypoints, Value}};
-{import_line}{extra_import}
+{import_line}
+use gunbc_test::MockSpec;
 use std::collections::HashMap;
 use std::env;
 use std::process;
@@ -320,7 +284,6 @@ fn print_help() {{
 }}"#,
         tool_name = tool.tool_name,
         import_line = actual_import,
-        extra_import = extra_import,
         arg_parsing = arg_parsing,
         graph_builder_call = graph_builder_call,
         input_mocks = input_mocks,
@@ -498,24 +461,14 @@ fn generate_arg_parsing(entrypoints: &[CliEntrypoint]) -> String {
     code
 }
 
-fn generate_mock_setup(boundaries: &[CliBoundary], mock_spec_call: Option<&str>) -> String {
-    if let Some(call) = mock_spec_call {
-        return format!(
-            "        let _spec = {};\n        ExecutionMode::DryRun(_spec.to_dry_run_mocks())",
-            call
-        );
-    }
-    // Fallback: legacy inline boundaries
-    let mut code = String::new();
-    for boundary in boundaries {
-        for (port, value_expr) in &boundary.mock_outputs {
-            code.push_str(&format!(
-                "        mocks.set_value(\"{}\", \"{}\", {});\n",
-                boundary.node_id, port, value_expr
-            ));
-        }
-    }
-    code
+fn generate_mock_setup(mock_spec_call: &Option<String>) -> String {
+    let call = mock_spec_call
+        .as_deref()
+        .expect("all tools must have mock_spec_call set");
+    format!(
+        "        let _spec = {};\n        ExecutionMode::DryRun(_spec.to_dry_run_mocks())",
+        call
+    )
 }
 
 fn generate_print_inputs(entrypoints: &[CliEntrypoint]) -> String {
@@ -667,10 +620,9 @@ fn generate_help_options(entrypoints: &[CliEntrypoint]) -> String {
 fn generate_cli_with_step_mode(
     tool: &ToolMeta,
     entrypoints: &[CliEntrypoint],
-    boundaries: &[CliBoundary],
     custom_import: Option<&str>,
 ) -> String {
-    let file = build_step_mode_source_file(tool, entrypoints, boundaries, custom_import);
+    let file = build_step_mode_source_file(tool, entrypoints, custom_import);
     plain_rust_renderer().render_source_file(&file)
 }
 
@@ -678,16 +630,14 @@ fn generate_cli_with_step_mode(
 fn build_step_mode_source_file(
     tool: &ToolMeta,
     entrypoints: &[CliEntrypoint],
-    boundaries: &[CliBoundary],
     custom_import: Option<&str>,
 ) -> SourceFile {
     // Convert crate name (kebab-case) to module name (snake_case)
     let crate_module = NamingCase::SnakeCase.apply(&tool.crate_name);
     let arg_parsing = generate_arg_parsing(entrypoints);
-    let mock_setup = generate_mock_setup(boundaries, tool.mock_spec_call.as_deref());
+    let mock_setup = generate_mock_setup(&tool.mock_spec_call);
     let print_inputs = generate_print_inputs(entrypoints);
     let input_mocks = generate_input_mocks(entrypoints);
-    let uses_mock_spec = tool.mock_spec_call.is_some();
 
     let import_line = custom_import.unwrap_or("").to_string();
     let default_import = format!("use {}::build_{}_graph;", crate_module, tool.tool_name);
@@ -695,13 +645,6 @@ fn build_step_mode_source_file(
         default_import
     } else {
         import_line
-    };
-
-    // When using mock_spec_call, we need gunbc_test::MockSpec import
-    let extra_import = if uses_mock_spec {
-        "\nuse gunbc_test::MockSpec;"
-    } else {
-        ""
     };
 
     // Generate the graph builder call - handle Result-returning builders
@@ -713,33 +656,20 @@ fn build_step_mode_source_file(
         None => "None".to_string(),
     };
 
-    // Build the dry-run block differently based on mock_spec_call
-    let dry_run_block = if uses_mock_spec {
-        format!(
-            "    let mode = if dry_run {{\n\
-             {mock_setup}\n\
-             \x20   }} else {{\n\
-             \x20       ExecutionMode::Real\n\
-             \x20   }};",
-            mock_setup = mock_setup
-        )
-    } else {
-        format!(
-            "    let mode = if dry_run {{\n\
-             \x20       let mut mocks = BoundaryMocks::new();\n\
-             {mock_setup}\
-             \x20       ExecutionMode::DryRun(mocks)\n\
-             \x20   }} else {{\n\
-             \x20       ExecutionMode::Real\n\
-             \x20   }};",
-            mock_setup = mock_setup
-        )
-    };
+    let dry_run_block = format!(
+        "    let mode = if dry_run {{\n\
+         {mock_setup}\n\
+         \x20   }} else {{\n\
+         \x20       ExecutionMode::Real\n\
+         \x20   }};",
+        mock_setup = mock_setup
+    );
 
     let body = format!(
         r#"use gunbc_exec::{{execute_and_display, execute_single_node, print_value, BoundaryMocks, ExecutionMode, TerminalProfile}};
 use gunbc_ir::{{detect_entrypoints, Value}};
-{import_line}{extra_import}
+{import_line}
+use gunbc_test::MockSpec;
 use std::collections::HashMap;
 use std::env;
 use std::process;
@@ -959,7 +889,6 @@ fn print_help() {{
 }}"#,
         tool_name = tool.tool_name,
         import_line = actual_import,
-        extra_import = extra_import,
         arg_parsing = arg_parsing,
         graph_builder_call = graph_builder_call,
         input_mocks = input_mocks,
@@ -1007,7 +936,7 @@ mod tests {
             returns_result: false,
             success_port: None,
             enable_step_mode: false,
-            mock_spec_call: None,
+            mock_spec_call: Some("gunbc_gist::graph_mock::gist_snapshot_mock_spec()".to_string()),
         };
 
         let entrypoints = vec![CliEntrypoint::new("repo_path", "String")
@@ -1015,19 +944,13 @@ mod tests {
             .default(".")
             .help("Repository path")];
 
-        let boundaries = vec![CliBoundary {
-            node_id: "execute_transport".to_string(),
-            mock_outputs: vec![(
-                "url".to_string(),
-                "Value::Str(\"<DRY-RUN>\".to_string())".to_string(),
-            )],
-        }];
-
-        let code = generate_cli(&tool, &entrypoints, &boundaries);
+        let code = generate_cli(&tool, &entrypoints);
         assert!(code.contains("--repo-path"));
         assert!(code.contains("--dry-run"));
         assert!(code.contains("build_gist_graph"));
         assert!(code.contains("execute_and_display"));
         assert!(code.contains("TerminalProfile::detect()"));
+        assert!(code.contains("MockSpec"));
+        assert!(code.contains("to_dry_run_mocks"));
     }
 }

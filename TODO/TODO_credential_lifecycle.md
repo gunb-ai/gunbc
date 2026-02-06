@@ -2,7 +2,7 @@
 
 **Status**: Design
 **Date**: 2026-02-04
-**Depends on**: TODONE/TODO_consolidate_di.md Item 3
+**Depends on**: TODO_consolidate_di.md Item 3
 
 ## Ownership
 - [x] Taken by Codex (2026-02-05)

@@ -1,7 +1,8 @@
 # URGENT: Codegen Upsert Key Missing
 
-**Status**: Urgent
+**Status**: Done (2026-02-06)
 **Date**: 2026-02-05
+**Outcome**: Manifest-based freshness for codegen inputs/outputs is implemented (resource manifest updates in `core/codegen/src/main.rs`, freshness checks in `gunbc-dag/src/codegen/ops.rs`).
 
 ## Problem Statement
 

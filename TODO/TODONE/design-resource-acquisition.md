@@ -1,7 +1,7 @@
 # Design: Resource Acquisition Model
 
 > Resolves: TODO_dag_environment.md Q1–Q6, Phase 3 design decisions,
-> and TODONE/TODO_consolidate_di.md dependency injection items.
+> and ../TODO_consolidate_di.md dependency injection items.
 >
 > Principle: **All environment needs are resource acquisition.**
 > Dependencies are always injected and solved up front, not within a node.

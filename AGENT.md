@@ -21,7 +21,7 @@ gunbc is a Rust-based workflow IR. The core idea is that **everything is a DAG**
 | `core/exec/` | Execution engine, DryRun interception, simulation |
 | `core/codegen/` | CLI and test generation |
 | `core/test/` | MockSpec and test utilities |
-| `lib/transport/` | The only crate that performs direct I/O |
+| `lib/transport/` | Canonical I/O boundary; a few bootstrap/generator crates do direct I/O by exception (see `TODO/TODONE/clippy-pragma-audit.md`) |
 | `lib/tools/` | General-purpose tool wrappers (clippy, deps, gist) |
 | `gunbc-dag/` | Repo-specific DAGs and CLI entrypoints (ci, makegen, codegen, testgen, bootstrap) |
 | `docs/design/` | Design documentation |
@@ -37,7 +37,7 @@ gunbc is a Rust-based workflow IR. The core idea is that **everything is a DAG**
 
 ## Invariants That Matter
 
-- All world I/O happens through `TransportOps::Execute` nodes.
+- All runtime DAG world I/O happens through `TransportOps::Execute` nodes; build-time generators and a small set of bootstrap/config loaders are explicit exceptions (see `TODO/TODONE/clippy-pragma-audit.md`).
 - Boundaries and entrypoints are inferred from unconnected ports.
 - Tool handles are capability-based. When used, they flow through `tool:<id>` ports.
 - Tool ports are excluded from user-facing workflow signatures.

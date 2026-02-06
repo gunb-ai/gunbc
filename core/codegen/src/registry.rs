@@ -12,7 +12,7 @@
 //!
 //! Eventually, the entire graph.rs can be generated from these definitions.
 
-use crate::cli_gen::{CliBoundary, CliEntrypoint, ToolMeta};
+use crate::cli_gen::{CliEntrypoint, ToolMeta};
 use gunbc_ir::cargo;
 use gunbc_ir::types::Cardinality;
 
@@ -189,7 +189,6 @@ impl DagDef {
 pub struct ToolDef {
     pub meta: ToolMeta,
     pub entrypoints: Vec<CliEntrypoint>,
-    pub boundaries: Vec<CliBoundary>,
     /// Custom import line (if different from default pattern)
     pub custom_import: Option<String>,
     /// Output artifacts produced by this tool (for clean/rollback)
@@ -304,7 +303,6 @@ impl ToolDef {
                 mock_spec_call: None,
             },
             entrypoints: vec![],
-            boundaries: vec![],
             custom_import: None,
             outputs: vec![],
             dag: None,
@@ -378,17 +376,6 @@ impl ToolDef {
     /// single source of truth for boundary mock values.
     pub fn mock_spec_call(mut self, call: &str) -> Self {
         self.meta.mock_spec_call = Some(call.to_string());
-        self
-    }
-
-    pub fn boundary(mut self, node_id: &str, mock_outputs: Vec<(&str, &str)>) -> Self {
-        self.boundaries.push(CliBoundary {
-            node_id: node_id.to_string(),
-            mock_outputs: mock_outputs
-                .into_iter()
-                .map(|(p, v)| (p.to_string(), v.to_string()))
-                .collect(),
-        });
         self
     }
 

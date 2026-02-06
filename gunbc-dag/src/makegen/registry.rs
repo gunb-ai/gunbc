@@ -1005,8 +1005,8 @@ impl ToolRegistry {
         ));
 
         // build-all has a handwritten main.rs with DAG progress display.
-        // Kept as a compatibility alias; the core "build" target now
-        // uses the same DAG entrypoint.
+        // This is the explicit pipeline entrypoint; core build/test/clippy
+        // targets use BuildConfig commands (cargo by default).
         registry.register(ToolInfo {
             invocation: gunbc_ir::CargoInvocation::composed("build", "dag"),
             short_name: "build-all".to_string(),

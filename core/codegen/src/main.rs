@@ -621,7 +621,6 @@ fn codegen_clis(dry_run: bool) -> bool {
         let code = generate_cli_with_import(
             &tool.meta,
             &tool.entrypoints,
-            &tool.boundaries,
             tool.custom_import.as_deref(),
         );
         let tool_dir = Path::new(output_dir).join(&tool.meta.tool_name);

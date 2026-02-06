@@ -32,7 +32,7 @@ impl<'a> MakefileRenderer<'a> {
     pub fn new(registry: &'a ToolRegistry) -> Self {
         Self {
             registry,
-            config: BuildConfig::cargo_entrypoints(),
+            config: BuildConfig::cargo(),
         }
     }
 
@@ -687,16 +687,16 @@ mod tests {
 
         // Individual meta targets
         assert!(
-            makefile.contains("test: codegen testgen verify"),
-            "test should depend on codegen, testgen, and verify"
+            makefile.contains("test: build testgen verify"),
+            "test should depend on build, testgen, and verify"
         );
-        assert!(makefile.contains("gunbc-build"));
+        assert!(makefile.contains("cargo test"));
 
         assert!(makefile.contains("check: ensure-codegen"));
         assert!(makefile.contains("cargo check --all-targets"));
 
         assert!(makefile.contains("clippy: ensure-codegen"));
-        assert!(makefile.contains("gunbc-build"));
+        assert!(makefile.contains("cargo clippy --all-targets"));
 
         assert!(makefile.contains("fmt:"));
         assert!(makefile.contains("@cargo fmt"));

@@ -25,7 +25,7 @@ pub mod registry;
 pub mod template;
 pub mod testgen;
 
-pub use cli_gen::{generate_cli, generate_cli_with_import, CliBoundary, CliEntrypoint, ToolMeta};
+pub use cli_gen::{generate_cli, generate_cli_with_import, CliEntrypoint, ToolMeta};
 pub use dag_gen::generate_graph_rs;
 pub use file_writer::{FileWriter, WriteResult};
 pub use registry::{

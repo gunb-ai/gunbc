@@ -20,9 +20,9 @@ ensure-codegen:
 codegen: ensure-codegen
 	@RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-codegen-dag --release
 
-# Full build transaction: codegen → testgen → gunbc-build
+# Full build transaction: codegen → testgen → cargo build
 build: codegen testgen
-	@RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-build --release
+	@RUSTFLAGS="-D warnings" cargo build --all-targets
 
 # Clean build artifacts
 clean:
@@ -55,7 +55,7 @@ help:
 	@echo "  make <target>-fix  - auto-fix then verify (for dev)"
 	@echo ""
 	@echo "Build commands:"
-	@echo "  build    - codegen → testgen → gunbc-build"
+	@echo "  build    - codegen → testgen → cargo build"
 	@echo "  codegen  - Generate CLI entrypoints"
 	@echo "  ensure-codegen  - Bootstrap CLI entrypoints (safe on clean)"
 	@echo "  clean    - Remove build artifacts"
@@ -101,12 +101,12 @@ lint-fix: pragma
 	@cargo clippy --fix --workspace --allow-dirty --allow-staged -- -D warnings
 
 # test: Run all tests
-test: codegen testgen verify
-	@RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-build --release
+test: build testgen verify
+	@RUSTFLAGS="-D warnings" cargo test
 
 # test-fix: auto-fix then verify
-test-fix: fmt-fix lint-fix codegen testgen verify
-	@RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-build --release
+test-fix: fmt-fix lint-fix build testgen verify
+	@RUSTFLAGS="-D warnings" cargo test
 
 # check: Type check all targets
 check: ensure-codegen pragma-check
@@ -118,7 +118,7 @@ check-fix: fmt-fix ensure-codegen pragma
 
 # clippy: Run clippy linter
 clippy: ensure-codegen pragma-check
-	@RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-build --release
+	@cargo clippy --all-targets -- -D warnings
 
 # clippy-fix: auto-fix then verify
 clippy-fix: ensure-codegen pragma
@@ -197,4 +197,3 @@ build-all: ensure-codegen
 
 build-all-dry: ensure-codegen
 	@RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-build -- --dry-run
-

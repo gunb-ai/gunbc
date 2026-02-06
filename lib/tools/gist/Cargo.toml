@@ -19,9 +19,11 @@ gunbc-testgen-registry-macros = { path = "../../../core/testgen-registry-macros"
 gunbc-tool-registry = { path = "../../../core/tool-registry" }
 gunbc-tool-registry-macros = { path = "../../../core/tool-registry-macros" }
 
+[dependencies.serde_json]
+workspace = true
+
 [dev-dependencies]
 gunbc-test = { path = "../../../core/test" }
-serde_json = { workspace = true }
 
 [[bin]]
 name = "gunbc-gist"
