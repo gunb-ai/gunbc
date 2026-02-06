@@ -77,10 +77,8 @@ pub enum CIGraphOp {
     PrepareFileExists(EmbeddedFileExistsOp),
     /// Transport operations (boundary - actual I/O)
     Transport(TransportOps),
-    /// CLI tool operations (for SubDag integration with clippy, etc.)
+    /// CLI tool operations (self-acquiring: check/install before run)
     CliTool(CliToolOp),
-    /// Environment node that provides tools via upsert (I/O boundary)
-    Env(EnvOp),
 }
 
 impl Executable for CIGraphOp {
@@ -90,7 +88,6 @@ impl Executable for CIGraphOp {
             CIGraphOp::Codegen(op) => op.execute(inputs),
             CIGraphOp::PrepareFileExists(op) => op.execute(inputs),
             CIGraphOp::Transport(op) => op.execute(inputs),
-            CIGraphOp::Env(op) => op.execute(inputs),
             CIGraphOp::CliTool(op) => {
                 // Check if we should skip execution
                 let skip = require_bool(&inputs, "skip")?;

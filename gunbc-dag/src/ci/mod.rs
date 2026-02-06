@@ -2,13 +2,11 @@
 //!
 //! CI orchestration for the gunbc repo.
 
-pub mod env;
 pub mod graph;
 pub mod ops;
 
 pub mod graph_mock;
 
-pub use env::{mock_env_outputs, EnvOp};
 pub use graph::{
     build_ci_graph, build_ci_graph_with_mode, ci_integrations, ci_signature, ci_workflow_config,
     ci_workflow_permissions, CIGraphOp,

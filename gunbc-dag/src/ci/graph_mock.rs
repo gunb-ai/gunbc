@@ -33,7 +33,6 @@
 //! - Test parallelism: Cargo test uses multiple threads
 
 use crate::ci::graph::build_ci_graph;
-use gunbc_ir::transport::cli::{ToolHandle, CLIPPY};
 use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse, TransportResponse};
 use gunbc_ir::Value;
 use gunbc_test::{extract_mock_requirements, MockSpec, NodeExample, OutputMatcher};
