@@ -431,7 +431,7 @@ impl TryFrom<&Value> for Credential {
         let source_type = map
             .get("source_type")
             .and_then(Value::as_str)
-            .unwrap_or("static");
+            .ok_or_else(|| "Credential missing 'source_type'".to_string())?;
         let source = match source_type {
             "env_var" => {
                 let id = map
@@ -449,7 +449,12 @@ impl TryFrom<&Value> for Credential {
                     provider: id.to_string(),
                 }
             }
-            _ => SecretSource::Static,
+            "static" => SecretSource::Static,
+            other => {
+                return Err(format!(
+                    "unknown Credential source_type: {other}"
+                ))
+            }
         };
 
         // Expiry

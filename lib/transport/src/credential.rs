@@ -4,7 +4,7 @@
 //! [`CredentialOp`] is the DAG boundary node that drives them,
 //! following the same environment-node pattern.
 
-use gunbc_exec::{ExecError, Executable, OutputMap};
+use gunbc_exec::{require_str, ExecError, Executable, OutputMap};
 use gunbc_ir::{
     AuthScheme, Credential, CredentialError, CredentialProvider, Secret, SecretSource, Value,
 };
@@ -149,7 +149,7 @@ enum CredentialOpMode {
     },
     /// Construct a credential from DAG inputs at runtime.
     ///
-    /// Reads `service`, `env_var`, `scheme` (optional, default "bearer"),
+    /// Reads `service`, `env_var`, `scheme` (required),
     /// `header_name` (optional) from inputs. Calls `std::env::var(env_var)`
     /// to get the secret, then emits on the configured output port.
     FromInputs {
@@ -182,7 +182,7 @@ impl CredentialOp {
 
     /// Create a credential op that reads inputs at runtime (FromInputs mode).
     ///
-    /// Reads `service`, `env_var`, and optionally `scheme` / `header_name`
+    /// Reads `service`, `env_var`, and `scheme` / `header_name`
     /// from DAG inputs. Emits a Credential on the given output port.
     pub fn from_inputs(output_port: impl Into<String>) -> Self {
         Self {
@@ -234,12 +234,9 @@ impl Executable for CredentialOp {
                 builder.ok()
             }
             CredentialOpMode::FromInputs { output_port } => {
-                let env_var = gunbc_exec::require_str(&inputs, "env_var")?;
-
-                let scheme_str = inputs
-                    .get("scheme")
-                    .and_then(Value::as_str)
-                    .unwrap_or("bearer");
+                let _service = require_str(&inputs, "service")?;
+                let env_var = require_str(&inputs, "env_var")?;
+                let scheme_str = require_str(&inputs, "scheme")?;
                 let header_name = inputs
                     .get("header_name")
                     .and_then(Value::as_str)
@@ -405,6 +402,7 @@ mod tests {
         let mut inputs = HashMap::new();
         inputs.insert("service".to_string(), Value::Str("openai".to_string()));
         inputs.insert("env_var".to_string(), Value::Str(var.to_string()));
+        inputs.insert("scheme".to_string(), Value::Str("bearer".to_string()));
 
         let outputs = op.execute(inputs).expect("should succeed");
         assert!(outputs.contains_key("credential:llm"));
@@ -452,6 +450,7 @@ mod tests {
         let mut inputs = HashMap::new();
         inputs.insert("service".to_string(), Value::Str("openai".to_string()));
         inputs.insert("env_var".to_string(), Value::Str(var.to_string()));
+        inputs.insert("scheme".to_string(), Value::Str("bearer".to_string()));
 
         let err = op.execute(inputs).unwrap_err();
         assert!(err.0.contains("missing env var"));

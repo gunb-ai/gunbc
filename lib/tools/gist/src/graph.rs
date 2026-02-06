@@ -11,8 +11,8 @@
 //! - Gist creation: PrepareRequest -> Execute
 
 use gunbc_exec::{
-    optional_str_list, propagate_skipped, require_response, require_str, require_str_list,
-    ExecError, Executable, OutputMap, TransportResponseExt,
+    optional_str, optional_str_list, propagate_skipped, require_response, require_str,
+    require_str_list, ExecError, Executable, OutputMap, TransportResponseExt,
 };
 use gunbc_ir::transport::{ShellRequest, TransportRequest, TransportResponse};
 use gunbc_ir::patterns::PatternOp;
@@ -307,20 +307,16 @@ fn execute_prepare_read_file(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
     let filename = require_str(&inputs, "filename")?;
-
-    let repo_path = require_str(&inputs, "repo_path")?;
-
-    // Build full path
-    let full_path = if repo_path == "." {
-        filename.to_string()
-    } else {
-        format!("{}/{}", repo_path, filename)
-    };
+    let repo_path = optional_str(&inputs, "repo_path").unwrap_or(".");
 
     let request = TransportRequest::Shell(ShellRequest {
         command: "cat".to_string(),
-        args: vec![full_path],
-        cwd: None,
+        args: vec![filename.to_string()],
+        cwd: if repo_path == "." {
+            None
+        } else {
+            Some(repo_path.to_string())
+        },
         env: HashMap::new(),
         stdin: None,
     });
@@ -408,15 +404,15 @@ fn execute_collect_file_contents(
 ///
 /// The DAG has:
 /// - Input: `filename: String` (element from LoopBuilder's unpack node)
-/// - Input: `repo_path: String` (extra input, auto-detected by lowering)
+/// - Input: `repo_path: String` (optional; defaults to ".")
 /// - Output: `result: String` (content, collected by LoopBuilder's pack node)
 pub fn build_read_file_body_dag() -> Dag<GistGraphOp> {
     let mut dag = Dag::new();
 
-    // PrepareReadFile node
+    // PrepareReadFile node — needs both filename (element) and repo_path (extra input)
     dag.add_node(Node::opaque(
         "prepare",
-        vec![port("filename", "String")],
+        vec![port("filename", "String"), port("repo_path", "String")],
         vec![
             port("request", "TransportRequest"),
             port("filename", "String"),
@@ -432,14 +428,14 @@ pub fn build_read_file_body_dag() -> Dag<GistGraphOp> {
         GistGraphOp::Transport(TransportOps::Execute),
     ));
 
-    // ParseReadFile node
+    // ParseReadFile node — only outputs "result" (the loop pack collects these)
     dag.add_node(Node::opaque(
         "parse",
         vec![
             port("response", "TransportResponse"),
             port("filename", "String"),
         ],
-        vec![port("filename", "String"), port("result", "String")],
+        vec![port("result", "String")],
         GistGraphOp::ParseReadFile,
     ));
 
@@ -1220,7 +1216,6 @@ mod tests {
         let entrypoints = detect_entrypoints(&dag);
 
         assert!(entrypoints.is_entrypoint_port(&"prepare_list_files".into(), &"repo_path".into()));
-        assert!(entrypoints.is_entrypoint_port(&"read_files_loop".into(), &"repo_path".into()));
         assert!(
             entrypoints.is_entrypoint_port(&"prepare_current_branch".into(), &"repo_path".into())
         );
@@ -1279,8 +1274,9 @@ mod tests {
         let dag = build_gist_graph(GistMode::Snapshot, vec![], false).expect("graph should build");
         let inferred = infer_signature(&dag);
 
-        // Should have five inputs (repo_path on prepare_list_files, read_files_loop,
-        // prepare_current_branch, prepare_remote_branches, and base_ref on prepare_gist_request)
+        // Should have five inputs (repo_path on prepare_list_files,
+        // read_files_loop, prepare_current_branch, prepare_remote_branches,
+        // and base_ref on prepare_gist_request)
         assert_eq!(inferred.inputs.len(), 5);
 
         // Should have one output (url from parse_gist_response)
@@ -1660,13 +1656,13 @@ mod tests {
             .with_input("files", "String", Cardinality::ZERO_OR_MORE)
             .with_element("filename", "String")
             .with_body(body)
-            .with_output("content", "String")
+            .with_output("contents", "String")
             .build();
 
         assert!(node.is_subdag());
         assert!(node.inputs.iter().any(|p| p.name.0 == "files"));
-        assert!(node.outputs.iter().any(|p| p.name.0 == "content"));
-        assert!(node.outputs.iter().any(|p| p.name.0 == "iterations"));
+        assert!(node.inputs.iter().any(|p| p.name.0 == "repo_path"));
+        assert!(node.outputs.iter().any(|p| p.name.0 == "contents"));
     }
 
     #[test]

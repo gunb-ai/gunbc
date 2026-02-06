@@ -177,8 +177,7 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
     match mode {
         GistMode::Snapshot => {
             spec = spec
-                .input_mock("prepare_list_files", "repo_path", Value::Str(".".into()))
-                .input_mock("read_files_loop", "repo_path", Value::Str(".".into()));
+                .input_mock("prepare_list_files", "repo_path", Value::Str(".".into()));
         }
         GistMode::Diff { .. } => {
             spec = spec.input_mock("prepare_diff", "repo_path", Value::Str(".".into()));
@@ -258,6 +257,7 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
     match mode {
         GistMode::Snapshot => {
             spec = spec
+                .skip_node_example("read_files_loop")
                 .node_example(
                     NodeExample::new("prepare_list_files")
                         .input("repo_path", Value::Str(".".into()))
@@ -278,6 +278,26 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
                             ])),
                         )
                         .description("Parses git ls-files output into a file list"),
+                )
+                .node_example(
+                    NodeExample::new("collect_file_contents")
+                        .input(
+                            "filenames",
+                            Value::str_list(vec!["src/main.rs".into(), "README.md".into()]),
+                        )
+                        .input(
+                            "contents_list",
+                            Value::str_list(vec!["fn main() {}".into(), "".into()]),
+                        )
+                        .output(
+                            "contents",
+                            OutputMatcher::exact(Value::str_map({
+                                let mut map = BTreeMap::new();
+                                map.insert("src/main.rs".to_string(), "fn main() {}".to_string());
+                                map
+                            })),
+                        )
+                        .description("Zips filenames + contents into a map, skipping empty content"),
                 )
                 .node_example(
                     NodeExample::new("render_markdown")

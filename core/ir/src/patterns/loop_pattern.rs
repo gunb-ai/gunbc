@@ -149,7 +149,6 @@ impl<T: Clone> LoopBuilder<T> {
                     self.element_port_type.as_str(),
                     self.input_cardinality,
                 ),
-                Port::scalar("index", "Int"),
                 Port::scalar("count", "Int"),
             ],
             T::from(PatternOp::LoopUnpack {
@@ -172,14 +171,11 @@ impl<T: Clone> LoopBuilder<T> {
                 ),
                 Port::scalar("count", "Int"),
             ],
-            vec![
-                Port::with_cardinality(
-                    self.output_port_name.as_str(),
-                    self.output_port_type.as_str(),
-                    self.input_cardinality,
-                ),
-                Port::scalar("iterations", "Int"),
-            ],
+            vec![Port::with_cardinality(
+                self.output_port_name.as_str(),
+                self.output_port_type.as_str(),
+                self.input_cardinality,
+            )],
             T::from(PatternOp::LoopPack {
                 output_port: self.output_port_name.clone(),
             }),
@@ -204,6 +200,7 @@ impl<T: Clone> LoopBuilder<T> {
 mod tests {
     use super::*;
     use crate::node::NodeBody;
+    use crate::resource::AccessMode;
 
     type TestOp = PatternOp;
 
@@ -232,7 +229,6 @@ mod tests {
         // Check inputs/outputs by name (sorted alphabetically)
         assert!(node.inputs.iter().any(|p| p.name.0 == "input"));
         assert!(node.outputs.iter().any(|p| p.name.0 == "output"));
-        assert!(node.outputs.iter().any(|p| p.name.0 == "iterations"));
     }
 
     #[test]
@@ -289,7 +285,7 @@ mod tests {
             "transform",
             vec![
                 Port::scalar("element", "String"),
-                Port::scalar("res:platform", "Platform"),
+                Port::resource("platform", "Platform", AccessMode::Read),
             ],
             vec![Port::scalar("result", "String")],
             PatternOp::LoopPack {

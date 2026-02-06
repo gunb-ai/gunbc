@@ -271,6 +271,29 @@ impl ResourceAccess {
     }
 }
 
+/// Error for missing or invalid resource access metadata.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResourceAccessError {
+    /// Node that declares the resource port.
+    pub node_id: NodeId,
+    /// Port name that is missing access metadata.
+    pub port_name: String,
+    /// Resource id derived from the port name.
+    pub resource_id: ResourceId,
+}
+
+impl std::fmt::Display for ResourceAccessError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "resource access mode missing for {}.{} ({})",
+            self.node_id, self.port_name, self.resource_id
+        )
+    }
+}
+
+impl std::error::Error for ResourceAccessError {}
+
 /// A resource conflict between two nodes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResourceConflict {
@@ -421,40 +444,47 @@ pub fn validate_resource_ordering<T>(
 /// Derive resource accesses from `res:*` input ports in a DAG.
 ///
 /// Walks all nodes in the DAG and extracts `ResourceAccess` entries from
-/// input ports whose names start with `res:`. Uses `port.resource_access`
-/// if explicitly set, otherwise falls back to static type-based inference:
-///
-/// - `Platform` → Read
-/// - `Timestamp` → Read
-/// - `Credential` → Read
-/// - Everything else → Read (conservative default)
-pub fn derive_resource_accesses<T>(dag: &Dag<T>) -> Vec<ResourceAccess> {
+/// input ports whose names start with `res:`. Requires `port.resource_access`
+/// to be explicitly set on all `res:*` ports.
+pub fn derive_resource_accesses<T>(
+    dag: &Dag<T>,
+) -> Result<Vec<ResourceAccess>, Vec<ResourceAccessError>> {
     let mut accesses = Vec::new();
+    let mut errors = Vec::new();
     for node in &dag.nodes {
         for port in &node.inputs {
             if let Some(res_name) = port.name.0.strip_prefix("res:") {
-                // Use explicit access mode if set, otherwise default to Read.
-                // All known resource types (Platform, Timestamp, Credential,
-                // FilesystemHandle) default to Read access.
-                let mode = port.resource_access.unwrap_or(AccessMode::Read);
-                accesses.push(ResourceAccess::new(
-                    node.id.clone(),
-                    ResourceId::new(res_name),
-                    mode,
-                ));
+                match port.resource_access {
+                    Some(mode) => accesses.push(ResourceAccess::new(
+                        node.id.clone(),
+                        ResourceId::new(res_name),
+                        mode,
+                    )),
+                    None => errors.push(ResourceAccessError {
+                        node_id: node.id.clone(),
+                        port_name: port.name.0.clone(),
+                        resource_id: ResourceId::new(res_name),
+                    }),
+                }
             }
         }
     }
-    accesses
+    if errors.is_empty() {
+        Ok(accesses)
+    } else {
+        Err(errors)
+    }
 }
 
 /// Convenience function: derive resource accesses from DAG structure and detect conflicts.
 ///
 /// Combines `derive_resource_accesses()` with `detect_conflicts()` for one-step
 /// conflict detection without requiring manual access declarations.
-pub fn detect_resource_conflicts<T>(dag: &Dag<T>) -> Vec<ResourceConflict> {
-    let accesses = derive_resource_accesses(dag);
-    detect_conflicts(dag, &accesses)
+pub fn detect_resource_conflicts<T>(
+    dag: &Dag<T>,
+) -> Result<Vec<ResourceConflict>, Vec<ResourceAccessError>> {
+    let accesses = derive_resource_accesses(dag)?;
+    Ok(detect_conflicts(dag, &accesses))
 }
 
 #[cfg(test)]
@@ -677,7 +707,7 @@ mod tests {
             "op_b".to_string(),
         ));
 
-        let accesses = derive_resource_accesses(&dag);
+        let accesses = derive_resource_accesses(&dag).expect("resource accesses should derive");
         assert_eq!(accesses.len(), 2);
 
         let platform = accesses.iter().find(|a| a.resource_id.0 == "platform").unwrap();
@@ -690,7 +720,7 @@ mod tests {
     }
 
     #[test]
-    fn test_derive_resource_accesses_static_fallback() {
+    fn test_derive_resource_accesses_missing_access_errors() {
         // Port declared with scalar("res:platform", "Platform") — no explicit resource_access
         let mut dag: Dag<String> = Dag::new();
         dag.add_node(Node::opaque(
@@ -700,11 +730,12 @@ mod tests {
             "op_a".to_string(),
         ));
 
-        let accesses = derive_resource_accesses(&dag);
-        assert_eq!(accesses.len(), 1);
-        assert_eq!(accesses[0].resource_id.0, "platform");
-        // Falls back to Read for Platform
-        assert_eq!(accesses[0].mode, AccessMode::Read);
+        let errors =
+            derive_resource_accesses(&dag).expect_err("missing resource_access should error");
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].node_id.0, "node_a");
+        assert_eq!(errors[0].port_name, "res:platform");
+        assert_eq!(errors[0].resource_id.0, "platform");
     }
 
     #[test]
@@ -717,7 +748,7 @@ mod tests {
             "op_a".to_string(),
         ));
 
-        let accesses = derive_resource_accesses(&dag);
+        let accesses = derive_resource_accesses(&dag).expect("resource accesses should derive");
         assert!(accesses.is_empty());
     }
 
@@ -739,7 +770,7 @@ mod tests {
             "op_b".to_string(),
         ));
 
-        let conflicts = detect_resource_conflicts(&dag);
+        let conflicts = detect_resource_conflicts(&dag).expect("resource accesses should derive");
         assert_eq!(conflicts.len(), 1);
         assert_eq!(conflicts[0].resource_id.0, "fs");
     }
@@ -760,7 +791,7 @@ mod tests {
             "op_b".to_string(),
         ));
 
-        let conflicts = detect_resource_conflicts(&dag);
+        let conflicts = detect_resource_conflicts(&dag).expect("resource accesses should derive");
         assert!(conflicts.is_empty());
     }
 
@@ -803,7 +834,7 @@ mod tests {
         let mut dag: Dag<()> = Dag::new();
         dag.add_node(Node::subdag("wrapper", inner));
 
-        let accesses = derive_resource_accesses(&dag);
+        let accesses = derive_resource_accesses(&dag).expect("resource accesses should derive");
         assert_eq!(accesses.len(), 1);
         assert_eq!(accesses[0].mode, AccessMode::Exclusive);
     }

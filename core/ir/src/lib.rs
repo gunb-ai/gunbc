@@ -123,7 +123,7 @@ pub use code_ir::{
 };
 pub use resource::{
     detect_resource_conflicts, derive_resource_accesses, AccessMode, Resource, ResourceAccess,
-    ResourceConflict, ResourceId, ResourceKind, Timestamp,
+    ResourceAccessError, ResourceConflict, ResourceId, ResourceKind, Timestamp,
 };
 pub use signature::{infer_signature, SignatureError, SignaturePort, WorkflowSignature};
 pub use symbols::{SemanticColor, Symbol, SymbolId, SymbolOp, SymbolSet, Tier, STANDARD};

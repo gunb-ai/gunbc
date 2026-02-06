@@ -756,7 +756,11 @@ match subcommand {\n\
     Some(\"-n\") | Some(\"--dry-run\") => run_full_dag(&args[1..]),  // backwards compat\n\
     Some(arg) if arg.starts_with('-') => run_full_dag(&args[1..]),  // flags go to run\n\
     None => run_full_dag(&[]),\n\
-    _ => run_full_dag(&args[1..]),  // unknown subcommand, try as args\n\
+    Some(other) => {\n\
+        eprintln!(\"Unknown subcommand: {}\", other);\n\
+        print_help();\n\
+        process::exit(1);\n\
+    }\n\
 }"
     .to_string();
 

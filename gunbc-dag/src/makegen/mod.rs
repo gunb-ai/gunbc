@@ -15,7 +15,7 @@ pub use graph::{build_makegen_graph, makegen_signature, MakegenGraphOp};
 pub use ops::MakegenOp;
 pub use registry::{
     default_build_config, default_meta_targets, BuildConfig, BuildSystem, ConfigField,
-    EntrypointParam, MetaTarget, PrepLevel, ToolInfo, ToolRegistry,
+    EntrypointParam, MetaTarget, ResourceNeed, ResourceTargetMap, ToolInfo, ToolRegistry,
 };
 pub use render::{render_makefile, render_makefile_with_config};
 

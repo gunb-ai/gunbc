@@ -228,45 +228,61 @@ pub fn parse_anthropic_response(response: &RestResponse) -> Result<ChatResponse,
     let mut thinking_parts: Vec<String> = Vec::new();
     let mut response_blocks: Vec<ResponseBlock> = Vec::new();
 
-    if let Some(content_array) = response.body.get("content").and_then(|c| c.as_array()) {
-        for block in content_array {
-            let block_type = block.get("type").and_then(|t| t.as_str()).unwrap_or("");
-            match block_type {
-                "text" => {
-                    let text = block
-                        .get("text")
-                        .and_then(|t| t.as_str())
-                        .unwrap_or("")
-                        .to_string();
-                    text_parts.push(text.clone());
-                    response_blocks.push(ResponseBlock::Text { text });
-                }
-                "thinking" => {
-                    let thinking = block
-                        .get("thinking")
-                        .and_then(|t| t.as_str())
-                        .unwrap_or("")
-                        .to_string();
-                    let signature = block
-                        .get("signature")
-                        .and_then(|s| s.as_str())
-                        .unwrap_or("")
-                        .to_string();
-                    thinking_parts.push(thinking.clone());
-                    response_blocks.push(ResponseBlock::Thinking {
-                        thinking,
-                        signature: Some(signature),
-                    });
-                }
-                "redacted_thinking" => {
-                    let data = block
-                        .get("data")
-                        .and_then(|d| d.as_str())
-                        .unwrap_or("")
-                        .to_string();
-                    response_blocks.push(ResponseBlock::RedactedThinking { data });
-                }
-                _ => {} // ignore unknown block types
+    let content_array = response
+        .body
+        .get("content")
+        .and_then(|c| c.as_array())
+        .ok_or_else(|| "Anthropic response missing content array".to_string())?;
+    if content_array.is_empty() {
+        return Err("Anthropic response content array is empty".to_string());
+    }
+    for block in content_array {
+        let block_type = block
+            .get("type")
+            .and_then(|t| t.as_str())
+            .ok_or_else(|| "Anthropic response content block missing type".to_string())?;
+        match block_type {
+            "text" => {
+                let text = block
+                    .get("text")
+                    .and_then(|t| t.as_str())
+                    .ok_or_else(|| "Anthropic response text block missing text".to_string())?
+                    .to_string();
+                text_parts.push(text.clone());
+                response_blocks.push(ResponseBlock::Text { text });
+            }
+            "thinking" => {
+                let thinking = block
+                    .get("thinking")
+                    .and_then(|t| t.as_str())
+                    .ok_or_else(|| "Anthropic response thinking block missing thinking".to_string())?
+                    .to_string();
+                let signature = block
+                    .get("signature")
+                    .and_then(|s| s.as_str())
+                    .ok_or_else(|| "Anthropic response thinking block missing signature".to_string())?
+                    .to_string();
+                thinking_parts.push(thinking.clone());
+                response_blocks.push(ResponseBlock::Thinking {
+                    thinking,
+                    signature: Some(signature),
+                });
+            }
+            "redacted_thinking" => {
+                let data = block
+                    .get("data")
+                    .and_then(|d| d.as_str())
+                    .ok_or_else(|| {
+                        "Anthropic response redacted_thinking block missing data".to_string()
+                    })?
+                    .to_string();
+                response_blocks.push(ResponseBlock::RedactedThinking { data });
+            }
+            other => {
+                return Err(format!(
+                    "Anthropic response unknown content block type: {}",
+                    other
+                ))
             }
         }
     }
@@ -277,30 +293,47 @@ pub fn parse_anthropic_response(response: &RestResponse) -> Result<ChatResponse,
         .body
         .get("model")
         .and_then(|m| m.as_str())
-        .unwrap_or("unknown")
+        .ok_or_else(|| "Anthropic response missing model".to_string())?
         .to_string();
 
-    let finish_reason = response
+    let stop_reason = response
         .body
         .get("stop_reason")
         .and_then(|r| r.as_str())
-        .map(FinishReason::from_anthropic)
-        .unwrap_or(FinishReason::Stop);
+        .ok_or_else(|| "Anthropic response missing stop_reason".to_string())?;
+    let finish_reason = match stop_reason {
+        "end_turn" => FinishReason::Stop,
+        "max_tokens" => FinishReason::Length,
+        other => {
+            return Err(format!(
+                "Anthropic response unknown stop_reason: {}",
+                other
+            ))
+        }
+    };
 
     let usage = response
         .body
         .get("usage")
-        .map(|u| Usage {
-            input_tokens: u.get("input_tokens").and_then(|t| t.as_u64()).unwrap_or(0),
-            output_tokens: u.get("output_tokens").and_then(|t| t.as_u64()).unwrap_or(0),
-            cache_creation_input_tokens: u
-                .get("cache_creation_input_tokens")
-                .and_then(|t| t.as_u64()),
-            cache_read_input_tokens: u.get("cache_read_input_tokens").and_then(|t| t.as_u64()),
-            cached_tokens: None,
-            reasoning_tokens: None,
-        })
-        .unwrap_or_default();
+        .ok_or_else(|| "Anthropic response missing usage".to_string())?;
+    let input_tokens = usage
+        .get("input_tokens")
+        .and_then(|t| t.as_u64())
+        .ok_or_else(|| "Anthropic response missing usage.input_tokens".to_string())?;
+    let output_tokens = usage
+        .get("output_tokens")
+        .and_then(|t| t.as_u64())
+        .ok_or_else(|| "Anthropic response missing usage.output_tokens".to_string())?;
+    let usage = Usage {
+        input_tokens,
+        output_tokens,
+        cache_creation_input_tokens: usage
+            .get("cache_creation_input_tokens")
+            .and_then(|t| t.as_u64()),
+        cache_read_input_tokens: usage.get("cache_read_input_tokens").and_then(|t| t.as_u64()),
+        cached_tokens: None,
+        reasoning_tokens: None,
+    };
 
     let thinking = if thinking_parts.is_empty() {
         None

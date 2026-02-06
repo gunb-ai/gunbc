@@ -426,16 +426,12 @@ fn lower_loop_subdag<T: Clone>(
         "result",
     ));
 
-    // Build port mapping for parent: the parent's input ports map to unpack,
-    // and the parent's output ports map to pack.
-    let mut mapping = build_subdag_mapping_for_loop(parent_node, &flat_dag, parent_prefix)?;
-
-    // If unpack has extra input ports beyond the main element source,
-    // those are also entrypoints (e.g., repo_path). They need to be
-    // routed to the body at execution time, so record them.
+    // Auto-detect extra inputs BEFORE building the port mapping.
+    // Body entrypoints beyond the element port (e.g., repo_path) flow
+    // through unpack at runtime. We need to identify them first so the
+    // mapping function knows to skip them (they aren't entrypoints of
+    // the flat_dag which only contains unpack + pack).
     let mut extra_input_ports = loop_pattern.extra_input_ports.clone();
-    // Auto-detect extra inputs: body entrypoints that are NOT the element port
-    // and NOT "result" (output) and NOT resource ports.
     let body_entrypoints = detect_entrypoints(&loop_pattern.body_dag);
     for (_, port_name, _) in &body_entrypoints.entrypoint_ports {
         if port_name.0 != loop_pattern.element_port
@@ -446,10 +442,14 @@ fn lower_loop_subdag<T: Clone>(
         }
     }
 
-    // Extra input ports need to flow through the unpack node to the body.
-    // The parent maps these ports to unpack, and at runtime the executor
-    // passes them through to each body iteration.
-    // Add these ports to the mapping's input_mappings if not already present.
+    // Build port mapping for parent: the parent's input ports map to unpack,
+    // and the parent's output ports map to pack. Extra input ports are skipped
+    // here — they'll be routed through unpack separately below.
+    let mut mapping =
+        build_subdag_mapping_for_loop(parent_node, &flat_dag, parent_prefix, &extra_input_ports)?;
+
+    // Extra input ports flow through unpack to the body at runtime.
+    // Map them to unpack so the executor can route values correctly.
     for port_name in &extra_input_ports {
         let pn = PortName::new(port_name.clone());
         if !mapping.input_mappings.contains_key(&pn) {
@@ -479,10 +479,15 @@ fn lower_loop_subdag<T: Clone>(
 }
 
 /// Build port mapping for a loop SubDag (only unpack + pack present).
+///
+/// `extra_ports` are input port names that will be mapped separately by the
+/// caller (they flow through unpack to the body at runtime). These are skipped
+/// during entrypoint matching since they don't exist as ports on the flat_dag.
 fn build_subdag_mapping_for_loop<T>(
     parent_node: &Node<T>,
     flat_dag: &Dag<T>,
     parent_prefix: &str,
+    extra_ports: &[String],
 ) -> Result<SubDagMapping, LowerError> {
     let entrypoints = detect_entrypoints(flat_dag);
     let boundaries = detect_boundaries(flat_dag);
@@ -491,6 +496,10 @@ fn build_subdag_mapping_for_loop<T>(
     let mut output_mappings: HashMap<PortName, (NodeId, PortName)> = HashMap::new();
 
     for parent_port in &parent_node.inputs {
+        // Extra ports are mapped by the caller — skip them here
+        if extra_ports.contains(&parent_port.name.0) {
+            continue;
+        }
         let mut targets = Vec::new();
         for (inner_node_id, inner_port_name, _type_id) in &entrypoints.entrypoint_ports {
             if inner_port_name == &parent_port.name {

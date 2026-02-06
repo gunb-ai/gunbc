@@ -153,7 +153,9 @@ pub fn parse_openai_responses_response(response: &RestResponse) -> Result<ChatRe
         .get("output_text")
         .and_then(|t| t.as_str())
         .map(|s| s.to_string())
-        .unwrap_or_else(|| extract_text_from_output(&response.body));
+        .filter(|s| !s.is_empty())
+        .map(Ok)
+        .unwrap_or_else(|| extract_text_from_output(&response.body))?;
 
     let model = response
         .body
@@ -171,7 +173,12 @@ pub fn parse_openai_responses_response(response: &RestResponse) -> Result<ChatRe
     let finish_reason = match status {
         "completed" => FinishReason::Stop,
         "incomplete" => FinishReason::Length,
-        other => FinishReason::Other(other.to_string()),
+        other => {
+            return Err(format!(
+                "OpenAI Responses API unknown status: {}",
+                other
+            ))
+        }
     };
 
     let usage_value = response
@@ -207,7 +214,10 @@ pub fn parse_openai_responses_response(response: &RestResponse) -> Result<ChatRe
     };
 
     // Extract reasoning summary from output items
-    let (thinking, content_blocks) = extract_reasoning_from_output(&response.body);
+    let (thinking, content_blocks) = match response.body.get("output") {
+        Some(_) => extract_reasoning_from_output(&response.body)?,
+        None => (None, Vec::new()),
+    };
 
     Ok(ChatResponse {
         content,
@@ -220,64 +230,144 @@ pub fn parse_openai_responses_response(response: &RestResponse) -> Result<ChatRe
 }
 
 /// Extract text content from the output array when output_text is not available.
-fn extract_text_from_output(body: &serde_json::Value) -> String {
+fn extract_text_from_output(body: &serde_json::Value) -> Result<String, String> {
     let mut parts = Vec::new();
-    if let Some(output) = body.get("output").and_then(|o| o.as_array()) {
-        for item in output {
-            let item_type = item.get("type").and_then(|t| t.as_str()).unwrap_or("");
-            if item_type == "message" {
-                if let Some(content) = item.get("content").and_then(|c| c.as_array()) {
-                    for block in content {
-                        if block.get("type").and_then(|t| t.as_str()) == Some("output_text") {
-                            if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
-                                parts.push(text.to_string());
-                            }
+    let output = body
+        .get("output")
+        .and_then(|o| o.as_array())
+        .ok_or_else(|| "OpenAI Responses API missing output array".to_string())?;
+    for item in output {
+        let item_type = item
+            .get("type")
+            .and_then(|t| t.as_str())
+            .ok_or_else(|| "OpenAI Responses API output item missing type".to_string())?;
+        match item_type {
+            "message" => {
+                let content = item
+                    .get("content")
+                    .and_then(|c| c.as_array())
+                    .ok_or_else(|| "OpenAI Responses API message missing content array".to_string())?;
+                for block in content {
+                    let block_type = block
+                        .get("type")
+                        .and_then(|t| t.as_str())
+                        .ok_or_else(|| {
+                            "OpenAI Responses API message content block missing type".to_string()
+                        })?;
+                    match block_type {
+                        "output_text" => {
+                            let text = block
+                                .get("text")
+                                .and_then(|t| t.as_str())
+                                .ok_or_else(|| {
+                                    "OpenAI Responses API output_text block missing text"
+                                        .to_string()
+                                })?;
+                            parts.push(text.to_string());
+                        }
+                        other => {
+                            return Err(format!(
+                                "OpenAI Responses API unknown message block type: {}",
+                                other
+                            ))
                         }
                     }
                 }
             }
+            "reasoning" => {
+                // Reasoning items don't carry output_text; ignore for content extraction.
+                continue;
+            }
+            other => {
+                return Err(format!(
+                    "OpenAI Responses API unknown output item type: {}",
+                    other
+                ))
+            }
         }
     }
-    parts.join("")
+    if parts.is_empty() {
+        return Err("OpenAI Responses API missing output text".to_string());
+    }
+    Ok(parts.join(""))
 }
 
 /// Extract reasoning summary and build response blocks from output items.
-fn extract_reasoning_from_output(body: &serde_json::Value) -> (Option<String>, Vec<ResponseBlock>) {
+fn extract_reasoning_from_output(
+    body: &serde_json::Value,
+) -> Result<(Option<String>, Vec<ResponseBlock>), String> {
     let mut thinking_parts = Vec::new();
     let mut blocks = Vec::new();
 
-    if let Some(output) = body.get("output").and_then(|o| o.as_array()) {
-        for item in output {
-            let item_type = item.get("type").and_then(|t| t.as_str()).unwrap_or("");
-            match item_type {
-                "reasoning" => {
-                    // Reasoning summary items
-                    if let Some(summary) = item.get("summary").and_then(|s| s.as_array()) {
-                        for s in summary {
-                            if let Some(text) = s.get("text").and_then(|t| t.as_str()) {
-                                thinking_parts.push(text.to_string());
-                                blocks.push(ResponseBlock::Thinking {
-                                    thinking: text.to_string(),
-                                    signature: None,
-                                });
-                            }
+    let output = body
+        .get("output")
+        .and_then(|o| o.as_array())
+        .ok_or_else(|| "OpenAI Responses API missing output array".to_string())?;
+    for item in output {
+        let item_type = item
+            .get("type")
+            .and_then(|t| t.as_str())
+            .ok_or_else(|| "OpenAI Responses API output item missing type".to_string())?;
+        match item_type {
+            "reasoning" => {
+                // Reasoning summary items
+                let summary = item
+                    .get("summary")
+                    .and_then(|s| s.as_array())
+                    .ok_or_else(|| "OpenAI Responses API reasoning item missing summary".to_string())?;
+                for s in summary {
+                    let text = s
+                        .get("text")
+                        .and_then(|t| t.as_str())
+                        .ok_or_else(|| {
+                            "OpenAI Responses API reasoning summary missing text".to_string()
+                        })?;
+                    thinking_parts.push(text.to_string());
+                    blocks.push(ResponseBlock::Thinking {
+                        thinking: text.to_string(),
+                        signature: None,
+                    });
+                }
+            }
+            "message" => {
+                let content = item
+                    .get("content")
+                    .and_then(|c| c.as_array())
+                    .ok_or_else(|| "OpenAI Responses API message missing content array".to_string())?;
+                for block in content {
+                    let block_type = block
+                        .get("type")
+                        .and_then(|t| t.as_str())
+                        .ok_or_else(|| {
+                            "OpenAI Responses API message content block missing type".to_string()
+                        })?;
+                    match block_type {
+                        "output_text" => {
+                            let text = block
+                                .get("text")
+                                .and_then(|t| t.as_str())
+                                .ok_or_else(|| {
+                                    "OpenAI Responses API output_text block missing text"
+                                        .to_string()
+                                })?;
+                            blocks.push(ResponseBlock::Text {
+                                text: text.to_string(),
+                            });
+                        }
+                        other => {
+                            return Err(format!(
+                                "OpenAI Responses API unknown message block type: {}",
+                                other
+                            ))
                         }
                     }
                 }
-                "message" => {
-                    if let Some(content) = item.get("content").and_then(|c| c.as_array()) {
-                        for block in content {
-                            if block.get("type").and_then(|t| t.as_str()) == Some("output_text") {
-                                if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
-                                    blocks.push(ResponseBlock::Text {
-                                        text: text.to_string(),
-                                    });
-                                }
-                            }
-                        }
-                    }
-                }
-                _ => {}
+            }
+            other => {
+                return Err(format!(
+                    "OpenAI Responses API unknown output item type: {}",
+                    other
+                ))
             }
         }
     }
@@ -293,7 +383,7 @@ fn extract_reasoning_from_output(body: &serde_json::Value) -> (Option<String>, V
         blocks.clear();
     }
 
-    (thinking, blocks)
+    Ok((thinking, blocks))
 }
 
 #[cfg(test)]

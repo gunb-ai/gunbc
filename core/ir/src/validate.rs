@@ -789,7 +789,7 @@ mod tests {
         let mut dag: Dag<()> = Dag::new();
         dag.add_node(Node::opaque(
             "node_a",
-            vec![port("res:platform", "Platform")],
+            vec![resource("platform", "Platform", AccessMode::Read)],
             vec![port("out", "String")],
             (),
         ));
@@ -807,7 +807,7 @@ mod tests {
             "worker",
             vec![
                 port("data", "String"),
-                port("res:fs", "FilesystemHandle"),
+                resource("fs", "FilesystemHandle", AccessMode::Read),
             ],
             vec![port("result", "String")],
             (),

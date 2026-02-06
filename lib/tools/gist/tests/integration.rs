@@ -41,6 +41,14 @@ fn mock_env(mocks: &mut BoundaryMocks) {
     mocks.set_input("prepare_remote_branches", "repo_path", Value::Str(".".into()));
     mocks.set_input("prepare_diff", "repo_path", Value::Str(".".into()));
     mocks.set_input("prepare_rev_list", "repo_path", Value::Str(".".into()));
+    // Mock for loop body's transport node (intercepted in DryRun mode).
+    // This provides a mock response for the per-file `cat` command inside
+    // the LoopBuilder body DAG.
+    mocks.set_value(
+        "execute",
+        "response",
+        Value::Response(TransportResponse::Shell(ShellResponse::ok("fn main() {}"))),
+    );
 }
 
 /// Test that dry-run mode intercepts the transport boundaries.

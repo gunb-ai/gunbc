@@ -11,15 +11,15 @@
 - [ ] Unassigned
 
 ## Status
-**Phases 1-5 implemented** (2026-02-05). Core infrastructure is in place:
+**Phases 1-6 implemented** (2026-02-06). Core infrastructure is in place:
 - ContentHash, HashBuilder for freshness keys
 - ResourceManifest for on-disk storage
 - Manifest integration in codegen/testgen
 - CI uses manifest-based freshness (replaces brittle file check)
 - ExecMode (Verify/Ensure) via `--mode` flag
+- Phase 6: MetaTarget uses ResourceNeed + ResourceTargetMap (replaces PrepLevel/extra_deps/fix_deps)
 
 **Remaining work:**
-- Phase 6: Makefile simplification (deferred — infrastructure ready)
 - Phase 7: ToolHandle unification (optional)
 - Section 11: Extension candidates (deps.toml, Makefile tracking, etc.)
 
@@ -895,16 +895,15 @@ is already correct for tools.
 - [ ] `--mode` flag in other bins (deferred)
 - [ ] Deprecate `--check` flag (deferred)
 
-### Phase 6: Makefile Simplification (Deferred)
-- [ ] Remove `extra_deps` from `MetaTarget`
-- [ ] Remove `fix_deps` from `MetaTarget`
-- [ ] Remove/deprecate `PrepLevel`
-- [ ] Remove `prep_dep_name()`
-- [ ] Emit `--mode` in renderer
-- [ ] Test generated Makefile
-
-Note: Phase 6 is now enabled by the infrastructure from phases 1-5.
-The current manual wiring continues to work; simplification is a future optimization.
+### Phase 6: Makefile Simplification (Done — 2026-02-06)
+- [x] Remove `extra_deps` from `MetaTarget`
+- [x] Remove `fix_deps` from `MetaTarget` (now `fix_prerequisites`)
+- [x] Remove `PrepLevel` enum
+- [x] Replace `prep_dep_name()` with `ResourceTargetMap::resolve()`
+- [ ] Emit `--mode` in renderer (deferred — not needed until bins accept `--mode`)
+- [x] Test generated Makefile (output unchanged, all existing assertions pass)
+- [x] Add `ResourceNeed` + `ResourceTargetMap` types
+- [x] MetaTarget uses `.needs(ResourceId, ExecMode)` builder
 
 ### Phase 7: ToolHandle Unification (Optional)
 - [ ] `ToolHandle` as `ResourceHandle<ToolResource>`

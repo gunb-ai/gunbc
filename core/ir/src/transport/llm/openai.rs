@@ -145,50 +145,63 @@ pub fn parse_openai_response(response: &RestResponse) -> Result<ChatResponse, St
         .get("message")
         .and_then(|m| m.get("content"))
         .and_then(|c| c.as_str())
-        .unwrap_or("")
+        .ok_or("OpenAI response missing message.content")?
         .to_string();
 
     let model = response
         .body
         .get("model")
         .and_then(|m| m.as_str())
-        .unwrap_or("unknown")
+        .ok_or("OpenAI response missing model")?
         .to_string();
 
-    let finish_reason = first
+    let finish_reason_str = first
         .get("finish_reason")
         .and_then(|r| r.as_str())
-        .map(FinishReason::from_openai)
-        .unwrap_or(FinishReason::Stop);
+        .ok_or("OpenAI response missing finish_reason")?;
+    let finish_reason = match finish_reason_str {
+        "stop" => FinishReason::Stop,
+        "length" => FinishReason::Length,
+        "content_filter" => FinishReason::ContentFilter,
+        other => {
+            return Err(format!(
+                "OpenAI response has unknown finish_reason: {}",
+                other
+            ))
+        }
+    };
 
     let usage = response
         .body
         .get("usage")
-        .map(|u| {
-            // Detailed token breakdown (if present)
-            let cached_tokens = u
-                .get("prompt_tokens_details")
-                .and_then(|d| d.get("cached_tokens"))
-                .and_then(|t| t.as_u64());
+        .ok_or("OpenAI response missing usage")?;
+    // Detailed token breakdown (if present)
+    let cached_tokens = usage
+        .get("prompt_tokens_details")
+        .and_then(|d| d.get("cached_tokens"))
+        .and_then(|t| t.as_u64());
 
-            let reasoning_tokens = u
-                .get("completion_tokens_details")
-                .and_then(|d| d.get("reasoning_tokens"))
-                .and_then(|t| t.as_u64());
+    let reasoning_tokens = usage
+        .get("completion_tokens_details")
+        .and_then(|d| d.get("reasoning_tokens"))
+        .and_then(|t| t.as_u64());
 
-            Usage {
-                input_tokens: u.get("prompt_tokens").and_then(|t| t.as_u64()).unwrap_or(0),
-                output_tokens: u
-                    .get("completion_tokens")
-                    .and_then(|t| t.as_u64())
-                    .unwrap_or(0),
-                cache_creation_input_tokens: None,
-                cache_read_input_tokens: None,
-                cached_tokens,
-                reasoning_tokens,
-            }
-        })
-        .unwrap_or_default();
+    let input_tokens = usage
+        .get("prompt_tokens")
+        .and_then(|t| t.as_u64())
+        .ok_or("OpenAI response missing usage.prompt_tokens")?;
+    let output_tokens = usage
+        .get("completion_tokens")
+        .and_then(|t| t.as_u64())
+        .ok_or("OpenAI response missing usage.completion_tokens")?;
+    let usage = Usage {
+        input_tokens,
+        output_tokens,
+        cache_creation_input_tokens: None,
+        cache_read_input_tokens: None,
+        cached_tokens,
+        reasoning_tokens,
+    };
 
     Ok(ChatResponse {
         content,

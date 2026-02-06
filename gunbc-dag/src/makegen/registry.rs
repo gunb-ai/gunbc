@@ -5,14 +5,16 @@
 //! Only tools that can't be in codegen (like `ci`, which is the bootstrap tool)
 //! are registered manually here.
 //!
-//! Meta targets (test, check, fmt, clippy) compose with prep levels.
+//! Meta targets (test, check, fmt, clippy) declare resource needs.
 //!
 //! # BuildConfig
 //!
 //! The `BuildConfig` struct is the single source of truth for all build/test/lint
 //! commands. This eliminates duplicate hardcoded commands across the codebase.
 
+use gunbc_infra::ResourceId;
 use gunbc_ir::cargo::{CargoCommand, Subcommand, Warnings};
+use gunbc_ir::resource::ExecMode;
 use gunbc_ir::transport::ShellRequest;
 use gunbc_ir::CargoInvocation;
 use std::collections::HashMap;
@@ -639,37 +641,93 @@ impl EntrypointParam {
 }
 
 // ============================================================================
-// Meta Targets - Holistic targets that compose with prep
+// Meta Targets - Resource-based dependency model
 // ============================================================================
 
-/// How much preparation is needed before running a meta target.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PrepLevel {
-    /// No prep needed (e.g., fmt just formats existing code)
-    None,
-    /// Just ensure codegen has run (light prep)
-    Codegen,
-    /// Full prep including build (heavy prep)
-    Full,
+/// What resource a meta target needs, and in what mode for the base variant.
+///
+/// Base mode determines the dependency for the verify-only (CI) variant:
+/// - `Ensure` → use the ensure target (e.g., "testgen")
+/// - `Verify` → use the verify target (e.g., "pragma-check")
+///
+/// Fix variants always use the ensure target (fix mode = ensure everything).
+#[derive(Debug, Clone)]
+pub struct ResourceNeed {
+    pub id: ResourceId,
+    /// Base target mode: Verify = check-only dep, Ensure = regenerate dep
+    pub base_mode: ExecMode,
 }
 
-impl PrepLevel {
-    /// Map this prep level to its Make dependency target name.
+/// Maps ResourceId → Make target names for verify and ensure modes.
+///
+/// This decouples MetaTarget declarations (what resources they need) from
+/// the concrete Make target names (how those resources are provided).
+pub struct ResourceTargetMap {
+    entries: Vec<ResourceTargetEntry>,
+}
+
+struct ResourceTargetEntry {
+    id: ResourceId,
+    ensure_target: String,
+    /// Verify target. None means same as ensure (always ensure).
+    verify_target: Option<String>,
+}
+
+impl ResourceTargetMap {
+    /// Resolve a ResourceId + mode to a Make target name.
     ///
-    /// Returns `None` for `PrepLevel::None` (no dependency needed).
-    /// When `use_dag_entrypoints` is true, `Full` maps to `"codegen"` instead of
-    /// `"build"` because DAG entrypoints already include the build/test/lint stages.
-    pub fn dep_name(&self, use_dag_entrypoints: bool) -> Option<&'static str> {
-        match self {
-            PrepLevel::None => None,
-            PrepLevel::Codegen => Some("ensure-codegen"),
-            PrepLevel::Full => {
-                if use_dag_entrypoints {
-                    Some("codegen")
-                } else {
-                    Some("build")
-                }
-            }
+    /// - `Ensure` → ensure_target
+    /// - `Verify` → verify_target (fallback to ensure_target if None)
+    pub fn resolve(&self, id: &ResourceId, mode: ExecMode) -> Option<&str> {
+        self.entries.iter().find(|e| e.id == *id).map(|e| match mode {
+            ExecMode::Ensure => e.ensure_target.as_str(),
+            ExecMode::Verify => e
+                .verify_target
+                .as_deref()
+                .unwrap_or(e.ensure_target.as_str()),
+        })
+    }
+
+    /// Build the default resource target map.
+    ///
+    /// This maps ResourceIds used by meta targets to their concrete Make
+    /// target names. The mapping accounts for `use_dag_entrypoints` which
+    /// changes how `compiled_code` is provided.
+    pub fn default_map(config: &BuildConfig) -> Self {
+        let compiled_code_target = if config.use_dag_entrypoints {
+            "codegen"
+        } else {
+            "build"
+        };
+
+        Self {
+            entries: vec![
+                ResourceTargetEntry {
+                    id: ResourceId::build("generated_cli"),
+                    ensure_target: "ensure-codegen".to_string(),
+                    verify_target: None, // always ensure
+                },
+                ResourceTargetEntry {
+                    id: ResourceId::build("generated_tests"),
+                    ensure_target: "testgen".to_string(),
+                    verify_target: Some("testgen-check".to_string()),
+                },
+                ResourceTargetEntry {
+                    id: ResourceId::build("pragma_config"),
+                    ensure_target: "pragma".to_string(),
+                    verify_target: Some("pragma-check".to_string()),
+                },
+                ResourceTargetEntry {
+                    id: ResourceId::build("compiled_code"),
+                    ensure_target: compiled_code_target.to_string(),
+                    verify_target: None, // always ensure
+                },
+                ResourceTargetEntry {
+                    id: ResourceId::build("verified_artifacts"),
+                    ensure_target: "verify".to_string(),
+                    verify_target: None, // always ensure
+                },
+            ],
         }
     }
 }
@@ -727,13 +785,14 @@ impl ConfigField {
     }
 }
 
-/// A meta target that composes prep + a specific operation.
+/// A meta target that composes resource needs + a specific operation.
 ///
 /// Meta targets are holistic targets like `test`, `check`, `fmt`, `clippy`
-/// that developers use frequently. They depend on the appropriate prep level
-/// to ensure the repository is in a consistent state.
+/// that developers use frequently. They declare *what resources they need*
+/// via `ResourceNeed`, and the renderer resolves those to Make target names
+/// via `ResourceTargetMap`.
 ///
-/// Commands are now referenced via `ConfigField` to ensure BuildConfig
+/// Commands are referenced via `ConfigField` to ensure BuildConfig
 /// remains the single source of truth.
 ///
 /// # Dev UX Convention (from the-gunbai)
@@ -748,8 +807,6 @@ pub struct MetaTarget {
     pub name: String,
     /// Description for help text
     pub description: String,
-    /// How much prep is needed
-    pub prep_level: PrepLevel,
     /// Which BuildConfig field to use for the command
     pub config_field: ConfigField,
     /// Whether this target has a check variant (e.g., fmt-check)
@@ -757,11 +814,11 @@ pub struct MetaTarget {
     /// Whether this target has a fix variant (e.g., test-fix, clippy-fix)
     /// Following the-gunbai convention: <target>-fix auto-fixes before running
     pub has_fix_variant: bool,
-    /// Dependencies for the fix variant (e.g., ["fmt-fix", "lint-fix"] for test-fix)
-    /// These targets are run before the main command in the -fix variant
-    pub fix_deps: Vec<&'static str>,
-    /// Additional Make dependencies beyond the prep level (e.g., "testgen-check" for test)
-    pub extra_deps: Vec<&'static str>,
+    /// Resources this target needs, with base-mode for each.
+    pub resources: Vec<ResourceNeed>,
+    /// Prerequisites for the fix variant (e.g., ["fmt-fix", "lint-fix"] for test-fix).
+    /// These targets are run before the main command in the -fix variant.
+    pub fix_prerequisites: Vec<&'static str>,
 }
 
 impl MetaTarget {
@@ -769,20 +826,29 @@ impl MetaTarget {
     pub fn new(
         name: impl Into<String>,
         description: impl Into<String>,
-        prep_level: PrepLevel,
         config_field: ConfigField,
     ) -> Self {
-        let name_str = name.into();
         Self {
-            name: name_str,
+            name: name.into(),
             description: description.into(),
-            prep_level,
             config_field,
             has_check_variant: false,
             has_fix_variant: false,
-            fix_deps: Vec::new(),
-            extra_deps: Vec::new(),
+            resources: Vec::new(),
+            fix_prerequisites: Vec::new(),
         }
+    }
+
+    /// Declare a resource need with a base-mode.
+    ///
+    /// The base mode determines what Make target is used for the verify variant:
+    /// - `Ensure` → always use the ensure target (e.g., "build")
+    /// - `Verify` → use the verify target (e.g., "pragma-check")
+    ///
+    /// Fix variants always resolve all resources in Ensure mode.
+    pub fn needs(mut self, id: ResourceId, base_mode: ExecMode) -> Self {
+        self.resources.push(ResourceNeed { id, base_mode });
+        self
     }
 
     /// Mark this target as having a check variant (e.g., fmt-check).
@@ -793,23 +859,13 @@ impl MetaTarget {
 
     /// Mark this target as having a fix variant (e.g., test-fix, clippy-fix).
     ///
-    /// The fix variant runs the specified dependencies before the main command.
+    /// The fix variant runs the specified prerequisites before the main command.
     /// Following the-gunbai convention:
     /// - `make test` - verify only (CI-safe)
     /// - `make test-fix` - auto-fix (fmt + lint) then verify
-    pub fn with_fix_variant(mut self, deps: Vec<&'static str>) -> Self {
+    pub fn with_fix_variant(mut self, prerequisites: Vec<&'static str>) -> Self {
         self.has_fix_variant = true;
-        self.fix_deps = deps;
-        self
-    }
-
-    /// Add extra Make dependencies beyond the prep level.
-    ///
-    /// These are appended to the dependency list after the prep-level dep.
-    /// For example, `test` depends on `build` (from PrepLevel::Full) AND
-    /// `testgen-check` (from extra_deps).
-    pub fn with_extra_deps(mut self, deps: Vec<&'static str>) -> Self {
-        self.extra_deps = deps;
+        self.fix_prerequisites = prerequisites;
         self
     }
 
@@ -839,11 +895,6 @@ impl MetaTarget {
             None
         }
     }
-
-    /// Get the fix dependencies for this meta target.
-    pub fn get_fix_deps(&self) -> &[&'static str] {
-        &self.fix_deps
-    }
 }
 
 /// Get the default meta targets.
@@ -858,40 +909,32 @@ impl MetaTarget {
 /// - `make test-fix` runs fmt-fix + lint-fix, then tests (dev uses this)
 pub fn default_meta_targets() -> Vec<MetaTarget> {
     vec![
-        // test - run all tests (requires full prep + testgen upsert)
+        // test - run all tests (requires full build + testgen + verify)
         // test-fix: fmt-fix + lint-fix first, then test
-        MetaTarget::new("test", "Run all tests", PrepLevel::Full, ConfigField::Test)
-            .with_extra_deps(vec!["testgen", "verify"])
+        MetaTarget::new("test", "Run all tests", ConfigField::Test)
+            .needs(ResourceId::build("compiled_code"), ExecMode::Ensure)
+            .needs(ResourceId::build("generated_tests"), ExecMode::Ensure)
+            .needs(ResourceId::build("verified_artifacts"), ExecMode::Ensure)
             .with_fix_variant(vec!["fmt-fix", "lint-fix"]),
-        // check - type check without building (requires codegen)
+        // check - type check without building (requires codegen + pragma)
         // check-fix: fmt-fix first, then check
-        MetaTarget::new(
-            "check",
-            "Type check all targets",
-            PrepLevel::Codegen,
-            ConfigField::Check,
-        )
-        .with_fix_variant(vec!["fmt-fix"])
-        .with_extra_deps(vec!["pragma-check"]),
-        // clippy - run linter (requires codegen)
+        MetaTarget::new("check", "Type check all targets", ConfigField::Check)
+            .needs(ResourceId::build("generated_cli"), ExecMode::Ensure)
+            .needs(ResourceId::build("pragma_config"), ExecMode::Verify)
+            .with_fix_variant(vec!["fmt-fix"]),
+        // clippy - run linter (requires codegen + pragma)
         // clippy-fix: uses cargo clippy --fix (auto-fix where possible)
-        MetaTarget::new(
-            "clippy",
-            "Run clippy linter",
-            PrepLevel::Codegen,
-            ConfigField::Lint,
-        )
-        .with_fix_variant(vec![])
-        .with_extra_deps(vec!["pragma-check"]),
-        // fmt - format code (no prep needed)
+        MetaTarget::new("clippy", "Run clippy linter", ConfigField::Lint)
+            .needs(ResourceId::build("generated_cli"), ExecMode::Ensure)
+            .needs(ResourceId::build("pragma_config"), ExecMode::Verify)
+            .with_fix_variant(vec![]),
+        // fmt - format code (no resources needed)
         // fmt has check variant (fmt-check) but not fix variant (fmt IS the fix)
-        MetaTarget::new("fmt", "Format all code", PrepLevel::None, ConfigField::Fmt)
-            .with_check_variant(),
-        // ci-yaml - generate CI workflow files (no prep needed)
+        MetaTarget::new("fmt", "Format all code", ConfigField::Fmt).with_check_variant(),
+        // ci-yaml - generate CI workflow files (no resources needed)
         MetaTarget::new(
             "ci-yaml",
             "Generate CI workflow YAML (GitHub Actions & GitLab CI)",
-            PrepLevel::None,
             ConfigField::CiYaml,
         ),
     ]
@@ -1136,17 +1179,21 @@ mod tests {
     }
 
     #[test]
-    fn test_meta_target_prep_levels() {
+    fn test_meta_target_resources() {
         let targets = default_meta_targets();
 
         let test = targets.iter().find(|t| t.name == "test").unwrap();
-        assert_eq!(test.prep_level, PrepLevel::Full);
+        assert_eq!(test.resources.len(), 3);
+        assert_eq!(test.resources[0].id, ResourceId::build("compiled_code"));
+        assert_eq!(test.resources[0].base_mode, ExecMode::Ensure);
 
         let fmt = targets.iter().find(|t| t.name == "fmt").unwrap();
-        assert_eq!(fmt.prep_level, PrepLevel::None);
+        assert!(fmt.resources.is_empty());
 
         let clippy = targets.iter().find(|t| t.name == "clippy").unwrap();
-        assert_eq!(clippy.prep_level, PrepLevel::Codegen);
+        assert_eq!(clippy.resources.len(), 2);
+        assert_eq!(clippy.resources[0].id, ResourceId::build("generated_cli"));
+        assert_eq!(clippy.resources[1].base_mode, ExecMode::Verify);
     }
 
     #[test]
@@ -1178,7 +1225,7 @@ mod tests {
         let test = targets.iter().find(|t| t.name == "test").unwrap();
 
         assert!(test.has_fix_variant);
-        assert_eq!(test.fix_deps, vec!["fmt-fix", "lint-fix"]);
+        assert_eq!(test.fix_prerequisites, vec!["fmt-fix", "lint-fix"]);
     }
 
     #[test]
@@ -1187,7 +1234,7 @@ mod tests {
         let check = targets.iter().find(|t| t.name == "check").unwrap();
 
         assert!(check.has_fix_variant);
-        assert_eq!(check.fix_deps, vec!["fmt-fix"]);
+        assert_eq!(check.fix_prerequisites, vec!["fmt-fix"]);
     }
 
     #[test]
@@ -1217,6 +1264,69 @@ mod tests {
         let config = BuildConfig::cargo();
         assert!(config.lint_fix_shell().contains("--fix"));
         assert!(config.lint_fix_shell().contains("--allow-dirty"));
+    }
+
+    // ========================================================================
+    // ResourceTargetMap Tests
+    // ========================================================================
+
+    #[test]
+    fn test_resource_target_map_resolve_ensure() {
+        let config = BuildConfig::cargo();
+        let map = ResourceTargetMap::default_map(&config);
+
+        assert_eq!(
+            map.resolve(&ResourceId::build("generated_tests"), ExecMode::Ensure),
+            Some("testgen")
+        );
+        assert_eq!(
+            map.resolve(&ResourceId::build("compiled_code"), ExecMode::Ensure),
+            Some("build")
+        );
+    }
+
+    #[test]
+    fn test_resource_target_map_resolve_verify() {
+        let config = BuildConfig::cargo();
+        let map = ResourceTargetMap::default_map(&config);
+
+        // Has verify target → use it
+        assert_eq!(
+            map.resolve(&ResourceId::build("generated_tests"), ExecMode::Verify),
+            Some("testgen-check")
+        );
+        assert_eq!(
+            map.resolve(&ResourceId::build("pragma_config"), ExecMode::Verify),
+            Some("pragma-check")
+        );
+        // No verify target → fallback to ensure
+        assert_eq!(
+            map.resolve(&ResourceId::build("generated_cli"), ExecMode::Verify),
+            Some("ensure-codegen")
+        );
+    }
+
+    #[test]
+    fn test_resource_target_map_dag_entrypoints() {
+        let config = BuildConfig::cargo_entrypoints();
+        let map = ResourceTargetMap::default_map(&config);
+
+        // compiled_code maps to "codegen" when DAG entrypoints are used
+        assert_eq!(
+            map.resolve(&ResourceId::build("compiled_code"), ExecMode::Ensure),
+            Some("codegen")
+        );
+    }
+
+    #[test]
+    fn test_resource_target_map_unknown_resource() {
+        let config = BuildConfig::cargo();
+        let map = ResourceTargetMap::default_map(&config);
+
+        assert_eq!(
+            map.resolve(&ResourceId::build("nonexistent"), ExecMode::Ensure),
+            None
+        );
     }
 
     // ========================================================================

@@ -7,9 +7,11 @@
 //! Uses `MakefileStructuredRenderer` to render `StructuredBlock` IR.
 
 use crate::makegen::registry::{
-    BuildConfig, EntrypointParam, ExtraTarget, MetaTarget, ToolInfo, ToolRegistry,
+    BuildConfig, EntrypointParam, ExtraTarget, MetaTarget, ResourceTargetMap, ToolInfo,
+    ToolRegistry,
 };
 use gunbc_ir::cargo::Warnings;
+use gunbc_ir::resource::ExecMode;
 use gunbc_ir::render_ir::{FileHeader, PlainText, StructuredBlock, StructuredRenderer, Target};
 use gunbc_ir::symbols::{Tier, STANDARD};
 use gunbc_ir::MakefileStructuredRenderer;
@@ -324,10 +326,10 @@ fn build_help_target(registry: &ToolRegistry, config: &BuildConfig) -> Structure
             meta.name, meta.description
         ));
         if meta.has_fix_variant {
-            let deps = if meta.fix_deps.is_empty() {
+            let deps = if meta.fix_prerequisites.is_empty() {
                 "auto-fix".to_string()
             } else {
-                format!("{} first", meta.fix_deps.join(" + "))
+                format!("{} first", meta.fix_prerequisites.join(" + "))
             };
             lines.push(format!(
                 "@echo \"  {}-fix  - {} ({})\"",
@@ -372,6 +374,7 @@ fn build_help_target(registry: &ToolRegistry, config: &BuildConfig) -> Structure
 /// Build meta targets section as structured blocks.
 fn build_meta_targets(registry: &ToolRegistry, config: &BuildConfig) -> Vec<StructuredBlock> {
     let mut blocks = Vec::new();
+    let res_map = ResourceTargetMap::default_map(config);
 
     blocks.push(StructuredBlock::Raw(
         "# ============================================================================\n\
@@ -384,28 +387,31 @@ fn build_meta_targets(registry: &ToolRegistry, config: &BuildConfig) -> Vec<Stru
     blocks.extend(build_fix_alias_targets(config));
 
     for meta in &registry.meta_targets {
-        blocks.push(build_meta_target(meta, config));
+        blocks.push(build_meta_target(meta, config, &res_map));
         if meta.has_fix_variant {
-            blocks.extend(build_meta_fix_variant(meta, config));
+            blocks.extend(build_meta_fix_variant(meta, config, &res_map));
         }
         if meta.has_check_variant {
-            blocks.extend(build_meta_check_variant(meta, config));
+            blocks.extend(build_meta_check_variant(meta, config, &res_map));
         }
     }
 
     blocks
 }
 
-/// Build the dependency list for a meta target.
-fn meta_target_deps(meta: &MetaTarget, config: &BuildConfig) -> Vec<String> {
+/// Build the dependency list for a meta target (base/check variant).
+///
+/// Resolves each `ResourceNeed` using its `base_mode` via `ResourceTargetMap`.
+fn meta_target_deps(
+    meta: &MetaTarget,
+    res_map: &ResourceTargetMap,
+) -> Vec<String> {
     let mut deps: Vec<String> = Vec::new();
 
-    if let Some(prep) = meta.prep_level.dep_name(config.use_dag_entrypoints) {
-        deps.push(prep.to_string());
-    }
-
-    for dep in &meta.extra_deps {
-        deps.push((*dep).to_string());
+    for need in &meta.resources {
+        if let Some(target) = res_map.resolve(&need.id, need.base_mode) {
+            deps.push(target.to_string());
+        }
     }
 
     deps
@@ -430,8 +436,12 @@ fn build_fix_alias_targets(config: &BuildConfig) -> Vec<StructuredBlock> {
 }
 
 /// Build a single meta target.
-fn build_meta_target(meta: &MetaTarget, config: &BuildConfig) -> StructuredBlock {
-    let deps = meta_target_deps(meta, config);
+fn build_meta_target(
+    meta: &MetaTarget,
+    config: &BuildConfig,
+    res_map: &ResourceTargetMap,
+) -> StructuredBlock {
+    let deps = meta_target_deps(meta, res_map);
     let command = meta.get_command(config);
 
     StructuredBlock::Target(Target {
@@ -446,9 +456,10 @@ fn build_meta_target(meta: &MetaTarget, config: &BuildConfig) -> StructuredBlock
 fn build_meta_check_variant(
     meta: &MetaTarget,
     config: &BuildConfig,
+    res_map: &ResourceTargetMap,
 ) -> Vec<StructuredBlock> {
     if let Some(check_cmd) = meta.get_check_command(config) {
-        let deps = meta_target_deps(meta, config);
+        let deps = meta_target_deps(meta, res_map);
 
         vec![StructuredBlock::Target(Target {
             name: format!("{}-check", meta.name),
@@ -462,9 +473,13 @@ fn build_meta_check_variant(
 }
 
 /// Build a fix variant for a meta target.
+///
+/// Fix variants always resolve resources in Ensure mode (fix = ensure everything),
+/// preceded by any fix_prerequisites (e.g., "fmt-fix", "lint-fix").
 fn build_meta_fix_variant(
     meta: &MetaTarget,
     config: &BuildConfig,
+    res_map: &ResourceTargetMap,
 ) -> Vec<StructuredBlock> {
     if !meta.has_fix_variant {
         return vec![];
@@ -472,21 +487,16 @@ fn build_meta_fix_variant(
 
     let mut deps = Vec::new();
 
-    for dep in meta.get_fix_deps() {
+    // Fix prerequisites first (e.g., "fmt-fix", "lint-fix")
+    for dep in &meta.fix_prerequisites {
         deps.push(dep.to_string());
     }
 
-    if let Some(prep) = meta.prep_level.dep_name(config.use_dag_entrypoints) {
-        deps.push(prep.to_string());
-    }
-
-    for dep in &meta.extra_deps {
-        let fix_dep = if dep.ends_with("-check") {
-            dep.trim_end_matches("-check").to_string()
-        } else {
-            dep.to_string()
-        };
-        deps.push(fix_dep);
+    // All resources resolved in Ensure mode
+    for need in &meta.resources {
+        if let Some(target) = res_map.resolve(&need.id, ExecMode::Ensure) {
+            deps.push(target.to_string());
+        }
     }
 
     let fix_cmd = meta

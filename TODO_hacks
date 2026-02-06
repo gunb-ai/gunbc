@@ -7,26 +7,6 @@
 # Note: resolved items have been moved to `TODO/TODONE/TODO_hacks.md`
 # and `TODO/TODONE/TODO_hacks_general.md`.
 
-## PrepLevel→deps mapping hardcoded in renderer
-
-> **Tracked in:** `TODO/design-unified-resource-model.md` — replaced by
-> `ResourceContract.provides`/`needs` with automatic dependency resolution.
-
-In `render_meta_target()`, the PrepLevel→dependency mapping is literal:
-  - `PrepLevel::Codegen => "ensure-codegen"`
-  - `PrepLevel::Full => "build"`
-
-This is policy embedded in renderer logic rather than modeled as data.
-
-**Suggested fix:** Treat prep-level→deps mapping as data (in BuildConfig
-or ToolRegistry), or skip PrepLevel entirely and store explicit typed
-deps in the meta target definition.
-
-Files:
-  - gunbc-dag/src/makegen/render.rs (prep_dep_name function)
-
----
-
 ## Tool targets blanket-depend on ensure-codegen
 
 > **Tracked in:** `TODO/design-unified-resource-model.md` — replaced by
@@ -46,25 +26,21 @@ Files:
 
 ---
 
-## Meta-target dependency strings not verified
+## Meta-target fix_prerequisites are still untyped strings
 
-> **Tracked in:** `TODO/design-unified-resource-model.md` — replaced by typed
-> `ResourceContract` with `BuildResource` enum and automatic resolution.
+> **Partially resolved** (2026-02-06): Resource dependencies are now typed
+> via `ResourceNeed` + `ResourceTargetMap` (Phase 6). However, `fix_prerequisites`
+> (e.g., "fmt-fix", "lint-fix") are still `Vec<&'static str>`.
 
-Meta-targets reference other targets by name ("testgen-check", "fmt-fix",
-"lint-fix") as hardcoded strings. Renaming or removing a target won't
-cause a compile error — just a broken Makefile at runtime.
+The remaining untyped strings are fix alias targets ("fmt-fix", "lint-fix")
+which reference other meta-target variants. Renaming a fix variant won't
+cause a compile error.
 
-**Suggested fix (from review 2026-02-05):**
-- Replace `Vec<String>` for meta deps with typed `Vec<TargetRef>` where:
-  - `TargetRef::Core(CoreTarget)` (e.g., EnsureCodegen, Build)
-  - `TargetRef::Meta(MetaTargetId)`
-  - `TargetRef::Tool(ToolName)`
-- Add generator-time validation: every dep resolves, no cycles, no duplicates.
-- Render to makefile names at the end, but keep typed inside generator.
+**Suggested fix:** Replace `Vec<&'static str>` with typed refs to other
+meta targets (e.g., `Vec<MetaTargetRef>`) and resolve at render time.
 
 Files:
-  - gunbc-dag/src/makegen/registry.rs (default_meta_targets(), fix_deps)
+  - gunbc-dag/src/makegen/registry.rs (MetaTarget::fix_prerequisites)
 
 ## "List" used as type_id AND cardinality shape (dual encoding) — PARTIAL FIXES
 
