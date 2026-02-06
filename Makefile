@@ -178,23 +178,23 @@ bootstrap-dry: ensure-codegen
 	@RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-bootstrap -- --dry-run
 
 # gunbc-ci entrypoints: 
-ci: ensure-codegen
+ci:
 	@RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-ci --
 
-ci-dry: ensure-codegen
+ci-dry:
 	@RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-ci -- --dry-run
 
 # gunbc-pragma entrypoints: 
-pragma: ensure-codegen
+pragma:
 	@RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-pragma --
 
-pragma-dry: ensure-codegen
+pragma-dry:
 	@RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-pragma -- --dry-run
 
 # gunbc-build entrypoints: 
-build-all: ensure-codegen
+build-all:
 	@RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-build --
 
-build-all-dry: ensure-codegen
+build-all-dry:
 	@RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-build -- --dry-run
 

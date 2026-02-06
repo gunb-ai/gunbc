@@ -1,6 +1,8 @@
 //! Executable semantics for pattern-internal operations.
 
-use crate::helpers::{require_bool, require_int, require_str_list, require_value, OutputMap};
+use crate::helpers::{
+    propagate_skipped, require_bool, require_int, require_str_list, require_value, OutputMap,
+};
 use crate::{ExecError, Executable};
 use gunbc_ir::patterns::PatternOp;
 use gunbc_ir::Value;
@@ -30,14 +32,30 @@ impl Executable for PatternOp {
                 input_port,
                 element_port,
             } => {
+                // Propagate Skipped from upstream (e.g., skip propagation tests)
+                if let Some(result) =
+                    propagate_skipped(&inputs, input_port, &[element_port, "count"])
+                {
+                    return result;
+                }
+
                 let list = require_str_list(&inputs, input_port)?;
                 let count = list.len() as i64;
 
-                OutputMap::new()
+                let mut out = OutputMap::new()
                     .str_list(element_port, list)
                     .int("index", 0)
-                    .int("count", count)
-                    .ok()
+                    .int("count", count);
+
+                // Pass through extra inputs (e.g., repo_path) so
+                // execute_loop_body can retrieve them from unpack outputs.
+                for (key, value) in &inputs {
+                    if key != input_port {
+                        out = out.value(key, value.clone());
+                    }
+                }
+
+                out.ok()
             }
             PatternOp::LoopPack { output_port } => {
                 let list = require_str_list(&inputs, "result")?;
@@ -135,5 +153,23 @@ impl Executable for PatternOp {
                     .ok()
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_loop_unpack_propagates_skipped() {
+        let op = PatternOp::LoopUnpack {
+            input_port: "files".to_string(),
+            element_port: "filename".to_string(),
+        };
+        let mut inputs = HashMap::new();
+        inputs.insert("files".to_string(), Value::Skipped);
+        let result = op.execute(inputs).unwrap();
+        assert_eq!(result.get("filename"), Some(&Value::Skipped));
+        assert_eq!(result.get("count"), Some(&Value::Skipped));
     }
 }

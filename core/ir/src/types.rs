@@ -348,25 +348,6 @@ impl Cardinality {
         }
     }
 
-    /// Can self be safely coerced to target without data loss?
-    ///
-    /// Unlike `satisfies()` (which checks subset containment), this checks
-    /// whether there exists a lossless injection `self ↪ target`.
-    ///
-    /// `[1,1] → [0,∞)`: yes (wrap in `[x]`)
-    /// `[0,∞) → [1,1]`: no (might lose elements or fail on empty)
-    /// `[0,1] → [0,∞)`: yes (`None→[], Some(x)→[x]`)
-    pub fn can_coerce_to(self, target: Cardinality) -> bool {
-        if self.satisfies(target) {
-            return true; // already compatible, trivial coercion
-        }
-        // Safe widening: we can always embed into a larger container.
-        // [1,1] ↪ [0,∞) by wrapping as [x].
-        // This works when target.min <= self.min (target accepts fewer)
-        // and target.max >= self.max (target accepts more).
-        // The only unsafe direction is narrowing (target stricter than self).
-        target.min <= self.min && self.max_leq(target.max)
-    }
 }
 
 impl Default for Cardinality {
@@ -852,27 +833,6 @@ mod tests {
         assert_eq!(ONE.product(ZERO), ZERO);
     }
 
-    // --- Coercion tests ---
-
-    #[test]
-    fn test_can_coerce_to() {
-        const ONE: Cardinality = Cardinality::ONE;
-        const ZERO_OR_ONE: Cardinality = Cardinality::ZERO_OR_ONE;
-        const ZERO_OR_MORE: Cardinality = Cardinality::ZERO_OR_MORE;
-        const ONE_OR_MORE: Cardinality = Cardinality::ONE_OR_MORE;
-        // Trivial (satisfies already)
-        assert!(ONE.can_coerce_to(ONE));
-        assert!(ONE.can_coerce_to(ZERO_OR_MORE));
-
-        // Safe widening
-        assert!(ONE.can_coerce_to(ZERO_OR_MORE));
-        assert!(ZERO_OR_ONE.can_coerce_to(ZERO_OR_MORE));
-
-        // Unsafe narrowing
-        assert!(!ZERO_OR_MORE.can_coerce_to(ONE));
-        assert!(!ONE_OR_MORE.can_coerce_to(ONE));
-    }
-
     // --- Display tests ---
 
     #[test]
@@ -1099,16 +1059,6 @@ mod proptests {
         #[test]
         fn absorption_meet_join(a in arb_cardinality(), b in arb_cardinality()) {
             prop_assert_eq!(a.meet(a.join(b)), Some(a));
-        }
-
-        // --- Coercion laws ---
-
-        /// If self satisfies target, coercion is always possible
-        #[test]
-        fn satisfies_implies_coercible(a in arb_cardinality(), b in arb_cardinality()) {
-            if a.satisfies(b) {
-                prop_assert!(a.can_coerce_to(b));
-            }
         }
 
         // --- Serde roundtrip ---

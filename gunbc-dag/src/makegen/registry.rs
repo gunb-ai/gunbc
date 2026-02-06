@@ -415,6 +415,9 @@ pub struct ToolInfo {
     pub extra_targets: Vec<ExtraTarget>,
     /// Whether this tool has a declarative DAG definition (for daggen detection)
     pub has_declarative_dag: bool,
+    /// Whether this tool needs a generated CLI entrypoint (codegen dependency).
+    /// False for hand-written binaries (ci, pragma, build-all).
+    pub needs_generated_cli: bool,
 }
 
 /// An extra target that combines the main tool with additional commands.
@@ -444,6 +447,7 @@ impl ToolInfo {
             entrypoints: Vec::new(),
             extra_targets: Vec::new(),
             has_declarative_dag: false,
+            needs_generated_cli: true,
         }
     }
 
@@ -464,6 +468,7 @@ impl ToolInfo {
             entrypoints: Vec::new(),
             extra_targets: Vec::new(),
             has_declarative_dag: false,
+            needs_generated_cli: true,
         }
     }
 
@@ -486,6 +491,7 @@ impl ToolInfo {
             entrypoints: Vec::new(),
             extra_targets: Vec::new(),
             has_declarative_dag: false,
+            needs_generated_cli: true,
         }
     }
 
@@ -514,6 +520,7 @@ impl ToolInfo {
             entrypoints: Vec::new(),
             extra_targets: Vec::new(),
             has_declarative_dag: false,
+            needs_generated_cli: true,
         }
     }
 
@@ -531,6 +538,7 @@ impl ToolInfo {
             entrypoints: Vec::new(),
             extra_targets: Vec::new(),
             has_declarative_dag: def.has_dag(),
+            needs_generated_cli: true,
         };
 
         // Convert entrypoints that have make_var set
@@ -571,6 +579,12 @@ impl ToolInfo {
     /// Mark this tool as having a declarative DAG definition.
     pub fn with_declarative_dag(mut self) -> Self {
         self.has_declarative_dag = true;
+        self
+    }
+
+    /// Mark this tool as having a hand-written main.rs (no generated CLI).
+    pub fn manual(mut self) -> Self {
+        self.needs_generated_cli = false;
         self
     }
 }
@@ -732,6 +746,29 @@ impl ResourceTargetMap {
     }
 }
 
+/// Typed reference to a fix alias target.
+///
+/// Fix aliases are meta-target variants used as prerequisites for `-fix` targets.
+/// Using an enum instead of raw strings ensures that renaming a fix alias
+/// causes a compile error rather than a silent runtime mismatch.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FixAlias {
+    /// `fmt-fix` — apply formatting
+    FmtFix,
+    /// `lint-fix` — auto-fix lint issues
+    LintFix,
+}
+
+impl FixAlias {
+    /// Resolve to the Make target name.
+    pub fn target_name(self) -> &'static str {
+        match self {
+            FixAlias::FmtFix => "fmt-fix",
+            FixAlias::LintFix => "lint-fix",
+        }
+    }
+}
+
 /// Which BuildConfig field to use for a meta target.
 ///
 /// This allows MetaTarget to reference commands from BuildConfig
@@ -816,9 +853,9 @@ pub struct MetaTarget {
     pub has_fix_variant: bool,
     /// Resources this target needs, with base-mode for each.
     pub resources: Vec<ResourceNeed>,
-    /// Prerequisites for the fix variant (e.g., ["fmt-fix", "lint-fix"] for test-fix).
+    /// Prerequisites for the fix variant (e.g., [FmtFix, LintFix] for test-fix).
     /// These targets are run before the main command in the -fix variant.
-    pub fix_prerequisites: Vec<&'static str>,
+    pub fix_prerequisites: Vec<FixAlias>,
 }
 
 impl MetaTarget {
@@ -863,7 +900,7 @@ impl MetaTarget {
     /// Following the-gunbai convention:
     /// - `make test` - verify only (CI-safe)
     /// - `make test-fix` - auto-fix (fmt + lint) then verify
-    pub fn with_fix_variant(mut self, prerequisites: Vec<&'static str>) -> Self {
+    pub fn with_fix_variant(mut self, prerequisites: Vec<FixAlias>) -> Self {
         self.has_fix_variant = true;
         self.fix_prerequisites = prerequisites;
         self
@@ -915,13 +952,13 @@ pub fn default_meta_targets() -> Vec<MetaTarget> {
             .needs(ResourceId::build("compiled_code"), ExecMode::Ensure)
             .needs(ResourceId::build("generated_tests"), ExecMode::Ensure)
             .needs(ResourceId::build("verified_artifacts"), ExecMode::Ensure)
-            .with_fix_variant(vec!["fmt-fix", "lint-fix"]),
+            .with_fix_variant(vec![FixAlias::FmtFix, FixAlias::LintFix]),
         // check - type check without building (requires codegen + pragma)
         // check-fix: fmt-fix first, then check
         MetaTarget::new("check", "Type check all targets", ConfigField::Check)
             .needs(ResourceId::build("generated_cli"), ExecMode::Ensure)
             .needs(ResourceId::build("pragma_config"), ExecMode::Verify)
-            .with_fix_variant(vec!["fmt-fix"]),
+            .with_fix_variant(vec![FixAlias::FmtFix]),
         // clippy - run linter (requires codegen + pragma)
         // clippy-fix: uses cargo clippy --fix (auto-fix where possible)
         MetaTarget::new("clippy", "Run clippy linter", ConfigField::Lint)
@@ -1040,12 +1077,11 @@ impl ToolRegistry {
         // Manual additions: tools not in the codegen registry.
         // ci has a handwritten main.rs — it's the bootstrap tool that runs
         // codegen for other tools, so it can't depend on generated code.
-        registry.register(ToolInfo::composed("ci", "dag", "Run CI pipeline"));
-        registry.register(ToolInfo::composed(
-            "pragma",
-            "dag",
-            "Generate clippy.toml and pragma allowlists",
-        ));
+        registry.register(ToolInfo::composed("ci", "dag", "Run CI pipeline").manual());
+        registry.register(
+            ToolInfo::composed("pragma", "dag", "Generate clippy.toml and pragma allowlists")
+                .manual(),
+        );
 
         // build-all has a handwritten main.rs with DAG progress display.
         // This is the explicit pipeline entrypoint; core build/test/clippy
@@ -1057,6 +1093,7 @@ impl ToolRegistry {
             entrypoints: Vec::new(),
             extra_targets: Vec::new(),
             has_declarative_dag: false,
+            needs_generated_cli: false,
         });
 
         registry
@@ -1225,7 +1262,7 @@ mod tests {
         let test = targets.iter().find(|t| t.name == "test").unwrap();
 
         assert!(test.has_fix_variant);
-        assert_eq!(test.fix_prerequisites, vec!["fmt-fix", "lint-fix"]);
+        assert_eq!(test.fix_prerequisites, vec![FixAlias::FmtFix, FixAlias::LintFix]);
     }
 
     #[test]
@@ -1234,7 +1271,7 @@ mod tests {
         let check = targets.iter().find(|t| t.name == "check").unwrap();
 
         assert!(check.has_fix_variant);
-        assert_eq!(check.fix_prerequisites, vec!["fmt-fix"]);
+        assert_eq!(check.fix_prerequisites, vec![FixAlias::FmtFix]);
     }
 
     #[test]

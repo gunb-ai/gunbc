@@ -329,7 +329,8 @@ fn build_help_target(registry: &ToolRegistry, config: &BuildConfig) -> Structure
             let deps = if meta.fix_prerequisites.is_empty() {
                 "auto-fix".to_string()
             } else {
-                format!("{} first", meta.fix_prerequisites.join(" + "))
+                let names: Vec<&str> = meta.fix_prerequisites.iter().map(|f| f.target_name()).collect();
+                format!("{} first", names.join(" + "))
             };
             lines.push(format!(
                 "@echo \"  {}-fix  - {} ({})\"",
@@ -487,9 +488,9 @@ fn build_meta_fix_variant(
 
     let mut deps = Vec::new();
 
-    // Fix prerequisites first (e.g., "fmt-fix", "lint-fix")
+    // Fix prerequisites first (e.g., FmtFix, LintFix)
     for dep in &meta.fix_prerequisites {
-        deps.push(dep.to_string());
+        deps.push(dep.target_name().to_string());
     }
 
     // All resources resolved in Ensure mode
@@ -543,9 +544,15 @@ fn build_tool_target(tool: &ToolInfo, config: &BuildConfig) -> StructuredBlock {
 
     let cli_args = render_cli_args(&tool.entrypoints);
 
+    let deps = if tool.needs_generated_cli {
+        vec!["ensure-codegen".to_string()]
+    } else {
+        vec![]
+    };
+
     StructuredBlock::Target(Target {
         name: tool.short_name.clone(),
-        deps: vec!["ensure-codegen".to_string()],
+        deps,
         body: vec![format!("@{}{} --{}", warning_prefix, tool.invocation.command(), cli_args)],
         comment: Some(format!("{} entrypoints: {}", tool.binary_name(), port_list)),
     })
@@ -561,9 +568,15 @@ fn build_dry_run_target(tool: &ToolInfo, config: &BuildConfig) -> StructuredBloc
 
     let cli_args = render_cli_args(&tool.entrypoints);
 
+    let deps = if tool.needs_generated_cli {
+        vec!["ensure-codegen".to_string()]
+    } else {
+        vec![]
+    };
+
     StructuredBlock::Target(Target {
         name: format!("{}-dry", tool.short_name),
-        deps: vec!["ensure-codegen".to_string()],
+        deps,
         body: vec![format!(
             "@{}{} -- --dry-run{}",
             warning_prefix,

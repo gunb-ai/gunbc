@@ -643,6 +643,10 @@ fn execute_flat<T: Executable + Clone>(
                             if matches!(val, Value::Unit) && from_cardinality.allows_empty() {
                                 continue;
                             }
+                            // Skipped outputs should not become list elements.
+                            if matches!(val, Value::Skipped) {
+                                continue;
+                            }
 
                             let bucket = fan_in.entry(edge.to_port.0.clone()).or_default();
                             if from_cardinality.is_list() {
@@ -911,6 +915,29 @@ fn execute_flat<T: Executable + Clone>(
     Ok(ExecutionLog { entries })
 }
 
+/// Add default mocks for transport nodes in a loop body DAG that don't
+/// already have explicit mocks. This lets DryRun mode intercept body-internal
+/// transport nodes without requiring graph_mock to reference their IDs
+/// (which aren't visible at the outer DAG level).
+fn auto_mock_body_transport<T>(body_dag: &Dag<T>, existing: &BoundaryMocks) -> BoundaryMocks {
+    use gunbc_ir::transport::{ShellResponse, TransportResponse};
+
+    let mut augmented = existing.clone();
+    for node in &body_dag.nodes {
+        if is_transport_execution_node(node) {
+            // Only add default mocks for outputs that don't already have one
+            for port in &node.outputs {
+                if !existing.has_mock(&node.id, &port.name) {
+                    let default_response =
+                        Value::Response(TransportResponse::Shell(ShellResponse::ok("")));
+                    augmented.set_value(&node.id.0, &port.name.0, default_response);
+                }
+            }
+        }
+    }
+    augmented
+}
+
 /// Execute a loop body template once per element from the unpack node.
 ///
 /// For each element in the unpack's list output, the body template DAG is
@@ -932,8 +959,8 @@ fn execute_loop_body<T: Executable + Clone>(
 
     let elements = match unpack_outputs.get(&loop_info.element_port) {
         Some(Value::List(list)) => list.clone(),
+        Some(Value::Skipped) | None => vec![],
         Some(other) => vec![other.clone()],
-        None => vec![],
     };
 
     // Collect extra input values from the unpack's inputs (these were wired
@@ -951,6 +978,24 @@ fn execute_loop_body<T: Executable + Clone>(
             extra_inputs.insert(port_name.0.clone(), val.clone());
         }
     }
+
+    // In DryRun/Simulate mode, auto-mock transport nodes in the body DAG
+    // that don't already have explicit mocks. This lets graph_mock skip
+    // body-internal node IDs (which aren't visible at the outer DAG level).
+    let body_mode = match mode {
+        ExecutionMode::DryRun(ref mocks) => {
+            let augmented = auto_mock_body_transport(&loop_info.body_dag, mocks);
+            ExecutionMode::DryRun(augmented)
+        }
+        ExecutionMode::Simulate(ref config) => {
+            let augmented = auto_mock_body_transport(&loop_info.body_dag, &config.boundary_mocks);
+            ExecutionMode::Simulate(SimConfig {
+                boundary_mocks: augmented,
+                ..config.clone()
+            })
+        }
+        _ => mode.clone(),
+    };
 
     let mut all_entries = Vec::new();
 
@@ -974,11 +1019,11 @@ fn execute_loop_body<T: Executable + Clone>(
             crate::lower::lower(&loop_info.body_dag).map_err(|e| ExecError::new(e.to_string()))?;
         let body_boundaries = detect_boundaries(&lowered_body.dag);
 
-        // Execute in the same mode, with element injected as input mock
+        // Execute in the body mode (with auto-mocked transport nodes if DryRun)
         let body_log = execute_flat(
             &lowered_body.dag,
             &body_boundaries,
-            mode,
+            &body_mode,
             None,
             None,
             Some(&iter_mocks),
@@ -1530,6 +1575,33 @@ mod tests {
             vec![],
             vec![optional("item", "String")],
             TestOp::produce("item", Value::Unit),
+        ));
+        dag.add_node(Node::opaque(
+            "B",
+            vec![list("items", "String")],
+            vec![list("items", "String")],
+            TestOp::echo(),
+        ));
+        dag.add_edge(edge("A", "item", "B", "items"));
+
+        let log = execute(&dag).unwrap();
+
+        let b_entry = log.get("B").unwrap();
+        match b_entry.outputs.get("items") {
+            Some(Value::List(items)) => assert!(items.is_empty()),
+            other => panic!("expected empty Value::List, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_optional_to_list_skips_skipped() {
+        // Skipped output feeding a list input should not insert Skipped.
+        let mut dag: Dag<TestOp> = Dag::new();
+        dag.add_node(Node::opaque(
+            "A",
+            vec![],
+            vec![optional("item", "String")],
+            TestOp::produce("item", Value::Skipped),
         ));
         dag.add_node(Node::opaque(
             "B",

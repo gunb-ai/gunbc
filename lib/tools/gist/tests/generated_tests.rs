@@ -228,53 +228,53 @@ fn test_edge_execute_list_to_parse_list() {
         .any(|e| e.from_node.0 == "execute_list_files" && e.to_node.0 == "parse_list_files"));
 }
 
-/// Test edge parse_list_files.files -> prepare_read_files.files type compatibility.
-/// (filter_files node was removed — extensions are pushed into git pathspecs)
+/// Test edge parse_list_files.files -> read_files_loop.files type compatibility.
+/// (Snapshot mode uses a LoopBuilder for per-file reads.)
 #[test]
-fn test_edge_parse_list_files_to_prepare_read_files() {
+fn test_edge_parse_list_files_to_read_files_loop() {
     let dag =
         build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
     // List -> List: verified by edge existence in graph
     assert!(dag
         .edges
         .iter()
-        .any(|e| e.from_node.0 == "parse_list_files" && e.to_node.0 == "prepare_read_files"));
+        .any(|e| e.from_node.0 == "parse_list_files" && e.to_node.0 == "read_files_loop"));
 }
 
-/// Test edge prepare_read_files.request -> execute_read_files.request type compatibility.
+/// Test edge parse_list_files.files -> collect_file_contents.filenames type compatibility.
 #[test]
-fn test_edge_prepare_read_to_execute_read() {
+fn test_edge_parse_list_files_to_collect_file_contents() {
     let dag =
         build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
-    // TransportRequest -> TransportRequest: verified by edge existence in graph
+    // List -> List: verified by edge existence in graph
     assert!(dag
         .edges
         .iter()
-        .any(|e| e.from_node.0 == "prepare_read_files" && e.to_node.0 == "execute_read_files"));
+        .any(|e| e.from_node.0 == "parse_list_files" && e.to_node.0 == "collect_file_contents"));
 }
 
-/// Test edge execute_read_files.response -> parse_read_files.response type compatibility.
+/// Test edge read_files_loop.contents -> collect_file_contents.contents_list type compatibility.
 #[test]
-fn test_edge_execute_read_to_parse_read() {
+fn test_edge_read_files_loop_to_collect_file_contents() {
     let dag =
         build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
-    // TransportResponse -> TransportResponse: verified by edge existence in graph
+    // List -> List: verified by edge existence in graph
     assert!(dag
         .edges
         .iter()
-        .any(|e| e.from_node.0 == "execute_read_files" && e.to_node.0 == "parse_read_files"));
+        .any(|e| e.from_node.0 == "read_files_loop" && e.to_node.0 == "collect_file_contents"));
 }
 
-/// Test edge parse_read_files.contents -> render_markdown.contents type compatibility.
+/// Test edge collect_file_contents.contents -> render_markdown.contents type compatibility.
 #[test]
-fn test_edge_parse_read_to_render_markdown() {
+fn test_edge_collect_file_contents_to_render_markdown() {
     let dag =
         build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
     // Map -> Map: verified by edge existence in graph
     assert!(dag
         .edges
         .iter()
-        .any(|e| e.from_node.0 == "parse_read_files" && e.to_node.0 == "render_markdown"));
+        .any(|e| e.from_node.0 == "collect_file_contents" && e.to_node.0 == "render_markdown"));
 }
 
 /// Test edge render_markdown.markdown -> prepare_gist_request.markdown type compatibility.

@@ -7,40 +7,19 @@
 # Note: resolved items have been moved to `TODO/TODONE/TODO_hacks.md`
 # and `TODO/TODONE/TODO_hacks_general.md`.
 
-## Tool targets blanket-depend on ensure-codegen
+## [RESOLVED] Tool targets blanket-depend on ensure-codegen
 
-> **Tracked in:** `TODO/design-unified-resource-model.md` — replaced by
-> `ResourceContract.needs` so only tools that actually need codegen declare it.
-
-All tool targets currently get `ensure-codegen` as a dependency. But some
-tools (like `ci`) are hand-written binaries that don't need generated code.
-This creates unnecessary coupling and rebuild overhead.
-
-**Suggested fix:** Add per-tool flag `needs_codegen: bool` or `generated_cli: bool`
-in ToolInfo. Only render `tool: ensure-codegen` dependency when needed.
-Makes the ensure chain derived rather than blanket-applied.
-
-Files:
-  - gunbc-dag/src/makegen/registry.rs (ToolInfo)
-  - gunbc-dag/src/makegen/render.rs (render_tool_targets)
+> **Resolved** (2026-02-06): Added `needs_generated_cli: bool` to `ToolInfo`.
+> Manual tools (ci, pragma, build-all) set `false`; codegen-derived tools set `true`.
+> Renderer conditionally includes `ensure-codegen` dependency.
 
 ---
 
-## Meta-target fix_prerequisites are still untyped strings
+## [RESOLVED] Meta-target fix_prerequisites are still untyped strings
 
-> **Partially resolved** (2026-02-06): Resource dependencies are now typed
-> via `ResourceNeed` + `ResourceTargetMap` (Phase 6). However, `fix_prerequisites`
-> (e.g., "fmt-fix", "lint-fix") are still `Vec<&'static str>`.
-
-The remaining untyped strings are fix alias targets ("fmt-fix", "lint-fix")
-which reference other meta-target variants. Renaming a fix variant won't
-cause a compile error.
-
-**Suggested fix:** Replace `Vec<&'static str>` with typed refs to other
-meta targets (e.g., `Vec<MetaTargetRef>`) and resolve at render time.
-
-Files:
-  - gunbc-dag/src/makegen/registry.rs (MetaTarget::fix_prerequisites)
+> **Resolved** (2026-02-06): Replaced `Vec<&'static str>` with `Vec<FixAlias>`
+> enum (`FmtFix`, `LintFix`). Each variant resolves to a target name string
+> at render time via `FixAlias::target_name()`.
 
 ## "List" used as type_id AND cardinality shape (dual encoding) — PARTIAL FIXES
 
@@ -99,17 +78,12 @@ Files:
   - core/ir/src/types.rs                (type_id is a flat String)
   - core/codegen/src/testgen/codegen.rs (can't serialize Map faithfully)
 
-## `can_coerce_to` duplicates `satisfies` on Cardinality
+## [RESOLVED] `can_coerce_to` duplicates `satisfies` on Cardinality
 
-can_coerce_to checks self.satisfies(target) then repeats the same
-predicate. The intended distinction ("lossless injection") isn't
-implemented. If coercions that alter cardinality but preserve
-information are needed later (scalar→list by wrapping, optional→list
-by empty/singleton), this needs explicit allowed-coercion rules,
-not just set containment.
-
-Files:
-  - core/ir/src/types.rs  (Cardinality::can_coerce_to)
+> **Resolved** (2026-02-06): Removed `can_coerce_to()` method and its tests.
+> The method was logically identical to `satisfies()`. If lossless coercion
+> rules are needed later, they should be designed from scratch with explicit
+> allowed-coercion rules (see `core/ir/src/coerce.rs`).
 
 ## Cardinality constants are flat — no compositional modeling
 

@@ -93,7 +93,8 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
                 .transport_response(
                     "execute_list_files",
                     "response",
-                    TransportResponse::Shell(ShellResponse::ok("src/main.rs\nREADME.md\n")),
+                    // Empty list in DryRun to avoid loop-body transport mocks.
+                    TransportResponse::Shell(ShellResponse::ok("")),
                 )
                 .expect("execute_list_files response should match type");
         }
@@ -177,7 +178,8 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
     match mode {
         GistMode::Snapshot => {
             spec = spec
-                .input_mock("prepare_list_files", "repo_path", Value::Str(".".into()));
+                .input_mock("prepare_list_files", "repo_path", Value::Str(".".into()))
+                .input_mock("read_files_loop", "repo_path", Value::Str(".".into()));
         }
         GistMode::Diff { .. } => {
             spec = spec.input_mock("prepare_diff", "repo_path", Value::Str(".".into()));
