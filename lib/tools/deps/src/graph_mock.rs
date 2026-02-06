@@ -21,13 +21,21 @@
 use crate::graph::build_deps_graph;
 use crate::Platform;
 use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse, TransportResponse};
-use gunbc_test::{extract_mock_requirements, InputConstraint, MockSpec};
+use gunbc_ir::Value;
+use gunbc_test::{extract_mock_requirements, InputConstraint, MockSpec, NodeExample, OutputMatcher};
 
 fn mock_manifest() -> &'static str {
-    r#"[dependency]
+    r#"[[dependency]]
 name = "ripgrep"
-verify_cmd = "rg --version"
-install_cmd = "cargo install ripgrep"
+verify = "rg --version"
+
+[dependency.install.linux]
+method = "cargo"
+packages = ["ripgrep"]
+
+[dependency.install.macos]
+method = "brew"
+packages = ["ripgrep"]
 "#
 }
 
@@ -82,6 +90,75 @@ pub fn deps_mock_spec() -> MockSpec {
         .expects_input("manifest_path", InputConstraint::Any)
         // Resource: package manager lock
         .resource_lock("pkg:manager")
+        // Node I/O examples
+        .node_example(
+            NodeExample::new("platform_env")
+                .output("platform", OutputMatcher::IsString)
+                .description("Detects host platform as a string"),
+        )
+        .node_example(
+            NodeExample::new("prepare_load_manifest")
+                .input("manifest_path", Value::Str("deps.toml".into()))
+                .output("request", OutputMatcher::IsRequest)
+                .output("manifest_path", OutputMatcher::exact(Value::Str("deps.toml".into())))
+                .description("Prepares file read request for deps.toml"),
+        )
+        .node_example(
+            NodeExample::new("parse_manifest")
+                .input(
+                    "response",
+                    Value::Response(
+                        FileResponse {
+                            path: "deps.toml".into(),
+                            operation: FileOp::Read,
+                            success: true,
+                            content: Some(mock_manifest().to_string()),
+                            exists: Some(true),
+                            error: None,
+                        }
+                        .into(),
+                    ),
+                )
+                .input("manifest_path", Value::Str("deps.toml".into()))
+                .output("dep_count", OutputMatcher::exact(Value::Int(1)))
+                .output(
+                    "dep_names",
+                    OutputMatcher::exact(Value::str_list(vec!["ripgrep".into()])),
+                )
+                .output("manifest_path", OutputMatcher::exact(Value::Str("deps.toml".into())))
+                .output("manifest_content", OutputMatcher::contains("ripgrep"))
+                .description("Parses deps.toml into dependency list and content"),
+        )
+        .node_example(
+            NodeExample::new("generate_scripts")
+                .input("manifest_content", Value::Str(mock_manifest().to_string()))
+                .input("res:platform", Value::Str("linux".into()))
+                .output("install_script", OutputMatcher::contains("cargo install ripgrep"))
+                .output("needs_install", OutputMatcher::NonEmpty)
+                .output("platform", OutputMatcher::exact(Value::Str("linux".into())))
+                .description("Generates install script and plan for linux"),
+        )
+        .node_example(
+            NodeExample::new("prepare_execute_installs")
+                .input("install_script", Value::Str("echo install".into()))
+                .output("request", OutputMatcher::IsRequest)
+                .output("script", OutputMatcher::exact(Value::Str("echo install".into())))
+                .description("Prepares shell request for install script"),
+        )
+        .node_example(
+            NodeExample::new("parse_execute_result")
+                .input(
+                    "response",
+                    Value::Response(ShellResponse::ok("installed\n").into()),
+                )
+                .input("script", Value::Str("echo install".into()))
+                .output("executed", OutputMatcher::exact(Value::Bool(true)))
+                .output("success", OutputMatcher::exact(Value::Bool(true)))
+                .output("script", OutputMatcher::exact(Value::Str("echo install".into())))
+                .output("stdout", OutputMatcher::exact(Value::Str("installed\n".into())))
+                .output("stderr", OutputMatcher::exact(Value::Str("".into())))
+                .description("Parses install execution result"),
+        )
 }
 
 /// Mock spec for testing sudo elevation scenarios.

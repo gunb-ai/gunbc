@@ -30,7 +30,7 @@ gunbc is a Rust-based workflow IR where **everything is a DAG**.
 
 Core claims:
 - Structural soundness means: acyclic, type-compatible, cardinality-compatible, and sub-DAG interfaces match.
-- Nodes are pure transformations. World I/O only happens at explicit transport execution nodes.
+- Nodes are pure transformations. In the runtime DAG, world I/O only happens at explicit transport execution nodes.
 - If it validates, it is structurally sound.
 
 ## Core IR: Dag, Node, Port, Edge
@@ -111,7 +111,7 @@ world -> [A] -> [B] -> world
 entrypoint  edge   boundary
 ```
 
-Boundaries are about interface, not I/O. Actual I/O happens only at transport execution nodes.
+Boundaries are about interface, not I/O. In the runtime DAG, actual I/O happens only at transport execution nodes.
 
 ## Workflow Signatures
 
@@ -146,12 +146,12 @@ Intercepted nodes require explicit mocks for all outputs. There are no silent de
 
 ## Transport System
 
-Transport requests/responses are defined in `core/ir/src/transport/mod.rs`. Actual I/O is performed only by `TransportOps::Execute` in `lib/transport`.
+Transport requests/responses are defined in `core/ir/src/transport/mod.rs`. Runtime DAG I/O is performed only by `TransportOps::Execute` in `lib/transport`. Direct I/O outside the DAG is limited to explicit bootstrap/generator/tooling boundaries (see `TODO/TODONE/clippy-pragma-audit.md`).
 
 Key invariants:
 - Pure ops **prepare** `TransportRequest` values.
-- Only `TransportOps::Execute` performs I/O.
-- `lib/transport` is the only crate (besides codegen) that uses direct I/O.
+- Only `TransportOps::Execute` performs runtime DAG I/O.
+- Direct I/O is limited to `lib/transport` plus explicit exceptions (codegen/testgen binaries, CLI tool layer, deps manifest/installer; see `TODO/TODONE/clippy-pragma-audit.md`).
 
 See `lib/transport/src/lib.rs` and `lib/transport/src/ops.rs`.
 
@@ -222,7 +222,7 @@ Quick reference of all patterns. Full details in [Appendix A](#appendix-a-patter
 | `core/exec/` | Execution engine, DryRun interception, simulation |
 | `core/codegen/` | CLI and test generation | 
 | `core/test/` | MockSpec and test utilities |
-| `lib/transport/` | The only crate that performs direct I/O |
+| `lib/transport/` | Canonical runtime I/O boundary; a few bootstrap/generator/tooling crates do direct I/O by exception (see `TODO/TODONE/clippy-pragma-audit.md`) |
 | `lib/tools/` | General-purpose tool wrappers (clippy, deps, gist) |
 | `gunbc-dag/` | Repo-specific DAGs and CLI entrypoints (ci, makegen, codegen, testgen, bootstrap) |
 | `docs/design/` | Design documentation |
@@ -435,7 +435,7 @@ Poll:   [check] ──false──▶ [wait] ──▶ [check]  (until condition 
 
 ## A.4 Transport Boundary
 
-**Intent:** All world I/O happens at explicit transport execution nodes. Pure nodes prepare requests and parse responses. Nothing else touches the outside world.
+**Intent:** Runtime DAG world I/O happens at explicit transport execution nodes. Pure nodes prepare requests and parse responses. Direct I/O outside the DAG is limited to explicit bootstrap/generator/tooling exceptions (see `TODO/TODONE/clippy-pragma-audit.md`).
 
 ```
 [prepare]  ──▶  [execute]  ──▶  [parse]
@@ -443,7 +443,7 @@ Poll:   [check] ──false──▶ [wait] ──▶ [check]  (until condition 
 ```
 
 - **prepare**: Builds a `TransportRequest` from domain data (pure transformation)
-- **execute**: Performs I/O via `TransportOps::Execute` (the only I/O node)
+- **execute**: Performs I/O via `TransportOps::Execute` (the runtime I/O node)
 - **parse**: Extracts domain data from `TransportResponse` (pure transformation)
 
 ```rust
@@ -461,12 +461,12 @@ pub enum TransportResponse {
 | File | Role |
 |------|------|
 | `core/ir/src/transport/mod.rs` | Request/Response enums |
-| `lib/transport/src/ops.rs` | `TransportOps` — the only crate that does I/O |
+| `lib/transport/src/ops.rs` | `TransportOps` — canonical runtime I/O boundary |
 | `lib/transport/src/executor.rs` | Actual HTTP, file, shell execution |
 | `core/exec/src/intercept.rs` | DryRun interception of transport nodes |
 
 **Enforcement:**
-- `clippy.toml` disallows `std::fs` and `std::process` in all crates except `lib/transport` and `core/codegen`.
+- `clippy.toml` disallows `std::fs` and `std::process` in all crates except explicit allowlist entries; crate-level exemptions are `lib/transport` and `core/codegen` (see `TODO/TODONE/clippy-pragma-audit.md`).
 - DryRun mode intercepts all nodes whose inputs include `TransportRequest`.
 
 **Design decisions:**

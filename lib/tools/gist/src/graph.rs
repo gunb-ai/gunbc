@@ -15,6 +15,7 @@ use gunbc_exec::{
     Executable, OutputMap, TransportResponseExt,
 };
 use gunbc_ir::transport::{ShellRequest, TransportRequest, TransportResponse};
+use gunbc_ir::patterns::PatternOp;
 use gunbc_ir::{
     build::*, BuilderError, Cardinality, Dag, DagBuilder, Node, Value, WorkflowSignature,
 };
@@ -108,10 +109,22 @@ pub enum GistGraphOp {
     Gist(GistOps),
 
     // ========================================================================
+    // Pattern operations (for LoopBuilder integration)
+    // ========================================================================
+    /// Pattern operations (loop unpack/pack, branch merge, etc.)
+    Pattern(PatternOp),
+
+    // ========================================================================
     // Transport boundary (actual I/O)
     // ========================================================================
     /// Transport operations (boundary - actual I/O)
     Transport(TransportOps),
+}
+
+impl From<PatternOp> for GistGraphOp {
+    fn from(op: PatternOp) -> Self {
+        GistGraphOp::Pattern(op)
+    }
 }
 
 impl Executable for GistGraphOp {
@@ -128,6 +141,9 @@ impl Executable for GistGraphOp {
             GistGraphOp::PrepareReadFile => execute_prepare_read_file(inputs),
             GistGraphOp::ParseReadFile => execute_parse_read_file(inputs),
             GistGraphOp::CollectFileContents => execute_collect_file_contents(inputs),
+
+            // Pattern ops (loop unpack/pack, etc.)
+            GistGraphOp::Pattern(op) => op.execute(inputs),
 
             // Library ops
             GistGraphOp::Markdown(op) => op.execute(inputs),
@@ -1118,6 +1134,23 @@ impl Mockable for GistGraphOp {
                 OutputMap::new().map_str_str("contents", contents).build()
             }
 
+            // Pattern ops (mock outputs match what the pattern ops produce)
+            GistGraphOp::Pattern(op) => match op {
+                PatternOp::LoopUnpack { element_port, .. } => OutputMap::new()
+                    .str(element_port, "mock_element")
+                    .int("index", 0)
+                    .int("count", 1)
+                    .build(),
+                PatternOp::LoopPack { output_port } => OutputMap::new()
+                    .str(output_port, "mock_result")
+                    .int("iterations", 1)
+                    .build(),
+                PatternOp::BranchMerge { output_port } => OutputMap::new()
+                    .str(output_port, "mock_merge")
+                    .build(),
+                _ => HashMap::new(),
+            },
+
             // Pure ops
             GistGraphOp::Markdown(_) => OutputMap::new()
                 .str("markdown", "# Code Snapshot\n```rust\nfn main() {}\n```")
@@ -1641,6 +1674,24 @@ mod tests {
         assert!(dag.get_node(&"prepare_rev_list".into()).is_some());
         assert!(dag.get_node(&"execute_rev_list".into()).is_some());
         assert!(dag.get_node(&"parse_rev_list".into()).is_some());
+    }
+
+    #[test]
+    fn test_loop_builder_with_gist_ops() {
+        use gunbc_ir::patterns::LoopBuilder;
+
+        let body = build_read_file_body_dag();
+        let node: Node<GistGraphOp> = LoopBuilder::new("read_files_loop")
+            .with_input("files", "String", Cardinality::ZERO_OR_MORE)
+            .with_element("filename", "String")
+            .with_body(body)
+            .with_output("content", "String")
+            .build();
+
+        assert!(node.is_subdag());
+        assert!(node.inputs.iter().any(|p| p.name.0 == "files"));
+        assert!(node.outputs.iter().any(|p| p.name.0 == "content"));
+        assert!(node.outputs.iter().any(|p| p.name.0 == "iterations"));
     }
 
     #[test]

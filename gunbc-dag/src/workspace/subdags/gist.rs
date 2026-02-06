@@ -31,7 +31,8 @@ fn convert_gist_op(op: GistGraphOp) -> WorkspaceOp {
         | GistGraphOp::ParseReadFiles
         | GistGraphOp::PrepareReadFile
         | GistGraphOp::ParseReadFile
-        | GistGraphOp::CollectFileContents => {
+        | GistGraphOp::CollectFileContents
+        | GistGraphOp::Pattern(_) => {
             // These are gist-internal ops - use ParseGistResponse as placeholder
             WorkspaceOp::Gist(GistOps::ParseGistResponse)
         }

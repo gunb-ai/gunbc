@@ -107,7 +107,7 @@ Not worth automating until there are more. Track but defer.
 | Testgen | Yes (`test_ir.rs`) | Yes (`TestRenderer`) | Gold standard |
 | CI YAML | Yes | Yes (`CiRenderer`) | Working |
 | Makegen | **No** | **No** | Direct string building in `render.rs` |
-| CLI gen | **No** | **No** | Direct string building in `cli_gen.rs` |
+| CLI gen | Yes (`code_ir.rs`) | Yes (`RustCodeRenderer`) | Uses `Item::Use(Import)` + `Item::Fn(FnDef)` + `Expr::RawCode` |
 | Terminal | **No** | **No** | Direct string building |
 
 The handbook notes: *"Five rendering systems, four different traits, two with
@@ -300,8 +300,8 @@ causes a test failure.
 | ID | Item | Effort | Impact | Status |
 |----|------|--------|--------|--------|
 | C2 | Replace CI lint with Clippy SubDag | M | Removes one bespoke stage | **DEFERRED** — lint uses CliToolOp with ToolHandle from env, not a clean SubDag replacement |
-| E1 | CLI gen → IR + renderer | L | Proves unified emission pattern | **DEFERRED** — 976 lines, ~11-15 day effort, scope separately |
-| C3 | LoopBuilder for gist/deps iteration | M | Replaces shell `sh -c` hacks | **DEFERRED** — LoopBuilder API exists, needs dedicated session |
+| E1 | CLI gen → IR + renderer | L | Proves unified emission pattern | **DONE** — `cli_gen.rs` uses `Item::Use(Import)` + `Item::Fn(FnDef)` + `Expr::RawCode`; `CliBoundary` removed (dead code); both standard and step modes use proper IR |
+| C3 | LoopBuilder for gist/deps iteration | M | Replaces shell `sh -c` hacks | **FOUNDATION** — `Pattern(PatternOp)` variant + `From<PatternOp>` added to `GistGraphOp`; `LoopBuilder<GistGraphOp>` validated in test; actual graph wiring deferred (requires executor loop iteration) |
 
 ### Tier 3: High effort, strategic
 

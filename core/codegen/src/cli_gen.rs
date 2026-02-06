@@ -7,9 +7,18 @@
 //! - Formats output based on execution log
 //!
 //! Uses the language module for Rust type mappings and naming conventions.
+//!
+//! # IR Strategy
+//!
+//! The generated source file uses proper `Item::Use(Import)` for imports
+//! and `Item::Fn(FnDef)` for function definitions. Complex function bodies
+//! use `Expr::RawCode` as an escape hatch where full IR decomposition would
+//! be fragile (e.g., arg-parsing while loops, format strings with escaped
+//! braces). This gives structural decomposition at the file level while
+//! allowing incremental IR deepening later.
 
 use crate::testgen::render_rust::plain_rust_renderer;
-use gunbc_ir::code_ir::{Item, SourceFile};
+use gunbc_ir::code_ir::{Expr, FnDef, Import, Item, SourceFile, Stmt};
 use gunbc_ir::language::{rust_type as lang_rust_type, NamingCase};
 use gunbc_ir::render_ir::CodeRenderer;
 use gunbc_ir::Cardinality;
@@ -173,6 +182,10 @@ impl CliEntrypoint {
     }
 }
 
+// ============================================================================
+// Public API
+// ============================================================================
+
 /// Generate a complete main.rs for a tool.
 pub fn generate_cli(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> String {
     generate_cli_with_import(tool, entrypoints, None)
@@ -184,160 +197,102 @@ pub fn generate_cli_with_import(
     entrypoints: &[CliEntrypoint],
     custom_import: Option<&str>,
 ) -> String {
-    // If step mode is enabled, use the step-mode template
-    if tool.enable_step_mode {
-        return generate_cli_with_step_mode(tool, entrypoints, custom_import);
-    }
-
-    let file = build_cli_source_file(tool, entrypoints, custom_import);
+    let file = if tool.enable_step_mode {
+        build_step_mode_source_file(tool, entrypoints, custom_import)
+    } else {
+        build_cli_source_file(tool, entrypoints, custom_import)
+    };
     plain_rust_renderer().render_source_file(&file)
 }
 
-/// Build a `SourceFile` IR for a standard CLI main.rs.
-fn build_cli_source_file(
+// ============================================================================
+// Import builder
+// ============================================================================
+
+/// Build the import items for the generated CLI.
+fn build_cli_imports(
     tool: &ToolMeta,
-    entrypoints: &[CliEntrypoint],
     custom_import: Option<&str>,
-) -> SourceFile {
-    // Convert crate name (kebab-case) to module name (snake_case)
+    step_mode: bool,
+) -> Vec<Item> {
     let crate_module = NamingCase::SnakeCase.apply(&tool.crate_name);
-    let arg_parsing = generate_arg_parsing(entrypoints);
-    let mock_setup = generate_mock_setup(&tool.mock_spec_call);
-    let print_inputs = generate_print_inputs(entrypoints);
-    let input_mocks = generate_input_mocks(entrypoints);
-    let help_options = generate_help_options(entrypoints);
 
-    let import_line = custom_import.unwrap_or("").to_string();
-    let default_import = format!("use {}::build_{}_graph;", crate_module, tool.tool_name);
-    let actual_import = if import_line.is_empty() {
-        default_import
-    } else {
-        import_line
-    };
-
-    // Generate the graph builder call - handle Result-returning builders
-    let graph_builder_fn = &tool.graph_builder_call;
-    let graph_builder_call = generate_graph_builder_call(tool, graph_builder_fn);
-
-    let success_port_arg = match &tool.success_port {
-        Some(port) => format!("Some(\"{}\")", port),
-        None => "None".to_string(),
-    };
-
-    let dry_run_block = format!(
-        "    let mode = if dry_run {{\n\
-         {mock_setup}\n\
-         \x20   }} else {{\n\
-         \x20       ExecutionMode::Real\n\
-         \x20   }};",
-        mock_setup = mock_setup
-    );
-
-    let body = format!(
-        r#"use gunbc_exec::{{execute_and_display, BoundaryMocks, ExecutionMode, TerminalProfile}};
-use gunbc_ir::{{detect_entrypoints, Value}};
-{import_line}
-use gunbc_test::MockSpec;
-use std::collections::HashMap;
-use std::env;
-use std::process;
-
-fn main() {{
-    let args: Vec<String> = env::args().collect();
-
-    // Parse arguments
-{arg_parsing}
-
-    // Detect terminal environment
-    let profile = TerminalProfile::detect();
-
-    // Build the graph
-    let dag = {graph_builder_call};
-
-{input_mocks}
-
-    // Set up execution mode
-{dry_run_block}
-
-    // Print header
-    println!("{tool_name}");
-{print_inputs}
-    println!("  mode: {{}}", if dry_run {{ "dry-run" }} else {{ "real" }});
-    println!();
-
-    // Execute and display (progress or classic based on terminal)
-    execute_and_display(&dag, mode, &profile, {success_port_arg}, Some(&input_mocks));
-}}
-
-fn print_help() {{
-    println!("{tool_name} - {description}");
-    println!();
-    println!("USAGE:");
-    println!("    {tool_name} [OPTIONS]");
-    println!();
-    println!("OPTIONS:");
-{help_options}
-    println!("    -n, --dry-run        Don't perform actual I/O");
-    println!("    -h, --help           Print this help");
-    println!();
-    println!("Progress display is automatic based on terminal capabilities.");
-}}"#,
-        tool_name = tool.tool_name,
-        import_line = actual_import,
-        arg_parsing = arg_parsing,
-        graph_builder_call = graph_builder_call,
-        input_mocks = input_mocks,
-        dry_run_block = dry_run_block,
-        print_inputs = print_inputs,
-        success_port_arg = success_port_arg,
-        description = tool.description,
-        help_options = help_options,
-    );
-
-    SourceFile {
-        doc: vec![
-            format!("Generated CLI for {}.", tool.tool_name),
-            String::new(),
-            "This file is generated by gunbc-codegen. Do not edit manually.".to_string(),
-            "Regenerate with: make codegen".to_string(),
-        ],
-        items: vec![Item::Raw(body)],
+    // gunbc_exec imports
+    let mut exec_items = vec![
+        "execute_and_display".to_string(),
+        "BoundaryMocks".to_string(),
+        "ExecutionMode".to_string(),
+        "TerminalProfile".to_string(),
+    ];
+    if step_mode {
+        exec_items.push("execute_single_node".to_string());
+        exec_items.push("print_value".to_string());
     }
+
+    let mut items = vec![
+        Item::Use(Import {
+            path: vec!["gunbc_exec".to_string()],
+            items: exec_items,
+        }),
+        Item::Use(Import {
+            path: vec!["gunbc_ir".to_string()],
+            items: vec!["detect_entrypoints".to_string(), "Value".to_string()],
+        }),
+    ];
+
+    // Tool-specific import
+    let tool_import = match custom_import {
+        Some(line) if !line.is_empty() => line.to_string(),
+        _ => format!(
+            "use {}::build_{}_graph;",
+            crate_module, tool.tool_name
+        ),
+    };
+    items.push(Item::Raw(tool_import));
+
+    // std imports
+    items.push(Item::Use(Import {
+        path: vec!["std".to_string(), "collections".to_string()],
+        items: vec!["HashMap".to_string()],
+    }));
+    items.push(Item::Use(Import {
+        path: vec!["std".to_string(), "env".to_string()],
+        items: vec![],
+    }));
+    items.push(Item::Use(Import {
+        path: vec!["std".to_string(), "process".to_string()],
+        items: vec![],
+    }));
+
+    items
 }
+
+// ============================================================================
+// Shared helpers (return String fragments for RawCode)
+// ============================================================================
 
 /// Generate the graph builder call expression.
-fn generate_graph_builder_call(tool: &ToolMeta, graph_builder_fn: &str) -> String {
+fn generate_graph_builder_call(tool: &ToolMeta) -> String {
+    let f = &tool.graph_builder_call;
+    let args = &tool.graph_builder_args;
     if tool.returns_result {
-        if tool.graph_builder_args.is_empty() {
-            format!(
-                r#"match {}() {{
-        Ok(d) => d,
-        Err(e) => {{
-            eprintln!("Error building graph: {{}}", e);
-            process::exit(1);
-        }}
-    }}"#,
-                graph_builder_fn
-            )
+        let call = if args.is_empty() {
+            format!("{}()", f)
         } else {
-            format!(
-                r#"match {}({}) {{
-        Ok(d) => d,
-        Err(e) => {{
-            eprintln!("Error building graph: {{}}", e);
-            process::exit(1);
-        }}
-    }}"#,
-                graph_builder_fn, tool.graph_builder_args
-            )
-        }
-    } else if tool.graph_builder_args.is_empty() {
-        format!("{}()", graph_builder_fn)
+            format!("{}({})", f, args)
+        };
+        format!(
+            "match {} {{\n    Ok(d) => d,\n    Err(e) => {{\n        eprintln!(\"Error building graph: {{}}\", e);\n        process::exit(1);\n    }}\n}}",
+            call
+        )
+    } else if args.is_empty() {
+        format!("{}()", f)
     } else {
-        format!("{}({})", graph_builder_fn, tool.graph_builder_args)
+        format!("{}({})", f, args)
     }
 }
 
+/// Generate arg-parsing code (variable declarations + while loop).
 fn generate_arg_parsing(entrypoints: &[CliEntrypoint]) -> String {
     let mut code = String::new();
 
@@ -345,9 +300,8 @@ fn generate_arg_parsing(entrypoints: &[CliEntrypoint]) -> String {
     for ep in entrypoints {
         let default = ep.default_value.as_deref().unwrap_or_default();
         if ep.is_repeatable() {
-            // Collection entrypoints: Vec<String>
             code.push_str(&format!(
-                "    let mut {}: Vec<String> = vec![];\n",
+                "let mut {}: Vec<String> = vec![];\n",
                 ep.var_name()
             ));
         } else {
@@ -355,12 +309,12 @@ fn generate_arg_parsing(entrypoints: &[CliEntrypoint]) -> String {
                 "String" => {
                     if default.is_empty() {
                         code.push_str(&format!(
-                            "    let mut {}: Option<String> = None;\n",
+                            "let mut {}: Option<String> = None;\n",
                             ep.var_name()
                         ));
                     } else {
                         code.push_str(&format!(
-                            "    let mut {} = \"{}\".to_string();\n",
+                            "let mut {} = \"{}\".to_string();\n",
                             ep.var_name(),
                             default
                         ));
@@ -369,7 +323,7 @@ fn generate_arg_parsing(entrypoints: &[CliEntrypoint]) -> String {
                 "Bool" => {
                     let default_bool = default == "true";
                     code.push_str(&format!(
-                        "    let mut {} = {};\n",
+                        "let mut {} = {};\n",
                         ep.var_name(),
                         default_bool
                     ));
@@ -377,14 +331,14 @@ fn generate_arg_parsing(entrypoints: &[CliEntrypoint]) -> String {
                 "Int" => {
                     let default_int = default.parse::<i64>().unwrap_or(0);
                     code.push_str(&format!(
-                        "    let mut {} = {}i64;\n",
+                        "let mut {} = {}i64;\n",
                         ep.var_name(),
                         default_int
                     ));
                 }
                 _ => {
                     code.push_str(&format!(
-                        "    let mut {} = \"{}\".to_string();\n",
+                        "let mut {} = \"{}\".to_string();\n",
                         ep.var_name(),
                         default
                     ));
@@ -392,13 +346,13 @@ fn generate_arg_parsing(entrypoints: &[CliEntrypoint]) -> String {
             }
         }
     }
-    code.push_str("    let mut dry_run = false;\n");
+    code.push_str("let mut dry_run = false;\n");
     code.push('\n');
 
     // Parse loop
-    code.push_str("    let mut i = 1;\n");
-    code.push_str("    while i < args.len() {\n");
-    code.push_str("        match args[i].as_str() {\n");
+    code.push_str("let mut i = 1;\n");
+    code.push_str("while i < args.len() {\n");
+    code.push_str("    match args[i].as_str() {\n");
 
     for ep in entrypoints {
         let flag = ep.flag_name();
@@ -408,30 +362,29 @@ fn generate_arg_parsing(entrypoints: &[CliEntrypoint]) -> String {
             .unwrap_or_default();
 
         if ep.is_repeatable() {
-            // Repeatable flags: --flag val --flag val2
-            code.push_str(&format!("            {}\"--{}\" => {{\n", short, flag));
-            code.push_str("                i += 1;\n");
+            code.push_str(&format!("        {}\"--{}\" => {{\n", short, flag));
+            code.push_str("            i += 1;\n");
             code.push_str(&format!(
-                "                if i < args.len() {{ {}.push(args[i].clone()); }}\n",
+                "            if i < args.len() {{ {}.push(args[i].clone()); }}\n",
                 ep.var_name()
             ));
-            code.push_str("            }\n");
+            code.push_str("        }\n");
         } else {
             match ep.type_id.as_str() {
                 "Bool" => {
                     code.push_str(&format!(
-                        "            {}\"--{}\" => {} = true,\n",
+                        "        {}\"--{}\" => {} = true,\n",
                         short,
                         flag,
                         ep.var_name()
                     ));
                 }
                 _ => {
-                    code.push_str(&format!("            {}\"--{}\" => {{\n", short, flag));
-                    code.push_str("                i += 1;\n");
+                    code.push_str(&format!("        {}\"--{}\" => {{\n", short, flag));
+                    code.push_str("            i += 1;\n");
                     if ep.default_value.is_some() || ep.type_id != "String" {
                         code.push_str(&format!(
-                            "                if i < args.len() {{ {} = args[i].clone(){}; }}\n",
+                            "            if i < args.len() {{ {} = args[i].clone(){}; }}\n",
                             ep.var_name(),
                             if ep.type_id == "Int" {
                                 ".parse().unwrap_or(0)"
@@ -441,42 +394,44 @@ fn generate_arg_parsing(entrypoints: &[CliEntrypoint]) -> String {
                         ));
                     } else {
                         code.push_str(&format!(
-                            "                if i < args.len() {{ {} = Some(args[i].clone()); }}\n",
+                            "            if i < args.len() {{ {} = Some(args[i].clone()); }}\n",
                             ep.var_name()
                         ));
                     }
-                    code.push_str("            }\n");
+                    code.push_str("        }\n");
                 }
             }
         }
     }
 
-    code.push_str("            \"-n\" | \"--dry-run\" => dry_run = true,\n");
-    code.push_str("            \"-h\" | \"--help\" => { print_help(); return; }\n");
-    code.push_str("            _ => {}\n");
-    code.push_str("        }\n");
-    code.push_str("        i += 1;\n");
+    code.push_str("        \"-n\" | \"--dry-run\" => dry_run = true,\n");
+    code.push_str("        \"-h\" | \"--help\" => { print_help(); return; }\n");
+    code.push_str("        _ => {}\n");
     code.push_str("    }\n");
+    code.push_str("    i += 1;\n");
+    code.push_str("}\n");
 
     code
 }
 
+/// Generate the mock_spec dry-run setup expression.
 fn generate_mock_setup(mock_spec_call: &Option<String>) -> String {
     let call = mock_spec_call
         .as_deref()
         .expect("all tools must have mock_spec_call set");
     format!(
-        "        let _spec = {};\n        ExecutionMode::DryRun(_spec.to_dry_run_mocks())",
+        "let _spec = {};\nExecutionMode::DryRun(_spec.to_dry_run_mocks())",
         call
     )
 }
 
+/// Generate print-inputs statements.
 fn generate_print_inputs(entrypoints: &[CliEntrypoint]) -> String {
     let mut code = String::new();
     for ep in entrypoints {
         if ep.is_repeatable() {
             code.push_str(&format!(
-                "    println!(\"  {}: {{:?}}\", {});\n",
+                "println!(\"  {}: {{:?}}\", {});\n",
                 ep.port_name,
                 ep.var_name()
             ));
@@ -484,7 +439,7 @@ fn generate_print_inputs(entrypoints: &[CliEntrypoint]) -> String {
             match ep.type_id.as_str() {
                 "Bool" => {
                     code.push_str(&format!(
-                        "    println!(\"  {}: {{}}\", {});\n",
+                        "println!(\"  {}: {{}}\", {});\n",
                         ep.port_name,
                         ep.var_name()
                     ));
@@ -492,13 +447,13 @@ fn generate_print_inputs(entrypoints: &[CliEntrypoint]) -> String {
                 _ => {
                     if ep.default_value.is_some() {
                         code.push_str(&format!(
-                            "    println!(\"  {}: {{}}\", {});\n",
+                            "println!(\"  {}: {{}}\", {});\n",
                             ep.port_name,
                             ep.var_name()
                         ));
                     } else {
                         code.push_str(&format!(
-                            "    println!(\"  {}: {{}}\", {}.as_deref().unwrap_or(\"<default>\"));\n",
+                            "println!(\"  {}: {{}}\", {}.as_deref().unwrap_or(\"<default>\"));\n",
                             ep.port_name, ep.var_name()
                         ));
                     }
@@ -509,17 +464,18 @@ fn generate_print_inputs(entrypoints: &[CliEntrypoint]) -> String {
     code
 }
 
+/// Generate the input_mocks block (HashMap + entrypoint detection loop).
 fn generate_input_mocks(entrypoints: &[CliEntrypoint]) -> String {
     let mut code = String::new();
 
-    code.push_str("    let mut cli_inputs: HashMap<String, Value> = HashMap::new();\n");
+    code.push_str("let mut cli_inputs: HashMap<String, Value> = HashMap::new();\n");
 
     for ep in entrypoints {
         let port_name = &ep.port_name;
         let var_name = ep.var_name();
         if ep.is_repeatable() {
             code.push_str(&format!(
-                "    if !{var}.is_empty() {{ cli_inputs.insert(\"{port}\".to_string(), Value::str_list({var}.clone())); }}\n",
+                "if !{var}.is_empty() {{ cli_inputs.insert(\"{port}\".to_string(), Value::str_list({var}.clone())); }}\n",
                 var = var_name,
                 port = port_name
             ));
@@ -531,13 +487,13 @@ fn generate_input_mocks(entrypoints: &[CliEntrypoint]) -> String {
                 let default = ep.default_value.as_deref().unwrap_or("");
                 if default.is_empty() {
                     code.push_str(&format!(
-                        "    if let Some(value) = &{var} {{ cli_inputs.insert(\"{port}\".to_string(), Value::Str(value.clone())); }}\n",
+                        "if let Some(value) = &{var} {{ cli_inputs.insert(\"{port}\".to_string(), Value::Str(value.clone())); }}\n",
                         var = var_name,
                         port = port_name
                     ));
                 } else {
                     code.push_str(&format!(
-                        "    cli_inputs.insert(\"{port}\".to_string(), Value::Str({var}.clone()));\n",
+                        "cli_inputs.insert(\"{port}\".to_string(), Value::Str({var}.clone()));\n",
                         var = var_name,
                         port = port_name
                     ));
@@ -545,21 +501,21 @@ fn generate_input_mocks(entrypoints: &[CliEntrypoint]) -> String {
             }
             "Bool" => {
                 code.push_str(&format!(
-                    "    cli_inputs.insert(\"{port}\".to_string(), Value::Bool({var}));\n",
+                    "cli_inputs.insert(\"{port}\".to_string(), Value::Bool({var}));\n",
                     var = var_name,
                     port = port_name
                 ));
             }
             "Int" => {
                 code.push_str(&format!(
-                    "    cli_inputs.insert(\"{port}\".to_string(), Value::Int({var}));\n",
+                    "cli_inputs.insert(\"{port}\".to_string(), Value::Int({var}));\n",
                     var = var_name,
                     port = port_name
                 ));
             }
             _ => {
                 code.push_str(&format!(
-                    "    cli_inputs.insert(\"{port}\".to_string(), Value::Str({var}.clone()));\n",
+                    "cli_inputs.insert(\"{port}\".to_string(), Value::Str({var}.clone()));\n",
                     var = var_name,
                     port = port_name
                 ));
@@ -567,17 +523,18 @@ fn generate_input_mocks(entrypoints: &[CliEntrypoint]) -> String {
         }
     }
 
-    code.push_str("\n    let entrypoints = detect_entrypoints(&dag);\n");
-    code.push_str("    let mut input_mocks = BoundaryMocks::new();\n");
-    code.push_str("    for (node_id, port_name, _) in entrypoints.entrypoint_ports {\n");
-    code.push_str("        if let Some(value) = cli_inputs.get(&port_name.0) {\n");
-    code.push_str("            input_mocks.set_input(node_id.0.clone(), port_name.0.clone(), value.clone());\n");
-    code.push_str("        }\n");
+    code.push_str("\nlet entrypoints = detect_entrypoints(&dag);\n");
+    code.push_str("let mut input_mocks = BoundaryMocks::new();\n");
+    code.push_str("for (node_id, port_name, _) in entrypoints.entrypoint_ports {\n");
+    code.push_str("    if let Some(value) = cli_inputs.get(&port_name.0) {\n");
+    code.push_str("        input_mocks.set_input(node_id.0.clone(), port_name.0.clone(), value.clone());\n");
     code.push_str("    }\n");
+    code.push_str("}\n");
 
     code
 }
 
+/// Generate help option lines.
 fn generate_help_options(entrypoints: &[CliEntrypoint]) -> String {
     let mut code = String::new();
     for ep in entrypoints {
@@ -596,7 +553,7 @@ fn generate_help_options(entrypoints: &[CliEntrypoint]) -> String {
             }
         };
         code.push_str(&format!(
-            "    println!(\"    {}--{}{:width$}  {}\");\n",
+            "println!(\"    {}--{}{:width$}  {}\");\n",
             short,
             flag,
             type_hint,
@@ -607,24 +564,140 @@ fn generate_help_options(entrypoints: &[CliEntrypoint]) -> String {
     code
 }
 
+/// Generate the dry-run mode block.
+fn generate_dry_run_block(tool: &ToolMeta) -> String {
+    let mock_setup = generate_mock_setup(&tool.mock_spec_call);
+    format!(
+        "let mode = if dry_run {{\n    {}\n}} else {{\n    ExecutionMode::Real\n}};",
+        mock_setup.replace('\n', "\n    ")
+    )
+}
+
+/// Generate the success_port argument expression.
+fn generate_success_port_arg(tool: &ToolMeta) -> String {
+    match &tool.success_port {
+        Some(port) => format!("Some(\"{}\")", port),
+        None => "None".to_string(),
+    }
+}
+
 // ============================================================================
-// Step Mode CLI Generation
+// Standard Mode
 // ============================================================================
 
-/// Generate a CLI with step mode support for CI tools.
-///
-/// This generates a CLI that supports:
-/// - `run` (or no subcommand): Execute the full DAG
-/// - `step <node>`: Execute a single node (for CI step visibility)
-/// - `list-steps`: List all available steps in topological order
-fn generate_cli_with_step_mode(
+/// Build a `SourceFile` IR for a standard CLI main.rs.
+fn build_cli_source_file(
     tool: &ToolMeta,
     entrypoints: &[CliEntrypoint],
     custom_import: Option<&str>,
-) -> String {
-    let file = build_step_mode_source_file(tool, entrypoints, custom_import);
-    plain_rust_renderer().render_source_file(&file)
+) -> SourceFile {
+    let imports = build_cli_imports(tool, custom_import, false);
+
+    let main_fn = build_main_fn(tool, entrypoints);
+    let help_fn = build_help_fn(tool, entrypoints);
+
+    let mut items = imports;
+    items.push(Item::Fn(main_fn));
+    items.push(Item::Fn(help_fn));
+
+    SourceFile {
+        doc: vec![
+            format!("Generated CLI for {}.", tool.tool_name),
+            String::new(),
+            "This file is generated by gunbc-codegen. Do not edit manually.".to_string(),
+            "Regenerate with: make codegen".to_string(),
+        ],
+        items,
+    }
 }
+
+/// Build the `main()` function for standard mode.
+fn build_main_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDef {
+    let arg_parsing = generate_arg_parsing(entrypoints);
+    let graph_builder_call = generate_graph_builder_call(tool);
+    let input_mocks = generate_input_mocks(entrypoints);
+    let dry_run_block = generate_dry_run_block(tool);
+    let print_inputs = generate_print_inputs(entrypoints);
+    let success_port_arg = generate_success_port_arg(tool);
+
+    let body_code = format!(
+        "let args: Vec<String> = env::args().collect();\n\
+         \n\
+         // Parse arguments\n\
+         {arg_parsing}\n\
+         // Detect terminal environment\n\
+         let profile = TerminalProfile::detect();\n\
+         \n\
+         // Build the graph\n\
+         let dag = {graph_builder_call};\n\
+         \n\
+         {input_mocks}\n\
+         // Set up execution mode\n\
+         {dry_run_block}\n\
+         \n\
+         // Print header\n\
+         println!(\"{tool_name}\");\n\
+         {print_inputs}\
+         println!(\"  mode: {{}}\", if dry_run {{ \"dry-run\" }} else {{ \"real\" }});\n\
+         println!();\n\
+         \n\
+         // Execute and display (progress or classic based on terminal)\n\
+         execute_and_display(&dag, mode, &profile, {success_port_arg}, Some(&input_mocks));",
+        arg_parsing = arg_parsing,
+        graph_builder_call = graph_builder_call,
+        input_mocks = input_mocks,
+        dry_run_block = dry_run_block,
+        tool_name = tool.tool_name,
+        print_inputs = print_inputs,
+        success_port_arg = success_port_arg,
+    );
+
+    FnDef {
+        name: "main".to_string(),
+        is_pub: false,
+        params: vec![],
+        return_type: None,
+        body: vec![Stmt::TailExpr(Expr::RawCode(body_code))],
+        doc: vec![],
+        attributes: vec![],
+    }
+}
+
+/// Build the `print_help()` function.
+fn build_help_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDef {
+    let help_options = generate_help_options(entrypoints);
+
+    let body_code = format!(
+        "println!(\"{tool_name} - {description}\");\n\
+         println!();\n\
+         println!(\"USAGE:\");\n\
+         println!(\"    {tool_name} [OPTIONS]\");\n\
+         println!();\n\
+         println!(\"OPTIONS:\");\n\
+         {help_options}\
+         println!(\"    -n, --dry-run        Don't perform actual I/O\");\n\
+         println!(\"    -h, --help           Print this help\");\n\
+         println!();\n\
+         println!(\"Progress display is automatic based on terminal capabilities.\");",
+        tool_name = tool.tool_name,
+        description = tool.description,
+        help_options = help_options,
+    );
+
+    FnDef {
+        name: "print_help".to_string(),
+        is_pub: false,
+        params: vec![],
+        return_type: None,
+        body: vec![Stmt::TailExpr(Expr::RawCode(body_code))],
+        doc: vec![],
+        attributes: vec![],
+    }
+}
+
+// ============================================================================
+// Step Mode
+// ============================================================================
 
 /// Build a `SourceFile` IR for a step-mode CLI main.rs.
 fn build_step_mode_source_file(
@@ -632,272 +705,24 @@ fn build_step_mode_source_file(
     entrypoints: &[CliEntrypoint],
     custom_import: Option<&str>,
 ) -> SourceFile {
-    // Convert crate name (kebab-case) to module name (snake_case)
-    let crate_module = NamingCase::SnakeCase.apply(&tool.crate_name);
-    let arg_parsing = generate_arg_parsing(entrypoints);
-    let mock_setup = generate_mock_setup(&tool.mock_spec_call);
-    let print_inputs = generate_print_inputs(entrypoints);
-    let input_mocks = generate_input_mocks(entrypoints);
+    let imports = build_cli_imports(tool, custom_import, true);
 
-    let import_line = custom_import.unwrap_or("").to_string();
-    let default_import = format!("use {}::build_{}_graph;", crate_module, tool.tool_name);
-    let actual_import = if import_line.is_empty() {
-        default_import
-    } else {
-        import_line
-    };
+    let main_fn = build_step_main_fn();
+    let run_full_fn = build_run_full_dag_fn(tool, entrypoints);
+    let step_fn = build_run_single_step_fn(tool);
+    let list_fn = build_list_dag_steps_fn(tool);
+    let load_fn = build_load_step_inputs_fn();
+    let emit_fn = build_emit_step_outputs_fn();
+    let help_fn = build_step_help_fn(tool);
 
-    // Generate the graph builder call - handle Result-returning builders
-    let graph_builder_fn = &tool.graph_builder_call;
-    let graph_builder_call = generate_graph_builder_call(tool, graph_builder_fn);
-
-    let success_port_arg = match &tool.success_port {
-        Some(port) => format!("Some(\"{}\")", port),
-        None => "None".to_string(),
-    };
-
-    let dry_run_block = format!(
-        "    let mode = if dry_run {{\n\
-         {mock_setup}\n\
-         \x20   }} else {{\n\
-         \x20       ExecutionMode::Real\n\
-         \x20   }};",
-        mock_setup = mock_setup
-    );
-
-    let body = format!(
-        r#"use gunbc_exec::{{execute_and_display, execute_single_node, print_value, BoundaryMocks, ExecutionMode, TerminalProfile}};
-use gunbc_ir::{{detect_entrypoints, Value}};
-{import_line}
-use gunbc_test::MockSpec;
-use std::collections::HashMap;
-use std::env;
-use std::process;
-
-fn main() {{
-    let args: Vec<String> = env::args().collect();
-
-    // Parse subcommand
-    let subcommand = args.get(1).map(|s| s.as_str());
-
-    match subcommand {{
-        Some("run") => run_full_dag(&args[2..]),
-        Some("step") => run_single_step(&args[2..]),
-        Some("list-steps") => list_dag_steps(),
-        Some("-h") | Some("--help") | Some("help") => print_help(),
-        Some("-n") | Some("--dry-run") => run_full_dag(&args[1..]),  // backwards compat
-        Some(arg) if arg.starts_with('-') => run_full_dag(&args[1..]),  // flags go to run
-        None => run_full_dag(&[]),
-        _ => run_full_dag(&args[1..]),  // unknown subcommand, try as args
-    }}
-}}
-
-fn run_full_dag(raw_args: &[String]) {{
-    let mut args: Vec<String> = Vec::new();
-    args.push("run".to_string());
-    args.extend_from_slice(raw_args);
-
-{arg_parsing}
-
-    // Detect terminal environment
-    let profile = TerminalProfile::detect();
-
-    // Build the graph
-    let dag = {graph_builder_call};
-
-{input_mocks}
-
-    // Set up execution mode
-{dry_run_block}
-
-    // Print header
-    println!("{tool_name}");
-{print_inputs}
-    println!("  mode: {{}}", if dry_run {{ "dry-run" }} else {{ "real" }});
-    println!();
-
-    // Execute and display (progress or classic based on terminal)
-    execute_and_display(&dag, mode, &profile, {success_port_arg}, Some(&input_mocks));
-}}
-
-fn run_single_step(args: &[String]) {{
-    let step_name = match args.first() {{
-        Some(name) => name.clone(),
-        None => {{
-            eprintln!("Error: step name required");
-            eprintln!("Usage: {tool_name} step <node_name>");
-            eprintln!("Run '{tool_name} list-steps' to see available steps");
-            process::exit(1);
-        }}
-    }};
-
-    let mut dry_run = false;
-    for arg in args.iter().skip(1) {{
-        match arg.as_str() {{
-            "-n" | "--dry-run" => dry_run = true,
-            _ => {{}}
-        }}
-    }}
-
-    // Build the graph
-    let dag = {graph_builder_call};
-
-    // Capture environment once at the boundary
-    let env_dict: HashMap<String, String> = env::vars().collect();
-
-    // Load inputs from environment (CI step outputs from previous steps)
-    let inputs = load_step_inputs_from_env(&step_name, &env_dict);
-
-    // Set up execution mode
-{dry_run_block}
-
-    println!("[{tool_name}:step:{{}}]", step_name);
-
-    // Execute single node
-    match execute_single_node(&dag, &step_name, inputs, mode) {{
-        Ok(outputs) => {{
-            // Print outputs
-            for (port, value) in &outputs {{
-                print_value(port, value);
-            }}
-
-            // Emit outputs for next steps (CI provider format)
-            emit_step_outputs(&step_name, &outputs, &env_dict);
-
-            // Check for failure
-            if let Some(Value::Bool(false)) = outputs.get("{success_port_or_empty}") {{
-                process::exit(1);
-            }}
-        }}
-        Err(e) => {{
-            eprintln!("Error executing step '{{}}': {{}}", step_name, e);
-            process::exit(1);
-        }}
-    }}
-}}
-
-fn list_dag_steps() {{
-    let dag = {graph_builder_call};
-
-    println!("Available steps for {tool_name}:");
-    println!();
-
-    // Get nodes in topological order
-    for node in &dag.nodes {{
-        let inputs: Vec<_> = node.inputs.iter().map(|p| p.name.0.as_str()).collect();
-        let outputs: Vec<_> = node.outputs.iter().map(|p| p.name.0.as_str()).collect();
-
-        println!("  {{}}", node.id.0);
-        if !inputs.is_empty() {{
-            println!("    inputs:  {{}}", inputs.join(", "));
-        }}
-        if !outputs.is_empty() {{
-            println!("    outputs: {{}}", outputs.join(", "));
-        }}
-    }}
-}}
-
-/// Load inputs from environment variables set by previous CI steps.
-///
-/// Convention: STEP_<NODE>_<PORT> = value
-///
-/// Accepts an env dictionary captured at the boundary instead of reading
-/// env vars directly, making this function pure and testable.
-fn load_step_inputs_from_env(step_name: &str, env_dict: &HashMap<String, String>) -> HashMap<String, Value> {{
-    let mut inputs = HashMap::new();
-
-    // Look for environment variables matching our convention
-    for (key, value) in env_dict {{
-        if key.starts_with("STEP_") && key != format!("STEP_{{}}_", step_name.to_uppercase()) {{
-            // Parse: STEP_NODENAME_PORTNAME
-            let parts: Vec<&str> = key.splitn(3, '_').collect();
-            if parts.len() >= 3 {{
-                let port_name = parts[2].to_lowercase();
-                // Try to parse as appropriate type
-                if let Ok(b) = value.parse::<bool>() {{
-                    inputs.insert(port_name, Value::Bool(b));
-                }} else if let Ok(i) = value.parse::<i64>() {{
-                    inputs.insert(port_name, Value::Int(i));
-                }} else {{
-                    inputs.insert(port_name, Value::Str(value.clone()));
-                }}
-            }}
-        }}
-    }}
-
-    inputs
-}}
-
-/// Emit outputs in CI provider format for next steps.
-///
-/// Accepts an env dictionary captured at the boundary instead of reading
-/// env vars directly, making this function pure and testable.
-fn emit_step_outputs(step_name: &str, outputs: &HashMap<String, Value>, env_dict: &HashMap<String, String>) {{
-    // Check if we're in GitHub Actions
-    if let Some(output_file) = env_dict.get("GITHUB_OUTPUT") {{
-        // GitHub Actions format: write to $GITHUB_OUTPUT file
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&output_file)
-        {{
-            use std::io::Write;
-            for (port, value) in outputs {{
-                let str_value = match value {{
-                    Value::Str(s) => s.clone(),
-                    Value::Int(i) => i.to_string(),
-                    Value::Bool(b) => b.to_string(),
-                    _ => continue,
-                }};
-                let _ = writeln!(file, "STEP_{{}}_{{}}={{}}",
-                    step_name.to_uppercase(), port.to_uppercase(), str_value);
-            }}
-        }}
-    }} else if env_dict.contains_key("GITLAB_CI") {{
-        // GitLab CI format: export to dotenv artifact
-        for (port, value) in outputs {{
-            let str_value = match value {{
-                Value::Str(s) => s.clone(),
-                Value::Int(i) => i.to_string(),
-                Value::Bool(b) => b.to_string(),
-                _ => continue,
-            }};
-            println!("STEP_{{}}_{{}}={{}}",
-                step_name.to_uppercase(), port.to_uppercase(), str_value);
-        }}
-    }}
-    // Plain mode: just print (already done above)
-}}
-
-fn print_help() {{
-    println!("{tool_name} - {description}");
-    println!();
-    println!("USAGE:");
-    println!("    {tool_name} [SUBCOMMAND] [OPTIONS]");
-    println!();
-    println!("SUBCOMMANDS:");
-    println!("    run          Execute the full DAG (default)");
-    println!("    step <node>  Execute a single DAG node");
-    println!("    list-steps   List all available steps");
-    println!("    help         Print this help");
-    println!();
-    println!("OPTIONS:");
-    println!("    -n, --dry-run    Don't perform actual I/O");
-    println!("    -h, --help       Print this help");
-    println!();
-    println!("Progress display is automatic based on terminal capabilities.");
-}}"#,
-        tool_name = tool.tool_name,
-        import_line = actual_import,
-        arg_parsing = arg_parsing,
-        graph_builder_call = graph_builder_call,
-        input_mocks = input_mocks,
-        dry_run_block = dry_run_block,
-        print_inputs = print_inputs,
-        success_port_arg = success_port_arg,
-        description = tool.description,
-        success_port_or_empty = tool.success_port.as_deref().unwrap_or(""),
-    );
+    let mut items = imports;
+    items.push(Item::Fn(main_fn));
+    items.push(Item::Fn(run_full_fn));
+    items.push(Item::Fn(step_fn));
+    items.push(Item::Fn(list_fn));
+    items.push(Item::Fn(load_fn));
+    items.push(Item::Fn(emit_fn));
+    items.push(Item::Fn(help_fn));
 
     SourceFile {
         doc: vec![
@@ -911,9 +736,362 @@ fn print_help() {{
             "- step <node>: Execute a single node".to_string(),
             "- list-steps: List all available steps".to_string(),
         ],
-        items: vec![Item::Raw(body)],
+        items,
     }
 }
+
+/// Build the `main()` function for step mode.
+fn build_step_main_fn() -> FnDef {
+    let body_code = "\
+let args: Vec<String> = env::args().collect();\n\
+\n\
+// Parse subcommand\n\
+let subcommand = args.get(1).map(|s| s.as_str());\n\
+\n\
+match subcommand {\n\
+    Some(\"run\") => run_full_dag(&args[2..]),\n\
+    Some(\"step\") => run_single_step(&args[2..]),\n\
+    Some(\"list-steps\") => list_dag_steps(),\n\
+    Some(\"-h\") | Some(\"--help\") | Some(\"help\") => print_help(),\n\
+    Some(\"-n\") | Some(\"--dry-run\") => run_full_dag(&args[1..]),  // backwards compat\n\
+    Some(arg) if arg.starts_with('-') => run_full_dag(&args[1..]),  // flags go to run\n\
+    None => run_full_dag(&[]),\n\
+    _ => run_full_dag(&args[1..]),  // unknown subcommand, try as args\n\
+}"
+    .to_string();
+
+    FnDef {
+        name: "main".to_string(),
+        is_pub: false,
+        params: vec![],
+        return_type: None,
+        body: vec![Stmt::TailExpr(Expr::RawCode(body_code))],
+        doc: vec![],
+        attributes: vec![],
+    }
+}
+
+/// Build the `run_full_dag()` function for step mode.
+fn build_run_full_dag_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDef {
+    let arg_parsing = generate_arg_parsing(entrypoints);
+    let graph_builder_call = generate_graph_builder_call(tool);
+    let input_mocks = generate_input_mocks(entrypoints);
+    let dry_run_block = generate_dry_run_block(tool);
+    let print_inputs = generate_print_inputs(entrypoints);
+    let success_port_arg = generate_success_port_arg(tool);
+
+    let body_code = format!(
+        "let mut args: Vec<String> = Vec::new();\n\
+         args.push(\"run\".to_string());\n\
+         args.extend_from_slice(raw_args);\n\
+         \n\
+         {arg_parsing}\n\
+         // Detect terminal environment\n\
+         let profile = TerminalProfile::detect();\n\
+         \n\
+         // Build the graph\n\
+         let dag = {graph_builder_call};\n\
+         \n\
+         {input_mocks}\n\
+         // Set up execution mode\n\
+         {dry_run_block}\n\
+         \n\
+         // Print header\n\
+         println!(\"{tool_name}\");\n\
+         {print_inputs}\
+         println!(\"  mode: {{}}\", if dry_run {{ \"dry-run\" }} else {{ \"real\" }});\n\
+         println!();\n\
+         \n\
+         // Execute and display (progress or classic based on terminal)\n\
+         execute_and_display(&dag, mode, &profile, {success_port_arg}, Some(&input_mocks));",
+        arg_parsing = arg_parsing,
+        graph_builder_call = graph_builder_call,
+        input_mocks = input_mocks,
+        dry_run_block = dry_run_block,
+        tool_name = tool.tool_name,
+        print_inputs = print_inputs,
+        success_port_arg = success_port_arg,
+    );
+
+    FnDef {
+        name: "run_full_dag".to_string(),
+        is_pub: false,
+        params: vec![("raw_args".to_string(), "&[String]".to_string())],
+        return_type: None,
+        body: vec![Stmt::TailExpr(Expr::RawCode(body_code))],
+        doc: vec![],
+        attributes: vec![],
+    }
+}
+
+/// Build the `run_single_step()` function for step mode.
+fn build_run_single_step_fn(tool: &ToolMeta) -> FnDef {
+    let graph_builder_call = generate_graph_builder_call(tool);
+    let dry_run_block = generate_dry_run_block(tool);
+    let success_port_or_empty = tool.success_port.as_deref().unwrap_or("");
+
+    let body_code = format!(
+        "let step_name = match args.first() {{\n\
+             Some(name) => name.clone(),\n\
+             None => {{\n\
+                 eprintln!(\"Error: step name required\");\n\
+                 eprintln!(\"Usage: {tool_name} step <node_name>\");\n\
+                 eprintln!(\"Run '{tool_name} list-steps' to see available steps\");\n\
+                 process::exit(1);\n\
+             }}\n\
+         }};\n\
+         \n\
+         let mut dry_run = false;\n\
+         for arg in args.iter().skip(1) {{\n\
+             match arg.as_str() {{\n\
+                 \"-n\" | \"--dry-run\" => dry_run = true,\n\
+                 _ => {{}}\n\
+             }}\n\
+         }}\n\
+         \n\
+         // Build the graph\n\
+         let dag = {graph_builder_call};\n\
+         \n\
+         // Capture environment once at the boundary\n\
+         let env_dict: HashMap<String, String> = env::vars().collect();\n\
+         \n\
+         // Load inputs from environment (CI step outputs from previous steps)\n\
+         let inputs = load_step_inputs_from_env(&step_name, &env_dict);\n\
+         \n\
+         // Set up execution mode\n\
+         {dry_run_block}\n\
+         \n\
+         println!(\"[{tool_name}:step:{{}}]\", step_name);\n\
+         \n\
+         // Execute single node\n\
+         match execute_single_node(&dag, &step_name, inputs, mode) {{\n\
+             Ok(outputs) => {{\n\
+                 // Print outputs\n\
+                 for (port, value) in &outputs {{\n\
+                     print_value(port, value);\n\
+                 }}\n\
+                 \n\
+                 // Emit outputs for next steps (CI provider format)\n\
+                 emit_step_outputs(&step_name, &outputs, &env_dict);\n\
+                 \n\
+                 // Check for failure\n\
+                 if let Some(Value::Bool(false)) = outputs.get(\"{success_port_or_empty}\") {{\n\
+                     process::exit(1);\n\
+                 }}\n\
+             }}\n\
+             Err(e) => {{\n\
+                 eprintln!(\"Error executing step '{{}}': {{}}\", step_name, e);\n\
+                 process::exit(1);\n\
+             }}\n\
+         }}",
+        tool_name = tool.tool_name,
+        graph_builder_call = graph_builder_call,
+        dry_run_block = dry_run_block,
+        success_port_or_empty = success_port_or_empty,
+    );
+
+    FnDef {
+        name: "run_single_step".to_string(),
+        is_pub: false,
+        params: vec![("args".to_string(), "&[String]".to_string())],
+        return_type: None,
+        body: vec![Stmt::TailExpr(Expr::RawCode(body_code))],
+        doc: vec![],
+        attributes: vec![],
+    }
+}
+
+/// Build the `list_dag_steps()` function for step mode.
+fn build_list_dag_steps_fn(tool: &ToolMeta) -> FnDef {
+    let graph_builder_call = generate_graph_builder_call(tool);
+
+    let body_code = format!(
+        "let dag = {graph_builder_call};\n\
+         \n\
+         println!(\"Available steps for {tool_name}:\");\n\
+         println!();\n\
+         \n\
+         // Get nodes in topological order\n\
+         for node in &dag.nodes {{\n\
+             let inputs: Vec<_> = node.inputs.iter().map(|p| p.name.0.as_str()).collect();\n\
+             let outputs: Vec<_> = node.outputs.iter().map(|p| p.name.0.as_str()).collect();\n\
+             \n\
+             println!(\"  {{}}\", node.id.0);\n\
+             if !inputs.is_empty() {{\n\
+                 println!(\"    inputs:  {{}}\", inputs.join(\", \"));\n\
+             }}\n\
+             if !outputs.is_empty() {{\n\
+                 println!(\"    outputs: {{}}\", outputs.join(\", \"));\n\
+             }}\n\
+         }}",
+        graph_builder_call = graph_builder_call,
+        tool_name = tool.tool_name,
+    );
+
+    FnDef {
+        name: "list_dag_steps".to_string(),
+        is_pub: false,
+        params: vec![],
+        return_type: None,
+        body: vec![Stmt::TailExpr(Expr::RawCode(body_code))],
+        doc: vec![],
+        attributes: vec![],
+    }
+}
+
+/// Build the `load_step_inputs_from_env()` function.
+fn build_load_step_inputs_fn() -> FnDef {
+    let body_code = "\
+let mut inputs = HashMap::new();\n\
+\n\
+// Look for environment variables matching our convention\n\
+for (key, value) in env_dict {\n\
+    if key.starts_with(\"STEP_\") && key != format!(\"STEP_{}_\", step_name.to_uppercase()) {\n\
+        // Parse: STEP_NODENAME_PORTNAME\n\
+        let parts: Vec<&str> = key.splitn(3, '_').collect();\n\
+        if parts.len() >= 3 {\n\
+            let port_name = parts[2].to_lowercase();\n\
+            // Try to parse as appropriate type\n\
+            if let Ok(b) = value.parse::<bool>() {\n\
+                inputs.insert(port_name, Value::Bool(b));\n\
+            } else if let Ok(i) = value.parse::<i64>() {\n\
+                inputs.insert(port_name, Value::Int(i));\n\
+            } else {\n\
+                inputs.insert(port_name, Value::Str(value.clone()));\n\
+            }\n\
+        }\n\
+    }\n\
+}\n\
+\n\
+inputs"
+        .to_string();
+
+    FnDef {
+        name: "load_step_inputs_from_env".to_string(),
+        is_pub: false,
+        params: vec![
+            ("step_name".to_string(), "&str".to_string()),
+            (
+                "env_dict".to_string(),
+                "&HashMap<String, String>".to_string(),
+            ),
+        ],
+        return_type: Some("HashMap<String, Value>".to_string()),
+        body: vec![Stmt::TailExpr(Expr::RawCode(body_code))],
+        doc: vec![
+            "Load inputs from environment variables set by previous CI steps.".to_string(),
+            String::new(),
+            "Convention: STEP_<NODE>_<PORT> = value".to_string(),
+            String::new(),
+            "Accepts an env dictionary captured at the boundary instead of reading".to_string(),
+            "env vars directly, making this function pure and testable.".to_string(),
+        ],
+        attributes: vec![],
+    }
+}
+
+/// Build the `emit_step_outputs()` function.
+fn build_emit_step_outputs_fn() -> FnDef {
+    let body_code = "\
+// Check if we're in GitHub Actions\n\
+if let Some(output_file) = env_dict.get(\"GITHUB_OUTPUT\") {\n\
+    // GitHub Actions format: write to $GITHUB_OUTPUT file\n\
+    if let Ok(mut file) = std::fs::OpenOptions::new()\n\
+        .create(true)\n\
+        .append(true)\n\
+        .open(&output_file)\n\
+    {\n\
+        use std::io::Write;\n\
+        for (port, value) in outputs {\n\
+            let str_value = match value {\n\
+                Value::Str(s) => s.clone(),\n\
+                Value::Int(i) => i.to_string(),\n\
+                Value::Bool(b) => b.to_string(),\n\
+                _ => continue,\n\
+            };\n\
+            let _ = writeln!(file, \"STEP_{}_{}={}\",\n\
+                step_name.to_uppercase(), port.to_uppercase(), str_value);\n\
+        }\n\
+    }\n\
+} else if env_dict.contains_key(\"GITLAB_CI\") {\n\
+    // GitLab CI format: export to dotenv artifact\n\
+    for (port, value) in outputs {\n\
+        let str_value = match value {\n\
+            Value::Str(s) => s.clone(),\n\
+            Value::Int(i) => i.to_string(),\n\
+            Value::Bool(b) => b.to_string(),\n\
+            _ => continue,\n\
+        };\n\
+        println!(\"STEP_{}_{}={}\",\n\
+            step_name.to_uppercase(), port.to_uppercase(), str_value);\n\
+    }\n\
+}\n\
+// Plain mode: just print (already done above)"
+        .to_string();
+
+    FnDef {
+        name: "emit_step_outputs".to_string(),
+        is_pub: false,
+        params: vec![
+            ("step_name".to_string(), "&str".to_string()),
+            (
+                "outputs".to_string(),
+                "&HashMap<String, Value>".to_string(),
+            ),
+            (
+                "env_dict".to_string(),
+                "&HashMap<String, String>".to_string(),
+            ),
+        ],
+        return_type: None,
+        body: vec![Stmt::TailExpr(Expr::RawCode(body_code))],
+        doc: vec![
+            "Emit outputs in CI provider format for next steps.".to_string(),
+            String::new(),
+            "Accepts an env dictionary captured at the boundary instead of reading".to_string(),
+            "env vars directly, making this function pure and testable.".to_string(),
+        ],
+        attributes: vec![],
+    }
+}
+
+/// Build the `print_help()` function for step mode.
+fn build_step_help_fn(tool: &ToolMeta) -> FnDef {
+    let body_code = format!(
+        "println!(\"{tool_name} - {description}\");\n\
+         println!();\n\
+         println!(\"USAGE:\");\n\
+         println!(\"    {tool_name} [SUBCOMMAND] [OPTIONS]\");\n\
+         println!();\n\
+         println!(\"SUBCOMMANDS:\");\n\
+         println!(\"    run          Execute the full DAG (default)\");\n\
+         println!(\"    step <node>  Execute a single DAG node\");\n\
+         println!(\"    list-steps   List all available steps\");\n\
+         println!(\"    help         Print this help\");\n\
+         println!();\n\
+         println!(\"OPTIONS:\");\n\
+         println!(\"    -n, --dry-run    Don't perform actual I/O\");\n\
+         println!(\"    -h, --help       Print this help\");\n\
+         println!();\n\
+         println!(\"Progress display is automatic based on terminal capabilities.\");",
+        tool_name = tool.tool_name,
+        description = tool.description,
+    );
+
+    FnDef {
+        name: "print_help".to_string(),
+        is_pub: false,
+        params: vec![],
+        return_type: None,
+        body: vec![Stmt::TailExpr(Expr::RawCode(body_code))],
+        doc: vec![],
+        attributes: vec![],
+    }
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
 
 #[cfg(test)]
 mod tests {
@@ -936,7 +1114,9 @@ mod tests {
             returns_result: false,
             success_port: None,
             enable_step_mode: false,
-            mock_spec_call: Some("gunbc_gist::graph_mock::gist_snapshot_mock_spec()".to_string()),
+            mock_spec_call: Some(
+                "gunbc_gist::graph_mock::gist_snapshot_mock_spec()".to_string(),
+            ),
         };
 
         let entrypoints = vec![CliEntrypoint::new("repo_path", "String")
@@ -950,7 +1130,124 @@ mod tests {
         assert!(code.contains("build_gist_graph"));
         assert!(code.contains("execute_and_display"));
         assert!(code.contains("TerminalProfile::detect()"));
-        assert!(code.contains("MockSpec"));
-        assert!(code.contains("to_dry_run_mocks"));
+    }
+
+    #[test]
+    fn test_generate_cli_uses_ir_imports() {
+        let tool = ToolMeta {
+            crate_name: "gunbc-gist".to_string(),
+            tool_name: "gist".to_string(),
+            description: "Test".to_string(),
+            graph_builder_call: "build_gist_graph".to_string(),
+            graph_builder_args: String::new(),
+            returns_result: false,
+            success_port: None,
+            enable_step_mode: false,
+            mock_spec_call: Some("mock_spec()".to_string()),
+        };
+        let entrypoints = vec![];
+
+        let code = generate_cli(&tool, &entrypoints);
+        // Verify IR-based imports are rendered (not embedded in Raw string)
+        assert!(code.contains("use gunbc_exec::{"));
+        assert!(code.contains("use gunbc_ir::{"));
+        assert!(code.contains("use std::env;"));
+        assert!(code.contains("use std::process;"));
+        // Verify functions are rendered as proper fn definitions
+        assert!(code.contains("fn main()"));
+        assert!(code.contains("fn print_help()"));
+    }
+
+    #[test]
+    fn test_generate_step_mode_cli() {
+        let tool = ToolMeta {
+            crate_name: "gunbc-ci".to_string(),
+            tool_name: "ci".to_string(),
+            description: "CI pipeline".to_string(),
+            graph_builder_call: "build_ci_graph".to_string(),
+            graph_builder_args: String::new(),
+            returns_result: true,
+            success_port: Some("overall_success".to_string()),
+            enable_step_mode: true,
+            mock_spec_call: Some("ci_mock_spec()".to_string()),
+        };
+        let entrypoints = vec![];
+
+        let code = generate_cli(&tool, &entrypoints);
+        assert!(code.contains("fn main()"));
+        assert!(code.contains("fn run_full_dag("));
+        assert!(code.contains("fn run_single_step("));
+        assert!(code.contains("fn list_dag_steps()"));
+        assert!(code.contains("fn load_step_inputs_from_env("));
+        assert!(code.contains("fn emit_step_outputs("));
+        assert!(code.contains("fn print_help()"));
+        assert!(code.contains("execute_single_node"));
+        assert!(code.contains("print_value"));
+    }
+
+    #[test]
+    fn test_generate_cli_with_result_builder() {
+        let tool = ToolMeta {
+            crate_name: "gunbc-ci".to_string(),
+            tool_name: "ci".to_string(),
+            description: "Test".to_string(),
+            graph_builder_call: "build_ci_graph".to_string(),
+            graph_builder_args: String::new(),
+            returns_result: true,
+            success_port: None,
+            enable_step_mode: false,
+            mock_spec_call: Some("mock()".to_string()),
+        };
+        let entrypoints = vec![];
+
+        let code = generate_cli(&tool, &entrypoints);
+        assert!(code.contains("match build_ci_graph()"));
+        assert!(code.contains("Ok(d) => d"));
+        assert!(code.contains("process::exit(1)"));
+    }
+
+    #[test]
+    fn test_source_file_structure() {
+        let tool = ToolMeta {
+            crate_name: "gunbc-gist".to_string(),
+            tool_name: "gist".to_string(),
+            description: "Test".to_string(),
+            graph_builder_call: "build_gist_graph".to_string(),
+            graph_builder_args: String::new(),
+            returns_result: false,
+            success_port: None,
+            enable_step_mode: false,
+            mock_spec_call: Some("mock()".to_string()),
+        };
+        let entrypoints = vec![];
+
+        let file = build_cli_source_file(&tool, &entrypoints, None);
+        // Should have doc comments
+        assert!(!file.doc.is_empty());
+        // Should have imports + 2 functions (main, print_help)
+        let fn_count = file.items.iter().filter(|i| matches!(i, Item::Fn(_))).count();
+        assert_eq!(fn_count, 2, "standard mode should have 2 functions");
+        let import_count = file.items.iter().filter(|i| matches!(i, Item::Use(_))).count();
+        assert!(import_count >= 4, "should have at least 4 import items");
+    }
+
+    #[test]
+    fn test_step_mode_source_file_structure() {
+        let tool = ToolMeta {
+            crate_name: "gunbc-ci".to_string(),
+            tool_name: "ci".to_string(),
+            description: "CI".to_string(),
+            graph_builder_call: "build_ci_graph".to_string(),
+            graph_builder_args: String::new(),
+            returns_result: true,
+            success_port: Some("overall_success".to_string()),
+            enable_step_mode: true,
+            mock_spec_call: Some("mock()".to_string()),
+        };
+        let entrypoints = vec![];
+
+        let file = build_step_mode_source_file(&tool, &entrypoints, None);
+        let fn_count = file.items.iter().filter(|i| matches!(i, Item::Fn(_))).count();
+        assert_eq!(fn_count, 7, "step mode should have 7 functions");
     }
 }

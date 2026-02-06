@@ -262,16 +262,14 @@ fn cmd_daggen(dry_run: bool) {
             let tool_dir = Path::new(output_dir).join(&tool.meta.tool_name);
             let graph_path = tool_dir.join("graph.rs");
 
-            match writer.write(&graph_path, &code) {
+            match writer.write_if_changed(&graph_path, &code) {
                 Ok(result) => {
-                    let status = if result.written {
-                        if result.changed {
-                            "written"
-                        } else {
-                            "unchanged"
-                        }
-                    } else {
+                    let status = if dry_run {
                         "dry-run"
+                    } else if result.changed {
+                        "written"
+                    } else {
+                        "unchanged"
                     };
                     println!(
                         "  [{}] {} ({})",
@@ -336,16 +334,14 @@ fn cmd_cigen(dry_run: bool) {
     ];
 
     for (label, yaml, path) in &outputs {
-        match writer.write(Path::new(path), yaml) {
+        match writer.write_if_changed(Path::new(path), yaml) {
             Ok(result) => {
-                let status = if result.written {
-                    if result.changed {
-                        "written"
-                    } else {
-                        "unchanged"
-                    }
-                } else {
+                let status = if dry_run {
                     "dry-run"
+                } else if result.changed {
+                    "written"
+                } else {
+                    "unchanged"
                 };
                 println!("  [ci] {} ({})", path, status);
             }
@@ -626,16 +622,14 @@ fn codegen_clis(dry_run: bool) -> bool {
         let tool_dir = Path::new(output_dir).join(&tool.meta.tool_name);
         let main_path = tool_dir.join("main.rs");
 
-        match writer.write(&main_path, &code) {
+        match writer.write_if_changed(&main_path, &code) {
             Ok(result) => {
-                let status = if result.written {
-                    if result.changed {
-                        "written"
-                    } else {
-                        "unchanged"
-                    }
-                } else {
+                let status = if dry_run {
                     "dry-run"
+                } else if result.changed {
+                    "written"
+                } else {
+                    "unchanged"
                 };
                 println!(
                     "  [{}] {} ({})",
@@ -683,16 +677,14 @@ fn codegen_clis(dry_run: bool) -> bool {
                     reg.cargo_toml_path.display()
                 );
             }
-            Ok(true) => match writer.write(&reg.cargo_toml_path, reg.doc.to_string()) {
+            Ok(true) => match writer.write_if_changed(&reg.cargo_toml_path, reg.doc.to_string()) {
                 Ok(result) => {
-                    let status = if result.written {
-                        if result.changed {
-                            "registered"
-                        } else {
-                            "unchanged"
-                        }
-                    } else {
+                    let status = if dry_run {
                         "dry-run"
+                    } else if result.changed {
+                        "registered"
+                    } else {
+                        "unchanged"
                     };
                     println!(
                         "  [{}] {} → {} ({})",

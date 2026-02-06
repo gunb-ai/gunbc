@@ -197,3 +197,4 @@ build-all: ensure-codegen
 
 build-all-dry: ensure-codegen
 	@RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-build -- --dry-run
+
