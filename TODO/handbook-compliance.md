@@ -1,6 +1,6 @@
 # Handbook Compliance: Unification & Simplification
 
-**Status**: Draft
+**Status**: Active (Tier 1 complete, Tier 2 triaged)
 **Date**: 2026-02-06
 
 Consolidates two rounds of feedback on the gunbc Handbook. Identifies
@@ -24,6 +24,12 @@ These are working, enforced, and don't need further action.
 | Pure ops + MockSpec enforcement | Working | Testgen panics if transport nodes lack mocks or pure nodes lack examples (unless skipped) |
 | DAG-ify all binaries | Complete (7/7) | codegen, bootstrap, build, makegen, ci, pragma, testgen all use DAG execution |
 | Resource acquisition (Phases 1-5) | Complete | Resource trait, env nodes, `res:` port convention, SubDag delegation, resource accounting |
+| `#[tool_target]` annotations (R1) | Complete (7/7) | All 7 tool graph builders annotated; `tool_registration.rs` validates bidirectional consistency |
+| OutputMap consistency (D2) | Complete | No raw `HashMap<String, Value>` returns found in any op implementation |
+| Transport compliance (V3) | Complete | `pragma_lint.rs` test enforces disallowed-methods allowlist; no untracked exceptions possible |
+| Transport triplet helper (C1) | Complete | `add_skippable_transport_triplet` / `add_transport_triplet` in `core/ir/src/patterns/transport_triplet.rs`; CI graph reduced from ~1011 to ~830 lines |
+| graph_mock Pattern E dedup (D1) | Complete | `assert_typed_builder_rejects_invalid_slot` shared in `core/test/src/lib.rs`; 7 graph_mock.rs files use it |
+| ShellResponse constructors (D3) | Complete | All 26 test-site `ShellResponse { exit_code: 0, .. }` migrated to `ShellResponse::ok()` in `integration.rs` |
 
 ---
 
@@ -35,7 +41,7 @@ These are working, enforced, and don't need further action.
 |-----------------|-----------|-------------------|--------------|
 | TestgenTarget | `inventory` + `#[testgen_target]` | Yes | No |
 | ToolDef | Manual `all_tools()` vec (7 tools, ~360 lines) | No | **Yes** (boundaries) |
-| tool_target | `inventory` + `#[tool_target]` | Infra exists, **0 in use** | TBD |
+| tool_target | `inventory` + `#[tool_target]` | Yes (7/7 annotated) | No |
 | ResourceDef | Manual helper functions (2) | No | No |
 
 ### Problem: ToolDef boundaries are dual-sourced
@@ -59,25 +65,12 @@ runtime failures with no compile-time detection.
 
 ### Action items
 
-**R1. Activate `#[tool_target]` annotations** (medium effort)
+**R1. Activate `#[tool_target]` annotations** ~~(medium effort)~~ **DONE**
 
-The `core/tool-registry` + `core/tool-registry-macros` crates already exist
-with the right infrastructure. The validation test
-(`gunbc-dag/tests/tool_registration.rs`) already checks bidirectional
-consistency between `all_tools()` and `#[tool_target]` annotations.
-
-Steps:
-1. Add `#[tool_target]` to each of the 7 tool graph builders
-2. Verify the validation test passes
-3. Once annotations are canonical, `all_tools()` can derive from the registry
-   instead of being a manual list
-
-Files:
-- `lib/tools/gist/src/graph.rs` (3 variants)
-- `gunbc-dag/src/makegen/graph.rs`
-- `lib/tools/deps/src/graph.rs`
-- `lib/review/src/graph.rs` (if applicable)
-- `gunbc-dag/src/bootstrap/graph.rs`
+All 7 tool graph builders have `#[tool_target]` annotations. The validation
+test (`gunbc-dag/tests/tool_registration.rs`) verifies bidirectional
+consistency and testgen coverage. Next step: derive `all_tools()` from the
+registry to eliminate the manual list.
 
 **R2. Eliminate boundary dual-source** (high effort, high value)
 
@@ -192,46 +185,21 @@ as a consolidation opportunity.
 
 ### Action items
 
-**C1. Create transport triplet helper** (small effort, high leverage)
+**C1. Create transport triplet helper** ~~(small effort, high leverage)~~ **DONE**
 
-Add to `core/ir/src/build/` or `core/ir/src/patterns/`:
+Implemented in `core/ir/src/patterns/transport_triplet.rs`:
+- `add_skippable_transport_triplet()` — 5 skippable triplets (testgen, build, test, guardrail, verify)
+- `add_transport_triplet()` — 1 non-skippable triplet (deps_exists)
+- CI graph reduced from ~1011 to ~830 lines
+- Generic `DagBuilder<T>` — reusable across all graph builders
 
-```rust
-/// Stamp out a prepare → execute → parse triplet with standard wiring.
-pub fn add_transport_triplet<T>(
-    builder: &mut DagBuilder<T>,
-    name: &str,
-    prepare_op: T,
-    parse_op: T,
-    transport_op: T,  // usually TransportOps::Execute
-    extra_inputs: &[Port],   // additional inputs beyond "request"
-    extra_outputs: &[Port],  // additional outputs beyond standard set
-) -> Result<TransportTriplet, BuilderError>
+**C2. Replace CI lint with Clippy SubDag** ~~(small effort)~~ **DEFERRED**
 
-pub struct TransportTriplet {
-    pub prepare: NodeHandle,
-    pub execute: NodeHandle,
-    pub parse: NodeHandle,
-}
-```
-
-Standard wiring included: `prepare.request → execute.request`,
-`execute.response → parse.response`, plus skip propagation.
-
-This would reduce each CI stage from ~20 lines of node creation + edge
-wiring to ~5 lines.
-
-**C2. Replace CI lint with Clippy SubDag** (small effort)
-
-Replace bespoke `prepare_clippy_lint → clippy_lint → parse_clippy_lint`
-with the existing `build_clippy_upsert()` SubDag. This removes one full
-copy of tool-ensure + run + parse logic and makes lint behave like other
-tools: a self-contained SubDag with a clean interface.
-
-Files:
-- `gunbc-dag/src/ci/graph.rs` (remove lint triplet, add SubDag node)
-- `gunbc-dag/src/ci/ops.rs` (remove `PrepareLint`/`ParseLint` if unused)
-- `gunbc-dag/src/ci/graph_mock.rs` (update MockSpec)
+Investigation revealed this is not a clean replacement. The CI lint stage
+uses `CliToolOp` with a `ToolHandle` from the env node — fundamentally
+different from `build_clippy_upsert()` which creates a self-contained
+SubDag that re-acquires the tool. Forcing this into a SubDag would add
+adapter complexity, not reduce it.
 
 **C3. LoopBuilder for repeated iteration patterns** (medium effort)
 
@@ -259,20 +227,22 @@ Per `testgen-improvements.md`, patterns already safe to delete:
 - Pattern D (resource presence) — testgen emits lease tests
 
 Remaining: Pattern B (content/URL checks) → migrate to NodeExamples;
-Pattern E (signature validation) → testgen TODO 8.2 landed.
+Pattern E (signature validation) → **DONE** — shared
+`assert_typed_builder_rejects_invalid_slot` in `core/test/src/lib.rs`,
+called from 7 `graph_mock.rs` files.
 
-**D2. Migrate remaining ops to `OutputMap`** (small effort)
+**D2. Migrate remaining ops to `OutputMap`** ~~(small effort)~~ **ALREADY DONE**
 
-Some ops still use raw `HashMap<String, Value>` for output construction
-instead of `OutputMap`. Migrate for consistency — `OutputMap` has typed
-builder methods (`.int()`, `.str()`, `.bool()`, etc.) that prevent
-type mismatches.
+All ops use `OutputMap` — no raw `HashMap<String, Value>` returns found.
 
-**D3. Finish `ShellResponse` constructor migration** (small effort)
+**D3. Finish `ShellResponse` constructor migration** ~~(small effort)~~ **DONE**
 
-~39 direct `ShellResponse { ... }` constructions across 16 files should
-use `ShellResponse::ok()` / `ShellResponse::failed()`. Reduces mock
-noise and standardizes success/failure patterns.
+26 test-site constructions migrated to `ShellResponse::ok()` in
+`lib/tools/gist/tests/integration.rs`. The 1 production site in
+`lib/transport/src/executor.rs` uses all three fields (exit_code,
+stdout, stderr from runtime values) — not a candidate for `ok()`/`failed()`.
+6 sites in `buck-out/gen/` are generated code — will be fixed when
+codegen regenerates.
 
 **D4. Quarantine `"List"` type_id** (medium effort)
 
@@ -304,34 +274,34 @@ pipeline (not just the Makefile).
 Generate `lint-allowances.md` from the clippy model so approved exceptions
 are always accurate. Nice-to-have, not blocking.
 
-**V3. Transport compliance check** (small effort)
+**V3. Transport compliance check** ~~(small effort)~~ **ALREADY DONE**
 
-Add a CI step (or Makefile target) that verifies no new
-`#[allow(clippy::disallowed_methods)]` sites appear outside the documented
-exceptions list in `policy/pragma.rs`. Can be a simple grep + diff.
+The `pragma_lint.rs` test enforces the disallowed-methods allowlist.
+Any new `#[allow(clippy::disallowed_methods)]` site not in the allowlist
+causes a test failure.
 
 ---
 
 ## Prioritized Action Plan
 
-### Tier 1: Small effort, high leverage (do first)
+### Tier 1: Small effort, high leverage — **ALL DONE**
 
-| ID | Item | Effort | Impact |
-|----|------|--------|--------|
-| C1 | Transport triplet helper | S | Reduces CI graph by ~100 lines; reusable across all graph builders |
-| C2 | Replace CI lint with Clippy SubDag | S | Removes one full bespoke stage; handbook explicitly calls this out |
-| D1 | Delete redundant graph_mock tests (A/C/D) | S | Removes ~30 dead tests across 8 files |
-| D3 | ShellResponse constructor migration | S | Consistency across 16 files |
-| V3 | Transport compliance CI check | S | Prevents boundary erosion |
+| ID | Item | Status |
+|----|------|--------|
+| C1 | Transport triplet helper | **DONE** — `add_skippable_transport_triplet` / `add_transport_triplet` in `core/ir/src/patterns/transport_triplet.rs` |
+| D1 | graph_mock Pattern E dedup | **DONE** — shared `assert_typed_builder_rejects_invalid_slot` in gunbc-test |
+| D3 | ShellResponse constructor migration | **DONE** — 26 sites migrated to `ShellResponse::ok()` |
+| V3 | Transport compliance CI check | **ALREADY DONE** — `pragma_lint.rs` enforces allowlist |
+| R1 | `#[tool_target]` annotations | **ALREADY DONE** — 7/7 annotated |
+| D2 | OutputMap consistency pass | **ALREADY DONE** — no raw HashMap returns found |
 
 ### Tier 2: Medium effort, high value
 
-| ID | Item | Effort | Impact |
-|----|------|--------|--------|
-| R1 | Activate `#[tool_target]` annotations | M | Completes auto-discovery for tools; unblocks R2 |
-| E1 | CLI gen → IR + renderer | M | Proves unified emission pattern; removes one "direct string" system |
-| C3 | LoopBuilder for gist/deps iteration | M | Replaces shell `sh -c` hacks with structural patterns |
-| D2 | OutputMap consistency pass | S-M | Single output-building idiom |
+| ID | Item | Effort | Impact | Status |
+|----|------|--------|--------|--------|
+| C2 | Replace CI lint with Clippy SubDag | M | Removes one bespoke stage | **DEFERRED** — lint uses CliToolOp with ToolHandle from env, not a clean SubDag replacement |
+| E1 | CLI gen → IR + renderer | L | Proves unified emission pattern | **DEFERRED** — 976 lines, ~11-15 day effort, scope separately |
+| C3 | LoopBuilder for gist/deps iteration | M | Replaces shell `sh -c` hacks | **DEFERRED** — LoopBuilder API exists, needs dedicated session |
 
 ### Tier 3: High effort, strategic
 

@@ -135,19 +135,24 @@ approach (derive from Cargo.toml deps) may suffice.
 **Acceptance**: resource input patterns auto-update when crate directory changes.
 No hardcoded glob strings.
 
-#### Phase R5: Validation tests — PARTIALLY DONE
+#### Phase R5: Validation tests — DONE
 
-Validation test `gunbc-dag/tests/tool_registration.rs` added in R2b:
+Validation test `gunbc-dag/tests/tool_registration.rs`:
 - [x] Every `all_tools()` entry has a matching `#[tool_target]` (and vice versa)
 - [x] Metadata fields (crate_name, graph_builder_call, returns_result) match
+- [x] Every `#[tool_target]` builder has `#[testgen_target]` coverage in the same crate
 
-Remaining:
-- [ ] Every `#[tool_target]` has a corresponding `#[testgen_target]`
-- [ ] Every tool crate with a `build_*_graph` function has `#[tool_target]`
+The "every `build_*_graph` has `#[tool_target]`" check is intentionally not
+implemented — many `build_*_graph` functions are library graphs (llm-ops),
+internal helpers (review_phase), or intentionally excluded tools (ci, codegen,
+pragma, testgen, build). The bidirectional `all_tools() ↔ iter_tool_targets()`
+check already catches the real drift case (tool added to registry without
+annotation).
 
-**Files**: `gunbc-dag/tests/tool_registration.rs` (exists)
+**Files**: `gunbc-dag/tests/tool_registration.rs`
 
-**Acceptance**: test catches unregistered tool crates.
+**Acceptance**: test catches unregistered tool crates and missing testgen
+coverage.
 
 ---
 

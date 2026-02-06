@@ -14,7 +14,7 @@
 //! ```
 
 use crate::frame_build::build_frame;
-use crate::frame_write::{TermMedium, TextFrameWriter};
+use crate::frame_write::FrameWriter;
 use crate::intercept::BoundaryMocks;
 use crate::progress::{DagPhase, DagProgress, DagSnapshot, OutputSummary, ProgressObserver};
 use crate::render::{Animation, RenderMode};
@@ -160,13 +160,14 @@ fn run_with_progress<T: Executable + Clone>(
     .collect();
     let mut spinner = Animation::cycle(spinner_frames, Duration::from_millis(150));
 
-    let medium = TermMedium::new(profile.supports_color, profile.tier, &STANDARD);
-    let mut writer = TextFrameWriter::new(io::stdout(), medium, profile.is_tty);
+    let mut writer = FrameWriter::new(profile.supports_color, profile.tier, &STANDARD, profile.is_tty);
+    let mut stdout = io::stdout();
 
     let render = |visual: &DagProgress,
                   spinner: &Animation,
                   layout: &gunbc_ir::layout::DagLayout,
-                  writer: &mut TextFrameWriter<io::Stdout>| {
+                  writer: &mut FrameWriter,
+                  stdout: &mut io::Stdout| {
         let frame = build_frame(
             visual,
             layout,
@@ -175,7 +176,7 @@ fn run_with_progress<T: Executable + Clone>(
             profile.tier,
             &STANDARD,
         );
-        let _ = writer.write_frame(&frame);
+        let _ = writer.write_frame(&frame, stdout);
     };
 
     // Animation timing: minimum 1 second total, 2 frames per level (start + complete)
@@ -187,7 +188,7 @@ fn run_with_progress<T: Executable + Clone>(
     let frame_delay = Duration::from_millis(frame_ms);
 
     // Render initial state (all pending)
-    render(&visual, &spinner, &layout, &mut writer);
+    render(&visual, &spinner, &layout, &mut writer, &mut stdout);
 
     let empty_summary = || OutputSummary {
         fields: vec![],
@@ -201,7 +202,7 @@ fn run_with_progress<T: Executable + Clone>(
             visual.on_node_start(node_id);
         }
         spinner.tick(frame_delay);
-        render(&visual, &spinner, &layout, &mut writer);
+        render(&visual, &spinner, &layout, &mut writer, &mut stdout);
         thread::sleep(frame_delay);
 
         // Complete all nodes in this level simultaneously
@@ -227,7 +228,7 @@ fn run_with_progress<T: Executable + Clone>(
             }
         }
         spinner.tick(frame_delay);
-        render(&visual, &spinner, &layout, &mut writer);
+        render(&visual, &spinner, &layout, &mut writer, &mut stdout);
         thread::sleep(frame_delay);
     }
 
@@ -243,7 +244,7 @@ fn run_with_progress<T: Executable + Clone>(
             visual.on_dag_complete(Duration::ZERO);
         }
     }
-    render(&visual, &spinner, &layout, &mut writer);
+    render(&visual, &spinner, &layout, &mut writer, &mut stdout);
 
     // Check execution result and exit code
     match result {

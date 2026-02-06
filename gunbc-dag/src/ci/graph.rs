@@ -47,6 +47,7 @@ use gunbc_ir::{
     transport::github_actions::{
         checkout, rust_toolchain, ubuntu_latest, Integration, Permissions, WorkflowConfig,
     },
+    add_skippable_transport_triplet, add_transport_triplet,
     BuilderError, Cardinality, Dag, DagBuilder, Node, NodeBody, NodeId, NodeRef, Value,
     WorkflowSignature,
 };
@@ -228,39 +229,19 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
     // SetupDeps Stage: Check if deps.toml exists
     // ========================================================================
 
-    // PrepareFileExists("deps.toml") - pure
-    let prepare_deps_exists = builder.add_root_node(Node::opaque(
-        "prepare_deps_exists",
+    let _deps_exists = add_transport_triplet(
+        &mut builder,
+        "deps_exists",
         vec![],
-        vec![port("request", "TransportRequest")],
+        vec![
+            port("deps_exists", "Bool"),
+            port("deps_checked", "Bool"),
+            port("deps_installed", "Int"),
+            port("message", "String"),
+        ],
         CIGraphOp::PrepareFileExists(EmbeddedFileExistsOp::new(DEFAULT_MANIFEST_FILENAME)),
-    ))?;
-
-    // Execute - transport boundary
-    let execute_deps_exists = builder.add_node_after(
-        Node::opaque(
-            "execute_deps_exists",
-            vec![port("request", "TransportRequest")],
-            vec![port("response", "TransportResponse")],
-            CIGraphOp::Transport(TransportOps::Execute),
-        ),
-        &prepare_deps_exists,
-    )?;
-
-    // ParseDepsExists - pure
-    let parse_deps_exists = builder.add_node_after(
-        Node::opaque(
-            "parse_deps_exists",
-            vec![port("response", "TransportResponse")],
-            vec![
-                port("deps_exists", "Bool"),
-                port("deps_checked", "Bool"),
-                port("deps_installed", "Int"),
-                port("message", "String"),
-            ],
-            CIGraphOp::CI(CIOp::ParseDepsExists),
-        ),
-        &execute_deps_exists,
+        CIGraphOp::CI(CIOp::ParseDepsExists),
+        CIGraphOp::Transport(TransportOps::Execute),
     )?;
 
     // ========================================================================
@@ -276,166 +257,55 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
     // Testgen Stage
     // ========================================================================
 
-    // PrepareTestgenCommand - pure
-    let prepare_testgen = builder.add_node_after(
-        Node::opaque(
-            "prepare_testgen",
-            vec![port("prep_success", "Bool")],
-            vec![
-                optional("request", "TransportRequest"),
-                port("skip", "Bool"),
-                optional("skip_reason", "String"),
-            ],
-            CIGraphOp::CI(CIOp::PrepareTestgenCommand),
-        ),
+    let testgen = add_skippable_transport_triplet(
+        &mut builder,
+        "testgen",
+        vec![port("prep_success", "Bool")],
+        vec![port("testgen_success", "Bool"), port("testgen_stderr", "String")],
+        CIGraphOp::CI(CIOp::PrepareTestgenCommand),
+        CIGraphOp::CI(CIOp::ParseTestgenResult),
+        CIGraphOp::Transport(TransportOps::Execute),
         parse_codegen_result,
-    )?;
-
-    // Execute testgen - transport boundary
-    let execute_testgen = builder.add_node_after(
-        Node::opaque(
-            "execute_testgen",
-            vec![
-                optional("request", "TransportRequest"),
-                port("skip", "Bool"),
-            ],
-            vec![
-                optional("response", "TransportResponse"),
-                port("skip", "Bool"),
-                optional("skip_reason", "String"),
-            ],
-            CIGraphOp::Transport(TransportOps::Execute),
-        ),
-        &prepare_testgen,
-    )?;
-
-    // ParseTestgenResult - pure
-    let parse_testgen = builder.add_node_after(
-        Node::opaque(
-            "parse_testgen",
-            vec![
-                optional("response", "TransportResponse"),
-                port("skip", "Bool"),
-                optional("skip_reason", "String"),
-            ],
-            vec![port("testgen_success", "Bool"), port("testgen_stderr", "String")],
-            CIGraphOp::CI(CIOp::ParseTestgenResult),
-        ),
-        &execute_testgen,
     )?;
 
     // ========================================================================
     // Build Stage
     // ========================================================================
 
-    // PrepareBuildCommand - pure
-    let prepare_build = builder.add_node_after(
-        Node::opaque(
-            "prepare_build",
-            vec![port("prep_success", "Bool"), port("testgen_success", "Bool")],
-            vec![
-                optional("request", "TransportRequest"),
-                port("skip", "Bool"),
-                optional("skip_reason", "String"),
-            ],
-            CIGraphOp::CI(CIOp::PrepareBuildCommand),
-        ),
-        &parse_testgen,
-    )?;
-
-    // Execute build - transport boundary
-    let execute_build = builder.add_node_after(
-        Node::opaque(
-            "execute_build",
-            vec![
-                optional("request", "TransportRequest"),
-                port("skip", "Bool"),
-            ],
-            vec![
-                optional("response", "TransportResponse"),
-                port("skip", "Bool"),
-                optional("skip_reason", "String"),
-            ],
-            CIGraphOp::Transport(TransportOps::Execute),
-        ),
-        &prepare_build,
-    )?;
-
-    // ParseBuildResult - pure
-    let parse_build = builder.add_node_after(
-        Node::opaque(
-            "parse_build",
-            vec![
-                optional("response", "TransportResponse"),
-                port("skip", "Bool"),
-                optional("skip_reason", "String"),
-            ],
-            vec![
-                port("build_success", "Bool"),
-                port("build_skipped", "Bool"),
-                port("build_stdout", "String"),
-                port("build_stderr", "String"),
-            ],
-            CIGraphOp::CI(CIOp::ParseBuildResult),
-        ),
-        &execute_build,
+    let build = add_skippable_transport_triplet(
+        &mut builder,
+        "build",
+        vec![port("prep_success", "Bool"), port("testgen_success", "Bool")],
+        vec![
+            port("build_success", "Bool"),
+            port("build_skipped", "Bool"),
+            port("build_stdout", "String"),
+            port("build_stderr", "String"),
+        ],
+        CIGraphOp::CI(CIOp::PrepareBuildCommand),
+        CIGraphOp::CI(CIOp::ParseBuildResult),
+        CIGraphOp::Transport(TransportOps::Execute),
+        &testgen.parse,
     )?;
 
     // ========================================================================
     // Test Stage (parallel with Lint after build)
     // ========================================================================
 
-    // PrepareTestCommand - pure
-    let prepare_test = builder.add_node_after(
-        Node::opaque(
-            "prepare_test",
-            vec![port("build_success", "Bool")],
-            vec![
-                optional("request", "TransportRequest"),
-                port("skip", "Bool"),
-                optional("skip_reason", "String"),
-            ],
-            CIGraphOp::CI(CIOp::PrepareTestCommand),
-        ),
-        &parse_build,
-    )?;
-
-    // Execute test - transport boundary
-    let execute_test = builder.add_node_after(
-        Node::opaque(
-            "execute_test",
-            vec![
-                optional("request", "TransportRequest"),
-                port("skip", "Bool"),
-            ],
-            vec![
-                optional("response", "TransportResponse"),
-                port("skip", "Bool"),
-                optional("skip_reason", "String"),
-            ],
-            CIGraphOp::Transport(TransportOps::Execute),
-        ),
-        &prepare_test,
-    )?;
-
-    // ParseTestResult - pure
-    let parse_test = builder.add_node_after(
-        Node::opaque(
-            "parse_test",
-            vec![
-                optional("response", "TransportResponse"),
-                port("skip", "Bool"),
-                optional("skip_reason", "String"),
-            ],
-            vec![
-                port("test_success", "Bool"),
-                port("test_skipped", "Bool"),
-                port("test_stdout", "String"),
-                port("test_stderr", "String"),
-            ],
-            CIGraphOp::CI(CIOp::ParseTestResult),
-        ),
-        &execute_test,
+    let test = add_skippable_transport_triplet(
+        &mut builder,
+        "test",
+        vec![port("build_success", "Bool")],
+        vec![
+            port("test_success", "Bool"),
+            port("test_skipped", "Bool"),
+            port("test_stdout", "String"),
+            port("test_stderr", "String"),
+        ],
+        CIGraphOp::CI(CIOp::PrepareTestCommand),
+        CIGraphOp::CI(CIOp::ParseTestResult),
+        CIGraphOp::Transport(TransportOps::Execute),
+        &build.parse,
     )?;
 
     // ========================================================================
@@ -450,7 +320,7 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
             vec![port("skip", "Bool"), optional("skip_reason", "String")],
             CIGraphOp::CI(CIOp::PrepareClippyLint),
         ),
-        &parse_build,
+        &build.parse,
     )?;
 
     // ClippyLint - runs clippy with tool handle from env node
@@ -502,101 +372,30 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
     // Guardrails Stage (parallel with Test/Lint after testgen)
     // ========================================================================
 
-    let prepare_guardrail = builder.add_node_after(
-        Node::opaque(
-            "prepare_guardrail_check",
-            vec![port("testgen_success", "Bool")],
-            vec![
-                optional("request", "TransportRequest"),
-                port("skip", "Bool"),
-                optional("skip_reason", "String"),
-            ],
-            CIGraphOp::CI(CIOp::PrepareGuardrailCheck),
-        ),
-        &parse_testgen,
-    )?;
-
-    let execute_guardrail = builder.add_node_after(
-        Node::opaque(
-            "execute_guardrail_check",
-            vec![
-                optional("request", "TransportRequest"),
-                port("skip", "Bool"),
-            ],
-            vec![
-                optional("response", "TransportResponse"),
-                port("skip", "Bool"),
-                optional("skip_reason", "String"),
-            ],
-            CIGraphOp::Transport(TransportOps::Execute),
-        ),
-        &prepare_guardrail,
-    )?;
-
-    let parse_guardrail = builder.add_node_after(
-        Node::opaque(
-            "parse_guardrail_check",
-            vec![
-                optional("response", "TransportResponse"),
-                port("skip", "Bool"),
-                optional("skip_reason", "String"),
-            ],
-            vec![port("guardrail_success", "Bool"), port("guardrail_stderr", "String")],
-            CIGraphOp::CI(CIOp::ParseGuardrailResult),
-        ),
-        &execute_guardrail,
+    let guardrail = add_skippable_transport_triplet(
+        &mut builder,
+        "guardrail_check",
+        vec![port("testgen_success", "Bool")],
+        vec![port("guardrail_success", "Bool"), port("guardrail_stderr", "String")],
+        CIGraphOp::CI(CIOp::PrepareGuardrailCheck),
+        CIGraphOp::CI(CIOp::ParseGuardrailResult),
+        CIGraphOp::Transport(TransportOps::Execute),
+        &testgen.parse,
     )?;
 
     // ========================================================================
     // Verify Stage (after codegen, parallel with build/test/lint)
     // ========================================================================
 
-    // PrepareVerifyCheck - pure
-    let prepare_verify = builder.add_node_after(
-        Node::opaque(
-            "prepare_verify_check",
-            vec![port("prep_success", "Bool")],
-            vec![
-                optional("request", "TransportRequest"),
-                port("skip", "Bool"),
-                optional("skip_reason", "String"),
-            ],
-            CIGraphOp::CI(CIOp::PrepareVerifyCheck),
-        ),
+    let verify = add_skippable_transport_triplet(
+        &mut builder,
+        "verify_check",
+        vec![port("prep_success", "Bool")],
+        vec![port("verify_success", "Bool"), port("verify_stderr", "String")],
+        CIGraphOp::CI(CIOp::PrepareVerifyCheck),
+        CIGraphOp::CI(CIOp::ParseVerifyResult),
+        CIGraphOp::Transport(TransportOps::Execute),
         parse_codegen_result,
-    )?;
-
-    // Execute verify - transport boundary
-    let execute_verify = builder.add_node_after(
-        Node::opaque(
-            "execute_verify_check",
-            vec![
-                optional("request", "TransportRequest"),
-                port("skip", "Bool"),
-            ],
-            vec![
-                optional("response", "TransportResponse"),
-                port("skip", "Bool"),
-                optional("skip_reason", "String"),
-            ],
-            CIGraphOp::Transport(TransportOps::Execute),
-        ),
-        &prepare_verify,
-    )?;
-
-    // ParseVerifyResult - pure
-    let parse_verify = builder.add_node_after(
-        Node::opaque(
-            "parse_verify_check",
-            vec![
-                optional("response", "TransportResponse"),
-                port("skip", "Bool"),
-                optional("skip_reason", "String"),
-            ],
-            vec![port("verify_success", "Bool"), port("verify_stderr", "String")],
-            CIGraphOp::CI(CIOp::ParseVerifyResult),
-        ),
-        &execute_verify,
     )?;
 
     // ========================================================================
@@ -624,92 +423,45 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
             vec![port("overall_success", "Bool"), port("report", "String")],
             CIGraphOp::CI(CIOp::Report),
         ),
-        &[&parse_test, &parse_lint, &parse_guardrail, &parse_verify],
+        &[&test.parse, &parse_lint, &guardrail.parse, &verify.parse],
     )?;
 
     // ========================================================================
-    // Wire up the pipeline
+    // Wire up the pipeline (only cross-triplet edges — internal edges are
+    // handled by the transport triplet helpers)
     // ========================================================================
-
-    // SetupDeps stage
-    builder.add_edge(
-        prepare_deps_exists.out("request"),
-        execute_deps_exists.in_port("request"),
-    )?;
-    builder.add_edge(
-        execute_deps_exists.out("response"),
-        parse_deps_exists.in_port("response"),
-    )?;
 
     // Codegen DAG edges are wired during inlining.
 
-    // Testgen stage
+    // Testgen stage — codegen result feeds prepare
     builder.add_edge(
         parse_codegen_result.out("prep_success"),
-        prepare_testgen.in_port("prep_success"),
-    )?;
-    builder.add_edge(
-        prepare_testgen.out("request"),
-        execute_testgen.in_port("request"),
-    )?;
-    builder.add_edge(prepare_testgen.out("skip"), execute_testgen.in_port("skip"))?;
-    builder.add_edge(
-        execute_testgen.out("response"),
-        parse_testgen.in_port("response"),
-    )?;
-    builder.add_edge(execute_testgen.out("skip"), parse_testgen.in_port("skip"))?;
-    builder.add_edge(
-        prepare_testgen.out("skip_reason"),
-        parse_testgen.in_port("skip_reason"),
+        testgen.prepare.in_port("prep_success"),
     )?;
 
-    // Build stage
+    // Build stage — codegen + testgen feed prepare
     builder.add_edge(
         parse_codegen_result.out("prep_success"),
-        prepare_build.in_port("prep_success"),
+        build.prepare.in_port("prep_success"),
     )?;
     builder.add_edge(
-        parse_testgen.out("testgen_success"),
-        prepare_build.in_port("testgen_success"),
-    )?;
-    builder.add_edge(
-        prepare_build.out("request"),
-        execute_build.in_port("request"),
-    )?;
-    builder.add_edge(prepare_build.out("skip"), execute_build.in_port("skip"))?;
-    builder.add_edge(
-        execute_build.out("response"),
-        parse_build.in_port("response"),
-    )?;
-    builder.add_edge(execute_build.out("skip"), parse_build.in_port("skip"))?;
-    builder.add_edge(
-        prepare_build.out("skip_reason"),
-        parse_build.in_port("skip_reason"),
+        testgen.parse.out("testgen_success"),
+        build.prepare.in_port("testgen_success"),
     )?;
 
-    // Test stage
+    // Test stage — build feeds prepare
     builder.add_edge(
-        parse_build.out("build_success"),
-        prepare_test.in_port("build_success"),
-    )?;
-    builder.add_edge(prepare_test.out("request"), execute_test.in_port("request"))?;
-    builder.add_edge(prepare_test.out("skip"), execute_test.in_port("skip"))?;
-    builder.add_edge(execute_test.out("response"), parse_test.in_port("response"))?;
-    builder.add_edge(execute_test.out("skip"), parse_test.in_port("skip"))?;
-    builder.add_edge(
-        prepare_test.out("skip_reason"),
-        parse_test.in_port("skip_reason"),
+        build.parse.out("build_success"),
+        test.prepare.in_port("build_success"),
     )?;
 
     // Lint stage (parallel with test, both depend on build) - uses Clippy tool
-    // Tool handle flows from runner_env -> clippy_lint
     builder.add_edge(env.out("tool:clippy"), clippy_lint.in_port("tool:clippy"))?;
     builder.add_edge(
-        parse_build.out("build_success"),
+        build.parse.out("build_success"),
         prepare_clippy_lint.in_port("build_success"),
     )?;
     builder.add_edge(prepare_clippy_lint.out("skip"), clippy_lint.in_port("skip"))?;
-    // Wire clippy outputs to parse node
     builder.add_edge(clippy_lint.out("success"), parse_lint.in_port("success"))?;
     builder.add_edge(clippy_lint.out("stdout"), parse_lint.in_port("stdout"))?;
     builder.add_edge(clippy_lint.out("stderr"), parse_lint.in_port("stderr"))?;
@@ -719,96 +471,32 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
         parse_lint.in_port("skip_reason"),
     )?;
 
-    // Guardrails stage (parallel with test/lint after testgen)
+    // Guardrails stage — testgen feeds prepare
     builder.add_edge(
-        parse_testgen.out("testgen_success"),
-        prepare_guardrail.in_port("testgen_success"),
-    )?;
-    builder.add_edge(
-        prepare_guardrail.out("request"),
-        execute_guardrail.in_port("request"),
-    )?;
-    builder.add_edge(
-        prepare_guardrail.out("skip"),
-        execute_guardrail.in_port("skip"),
-    )?;
-    builder.add_edge(
-        execute_guardrail.out("response"),
-        parse_guardrail.in_port("response"),
-    )?;
-    builder.add_edge(
-        execute_guardrail.out("skip"),
-        parse_guardrail.in_port("skip"),
-    )?;
-    builder.add_edge(
-        prepare_guardrail.out("skip_reason"),
-        parse_guardrail.in_port("skip_reason"),
+        testgen.parse.out("testgen_success"),
+        guardrail.prepare.in_port("testgen_success"),
     )?;
 
-    // Verify stage (parallel with build/test/lint, depends on codegen)
+    // Verify stage — codegen feeds prepare
     builder.add_edge(
         parse_codegen_result.out("prep_success"),
-        prepare_verify.in_port("prep_success"),
-    )?;
-    builder.add_edge(
-        prepare_verify.out("request"),
-        execute_verify.in_port("request"),
-    )?;
-    builder.add_edge(prepare_verify.out("skip"), execute_verify.in_port("skip"))?;
-    builder.add_edge(
-        execute_verify.out("response"),
-        parse_verify.in_port("response"),
-    )?;
-    builder.add_edge(execute_verify.out("skip"), parse_verify.in_port("skip"))?;
-    builder.add_edge(
-        prepare_verify.out("skip_reason"),
-        parse_verify.in_port("skip_reason"),
+        verify.prepare.in_port("prep_success"),
     )?;
 
-    // Report - success flags and stderr for failure details
-    builder.add_edge(
-        parse_build.out("build_success"),
-        report.in_port("build_success"),
-    )?;
-    builder.add_edge(
-        parse_test.out("test_success"),
-        report.in_port("test_success"),
-    )?;
-    builder.add_edge(
-        parse_lint.out("lint_success"),
-        report.in_port("lint_success"),
-    )?;
-    builder.add_edge(
-        parse_testgen.out("testgen_success"),
-        report.in_port("testgen_success"),
-    )?;
-    builder.add_edge(
-        parse_guardrail.out("guardrail_success"),
-        report.in_port("guardrail_success"),
-    )?;
-    builder.add_edge(
-        parse_build.out("build_stderr"),
-        report.in_port("build_stderr"),
-    )?;
-    builder.add_edge(
-        parse_testgen.out("testgen_stderr"),
-        report.in_port("testgen_stderr"),
-    )?;
-    builder.add_edge(parse_test.out("test_stdout"), report.in_port("test_stdout"))?;
-    builder.add_edge(parse_test.out("test_stderr"), report.in_port("test_stderr"))?;
+    // Report — success flags and stderr for failure details
+    builder.add_edge(build.parse.out("build_success"), report.in_port("build_success"))?;
+    builder.add_edge(test.parse.out("test_success"), report.in_port("test_success"))?;
+    builder.add_edge(parse_lint.out("lint_success"), report.in_port("lint_success"))?;
+    builder.add_edge(testgen.parse.out("testgen_success"), report.in_port("testgen_success"))?;
+    builder.add_edge(guardrail.parse.out("guardrail_success"), report.in_port("guardrail_success"))?;
+    builder.add_edge(build.parse.out("build_stderr"), report.in_port("build_stderr"))?;
+    builder.add_edge(testgen.parse.out("testgen_stderr"), report.in_port("testgen_stderr"))?;
+    builder.add_edge(test.parse.out("test_stdout"), report.in_port("test_stdout"))?;
+    builder.add_edge(test.parse.out("test_stderr"), report.in_port("test_stderr"))?;
     builder.add_edge(parse_lint.out("lint_stderr"), report.in_port("lint_stderr"))?;
-    builder.add_edge(
-        parse_guardrail.out("guardrail_stderr"),
-        report.in_port("guardrail_stderr"),
-    )?;
-    builder.add_edge(
-        parse_verify.out("verify_success"),
-        report.in_port("verify_success"),
-    )?;
-    builder.add_edge(
-        parse_verify.out("verify_stderr"),
-        report.in_port("verify_stderr"),
-    )?;
+    builder.add_edge(guardrail.parse.out("guardrail_stderr"), report.in_port("guardrail_stderr"))?;
+    builder.add_edge(verify.parse.out("verify_success"), report.in_port("verify_success"))?;
+    builder.add_edge(verify.parse.out("verify_stderr"), report.in_port("verify_stderr"))?;
 
     Ok(builder.build())
 }

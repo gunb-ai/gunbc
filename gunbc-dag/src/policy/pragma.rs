@@ -4,7 +4,9 @@
 //! crate-level policy types.
 
 use gunbc_clippy::{ClippyConfig, ClippyConfigRenderer, CratePolicy, CrateRole, LintId};
-use gunbc_ir::render_ir::FileHeader;
+use gunbc_ir::render_ir::{FileHeader, PlainText, StructuredBlock, StructuredRenderer};
+use gunbc_ir::symbols::{Tier, STANDARD};
+use gunbc_ir::PlainStructuredRenderer;
 
 /// Regenerate command for pragma outputs.
 pub const PRAGMA_REGENERATE_CMD: &str = "cargo run -p gunbc-dag --bin gunbc-pragma";
@@ -124,25 +126,60 @@ pub fn render_disallowed_methods_allowlist() -> String {
         regenerate_command: PRAGMA_REGENERATE_CMD.to_string(),
         comment_prefix: "#".to_string(),
     };
+
+    let blocks = build_allowlist_blocks();
+    let renderer = PlainStructuredRenderer::new(PlainText {
+        tier: Tier::Ascii,
+        symbol_set: &STANDARD,
+    });
+
     let mut output = header.render();
     output.push('\n');
-    output.push_str("# Paths and counts for #[allow(clippy::disallowed_methods)] occurrences.\n");
-    output.push_str("# Format: path:count\n#\n");
-
-    output.push_str("# Crate-level exemptions (entire crate allowed):\n");
-    for entry in DISALLOWED_METHODS_ALLOWLIST.iter().filter(|e| e.scope == AllowScope::Crate) {
-        output.push_str(&format!("{}:{}\n", entry.path, entry.count));
+    for block in &blocks {
+        output.push_str(&renderer.render_block(block));
     }
-    output.push_str("#\n");
-    output.push_str("# Function-level exemptions (I/O boundaries):\n");
+    output
+}
+
+/// Build allowlist as structured blocks.
+fn build_allowlist_blocks() -> Vec<StructuredBlock> {
+    let mut blocks = Vec::new();
+
+    blocks.push(StructuredBlock::Raw(
+        "# Paths and counts for #[allow(clippy::disallowed_methods)] occurrences.\n\
+         # Format: path:count\n#\n"
+            .to_string(),
+    ));
+
+    // Crate-level exemptions
+    blocks.push(StructuredBlock::Raw(
+        "# Crate-level exemptions (entire crate allowed):\n".to_string(),
+    ));
+    for entry in DISALLOWED_METHODS_ALLOWLIST
+        .iter()
+        .filter(|e| e.scope == AllowScope::Crate)
+    {
+        blocks.push(StructuredBlock::Raw(format!(
+            "{}:{}\n",
+            entry.path, entry.count
+        )));
+    }
+
+    // Function-level exemptions
+    blocks.push(StructuredBlock::Raw(
+        "#\n# Function-level exemptions (I/O boundaries):\n".to_string(),
+    ));
     for entry in DISALLOWED_METHODS_ALLOWLIST
         .iter()
         .filter(|e| e.scope == AllowScope::Function)
     {
-        output.push_str(&format!("{}:{}\n", entry.path, entry.count));
+        blocks.push(StructuredBlock::Raw(format!(
+            "{}:{}\n",
+            entry.path, entry.count
+        )));
     }
 
-    output
+    blocks
 }
 
 /// Render the pragma lint policy file (dead_code allowances, allowlist).
@@ -152,30 +189,45 @@ pub fn render_pragma_lint_policy() -> String {
         regenerate_command: PRAGMA_REGENERATE_CMD.to_string(),
         comment_prefix: "#".to_string(),
     };
+
+    let blocks = build_lint_policy_blocks();
+    let renderer = PlainStructuredRenderer::new(PlainText {
+        tier: Tier::Ascii,
+        symbol_set: &STANDARD,
+    });
+
     let mut output = header.render();
     output.push('\n');
     output.push('\n');
+    for block in &blocks {
+        output.push_str(&renderer.render_block(block));
+    }
+    output
+}
 
-    output.push_str("[allow.dead_code]\n");
+/// Build lint policy as structured blocks.
+fn build_lint_policy_blocks() -> Vec<StructuredBlock> {
+    let mut blocks = Vec::new();
+
+    // [allow.dead_code] section
+    blocks.push(StructuredBlock::Raw("[allow.dead_code]\n".to_string()));
     if PRAGMA_LINT_POLICY.allow_dead_code.is_empty() {
-        output.push_str("# (none)\n");
+        blocks.push(StructuredBlock::Raw("# (none)\n".to_string()));
     } else {
         for path in PRAGMA_LINT_POLICY.allow_dead_code {
-            output.push_str(path);
-            output.push('\n');
+            blocks.push(StructuredBlock::Raw(format!("{}\n", path)));
         }
     }
 
-    output.push('\n');
-    output.push_str("[allow.lints]\n");
+    // [allow.lints] section
+    blocks.push(StructuredBlock::Raw("\n[allow.lints]\n".to_string()));
     if PRAGMA_LINT_POLICY.allow_lints.is_empty() {
-        output.push_str("# (none)\n");
+        blocks.push(StructuredBlock::Raw("# (none)\n".to_string()));
     } else {
         for lint in PRAGMA_LINT_POLICY.allow_lints {
-            output.push_str(&lint.allow_name());
-            output.push('\n');
+            blocks.push(StructuredBlock::Raw(format!("{}\n", lint.allow_name())));
         }
     }
 
-    output
+    blocks
 }

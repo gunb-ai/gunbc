@@ -122,9 +122,6 @@ mod tests {
     #[test]
     fn test_typed_builder_rejects_wrong_slot() {
         let dag = build_testgen_graph_for_test().expect("graph should build");
-        let reqs = extract_mock_requirements(&dag, "testgen-dag");
-
-        let result = reqs.boundary_str("nonexistent_node", "port", "value");
-        assert!(result.is_err());
+        gunbc_test::assert_typed_builder_rejects_invalid_slot(&dag, "testgen-dag");
     }
 }

@@ -22,7 +22,9 @@
 //! let toml = generate_clippy_toml(&config);
 //! ```
 
-use gunbc_ir::render_ir::FileHeader;
+use gunbc_ir::render_ir::{FileHeader, PlainText, StructuredBlock, StructuredRenderer};
+use gunbc_ir::symbols::{Tier, STANDARD};
+use gunbc_ir::PlainStructuredRenderer;
 
 // ============================================================================
 // Configuration Structs
@@ -206,60 +208,78 @@ impl ClippyConfig {
 ///
 /// The output includes a header comment explaining the configuration.
 pub fn generate_clippy_toml(config: &ClippyConfig) -> String {
+    let blocks = build_clippy_toml_blocks(config);
+    let renderer = PlainStructuredRenderer::new(PlainText {
+        tier: Tier::Ascii,
+        symbol_set: &STANDARD,
+    });
+
     let mut output = String::new();
+    for block in &blocks {
+        output.push_str(&renderer.render_block(block));
+    }
+    output
+}
+
+/// Build clippy.toml as structured blocks.
+fn build_clippy_toml_blocks(config: &ClippyConfig) -> Vec<StructuredBlock> {
+    let mut blocks = Vec::new();
 
     // Header comments
-    output.push_str("# Clippy configuration for gunbc\n");
-    output.push_str("#\n");
+    blocks.push(StructuredBlock::Raw(
+        "# Clippy configuration for gunbc\n#\n".to_string(),
+    ));
 
-    // Large error threshold comment
+    // Large error threshold
     if config.large_error_threshold.is_some() {
-        output.push_str(
-            "# BuilderError is intentionally large (144 bytes) to contain diagnostic info.\n",
-        );
-        output.push_str("# Increase the threshold to allow it in Result types.\n");
+        blocks.push(StructuredBlock::Raw(
+            "# BuilderError is intentionally large (144 bytes) to contain diagnostic info.\n\
+             # Increase the threshold to allow it in Result types.\n"
+                .to_string(),
+        ));
     }
-
-    // Large error threshold setting
     if let Some(threshold) = config.large_error_threshold {
-        output.push_str(&format!("large-error-threshold = {}\n\n", threshold));
+        blocks.push(StructuredBlock::Raw(format!(
+            "large-error-threshold = {}\n\n",
+            threshold
+        )));
     }
 
-    // Document the invariants being enforced
+    // Invariants documentation
     if !config.disallowed_methods.is_empty() {
-        output.push_str("# This configuration enforces system invariants:\n");
-        output.push_str("#\n");
-        output.push_str("# I6. NO ESCAPE HATCHES\n");
-        output.push_str("#     The system cannot be bypassed. If I/O must go through transport,\n");
-        output.push_str("#     there's no function to call to skip it.\n");
-        output.push_str("#\n");
-        output.push_str("# I7. NO FALLBACKS\n");
-        output.push_str("#     Operations either succeed or fail. No silent degradation.\n");
-        output.push_str("#     Don't use .unwrap_or_default() to hide errors.\n");
-        output.push_str("#\n");
-        output.push_str("# I8. NO WARNINGS\n");
-        output.push_str("#     Run with: cargo clippy --all-targets -- -D warnings\n");
-        output.push_str("#     Warnings are errors. If something is wrong, the build fails.\n");
-        output.push_str("#\n");
-        output.push_str("# APPROVED EXCEPTIONS (must have documented reason):\n");
+        let mut invariants = String::new();
+        invariants.push_str("# This configuration enforces system invariants:\n");
+        invariants.push_str("#\n");
+        invariants.push_str("# I6. NO ESCAPE HATCHES\n");
+        invariants
+            .push_str("#     The system cannot be bypassed. If I/O must go through transport,\n");
+        invariants.push_str("#     there's no function to call to skip it.\n");
+        invariants.push_str("#\n");
+        invariants.push_str("# I7. NO FALLBACKS\n");
+        invariants.push_str("#     Operations either succeed or fail. No silent degradation.\n");
+        invariants.push_str("#     Don't use .unwrap_or_default() to hide errors.\n");
+        invariants.push_str("#\n");
+        invariants.push_str("# I8. NO WARNINGS\n");
+        invariants.push_str("#     Run with: cargo clippy --all-targets -- -D warnings\n");
+        invariants
+            .push_str("#     Warnings are errors. If something is wrong, the build fails.\n");
+        invariants.push_str("#\n");
+        invariants.push_str("# APPROVED EXCEPTIONS (must have documented reason):\n");
         for allowance in &config.crate_allowances {
-            output.push_str(&format!(
+            invariants.push_str(&format!(
                 "#   - {} ({})\n",
                 allowance.crate_name, allowance.reason
             ));
         }
-        output.push_str("#\n");
-        output.push_str(
-            "# To add an exception: #[allow(clippy::disallowed_methods)] with comment.\n",
-        );
-        output.push('\n');
+        invariants.push_str("#\n");
+        invariants
+            .push_str("# To add an exception: #[allow(clippy::disallowed_methods)] with comment.\n");
+        invariants.push('\n');
+        blocks.push(StructuredBlock::Raw(invariants));
     }
 
-    // Disallowed methods array
+    // Disallowed methods array (TOML-specific syntax → Raw blocks)
     if !config.disallowed_methods.is_empty() {
-        output.push_str("disallowed-methods = [\n");
-
-        // Group by category (filesystem vs process)
         let fs_methods: Vec<_> = config
             .disallowed_methods
             .iter()
@@ -273,54 +293,56 @@ pub fn generate_clippy_toml(config: &ClippyConfig) -> String {
         let other_methods: Vec<_> = config
             .disallowed_methods
             .iter()
-            .filter(|m| !m.path.starts_with("std::fs::") && !m.path.starts_with("std::process::"))
+            .filter(|m| {
+                !m.path.starts_with("std::fs::") && !m.path.starts_with("std::process::")
+            })
             .collect();
 
-        // Filesystem operations
+        let mut array = String::from("disallowed-methods = [\n");
+
         if !fs_methods.is_empty() {
-            output.push_str(
+            array.push_str(
                 "    # Filesystem operations - use PrepareFileReadOp/PrepareFileWriteOp instead\n",
             );
             for method in &fs_methods {
-                output.push_str(&format!(
+                array.push_str(&format!(
                     "    {{ path = \"{}\", reason = \"{}\" }},\n",
                     method.path, method.reason
                 ));
             }
-            output.push_str("    \n");
+            array.push_str("    \n");
         }
 
-        // Process execution
         if !process_methods.is_empty() {
-            output.push_str(
+            array.push_str(
                 "    # Process execution - use node.requires(&cli::TOOL) for tool dependencies\n",
             );
-            output.push_str(
+            array.push_str(
                 "    # Direct Command::new should only be in transport executor and cli.rs\n",
             );
             for method in &process_methods {
-                output.push_str(&format!(
+                array.push_str(&format!(
                     "    {{ path = \"{}\", reason = \"{}\" }},\n",
                     method.path, method.reason
                 ));
             }
         }
 
-        // Other methods
         if !other_methods.is_empty() {
-            output.push_str("    # Other disallowed methods\n");
+            array.push_str("    # Other disallowed methods\n");
             for method in &other_methods {
-                output.push_str(&format!(
+                array.push_str(&format!(
                     "    {{ path = \"{}\", reason = \"{}\" }},\n",
                     method.path, method.reason
                 ));
             }
         }
 
-        output.push_str("]\n");
+        array.push_str("]\n");
+        blocks.push(StructuredBlock::Raw(array));
     }
 
-    output
+    blocks
 }
 
 // ============================================================================

@@ -60,6 +60,8 @@ pub mod language;
 pub mod layout;
 pub mod node;
 pub mod patterns;
+pub mod makefile_render;
+pub mod plain_render;
 pub mod render_ir;
 pub mod resource;
 pub mod signature;
@@ -105,7 +107,10 @@ pub use node::{Node, NodeBody, NodeIoExample};
 pub use patterns::{
     AtomicBuilder, BackoffStrategy, FailureClassifier, PatternOp, PollBuilder, RepeatPolicy,
     ResourceInput, RetryBuilder, TransactionBuilder, UpsertBuilder, WhileBuilder,
+    transport_triplet::{TransportTriplet, add_skippable_transport_triplet, add_transport_triplet},
 };
+pub use makefile_render::MakefileStructuredRenderer;
+pub use plain_render::PlainStructuredRenderer;
 pub use render_ir::{
     AnsiText, Block, Category, CodeRenderer, CursorAction, DataNode, DataValue, Document,
     DocumentBody, DocumentRenderer, FileHeader, Frame, FrameRenderer, GraphicsElement,

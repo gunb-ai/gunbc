@@ -1,107 +1,152 @@
 //! Frame writing layer — handles cursor I/O and medium-based rendering.
 //!
-//! [`TextFrameWriter`] takes a [`Frame`] and writes it to a `Write` target,
-//! handling cursor movement (overwrite previous frame) and ANSI line clearing.
+//! [`FrameWriter`] dispatches between [`AnsiFrameRenderer`] and [`PlainFrameRenderer`],
+//! each implementing [`FrameRenderer<M>`] for their respective medium.
 
-use gunbc_ir::render_ir::{AnsiText, CursorAction, Frame, OutputMedium, PlainText};
+use gunbc_ir::render_ir::{AnsiText, CursorAction, Frame, FrameRenderer, OutputMedium, PlainText};
 use gunbc_ir::symbols::{SymbolSet, Tier};
 use std::io::Write;
 
 // ---------------------------------------------------------------------------
-// TermMedium — runtime medium selection
+// AnsiFrameRenderer
 // ---------------------------------------------------------------------------
 
-/// Runtime selection between ANSI and plain text output.
-///
-/// Replaces the old `color_enabled: bool` field — `Ansi` for color,
-/// `Plain` for no-color.
-pub enum TermMedium {
-    Ansi(AnsiText),
-    Plain(PlainText),
-}
-
-impl TermMedium {
-    /// Create the appropriate medium for the given settings.
-    pub fn new(color_enabled: bool, tier: Tier, symbol_set: &'static SymbolSet) -> Self {
-        if color_enabled {
-            TermMedium::Ansi(AnsiText { tier, symbol_set })
-        } else {
-            TermMedium::Plain(PlainText { tier, symbol_set })
-        }
-    }
-
-    /// Render a single line to a string using the active medium.
-    fn render_line(&self, line: &gunbc_ir::render_ir::Line) -> String {
-        match self {
-            TermMedium::Ansi(m) => m.render_line(line),
-            TermMedium::Plain(m) => m.render_line(line),
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// TextFrameWriter
-// ---------------------------------------------------------------------------
-
-/// Writes [`Frame`] IR to a `Write` target with cursor management.
-///
-/// Handles:
-/// - Cursor-up to overwrite previous frame (TTY mode)
-/// - Line clearing (TTY mode)
-/// - Leftover line cleanup when frame shrinks
-/// - Flushing
-pub struct TextFrameWriter<W: Write> {
-    medium: TermMedium,
-    output: W,
+/// Renders frames using ANSI escape codes for styled output.
+pub struct AnsiFrameRenderer {
+    medium: AnsiText,
     last_frame_lines: usize,
     is_tty: bool,
 }
 
-impl<W: Write> TextFrameWriter<W> {
-    /// Create a new frame writer.
-    pub fn new(output: W, medium: TermMedium, is_tty: bool) -> Self {
+impl AnsiFrameRenderer {
+    pub fn new(medium: AnsiText, is_tty: bool) -> Self {
         Self {
             medium,
-            output,
             last_frame_lines: 0,
             is_tty,
         }
     }
+}
 
-    /// Write a frame to the output, handling cursor movement and line clearing.
-    pub fn write_frame(&mut self, frame: &Frame) -> std::io::Result<()> {
-        // Cursor-up to overwrite previous frame
-        if self.is_tty
-            && self.last_frame_lines > 0
-            && frame.cursor_action == CursorAction::Overwrite
-        {
-            write!(self.output, "\x1b[{}A\r", self.last_frame_lines)?;
+impl FrameRenderer<AnsiText> for AnsiFrameRenderer {
+    fn medium(&self) -> &AnsiText {
+        &self.medium
+    }
+
+    fn render_frame(&mut self, frame: &Frame, sink: &mut dyn Write) -> std::io::Result<()> {
+        render_frame_common(&self.medium, frame, sink, self.is_tty, &mut self.last_frame_lines)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// PlainFrameRenderer
+// ---------------------------------------------------------------------------
+
+/// Renders frames using plain text (no ANSI content escapes).
+/// Cursor control still uses raw ANSI (terminal protocol, not content).
+pub struct PlainFrameRenderer {
+    medium: PlainText,
+    last_frame_lines: usize,
+    is_tty: bool,
+}
+
+impl PlainFrameRenderer {
+    pub fn new(medium: PlainText, is_tty: bool) -> Self {
+        Self {
+            medium,
+            last_frame_lines: 0,
+            is_tty,
         }
+    }
+}
 
-        let num_lines = frame.lines.len();
+impl FrameRenderer<PlainText> for PlainFrameRenderer {
+    fn medium(&self) -> &PlainText {
+        &self.medium
+    }
 
-        // Render each line
-        for line in &frame.lines {
-            if self.is_tty {
-                write!(self.output, "\x1b[2K")?; // erase entire line
-            }
-            let rendered = self.medium.render_line(line);
-            writeln!(self.output, "{}", rendered)?;
+    fn render_frame(&mut self, frame: &Frame, sink: &mut dyn Write) -> std::io::Result<()> {
+        render_frame_common(&self.medium, frame, sink, self.is_tty, &mut self.last_frame_lines)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Shared cursor I/O logic
+// ---------------------------------------------------------------------------
+
+fn render_frame_common<M: OutputMedium<Output = String>>(
+    medium: &M,
+    frame: &Frame,
+    sink: &mut dyn Write,
+    is_tty: bool,
+    last_frame_lines: &mut usize,
+) -> std::io::Result<()> {
+    // Cursor-up to overwrite previous frame
+    if is_tty && *last_frame_lines > 0 && frame.cursor_action == CursorAction::Overwrite {
+        write!(sink, "\x1b[{}A\r", *last_frame_lines)?;
+    }
+
+    let num_lines = frame.lines.len();
+
+    // Render each line
+    for line in &frame.lines {
+        if is_tty {
+            write!(sink, "\x1b[2K")?; // erase entire line
         }
+        let rendered = medium.render_line(line);
+        writeln!(sink, "{}", rendered)?;
+    }
 
-        // Clear leftover lines if previous frame was taller
-        if self.is_tty && num_lines < self.last_frame_lines {
-            let extra = self.last_frame_lines - num_lines;
-            for _ in 0..extra {
-                writeln!(self.output, "\x1b[2K")?;
-            }
-            // Move cursor back up past the blank lines
-            write!(self.output, "\x1b[{}A", extra)?;
+    // Clear leftover lines if previous frame was taller
+    if is_tty && num_lines < *last_frame_lines {
+        let extra = *last_frame_lines - num_lines;
+        for _ in 0..extra {
+            writeln!(sink, "\x1b[2K")?;
         }
+        // Move cursor back up past the blank lines
+        write!(sink, "\x1b[{}A", extra)?;
+    }
 
-        self.output.flush()?;
-        self.last_frame_lines = num_lines;
-        Ok(())
+    sink.flush()?;
+    *last_frame_lines = num_lines;
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// FrameWriter — enum dispatch wrapper
+// ---------------------------------------------------------------------------
+
+/// Runtime dispatch between ANSI and plain frame renderers.
+///
+/// The set of media is finite and known at compile time, so enum dispatch
+/// avoids `Box<dyn>` overhead while keeping a simple API.
+pub enum FrameWriter {
+    Ansi(AnsiFrameRenderer),
+    Plain(PlainFrameRenderer),
+}
+
+impl FrameWriter {
+    /// Create the appropriate renderer for the given settings.
+    pub fn new(color_enabled: bool, tier: Tier, symbol_set: &'static SymbolSet, is_tty: bool) -> Self {
+        if color_enabled {
+            Self::Ansi(AnsiFrameRenderer::new(
+                AnsiText { tier, symbol_set },
+                is_tty,
+            ))
+        } else {
+            Self::Plain(PlainFrameRenderer::new(
+                PlainText { tier, symbol_set },
+                is_tty,
+            ))
+        }
+    }
+
+    /// Write a frame to the given sink.
+    pub fn write_frame(&mut self, frame: &Frame, sink: &mut dyn Write) -> std::io::Result<()> {
+        match self {
+            Self::Ansi(r) => r.render_frame(frame, sink),
+            Self::Plain(r) => r.render_frame(frame, sink),
+        }
     }
 }
 
@@ -128,14 +173,10 @@ mod tests {
     #[test]
     fn test_write_frame_plain_no_tty() {
         let mut buf = Vec::new();
-        let medium = TermMedium::Plain(PlainText {
-            tier: Tier::Unicode,
-            symbol_set: &STANDARD,
-        });
-        let mut writer = TextFrameWriter::new(&mut buf, medium, false);
+        let mut writer = FrameWriter::new(false, Tier::Unicode, &STANDARD, false);
 
         let frame = make_frame(vec!["hello", "world"], CursorAction::Overwrite);
-        writer.write_frame(&frame).unwrap();
+        writer.write_frame(&frame, &mut buf).unwrap();
 
         let output = String::from_utf8(buf).unwrap();
         assert!(output.contains("hello"));
@@ -147,19 +188,15 @@ mod tests {
     #[test]
     fn test_write_frame_tty_cursor_up() {
         let mut buf = Vec::new();
-        let medium = TermMedium::Plain(PlainText {
-            tier: Tier::Unicode,
-            symbol_set: &STANDARD,
-        });
-        let mut writer = TextFrameWriter::new(&mut buf, medium, true);
+        let mut writer = FrameWriter::new(false, Tier::Unicode, &STANDARD, true);
 
         // First frame
         let frame1 = make_frame(vec!["first"], CursorAction::Overwrite);
-        writer.write_frame(&frame1).unwrap();
+        writer.write_frame(&frame1, &mut buf).unwrap();
 
         // Second frame should cursor-up
         let frame2 = make_frame(vec!["second"], CursorAction::Overwrite);
-        writer.write_frame(&frame2).unwrap();
+        writer.write_frame(&frame2, &mut buf).unwrap();
 
         let output = String::from_utf8(buf).unwrap();
         assert!(
@@ -172,33 +209,31 @@ mod tests {
     #[test]
     fn test_write_frame_tracks_line_count() {
         let mut buf = Vec::new();
-        let medium = TermMedium::Plain(PlainText {
-            tier: Tier::Unicode,
-            symbol_set: &STANDARD,
-        });
-        let mut writer = TextFrameWriter::new(&mut buf, medium, false);
+        let mut renderer = PlainFrameRenderer::new(
+            PlainText {
+                tier: Tier::Unicode,
+                symbol_set: &STANDARD,
+            },
+            false,
+        );
 
         let frame = make_frame(vec!["a", "b", "c"], CursorAction::Overwrite);
-        writer.write_frame(&frame).unwrap();
-        assert_eq!(writer.last_frame_lines, 3);
+        renderer.render_frame(&frame, &mut buf).unwrap();
+        assert_eq!(renderer.last_frame_lines, 3);
     }
 
     #[test]
     fn test_write_frame_clears_leftover_lines() {
         let mut buf = Vec::new();
-        let medium = TermMedium::Plain(PlainText {
-            tier: Tier::Unicode,
-            symbol_set: &STANDARD,
-        });
-        let mut writer = TextFrameWriter::new(&mut buf, medium, true);
+        let mut writer = FrameWriter::new(false, Tier::Unicode, &STANDARD, true);
 
         // First frame: 3 lines
         let frame1 = make_frame(vec!["a", "b", "c"], CursorAction::Overwrite);
-        writer.write_frame(&frame1).unwrap();
+        writer.write_frame(&frame1, &mut buf).unwrap();
 
         // Second frame: 1 line — should clear 2 leftover
         let frame2 = make_frame(vec!["x"], CursorAction::Overwrite);
-        writer.write_frame(&frame2).unwrap();
+        writer.write_frame(&frame2, &mut buf).unwrap();
 
         let output = String::from_utf8(buf).unwrap();
         // Should contain cursor-up for the leftover lines

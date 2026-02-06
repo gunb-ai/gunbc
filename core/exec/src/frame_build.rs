@@ -2,7 +2,7 @@
 //!
 //! All functions in this module are pure: no I/O, no `Write` trait.
 //! The caller passes the resulting [`Frame`] to a
-//! [`TextFrameWriter`](super::frame_write::TextFrameWriter) for actual output.
+//! [`FrameWriter`](super::frame_write::FrameWriter) for actual output.
 
 use crate::progress::{DagPhase, DagProgress, EdgeState, NodeState};
 use crate::render::RenderMode;

@@ -13,11 +13,7 @@ fn mock_current_branch(mocks: &mut BoundaryMocks, branch: &str) {
     mocks.set_value(
         "execute_current_branch",
         "response",
-        Value::Response(TransportResponse::Shell(ShellResponse {
-            exit_code: 0,
-            stdout: format!("{}\n", branch),
-            stderr: String::new(),
-        })),
+        Value::Response(TransportResponse::Shell(ShellResponse::ok(format!("{}\n", branch)))),
     );
 }
 
@@ -29,11 +25,7 @@ fn mock_remote_branches(mocks: &mut BoundaryMocks, remote_output: &str) {
     mocks.set_value(
         "execute_remote_branches",
         "response",
-        Value::Response(TransportResponse::Shell(ShellResponse {
-            exit_code: 0,
-            stdout: remote_output.to_string(),
-            stderr: String::new(),
-        })),
+        Value::Response(TransportResponse::Shell(ShellResponse::ok(remote_output))),
     );
 }
 
@@ -58,24 +50,16 @@ fn test_dry_run_intercepts_transport() {
     mocks.set_value(
         "execute_list_files",
         "response",
-        Value::Response(TransportResponse::Shell(ShellResponse {
-            exit_code: 0,
-            stdout: "src/main.rs\nREADME.md\n".to_string(),
-            stderr: String::new(),
-        })),
+        Value::Response(TransportResponse::Shell(ShellResponse::ok("src/main.rs\nREADME.md\n"))),
     );
 
     // Mock for execute_read_files (read files transport)
     mocks.set_value(
         "execute_read_files",
         "response",
-        Value::Response(TransportResponse::Shell(ShellResponse {
-            exit_code: 0,
-            stdout:
-                "===GUNBC_FILE:src/main.rs===\nfn main() {}\n===GUNBC_FILE:README.md===\n# README\n"
-                    .to_string(),
-            stderr: String::new(),
-        })),
+        Value::Response(TransportResponse::Shell(ShellResponse::ok(
+                "===GUNBC_FILE:src/main.rs===\nfn main() {}\n===GUNBC_FILE:README.md===\n# README\n",
+            ))),
     );
 
     // Mock for execute_current_branch (branch name acquisition)
@@ -87,11 +71,7 @@ fn test_dry_run_intercepts_transport() {
     mocks.set_value(
         "execute_gist",
         "response",
-        Value::Response(TransportResponse::Shell(ShellResponse {
-            exit_code: 0,
-            stdout: "https://mock.gist/12345\n".to_string(),
-            stderr: String::new(),
-        })),
+        Value::Response(TransportResponse::Shell(ShellResponse::ok("https://mock.gist/12345\n"))),
     );
 
     let log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).unwrap();
@@ -192,22 +172,14 @@ fn test_gist_graph_boundary_mockable() {
     mocks.set_value(
         "execute_list_files",
         "response",
-        Value::Response(TransportResponse::Shell(ShellResponse {
-            exit_code: 0,
-            stdout: "src/main.rs\n".to_string(),
-            stderr: String::new(),
-        })),
+        Value::Response(TransportResponse::Shell(ShellResponse::ok("src/main.rs\n"))),
     );
 
     // Mock execute_read_files
     mocks.set_value(
         "execute_read_files",
         "response",
-        Value::Response(TransportResponse::Shell(ShellResponse {
-            exit_code: 0,
-            stdout: "===GUNBC_FILE:src/main.rs===\nfn main() {}\n".to_string(),
-            stderr: String::new(),
-        })),
+        Value::Response(TransportResponse::Shell(ShellResponse::ok("===GUNBC_FILE:src/main.rs===\nfn main() {}\n"))),
     );
 
     // Mock execute_current_branch
@@ -219,11 +191,7 @@ fn test_gist_graph_boundary_mockable() {
     mocks.set_value(
         "execute_gist",
         "response",
-        Value::Response(TransportResponse::Shell(ShellResponse {
-            exit_code: 0,
-            stdout: "https://gist.github.com/mock/123".to_string(),
-            stderr: String::new(),
-        })),
+        Value::Response(TransportResponse::Shell(ShellResponse::ok("https://gist.github.com/mock/123"))),
     );
 
     let result = assert_boundary_mockable(&dag, mocks);
@@ -292,20 +260,12 @@ fn test_branch_name_in_gist_filename() {
     mocks.set_value(
         "execute_list_files",
         "response",
-        Value::Response(TransportResponse::Shell(ShellResponse {
-            exit_code: 0,
-            stdout: "src/main.rs\n".to_string(),
-            stderr: String::new(),
-        })),
+        Value::Response(TransportResponse::Shell(ShellResponse::ok("src/main.rs\n"))),
     );
     mocks.set_value(
         "execute_read_files",
         "response",
-        Value::Response(TransportResponse::Shell(ShellResponse {
-            exit_code: 0,
-            stdout: "===GUNBC_FILE:src/main.rs===\nfn main() {}\n".to_string(),
-            stderr: String::new(),
-        })),
+        Value::Response(TransportResponse::Shell(ShellResponse::ok("===GUNBC_FILE:src/main.rs===\nfn main() {}\n"))),
     );
     // Use a branch name with slashes (common in git workflows)
     mock_current_branch(&mut mocks, "claude/improve-gist-filename");
@@ -313,11 +273,7 @@ fn test_branch_name_in_gist_filename() {
     mocks.set_value(
         "execute_gist",
         "response",
-        Value::Response(TransportResponse::Shell(ShellResponse {
-            exit_code: 0,
-            stdout: "https://gist.github.com/mock/456".to_string(),
-            stderr: String::new(),
-        })),
+        Value::Response(TransportResponse::Shell(ShellResponse::ok("https://gist.github.com/mock/456"))),
     );
 
     let log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).unwrap();
@@ -384,31 +340,19 @@ fn test_platform_challenging_branch_names() {
         mocks.set_value(
             "execute_list_files",
             "response",
-            Value::Response(TransportResponse::Shell(ShellResponse {
-                exit_code: 0,
-                stdout: "src/main.rs\n".to_string(),
-                stderr: String::new(),
-            })),
+            Value::Response(TransportResponse::Shell(ShellResponse::ok("src/main.rs\n"))),
         );
         mocks.set_value(
             "execute_read_files",
             "response",
-            Value::Response(TransportResponse::Shell(ShellResponse {
-                exit_code: 0,
-                stdout: "===GUNBC_FILE:src/main.rs===\nfn main() {}\n".to_string(),
-                stderr: String::new(),
-            })),
+            Value::Response(TransportResponse::Shell(ShellResponse::ok("===GUNBC_FILE:src/main.rs===\nfn main() {}\n"))),
         );
         mock_current_branch(&mut mocks, branch);
         mock_remote_branches(&mut mocks, "");
         mocks.set_value(
             "execute_gist",
             "response",
-            Value::Response(TransportResponse::Shell(ShellResponse {
-                exit_code: 0,
-                stdout: "https://gist.github.com/mock/789".to_string(),
-                stderr: String::new(),
-            })),
+            Value::Response(TransportResponse::Shell(ShellResponse::ok("https://gist.github.com/mock/789"))),
         );
 
         let log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).unwrap();
@@ -456,20 +400,12 @@ fn test_detached_head_uses_remote_branch_name() {
     mocks.set_value(
         "execute_list_files",
         "response",
-        Value::Response(TransportResponse::Shell(ShellResponse {
-            exit_code: 0,
-            stdout: "src/main.rs\n".to_string(),
-            stderr: String::new(),
-        })),
+        Value::Response(TransportResponse::Shell(ShellResponse::ok("src/main.rs\n"))),
     );
     mocks.set_value(
         "execute_read_files",
         "response",
-        Value::Response(TransportResponse::Shell(ShellResponse {
-            exit_code: 0,
-            stdout: "===GUNBC_FILE:src/main.rs===\nfn main() {}\n".to_string(),
-            stderr: String::new(),
-        })),
+        Value::Response(TransportResponse::Shell(ShellResponse::ok("===GUNBC_FILE:src/main.rs===\nfn main() {}\n"))),
     );
 
     // Detached HEAD — rev-parse returns "HEAD"
@@ -480,11 +416,7 @@ fn test_detached_head_uses_remote_branch_name() {
     mocks.set_value(
         "execute_gist",
         "response",
-        Value::Response(TransportResponse::Shell(ShellResponse {
-            exit_code: 0,
-            stdout: "https://gist.github.com/mock/detached".to_string(),
-            stderr: String::new(),
-        })),
+        Value::Response(TransportResponse::Shell(ShellResponse::ok("https://gist.github.com/mock/detached"))),
     );
 
     let log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).unwrap();
@@ -528,22 +460,14 @@ fn test_recent_mode_dry_run() {
     mocks.set_value(
         "execute_rev_list",
         "response",
-        Value::Response(TransportResponse::Shell(ShellResponse {
-            exit_code: 0,
-            stdout: "abc123def456\n".to_string(),
-            stderr: String::new(),
-        })),
+        Value::Response(TransportResponse::Shell(ShellResponse::ok("abc123def456\n"))),
     );
 
     // Mock execute_diff: return sample diff
     mocks.set_value(
         "execute_diff",
         "response",
-        Value::Response(TransportResponse::Shell(ShellResponse {
-            exit_code: 0,
-            stdout: "diff --git a/src/main.rs b/src/main.rs\n--- a/src/main.rs\n+++ b/src/main.rs\n@@ -1,3 +1,4 @@\n fn main() {\n+    println!(\"hello\");\n }\n".to_string(),
-            stderr: String::new(),
-        })),
+        Value::Response(TransportResponse::Shell(ShellResponse::ok("diff --git a/src/main.rs b/src/main.rs\n--- a/src/main.rs\n+++ b/src/main.rs\n@@ -1,3 +1,4 @@\n fn main() {\n+    println!(\"hello\");\n }\n"))),
     );
 
     mock_current_branch(&mut mocks, "main");
@@ -552,11 +476,7 @@ fn test_recent_mode_dry_run() {
     mocks.set_value(
         "execute_gist",
         "response",
-        Value::Response(TransportResponse::Shell(ShellResponse {
-            exit_code: 0,
-            stdout: "https://gist.github.com/mock/recent123".to_string(),
-            stderr: String::new(),
-        })),
+        Value::Response(TransportResponse::Shell(ShellResponse::ok("https://gist.github.com/mock/recent123"))),
     );
 
     let log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).unwrap();
@@ -641,22 +561,14 @@ fn test_recent_mode_young_repo() {
     mocks.set_value(
         "execute_rev_list",
         "response",
-        Value::Response(TransportResponse::Shell(ShellResponse {
-            exit_code: 0,
-            stdout: "".to_string(),
-            stderr: String::new(),
-        })),
+        Value::Response(TransportResponse::Shell(ShellResponse::ok(""))),
     );
 
     // Mock execute_diff: empty diff (HEAD...HEAD produces nothing)
     mocks.set_value(
         "execute_diff",
         "response",
-        Value::Response(TransportResponse::Shell(ShellResponse {
-            exit_code: 0,
-            stdout: "".to_string(),
-            stderr: String::new(),
-        })),
+        Value::Response(TransportResponse::Shell(ShellResponse::ok(""))),
     );
 
     mock_current_branch(&mut mocks, "main");
@@ -665,11 +577,7 @@ fn test_recent_mode_young_repo() {
     mocks.set_value(
         "execute_gist",
         "response",
-        Value::Response(TransportResponse::Shell(ShellResponse {
-            exit_code: 0,
-            stdout: "https://gist.github.com/mock/young".to_string(),
-            stderr: String::new(),
-        })),
+        Value::Response(TransportResponse::Shell(ShellResponse::ok("https://gist.github.com/mock/young"))),
     );
 
     let log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).unwrap();
@@ -732,20 +640,12 @@ fn test_detached_head_no_remote_uses_snapshot() {
     mocks.set_value(
         "execute_list_files",
         "response",
-        Value::Response(TransportResponse::Shell(ShellResponse {
-            exit_code: 0,
-            stdout: "src/main.rs\n".to_string(),
-            stderr: String::new(),
-        })),
+        Value::Response(TransportResponse::Shell(ShellResponse::ok("src/main.rs\n"))),
     );
     mocks.set_value(
         "execute_read_files",
         "response",
-        Value::Response(TransportResponse::Shell(ShellResponse {
-            exit_code: 0,
-            stdout: "===GUNBC_FILE:src/main.rs===\nfn main() {}\n".to_string(),
-            stderr: String::new(),
-        })),
+        Value::Response(TransportResponse::Shell(ShellResponse::ok("===GUNBC_FILE:src/main.rs===\nfn main() {}\n"))),
     );
 
     // Detached HEAD — rev-parse returns "HEAD"
@@ -756,11 +656,7 @@ fn test_detached_head_no_remote_uses_snapshot() {
     mocks.set_value(
         "execute_gist",
         "response",
-        Value::Response(TransportResponse::Shell(ShellResponse {
-            exit_code: 0,
-            stdout: "https://gist.github.com/mock/orphan".to_string(),
-            stderr: String::new(),
-        })),
+        Value::Response(TransportResponse::Shell(ShellResponse::ok("https://gist.github.com/mock/orphan"))),
     );
 
     let log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).unwrap();

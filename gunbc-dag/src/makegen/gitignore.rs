@@ -13,7 +13,9 @@
 
 use crate::makegen::registry::{BuildConfig, BuildSystem};
 use crate::makegen::render::MAKEGEN_NAME;
-use gunbc_ir::render_ir::{Category, FileHeader};
+use gunbc_ir::render_ir::{Category, FileHeader, PlainText, StructuredRenderer};
+use gunbc_ir::symbols::{Tier, STANDARD};
+use gunbc_ir::MakefileStructuredRenderer;
 
 // ============================================================================
 // Derive Categories from BuildConfig
@@ -180,6 +182,11 @@ impl<'a> GitignoreRenderer<'a> {
 
     /// Render just the content without header.
     pub fn render_content(&self) -> String {
+        let renderer = MakefileStructuredRenderer::new(PlainText {
+            tier: Tier::Ascii,
+            symbol_set: &STANDARD,
+        });
+
         let mut output = String::new();
 
         // Rule comment at top
@@ -191,22 +198,7 @@ impl<'a> GitignoreRenderer<'a> {
 
         // Render each category with provenance
         for category in &self.categories {
-            // Section header with source
-            let source = category.source.as_deref().unwrap_or("unknown");
-            output.push_str(&format!(
-                "# --- {} (from {}) ---\n",
-                category.name, source
-            ));
-            // Rationale
-            if let Some(ref rationale) = category.rationale {
-                output.push_str(&format!("# {}\n", rationale));
-            }
-            // Patterns
-            for pattern in &category.items {
-                output.push_str(pattern);
-                output.push('\n');
-            }
-            output.push('\n');
+            output.push_str(&renderer.render_category(category));
         }
 
         output

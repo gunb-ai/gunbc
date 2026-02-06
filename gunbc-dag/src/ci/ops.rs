@@ -17,7 +17,10 @@ use gunbc_exec::{
     optional_bool, propagate_skipped, require_bool, require_response, require_str, ExecError,
     Executable, OutputMap, TransportResponseExt,
 };
+use gunbc_ir::render_ir::{PlainText, StructuredBlock, StructuredRenderer};
+use gunbc_ir::symbols::{Tier, STANDARD};
 use gunbc_ir::transport::{ShellRequest, TransportRequest};
+use gunbc_ir::PlainStructuredRenderer;
 use gunbc_ir::Value;
 use std::collections::HashMap;
 
@@ -540,7 +543,49 @@ fn execute_report(inputs: HashMap<String, Value>) -> Result<HashMap<String, Valu
     let overall_success =
         build_success && test_success && lint_success && testgen_success && guardrail_success && verify_success;
 
-    let mut report = format!(
+    let blocks = build_report_blocks(
+        build_success,
+        test_success,
+        lint_success,
+        verify_success,
+        testgen_success,
+        guardrail_success,
+        overall_success,
+        &inputs,
+    )?;
+
+    let renderer = PlainStructuredRenderer::new(PlainText {
+        tier: Tier::Ascii,
+        symbol_set: &STANDARD,
+    });
+
+    let mut report = String::new();
+    for block in &blocks {
+        report.push_str(&renderer.render_block(block));
+    }
+
+    OutputMap::new()
+        .bool("overall_success", overall_success)
+        .str("report", report)
+        .ok()
+}
+
+/// Build CI report as structured blocks.
+#[allow(clippy::too_many_arguments)]
+fn build_report_blocks(
+    build_success: bool,
+    test_success: bool,
+    lint_success: bool,
+    verify_success: bool,
+    testgen_success: bool,
+    guardrail_success: bool,
+    overall_success: bool,
+    inputs: &HashMap<String, Value>,
+) -> Result<Vec<StructuredBlock>, ExecError> {
+    let mut blocks = Vec::new();
+
+    // Summary section
+    blocks.push(StructuredBlock::Raw(format!(
         "\nCI Report\n\
          =========\n\
          Build: {}\n\
@@ -564,68 +609,76 @@ fn execute_report(inputs: HashMap<String, Value>) -> Result<HashMap<String, Valu
         } else {
             "FAILURE"
         }
-    );
+    )));
 
-    // Append failure details for any failed stage
+    // Failure details
     if !build_success {
-        let stderr = require_str(&inputs, "build_stderr")?;
+        let stderr = require_str(inputs, "build_stderr")?;
         if !stderr.is_empty() {
-            report.push_str(&format!("\n--- Build stderr ---\n{stderr}\n"));
+            blocks.push(StructuredBlock::Raw(format!(
+                "\n--- Build stderr ---\n{stderr}\n"
+            )));
         }
     }
 
     if !test_success {
-        // For tests, try to extract the "failures:" section from stdout - that's where
-        // the actual test names and panic messages are (stderr just says "test failed")
-        let stdout = require_str(&inputs, "test_stdout")?;
+        let stdout = require_str(inputs, "test_stdout")?;
 
-        // Try to extract just the failures section for cleaner output
         if let Some(failures_section) = extract_test_failures(stdout) {
-            report.push_str(&format!("\n--- Test failures ---\n{failures_section}\n"));
+            blocks.push(StructuredBlock::Raw(format!(
+                "\n--- Test failures ---\n{failures_section}\n"
+            )));
         } else if !stdout.is_empty() {
-            // Fallback: show full stdout if we couldn't extract failures section
-            // (this handles different cargo test output formats)
-            report.push_str(&format!("\n--- Test stdout ---\n{stdout}\n"));
+            blocks.push(StructuredBlock::Raw(format!(
+                "\n--- Test stdout ---\n{stdout}\n"
+            )));
         }
 
-        let stderr = require_str(&inputs, "test_stderr")?;
+        let stderr = require_str(inputs, "test_stderr")?;
         if !stderr.is_empty() {
-            report.push_str(&format!("\n--- Test stderr ---\n{stderr}\n"));
+            blocks.push(StructuredBlock::Raw(format!(
+                "\n--- Test stderr ---\n{stderr}\n"
+            )));
         }
     }
 
     if !lint_success {
-        let stderr = require_str(&inputs, "lint_stderr")?;
+        let stderr = require_str(inputs, "lint_stderr")?;
         if !stderr.is_empty() {
-            report.push_str(&format!("\n--- Lint stderr ---\n{stderr}\n"));
+            blocks.push(StructuredBlock::Raw(format!(
+                "\n--- Lint stderr ---\n{stderr}\n"
+            )));
         }
     }
 
     if !testgen_success {
-        let stderr = require_str(&inputs, "testgen_stderr")?;
+        let stderr = require_str(inputs, "testgen_stderr")?;
         if !stderr.is_empty() {
-            report.push_str(&format!("\n--- Testgen stderr ---\n{stderr}\n"));
+            blocks.push(StructuredBlock::Raw(format!(
+                "\n--- Testgen stderr ---\n{stderr}\n"
+            )));
         }
     }
 
     if !guardrail_success {
-        let stderr = require_str(&inputs, "guardrail_stderr")?;
+        let stderr = require_str(inputs, "guardrail_stderr")?;
         if !stderr.is_empty() {
-            report.push_str(&format!("\n--- Guardrails stderr ---\n{stderr}\n"));
+            blocks.push(StructuredBlock::Raw(format!(
+                "\n--- Guardrails stderr ---\n{stderr}\n"
+            )));
         }
     }
 
     if !verify_success {
-        let stderr = require_str(&inputs, "verify_stderr")?;
+        let stderr = require_str(inputs, "verify_stderr")?;
         if !stderr.is_empty() {
-            report.push_str(&format!("\n--- Verify stderr ---\n{stderr}\n"));
+            blocks.push(StructuredBlock::Raw(format!(
+                "\n--- Verify stderr ---\n{stderr}\n"
+            )));
         }
     }
 
-    OutputMap::new()
-        .bool("overall_success", overall_success)
-        .str("report", report)
-        .ok()
+    Ok(blocks)
 }
 
 /// Extract the "failures:" section from cargo test output.

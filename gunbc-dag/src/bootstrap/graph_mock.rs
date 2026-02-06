@@ -460,10 +460,6 @@ mod tests {
     #[test]
     fn test_typed_builder_rejects_wrong_slot() {
         let dag = build_bootstrap_graph().expect("graph should build");
-        let reqs = extract_mock_requirements(&dag, "bootstrap");
-
-        // Try to set a mock for a non-existent node
-        let result = reqs.boundary_str("nonexistent_node", "port", "value");
-        assert!(result.is_err());
+        gunbc_test::assert_typed_builder_rejects_invalid_slot(&dag, "bootstrap");
     }
 }

@@ -4,7 +4,7 @@
 //!
 //! ```text
 //! DagProgress + DagLayout  →  build_frame() [pure]  →  Frame IR
-//! Frame IR  →  TextFrameWriter [I/O]  →  Write
+//! Frame IR  →  FrameWriter [I/O]  →  Write
 //! ```
 //!
 //! Frame **building** (pure, returns `Frame` IR) is in [`frame_build`](super::frame_build).
@@ -139,10 +139,9 @@ impl Animation {
 mod tests {
     use super::*;
     use crate::frame_build::{build_frame, display_width, format_duration};
-    use crate::frame_write::{TermMedium, TextFrameWriter};
+    use crate::frame_write::FrameWriter;
     use crate::progress::{DagProgress, DagSnapshot, OutputSummary, ProgressObserver};
     use gunbc_ir::layout::{compute_layout, Viewport, ViewportUnit};
-    use gunbc_ir::render_ir::PlainText;
     use gunbc_ir::symbols::{Tier, STANDARD};
     use gunbc_ir::{Edge, NodeId};
 
@@ -192,12 +191,8 @@ mod tests {
     ) -> String {
         let frame = build_frame(progress, layout, mode, "◐", Tier::Unicode, &STANDARD);
         let mut buf = Vec::new();
-        let medium = TermMedium::Plain(PlainText {
-            tier: Tier::Unicode,
-            symbol_set: &STANDARD,
-        });
-        let mut writer = TextFrameWriter::new(&mut buf, medium, false);
-        writer.write_frame(&frame).unwrap();
+        let mut writer = FrameWriter::new(false, Tier::Unicode, &STANDARD, false);
+        writer.write_frame(&frame, &mut buf).unwrap();
         String::from_utf8(buf).unwrap()
     }
 

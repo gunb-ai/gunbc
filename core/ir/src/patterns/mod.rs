@@ -32,6 +32,7 @@ pub mod loop_pattern;
 pub mod pattern_op;
 pub mod repeat;
 pub mod transaction;
+pub mod transport_triplet;
 pub mod upsert;
 
 pub use atomic::AtomicBuilder;

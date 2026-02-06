@@ -63,3 +63,16 @@ pub use mock_requirements::{
 pub use mockable::{CardinalityTestInput, ErrorTestCase, ExpectedBehavior, Mockable};
 pub use simulator::{IoContract, Simulator};
 pub use window::{apply_window_inputs, assert_window_outputs, window_subdag, Window, WindowError};
+
+/// Assert that the typed MockSpec builder rejects an unknown slot.
+///
+/// This is the shared implementation for the `test_typed_builder_rejects_wrong_slot`
+/// test that appears in every `graph_mock.rs`.
+pub fn assert_typed_builder_rejects_invalid_slot<T>(dag: &gunbc_ir::Dag<T>, name: &str) {
+    let reqs = extract_mock_requirements(dag, name);
+    let result = reqs.boundary_str("nonexistent_node", "nonexistent_port", "value");
+    assert!(
+        result.is_err(),
+        "expected typed builder to reject unknown slot for {name}"
+    );
+}
