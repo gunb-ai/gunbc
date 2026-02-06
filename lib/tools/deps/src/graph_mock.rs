@@ -11,7 +11,7 @@
 //!
 //! # Input Expectations
 //!
-//! - `manifest_path`: Optional string, defaults to "deps.toml"
+//! - `manifest_path`: String (required)
 //!
 //! # Resource Simulations
 //!
@@ -113,6 +113,11 @@ pub fn deps_mock_spec() -> MockSpec {
         .build_unchecked()
         // Input expectations (via legacy API post-build)
         .expects_input("manifest_path", InputConstraint::Any)
+        .input_mock(
+            "prepare_load_manifest",
+            "manifest_path",
+            Value::Str("deps.toml".into()),
+        )
         // Resource: package manager lock
         .resource_lock("pkg:manager")
         // Node I/O examples
@@ -231,6 +236,11 @@ pub fn deps_mock_spec_pkg_fails() -> MockSpec {
         // Build spec
         .build_unchecked()
         .expects_input("manifest_path", InputConstraint::Any)
+        .input_mock(
+            "prepare_load_manifest",
+            "manifest_path",
+            Value::Str("deps.toml".into()),
+        )
         .resource_lock_fails("pkg:manager", "Package manager locked by another process")
 }
 

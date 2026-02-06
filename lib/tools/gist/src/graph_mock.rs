@@ -74,7 +74,7 @@ fn mock_gist_response_json() -> String {
 ///
 /// # Input Expectations
 ///
-/// - `repo_path`: Optional string (both modes)
+/// - `repo_path`: String (required)
 /// - `base_ref`: Optional string (diff mode only)
 fn gist_mock_spec(mode: &GistMode) -> MockSpec {
     // Build the actual DAG to extract requirements
@@ -177,6 +177,29 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
     let mut spec = reqs.build_unchecked();
 
     spec = spec.expects_input("repo_path", InputConstraint::Any);
+    // Provide a default repo_path for entrypoint injection in DryRun tests.
+    spec = spec
+        .input_mock("prepare_current_branch", "repo_path", Value::Str(".".into()))
+        .input_mock(
+            "prepare_remote_branches",
+            "repo_path",
+            Value::Str(".".into()),
+        );
+    match mode {
+        GistMode::Snapshot => {
+            spec = spec
+                .input_mock("prepare_list_files", "repo_path", Value::Str(".".into()))
+                .input_mock("prepare_read_files", "repo_path", Value::Str(".".into()));
+        }
+        GistMode::Diff { .. } => {
+            spec = spec.input_mock("prepare_diff", "repo_path", Value::Str(".".into()));
+        }
+        GistMode::Recent => {
+            spec = spec
+                .input_mock("prepare_rev_list", "repo_path", Value::Str(".".into()))
+                .input_mock("prepare_diff", "repo_path", Value::Str(".".into()));
+        }
+    }
     if matches!(mode, GistMode::Diff { .. }) {
         spec = spec.expects_input("base_ref", InputConstraint::Any);
     }

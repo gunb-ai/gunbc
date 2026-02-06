@@ -4,7 +4,7 @@
 // DO NOT EDIT - regenerate with: make testgen
 // Obligations: 50 obligations (21 discharged, 29 testable: A=13, B=11, C=5, D=0)
 // Proven by construction: acyclicity, type compatibility, cardinality satisfaction.
-// Content-Hash: a221485433e8829da2948ec2e2ea3477372d5d03fd7e38aa50503009abd2e36a
+// Content-Hash: e4c20a2ebe84411d90e7b955f05c18bbb18c820862e64cb908222420796c7265
 
 
 use gunbc_exec::{execute_with_mode, lower, ExecutionMode};
@@ -169,6 +169,14 @@ fn test_mock_spec_self_consistent() {
     let spec = mock_spec();
     // Verify all boundary mocks are present
     assert!(spec.get_boundary_mock("credential_env", "credential:llm").is_some(), "MockSpec should have boundary mock for credential_env.credential:llm");
+}
+
+/// Test that input expectations are documented.
+#[test]
+fn test_input_expectations_documented() {
+    let spec = mock_spec();
+    // Port 'repo_path' expects: Any
+    assert_eq!(spec.input_expectations.len(), 1);
 }
 
 // =========================================================================

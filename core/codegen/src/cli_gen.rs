@@ -1121,7 +1121,6 @@ mod tests {
 
         let entrypoints = vec![CliEntrypoint::new("repo_path", "String")
             .short('r')
-            .default(".")
             .help("Repository path")];
 
         let code = generate_cli(&tool, &entrypoints);

@@ -186,23 +186,19 @@ fn build_core_targets(config: &BuildConfig) -> Vec<StructuredBlock> {
     };
 
     // ensure-codegen
-    blocks.push(StructuredBlock::Raw(
-        "# Ensure CLI entrypoints exist (bootstrap-safe)\n".to_string(),
-    ));
     blocks.push(StructuredBlock::Target(Target {
         name: "ensure-codegen".to_string(),
         deps: vec![],
         body: vec![config.ensure_codegen_shell()],
+        comment: Some("Ensure CLI entrypoints exist (bootstrap-safe)".to_string()),
     }));
 
     // codegen
-    blocks.push(StructuredBlock::Raw(
-        "# Generate CLI entrypoints (DAG upsert)\n".to_string(),
-    ));
     blocks.push(StructuredBlock::Target(Target {
         name: "codegen".to_string(),
         deps: vec!["ensure-codegen".to_string()],
         body: vec![config.codegen_shell()],
+        comment: Some("Generate CLI entrypoints (DAG upsert)".to_string()),
     }));
 
     // build
@@ -211,49 +207,40 @@ fn build_core_targets(config: &BuildConfig) -> Vec<StructuredBlock> {
     } else {
         "codegen \u{2192} testgen \u{2192} cargo build"
     };
-    blocks.push(StructuredBlock::Raw(format!(
-        "# Full build transaction: {build_desc}\n"
-    )));
     blocks.push(StructuredBlock::Target(Target {
         name: "build".to_string(),
         deps: vec!["codegen".to_string(), "testgen".to_string()],
         body: vec![config.build_shell()],
+        comment: Some(format!("Full build transaction: {build_desc}")),
     }));
 
     // clean
-    blocks.push(StructuredBlock::Raw(
-        "# Clean build artifacts\n".to_string(),
-    ));
     blocks.push(StructuredBlock::Target(Target {
         name: "clean".to_string(),
         deps: vec![],
         body: vec!["@cargo clean".to_string()],
+        comment: Some("Clean build artifacts".to_string()),
     }));
 
     // testgen
-    blocks.push(StructuredBlock::Raw(
-        "# Regenerate tests from DAG structures and MockSpecs\n".to_string(),
-    ));
     blocks.push(StructuredBlock::Target(Target {
         name: "testgen".to_string(),
         deps: vec!["ensure-codegen".to_string()],
         body: vec![config.testgen_shell()],
+        comment: Some("Regenerate tests from DAG structures and MockSpecs".to_string()),
     }));
 
     // testgen-check
-    blocks.push(StructuredBlock::Raw(
-        "# Check if generated tests are stale (fails if regeneration needed)\n".to_string(),
-    ));
     blocks.push(StructuredBlock::Target(Target {
         name: "testgen-check".to_string(),
         deps: vec!["ensure-codegen".to_string()],
         body: vec![config.testgen_check_shell()],
+        comment: Some(
+            "Check if generated tests are stale (fails if regeneration needed)".to_string(),
+        ),
     }));
 
     // pragma-check
-    blocks.push(StructuredBlock::Raw(
-        "# Check if pragma artifacts are stale (fails if regeneration needed)\n".to_string(),
-    ));
     blocks.push(StructuredBlock::Target(Target {
         name: "pragma-check".to_string(),
         deps: vec!["ensure-codegen".to_string()],
@@ -261,12 +248,12 @@ fn build_core_targets(config: &BuildConfig) -> Vec<StructuredBlock> {
             "@{}cargo run -p gunbc-dag --bin gunbc-pragma --release -- --check",
             warning_prefix
         )],
+        comment: Some(
+            "Check if pragma artifacts are stale (fails if regeneration needed)".to_string(),
+        ),
     }));
 
     // verify
-    blocks.push(StructuredBlock::Raw(
-        "# Verify generated artifacts match their generators\n".to_string(),
-    ));
     blocks.push(StructuredBlock::Target(Target {
         name: "verify".to_string(),
         deps: vec!["ensure-codegen".to_string()],
@@ -288,6 +275,9 @@ fn build_core_targets(config: &BuildConfig) -> Vec<StructuredBlock> {
                 warning_prefix
             ),
         ],
+        comment: Some(
+            "Verify generated artifacts match their generators".to_string(),
+        ),
     }));
 
     blocks
@@ -375,6 +365,7 @@ fn build_help_target(registry: &ToolRegistry, config: &BuildConfig) -> Structure
         name: "help".to_string(),
         deps: vec![],
         body: lines,
+        comment: None,
     })
 }
 
@@ -423,19 +414,17 @@ fn meta_target_deps(meta: &MetaTarget, config: &BuildConfig) -> Vec<String> {
 /// Build fix alias targets.
 fn build_fix_alias_targets(config: &BuildConfig) -> Vec<StructuredBlock> {
     vec![
-        StructuredBlock::Raw("# fmt-fix: apply formatting (alias for fmt)\n".to_string()),
         StructuredBlock::Target(Target {
             name: "fmt-fix".to_string(),
             deps: vec![],
             body: vec![config.fmt_shell()],
+            comment: Some("fmt-fix: apply formatting (alias for fmt)".to_string()),
         }),
-        StructuredBlock::Raw(
-            "# lint-fix: auto-fix lint issues where possible\n".to_string(),
-        ),
         StructuredBlock::Target(Target {
             name: "lint-fix".to_string(),
             deps: vec!["pragma".to_string()],
             body: vec![config.lint_fix_shell()],
+            comment: Some("lint-fix: auto-fix lint issues where possible".to_string()),
         }),
     ]
 }
@@ -445,18 +434,12 @@ fn build_meta_target(meta: &MetaTarget, config: &BuildConfig) -> StructuredBlock
     let deps = meta_target_deps(meta, config);
     let command = meta.get_command(config);
 
-    StructuredBlock::Raw(format!(
-        "# {}: {}\n{}:{}\n\t{}\n\n",
-        meta.name,
-        meta.description,
-        meta.name,
-        if deps.is_empty() {
-            String::new()
-        } else {
-            format!(" {}", deps.join(" "))
-        },
-        command
-    ))
+    StructuredBlock::Target(Target {
+        name: meta.name.clone(),
+        deps,
+        body: vec![command],
+        comment: Some(format!("{}: {}", meta.name, meta.description)),
+    })
 }
 
 /// Build a check variant for a meta target.
@@ -467,16 +450,12 @@ fn build_meta_check_variant(
     if let Some(check_cmd) = meta.get_check_command(config) {
         let deps = meta_target_deps(meta, config);
 
-        vec![StructuredBlock::Raw(format!(
-            "{}-check:{}\n\t{}\n\n",
-            meta.name,
-            if deps.is_empty() {
-                String::new()
-            } else {
-                format!(" {}", deps.join(" "))
-            },
-            check_cmd
-        ))]
+        vec![StructuredBlock::Target(Target {
+            name: format!("{}-check", meta.name),
+            deps,
+            body: vec![check_cmd],
+            comment: None,
+        })]
     } else {
         vec![]
     }
@@ -514,17 +493,12 @@ fn build_meta_fix_variant(
         .get_fix_command(config)
         .unwrap_or_else(|| meta.get_command(config));
 
-    vec![StructuredBlock::Raw(format!(
-        "# {}-fix: auto-fix then verify\n{}-fix:{}\n\t{}\n\n",
-        meta.name,
-        meta.name,
-        if deps.is_empty() {
-            String::new()
-        } else {
-            format!(" {}", deps.join(" "))
-        },
-        fix_cmd
-    ))]
+    vec![StructuredBlock::Target(Target {
+        name: format!("{}-fix", meta.name),
+        deps,
+        body: vec![fix_cmd],
+        comment: Some(format!("{}-fix: auto-fix then verify", meta.name)),
+    })]
 }
 
 /// Render help text for parameters.
@@ -559,16 +533,12 @@ fn build_tool_target(tool: &ToolInfo, config: &BuildConfig) -> StructuredBlock {
 
     let cli_args = render_cli_args(&tool.entrypoints);
 
-    // Comment + Target as raw (comment is separate from the target name line)
-    StructuredBlock::Raw(format!(
-        "# {} entrypoints: {}\n{}: ensure-codegen\n\t@{}{} --{}\n\n",
-        tool.binary_name(),
-        port_list,
-        tool.short_name,
-        warning_prefix,
-        tool.invocation.command(),
-        cli_args
-    ))
+    StructuredBlock::Target(Target {
+        name: tool.short_name.clone(),
+        deps: vec!["ensure-codegen".to_string()],
+        body: vec![format!("@{}{} --{}", warning_prefix, tool.invocation.command(), cli_args)],
+        comment: Some(format!("{} entrypoints: {}", tool.binary_name(), port_list)),
+    })
 }
 
 /// Build a dry-run target.
@@ -581,32 +551,30 @@ fn build_dry_run_target(tool: &ToolInfo, config: &BuildConfig) -> StructuredBloc
 
     let cli_args = render_cli_args(&tool.entrypoints);
 
-    StructuredBlock::Raw(format!(
-        "{}-dry: ensure-codegen\n\t@{}{} -- --dry-run{}\n\n",
-        tool.short_name, warning_prefix, tool.invocation.command(), cli_args
-    ))
+    StructuredBlock::Target(Target {
+        name: format!("{}-dry", tool.short_name),
+        deps: vec!["ensure-codegen".to_string()],
+        body: vec![format!(
+            "@{}{} -- --dry-run{}",
+            warning_prefix,
+            tool.invocation.command(),
+            cli_args
+        )],
+        comment: None,
+    })
 }
 
 /// Build an extra composite target.
 fn build_extra_target(tool: &ToolInfo, extra: &ExtraTarget) -> StructuredBlock {
-    let mut body = Vec::new();
-    for cmd in &extra.post_commands {
-        body.push(cmd.clone());
-    }
-
-    StructuredBlock::Raw(format!(
-        "# {}-{}: {}\n{}-{}: {}\n{}\n",
-        tool.short_name,
-        extra.suffix,
-        extra.description,
-        tool.short_name,
-        extra.suffix,
-        tool.short_name,
-        body.iter()
-            .map(|cmd| format!("\t{}", cmd))
-            .collect::<Vec<_>>()
-            .join("\n")
-    ))
+    StructuredBlock::Target(Target {
+        name: format!("{}-{}", tool.short_name, extra.suffix),
+        deps: vec![tool.short_name.clone()],
+        body: extra.post_commands.clone(),
+        comment: Some(format!(
+            "{}-{}: {}",
+            tool.short_name, extra.suffix, extra.description
+        )),
+    })
 }
 
 /// Render CLI arguments from entrypoint parameters.
@@ -870,5 +838,47 @@ mod tests {
         // Help should mention fix variants
         assert!(makefile.contains("test-fix"));
         assert!(makefile.contains("clippy-fix"));
+    }
+
+    #[test]
+    fn test_structured_blocks_use_target_ir() {
+        let registry = ToolRegistry::default_registry();
+        let config = BuildConfig::cargo();
+        let blocks = build_makefile_blocks(&registry, &config);
+
+        // Count Raw vs Target blocks — Raw should only be used for
+        // non-target content (headers, directives, section banners).
+        let mut target_count = 0;
+        let mut raw_contents = Vec::new();
+
+        for block in &blocks {
+            match block {
+                StructuredBlock::Raw(s) => {
+                    raw_contents.push(s.clone());
+                }
+                StructuredBlock::Target(_) => {
+                    target_count += 1;
+                }
+                _ => {}
+            }
+        }
+
+        // All build targets should use Target IR, not Raw
+        assert!(
+            target_count > 20,
+            "expected many Target blocks, got {}",
+            target_count
+        );
+
+        // Raw blocks should only contain directives and section headers
+        for raw in &raw_contents {
+            assert!(
+                raw.starts_with('#')
+                    || raw.starts_with('.')
+                    || raw.contains("============"),
+                "unexpected Raw block that looks like a target definition: {:?}",
+                &raw[..raw.len().min(80)]
+            );
+        }
     }
 }

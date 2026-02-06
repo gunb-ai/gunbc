@@ -14,8 +14,8 @@
 
 use crate::makegen::BuildConfig;
 use gunbc_exec::{
-    optional_bool, propagate_skipped, require_bool, require_response, require_str, ExecError,
-    Executable, OutputMap, TransportResponseExt,
+    propagate_skipped, require_bool, require_response, require_str, ExecError, Executable,
+    OutputMap, TransportResponseExt,
 };
 use gunbc_ir::render_ir::{PlainText, StructuredBlock, StructuredRenderer};
 use gunbc_ir::symbols::{Tier, STANDARD};
@@ -27,6 +27,22 @@ use std::collections::HashMap;
 // ============================================================================
 // CIOp - Pure CI-specific operations
 // ============================================================================
+
+fn require_bool_or_skipped(
+    inputs: &HashMap<String, Value>,
+    key: &str,
+    skipped_value: bool,
+) -> Result<bool, ExecError> {
+    match inputs.get(key) {
+        Some(Value::Bool(b)) => Ok(*b),
+        Some(Value::Skipped) => Ok(skipped_value),
+        Some(_) => Err(ExecError::new(format!(
+            "missing or invalid '{}' input",
+            key
+        ))),
+        None => Err(ExecError::new(format!("missing '{}' input", key))),
+    }
+}
 
 /// Pure operations for the CI tool.
 ///
@@ -154,7 +170,7 @@ fn execute_parse_deps_exists(
 fn execute_prepare_testgen_command(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    let prep_success = optional_bool(&inputs, "prep_success").unwrap_or(false);
+    let prep_success = require_bool_or_skipped(&inputs, "prep_success", false)?;
 
     if !prep_success {
         return OutputMap::new()
@@ -207,10 +223,8 @@ fn execute_parse_testgen_result(
 fn execute_prepare_build_command(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    // Use optional_bool to handle Value::Skipped gracefully.
-    // If prep_success is missing/Skipped, skip the build.
-    let prep_success = optional_bool(&inputs, "prep_success").unwrap_or(false);
-    let testgen_success = optional_bool(&inputs, "testgen_success").unwrap_or(false);
+    let prep_success = require_bool_or_skipped(&inputs, "prep_success", false)?;
+    let testgen_success = require_bool_or_skipped(&inputs, "testgen_success", false)?;
 
     if !prep_success || !testgen_success {
         return OutputMap::new()
@@ -276,9 +290,7 @@ fn execute_parse_build_result(
 fn execute_prepare_test_command(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    // Use optional_bool to handle Value::Skipped gracefully.
-    // If build_success is missing/Skipped, skip the test.
-    let build_success = optional_bool(&inputs, "build_success").unwrap_or(false);
+    let build_success = require_bool_or_skipped(&inputs, "build_success", false)?;
 
     if !build_success {
         return OutputMap::new()
@@ -342,9 +354,7 @@ fn execute_parse_test_result(
 fn execute_prepare_clippy_lint(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    // Use optional_bool to handle Value::Skipped gracefully.
-    // If build_success is missing/Skipped, skip clippy.
-    let build_success = optional_bool(&inputs, "build_success").unwrap_or(false);
+    let build_success = require_bool_or_skipped(&inputs, "build_success", false)?;
 
     if !build_success {
         return OutputMap::new()
@@ -396,7 +406,7 @@ fn execute_parse_clippy_lint_result(
 fn execute_prepare_guardrail_check(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    let testgen_success = optional_bool(&inputs, "testgen_success").unwrap_or(false);
+    let testgen_success = require_bool_or_skipped(&inputs, "testgen_success", false)?;
 
     if !testgen_success {
         return OutputMap::new()
@@ -457,7 +467,7 @@ fn execute_parse_guardrail_result(
 fn execute_prepare_verify_check(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    let prep_success = optional_bool(&inputs, "prep_success").unwrap_or(false);
+    let prep_success = require_bool_or_skipped(&inputs, "prep_success", false)?;
 
     if !prep_success {
         return OutputMap::new()
@@ -531,14 +541,13 @@ fn execute_parse_verify_result(
 /// CI groups. For test failures, the "failures:" section from stdout
 /// is also extracted and shown.
 fn execute_report(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-    // Use optional_bool to handle Value::Skipped gracefully during skip propagation.
     // Skipped stages are treated as passed (true) since they didn't actually fail.
-    let build_success = optional_bool(&inputs, "build_success").unwrap_or(true);
-    let test_success = optional_bool(&inputs, "test_success").unwrap_or(true);
-    let lint_success = optional_bool(&inputs, "lint_success").unwrap_or(true);
-    let testgen_success = optional_bool(&inputs, "testgen_success").unwrap_or(true);
-    let guardrail_success = optional_bool(&inputs, "guardrail_success").unwrap_or(true);
-    let verify_success = optional_bool(&inputs, "verify_success").unwrap_or(true);
+    let build_success = require_bool_or_skipped(&inputs, "build_success", true)?;
+    let test_success = require_bool_or_skipped(&inputs, "test_success", true)?;
+    let lint_success = require_bool_or_skipped(&inputs, "lint_success", true)?;
+    let testgen_success = require_bool_or_skipped(&inputs, "testgen_success", true)?;
+    let guardrail_success = require_bool_or_skipped(&inputs, "guardrail_success", true)?;
+    let verify_success = require_bool_or_skipped(&inputs, "verify_success", true)?;
 
     let overall_success =
         build_success && test_success && lint_success && testgen_success && guardrail_success && verify_success;
@@ -882,6 +891,7 @@ mod tests {
     fn test_prepare_build_command_skip() {
         let mut inputs = HashMap::new();
         inputs.insert("prep_success".to_string(), Value::Bool(false));
+        inputs.insert("testgen_success".to_string(), Value::Bool(true));
 
         let result = execute_prepare_build_command(inputs).unwrap();
         assert_eq!(result.get("skip").and_then(|v| v.as_bool()), Some(true));
@@ -914,6 +924,9 @@ mod tests {
         inputs.insert("build_success".to_string(), Value::Bool(true));
         inputs.insert("test_success".to_string(), Value::Bool(true));
         inputs.insert("lint_success".to_string(), Value::Bool(true));
+        inputs.insert("testgen_success".to_string(), Value::Bool(true));
+        inputs.insert("guardrail_success".to_string(), Value::Bool(true));
+        inputs.insert("verify_success".to_string(), Value::Bool(true));
 
         let result = execute_report(inputs).unwrap();
         assert_eq!(
@@ -936,6 +949,9 @@ mod tests {
         inputs.insert("lint_success".to_string(), Value::Bool(true));
         inputs.insert("lint_stdout".to_string(), Value::Str(String::new()));
         inputs.insert("lint_stderr".to_string(), Value::Str(String::new()));
+        inputs.insert("testgen_success".to_string(), Value::Bool(true));
+        inputs.insert("guardrail_success".to_string(), Value::Bool(true));
+        inputs.insert("verify_success".to_string(), Value::Bool(true));
 
         let result = execute_report(inputs).unwrap();
         assert_eq!(

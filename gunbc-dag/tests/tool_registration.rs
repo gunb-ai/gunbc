@@ -52,10 +52,12 @@ fn tool_registrations_match_all_tools() {
             "returns_result mismatch for '{}'",
             tool.meta.tool_name
         );
+        // mock_spec_call: all_tools() populates from mock_spec_for() lookup.
+        // The #[tool_target] annotation carries the same value as validation.
         assert_eq!(
             reg.mock_spec_call.map(|s| s.to_string()),
             tool.meta.mock_spec_call,
-            "mock_spec_call mismatch for '{}'",
+            "mock_spec_call mismatch for '{}' — update mock_spec_for() in registry.rs",
             tool.meta.tool_name
         );
     }

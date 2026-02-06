@@ -67,7 +67,7 @@ fn convert_gist_dag(dag: Dag<GistGraphOp>) -> Dag<WorkspaceOp> {
 /// # I/O Interface
 ///
 /// Inputs:
-/// - `repo_path`: String (optional) - Path to repository
+/// - `repo_path`: String (required) - Path to repository
 /// - `base_ref`: String (optional, diff mode only) - Base branch for diff
 ///
 /// Outputs:

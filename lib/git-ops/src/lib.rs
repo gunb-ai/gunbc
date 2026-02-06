@@ -19,7 +19,8 @@
 
 #![deny(dead_code)]
 use gunbc_exec::{
-    optional_str, require_response, ExecError, Executable, OutputMap, TransportResponseExt,
+    optional_str, propagate_skipped, require_response, require_str, ExecError, Executable,
+    OutputMap, TransportResponseExt,
 };
 use gunbc_ir::transport::git::{self, GitRequest};
 use gunbc_ir::Value;
@@ -110,7 +111,7 @@ impl Executable for GitOps {
             // ls-files
             // ================================================================
             GitOps::PrepareLsFiles { extensions } => {
-                let repo_path = optional_str(&inputs, "repo_path").unwrap_or(".");
+                let repo_path = require_str(&inputs, "repo_path")?;
 
                 let mut req = GitRequest::ls_files();
                 if !extensions.is_empty() {
@@ -124,6 +125,9 @@ impl Executable for GitOps {
                 OutputMap::new().request("request", request).ok()
             }
             GitOps::ParseLsFiles => {
+                if let Some(result) = propagate_skipped(&inputs, "response", &["files"]) {
+                    return result;
+                }
                 let response = require_response(&inputs, "response")?;
                 let shell = response.require_shell()?;
 
@@ -144,7 +148,7 @@ impl Executable for GitOps {
                 base_ref,
                 extensions,
             } => {
-                let repo_path = optional_str(&inputs, "repo_path").unwrap_or(".");
+                let repo_path = require_str(&inputs, "repo_path")?;
 
                 // Allow runtime override of base_ref
                 let effective_ref = optional_str(&inputs, "base_ref").unwrap_or(base_ref.as_str());
@@ -161,6 +165,9 @@ impl Executable for GitOps {
                 OutputMap::new().request("request", request).ok()
             }
             GitOps::ParseDiff => {
+                if let Some(result) = propagate_skipped(&inputs, "response", &["diff_files", "stats"]) {
+                    return result;
+                }
                 let response = require_response(&inputs, "response")?;
                 let shell = response.require_shell()?;
 
@@ -187,7 +194,7 @@ impl Executable for GitOps {
                 base_ref,
                 extensions,
             } => {
-                let repo_path = optional_str(&inputs, "repo_path").unwrap_or(".");
+                let repo_path = require_str(&inputs, "repo_path")?;
 
                 let effective_ref = optional_str(&inputs, "base_ref").unwrap_or(base_ref.as_str());
 
@@ -203,6 +210,9 @@ impl Executable for GitOps {
                 OutputMap::new().request("request", request).ok()
             }
             GitOps::ParseDiffNameOnly => {
+                if let Some(result) = propagate_skipped(&inputs, "response", &["files"]) {
+                    return result;
+                }
                 let response = require_response(&inputs, "response")?;
                 let shell = response.require_shell()?;
 
@@ -219,7 +229,7 @@ impl Executable for GitOps {
             // Utilities
             // ================================================================
             GitOps::PrepareCurrentBranch => {
-                let repo_path = optional_str(&inputs, "repo_path").unwrap_or(".");
+                let repo_path = require_str(&inputs, "repo_path")?;
 
                 let mut req = GitRequest::current_branch();
                 if repo_path != "." {
@@ -230,6 +240,9 @@ impl Executable for GitOps {
                 OutputMap::new().request("request", request).ok()
             }
             GitOps::ParseCurrentBranch => {
+                if let Some(result) = propagate_skipped(&inputs, "response", &["branch"]) {
+                    return result;
+                }
                 let response = require_response(&inputs, "response")?;
                 let shell = response.require_shell()?;
 
@@ -249,7 +262,7 @@ impl Executable for GitOps {
             // Remote branches at HEAD
             // ================================================================
             GitOps::PrepareRemoteBranchesAtHead => {
-                let repo_path = optional_str(&inputs, "repo_path").unwrap_or(".");
+                let repo_path = require_str(&inputs, "repo_path")?;
 
                 let mut req = GitRequest::remote_branches_at_head();
                 if repo_path != "." {
@@ -260,6 +273,9 @@ impl Executable for GitOps {
                 OutputMap::new().request("request", request).ok()
             }
             GitOps::ParseRemoteBranchesAtHead => {
+                if let Some(result) = propagate_skipped(&inputs, "response", &["remote_branch"]) {
+                    return result;
+                }
                 let response = require_response(&inputs, "response")?;
                 let shell = response.require_shell()?;
 
@@ -281,7 +297,7 @@ impl Executable for GitOps {
             // rev-list
             // ================================================================
             GitOps::PrepareRevListBefore { before } => {
-                let repo_path = optional_str(&inputs, "repo_path").unwrap_or(".");
+                let repo_path = require_str(&inputs, "repo_path")?;
 
                 let mut req = GitRequest::rev_list_before(before.as_str());
                 if repo_path != "." {
@@ -292,6 +308,9 @@ impl Executable for GitOps {
                 OutputMap::new().request("request", request).ok()
             }
             GitOps::ParseRevListBefore => {
+                if let Some(result) = propagate_skipped(&inputs, "response", &["base_ref"]) {
+                    return result;
+                }
                 let response = require_response(&inputs, "response")?;
                 let shell = response.require_shell()?;
 
@@ -331,7 +350,8 @@ mod tests {
 
     #[test]
     fn test_prepare_ls_files_default() {
-        let inputs = HashMap::new();
+        let mut inputs = HashMap::new();
+        inputs.insert("repo_path".to_string(), Value::Str(".".to_string()));
         let result = GitOps::PrepareLsFiles { extensions: vec![] }
             .execute(inputs)
             .unwrap();
@@ -400,7 +420,8 @@ mod tests {
 
     #[test]
     fn test_prepare_diff_default_ref() {
-        let inputs = HashMap::new();
+        let mut inputs = HashMap::new();
+        inputs.insert("repo_path".to_string(), Value::Str(".".to_string()));
         let op = GitOps::PrepareDiff {
             base_ref: "main".to_string(),
             extensions: vec![],
@@ -419,6 +440,7 @@ mod tests {
     #[test]
     fn test_prepare_diff_runtime_override() {
         let mut inputs = HashMap::new();
+        inputs.insert("repo_path".to_string(), Value::Str(".".to_string()));
         inputs.insert("base_ref".to_string(), Value::Str("develop".to_string()));
 
         let op = GitOps::PrepareDiff {
@@ -473,7 +495,8 @@ diff --git a/src/main.rs b/src/main.rs
 
     #[test]
     fn test_prepare_current_branch() {
-        let inputs = HashMap::new();
+        let mut inputs = HashMap::new();
+        inputs.insert("repo_path".to_string(), Value::Str(".".to_string()));
         let result = GitOps::PrepareCurrentBranch.execute(inputs).unwrap();
 
         match result.get("request").unwrap() {
@@ -504,7 +527,8 @@ diff --git a/src/main.rs b/src/main.rs
 
     #[test]
     fn test_prepare_remote_branches_at_head() {
-        let inputs = HashMap::new();
+        let mut inputs = HashMap::new();
+        inputs.insert("repo_path".to_string(), Value::Str(".".to_string()));
         let result = GitOps::PrepareRemoteBranchesAtHead.execute(inputs).unwrap();
 
         match result.get("request").unwrap() {
@@ -561,7 +585,8 @@ diff --git a/src/main.rs b/src/main.rs
 
     #[test]
     fn test_prepare_rev_list_before() {
-        let inputs = HashMap::new();
+        let mut inputs = HashMap::new();
+        inputs.insert("repo_path".to_string(), Value::Str(".".to_string()));
         let op = GitOps::PrepareRevListBefore {
             before: "7 days ago".to_string(),
         };

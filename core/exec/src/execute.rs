@@ -5,9 +5,10 @@
 //! DryRun mode intercepts **transport execution nodes** (nodes that consume
 //! `TransportRequest` values), **environment nodes** (nodes that emit
 //! resource outputs like `ToolHandle`, `FilesystemHandle`, `Timestamp`,
-//! `Credential`, or `Platform`), and **tool consumer nodes** (nodes that
-//! consume `ToolHandle`). Intercepted nodes require **explicit mocks for every
-//! output port** — there is no default fallback.
+//! `Credential`, or `Platform`), **tool consumer nodes** (nodes that
+//! consume `ToolHandle`), and **nodes with explicit mocks for all outputs**.
+//! Intercepted nodes require **explicit mocks for every output port** — there
+//! is no default fallback.
 //!
 //! > "World I/O is performed only by transport executor nodes"
 //! > "DryRun intercepts transport execution nodes, not boundary outputs"
@@ -392,8 +393,17 @@ pub fn execute_single_node<T: Executable + Clone>(
     let is_tool_env = is_tool_env_node(node);
     let is_resource_env = is_resource_env_node(node);
     let is_tool_consumer = consumes_tool_handle(node);
+    let has_full_mock = match &mode {
+        ExecutionMode::DryRun(m) => has_full_mock_for_node(node, m),
+        ExecutionMode::Simulate(config) => has_full_mock_for_node(node, &config.boundary_mocks),
+        _ => false,
+    };
     let should_intercept =
-        (is_transport_executor || is_tool_env || is_resource_env || is_tool_consumer)
+        (is_transport_executor
+            || is_tool_env
+            || is_resource_env
+            || is_tool_consumer
+            || has_full_mock)
             && matches!(mode, ExecutionMode::DryRun(_) | ExecutionMode::Simulate(_));
 
     if should_intercept {
@@ -676,8 +686,19 @@ fn execute_flat<T: Executable>(
             let is_tool_env = is_tool_env_node(node);
             let is_resource_env = is_resource_env_node(node);
             let is_tool_consumer = consumes_tool_handle(node);
+            let has_full_mock = match mode {
+                ExecutionMode::DryRun(ref m) => has_full_mock_for_node(node, m),
+                ExecutionMode::Simulate(ref config) => {
+                    has_full_mock_for_node(node, &config.boundary_mocks)
+                }
+                _ => false,
+            };
             let should_intercept =
-                (is_transport_executor || is_tool_env || is_resource_env || is_tool_consumer)
+                (is_transport_executor
+                    || is_tool_env
+                    || is_resource_env
+                    || is_tool_consumer
+                    || has_full_mock)
                     && matches!(mode, ExecutionMode::DryRun(_) | ExecutionMode::Simulate(_));
 
             if should_intercept {
@@ -843,6 +864,20 @@ fn should_skip_node<T>(node: &Node<T>, inputs: &HashMap<String, Value>) -> bool 
         }
     }
     false
+}
+
+/// Check if explicit mocks cover all output ports for a node.
+///
+/// This allows DryRun/Simulate to intercept nodes that are not transport/tool
+/// nodes but still have full mock coverage (e.g., self-acquiring CLI tool nodes).
+fn has_full_mock_for_node<T>(node: &Node<T>, mocks: &BoundaryMocks) -> bool {
+    if node.outputs.is_empty() {
+        return false;
+    }
+
+    node.outputs
+        .iter()
+        .all(|port| mocks.has_mock(&node.id, &port.name))
 }
 
 /// Check if a node is a transport execution node.

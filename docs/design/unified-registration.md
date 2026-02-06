@@ -40,7 +40,7 @@ at compile time.
 pub fn all_tools() -> Vec<ToolDef> {
     vec![
         ToolDef::new("gunbc-gist", "gist", "Snapshot tool", GraphBuilderId::Gist, "")
-            .entrypoint(CliEntrypoint::new("repo_path", "String").short('r').default("."))
+            .entrypoint(CliEntrypoint::new("repo_path", "String").short('r'))
             .entrypoint(...)
             .boundary("fs_env", vec![...])
             .invocation(CargoInvocation::composed("gist", "dag")),
@@ -216,7 +216,7 @@ Following the testgen pattern exactly:
 pub fn gist_tool_def() -> ToolConfig {
     ToolConfig::new()
         .entrypoint(CliEntrypoint::new("repo_path", "String")
-            .short('r').default(".").help("Repository path"))
+            .short('r').help("Repository path"))
         .entrypoint(CliEntrypoint::new("extensions", "String")
             .with_cardinality(Cardinality::ZERO_OR_MORE))
 }

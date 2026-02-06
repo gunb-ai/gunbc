@@ -17,17 +17,17 @@ fn main() {
     let args: Vec<String> = env::args().collect();
 
     // Parse arguments
-    let mut output_path = "Makefile".to_string();
+    let mut path = "Makefile".to_string();
     let mut dry_run = false;
     let mut check = false;
 
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
-            "-o" | "--output-path" => {
+            "-o" | "--path" => {
                 i += 1;
                 if i < args.len() {
-                    output_path = args[i].clone();
+                    path = args[i].clone();
                 }
             }
             "-n" | "--dry-run" => dry_run = true,
@@ -55,11 +55,11 @@ fn main() {
     let entrypoints = detect_entrypoints(&dag);
     for (node_id, port_name, _) in &entrypoints.entrypoint_ports {
         match port_name.0.as_str() {
-            "output_path" | "path" => {
+            "path" => {
                 input_mocks.set_input(
                     node_id.0.clone(),
                     port_name.0.clone(),
-                    Value::Str(output_path.clone()),
+                    Value::Str(path.clone()),
                 );
             }
             "check_mode" => {
@@ -83,7 +83,7 @@ fn main() {
             "execute_read",
             "response",
             Value::Response(TransportResponse::File(FileResponse {
-                path: output_path.clone(),
+                path: path.clone(),
                 operation: FileOp::Read,
                 success: true,
                 content: Some("<DRY-RUN>".to_string()),
@@ -95,7 +95,7 @@ fn main() {
             "execute_write",
             "response",
             Value::Response(TransportResponse::File(FileResponse {
-                path: output_path.clone(),
+                path: path.clone(),
                 operation: FileOp::Write,
                 success: true,
                 content: Some("<DRY-RUN>".to_string()),
@@ -142,7 +142,7 @@ fn main() {
                     println!("makegen --check: 1 file up to date");
                 } else {
                     eprintln!("makegen --check: drift detected");
-                    eprintln!("  DRIFT  {}", output_path);
+                    eprintln!("  DRIFT  {}", path);
                     process::exit(1);
                 }
             }
@@ -157,7 +157,7 @@ fn main() {
 
         // Print header
         println!("makegen");
-        println!("  output_path: {}", output_path);
+        println!("  path: {}", path);
         println!(
             "  mode: {}",
             if dry_run { "dry-run" } else { "real" }
@@ -176,7 +176,7 @@ fn print_help() {
     println!("    makegen [OPTIONS]");
     println!();
     println!("OPTIONS:");
-    println!("    -o, --output-path <VAL>     Output Makefile path");
+    println!("    -o, --path <VAL>            Output Makefile path");
     println!("    -n, --dry-run        Don't perform actual I/O");
     println!("        --check          Verify generated files match disk");
     println!("    -h, --help           Print this help");

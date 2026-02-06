@@ -25,7 +25,7 @@
 //!
 //! # CLI Tool Mocks
 //!
-//! - `clippy_lint`: Clippy linting (uses ToolHandle from env)
+//! - `clippy_lint`: Clippy linting (self-acquiring)
 //!
 //! # Resource Simulations
 //!
@@ -54,9 +54,14 @@ pub fn ci_mock_spec() -> MockSpec {
     let dag = build_ci_graph().expect("ci graph should build");
 
     // Extract typed requirements and fill transport mocks
-    // All mocks (including clippy_lint) are now handled by with_ci_typed_mocks
-    with_ci_typed_mocks(extract_mock_requirements(&dag, "ci"))
-        .build_unchecked()
+    // All transport mocks are handled by with_ci_typed_mocks
+    add_clippy_lint_mocks(
+        with_ci_typed_mocks(extract_mock_requirements(&dag, "ci")).build_unchecked(),
+        true,
+        CLIPPY_STDOUT_OK,
+        "",
+        false,
+    )
         // Resources
         .resource_lock("cargo:build")
         .resource_lock("cargo:test")
@@ -318,6 +323,8 @@ pub fn ci_mock_spec() -> MockSpec {
         )
         // Primitive nodes — tested in their own crates
         .skip_node_example("prepare_deps_exists")
+        // I/O nodes — self-acquiring, tested via integration
+        .skip_node_example("clippy_lint")
 }
 
 /// Mock spec for testing test failure.
@@ -327,10 +334,8 @@ pub fn ci_mock_spec() -> MockSpec {
 pub fn ci_mock_spec_test_fails() -> MockSpec {
     let dag = build_ci_graph().expect("ci graph should build");
 
-    extract_mock_requirements(&dag, "ci")
-        // Resource: runner_env provides tool handles
-        .boundary("runner_env", "tool:clippy", ToolHandle::mock(&CLIPPY))
-        .expect("runner_env tool:clippy should match type")
+    add_clippy_lint_mocks(
+        extract_mock_requirements(&dag, "ci")
         // Transport: execute_deps_exists (success)
         .transport_response(
             "execute_deps_exists",
@@ -433,19 +438,15 @@ pub fn ci_mock_spec_test_fails() -> MockSpec {
         .expect("execute_verify_check skip should match type")
         .boundary_str("execute_verify_check", "skip_reason", "")
         .expect("execute_verify_check skip_reason should match type")
-        // CliTool: clippy_lint (success)
-        .boundary_bool("clippy_lint", "success", true)
-        .expect("clippy_lint success should match type")
-        .boundary_str("clippy_lint", "stdout", "Checking gunbc v0.1.0\n    Finished dev")
-        .expect("clippy_lint stdout should match type")
-        .boundary_str("clippy_lint", "stderr", "")
-        .expect("clippy_lint stderr should match type")
-        .boundary_bool("clippy_lint", "skip", false)
-        .expect("clippy_lint skip should match type")
-        .build_unchecked()
-        .resource_lock("cargo:build")
-        .resource_lock("cargo:test")
-        .resource_lock("cargo:clippy")
+        .build_unchecked(),
+        true,
+        CLIPPY_STDOUT_OK,
+        "",
+        false,
+    )
+    .resource_lock("cargo:build")
+    .resource_lock("cargo:test")
+    .resource_lock("cargo:clippy")
 }
 
 /// Mock spec for testing build failure.
@@ -455,10 +456,8 @@ pub fn ci_mock_spec_test_fails() -> MockSpec {
 pub fn ci_mock_spec_build_fails() -> MockSpec {
     let dag = build_ci_graph().expect("ci graph should build");
 
-    extract_mock_requirements(&dag, "ci")
-        // Resource: runner_env provides tool handles
-        .boundary("runner_env", "tool:clippy", ToolHandle::mock(&CLIPPY))
-        .expect("runner_env tool:clippy should match type")
+    add_clippy_lint_mocks(
+        extract_mock_requirements(&dag, "ci")
         // Transport: execute_deps_exists (success)
         .transport_response(
             "execute_deps_exists",
@@ -555,17 +554,13 @@ pub fn ci_mock_spec_build_fails() -> MockSpec {
         .expect("execute_verify_check skip should match type")
         .boundary_str("execute_verify_check", "skip_reason", "")
         .expect("execute_verify_check skip_reason should match type")
-        // CliTool: clippy_lint (skipped due to build failure)
-        .boundary_bool("clippy_lint", "success", false)
-        .expect("clippy_lint success should match type")
-        .boundary_str("clippy_lint", "stdout", "")
-        .expect("clippy_lint stdout should match type")
-        .boundary_str("clippy_lint", "stderr", "")
-        .expect("clippy_lint stderr should match type")
-        .boundary_bool("clippy_lint", "skip", true)
-        .expect("clippy_lint skip should match type")
-        .build_unchecked()
-        .resource_lock("cargo:build")
+        .build_unchecked(),
+        false,
+        "",
+        "",
+        true,
+    )
+    .resource_lock("cargo:build")
 }
 
 /// Mock spec for testing prep/codegen failure.
@@ -575,10 +570,8 @@ pub fn ci_mock_spec_build_fails() -> MockSpec {
 pub fn ci_mock_spec_prep_fails() -> MockSpec {
     let dag = build_ci_graph().expect("ci graph should build");
 
-    extract_mock_requirements(&dag, "ci")
-        // Resource: runner_env provides tool handles
-        .boundary("runner_env", "tool:clippy", ToolHandle::mock(&CLIPPY))
-        .expect("runner_env tool:clippy should match type")
+    add_clippy_lint_mocks(
+        extract_mock_requirements(&dag, "ci")
         // Transport: execute_deps_exists (success)
         .transport_response(
             "execute_deps_exists",
@@ -656,16 +649,12 @@ pub fn ci_mock_spec_prep_fails() -> MockSpec {
         .expect("execute_verify_check skip should match type")
         .boundary_str("execute_verify_check", "skip_reason", "Prep failed")
         .expect("execute_verify_check skip_reason should match type")
-        // CliTool: clippy_lint (skipped)
-        .boundary_bool("clippy_lint", "success", false)
-        .expect("clippy_lint success should match type")
-        .boundary_str("clippy_lint", "stdout", "")
-        .expect("clippy_lint stdout should match type")
-        .boundary_str("clippy_lint", "stderr", "")
-        .expect("clippy_lint stderr should match type")
-        .boundary_bool("clippy_lint", "skip", true)
-        .expect("clippy_lint skip should match type")
-        .build_unchecked()
+        .build_unchecked(),
+        false,
+        "",
+        "",
+        true,
+    )
 }
 
 /// Mock spec for testing lint failure.
@@ -675,10 +664,8 @@ pub fn ci_mock_spec_prep_fails() -> MockSpec {
 pub fn ci_mock_spec_lint_fails() -> MockSpec {
     let dag = build_ci_graph().expect("ci graph should build");
 
-    extract_mock_requirements(&dag, "ci")
-        // Resource: runner_env provides tool handles
-        .boundary("runner_env", "tool:clippy", ToolHandle::mock(&CLIPPY))
-        .expect("runner_env tool:clippy should match type")
+    add_clippy_lint_mocks(
+        extract_mock_requirements(&dag, "ci")
         // Transport: execute_deps_exists (success)
         .transport_response(
             "execute_deps_exists",
@@ -780,19 +767,15 @@ pub fn ci_mock_spec_lint_fails() -> MockSpec {
         .expect("execute_verify_check skip should match type")
         .boundary_str("execute_verify_check", "skip_reason", "")
         .expect("execute_verify_check skip_reason should match type")
-        // CliTool: clippy_lint (FAILS)
-        .boundary_bool("clippy_lint", "success", false)
-        .expect("clippy_lint success should match type")
-        .boundary_str("clippy_lint", "stdout", "")
-        .expect("clippy_lint stdout should match type")
-        .boundary_str("clippy_lint", "stderr", "error: unused variable `x`\n  --> src/main.rs:3:9\n   |\n3  |     let x = 1;\n   |         ^ help: if this is intentional, prefix it with an underscore: `_x`\n   |\n   = note: `-D unused-variables` implied by `-D warnings`")
-        .expect("clippy_lint stderr should match type")
-        .boundary_bool("clippy_lint", "skip", false)
-        .expect("clippy_lint skip should match type")
-        .build_unchecked()
-        .resource_lock("cargo:build")
-        .resource_lock("cargo:test")
-        .resource_lock("cargo:clippy")
+        .build_unchecked(),
+        false,
+        "",
+        "error: unused variable `x`\n  --> src/main.rs:3:9\n   |\n3  |     let x = 1;\n   |         ^ help: if this is intentional, prefix it with an underscore: `_x`\n   |\n   = note: `-D unused-variables` implied by `-D warnings`",
+        false,
+    )
+    .resource_lock("cargo:build")
+    .resource_lock("cargo:test")
+    .resource_lock("cargo:clippy")
 }
 
 /// Mock spec with build lock contention.
@@ -800,24 +783,41 @@ pub fn ci_mock_spec_lint_fails() -> MockSpec {
 pub fn ci_mock_spec_build_contended() -> MockSpec {
     let dag = build_ci_graph().expect("ci graph should build");
 
-    // All mocks (including clippy_lint) are handled by with_ci_typed_mocks
-    with_ci_typed_mocks(extract_mock_requirements(&dag, "ci"))
-        .build_unchecked()
-        .resource_lock_fails("cargo:build", "Another cargo build is in progress")
+    // All transport mocks are handled by with_ci_typed_mocks
+    add_clippy_lint_mocks(
+        with_ci_typed_mocks(extract_mock_requirements(&dag, "ci")).build_unchecked(),
+        true,
+        CLIPPY_STDOUT_OK,
+        "",
+        false,
+    )
+    .resource_lock_fails("cargo:build", "Another cargo build is in progress")
+}
+
+const CLIPPY_STDOUT_OK: &str = "Checking gunbc v0.1.0\n    Finished dev";
+
+fn add_clippy_lint_mocks(
+    spec: MockSpec,
+    success: bool,
+    stdout: &str,
+    stderr: &str,
+    skip: bool,
+) -> MockSpec {
+    spec.boundary("clippy_lint", "success", Value::Bool(success))
+        .boundary("clippy_lint", "stdout", Value::Str(stdout.to_string()))
+        .boundary("clippy_lint", "stderr", Value::Str(stderr.to_string()))
+        .boundary("clippy_lint", "skip", Value::Bool(skip))
 }
 
 /// Helper to fill common CI transport mocks using typed builder.
 ///
-/// This fills all the required slots for transport, resource, and CLI tool nodes
-/// in the CI graph. Includes clippy_lint which is now detected as a CliTool node
-/// (has ToolHandle input).
+/// This fills all the required slots for transport nodes in the CI graph.
+/// clippy_lint mocks are added after build since it's self-acquiring and
+/// not detected as a boundary by the typed extractor.
 fn with_ci_typed_mocks(
     reqs: gunbc_test::MockRequirements,
 ) -> gunbc_test::MockRequirements {
     reqs
-        // Resource: runner_env provides tool handles
-        .boundary("runner_env", "tool:clippy", ToolHandle::mock(&CLIPPY))
-        .expect("runner_env tool:clippy should match type")
         // Transport: execute_deps_exists (check deps.toml)
         .transport_response(
             "execute_deps_exists",
@@ -919,15 +919,6 @@ fn with_ci_typed_mocks(
         .expect("execute_verify_check skip should match type")
         .boundary_str("execute_verify_check", "skip_reason", "")
         .expect("execute_verify_check skip_reason should match type")
-        // CliTool: clippy_lint (succeeds) - now detected by extract_mock_requirements
-        .boundary_bool("clippy_lint", "success", true)
-        .expect("clippy_lint success should match type")
-        .boundary_str("clippy_lint", "stdout", "Checking gunbc v0.1.0\n    Finished dev")
-        .expect("clippy_lint stdout should match type")
-        .boundary_str("clippy_lint", "stderr", "")
-        .expect("clippy_lint stderr should match type")
-        .boundary_bool("clippy_lint", "skip", false)
-        .expect("clippy_lint skip should match type")
 }
 
 #[cfg(test)]

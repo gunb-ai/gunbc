@@ -10,7 +10,7 @@ use std::collections::HashMap;
 // Domain ops - local (repo-specific)
 use crate::bootstrap::BootstrapOp;
 use crate::codegen::CodegenOp;
-use crate::ci::{CIOp, EnvOp};
+use crate::ci::CIOp;
 use crate::makegen::MakegenOp;
 
 // Domain ops - external (general tools)
@@ -56,8 +56,6 @@ pub enum WorkspaceOp {
     Bootstrap(BootstrapOp),
     /// Clippy/CLI tool operations
     Clippy(CliToolOp),
-    /// Environment node that provides tools (I/O boundary for tool acquisition)
-    Env(EnvOp),
 
     // ========================================================================
     // Language Ops (from Languages DAG)
@@ -94,8 +92,6 @@ impl Executable for WorkspaceOp {
             WorkspaceOp::Bootstrap(op) => op.execute(inputs),
             // CliToolOp execution lives in the transport layer
             WorkspaceOp::Clippy(op) => execute_cli_tool_op(op).exec_context("CliToolOp error"),
-            // Env node does tool acquisition
-            WorkspaceOp::Env(op) => op.execute(inputs),
             // Language ops
             WorkspaceOp::Language(_op) => {
                 // LanguageOp nodes are mostly config nodes - return empty for now

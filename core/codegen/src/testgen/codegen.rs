@@ -2591,7 +2591,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                     "result",
                     Expr::call(
                         "assert_boundary_mockable",
-                        vec![Expr::var("dag").ref_of(), mocks_expr],
+                        vec![Expr::var("dag").ref_of(), mocks_expr.clone()],
                     ),
                 ),
                 Stmt::Expr(Expr::call(
@@ -2606,6 +2606,23 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
         });
 
         for boundary_node in &analysis.boundaries.boundary_nodes {
+            let total_outputs = analysis
+                .port_cardinalities
+                .iter()
+                .filter(|p| p.node_id == boundary_node.0 && !p.is_input)
+                .count();
+            let boundary_outputs = analysis
+                .boundaries
+                .boundary_ports
+                .iter()
+                .filter(|(n, _)| n == boundary_node)
+                .count();
+            // Only generate per-node boundary tests when all outputs are boundaries.
+            // Mixed nodes (some outputs wired downstream) require full mocks to
+            // intercept and can break downstream execution.
+            if boundary_outputs != total_outputs {
+                continue;
+            }
             let test_name = format!(
                 "test_boundary_{}_mockable",
                 NamingCase::SnakeCase.apply(&boundary_node.0)
@@ -2626,7 +2643,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                     message: format!("{} should be a boundary", node_name),
                 }),
                 Stmt::Blank,
-                Stmt::let_mut("mocks", Expr::call("BoundaryMocks::new", vec![])),
+                Stmt::let_mut("mocks", mocks_expr.clone()),
             ];
 
             for (node_id, port_name) in &analysis.boundaries.boundary_ports {
@@ -3298,9 +3315,8 @@ fn mock_element_expr(type_id: &str, index: Option<u32>) -> ValueExpr {
         "Path" => ValueExpr::Str("/tmp/mock".to_string()),
         "Platform" => ValueExpr::Str("linux".to_string()),
         "Error" => ValueExpr::Str("<ERROR>".to_string()),
-        "OptionalString" => ValueExpr::Str("<MOCK>".to_string()),
-        "StringList" => ValueExpr::List(vec![ValueExpr::Str("<MOCK>".to_string())]),
-        "NonEmptyStringList" => ValueExpr::List(vec![ValueExpr::Str("<MOCK>".to_string())]),
+        // "OptionalString", "StringList", "NonEmptyStringList" removed:
+        // cardinality now lives in Port.cardinality, not in type_id.
         "Tier" => ValueExpr::Str("Ascii".to_string()),
         "Unknown" => ValueExpr::Json(JsonValue::Null),
         "ToolId" => ValueExpr::Str("clippy".to_string()),

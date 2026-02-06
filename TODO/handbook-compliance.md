@@ -193,13 +193,13 @@ Implemented in `core/ir/src/patterns/transport_triplet.rs`:
 - CI graph reduced from ~1011 to ~830 lines
 - Generic `DagBuilder<T>` — reusable across all graph builders
 
-**C2. Replace CI lint with Clippy SubDag** ~~(small effort)~~ **DEFERRED**
+**C2. Remove CI EnvOp (self-acquiring lint)** ~~(small effort)~~ **DONE**
 
-Investigation revealed this is not a clean replacement. The CI lint stage
-uses `CliToolOp` with a `ToolHandle` from the env node — fundamentally
-different from `build_clippy_upsert()` which creates a self-contained
-SubDag that re-acquires the tool. Forcing this into a SubDag would add
-adapter complexity, not reduce it.
+EnvOp removed; `CliToolOp` self-acquires via `upsert_tool_with()` before
+running. The `runner_env` node, `Env(EnvOp)` variant, and `env.rs` module
+are deleted. CI graph has -1 node, -1 edge. The defensive check/install
+behavior is preserved — it just happens inside the `CliTool` execution
+handler instead of a separate env node.
 
 **C3. LoopBuilder for repeated iteration patterns** (medium effort)
 
@@ -299,7 +299,7 @@ causes a test failure.
 
 | ID | Item | Effort | Impact | Status |
 |----|------|--------|--------|--------|
-| C2 | Replace CI lint with Clippy SubDag | M | Removes one bespoke stage | **DEFERRED** — lint uses CliToolOp with ToolHandle from env, not a clean SubDag replacement |
+| C2 | Remove CI EnvOp (self-acquiring lint) | M | Removes CI-only acquisition pattern | **DONE** — EnvOp removed; CliToolOp self-acquires via `upsert_tool_with()`; -1 node, -1 edge |
 | E1 | CLI gen → IR + renderer | L | Proves unified emission pattern | **DONE** — `cli_gen.rs` uses `Item::Use(Import)` + `Item::Fn(FnDef)` + `Expr::RawCode`; `CliBoundary` removed (dead code); both standard and step modes use proper IR |
 | C3 | LoopBuilder for gist/deps iteration | M | Replaces shell `sh -c` hacks | **FOUNDATION** — `Pattern(PatternOp)` variant + `From<PatternOp>` added to `GistGraphOp`; `LoopBuilder<GistGraphOp>` validated in test; actual graph wiring deferred (requires executor loop iteration) |
 

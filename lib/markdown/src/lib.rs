@@ -16,7 +16,9 @@
 //! ```
 
 #![deny(dead_code)]
-use gunbc_exec::{optional_str, require_map_str_str, ExecError, Executable, OutputMap};
+use gunbc_exec::{
+    optional_str, propagate_skipped, require_map_str_str, ExecError, Executable, OutputMap,
+};
 use gunbc_ir::language::markdown_language_id;
 use gunbc_ir::Value;
 use std::collections::{BTreeMap, HashMap};
@@ -34,6 +36,9 @@ impl Executable for MarkdownOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         match self {
             MarkdownOp::RenderCodeSnapshot => {
+                if let Some(result) = propagate_skipped(&inputs, "contents", &["markdown"]) {
+                    return result;
+                }
                 let contents = require_map_str_str(&inputs, "contents")?;
 
                 let markdown = render_code_snapshot(&contents);
@@ -41,6 +46,9 @@ impl Executable for MarkdownOp {
                 OutputMap::new().str("markdown", markdown).ok()
             }
             MarkdownOp::RenderDiffSnapshot => {
+                if let Some(result) = propagate_skipped(&inputs, "diff_files", &["markdown"]) {
+                    return result;
+                }
                 let diff_files = require_map_str_str(&inputs, "diff_files")?;
 
                 let stats = optional_str(&inputs, "stats").unwrap_or("");

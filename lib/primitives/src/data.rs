@@ -104,14 +104,48 @@ impl Executable for FormatOp {
 
         let values = optional_map_str_str(&inputs, "values").unwrap_or_default();
 
-        let mut result = template.to_string();
-        for (key, value) in &values {
-            let placeholder = format!("{{{}}}", key);
-            result = result.replace(&placeholder, value);
-        }
+        let result = format_template(template, &values);
 
         OutputMap::new().str("output", result).ok()
     }
+}
+
+fn format_template(template: &str, values: &std::collections::BTreeMap<String, String>) -> String {
+    let mut out = String::with_capacity(template.len());
+    let mut chars = template.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        if ch == '{' {
+            let mut key = String::new();
+            let mut found_end = false;
+
+            for next in chars.by_ref() {
+                if next == '}' {
+                    found_end = true;
+                    break;
+                }
+                key.push(next);
+            }
+
+            if found_end {
+                if let Some(value) = values.get(&key) {
+                    out.push_str(value);
+                } else {
+                    out.push('{');
+                    out.push_str(&key);
+                    out.push('}');
+                }
+            } else {
+                // No closing brace; treat as literal.
+                out.push('{');
+                out.push_str(&key);
+            }
+        } else {
+            out.push(ch);
+        }
+    }
+
+    out
 }
 
 /// Concatenate a list of strings with a separator.
@@ -339,6 +373,20 @@ mod tests {
             result.get("output"),
             Some(&Value::Str("Hello, world!".to_string()))
         );
+    }
+
+    #[test]
+    fn test_format_no_cascade() {
+        let op = FormatOp;
+        let mut inputs = HashMap::new();
+        inputs.insert("template".to_string(), Value::Str("{a}".to_string()));
+        let mut values = std::collections::BTreeMap::new();
+        values.insert("a".to_string(), "{b}".to_string());
+        values.insert("b".to_string(), "world".to_string());
+        inputs.insert("values".to_string(), Value::str_map(values));
+
+        let result = op.execute(inputs).unwrap();
+        assert_eq!(result.get("output"), Some(&Value::Str("{b}".to_string())));
     }
 
     #[test]

@@ -4,10 +4,10 @@
 // DO NOT EDIT - regenerate with: make testgen
 // Obligations: 53 obligations (15 discharged, 38 testable: A=16, B=13, C=9, D=0)
 // Proven by construction: acyclicity, type compatibility, cardinality satisfaction.
-// Content-Hash: 150656f996183cbdc0d58e9b7c363c8bc4acb43b5be5b6dfd878785ed5cd89c4
+// Content-Hash: 75c6c098c65b9dc50c7aceaa3ecb049acaa577b0c236b827db2e0dd084b3900b
 
 
-use gunbc_exec::{execute_with_mode, lower, BoundaryMocks, ExecutionMode};
+use gunbc_exec::{execute_with_mode, lower, ExecutionMode};
 use gunbc_ir::{detect_boundaries, Value};
 use gunbc_test::{assert_boundary_mockable, MockSpec};
 use gunbc_test::{apply_window_inputs, assert_window_outputs, window_subdag, Window};
@@ -282,7 +282,7 @@ vec! [], false).unwrap();
     let boundaries = detect_boundaries(&dag);
     assert!(boundaries.is_boundary_node(&"parse_gist_response".into()), "parse_gist_response should be a boundary");
 
-    let mut mocks = BoundaryMocks::new();
+    let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("parse_gist_response", "url", Value::Str("https://gist.github.com/mock/abc123def456".to_string()));
 
     let log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).unwrap();

@@ -11,8 +11,8 @@
 //! - Gist creation: PrepareRequest -> Execute
 
 use gunbc_exec::{
-    optional_str, optional_str_list, require_response, require_str, require_str_list, ExecError,
-    Executable, OutputMap, TransportResponseExt,
+    optional_str_list, propagate_skipped, require_response, require_str, require_str_list,
+    ExecError, Executable, OutputMap, TransportResponseExt,
 };
 use gunbc_ir::transport::{ShellRequest, TransportRequest, TransportResponse};
 use gunbc_ir::patterns::PatternOp;
@@ -169,16 +169,19 @@ const FILE_MARKER_END: &str = "===";
 ///
 /// Inputs:
 /// - files: list of file paths to read
-/// - repo_path: optional base path (defaults to ".")
+/// - repo_path: base path
 ///
 /// Outputs:
 /// - request: TransportRequest (shell command to read files)
 fn execute_prepare_read_files(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
+    if let Some(result) = propagate_skipped(&inputs, "files", &["request"]) {
+        return result;
+    }
     let files = require_str_list(&inputs, "files")?;
 
-    let repo_path = optional_str(&inputs, "repo_path").unwrap_or(".");
+    let repo_path = require_str(&inputs, "repo_path")?;
 
     // Build full paths
     let full_paths: Vec<String> = files
@@ -233,6 +236,9 @@ fn execute_prepare_read_files(
 fn execute_parse_read_files(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
+    if let Some(result) = propagate_skipped(&inputs, "response", &["contents"]) {
+        return result;
+    }
     let response = require_response(&inputs, "response")?;
     let shell = response.require_shell()?;
     let stdout = shell.stdout.clone();
@@ -292,7 +298,7 @@ fn execute_parse_read_files(
 ///
 /// Inputs:
 /// - filename: the file to read
-/// - repo_path: optional base path (defaults to ".")
+/// - repo_path: base path
 ///
 /// Outputs:
 /// - request: TransportRequest (shell command to read one file)
@@ -302,7 +308,7 @@ fn execute_prepare_read_file(
 ) -> Result<HashMap<String, Value>, ExecError> {
     let filename = require_str(&inputs, "filename")?;
 
-    let repo_path = optional_str(&inputs, "repo_path").unwrap_or(".");
+    let repo_path = require_str(&inputs, "repo_path")?;
 
     // Build full path
     let full_path = if repo_path == "." {
@@ -340,6 +346,9 @@ fn execute_prepare_read_file(
 fn execute_parse_read_file(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
+    if let Some(result) = propagate_skipped(&inputs, "response", &["filename", "content"]) {
+        return result;
+    }
     let response = require_response(&inputs, "response")?;
     let filename = require_str(&inputs, "filename")?;
 
@@ -467,11 +476,11 @@ pub fn build_read_file_body_dag() -> Dag<GistGraphOp> {
 /// Get the declared signature for the gist workflow.
 ///
 /// The signature adapts to the mode:
-/// - Snapshot: `(repo_path?) → url`
-/// - Diff: `(repo_path?, base_ref?) → url`
+/// - Snapshot: `(repo_path) → url`
+/// - Diff: `(repo_path, base_ref?) → url`
 pub fn gist_signature(mode: &GistMode) -> WorkflowSignature {
     let mut sig = WorkflowSignature::new()
-        .with_input("repo_path", "String", Cardinality::ZERO_OR_ONE)
+        .with_input("repo_path", "String", Cardinality::ONE)
         .with_output("url", "String", Cardinality::ONE);
 
     // base_ref is an entrypoint in snapshot and diff modes (unwired optional on
@@ -551,7 +560,7 @@ pub fn build_gist_graph(
     // Node: PrepareCurrentBranch (PURE - builds git rev-parse request)
     let prepare_current_branch = builder.add_root_node(Node::opaque(
         "prepare_current_branch",
-        vec![optional("repo_path", "String")],
+        vec![port("repo_path", "String")],
         vec![port("request", "TransportRequest")],
         GistGraphOp::Git(GitOps::PrepareCurrentBranch),
     ))?;
@@ -598,7 +607,7 @@ pub fn build_gist_graph(
     // Node: PrepareRemoteBranches (PURE - builds git branch -r --points-at HEAD request)
     let prepare_remote_branches = builder.add_root_node(Node::opaque(
         "prepare_remote_branches",
-        vec![optional("repo_path", "String")],
+        vec![port("repo_path", "String")],
         vec![port("request", "TransportRequest")],
         GistGraphOp::Git(GitOps::PrepareRemoteBranchesAtHead),
     ))?;
@@ -736,7 +745,7 @@ fn build_snapshot_acquire(
     // Node: PrepareLsFiles (PURE - extensions pushed into git pathspec)
     let prepare_list_files = builder.add_root_node(Node::opaque(
         "prepare_list_files",
-        vec![optional("repo_path", "String")],
+        vec![port("repo_path", "String")],
         vec![port("request", "TransportRequest")],
         GistGraphOp::Git(GitOps::PrepareLsFiles { extensions }),
     ))?;
@@ -767,7 +776,7 @@ fn build_snapshot_acquire(
     let prepare_read_files = builder.add_node_after(
         Node::opaque(
             "prepare_read_files",
-            vec![list("files", "String"), optional("repo_path", "String")],
+            vec![list("files", "String"), port("repo_path", "String")],
             vec![port("request", "TransportRequest")],
             GistGraphOp::PrepareReadFiles,
         ),
@@ -848,7 +857,7 @@ fn build_diff_acquire(
     let prepare_diff = builder.add_root_node(Node::opaque(
         "prepare_diff",
         vec![
-            optional("repo_path", "String"),
+            port("repo_path", "String"),
             optional("base_ref", "String"),
         ],
         vec![port("request", "TransportRequest")],
@@ -928,7 +937,7 @@ fn build_recent_acquire(
     // Node: PrepareRevListBefore (PURE)
     let prepare_rev_list = builder.add_root_node(Node::opaque(
         "prepare_rev_list",
-        vec![optional("repo_path", "String")],
+        vec![port("repo_path", "String")],
         vec![port("request", "TransportRequest")],
         GistGraphOp::Git(GitOps::PrepareRevListBefore {
             before: "3 days ago".to_string(),
@@ -976,7 +985,7 @@ fn build_recent_acquire(
         Node::opaque(
             "prepare_diff",
             vec![
-                optional("repo_path", "String"),
+                port("repo_path", "String"),
                 optional("base_ref", "String"),
             ],
             vec![port("request", "TransportRequest")],

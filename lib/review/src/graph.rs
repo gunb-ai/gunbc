@@ -426,7 +426,7 @@ pub fn build_diff_review_graph() -> Dag<ReviewGraphOp> {
 ///
 /// ## Entrypoints (unconnected inputs):
 /// - `prepare_diff.base_ref` (optional): String — base ref override
-/// - `prepare_diff.repo_path` (optional): String — repo path override
+/// - `prepare_diff.repo_path` (required): String — repo path
 ///
 /// ## Boundaries (unconnected outputs):
 /// - `parse_response.output`: Json — ReviewOutput
@@ -480,7 +480,7 @@ pub fn build_diff_review_graph_with(config: ReviewPipelineConfig) -> Dag<ReviewG
         "prepare_diff",
         vec![
             optional("base_ref", "String"),
-            optional("repo_path", "String"),
+            port("repo_path", "String"),
         ],
         vec![port("request", "TransportRequest")],
         ReviewGraphOp::Git(GitOps::PrepareDiff {
@@ -1009,7 +1009,7 @@ mod tests {
         let dag = build_diff_review_graph();
         let entrypoints = detect_entrypoints(&dag);
 
-        // prepare_diff has base_ref, repo_path as entrypoints (optional)
+        // prepare_diff has base_ref (optional) and repo_path (required) entrypoints
         assert!(
             entrypoints.is_entrypoint_node(&"prepare_diff".into()),
             "prepare_diff should have entrypoints"

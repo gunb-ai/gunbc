@@ -17,7 +17,7 @@
 //!
 //! # Input Expectations
 //!
-//! - `output_path`: Optional string, defaults to "Makefile"
+//! - `path`: String path for Makefile generation
 //! - `check_mode`: Optional bool, defaults to false
 
 use crate::makegen::graph::build_makegen_graph;
@@ -86,10 +86,10 @@ pub fn makegen_mock_spec() -> MockSpec {
         .build_unchecked()
         // Input mocks for DAG entry points (dangling inputs with no upstream edge)
         .input_mock("prepare_file_read", "path", Value::Str("Makefile".into()))
-        .input_mock("prepare_file_write", "output_path", Value::Str("Makefile".into()))
+        .input_mock("prepare_file_write", "path", Value::Str("Makefile".into()))
         .input_mock("compare_content", "check_mode", Value::Bool(false))
         // Input expectations (via legacy API post-build)
-        .expects_input("output_path", InputConstraint::Any)
+        .expects_input("path", InputConstraint::Any)
         .expects_input("check_mode", InputConstraint::Any)
         // Resource: file write lock
         .resource_lock("fs:Makefile")
@@ -156,9 +156,9 @@ pub fn makegen_mock_spec_no_change() -> MockSpec {
         .expect("execute_write skip_reason should match type")
         .build_unchecked()
         .input_mock("prepare_file_read", "path", Value::Str("Makefile".into()))
-        .input_mock("prepare_file_write", "output_path", Value::Str("Makefile".into()))
+        .input_mock("prepare_file_write", "path", Value::Str("Makefile".into()))
         .input_mock("compare_content", "check_mode", Value::Bool(false))
-        .expects_input("output_path", InputConstraint::Any)
+        .expects_input("path", InputConstraint::Any)
         .expects_input("check_mode", InputConstraint::Any)
 }
 
@@ -205,9 +205,9 @@ pub fn makegen_mock_spec_fs_fails() -> MockSpec {
         .expect("execute_write skip_reason should match type")
         .build_unchecked()
         .input_mock("prepare_file_read", "path", Value::Str("Makefile".into()))
-        .input_mock("prepare_file_write", "output_path", Value::Str("Makefile".into()))
+        .input_mock("prepare_file_write", "path", Value::Str("Makefile".into()))
         .input_mock("compare_content", "check_mode", Value::Bool(false))
-        .expects_input("output_path", InputConstraint::Any)
+        .expects_input("path", InputConstraint::Any)
         .expects_input("check_mode", InputConstraint::Any)
         .resource_lock_fails("fs:Makefile", "Permission denied: Makefile is read-only")
 }

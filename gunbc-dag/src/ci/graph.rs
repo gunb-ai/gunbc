@@ -572,11 +572,12 @@ mod tests {
             .nodes
             .iter()
             .filter(|n| {
-                n.id.0.starts_with("execute_") || n.id.0 == "clippy_lint" || n.id.0 == "runner_env"
+                n.id.0.starts_with("execute_") || n.id.0 == "clippy_lint"
             })
             .collect();
 
-        // Should have nodes for: deps_exists, codegen_exists, codegen, build, test, clippy_lint, runner_env
+        // Should have nodes for: deps_exists, codegen_exists, codegen, stamp_write, build, test,
+        // clippy_lint, guardrail_check, verify_check
         assert!(
             transport_nodes.len() >= 6,
             "expected at least 6 transport/tool nodes, got {}",
@@ -592,15 +593,23 @@ mod tests {
         let clippy_lint = dag.get_node(&"clippy_lint".into());
         assert!(clippy_lint.is_some(), "clippy_lint node should exist");
 
-        // Verify it has a tool:clippy input port (receives handle from env node)
+        // Verify it has a skip input (self-acquiring, no ToolHandle input)
         if let Some(node) = clippy_lint {
+            let has_skip_input = node
+                .inputs
+                .iter()
+                .any(|p| p.name.0 == "skip" && p.type_id.0 == "Bool");
+            assert!(
+                has_skip_input,
+                "clippy_lint should have skip Bool input"
+            );
             let has_tool_input = node
                 .inputs
                 .iter()
-                .any(|p| p.name.0 == "tool:clippy" && p.type_id.0 == "ToolHandle");
+                .any(|p| p.name.0 == "tool:clippy");
             assert!(
-                has_tool_input,
-                "clippy_lint should have tool:clippy ToolHandle input"
+                !has_tool_input,
+                "clippy_lint should not have tool:clippy input (self-acquiring)"
             );
         }
     }

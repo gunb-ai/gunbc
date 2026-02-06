@@ -30,7 +30,6 @@ fn convert_ci_op(op: CIGraphOp) -> WorkspaceOp {
         }
         CIGraphOp::Transport(t) => WorkspaceOp::Transport(t),
         CIGraphOp::CliTool(cli) => WorkspaceOp::Clippy(cli),
-        CIGraphOp::Env(env) => WorkspaceOp::Env(env),
     }
 }
 

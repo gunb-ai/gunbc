@@ -17,7 +17,7 @@ use gunbc_primitives::PrepareFileWriteOp;
 /// # I/O Interface
 ///
 /// Inputs:
-/// - `output_path`: String (optional) - Path for generated Makefile
+/// - `path`: String - Path for generated Makefile
 ///
 /// Outputs:
 /// - `response`: TransportResponse - File write response
@@ -60,7 +60,7 @@ pub fn build_makegen_subdag() -> Node<WorkspaceOp> {
         .add_node_after(
             Node::opaque(
                 "prepare_file_write",
-                vec![port("content", "String"), optional("output_path", "String")],
+                vec![port("content", "String"), port("path", "String")],
                 vec![port("request", "TransportRequest")],
                 WorkspaceOp::Primitive(gunbc_primitives::PrimitiveOp::PrepareFileWrite(
                     PrepareFileWriteOp,
@@ -130,7 +130,7 @@ mod tests {
         let node = build_makegen_subdag();
 
         // Check inputs
-        assert!(node.inputs.iter().any(|p| p.name.0 == "output_path"));
+        assert!(node.inputs.iter().any(|p| p.name.0 == "path"));
 
         // Check outputs
         assert!(node.outputs.iter().any(|p| p.name.0 == "response"));

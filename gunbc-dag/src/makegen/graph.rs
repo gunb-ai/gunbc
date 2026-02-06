@@ -49,7 +49,6 @@ impl Executable for MakegenGraphOp {
 pub fn makegen_signature() -> WorkflowSignature {
     WorkflowSignature::new()
         // Inputs (entrypoints)
-        .with_input("output_path", "String", Cardinality::ZERO_OR_ONE)
         .with_input("check_mode", "Bool", Cardinality::ZERO_OR_ONE)
         .with_input("path", "String", Cardinality::ONE)
         // Outputs from execute_write (boundary)
@@ -80,7 +79,7 @@ pub fn makegen_signature() -> WorkflowSignature {
 /// - compare_content.skip → execute_write.skip
 /// - compare_content.skip_reason → execute_write.skip_reason
 /// - prepare_file_write.request → execute_write.request
-/// - output_path entrypoint → prepare_file_read.path AND prepare_file_write.output_path
+/// - path entrypoint → prepare_file_read.path AND prepare_file_write.path
 /// - check_mode entrypoint → compare_content.check_mode
 pub fn build_makegen_graph() -> Result<Dag<MakegenGraphOp>, BuilderError> {
     let mut builder = DagBuilder::new();
@@ -159,7 +158,7 @@ pub fn build_makegen_graph() -> Result<Dag<MakegenGraphOp>, BuilderError> {
     let prepare_file_write = builder.add_node_after(
         Node::opaque(
             "prepare_file_write",
-            vec![port("content", "String"), optional("output_path", "String")],
+            vec![port("content", "String"), port("path", "String")],
             vec![port("request", "TransportRequest")],
             MakegenGraphOp::PrepareFileWrite(PrepareFileWriteOp),
         ),
@@ -276,8 +275,8 @@ mod tests {
         let dag = build_makegen_graph().expect("graph should build");
         let entrypoints = detect_entrypoints(&dag);
 
-        // output_path is an entrypoint (input to prepare_file_write with no upstream)
-        assert!(entrypoints.is_entrypoint_port(&"prepare_file_write".into(), &"output_path".into()));
+        // path is an entrypoint (input to prepare_file_write with no upstream)
+        assert!(entrypoints.is_entrypoint_port(&"prepare_file_write".into(), &"path".into()));
         // path is an entrypoint (input to prepare_file_read with no upstream)
         assert!(entrypoints.is_entrypoint_port(&"prepare_file_read".into(), &"path".into()));
         // check_mode is an entrypoint (input to compare_content with no upstream)
@@ -314,7 +313,7 @@ mod tests {
         let dag = build_makegen_graph().expect("graph should build");
         let inferred = infer_signature(&dag);
 
-        // 3 inputs: output_path (prepare_file_write), path (prepare_file_read), check_mode (compare_content)
+        // 3 inputs: path (prepare_file_write), path (prepare_file_read), check_mode (compare_content)
         assert_eq!(inferred.inputs.len(), 3);
     }
 }

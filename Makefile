@@ -76,11 +76,11 @@ help:
 	@echo "  ci-yaml  - Generate CI workflow YAML (GitHub Actions & GitLab CI)"
 	@echo ""
 	@echo "Tools:"
-	@echo "  gist [REPO=.] [EXT=...]  - Create a GitHub gist from code files"
-	@echo "  gist-diff [REPO=.] [BASE=main] [EXT=...]  - Create a GitHub gist from branch diff"
-	@echo "  gist-recent [REPO=.] [EXT=...]  - Create a GitHub gist from recent changes (last 7 days)"
+	@echo "  gist [REPO=...] [EXT=...]  - Create a GitHub gist from code files"
+	@echo "  gist-diff [REPO=...] [BASE=main] [EXT=...]  - Create a GitHub gist from branch diff"
+	@echo "  gist-recent [REPO=...] [EXT=...]  - Create a GitHub gist from recent changes (last 7 days)"
 	@echo "  makegen [OUTPUT=Makefile]  - Generate Makefile from tool registry"
-	@echo "  deps [MANIFEST=deps.toml]  - Install tool dependencies"
+	@echo "  deps [MANIFEST=...]  - Install tool dependencies"
 	@echo "  bootstrap   - Generate Makefile and .gitignore"
 	@echo "  ci   - Run CI pipeline"
 	@echo "  pragma   - Generate clippy.toml and pragma allowlists"
@@ -156,12 +156,12 @@ gist-recent: ensure-codegen
 gist-recent-dry: ensure-codegen
 	@RUSTFLAGS="-D warnings" cargo run -p gunbc-gist --bin gunbc-gist-recent -- --dry-run $(if $(REPO),--repo-path $(REPO)) $(if $(EXT),--extensions $(EXT))
 
-# gunbc-makegen entrypoints: output_path (String)
+# gunbc-makegen entrypoints: path (String)
 makegen: ensure-codegen
-	@RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-makegen -- $(if $(OUTPUT),--output-path $(OUTPUT))
+	@RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-makegen -- $(if $(OUTPUT),--path $(OUTPUT))
 
 makegen-dry: ensure-codegen
-	@RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-makegen -- --dry-run $(if $(OUTPUT),--output-path $(OUTPUT))
+	@RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-makegen -- --dry-run $(if $(OUTPUT),--path $(OUTPUT))
 
 # gunbc-deps entrypoints: manifest_path (String)
 deps: ensure-codegen

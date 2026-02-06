@@ -199,19 +199,19 @@ mod tests {
     #[test]
     fn test_cardinality_inference() {
         let mut registry = TypeRegistry::with_primitives();
-        registry.register("OptionalString", type_lib::optional(type_lib::string()));
-        registry.register("StringList", type_lib::list(type_lib::string()));
+        registry.register("MaybeValue", type_lib::optional(type_lib::string()));
+        registry.register("ValueCollection", type_lib::list(type_lib::string()));
 
         assert_eq!(
             registry.infer_cardinality(&TypeId::from("String")),
             Some(Cardinality::ONE)
         );
         assert_eq!(
-            registry.infer_cardinality(&TypeId::from("OptionalString")),
+            registry.infer_cardinality(&TypeId::from("MaybeValue")),
             Some(Cardinality::ZERO_OR_ONE)
         );
         assert_eq!(
-            registry.infer_cardinality(&TypeId::from("StringList")),
+            registry.infer_cardinality(&TypeId::from("ValueCollection")),
             Some(Cardinality::ZERO_OR_MORE)
         );
     }

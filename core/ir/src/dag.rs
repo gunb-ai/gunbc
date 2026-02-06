@@ -579,10 +579,10 @@ mod tests {
         use crate::type_registry::TypeRegistry;
 
         let mut registry = TypeRegistry::with_primitives();
-        registry.register("OptionalString", type_lib::optional(type_lib::string()));
-        registry.register("StringList", type_lib::list(type_lib::string()));
+        registry.register("MaybeValue", type_lib::optional(type_lib::string()));
+        registry.register("ValueCollection", type_lib::list(type_lib::string()));
         registry.register(
-            "NonEmptyStringList",
+            "RequiredCollection",
             type_lib::non_empty_list(type_lib::string()),
         );
 
@@ -590,16 +590,16 @@ mod tests {
         let port1 = Port::scalar("p1", "String");
         assert_eq!(port1.infer_cardinality(&registry), Cardinality::ONE);
 
-        let port2 = Port::scalar("p2", "OptionalString");
+        let port2 = Port::scalar("p2", "MaybeValue");
         assert_eq!(port2.infer_cardinality(&registry), Cardinality::ZERO_OR_ONE);
 
-        let port3 = Port::scalar("p3", "StringList");
+        let port3 = Port::scalar("p3", "ValueCollection");
         assert_eq!(
             port3.infer_cardinality(&registry),
             Cardinality::ZERO_OR_MORE
         );
 
-        let port4 = Port::scalar("p4", "NonEmptyStringList");
+        let port4 = Port::scalar("p4", "RequiredCollection");
         assert_eq!(port4.infer_cardinality(&registry), Cardinality::ONE_OR_MORE);
 
         // Port with unregistered type - should fall back to declared cardinality

@@ -39,21 +39,16 @@ impl Executable for HttpRequestOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         let url = require_str(&inputs, "url")?;
 
-        let method = optional_str(&inputs, "method").unwrap_or("GET");
+        let http_method = match optional_str(&inputs, "method") {
+            None => HttpMethod::Get,
+            Some(method) => HttpMethod::parse(method).ok_or_else(|| {
+                ExecError::new(format!("unsupported http method '{}'", method))
+            })?,
+        };
 
         let body = optional_str(&inputs, "body");
 
         let headers = optional_map_str_str(&inputs, "headers").unwrap_or_default();
-
-        // Parse method
-        let http_method = match method.to_uppercase().as_str() {
-            "GET" => HttpMethod::Get,
-            "POST" => HttpMethod::Post,
-            "PUT" => HttpMethod::Put,
-            "DELETE" => HttpMethod::Delete,
-            "PATCH" => HttpMethod::Patch,
-            _ => HttpMethod::Get,
-        };
 
         // Build transport request
         let request = TransportRequest::Rest(RestRequest {
@@ -86,10 +81,7 @@ pub struct PrepareFileWriteOp;
 
 impl Executable for PrepareFileWriteOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        // Accept multiple port names for flexibility, with default
-        let path = optional_str(&inputs, "path")
-            .or_else(|| optional_str(&inputs, "output_path"))
-            .unwrap_or("output"); // Default if not provided
+        let path = require_str(&inputs, "path")?;
 
         let content = require_str(&inputs, "content")?;
 
@@ -183,7 +175,7 @@ impl Executable for PrepareShellOp {
 /// Use with TransportOps::Execute.
 ///
 /// Inputs:
-/// - `path`: String path to list (defaults to ".")
+/// - `path`: String path to list
 /// - `recursive`: Optional Bool for recursive listing
 ///
 /// Outputs:
@@ -193,7 +185,7 @@ pub struct PrepareDirectoryListOp;
 
 impl Executable for PrepareDirectoryListOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let path = optional_str(&inputs, "path").unwrap_or(".");
+        let path = require_str(&inputs, "path")?;
 
         let recursive = optional_bool(&inputs, "recursive").unwrap_or(false);
 
@@ -309,6 +301,16 @@ mod tests {
     }
 
     #[test]
+    fn test_prepare_file_write_requires_path() {
+        let op = PrepareFileWriteOp;
+        let mut inputs = HashMap::new();
+        inputs.insert("content".to_string(), Value::Str("hello".to_string()));
+
+        let err = op.execute(inputs).unwrap_err();
+        assert!(err.to_string().contains("path"));
+    }
+
+    #[test]
     fn test_prepare_file_read() {
         let op = PrepareFileReadOp;
         let mut inputs = HashMap::new();
@@ -364,5 +366,19 @@ mod tests {
 
         let result = op.execute(inputs).unwrap();
         assert!(result.contains_key("request"));
+    }
+
+    #[test]
+    fn test_http_request_rejects_invalid_method() {
+        let op = HttpRequestOp;
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "url".to_string(),
+            Value::Str("https://example.com".to_string()),
+        );
+        inputs.insert("method".to_string(), Value::Str("POTS".to_string()));
+
+        let err = op.execute(inputs).unwrap_err();
+        assert!(err.to_string().contains("unsupported http method"));
     }
 }

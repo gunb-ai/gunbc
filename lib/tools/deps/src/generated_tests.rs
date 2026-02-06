@@ -4,10 +4,10 @@
 // DO NOT EDIT - regenerate with: make testgen
 // Obligations: 33 obligations (9 discharged, 24 testable: A=9, B=10, C=5, D=0)
 // Proven by construction: acyclicity, type compatibility, cardinality satisfaction.
-// Content-Hash: 2b8c51f41d97ba5285bcbee886f8b9fa1712f57e666d5b5fb2819a534f455ffc
+// Content-Hash: 6c25729bd3388101c3b85c03a7cf5661d4ed736a16a5bf69260a305f982ed216
 
 
-use gunbc_exec::{execute_with_mode, lower, BoundaryMocks, ExecutionMode};
+use gunbc_exec::{execute_with_mode, lower, ExecutionMode};
 use gunbc_ir::{detect_boundaries, Value};
 use gunbc_test::{assert_boundary_mockable, MockSpec};
 use gunbc_test::{apply_window_inputs, assert_window_outputs, window_subdag, Window};
@@ -289,23 +289,6 @@ fn test_boundaries_mockable() {
     assert!(result.is_ok(), "Boundaries should be mockable: {:?}", result.error);
 }
 
-/// Test that generate_scripts boundary can be mocked.
-#[test]
-fn test_boundary_generate_scripts_mockable() {
-    let dag = crate :: graph :: build_deps_graph().unwrap();
-    let boundaries = detect_boundaries(&dag);
-    assert!(boundaries.is_boundary_node(&"generate_scripts".into()), "generate_scripts should be a boundary");
-
-    let mut mocks = BoundaryMocks::new();
-    mocks.set_value("generate_scripts", "already_installed", Value::Str("ripgrep".to_string()));
-    mocks.set_value("generate_scripts", "needs_install", Value::Str("ripgrep".to_string()));
-    mocks.set_value("generate_scripts", "platform", Value::Str("linux".to_string()));
-
-    let log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).unwrap();
-    let entry = log.get("generate_scripts").expect("node should be in log");
-    assert!(entry.was_intercepted, "boundary should be intercepted in dry-run");
-}
-
 /// Test that parse_execute_result boundary can be mocked.
 #[test]
 fn test_boundary_parse_execute_result_mockable() {
@@ -313,7 +296,7 @@ fn test_boundary_parse_execute_result_mockable() {
     let boundaries = detect_boundaries(&dag);
     assert!(boundaries.is_boundary_node(&"parse_execute_result".into()), "parse_execute_result should be a boundary");
 
-    let mut mocks = BoundaryMocks::new();
+    let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("parse_execute_result", "executed", Value::Bool(true));
     mocks.set_value("parse_execute_result", "success", Value::Bool(true));
     mocks.set_value("parse_execute_result", "script", Value::Str("echo install".to_string()));
@@ -323,23 +306,6 @@ fn test_boundary_parse_execute_result_mockable() {
 
     let log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).unwrap();
     let entry = log.get("parse_execute_result").expect("node should be in log");
-    assert!(entry.was_intercepted, "boundary should be intercepted in dry-run");
-}
-
-/// Test that parse_manifest boundary can be mocked.
-#[test]
-fn test_boundary_parse_manifest_mockable() {
-    let dag = crate :: graph :: build_deps_graph().unwrap();
-    let boundaries = detect_boundaries(&dag);
-    assert!(boundaries.is_boundary_node(&"parse_manifest".into()), "parse_manifest should be a boundary");
-
-    let mut mocks = BoundaryMocks::new();
-    mocks.set_value("parse_manifest", "dep_count", Value::Int(1));
-    mocks.set_value("parse_manifest", "dep_names", Value::Str("ripgrep".to_string()));
-    mocks.set_value("parse_manifest", "manifest_path", Value::Str("deps.toml".to_string()));
-
-    let log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).unwrap();
-    let entry = log.get("parse_manifest").expect("node should be in log");
     assert!(entry.was_intercepted, "boundary should be intercepted in dry-run");
 }
 

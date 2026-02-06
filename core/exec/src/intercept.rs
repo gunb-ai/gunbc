@@ -1,9 +1,10 @@
 //! Transport execution interception for dry-run mode.
 //!
 //! In dry-run mode, **transport execution nodes** (those that consume
-//! `TransportRequest` values) and **tool environment nodes** (those that
-//! emit `ToolHandle` outputs) have their execution intercepted and replaced
-//! with mock behavior. This follows the design principle:
+//! `TransportRequest` values), **tool/resource environment nodes** (those that
+//! emit capability outputs like `ToolHandle`), **tool consumer nodes**, and
+//! **nodes with explicit mocks for all outputs** have their execution
+//! intercepted and replaced with mock behavior. This follows the design principle:
 //!
 //! > "World I/O is performed only by transport executor nodes"
 //! > "DryRun intercepts transport execution nodes, not boundary outputs"

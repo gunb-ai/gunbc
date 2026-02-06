@@ -52,16 +52,19 @@ impl Executable for DepsGraphOp {
 pub fn deps_signature() -> WorkflowSignature {
     WorkflowSignature::new()
         // Inputs
-        .with_input("manifest_path", "String", Cardinality::ZERO_OR_ONE)
+        .with_input("manifest_path", "String", Cardinality::ONE)
         // Outputs - boundary outputs from terminal nodes
         .with_output("dep_count", "Int", Cardinality::ONE)
         .with_output("dep_names", "String", Cardinality::ZERO_OR_MORE)
+        .with_output("manifest_path", "String", Cardinality::ONE)
         .with_output("already_installed", "String", Cardinality::ZERO_OR_MORE)
         .with_output("needs_install", "String", Cardinality::ZERO_OR_MORE)
         .with_output("platform", "String", Cardinality::ONE)
         .with_output("executed", "Bool", Cardinality::ONE)
         .with_output("success", "Bool", Cardinality::ONE)
         .with_output("script", "String", Cardinality::ONE)
+        .with_output("stdout", "String", Cardinality::ONE)
+        .with_output("stderr", "String", Cardinality::ONE)
 }
 
 /// Build the deps graph with explicit transport nodes.
@@ -93,7 +96,7 @@ pub fn build_deps_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
     // Node: PrepareLoadManifest (PURE)
     let prepare_load = builder.add_root_node(Node::opaque(
         "prepare_load_manifest",
-        vec![optional("manifest_path", "String")],
+        vec![port("manifest_path", "String")],
         vec![
             port("request", "TransportRequest"),
             port("manifest_path", "String"),
@@ -264,7 +267,7 @@ pub fn build_deps_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
 pub fn deps_generate_signature() -> WorkflowSignature {
     WorkflowSignature::new()
         // Inputs (entrypoints)
-        .with_input("output_path", "String", Cardinality::ZERO_OR_ONE)
+        .with_input("path", "String", Cardinality::ONE)
         // Outputs from execute_transport (boundary)
         .with_output("response", "TransportResponse", Cardinality::ONE)
         .with_output("written_path", "String", Cardinality::ONE)
@@ -316,14 +319,10 @@ pub fn build_deps_generate_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
 
     // Node: PrepareFileWrite (primitive) - generation 2
     // Prepares the TransportRequest for file write
-    // Note: output_path defaults to DEFAULT_MANIFEST_FILENAME in execution
     let prepare_write = builder.add_node_after(
         Node::opaque(
             "prepare_file_write",
-            vec![
-                scalar("content", "String"),
-                optional("output_path", "String"),
-            ],
+            vec![scalar("content", "String"), port("path", "String")],
             vec![port("request", "TransportRequest")],
             DepsGraphOp::PrepareFileWrite(PrepareFileWriteOp),
         ),

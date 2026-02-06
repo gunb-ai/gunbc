@@ -296,6 +296,8 @@ diff --git a/src/main.rs b/src/main.rs
         .expect("execute_llm response should match type")
         // Build spec (pure terminal outputs are computed, not mocked)
         .build_unchecked()
+        // Input expectations (repo_path is a required entrypoint)
+        .expects_input("repo_path", InputConstraint::Any)
         // No input mocks needed — provider, model, criteria come from config node
         .node_example(
             NodeExample::new("config")

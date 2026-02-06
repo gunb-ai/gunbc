@@ -7,8 +7,8 @@ use crate::installer::Installer;
 use crate::manifest::DepsManifest;
 use crate::upsert::upsert_dry_run;
 use gunbc_exec::{
-    optional_str, require_response, require_str, ExecError, Executable, IntoExecResult, OutputMap,
-    TransportResponseExt,
+    optional_str, propagate_skipped, require_response, require_str, ExecError, Executable,
+    IntoExecResult, OutputMap, TransportResponseExt,
 };
 use gunbc_ir::transport::{FileRequest, ShellRequest, TransportRequest, TransportResponse};
 use gunbc_ir::Value;
@@ -152,7 +152,7 @@ fn execute_render_deps_toml(
 fn execute_prepare_load_manifest(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    let manifest_path = optional_str(&inputs, "manifest_path").unwrap_or("deps.toml");
+    let manifest_path = require_str(&inputs, "manifest_path")?;
 
     let request = TransportRequest::File(FileRequest::read(manifest_path));
 
@@ -172,8 +172,16 @@ fn execute_prepare_load_manifest(
 fn execute_parse_manifest(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
+    if let Some(result) = propagate_skipped(
+        &inputs,
+        "response",
+        &["dep_count", "dep_names", "manifest_path", "manifest_content"],
+    ) {
+        return result;
+    }
+
     let response = require_response(&inputs, "response")?;
-    let manifest_path = optional_str(&inputs, "manifest_path").unwrap_or("deps.toml");
+    let manifest_path = require_str(&inputs, "manifest_path")?;
 
     let file_resp = response.require_file()?;
     let content = file_resp.content.clone().ok_or_else(|| {
@@ -211,6 +219,21 @@ fn execute_parse_manifest(
 fn execute_generate_scripts(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
+    if let Some(result) = propagate_skipped(
+        &inputs,
+        "manifest_content",
+        &["install_script", "already_installed", "needs_install", "platform"],
+    ) {
+        return result;
+    }
+    if let Some(result) = propagate_skipped(
+        &inputs,
+        "res:platform",
+        &["install_script", "already_installed", "needs_install", "platform"],
+    ) {
+        return result;
+    }
+
     // Get manifest content from upstream (passed through graph, not file I/O)
     let manifest_content = require_str(&inputs, "manifest_content")?;
 
@@ -260,6 +283,10 @@ fn execute_generate_scripts(
 fn execute_prepare_execute_installs(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
+    if let Some(result) = propagate_skipped(&inputs, "install_script", &["request", "script"]) {
+        return result;
+    }
+
     let script = require_str(&inputs, "install_script")?;
 
     let request = TransportRequest::Shell(ShellRequest {
@@ -284,6 +311,14 @@ fn execute_prepare_execute_installs(
 fn execute_parse_execute_result(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
+    if let Some(result) = propagate_skipped(
+        &inputs,
+        "response",
+        &["executed", "success", "script", "stdout", "stderr"],
+    ) {
+        return result;
+    }
+
     let response = require_response(&inputs, "response")?;
     let script = optional_str(&inputs, "script").unwrap_or("");
 

@@ -356,6 +356,8 @@ pub struct Target {
     pub name: String,
     pub deps: Vec<String>,
     pub body: Vec<String>,
+    /// Optional comment line(s) rendered above the target definition.
+    pub comment: Option<String>,
 }
 
 /// A categorized group of items (e.g., review category).

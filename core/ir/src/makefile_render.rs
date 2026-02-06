@@ -27,6 +27,12 @@ impl<M: TextMedium> StructuredRenderer<M> for MakefileStructuredRenderer<M> {
 
     fn render_target(&self, target: &Target) -> String {
         let mut out = String::new();
+        // # comment
+        if let Some(ref comment) = target.comment {
+            out.push_str("# ");
+            out.push_str(comment);
+            out.push('\n');
+        }
         // target: dep1 dep2
         out.push_str(&target.name);
         out.push(':');
@@ -106,6 +112,7 @@ mod tests {
             name: "clean".to_string(),
             deps: vec![],
             body: vec!["@cargo clean".to_string()],
+            comment: None,
         };
         assert_eq!(r.render_target(&target), "clean:\n\t@cargo clean\n\n");
     }
@@ -117,6 +124,7 @@ mod tests {
             name: "build".to_string(),
             deps: vec!["codegen".to_string(), "testgen".to_string()],
             body: vec!["@cargo build".to_string()],
+            comment: None,
         };
         assert_eq!(
             r.render_target(&target),
@@ -137,6 +145,21 @@ mod tests {
         assert!(out.contains("# --- Build artifacts (from cargo) ---"));
         assert!(out.contains("# Reproducible"));
         assert!(out.contains("/target/"));
+    }
+
+    #[test]
+    fn test_render_target_with_comment() {
+        let r = MakefileStructuredRenderer::new(plain());
+        let target = Target {
+            name: "build".to_string(),
+            deps: vec!["codegen".to_string()],
+            body: vec!["@cargo build".to_string()],
+            comment: Some("Full build transaction".to_string()),
+        };
+        assert_eq!(
+            r.render_target(&target),
+            "# Full build transaction\nbuild: codegen\n\t@cargo build\n\n"
+        );
     }
 
     #[test]

@@ -27,7 +27,6 @@ use gunbc_exec::{
     TerminalProfile,
 };
 use gunbc_ir::resource::ExecMode;
-use gunbc_ir::transport::cli::{ToolHandle, CLIPPY};
 use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse};
 use gunbc_ir::CODEGEN_STAMP_PATH;
 use gunbc_ir::Value;
@@ -59,13 +58,6 @@ fn main() {
     // Set up execution mode
     let mode = if dry_run {
         let mut mocks = BoundaryMocks::new();
-
-        // Env: tool acquisition
-        mocks.set_value(
-            "runner_env",
-            "tool:clippy",
-            ToolHandle::mock(&CLIPPY).into(),
-        );
 
         // Transport execution nodes need properly-typed Response mocks.
         // The default mock is Value::Str("<DRY-RUN>"), but downstream parse

@@ -1161,7 +1161,7 @@ pub fn build_deps_graph() -> Result<Dag<DepsOp>, BuilderError> {
 
 pub fn deps_signature() -> WorkflowSignature {
     WorkflowSignature::new()
-        .with_input("manifest_path", "String", Cardinality::ZERO_OR_ONE)
+        .with_input("manifest_path", "String", Cardinality::ONE)
         .with_output("executed", "Bool", Cardinality::ONE)
         // ... other outputs
 }

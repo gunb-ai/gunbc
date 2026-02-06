@@ -159,45 +159,52 @@ pub fn parse_openai_responses_response(response: &RestResponse) -> Result<ChatRe
         .body
         .get("model")
         .and_then(|m| m.as_str())
-        .unwrap_or("unknown")
+        .ok_or_else(|| "OpenAI Responses API missing model".to_string())?
         .to_string();
 
     // Status field: "completed", "failed", "incomplete"
-    let finish_reason = response
+    let status = response
         .body
         .get("status")
         .and_then(|s| s.as_str())
-        .map(|s| match s {
-            "completed" => FinishReason::Stop,
-            "incomplete" => FinishReason::Length,
-            other => FinishReason::Other(other.to_string()),
-        })
-        .unwrap_or(FinishReason::Stop);
+        .ok_or_else(|| "OpenAI Responses API missing status".to_string())?;
+    let finish_reason = match status {
+        "completed" => FinishReason::Stop,
+        "incomplete" => FinishReason::Length,
+        other => FinishReason::Other(other.to_string()),
+    };
 
-    let usage = response
+    let usage_value = response
         .body
         .get("usage")
-        .map(|u| {
-            let cached_tokens = u
-                .get("input_tokens_details")
-                .and_then(|d| d.get("cached_tokens"))
-                .and_then(|t| t.as_u64());
+        .ok_or_else(|| "OpenAI Responses API missing usage".to_string())?;
+    let input_tokens = usage_value
+        .get("input_tokens")
+        .and_then(|t| t.as_u64())
+        .ok_or_else(|| "OpenAI Responses API missing usage.input_tokens".to_string())?;
+    let output_tokens = usage_value
+        .get("output_tokens")
+        .and_then(|t| t.as_u64())
+        .ok_or_else(|| "OpenAI Responses API missing usage.output_tokens".to_string())?;
 
-            let reasoning_tokens = u
-                .get("output_tokens_details")
-                .and_then(|d| d.get("reasoning_tokens"))
-                .and_then(|t| t.as_u64());
+    let cached_tokens = usage_value
+        .get("input_tokens_details")
+        .and_then(|d| d.get("cached_tokens"))
+        .and_then(|t| t.as_u64());
 
-            Usage {
-                input_tokens: u.get("input_tokens").and_then(|t| t.as_u64()).unwrap_or(0),
-                output_tokens: u.get("output_tokens").and_then(|t| t.as_u64()).unwrap_or(0),
-                cache_creation_input_tokens: None,
-                cache_read_input_tokens: None,
-                cached_tokens,
-                reasoning_tokens,
-            }
-        })
-        .unwrap_or_default();
+    let reasoning_tokens = usage_value
+        .get("output_tokens_details")
+        .and_then(|d| d.get("reasoning_tokens"))
+        .and_then(|t| t.as_u64());
+
+    let usage = Usage {
+        input_tokens,
+        output_tokens,
+        cache_creation_input_tokens: None,
+        cache_read_input_tokens: None,
+        cached_tokens,
+        reasoning_tokens,
+    };
 
     // Extract reasoning summary from output items
     let (thinking, content_blocks) = extract_reasoning_from_output(&response.body);
@@ -477,5 +484,31 @@ mod tests {
 
         let chat = parse_openai_responses_response(&response).unwrap();
         assert_eq!(chat.finish_reason, FinishReason::Length);
+    }
+
+    #[test]
+    fn test_parse_responses_missing_status_is_error() {
+        let response = RestResponse::ok(serde_json::json!({
+            "id": "resp_abc",
+            "model": "gpt-4o",
+            "output_text": "hello",
+            "usage": { "input_tokens": 1, "output_tokens": 2, "total_tokens": 3 }
+        }));
+
+        let err = parse_openai_responses_response(&response).unwrap_err();
+        assert!(err.contains("missing status"));
+    }
+
+    #[test]
+    fn test_parse_responses_missing_usage_is_error() {
+        let response = RestResponse::ok(serde_json::json!({
+            "id": "resp_abc",
+            "status": "completed",
+            "model": "gpt-4o",
+            "output_text": "hello"
+        }));
+
+        let err = parse_openai_responses_response(&response).unwrap_err();
+        assert!(err.contains("missing usage"));
     }
 }

@@ -18,7 +18,7 @@ use gunbc_primitives::PrepareFileWriteOp;
 /// # I/O Interface
 ///
 /// Inputs:
-/// - `manifest_path`: String (optional) - Path to deps.toml
+/// - `manifest_path`: String (required) - Path to deps.toml
 ///
 /// Outputs:
 /// - `dep_count`: Int - Number of dependencies
@@ -46,7 +46,7 @@ pub fn build_deps_install_subdag() -> Node<WorkspaceOp> {
     let prepare_load = builder
         .add_root_node(Node::opaque(
             "prepare_load_manifest",
-            vec![optional("manifest_path", "String")],
+            vec![port("manifest_path", "String")],
             vec![
                 port("request", "TransportRequest"),
                 port("manifest_path", "String"),
@@ -227,7 +227,7 @@ pub fn build_deps_install_subdag() -> Node<WorkspaceOp> {
 /// # I/O Interface
 ///
 /// Inputs:
-/// - `output_path`: String (optional) - Path for generated deps.toml
+/// - `path`: String - Path for generated deps.toml
 ///
 /// Outputs:
 /// - `response`: TransportResponse - File write response
@@ -269,10 +269,7 @@ pub fn build_deps_generate_subdag() -> Node<WorkspaceOp> {
         .add_node_after(
             Node::opaque(
                 "prepare_file_write",
-                vec![
-                    scalar("content", "String"),
-                    optional("output_path", "String"),
-                ],
+                vec![scalar("content", "String"), port("path", "String")],
                 vec![port("request", "TransportRequest")],
                 WorkspaceOp::Primitive(gunbc_primitives::PrimitiveOp::PrepareFileWrite(
                     PrepareFileWriteOp,
