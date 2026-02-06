@@ -276,6 +276,7 @@ fn execute_prepare_stamp_write(
 fn expected_codegen_paths() -> Vec<String> {
     all_tools()
         .into_iter()
+        .filter(|tool| tool.invocation.is_some())
         .map(|tool| format!("{}/{}/main.rs", CODEGEN_BIN_DIR, tool.meta.tool_name))
         .collect()
 }

@@ -12,7 +12,8 @@ use crate::graph::{build_gist_graph, GistMode};
 use gunbc_ir::transport::{ShellResponse, TransportResponse};
 use gunbc_ir::{Timestamp, Value};
 use gunbc_primitives::filename;
-use gunbc_test::{extract_mock_requirements, InputConstraint, MockSpec};
+use gunbc_test::{extract_mock_requirements, InputConstraint, MockSpec, NodeExample, OutputMatcher};
+use std::collections::BTreeMap;
 use std::time::SystemTime;
 
 fn mock_fs_handle() -> Value {
@@ -22,6 +23,37 @@ fn mock_fs_handle() -> Value {
 
 fn mock_clock() -> Value {
     Timestamp::from_system_time(SystemTime::UNIX_EPOCH).into()
+}
+
+fn mock_diff_response() -> &'static str {
+    "diff --git a/src/main.rs b/src/main.rs\n--- a/src/main.rs\n+++ b/src/main.rs\n@@ -1,3 +1,4 @@\n fn main() {\n+    println!(\"hello\");\n }\n"
+}
+
+fn mock_read_files_response() -> &'static str {
+    "===GUNBC_FILE:src/main.rs===\nfn main() {}\n===GUNBC_FILE:README.md===\n# README\n"
+}
+
+fn mock_diff_files_value() -> Value {
+    let mut map = BTreeMap::new();
+    map.insert("src/main.rs".to_string(), mock_diff_response().to_string());
+    Value::str_map(map)
+}
+
+fn mock_contents_value() -> Value {
+    let mut map = BTreeMap::new();
+    map.insert("src/main.rs".to_string(), "fn main() {}".to_string());
+    map.insert("README.md".to_string(), "# README".to_string());
+    Value::str_map(map)
+}
+
+fn mock_gist_response_json() -> String {
+    serde_json::json!({
+        "id": "abc123def456",
+        "html_url": "https://gist.github.com/mock/abc123def456",
+        "files": {},
+        "public": false
+    })
+    .to_string()
 }
 
 /// Build a mock specification for the gist graph.
@@ -82,7 +114,7 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
                 .transport_response(
                     "execute_diff",
                     "response",
-                    TransportResponse::Shell(ShellResponse::ok("diff --git a/src/main.rs b/src/main.rs\n--- a/src/main.rs\n+++ b/src/main.rs\n@@ -1,3 +1,4 @@\n fn main() {\n+    println!(\"hello\");\n }\n")),
+                    TransportResponse::Shell(ShellResponse::ok(mock_diff_response())),
                 )
                 .expect("execute_diff response should match type");
         }
@@ -99,7 +131,7 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
                 .transport_response(
                     "execute_diff",
                     "response",
-                    TransportResponse::Shell(ShellResponse::ok("diff --git a/src/main.rs b/src/main.rs\n--- a/src/main.rs\n+++ b/src/main.rs\n@@ -1,3 +1,4 @@\n fn main() {\n+    println!(\"hello\");\n }\n")),
+                    TransportResponse::Shell(ShellResponse::ok(mock_diff_response())),
                 )
                 .expect("execute_diff response should match type");
         }
@@ -128,15 +160,7 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
         .transport_response(
             "execute_gist",
             "response",
-            TransportResponse::Shell(ShellResponse::ok(
-                serde_json::json!({
-                    "id": "abc123def456",
-                    "html_url": "https://gist.github.com/mock/abc123def456",
-                    "files": {},
-                    "public": false
-                })
-                .to_string(),
-            )),
+            TransportResponse::Shell(ShellResponse::ok(mock_gist_response_json())),
         )
         .expect("execute_gist response should match type");
 
@@ -155,6 +179,192 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
     spec = spec.expects_input("repo_path", InputConstraint::Any);
     if matches!(mode, GistMode::Diff { .. }) {
         spec = spec.expects_input("base_ref", InputConstraint::Any);
+    }
+
+    // Common node examples (present in all modes)
+    spec = spec
+        .node_example(
+            NodeExample::new("fs_env")
+                .output("fs:write", OutputMatcher::Any)
+                .description("Provides filesystem handle for gist filename generation"),
+        )
+        .node_example(
+            NodeExample::new("clock_env")
+                .output("clock", OutputMatcher::IsInt)
+                .description("Provides timestamp for gist filename generation"),
+        )
+        .node_example(
+            NodeExample::new("prepare_current_branch")
+                .input("repo_path", Value::Str(".".into()))
+                .output("request", OutputMatcher::IsRequest)
+                .description("Prepares git rev-parse request for current branch"),
+        )
+        .node_example(
+            NodeExample::new("parse_current_branch")
+                .input(
+                    "response",
+                    Value::Response(ShellResponse::ok("main\n").into()),
+                )
+                .output("branch", OutputMatcher::exact(Value::Str("main".into())))
+                .description("Parses current branch name from git output"),
+        )
+        .node_example(
+            NodeExample::new("prepare_remote_branches")
+                .input("repo_path", Value::Str(".".into()))
+                .output("request", OutputMatcher::IsRequest)
+                .description("Prepares git branch -r --points-at HEAD request"),
+        )
+        .node_example(
+            NodeExample::new("parse_remote_branches")
+                .input(
+                    "response",
+                    Value::Response(ShellResponse::ok("  origin/main\n").into()),
+                )
+                .output("remote_branch", OutputMatcher::exact(Value::Str("main".into())))
+                .description("Parses remote branch name from git output"),
+        )
+        .node_example(
+            NodeExample::new("prepare_gist_request")
+                .input("markdown", Value::Str("# Example".into()))
+                .input("branch", Value::Str("main".into()))
+                .input("res:fs", mock_fs_handle())
+                .input("res:clock", mock_clock())
+                .output("request", OutputMatcher::IsRequest)
+                .description("Builds gist creation request from markdown"),
+        )
+        .node_example(
+            NodeExample::new("parse_gist_response")
+                .input(
+                    "response",
+                    Value::Response(ShellResponse::ok(mock_gist_response_json()).into()),
+                )
+                .output("url", OutputMatcher::contains("gist.github.com"))
+                .description("Extracts gist URL from response JSON"),
+        );
+
+    // Mode-specific node examples
+    match mode {
+        GistMode::Snapshot => {
+            spec = spec
+                .node_example(
+                    NodeExample::new("prepare_list_files")
+                        .input("repo_path", Value::Str(".".into()))
+                        .output("request", OutputMatcher::IsRequest)
+                        .description("Prepares git ls-files request"),
+                )
+                .node_example(
+                    NodeExample::new("parse_list_files")
+                        .input(
+                            "response",
+                            Value::Response(ShellResponse::ok("src/main.rs\nREADME.md\n").into()),
+                        )
+                        .output(
+                            "files",
+                            OutputMatcher::exact(Value::str_list(vec![
+                                "src/main.rs".into(),
+                                "README.md".into(),
+                            ])),
+                        )
+                        .description("Parses git ls-files output into a file list"),
+                )
+                .node_example(
+                    NodeExample::new("prepare_read_files")
+                        .input(
+                            "files",
+                            Value::str_list(vec!["src/main.rs".into(), "README.md".into()]),
+                        )
+                        .input("repo_path", Value::Str(".".into()))
+                        .output("request", OutputMatcher::IsRequest)
+                        .description("Prepares batch file read request"),
+                )
+                .node_example(
+                    NodeExample::new("parse_read_files")
+                        .input(
+                            "response",
+                            Value::Response(ShellResponse::ok(mock_read_files_response()).into()),
+                        )
+                        .output("contents", OutputMatcher::Any)
+                        .description("Parses batch file read response into contents map"),
+                )
+                .node_example(
+                    NodeExample::new("render_markdown")
+                        .input("contents", mock_contents_value())
+                        .output("markdown", OutputMatcher::contains("# Code Snapshot"))
+                        .description("Renders markdown code snapshot"),
+                );
+        }
+        GistMode::Diff { .. } => {
+            spec = spec
+                .node_example(
+                    NodeExample::new("prepare_diff")
+                        .input("repo_path", Value::Str(".".into()))
+                        .input("base_ref", Value::Str("main".into()))
+                        .output("request", OutputMatcher::IsRequest)
+                        .description("Prepares git diff request"),
+                )
+                .node_example(
+                    NodeExample::new("parse_diff")
+                        .input(
+                            "response",
+                            Value::Response(ShellResponse::ok(mock_diff_response()).into()),
+                        )
+                        .output("diff_files", OutputMatcher::Any)
+                        .output("stats", OutputMatcher::contains("+1"))
+                        .description("Parses unified diff into per-file chunks and stats"),
+                )
+                .node_example(
+                    NodeExample::new("render_markdown")
+                        .input("diff_files", mock_diff_files_value())
+                        .input("stats", Value::Str("+1 -0 across 1 files".into()))
+                        .output("markdown", OutputMatcher::contains("# Branch Diff"))
+                        .description("Renders markdown diff snapshot"),
+                );
+        }
+        GistMode::Recent => {
+            spec = spec
+                .node_example(
+                    NodeExample::new("prepare_rev_list")
+                        .input("repo_path", Value::Str(".".into()))
+                        .output("request", OutputMatcher::IsRequest)
+                        .description("Prepares git rev-list request for recent commit"),
+                )
+                .node_example(
+                    NodeExample::new("parse_rev_list")
+                        .input(
+                            "response",
+                            Value::Response(ShellResponse::ok("abc123def456\n").into()),
+                        )
+                        .output(
+                            "base_ref",
+                            OutputMatcher::exact(Value::Str("abc123def456".into())),
+                        )
+                        .description("Parses rev-list output into base_ref"),
+                )
+                .node_example(
+                    NodeExample::new("prepare_diff")
+                        .input("repo_path", Value::Str(".".into()))
+                        .input("base_ref", Value::Str("abc123def456".into()))
+                        .output("request", OutputMatcher::IsRequest)
+                        .description("Prepares git diff request for recent changes"),
+                )
+                .node_example(
+                    NodeExample::new("parse_diff")
+                        .input(
+                            "response",
+                            Value::Response(ShellResponse::ok(mock_diff_response()).into()),
+                        )
+                        .output("diff_files", OutputMatcher::Any)
+                        .output("stats", OutputMatcher::contains("+1"))
+                        .description("Parses unified diff into per-file chunks and stats"),
+                )
+                .node_example(
+                    NodeExample::new("render_markdown")
+                        .input("diff_files", mock_diff_files_value())
+                        .input("stats", Value::Str("+1 -0 across 1 files".into()))
+                        .output("markdown", OutputMatcher::contains("# Branch Diff"))
+                        .description("Renders markdown diff snapshot"),
+                );
+        }
     }
 
     spec

@@ -5,8 +5,8 @@
 //! # Transport Pattern (following MakegenGraphOp)
 //!
 //! This module follows the "every node is pure" principle:
-//! - `CIGraphOp` is a union of pure CI ops, primitives, transport, and env ops
-//! - I/O happens through explicit `TransportOps::Execute` nodes and the env node
+//! - `CIGraphOp` is a union of pure CI ops, primitives, transport, and CLI tool ops
+//! - I/O happens through explicit `TransportOps::Execute` nodes and self-acquiring CLI tool nodes
 //! - DryRun can intercept transport nodes and env tool acquisition
 //!
 //! # Pipeline Structure
@@ -26,7 +26,7 @@
 //!   PrepareTestCommand -> Execute -> ParseTestResult
 //!
 //! Lint Stage:
-//!   PrepareClippyLint -> ClippyLint (uses ToolHandle from env) -> ParseClippyLint
+//!   PrepareClippyLint -> ClippyLint (self-acquiring) -> ParseClippyLint
 //!
 //! Guardrails Stage:
 //!   PrepareGuardrailCheck -> Execute -> ParseGuardrailResult
@@ -35,13 +35,12 @@
 //!   Report (pure)
 //! ```
 
-use crate::ci::env::EnvOp;
 use crate::ci::ops::CIOp;
 use crate::codegen::{build_codegen_graph_with_mode, CodegenGraphOp, CodegenOp};
 use gunbc_deps::DEFAULT_MANIFEST_FILENAME;
 use gunbc_exec::{require_bool, ExecError, Executable, IntoExecResult, OutputMap};
 use gunbc_ir::resource::ExecMode;
-use gunbc_ir::transport::cli::{CliToolOp, ToolHandle};
+use gunbc_ir::transport::cli::CliToolOp;
 use gunbc_ir::{
     build::*,
     transport::github_actions::{
@@ -51,7 +50,7 @@ use gunbc_ir::{
     BuilderError, Cardinality, Dag, DagBuilder, Node, NodeBody, NodeId, NodeRef, Value,
     WorkflowSignature,
 };
-use gunbc_lib_transport::cli::{execute_cli_tool_op, execute_cli_tool_op_with_handle};
+use gunbc_lib_transport::cli::{execute_cli_tool_op, upsert_tool_with, WhichResolver};
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::EmbeddedFileExistsOp;
 use std::collections::HashMap;
@@ -67,8 +66,7 @@ use std::collections::HashMap;
 /// - `Codegen(CodegenOp)` - inlined codegen DAG operations
 /// - `PrepareFileExists` - embedded primitive for file existence checks (from gunbc-primitives)
 /// - `Transport` - boundary for actual I/O
-/// - `CliTool` - CLI tool operations (for SubDag integration)
-/// - `Env` - environment node that provides tools to downstream nodes
+/// - `CliTool` - CLI tool operations (self-acquiring: check/install before run)
 #[derive(Debug, Clone)]
 pub enum CIGraphOp {
     /// CI-specific pure operations
@@ -102,19 +100,13 @@ impl Executable for CIGraphOp {
                     return OutputMap::new().bool("skip", true).ok();
                 }
 
-                // Run the tool (prefer tool handle if provided)
-                let result = if let CliToolOp::Run { tool, .. } = op {
-                    let port_name = format!("tool:{}", tool.id);
-                    let handle_val = inputs.get(&port_name).ok_or_else(|| {
-                        ExecError::new(format!("missing required tool handle input '{port_name}'"))
+                // Self-acquiring: ensure tool is installed, then run via PATH
+                if let CliToolOp::Run { tool, .. } = op {
+                    let _ = upsert_tool_with(tool, &WhichResolver).map_err(|e| {
+                        ExecError::new(format!("Failed to acquire tool '{}': {}", tool.id, e))
                     })?;
-                    let handle = ToolHandle::try_from(handle_val)
-                        .exec_context("tool handle conversion")?;
-                    execute_cli_tool_op_with_handle(op, &handle)
-                        .exec_context("CLI tool error")?
-                } else {
-                    execute_cli_tool_op(op).exec_context("CLI tool error")?
-                };
+                }
+                let result = execute_cli_tool_op(op).exec_context("CLI tool error")?;
 
                 // Copy tool outputs and add skip=false
                 let mut out = result;
@@ -210,20 +202,6 @@ pub fn build_ci_graph() -> Result<Dag<CIGraphOp>, BuilderError> {
 /// the need for the `GUNBC_EXEC_MODE` environment variable.
 pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, BuilderError> {
     let mut builder = DagBuilder::new();
-
-    // ========================================================================
-    // Environment Node: Provides tools to downstream nodes
-    // ========================================================================
-
-    // The env node is the I/O boundary for tool acquisition.
-    // It upserts (check/install) each tool and emits ToolHandles.
-    // In DryRun mode, this node is intercepted with mock handles.
-    let env = builder.add_root_node(Node::opaque(
-        "runner_env",
-        vec![],
-        vec![port("tool:clippy", "ToolHandle")],
-        CIGraphOp::Env(EnvOp::new(vec!["clippy"])),
-    ))?;
 
     // ========================================================================
     // SetupDeps Stage: Check if deps.toml exists
@@ -323,15 +301,11 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
         &build.parse,
     )?;
 
-    // ClippyLint - runs clippy with tool handle from env node
-    // The tool:clippy input comes from the runner_env node via an edge
+    // ClippyLint - self-acquiring: calls upsert_tool_with() before running
     let clippy_lint = builder.add_node_after(
         Node::opaque(
             "clippy_lint",
-            vec![
-                port("skip", "Bool"),
-                port("tool:clippy", "ToolHandle"), // Receives handle from env node
-            ],
+            vec![port("skip", "Bool")],
             vec![
                 optional("success", "Bool"),
                 optional("stdout", "String"),
@@ -455,8 +429,7 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
         test.prepare.in_port("build_success"),
     )?;
 
-    // Lint stage (parallel with test, both depend on build) - uses Clippy tool
-    builder.add_edge(env.out("tool:clippy"), clippy_lint.in_port("tool:clippy"))?;
+    // Lint stage (parallel with test, both depend on build)
     builder.add_edge(
         build.parse.out("build_success"),
         prepare_clippy_lint.in_port("build_success"),

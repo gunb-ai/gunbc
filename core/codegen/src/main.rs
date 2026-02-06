@@ -31,8 +31,9 @@ use gunbc_codegen::{
     all_cleanable_outputs, all_tools, generate_cli_with_import, generate_graph_rs, FileWriter,
 };
 use gunbc_ir::resource::{
-    codegen_resource_def, update_resource_manifest, ManagedResource, ManifestEntry,
-    ManifestUpdateError, ResourceDef, ResourceError, ResourceManifest,
+    check_manifest_freshness, codegen_resource_def, update_resource_manifest, FreshnessOptions,
+    ManagedResource, ManifestEntry, ManifestFreshness, ManifestUpdateError, ResourceDef,
+    ResourceError, ResourceManifest,
 };
 use gunbc_ir::transport::ci::{
     yaml_block, CacheConfig, CiRenderer, GitHubActionsProvider, GitLabCiProvider, RenderConfig,
@@ -234,6 +235,10 @@ fn cmd_codegen(dry_run: bool) {
     println!("gunbc-codegen: codegen only");
     println!("  mode: {}", if dry_run { "dry-run" } else { "real" });
     println!();
+
+    if !dry_run && should_skip_codegen() {
+        return;
+    }
 
     if !codegen_clis(dry_run) {
         eprintln!("Codegen failed");
@@ -752,6 +757,66 @@ impl ManagedResource for CodegenResource {
         let (key, file_count) = self.compute_key_with_stats(manifest)?;
         Ok(ManifestEntry::new(key, file_count).with_outputs(self.outputs.clone()))
     }
+}
+
+fn should_skip_codegen() -> bool {
+    let output_exists = codegen_outputs_exist();
+    let manifest = match ResourceManifest::load_default() {
+        Ok(m) if m.is_empty() => return false,
+        Ok(m) => m,
+        Err(e) => {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                return false;
+            }
+            eprintln!("  Warning: could not load resource manifest: {}", e);
+            return false;
+        }
+    };
+
+    let resource = CodegenResource::new();
+    match check_manifest_freshness(
+        &resource,
+        &manifest,
+        FreshnessOptions {
+            output_exists: Some(output_exists),
+            use_mtime: true,
+        },
+    ) {
+        ManifestFreshness::Fresh => {
+            println!("  Codegen outputs are fresh (manifest + outputs). Skipping.");
+            true
+        }
+        ManifestFreshness::Stale(reason) => {
+            println!("  Codegen outputs are stale: {}", reason);
+            false
+        }
+        ManifestFreshness::Missing => false,
+        ManifestFreshness::Error(err) => {
+            eprintln!("  Warning: could not verify codegen freshness: {}", err);
+            false
+        }
+    }
+}
+
+fn codegen_outputs_exist() -> bool {
+    let mut paths: Vec<PathBuf> = Vec::new();
+
+    for tool in all_tools() {
+        if tool.invocation.is_none() {
+            continue;
+        }
+        paths.push(
+            Path::new(CODEGEN_BIN_DIR)
+                .join(&tool.meta.tool_name)
+                .join("main.rs"),
+        );
+    }
+
+    if paths.is_empty() {
+        return true;
+    }
+
+    paths.iter().all(|path| path.exists())
 }
 
 /// Update the resource manifest after successful codegen.

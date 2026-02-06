@@ -19,9 +19,6 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 toml = "0.8"
 
-[dev-dependencies]
-gunbc-test = { path = "../../../core/test" }
-
 [[bin]]
 name = "gunbc-deps"
 path = "../../../target/codegen/bin/deps/main.rs"
