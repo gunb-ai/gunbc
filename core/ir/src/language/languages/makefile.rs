@@ -12,9 +12,6 @@
 //! - Indentation: TAB (required by Make)
 //! - Variable syntax: $(VAR), ${VAR}, $@, $<, $^
 
-// Allow dead_code for infrastructure APIs provided for future use
-#![allow(dead_code)]
-
 use crate::dag::{Dag, Port};
 use crate::language::LanguageOp;
 use crate::node::Node;
@@ -123,6 +120,7 @@ impl MakeTarget {
 }
 
 /// Render a Makefile target.
+#[cfg(test)]
 pub fn render_target(target: &MakeTarget) -> String {
     let mut output = String::new();
 
@@ -148,6 +146,7 @@ pub fn render_target(target: &MakeTarget) -> String {
 }
 
 /// Render multiple targets with .PHONY declaration.
+#[cfg(test)]
 pub fn render_targets(targets: &[MakeTarget]) -> String {
     let mut output = String::new();
 

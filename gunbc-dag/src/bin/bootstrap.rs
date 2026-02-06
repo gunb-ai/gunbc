@@ -3,6 +3,7 @@
 //! Bootstrap tool for initializing gunbc projects.
 //! Progress display is automatic based on terminal capabilities.
 
+#![forbid(dead_code)]
 use gunbc_dag::build_bootstrap_graph;
 use gunbc_exec::{
     execute_and_display, execute_with_mode_and_inputs, BoundaryMocks, ExecutionMode,

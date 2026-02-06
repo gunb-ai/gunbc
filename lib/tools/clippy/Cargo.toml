@@ -9,6 +9,7 @@ description = "Clippy tool DAG - self-ensuring linter with upsert via CliToolOp"
 gunbc-ir = { path = "../../../core/ir" }
 gunbc-exec = { path = "../../../core/exec" }
 gunbc-test = { path = "../../../core/test" }
+gunbc-lib-transport = { path = "../../transport" }
 
 [dev-dependencies]
 gunbc-test = { path = "../../../core/test" }

@@ -42,12 +42,17 @@
 //! 3. Provide convenience wrappers for common operations
 //! 4. Model configuration as Rust code, generate config files
 
+#![forbid(dead_code)]
 pub mod config;
 pub mod graph;
+pub mod lint;
 pub mod ops;
+pub mod policy;
 
 pub use config::{
     generate_clippy_toml, ClippyConfig, ClippyConfigRenderer, CrateAllowance, DisallowedMethod,
 };
 pub use graph::{build_clippy_dag, build_clippy_lint_all, build_clippy_upsert};
+pub use lint::{LintId, LintSource};
 pub use ops::{CliToolOp, Clippy};
+pub use policy::{CratePolicy, CrateRole};

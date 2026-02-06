@@ -774,7 +774,7 @@ The transport layer (`lib/transport`) is the single point where I/O actually hap
 
 **Violation**: Direct `std::fs::*`, `std::process::Command::new`, or HTTP calls outside the transport layer.
 
-**Enforcement**: `clippy.toml` bans these methods. Only `lib/transport/` has the allowance.
+**Enforcement**: `clippy.toml` bans these methods. Approved exceptions are limited to the I/O boundary (`lib/transport`), the bootstrapper (`core/codegen`), and the infra hub (`core/infra`).
 
 ### I3. Observable I/O
 

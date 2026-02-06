@@ -2,7 +2,6 @@
 
 use crate::manifest::PlatformInstall;
 use crate::platform::Platform;
-use std::process::Command;
 
 /// Installation method.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,26 +42,6 @@ impl Installer {
     /// Get the current platform.
     pub fn platform(&self) -> Platform {
         self.platform
-    }
-
-    /// Check if a tool is installed by running the verify command.
-    ///
-    /// Note: This is part of the tool installation infrastructure - it's allowed
-    /// to use Command::new because it's implementing the verify step.
-    #[allow(clippy::disallowed_methods)]
-    pub fn is_installed(&self, verify_cmd: &str) -> bool {
-        let parts: Vec<&str> = verify_cmd.split_whitespace().collect();
-        if parts.is_empty() {
-            return false;
-        }
-
-        let result = Command::new(parts[0])
-            .args(&parts[1..])
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status();
-
-        matches!(result, Ok(status) if status.success())
     }
 
     /// Generate the install command for a platform install configuration.
@@ -154,13 +133,6 @@ mod tests {
         assert_eq!(InstallMethod::parse("cargo"), InstallMethod::Cargo);
         assert_eq!(InstallMethod::parse("script"), InstallMethod::Script);
         assert_eq!(InstallMethod::parse("unknown"), InstallMethod::Unknown);
-    }
-
-    #[test]
-    fn test_is_installed_with_common_tools() {
-        let installer = Installer::for_platform(Platform::detect());
-        // 'echo' should be available on all platforms
-        assert!(installer.is_installed("echo test"));
     }
 
     #[test]

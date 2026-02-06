@@ -433,8 +433,16 @@ impl<W: Write> TerminalRenderer<W> {
         // Render each track as a horizontal line
         for track in 0..num_tracks {
             let mut line = String::new();
-            #[allow(clippy::needless_range_loop)]
-            for col in start_col..end_col {
+            let last_col = end_col.saturating_sub(1);
+
+            for (col, connector_row) in self
+                .layout
+                .connectors
+                .iter()
+                .enumerate()
+                .take(last_col)
+                .skip(start_col)
+            {
                 if let Some(node) = self.layout.grid.get(&(track, col)) {
                     let state = progress
                         .nodes
@@ -455,19 +463,36 @@ impl<W: Write> TerminalRenderer<W> {
                     line.push_str(&" ".repeat(col_w));
                 }
 
-                if col + 1 < end_col {
-                    let cell = self
+                let cell = connector_row.get(track);
+                let glyph = cell.map(|c| c.glyph).unwrap_or(' ');
+                let conn = pad_connector(&format!(" {} ", glyph), gap_w);
+                let edge_state = cell
+                    .map(|c| self.connector_cell_state(&c.edges, progress))
+                    .unwrap_or(EdgeState::Idle);
+                let colored = self.color_connector(&conn, edge_state);
+                line.push_str(&colored);
+            }
+
+            if end_col > start_col {
+                let col = last_col;
+                if let Some(node) = self.layout.grid.get(&(track, col)) {
+                    let state = progress
+                        .nodes
+                        .get(node)
+                        .map(|np| np.state)
+                        .unwrap_or(NodeState::Pending);
+                    let label = self
                         .layout
-                        .connectors
-                        .get(col)
-                        .and_then(|row| row.get(track));
-                    let glyph = cell.map(|c| c.glyph).unwrap_or(' ');
-                    let conn = pad_connector(&format!(" {} ", glyph), gap_w);
-                    let edge_state = cell
-                        .map(|c| self.connector_cell_state(&c.edges, progress))
-                        .unwrap_or(EdgeState::Idle);
-                    let colored = self.color_connector(&conn, edge_state);
-                    line.push_str(&colored);
+                        .node_letters
+                        .get(node)
+                        .map(|s| s.as_str())
+                        .unwrap_or("?");
+                    line.push_str(&self.colored_box(label, state));
+                    let vis_w = display_width(label) + 2; // [label]
+                    let pad = col_w.saturating_sub(vis_w);
+                    line.push_str(&" ".repeat(pad));
+                } else {
+                    line.push_str(&" ".repeat(col_w));
                 }
             }
 

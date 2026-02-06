@@ -49,7 +49,6 @@ pub fn build_signature() -> WorkflowSignature {
 }
 
 /// Build the build graph: build → (test + clippy) → summary.
-#[allow(clippy::result_large_err)]
 pub fn build_build_graph() -> Result<Dag<BuildGraphOp>, BuilderError> {
     let mut builder = DagBuilder::new();
 

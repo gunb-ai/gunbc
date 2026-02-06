@@ -27,6 +27,7 @@
 use crate::dag::{Dag, Edge, Guard, Port};
 use crate::node::Node;
 use crate::patterns::PatternOp;
+use crate::patterns::{validate_resource_inputs, ResourceInput};
 use crate::types::Cardinality;
 use crate::value::Value;
 
@@ -50,6 +51,7 @@ pub struct BranchBuilder<T> {
     name: String,
     true_dag: Option<Dag<T>>,
     false_dag: Option<Dag<T>>,
+    resource_inputs: Vec<ResourceInput>,
     // Port configurations
     condition_port_name: String,
     input_port_name: String,
@@ -65,6 +67,7 @@ impl<T: Clone> BranchBuilder<T> {
             name: name.into(),
             true_dag: None,
             false_dag: None,
+            resource_inputs: Vec::new(),
             condition_port_name: "condition".to_string(),
             input_port_name: "input".to_string(),
             input_port_type: "String".to_string(),
@@ -105,6 +108,14 @@ impl<T: Clone> BranchBuilder<T> {
         self
     }
 
+    /// Declare a resource input that both branch DAGs require.
+    ///
+    /// At build time, validates that both true and false branch DAGs have matching entrypoints.
+    pub fn with_resource_input(mut self, ri: ResourceInput) -> Self {
+        self.resource_inputs.push(ri);
+        self
+    }
+
     /// Build the branch pattern as a SubDag node.
     ///
     /// # Panics
@@ -116,6 +127,8 @@ impl<T: Clone> BranchBuilder<T> {
     {
         let true_dag = self.true_dag.expect("true branch DAG is required");
         let false_dag = self.false_dag.expect("false branch DAG is required");
+        validate_resource_inputs(&format!("{}:true_branch", self.name), &self.resource_inputs, &true_dag);
+        validate_resource_inputs(&format!("{}:false_branch", self.name), &self.resource_inputs, &false_dag);
 
         let mut dag = Dag::new();
 
@@ -163,6 +176,7 @@ impl<T: Clone> BranchBuilder<T> {
 pub struct IfBuilder<T> {
     name: String,
     then_dag: Option<Dag<T>>,
+    resource_inputs: Vec<ResourceInput>,
     condition_port_name: String,
     input_port_name: String,
     input_port_type: String,
@@ -176,6 +190,7 @@ impl<T: Clone> IfBuilder<T> {
         Self {
             name: name.into(),
             then_dag: None,
+            resource_inputs: Vec::new(),
             condition_port_name: "condition".to_string(),
             input_port_name: "input".to_string(),
             input_port_type: "String".to_string(),
@@ -210,11 +225,18 @@ impl<T: Clone> IfBuilder<T> {
         self
     }
 
+    /// Declare a resource input that the then DAG requires.
+    pub fn with_resource_input(mut self, ri: ResourceInput) -> Self {
+        self.resource_inputs.push(ri);
+        self
+    }
+
     /// Build the if pattern as a SubDag node.
     ///
     /// If condition is false, the output will be `Value::Skipped`.
     pub fn build(self) -> Node<T> {
         let then_dag = self.then_dag.expect("then DAG is required");
+        validate_resource_inputs(&self.name, &self.resource_inputs, &then_dag);
 
         let mut dag = Dag::new();
 

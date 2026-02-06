@@ -141,7 +141,7 @@ pub fn build_deps_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
             "generate_scripts",
             vec![
                 scalar("manifest_content", "String"), // Receives content, not path
-                scalar("res:platform", "Platform"),   // Platform acquired at boundary
+                resource("platform", "Platform", AccessMode::Read),   // Platform acquired at boundary
             ],
             vec![
                 scalar("install_script", "String"),
@@ -285,7 +285,6 @@ pub fn deps_generate_signature() -> WorkflowSignature {
 ///
 /// This graph generates deps.toml from the tool registry, owning the file's
 /// generation in the same way makegen owns Makefile generation.
-#[allow(clippy::result_large_err)]
 pub fn build_deps_generate_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
     let mut builder = DagBuilder::new();
 

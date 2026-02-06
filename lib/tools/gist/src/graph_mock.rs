@@ -88,7 +88,7 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
         }
         GistMode::Recent => {
             reqs = reqs
-                // execute_rev_list transport response (SHA of commit 7 days ago)
+                // execute_rev_list transport response (SHA of commit 3 days ago)
                 .transport_response(
                     "execute_rev_list",
                     "response",

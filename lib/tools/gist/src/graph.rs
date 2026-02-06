@@ -50,13 +50,13 @@ pub enum GistMode {
         base_ref: String,
     },
 
-    /// Recent mode: diff of changes from the last 7 days.
+    /// Recent mode: diff of changes from the last 3 days.
     ///
     /// The full pipeline:
     /// `rev-list → execute → parse-rev-list → diff → execute → parse-diff → render-diff → gist`
     ///
-    /// Uses `git rev-list -1 --before="7 days ago" HEAD` to find the base commit,
-    /// then diffs against it. If the repo is younger than 7 days (empty rev-list),
+    /// Uses `git rev-list -1 --before="3 days ago" HEAD` to find the base commit,
+    /// then diffs against it. If the repo is younger than 3 days (empty rev-list),
     /// the diff runs against HEAD → producing an empty diff.
     Recent,
 }
@@ -632,8 +632,8 @@ pub fn build_gist_graph(
                 optional("branch", "String"),
                 optional("remote_branch", "String"),
                 optional("base_ref", "String"),
-                scalar("res:fs", "FilesystemHandle"),
-                scalar("res:clock", "Timestamp"),
+                resource("fs", "FilesystemHandle", AccessMode::Read),
+                resource("clock", "Timestamp", AccessMode::Read),
             ],
             vec![scalar("request", "TransportRequest")],
             GistGraphOp::Gist(GistOps::PrepareRequest { public }),
@@ -889,8 +889,8 @@ fn build_diff_acquire(
 
 /// Build the recent-mode acquisition subgraph.
 ///
-/// Resolves the commit from 7 days ago via `git rev-list`, then diffs against it.
-/// If the repo is younger than 7 days (empty rev-list output), PrepareDiff
+/// Resolves the commit from 3 days ago via `git rev-list`, then diffs against it.
+/// If the repo is younger than 3 days (empty rev-list output), PrepareDiff
 /// falls back to its default base_ref of "HEAD", producing an empty diff.
 ///
 /// Returns `(render_markdown, parse_rev_list)` — the caller wires `parse_rev_list`
@@ -906,7 +906,7 @@ fn build_recent_acquire(
     BuilderError,
 > {
     // ========================================================================
-    // Rev-list chain: find commit from 7 days ago
+    // Rev-list chain: find commit from 3 days ago
     // ========================================================================
 
     // Node: PrepareRevListBefore (PURE)
@@ -915,7 +915,7 @@ fn build_recent_acquire(
         vec![optional("repo_path", "String")],
         vec![port("request", "TransportRequest")],
         GistGraphOp::Git(GitOps::PrepareRevListBefore {
-            before: "7 days ago".to_string(),
+            before: "3 days ago".to_string(),
         }),
     ))?;
 

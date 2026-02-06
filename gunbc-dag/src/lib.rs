@@ -16,11 +16,13 @@
 //! - `gunbc-clippy` (in lib/tools/) wraps the clippy CLI tool (general)
 //! - `gunbc-dag::ci` defines gunbc's CI pipeline (repo-specific)
 
+#![forbid(dead_code)]
 pub mod bootstrap;
 pub mod build;
 pub mod ci;
 pub mod codegen;
 pub mod makegen;
+pub mod policy;
 pub mod resources;
 pub mod workspace;
 

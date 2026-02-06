@@ -17,6 +17,7 @@
 //! GistGraphOp::Git(GitOps::ParseLsFiles)
 //! ```
 
+#![forbid(dead_code)]
 use gunbc_exec::{
     optional_str, require_response, ExecError, Executable, OutputMap, TransportResponseExt,
 };

@@ -50,6 +50,7 @@ use gunbc_ir::{
     BuilderError, Cardinality, Dag, DagBuilder, Node, NodeBody, NodeId, NodeRef, Value,
     WorkflowSignature,
 };
+use gunbc_lib_transport::cli::{execute_cli_tool_op, execute_cli_tool_op_with_handle};
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::EmbeddedFileExistsOp;
 use std::collections::HashMap;
@@ -108,10 +109,10 @@ impl Executable for CIGraphOp {
                     })?;
                     let handle = ToolHandle::try_from(handle_val)
                         .exec_context("tool handle conversion")?;
-                    op.execute_with_handle(&handle)
+                    execute_cli_tool_op_with_handle(op, &handle)
                         .exec_context("CLI tool error")?
                 } else {
-                    op.execute().exec_context("CLI tool error")?
+                    execute_cli_tool_op(op).exec_context("CLI tool error")?
                 };
 
                 // Copy tool outputs and add skip=false
@@ -198,7 +199,6 @@ pub fn ci_workflow_permissions() -> Permissions {
 ///
 /// This is a convenience wrapper around [`build_ci_graph_with_mode`] that
 /// avoids churn on existing callers.
-#[allow(clippy::result_large_err)]
 pub fn build_ci_graph() -> Result<Dag<CIGraphOp>, BuilderError> {
     build_ci_graph_with_mode(ExecMode::Ensure)
 }
@@ -207,7 +207,6 @@ pub fn build_ci_graph() -> Result<Dag<CIGraphOp>, BuilderError> {
 ///
 /// The `mode` parameter is embedded into the inlined codegen DAG, eliminating
 /// the need for the `GUNBC_EXEC_MODE` environment variable.
-#[allow(clippy::result_large_err)]
 pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, BuilderError> {
     let mut builder = DagBuilder::new();
 

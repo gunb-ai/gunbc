@@ -22,6 +22,7 @@
 
 use crate::dag::{Dag, Edge, Guard, Port};
 use crate::node::Node;
+use crate::patterns::{validate_resource_inputs, ResourceInput};
 use crate::types::Cardinality;
 use crate::value::Value;
 
@@ -45,6 +46,7 @@ pub struct TransactionBuilder<T> {
     name: String,
     begin_op: Option<T>,
     body_dag: Option<Dag<T>>,
+    resource_inputs: Vec<ResourceInput>,
     commit_op: Option<T>,
     rollback_op: Option<T>,
     // Port configurations
@@ -61,6 +63,7 @@ impl<T: Clone> TransactionBuilder<T> {
             name: name.into(),
             begin_op: None,
             body_dag: None,
+            resource_inputs: Vec::new(),
             commit_op: None,
             rollback_op: None,
             input_port_name: "input".to_string(),
@@ -120,6 +123,12 @@ impl<T: Clone> TransactionBuilder<T> {
         self
     }
 
+    /// Declare a resource input that the body DAG requires.
+    pub fn with_resource_input(mut self, ri: ResourceInput) -> Self {
+        self.resource_inputs.push(ri);
+        self
+    }
+
     /// Build the transaction pattern as a SubDag node.
     ///
     /// # Panics
@@ -128,6 +137,7 @@ impl<T: Clone> TransactionBuilder<T> {
     pub fn build(self) -> Node<T> {
         let begin_op = self.begin_op.expect("begin operation is required");
         let body_dag = self.body_dag.expect("body dag is required");
+        validate_resource_inputs(&self.name, &self.resource_inputs, &body_dag);
         let commit_op = self.commit_op.expect("commit operation is required");
         let rollback_op = self.rollback_op.expect("rollback operation is required");
 

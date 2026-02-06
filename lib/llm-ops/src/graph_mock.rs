@@ -168,6 +168,7 @@ pub fn openai_mock_spec() -> MockSpec {
                 .output("model", OutputMatcher::Any)
                 .description("OpenAI parse handles skipped transport response"),
         )
+        .resource_credential("credential:llm", Some(3_600_000))
         .skip_node_example("credential_env")
 }
 
@@ -313,6 +314,7 @@ pub fn anthropic_mock_spec() -> MockSpec {
                 .output("model", OutputMatcher::Any)
                 .description("Anthropic parse handles skipped transport response"),
         )
+        .resource_credential("credential:llm", Some(3_600_000))
         .skip_node_example("credential_env")
 }
 
@@ -424,6 +426,7 @@ Overall: The code is clean and well-structured. Minor fixes recommended.";
                 .output("model", OutputMatcher::Any)
                 .description("Code review parse handles skipped transport response"),
         )
+        .resource_credential("credential:llm", Some(3_600_000))
         .skip_node_example("credential_env")
 }
 
@@ -536,6 +539,7 @@ pub fn secret_api_key_mock_spec() -> MockSpec {
                 .output("model", OutputMatcher::Any)
                 .description("Secret auth parse handles skipped transport response"),
         )
+        .resource_credential("credential:llm", Some(3_600_000))
         .skip_node_example("credential_env")
 }
 
@@ -598,6 +602,124 @@ pub fn rate_limited_mock_spec() -> MockSpec {
                     OutputMatcher::exact(Value::Str(String::new())),
                 )
                 .description("Resolve auth maps OpenAI provider to API key env var"),
+        )
+        .resource_credential("credential:llm", Some(3_600_000))
+        .skip_node_example("credential_env")
+}
+
+/// Mock specification for credential lifecycle testing.
+///
+/// Tests credential acquire/timeout/refresh/revoke behavior via resource simulation.
+/// Generates `generated_tests_credential.rs` with lifecycle-specific tests.
+#[gunbc_testgen_registry_macros::testgen_target(
+    name = "llm-credential-lifecycle",
+    output = "lib/llm-ops/src/generated_tests_credential.rs",
+    module = "llm_credential_lifecycle_generated_tests",
+    builder = "crate::graph::build_chat_completion_graph()",
+    no_boundary_tests
+)]
+pub fn credential_lifecycle_mock_spec() -> MockSpec {
+    let response = mock::mock_openai_response("Credential lifecycle test response.");
+
+    MockSpec::new("llm-credential-lifecycle")
+        // Input mocks for DAG entry points
+        .input_mock("prepare", "provider", Value::Str("openai".into()))
+        .input_mock("prepare", "model", Value::Str("gpt-4o".into()))
+        .input_mock(
+            "prepare",
+            "messages",
+            Value::Json(serde_json::json!([
+                {"role": "user", "content": "Credential lifecycle test"}
+            ])),
+        )
+        // Env: resolved auth token
+        .boundary(
+            "credential_env",
+            "credential:llm",
+            mock_credential(),
+        )
+        // Transport mock
+        .transport_mock(
+            "execute",
+            "response",
+            Value::Response(gunbc_ir::transport::TransportResponse::Rest(
+                response.clone(),
+            )),
+        )
+        .boundary(
+            "execute",
+            "response",
+            Value::Response(gunbc_ir::transport::TransportResponse::Rest(response)),
+        )
+        .boundary(
+            "parse",
+            "content",
+            Value::Str("Credential lifecycle test response.".into()),
+        )
+        .boundary("parse", "model", Value::Str("gpt-4o".into()))
+        .boundary("parse", "finish_reason", Value::Str("Stop".into()))
+        .boundary("parse", "input_tokens", Value::Int(10))
+        .boundary("parse", "output_tokens", Value::Int(20))
+        .expects_input("provider", InputConstraint::NonEmpty)
+        .expects_input("model", InputConstraint::NonEmpty)
+        // Credential resource: basic (acquire + timeout)
+        .resource_credential("credential:llm", Some(3_600_000))
+        // Credential resource: refreshable (acquire + timeout + refresh)
+        .resource_credential_refreshable("credential:llm:refreshable", 3_600_000, 3_600_000)
+        // Node I/O examples
+        .node_example(
+            NodeExample::new("prepare")
+                .input("provider", Value::Str("openai".into()))
+                .input("model", Value::Str("gpt-4o".into()))
+                .input("messages", Value::Str("Credential lifecycle test".into()))
+                .output("request", OutputMatcher::non_empty())
+                .output(
+                    "provider",
+                    OutputMatcher::exact(Value::Str("openai".into())),
+                )
+                .description("Credential lifecycle prepare emits REST request and echoes provider"),
+        )
+        .node_example(
+            NodeExample::new("resolve_auth")
+                .input("provider", Value::Str("openai".into()))
+                .output("service", OutputMatcher::exact(Value::Str("openai".into())))
+                .output(
+                    "env_var",
+                    OutputMatcher::exact(Value::Str("OPENAI_API_KEY".into())),
+                )
+                .output(
+                    "scheme",
+                    OutputMatcher::exact(Value::Str("bearer".into())),
+                )
+                .output(
+                    "header_name",
+                    OutputMatcher::exact(Value::Str(String::new())),
+                )
+                .description("Resolve auth maps OpenAI provider to API key env var"),
+        )
+        .node_example(
+            NodeExample::new("parse")
+                .input("provider", Value::Str("openai".into()))
+                .input(
+                    "response",
+                    Value::Response(gunbc_ir::transport::TransportResponse::Rest(
+                        mock::mock_openai_response("Credential lifecycle test response."),
+                    )),
+                )
+                .output(
+                    "content",
+                    OutputMatcher::exact(Value::Str("Credential lifecycle test response.".into())),
+                )
+                .output("model", OutputMatcher::exact(Value::Str("gpt-4o".into())))
+                .description("Credential lifecycle parse extracts content from REST response"),
+        )
+        .node_example(
+            NodeExample::new("parse")
+                .input("provider", Value::Str("openai".into()))
+                .input("response", Value::Skipped)
+                .output("content", OutputMatcher::Any)
+                .output("model", OutputMatcher::Any)
+                .description("Parse handles skipped transport response"),
         )
         .skip_node_example("credential_env")
 }

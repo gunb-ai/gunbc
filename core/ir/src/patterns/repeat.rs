@@ -14,6 +14,7 @@
 use crate::dag::{Dag, Edge, Port};
 use crate::node::Node;
 use crate::patterns::PatternOp;
+use crate::patterns::{validate_resource_inputs, validate_resource_inputs_any, ResourceInput};
 use std::time::Duration;
 
 // ============================================================================
@@ -125,6 +126,7 @@ pub enum FailureClassifier {
 pub struct RetryBuilder<T> {
     name: String,
     body_dag: Option<Dag<T>>,
+    resource_inputs: Vec<ResourceInput>,
     policy: RepeatPolicy,
     classifier: FailureClassifier,
     // Port configuration
@@ -140,6 +142,7 @@ impl<T: Clone> RetryBuilder<T> {
         Self {
             name: name.into(),
             body_dag: None,
+            resource_inputs: Vec::new(),
             policy: RepeatPolicy::default(),
             classifier: FailureClassifier::default(),
             input_port_name: "input".to_string(),
@@ -181,12 +184,19 @@ impl<T: Clone> RetryBuilder<T> {
         self
     }
 
+    /// Declare a resource input that the body DAG requires.
+    pub fn with_resource_input(mut self, ri: ResourceInput) -> Self {
+        self.resource_inputs.push(ri);
+        self
+    }
+
     /// Build the retry pattern as a SubDag node.
     pub fn build(self) -> Node<T>
     where
         T: From<PatternOp>,
     {
         let body_dag = self.body_dag.expect("body DAG is required");
+        validate_resource_inputs(&self.name, &self.resource_inputs, &body_dag);
 
         let mut dag = Dag::new();
 
@@ -265,6 +275,7 @@ pub struct WhileBuilder<T> {
     name: String,
     condition_dag: Option<Dag<T>>,
     body_dag: Option<Dag<T>>,
+    resource_inputs: Vec<ResourceInput>,
     max_iterations: Option<usize>,
     // Loop-carried state
     state_type: Option<String>,
@@ -278,6 +289,7 @@ impl<T: Clone> WhileBuilder<T> {
             name: name.into(),
             condition_dag: None,
             body_dag: None,
+            resource_inputs: Vec::new(),
             max_iterations: None,
             state_type: None,
             state_port_name: "state".to_string(),
@@ -318,6 +330,12 @@ impl<T: Clone> WhileBuilder<T> {
         self
     }
 
+    /// Declare a resource input that the body DAG requires.
+    pub fn with_resource_input(mut self, ri: ResourceInput) -> Self {
+        self.resource_inputs.push(ri);
+        self
+    }
+
     /// Build the while pattern as a SubDag node.
     pub fn build(self) -> Node<T>
     where
@@ -325,6 +343,11 @@ impl<T: Clone> WhileBuilder<T> {
     {
         let condition_dag = self.condition_dag.expect("condition DAG is required");
         let body_dag = self.body_dag.expect("body DAG is required");
+        validate_resource_inputs_any(
+            &self.name,
+            &self.resource_inputs,
+            &[&condition_dag, &body_dag],
+        );
 
         let mut dag = Dag::new();
 
@@ -393,6 +416,7 @@ impl<T: Clone> WhileBuilder<T> {
 pub struct PollBuilder<T> {
     name: String,
     body_dag: Option<Dag<T>>,
+    resource_inputs: Vec<ResourceInput>,
     interval: Duration,
     timeout: Duration,
     // Port configuration
@@ -408,6 +432,7 @@ impl<T: Clone> PollBuilder<T> {
         Self {
             name: name.into(),
             body_dag: None,
+            resource_inputs: Vec::new(),
             interval: Duration::from_secs(1),
             timeout: Duration::from_secs(60),
             input_port_name: "input".to_string(),
@@ -449,12 +474,19 @@ impl<T: Clone> PollBuilder<T> {
         self
     }
 
+    /// Declare a resource input that the body DAG requires.
+    pub fn with_resource_input(mut self, ri: ResourceInput) -> Self {
+        self.resource_inputs.push(ri);
+        self
+    }
+
     /// Build the poll pattern as a SubDag node.
     pub fn build(self) -> Node<T>
     where
         T: From<PatternOp>,
     {
         let body_dag = self.body_dag.expect("body DAG is required");
+        validate_resource_inputs(&self.name, &self.resource_inputs, &body_dag);
 
         let mut dag = Dag::new();
 

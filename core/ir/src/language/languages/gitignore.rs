@@ -12,9 +12,6 @@
 //! - Comment prefix: `#`
 //! - Pattern syntax: glob with negation (!)
 
-// Allow dead_code for infrastructure APIs provided for future use
-#![allow(dead_code)]
-
 use crate::dag::{Dag, Port};
 use crate::language::LanguageOp;
 use crate::node::Node;
@@ -83,11 +80,13 @@ pub fn build_gitignore_subdag() -> Node<LanguageOp> {
 }
 
 /// Render gitignore patterns to file content.
+#[cfg(test)]
 pub fn render_gitignore_content(patterns: &[String]) -> String {
     patterns.join("\n")
 }
 
 /// Render gitignore content with sections.
+#[cfg(test)]
 pub fn render_gitignore_with_sections(sections: &[(String, Vec<String>)]) -> String {
     let mut content = String::new();
 
@@ -109,6 +108,7 @@ pub fn render_gitignore_with_sections(sections: &[(String, Vec<String>)]) -> Str
 ///
 /// Note: This is a simplified implementation. For full glob matching,
 /// consider using the `glob` or `globset` crate.
+#[cfg(test)]
 pub fn is_ignored(file: &str, patterns: &[String]) -> bool {
     use crate::language::patterns::glob::is_negated;
 
@@ -137,6 +137,7 @@ pub fn is_ignored(file: &str, patterns: &[String]) -> bool {
 }
 
 /// Simple glob matching without regex dependency.
+#[cfg(test)]
 fn simple_glob_match(pattern: &str, file: &str) -> bool {
     // Handle ** (match any path)
     if pattern.contains("**") {

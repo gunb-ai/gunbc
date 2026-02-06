@@ -17,18 +17,59 @@
 //! mocks are treated as errors by the executor (no default fallback).
 
 use gunbc_ir::{NodeId, PortName, Value};
+use std::cell::Cell;
 use std::collections::HashMap;
 
 /// Mock behavior for a single boundary port.
+///
+/// Supports both static values and ordered sequences. When a sequence is
+/// provided, `next_value()` returns values in order; once exhausted it
+/// falls back to the static `value`.
 #[derive(Debug, Clone)]
 pub struct BoundaryMock {
-    /// The mock value to return for this port
+    /// The static fallback value
     pub value: Value,
+    /// Ordered responses (returned before falling back to `value`)
+    sequence: Vec<Value>,
+    /// Call counter (Cell for interior mutability — DAG execution is single-threaded)
+    call_count: Cell<usize>,
 }
 
 impl BoundaryMock {
     pub fn new(value: Value) -> Self {
-        Self { value }
+        Self {
+            value,
+            sequence: Vec::new(),
+            call_count: Cell::new(0),
+        }
+    }
+
+    /// Create a mock with an ordered sequence of responses.
+    ///
+    /// `next_value()` returns `sequence[i]` for call `i`; once the
+    /// sequence is exhausted, it returns the `default` value.
+    pub fn with_sequence(default: Value, sequence: Vec<Value>) -> Self {
+        Self {
+            value: default,
+            sequence,
+            call_count: Cell::new(0),
+        }
+    }
+
+    /// Return the next value in the sequence, or the static fallback.
+    pub fn next_value(&self) -> Value {
+        let idx = self.call_count.get();
+        self.call_count.set(idx + 1);
+        if idx < self.sequence.len() {
+            self.sequence[idx].clone()
+        } else {
+            self.value.clone()
+        }
+    }
+
+    /// Get the current call count.
+    pub fn call_count(&self) -> usize {
+        self.call_count.get()
     }
 }
 
@@ -98,6 +139,22 @@ impl BoundaryMocks {
         self.mocks.get(&key)
     }
 
+    /// Set a sequenced mock for a boundary port (output interception).
+    ///
+    /// Returns values from `sequence` in order; once exhausted, falls back to `default`.
+    pub fn set_sequence(
+        &mut self,
+        node_id: impl Into<String>,
+        port_name: impl Into<String>,
+        default: Value,
+        sequence: Vec<Value>,
+    ) {
+        self.mocks.insert(
+            (node_id.into(), port_name.into()),
+            BoundaryMock::with_sequence(default, sequence),
+        );
+    }
+
     /// Check if a specific mock is defined for a boundary port.
     pub fn has_mock(&self, node_id: &NodeId, port_name: &PortName) -> bool {
         let key = (node_id.0.clone(), port_name.0.clone());
@@ -120,5 +177,71 @@ mod tests {
             _ => panic!("expected string value"),
         }
         assert!(mocks.get_mock(&"other".into(), &"port".into()).is_none());
+    }
+
+    #[test]
+    fn test_sequence_returns_in_order() {
+        let mock = BoundaryMock::with_sequence(
+            Value::Str("default".into()),
+            vec![
+                Value::Str("first".into()),
+                Value::Str("second".into()),
+            ],
+        );
+
+        assert_eq!(mock.next_value(), Value::Str("first".into()));
+        assert_eq!(mock.next_value(), Value::Str("second".into()));
+    }
+
+    #[test]
+    fn test_sequence_exhausted_falls_back_to_default() {
+        let mock = BoundaryMock::with_sequence(
+            Value::Str("default".into()),
+            vec![Value::Str("first".into())],
+        );
+
+        assert_eq!(mock.next_value(), Value::Str("first".into()));
+        assert_eq!(mock.next_value(), Value::Str("default".into()));
+        assert_eq!(mock.next_value(), Value::Str("default".into()));
+    }
+
+    #[test]
+    fn test_sequence_call_count() {
+        let mock = BoundaryMock::with_sequence(
+            Value::Str("default".into()),
+            vec![Value::Str("a".into()), Value::Str("b".into())],
+        );
+
+        assert_eq!(mock.call_count(), 0);
+        mock.next_value();
+        assert_eq!(mock.call_count(), 1);
+        mock.next_value();
+        assert_eq!(mock.call_count(), 2);
+        mock.next_value(); // falls back to default
+        assert_eq!(mock.call_count(), 3);
+    }
+
+    #[test]
+    fn test_static_mock_always_returns_same() {
+        let mock = BoundaryMock::new(Value::Int(42));
+
+        assert_eq!(mock.next_value(), Value::Int(42));
+        assert_eq!(mock.next_value(), Value::Int(42));
+        assert_eq!(mock.next_value(), Value::Int(42));
+    }
+
+    #[test]
+    fn test_set_sequence_on_boundary_mocks() {
+        let mut mocks = BoundaryMocks::new();
+        mocks.set_sequence(
+            "node",
+            "port",
+            Value::Str("default".into()),
+            vec![Value::Str("first".into())],
+        );
+
+        let mock = mocks.get_mock(&"node".into(), &"port".into()).unwrap();
+        assert_eq!(mock.next_value(), Value::Str("first".into()));
+        assert_eq!(mock.next_value(), Value::Str("default".into()));
     }
 }

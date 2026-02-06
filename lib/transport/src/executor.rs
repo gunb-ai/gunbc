@@ -327,8 +327,8 @@ fn execute_tcp(request: &TcpRequest) -> Result<TcpResponse, TransportError> {
 
 /// Execute a shell command.
 ///
-/// This is the I/O boundary - the official place where Command::new is used.
-/// All shell execution flows through this function.
+/// This is the I/O boundary for shell requests (TransportRequest::Shell).
+/// CLI tool execution uses the transport-layer helpers in `cli.rs`.
 #[allow(clippy::disallowed_methods)]
 fn execute_shell(request: &ShellRequest) -> Result<ShellResponse, TransportError> {
     let mut cmd = Command::new(&request.command);

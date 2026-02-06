@@ -14,12 +14,9 @@
 //! ```ignore
 //! use gunbc_ir::transport::github::cli::*;
 //!
-//! // Check if gh is installed
-//! if !is_gh_installed() {
-//!     // Get install instructions
-//!     for (platform, method) in gh_install_methods() {
-//!         println!("{}: {:?}", platform, method);
-//!     }
+//! // Get install instructions
+//! for (platform, method) in gh_install_methods() {
+//!     println!("{}: {:?}", platform, method);
 //! }
 //!
 //! // Build a shell request
@@ -165,66 +162,6 @@ pub fn gh_auth_status_request() -> ShellRequest {
 /// Build a shell request for gh api (raw API call).
 pub fn gh_api_request(endpoint: &str) -> ShellRequest {
     gh_cli_request(&["api", endpoint])
-}
-
-// ============================================================================
-// Upsert Interface
-// ============================================================================
-
-// Note: These functions use Command::new directly because they ARE the gh CLI
-// abstraction. For new code, consider using cli::GH with node.requires().
-// Once migration is complete, these should delegate to CliToolOp.
-
-/// Check if gh CLI is installed.
-///
-/// This is the "Check" phase of the upsert pattern.
-/// Returns true if `gh --version` exits successfully.
-#[allow(clippy::disallowed_methods)]
-pub fn is_gh_installed() -> bool {
-    std::process::Command::new("gh")
-        .arg("--version")
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
-}
-
-/// Get the installed gh CLI version, if available.
-///
-/// Returns None if gh is not installed or version cannot be parsed.
-#[allow(clippy::disallowed_methods)]
-pub fn gh_installed_version() -> Option<String> {
-    let output = std::process::Command::new("gh")
-        .arg("--version")
-        .output()
-        .ok()?;
-
-    if !output.status.success() {
-        return None;
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    // Output format: "gh version 2.40.0 (2024-01-01)"
-    stdout
-        .lines()
-        .next()
-        .and_then(|line| line.split_whitespace().nth(2))
-        .map(|v| v.to_string())
-}
-
-/// Check if gh CLI is authenticated.
-///
-/// Runs `gh auth status` and checks for success.
-#[allow(clippy::disallowed_methods)]
-pub fn is_gh_authenticated() -> bool {
-    std::process::Command::new("gh")
-        .args(["auth", "status"])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
 }
 
 // ============================================================================

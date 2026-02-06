@@ -1,6 +1,7 @@
 //! DAG structure: edges, ports, and the graph itself.
 
 use crate::node::Node;
+use crate::resource::AccessMode;
 use crate::types::{Cardinality, NodeId, PortName, TypeId};
 use crate::value::Value;
 use serde::{Deserialize, Serialize};
@@ -220,6 +221,9 @@ pub struct Port {
     /// Internal routing guard (used by patterns, not public API)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) guard: Option<Guard>,
+    /// Resource access mode for `res:*` ports (used by resource accounting)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resource_access: Option<AccessMode>,
 }
 
 impl Port {
@@ -231,6 +235,7 @@ impl Port {
             type_id: type_id.into(),
             cardinality: Cardinality::ONE,
             guard: None,
+            resource_access: None,
         }
     }
 
@@ -245,6 +250,34 @@ impl Port {
             type_id: type_id.into(),
             cardinality,
             guard: None,
+            resource_access: None,
+        }
+    }
+
+    /// Create a resource port for `res:*` convention.
+    ///
+    /// Resource ports carry acquired resources (capabilities or observations)
+    /// through DAG edges. The port name is automatically prefixed with `res:`.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Resource name (without `res:` prefix), e.g. `"platform"`, `"fs"`
+    /// * `type_id` - Type of the resource value, e.g. `"Platform"`, `"FilesystemHandle"`
+    /// * `mode` - How the resource is accessed (Read, Write, Exclusive)
+    pub fn resource(
+        name: impl Into<String>,
+        type_id: impl Into<TypeId>,
+        mode: AccessMode,
+    ) -> Self {
+        let raw = name.into();
+        let stripped = raw.strip_prefix("res:").unwrap_or(&raw);
+        let full_name = format!("res:{stripped}");
+        Self {
+            name: full_name.into(),
+            type_id: type_id.into(),
+            cardinality: Cardinality::ONE,
+            guard: None,
+            resource_access: Some(mode),
         }
     }
 
@@ -293,6 +326,7 @@ impl Port {
             type_id: type_id.into(),
             cardinality: Cardinality::ONE,
             guard: Some(Guard::Eq(expected)),
+            resource_access: None,
         }
     }
 
@@ -311,6 +345,7 @@ impl Port {
             type_id: type_id.into(),
             cardinality,
             guard: Some(guard),
+            resource_access: None,
         }
     }
 
@@ -383,6 +418,7 @@ impl Guard {
 /// Helper functions for building DAGs.
 pub mod build {
     use super::*;
+    pub use crate::resource::AccessMode;
 
     /// Create a simple port (defaults to Cardinality::ONE).
     pub fn port(name: &str, type_id: &str) -> Port {
@@ -440,7 +476,15 @@ pub mod build {
             type_id: type_id.into(),
             cardinality: Cardinality::ONE,
             guard: Some(Guard::Eq(expected)),
+            resource_access: None,
         }
+    }
+
+    /// Create a resource port for `res:*` convention.
+    ///
+    /// The port name is automatically prefixed with `res:`.
+    pub fn resource(name: &str, type_id: &str, mode: AccessMode) -> Port {
+        Port::resource(name, type_id, mode)
     }
 }
 
@@ -561,5 +605,20 @@ mod tests {
         // Port with unregistered type - should fall back to declared cardinality
         let port5 = Port::optional("p5", "Unknown");
         assert_eq!(port5.infer_cardinality(&registry), Cardinality::ZERO_OR_ONE);
+    }
+
+    #[test]
+    fn test_resource_port_strips_double_prefix() {
+        // Passing "res:platform" should NOT produce "res:res:platform"
+        let port = Port::resource("res:platform", "Platform", AccessMode::Read);
+        assert_eq!(port.name.0, "res:platform");
+        assert_eq!(port.resource_access, Some(AccessMode::Read));
+    }
+
+    #[test]
+    fn test_resource_port_normal_name() {
+        let port = Port::resource("platform", "Platform", AccessMode::Write);
+        assert_eq!(port.name.0, "res:platform");
+        assert_eq!(port.resource_access, Some(AccessMode::Write));
     }
 }

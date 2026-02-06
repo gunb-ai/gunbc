@@ -103,7 +103,7 @@ fn render_makefile_content(registry: &ToolRegistry, config: &BuildConfig) -> Str
 
     // Phony targets - include core targets, meta targets, and tool targets
     output.push_str(
-        ".PHONY: help ensure-codegen codegen build clean testgen testgen-check verify fmt-fix lint-fix",
+        ".PHONY: help ensure-codegen codegen build clean testgen testgen-check pragma-check verify fmt-fix lint-fix",
     );
 
     // Add meta targets (with check and fix variants)
@@ -191,6 +191,14 @@ fn render_core_targets(config: &BuildConfig) -> String {
     output.push_str("testgen-check: ensure-codegen\n");
     output.push_str(&format!("{}{}\n\n", INDENT, config.testgen_check_shell()));
 
+    // Pragma check: verify clippy/allowlist artifacts are not stale
+    output.push_str("# Check if pragma artifacts are stale (fails if regeneration needed)\n");
+    output.push_str("pragma-check: ensure-codegen\n");
+    output.push_str(&format!(
+        "{}@{}cargo run -p gunbc-dag --bin gunbc-pragma --release -- --check\n\n",
+        INDENT, warning_prefix
+    ));
+
     // Verify: check all generated artifacts match their generators
     output.push_str("# Verify generated artifacts match their generators\n");
     output.push_str("verify: ensure-codegen\n");
@@ -203,7 +211,11 @@ fn render_core_targets(config: &BuildConfig) -> String {
         INDENT, warning_prefix
     ));
     output.push_str(&format!(
-        "{}@{}cargo run -p gunbc-dag --bin gunbc-testgen --release -- --check\n\n",
+        "{}@{}cargo run -p gunbc-dag --bin gunbc-testgen --release -- --check\n",
+        INDENT, warning_prefix
+    ));
+    output.push_str(&format!(
+        "{}@{}cargo run -p gunbc-dag --bin gunbc-pragma --release -- --check\n\n",
         INDENT, warning_prefix
     ));
 
@@ -235,6 +247,7 @@ fn render_help_target(registry: &ToolRegistry, config: &BuildConfig) -> String {
     output.push_str("\t@echo \"  clean    - Remove build artifacts\"\n");
     output.push_str("\t@echo \"  testgen  - Regenerate tests from DAG structures\"\n");
     output.push_str("\t@echo \"  testgen-check  - Check if generated tests are stale\"\n");
+    output.push_str("\t@echo \"  pragma-check  - Check if pragma artifacts are stale\"\n");
     output.push_str("\t@echo \"  verify   - Verify generated artifacts match their generators\"\n");
     output.push_str("\t@echo \"\"\n");
 
@@ -347,7 +360,7 @@ fn render_fix_alias_targets(config: &BuildConfig) -> String {
 
     // lint-fix: run clippy with --fix
     output.push_str("# lint-fix: auto-fix lint issues where possible\n");
-    output.push_str("lint-fix:\n");
+    output.push_str("lint-fix: pragma\n");
     output.push_str(&format!("{}{}\n\n", INDENT, config.lint_fix_shell()));
 
     output
@@ -568,6 +581,8 @@ mod tests {
 
         assert!(makefile.contains("gist:"));
         assert!(makefile.contains("gist-dry:"));
+        assert!(makefile.contains("pragma:"));
+        assert!(makefile.contains("pragma-dry:"));
     }
 
     #[test]
@@ -590,6 +605,8 @@ mod tests {
         assert!(makefile.contains("build: codegen testgen"));
         assert!(makefile.contains("testgen: ensure-codegen"));
         assert!(makefile.contains("testgen-check: ensure-codegen"));
+        assert!(makefile.contains("pragma-check: ensure-codegen"));
+        assert!(makefile.contains("gunbc-pragma --release -- --check"));
         assert!(makefile.contains("clean:"));
     }
 
@@ -642,16 +659,24 @@ mod tests {
             makefile.contains("testgen-check:"),
             "should have testgen-check target"
         );
+        assert!(
+            makefile.contains("pragma-check:"),
+            "should have pragma-check target"
+        );
 
         // Testgen in help
         assert!(
             makefile.contains("testgen  - Regenerate tests"),
             "help should mention testgen"
         );
+        assert!(
+            makefile.contains("pragma-check  - Check if pragma artifacts are stale"),
+            "help should mention pragma-check"
+        );
 
         // Testgen in .PHONY
         assert!(
-            makefile.contains("testgen testgen-check"),
+            makefile.contains("testgen testgen-check pragma-check"),
             "should be in .PHONY"
         );
         assert!(
@@ -762,7 +787,7 @@ mod tests {
 
         // Should have fmt-fix and lint-fix as dependency targets
         assert!(makefile.contains("fmt-fix:"));
-        assert!(makefile.contains("lint-fix:"));
+        assert!(makefile.contains("lint-fix: pragma"));
         assert!(makefile.contains("@cargo fmt")); // fmt-fix uses fmt command
         assert!(makefile.contains("--fix")); // lint-fix uses clippy --fix
     }
@@ -778,7 +803,7 @@ mod tests {
         assert!(makefile.contains("lint-fix"));
 
         // clippy-fix should exist
-        assert!(makefile.contains("clippy-fix:"));
+        assert!(makefile.contains("clippy-fix: ensure-codegen pragma"));
 
         // check-fix should exist
         assert!(makefile.contains("check-fix:"));

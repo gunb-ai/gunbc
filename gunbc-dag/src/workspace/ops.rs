@@ -20,6 +20,7 @@ use gunbc_gist::GistOps;
 use gunbc_ir::LanguageOp;
 
 // Infrastructure ops
+use gunbc_lib_transport::cli::execute_cli_tool_op;
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::PrimitiveOp;
 
@@ -91,8 +92,8 @@ impl Executable for WorkspaceOp {
             WorkspaceOp::Makegen(op) => op.execute(inputs),
             WorkspaceOp::Gist(op) => op.execute(inputs),
             WorkspaceOp::Bootstrap(op) => op.execute(inputs),
-            // CliToolOp has its own execute signature - wrap it
-            WorkspaceOp::Clippy(op) => op.execute().exec_context("CliToolOp error"),
+            // CliToolOp execution lives in the transport layer
+            WorkspaceOp::Clippy(op) => execute_cli_tool_op(op).exec_context("CliToolOp error"),
             // Env node does tool acquisition
             WorkspaceOp::Env(op) => op.execute(inputs),
             // Language ops

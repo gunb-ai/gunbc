@@ -25,6 +25,7 @@
 //!
 //! Mock specs are in `graph_mock.rs` for test generation.
 
+#![forbid(dead_code)]
 pub mod graph;
 
 #[cfg(test)]
@@ -46,18 +47,15 @@ pub use gunbc_lib_markdown::MarkdownOp;
 
 #[cfg(test)]
 mod generated_tests_snapshot {
-    #![allow(unused_imports)]
     include!("generated_tests_snapshot.rs");
 }
 
 #[cfg(test)]
 mod generated_tests_diff {
-    #![allow(unused_imports)]
     include!("generated_tests_diff.rs");
 }
 
 #[cfg(test)]
 mod generated_tests_recent {
-    #![allow(unused_imports)]
     include!("generated_tests_recent.rs");
 }

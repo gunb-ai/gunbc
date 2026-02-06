@@ -703,6 +703,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                 path: vec!["gunbc_test".to_string()],
                 items: vec![
                     "ResourceAcquireResult".to_string(),
+                    "ResourceRefreshResult".to_string(),
                     "ResourceSimulation".to_string(),
                 ],
             });
@@ -824,7 +825,129 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             }
         }
 
+        Self::prune_unused_imports(&mut file);
+
         file
+    }
+
+    fn prune_unused_imports(file: &mut TestFile) {
+        let mut used: HashSet<String> = HashSet::new();
+
+        for helper in &file.helpers {
+            Self::collect_idents_from_type(&helper.return_type, &mut used);
+            for stmt in &helper.body {
+                Self::collect_idents_from_stmt(stmt, &mut used);
+            }
+        }
+
+        for section in &file.sections {
+            for test in &section.tests {
+                for stmt in &test.body {
+                    Self::collect_idents_from_stmt(stmt, &mut used);
+                }
+            }
+        }
+
+        for import in &mut file.imports {
+            import.items.retain(|item| used.contains(item));
+        }
+        file.imports.retain(|import| !import.items.is_empty());
+    }
+
+    fn collect_idents_from_type(ty: &str, used: &mut HashSet<String>) {
+        let mut buf = String::new();
+        for ch in ty.chars() {
+            if ch.is_alphanumeric() || ch == '_' {
+                buf.push(ch);
+            } else if !buf.is_empty() {
+                used.insert(buf.clone());
+                buf.clear();
+            }
+        }
+        if !buf.is_empty() {
+            used.insert(buf);
+        }
+    }
+
+    fn collect_idents_from_stmt(stmt: &Stmt, used: &mut HashSet<String>) {
+        match stmt {
+            Stmt::Let { expr, .. } => Self::collect_idents_from_expr(expr, used),
+            Stmt::Expr(expr) => Self::collect_idents_from_expr(expr, used),
+            Stmt::Assert(assert) => Self::collect_idents_from_assert(assert, used),
+            Stmt::Comment(_) | Stmt::Blank => {}
+            Stmt::Return(expr) | Stmt::TailExpr(expr) => Self::collect_idents_from_expr(expr, used),
+        }
+    }
+
+    fn collect_idents_from_assert(assert: &Assert, used: &mut HashSet<String>) {
+        match assert {
+            Assert::Eq { left, right, .. } => {
+                Self::collect_idents_from_expr(left, used);
+                Self::collect_idents_from_expr(right, used);
+            }
+            Assert::True { expr, .. } | Assert::NonEmpty { expr, .. } => {
+                Self::collect_idents_from_expr(expr, used);
+            }
+            Assert::Contains { expr, .. } => {
+                Self::collect_idents_from_expr(expr, used);
+            }
+        }
+    }
+
+    fn collect_idents_from_expr(expr: &Expr, used: &mut HashSet<String>) {
+        match expr {
+            Expr::Value(_) => {
+                used.insert("Value".to_string());
+            }
+            Expr::Var(name) => {
+                Self::record_ident(name, used);
+            }
+            Expr::Str(_) | Expr::IntLit(_) | Expr::BoolLit(_) => {}
+            Expr::Call { func, args } => {
+                Self::collect_idents_from_expr(func, used);
+                for arg in args {
+                    Self::collect_idents_from_expr(arg, used);
+                }
+            }
+            Expr::MethodCall {
+                receiver, args, ..
+            } => {
+                Self::collect_idents_from_expr(receiver, used);
+                for arg in args {
+                    Self::collect_idents_from_expr(arg, used);
+                }
+            }
+            Expr::Field(expr, _) => Self::collect_idents_from_expr(expr, used),
+            Expr::Deref(expr) | Expr::Ref(expr) | Expr::RefMut(expr) => {
+                Self::collect_idents_from_expr(expr, used);
+            }
+            Expr::Path(segments) => {
+                if let Some(first) = segments.first() {
+                    Self::record_ident(first, used);
+                }
+            }
+            Expr::Struct { name, fields } => {
+                Self::record_ident(name, used);
+                for (_, expr) in fields {
+                    Self::collect_idents_from_expr(expr, used);
+                }
+            }
+            Expr::Closure { body, .. } => Self::collect_idents_from_expr(body, used),
+            Expr::BinOp { left, right, .. } => {
+                Self::collect_idents_from_expr(left, used);
+                Self::collect_idents_from_expr(right, used);
+            }
+            Expr::UnaryOp { expr, .. } => Self::collect_idents_from_expr(expr, used),
+        }
+    }
+
+    fn record_ident(raw: &str, used: &mut HashSet<String>) {
+        let base = raw.split("::").next().unwrap_or(raw);
+        let base = base.split('<').next().unwrap_or(base);
+        let base = base.trim_end_matches('!');
+        if !base.is_empty() {
+            used.insert(base.to_string());
+        }
     }
 
     // =======================================================================
@@ -1908,6 +2031,13 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                     ));
                     "PoolSlot"
                 }
+                gunbc_test::ResourceType::Credential { expiry_ms, refreshable } => {
+                    doc.push(format!(
+                        "Test resource '{}' credential (expiry: {:?}, refreshable: {}).",
+                        resource.resource_id, expiry_ms, refreshable
+                    ));
+                    "Credential"
+                }
             };
             doc.push(format!(
                 "Test resource '{}' ({}) acquisition.",
@@ -1968,7 +2098,16 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                 body,
             });
 
-            if let gunbc_test::ResourceType::Lease { duration_ms } = resource.resource_type {
+            // Timeout tests for Lease and Credential with expiry
+            let timeout_ms = match resource.resource_type {
+                gunbc_test::ResourceType::Lease { duration_ms } => Some(duration_ms),
+                gunbc_test::ResourceType::Credential {
+                    expiry_ms: Some(ms),
+                    ..
+                } => Some(ms),
+                _ => None,
+            };
+            if let Some(duration_ms) = timeout_ms {
                 let timeout_test = format!(
                     "test_resource_{}_timeout",
                     sanitize_resource_id(&resource.resource_id)
@@ -2000,8 +2139,92 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                 tests.push(TestFn {
                     name: timeout_test,
                     doc: vec![format!(
-                        "Test resource '{}' lease expiration after {}ms.",
+                        "Test resource '{}' expiration after {}ms.",
                         resource.resource_id, duration_ms
+                    )],
+                    body,
+                });
+            }
+
+            // Credential-specific: refresh test
+            let has_refresh = resource
+                .behaviors
+                .iter()
+                .any(|b| matches!(b, gunbc_test::ResourceBehavior::RefreshSucceeds { .. }));
+            if has_refresh {
+                let refresh_test = format!(
+                    "test_resource_{}_refresh",
+                    sanitize_resource_id(&resource.resource_id)
+                );
+                let body = vec![
+                    Stmt::let_bind("spec", Expr::call("mock_spec", vec![])),
+                    Stmt::let_bind(
+                        "resource",
+                        Expr::var("spec")
+                            .method(
+                                "get_resource",
+                                vec![Expr::Str(resource.resource_id.clone())],
+                            )
+                            .method("expect", vec![Expr::Str("resource should exist".into())]),
+                    ),
+                    Stmt::let_bind("result", Expr::var("resource").method("refresh", vec![])),
+                    Stmt::Expr(Expr::call(
+                        "assert!",
+                        vec![
+                            Expr::call(
+                                "matches!",
+                                vec![
+                                    Expr::var("result"),
+                                    Expr::var("ResourceRefreshResult::Refreshed { .. }"),
+                                ],
+                            ),
+                            Expr::Str("credential refresh should succeed".into()),
+                        ],
+                    )),
+                ];
+
+                tests.push(TestFn {
+                    name: refresh_test,
+                    doc: vec![format!(
+                        "Test resource '{}' credential refresh.",
+                        resource.resource_id
+                    )],
+                    body,
+                });
+            }
+
+            // Credential-specific: revoke test
+            let has_revoke = resource
+                .behaviors
+                .iter()
+                .any(|b| matches!(b, gunbc_test::ResourceBehavior::RevokeSucceeds));
+            if has_revoke {
+                let revoke_test = format!(
+                    "test_resource_{}_revoke",
+                    sanitize_resource_id(&resource.resource_id)
+                );
+                let body = vec![
+                    Stmt::let_bind("spec", Expr::call("mock_spec", vec![])),
+                    Stmt::let_bind(
+                        "resource",
+                        Expr::var("spec")
+                            .method(
+                                "get_resource",
+                                vec![Expr::Str(resource.resource_id.clone())],
+                            )
+                            .method("expect", vec![Expr::Str("resource should exist".into())]),
+                    ),
+                    Stmt::Assert(Assert::True {
+                        expr: Expr::var("resource").method("revoke", vec![]),
+                        message: "credential revocation should succeed".to_string(),
+                    }),
+                ];
+
+                tests.push(TestFn {
+                    name: revoke_test,
+                    doc: vec![format!(
+                        "Test resource '{}' credential revocation.",
+                        resource.resource_id
                     )],
                     body,
                 });
@@ -2904,7 +3127,7 @@ fn render_output_matcher_check(matcher: &OutputMatcher, var_name: &str) -> Vec<S
     match matcher {
         OutputMatcher::Exact(expected) => vec![Stmt::Assert(Assert::Eq {
             left: Expr::var(&output_var).deref(),
-            right: Expr::Value(ValueExpr::from(expected)),
+            right: Expr::Value(ValueExpr::from(expected.as_ref())),
             message: "expected exact value".to_string(),
         })],
         OutputMatcher::Contains(substring) => vec![Stmt::Assert(Assert::Contains {

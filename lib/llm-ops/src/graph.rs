@@ -108,7 +108,7 @@ pub fn build_chat_completion_graph() -> Dag<LlmGraphOp> {
         "execute",
         vec![
             port("request", "TransportRequest"),
-            port("res:credential", "Credential"),
+            resource("credential", "Credential", AccessMode::Read),
         ],
         vec![port("response", "TransportResponse")],
         LlmGraphOp::Transport(TransportOps::Execute),

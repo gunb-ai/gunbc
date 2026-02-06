@@ -114,9 +114,7 @@ pub fn expand_variables(template: &str, variables: &HashMap<String, String>) -> 
 
 #[cfg(test)]
 mod tests {
-    #![allow(unused_imports)]
     use super::*;
-    use crate::node::NodeBody;
 
     #[test]
     fn test_variable_syntax_subdag_is_subdag() {

@@ -19,9 +19,8 @@
 //! The env node is the I/O boundary - it gets mocked in DryRun mode.
 
 use gunbc_exec::{ExecError, Executable};
-use gunbc_ir::transport::cli::{
-    get_tool_by_id, upsert_tool_with, ToolHandle, ToolPathResolver, WhichResolver,
-};
+use gunbc_ir::transport::cli::{get_tool_by_id, ToolHandle, ToolPathResolver};
+use gunbc_lib_transport::cli::{upsert_tool_with, WhichResolver};
 use gunbc_ir::Value;
 use std::collections::HashMap;
 

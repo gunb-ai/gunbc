@@ -122,9 +122,7 @@ pub fn is_negated(pattern: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    #![allow(unused_imports)]
     use super::*;
-    use crate::node::NodeBody;
 
     #[test]
     fn test_glob_subdag_is_subdag() {

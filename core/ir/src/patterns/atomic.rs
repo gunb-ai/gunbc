@@ -25,6 +25,7 @@
 
 use crate::dag::{Dag, Edge, Guard, Port};
 use crate::node::Node;
+use crate::patterns::{validate_resource_inputs, ResourceInput};
 use crate::types::Cardinality;
 use crate::value::Value;
 
@@ -48,6 +49,7 @@ pub struct AtomicBuilder<T> {
     precondition_op: Option<T>,
     operation_op: Option<T>,
     postcondition_op: Option<T>,
+    resource_inputs: Vec<ResourceInput>,
     // Port configurations
     input_port_name: String,
     input_port_type: String,
@@ -63,6 +65,7 @@ impl<T: Clone> AtomicBuilder<T> {
             precondition_op: None,
             operation_op: None,
             postcondition_op: None,
+            resource_inputs: Vec::new(),
             input_port_name: "input".to_string(),
             input_port_type: "Any".to_string(),
             output_port_name: "output".to_string(),
@@ -104,6 +107,12 @@ impl<T: Clone> AtomicBuilder<T> {
     pub fn with_output_port(mut self, name: impl Into<String>, type_id: impl Into<String>) -> Self {
         self.output_port_name = name.into();
         self.output_port_type = type_id.into();
+        self
+    }
+
+    /// Declare a resource input that the inner DAG requires.
+    pub fn with_resource_input(mut self, ri: ResourceInput) -> Self {
+        self.resource_inputs.push(ri);
         self
     }
 
@@ -209,6 +218,7 @@ impl<T: Clone> AtomicBuilder<T> {
             dag.add_edge(Edge::new("operation", "op_ok", "postcondition", "op_ok"));
         }
 
+        validate_resource_inputs(&self.name, &self.resource_inputs, &dag);
         Node::subdag(self.name.as_str(), dag)
     }
 }

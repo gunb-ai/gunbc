@@ -33,6 +33,8 @@ pub struct DagAnalysis {
     pub guarded_nodes: Vec<(String, String)>,
     /// Pure node IDs (no transport, no tool I/O)
     pub pure_nodes: Vec<String>,
+    /// Credential node IDs (emit Credential outputs)
+    pub credential_nodes: Vec<String>,
 }
 
 /// Information about an edge's types.
@@ -80,6 +82,7 @@ pub fn analyze_dag<T>(dag: &Dag<T>) -> DagAnalysis {
     let tool_env_nodes = find_tool_env_nodes(dag);
     let guarded_nodes = find_guarded_nodes(dag);
     let pure_nodes = find_pure_nodes(dag, &transport_executors, &tool_env_nodes);
+    let credential_nodes = find_credential_nodes(dag);
 
     DagAnalysis {
         boundaries,
@@ -91,6 +94,7 @@ pub fn analyze_dag<T>(dag: &Dag<T>) -> DagAnalysis {
         tool_env_nodes,
         guarded_nodes,
         pure_nodes,
+        credential_nodes,
     }
 }
 
@@ -138,6 +142,15 @@ fn find_guarded_nodes<T>(dag: &Dag<T>) -> Vec<(String, String)> {
         }
     }
     result
+}
+
+/// Find credential nodes (emit Credential outputs).
+fn find_credential_nodes<T>(dag: &Dag<T>) -> Vec<String> {
+    dag.nodes
+        .iter()
+        .filter(|n| n.outputs.iter().any(|p| p.type_id.0 == "Credential"))
+        .map(|n| n.id.0.clone())
+        .collect()
 }
 
 /// Find pure nodes (not transport executors, not tool env, not tool consumers).
@@ -298,6 +311,28 @@ mod tests {
         assert_eq!(analysis.tool_env_nodes, vec!["env"]);
         // lint consumes ToolHandle → not pure
         assert!(!analysis.pure_nodes.contains(&"lint".to_string()));
+    }
+
+    #[test]
+    fn test_analyze_credential_detection() {
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque(
+            "credential_env",
+            vec![],
+            vec![port("credential:llm", "Credential")],
+            (),
+        ));
+        dag.add_node(Node::opaque(
+            "execute",
+            vec![port("credential:llm", "Credential")],
+            vec![port("response", "String")],
+            (),
+        ));
+        dag.add_edge(edge("credential_env", "credential:llm", "execute", "credential:llm"));
+
+        let analysis = analyze_dag(&dag);
+
+        assert_eq!(analysis.credential_nodes, vec!["credential_env"]);
     }
 
     #[test]

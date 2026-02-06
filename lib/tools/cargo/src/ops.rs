@@ -11,6 +11,7 @@ use gunbc_exec::{ExecError, Executable, IntoExecResult, OutputMap};
 use gunbc_ir::resource::AccessMode;
 use gunbc_ir::transport::cli::{self, CliToolOp};
 use gunbc_ir::Value;
+use gunbc_lib_transport::cli::execute_cli_tool_op;
 use std::collections::HashMap;
 
 /// Operations for the Cargo tool.
@@ -89,9 +90,7 @@ impl CargoOp {
 
 impl Executable for CargoOp {
     fn execute(&self, _inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        self.to_cli_op()
-            .execute()
-            .exec_context("CLI tool execution")
+        execute_cli_tool_op(&self.to_cli_op()).exec_context("CLI tool execution")
     }
 }
 

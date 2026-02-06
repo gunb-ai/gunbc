@@ -4,14 +4,14 @@
 // DO NOT EDIT - regenerate with: make testgen
 // Obligations: 23 obligations (9 discharged, 14 testable: A=6, B=5, C=3, D=0)
 // Proven by construction: acyclicity, type compatibility, cardinality satisfaction.
-// Content-Hash: b67a8d7e924c36ac9eacf8e256d9f4796cb20b327cbd71e883242b89bb804347
+// Content-Hash: da51643ee898c26ee79afa72ca930802d0cf744d303c0fb758e26fd28951781d
 
 
-use gunbc_exec::{execute_with_mode, lower, BoundaryMocks, ExecutionMode};
-use gunbc_ir::{detect_boundaries, Cardinality, Value};
-use gunbc_test::{assert_boundary_mockable, assert_types_compatible, MockSpec};
+use gunbc_exec::{execute_with_mode, lower, ExecutionMode};
+use gunbc_ir::Value;
+use gunbc_test::{assert_boundary_mockable, MockSpec};
 use gunbc_test::{apply_window_inputs, assert_window_outputs, window_subdag, Window};
-use gunbc_test::{validate_chain, InputConstraint};
+use gunbc_test::ResourceAcquireResult;
 
 fn mock_spec() -> MockSpec {
     crate::graph_mock::openai_mock_spec()
@@ -113,6 +113,32 @@ fn test_skip_propagation_execute() {
     mocks.set_value("execute", "response", Value::Skipped);
     let log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).expect("skip propagation should not crash or hang");
     assert!(log.get("parse").is_some(), "downstream 'parse' should still appear in log");
+}
+
+// =========================================================================
+// Bucket D: Resource Hygiene
+// =========================================================================
+
+// Structural resource/tool wiring correctness + simulation tests.
+// Resource simulation tests (MockSpec-based)
+
+/// Test resource 'credential:llm' credential (expiry: Some(3600000), refreshable: false).
+/// Test resource 'credential:llm' (Credential) acquisition.
+#[test]
+fn test_resource_credential_llm_acquire() {
+    let spec = mock_spec();
+    let resource = spec.get_resource("credential:llm").expect("resource should exist");
+    let result = resource.acquire();
+    assert!(matches!(result, ResourceAcquireResult::Acquired), "should acquire successfully");
+}
+
+/// Test resource 'credential:llm' expiration after 3600000ms.
+#[test]
+fn test_resource_credential_llm_timeout() {
+    let spec = mock_spec();
+    let resource = spec.get_resource("credential:llm").expect("resource should exist");
+    assert!(!resource.should_timeout(1800000), "should not timeout before duration");
+    assert!(resource.should_timeout(3600001), "should timeout after duration");
 }
 
 // =========================================================================

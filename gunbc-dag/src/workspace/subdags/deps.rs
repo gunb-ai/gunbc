@@ -96,7 +96,7 @@ pub fn build_deps_install_subdag() -> Node<WorkspaceOp> {
                 "generate_scripts",
                 vec![
                     scalar("manifest_content", "String"),
-                    scalar("res:platform", "Platform"),
+                    resource("platform", "Platform", AccessMode::Read),
                 ],
                 vec![
                     scalar("install_script", "String"),

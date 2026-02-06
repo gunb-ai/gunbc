@@ -4,15 +4,14 @@
 // DO NOT EDIT - regenerate with: make testgen
 // Obligations: 23 obligations (9 discharged, 14 testable: A=6, B=5, C=3, D=0)
 // Proven by construction: acyclicity, type compatibility, cardinality satisfaction.
-// Content-Hash: cfc580c64a5dc4925fa7db8a947324e5fd265106ed3afe2a50a0267018b5ee47
+// Content-Hash: 8a22a4adde4958d5e6bb59c7f3de4cf6e6e0407ef7f4f7dccaf2bd1a0279c6fd
 
 
-use gunbc_exec::{execute_with_mode, lower, BoundaryMocks, ExecutionMode};
-use gunbc_ir::{detect_boundaries, Cardinality, Value};
-use gunbc_test::{assert_boundary_mockable, assert_types_compatible, MockSpec};
+use gunbc_exec::{execute_with_mode, lower, ExecutionMode};
+use gunbc_ir::Value;
+use gunbc_test::{assert_boundary_mockable, MockSpec};
 use gunbc_test::{apply_window_inputs, assert_window_outputs, window_subdag, Window};
-use gunbc_test::{validate_chain, InputConstraint};
-use gunbc_test::{ResourceAcquireResult, ResourceSimulation};
+use gunbc_test::ResourceAcquireResult;
 
 fn mock_spec() -> MockSpec {
     crate::graph_mock::secret_api_key_mock_spec()
@@ -133,11 +132,30 @@ fn test_resource_api_openai_key_acquire() {
     assert!(matches!(result, ResourceAcquireResult::Acquired), "should acquire successfully");
 }
 
-/// Test resource 'api:openai_key' lease expiration after 3600000ms.
+/// Test resource 'api:openai_key' expiration after 3600000ms.
 #[test]
 fn test_resource_api_openai_key_timeout() {
     let spec = mock_spec();
     let resource = spec.get_resource("api:openai_key").expect("resource should exist");
+    assert!(!resource.should_timeout(1800000), "should not timeout before duration");
+    assert!(resource.should_timeout(3600001), "should timeout after duration");
+}
+
+/// Test resource 'credential:llm' credential (expiry: Some(3600000), refreshable: false).
+/// Test resource 'credential:llm' (Credential) acquisition.
+#[test]
+fn test_resource_credential_llm_acquire() {
+    let spec = mock_spec();
+    let resource = spec.get_resource("credential:llm").expect("resource should exist");
+    let result = resource.acquire();
+    assert!(matches!(result, ResourceAcquireResult::Acquired), "should acquire successfully");
+}
+
+/// Test resource 'credential:llm' expiration after 3600000ms.
+#[test]
+fn test_resource_credential_llm_timeout() {
+    let spec = mock_spec();
+    let resource = spec.get_resource("credential:llm").expect("resource should exist");
     assert!(!resource.should_timeout(1800000), "should not timeout before duration");
     assert!(resource.should_timeout(3600001), "should timeout after duration");
 }

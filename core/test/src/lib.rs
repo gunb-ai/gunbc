@@ -35,6 +35,7 @@
 //!
 //! This enables automatic test generation that provides real signal.
 
+#![forbid(dead_code)]
 pub mod boundary;
 pub mod composition;
 pub mod mock;
@@ -53,7 +54,7 @@ pub use mock_spec::{
     assert_boundaries, assert_transport_mocks, validate_chain, BoundaryMock, ChainError,
     ChainValidationResult, ExpectedOutput, InputConstraint, InputExpectation, MockSpec,
     NodeExample, OutputMatcher, ResourceAcquireResult, ResourceBehavior, ResourceMocks,
-    ResourceSimulation, ResourceType, TransportMock,
+    ResourceRefreshResult, ResourceSimulation, ResourceType, TransportMock,
 };
 pub use mock_requirements::{
     extract_mock_requirements, MockIncompleteError, MockRequirements, MockSlot, MockSlotKind,

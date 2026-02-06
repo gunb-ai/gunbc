@@ -15,6 +15,7 @@
 //! println!("{}", markdown);
 //! ```
 
+#![forbid(dead_code)]
 use gunbc_exec::{optional_str, require_map_str_str, ExecError, Executable, OutputMap};
 use gunbc_ir::language::markdown_language_id;
 use gunbc_ir::Value;

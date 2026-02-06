@@ -418,6 +418,45 @@ pub fn validate_resource_ordering<T>(
     }
 }
 
+/// Derive resource accesses from `res:*` input ports in a DAG.
+///
+/// Walks all nodes in the DAG and extracts `ResourceAccess` entries from
+/// input ports whose names start with `res:`. Uses `port.resource_access`
+/// if explicitly set, otherwise falls back to static type-based inference:
+///
+/// - `Platform` → Read
+/// - `Timestamp` → Read
+/// - `Credential` → Read
+/// - Everything else → Read (conservative default)
+pub fn derive_resource_accesses<T>(dag: &Dag<T>) -> Vec<ResourceAccess> {
+    let mut accesses = Vec::new();
+    for node in &dag.nodes {
+        for port in &node.inputs {
+            if let Some(res_name) = port.name.0.strip_prefix("res:") {
+                // Use explicit access mode if set, otherwise default to Read.
+                // All known resource types (Platform, Timestamp, Credential,
+                // FilesystemHandle) default to Read access.
+                let mode = port.resource_access.unwrap_or(AccessMode::Read);
+                accesses.push(ResourceAccess::new(
+                    node.id.clone(),
+                    ResourceId::new(res_name),
+                    mode,
+                ));
+            }
+        }
+    }
+    accesses
+}
+
+/// Convenience function: derive resource accesses from DAG structure and detect conflicts.
+///
+/// Combines `derive_resource_accesses()` with `detect_conflicts()` for one-step
+/// conflict detection without requiring manual access declarations.
+pub fn detect_resource_conflicts<T>(dag: &Dag<T>) -> Vec<ResourceConflict> {
+    let accesses = derive_resource_accesses(dag);
+    detect_conflicts(dag, &accesses)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -591,5 +630,181 @@ mod tests {
             ResourceAccess::write("b", "file.txt"),
         ];
         assert!(validate_resource_ordering(&dag, &write_accesses).is_err());
+    }
+
+    // ============ Port::resource() tests ============
+
+    #[test]
+    fn test_port_resource_constructor() {
+        let port = Port::resource("platform", "Platform", AccessMode::Read);
+        assert_eq!(port.name.0, "res:platform");
+        assert_eq!(port.type_id.0, "Platform");
+        assert_eq!(port.resource_access, Some(AccessMode::Read));
+        assert_eq!(port.cardinality, crate::types::Cardinality::ONE);
+    }
+
+    #[test]
+    fn test_port_resource_write_mode() {
+        let port = Port::resource("fs", "FilesystemHandle", AccessMode::Write);
+        assert_eq!(port.name.0, "res:fs");
+        assert_eq!(port.resource_access, Some(AccessMode::Write));
+    }
+
+    #[test]
+    fn test_port_scalar_has_no_resource_access() {
+        let port = Port::scalar("data", "String");
+        assert!(port.resource_access.is_none());
+    }
+
+    // ============ derive_resource_accesses() tests ============
+
+    #[test]
+    fn test_derive_resource_accesses_from_res_ports() {
+        let mut dag: Dag<String> = Dag::new();
+        dag.add_node(Node::opaque(
+            "node_a",
+            vec![
+                Port::resource("platform", "Platform", AccessMode::Read),
+                Port::scalar("data", "String"),
+            ],
+            vec![Port::scalar("out", "String")],
+            "op_a".to_string(),
+        ));
+        dag.add_node(Node::opaque(
+            "node_b",
+            vec![Port::resource("fs", "FilesystemHandle", AccessMode::Write)],
+            vec![],
+            "op_b".to_string(),
+        ));
+
+        let accesses = derive_resource_accesses(&dag);
+        assert_eq!(accesses.len(), 2);
+
+        let platform = accesses.iter().find(|a| a.resource_id.0 == "platform").unwrap();
+        assert_eq!(platform.node_id.0, "node_a");
+        assert_eq!(platform.mode, AccessMode::Read);
+
+        let fs = accesses.iter().find(|a| a.resource_id.0 == "fs").unwrap();
+        assert_eq!(fs.node_id.0, "node_b");
+        assert_eq!(fs.mode, AccessMode::Write);
+    }
+
+    #[test]
+    fn test_derive_resource_accesses_static_fallback() {
+        // Port declared with scalar("res:platform", "Platform") — no explicit resource_access
+        let mut dag: Dag<String> = Dag::new();
+        dag.add_node(Node::opaque(
+            "node_a",
+            vec![Port::scalar("res:platform", "Platform")],
+            vec![],
+            "op_a".to_string(),
+        ));
+
+        let accesses = derive_resource_accesses(&dag);
+        assert_eq!(accesses.len(), 1);
+        assert_eq!(accesses[0].resource_id.0, "platform");
+        // Falls back to Read for Platform
+        assert_eq!(accesses[0].mode, AccessMode::Read);
+    }
+
+    #[test]
+    fn test_derive_resource_accesses_ignores_non_res_ports() {
+        let mut dag: Dag<String> = Dag::new();
+        dag.add_node(Node::opaque(
+            "node_a",
+            vec![Port::scalar("data", "String"), Port::scalar("count", "Int")],
+            vec![],
+            "op_a".to_string(),
+        ));
+
+        let accesses = derive_resource_accesses(&dag);
+        assert!(accesses.is_empty());
+    }
+
+    // ============ detect_resource_conflicts() tests ============
+
+    #[test]
+    fn test_detect_resource_conflicts_finds_parallel_write() {
+        let mut dag: Dag<String> = Dag::new();
+        dag.add_node(Node::opaque(
+            "a",
+            vec![Port::resource("fs", "FilesystemHandle", AccessMode::Write)],
+            vec![],
+            "op_a".to_string(),
+        ));
+        dag.add_node(Node::opaque(
+            "b",
+            vec![Port::resource("fs", "FilesystemHandle", AccessMode::Write)],
+            vec![],
+            "op_b".to_string(),
+        ));
+
+        let conflicts = detect_resource_conflicts(&dag);
+        assert_eq!(conflicts.len(), 1);
+        assert_eq!(conflicts[0].resource_id.0, "fs");
+    }
+
+    #[test]
+    fn test_detect_resource_conflicts_parallel_reads_ok() {
+        let mut dag: Dag<String> = Dag::new();
+        dag.add_node(Node::opaque(
+            "a",
+            vec![Port::resource("platform", "Platform", AccessMode::Read)],
+            vec![],
+            "op_a".to_string(),
+        ));
+        dag.add_node(Node::opaque(
+            "b",
+            vec![Port::resource("platform", "Platform", AccessMode::Read)],
+            vec![],
+            "op_b".to_string(),
+        ));
+
+        let conflicts = detect_resource_conflicts(&dag);
+        assert!(conflicts.is_empty());
+    }
+
+    #[test]
+    fn test_subdag_preserves_resource_access_mode() {
+        // Inner DAG has a Write resource port
+        let mut inner: Dag<()> = Dag::new();
+        inner.add_node(Node::opaque(
+            "worker",
+            vec![Port::resource("fs", "FilesystemHandle", AccessMode::Write)],
+            vec![Port::scalar("result", "String")],
+            (),
+        ));
+
+        // SubDag auto-inference should preserve the Write mode
+        let subdag_node = Node::subdag("wrapper", inner);
+        let res_port = subdag_node
+            .inputs
+            .iter()
+            .find(|p| p.name.0 == "res:fs")
+            .expect("res:fs should be inferred");
+        assert_eq!(
+            res_port.resource_access,
+            Some(AccessMode::Write),
+            "SubDag auto-inference should preserve resource_access mode"
+        );
+    }
+
+    #[test]
+    fn test_derive_resource_accesses_respects_subdag_mode() {
+        // Inner DAG with an Exclusive resource port
+        let mut inner: Dag<()> = Dag::new();
+        inner.add_node(Node::opaque(
+            "worker",
+            vec![Port::resource("lock", "Lock", AccessMode::Exclusive)],
+            vec![Port::scalar("result", "String")],
+            (),
+        ));
+
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::subdag("wrapper", inner));
+
+        let accesses = derive_resource_accesses(&dag);
+        assert_eq!(accesses.len(), 1);
+        assert_eq!(accesses[0].mode, AccessMode::Exclusive);
     }
 }

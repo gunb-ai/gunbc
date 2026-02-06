@@ -19,6 +19,5 @@ pub use ops::CIOp;
 
 #[cfg(test)]
 mod generated_tests {
-    #![allow(unused_imports)]
     include!("generated_tests.rs");
 }

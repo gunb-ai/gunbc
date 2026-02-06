@@ -95,6 +95,7 @@ impl MockSpec {
             node: node.into(),
             port: port.into(),
             value,
+            sequence: None,
         });
         self
     }
@@ -129,6 +130,47 @@ impl MockSpec {
     /// Add a lease that expires during operation (for timeout testing).
     pub fn resource_lease_expires(mut self, id: impl Into<String>, duration_ms: u64) -> Self {
         self.resource_mocks = self.resource_mocks.lease_expires(id, duration_ms);
+        self
+    }
+
+    /// Add a credential resource simulation.
+    pub fn resource_credential(
+        mut self,
+        id: impl Into<String>,
+        expiry_ms: Option<u64>,
+    ) -> Self {
+        self.resource_mocks = self.resource_mocks.credential(id, expiry_ms, false);
+        self
+    }
+
+    /// Add a refreshable credential resource simulation.
+    pub fn resource_credential_refreshable(
+        mut self,
+        id: impl Into<String>,
+        expiry_ms: u64,
+        refresh_ttl_ms: u64,
+    ) -> Self {
+        self.resource_mocks = self.resource_mocks.credential_refreshable(id, expiry_ms, refresh_ttl_ms);
+        self
+    }
+
+    /// Add a boundary mock with a sequenced response.
+    ///
+    /// The mock returns values from `sequence` in order; once exhausted,
+    /// it falls back to `default`.
+    pub fn boundary_sequence(
+        mut self,
+        node: impl Into<String>,
+        port: impl Into<String>,
+        default: Value,
+        sequence: Vec<Value>,
+    ) -> Self {
+        self.boundary_mocks.push(BoundaryMock {
+            node: node.into(),
+            port: port.into(),
+            value: default,
+            sequence: Some(sequence),
+        });
         self
     }
 
@@ -207,7 +249,11 @@ impl MockSpec {
         let mut mocks = BoundaryMocks::new();
         // Boundary mocks for output interception (env nodes, explicit boundaries, etc.)
         for bm in &self.boundary_mocks {
-            mocks.set_value(&bm.node, &bm.port, bm.value.clone());
+            if let Some(seq) = &bm.sequence {
+                mocks.set_sequence(&bm.node, &bm.port, bm.value.clone(), seq.clone());
+            } else {
+                mocks.set_value(&bm.node, &bm.port, bm.value.clone());
+            }
         }
         // Transport mocks for output interception
         for tm in &self.transport_mocks {
@@ -264,8 +310,10 @@ pub struct BoundaryMock {
     pub node: String,
     /// Port name
     pub port: String,
-    /// Mock value to return
+    /// Mock value to return (static fallback for sequences)
     pub value: Value,
+    /// Optional ordered sequence of responses
+    pub sequence: Option<Vec<Value>>,
 }
 
 /// A mock value for a transport executor node (injected via DryRun interception).
@@ -448,11 +496,43 @@ impl ResourceSimulation {
 
     /// Check if resource should timeout during hold.
     pub fn should_timeout(&self, held_ms: u64) -> bool {
-        if let ResourceType::Lease { duration_ms } = self.resource_type {
-            held_ms > duration_ms
-        } else {
-            false
+        match self.resource_type {
+            ResourceType::Lease { duration_ms } => held_ms > duration_ms,
+            ResourceType::Credential {
+                expiry_ms: Some(ms),
+                ..
+            } => held_ms > ms,
+            _ => false,
         }
+    }
+
+    /// Simulate refreshing this resource (credentials only).
+    pub fn refresh(&self) -> ResourceRefreshResult {
+        if let ResourceType::Credential { refreshable, .. } = &self.resource_type {
+            if !refreshable {
+                return ResourceRefreshResult::NotRefreshable;
+            }
+            for behavior in &self.behaviors {
+                if let ResourceBehavior::RefreshSucceeds { new_ttl_ms } = behavior {
+                    return ResourceRefreshResult::Refreshed {
+                        new_ttl_ms: *new_ttl_ms,
+                    };
+                }
+                if let ResourceBehavior::RefreshFails { error } = behavior {
+                    return ResourceRefreshResult::Failed(error.clone());
+                }
+            }
+            ResourceRefreshResult::NotRefreshable
+        } else {
+            ResourceRefreshResult::NotRefreshable
+        }
+    }
+
+    /// Simulate revoking this resource (credentials only).
+    pub fn revoke(&self) -> bool {
+        self.behaviors
+            .iter()
+            .any(|b| matches!(b, ResourceBehavior::RevokeSucceeds))
     }
 }
 
@@ -467,6 +547,11 @@ pub enum ResourceType {
     SharedLock { max_holders: usize },
     /// Connection pool slot
     PoolSlot { pool_size: usize },
+    /// Credential with optional expiry and refresh capability
+    Credential {
+        expiry_ms: Option<u64>,
+        refreshable: bool,
+    },
 }
 
 /// Simulated behavior for a resource.
@@ -484,6 +569,12 @@ pub enum ResourceBehavior {
     LeaseExpires,
     /// Contention: another holder has it
     Contended { holder: String },
+    /// Credential refresh succeeds with a new TTL
+    RefreshSucceeds { new_ttl_ms: u64 },
+    /// Credential refresh fails with an error
+    RefreshFails { error: String },
+    /// Credential revocation succeeds
+    RevokeSucceeds,
 }
 
 /// Result of simulated resource acquisition.
@@ -497,6 +588,17 @@ pub enum ResourceAcquireResult {
     Delayed(u64),
     /// Waiting for contention
     Waiting,
+}
+
+/// Result of simulated credential refresh.
+#[derive(Debug, Clone)]
+pub enum ResourceRefreshResult {
+    /// Refresh succeeded with a new TTL
+    Refreshed { new_ttl_ms: u64 },
+    /// Refresh failed
+    Failed(String),
+    /// Resource is not refreshable
+    NotRefreshable,
 }
 
 /// Resource mock specification.
@@ -542,6 +644,64 @@ impl ResourceMocks {
     pub fn lease_expires(mut self, id: impl Into<String>, duration_ms: u64) -> Self {
         let sim = ResourceSimulation::new(id, ResourceType::Lease { duration_ms })
             .with_behavior(ResourceBehavior::LeaseExpires);
+        self.resources.push(sim);
+        self
+    }
+
+    /// Add a credential simulation.
+    pub fn credential(
+        mut self,
+        id: impl Into<String>,
+        expiry_ms: Option<u64>,
+        refreshable: bool,
+    ) -> Self {
+        self.resources.push(ResourceSimulation::new(
+            id,
+            ResourceType::Credential {
+                expiry_ms,
+                refreshable,
+            },
+        ));
+        self
+    }
+
+    /// Add a credential that fails to acquire.
+    pub fn credential_fails(
+        mut self,
+        id: impl Into<String>,
+        error: impl Into<String>,
+    ) -> Self {
+        let sim = ResourceSimulation::new(
+            id,
+            ResourceType::Credential {
+                expiry_ms: None,
+                refreshable: false,
+            },
+        )
+        .with_behavior(ResourceBehavior::FailAcquire {
+            error: error.into(),
+        });
+        self.resources.push(sim);
+        self
+    }
+
+    /// Add a refreshable credential simulation.
+    pub fn credential_refreshable(
+        mut self,
+        id: impl Into<String>,
+        expiry_ms: u64,
+        refresh_ttl_ms: u64,
+    ) -> Self {
+        let sim = ResourceSimulation::new(
+            id,
+            ResourceType::Credential {
+                expiry_ms: Some(expiry_ms),
+                refreshable: true,
+            },
+        )
+        .with_behavior(ResourceBehavior::RefreshSucceeds {
+            new_ttl_ms: refresh_ttl_ms,
+        });
         self.resources.push(sim);
         self
     }
@@ -762,7 +922,7 @@ impl NodeExample {
 #[derive(Clone)]
 pub enum OutputMatcher {
     /// Output must equal this value exactly
-    Exact(Value),
+    Exact(Box<Value>),
     /// Output string must contain this substring
     Contains(String),
     /// Output must be non-empty
@@ -821,7 +981,7 @@ impl std::fmt::Debug for OutputMatcher {
 impl OutputMatcher {
     /// Create an exact match.
     pub fn exact(value: Value) -> Self {
-        Self::Exact(value)
+        Self::Exact(Box::new(value))
     }
 
     /// Create a contains match for strings.
@@ -1113,5 +1273,111 @@ mod tests {
 
         // Should panic because execute3.response is missing
         assert_transport_mocks(&spec, &[("execute1", "response"), ("execute3", "response")]);
+    }
+
+    // ========================================================================
+    // Credential resource simulation tests
+    // ========================================================================
+
+    #[test]
+    fn test_credential_acquire() {
+        let spec = MockSpec::new("test").resource_credential("cred:api", Some(3_600_000));
+        let resource = spec.get_resource("cred:api").unwrap();
+        let result = resource.acquire();
+        assert!(matches!(result, ResourceAcquireResult::Acquired));
+    }
+
+    #[test]
+    fn test_credential_acquire_fails() {
+        let mocks = ResourceMocks::new().credential_fails("cred:api", "invalid key");
+        let resource = mocks.get("cred:api").unwrap();
+        let result = resource.acquire();
+        assert!(matches!(result, ResourceAcquireResult::Failed(_)));
+    }
+
+    #[test]
+    fn test_credential_timeout() {
+        let spec = MockSpec::new("test").resource_credential("cred:api", Some(3_600_000));
+        let resource = spec.get_resource("cred:api").unwrap();
+        assert!(!resource.should_timeout(1_800_000)); // 30 min — not expired
+        assert!(resource.should_timeout(3_600_001)); // 1 hour + 1ms — expired
+    }
+
+    #[test]
+    fn test_credential_no_expiry_never_times_out() {
+        let spec = MockSpec::new("test").resource_credential("cred:api", None);
+        let resource = spec.get_resource("cred:api").unwrap();
+        assert!(!resource.should_timeout(u64::MAX));
+    }
+
+    #[test]
+    fn test_credential_refresh_succeeds() {
+        let mocks = ResourceMocks::new().credential_refreshable("cred:api", 3_600_000, 7_200_000);
+        let resource = mocks.get("cred:api").unwrap();
+        let result = resource.refresh();
+        assert!(matches!(
+            result,
+            ResourceRefreshResult::Refreshed { new_ttl_ms: 7_200_000 }
+        ));
+    }
+
+    #[test]
+    fn test_credential_refresh_fails() {
+        let sim = ResourceSimulation::new(
+            "cred:api",
+            ResourceType::Credential {
+                expiry_ms: Some(3_600_000),
+                refreshable: true,
+            },
+        )
+        .with_behavior(ResourceBehavior::RefreshFails {
+            error: "token revoked".into(),
+        });
+        let result = sim.refresh();
+        assert!(matches!(result, ResourceRefreshResult::Failed(_)));
+    }
+
+    #[test]
+    fn test_credential_refresh_not_refreshable() {
+        let spec = MockSpec::new("test").resource_credential("cred:api", Some(3_600_000));
+        let resource = spec.get_resource("cred:api").unwrap();
+        let result = resource.refresh();
+        assert!(matches!(result, ResourceRefreshResult::NotRefreshable));
+    }
+
+    #[test]
+    fn test_credential_revoke() {
+        let sim = ResourceSimulation::new(
+            "cred:api",
+            ResourceType::Credential {
+                expiry_ms: None,
+                refreshable: false,
+            },
+        )
+        .with_behavior(ResourceBehavior::RevokeSucceeds);
+        assert!(sim.revoke());
+    }
+
+    #[test]
+    fn test_credential_revoke_no_behavior() {
+        let spec = MockSpec::new("test").resource_credential("cred:api", None);
+        let resource = spec.get_resource("cred:api").unwrap();
+        assert!(!resource.revoke());
+    }
+
+    #[test]
+    fn test_mock_spec_credential_builders() {
+        let spec = MockSpec::new("test")
+            .resource_credential("cred:basic", Some(1_000))
+            .resource_credential_refreshable("cred:refresh", 3_600_000, 7_200_000);
+
+        assert!(spec.get_resource("cred:basic").is_some());
+        assert!(spec.get_resource("cred:refresh").is_some());
+
+        let refresh = spec.get_resource("cred:refresh").unwrap();
+        assert!(matches!(
+            refresh.refresh(),
+            ResourceRefreshResult::Refreshed { new_ttl_ms: 7_200_000 }
+        ));
     }
 }

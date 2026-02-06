@@ -678,15 +678,12 @@ script = "echo 'installing echo'"
 
         let result = execute_generate_scripts(inputs).unwrap();
 
-        // echo should be already installed (since 'echo test' succeeds)
-        match result
-            .get("already_installed")
-            .and_then(|v| v.as_str_list())
-        {
+        // Dry-run does not check install state; expect echo in needs_install
+        match result.get("needs_install").and_then(|v| v.as_str_list()) {
             Some(list) => {
                 assert!(list.contains(&"echo".to_string()));
             }
-            _ => panic!("expected already_installed list"),
+            _ => panic!("expected needs_install list"),
         }
     }
 

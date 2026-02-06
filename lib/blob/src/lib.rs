@@ -7,6 +7,7 @@
 //!
 //! All operations are PURE (no I/O). I/O happens through TransportOps::Execute nodes.
 
+#![forbid(dead_code)]
 use gunbc_exec::{
     optional_bool, optional_json, optional_str, require_json, require_response, ExecError,
     Executable, IntoExecResult, OutputMap,

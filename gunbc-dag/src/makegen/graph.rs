@@ -82,7 +82,6 @@ pub fn makegen_signature() -> WorkflowSignature {
 /// - prepare_file_write.request → execute_write.request
 /// - output_path entrypoint → prepare_file_read.path AND prepare_file_write.output_path
 /// - check_mode entrypoint → compare_content.check_mode
-#[allow(clippy::result_large_err)]
 pub fn build_makegen_graph() -> Result<Dag<MakegenGraphOp>, BuilderError> {
     let mut builder = DagBuilder::new();
 

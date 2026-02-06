@@ -13,6 +13,7 @@
 //! // request is now a TransportRequest ready to be executed via TransportOps::Execute
 //! ```
 
+#![forbid(dead_code)]
 use gunbc_exec::{
     optional_str, require_response, require_str, ExecError, Executable, IntoExecResult, OutputMap,
 };
@@ -75,7 +76,7 @@ impl Executable for GistOps {
                     let short_sha = &sha[..sha.len().min(7)];
                     let branch_label = effective_branch.unwrap_or("snapshot");
                     let prefix = format!(
-                        "{}_recent-7d_{}..HEAD",
+                        "{}_recent-3d_{}..HEAD",
                         sanitize_branch_for_filename(&fs, branch_label),
                         short_sha
                     );
@@ -83,12 +84,12 @@ impl Executable for GistOps {
                     let description = match effective_branch {
                         Some(b) if !b.trim().is_empty() && b.trim() != "HEAD" => {
                             format!(
-                                "Recent changes (7d) {}..HEAD on {} created by gunbc-gist",
+                                "Recent changes (3d) {}..HEAD on {} created by gunbc-gist",
                                 short_sha, b
                             )
                         }
                         _ => format!(
-                            "Recent changes (7d) {}..HEAD created by gunbc-gist",
+                            "Recent changes (3d) {}..HEAD created by gunbc-gist",
                             short_sha
                         ),
                     };
@@ -240,7 +241,7 @@ pub fn generate_gist_filename(
 ///
 /// Unlike `generate_gist_filename`, the caller supplies the full prefix
 /// (already sanitized). This is used when the prefix contains extra
-/// metadata like a commit range (e.g., `main_recent-7d_abc123d..HEAD`).
+/// metadata like a commit range (e.g., `main_recent-3d_abc123d..HEAD`).
 pub fn generate_gist_filename_with_prefix(
     fs: &filename::FilesystemHandle,
     prefix: &str,
@@ -763,24 +764,24 @@ mod tests {
 
         match result.get("request") {
             Some(Value::Request(TransportRequest::Shell(req))) => {
-                // Filename should contain recent-7d and short SHA
+                // Filename should contain recent-3d and short SHA
                 let f_arg = req
                     .args
                     .iter()
-                    .find(|a| a.contains("recent-7d") && a.contains("abc123d..HEAD"));
+                    .find(|a| a.contains("recent-3d") && a.contains("abc123d..HEAD"));
                 assert!(
                     f_arg.is_some(),
                     "expected recent-mode filename with commit range, got args: {:?}",
                     req.args
                 );
-                assert!(f_arg.unwrap().starts_with("main_recent-7d_abc123d..HEAD_"));
+                assert!(f_arg.unwrap().starts_with("main_recent-3d_abc123d..HEAD_"));
                 assert!(f_arg.unwrap().ends_with(".md"));
 
                 // Description should mention the commit range
                 let desc_idx = req.args.iter().position(|a| a == "--desc").unwrap();
                 let desc = &req.args[desc_idx + 1];
                 assert!(
-                    desc.contains("Recent changes (7d) abc123d..HEAD on main"),
+                    desc.contains("Recent changes (3d) abc123d..HEAD on main"),
                     "description should contain commit range and branch, got: {}",
                     desc
                 );
@@ -806,11 +807,11 @@ mod tests {
 
         match result.get("request") {
             Some(Value::Request(TransportRequest::Shell(req))) => {
-                // Should NOT contain recent-7d
-                let has_recent = req.args.iter().any(|a| a.contains("recent-7d"));
+                // Should NOT contain recent-3d
+                let has_recent = req.args.iter().any(|a| a.contains("recent-3d"));
                 assert!(
                     !has_recent,
-                    "snapshot mode should not have recent-7d, got args: {:?}",
+                    "snapshot mode should not have recent-3d, got args: {:?}",
                     req.args
                 );
                 // Should start with branch name

@@ -913,7 +913,7 @@ fn mock_intercept_outputs<T>(
                 node.id.0, port.name.0
             ))
         })?;
-        outputs.insert(port.name.0.clone(), mock.value.clone());
+        outputs.insert(port.name.0.clone(), mock.next_value());
     }
 
     Ok(outputs)

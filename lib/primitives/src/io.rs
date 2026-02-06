@@ -274,21 +274,6 @@ impl EmbeddedShellOp {
             args: args.iter().map(|s| s.to_string()).collect(),
         }
     }
-
-    /// Create from a config-style command slice (first element is command, rest are args).
-    pub fn from_config(config_cmd: &[&str]) -> Self {
-        if config_cmd.is_empty() {
-            Self {
-                command: String::new(),
-                args: Vec::new(),
-            }
-        } else {
-            Self {
-                command: config_cmd[0].to_string(),
-                args: config_cmd[1..].iter().map(|s| s.to_string()).collect(),
-            }
-        }
-    }
 }
 
 impl Executable for EmbeddedShellOp {

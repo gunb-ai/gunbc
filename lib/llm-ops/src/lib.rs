@@ -20,6 +20,7 @@
 //! // 3. ParseChatResponse extracts content from the provider-specific response
 //! ```
 
+#![forbid(dead_code)]
 pub mod graph;
 
 pub mod graph_mock;
@@ -850,24 +851,25 @@ mod tests {
 
 #[cfg(test)]
 mod generated_tests {
-    #![allow(unused_imports)]
     include!("generated_tests.rs");
 }
 
 #[cfg(test)]
 mod generated_tests_anthropic {
-    #![allow(unused_imports)]
     include!("generated_tests_anthropic.rs");
 }
 
 #[cfg(test)]
 mod generated_tests_code_review {
-    #![allow(unused_imports)]
     include!("generated_tests_code_review.rs");
 }
 
 #[cfg(test)]
 mod generated_tests_secrets {
-    #![allow(unused_imports)]
     include!("generated_tests_secrets.rs");
+}
+
+#[cfg(test)]
+mod generated_tests_credential {
+    include!("generated_tests_credential.rs");
 }

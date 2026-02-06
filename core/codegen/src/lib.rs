@@ -14,6 +14,7 @@
 //! As such, it cannot use the transport pattern (circular dependency).
 //! It uses direct filesystem operations by design.
 
+#![forbid(dead_code)]
 // Codegen is the bootstrapper - can't use transport layer (circular dependency)
 #![allow(clippy::disallowed_methods)]
 

@@ -9,9 +9,6 @@
 //!
 //! - CommentPrefix SubDag
 
-// Allow dead_code for infrastructure APIs provided for future use
-#![allow(dead_code)]
-
 use crate::dag::{Dag, Port};
 use crate::language::LanguageOp;
 use crate::node::Node;
@@ -57,6 +54,7 @@ pub fn build_config_format_subdag() -> Node<LanguageOp> {
 }
 
 /// Get the comment prefix for a config format.
+#[cfg(test)]
 pub fn config_comment_prefix(format_id: &str) -> &'static str {
     match format_id {
         "makefile" | "gitignore" | "yaml" | "toml" | "shell" | "dockerfile" => "#",

@@ -7,6 +7,7 @@
 pub use gunbc_ir::transport::cli::CliToolOp;
 use gunbc_ir::transport::cli::{self, CliToolError};
 use gunbc_ir::Value;
+use gunbc_lib_transport::cli::execute_cli_tool_op;
 use std::collections::HashMap;
 
 /// Convenience functions for Clippy-specific operations.
@@ -38,7 +39,7 @@ impl Clippy {
     /// Prefer `build_clippy_upsert()` for the fractal DAG approach.
     pub fn upsert_and_run(args: &[&str]) -> Result<HashMap<String, Value>, CliToolError> {
         // Check
-        let check_result = Self::check().execute()?;
+        let check_result = execute_cli_tool_op(&Self::check())?;
         let exists = check_result
             .get("exists")
             .and_then(|v| v.as_bool())
@@ -46,11 +47,11 @@ impl Clippy {
 
         // Install if needed
         if !exists {
-            Self::install().execute()?;
+            execute_cli_tool_op(&Self::install())?;
         }
 
         // Run
-        Self::run(args).execute()
+        execute_cli_tool_op(&Self::run(args))
     }
 }
 

@@ -20,6 +20,7 @@
 //! This gives visibility into each step (prep, build, test, lint, report)
 //! without requiring separate workflow steps.
 
+#![forbid(dead_code)]
 use gunbc_dag::build_ci_graph_with_mode;
 use gunbc_exec::{execute_with_mode_and_ci, BoundaryMocks, CiContext, ExecutionMode};
 use gunbc_ir::resource::ExecMode;

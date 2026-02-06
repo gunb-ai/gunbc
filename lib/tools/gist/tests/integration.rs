@@ -524,7 +524,7 @@ fn test_recent_mode_dry_run() {
     let mut mocks = BoundaryMocks::new();
     mock_env(&mut mocks);
 
-    // Mock execute_rev_list: return a SHA (repo is older than 7 days)
+    // Mock execute_rev_list: return a SHA (repo is older than 3 days)
     mocks.set_value(
         "execute_rev_list",
         "response",
@@ -606,7 +606,7 @@ fn test_recent_mode_dry_run() {
             let filename_arg = req
                 .args
                 .iter()
-                .find(|a| a.contains("recent-7d") && a.contains("abc123d..HEAD"));
+                .find(|a| a.contains("recent-3d") && a.contains("abc123d..HEAD"));
             assert!(
                 filename_arg.is_some(),
                 "expected recent-mode filename with commit range, got args: {:?}",
@@ -616,7 +616,7 @@ fn test_recent_mode_dry_run() {
             let desc_idx = req.args.iter().position(|a| a == "--desc").unwrap();
             let desc = &req.args[desc_idx + 1];
             assert!(
-                desc.contains("Recent changes (7d) abc123d..HEAD on main"),
+                desc.contains("Recent changes (3d) abc123d..HEAD on main"),
                 "expected recent-mode description, got: {}",
                 desc
             );
@@ -637,7 +637,7 @@ fn test_recent_mode_young_repo() {
     let mut mocks = BoundaryMocks::new();
     mock_env(&mut mocks);
 
-    // Mock execute_rev_list: empty output (repo < 7 days old)
+    // Mock execute_rev_list: empty output (repo < 3 days old)
     mocks.set_value(
         "execute_rev_list",
         "response",
@@ -698,8 +698,8 @@ fn test_recent_mode_young_repo() {
         .expect("prepare_gist_request should be in log");
     match prepare_gist.outputs.get("request") {
         Some(Value::Request(gunbc_ir::transport::TransportRequest::Shell(req))) => {
-            // Should NOT contain recent-7d (no base_ref to form commit range)
-            let has_recent = req.args.iter().any(|a| a.contains("recent-7d"));
+            // Should NOT contain recent-3d (no base_ref to form commit range)
+            let has_recent = req.args.iter().any(|a| a.contains("recent-3d"));
             assert!(
                 !has_recent,
                 "young repo should fall back to snapshot-style filename, got args: {:?}",

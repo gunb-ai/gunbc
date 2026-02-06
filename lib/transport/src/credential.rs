@@ -21,6 +21,12 @@ pub struct GitHubEnvVarProvider {
     env_var: String,
 }
 
+impl Default for GitHubEnvVarProvider {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl GitHubEnvVarProvider {
     /// Create a provider that reads `GITHUB_TOKEN` by default.
     pub fn new() -> Self {

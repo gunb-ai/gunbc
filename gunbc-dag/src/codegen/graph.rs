@@ -50,13 +50,11 @@ pub fn codegen_signature() -> WorkflowSignature {
 }
 
 /// Build the codegen prep graph.
-#[allow(clippy::result_large_err)]
 pub fn build_codegen_graph() -> Result<Dag<CodegenGraphOp>, BuilderError> {
     build_codegen_graph_with_mode(ExecMode::Ensure)
 }
 
 /// Build the codegen prep graph with a specific resource mode.
-#[allow(clippy::result_large_err)]
 pub fn build_codegen_graph_with_mode(mode: ExecMode) -> Result<Dag<CodegenGraphOp>, BuilderError> {
     let mut builder = DagBuilder::new();
 

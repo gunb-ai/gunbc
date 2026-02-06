@@ -3,6 +3,7 @@
 //! Local development build pipeline: build → (test + clippy) → summary.
 //! Progress display is automatic based on terminal capabilities.
 
+#![forbid(dead_code)]
 use gunbc_dag::build::build_build_graph;
 use gunbc_exec::{execute_and_display, BoundaryMocks, ExecutionMode, TerminalProfile};
 use gunbc_ir::transport::{ShellResponse, TransportResponse};

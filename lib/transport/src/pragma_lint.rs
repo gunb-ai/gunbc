@@ -1,0 +1,189 @@
+#[cfg(test)]
+mod tests {
+    use std::collections::HashSet;
+    use std::fs;
+    use std::path::{Path, PathBuf};
+
+    fn repo_root() -> PathBuf {
+        let crate_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+        crate_dir
+            .parent()
+            .and_then(|p| p.parent())
+            .map(PathBuf::from)
+            .expect("expected repo root to be two levels up from lib/transport")
+    }
+
+    fn collect_rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
+        if let Ok(entries) = fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    collect_rs_files(&path, out);
+                } else if path.extension().and_then(|s| s.to_str()) == Some("rs") {
+                    out.push(path);
+                }
+            }
+        }
+    }
+
+    fn load_disallowed_methods_allowlist(root: &Path) -> HashSet<String> {
+        let path = root.join("tools/disallowed-methods-allowlist.txt");
+        let content = fs::read_to_string(&path)
+            .unwrap_or_else(|_| panic!("missing allowlist file: {}", path.display()));
+        let mut allowed = HashSet::new();
+        for line in content.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            let (file, _) = line
+                .split_once(':')
+                .unwrap_or_else(|| panic!("malformed allowlist entry: {}", line));
+            allowed.insert(file.to_string());
+        }
+        allowed
+    }
+
+    struct PragmaLintPolicy {
+        allow_dead_code: HashSet<String>,
+        allow_lints: HashSet<String>,
+    }
+
+    fn load_pragma_lint_policy(root: &Path) -> PragmaLintPolicy {
+        let path = root.join("tools/pragma-lint-policy.txt");
+        let content = fs::read_to_string(&path)
+            .unwrap_or_else(|_| panic!("missing pragma policy file: {}", path.display()));
+
+        let mut section = "";
+        let mut allow_dead_code = HashSet::new();
+        let mut allow_lints = HashSet::new();
+
+        for raw in content.lines() {
+            let line = raw.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            if line.starts_with('[') && line.ends_with(']') {
+                section = &line[1..line.len() - 1];
+                continue;
+            }
+            match section {
+                "allow.dead_code" => {
+                    allow_dead_code.insert(line.to_string());
+                }
+                "allow.lints" => {
+                    allow_lints.insert(line.to_string());
+                }
+                _ => {}
+            }
+        }
+
+        PragmaLintPolicy {
+            allow_dead_code,
+            allow_lints,
+        }
+    }
+
+    fn extract_allow_lints(line: &str) -> Vec<String> {
+        let mut lints = Vec::new();
+        let mut rest = line;
+        while let Some(start) = rest.find("allow(") {
+            let after = &rest[start + "allow(".len()..];
+            if let Some(end) = after.find(')') {
+                let inside = &after[..end];
+                for item in inside.split(',') {
+                    let lint = item.trim();
+                    if !lint.is_empty() {
+                        lints.push(lint.to_string());
+                    }
+                }
+                rest = &after[end + 1..];
+            } else {
+                break;
+            }
+        }
+        lints
+    }
+
+    #[test]
+    fn lint_allow_pragmas_and_migrations() {
+        let root = repo_root();
+        let mut files = Vec::new();
+        for dir in ["core", "lib", "gunbc-dag"] {
+            collect_rs_files(&root.join(dir), &mut files);
+        }
+
+        let allowed_disallowed_methods = load_disallowed_methods_allowlist(&root);
+        let policy = load_pragma_lint_policy(&root);
+
+        let mut dead_code_allows = Vec::new();
+        let mut disallowed_method_allows = Vec::new();
+        let mut migration_tags = Vec::new();
+        let mut forbidden_allows = Vec::new();
+
+        for file in files {
+            let rel = file
+                .strip_prefix(&root)
+                .unwrap_or(&file)
+                .to_string_lossy()
+                .replace('\\', "/");
+            let Ok(content) = fs::read_to_string(&file) else {
+                continue;
+            };
+
+            for (idx, line) in content.lines().enumerate() {
+                let line_no = idx + 1;
+                let trimmed = line.trim_start();
+                if trimmed.starts_with("#") && trimmed.contains("allow(") {
+                    for lint in extract_allow_lints(trimmed) {
+                        match lint.as_str() {
+                            "dead_code" => {
+                                if !policy.allow_dead_code.contains(rel.as_str()) {
+                                    dead_code_allows.push(format!("{}:{} {}", rel, line_no, lint));
+                                }
+                            }
+                            "clippy::disallowed_methods" => {
+                                if !allowed_disallowed_methods.contains(rel.as_str()) {
+                                    disallowed_method_allows
+                                        .push(format!("{}:{} {}", rel, line_no, lint));
+                                }
+                            }
+                            _ => {
+                                if !policy.allow_lints.contains(lint.as_str()) {
+                                    forbidden_allows.push(format!("{}:{} {}", rel, line_no, lint));
+                                }
+                            }
+                        }
+                    }
+                }
+                if line.contains("MIGRATION:") {
+                    migration_tags.push(format!("{}:{}", rel, line_no));
+                }
+            }
+        }
+
+        assert!(
+            dead_code_allows.is_empty(),
+            "Found #[allow(dead_code)] outside allowlist:\n{}",
+            dead_code_allows.join("\n")
+        );
+
+        assert!(
+            disallowed_method_allows.is_empty(),
+            "Found #[allow(clippy::disallowed_methods)] outside allowlist:\n{}",
+            disallowed_method_allows.join("\n")
+        );
+
+        assert!(
+            forbidden_allows.is_empty(),
+            "Found forbidden #[allow(...)] lints:\n{}",
+            forbidden_allows.join("\n")
+        );
+
+        assert!(
+            migration_tags.is_empty(),
+            "Found MIGRATION tags (unfinished work):\n{}",
+            migration_tags.join("\n")
+        );
+    }
+}

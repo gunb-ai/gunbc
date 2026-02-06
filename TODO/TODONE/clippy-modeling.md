@@ -67,7 +67,7 @@ This follows the fractal DAG pattern where tool crates define both tool operatio
    - `ClippyConfigRenderer` — Implements `Renderable` for standard header
 
 10. **✅ Codegen integration** (`core/codegen/src/main.rs`):
-    - `cargo run -p gunbc-codegen -- clippy-toml` — Generates clippy.toml
+    - `cargo run -p gunbc-dag --bin gunbc-pragma` — Generates clippy.toml
 
 ### What's Still Missing
 
@@ -171,7 +171,7 @@ pub fn gunbc_clippy_config() -> ClippyConfig {
         ],
         crate_allowances: vec![
             CrateAllowance {
-                crate_name: "gunbc-transport",
+                crate_name: "gunbc-lib-transport",
                 allows: &["std::fs::*", "std::process::Command::new"],
                 reason: "Transport executor is the designated I/O boundary",
             },
@@ -266,7 +266,7 @@ pub fn generate_lint_docs(config: &ClippyConfig) -> String {
 │  └── ClippyConfigRenderer               → Implements Renderable         │
 │                                                                         │
 │  core/codegen/src/main.rs                                               │
-│  └── cmd_clippy_toml()                  → `codegen clippy-toml`         │
+│  └── gunbc-pragma                       → `gunbc-pragma`               │
 │                                                                         │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
@@ -298,7 +298,7 @@ Tasks:
 - [x] **Create ClippyConfig struct** — in `lib/tools/clippy/src/config.rs`
 - [x] **Implement ClippyConfig::transport_pattern()** — preset for transport pattern enforcement
 - [x] **Generate clippy.toml** — `generate_clippy_toml()` function
-- [x] **Add to codegen** — `cargo run -p gunbc-codegen -- clippy-toml`
+- [x] **Add pragma generator** — `cargo run -p gunbc-dag --bin gunbc-pragma`
 - [ ] **Add to CI** — verify clippy.toml matches generated version
 
 ### Note on InstallInputs.component

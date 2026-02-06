@@ -1178,12 +1178,10 @@ Please fix these issues."#;
 
 #[cfg(test)]
 mod generated_tests_inline {
-    #![allow(unused_imports)]
     include!("generated_tests_inline.rs");
 }
 
 #[cfg(test)]
 mod generated_tests_diff {
-    #![allow(unused_imports)]
     include!("generated_tests_diff.rs");
 }

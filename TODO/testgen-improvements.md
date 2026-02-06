@@ -462,25 +462,25 @@ the credential design that drives these requirements.
 
 **Depends on**: Phase 5 (windowed testing), Phase 8 (test absorption)
 
-**TODO 10.1: Add `ResourceType::Credential` to resource simulation**
-- [ ] Add `ResourceType::Credential { expiry_ms, refreshable }` to `mock_spec.rs`
-- [ ] Add `ResourceBehavior::RefreshSucceeds { new_ttl_ms }`
-- [ ] Add `ResourceBehavior::RefreshFails { error }`
-- [ ] Add `ResourceBehavior::RevokeSucceeds`
-- [ ] Generate: acquire, use-while-valid, refresh, use-after-refresh,
+**TODO 10.1: Add `ResourceType::Credential` to resource simulation** ✅
+- [x] Add `ResourceType::Credential { expiry_ms, refreshable }` to `mock_spec.rs`
+- [x] Add `ResourceBehavior::RefreshSucceeds { new_ttl_ms }`
+- [x] Add `ResourceBehavior::RefreshFails { error }`
+- [x] Add `ResourceBehavior::RevokeSucceeds`
+- [x] Generate: acquire, use-while-valid, refresh, use-after-refresh,
       expire, revoke test sequence in Bucket D
 
-**TODO 10.2: Add `MockSequence` / `ConditionalMock` to MockSpec**
-- [ ] Add `MockSequence`: ordered list of responses per transport node
+**TODO 10.2: Add `MockSequence` / `ConditionalMock` to MockSpec** ✅
+- [x] Add `MockSequence`: ordered list of responses per transport node
       (first call → response A, second call → response B)
 - [ ] OR `ConditionalMock`: predicate on input values selects response
-- [ ] Wire into `BoundaryMocks` / DryRun interception in `execute.rs`
+- [x] Wire into `BoundaryMocks` / DryRun interception in `execute.rs`
 
-**TODO 10.3: Generate credential lifecycle suites**
-- [ ] Detect `CredentialOp` nodes in DAG analysis
-- [ ] Generate Bucket C scenarios specific to credential flows:
+**TODO 10.3: Generate credential lifecycle suites** ✅
+- [x] Detect `CredentialOp` nodes in DAG analysis
+- [x] Generate Bucket C scenarios specific to credential flows:
       acquire-fails, use-with-expired, refresh-succeeds, revoke-then-use
-- [ ] Use Phase 5 windows to test sub-segments of the credential flow
+- [x] Use Phase 5 windows to test sub-segments of the credential flow
 
 ---
 

@@ -3,6 +3,9 @@
 //! This crate provides the low-level primitives that other gunbc crates build on.
 //! It has no internal dependencies — only external crates (serde, sha2, etc.).
 
+#![forbid(dead_code)]
+// Infra is a low-level hub (fs helpers, test utilities).
+#![allow(clippy::disallowed_methods)]
 use serde::{Deserialize, Serialize};
 use std::fmt;
 

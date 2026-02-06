@@ -41,16 +41,18 @@ use gunbc_ir::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+type GeneratorFn = Arc<dyn Fn() -> Value + Send + Sync>;
+type ValidatorFn = Arc<dyn Fn(&Value) -> Result<(), String> + Send + Sync>;
+
 /// A simulator that can generate and validate values.
 #[derive(Clone)]
-#[allow(clippy::type_complexity)]
 pub struct Simulator {
     /// Human-readable description
     pub description: String,
     /// Generator function (returns random value satisfying constraints)
-    generator: Option<Arc<dyn Fn() -> Value + Send + Sync>>,
+    generator: Option<GeneratorFn>,
     /// Validator function (checks if value is in expected range)
-    validator: Option<Arc<dyn Fn(&Value) -> Result<(), String> + Send + Sync>>,
+    validator: Option<ValidatorFn>,
 }
 
 impl std::fmt::Debug for Simulator {

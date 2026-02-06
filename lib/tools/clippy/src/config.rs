@@ -52,7 +52,7 @@ impl DisallowedMethod {
 /// and why they are permitted to bypass the rules.
 #[derive(Debug, Clone)]
 pub struct CrateAllowance {
-    /// Crate name (e.g., "gunbc-transport")
+    /// Crate name (e.g., "gunbc-lib-transport")
     pub crate_name: &'static str,
     /// Reason why this crate is allowed to bypass rules
     pub reason: &'static str,
@@ -127,9 +127,24 @@ impl ClippyConfig {
     /// If something is wrong, the build fails — it doesn't print a warning and continue.
     ///
     /// ## Approved Exceptions (must have documented reason):
-    /// - `gunbc-transport` — IS the I/O boundary (the one place I/O is allowed)
+    /// - `gunbc-lib-transport` — IS the I/O boundary (the one place I/O is allowed)
     /// - `gunbc-codegen` — Bootstrap code (chicken/egg problem with transport)
     pub fn transport_pattern() -> Self {
+        Self::transport_pattern_base()
+            // Document approved crates (minimal exceptions)
+            // Crate names follow the {PREFIX}-{component} pattern (see cargo::name)
+            .allow_crate(
+                "gunbc-lib-transport",
+                "IS the I/O boundary - the designated place for I/O",
+            )
+            .allow_crate(
+                "gunbc-codegen",
+                "Bootstrap code - can't use transport (chicken/egg)",
+            )
+    }
+
+    /// Transport pattern without any crate allowances.
+    fn transport_pattern_base() -> Self {
         Self::new()
             .with_large_error_threshold(256)
             // Filesystem operations - enforces I6 (no escape hatches)
@@ -164,18 +179,22 @@ impl ClippyConfig {
             // Process execution - enforces I6
             .disallow(
                 "std::process::Command::new",
-                "I6: No escape hatches. Use env nodes + tool handles. Command::new only in transport executor.",
+                "I6: No escape hatches. Use env nodes + tool handles. Command::new only in transport executor/cli.",
             )
-            // Document approved crates (minimal exceptions)
-            // Crate names follow the {PREFIX}-{component} pattern (see cargo::name)
-            .allow_crate(
-                "gunbc-transport",
-                "IS the I/O boundary - the designated place for I/O",
-            )
-            .allow_crate(
-                "gunbc-codegen",
-                "Bootstrap code - can't use transport (chicken/egg)",
-            )
+    }
+
+    /// Transport pattern configured from crate policies.
+    ///
+    /// This is the repo-specific extension point: gunbc-dag can supply a
+    /// policy list that includes infra and other hubs.
+    pub fn transport_pattern_with_crates(crates: &[crate::policy::CratePolicy]) -> Self {
+        let mut config = Self::transport_pattern_base();
+        for policy in crates {
+            if let Some(allowance) = policy.disallowed_methods_allowance() {
+                config.crate_allowances.push(allowance);
+            }
+        }
+        config
     }
 }
 
@@ -311,12 +330,27 @@ pub fn generate_clippy_toml(config: &ClippyConfig) -> String {
 /// Wrapper for rendering ClippyConfig with the standard header.
 pub struct ClippyConfigRenderer {
     config: ClippyConfig,
+    regenerate_command: String,
 }
 
 impl ClippyConfigRenderer {
     /// Create a new renderer with the given config.
     pub fn new(config: ClippyConfig) -> Self {
-        Self { config }
+        Self {
+            config,
+            regenerate_command: DEFAULT_REGENERATE_CMD.to_string(),
+        }
+    }
+
+    /// Create a new renderer with a custom regenerate command.
+    pub fn with_regenerate_command(
+        config: ClippyConfig,
+        regenerate_command: impl Into<String>,
+    ) -> Self {
+        Self {
+            config,
+            regenerate_command: regenerate_command.into(),
+        }
     }
 
     /// Create a renderer with the transport pattern config.
@@ -328,9 +362,8 @@ impl ClippyConfigRenderer {
 /// Composed generator name for ClippyConfigRenderer.
 /// Must match `cargo::name("clippy")` — verified by test.
 const CLIPPY_GENERATOR_NAME: &str = "gunbc-clippy";
-/// Regenerate command — must be `&str` for [`Renderable`], verified by test
-/// to match `CargoInvocation::standalone("codegen").command() + " -- clippy-toml"`.
-const CLIPPY_REGENERATE_CMD: &str = "cargo run -p gunbc-codegen -- clippy-toml";
+/// Default regenerate command for clippy.toml.
+const DEFAULT_REGENERATE_CMD: &str = "cargo run -p gunbc-dag --bin gunbc-pragma";
 
 impl Renderable for ClippyConfigRenderer {
     fn generator_name(&self) -> &str {
@@ -338,7 +371,7 @@ impl Renderable for ClippyConfigRenderer {
     }
 
     fn regenerate_command(&self) -> &str {
-        CLIPPY_REGENERATE_CMD
+        &self.regenerate_command
     }
 
     fn format_id(&self) -> &str {
@@ -367,8 +400,8 @@ mod tests {
 
     #[test]
     fn test_crate_allowance_creation() {
-        let allowance = CrateAllowance::new("gunbc-transport", "I/O boundary");
-        assert_eq!(allowance.crate_name, "gunbc-transport");
+        let allowance = CrateAllowance::new("gunbc-lib-transport", "I/O boundary");
+        assert_eq!(allowance.crate_name, "gunbc-lib-transport");
         assert_eq!(allowance.reason, "I/O boundary");
     }
 
@@ -407,7 +440,7 @@ mod tests {
         assert!(config
             .crate_allowances
             .iter()
-            .any(|c| c.crate_name == "gunbc-transport"));
+            .any(|c| c.crate_name == "gunbc-lib-transport"));
         assert!(config
             .crate_allowances
             .iter()
@@ -438,7 +471,7 @@ mod tests {
         let renderer = ClippyConfigRenderer::transport_pattern();
 
         assert_eq!(renderer.generator_name(), "gunbc-clippy");
-        assert!(renderer.regenerate_command().contains("clippy-toml"));
+        assert!(renderer.regenerate_command().contains("gunbc-pragma"));
 
         let content = renderer.render_content();
         assert!(content.contains("disallowed-methods"));
@@ -446,10 +479,10 @@ mod tests {
 
     #[test]
     fn test_regenerate_command_matches_composed() {
-        let expected = format!(
-            "{} -- clippy-toml",
-            gunbc_ir::CargoInvocation::standalone("codegen").command()
+        let renderer = ClippyConfigRenderer::transport_pattern();
+        assert_eq!(
+            renderer.regenerate_command(),
+            "cargo run -p gunbc-dag --bin gunbc-pragma"
         );
-        assert_eq!(CLIPPY_REGENERATE_CMD, expected);
     }
 }

@@ -2,6 +2,7 @@
 //!
 //! Generates Makefile from tool registry.
 
+#![forbid(dead_code)]
 use gunbc_dag::build_makegen_graph;
 use gunbc_exec::{execute_with_mode_and_inputs, BoundaryMocks, ExecutionMode};
 use gunbc_ir::transport::{FileOp, FileResponse, TransportResponse};

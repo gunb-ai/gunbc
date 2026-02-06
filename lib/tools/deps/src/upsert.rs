@@ -95,16 +95,6 @@ pub fn upsert_dry_run(
     installer: &Installer,
     dep: &Dependency,
 ) -> Result<(UpsertResult, String), String> {
-    // Check phase
-    let is_installed = installer.is_installed(&dep.verify);
-
-    if is_installed {
-        return Ok((
-            UpsertResult::already_installed(&dep.name),
-            format!("# {} is already installed\n", dep.name),
-        ));
-    }
-
     // Get platform install config
     let install_config = dep
         .install_for(installer.platform())
@@ -120,7 +110,7 @@ pub fn upsert_dry_run(
         UpsertResult {
             name: dep.name.clone(),
             was_installed: false,
-            install_attempted: false, // Dry run
+            install_attempted: false, // Dry run (no check phase)
             is_installed: false,
             error: None,
         },
@@ -135,10 +125,9 @@ mod tests {
     use crate::platform::Platform;
 
     #[test]
-    fn test_upsert_already_installed() {
+    fn test_upsert_dry_run_generates_script() {
         let installer = Installer::for_platform(Platform::detect());
 
-        // Use 'echo' which is always available
         let manifest = DepsManifest::parse(
             r#"
 [[dependency]]
@@ -163,8 +152,9 @@ script = "echo 'noop'"
         let dep = manifest.get("echo").unwrap();
         let (result, script) = upsert_dry_run(&installer, dep).unwrap();
 
-        assert!(result.was_installed);
-        assert!(script.contains("already installed"));
+        assert!(!result.was_installed);
+        assert!(!result.install_attempted);
+        assert!(script.contains("echo test"));
     }
 
     #[test]

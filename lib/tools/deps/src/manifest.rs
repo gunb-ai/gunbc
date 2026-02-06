@@ -3,8 +3,6 @@
 use crate::platform::Platform;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fs;
-use std::path::Path;
 
 // ============================================================================
 // Manifest Configuration (centralized constants)
@@ -59,14 +57,6 @@ pub struct DepsManifest {
 }
 
 impl DepsManifest {
-    /// Load a manifest from a file.
-    #[allow(clippy::disallowed_methods)] // Manifest loading needs direct fs access
-    pub fn load(path: impl AsRef<Path>) -> Result<Self, String> {
-        let content = fs::read_to_string(path.as_ref())
-            .map_err(|e| format!("failed to read manifest: {}", e))?;
-        Self::parse(&content)
-    }
-
     /// Parse a manifest from a string.
     pub fn parse(content: &str) -> Result<Self, String> {
         toml::from_str(content).map_err(|e| format!("failed to parse manifest: {}", e))

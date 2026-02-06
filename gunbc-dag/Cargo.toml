@@ -56,5 +56,9 @@ name = "gunbc-build"
 path = "src/bin/build.rs"
 
 [[bin]]
+name = "gunbc-pragma"
+path = "src/bin/pragma.rs"
+
+[[bin]]
 name = "gunbc-codegen-dag"
 path = "src/bin/codegen.rs"

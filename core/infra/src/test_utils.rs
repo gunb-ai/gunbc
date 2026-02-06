@@ -1,8 +1,8 @@
 //! Test utilities for filesystem operations.
 //!
-//! These helpers live in `gunbc-infra` because this crate's `clippy.toml`
-//! allows direct `std::fs` operations. Downstream crates can call these
-//! without `#[allow(clippy::disallowed_methods)]` pragmas.
+//! These helpers live in `gunbc-infra` because this crate is the infra hub
+//! and is explicitly allowed to use `std::fs`. Downstream crates can call
+//! these without `#[allow(clippy::disallowed_methods)]` pragmas.
 
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};

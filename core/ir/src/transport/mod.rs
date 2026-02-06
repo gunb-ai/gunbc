@@ -63,9 +63,6 @@ pub use ci::{
 pub use cli::{
     build_cli_ensure,
     build_cli_upsert,
-    // Resolver-aware entry points
-    resolve_tool_path_with,
-    upsert_tool_with,
     CliToolDef,
     CliToolError,
     CliToolOp,
@@ -73,7 +70,6 @@ pub use cli::{
     ToolHandle,
     // Tool path resolution trait + implementations
     ToolPathResolver,
-    WhichResolver,
     CARGO as CLI_CARGO,
     // CLI Tool definitions (use these with node.requires())
     CLIPPY as CLI_CLIPPY,
@@ -87,7 +83,7 @@ pub use git::GitRequest;
 pub use github::cli::GH_TOOL;
 pub use github::{
     api::{github_rest_request, GitHubApi, GITHUB_API},
-    cli::{gh_cli_commands, gh_cli_request, is_gh_installed, GHCommand},
+    cli::{gh_cli_commands, gh_cli_request, GHCommand},
     GH_CLI_MIN_VERSION, GITHUB_API_VERSION, GITHUB_CONTRACT_VERSION,
 };
 pub use github_actions::{

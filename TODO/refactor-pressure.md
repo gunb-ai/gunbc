@@ -121,8 +121,7 @@ one place (not sprinkled `#[allow]` at call sites). Approved categories:
       runs `--check` on makegen, bootstrap, and testgen. `make test`
       includes `verify` in its dependency chain. Each `--check` flag
       does dry-run + `verify_drift()` comparison against disk.
-      Remaining: cigen/clippy-toml use FileWriter, not DAG transport;
-      migrate later.
+      Remaining: cigen uses FileWriter, not DAG transport; migrate later.
 - [ ] DagSpec / typed registry. Done when testgen, makegen, and CI
       generation all consume DagSpec, and registry dispatch is no longer
       string-based. (Note: `GraphBuilderId` enum already eliminates

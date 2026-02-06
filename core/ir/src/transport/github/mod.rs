@@ -11,7 +11,7 @@
 //! github/
 //! ├── mod.rs      ← This file: common types, auth, version constants
 //! ├── api.rs      ← REST API: config, headers, request builder
-//! └── cli.rs      ← gh CLI: config, commands, install methods, upsert interface
+//! └── cli.rs      ← gh CLI: config, commands, install methods
 //! ```
 //!
 //! Services like [`super::gist`] and [`super::github_actions`] build on this layer.
@@ -21,7 +21,7 @@ pub mod cli;
 
 // Re-export for convenience
 pub use api::{github_rest_request, GitHubApi, GITHUB_API};
-pub use cli::{gh_cli_commands, gh_cli_request, is_gh_installed, GHCommand, GH_TOOL};
+pub use cli::{gh_cli_commands, gh_cli_request, GHCommand, GH_TOOL};
 
 // ============================================================================
 // Version Constants (single source of truth)

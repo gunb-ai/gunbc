@@ -512,9 +512,9 @@ of this doc — we write manual tests now and absorb later.
 
 ### Phase 5: Testgen absorption (after testgen-improvements Phase 5 + 8)
 
-- [ ] TODO 10.1: Add `ResourceType::Credential` to resource simulation
-- [ ] TODO 10.2: Add `MockSequence`/`ConditionalMock` to MockSpec
-- [ ] TODO 10.3: Generate credential lifecycle suites for DAGs with `CredentialOp`
+- [x] TODO 10.1: Add `ResourceType::Credential` to resource simulation
+- [x] TODO 10.2: Add `MockSequence`/`ConditionalMock` to MockSpec
+- [x] TODO 10.3: Generate credential lifecycle suites for DAGs with `CredentialOp`
 - [ ] Absorb manual Tests 2, 3 into testgen-generated tests
 - [ ] Delete hand-written tests marked `// TESTGEN-ABSORB`
 

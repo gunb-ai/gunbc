@@ -8,6 +8,7 @@
 //!     cargo run -p gunbc-dag --bin gunbc-testgen -- --check
 //!     cargo run -p gunbc-dag --bin gunbc-testgen -- --output-dir /path/to/output
 
+#![forbid(dead_code)]
 use gunbc_codegen::FileWriter;
 use gunbc_dag::testgen_resource_def;
 use gunbc_ir::resource::{

@@ -197,7 +197,7 @@ pub fn build_review_phase_graph() -> Dag<ReviewGraphOp> {
         "execute_llm",
         vec![
             port("request", "TransportRequest"),
-            port("res:credential", "Credential"),
+            resource("credential", "Credential", AccessMode::Read),
         ],
         vec![port("response", "TransportResponse")],
         ReviewGraphOp::Transport(TransportOps::Execute),
@@ -351,7 +351,7 @@ pub fn build_inline_review_graph() -> Dag<ReviewGraphOp> {
         "execute_llm",
         vec![
             port("request", "TransportRequest"),
-            port("res:credential", "Credential"),
+            resource("credential", "Credential", AccessMode::Read),
         ],
         vec![port("response", "TransportResponse")],
         ReviewGraphOp::Transport(TransportOps::Execute),
@@ -580,7 +580,7 @@ pub fn build_diff_review_graph_with(config: ReviewPipelineConfig) -> Dag<ReviewG
         "execute_llm",
         vec![
             port("request", "TransportRequest"),
-            port("res:credential", "Credential"),
+            resource("credential", "Credential", AccessMode::Read),
         ],
         vec![port("response", "TransportResponse")],
         ReviewGraphOp::Transport(TransportOps::Execute),
@@ -786,7 +786,7 @@ pub fn build_multi_source_review_graph_with(config: ReviewPipelineConfig) -> Dag
         "execute_llm",
         vec![
             port("request", "TransportRequest"),
-            port("res:credential", "Credential"),
+            resource("credential", "Credential", AccessMode::Read),
         ],
         vec![port("response", "TransportResponse")],
         ReviewGraphOp::Transport(TransportOps::Execute),

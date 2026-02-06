@@ -71,11 +71,15 @@ impl<T> Node<T> {
             if seen_inputs.insert(port_name.clone()) {
                 if let Some(node) = dag.get_node(node_id) {
                     if let Some(port) = node.inputs.iter().find(|p| &p.name == port_name) {
-                        inputs.push(Port::with_cardinality(
+                        let mut inferred = Port::with_cardinality(
                             port.name.0.as_str(),
                             port.type_id.0.as_str(),
                             port.cardinality,
-                        ));
+                        );
+                        // Preserve resource_access so SubDag auto-inference
+                        // doesn't lose Write/Exclusive mode information.
+                        inferred.resource_access = port.resource_access;
+                        inputs.push(inferred);
                     }
                 }
             }
@@ -88,11 +92,13 @@ impl<T> Node<T> {
             if seen_outputs.insert(port_name.clone()) {
                 if let Some(node) = dag.get_node(node_id) {
                     if let Some(port) = node.outputs.iter().find(|p| &p.name == port_name) {
-                        outputs.push(Port::with_cardinality(
+                        let mut inferred = Port::with_cardinality(
                             port.name.0.as_str(),
                             port.type_id.0.as_str(),
                             port.cardinality,
-                        ));
+                        );
+                        inferred.resource_access = port.resource_access;
+                        outputs.push(inferred);
                     }
                 }
             }

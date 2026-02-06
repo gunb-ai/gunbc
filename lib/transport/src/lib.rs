@@ -12,9 +12,12 @@
 //! # Structural I/O Enforcement
 //!
 //! `execute_transport()` and `execute_request()` are NOT exported from this crate.
-//! The ONLY way to perform I/O is through `TransportOps::Execute` nodes in a DAG.
-//! This ensures all I/O is:
-//! - Visible in the graph structure
+//! The primary I/O boundary is `TransportOps::Execute` nodes in a DAG. Tool
+//! acquisition/execution helpers live here as well, so CLI tool I/O stays in
+//! the transport layer rather than leaking into pure crates.
+//!
+//! This ensures I/O is:
+//! - Visible in the graph structure (for transport requests)
 //! - Interceptable by DryRun mode
 //! - Auditable
 //!
@@ -24,14 +27,19 @@
 //! via std::fs and std::process::Command. All other crates MUST use
 //! PrepareXxxOp + TransportOps::Execute.
 
+#![forbid(dead_code)]
 // This crate IS the transport layer - it's allowed to use direct I/O
 #![allow(clippy::disallowed_methods)]
 
 pub mod credential;
+pub mod cli;
 pub mod executor;
 pub mod ops;
 
-// STRUCTURAL ENFORCEMENT: Only export TransportOps
+// STRUCTURAL ENFORCEMENT: TransportOps + transport-layer CLI helpers only
 // execute_transport and execute_request are internal - not exported
 pub use credential::{CredentialOp, GitHubEnvVarProvider, LlmEnvVarProvider, MockCredentialProvider};
 pub use ops::TransportOps;
+
+#[cfg(test)]
+mod pragma_lint;

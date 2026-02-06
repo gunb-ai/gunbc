@@ -4,14 +4,14 @@
 // DO NOT EDIT - regenerate with: make testgen
 // Obligations: 133 obligations (58 discharged, 75 testable: A=27, B=30, C=16, D=2)
 // Proven by construction: acyclicity, type compatibility, cardinality satisfaction.
-// Content-Hash: d0a26abab80c5ce7d3b9ac49fd0e902bec58f1830fdc5f6889734b6f5dbab743
+// Content-Hash: e0197e8edaa303028141c1655a4276b193a8bc992fe6aa49d69c72050261f1cb
 
 
-use gunbc_exec::{execute_with_mode, lower, BoundaryMocks, ExecutionMode};
-use gunbc_ir::{detect_boundaries, Cardinality, Value};
-use gunbc_test::{assert_boundary_mockable, assert_types_compatible, MockSpec};
+use gunbc_exec::{execute_with_mode, lower, ExecutionMode};
+use gunbc_ir::Value;
+use gunbc_test::{assert_boundary_mockable, MockSpec};
 use gunbc_test::{apply_window_inputs, assert_window_outputs, window_subdag, Window};
-use gunbc_test::{ResourceAcquireResult, ResourceSimulation};
+use gunbc_test::ResourceAcquireResult;
 
 fn mock_spec() -> MockSpec {
     crate::ci::graph_mock::ci_mock_spec()

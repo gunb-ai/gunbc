@@ -26,19 +26,13 @@
 //!
 //! # Direct Operations
 //!
-//! For simple cases, operations can be executed directly:
-//!
-//! ```ignore
-//! use gunbc_ir::transport::cli::{CliToolOp, CLIPPY};
-//!
-//! let check = CliToolOp::check(&CLIPPY);
-//! let result = check.execute()?;
-//! ```
+//! Direct execution lives in the transport layer. Use `build_cli_upsert()` and
+//! execute via DAG nodes, or call transport-layer helpers when you need an
+//! imperative check/install/run at the I/O boundary.
 
 use std::collections::{BTreeMap, HashMap};
 use std::marker::PhantomData;
 use std::path::PathBuf;
-use std::process::Command;
 
 use crate::resource::{
     capability_marker, ensure_capability_marker, AccessMode, Resource, ResourceId, ResourceKind,
@@ -108,7 +102,7 @@ impl CliToolDef {
 /// // In operation implementation - receives handle from inputs
 /// fn execute_lint(inputs: HashMap<String, Value>) -> Result<...> {
 ///     let clippy: ToolHandle = inputs.get("tool:clippy").unwrap();
-///     let result = clippy.run(&["--all-targets"]).execute()?;
+///     // Execution happens at the transport boundary (e.g., via a DAG node)
 ///     // ...
 /// }
 /// ```
@@ -310,41 +304,14 @@ pub fn get_tool_by_id(id: &str) -> Option<&'static CliToolDef> {
 /// Abstraction for resolving tool binary paths on the system.
 ///
 /// Implementations provide the mechanism for locating binaries (e.g., `which`
-/// on Unix, `where` on Windows, or a mock for testing). This trait allows
-/// the tool acquisition pipeline to be tested without shelling out.
+/// on Unix, `where` on Windows, or a mock for testing). Concrete resolvers that
+/// shell out live in the transport layer.
 pub trait ToolPathResolver {
     /// Resolve the absolute path to a tool binary.
     ///
     /// Returns `Ok(path)` if the binary is found, or an error if resolution
     /// fails or the binary is not on PATH.
     fn resolve(&self, tool: &'static CliToolDef) -> Result<PathBuf, CliToolError>;
-}
-
-/// Default resolver that uses the `which` command to find binaries on PATH.
-pub struct WhichResolver;
-
-#[allow(clippy::disallowed_methods)]
-impl ToolPathResolver for WhichResolver {
-    fn resolve(&self, tool: &'static CliToolDef) -> Result<PathBuf, CliToolError> {
-        let binary = tool
-            .binary_name()
-            .ok_or_else(|| CliToolError::new(tool, "resolve", "No binary name defined"))?;
-
-        let output = Command::new("which").arg(binary).output().map_err(|e| {
-            CliToolError::new(tool, "resolve", format!("Failed to run which: {}", e))
-        })?;
-
-        if !output.status.success() {
-            return Err(CliToolError::new(
-                tool,
-                "resolve",
-                format!("Binary '{}' not found on PATH", binary),
-            ));
-        }
-
-        let path_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        Ok(PathBuf::from(path_str))
-    }
 }
 
 /// Mock resolver for testing — returns pre-configured paths for tools.
@@ -392,56 +359,6 @@ impl ToolPathResolver for MockResolver {
             )
         })
     }
-}
-
-/// Resolve the path to a tool binary using `which`.
-///
-/// Convenience wrapper that uses [`WhichResolver`]. For injectable usage,
-/// call [`resolve_tool_path_with`] instead.
-pub fn resolve_tool_path(tool: &'static CliToolDef) -> Result<PathBuf, CliToolError> {
-    resolve_tool_path_with(tool, &WhichResolver)
-}
-
-/// Resolve the path to a tool binary using an injected resolver.
-pub fn resolve_tool_path_with(
-    tool: &'static CliToolDef,
-    resolver: &dyn ToolPathResolver,
-) -> Result<PathBuf, CliToolError> {
-    resolver.resolve(tool)
-}
-
-/// Upsert a tool: check if installed, install if needed, return resolved path.
-///
-/// Convenience wrapper that uses [`WhichResolver`]. For injectable usage,
-/// call [`upsert_tool_with`] instead.
-#[allow(clippy::disallowed_methods)]
-pub fn upsert_tool(tool: &'static CliToolDef) -> Result<PathBuf, CliToolError> {
-    upsert_tool_with(tool, &WhichResolver)
-}
-
-/// Upsert a tool using an injected path resolver.
-///
-/// This is the injectable variant — callers can pass a [`MockResolver`] for
-/// testing or a [`WhichResolver`] for production use.
-#[allow(clippy::disallowed_methods)]
-pub fn upsert_tool_with(
-    tool: &'static CliToolDef,
-    resolver: &dyn ToolPathResolver,
-) -> Result<PathBuf, CliToolError> {
-    // Step 1: Check if tool exists
-    let check_result = execute_check(tool)?;
-    let exists = check_result
-        .get("exists")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-
-    // Step 2: Install if needed
-    if !exists {
-        execute_install(tool)?;
-    }
-
-    // Step 3: Resolve and return the path
-    resolve_tool_path_with(tool, resolver)
 }
 
 impl CliToolDef {
@@ -532,45 +449,6 @@ impl CliToolOp {
             Self::Check { tool } | Self::Install { tool } | Self::Run { tool, .. } => tool,
         }
     }
-
-    /// Execute the operation, returning outputs as a HashMap.
-    ///
-    /// This is the core execution logic for CLI tools.
-    pub fn execute(&self) -> Result<HashMap<String, crate::Value>, CliToolError> {
-        match self {
-            Self::Check { tool } => execute_check(tool),
-            Self::Install { tool } => execute_install(tool),
-            Self::Run { tool, args } => execute_run(tool, args),
-        }
-    }
-
-    /// Execute the operation using a ToolHandle (for Run ops).
-    ///
-    /// For `Run`, this uses the resolved path from the handle instead of the
-    /// tool's configured binary name. For `Check`/`Install`, it falls back to
-    /// the standard execution logic.
-    pub fn execute_with_handle(
-        &self,
-        handle: &ToolHandle,
-    ) -> Result<HashMap<String, crate::Value>, CliToolError> {
-        match self {
-            Self::Run { tool, args } => {
-                if handle.id() != tool.id {
-                    return Err(CliToolError::new(
-                        tool,
-                        "run",
-                        format!(
-                            "Tool handle '{}' does not match expected '{}'",
-                            handle.id(),
-                            tool.id
-                        ),
-                    ));
-                }
-                execute_run_with_path(tool, args, handle.path())
-            }
-            _ => self.execute(),
-        }
-    }
 }
 
 // ============================================================================
@@ -654,144 +532,6 @@ impl CliToolError {
             message: message.into(),
         }
     }
-}
-
-// ============================================================================
-// Execution Functions
-// ============================================================================
-
-// These functions are the tool acquisition implementation - they're allowed
-// to use Command::new because they ARE the abstraction that other code uses.
-#[allow(clippy::disallowed_methods)]
-fn execute_check(tool: &'static CliToolDef) -> Result<HashMap<String, crate::Value>, CliToolError> {
-    if tool.check_cmd.is_empty() {
-        return Err(CliToolError::new(tool, "check", "No check command defined"));
-    }
-
-    let (cmd, args) = tool.check_cmd.split_first().unwrap();
-
-    let output = Command::new(cmd)
-        .args(args)
-        .output()
-        .map_err(|e| CliToolError::new(tool, "check", format!("Failed to execute: {}", e)))?;
-
-    let exists = output.status.success();
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-
-    let mut out = HashMap::new();
-    out.insert("exists".to_string(), crate::Value::Bool(exists));
-    out.insert("output".to_string(), crate::Value::Str(stdout));
-    Ok(out)
-}
-
-#[allow(clippy::disallowed_methods)]
-fn execute_install(
-    tool: &'static CliToolDef,
-) -> Result<HashMap<String, crate::Value>, CliToolError> {
-    let install_cmd = tool.install_cmd.ok_or_else(|| {
-        CliToolError::new(
-            tool,
-            "install",
-            format!(
-                "{} does not support automatic installation. Please install manually.",
-                tool.id
-            ),
-        )
-    })?;
-
-    if install_cmd.is_empty() {
-        return Err(CliToolError::new(tool, "install", "Empty install command"));
-    }
-
-    println!("Installing {}...", tool.id);
-
-    let (cmd, args) = install_cmd.split_first().unwrap();
-
-    let output = Command::new(cmd)
-        .args(args)
-        .output()
-        .map_err(|e| CliToolError::new(tool, "install", format!("Failed to execute: {}", e)))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(CliToolError::new(tool, "install", stderr.to_string()));
-    }
-
-    println!("{} installed successfully", tool.id);
-
-    let mut out = HashMap::new();
-    out.insert("success".to_string(), crate::Value::Bool(true));
-    Ok(out)
-}
-
-#[allow(clippy::disallowed_methods)]
-fn execute_run(
-    tool: &'static CliToolDef,
-    args: &[String],
-) -> Result<HashMap<String, crate::Value>, CliToolError> {
-    if tool.run_cmd.is_empty() {
-        return Err(CliToolError::new(tool, "run", "No run command defined"));
-    }
-
-    let (cmd, base_args) = tool.run_cmd.split_first().unwrap();
-
-    let mut full_args: Vec<&str> = base_args.to_vec();
-    full_args.extend(args.iter().map(|s| s.as_str()));
-
-    println!("Running: {} {}", cmd, full_args.join(" "));
-
-    let output = Command::new(cmd)
-        .args(&full_args)
-        .output()
-        .map_err(|e| CliToolError::new(tool, "run", format!("Failed to execute: {}", e)))?;
-
-    let success = output.status.success();
-    let exit_code = output.status.code().unwrap_or(-1);
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-
-    let mut out = HashMap::new();
-    out.insert("success".to_string(), crate::Value::Bool(success));
-    out.insert("exit_code".to_string(), crate::Value::Int(exit_code as i64));
-    out.insert("stdout".to_string(), crate::Value::Str(stdout));
-    out.insert("stderr".to_string(), crate::Value::Str(stderr));
-    Ok(out)
-}
-
-/// Execute a tool run using a resolved binary path.
-#[allow(clippy::disallowed_methods)]
-pub fn execute_run_with_path(
-    tool: &'static CliToolDef,
-    args: &[String],
-    path: &PathBuf,
-) -> Result<HashMap<String, crate::Value>, CliToolError> {
-    if tool.run_cmd.is_empty() {
-        return Err(CliToolError::new(tool, "run", "No run command defined"));
-    }
-
-    let base_args = &tool.run_cmd[1..];
-    let mut full_args: Vec<String> = base_args.iter().map(|s| s.to_string()).collect();
-    full_args.extend_from_slice(args);
-
-    let output = Command::new(path).args(&full_args).output().map_err(|e| {
-        CliToolError::new(
-            tool,
-            "run",
-            format!("Failed to execute '{}': {}", path.display(), e),
-        )
-    })?;
-
-    let success = output.status.success();
-    let exit_code = output.status.code().unwrap_or(-1);
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-
-    let mut out = HashMap::new();
-    out.insert("success".to_string(), crate::Value::Bool(success));
-    out.insert("exit_code".to_string(), crate::Value::Int(exit_code as i64));
-    out.insert("stdout".to_string(), crate::Value::Str(stdout));
-    out.insert("stderr".to_string(), crate::Value::Str(stderr));
-    Ok(out)
 }
 
 // ============================================================================
@@ -900,46 +640,6 @@ mod tests {
         access_mode: AccessMode::Read,
     };
 
-    /// Tool definition for a nonexistent tool.
-    static TEST_TOOL_NONEXISTENT: CliToolDef = CliToolDef {
-        id: "nonexistent_tool_xyz_12345",
-        check_cmd: &["nonexistent_tool_xyz_12345", "--version"],
-        install_cmd: None,
-        run_cmd: &["nonexistent_tool_xyz_12345"],
-        description: "Nonexistent tool for testing",
-        access_mode: AccessMode::Read,
-    };
-
-    #[test]
-    fn test_which_resolver_finds_git() {
-        let resolver = WhichResolver;
-        let result = resolver.resolve(&TEST_TOOL_GIT);
-
-        assert!(result.is_ok(), "git should be found: {:?}", result);
-        let path = result.unwrap();
-        assert!(path.exists(), "resolved path should exist");
-        assert!(
-            path.to_string_lossy().contains("git"),
-            "path should contain 'git'"
-        );
-    }
-
-    #[test]
-    fn test_which_resolver_fails_for_nonexistent() {
-        let resolver = WhichResolver;
-        let result = resolver.resolve(&TEST_TOOL_NONEXISTENT);
-
-        assert!(
-            result.is_err(),
-            "nonexistent tool should not resolve: {:?}",
-            result
-        );
-
-        let err = result.unwrap_err();
-        assert_eq!(err.tool_id, "nonexistent_tool_xyz_12345");
-        assert!(err.message.contains("not found"));
-    }
-
     #[test]
     fn test_mock_resolver_returns_configured_path() {
         let resolver = MockResolver::new().with_path("git", "/mock/path/to/git");
@@ -958,23 +658,6 @@ mod tests {
         let err = result.unwrap_err();
         assert!(err.message.contains("MockResolver"));
         assert!(err.message.contains("no path configured"));
-    }
-
-    #[test]
-    fn test_resolve_tool_path_with_which() {
-        // Test the convenience function with real resolver
-        let result = resolve_tool_path_with(&TEST_TOOL_GIT, &WhichResolver);
-
-        assert!(result.is_ok(), "should resolve git: {:?}", result);
-    }
-
-    #[test]
-    fn test_resolve_tool_path_with_mock() {
-        let mock = MockResolver::new().with_path("git", "/test/git");
-        let result = resolve_tool_path_with(&TEST_TOOL_GIT, &mock);
-
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), PathBuf::from("/test/git"));
     }
 
     #[test]

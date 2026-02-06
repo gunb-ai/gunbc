@@ -10,7 +10,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help ensure-codegen codegen build clean testgen testgen-check verify fmt-fix lint-fix test test-fix check check-fix clippy clippy-fix fmt fmt-check ci-yaml gist gist-dry gist-diff gist-diff-dry gist-recent gist-recent-dry makegen makegen-dry deps deps-dry bootstrap bootstrap-dry ci ci-dry build-all build-all-dry
+.PHONY: help ensure-codegen codegen build clean testgen testgen-check pragma-check verify fmt-fix lint-fix test test-fix check check-fix clippy clippy-fix fmt fmt-check ci-yaml gist gist-dry gist-diff gist-diff-dry gist-recent gist-recent-dry makegen makegen-dry deps deps-dry bootstrap bootstrap-dry ci ci-dry pragma pragma-dry build-all build-all-dry
 
 # Ensure CLI entrypoints exist (bootstrap-safe)
 ensure-codegen:
@@ -36,11 +36,16 @@ testgen: ensure-codegen
 testgen-check: ensure-codegen
 	@RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-testgen --release -- --check
 
+# Check if pragma artifacts are stale (fails if regeneration needed)
+pragma-check: ensure-codegen
+	@RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-pragma --release -- --check
+
 # Verify generated artifacts match their generators
 verify: ensure-codegen
 	@RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-makegen --release -- --check
 	@RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-bootstrap --release -- --check
 	@RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-testgen --release -- --check
+	@RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-pragma --release -- --check
 
 help:
 	@echo "gunbc tools - generated Makefile"
@@ -56,6 +61,7 @@ help:
 	@echo "  clean    - Remove build artifacts"
 	@echo "  testgen  - Regenerate tests from DAG structures"
 	@echo "  testgen-check  - Check if generated tests are stale"
+	@echo "  pragma-check  - Check if pragma artifacts are stale"
 	@echo "  verify   - Verify generated artifacts match their generators"
 	@echo ""
 	@echo "Development:"
@@ -77,6 +83,7 @@ help:
 	@echo "  deps [MANIFEST=deps.toml]  - Install tool dependencies"
 	@echo "  bootstrap   - Generate Makefile and .gitignore"
 	@echo "  ci   - Run CI pipeline"
+	@echo "  pragma   - Generate clippy.toml and pragma allowlists"
 	@echo "  build-all   - Build, test, and lint with progress display"
 	@echo ""
 	@echo "Add -dry suffix for dry-run (e.g., make gist-dry)"
@@ -90,7 +97,7 @@ fmt-fix:
 	@cargo fmt
 
 # lint-fix: auto-fix lint issues where possible
-lint-fix:
+lint-fix: pragma
 	@cargo clippy --fix --workspace --allow-dirty --allow-staged -- -D warnings
 
 # test: Run all tests
@@ -102,19 +109,19 @@ test-fix: fmt-fix lint-fix codegen testgen verify
 	@RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-build --release
 
 # check: Type check all targets
-check: ensure-codegen
+check: ensure-codegen pragma-check
 	@RUSTFLAGS="-D warnings" cargo check --all-targets
 
 # check-fix: auto-fix then verify
-check-fix: fmt-fix ensure-codegen
+check-fix: fmt-fix ensure-codegen pragma
 	@RUSTFLAGS="-D warnings" cargo check --all-targets
 
 # clippy: Run clippy linter
-clippy: ensure-codegen
+clippy: ensure-codegen pragma-check
 	@RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-build --release
 
 # clippy-fix: auto-fix then verify
-clippy-fix: ensure-codegen
+clippy-fix: ensure-codegen pragma
 	@cargo clippy --fix --workspace --allow-dirty --allow-staged -- -D warnings
 
 # fmt: Format all code
@@ -176,6 +183,13 @@ ci: ensure-codegen
 
 ci-dry: ensure-codegen
 	@RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-ci -- --dry-run
+
+# gunbc-pragma entrypoints: 
+pragma: ensure-codegen
+	@RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-pragma --
+
+pragma-dry: ensure-codegen
+	@RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-pragma -- --dry-run
 
 # gunbc-build entrypoints: 
 build-all: ensure-codegen

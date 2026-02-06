@@ -31,6 +31,7 @@
 //!
 //! Mock specs are in `graph_mock.rs` for test generation.
 
+#![forbid(dead_code)]
 pub mod env;
 pub mod graph;
 pub mod installer;
@@ -67,6 +68,5 @@ pub use upsert::{UpsertPhase, UpsertResult};
 
 #[cfg(test)]
 mod generated_tests {
-    #![allow(unused_imports)]
     include!("generated_tests.rs");
 }

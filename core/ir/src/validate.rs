@@ -186,6 +186,48 @@ pub fn validate_resource_wiring<T>(dag: &Dag<T>) -> Vec<UnwiredResource> {
         .collect()
 }
 
+/// Validate resource wiring recursively through SubDag nodes.
+///
+/// At each level, checks for unwired `res:*` entrypoints. For SubDag nodes,
+/// recursively walks inner DAGs to ensure inner `res:*` entrypoints are
+/// properly exposed as parent input ports (which auto-inference ensures).
+///
+/// Returns unwired resources found at any nesting level.
+pub fn validate_resource_wiring_recursive<T>(dag: &Dag<T>) -> Vec<UnwiredResource> {
+    let mut unwired = Vec::new();
+    validate_resource_wiring_recursive_impl(dag, &mut unwired);
+    unwired
+}
+
+fn validate_resource_wiring_recursive_impl<T>(dag: &Dag<T>, unwired: &mut Vec<UnwiredResource>) {
+    // Check top-level unwired resources
+    unwired.extend(validate_resource_wiring(dag));
+
+    // Recurse into SubDag nodes, but skip inner entrypoints that are already
+    // exposed on the parent node (auto-inference bubbles them up, so they'll
+    // be caught at the outer level — reporting them again is a duplicate).
+    for node in &dag.nodes {
+        if let NodeBody::SubDag(ref inner) = node.body {
+            let parent_ports: std::collections::HashSet<&str> =
+                node.inputs.iter().map(|p| p.name.0.as_str()).collect();
+
+            // Only report inner unwired resources NOT already on the parent
+            let inner_unwired: Vec<UnwiredResource> = validate_resource_wiring(inner)
+                .into_iter()
+                .filter(|u| !parent_ports.contains(u.port.0.as_str()))
+                .collect();
+            unwired.extend(inner_unwired);
+
+            // Recurse into deeper SubDag nodes within this inner DAG
+            for inner_node in &inner.nodes {
+                if let NodeBody::SubDag(ref deeper) = inner_node.body {
+                    validate_resource_wiring_recursive_impl(deeper, unwired);
+                }
+            }
+        }
+    }
+}
+
 fn validate_dag_recursive<T>(dag: &Dag<T>, errors: &mut Vec<SubDagError>) {
     for node in &dag.nodes {
         if let NodeBody::SubDag(ref inner) = node.body {
@@ -737,5 +779,69 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    // ============ validate_resource_wiring_recursive() tests ============
+
+    #[test]
+    fn test_recursive_resource_wiring_top_level() {
+        // Top-level DAG with an unwired res:* port
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque(
+            "node_a",
+            vec![port("res:platform", "Platform")],
+            vec![port("out", "String")],
+            (),
+        ));
+
+        let unwired = validate_resource_wiring_recursive(&dag);
+        assert_eq!(unwired.len(), 1);
+        assert_eq!(unwired[0].port.0, "res:platform");
+    }
+
+    #[test]
+    fn test_recursive_resource_wiring_nested_subdag() {
+        // Inner DAG has an unwired res:* port
+        let mut inner: Dag<()> = Dag::new();
+        inner.add_node(Node::opaque(
+            "worker",
+            vec![
+                port("data", "String"),
+                port("res:fs", "FilesystemHandle"),
+            ],
+            vec![port("result", "String")],
+            (),
+        ));
+
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::subdag("wrapper", inner));
+
+        // The SubDag auto-infers the res:fs port, so wrapper has it as input.
+        // That means wrapper's res:fs is an entrypoint on the outer DAG.
+        let unwired = validate_resource_wiring_recursive(&dag);
+        // Only the outer-level entrypoint should be reported — the inner DAG's
+        // res:fs is already exposed via auto-inference on the parent, so it's
+        // deduplicated to avoid double-reporting.
+        assert_eq!(unwired.len(), 1);
+        assert_eq!(unwired[0].port.0, "res:fs");
+    }
+
+    #[test]
+    fn test_recursive_wiring_clean_when_no_resources() {
+        let mut inner: Dag<()> = Dag::new();
+        inner.add_node(Node::opaque(
+            "worker",
+            vec![port("data", "String")],
+            vec![port("result", "String")],
+            (),
+        ));
+
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::subdag("wrapper", inner));
+
+        let unwired = validate_resource_wiring_recursive(&dag);
+        // data is not a resource port, so no unwired resources
+        let resource_unwired: Vec<_> = unwired.iter().filter(|u| u.port.0.starts_with("res:")).collect();
+        assert!(resource_unwired.is_empty());
     }
 }

@@ -129,9 +129,7 @@ pub fn generated_header(generator: &str, regenerate_cmd: &str, prefix: &str) -> 
 
 #[cfg(test)]
 mod tests {
-    #![allow(unused_imports)]
     use super::*;
-    use crate::node::NodeBody;
 
     #[test]
     fn test_comment_prefix_subdag_is_subdag() {

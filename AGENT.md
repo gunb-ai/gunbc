@@ -4,7 +4,7 @@ This document is the short onboarding guide for contributors and agents. It poin
 
 ## Start Here
 
-- `docs/handbook.md` for the conceptual map and pattern catalog
+- `docs/handbook.md` for the conceptual map, pattern catalog, and e2e examples (single file — copy-friendly)
 - `docs/design/overview.md` for design rationale and invariants
 - `SPEC.md` for the formal IR specification
 - `docs/design/testgen.md` for test generation and proof obligations

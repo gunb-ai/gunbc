@@ -69,11 +69,6 @@ pub enum MockTypeError {
     },
 
     /// Value cardinality doesn't match port cardinality.
-    ///
-    /// NOTE: Cardinality validation is not yet implemented. This variant exists
-    /// for future use when we add validation that list/optional values match
-    /// their port's declared cardinality.
-    #[allow(dead_code)]
     CardinalityMismatch {
         node: String,
         port: String,
@@ -275,6 +270,31 @@ impl MockRequirements {
         Ok(())
     }
 
+    /// Compute a count for cardinality validation.
+    fn value_count(value: &Value) -> u32 {
+        match value {
+            Value::Unit | Value::Skipped => 0,
+            Value::List(values) | Value::Set(values) => {
+                u32::try_from(values.len()).unwrap_or(u32::MAX)
+            }
+            _ => 1,
+        }
+    }
+
+    /// Validate a value against a slot's cardinality.
+    fn validate_cardinality(&self, slot: &MockSlot, value: &Value) -> Result<(), MockTypeError> {
+        let count = Self::value_count(value);
+        if !slot.cardinality.allows_count(count) {
+            return Err(MockTypeError::CardinalityMismatch {
+                node: slot.node_id.0.clone(),
+                port: slot.port_name.0.clone(),
+                expected: slot.cardinality,
+                actual: count as usize,
+            });
+        }
+        Ok(())
+    }
+
     /// Set a boundary mock value.
     ///
     /// Type is validated at call time, not at testgen time.
@@ -289,6 +309,7 @@ impl MockRequirements {
         // Find slot and extract what we need before mutating self
         let slot = self.find_slot(node, port)?;
         self.validate_type(slot, &value)?;
+        self.validate_cardinality(slot, &value)?;
         let slot_kind = slot.kind;
 
         let key = (NodeId(node.to_string()), PortName(port.to_string()));
@@ -312,6 +333,7 @@ impl MockRequirements {
                     node: node.to_string(),
                     port: port.to_string(),
                     value,
+                    sequence: None,
                 });
             }
         }
@@ -688,6 +710,32 @@ mod tests {
                 assert_eq!(actual, "String");
             }
             _ => panic!("expected TypeMismatch error"),
+        }
+    }
+
+    #[test]
+    fn test_cardinality_mismatch_detected() {
+        let slot = MockSlot {
+            node_id: NodeId("node".to_string()),
+            port_name: PortName("port".to_string()),
+            type_id: TypeId("Any".to_string()),
+            cardinality: Cardinality::ONE,
+            required: true,
+            kind: MockSlotKind::Boundary,
+        };
+
+        let reqs = MockRequirements::new("test").add_slot(slot);
+        let value = Value::List(vec![Value::Int(1), Value::Int(2)]);
+
+        let result = reqs.boundary("node", "port", value);
+
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            MockTypeError::CardinalityMismatch { expected, actual, .. } => {
+                assert_eq!(expected, Cardinality::ONE);
+                assert_eq!(actual, 2);
+            }
+            _ => panic!("expected CardinalityMismatch error"),
         }
     }
 

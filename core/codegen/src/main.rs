@@ -6,7 +6,6 @@
 //! - `codegen`: Just generate CLIs (partial commit)
 //! - `daggen`: Generate graph.rs from declarative DAG definitions
 //! - `cigen`: Generate CI workflow YAML (GitHub Actions and GitLab CI)
-//! - `clippy-toml`: Generate clippy.toml from ClippyConfig
 //!
 //! Usage:
 //!   gunbc-codegen                    # same as 'commit'
@@ -15,7 +14,6 @@
 //!   gunbc-codegen codegen            # just generate CLIs
 //!   gunbc-codegen daggen             # generate graph.rs files
 //!   gunbc-codegen cigen              # generate CI YAML files
-//!   gunbc-codegen clippy-toml        # generate clippy.toml
 //!   gunbc-codegen codegen --dry-run  # preview codegen
 //!
 //! # Architecture Note
@@ -27,8 +25,8 @@
 //! Future improvement: Express codegen as a DAG executed by a minimal bootstrap
 //! executor that doesn't depend on the generated tools.
 
+#![forbid(dead_code)]
 use cargo_metadata::MetadataCommand;
-use gunbc_clippy::ClippyConfigRenderer;
 use gunbc_codegen::{
     all_cleanable_outputs, all_tools, generate_cli_with_import, generate_graph_rs, FileWriter,
 };
@@ -39,7 +37,7 @@ use gunbc_ir::resource::{
 use gunbc_ir::transport::ci::{
     yaml_block, CacheConfig, CiRenderer, GitHubActionsProvider, GitLabCiProvider, RenderConfig,
 };
-use gunbc_ir::{Renderable, CODEGEN_BIN_DIR, CODEGEN_LIB_DIR};
+use gunbc_ir::{CODEGEN_BIN_DIR, CODEGEN_LIB_DIR};
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fs;
@@ -72,7 +70,6 @@ fn main() {
         "codegen" => cmd_codegen(dry_run),
         "daggen" => cmd_daggen(dry_run),
         "cigen" => cmd_cigen(dry_run),
-        "clippy-toml" => cmd_clippy_toml(dry_run),
         _ => {
             eprintln!("Unknown command: {}", command);
             eprintln!("Run 'gunbc-codegen --help' for usage");
@@ -362,45 +359,6 @@ fn cmd_cigen(dry_run: bool) {
     println!("Generated: {} CI files", outputs.len());
 }
 
-/// Generate clippy.toml from ClippyConfig.
-///
-/// Uses the transport pattern preset which enforces:
-/// - Direct I/O operations must go through the transport layer
-/// - Process execution uses the tool acquisition pattern
-fn cmd_clippy_toml(dry_run: bool) {
-    println!("gunbc-codegen: clippy-toml");
-    println!("  mode: {}", if dry_run { "dry-run" } else { "real" });
-    println!();
-
-    let writer = FileWriter::new(dry_run);
-    let renderer = ClippyConfigRenderer::transport_pattern();
-    let content = renderer.render();
-
-    let clippy_path = Path::new("clippy.toml");
-
-    match writer.write(clippy_path, &content) {
-        Ok(result) => {
-            let status = if result.written {
-                if result.changed {
-                    "written"
-                } else {
-                    "unchanged"
-                }
-            } else {
-                "dry-run"
-            };
-            println!("  {} ({})", clippy_path.display(), status);
-        }
-        Err(e) => {
-            eprintln!("  ERROR: {}", e);
-            std::process::exit(1);
-        }
-    }
-
-    println!();
-    println!("Generated: clippy.toml");
-}
-
 /// Generate GitHub Actions YAML template.
 ///
 /// Renders checkout, cache, and steps from `RenderConfig` model types
@@ -575,7 +533,7 @@ fn ensure_bin_entry(doc: &mut DocumentMut, bin_name: &str, bin_path: &str) -> Re
 }
 
 /// Generate CLI main.rs files for all tools and register binary targets.
-#[allow(clippy::disallowed_methods)]
+#[allow(clippy::disallowed_methods)] // Codegen writes files directly (bootstrap I/O boundary)
 fn codegen_clis(dry_run: bool) -> bool {
     let writer = FileWriter::new(dry_run);
     let tools = all_tools();
@@ -853,7 +811,6 @@ fn print_help() {
     println!("    codegen      Just generate CLIs (partial commit)");
     println!("    daggen       Generate graph.rs from declarative DAG definitions");
     println!("    cigen        Generate CI workflow YAML (GitHub Actions & GitLab CI)");
-    println!("    clippy-toml  Generate clippy.toml from ClippyConfig");
     println!();
     println!("OPTIONS:");
     println!("    -n, --dry-run    Preview changes without writing");
@@ -865,5 +822,4 @@ fn print_help() {
     println!("    gunbc-codegen codegen -n     # preview CLI generation");
     println!("    gunbc-codegen daggen         # generate graph.rs for tools with DAG defs");
     println!("    gunbc-codegen cigen          # generate CI YAML files");
-    println!("    gunbc-codegen clippy-toml    # generate clippy.toml config");
 }

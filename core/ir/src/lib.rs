@@ -103,12 +103,12 @@ pub use layout::{
 pub use node::{Node, NodeBody, NodeIoExample};
 pub use patterns::{
     AtomicBuilder, BackoffStrategy, FailureClassifier, PatternOp, PollBuilder, RepeatPolicy,
-    RetryBuilder, TransactionBuilder, UpsertBuilder, WhileBuilder,
+    ResourceInput, RetryBuilder, TransactionBuilder, UpsertBuilder, WhileBuilder,
 };
 pub use render::Renderable;
 pub use resource::{
-    AccessMode, Resource, ResourceAccess, ResourceConflict, ResourceId, ResourceKind,
-    Timestamp,
+    detect_resource_conflicts, derive_resource_accesses, AccessMode, Resource, ResourceAccess,
+    ResourceConflict, ResourceId, ResourceKind, Timestamp,
 };
 pub use signature::{infer_signature, SignatureError, SignaturePort, WorkflowSignature};
 pub use symbols::{SemanticColor, Symbol, SymbolId, SymbolOp, SymbolSet, Tier, STANDARD};
@@ -120,8 +120,8 @@ pub use type_op::{BaseType, Coercion, Predicate, PredicateValue, TypeOp, Wrapper
 pub use type_registry::{TypeNotFoundError, TypeRegistry};
 pub use types::{boundary_label, Cardinality, CardinalityMismatch, NodeId, PortName, TypeId};
 pub use validate::{
-    validate_resource_wiring, validate_subdag_interfaces, PortDirection, SubDagError,
-    UnwiredResource,
+    validate_resource_wiring, validate_resource_wiring_recursive, validate_subdag_interfaces,
+    PortDirection, SubDagError, UnwiredResource,
 };
 pub use value::{SecretString, Value};
 pub use value_expr::ValueExpr;

@@ -811,7 +811,8 @@ pub fn default_meta_targets() -> Vec<MetaTarget> {
             PrepLevel::Codegen,
             ConfigField::Check,
         )
-        .with_fix_variant(vec!["fmt-fix"]),
+        .with_fix_variant(vec!["fmt-fix"])
+        .with_extra_deps(vec!["pragma-check"]),
         // clippy - run linter (requires codegen)
         // clippy-fix: uses cargo clippy --fix (auto-fix where possible)
         MetaTarget::new(
@@ -820,7 +821,8 @@ pub fn default_meta_targets() -> Vec<MetaTarget> {
             PrepLevel::Codegen,
             ConfigField::Lint,
         )
-        .with_fix_variant(vec![]),
+        .with_fix_variant(vec![])
+        .with_extra_deps(vec!["pragma-check"]),
         // fmt - format code (no prep needed)
         // fmt has check variant (fmt-check) but not fix variant (fmt IS the fix)
         MetaTarget::new("fmt", "Format all code", PrepLevel::None, ConfigField::Fmt)
@@ -936,6 +938,11 @@ impl ToolRegistry {
         // ci has a handwritten main.rs — it's the bootstrap tool that runs
         // codegen for other tools, so it can't depend on generated code.
         registry.register(ToolInfo::composed("ci", "dag", "Run CI pipeline"));
+        registry.register(ToolInfo::composed(
+            "pragma",
+            "dag",
+            "Generate clippy.toml and pragma allowlists",
+        ));
 
         // build-all has a handwritten main.rs with DAG progress display.
         // Kept as a compatibility alias; the core "build" target now
