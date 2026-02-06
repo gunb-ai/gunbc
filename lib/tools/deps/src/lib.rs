@@ -63,6 +63,20 @@ pub use tool_upsert::{
 pub use upsert::{UpsertPhase, UpsertResult};
 
 // ============================================================================
+// Tool Target Registrations
+// ============================================================================
+
+#[gunbc_tool_registry_macros::tool_target(
+    name = "deps",
+    crate_name = "gunbc-deps",
+    description = "Install tool dependencies",
+    builder = "build_deps_graph",
+    import = "use gunbc_deps::build_deps_graph;",
+    returns_result
+)]
+pub fn deps_tool() {}
+
+// ============================================================================
 // Generated Tests (from `make testgen`)
 // ============================================================================
 

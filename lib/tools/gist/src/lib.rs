@@ -42,6 +42,43 @@ pub use gunbc_lib_git_ops::GitOps;
 pub use gunbc_lib_markdown::MarkdownOp;
 
 // ============================================================================
+// Tool Target Registrations
+// ============================================================================
+
+#[gunbc_tool_registry_macros::tool_target(
+    name = "gist",
+    crate_name = "gunbc-gist",
+    description = "Create a GitHub gist from code files",
+    builder = "build_gist_graph",
+    args = "GistMode::Snapshot, extensions.clone(), public",
+    import = "use gunbc_gist::{build_gist_graph, GistMode};",
+    returns_result
+)]
+pub fn gist_snapshot_tool() {}
+
+#[gunbc_tool_registry_macros::tool_target(
+    name = "gist-diff",
+    crate_name = "gunbc-gist",
+    description = "Create a GitHub gist from branch diff",
+    builder = "build_gist_graph",
+    args = "GistMode::Diff { base_ref: base_ref.clone() }, extensions.clone(), public",
+    import = "use gunbc_gist::{build_gist_graph, GistMode};",
+    returns_result
+)]
+pub fn gist_diff_tool() {}
+
+#[gunbc_tool_registry_macros::tool_target(
+    name = "gist-recent",
+    crate_name = "gunbc-gist",
+    description = "Create a GitHub gist from recent changes (last 7 days)",
+    builder = "build_gist_graph",
+    args = "GistMode::Recent, extensions.clone(), public",
+    import = "use gunbc_gist::{build_gist_graph, GistMode};",
+    returns_result
+)]
+pub fn gist_recent_tool() {}
+
+// ============================================================================
 // Generated Tests (from `make testgen`)
 // ============================================================================
 

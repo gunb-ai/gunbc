@@ -1173,6 +1173,19 @@ Please fix these issues."#;
 }
 
 // ============================================================================
+// Tool Target Registrations
+// ============================================================================
+
+#[gunbc_tool_registry_macros::tool_target(
+    name = "review",
+    crate_name = "gunbc-lib-review",
+    description = "Review code changes using LLM analysis",
+    builder = "build_diff_review_graph",
+    import = "use gunbc_lib_review::graph::build_diff_review_graph;"
+)]
+pub fn review_tool() {}
+
+// ============================================================================
 // Generated Tests (from `make testgen`)
 // ============================================================================
 
