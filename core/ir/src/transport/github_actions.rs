@@ -37,7 +37,7 @@
 //! assert!(ubuntu_latest().has_tool("cargo"));
 //! ```
 
-use crate::render::Renderable;
+use crate::render_ir::FileHeader;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
@@ -471,8 +471,8 @@ pub fn runner_image_by_id(id: &str) -> Option<RunnerImage> {
 /// Contains all the metadata needed to generate a complete workflow YAML,
 /// with permissions automatically computed from declared integrations.
 ///
-/// This struct is the spec for workflow generation. Use the [`Renderable`]
-/// trait implementation to generate the actual YAML file.
+/// This struct is the spec for workflow generation. Use the `render()`
+/// method to generate the actual YAML file.
 ///
 /// # Example
 ///
@@ -577,20 +577,19 @@ impl WorkflowConfig {
 /// Must match `cargo::name("ci")` — verified by test.
 const CI_GENERATOR_NAME: &str = "gunbc-ci";
 
-impl Renderable for WorkflowConfig {
-    fn generator_name(&self) -> &str {
-        CI_GENERATOR_NAME
+impl WorkflowConfig {
+    /// Render the complete workflow YAML with header.
+    pub fn render(&self) -> String {
+        let header = FileHeader {
+            generator_name: CI_GENERATOR_NAME.to_string(),
+            regenerate_command: "make ci-yaml".to_string(),
+            comment_prefix: "#".to_string(),
+        };
+        format!("{}\n\n{}", header.render(), self.render_content())
     }
 
-    fn regenerate_command(&self) -> &str {
-        "make ci-yaml"
-    }
-
-    fn format_id(&self) -> &str {
-        "yaml"
-    }
-
-    fn render_content(&self) -> String {
+    /// Render just the YAML content without header.
+    pub fn render_content(&self) -> String {
         let mut yaml = String::new();
 
         yaml.push_str(&format!("name: {}\n\n", self.name));
@@ -719,7 +718,7 @@ mod tests {
     }
 
     // ========================================================================
-    // WorkflowConfig and Renderable Tests
+    // WorkflowConfig Render Tests
     // ========================================================================
 
     #[test]

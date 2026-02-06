@@ -8,7 +8,6 @@ use gunbc_ir::Value;
 use std::collections::HashMap;
 
 use crate::policy::pragma::{clippy_renderer, render_disallowed_methods_allowlist, render_pragma_lint_policy};
-use gunbc_ir::Renderable;
 
 /// Operations for the pragma tool.
 ///

@@ -1,0 +1,9 @@
+[package]
+name = "gunbc-tool-registry"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Registry for auto-discovered tool targets"
+
+[dependencies]
+inventory = "0.3"

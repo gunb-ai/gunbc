@@ -10,7 +10,7 @@ pub mod render;
 
 pub mod graph_mock;
 
-pub use gitignore::{derive_categories, render_gitignore, GitignoreRenderer, IgnoreCategory};
+pub use gitignore::{derive_categories, render_gitignore, GitignoreRenderer};
 pub use graph::{build_makegen_graph, makegen_signature, MakegenGraphOp};
 pub use ops::MakegenOp;
 pub use registry::{

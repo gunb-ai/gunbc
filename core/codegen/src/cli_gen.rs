@@ -14,42 +14,6 @@ use gunbc_ir::language::{rust_type as lang_rust_type, NamingCase};
 use gunbc_ir::render_ir::CodeRenderer;
 use gunbc_ir::Cardinality;
 
-/// Identifier for a graph builder function.
-///
-/// This enum provides compile-time safety for graph builder references.
-/// Instead of storing function names as strings (which silently break if
-/// renamed), we use an enum that maps to the function name in one place.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum GraphBuilderId {
-    /// `build_gist_graph` - gist and gist-diff tools
-    Gist,
-    /// `build_makegen_graph` - Makefile generator
-    Makegen,
-    /// `build_deps_graph` - dependency installer
-    Deps,
-    /// `build_diff_review_graph` - LLM code review
-    Review,
-    /// `build_bootstrap_graph` - bootstrap Makefile and gitignore
-    Bootstrap,
-}
-
-impl GraphBuilderId {
-    /// Get the function name as a string for code generation.
-    ///
-    /// This is the single source of truth for function name → string mapping.
-    /// If a function is renamed, update this method and the generated code
-    /// will use the new name.
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            GraphBuilderId::Gist => "build_gist_graph",
-            GraphBuilderId::Makegen => "build_makegen_graph",
-            GraphBuilderId::Deps => "build_deps_graph",
-            GraphBuilderId::Review => "build_diff_review_graph",
-            GraphBuilderId::Bootstrap => "build_bootstrap_graph",
-        }
-    }
-}
-
 /// Metadata about a tool for CLI generation.
 #[derive(Debug, Clone)]
 pub struct ToolMeta {
@@ -59,8 +23,8 @@ pub struct ToolMeta {
     pub tool_name: String,
     /// Short description
     pub description: String,
-    /// The graph builder function to call (compile-time safe enum key).
-    pub graph_builder: GraphBuilderId,
+    /// The graph builder function name (e.g., "build_gist_graph").
+    pub graph_builder_call: String,
     /// Arguments to pass to graph builder (e.g., "extensions.clone(), public")
     pub graph_builder_args: String,
     /// Whether the graph builder returns Result<Dag, BuilderError>
@@ -263,7 +227,7 @@ fn build_cli_source_file(
     };
 
     // Generate the graph builder call - handle Result-returning builders
-    let graph_builder_fn = tool.graph_builder.as_str();
+    let graph_builder_fn = &tool.graph_builder_call;
     let graph_builder_call = generate_graph_builder_call(tool, graph_builder_fn);
 
     let success_port_arg = match &tool.success_port {
@@ -696,7 +660,7 @@ fn build_step_mode_source_file(
     };
 
     // Generate the graph builder call - handle Result-returning builders
-    let graph_builder_fn = tool.graph_builder.as_str();
+    let graph_builder_fn = &tool.graph_builder_call;
     let graph_builder_call = generate_graph_builder_call(tool, graph_builder_fn);
 
     let success_port_arg = match &tool.success_port {
@@ -981,7 +945,7 @@ mod tests {
             crate_name: "gunbc-gist".to_string(),
             tool_name: "gist".to_string(),
             description: "Create gist from files".to_string(),
-            graph_builder: GraphBuilderId::Gist,
+            graph_builder_call: "build_gist_graph".to_string(),
             graph_builder_args: "extensions.clone(), public".to_string(),
             returns_result: false,
             success_port: None,

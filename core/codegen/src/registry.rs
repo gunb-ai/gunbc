@@ -12,7 +12,7 @@
 //!
 //! Eventually, the entire graph.rs can be generated from these definitions.
 
-use crate::cli_gen::{CliBoundary, CliEntrypoint, GraphBuilderId, ToolMeta};
+use crate::cli_gen::{CliBoundary, CliEntrypoint, ToolMeta};
 use gunbc_ir::cargo;
 use gunbc_ir::types::Cardinality;
 
@@ -288,7 +288,7 @@ impl ToolDef {
         crate_name: &str,
         tool_name: &str,
         description: &str,
-        graph_builder: GraphBuilderId,
+        graph_builder_call: &str,
         graph_builder_args: &str,
     ) -> Self {
         Self {
@@ -296,7 +296,7 @@ impl ToolDef {
                 crate_name: crate_name.to_string(),
                 tool_name: tool_name.to_string(),
                 description: description.to_string(),
-                graph_builder,
+                graph_builder_call: graph_builder_call.to_string(),
                 graph_builder_args: graph_builder_args.to_string(),
                 returns_result: false,
                 success_port: None,
@@ -391,7 +391,7 @@ pub fn all_tools() -> Vec<ToolDef> {
             &cargo::name("gist"),
             "gist",
             "Create a GitHub gist from code files",
-            GraphBuilderId::Gist,
+            "build_gist_graph",
             "GistMode::Snapshot, extensions.clone(), public",
         )
         .returns_result()
@@ -459,7 +459,7 @@ pub fn all_tools() -> Vec<ToolDef> {
             &cargo::name("gist"),
             "gist-diff",
             "Create a GitHub gist from branch diff",
-            GraphBuilderId::Gist,
+            "build_gist_graph",
             "GistMode::Diff { base_ref: base_ref.clone() }, extensions.clone(), public",
         )
         .returns_result()
@@ -528,7 +528,7 @@ pub fn all_tools() -> Vec<ToolDef> {
             &cargo::name("gist"),
             "gist-recent",
             "Create a GitHub gist from recent changes (last 7 days)",
-            GraphBuilderId::Gist,
+            "build_gist_graph",
             "GistMode::Recent, extensions.clone(), public",
         )
         .returns_result()
@@ -596,7 +596,7 @@ pub fn all_tools() -> Vec<ToolDef> {
             &cargo::name("makegen"),
             "makegen",
             "Generate Makefile from tool registry",
-            GraphBuilderId::Makegen,
+            "build_makegen_graph",
             "",
         )
         .returns_result()
@@ -625,7 +625,7 @@ pub fn all_tools() -> Vec<ToolDef> {
             &cargo::name("deps"),
             "deps",
             "Install tool dependencies",
-            GraphBuilderId::Deps,
+            "build_deps_graph",
             "",
         )
         .returns_result()
@@ -668,7 +668,7 @@ pub fn all_tools() -> Vec<ToolDef> {
             "gunbc-lib-review",
             "review",
             "Review code changes using LLM analysis",
-            GraphBuilderId::Review,
+            "build_diff_review_graph",
             "",
         )
         .import("use gunbc_lib_review::graph::build_diff_review_graph;")
@@ -707,7 +707,7 @@ pub fn all_tools() -> Vec<ToolDef> {
             &cargo::name("bootstrap"),
             "bootstrap",
             "Generate Makefile and .gitignore",
-            GraphBuilderId::Bootstrap,
+            "build_bootstrap_graph",
             "",
         )
         .returns_result()

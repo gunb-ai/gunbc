@@ -250,9 +250,12 @@ gunbc-codegen ──→ gunbc-ir
 - [x] All 40 tests pass in merged crate
 
 **TODO 6.2: Rewrite testgen binary to use shared infrastructure** ✅
-- [x] Testgen binary now uses `FileWriter` for all I/O (generate, check, dry-run)
-- [x] Eliminated ~150 lines of reimplemented file I/O and staleness checking
+- [x] Testgen binary now uses DAG-based execution (content upsert pattern) via
+  `execute_and_display` / `execute_with_mode_and_inputs` — no FileWriter
+- [x] Each target gets a 6-node upsert chain: generate → prepare_read → execute_read →
+  compare → prepare_write → execute_write (dynamic N chains via `add_upsert_chain`)
 - [x] Binary stays in `gunbc-dag/src/bin/testgen.rs` (needs DAG builder references)
+- [x] `testgen_dag/` module: ops.rs, graph.rs, graph_mock.rs, mod.rs
 - [ ] Future: could become `gunbc-codegen testgen` subcommand if circular dep is resolved
 
 **TODO 6.3: Wire registry to test generation** ✅
@@ -332,7 +335,9 @@ After implementation:
 
 ## Remaining Work
 
-- **TODO 1.3**: Auto-discover DAGs (eliminate hardcoded builder map)
+- Phase 8.4: Migrate Pattern B tests to NodeExamples, delete Pattern E tests
+- Phase 9: DagSpec end-state (unify builder, MockSpec, signature, testgen into one struct)
+- Phase 10.2: ConditionalMock predicate-based response selection (optional)
 
 ### Phase 8: Absorb Manual graph_mock.rs Tests
 

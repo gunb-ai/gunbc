@@ -7,62 +7,6 @@
 # Note: resolved items have been moved to `TODO/TODONE/TODO_hacks.md`
 # and `TODO/TODONE/TODO_hacks_general.md`.
 
-## RESOLVED: Lint config doesn't match crate boundaries
-
-**Status:** FIXED — `gunbc-infra` crate extracted (2026-02-05).
-
-- `hash.rs`, `manifest.rs`, `ResourceId` moved to `core/infra/`
-- Codegen/testgen hashing centralized via `ResourceDef` + `compute_key_from_def`
-- `hash_parts()` centralized in `core/infra/src/hash.rs`
-- 5 `#[allow(clippy::disallowed_methods)]` pragmas eliminated from ir/resource/
-- `lib/blob` and `lib/primitives` now delegate to infra for hashing
-- All re-exports preserved — zero downstream breakage
-
----
-
-## Resource model design issues (from code review 2026-02-05)
-
-These are valid design issues identified in the resource model implementation.
-Tracked here for future cleanup when doing the `gunbc-infra` extraction.
-
-### #6: ✅ RESOLVED — Duplicate codegen hash logic
-
-Canonical hashing now flows through `ResourceDef` + `compute_key_from_def`.
-Codegen/testgen/CI use shared resource definitions; `codegen_hash` removed.
-
-### #8: ✅ RESOLVED — GUNBC_EXEC_MODE env var removed
-
-~~The CI binary sets `GUNBC_EXEC_MODE` to propagate mode to ops.~~
-
-**Fixed:** `exec_mode` is now threaded through DAG edges from `runner_env` node
-to `parse_codegen_exists`. No env var needed. `get_exec_mode_from_env()` deleted.
-
-### #9: ✅ RESOLVED — ResourceHandle forgery prevented
-
-~~The cap marker was a static constant string anyone could forge.~~
-
-**Fixed:**
-- `ResourceHandle::acquire` is `pub(crate)` (framework-only construction)
-- `ResourceHandle::mock` is `#[cfg(test)]`
-- Cap marker replaced with per-process random secret (`PROCESS_SECRET` in `handle.rs`)
-- Serde path doesn't include cap, so it's trusted manifest persistence only
-
-### #10: ✅ RESOLVED — ManagedResource::compute_key lacks manifest access
-
-`InputPattern::Resource(ResourceId)` requires including dependency's manifest
-key in the computed key. But `compute_key(&self)` has no manifest parameter.
-
-**Fixed:** Signature now accepts `&ResourceManifest`, enabling resource deps.
-
-### #11: ✅ RESOLVED — SimpleResource silently returns empty hash
-
-`SimpleResource::compute_key()` returns `ContentHash::empty()` as placeholder.
-This can make resources incorrectly appear fresh.
-
-**Fixed:** `SimpleResource` now uses `compute_key_from_def`; no empty hashes.
-
----
-
 ## PrepLevel→deps mapping hardcoded in renderer
 
 > **Tracked in:** `TODO/design-unified-resource-model.md` — replaced by
@@ -225,25 +169,6 @@ Files:
 
 ---
 
----
-
-## Test type/cardinality mismatch in fan_in test — FIXED 2026-02-05
-
-In `test_fan_in_to_list_port_collects_values`, node C declares:
-- Input: `list("items", "String")` (list port)
-- Output: `port("items", "String")` (scalar port)
-- `TestOp::echo()` returns inputs verbatim
-
-So the op returns a `Value::List` on a scalar output port — a type violation
-that currently passes because output port cardinality isn't enforced at runtime.
-
-**Fix:** Changed output to `list("items", "String")` to match input.
-
-Files:
-  - core/exec/src/execute.rs (test around line 1150)
-
----
-
 ## Coercion coverage tests don't verify actual coercion (only "doesn't crash")
 
 `build_coercion_coverage_tests()` generates tests that:
@@ -362,22 +287,3 @@ The following items are tracked in other docs:
 - **Environment/resource modeling (inline handle construction)** →
   TODO/TODONE/design-resource-acquisition.md (comprehensive design, DONE)
 - **IR completeness for generated code** → TODO/design-codegen-quality.md
-
-## Resolved Items (2026-02-05)
-
-**RESOLVED: CI codegen check is brittle (file existence hack)**
-
-The CI pipeline now uses manifest-based freshness checking instead of
-file existence. See TODO/design-unified-resource-model.md for the full
-implementation (Phases 1-5).
-
-Implementation:
-- `core/ir/src/resource/` - ContentHash, ResourceManifest, ExecMode, etc.
-- `core/codegen/src/main.rs` - Writes manifest after successful codegen
-- `gunbc-dag/src/bin/testgen.rs` - Writes manifest after successful testgen
-- `gunbc-dag/src/ci/ops.rs` - Manifest-based freshness check
-- `gunbc-dag/src/bin/ci.rs` - `--mode=verify|ensure` flag
-
-The resource model now tracks:
-- `build:generated_cli` - codegen outputs + input hash
-- `build:generated_tests` - testgen outputs + input hash (depends on codegen)

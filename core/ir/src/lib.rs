@@ -60,7 +60,6 @@ pub mod language;
 pub mod layout;
 pub mod node;
 pub mod patterns;
-pub mod render;
 pub mod render_ir;
 pub mod resource;
 pub mod signature;
@@ -107,7 +106,6 @@ pub use patterns::{
     AtomicBuilder, BackoffStrategy, FailureClassifier, PatternOp, PollBuilder, RepeatPolicy,
     ResourceInput, RetryBuilder, TransactionBuilder, UpsertBuilder, WhileBuilder,
 };
-pub use render::Renderable;
 pub use render_ir::{
     AnsiText, Block, Category, CodeRenderer, CursorAction, DataNode, DataValue, Document,
     DocumentBody, DocumentRenderer, FileHeader, Frame, FrameRenderer, GraphicsElement,

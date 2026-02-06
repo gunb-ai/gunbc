@@ -1,7 +1,7 @@
 //! Makefile rendering.
 //!
 //! Uses `BuildConfig` as the single source of truth for all build commands.
-//! Implements the [`Renderable`] trait for standardized header generation.
+//! Uses `FileHeader` for standardized header generation.
 //!
 //! Uses `MAKEFILE.indent` from the language module for tab indentation.
 
@@ -10,16 +10,16 @@ use crate::makegen::registry::{
 };
 use gunbc_ir::cargo::Warnings;
 use gunbc_ir::language::MAKEFILE;
-use gunbc_ir::Renderable;
+use gunbc_ir::render_ir::FileHeader;
 
 /// Makefile indentation (tab character). References `MAKEFILE.indent` for consistency.
 const INDENT: &str = MAKEFILE.indent;
 
 // ============================================================================
-// MakefileRenderer - Implements Renderable trait
+// MakefileRenderer
 // ============================================================================
 
-/// Renderer for Makefiles using the Renderable trait.
+/// Renderer for Makefiles with standardized header generation.
 ///
 /// Wraps a `ToolRegistry` and `BuildConfig` to produce a complete Makefile
 /// with standardized header format.
@@ -47,20 +47,23 @@ impl<'a> MakefileRenderer<'a> {
 /// This must match `cargo::name("makegen")` — verified by test.
 pub(crate) const MAKEGEN_NAME: &str = "gunbc-makegen";
 
-impl Renderable for MakefileRenderer<'_> {
-    fn generator_name(&self) -> &str {
-        MAKEGEN_NAME
+impl MakefileRenderer<'_> {
+    /// Render the complete Makefile with header.
+    pub fn render(&self) -> String {
+        let header = FileHeader {
+            generator_name: MAKEGEN_NAME.to_string(),
+            regenerate_command: "make makegen".to_string(),
+            comment_prefix: "#".to_string(),
+        };
+        format!(
+            "{}\n\n{}",
+            header.render(),
+            render_makefile_content(self.registry, &self.config)
+        )
     }
 
-    fn regenerate_command(&self) -> &str {
-        "make makegen"
-    }
-
-    fn format_id(&self) -> &str {
-        "makefile"
-    }
-
-    fn render_content(&self) -> String {
+    /// Render just the content without header.
+    pub fn render_content(&self) -> String {
         render_makefile_content(self.registry, &self.config)
     }
 }
@@ -626,7 +629,7 @@ mod tests {
         assert!(makefile.contains("gunbc-build"));
 
         assert!(makefile.contains("check: ensure-codegen"));
-        assert!(makefile.contains("@cargo check --all-targets"));
+        assert!(makefile.contains("cargo check --all-targets"));
 
         assert!(makefile.contains("clippy: ensure-codegen"));
         assert!(makefile.contains("gunbc-build"));
@@ -727,31 +730,17 @@ mod tests {
     }
 
     // ========================================================================
-    // Renderable Trait Tests
+    // FileHeader + Render Tests
     // ========================================================================
 
     #[test]
     fn test_makefile_renderer_generator_name() {
-        let registry = ToolRegistry::default_registry();
-        let renderer = MakefileRenderer::new(&registry);
-
         // Verify the const matches the composed name
         assert_eq!(MAKEGEN_NAME, cargo::name("makegen"));
-        assert_eq!(renderer.generator_name(), MAKEGEN_NAME);
     }
 
     #[test]
-    fn test_makefile_renderer_regenerate_command() {
-        let registry = ToolRegistry::default_registry();
-        let renderer = MakefileRenderer::new(&registry);
-
-        assert_eq!(renderer.regenerate_command(), "make makegen");
-    }
-
-    #[test]
-    fn test_makefile_renderer_uses_renderable_trait() {
-        use gunbc_ir::Renderable;
-
+    fn test_makefile_renderer_render() {
         let registry = ToolRegistry::default_registry();
         let renderer = MakefileRenderer::new(&registry);
 

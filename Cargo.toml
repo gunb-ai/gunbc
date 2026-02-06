@@ -9,6 +9,8 @@ members = [
     "core/test",
     "core/testgen-registry",
     "core/testgen-registry-macros",
+    "core/tool-registry",
+    "core/tool-registry-macros",
     
     # Library crates (DAG op libraries)
     "lib/primitives",

@@ -33,9 +33,8 @@ Explains: resource acquisition not fully structural, hidden inputs/global
 context, performance model bolted on, and part of the "tests detached
 from DAGs" churn.
 
-Current state: Resource acquisition Phases 1-3 are complete; remaining
-gaps are sub-DAG delegation and resource accounting/auto-derive
-`ResourceAccess` (Phases 4-5).
+Current state: Resource acquisition Phases 1-5 are complete (sub-DAG
+delegation + resource accounting landed 2026-02-05).
 
 ### B) Invariants are not enforced by construction (policy exists, but the system allows escape hatches)
 
@@ -126,9 +125,8 @@ one place (not sprinkled `#[allow]` at call sites). Approved categories:
       generation all consume DagSpec, and registry dispatch is no longer
       string-based. (Note: `GraphBuilderId` enum already eliminates
       string-based builder dispatch.)
-- [ ] Resource acquisition completion. Done when Phases 4-5 are landed:
-      sub-DAG delegation + resource accounting/auto-derive `ResourceAccess`.
-      (Note: Phases 1-3 complete per TODONE/design-resource-acquisition.md.)
+- [x] Resource acquisition completion. ✅ Phases 1-5 landed (2026-02-05):
+      sub-DAG delegation + resource accounting. See TODONE/design-resource-acquisition.md.
 - [ ] Type/cardinality unification. Done when cardinality has a single
       source of truth (TypeContract or equivalent) and port cardinality
       is derived or validated with no fallback semantics.

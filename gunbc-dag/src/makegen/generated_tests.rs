@@ -4,7 +4,7 @@
 // DO NOT EDIT - regenerate with: make testgen
 // Obligations: 31 obligations (8 discharged, 23 testable: A=8, B=11, C=4, D=0)
 // Proven by construction: acyclicity, type compatibility, cardinality satisfaction.
-// Content-Hash: 4ca8202571d1731529dc84455db58ffc3b3e14300b1eeb735eadf982a6dbb707
+// Content-Hash: c945855a0e7d37eae0c36d1c725354a78ce609c445ebb51622238fc9de8861d9
 
 
 use gunbc_exec::{execute_with_mode, lower, ExecutionMode};
@@ -292,7 +292,7 @@ fn test_flow_makegen() {
 
     // Verify load_registry.tool_count
     let entry = log.get("load_registry").expect("node 'load_registry' should be in execution log");
-    assert_eq!(entry.outputs.get("tool_count").expect("port 'tool_count' should exist on 'load_registry'"), &Value::Int(8), "flow verification: load_registry.tool_count mismatch");
+    assert_eq!(entry.outputs.get("tool_count").expect("port 'tool_count' should exist on 'load_registry'"), &Value::Int(9), "flow verification: load_registry.tool_count mismatch");
 
 }
 
