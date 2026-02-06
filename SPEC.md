@@ -1,6 +1,7 @@
 # gunbc — Specification
 
-**Status**: Draft — January 2026
+**Status**: Draft — February 2026
+**Companion docs**: `docs/handbook.md`, `docs/design/overview.md`
 **Design rationale**: [`the-gunbai/docs/design/v2/v3-contracts-minimal.md`](https://github.com/gunb-ai/the-gunbai/blob/main/docs/design/v2/v3-contracts-minimal.md)
 **Authoring spec**: [`the-gunbai/docs/design/v2/v2-contracts-design.md`](https://github.com/gunb-ai/the-gunbai/blob/main/docs/design/v2/v2-contracts-design.md)
 **Formal inspiration**: [`ac.pdf`](./docs/ac.pdf) — Abstraction Calculus

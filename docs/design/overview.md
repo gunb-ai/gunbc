@@ -2,6 +2,8 @@
 
 > **Goal**: Structural proof of workflow correctness. If it validates, it is structurally sound.
 
+Companion docs: `docs/handbook.md` (practical guide) and `SPEC.md` (formal IR spec).
+
 **Structurally sound** means: the graph is well-formed, acyclic, all edges satisfy type/cardinality compatibility, and all subDAG interfaces match. Structural soundness excludes dynamic failures (I/O, environment, op semantics).
 
 ---
@@ -1117,24 +1119,28 @@ Developer C: ...same...
 
 ### Tools (`lib/tools/`)
 
-All 7 tools have been migrated to use `DagBuilder` and `WorkflowSignature`:
+General-purpose tool crates live in `lib/tools/` and are reusable across repos.
 
-| Tool | DagBuilder | WorkflowSignature | Mockable |
-|------|------------|-------------------|----------|
-| gunbc-deps | ✓ | ✓ | ✓ |
-| gunbc-gist | ✓ | ✓ | ✓ |
-| gunbc-buck2 | ✓ | ✓ | ✓ |
-| gunbc-viz | ✓ | ✓ | ✓ |
-| gunbc-ci | ✓ | ✓ | ✓ |
-| gunbc-makegen | ✓ | ✓ | ✓ |
-| gunbc-bootstrap | ✓ | ✓ | ✓ |
+| Tool | Purpose | Notes |
+|------|---------|-------|
+| gunbc-clippy | Clippy lint DAGs and config generation | Uses `build_cli_upsert()` |
+| gunbc-deps | Tool registry planning and deps.toml generation | Owns deps.toml schema |
+| gunbc-gist | GitHub Gist tooling | Multiple bins in one crate |
 
-**Benefits of migration:**
+### Repo-Specific Tools (`gunbc-dag/`)
 
-1. **Cycle prevention**: `DagBuilder` uses generational tracking to prevent cycles by construction
-2. **Edge validation**: Type and cardinality mismatches are caught at edge creation time
-3. **Interface stability**: `WorkflowSignature` validates that declared interfaces match the inferred DAG structure
-4. **Test fixtures**: `Mockable` trait enables automatic test fixture generation
+Repo-specific DAGs and CLI entrypoints live in `gunbc-dag/`.
+
+| Tool | Location | Notes |
+|------|----------|-------|
+| gunbc-ci | `gunbc-dag/src/ci/` + `gunbc-dag/src/bin/ci.rs` | Repo CI pipeline |
+| gunbc-makegen | `gunbc-dag/src/makegen/` + `gunbc-dag/src/bin/makegen.rs` | Makefile + gitignore generation |
+| gunbc-codegen | `gunbc-dag/src/codegen/` + `gunbc-dag/src/bin/codegen.rs` | Codegen orchestration |
+| gunbc-testgen | `gunbc-dag/src/bin/testgen.rs` | Test generation runner |
+| gunbc-bootstrap | `gunbc-dag/src/bootstrap/` + `gunbc-dag/src/bin/bootstrap.rs` | Bootstrap graph |
+| gunbc-build | `gunbc-dag/src/build/` + `gunbc-dag/src/bin/build.rs` | Build graph |
+
+Most of these DAGs use `DagBuilder` and `WorkflowSignature` for structural validation.
 
 **Example usage (deps tool):**
 
@@ -1223,31 +1229,33 @@ gunbc/
 │   │   │   ├── dag.rs        # Dag<T>, Edge, Port
 │   │   │   ├── node.rs       # Node<T>, NodeBody
 │   │   │   ├── types.rs      # Cardinality, TypeId, NodeId
-│   │   │   ├── builder.rs    # DagBuilder (generational, cycle-free, fan-in/out)
+│   │   │   ├── builder.rs    # DagBuilder
 │   │   │   ├── signature.rs  # WorkflowSignature, infer_signature()
 │   │   │   ├── boundary.rs   # detect_boundaries()
 │   │   │   ├── entrypoint.rs # detect_entrypoints()
 │   │   │   ├── value.rs      # Runtime Value enum
-│   │   │   ├── type_op.rs    # TypeOp, Predicate, BaseType (types as DAGs)
-│   │   │   ├── type_lib.rs   # Type library helpers (string, url, optional, list)
+│   │   │   ├── type_op.rs    # TypeOp, Predicate, BaseType
+│   │   │   ├── type_lib.rs   # Type library helpers
 │   │   │   ├── type_registry.rs # TypeRegistry for named types
-│   │   │   ├── contract.rs   # Contract tower (cardinality, base_type, predicates)
-│   │   │   ├── resource.rs   # ResourceId, ResourceAccess, conflict detection
+│   │   │   ├── contract.rs   # Contract tower
+│   │   │   ├── resource/     # Resource system and conflict detection
 │   │   │   ├── patterns/     # Loop, Branch, Atomic, Transaction, Upsert, Retry, While, Poll
-│   │   │   └── transport/    # REST, HTTP, File, TCP, Shell, Gist
+│   │   │   └── transport/    # REST, HTTP, File, TCP, Shell, Tool defs
 │   ├── exec/             # Execution, lowering, interception
 │   │   ├── src/
 │   │   │   ├── execute.rs    # execute(), ExecutionMode (Real, DryRun, Simulate)
 │   │   │   ├── lower.rs      # SubDag flattening
 │   │   │   ├── topo.rs       # Topological sort
-│   │   │   └── intercept.rs  # TransportMocks
+│   │   │   └── intercept.rs  # BoundaryMocks
 │   ├── test/             # MockSpec, test infrastructure
-│   ├── testgen/          # Test code generation
-│   └── codegen/          # CLI/entrypoint generation
+│   ├── codegen/          # CLI/entrypoint generation + testgen
+│   └── infra/            # Shared infra (hashing, manifests, freshness)
 ├── lib/
 │   ├── primitives/       # ReadFiles, WriteFiles, Parse, etc.
-│   ├── transport/        # Transport executor
-│   └── tools/            # gist, deps, makegen, viz, ci, buck2, bootstrap
+│   ├── transport/        # Transport executor (only direct I/O)
+│   ├── tools/            # clippy, deps, gist
+│   └── ...               # blob, git-ops, gist-ops, llm-ops, review, markdown
+├── gunbc-dag/            # Repo-specific DAGs and tool entrypoints
 └── docs/
     └── design/           # This document
 ```
