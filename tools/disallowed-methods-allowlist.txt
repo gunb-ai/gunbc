@@ -11,3 +11,5 @@ core/infra/src/lib.rs:1
 # Function-level exemptions (I/O boundaries):
 core/codegen/src/main.rs:4
 lib/transport/src/executor.rs:1
+gunbc-dag/tests/mock_spec_registration.rs:1
+gunbc-dag/tests/tool_registration.rs:3

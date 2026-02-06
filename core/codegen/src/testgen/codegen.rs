@@ -32,7 +32,7 @@ use gunbc_ir::language::NamingCase;
 use gunbc_ir::{Cardinality, Dag, NodeId, PortName, ValueExpr};
 use gunbc_test::{MockSpec, OutputMatcher};
 use serde_json::Value as JsonValue;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use gunbc_infra::hash::ContentHash;
 
 /// Configuration for test generation.
@@ -1215,6 +1215,18 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             }
         }
 
+        let optional_obligations = obligations.optional_input_obligations();
+        if !optional_obligations.is_empty() {
+            notes.push(format!(
+                "{} optional input handling obligations.",
+                optional_obligations.len()
+            ));
+            notes.push(
+                "Optional inputs must accept missing values and reject wrong-typed inputs."
+                    .to_string(),
+            );
+        }
+
         let mut tests = Vec::new();
         tests.extend(self.build_cardinality_coverage_tests(
             analysis,
@@ -1222,6 +1234,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             graph_builder_fn,
         ));
         tests.extend(self.build_coercion_coverage_tests(analysis, obligations, graph_builder_fn));
+        tests.extend(self.build_optional_input_tests(analysis, obligations, graph_builder_fn));
 
         vec![TestSection {
             title: "Bucket B: Contract Obligations".to_string(),
@@ -1397,6 +1410,162 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                         Stmt::let_bind("mocks", mocks_expr),
                         Stmt::let_bind("_log", exec),
                     ],
+                });
+            }
+        }
+
+        tests
+    }
+
+    fn build_optional_input_tests(
+        &self,
+        analysis: &DagAnalysis,
+        obligations: &ObligationSet,
+        graph_builder_fn: &str,
+    ) -> Vec<TestFn> {
+        if !self.config.example_tests {
+            return Vec::new();
+        }
+        let optional_obligations = obligations.optional_input_obligations();
+        if optional_obligations.is_empty() {
+            return Vec::new();
+        }
+
+        let example_inputs = self.collect_example_inputs();
+        let mut tests = Vec::new();
+
+        for obligation in &optional_obligations {
+            let Obligation::OptionalInputHandling { node_id, port_name } = &obligation.kind else {
+                continue;
+            };
+
+            if !analysis.pure_nodes.contains(&node_id.0) {
+                continue;
+            }
+
+            let port_info = analysis
+                .port_cardinalities
+                .iter()
+                .find(|p| p.node_id == node_id.0 && p.port_name == port_name.0 && p.is_input)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "missing input port info for {}.{} in analysis; cannot generate optional input tests",
+                        node_id.0, port_name.0
+                    )
+                });
+
+            let Some(examples) = example_inputs.get(&node_id.0) else {
+                continue;
+            };
+
+            let base_inputs = examples
+                .iter()
+                .find(|m| m.contains_key(&port_name.0))
+                .or_else(|| examples.first())
+                .cloned();
+            let Some(base_inputs) = base_inputs else {
+                continue;
+            };
+
+            // Missing optional input should not error.
+            if base_inputs.contains_key(&port_name.0) {
+                let mut inputs_missing = base_inputs.clone();
+                inputs_missing.remove(&port_name.0);
+
+                let test_name = format!(
+                    "test_optional_missing_{}_{}",
+                    NamingCase::SnakeCase.apply(&node_id.0),
+                    NamingCase::SnakeCase.apply(&port_name.0)
+                );
+
+                let mut body = Vec::new();
+                body.push(Stmt::let_bind("dag", Expr::var(graph_builder_fn)));
+                body.extend(self.build_inputs_map_stmts(&inputs_missing));
+
+                let exec = Expr::call(
+                    "gunbc_exec::execute_single_node",
+                    vec![
+                        Expr::var("dag").ref_of(),
+                        Expr::Str(node_id.0.clone()),
+                        Expr::var("inputs"),
+                        Expr::Path(vec![
+                            "gunbc_exec".to_string(),
+                            "ExecutionMode".to_string(),
+                            "Real".to_string(),
+                        ]),
+                    ],
+                )
+                .method(
+                    "expect",
+                    vec![Expr::Str(format!(
+                        "optional input {}.{} missing should not error",
+                        node_id.0, port_name.0
+                    ))],
+                );
+                body.push(Stmt::let_bind("_outputs", exec));
+
+                tests.push(TestFn {
+                    name: test_name,
+                    doc: vec![
+                        format!(
+                            "Optional input: {}.{} (cardinality: {}).",
+                            node_id.0, port_name.0, port_info.cardinality
+                        ),
+                        String::new(),
+                        "Proves: missing optional input does not crash.".to_string(),
+                    ],
+                    body,
+                });
+            }
+
+            // Wrong-typed optional input should error (unless type accepts any).
+            if let Some(wrong_value) = mock_wrong_type_expr(port_info.type_id.0.as_str()) {
+                let mut inputs_wrong = base_inputs.clone();
+                inputs_wrong.insert(port_name.0.clone(), wrong_value);
+
+                let test_name = format!(
+                    "test_optional_wrong_type_{}_{}",
+                    NamingCase::SnakeCase.apply(&node_id.0),
+                    NamingCase::SnakeCase.apply(&port_name.0)
+                );
+
+                let mut body = Vec::new();
+                body.push(Stmt::let_bind("dag", Expr::var(graph_builder_fn)));
+                body.extend(self.build_inputs_map_stmts(&inputs_wrong));
+
+                let exec = Expr::call(
+                    "gunbc_exec::execute_single_node",
+                    vec![
+                        Expr::var("dag").ref_of(),
+                        Expr::Str(node_id.0.clone()),
+                        Expr::var("inputs"),
+                        Expr::Path(vec![
+                            "gunbc_exec".to_string(),
+                            "ExecutionMode".to_string(),
+                            "Real".to_string(),
+                        ]),
+                    ],
+                );
+                body.push(Stmt::let_bind("result", exec));
+                body.push(Stmt::Assert(Assert::True {
+                    expr: Expr::var("result").method("is_err", vec![]),
+                    message: format!(
+                        "optional input {}.{} wrong type should error",
+                        node_id.0, port_name.0
+                    ),
+                }));
+
+                tests.push(TestFn {
+                    name: test_name,
+                    doc: vec![
+                        format!(
+                            "Optional input: {}.{} (cardinality: {}).",
+                            node_id.0, port_name.0, port_info.cardinality
+                        ),
+                        String::new(),
+                        "Proves: wrong-typed optional input is rejected.".to_string(),
+                    ],
+                    body,
                 });
             }
         }
@@ -2305,6 +2474,60 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             );
         }
         Expr::call("mock_spec", vec![]).method("to_boundary_mocks", vec![])
+    }
+
+    fn collect_example_inputs(&self) -> HashMap<String, Vec<BTreeMap<String, ValueExpr>>> {
+        let mut examples: HashMap<String, Vec<BTreeMap<String, ValueExpr>>> = HashMap::new();
+
+        if let Some(spec) = &self.mock_spec {
+            for ex in &spec.node_examples {
+                let mut inputs = BTreeMap::new();
+                for (k, v) in &ex.inputs {
+                    inputs.insert(k.clone(), ValueExpr::from(v));
+                }
+                examples.entry(ex.node_id.clone()).or_default().push(inputs);
+            }
+        }
+
+        for node in &self.dag.nodes {
+            for ex in &node.examples {
+                let mut inputs = BTreeMap::new();
+                for (k, v) in &ex.inputs {
+                    inputs.insert(k.clone(), ValueExpr::from(v));
+                }
+                examples.entry(node.id.0.clone()).or_default().push(inputs);
+            }
+        }
+
+        examples
+    }
+
+    fn build_inputs_map_stmts(&self, inputs: &BTreeMap<String, ValueExpr>) -> Vec<Stmt> {
+        let mut stmts = Vec::new();
+        if inputs.is_empty() {
+            stmts.push(Stmt::let_bind(
+                "inputs",
+                Expr::call("std::collections::HashMap::new", vec![]),
+            ));
+            return stmts;
+        }
+
+        stmts.push(Stmt::let_mut(
+            "inputs",
+            Expr::call("std::collections::HashMap::new", vec![]),
+        ));
+
+        for (port, value) in inputs {
+            stmts.push(Stmt::Expr(Expr::var("inputs").method(
+                "insert",
+                vec![
+                    Expr::Str(port.clone()).method("to_string", vec![]),
+                    Expr::Value(value.clone()),
+                ],
+            )));
+        }
+
+        stmts
     }
 
     /// Get mock value for a boundary port, using MockSpec only.
@@ -3373,6 +3596,37 @@ fn mock_element_expr(type_id: &str, index: Option<u32>) -> ValueExpr {
             "no mock value for type_id '{}'; add a MockSpec boundary value or extend mock_element_expr",
             type_id
         ),
+    }
+}
+
+/// Generate a wrong-typed value for the given type_id.
+///
+/// Returns None for types that accept any value or where wrong-type
+/// tests would be ambiguous.
+fn mock_wrong_type_expr(type_id: &str) -> Option<ValueExpr> {
+    match type_id {
+        // String-like types → use Int
+        "String" | "Path" | "Platform" | "Error" | "Tier" | "ToolId" | "S" => {
+            Some(ValueExpr::Int(1))
+        }
+        // Int-like types → use String
+        "Int" | "i64" | "i32" | "Timestamp" => Some(ValueExpr::Str("<WRONG>".to_string())),
+        // Bool → use String
+        "Bool" => Some(ValueExpr::Str("<WRONG>".to_string())),
+        // Secret → use String
+        "Secret" => Some(ValueExpr::Str("<WRONG>".to_string())),
+        // Map → use Bool
+        "Map" => Some(ValueExpr::Bool(true)),
+        // Structured types → use String
+        "CliResult"
+        | "ToolHandle"
+        | "Credential"
+        | "FilesystemHandle"
+        | "TransportRequest"
+        | "TransportResponse" => Some(ValueExpr::Str("<WRONG>".to_string())),
+        // Unknown/Any/Json/Unit are too permissive or ambiguous
+        "Json" | "Any" | "Unknown" | "Unit" => None,
+        _ => None,
     }
 }
 

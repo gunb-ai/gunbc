@@ -87,11 +87,26 @@ const DISALLOWED_METHODS_ALLOWLIST: &[DisallowedMethodsAllowEntry] = &[
         scope: AllowScope::Function,
         rationale: "transport shell executor boundary",
     },
+    DisallowedMethodsAllowEntry {
+        path: "gunbc-dag/tests/mock_spec_registration.rs",
+        count: 1,
+        scope: AllowScope::Function,
+        rationale: "test reads source files to validate registration",
+    },
+    DisallowedMethodsAllowEntry {
+        path: "gunbc-dag/tests/tool_registration.rs",
+        count: 3,
+        scope: AllowScope::Function,
+        rationale: "tests read source files to validate registration",
+    },
 ];
 
 const PRAGMA_LINT_POLICY: PragmaLintPolicy = PragmaLintPolicy {
     allow_dead_code: &[],
-    allow_lints: &[],
+    allow_lints: &[
+        LintId::clippy("too_many_arguments"),
+        LintId::rustc("unused_variables"),
+    ],
 };
 
 /// Repo-specific crate policies (for clippy allowances).

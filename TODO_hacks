@@ -7,20 +7,6 @@
 # Note: resolved items have been moved to `TODO/TODONE/TODO_hacks.md`
 # and `TODO/TODONE/TODO_hacks_general.md`.
 
-## [RESOLVED] Tool targets blanket-depend on ensure-codegen
-
-> **Resolved** (2026-02-06): Added `needs_generated_cli: bool` to `ToolInfo`.
-> Manual tools (ci, pragma, build-all) set `false`; codegen-derived tools set `true`.
-> Renderer conditionally includes `ensure-codegen` dependency.
-
----
-
-## [RESOLVED] Meta-target fix_prerequisites are still untyped strings
-
-> **Resolved** (2026-02-06): Replaced `Vec<&'static str>` with `Vec<FixAlias>`
-> enum (`FmtFix`, `LintFix`). Each variant resolves to a target name string
-> at render time via `FixAlias::target_name()`.
-
 ## "List" used as type_id AND cardinality shape (dual encoding) — PARTIAL FIXES
 
 The design doc says cardinality is the canonical shape layer, but "List" is
@@ -78,12 +64,6 @@ Files:
   - core/ir/src/types.rs                (type_id is a flat String)
   - core/codegen/src/testgen/codegen.rs (can't serialize Map faithfully)
 
-## [RESOLVED] `can_coerce_to` duplicates `satisfies` on Cardinality
-
-> **Resolved** (2026-02-06): Removed `can_coerce_to()` method and its tests.
-> The method was logically identical to `satisfies()`. If lossless coercion
-> rules are needed later, they should be designed from scratch with explicit
-> allowed-coercion rules (see `core/ir/src/coerce.rs`).
 
 ## Cardinality constants are flat — no compositional modeling
 

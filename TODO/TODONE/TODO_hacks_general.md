@@ -1,7 +1,7 @@
 # Hacks Resolved (2026-02-05, updated 2026-02-06)
 
 **Status**: ✅ Done
-**Date**: 2026-02-05 (updated 2026-02-06)
+**Date**: 2026-02-05 (latest: 2026-02-06)
 
 Additional hack cleanups moved out of `TODO_hacks`.
 
@@ -99,3 +99,36 @@ Files:
 - `gunbc-dag/src/bin/testgen.rs` — writes manifest after testgen
 - `gunbc-dag/src/ci/ops.rs` — manifest-based freshness check
 - `gunbc-dag/src/bin/ci.rs` — `--mode=verify|ensure` flag
+
+## `can_coerce_to` duplicates `satisfies` on Cardinality (2026-02-06)
+
+**Resolved**: Removed `Cardinality::can_coerce_to()` method and its tests.
+The method was logically identical to `satisfies()` — the "additional"
+clause was the same predicate restated. Zero production callers existed.
+If lossless coercion rules are needed later, they should be designed
+from scratch with explicit allowed-coercion rules (see `core/ir/src/coerce.rs`).
+
+Files:
+- `core/ir/src/types.rs`
+
+## Tool targets blanket-depend on ensure-codegen (2026-02-06)
+
+**Resolved**: Added `needs_generated_cli: bool` field to `ToolInfo`.
+Codegen-derived tools (from `from_tool_def`) set `true`; manual tools
+(ci, pragma, build-all) set `false` via `.manual()` builder method.
+Renderer conditionally includes `ensure-codegen` dependency only when needed.
+
+Files:
+- `gunbc-dag/src/makegen/registry.rs`
+- `gunbc-dag/src/makegen/render.rs`
+
+## Meta-target fix_prerequisites are untyped strings (2026-02-06)
+
+**Resolved**: Replaced `fix_prerequisites: Vec<&'static str>` with
+`Vec<FixAlias>` enum. `FixAlias` has `FmtFix` and `LintFix` variants,
+each resolving to a target name string at render time via `target_name()`.
+Renaming a fix alias now causes a compile error.
+
+Files:
+- `gunbc-dag/src/makegen/registry.rs`
+- `gunbc-dag/src/makegen/render.rs`

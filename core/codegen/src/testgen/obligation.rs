@@ -189,6 +189,13 @@ pub enum Obligation {
     /// even if the wiring is correct.
     NodeContractCompliance { node_id: NodeId },
 
+    /// Optional input handling: for inputs that allow absence, nodes must
+    /// accept missing inputs but reject wrong-typed inputs.
+    OptionalInputHandling {
+        node_id: NodeId,
+        port_name: PortName,
+    },
+
     // -----------------------------------------------------------------------
     // Bucket C: Scenario Coverage (graph + transport mocks)
     //
@@ -348,6 +355,14 @@ impl ObligationSet {
         self.bucket_b()
             .into_iter()
             .filter(|o| matches!(&o.kind, Obligation::CoercionCoverage { .. }))
+            .collect()
+    }
+
+    /// Get only optional input handling obligations from Bucket B.
+    pub fn optional_input_obligations(&self) -> Vec<&ProofObligation> {
+        self.bucket_b()
+            .into_iter()
+            .filter(|o| matches!(&o.kind, Obligation::OptionalInputHandling { .. }))
             .collect()
     }
 
@@ -616,6 +631,29 @@ fn collect_contract_obligations<T>(
                 ),
                 ObligationSource::Contract,
             ));
+        }
+    }
+
+    // B.2b: Optional input handling — inputs that allow absence should accept
+    // missing values but reject wrong-typed values.
+    for node in &dag.nodes {
+        for port in &node.inputs {
+            if port.has_guard() {
+                continue;
+            }
+            if port.cardinality.allows_empty() && port.cardinality.allows_one() {
+                obligations.push(ProofObligation::runtime(
+                    Obligation::OptionalInputHandling {
+                        node_id: node.id.clone(),
+                        port_name: port.name.clone(),
+                    },
+                    format!(
+                        "Optional input {}.{} should accept missing and reject wrong types",
+                        node.id.0, port.name.0
+                    ),
+                    ObligationSource::Contract,
+                ));
+            }
         }
     }
 
@@ -1089,6 +1127,25 @@ mod tests {
             .all
             .iter()
             .any(|o| matches!(o.kind, Obligation::NodeContractCompliance { .. })));
+    }
+
+    #[test]
+    fn test_optional_input_obligations_collected() {
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque(
+            "opt",
+            vec![Port::optional("maybe", "String")],
+            vec![Port::scalar("out", "String")],
+            (),
+        ));
+
+        let obligations = collect_obligations(&dag, None, None);
+
+        assert!(obligations.all.iter().any(|o| matches!(
+            &o.kind,
+            Obligation::OptionalInputHandling { node_id, port_name }
+                if node_id.0 == "opt" && port_name.0 == "maybe"
+        )));
     }
 
     #[test]
