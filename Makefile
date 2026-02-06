@@ -101,11 +101,11 @@ lint-fix: pragma
 	@cargo clippy --fix --workspace --allow-dirty --allow-staged -- -D warnings
 
 # test: Run all tests
-test: build testgen verify
+test: build verify
 	@RUSTFLAGS="-D warnings" cargo test
 
 # test-fix: auto-fix then verify
-test-fix: fmt-fix lint-fix build testgen verify
+test-fix: fmt-fix lint-fix build verify
 	@RUSTFLAGS="-D warnings" cargo test
 
 # check: Type check all targets

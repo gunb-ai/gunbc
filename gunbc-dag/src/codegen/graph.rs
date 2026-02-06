@@ -238,7 +238,7 @@ mod tests {
     fn test_graph_builds_successfully() {
         let dag = build_codegen_graph().expect("graph should build");
         assert_eq!(dag.nodes.len(), 8);
-        assert_eq!(dag.edges.len(), 10);
+        assert_eq!(dag.edges.len(), 11);
     }
 
     #[test]

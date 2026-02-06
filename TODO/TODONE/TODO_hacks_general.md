@@ -9,7 +9,7 @@ Additional hack cleanups moved out of `TODO_hacks`.
 
 **Resolved**: Consolidated codegen output paths behind shared constants
 (`CODEGEN_OUT_DIR`, `CODEGEN_BIN_DIR`, etc.) in `core/ir`. Removed hardcoded
-`buck-out/gen` literals from runtime logic (gitignore entries remain).
+`buck-out/gen` literals from runtime logic (gitignore entries also removed by bootstrap).
 
 Files:
 - `core/ir/src/lib.rs`

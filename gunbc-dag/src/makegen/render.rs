@@ -678,8 +678,8 @@ mod tests {
 
         // Individual meta targets
         assert!(
-            makefile.contains("test: build testgen verify"),
-            "test should depend on build, testgen, and verify"
+            makefile.contains("test: build verify"),
+            "test should depend on build and verify (testgen is included in build)"
         );
         assert!(makefile.contains("cargo test"));
 

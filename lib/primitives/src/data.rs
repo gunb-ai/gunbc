@@ -4,8 +4,8 @@
 //! They are the building blocks for parsing, extraction, and formatting.
 
 use gunbc_exec::{
-    optional_map_str_str_strict, optional_str_strict, require_json, require_map_str_str,
-    require_str, require_str_list, ExecError, Executable, IntoExecResult, OutputMap,
+    optional_map_str_str_strict, optional_str_list_strict, optional_str_strict, require_json,
+    require_map_str_str, require_str, ExecError, Executable, IntoExecResult, OutputMap,
 };
 use gunbc_ir::Value;
 use serde::{Deserialize, Serialize};
@@ -161,7 +161,7 @@ pub struct ConcatOp;
 
 impl Executable for ConcatOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let list = require_str_list(&inputs, "input")?;
+        let list = optional_str_list_strict(&inputs, "input")?.unwrap_or_default();
 
         let separator = optional_str_strict(&inputs, "separator")?.unwrap_or("");
 
@@ -227,7 +227,7 @@ impl StableHashOp {
 
 impl Executable for StableHashOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let parts = require_str_list(&inputs, "parts")?;
+        let parts = optional_str_list_strict(&inputs, "parts")?.unwrap_or_default();
 
         let refs: Vec<&str> = parts.iter().map(|s| s.as_str()).collect();
         let hash = Self::hash_parts(&refs);

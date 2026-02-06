@@ -255,10 +255,10 @@ mod tests {
         // 7 nodes: LoadRegistry, RenderMakefile, PrepareFileRead, ExecuteRead,
         //          CompareContent, PrepareFileWrite, ExecuteWrite
         assert_eq!(dag.nodes.len(), 7);
-        // 8 edges: registry->render, content->compare, content->prepare_write,
-        //          request->execute_read, response->compare, skip->execute_write,
-        //          skip_reason->execute_write, request->execute_write
-        assert_eq!(dag.edges.len(), 8);
+        // 9 edges: registry->render, content->compare, content->prepare_write,
+        //          request->execute_read, skip->execute_read, response->compare,
+        //          skip->execute_write, skip_reason->execute_write, request->execute_write
+        assert_eq!(dag.edges.len(), 9);
     }
 
     #[test]
@@ -291,7 +291,7 @@ mod tests {
     fn test_graph_structure() {
         let dag = build_makegen_graph().expect("graph should build");
         assert_eq!(dag.nodes.len(), 7);
-        assert_eq!(dag.edges.len(), 8);
+        assert_eq!(dag.edges.len(), 9);
     }
 
     #[test]

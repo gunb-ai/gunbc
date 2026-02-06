@@ -157,7 +157,7 @@ mod tests {
     fn test_chat_completion_graph_structure() {
         let dag = build_chat_completion_graph();
         assert_eq!(dag.nodes.len(), 5);
-        assert_eq!(dag.edges.len(), 9);
+        assert_eq!(dag.edges.len(), 10);
     }
 
     #[test]

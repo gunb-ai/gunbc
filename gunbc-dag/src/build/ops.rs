@@ -8,8 +8,8 @@
 
 use crate::makegen::BuildConfig;
 use gunbc_exec::{
-    require_bool, require_response, require_str, ExecError, Executable, OutputMap,
-    TransportResponseExt,
+    optional_response_strict, optional_str_strict, require_bool, require_response, ExecError,
+    Executable, OutputMap, TransportResponseExt,
 };
 use gunbc_ir::transport::TransportRequest;
 use gunbc_ir::Value;
@@ -98,6 +98,11 @@ fn exec_prepare_test(inputs: HashMap<String, Value>) -> Result<HashMap<String, V
 
 fn exec_parse_test(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
     let skip = require_bool(&inputs, "skip")?;
+    let response = if matches!(inputs.get("response"), Some(Value::Skipped)) {
+        None
+    } else {
+        optional_response_strict(&inputs, "response")?
+    };
 
     if skip {
         return OutputMap::new()
@@ -108,8 +113,17 @@ fn exec_parse_test(inputs: HashMap<String, Value>) -> Result<HashMap<String, Val
             .ok();
     }
 
-    let response = require_response(&inputs, "response")?;
-    let shell = response.require_shell()?;
+    let shell = match response {
+        Some(response) => response.require_shell()?,
+        None => {
+            return OutputMap::new()
+                .bool("test_success", false)
+                .bool("test_skipped", false)
+                .str("test_stdout", "")
+                .str("test_stderr", "missing response")
+                .ok();
+        }
+    };
     let success = shell.exit_code == 0;
 
     OutputMap::new()
@@ -144,6 +158,11 @@ fn exec_prepare_clippy(
 
 fn exec_parse_clippy(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
     let skip = require_bool(&inputs, "skip")?;
+    let response = if matches!(inputs.get("response"), Some(Value::Skipped)) {
+        None
+    } else {
+        optional_response_strict(&inputs, "response")?
+    };
 
     if skip {
         return OutputMap::new()
@@ -154,8 +173,17 @@ fn exec_parse_clippy(inputs: HashMap<String, Value>) -> Result<HashMap<String, V
             .ok();
     }
 
-    let response = require_response(&inputs, "response")?;
-    let shell = response.require_shell()?;
+    let shell = match response {
+        Some(response) => response.require_shell()?,
+        None => {
+            return OutputMap::new()
+                .bool("clippy_success", false)
+                .bool("clippy_skipped", false)
+                .str("clippy_stdout", "")
+                .str("clippy_stderr", "missing response")
+                .ok();
+        }
+    };
     let success = shell.exit_code == 0;
 
     OutputMap::new()
@@ -175,9 +203,9 @@ fn exec_summary(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>
     let test_success = require_bool(&inputs, "test_success")?;
     let clippy_success = require_bool(&inputs, "clippy_success")?;
 
-    let test_stderr = require_str(&inputs, "test_stderr")?.to_string();
-    let clippy_stderr = require_str(&inputs, "clippy_stderr")?.to_string();
-    let build_stderr = require_str(&inputs, "build_stderr")?.to_string();
+    let test_stderr = optional_str_strict(&inputs, "test_stderr")?.unwrap_or("").to_string();
+    let clippy_stderr = optional_str_strict(&inputs, "clippy_stderr")?.unwrap_or("").to_string();
+    let build_stderr = optional_str_strict(&inputs, "build_stderr")?.unwrap_or("").to_string();
 
     let overall = build_success && test_success && clippy_success;
 

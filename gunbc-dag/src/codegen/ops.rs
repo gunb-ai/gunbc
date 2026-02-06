@@ -2,8 +2,8 @@
 
 use gunbc_codegen::registry::all_tools;
 use gunbc_exec::{
-    propagate_skipped, require_bool, require_response, ExecError, Executable, OutputMap,
-    TransportResponseExt,
+    optional_response_strict, propagate_skipped, require_bool, require_response, ExecError,
+    Executable, OutputMap, TransportResponseExt,
 };
 use gunbc_ir::cargo::{CargoCommand, CargoInvocation, Subcommand};
 use gunbc_ir::resource::{
@@ -214,6 +214,7 @@ fn execute_parse_codegen_result(
         return result;
     }
 
+    let response = optional_response_strict(&inputs, "response")?;
     let skip = require_bool(&inputs, "skip")?;
     if skip {
         return OutputMap::new()
@@ -231,14 +232,17 @@ fn execute_parse_codegen_result(
         return result;
     }
 
-    let response = require_response(&inputs, "response")?;
-    let shell = response.require_shell()?;
-    let success = shell.success();
-
-    let message = if success {
-        "Codegen completed successfully".to_string()
+    let (success, message) = if let Some(response) = response {
+        let shell = response.require_shell()?;
+        let success = shell.success();
+        let message = if success {
+            "Codegen completed successfully".to_string()
+        } else {
+            format!("Codegen failed: {}", shell.stderr)
+        };
+        (success, message)
     } else {
-        format!("Codegen failed: {}", shell.stderr)
+        (false, "Codegen failed: missing response".to_string())
     };
 
     OutputMap::new()

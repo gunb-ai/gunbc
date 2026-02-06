@@ -29,7 +29,8 @@ use crate::testgen::test_ir::{
 };
 use gunbc_ir::boundary_label;
 use gunbc_ir::language::NamingCase;
-use gunbc_ir::{Cardinality, Dag, NodeId, PortName, ValueExpr};
+use gunbc_ir::{Cardinality, Dag, NodeId, PortName, SecretString, Value, ValueExpr};
+use gunbc_ir::transport::{ShellRequest, ShellResponse, TransportRequest, TransportResponse};
 use gunbc_test::{MockSpec, OutputMatcher};
 use serde_json::Value as JsonValue;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -89,7 +90,7 @@ impl Default for TestConfig {
             chain_tests: true,
             flow_tests: false,
             example_tests: true,
-            optional_input_tests: false,
+            optional_input_tests: true,
             window_max_nodes: Some(5),
             visibility: "pub".to_string(),
         }
@@ -1237,7 +1238,10 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             graph_builder_fn,
         ));
         tests.extend(self.build_coercion_coverage_tests(analysis, obligations, graph_builder_fn));
-        tests.extend(self.build_optional_input_tests(analysis, obligations, graph_builder_fn));
+        let (optional_tests, optional_notes) =
+            self.build_optional_input_tests(analysis, obligations, graph_builder_fn);
+        tests.extend(optional_tests);
+        notes.extend(optional_notes);
 
         vec![TestSection {
             title: "Bucket B: Contract Obligations".to_string(),
@@ -1425,25 +1429,72 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
         analysis: &DagAnalysis,
         obligations: &ObligationSet,
         graph_builder_fn: &str,
-    ) -> Vec<TestFn> {
+    ) -> (Vec<TestFn>, Vec<String>) {
         if !self.config.optional_input_tests {
-            return Vec::new();
+            return (Vec::new(), Vec::new());
         }
         let optional_obligations = obligations.optional_input_obligations();
         if optional_obligations.is_empty() {
-            return Vec::new();
+            return (Vec::new(), Vec::new());
         }
 
-        let example_inputs = self.collect_example_inputs();
         let mut tests = Vec::new();
+        let mut notes = Vec::new();
+        let mut base_inputs_cache: HashMap<String, Result<BTreeMap<String, ValueExpr>, Vec<String>>> =
+            HashMap::new();
+        let mut skipped_nodes: HashSet<String> = HashSet::new();
+        let lowered_ids = match gunbc_exec::lower(self.dag) {
+            Ok(lowered) => lowered
+                .dag
+                .nodes
+                .iter()
+                .map(|n| n.id.0.clone())
+                .collect::<HashSet<_>>(),
+            Err(err) => {
+                notes.push(format!(
+                    "Optional input tests skipped: lowering failed ({})",
+                    err
+                ));
+                HashSet::new()
+            }
+        };
 
         for obligation in &optional_obligations {
             let Obligation::OptionalInputHandling { node_id, port_name } = &obligation.kind else {
                 continue;
             };
 
+            let Some(node) = self.dag.get_node(node_id) else {
+                continue;
+            };
+            if !node.is_opaque() {
+                continue;
+            }
+
             if !analysis.pure_nodes.contains(&node_id.0) {
                 continue;
+            }
+
+            if !lowered_ids.contains(&node_id.0) {
+                if skipped_nodes.insert(node_id.0.clone()) {
+                    notes.push(format!(
+                        "Optional input tests skipped for '{}': node is lowered away (sub-DAG/pattern).",
+                        node_id.0
+                    ));
+                }
+                continue;
+            }
+
+            if let Some(node) = self.dag.get_node(node_id) {
+                if node.is_subdag() {
+                    if skipped_nodes.insert(node_id.0.clone()) {
+                        notes.push(format!(
+                            "Optional input tests skipped for '{}': sub-DAG nodes are lowered during execution.",
+                            node_id.0
+                        ));
+                    }
+                    continue;
+                }
             }
 
             let port_info = analysis
@@ -1457,69 +1508,72 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                     )
                 });
 
-            let Some(examples) = example_inputs.get(&node_id.0) else {
-                continue;
-            };
+            let base_inputs = base_inputs_cache
+                .entry(node_id.0.clone())
+                .or_insert_with(|| self.build_minimal_inputs_for_node(node_id));
 
-            let base_inputs = examples
-                .iter()
-                .find(|m| m.contains_key(&port_name.0))
-                .or_else(|| examples.first())
-                .cloned();
-            let Some(base_inputs) = base_inputs else {
-                continue;
+            let base_inputs = match base_inputs {
+                Ok(inputs) => inputs,
+                Err(reasons) => {
+                    if skipped_nodes.insert(node_id.0.clone()) {
+                        notes.push(format!(
+                            "Optional input tests skipped for '{}': {}.",
+                            node_id.0,
+                            reasons.join("; ")
+                        ));
+                    }
+                    continue;
+                }
             };
 
             // Missing optional input should not error.
-            if base_inputs.contains_key(&port_name.0) {
-                let mut inputs_missing = base_inputs.clone();
-                inputs_missing.remove(&port_name.0);
+            let mut inputs_missing = base_inputs.clone();
+            inputs_missing.remove(&port_name.0);
 
-                let test_name = format!(
-                    "test_optional_missing_{}_{}",
-                    NamingCase::SnakeCase.apply(&node_id.0),
-                    NamingCase::SnakeCase.apply(&port_name.0)
-                );
+            let test_name = format!(
+                "test_optional_missing_{}_{}",
+                NamingCase::SnakeCase.apply(&node_id.0),
+                NamingCase::SnakeCase.apply(&port_name.0)
+            );
 
-                let mut body = Vec::new();
-                body.push(Stmt::let_bind("dag", Expr::var(graph_builder_fn)));
-                body.extend(self.build_inputs_map_stmts(&inputs_missing));
+            let mut body = Vec::new();
+            body.push(Stmt::let_bind("dag", Expr::var(graph_builder_fn)));
+            body.extend(self.build_inputs_map_stmts(&inputs_missing));
 
-                let exec = Expr::call(
-                    "gunbc_exec::execute_single_node",
-                    vec![
-                        Expr::var("dag").ref_of(),
-                        Expr::Str(node_id.0.clone()),
-                        Expr::var("inputs"),
-                        Expr::Path(vec![
-                            "gunbc_exec".to_string(),
-                            "ExecutionMode".to_string(),
-                            "Real".to_string(),
-                        ]),
-                    ],
-                )
-                .method(
-                    "expect",
-                    vec![Expr::Str(format!(
-                        "optional input {}.{} missing should not error",
-                        node_id.0, port_name.0
-                    ))],
-                );
-                body.push(Stmt::let_bind("_outputs", exec));
+            let exec = Expr::call(
+                "gunbc_exec::execute_single_node",
+                vec![
+                    Expr::var("dag").ref_of(),
+                    Expr::Str(node_id.0.clone()),
+                    Expr::var("inputs"),
+                    Expr::Path(vec![
+                        "gunbc_exec".to_string(),
+                        "ExecutionMode".to_string(),
+                        "Real".to_string(),
+                    ]),
+                ],
+            )
+            .method(
+                "expect",
+                vec![Expr::Str(format!(
+                    "optional input {}.{} missing should not error",
+                    node_id.0, port_name.0
+                ))],
+            );
+            body.push(Stmt::let_bind("_outputs", exec));
 
-                tests.push(TestFn {
-                    name: test_name,
-                    doc: vec![
-                        format!(
-                            "Optional input: {}.{} (cardinality: {}).",
-                            node_id.0, port_name.0, port_info.cardinality
-                        ),
-                        String::new(),
-                        "Proves: missing optional input does not crash.".to_string(),
-                    ],
-                    body,
-                });
-            }
+            tests.push(TestFn {
+                name: test_name,
+                doc: vec![
+                    format!(
+                        "Optional input: {}.{} (cardinality: {}).",
+                        node_id.0, port_name.0, port_info.cardinality
+                    ),
+                    String::new(),
+                    "Proves: missing optional input does not crash.".to_string(),
+                ],
+                body,
+            });
 
             // Wrong-typed optional input should error (unless type accepts any).
             if let Some(wrong_value) = mock_wrong_type_expr(port_info.type_id.0.as_str()) {
@@ -1573,7 +1627,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             }
         }
 
-        tests
+        (tests, notes)
     }
 
     // =======================================================================
@@ -2479,32 +2533,6 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
         Expr::call("mock_spec", vec![]).method("to_boundary_mocks", vec![])
     }
 
-    fn collect_example_inputs(&self) -> HashMap<String, Vec<BTreeMap<String, ValueExpr>>> {
-        let mut examples: HashMap<String, Vec<BTreeMap<String, ValueExpr>>> = HashMap::new();
-
-        if let Some(spec) = &self.mock_spec {
-            for ex in &spec.node_examples {
-                let mut inputs = BTreeMap::new();
-                for (k, v) in &ex.inputs {
-                    inputs.insert(k.clone(), ValueExpr::from(v));
-                }
-                examples.entry(ex.node_id.clone()).or_default().push(inputs);
-            }
-        }
-
-        for node in &self.dag.nodes {
-            for ex in &node.examples {
-                let mut inputs = BTreeMap::new();
-                for (k, v) in &ex.inputs {
-                    inputs.insert(k.clone(), ValueExpr::from(v));
-                }
-                examples.entry(node.id.0.clone()).or_default().push(inputs);
-            }
-        }
-
-        examples
-    }
-
     fn build_inputs_map_stmts(&self, inputs: &BTreeMap<String, ValueExpr>) -> Vec<Stmt> {
         let mut stmts = Vec::new();
         if inputs.is_empty() {
@@ -2531,6 +2559,74 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
         }
 
         stmts
+    }
+
+    fn build_minimal_inputs_for_node(
+        &self,
+        node_id: &NodeId,
+    ) -> Result<BTreeMap<String, ValueExpr>, Vec<String>> {
+        let Some(node) = self.dag.get_node(node_id) else {
+            return Err(vec![format!("unknown node '{}'", node_id.0)]);
+        };
+
+        let mut inputs = BTreeMap::new();
+        if let Some(spec) = &self.mock_spec {
+            if let Some(example) = spec
+                .node_examples
+                .iter()
+                .find(|example| example.node_id == node_id.0)
+            {
+                for (name, value) in &example.inputs {
+                    if node.inputs.iter().any(|port| port.name.0 == *name) {
+                        inputs.insert(name.clone(), ValueExpr::from(value));
+                    }
+                }
+            }
+        }
+        if inputs.is_empty() {
+            if let Some(example) = node.examples.first() {
+                for (name, value) in &example.inputs {
+                    if node.inputs.iter().any(|port| port.name.0 == *name) {
+                        inputs.insert(name.clone(), ValueExpr::from(value));
+                    }
+                }
+            }
+        }
+        let mut issues = Vec::new();
+
+        for port in &node.inputs {
+            if inputs.contains_key(&port.name.0) {
+                continue;
+            }
+            let needs_value = port.has_guard() || !port.cardinality.allows_empty();
+            if !needs_value {
+                continue;
+            }
+
+            let value = if port.has_guard() {
+                select_guard_value(port)
+            } else {
+                required_value_for_port(port)
+            };
+
+            match value {
+                Some(value) => {
+                    inputs.insert(port.name.0.clone(), ValueExpr::from(&value));
+                }
+                None => {
+                    issues.push(format!(
+                        "{}.{} (type: {})",
+                        node_id.0, port.name.0, port.type_id.0
+                    ));
+                }
+            }
+        }
+
+        if issues.is_empty() {
+            Ok(inputs)
+        } else {
+            Err(issues)
+        }
     }
 
     /// Get mock value for a boundary port, using MockSpec only.
@@ -3491,6 +3587,165 @@ fn render_output_matcher_check(matcher: &OutputMatcher, var_name: &str) -> Vec<S
     }
 }
 
+fn try_mock_element_value(type_id: &str, index: Option<u32>) -> Option<Value> {
+    let value = match type_id {
+        "String" => match index {
+            Some(1) | None => Value::Str("<MOCK>".to_string()),
+            Some(i) => Value::Str(format!("<MOCK_{}>", i)),
+        },
+        "Bool" => match index {
+            Some(i) => Value::Bool(i % 2 == 1),
+            None => Value::Bool(true),
+        },
+        "Int" | "i64" | "i32" => match index {
+            Some(i) => Value::Int(i as i64),
+            None => Value::Int(0),
+        },
+        "Unit" => Value::Unit,
+        "Json" => Value::Json(JsonValue::Null),
+        "Map" => Value::Map(BTreeMap::new()),
+        "Secret" => Value::Secret(SecretString::new("<MOCK_SECRET>")),
+        "Any" => Value::Json(JsonValue::Null),
+        "S" => Value::Str("<MOCK>".to_string()),
+        "Path" | "FilePath" => Value::Str("/tmp/mock".to_string()),
+        "SourceIR" => Value::Str("<SOURCE_IR>".to_string()),
+        "Platform" => Value::Str("linux".to_string()),
+        "Error" => Value::Str("<ERROR>".to_string()),
+        "Tier" => Value::Str("Ascii".to_string()),
+        "Unknown" => Value::Json(JsonValue::Null),
+        "ToolId" => Value::Str("clippy".to_string()),
+        "ToolHandle" => {
+            let mut map = BTreeMap::new();
+            map.insert("type".to_string(), Value::Str("tool_handle".to_string()));
+            map.insert("id".to_string(), Value::Str("clippy".to_string()));
+            map.insert("path".to_string(), Value::Str("/mock/clippy".to_string()));
+            map.insert(
+                "cap".to_string(),
+                Value::Secret(SecretString::new("capability")),
+            );
+            Value::Map(map)
+        }
+        "CliResult" => {
+            let mut map = BTreeMap::new();
+            map.insert("success".to_string(), Value::Bool(true));
+            map.insert("exit_code".to_string(), Value::Int(0));
+            map.insert("stdout".to_string(), Value::Str(String::new()));
+            map.insert("stderr".to_string(), Value::Str(String::new()));
+            Value::Map(map)
+        }
+        "Timestamp" => Value::Int(0),
+        "Credential" => {
+            let mut map = BTreeMap::new();
+            map.insert(
+                "token".to_string(),
+                Value::Secret(SecretString::new("mock-token")),
+            );
+            map.insert("source_type".to_string(), Value::Str("static".to_string()));
+            map.insert("scheme".to_string(), Value::Str("bearer".to_string()));
+            map.insert(
+                "cap".to_string(),
+                Value::Secret(SecretString::new("capability")),
+            );
+            Value::Map(map)
+        }
+        "FilesystemHandle" => {
+            let mut map = BTreeMap::new();
+            map.insert(
+                "type".to_string(),
+                Value::Str("filesystem_handle".to_string()),
+            );
+            map.insert("scope".to_string(), Value::Str("read".to_string()));
+            map.insert(
+                "targets".to_string(),
+                Value::List(vec![Value::Str("ext4".to_string())]),
+            );
+            map.insert("replacement".to_string(), Value::Str("-".to_string()));
+            map.insert(
+                "cap".to_string(),
+                Value::Secret(SecretString::new("capability")),
+            );
+            Value::Map(map)
+        }
+        "TransportRequest" => Value::Request(TransportRequest::Shell(ShellRequest::new("true"))),
+        "TransportResponse" => Value::Response(TransportResponse::Shell(ShellResponse::ok(
+            "<MOCK>",
+        ))),
+        "List" | "Set" => return None,
+        _ => return None,
+    };
+
+    Some(value)
+}
+
+fn try_mock_value_for_count(type_id: &str, cardinality: Cardinality, count: u32) -> Option<Value> {
+    if cardinality.is_list() {
+        if count == 0 {
+            return Some(Value::List(vec![]));
+        }
+        let mut elements = Vec::new();
+        for i in 1..=count {
+            elements.push(try_mock_element_value(type_id, Some(i))?);
+        }
+        return Some(Value::List(elements));
+    }
+
+    match count {
+        0 => Some(Value::Unit),
+        n => try_mock_element_value(type_id, Some(n)),
+    }
+}
+
+fn required_count_for_port(port: &gunbc_ir::Port) -> Option<u32> {
+    if port.cardinality.max == Some(0) {
+        return None;
+    }
+    if port.cardinality.is_list() {
+        let count = port.cardinality.min.max(1);
+        if port.cardinality.max.is_some_and(|max| count > max) {
+            return None;
+        }
+        return Some(count);
+    }
+    Some(1)
+}
+
+fn candidate_values_for_guard(port: &gunbc_ir::Port) -> Vec<Value> {
+    let Some(count) = required_count_for_port(port) else {
+        return Vec::new();
+    };
+    let mut values = Vec::new();
+    for seed in [1u32, 2u32] {
+        if port.cardinality.is_list() {
+            let mut elements = Vec::new();
+            for offset in 0..count {
+                let idx = seed + offset;
+                let Some(elem) = try_mock_element_value(port.type_id.0.as_str(), Some(idx)) else {
+                    elements.clear();
+                    break;
+                };
+                elements.push(elem);
+            }
+            if !elements.is_empty() {
+                values.push(Value::List(elements));
+            }
+        } else if let Some(elem) = try_mock_element_value(port.type_id.0.as_str(), Some(seed)) {
+            values.push(elem);
+        }
+    }
+    values
+}
+
+fn select_guard_value(port: &gunbc_ir::Port) -> Option<Value> {
+    candidate_values_for_guard(port)
+        .into_iter()
+        .find(|candidate| port.check_guard(candidate))
+}
+
+fn required_value_for_port(port: &gunbc_ir::Port) -> Option<Value> {
+    let count = required_count_for_port(port)?;
+    try_mock_value_for_count(port.type_id.0.as_str(), port.cardinality, count)
+}
+
 /// Generate a mock ValueExpr for a specific count and cardinality.
 ///
 /// Cardinality determines whether values are wrapped as lists. The `count`
@@ -3539,7 +3794,8 @@ fn mock_element_expr(type_id: &str, index: Option<u32>) -> ValueExpr {
         "Secret" => ValueExpr::Secret("<MOCK_SECRET>".to_string()),
         "Any" => ValueExpr::Json(JsonValue::Null),
         "S" => ValueExpr::Str("<MOCK>".to_string()),
-        "Path" => ValueExpr::Str("/tmp/mock".to_string()),
+        "Path" | "FilePath" => ValueExpr::Str("/tmp/mock".to_string()),
+        "SourceIR" => ValueExpr::Str("<SOURCE_IR>".to_string()),
         "Platform" => ValueExpr::Str("linux".to_string()),
         "Error" => ValueExpr::Str("<ERROR>".to_string()),
         // "OptionalString", "StringList", "NonEmptyStringList" removed:
@@ -3609,7 +3865,8 @@ fn mock_element_expr(type_id: &str, index: Option<u32>) -> ValueExpr {
 fn mock_wrong_type_expr(type_id: &str) -> Option<ValueExpr> {
     match type_id {
         // String-like types → use Int
-        "String" | "Path" | "Platform" | "Error" | "Tier" | "ToolId" | "S" => {
+        "String" | "Path" | "FilePath" | "SourceIR" | "Platform" | "Error" | "Tier" | "ToolId"
+        | "S" => {
             Some(ValueExpr::Int(1))
         }
         // Int-like types → use String

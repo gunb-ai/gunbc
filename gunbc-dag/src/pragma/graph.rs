@@ -497,8 +497,8 @@ mod tests {
         let dag = build_pragma_graph().expect("graph should build");
         // 18 nodes: 3 chains x 6 nodes (render, prepare_read, execute_read, compare, prepare_write, execute_write)
         assert_eq!(dag.nodes.len(), 18);
-        // 21 edges: 3 chains x 7 edges each
-        assert_eq!(dag.edges.len(), 21);
+        // 24 edges: 3 chains x 8 edges each
+        assert_eq!(dag.edges.len(), 24);
     }
 
     #[test]

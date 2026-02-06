@@ -14,8 +14,9 @@
 
 use crate::makegen::BuildConfig;
 use gunbc_exec::{
-    propagate_skipped, require_bool, require_response, require_str, ExecError, Executable,
-    OutputMap, TransportResponseExt,
+    optional_bool_strict, optional_response_strict, optional_str_strict, propagate_skipped,
+    require_bool, require_response, ExecError, Executable, OutputMap,
+    TransportResponseExt,
 };
 use gunbc_ir::render_ir::{PlainText, StructuredBlock, StructuredRenderer};
 use gunbc_ir::symbols::{Tier, STANDARD};
@@ -197,17 +198,26 @@ fn execute_parse_testgen_result(
     }
 
     let skip = require_bool(&inputs, "skip")?;
+    let skip_reason = optional_str_strict(&inputs, "skip_reason")?;
+    let response = optional_response_strict(&inputs, "response")?;
 
     if skip {
-        let reason = require_str(&inputs, "skip_reason")?;
+        let reason = skip_reason.unwrap_or("Skipped");
         return OutputMap::new()
             .bool("testgen_success", false)
             .str("testgen_stderr", reason)
             .ok();
     }
 
-    let response = require_response(&inputs, "response")?;
-    let shell = response.require_shell()?;
+    let shell = match response {
+        Some(response) => response.require_shell()?,
+        None => {
+            return OutputMap::new()
+                .bool("testgen_success", false)
+                .str("testgen_stderr", "missing response")
+                .ok();
+        }
+    };
 
     OutputMap::new()
         .bool("testgen_success", shell.success())
@@ -260,9 +270,11 @@ fn execute_parse_build_result(
     }
 
     let skip = require_bool(&inputs, "skip")?;
+    let skip_reason = optional_str_strict(&inputs, "skip_reason")?;
+    let response = optional_response_strict(&inputs, "response")?;
 
     if skip {
-        let reason = require_str(&inputs, "skip_reason")?;
+        let reason = skip_reason.unwrap_or("Skipped");
         return OutputMap::new()
             .bool("build_success", false)
             .bool("build_skipped", true)
@@ -271,8 +283,17 @@ fn execute_parse_build_result(
             .ok();
     }
 
-    let response = require_response(&inputs, "response")?;
-    let shell = response.require_shell()?;
+    let shell = match response {
+        Some(response) => response.require_shell()?,
+        None => {
+            return OutputMap::new()
+                .bool("build_success", false)
+                .bool("build_skipped", false)
+                .str("build_stdout", "")
+                .str("build_stderr", "missing response")
+                .ok();
+        }
+    };
 
     OutputMap::new()
         .bool("build_success", shell.success())
@@ -321,9 +342,11 @@ fn execute_parse_test_result(
     }
 
     let skip = require_bool(&inputs, "skip")?;
+    let skip_reason = optional_str_strict(&inputs, "skip_reason")?;
+    let response = optional_response_strict(&inputs, "response")?;
 
     if skip {
-        let reason = require_str(&inputs, "skip_reason")?;
+        let reason = skip_reason.unwrap_or("Skipped");
         return OutputMap::new()
             .bool("test_success", false)
             .bool("test_skipped", true)
@@ -332,8 +355,17 @@ fn execute_parse_test_result(
             .ok();
     }
 
-    let response = require_response(&inputs, "response")?;
-    let shell = response.require_shell()?;
+    let shell = match response {
+        Some(response) => response.require_shell()?,
+        None => {
+            return OutputMap::new()
+                .bool("test_success", false)
+                .bool("test_skipped", false)
+                .str("test_stdout", "")
+                .str("test_stderr", "missing response")
+                .ok();
+        }
+    };
 
     OutputMap::new()
         .bool("test_success", shell.success())
@@ -374,9 +406,13 @@ fn execute_parse_clippy_lint_result(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
     let skip = require_bool(&inputs, "skip")?;
+    let skip_reason = optional_str_strict(&inputs, "skip_reason")?;
+    let success = optional_bool_strict(&inputs, "success")?;
+    let stdout = optional_str_strict(&inputs, "stdout")?;
+    let stderr = optional_str_strict(&inputs, "stderr")?;
 
     if skip {
-        let reason = require_str(&inputs, "skip_reason")?;
+        let reason = skip_reason.unwrap_or("Skipped");
         return OutputMap::new()
             .bool("lint_success", false)
             .bool("lint_skipped", true)
@@ -386,9 +422,9 @@ fn execute_parse_clippy_lint_result(
     }
 
     // Get outputs from the clippy SubDag (from the 'resolve' node which runs clippy)
-    let success = require_bool(&inputs, "success")?;
-    let stdout = require_str(&inputs, "stdout")?.to_string();
-    let stderr = require_str(&inputs, "stderr")?.to_string();
+    let success = success.unwrap_or(false);
+    let stdout = stdout.unwrap_or("").to_string();
+    let stderr = stderr.unwrap_or("").to_string();
 
     OutputMap::new()
         .bool("lint_success", success)
@@ -438,17 +474,26 @@ fn execute_parse_guardrail_result(
     }
 
     let skip = require_bool(&inputs, "skip")?;
+    let skip_reason = optional_str_strict(&inputs, "skip_reason")?;
+    let response = optional_response_strict(&inputs, "response")?;
 
     if skip {
-        let reason = require_str(&inputs, "skip_reason")?;
+        let reason = skip_reason.unwrap_or("Skipped");
         return OutputMap::new()
             .bool("guardrail_success", false)
             .str("guardrail_stderr", reason)
             .ok();
     }
 
-    let response = require_response(&inputs, "response")?;
-    let shell = response.require_shell()?;
+    let shell = match response {
+        Some(response) => response.require_shell()?,
+        None => {
+            return OutputMap::new()
+                .bool("guardrail_success", false)
+                .str("guardrail_stderr", "missing response")
+                .ok();
+        }
+    };
 
     OutputMap::new()
         .bool("guardrail_success", shell.success())
@@ -512,17 +557,26 @@ fn execute_parse_verify_result(
     }
 
     let skip = require_bool(&inputs, "skip")?;
+    let skip_reason = optional_str_strict(&inputs, "skip_reason")?;
+    let response = optional_response_strict(&inputs, "response")?;
 
     if skip {
-        let reason = require_str(&inputs, "skip_reason")?;
+        let reason = skip_reason.unwrap_or("Skipped");
         return OutputMap::new()
             .bool("verify_success", false)
             .str("verify_stderr", reason)
             .ok();
     }
 
-    let response = require_response(&inputs, "response")?;
-    let shell = response.require_shell()?;
+    let shell = match response {
+        Some(response) => response.require_shell()?,
+        None => {
+            return OutputMap::new()
+                .bool("verify_success", false)
+                .str("verify_stderr", "missing response")
+                .ok();
+        }
+    };
 
     OutputMap::new()
         .bool("verify_success", shell.success())
@@ -592,6 +646,13 @@ fn build_report_blocks(
     inputs: &HashMap<String, Value>,
 ) -> Result<Vec<StructuredBlock>, ExecError> {
     let mut blocks = Vec::new();
+    let build_stderr = optional_str_strict(inputs, "build_stderr")?.unwrap_or("");
+    let test_stdout = optional_str_strict(inputs, "test_stdout")?.unwrap_or("");
+    let test_stderr = optional_str_strict(inputs, "test_stderr")?.unwrap_or("");
+    let lint_stderr = optional_str_strict(inputs, "lint_stderr")?.unwrap_or("");
+    let testgen_stderr = optional_str_strict(inputs, "testgen_stderr")?.unwrap_or("");
+    let guardrail_stderr = optional_str_strict(inputs, "guardrail_stderr")?.unwrap_or("");
+    let verify_stderr = optional_str_strict(inputs, "verify_stderr")?.unwrap_or("");
 
     // Summary section
     blocks.push(StructuredBlock::Raw(format!(
@@ -621,70 +682,52 @@ fn build_report_blocks(
     )));
 
     // Failure details
-    if !build_success {
-        let stderr = require_str(inputs, "build_stderr")?;
-        if !stderr.is_empty() {
-            blocks.push(StructuredBlock::Raw(format!(
-                "\n--- Build stderr ---\n{stderr}\n"
-            )));
-        }
+    if !build_success && !build_stderr.is_empty() {
+        blocks.push(StructuredBlock::Raw(format!(
+            "\n--- Build stderr ---\n{build_stderr}\n"
+        )));
     }
 
     if !test_success {
-        let stdout = require_str(inputs, "test_stdout")?;
-
-        if let Some(failures_section) = extract_test_failures(stdout) {
+        if let Some(failures_section) = extract_test_failures(test_stdout) {
             blocks.push(StructuredBlock::Raw(format!(
                 "\n--- Test failures ---\n{failures_section}\n"
             )));
-        } else if !stdout.is_empty() {
+        } else if !test_stdout.is_empty() {
             blocks.push(StructuredBlock::Raw(format!(
-                "\n--- Test stdout ---\n{stdout}\n"
+                "\n--- Test stdout ---\n{test_stdout}\n"
             )));
         }
 
-        let stderr = require_str(inputs, "test_stderr")?;
-        if !stderr.is_empty() {
+        if !test_stderr.is_empty() {
             blocks.push(StructuredBlock::Raw(format!(
-                "\n--- Test stderr ---\n{stderr}\n"
+                "\n--- Test stderr ---\n{test_stderr}\n"
             )));
         }
     }
 
-    if !lint_success {
-        let stderr = require_str(inputs, "lint_stderr")?;
-        if !stderr.is_empty() {
-            blocks.push(StructuredBlock::Raw(format!(
-                "\n--- Lint stderr ---\n{stderr}\n"
-            )));
-        }
+    if !lint_success && !lint_stderr.is_empty() {
+        blocks.push(StructuredBlock::Raw(format!(
+            "\n--- Lint stderr ---\n{lint_stderr}\n"
+        )));
     }
 
-    if !testgen_success {
-        let stderr = require_str(inputs, "testgen_stderr")?;
-        if !stderr.is_empty() {
-            blocks.push(StructuredBlock::Raw(format!(
-                "\n--- Testgen stderr ---\n{stderr}\n"
-            )));
-        }
+    if !testgen_success && !testgen_stderr.is_empty() {
+        blocks.push(StructuredBlock::Raw(format!(
+            "\n--- Testgen stderr ---\n{testgen_stderr}\n"
+        )));
     }
 
-    if !guardrail_success {
-        let stderr = require_str(inputs, "guardrail_stderr")?;
-        if !stderr.is_empty() {
-            blocks.push(StructuredBlock::Raw(format!(
-                "\n--- Guardrails stderr ---\n{stderr}\n"
-            )));
-        }
+    if !guardrail_success && !guardrail_stderr.is_empty() {
+        blocks.push(StructuredBlock::Raw(format!(
+            "\n--- Guardrails stderr ---\n{guardrail_stderr}\n"
+        )));
     }
 
-    if !verify_success {
-        let stderr = require_str(inputs, "verify_stderr")?;
-        if !stderr.is_empty() {
-            blocks.push(StructuredBlock::Raw(format!(
-                "\n--- Verify stderr ---\n{stderr}\n"
-            )));
-        }
+    if !verify_success && !verify_stderr.is_empty() {
+        blocks.push(StructuredBlock::Raw(format!(
+            "\n--- Verify stderr ---\n{verify_stderr}\n"
+        )));
     }
 
     Ok(blocks)

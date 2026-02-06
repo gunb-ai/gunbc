@@ -939,11 +939,11 @@ impl MetaTarget {
 /// - `make test-fix` runs fmt-fix + lint-fix, then tests (dev uses this)
 pub fn default_meta_targets() -> Vec<MetaTarget> {
     vec![
-        // test - run all tests (requires full build + testgen + verify)
+        // test - run all tests (requires full build + verify)
+        // build already includes testgen, so no separate generated_tests dependency needed
         // test-fix: fmt-fix + lint-fix first, then test
         MetaTarget::new("test", "Run all tests", ConfigField::Test)
             .needs(ResourceId::build("compiled_code"), ExecMode::Ensure)
-            .needs(ResourceId::build("generated_tests"), ExecMode::Ensure)
             .needs(ResourceId::build("verified_artifacts"), ExecMode::Ensure)
             .with_fix_variant(vec![FixAlias::FmtFix, FixAlias::LintFix]),
         // check - type check without building (requires codegen + pragma)
@@ -1213,7 +1213,7 @@ mod tests {
         let targets = default_meta_targets();
 
         let test = targets.iter().find(|t| t.name == "test").unwrap();
-        assert_eq!(test.resources.len(), 3);
+        assert_eq!(test.resources.len(), 2);
         assert_eq!(test.resources[0].id, ResourceId::build("compiled_code"));
         assert_eq!(test.resources[0].base_mode, ExecMode::Ensure);
 

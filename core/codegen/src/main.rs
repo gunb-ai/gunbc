@@ -754,8 +754,10 @@ impl ManagedResource for CodegenResource {
     }
 
     fn create(&self, manifest: &ResourceManifest) -> Result<ManifestEntry, ResourceError> {
-        let (key, file_count) = self.compute_key_with_stats(manifest)?;
-        Ok(ManifestEntry::new(key, file_count).with_outputs(self.outputs.clone()))
+        let (key, file_count, input_files) = self.compute_key_with_file_list(manifest)?;
+        Ok(ManifestEntry::new(key, file_count)
+            .with_outputs(self.outputs.clone())
+            .with_input_files(input_files))
     }
 }
 

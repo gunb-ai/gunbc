@@ -12,7 +12,7 @@
 
 use gunbc_exec::{
     optional_str_list_strict, optional_str_strict, propagate_skipped, require_response,
-    require_str, require_str_list, ExecError, Executable, OutputMap, TransportResponseExt,
+    require_str, ExecError, Executable, OutputMap, TransportResponseExt,
 };
 use gunbc_ir::transport::{ShellRequest, TransportResponse};
 use gunbc_ir::patterns::PatternOp;
@@ -179,7 +179,7 @@ fn execute_prepare_read_files(
     if let Some(result) = propagate_skipped(&inputs, "files", &["request"]) {
         return result;
     }
-    let files = require_str_list(&inputs, "files")?;
+    let files = optional_str_list_strict(&inputs, "files")?.unwrap_or_default();
 
     let repo_path = require_str(&inputs, "repo_path")?;
 
@@ -215,7 +215,10 @@ fn execute_prepare_read_files(
         .args(["-c", &script])
         .into_transport_request();
 
-    OutputMap::new().request("request", request).ok()
+    OutputMap::new()
+        .request("request", request)
+        .bool("skip", false)
+        .ok()
 }
 
 // ============================================================================
@@ -407,6 +410,7 @@ pub fn build_read_file_body_dag() -> Dag<GistGraphOp> {
         vec![
             port("request", "TransportRequest"),
             port("filename", "String"),
+            port("skip", "Bool"),
         ],
         GistGraphOp::PrepareReadFile,
     ));
@@ -414,7 +418,7 @@ pub fn build_read_file_body_dag() -> Dag<GistGraphOp> {
     // Execute node
     dag.add_node(Node::opaque(
         "execute",
-        vec![port("request", "TransportRequest")],
+        vec![port("request", "TransportRequest"), port("skip", "Bool")],
         vec![port("response", "TransportResponse")],
         GistGraphOp::Transport(TransportOps::Execute),
     ));
@@ -433,6 +437,9 @@ pub fn build_read_file_body_dag() -> Dag<GistGraphOp> {
     // Wire the pipeline
     dag.add_edge(gunbc_ir::Edge::new(
         "prepare", "request", "execute", "request",
+    ));
+    dag.add_edge(gunbc_ir::Edge::new(
+        "prepare", "skip", "execute", "skip",
     ));
     dag.add_edge(gunbc_ir::Edge::new(
         "execute", "response", "parse", "response",
@@ -532,7 +539,7 @@ pub fn build_gist_graph(
     let prepare_current_branch = builder.add_root_node(Node::opaque(
         "prepare_current_branch",
         vec![port("repo_path", "String")],
-        vec![port("request", "TransportRequest")],
+        vec![port("request", "TransportRequest"), port("skip", "Bool")],
         GistGraphOp::Git(GitOps::PrepareCurrentBranch),
     ))?;
 
@@ -540,7 +547,7 @@ pub fn build_gist_graph(
     let execute_current_branch = builder.add_node_after(
         Node::opaque(
             "execute_current_branch",
-            vec![port("request", "TransportRequest")],
+            vec![port("request", "TransportRequest"), port("skip", "Bool")],
             vec![port("response", "TransportResponse")],
             GistGraphOp::Transport(TransportOps::Execute),
         ),
@@ -564,6 +571,10 @@ pub fn build_gist_graph(
         execute_current_branch.in_port("request"),
     )?;
     builder.add_edge(
+        prepare_current_branch.out("skip"),
+        execute_current_branch.in_port("skip"),
+    )?;
+    builder.add_edge(
         execute_current_branch.out("response"),
         parse_current_branch.in_port("response"),
     )?;
@@ -579,7 +590,7 @@ pub fn build_gist_graph(
     let prepare_remote_branches = builder.add_root_node(Node::opaque(
         "prepare_remote_branches",
         vec![port("repo_path", "String")],
-        vec![port("request", "TransportRequest")],
+        vec![port("request", "TransportRequest"), port("skip", "Bool")],
         GistGraphOp::Git(GitOps::PrepareRemoteBranchesAtHead),
     ))?;
 
@@ -587,7 +598,7 @@ pub fn build_gist_graph(
     let execute_remote_branches = builder.add_node_after(
         Node::opaque(
             "execute_remote_branches",
-            vec![port("request", "TransportRequest")],
+            vec![port("request", "TransportRequest"), port("skip", "Bool")],
             vec![port("response", "TransportResponse")],
             GistGraphOp::Transport(TransportOps::Execute),
         ),
@@ -611,6 +622,10 @@ pub fn build_gist_graph(
         execute_remote_branches.in_port("request"),
     )?;
     builder.add_edge(
+        prepare_remote_branches.out("skip"),
+        execute_remote_branches.in_port("skip"),
+    )?;
+    builder.add_edge(
         execute_remote_branches.out("response"),
         parse_remote_branches.in_port("response"),
     )?;
@@ -631,7 +646,7 @@ pub fn build_gist_graph(
                 resource("fs", "FilesystemHandle", AccessMode::Read),
                 resource("clock", "Timestamp", AccessMode::Read),
             ],
-            vec![scalar("request", "TransportRequest")],
+            vec![scalar("request", "TransportRequest"), scalar("skip", "Bool")],
             GistGraphOp::Gist(GistOps::PrepareRequest { public }),
         ),
         &render_markdown,
@@ -641,7 +656,7 @@ pub fn build_gist_graph(
     let execute_gist = builder.add_node_after(
         Node::opaque(
             "execute_gist",
-            vec![scalar("request", "TransportRequest")],
+            vec![scalar("request", "TransportRequest"), scalar("skip", "Bool")],
             vec![scalar("response", "TransportResponse")],
             GistGraphOp::Transport(TransportOps::Execute),
         ),
@@ -692,6 +707,10 @@ pub fn build_gist_graph(
         execute_gist.in_port("request"),
     )?;
     builder.add_edge(
+        prepare_gist_request.out("skip"),
+        execute_gist.in_port("skip"),
+    )?;
+    builder.add_edge(
         execute_gist.out("response"),
         parse_gist_response.in_port("response"),
     )?;
@@ -717,7 +736,7 @@ fn build_snapshot_acquire(
     let prepare_list_files = builder.add_root_node(Node::opaque(
         "prepare_list_files",
         vec![port("repo_path", "String")],
-        vec![port("request", "TransportRequest")],
+        vec![port("request", "TransportRequest"), port("skip", "Bool")],
         GistGraphOp::Git(GitOps::PrepareLsFiles { extensions }),
     ))?;
 
@@ -725,7 +744,7 @@ fn build_snapshot_acquire(
     let execute_list_files = builder.add_node_after(
         Node::opaque(
             "execute_list_files",
-            vec![port("request", "TransportRequest")],
+            vec![port("request", "TransportRequest"), port("skip", "Bool")],
             vec![port("response", "TransportResponse")],
             GistGraphOp::Transport(TransportOps::Execute),
         ),
@@ -784,6 +803,10 @@ fn build_snapshot_acquire(
         execute_list_files.in_port("request"),
     )?;
     builder.add_edge(
+        prepare_list_files.out("skip"),
+        execute_list_files.in_port("skip"),
+    )?;
+    builder.add_edge(
         execute_list_files.out("response"),
         parse_list_files.in_port("response"),
     )?;
@@ -822,7 +845,7 @@ fn build_diff_acquire(
             port("repo_path", "String"),
             optional("base_ref", "String"),
         ],
-        vec![port("request", "TransportRequest")],
+        vec![port("request", "TransportRequest"), port("skip", "Bool")],
         GistGraphOp::Git(GitOps::PrepareDiff {
             base_ref: base_ref.to_string(),
             extensions,
@@ -833,7 +856,7 @@ fn build_diff_acquire(
     let execute_diff = builder.add_node_after(
         Node::opaque(
             "execute_diff",
-            vec![port("request", "TransportRequest")],
+            vec![port("request", "TransportRequest"), port("skip", "Bool")],
             vec![port("response", "TransportResponse")],
             GistGraphOp::Transport(TransportOps::Execute),
         ),
@@ -864,6 +887,7 @@ fn build_diff_acquire(
 
     // Wire diff pipeline
     builder.add_edge(prepare_diff.out("request"), execute_diff.in_port("request"))?;
+    builder.add_edge(prepare_diff.out("skip"), execute_diff.in_port("skip"))?;
     builder.add_edge(execute_diff.out("response"), parse_diff.in_port("response"))?;
     builder.add_edge(
         parse_diff.out("diff_files"),
@@ -900,7 +924,7 @@ fn build_recent_acquire(
     let prepare_rev_list = builder.add_root_node(Node::opaque(
         "prepare_rev_list",
         vec![port("repo_path", "String")],
-        vec![port("request", "TransportRequest")],
+        vec![port("request", "TransportRequest"), port("skip", "Bool")],
         GistGraphOp::Git(GitOps::PrepareRevListBefore {
             before: "3 days ago".to_string(),
         }),
@@ -910,7 +934,7 @@ fn build_recent_acquire(
     let execute_rev_list = builder.add_node_after(
         Node::opaque(
             "execute_rev_list",
-            vec![port("request", "TransportRequest")],
+            vec![port("request", "TransportRequest"), port("skip", "Bool")],
             vec![port("response", "TransportResponse")],
             GistGraphOp::Transport(TransportOps::Execute),
         ),
@@ -934,6 +958,10 @@ fn build_recent_acquire(
         execute_rev_list.in_port("request"),
     )?;
     builder.add_edge(
+        prepare_rev_list.out("skip"),
+        execute_rev_list.in_port("skip"),
+    )?;
+    builder.add_edge(
         execute_rev_list.out("response"),
         parse_rev_list.in_port("response"),
     )?;
@@ -950,7 +978,7 @@ fn build_recent_acquire(
                 port("repo_path", "String"),
                 optional("base_ref", "String"),
             ],
-            vec![port("request", "TransportRequest")],
+            vec![port("request", "TransportRequest"), port("skip", "Bool")],
             GistGraphOp::Git(GitOps::PrepareDiff {
                 base_ref: "HEAD".to_string(),
                 extensions,
@@ -963,7 +991,7 @@ fn build_recent_acquire(
     let execute_diff = builder.add_node_after(
         Node::opaque(
             "execute_diff",
-            vec![port("request", "TransportRequest")],
+            vec![port("request", "TransportRequest"), port("skip", "Bool")],
             vec![port("response", "TransportResponse")],
             GistGraphOp::Transport(TransportOps::Execute),
         ),
@@ -1000,6 +1028,7 @@ fn build_recent_acquire(
 
     // Wire diff pipeline
     builder.add_edge(prepare_diff.out("request"), execute_diff.in_port("request"))?;
+    builder.add_edge(prepare_diff.out("skip"), execute_diff.in_port("skip"))?;
     builder.add_edge(execute_diff.out("response"), parse_diff.in_port("response"))?;
     builder.add_edge(
         parse_diff.out("diff_files"),
@@ -1023,7 +1052,10 @@ impl Mockable for GistGraphOp {
                     GitOps::PrepareLsFiles { .. } => {
                         let request =
                             gunbc_ir::transport::git::GitRequest::ls_files().to_shell_request();
-                        OutputMap::new().request("request", request).build()
+                        OutputMap::new()
+                            .request("request", request)
+                            .bool("skip", false)
+                            .build()
                     }
                     GitOps::ParseLsFiles => OutputMap::new()
                         .str_list(
@@ -1040,6 +1072,7 @@ impl Mockable for GistGraphOp {
                             "request",
                             ShellRequest::new("git").arg("mock").into_transport_request(),
                         )
+                        .bool("skip", false)
                         .build(),
                     GitOps::ParseDiff => OutputMap::new()
                         .map_str_str("diff_files", std::collections::BTreeMap::new())
@@ -1064,6 +1097,7 @@ impl Mockable for GistGraphOp {
                         .args(["-c", "echo file contents"])
                         .into_transport_request(),
                 )
+                .bool("skip", false)
                 .build(),
             GistGraphOp::ParseReadFiles => {
                 let mut contents = std::collections::BTreeMap::new();
@@ -1080,6 +1114,7 @@ impl Mockable for GistGraphOp {
                         .into_transport_request(),
                 )
                 .str("filename", "src/main.rs")
+                .bool("skip", false)
                 .build(),
             GistGraphOp::ParseReadFile => OutputMap::new()
                 .str("filename", "src/main.rs")
@@ -1133,6 +1168,7 @@ impl Mockable for GistGraphOp {
                             .args(["gist", "create"])
                             .into_transport_request(),
                     )
+                    .bool("skip", false)
                     .build(),
                 GistOps::ParseGistResponse => OutputMap::new()
                     .str("url", "https://gist.github.com/mock/123")
@@ -1168,8 +1204,8 @@ mod tests {
         //           prepare_remote_branches, execute_remote_branches, parse_remote_branches,
         //           prepare_gist, execute_gist, parse_gist_response
         assert_eq!(dag.nodes.len(), 17);
-        // 17 edges across snapshot, branch, remote branch, and gist tail wiring
-        assert_eq!(dag.edges.len(), 17);
+        // 21 edges across snapshot, branch, remote branch, and gist tail wiring
+        assert_eq!(dag.edges.len(), 21);
     }
 
     #[test]
@@ -1278,8 +1314,8 @@ mod tests {
         //           prepare_remote_branches, execute_remote_branches, parse_remote_branches,
         //           prepare_gist, execute_gist, parse_gist_response
         assert_eq!(dag.nodes.len(), 15);
-        // 15 edges across diff, branch, remote branch, and gist tail wiring
-        assert_eq!(dag.edges.len(), 15);
+        // 19 edges across diff, branch, remote branch, and gist tail wiring
+        assert_eq!(dag.edges.len(), 19);
     }
 
     #[test]
@@ -1504,11 +1540,12 @@ mod tests {
         //           prepare_remote_branches, execute_remote_branches, parse_remote_branches,
         //           prepare_gist, execute_gist, parse_gist_response
         assert_eq!(dag.nodes.len(), 18);
-        // 19 edges: 2 (rev-list chain) + 1 (rev-list→diff) + 4 (diff chain)
+        // 24 edges: 3 (rev-list chain) + 1 (rev-list→diff) + 5 (diff chain)
         //         + 2 (branch chain) + 2 (remote chain)
         //         + 7 (gist tail: markdown→gist, branch→gist, remote→gist, fs→gist, clock→gist, gist→execute, execute→parse)
         //         + 1 (parse_rev_list→prepare_gist_request base_ref)
-        assert_eq!(dag.edges.len(), 19);
+        //         + 3 (skip wiring for skippable transports)
+        assert_eq!(dag.edges.len(), 24);
     }
 
     #[test]
@@ -1643,7 +1680,7 @@ mod tests {
         let dag = build_read_file_body_dag();
 
         assert_eq!(dag.nodes.len(), 3);
-        assert_eq!(dag.edges.len(), 3);
+        assert_eq!(dag.edges.len(), 4);
 
         assert!(dag.get_node(&"prepare".into()).is_some());
         assert!(dag.get_node(&"execute".into()).is_some());

@@ -422,8 +422,7 @@ mod tests {
         //           gen_makefile, prep_makefile_read, exec_makefile_read, compare_makefile, prep_makefile_write, exec_makefile_transport,
         //           gen_gitignore, prep_gitignore_read, exec_gitignore_read, compare_gitignore, prep_gitignore_write, exec_gitignore_transport
         assert_eq!(dag.nodes.len(), 15);
-        // 18 edges: 2 scan + 8 makefile + 8 gitignore
-        assert_eq!(dag.edges.len(), 18);
+        assert_eq!(dag.edges.len(), 21);
     }
 
     #[test]
@@ -456,7 +455,7 @@ mod tests {
     fn test_graph_structure() {
         let dag = build_bootstrap_graph().expect("graph should build");
         assert_eq!(dag.nodes.len(), 15);
-        assert_eq!(dag.edges.len(), 18);
+        assert_eq!(dag.edges.len(), 21);
     }
 
     #[test]

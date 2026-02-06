@@ -261,7 +261,7 @@ mod tests {
 
         let dag = builder.build();
         assert_eq!(dag.nodes.len(), 3);
-        assert_eq!(dag.edges.len(), 2); // prepare→execute, execute→parse
+        assert_eq!(dag.edges.len(), 3); // prepare→execute (request + skip), execute→parse
 
         assert!(dag.get_node(&"prepare_deps_exists".into()).is_some());
         assert!(dag.get_node(&"execute_deps_exists".into()).is_some());

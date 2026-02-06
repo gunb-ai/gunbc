@@ -4,7 +4,7 @@
 //! They are typically implemented as higher-order patterns that expand into
 //! SubDag nodes, but these primitives provide the leaf execution.
 
-use gunbc_exec::{require_bool, require_str_list, ExecError, Executable, OutputMap};
+use gunbc_exec::{optional_str_list_strict, require_bool, ExecError, Executable, OutputMap};
 use gunbc_ir::Value;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -28,7 +28,7 @@ pub struct LoopOp;
 
 impl Executable for LoopOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let list = require_str_list(&inputs, "input")?;
+        let list = optional_str_list_strict(&inputs, "input")?.unwrap_or_default();
 
         let count = list.len() as i64;
         let indices: Vec<String> = (0..list.len()).map(|i| i.to_string()).collect();

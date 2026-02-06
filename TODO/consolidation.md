@@ -698,18 +698,15 @@ remaining items are feature work that builds on the infra extraction.
 | Per-tool test tracking | Performance fixes | Low |
 | ToolHandle unification | Design fixes | Low |
 
-**Codegen content-hash manifest**: The current freshness check relies on
-glob patterns (`CODEGEN_GLOB_PATTERNS`, `CODEGEN_EXTRA_FILES`) to discover
-inputs. If inputs change in ways the globs don't capture (new crate dep,
-new config file), stale artifacts go undetected. Fix: store a content-hash
-manifest of all actual inputs consumed during codegen, and verify against
-it on next run. The infrastructure exists (`ContentHash`, `ManifestEntry`,
-`input_file_count`); the gap is recording the actual input set rather than
-a glob-derived approximation.
+**Codegen content-hash manifest**: ~~The current freshness check relies on
+glob patterns to discover inputs.~~ **DONE**: `ManifestEntry.input_files`
+now records actual file paths hashed during codegen/testgen. The manifest
+stores the complete input set for diagnostics and debugging.
 
-**RUSTC_VERSION**: Hash computation includes `RUSTC_VERSION` from env,
-defaulting to "unknown". Proper fix: add a `RustcVersion` resource to the
-model. Current workaround: set `RUSTC_VERSION` in CI/build scripts.
+**RUSTC_VERSION**: ~~Hash computation includes `RUSTC_VERSION` from env,
+defaulting to "unknown".~~ **DONE**: Replaced `InputPattern::Env("RUSTC_VERSION")`
+with `InputPattern::CommandOutput("rustc", ["--version"])`. The actual
+compiler version is now captured directly, regardless of environment setup.
 
 ---
 
@@ -729,11 +726,11 @@ model. Current workaround: set `RUSTC_VERSION` in CI/build scripts.
 
 ### Remaining (extension features — from architecture-debt.md §16)
 
-- [ ] Codegen content-hash manifest (record actual inputs, not glob approximation) — §16
+- [x] Codegen content-hash manifest (record actual inputs, not glob approximation) — §16
 - [ ] deps.toml tracking — §16
 - [ ] Makefile tracking — §16
 - [ ] .gitignore tracking — §16
-- [ ] RUSTC_VERSION as modeled resource — §16
+- [x] RUSTC_VERSION as modeled resource — §16
 
 ### Remaining (new functionality — integration tests)
 

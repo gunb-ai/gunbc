@@ -284,7 +284,7 @@ fn execute_generate_scripts(
 fn execute_prepare_execute_installs(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    if let Some(result) = propagate_skipped(&inputs, "install_script", &["request", "script"]) {
+    if propagate_skipped(&inputs, "install_script", &["request", "script"]).is_some() {
         return OutputMap::new().bool("skip", true).ok();
     }
 

@@ -3,7 +3,7 @@
 //! These operations work on collections (List, Json arrays) and
 //! respect cardinality constraints for automatic test generation.
 
-use gunbc_exec::{require_str_list, require_value, ExecError, Executable, OutputMap};
+use gunbc_exec::{optional_str_list_strict, require_value, ExecError, Executable, OutputMap};
 use gunbc_ir::Value;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -65,7 +65,7 @@ pub enum MapOp {
 
 impl Executable for MapOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let list = require_str_list(&inputs, "input")?;
+        let list = optional_str_list_strict(&inputs, "input")?.unwrap_or_default();
 
         let result: Vec<String> = match self {
             MapOp::ToUppercase => list.iter().map(|s| s.to_uppercase()).collect(),
@@ -109,7 +109,7 @@ pub enum FilterOp {
 
 impl Executable for FilterOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let list = require_str_list(&inputs, "input")?;
+        let list = optional_str_list_strict(&inputs, "input")?.unwrap_or_default();
 
         let result: Vec<String> = match self {
             FilterOp::Contains(pattern) => list
@@ -167,7 +167,7 @@ pub enum FoldOp {
 
 impl Executable for FoldOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let list = require_str_list(&inputs, "input")?;
+        let list = optional_str_list_strict(&inputs, "input")?.unwrap_or_default();
 
         let output = match self {
             FoldOp::Join(sep) => Value::Str(list.join(sep)),
@@ -214,7 +214,7 @@ pub enum SortOp {
 
 impl Executable for SortOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let mut result = require_str_list(&inputs, "input")?;
+        let mut result = optional_str_list_strict(&inputs, "input")?.unwrap_or_default();
 
         match self {
             SortOp::Ascending => result.sort(),
@@ -245,7 +245,7 @@ pub struct FirstOp;
 
 impl Executable for FirstOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let list = require_str_list(&inputs, "input")?;
+        let list = optional_str_list_strict(&inputs, "input")?.unwrap_or_default();
 
         if let Some(first) = list.first() {
             OutputMap::new()
@@ -276,7 +276,7 @@ pub struct LastOp;
 
 impl Executable for LastOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let list = require_str_list(&inputs, "input")?;
+        let list = optional_str_list_strict(&inputs, "input")?.unwrap_or_default();
 
         if let Some(last) = list.last() {
             OutputMap::new()

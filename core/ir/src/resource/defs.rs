@@ -18,9 +18,6 @@ pub const CODEGEN_INPUT_FILES: &[&str] = &[
     "core/ir/Cargo.toml",
 ];
 
-/// Environment variables that affect codegen outputs.
-pub const CODEGEN_INPUT_ENVS: &[&str] = &["RUSTC_VERSION"];
-
 /// Resource definition for codegen outputs (`build:generated_cli`).
 pub fn codegen_resource_def() -> ResourceDef {
     let mut def = ResourceDef::new(ResourceId::build("generated_cli"));
@@ -31,9 +28,10 @@ pub fn codegen_resource_def() -> ResourceDef {
     for path in CODEGEN_INPUT_FILES {
         def = def.with_input(InputPattern::file(*path));
     }
-    for var in CODEGEN_INPUT_ENVS {
-        def = def.with_input(InputPattern::env(*var));
-    }
+
+    // Hash rustc version directly via command output instead of relying on
+    // a RUSTC_VERSION env var that defaults to empty when unset.
+    def = def.with_input(InputPattern::command_output("rustc", &["--version"]));
 
     def
 }

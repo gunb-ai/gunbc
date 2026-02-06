@@ -38,6 +38,15 @@ pub enum InputPattern {
     /// Like Glob but for exactly one file. Useful for config files
     /// or other single-file inputs.
     File(PathBuf),
+
+    /// Output of a command (e.g., `rustc --version`).
+    ///
+    /// Runs the command at hash time and hashes its stdout.
+    /// Fails hard if the command cannot be executed.
+    CommandOutput {
+        command: String,
+        args: Vec<String>,
+    },
 }
 
 impl InputPattern {
@@ -59,6 +68,16 @@ impl InputPattern {
     /// Create a single file input.
     pub fn file(path: impl Into<PathBuf>) -> Self {
         Self::File(path.into())
+    }
+
+    /// Create a command output input.
+    ///
+    /// The command is run at hash time and its stdout is hashed.
+    pub fn command_output(command: impl Into<String>, args: &[&str]) -> Self {
+        Self::CommandOutput {
+            command: command.into(),
+            args: args.iter().map(|s| (*s).to_string()).collect(),
+        }
     }
 }
 
@@ -221,6 +240,18 @@ mod tests {
     fn test_input_pattern_env() {
         let pat = InputPattern::env("RUSTC_VERSION");
         assert!(matches!(pat, InputPattern::Env(s) if s == "RUSTC_VERSION"));
+    }
+
+    #[test]
+    fn test_input_pattern_command_output() {
+        let pat = InputPattern::command_output("rustc", &["--version"]);
+        match pat {
+            InputPattern::CommandOutput { command, args } => {
+                assert_eq!(command, "rustc");
+                assert_eq!(args, vec!["--version"]);
+            }
+            _ => panic!("expected CommandOutput"),
+        }
     }
 
     #[test]

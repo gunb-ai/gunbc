@@ -93,6 +93,16 @@ pub trait ManagedResource: Clone + Sized {
         compute_key_from_def(self.definition(), manifest)
     }
 
+    /// Compute the freshness key, file count, and input file paths.
+    ///
+    /// The default implementation derives all three from declared inputs.
+    fn compute_key_with_file_list(
+        &self,
+        manifest: &ResourceManifest,
+    ) -> Result<(ContentHash, usize, Vec<String>), ResourceError> {
+        compute_key_with_files(self.definition(), manifest)
+    }
+
     /// Create or regenerate this resource.
     ///
     /// Called when the resource is missing or stale and mode is `Ensure`.
@@ -209,27 +219,46 @@ fn compute_key_from_def(
     def: &ResourceDef,
     manifest: &ResourceManifest,
 ) -> Result<(ContentHash, usize), ResourceError> {
+    let (hash, count, _files) = compute_key_with_files(def, manifest)?;
+    Ok((hash, count))
+}
+
+/// Compute a resource key from its declared inputs, including the list of
+/// input file paths.
+///
+/// Returns `(key, input_file_count, input_files)`.
+pub fn compute_key_with_files(
+    def: &ResourceDef,
+    manifest: &ResourceManifest,
+) -> Result<(ContentHash, usize, Vec<String>), ResourceError> {
     let mut builder = HashBuilder::new();
     let mut file_count: usize = 0;
+    let mut file_paths: Vec<String> = Vec::new();
 
     for input in &def.inputs {
         match input {
             InputPattern::Glob(pattern) => {
                 // Tag the input kind, then delegate to the glob helper (sorted).
                 builder = builder.update(b"glob\0");
-                let (next, count) = builder.update_glob(pattern)?;
+                let (next, count, paths) = builder.update_glob_with_paths(pattern)?;
                 builder = next;
                 file_count += count;
+                file_paths.extend(paths);
             }
             InputPattern::File(path) => {
                 builder = builder.update(b"file\0");
                 builder = builder.update_file(path)?;
                 file_count += 1;
+                file_paths.push(path.to_string_lossy().to_string());
             }
             InputPattern::Env(var) => {
                 let value = std::env::var(var).unwrap_or_default();
                 builder = update_tagged_str(builder, "env", var);
                 builder = update_len_prefixed(builder, &value);
+            }
+            InputPattern::CommandOutput { command, args } => {
+                builder = builder.update(b"cmd\0");
+                builder = builder.update_command_output(command, args)?;
             }
             InputPattern::Resource(dep_id) => {
                 let entry = manifest.get(dep_id).ok_or_else(|| {
@@ -244,7 +273,7 @@ fn compute_key_from_def(
         }
     }
 
-    Ok((builder.finalize(), file_count))
+    Ok((builder.finalize(), file_count, file_paths))
 }
 
 /// Inputs that can be checked via the mtime fast path.
@@ -268,7 +297,7 @@ fn mtime_inputs_from_def(def: &ResourceDef) -> MtimeInputs {
         match input {
             InputPattern::Glob(pattern) => glob_patterns.push(pattern.clone()),
             InputPattern::File(path) => files.push(path.to_string_lossy().to_string()),
-            InputPattern::Env(_) | InputPattern::Resource(_) => {
+            InputPattern::Env(_) | InputPattern::Resource(_) | InputPattern::CommandOutput { .. } => {
                 has_non_file_inputs = true;
             }
         }

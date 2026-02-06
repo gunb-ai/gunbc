@@ -164,6 +164,7 @@ pub fn build_review_phase_graph() -> Dag<ReviewGraphOp> {
         vec![
             port("request", "TransportRequest"),
             port("provider", "String"),
+            port("skip", "Bool"),
         ],
         ReviewGraphOp::Llm(LlmOps::PrepareSimpleRequest),
     ));
@@ -200,6 +201,7 @@ pub fn build_review_phase_graph() -> Dag<ReviewGraphOp> {
         "execute_llm",
         vec![
             port("request", "TransportRequest"),
+            port("skip", "Bool"),
             resource("credential", "Credential", AccessMode::Read),
         ],
         vec![port("response", "TransportResponse")],
@@ -264,6 +266,7 @@ pub fn build_review_phase_graph() -> Dag<ReviewGraphOp> {
         "system_prompt",
     ));
     dag.add_edge(edge("prepare_llm", "request", "execute_llm", "request"));
+    dag.add_edge(edge("prepare_llm", "skip", "execute_llm", "skip"));
     dag.add_edge(edge("prepare_llm", "provider", "resolve_auth", "provider"));
     dag.add_edge(edge("resolve_auth", "service", "credential_env", "service"));
     dag.add_edge(edge("resolve_auth", "env_var", "credential_env", "env_var"));
@@ -321,6 +324,7 @@ pub fn build_inline_review_graph() -> Dag<ReviewGraphOp> {
         vec![
             port("request", "TransportRequest"),
             port("provider", "String"),
+            port("skip", "Bool"),
         ],
         ReviewGraphOp::Llm(LlmOps::PrepareSimpleRequest),
     ));
@@ -357,6 +361,7 @@ pub fn build_inline_review_graph() -> Dag<ReviewGraphOp> {
         "execute_llm",
         vec![
             port("request", "TransportRequest"),
+            port("skip", "Bool"),
             resource("credential", "Credential", AccessMode::Read),
         ],
         vec![port("response", "TransportResponse")],
@@ -396,6 +401,7 @@ pub fn build_inline_review_graph() -> Dag<ReviewGraphOp> {
         "system_prompt",
     ));
     dag.add_edge(edge("prepare_llm", "request", "execute_llm", "request"));
+    dag.add_edge(edge("prepare_llm", "skip", "execute_llm", "skip"));
     dag.add_edge(edge("prepare_llm", "provider", "resolve_auth", "provider"));
     dag.add_edge(edge("resolve_auth", "service", "credential_env", "service"));
     dag.add_edge(edge("resolve_auth", "env_var", "credential_env", "env_var"));
@@ -488,7 +494,7 @@ pub fn build_diff_review_graph_with(config: ReviewPipelineConfig) -> Dag<ReviewG
             optional("base_ref", "String"),
             port("repo_path", "String"),
         ],
-        vec![port("request", "TransportRequest")],
+        vec![port("request", "TransportRequest"), port("skip", "Bool")],
         ReviewGraphOp::Git(GitOps::PrepareDiff {
             base_ref: default_branch,
             extensions: vec![],
@@ -498,7 +504,7 @@ pub fn build_diff_review_graph_with(config: ReviewPipelineConfig) -> Dag<ReviewG
     // Execute git diff (I/O boundary)
     dag.add_node(Node::opaque(
         "execute_diff",
-        vec![port("request", "TransportRequest")],
+        vec![port("request", "TransportRequest"), port("skip", "Bool")],
         vec![port("response", "TransportResponse")],
         ReviewGraphOp::Transport(TransportOps::Execute),
     ));
@@ -553,6 +559,7 @@ pub fn build_diff_review_graph_with(config: ReviewPipelineConfig) -> Dag<ReviewG
         vec![
             port("request", "TransportRequest"),
             port("provider", "String"),
+            port("skip", "Bool"),
         ],
         ReviewGraphOp::Llm(LlmOps::PrepareSimpleRequest),
     ));
@@ -586,6 +593,7 @@ pub fn build_diff_review_graph_with(config: ReviewPipelineConfig) -> Dag<ReviewG
         "execute_llm",
         vec![
             port("request", "TransportRequest"),
+            port("skip", "Bool"),
             resource("credential", "Credential", AccessMode::Read),
         ],
         vec![port("response", "TransportResponse")],
@@ -626,6 +634,7 @@ pub fn build_diff_review_graph_with(config: ReviewPipelineConfig) -> Dag<ReviewG
 
     // Git diff flow
     dag.add_edge(edge("prepare_diff", "request", "execute_diff", "request"));
+    dag.add_edge(edge("prepare_diff", "skip", "execute_diff", "skip"));
     dag.add_edge(edge("execute_diff", "response", "parse_diff", "response"));
 
     // Diff → artifact formatting
@@ -664,6 +673,7 @@ pub fn build_diff_review_graph_with(config: ReviewPipelineConfig) -> Dag<ReviewG
         "system_prompt",
     ));
     dag.add_edge(edge("prepare_llm", "request", "execute_llm", "request"));
+    dag.add_edge(edge("prepare_llm", "skip", "execute_llm", "skip"));
     dag.add_edge(edge("resolve_auth", "service", "credential_env", "service"));
     dag.add_edge(edge("resolve_auth", "env_var", "credential_env", "env_var"));
     dag.add_edge(edge("resolve_auth", "scheme", "credential_env", "scheme"));
@@ -759,6 +769,7 @@ pub fn build_multi_source_review_graph_with(config: ReviewPipelineConfig) -> Dag
         vec![
             port("request", "TransportRequest"),
             port("provider", "String"),
+            port("skip", "Bool"),
         ],
         ReviewGraphOp::Llm(LlmOps::PrepareSimpleRequest),
     ));
@@ -792,6 +803,7 @@ pub fn build_multi_source_review_graph_with(config: ReviewPipelineConfig) -> Dag
         "execute_llm",
         vec![
             port("request", "TransportRequest"),
+            port("skip", "Bool"),
             resource("credential", "Credential", AccessMode::Read),
         ],
         vec![port("response", "TransportResponse")],
@@ -851,6 +863,7 @@ pub fn build_multi_source_review_graph_with(config: ReviewPipelineConfig) -> Dag
         "system_prompt",
     ));
     dag.add_edge(edge("prepare_llm", "request", "execute_llm", "request"));
+    dag.add_edge(edge("prepare_llm", "skip", "execute_llm", "skip"));
     dag.add_edge(edge("resolve_auth", "service", "credential_env", "service"));
     dag.add_edge(edge("resolve_auth", "env_var", "credential_env", "env_var"));
     dag.add_edge(edge("resolve_auth", "scheme", "credential_env", "scheme"));

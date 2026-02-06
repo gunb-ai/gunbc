@@ -125,7 +125,7 @@ fn compute_key(def: &ResourceDef) -> ContentHash {
 ```
 
 **Rationale:** No "narrow vs wide" choice needed. The inputs are the inputs.
-If you want to invalidate on toolchain changes, declare `Env("RUSTC_VERSION")`.
+If you want to invalidate on toolchain changes, declare `CommandOutput("rustc", ["--version"])`.
 
 ### 3.2 Staleness Propagation: Falls Out of DAG Edges
 

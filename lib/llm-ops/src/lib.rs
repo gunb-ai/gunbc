@@ -26,8 +26,9 @@ pub mod graph;
 pub mod graph_mock;
 
 use gunbc_exec::{
-    optional_str_strict, propagate_skipped, require_response, require_str, ExecError, Executable,
-    IntoExecResult, OutputMap, TransportResponseExt,
+    optional_int_strict, optional_json_strict, optional_str_strict, propagate_skipped,
+    require_response, require_str, ExecError, Executable, IntoExecResult, OutputMap,
+    TransportResponseExt,
 };
 use gunbc_ir::transport::llm::{self, ChatMessage, ChatRequest, MessageContent, Role};
 use gunbc_ir::transport::TransportRequest;
@@ -181,14 +182,14 @@ fn execute_prepare_chat_request(
     // Build the chat request
     let mut chat = ChatRequest::new(model, messages);
 
-    if let Some(Value::Json(serde_json::Value::Number(n))) = inputs.get("temperature") {
-        if let Some(t) = n.as_f64() {
+    if let Some(json) = optional_json_strict(&inputs, "temperature")? {
+        if let Some(t) = json.as_f64() {
             chat = chat.temperature(t);
         }
     }
 
-    if let Some(Value::Int(n)) = inputs.get("max_tokens") {
-        chat = chat.max_tokens(*n as u64);
+    if let Some(n) = optional_int_strict(&inputs, "max_tokens")? {
+        chat = chat.max_tokens(n as u64);
     }
 
     // Convert to REST request via provider-specific builder

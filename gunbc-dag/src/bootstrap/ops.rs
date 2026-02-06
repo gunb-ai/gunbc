@@ -3,7 +3,9 @@
 //! All I/O happens through explicit `TransportOps::Execute` nodes in the DAG.
 //! The ops here are PURE (no I/O) - they prepare requests and parse responses.
 
-use gunbc_exec::{propagate_skipped, require_response, ExecError, Executable, OutputMap};
+use gunbc_exec::{
+    optional_str_list_strict, propagate_skipped, require_response, ExecError, Executable, OutputMap,
+};
 use gunbc_ir::transport::{ShellRequest, TransportResponse};
 use gunbc_ir::Value;
 use std::collections::HashMap;
@@ -108,8 +110,9 @@ fn execute_parse_scan_result(
 /// - All registered tools with their entrypoint parameters
 /// - Meta targets (test, check, fmt, clippy) with variants
 fn execute_generate_makefile(
-    _inputs: HashMap<String, Value>,
+    inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
+    let _ = optional_str_list_strict(&inputs, "crate_names")?;
     use crate::makegen::{registry::ToolRegistry, render::render_makefile};
 
     let registry = ToolRegistry::default_registry();
@@ -125,8 +128,9 @@ fn execute_generate_makefile(
 /// - Section comments showing provenance (from the-gunbai pattern)
 /// - Universal categories (editor, OS, secrets, generators)
 fn execute_generate_gitignore(
-    _inputs: HashMap<String, Value>,
+    inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
+    let _ = optional_str_list_strict(&inputs, "crate_names")?;
     use crate::makegen::{gitignore::render_gitignore, registry::default_build_config};
 
     let config = default_build_config();

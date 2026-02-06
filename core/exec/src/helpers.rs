@@ -146,6 +146,7 @@ pub fn optional_str_strict<'a>(
 ) -> Result<Option<&'a str>, ExecError> {
     match inputs.get(key) {
         None => Ok(None),
+        Some(Value::Skipped) => Ok(None),
         Some(v) => v.as_str().map(Some).ok_or_else(|| {
             ExecError::new(format!("invalid '{}' input: expected String", key))
         }),
@@ -169,6 +170,7 @@ pub fn optional_json_strict<'a>(
 ) -> Result<Option<&'a serde_json::Value>, ExecError> {
     match inputs.get(key) {
         None => Ok(None),
+        Some(Value::Skipped) => Ok(None),
         Some(v) => v.as_json().map(Some).ok_or_else(|| {
             ExecError::new(format!("invalid '{}' input: expected Json", key))
         }),
@@ -178,6 +180,23 @@ pub fn optional_json_strict<'a>(
 /// Extract an optional integer input.
 pub fn optional_int(inputs: &HashMap<String, Value>, key: &str) -> Option<i64> {
     inputs.get(key).and_then(|v| v.as_int())
+}
+
+/// Extract an optional integer input (strict).
+///
+/// Missing key → Ok(None). Present but wrong type → Err.
+pub fn optional_int_strict(
+    inputs: &HashMap<String, Value>,
+    key: &str,
+) -> Result<Option<i64>, ExecError> {
+    match inputs.get(key) {
+        None => Ok(None),
+        Some(Value::Skipped) => Ok(None),
+        Some(v) => v
+            .as_int()
+            .map(Some)
+            .ok_or_else(|| ExecError::new(format!("invalid '{}' input: expected Int", key))),
+    }
 }
 
 /// Extract an optional boolean input.
@@ -194,6 +213,7 @@ pub fn optional_bool_strict(
 ) -> Result<Option<bool>, ExecError> {
     match inputs.get(key) {
         None => Ok(None),
+        Some(Value::Skipped) => Ok(None),
         Some(v) => v.as_bool().map(Some).ok_or_else(|| {
             ExecError::new(format!("invalid '{}' input: expected Bool", key))
         }),
@@ -214,6 +234,7 @@ pub fn optional_str_list_strict(
 ) -> Result<Option<Vec<String>>, ExecError> {
     match inputs.get(key) {
         None => Ok(None),
+        Some(Value::Skipped) => Ok(None),
         Some(v) => v.as_str_list().map(Some).ok_or_else(|| {
             ExecError::new(format!("invalid '{}' input: expected StringList", key))
         }),
@@ -237,8 +258,28 @@ pub fn optional_map_str_str_strict(
 ) -> Result<Option<BTreeMap<String, String>>, ExecError> {
     match inputs.get(key) {
         None => Ok(None),
+        Some(Value::Skipped) => Ok(None),
         Some(v) => v.as_map_str_str().map(Some).ok_or_else(|| {
             ExecError::new(format!("invalid '{}' input: expected Map<String,String>", key))
+        }),
+    }
+}
+
+/// Extract an optional transport response input (strict).
+///
+/// Missing key → Ok(None). Present but wrong type → Err.
+pub fn optional_response_strict<'a>(
+    inputs: &'a HashMap<String, Value>,
+    key: &str,
+) -> Result<Option<&'a TransportResponse>, ExecError> {
+    match inputs.get(key) {
+        None => Ok(None),
+        Some(Value::Skipped) => Ok(None),
+        Some(v) => v.as_response().map(Some).ok_or_else(|| {
+            ExecError::new(format!(
+                "invalid '{}' input: expected TransportResponse",
+                key
+            ))
         }),
     }
 }
@@ -310,6 +351,9 @@ pub trait InputsExt {
     /// Extract an optional integer input.
     fn optional_int(&self, key: &str) -> Option<i64>;
 
+    /// Extract an optional integer input (strict).
+    fn optional_int_strict(&self, key: &str) -> Result<Option<i64>, ExecError>;
+
     /// Extract an optional string list input.
     fn optional_str_list(&self, key: &str) -> Option<Vec<String>>;
 
@@ -324,6 +368,12 @@ pub trait InputsExt {
         &self,
         key: &str,
     ) -> Result<Option<BTreeMap<String, String>>, ExecError>;
+
+    /// Extract an optional transport response input (strict).
+    fn optional_response_strict(
+        &self,
+        key: &str,
+    ) -> Result<Option<&TransportResponse>, ExecError>;
 }
 
 impl InputsExt for HashMap<String, Value> {
@@ -391,6 +441,10 @@ impl InputsExt for HashMap<String, Value> {
         self.get(key).and_then(|v| v.as_int())
     }
 
+    fn optional_int_strict(&self, key: &str) -> Result<Option<i64>, ExecError> {
+        optional_int_strict(self, key)
+    }
+
     fn optional_str_list(&self, key: &str) -> Option<Vec<String>> {
         optional_str_list(self, key)
     }
@@ -408,6 +462,13 @@ impl InputsExt for HashMap<String, Value> {
         key: &str,
     ) -> Result<Option<BTreeMap<String, String>>, ExecError> {
         optional_map_str_str_strict(self, key)
+    }
+
+    fn optional_response_strict(
+        &self,
+        key: &str,
+    ) -> Result<Option<&TransportResponse>, ExecError> {
+        optional_response_strict(self, key)
     }
 }
 
@@ -681,6 +742,22 @@ mod tests {
     }
 
     #[test]
+    fn optional_int_strict_wrong_type_errors() {
+        let mut inputs = HashMap::new();
+        inputs.insert("count".to_string(), Value::Str("nope".to_string()));
+        let err = optional_int_strict(&inputs, "count").unwrap_err();
+        assert!(err.0.contains("expected Int"));
+    }
+
+    #[test]
+    fn optional_response_strict_wrong_type_errors() {
+        let mut inputs = HashMap::new();
+        inputs.insert("response".to_string(), Value::Str("nope".to_string()));
+        let err = optional_response_strict(&inputs, "response").unwrap_err();
+        assert!(err.0.contains("expected TransportResponse"));
+    }
+
+    #[test]
     fn output_map_builds_correctly() {
         let map = OutputMap::new()
             .str("name", "hello")
@@ -805,5 +882,14 @@ mod tests {
 
         assert_eq!(inputs.optional_int("count"), Some(42));
         assert_eq!(inputs.optional_int("missing"), None);
+    }
+
+    #[test]
+    fn inputs_ext_optional_int_strict() {
+        let mut inputs = HashMap::new();
+        inputs.insert("count".to_string(), Value::Int(42));
+
+        assert_eq!(inputs.optional_int_strict("count").unwrap(), Some(42));
+        assert_eq!(inputs.optional_int_strict("missing").unwrap(), None);
     }
 }

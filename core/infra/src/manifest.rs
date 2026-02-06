@@ -44,6 +44,11 @@ pub struct ManifestEntry {
     /// Files this resource produced (for cleanup/reference).
     #[serde(default)]
     pub outputs: Vec<PathBuf>,
+
+    /// Input file paths that were hashed when this entry was created.
+    /// Used for diagnostics and debugging stale resources.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_files: Option<Vec<String>>,
 }
 
 impl ManifestEntry {
@@ -54,12 +59,19 @@ impl ManifestEntry {
             created_at: current_timestamp_millis(),
             input_file_count,
             outputs: Vec::new(),
+            input_files: None,
         }
     }
 
     /// Create an entry with outputs.
     pub fn with_outputs(mut self, outputs: Vec<PathBuf>) -> Self {
         self.outputs = outputs;
+        self
+    }
+
+    /// Create an entry with recorded input file paths.
+    pub fn with_input_files(mut self, files: Vec<String>) -> Self {
+        self.input_files = Some(files);
         self
     }
 

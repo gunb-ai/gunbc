@@ -9,6 +9,7 @@ use std::fmt;
 use std::fs;
 use std::io;
 use std::path::Path;
+use std::process::Command;
 
 /// A content hash representing the state of a resource's inputs.
 ///
@@ -162,6 +163,70 @@ impl HashBuilder {
         Ok((self, count))
     }
 
+    /// Add multiple files matching a glob pattern to the hash, returning file paths.
+    ///
+    /// Like `update_glob`, but also returns the list of matched file paths.
+    pub fn update_glob_with_paths(mut self, pattern: &str) -> io::Result<(Self, usize, Vec<String>)> {
+        // Hash the glob pattern itself so "no matches" is a distinct contribution
+        self.hasher.update(b"glob:");
+        self.hasher.update(pattern.as_bytes());
+        self.hasher.update([0u8]);
+
+        let entries: Result<Vec<_>, _> = glob::glob(pattern)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?
+            .collect();
+
+        let mut paths: Vec<_> = entries.map_err(|e| {
+            io::Error::other(
+                format!("glob traversal error: {}", e),
+            )
+        })?;
+
+        paths.sort();
+
+        let count = paths.len();
+        let path_strings: Vec<String> = paths.iter().map(|p| p.to_string_lossy().to_string()).collect();
+        for path in paths {
+            self = self.update_file(&path)?;
+        }
+
+        Ok((self, count, path_strings))
+    }
+
+    /// Add the output of a command to the hash.
+    ///
+    /// Runs the command, captures stdout, and hashes it.
+    /// Format: "cmd:" tag + command name + NUL + stdout bytes
+    ///
+    /// Fails if the command cannot be executed or exits with non-zero status.
+    pub fn update_command_output(mut self, command: &str, args: &[String]) -> io::Result<Self> {
+        let output = Command::new(command)
+            .args(args)
+            .output()
+            .map_err(|e| {
+                io::Error::new(
+                    e.kind(),
+                    format!("failed to run '{}': {}", command, e),
+                )
+            })?;
+
+        if !output.status.success() {
+            return Err(io::Error::other(format!(
+                "'{}' exited with status {}: {}",
+                command,
+                output.status,
+                String::from_utf8_lossy(&output.stderr)
+            )));
+        }
+
+        self.hasher.update(b"cmd:");
+        self.hasher.update(command.as_bytes());
+        self.hasher.update([0u8]);
+        self.hasher.update(&output.stdout);
+
+        Ok(self)
+    }
+
     /// Finalize and return the computed hash.
     pub fn finalize(self) -> ContentHash {
         ContentHash(hex::encode(self.hasher.finalize()))
@@ -252,6 +317,39 @@ mod tests {
         let hash = ContentHash::empty();
         assert_eq!(hash.as_str().len(), 64);
         assert!(hash.as_str().chars().all(|c| c == '0'));
+    }
+
+    #[test]
+    fn test_update_command_output_deterministic() {
+        let h1 = HashBuilder::new()
+            .update_command_output("echo", &["hello".to_string()])
+            .unwrap()
+            .finalize();
+        let h2 = HashBuilder::new()
+            .update_command_output("echo", &["hello".to_string()])
+            .unwrap()
+            .finalize();
+        assert_eq!(h1, h2);
+    }
+
+    #[test]
+    fn test_update_command_output_different_args() {
+        let h1 = HashBuilder::new()
+            .update_command_output("echo", &["hello".to_string()])
+            .unwrap()
+            .finalize();
+        let h2 = HashBuilder::new()
+            .update_command_output("echo", &["world".to_string()])
+            .unwrap()
+            .finalize();
+        assert_ne!(h1, h2);
+    }
+
+    #[test]
+    fn test_update_command_output_missing_command() {
+        let err = HashBuilder::new()
+            .update_command_output("nonexistent_command_12345", &[]);
+        assert!(err.is_err());
     }
 
     #[test]

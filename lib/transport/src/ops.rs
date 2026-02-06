@@ -128,7 +128,7 @@ mod tests {
             .expect("skip should short-circuit");
 
         assert_eq!(result.get("skip"), Some(&Value::Bool(true)));
-        assert!(!result.contains_key("response"));
+        assert_eq!(result.get("response"), Some(&Value::Skipped));
     }
 
     #[test]
@@ -146,6 +146,7 @@ mod tests {
         let mut inputs = HashMap::new();
         inputs.insert("request".to_string(), Value::Request(request));
         inputs.insert("res:credential".to_string(), cred_value);
+        inputs.insert("skip".to_string(), Value::Bool(false));
 
         let result = TransportOps::Execute.execute(inputs);
         // The request will fail (no real server), but we can verify the credential was
@@ -171,6 +172,7 @@ mod tests {
         let mut inputs = HashMap::new();
         inputs.insert("request".to_string(), Value::Request(request));
         inputs.insert("res:credential".to_string(), cred_value);
+        inputs.insert("skip".to_string(), Value::Bool(false));
 
         let result = TransportOps::Execute.execute(inputs);
         assert!(result.is_err()); // HTTP call fails
@@ -186,6 +188,7 @@ mod tests {
 
         let mut inputs = HashMap::new();
         inputs.insert("request".to_string(), Value::Request(request));
+        inputs.insert("skip".to_string(), Value::Bool(false));
 
         let result = TransportOps::Execute
             .execute(inputs)

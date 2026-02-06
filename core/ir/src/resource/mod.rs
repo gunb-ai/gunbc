@@ -60,12 +60,12 @@ pub mod state;
 
 // Re-exports from submodules
 pub use def::{DagRef, InputPattern, ResourceDef, ResourceScope};
-pub use defs::{codegen_resource_def, CODEGEN_INPUT_ENVS, CODEGEN_INPUT_FILES, CODEGEN_INPUT_GLOBS};
+pub use defs::{codegen_resource_def, CODEGEN_INPUT_FILES, CODEGEN_INPUT_GLOBS};
 pub use handle::{HandleParseError, ResourceHandle};
 pub use gunbc_infra::hash::{ContentHash, HashBuilder};
 pub use managed::{
-    check_manifest_freshness, update_resource_manifest, FreshnessOptions, ManagedResource,
-    ManifestFreshness, ManifestUpdateError, ResourceError, SimpleResource,
+    check_manifest_freshness, compute_key_with_files, update_resource_manifest, FreshnessOptions,
+    ManagedResource, ManifestFreshness, ManifestUpdateError, ResourceError, SimpleResource,
 };
 pub use gunbc_infra::manifest::{ManifestEntry, ResourceManifest, DEFAULT_MANIFEST_PATH};
 pub use registry::{ResolutionError, ResourceRegistry};

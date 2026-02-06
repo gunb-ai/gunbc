@@ -244,8 +244,8 @@ mod tests {
             NodeBody::SubDag(dag) => {
                 // 9 nodes in the pipeline
                 assert_eq!(dag.nodes.len(), 9);
-                // 8 edges
-                assert_eq!(dag.edges.len(), 8);
+                // 11 edges
+                assert_eq!(dag.edges.len(), 11);
             }
             _ => panic!("Expected SubDag"),
         }

@@ -228,8 +228,8 @@ mod tests {
         let dag = build_testgen_graph_for_test().expect("graph should build");
         // 2 targets x 6 nodes = 12 nodes
         assert_eq!(dag.nodes.len(), 12);
-        // 2 targets x 7 edges = 14 edges
-        assert_eq!(dag.edges.len(), 14);
+        // 2 targets x 8 edges = 16 edges
+        assert_eq!(dag.edges.len(), 16);
     }
 
     #[test]
