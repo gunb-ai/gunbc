@@ -65,6 +65,7 @@ impl fmt::Display for ResourceId {
     }
 }
 
+pub mod emit_manifest;
 pub mod freshness;
 pub mod hash;
 pub mod manifest;

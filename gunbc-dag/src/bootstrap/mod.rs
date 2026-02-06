@@ -20,6 +20,7 @@ pub use ops::BootstrapOp;
     description = "Generate Makefile and .gitignore",
     builder = "build_bootstrap_graph",
     import = "use gunbc_bootstrap::build_bootstrap_graph;",
+    mock_spec = "gunbc_dag::bootstrap::graph_mock::bootstrap_mock_spec()",
     returns_result
 )]
 pub fn bootstrap_tool() {}

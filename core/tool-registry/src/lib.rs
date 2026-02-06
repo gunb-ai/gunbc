@@ -51,6 +51,9 @@ pub struct ToolRegistration {
     pub enable_step_mode: bool,
     /// Custom import line (if different from default crate:: pattern)
     pub custom_import: Option<&'static str>,
+    /// Fully-qualified Rust expression for the MockSpec function.
+    /// Used by generated CLIs for `--dry-run` boundary mocking.
+    pub mock_spec_call: Option<&'static str>,
 }
 
 impl ToolRegistration {

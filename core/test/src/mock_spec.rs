@@ -241,6 +241,25 @@ impl MockSpec {
         self
     }
 
+    /// Convert boundary and transport mocks to BoundaryMocks for CLI dry-run.
+    ///
+    /// Excludes input_mocks (CLI inputs come from command-line flags, not MockSpec).
+    /// Use this in generated CLI binaries for `--dry-run` mode.
+    pub fn to_dry_run_mocks(&self) -> BoundaryMocks {
+        let mut mocks = BoundaryMocks::new();
+        for bm in &self.boundary_mocks {
+            if let Some(seq) = &bm.sequence {
+                mocks.set_sequence(&bm.node, &bm.port, bm.value.clone(), seq.clone());
+            } else {
+                mocks.set_value(&bm.node, &bm.port, bm.value.clone());
+            }
+        }
+        for tm in &self.transport_mocks {
+            mocks.set_value(&tm.node, &tm.port, tm.value.clone());
+        }
+        mocks
+    }
+
     /// Convert this MockSpec into BoundaryMocks suitable for `execute_with_mode`.
     ///
     /// Maps boundary_mocks + transport_mocks to output mocks and input_mocks to

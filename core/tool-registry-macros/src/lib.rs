@@ -17,6 +17,7 @@ use syn::{parse_macro_input, AttributeArgs, ItemFn, Lit, Meta, NestedMeta};
 /// - `args = "..."` — Arguments to pass to graph builder
 /// - `import = "..."` — Custom import line
 /// - `success_port = "..."` — Output port to check for success
+/// - `mock_spec = "..."` — Fully-qualified MockSpec function call for dry-run mocking
 /// - `returns_result` — Graph builder returns `Result<Dag, BuilderError>`
 /// - `enable_step_mode` — Generate step subcommand for CI
 /// - `skip` — Skip registration (emit function only, no inventory submit)
@@ -45,6 +46,7 @@ pub fn tool_target(args: TokenStream, input: TokenStream) -> TokenStream {
     let mut builder_args: Option<syn::LitStr> = None;
     let mut custom_import: Option<syn::LitStr> = None;
     let mut success_port: Option<syn::LitStr> = None;
+    let mut mock_spec: Option<syn::LitStr> = None;
     let mut returns_result = false;
     let mut enable_step_mode = false;
     let mut skip = false;
@@ -129,6 +131,18 @@ pub fn tool_target(args: TokenStream, input: TokenStream) -> TokenStream {
                             .into();
                         }
                     }
+                    Some("mock_spec") => {
+                        if let Lit::Str(s) = nv.lit {
+                            mock_spec = Some(s);
+                        } else {
+                            return syn::Error::new_spanned(
+                                nv,
+                                "mock_spec must be a string literal",
+                            )
+                            .to_compile_error()
+                            .into();
+                        }
+                    }
                     _ => {
                         return syn::Error::new_spanned(nv, "unknown tool_target argument")
                             .to_compile_error()
@@ -167,6 +181,7 @@ pub fn tool_target(args: TokenStream, input: TokenStream) -> TokenStream {
             || builder_args.is_some()
             || custom_import.is_some()
             || success_port.is_some()
+            || mock_spec.is_some()
             || returns_result
             || enable_step_mode
         {
@@ -241,6 +256,11 @@ pub fn tool_target(args: TokenStream, input: TokenStream) -> TokenStream {
         None => quote!(None),
     };
 
+    let mock_spec_tokens = match mock_spec {
+        Some(s) => quote!(Some(#s)),
+        None => quote!(None),
+    };
+
     let expanded = quote! {
         #input_fn
 
@@ -256,6 +276,7 @@ pub fn tool_target(args: TokenStream, input: TokenStream) -> TokenStream {
                 success_port: #success_port_tokens,
                 enable_step_mode: #enable_step_mode,
                 custom_import: #import_tokens,
+                mock_spec_call: #mock_spec_tokens,
             }
         }
     };

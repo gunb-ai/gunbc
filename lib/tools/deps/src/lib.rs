@@ -41,7 +41,6 @@ pub mod platform;
 pub mod tool_upsert;
 pub mod upsert;
 
-#[cfg(test)]
 pub mod graph_mock;
 
 pub use env::PlatformEnv;
@@ -72,6 +71,7 @@ pub use upsert::{UpsertPhase, UpsertResult};
     description = "Install tool dependencies",
     builder = "build_deps_graph",
     import = "use gunbc_deps::build_deps_graph;",
+    mock_spec = "gunbc_deps::graph_mock::deps_mock_spec()",
     returns_result
 )]
 pub fn deps_tool() {}

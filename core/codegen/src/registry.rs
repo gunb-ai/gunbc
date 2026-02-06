@@ -301,6 +301,7 @@ impl ToolDef {
                 returns_result: false,
                 success_port: None,
                 enable_step_mode: false,
+                mock_spec_call: None,
             },
             entrypoints: vec![],
             boundaries: vec![],
@@ -370,6 +371,16 @@ impl ToolDef {
         self
     }
 
+    /// Set the mock_spec_call expression for dry-run boundary mocking.
+    ///
+    /// When set, generated CLIs call this expression to get a MockSpec
+    /// instead of using inline boundary values. This makes MockSpec the
+    /// single source of truth for boundary mock values.
+    pub fn mock_spec_call(mut self, call: &str) -> Self {
+        self.meta.mock_spec_call = Some(call.to_string());
+        self
+    }
+
     pub fn boundary(mut self, node_id: &str, mock_outputs: Vec<(&str, &str)>) -> Self {
         self.boundaries.push(CliBoundary {
             node_id: node_id.to_string(),
@@ -397,6 +408,7 @@ pub fn all_tools() -> Vec<ToolDef> {
         .returns_result()
         .invocation(cargo::CargoInvocation::composed("gist", "gist"))
         .import("use gunbc_gist::{build_gist_graph, GistMode};")
+        .mock_spec_call("gunbc_gist::graph_mock::gist_snapshot_mock_spec()")
         .entrypoint(
             CliEntrypoint::new("repo_path", "String")
                 .short('r')
@@ -415,43 +427,6 @@ pub fn all_tools() -> Vec<ToolDef> {
             CliEntrypoint::new("public", "Bool")
                 .short('p')
                 .help("Make gist public"),
-        )
-        .boundary(
-            "fs_env",
-            vec![
-                ("fs:write", "gunbc_primitives::filename::FilesystemHandle::cross_platform(gunbc_primitives::filename::Scope::Write).into()"),
-            ],
-        )
-        .boundary(
-            "clock_env",
-            vec![
-                ("clock", "gunbc_ir::Timestamp::from_system_time(std::time::SystemTime::UNIX_EPOCH).into()"),
-            ],
-        )
-        .boundary(
-            "execute_list_files",
-            vec![
-                ("response", "Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse::ok(\"src/main.rs\\n\")))"),
-            ],
-        )
-        .boundary(
-            "execute_read_files",
-            vec![
-                ("response", "Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse::ok(\"===GUNBC_FILE:src/main.rs===\\nfn main() {}\\n\")))"),
-            ],
-        )
-        .boundary(
-            "execute_current_branch",
-            vec![
-                ("response", "Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse::ok(\"main\\n\")))"),
-            ],
-        )
-        .boundary(
-            "execute_gist",
-            vec![
-                ("url", "Value::Str(\"<DRY-RUN: gist URL>\".to_string())"),
-                ("response", "Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse::ok(\"\")))"),
-            ],
         ), // gist creates a remote gist, no local output
 
         // gunbc-gist-diff (diff mode variant - same package, different binary)
@@ -465,6 +440,7 @@ pub fn all_tools() -> Vec<ToolDef> {
         .returns_result()
         .invocation(cargo::CargoInvocation::composed("gist-diff", "gist"))
         .import("use gunbc_gist::{build_gist_graph, GistMode};")
+        .mock_spec_call("gunbc_gist::graph_mock::gist_diff_mock_spec()")
         .entrypoint(
             CliEntrypoint::new("repo_path", "String")
                 .short('r')
@@ -490,37 +466,6 @@ pub fn all_tools() -> Vec<ToolDef> {
             CliEntrypoint::new("public", "Bool")
                 .short('p')
                 .help("Make gist public"),
-        )
-        .boundary(
-            "fs_env",
-            vec![
-                ("fs:write", "gunbc_primitives::filename::FilesystemHandle::cross_platform(gunbc_primitives::filename::Scope::Write).into()"),
-            ],
-        )
-        .boundary(
-            "clock_env",
-            vec![
-                ("clock", "gunbc_ir::Timestamp::from_system_time(std::time::SystemTime::UNIX_EPOCH).into()"),
-            ],
-        )
-        .boundary(
-            "execute_diff",
-            vec![
-                ("response", "Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse::ok(\"diff --git a/src/main.rs b/src/main.rs\\n--- a/src/main.rs\\n+++ b/src/main.rs\\n@@ -1 +1,2 @@\\n fn main() {}\\n+// changed\\n\")))"),
-            ],
-        )
-        .boundary(
-            "execute_current_branch",
-            vec![
-                ("response", "Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse::ok(\"main\\n\")))"),
-            ],
-        )
-        .boundary(
-            "execute_gist",
-            vec![
-                ("url", "Value::Str(\"<DRY-RUN: gist URL>\".to_string())"),
-                ("response", "Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse::ok(\"\")))"),
-            ],
         ), // gist-diff creates a remote gist from branch diff
 
         // gunbc-gist-recent (recent mode variant - same package, different binary)
@@ -534,6 +479,7 @@ pub fn all_tools() -> Vec<ToolDef> {
         .returns_result()
         .invocation(cargo::CargoInvocation::composed("gist-recent", "gist"))
         .import("use gunbc_gist::{build_gist_graph, GistMode};")
+        .mock_spec_call("gunbc_gist::graph_mock::gist_recent_mock_spec()")
         .entrypoint(
             CliEntrypoint::new("repo_path", "String")
                 .short('r')
@@ -552,43 +498,6 @@ pub fn all_tools() -> Vec<ToolDef> {
             CliEntrypoint::new("public", "Bool")
                 .short('p')
                 .help("Make gist public"),
-        )
-        .boundary(
-            "fs_env",
-            vec![
-                ("fs:write", "gunbc_primitives::filename::FilesystemHandle::cross_platform(gunbc_primitives::filename::Scope::Write).into()"),
-            ],
-        )
-        .boundary(
-            "clock_env",
-            vec![
-                ("clock", "gunbc_ir::Timestamp::from_system_time(std::time::SystemTime::UNIX_EPOCH).into()"),
-            ],
-        )
-        .boundary(
-            "execute_rev_list",
-            vec![
-                ("response", "Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse::ok(\"abc123def456\\n\")))"),
-            ],
-        )
-        .boundary(
-            "execute_diff",
-            vec![
-                ("response", "Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse::ok(\"diff --git a/src/main.rs b/src/main.rs\\n--- a/src/main.rs\\n+++ b/src/main.rs\\n@@ -1 +1,2 @@\\n fn main() {}\\n+// changed\\n\")))"),
-            ],
-        )
-        .boundary(
-            "execute_current_branch",
-            vec![
-                ("response", "Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse::ok(\"main\\n\")))"),
-            ],
-        )
-        .boundary(
-            "execute_gist",
-            vec![
-                ("url", "Value::Str(\"<DRY-RUN: gist URL>\".to_string())"),
-                ("response", "Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse::ok(\"\")))"),
-            ],
         ), // gist-recent creates a remote gist from recent changes
 
         // gunbc-makegen (uses DagBuilder - returns Result)
@@ -602,6 +511,7 @@ pub fn all_tools() -> Vec<ToolDef> {
         .returns_result()
         .invocation(cargo::CargoInvocation::composed("makegen", "dag"))
         .import("use gunbc_makegen::build_makegen_graph;")
+        .mock_spec_call("gunbc_dag::makegen::graph_mock::makegen_mock_spec()")
         // Declarative DAG definition (POC for graph generation)
         .dag(makegen_dag())
         .entrypoint(
@@ -610,14 +520,6 @@ pub fn all_tools() -> Vec<ToolDef> {
                 .default("Makefile")
                 .help("Output Makefile path")
                 .make_var("OUTPUT"),
-        )
-        .boundary(
-            "execute_transport",
-            vec![
-                ("response", "Value::Response(gunbc_ir::transport::TransportResponse::File(gunbc_ir::transport::FileResponse { path: \"Makefile\".to_string(), operation: gunbc_ir::transport::FileOp::Write, success: true, content: None, exists: None, error: None }))"),
-                ("written_path", "Value::Str(\"Makefile\".to_string())"),
-                ("content", "Value::Str(\"<DRY-RUN>\".to_string())"),
-            ],
         ),
 
         // gunbc-deps (uses DagBuilder - returns Result)
@@ -631,30 +533,13 @@ pub fn all_tools() -> Vec<ToolDef> {
         .returns_result()
         .invocation(cargo::CargoInvocation::standalone("deps"))
         .import("use gunbc_deps::build_deps_graph;")
+        .mock_spec_call("gunbc_deps::graph_mock::deps_mock_spec()")
         .entrypoint(
             CliEntrypoint::new("manifest_path", "String")
                 .short('m')
                 .default("deps.toml")
                 .help("Path to deps.toml manifest")
                 .make_var("MANIFEST"),
-        )
-        .boundary(
-            "platform_env",
-            vec![
-                ("platform", "gunbc_deps::Platform::Linux.into()"),
-            ],
-        )
-        .boundary(
-            "execute_load_manifest",
-            vec![
-                ("response", "Value::Response(gunbc_ir::transport::TransportResponse::File(gunbc_ir::transport::FileResponse { path: \"deps.toml\".to_string(), operation: gunbc_ir::transport::FileOp::Read, success: true, content: Some(\"[dependency]\\nname = \\\"ripgrep\\\"\\nverify_cmd = \\\"rg --version\\\"\\ninstall_cmd = \\\"cargo install ripgrep\\\"\\n\".to_string()), exists: Some(true), error: None }))"),
-            ],
-        )
-        .boundary(
-            "execute_installs",
-            vec![
-                ("response", "Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse::ok(\"Dependencies installed\")))"),
-            ],
         ),
 
         // gunbc-review (diff review using LLM)
@@ -672,29 +557,12 @@ pub fn all_tools() -> Vec<ToolDef> {
             "",
         )
         .import("use gunbc_lib_review::graph::build_diff_review_graph;")
+        .mock_spec_call("gunbc_lib_review::graph_mock::diff_review_mock_spec()")
         .entrypoint(
             CliEntrypoint::new("base_ref", "String")
                 .short('b')
                 .default("main")
                 .help("Base branch for diff (default: main)"),
-        )
-        .boundary(
-            "credential_env",
-            vec![
-                ("credential:llm", "{ let mut map = std::collections::BTreeMap::new(); map.insert(\"token\".to_string(), Value::Secret(gunbc_ir::SecretString::new(\"<MOCK_API_KEY>\"))); map.insert(\"source_type\".to_string(), Value::Str(\"static\".to_string())); map.insert(\"scheme\".to_string(), Value::Str(\"bearer\".to_string())); map.insert(\"cap\".to_string(), Value::Secret(gunbc_ir::SecretString::new(\"capability\"))); Value::Map(map) }"),
-            ],
-        )
-        .boundary(
-            "execute_diff",
-            vec![
-                ("response", "Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse::ok(\"diff --git a/src/main.rs b/src/main.rs\\n--- a/src/main.rs\\n+++ b/src/main.rs\\n@@ -1 +1,2 @@\\n fn main() {}\\n+// changed\\n\")))"),
-            ],
-        )
-        .boundary(
-            "execute_llm",
-            vec![
-                ("response", "Value::Response(gunbc_ir::transport::TransportResponse::Rest(gunbc_ir::transport::llm::mock::mock_openai_response(\"{\\\"findings\\\": [], \\\"summary\\\": \\\"No issues found.\\\"}\")))"),
-            ],
         ),
 
         // NOTE: gunbc-ci is NOT in this registry.
@@ -713,28 +581,7 @@ pub fn all_tools() -> Vec<ToolDef> {
         .returns_result()
         .invocation(cargo::CargoInvocation::composed("bootstrap", "dag"))
         .import("use gunbc_bootstrap::build_bootstrap_graph;")
-        .boundary(
-            "execute_scan_workspace",
-            vec![
-                ("response", "Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse::ok(\"crates/bar\\ncrates/foo\\n\")))"),
-            ],
-        )
-        .boundary(
-            "execute_makefile_transport",
-            vec![
-                ("makefile_response", "Value::Response(gunbc_ir::transport::TransportResponse::File(gunbc_ir::transport::FileResponse { path: \"Makefile\".to_string(), operation: gunbc_ir::transport::FileOp::Write, success: true, content: None, exists: None, error: None }))"),
-                ("makefile_written_path", "Value::Str(\"Makefile\".to_string())"),
-                ("makefile_content", "Value::Str(\"<DRY-RUN>\".to_string())"),
-            ],
-        )
-        .boundary(
-            "execute_gitignore_transport",
-            vec![
-                ("gitignore_response", "Value::Response(gunbc_ir::transport::TransportResponse::File(gunbc_ir::transport::FileResponse { path: \".gitignore\".to_string(), operation: gunbc_ir::transport::FileOp::Write, success: true, content: None, exists: None, error: None }))"),
-                ("gitignore_written_path", "Value::Str(\".gitignore\".to_string())"),
-                ("gitignore_content", "Value::Str(\"<DRY-RUN>\".to_string())"),
-            ],
-        ),
+        .mock_spec_call("gunbc_dag::bootstrap::graph_mock::bootstrap_mock_spec()"),
         // NOTE: prep tool has been removed - its functionality is now
         // consolidated into CI's Prep stage, using BuildConfig from makegen
         //

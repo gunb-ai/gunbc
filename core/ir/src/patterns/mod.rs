@@ -28,6 +28,7 @@
 
 pub mod atomic;
 pub mod branch;
+pub mod emit;
 pub mod loop_pattern;
 pub mod pattern_op;
 pub mod repeat;
@@ -37,6 +38,7 @@ pub mod upsert;
 
 pub use atomic::AtomicBuilder;
 pub use branch::BranchBuilder;
+pub use emit::EmitBuilder;
 pub use loop_pattern::LoopBuilder;
 pub use pattern_op::PatternOp;
 pub use repeat::{

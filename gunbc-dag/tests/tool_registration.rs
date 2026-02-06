@@ -52,6 +52,12 @@ fn tool_registrations_match_all_tools() {
             "returns_result mismatch for '{}'",
             tool.meta.tool_name
         );
+        assert_eq!(
+            reg.mock_spec_call.map(|s| s.to_string()),
+            tool.meta.mock_spec_call,
+            "mock_spec_call mismatch for '{}'",
+            tool.meta.tool_name
+        );
     }
 
     // Every registration has a matching all_tools entry

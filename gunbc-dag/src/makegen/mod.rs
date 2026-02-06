@@ -29,6 +29,7 @@ pub use render::{render_makefile, render_makefile_with_config};
     description = "Generate Makefile from tool registry",
     builder = "build_makegen_graph",
     import = "use gunbc_makegen::build_makegen_graph;",
+    mock_spec = "gunbc_dag::makegen::graph_mock::makegen_mock_spec()",
     returns_result
 )]
 pub fn makegen_tool() {}

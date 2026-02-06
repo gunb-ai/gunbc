@@ -1181,7 +1181,8 @@ Please fix these issues."#;
     crate_name = "gunbc-lib-review",
     description = "Review code changes using LLM analysis",
     builder = "build_diff_review_graph",
-    import = "use gunbc_lib_review::graph::build_diff_review_graph;"
+    import = "use gunbc_lib_review::graph::build_diff_review_graph;",
+    mock_spec = "gunbc_lib_review::graph_mock::diff_review_mock_spec()"
 )]
 pub fn review_tool() {}
 

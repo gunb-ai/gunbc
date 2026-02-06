@@ -35,6 +35,10 @@ pub struct ToolMeta {
     /// Enable step mode - generates `step <node>` subcommand for CI providers.
     /// This allows executing individual DAG nodes for better CI visibility.
     pub enable_step_mode: bool,
+    /// Rust expression that returns a MockSpec for dry-run boundary mocking.
+    /// When set, the generated CLI calls this instead of using inline boundary values.
+    /// Example: "gunbc_gist::graph_mock::gist_snapshot_mock_spec()"
+    pub mock_spec_call: Option<String>,
 }
 
 /// An entrypoint that becomes a CLI flag.
@@ -213,10 +217,11 @@ fn build_cli_source_file(
     // Convert crate name (kebab-case) to module name (snake_case)
     let crate_module = NamingCase::SnakeCase.apply(&tool.crate_name);
     let arg_parsing = generate_arg_parsing(entrypoints);
-    let mock_setup = generate_mock_setup(boundaries);
+    let mock_setup = generate_mock_setup(boundaries, tool.mock_spec_call.as_deref());
     let print_inputs = generate_print_inputs(entrypoints);
     let input_mocks = generate_input_mocks(entrypoints);
     let help_options = generate_help_options(entrypoints);
+    let uses_mock_spec = tool.mock_spec_call.is_some();
 
     let import_line = custom_import.unwrap_or("").to_string();
     let default_import = format!("use {}::build_{}_graph;", crate_module, tool.tool_name);
@@ -224,6 +229,13 @@ fn build_cli_source_file(
         default_import
     } else {
         import_line
+    };
+
+    // When using mock_spec_call, we need gunbc_test::MockSpec import
+    let extra_import = if uses_mock_spec {
+        "\nuse gunbc_test::MockSpec;"
+    } else {
+        ""
     };
 
     // Generate the graph builder call - handle Result-returning builders
@@ -235,10 +247,33 @@ fn build_cli_source_file(
         None => "None".to_string(),
     };
 
+    // Build the dry-run block differently based on mock_spec_call
+    let dry_run_block = if uses_mock_spec {
+        format!(
+            "    let mode = if dry_run {{\n\
+             {mock_setup}\n\
+             \x20   }} else {{\n\
+             \x20       ExecutionMode::Real\n\
+             \x20   }};",
+            mock_setup = mock_setup
+        )
+    } else {
+        format!(
+            "    let mode = if dry_run {{\n\
+             \x20       let mut mocks = BoundaryMocks::new();\n\
+             {mock_setup}\
+             \x20       ExecutionMode::DryRun(mocks)\n\
+             \x20   }} else {{\n\
+             \x20       ExecutionMode::Real\n\
+             \x20   }};",
+            mock_setup = mock_setup
+        )
+    };
+
     let body = format!(
         r#"use gunbc_exec::{{execute_and_display, BoundaryMocks, ExecutionMode, TerminalProfile}};
 use gunbc_ir::{{detect_entrypoints, Value}};
-{import_line}
+{import_line}{extra_import}
 use std::collections::HashMap;
 use std::env;
 use std::process;
@@ -258,13 +293,7 @@ fn main() {{
 {input_mocks}
 
     // Set up execution mode
-    let mode = if dry_run {{
-        let mut mocks = BoundaryMocks::new();
-{mock_setup}
-        ExecutionMode::DryRun(mocks)
-    }} else {{
-        ExecutionMode::Real
-    }};
+{dry_run_block}
 
     // Print header
     println!("{tool_name}");
@@ -291,10 +320,11 @@ fn print_help() {{
 }}"#,
         tool_name = tool.tool_name,
         import_line = actual_import,
+        extra_import = extra_import,
         arg_parsing = arg_parsing,
         graph_builder_call = graph_builder_call,
         input_mocks = input_mocks,
-        mock_setup = mock_setup,
+        dry_run_block = dry_run_block,
         print_inputs = print_inputs,
         success_port_arg = success_port_arg,
         description = tool.description,
@@ -468,7 +498,14 @@ fn generate_arg_parsing(entrypoints: &[CliEntrypoint]) -> String {
     code
 }
 
-fn generate_mock_setup(boundaries: &[CliBoundary]) -> String {
+fn generate_mock_setup(boundaries: &[CliBoundary], mock_spec_call: Option<&str>) -> String {
+    if let Some(call) = mock_spec_call {
+        return format!(
+            "        let _spec = {};\n        ExecutionMode::DryRun(_spec.to_dry_run_mocks())",
+            call
+        );
+    }
+    // Fallback: legacy inline boundaries
     let mut code = String::new();
     for boundary in boundaries {
         for (port, value_expr) in &boundary.mock_outputs {
@@ -647,9 +684,10 @@ fn build_step_mode_source_file(
     // Convert crate name (kebab-case) to module name (snake_case)
     let crate_module = NamingCase::SnakeCase.apply(&tool.crate_name);
     let arg_parsing = generate_arg_parsing(entrypoints);
-    let mock_setup = generate_mock_setup(boundaries);
+    let mock_setup = generate_mock_setup(boundaries, tool.mock_spec_call.as_deref());
     let print_inputs = generate_print_inputs(entrypoints);
     let input_mocks = generate_input_mocks(entrypoints);
+    let uses_mock_spec = tool.mock_spec_call.is_some();
 
     let import_line = custom_import.unwrap_or("").to_string();
     let default_import = format!("use {}::build_{}_graph;", crate_module, tool.tool_name);
@@ -657,6 +695,13 @@ fn build_step_mode_source_file(
         default_import
     } else {
         import_line
+    };
+
+    // When using mock_spec_call, we need gunbc_test::MockSpec import
+    let extra_import = if uses_mock_spec {
+        "\nuse gunbc_test::MockSpec;"
+    } else {
+        ""
     };
 
     // Generate the graph builder call - handle Result-returning builders
@@ -668,10 +713,33 @@ fn build_step_mode_source_file(
         None => "None".to_string(),
     };
 
+    // Build the dry-run block differently based on mock_spec_call
+    let dry_run_block = if uses_mock_spec {
+        format!(
+            "    let mode = if dry_run {{\n\
+             {mock_setup}\n\
+             \x20   }} else {{\n\
+             \x20       ExecutionMode::Real\n\
+             \x20   }};",
+            mock_setup = mock_setup
+        )
+    } else {
+        format!(
+            "    let mode = if dry_run {{\n\
+             \x20       let mut mocks = BoundaryMocks::new();\n\
+             {mock_setup}\
+             \x20       ExecutionMode::DryRun(mocks)\n\
+             \x20   }} else {{\n\
+             \x20       ExecutionMode::Real\n\
+             \x20   }};",
+            mock_setup = mock_setup
+        )
+    };
+
     let body = format!(
         r#"use gunbc_exec::{{execute_and_display, execute_single_node, print_value, BoundaryMocks, ExecutionMode, TerminalProfile}};
 use gunbc_ir::{{detect_entrypoints, Value}};
-{import_line}
+{import_line}{extra_import}
 use std::collections::HashMap;
 use std::env;
 use std::process;
@@ -710,13 +778,7 @@ fn run_full_dag(raw_args: &[String]) {{
 {input_mocks}
 
     // Set up execution mode
-    let mode = if dry_run {{
-        let mut mocks = BoundaryMocks::new();
-{mock_setup}
-        ExecutionMode::DryRun(mocks)
-    }} else {{
-        ExecutionMode::Real
-    }};
+{dry_run_block}
 
     // Print header
     println!("{tool_name}");
@@ -757,13 +819,7 @@ fn run_single_step(args: &[String]) {{
     let inputs = load_step_inputs_from_env(&step_name, &env_dict);
 
     // Set up execution mode
-    let mode = if dry_run {{
-        let mut mocks = BoundaryMocks::new();
-{mock_setup}
-        ExecutionMode::DryRun(mocks)
-    }} else {{
-        ExecutionMode::Real
-    }};
+{dry_run_block}
 
     println!("[{tool_name}:step:{{}}]", step_name);
 
@@ -903,10 +959,11 @@ fn print_help() {{
 }}"#,
         tool_name = tool.tool_name,
         import_line = actual_import,
+        extra_import = extra_import,
         arg_parsing = arg_parsing,
         graph_builder_call = graph_builder_call,
         input_mocks = input_mocks,
-        mock_setup = mock_setup,
+        dry_run_block = dry_run_block,
         print_inputs = print_inputs,
         success_port_arg = success_port_arg,
         description = tool.description,
@@ -950,6 +1007,7 @@ mod tests {
             returns_result: false,
             success_port: None,
             enable_step_mode: false,
+            mock_spec_call: None,
         };
 
         let entrypoints = vec![CliEntrypoint::new("repo_path", "String")
