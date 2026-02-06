@@ -16,6 +16,7 @@ gunbc-test = { path = "../core/test" }
 # Libraries
 gunbc-primitives = { path = "../lib/primitives" }
 gunbc-lib-transport = { path = "../lib/transport" }
+gunbc-lib-blob = { path = "../lib/blob" }
 gunbc-lib-gist-ops = { path = "../lib/gist-ops" }
 
 # General tools (reusable)

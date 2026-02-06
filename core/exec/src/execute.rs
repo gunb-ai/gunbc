@@ -871,7 +871,7 @@ fn is_tool_env_node<T>(node: &Node<T>) -> bool {
 
 /// Check if a node is a non-tool resource environment boundary.
 ///
-/// These emit resource values like FilesystemHandle, Timestamp, AuthToken, Platform.
+/// These emit resource values like FilesystemHandle, Timestamp, Credential, Platform.
 fn is_resource_env_node<T>(node: &Node<T>) -> bool {
     node.outputs.iter().any(|port| {
         matches!(

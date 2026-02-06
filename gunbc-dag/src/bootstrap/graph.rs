@@ -15,8 +15,9 @@ use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::{
     build::*, BuilderError, Cardinality, Dag, DagBuilder, Node, Value, WorkflowSignature,
 };
+use gunbc_lib_blob::BlobOps;
 use gunbc_lib_transport::TransportOps;
-use gunbc_primitives::{CompareContentOp, PrepareFileReadOp, PrepareFileWriteOp};
+use gunbc_primitives::{PrepareFileReadOp, PrepareFileWriteOp};
 use std::collections::HashMap;
 
 /// The operation type for bootstrap graphs - a union of bootstrap ops, primitives, and transport.
@@ -28,8 +29,8 @@ pub enum BootstrapGraphOp {
     PrepareFileRead(PrepareFileReadOp),
     /// Prepare file write (primitive - PURE)
     PrepareFileWrite(PrepareFileWriteOp),
-    /// Compare content (primitive - PURE)
-    CompareContent(CompareContentOp),
+    /// Blob operations (compare content - PURE)
+    Blob(BlobOps),
     /// Transport operations (boundary - actual I/O)
     Transport(TransportOps),
 }
@@ -40,7 +41,7 @@ impl Executable for BootstrapGraphOp {
             BootstrapGraphOp::Bootstrap(op) => op.execute(inputs),
             BootstrapGraphOp::PrepareFileRead(op) => op.execute(inputs),
             BootstrapGraphOp::PrepareFileWrite(op) => op.execute(inputs),
-            BootstrapGraphOp::CompareContent(op) => op.execute(inputs),
+            BootstrapGraphOp::Blob(op) => op.execute(inputs),
             BootstrapGraphOp::Transport(op) => op.execute(inputs),
         }
     }
@@ -148,8 +149,7 @@ pub fn build_bootstrap_graph() -> Result<Dag<BootstrapGraphOp>, BuilderError> {
         &prepare_makefile_read,
     )?;
 
-    // Compare — uses standard port names (fresh, skip, skip_reason)
-    // that CompareContentOp produces
+    // Compare — uses BlobOps::CompareContent (response + expected_content compat path)
     let compare_makefile_content = builder.add_node_after(
         Node::opaque(
             "compare_makefile_content",
@@ -163,7 +163,7 @@ pub fn build_bootstrap_graph() -> Result<Dag<BootstrapGraphOp>, BuilderError> {
                 port("skip", "Bool"),
                 port("skip_reason", "String"),
             ],
-            BootstrapGraphOp::CompareContent(CompareContentOp),
+            BootstrapGraphOp::Blob(BlobOps::CompareContent),
         ),
         &execute_makefile_read,
     )?;
@@ -235,7 +235,7 @@ pub fn build_bootstrap_graph() -> Result<Dag<BootstrapGraphOp>, BuilderError> {
         &prepare_gitignore_read,
     )?;
 
-    // Compare — uses standard port names (fresh, skip, skip_reason)
+    // Compare — uses BlobOps::CompareContent (response + expected_content compat path)
     let compare_gitignore_content = builder.add_node_after(
         Node::opaque(
             "compare_gitignore_content",
@@ -249,7 +249,7 @@ pub fn build_bootstrap_graph() -> Result<Dag<BootstrapGraphOp>, BuilderError> {
                 port("skip", "Bool"),
                 port("skip_reason", "String"),
             ],
-            BootstrapGraphOp::CompareContent(CompareContentOp),
+            BootstrapGraphOp::Blob(BlobOps::CompareContent),
         ),
         &execute_gitignore_read,
     )?;

@@ -34,7 +34,7 @@ but implemented separately:
 | **GeneratedCli** | File exists? | Run codegen | Return manifest | ❌ Brittle hack |
 | **GeneratedTests** | `--check` mode | Run testgen | Return success | ❌ Two targets |
 | **FormattedCode** | `cargo fmt --check` | `cargo fmt` | Return success | ❌ Two targets |
-| **AuthToken** | Env var set? | Error | Return secret | ✅ Done (AuthEnv) |
+| **Credential** | Env var set? | Error | Return secret | ✅ Done (CredentialOp) |
 
 The tool acquisition pattern (EnvOp → ToolHandle) **works perfectly**. We should
 generalize it to all resources, not reinvent it for each resource type.

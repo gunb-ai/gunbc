@@ -16,20 +16,20 @@ No manual rotation.
 
 ## Problem Statement
 
-Three independent auth models exist today:
+Three independent auth models existed historically (now consolidated):
 
 | Type | Location | What it models |
 |------|----------|----------------|
-| `AuthMethod` | `core/ir/src/transport/rest.rs` | How to attach auth to HTTP |
-| `GitHubAuth` | `core/ir/src/transport/github/mod.rs` | Where GitHub token comes from |
-| `LlmAuthStyle` + `ApiKeyEnvVar` | `core/ir/src/transport/llm/provider.rs` | LLM provider auth style + env var name |
+| `Credential` | `core/ir/src/transport/credential.rs` | How to attach auth to HTTP |
+| `GitHubEnvVarProvider` | `lib/transport/src/credential.rs` | Where GitHub token comes from |
+| `AuthScheme` + `api_key_env` | `core/ir/src/transport/llm/provider.rs` | LLM provider auth scheme + env var name |
 
 These conflate three concerns:
 1. **Source** — where the secret comes from (env var, OAuth exchange, vault)
 2. **Value** — the opaque token string and its lifecycle
 3. **Scheme** — how to attach it to a request (Bearer, custom header, Basic)
 
-`AuthMethod::EnvVar("OPENAI_API_KEY")` encodes all three in one variant.
+Previously, env-var auth (e.g., `OPENAI_API_KEY`) encoded all three in one variant.
 There's no lifecycle, no expiry, no uniform way to test or mock auth.
 
 ---
@@ -66,7 +66,7 @@ enum SecretSource {
 ```
 
 `Secret` implements redacting `Debug`/`Display` (same pattern as
-`AuthMethod` today). `CiContext::mask()` can mask the value in CI output.
+`Credential` today). `CiContext::mask()` can mask the value in CI output.
 
 ### Layer 1: AuthScheme
 
@@ -88,8 +88,8 @@ enum AuthScheme {
 }
 ```
 
-This replaces the "how to use it" aspect that's currently spread across
-`AuthMethod`, `LlmAuthStyle`, and `GitHubAuth`.
+This replaces the "how to use it" aspect that was previously spread across
+legacy auth variants and provider-specific auth handling.
 
 ### Layer 2: Credential
 
@@ -293,33 +293,33 @@ providers: [                   receives Credential         receives RestRequest 
 ]                              no env vars, no scheme
                                logic, no auth concern
 emits:
-  credential:github            no AuthMethod::EnvVar
-  credential:openai            no AuthMethod::EnvVarHeader
+  credential:github            no env-var bearer auth
+  credential:openai            no env-var header auth
 ```
 
-### What AuthMethod becomes
+### Legacy Auth Mapping
 
 ```rust
 // After full migration:
-// RestRequest.auth changes from Option<AuthMethod> to Option<Credential>
-// AuthMethod::EnvVar and EnvVarHeader are removed
-// AuthMethod::Bearer, ApiKey, Basic become AuthScheme variants
-// AuthMethod::None becomes Option::None
+// RestRequest.auth becomes Option<Credential>
+// Env-var auth variants are removed (resolved at boundary)
+// Bearer/API key/Basic become AuthScheme variants
+// No-auth becomes Option::None
 ```
 
 ### What gets replaced
 
 | Current type | Replaced by | Notes |
 |-------------|-------------|-------|
-| `AuthMethod::EnvVar(String)` | `CredentialProvider::acquire()` at boundary | Env var read moves to provider |
-| `AuthMethod::EnvVarHeader{..}` | `CredentialProvider::acquire()` at boundary | Same |
-| `AuthMethod::Bearer(String)` | `Credential { scheme: Bearer, .. }` | |
-| `AuthMethod::ApiKey{..}` | `Credential { scheme: Header{..}, .. }` | |
-| `AuthMethod::Basic{..}` | `Credential { scheme: Basic{..}, .. }` | |
-| `AuthMethod::None` | `Option::<Credential>::None` | |
-| `GitHubAuth` | `GitHubAppProvider` / `GitHubEnvVarProvider` | Enum → trait impls |
-| `LlmAuthStyle` | `AuthScheme` | Unified |
-| `ApiKeyEnvVar` | `LlmEnvVarProvider.env_var` | Field on provider |
+| Env-var bearer auth | `CredentialProvider::acquire()` at boundary | Env var read moves to provider |
+| Env-var header auth | `CredentialProvider::acquire()` at boundary | Same |
+| Bearer token | `Credential { scheme: Bearer, .. }` | |
+| API key header | `Credential { scheme: Header{..}, .. }` | |
+| Basic auth | `Credential { scheme: Basic{..}, .. }` | |
+| No auth | `Option::<Credential>::None` | |
+| `GitHubAuth` (removed) | `GitHubAppProvider` / `GitHubEnvVarProvider` | Enum → trait impls |
+| `LlmAuthStyle` (removed) | `AuthScheme` | Unified |
+| `api_key_env: String` | `LlmEnvVarProvider.env_var` | Field on provider |
 
 ---
 
@@ -499,14 +499,15 @@ of this doc — we write manual tests now and absorb later.
 
 ### Phase 4: Migration (breaking changes, crate by crate)
 
-- [ ] Update `RestRequest.auth` from `Option<AuthMethod>` to `Option<Credential>`
+- [x] Update `RestRequest.auth` to `Option<Credential>`
 - [ ] Update `execute_rest()` to call `credential.apply()` instead of match arms
 - [ ] Migrate `github_rest_request()` to accept `Credential` parameter
 - [ ] Migrate `build_openai_request()` to accept `Credential` parameter
 - [ ] Migrate `build_anthropic_request()` to accept `Credential` parameter
-- [ ] Remove `AuthMethod::EnvVar` and `AuthMethod::EnvVarHeader` variants
-- [ ] Remove `GitHubAuth` enum (replaced by provider impls)
-- [ ] Remove `LlmAuthStyle` and `ApiKeyEnvVar` (replaced by AuthScheme + provider)
+- [x] Remove env-var auth variants (resolved at boundary)
+- [x] Remove `GitHubAuth` enum (replaced by provider impls)
+- [x] Remove `LlmAuthStyle` (replaced by AuthScheme in provider)
+- [x] Remove env-var wrapper type (replace with `api_key_env: String`)
 - [ ] Update all DAG graphs to include CredentialOp boundary node
 
 ### Phase 5: Testgen absorption (after testgen-improvements Phase 5 + 8)
@@ -529,6 +530,6 @@ of this doc — we write manual tests now and absorb later.
 - **Uniform modeling.** One `Credential` type for all services. Provider
   differences are implementation details of `CredentialProvider::acquire()`.
 - **Follows existing patterns.** `CredentialOp` mirrors `EnvOp`.
-  `Credential` mirrors `ToolHandle`. Secret redaction mirrors `AuthMethod`.
+  `Credential` mirrors `ToolHandle`. Secret redaction mirrors previous auth redaction behavior.
 - **Incremental migration.** Phases 1-3 are additive. Phase 4 is the
   breaking migration, done per-crate.

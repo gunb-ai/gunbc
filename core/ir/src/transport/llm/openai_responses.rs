@@ -40,7 +40,7 @@ use super::chat::{
 };
 use super::provider::openai_provider;
 use crate::transport::http::HttpMethod;
-use crate::transport::rest::{AuthMethod, RestRequest, RestResponse};
+use crate::transport::rest::{RestRequest, RestResponse};
 
 /// Build an OpenAI Responses API request from a chat request.
 ///
@@ -116,7 +116,7 @@ pub fn build_openai_responses_request(chat: &ChatRequest) -> RestRequest {
         method: HttpMethod::Post,
         headers,
         body: Some(body),
-        auth: Some(AuthMethod::EnvVar(provider.api_key_env.0.clone())),
+        auth: None,
         query: Default::default(),
         timeout_ms: Some(120_000),
     }

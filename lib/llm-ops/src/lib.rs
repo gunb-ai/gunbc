@@ -141,7 +141,7 @@ fn execute_resolve_auth(
 
     OutputMap::new()
         .str("service", provider.id)
-        .str("env_var", provider.api_key_env.0)
+        .str("env_var", provider.api_key_env)
         .str("scheme", scheme)
         .str("header_name", header_name)
         .ok()

@@ -2665,7 +2665,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             let mut sorted_outputs: Vec<_> = example.outputs.iter().collect();
             sorted_outputs.sort_by_key(|(k, _)| k.as_str());
             for (port, matcher) in sorted_outputs {
-                let var_name = NamingCase::SnakeCase.apply(port);
+                let var_name = sanitize_to_snake_case(port);
                 let prefix = if matcher.generates_assertion() {
                     ""
                 } else {

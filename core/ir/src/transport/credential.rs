@@ -54,7 +54,7 @@ impl fmt::Debug for SecretSource {
 ///
 /// The inner value is private — use [`expose()`](Secret::expose) to access it.
 /// Debug and Display both redact the value.
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub struct Secret {
     value: String,
     #[serde(default)]
@@ -226,7 +226,7 @@ pub trait CredentialProvider: fmt::Debug + Send + Sync {
 // ---------------------------------------------------------------------------
 
 /// A fully resolved credential: secret + how to attach it.
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub struct Credential {
     secret: Secret,
     scheme: AuthScheme,
@@ -348,7 +348,7 @@ impl Resource for Credential {
 }
 
 // ---------------------------------------------------------------------------
-// Value conversions (capability-marker pattern from AuthToken)
+// Value conversions (capability-marker pattern)
 // ---------------------------------------------------------------------------
 
 impl From<Credential> for Value {

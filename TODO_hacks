@@ -63,28 +63,6 @@ This can make resources incorrectly appear fresh.
 
 ---
 
-## DAG builder functions referenced as strings
-
-The codegen registry stores graph builder names as strings:
-
-    ToolDef::new(..., "build_makegen_graph", "")
-
-Then testgen.rs hardcodes the actual function calls separately. Renaming
-a builder function won't trigger a compile error — it silently breaks at
-runtime. Should use function pointers or a trait-based dispatch instead.
-
-**Suggested fixes (from review 2026-02-05):**
-1. Generate the dispatch match table from a single source of truth.
-2. Use a macro that ties function item to ToolDef so string is derived
-   from `stringify!(fn_name)` in one place.
-3. Break circular dep by moving ToolDefs into a smaller shared crate.
-4. At minimum: add generator-time validation that every ToolDef.graph_builder
-   string resolves to exactly one known builder (fail early).
-
-Files:
-  - core/codegen/src/registry.rs  (graph_builder field on ToolDef)
-  - gunbc-dag/src/bin/testgen.rs  (hardcoded calls to builder functions)
-
 ## PrepLevel→deps mapping hardcoded in renderer
 
 > **Tracked in:** `TODO/design-unified-resource-model.md` — replaced by
@@ -321,7 +299,7 @@ A malicious/buggy node could construct a fake handle from data.
 (e.g., internal IDs stored in executor-side handle table, not in Value itself).
 
 Also: `EnvVars` as observation resource risks spilling secrets unless it's a
-filtered projection (the `AuthEnv` approach is safer).
+filtered projection (the `CredentialOp` approach is safer).
 
 Files:
   - TODO/TODONE/design-resource-acquisition.md (Resource trait proposal, DONE)

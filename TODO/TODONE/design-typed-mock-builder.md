@@ -103,7 +103,7 @@ The following type compatibilities are implemented:
 | String | String | ✓ |
 | Int | Int | ✓ |
 | Int | Timestamp | ✓ (Timestamp serializes as Int) |
-| Map | ToolHandle, AuthToken, FilesystemHandle, Platform | ✓ (Map-backed types) |
+| Map | ToolHandle, Credential, FilesystemHandle, Platform | ✓ (Map-backed types) |
 | Response | TransportResponse | ✓ |
 | Json | Any | ✓ (Json is flexible) |
 | Any | Any | ✓ |
@@ -163,7 +163,7 @@ Testgen (`core/codegen/src/testgen/codegen.rs`) now validates:
 Type compatibility is implemented identically in both MockRequirements and testgen:
 - `Int -> Timestamp` (Timestamp serializes as Int)
 - `String -> Platform` (Platform serializes as String)
-- `Map -> ToolHandle/AuthToken/FilesystemHandle/Platform` (Map-backed types)
+- `Map -> ToolHandle/Credential/FilesystemHandle/Platform` (Map-backed types)
 
 ## Migration Status
 

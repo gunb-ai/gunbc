@@ -196,6 +196,7 @@ dependencies = [
  "gunbc-gist",
  "gunbc-infra",
  "gunbc-ir",
+ "gunbc-lib-blob",
  "gunbc-lib-gist-ops",
  "gunbc-lib-llm-ops",
  "gunbc-lib-review",

@@ -12,13 +12,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::transport::credential::AuthScheme;
 
-/// Environment variable name for the API key.
-///
-/// Providers reference env vars by name; resolution happens at execution time
-/// through `AuthMethod::EnvVar` (Bearer) or `AuthMethod::EnvVarHeader` (custom header).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ApiKeyEnvVar(pub String);
-
 /// LLM provider definition.
 ///
 /// Data-driven struct that describes how to interact with an LLM API.
@@ -40,7 +33,7 @@ pub struct LlmProvider {
     /// Authentication scheme for the provider.
     pub auth_scheme: AuthScheme,
     /// Environment variable containing the API key.
-    pub api_key_env: ApiKeyEnvVar,
+    pub api_key_env: String,
     /// Additional required headers (e.g., anthropic-version).
     #[serde(default)]
     pub extra_headers: Vec<(String, String)>,
@@ -71,7 +64,7 @@ pub fn openai_provider() -> LlmProvider {
         chat_endpoint: "/v1/chat/completions".to_string(),
         responses_endpoint: Some("/v1/responses".to_string()),
         auth_scheme: AuthScheme::Bearer,
-        api_key_env: ApiKeyEnvVar("OPENAI_API_KEY".to_string()),
+        api_key_env: "OPENAI_API_KEY".to_string(),
         extra_headers: vec![],
     }
 }
@@ -87,7 +80,7 @@ pub fn anthropic_provider() -> LlmProvider {
         auth_scheme: AuthScheme::Header {
             name: "x-api-key".to_string(),
         },
-        api_key_env: ApiKeyEnvVar("ANTHROPIC_API_KEY".to_string()),
+        api_key_env: "ANTHROPIC_API_KEY".to_string(),
         extra_headers: vec![("anthropic-version".to_string(), "2023-06-01".to_string())],
     }
 }
@@ -119,7 +112,7 @@ mod tests {
         assert_eq!(p.id, "openai");
         assert_eq!(p.chat_url(), "https://api.openai.com/v1/chat/completions");
         assert!(matches!(p.auth_scheme, AuthScheme::Bearer));
-        assert_eq!(p.api_key_env.0, "OPENAI_API_KEY");
+        assert_eq!(p.api_key_env, "OPENAI_API_KEY");
     }
 
     #[test]
@@ -128,7 +121,7 @@ mod tests {
         assert_eq!(p.id, "anthropic");
         assert_eq!(p.chat_url(), "https://api.anthropic.com/v1/messages");
         assert!(matches!(p.auth_scheme, AuthScheme::Header { .. }));
-        assert_eq!(p.api_key_env.0, "ANTHROPIC_API_KEY");
+        assert_eq!(p.api_key_env, "ANTHROPIC_API_KEY");
         assert!(!p.extra_headers.is_empty());
     }
 

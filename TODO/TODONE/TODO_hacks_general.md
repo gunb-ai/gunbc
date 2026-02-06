@@ -47,3 +47,16 @@ groups edges by destination node to avoid repeated sorting.
 
 Files:
 - `core/exec/src/execute.rs`
+
+## DAG builder references centralized
+
+**Resolved**: Tool DAG builders now reference `GraphBuilderId` (single mapping
+to function names), and testgen targets are auto-discovered via
+`#[testgen_target]` inventory registrations. This removes the old hardcoded
+builder lists and keeps builder references in one place.
+
+Files:
+- `core/codegen/src/cli_gen.rs`
+- `core/codegen/src/registry.rs`
+- `core/testgen-registry-macros/src/lib.rs`
+- `gunbc-dag/src/bin/testgen.rs`

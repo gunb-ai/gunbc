@@ -983,7 +983,7 @@ mod tests {
         let dag = build_diff_review_graph();
         // 12 nodes: config, prepare_diff, execute_diff, parse_diff,
         //           format_artifact, prepare_prompt, prepare_llm,
-        //           resolve_auth, auth_env, execute_llm, parse_llm, parse_response
+        //           resolve_auth, credential_env, execute_llm, parse_llm, parse_response
         assert_eq!(dag.nodes.len(), 12);
     }
 
@@ -1072,7 +1072,7 @@ mod tests {
     #[test]
     fn test_multi_source_review_graph_structure() {
         let dag = build_multi_source_review_graph();
-        // 9 nodes: config, prepare_prompt, prepare_llm, resolve_auth, auth_env,
+        // 9 nodes: config, prepare_prompt, prepare_llm, resolve_auth, credential_env,
         //          execute_llm, parse_llm, parse_response, merge
         assert_eq!(dag.nodes.len(), 9);
     }

@@ -74,30 +74,15 @@ environment, not the build host.
 
 ## 3. std::env::var() in transport executor (auth resolution)
 
-**Where**: `lib/transport/src/executor.rs:81,97`
+**Where**: (historical) `lib/transport/src/executor.rs:81,97`
 
-```rust
-gunbc_ir::transport::AuthMethod::EnvVar(var) => {
-    if let Ok(token) = std::env::var(var) {        // line 81
-        http_req.headers.insert("Authorization".into(), format!("Bearer {}", token));
-    }
-}
-gunbc_ir::transport::AuthMethod::EnvVarHeader { header, env_var } => {
-    if let Ok(value) = std::env::var(env_var) {    // line 97
-        http_req.headers.insert(header.clone(), value);
-    }
-}
-```
-
-**Problem**: The transport executor reads env vars inline during request
+**Problem**: The transport executor read env vars inline during request
 execution. This makes it impossible to test auth handling without setting
 real environment variables, and couples the executor to OS state.
 
-**Fix**: The `AuthMethod::EnvVar` variant should be resolved *before*
-reaching the executor — at the DAG boundary where secrets are acquired.
-By the time the executor sees a request, all tokens should be concrete
-`AuthMethod::Bearer(token)` values. Alternatively, pass an env-var
-resolver function/trait to the executor.
+**Resolved**: Auth env var resolution now happens at the DAG boundary via
+`CredentialOp`; the executor only sees concrete credentials and no longer
+reads environment variables inline.
 
 **Severity**: HIGH — security-sensitive path, hard to test.
 
@@ -225,7 +210,7 @@ and execute through the transport layer.
 
 - [x] Item 1: Refactor `sanitize_branch_for_filename` to accept `&FilesystemHandle`
 - [x] Item 2: Add `platform` input port to GenerateScripts DAG node
-- [ ] Item 3: Resolve `AuthMethod::EnvVar` to `AuthMethod::Bearer` at DAG boundary — see [TODO_credential_lifecycle.md](TODO_credential_lifecycle.md)
+- [x] Item 3: Resolve auth env vars at DAG boundary via `CredentialOp` — see [TODO_credential_lifecycle.md](TODO_credential_lifecycle.md)
 - [x] Item 4: Generate CI runner functions that accept env dict parameter
 - [x] Item 5: Add `SystemTime` parameter to `generate_gist_filename`
 - [x] Item 7: Abstract tool path resolution behind a trait

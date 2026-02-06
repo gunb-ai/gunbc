@@ -17,7 +17,7 @@
 //!
 //! # Resource Mocks
 //!
-//! - `auth_env`: Provides auth token for LLM provider
+//! - `credential_env`: Provides credential for LLM provider
 
 use crate::graph::{build_diff_review_graph, build_inline_review_graph};
 use crate::{Check, Criteria};
@@ -134,9 +134,9 @@ pub fn inline_review_mock_spec() -> MockSpec {
 
     // Extract typed requirements from DAG structure
     extract_mock_requirements(&dag, "review-inline")
-        // Resource: auth_env provides auth token
+        // Resource: credential_env provides credential
         .boundary("credential_env", "credential:llm", mock_credential())
-        .expect("auth_env auth:llm should match type")
+        .expect("credential_env credential:llm should match type")
         // Transport: execute_llm (LLM API call)
         .transport_response("execute_llm", "response", llm_response.into())
         .expect("execute_llm response should match type")
@@ -281,9 +281,9 @@ diff --git a/src/main.rs b/src/main.rs
 
     // Extract typed requirements from DAG structure
     extract_mock_requirements(&dag, "review-diff")
-        // Resource: auth_env provides auth token
+        // Resource: credential_env provides credential
         .boundary("credential_env", "credential:llm", mock_credential())
-        .expect("auth_env auth:llm should match type")
+        .expect("credential_env credential:llm should match type")
         // Transport: execute_diff (git diff command)
         .transport_response(
             "execute_diff",

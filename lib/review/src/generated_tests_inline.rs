@@ -4,7 +4,7 @@
 // DO NOT EDIT - regenerate with: make testgen
 // Obligations: 30 obligations (12 discharged, 18 testable: A=8, B=7, C=3, D=0)
 // Proven by construction: acyclicity, type compatibility, cardinality satisfaction.
-// Content-Hash: 0a23cc8e3df2afaea72c6ffc9dbf1c2b0d74fa2c0161e4143fd59c039d262e45
+// Content-Hash: c2bb60fab79b5280aed7d696e17b857cc168936d2e2cf791d8151cb648504e51
 
 
 use gunbc_exec::{execute_with_mode, lower, BoundaryMocks, ExecutionMode};
@@ -530,8 +530,8 @@ fn test_example_credential_env_loads_credential_from_environment_variable() {
     let outputs = gunbc_exec::execute_single_node(&dag, "credential_env", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'credential_env' should execute successfully");
 
     // Check output port 'credential:llm'
-    let _output_credential:llm = outputs.get("credential:llm").expect("output port 'credential:llm' should exist");
-    // Any value accepted for output_credential:llm
+    let _output_credential_llm = outputs.get("credential:llm").expect("output port 'credential:llm' should exist");
+    // Any value accepted for output_credential_llm
 }
 
 /// Node example: parse_llm - extracts answer text from LLM response

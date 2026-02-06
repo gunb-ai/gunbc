@@ -118,22 +118,16 @@ gist_ops::generate_gist_filename()
 No DAG node captures "now". The timestamp is grabbed inline by the
 function that formats it. Tests can't control the time.
 
-### Environment variables — PARTIALLY MODELED
+### Environment variables — MODELED AT DAG BOUNDARY
 
-Transport layer reads env vars inline for auth:
+Auth env var resolution now happens via `CredentialOp` at the DAG boundary.
+`TransportOps` expects a resolved `Credential` (`res:credential`) and applies
+it before execution; the executor no longer reads env vars directly.
 
-```
-executor::execute_rest()
-  └─ match AuthMethod::EnvVar(var) => std::env::var(var) INLINE
-```
+**Key files**: `lib/transport/src/credential.rs`, `lib/transport/src/ops.rs`
 
-**Key file**: `lib/transport/src/executor.rs:81,97`
-
-Shell requests DO model env vars correctly — `ShellRequest.env` is an
-explicit field. But auth token resolution bypasses this: the executor
-reads OS env vars directly instead of receiving resolved tokens.
-
-Codegen also reads env vars inline (`core/codegen/src/cli_gen.rs:724,748`).
+Shell requests still model env vars explicitly via `ShellRequest.env`.
+Codegen reads env vars inline (`core/codegen/src/cli_gen.rs:724,748`).
 
 ### CI context — EXTERNAL TO DAG
 
@@ -296,13 +290,13 @@ Options:
 
 ### Q5: How do we handle env var resolution for auth?
 
-Today `AuthMethod::EnvVar("GITHUB_TOKEN")` is resolved by the transport
-executor (`executor.rs:81`). This is a layer violation — the executor
-should receive concrete tokens, not env var names.
+Previously env-var auth (e.g., `GITHUB_TOKEN`) was resolved by the transport
+executor, which was a layer violation. This is now resolved at the DAG
+boundary via `CredentialOp`, and the executor only sees concrete credentials.
 
 Options:
-- **Resolve at graph build time**: Replace `EnvVar(name)` with `Bearer(value)` before execution
-- **Resolve in an environment node**: `AuthEnv` reads env vars, emits resolved auth
+- **Resolve at graph build time**: Replace env-var references with concrete bearer tokens before execution
+- **Resolve in an environment node**: `CredentialOp` reads env vars, emits resolved credentials
 - **Resolve in PrepareRequest**: The pure Prepare node receives env vars as input and resolves
 
 ### Q6: What about resources that aren't handles?
@@ -323,7 +317,7 @@ Proposal: Distinguish between:
 in graphs)** are both complete. All six original violation sites are resolved:
 filesystem handles, platform detection, clock snapshots, and env var resolution
 now flow through DAG edges via per-resource env nodes (FsEnv, PlatformEnv,
-ClockEnv, AuthEnv). DryRun requires explicit mocks for all intercepted nodes.
+ClockEnv, CredentialOp). DryRun requires explicit mocks for all intercepted nodes.
 
 See `TODO/TODONE/design-resource-acquisition.md` for the full design.
 
@@ -331,20 +325,16 @@ See `TODO/TODONE/design-resource-acquisition.md` for the full design.
 
 ## Incremental Plan
 
-### Phase 2.5: Resolve auth env var at DAG boundary (HIGH PRIORITY)
+### Phase 2.5: Resolve auth env var at DAG boundary (COMPLETE)
 
-Q5 is the last remaining high-severity DI violation. The transport
-executor reads `std::env::var()` inline to resolve `AuthMethod::EnvVar`
-→ bearer token. This must move to a DAG boundary node so:
-- DryRun can intercept it (currently it can't)
-- The executor receives concrete tokens, not env var names
-- The auth resolution is visible in the graph
+Resolved by `CredentialOp` boundary nodes: auth env vars are read at the
+boundary and emitted as `Credential` values, and `TransportOps` requires
+`res:credential` when a request uses env-var auth. This makes auth resolution
+visible in the graph and interceptable by DryRun.
 
-- [ ] Resolve `AuthMethod::EnvVar` → concrete bearer token at the DAG
-      boundary (before transport executor). Options from Q5 above:
-      resolve in an `AuthEnv` node, or resolve in PrepareRequest.
-      See also `TODO_credential_lifecycle.md` for the unified design.
-      **Files**: `lib/transport/src/executor.rs:81,97`
+- [x] Resolve env-var auth → concrete credential at the DAG boundary
+      via `CredentialOp` (see `TODO_credential_lifecycle.md` for the unified design).
+      **Files**: `lib/transport/src/credential.rs`, `lib/transport/src/ops.rs`
 
 ### Phase 3: Generalize to RuntimeEnv (if needed)
 - [ ] Decide Q1 (single vs many env nodes)

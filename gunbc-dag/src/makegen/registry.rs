@@ -48,7 +48,7 @@ impl BuildCommand {
     /// Render as a shell command string.
     pub fn to_shell(&self) -> String {
         match self {
-            BuildCommand::Cargo(cmd) => cmd.to_shell(),
+            BuildCommand::Cargo(cmd) => cmd.to_shell_with_env(),
             BuildCommand::Shell(parts) => parts.join(" "),
         }
     }

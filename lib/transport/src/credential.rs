@@ -2,7 +2,7 @@
 //!
 //! Providers acquire [`Credential`]s from the environment.
 //! [`CredentialOp`] is the DAG boundary node that drives them,
-//! following the same pattern as [`AuthEnv`](super::AuthEnv).
+//! following the same environment-node pattern.
 
 use gunbc_exec::{ExecError, Executable, OutputMap};
 use gunbc_ir::{
@@ -158,7 +158,7 @@ enum CredentialOpMode {
 /// - **Static**: Pre-configured providers (original pattern)
 /// - **FromInputs**: Reads service/env_var/scheme from DAG inputs at runtime
 ///
-/// Follows the same pattern as [`AuthEnv`](super::AuthEnv):
+/// Follows the same environment-node pattern:
 /// - `execute()` calls each provider's `acquire()`
 /// - `mock_outputs()` returns mock credentials for DryRun interception
 #[derive(Debug, Clone)]

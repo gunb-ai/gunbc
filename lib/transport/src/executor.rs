@@ -49,6 +49,12 @@ pub fn execute_transport(request: &TransportRequest) -> Result<TransportResponse
 /// Note: This is a simplified implementation. In production, you'd use
 /// a proper HTTP client like reqwest.
 fn execute_rest(request: &RestRequest) -> Result<RestResponse, TransportError> {
+    // Apply credential (if any) to headers before conversion.
+    let mut request = request.clone();
+    if let Some(cred) = request.auth.take() {
+        cred.apply(&mut request);
+    }
+
     // For now, convert to HTTP and use that
     let mut http_req = HttpRequest::post(&request.url);
     http_req.method = request.method;
@@ -69,36 +75,6 @@ fn execute_rest(request: &RestRequest) -> Result<RestResponse, TransportError> {
             .insert("Content-Type".to_string(), "application/json".to_string());
     }
 
-    // Handle auth — EnvVar/EnvVarHeader should be resolved before reaching
-    // the executor (see TransportOps::Execute in ops.rs).
-    if let Some(ref auth) = request.auth {
-        match auth {
-            gunbc_ir::transport::AuthMethod::Bearer(token) => {
-                http_req
-                    .headers
-                    .insert("Authorization".to_string(), format!("Bearer {}", token));
-            }
-            gunbc_ir::transport::AuthMethod::Basic { username, password } => {
-                let creds = base64_encode(&format!("{}:{}", username, password));
-                http_req
-                    .headers
-                    .insert("Authorization".to_string(), format!("Basic {}", creds));
-            }
-            gunbc_ir::transport::AuthMethod::ApiKey { header, key } => {
-                http_req.headers.insert(header.clone(), key.clone());
-            }
-            gunbc_ir::transport::AuthMethod::EnvVar(_)
-            | gunbc_ir::transport::AuthMethod::EnvVarHeader { .. } => {
-                debug_assert!(
-                    false,
-                    "EnvVar/EnvVarHeader auth should be resolved before reaching the executor"
-                );
-                // Graceful fallback: skip auth if not resolved
-            }
-            gunbc_ir::transport::AuthMethod::None => {}
-        }
-    }
-
     http_req.timeout_ms = request.timeout_ms;
 
     let http_resp = execute_http(&http_req)?;
@@ -112,36 +88,6 @@ fn execute_rest(request: &RestRequest) -> Result<RestResponse, TransportError> {
         headers: http_resp.headers,
         body,
     })
-}
-
-/// Simple base64 encoding for basic auth.
-fn base64_encode(input: &str) -> String {
-    const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let bytes = input.as_bytes();
-    let mut result = String::new();
-
-    for chunk in bytes.chunks(3) {
-        let b0 = chunk[0] as usize;
-        let b1 = chunk.get(1).copied().unwrap_or(0) as usize;
-        let b2 = chunk.get(2).copied().unwrap_or(0) as usize;
-
-        result.push(ALPHABET[b0 >> 2] as char);
-        result.push(ALPHABET[((b0 & 0x03) << 4) | (b1 >> 4)] as char);
-
-        if chunk.len() > 1 {
-            result.push(ALPHABET[((b1 & 0x0f) << 2) | (b2 >> 6)] as char);
-        } else {
-            result.push('=');
-        }
-
-        if chunk.len() > 2 {
-            result.push(ALPHABET[b2 & 0x3f] as char);
-        } else {
-            result.push('=');
-        }
-    }
-
-    result
 }
 
 /// Execute a raw HTTP request.

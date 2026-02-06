@@ -14,9 +14,7 @@ use gunbc_exec::{
     optional_bool, optional_map_str_str, optional_str, optional_str_list, require_str, ExecError,
     Executable, OutputMap,
 };
-use gunbc_ir::transport::{
-    FileRequest, HttpMethod, RestRequest, ShellRequest, TransportRequest, TransportResponse,
-};
+use gunbc_ir::transport::{FileRequest, HttpMethod, RestRequest, ShellRequest, TransportRequest};
 use gunbc_ir::Value;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -221,65 +219,6 @@ impl Executable for PrepareDirectoryListOp {
     }
 }
 
-/// Compare expected content against a file read response (PURE - no I/O).
-///
-/// This is the "check" phase of a file content upsert. Determines whether
-/// a file write can be skipped because disk content already matches.
-///
-/// Inputs:
-/// - `response`: TransportResponse from a file read
-/// - `expected_content`: String content that would be written
-/// - `check_mode`: Bool (optional) — if true, forces skip=true (verify-only)
-///
-/// Outputs:
-/// - `fresh`: Bool — true if disk content matches expected
-/// - `skip`: Bool — true if write should be skipped (fresh || check_mode)
-/// - `skip_reason`: String — explanation
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct CompareContentOp;
-
-impl Executable for CompareContentOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let expected = require_str(&inputs, "expected_content")?;
-        let check_mode = optional_bool(&inputs, "check_mode").unwrap_or(false);
-
-        // Extract content from the file read response
-        let (fresh, detail) = match inputs.get("response") {
-            Some(Value::Response(TransportResponse::File(file_resp))) => {
-                if !file_resp.success {
-                    // Read failed (file doesn't exist or permission error)
-                    (false, "file read failed".to_string())
-                } else {
-                    match &file_resp.content {
-                        Some(actual) if actual == expected => {
-                            (true, "disk content matches expected".to_string())
-                        }
-                        Some(_) => (false, "disk content differs from expected".to_string()),
-                        None => (false, "file read returned no content".to_string()),
-                    }
-                }
-            }
-            Some(Value::Skipped) => (false, "upstream read was skipped".to_string()),
-            _ => (false, "missing or invalid file read response".to_string()),
-        };
-
-        let skip = fresh || check_mode;
-        let skip_reason = if fresh {
-            "content is fresh — write skipped".to_string()
-        } else if check_mode {
-            format!("check mode — would write ({})", detail)
-        } else {
-            String::new()
-        };
-
-        OutputMap::new()
-            .bool("fresh", fresh)
-            .bool("skip", skip)
-            .str("skip_reason", skip_reason)
-            .ok()
-    }
-}
-
 // ============================================================================
 // Embedded variants - for hardcoded paths/commands (no input ports needed)
 // ============================================================================
@@ -372,142 +311,6 @@ impl Executable for EmbeddedShellOp {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gunbc_ir::transport::{FileOp, FileResponse};
-
-    // ========================================================================
-    // CompareContentOp tests
-    // ========================================================================
-
-    #[test]
-    fn test_compare_content_match() {
-        let op = CompareContentOp;
-        let mut inputs = HashMap::new();
-        inputs.insert(
-            "response".to_string(),
-            Value::Response(TransportResponse::File(FileResponse {
-                path: "Makefile".into(),
-                operation: FileOp::Read,
-                success: true,
-                content: Some("hello world".into()),
-                exists: None,
-                error: None,
-            })),
-        );
-        inputs.insert(
-            "expected_content".to_string(),
-            Value::Str("hello world".into()),
-        );
-
-        let result = op.execute(inputs).unwrap();
-        assert_eq!(result.get("fresh"), Some(&Value::Bool(true)));
-        assert_eq!(result.get("skip"), Some(&Value::Bool(true)));
-    }
-
-    #[test]
-    fn test_compare_content_mismatch() {
-        let op = CompareContentOp;
-        let mut inputs = HashMap::new();
-        inputs.insert(
-            "response".to_string(),
-            Value::Response(TransportResponse::File(FileResponse {
-                path: "Makefile".into(),
-                operation: FileOp::Read,
-                success: true,
-                content: Some("old content".into()),
-                exists: None,
-                error: None,
-            })),
-        );
-        inputs.insert(
-            "expected_content".to_string(),
-            Value::Str("new content".into()),
-        );
-
-        let result = op.execute(inputs).unwrap();
-        assert_eq!(result.get("fresh"), Some(&Value::Bool(false)));
-        assert_eq!(result.get("skip"), Some(&Value::Bool(false)));
-    }
-
-    #[test]
-    fn test_compare_content_file_missing() {
-        let op = CompareContentOp;
-        let mut inputs = HashMap::new();
-        inputs.insert(
-            "response".to_string(),
-            Value::Response(TransportResponse::File(FileResponse {
-                path: "Makefile".into(),
-                operation: FileOp::Read,
-                success: false,
-                content: None,
-                exists: None,
-                error: Some("No such file".into()),
-            })),
-        );
-        inputs.insert(
-            "expected_content".to_string(),
-            Value::Str("content".into()),
-        );
-
-        let result = op.execute(inputs).unwrap();
-        assert_eq!(result.get("fresh"), Some(&Value::Bool(false)));
-        assert_eq!(result.get("skip"), Some(&Value::Bool(false)));
-    }
-
-    #[test]
-    fn test_compare_content_check_mode_forces_skip() {
-        let op = CompareContentOp;
-        let mut inputs = HashMap::new();
-        inputs.insert(
-            "response".to_string(),
-            Value::Response(TransportResponse::File(FileResponse {
-                path: "Makefile".into(),
-                operation: FileOp::Read,
-                success: true,
-                content: Some("old content".into()),
-                exists: None,
-                error: None,
-            })),
-        );
-        inputs.insert(
-            "expected_content".to_string(),
-            Value::Str("new content".into()),
-        );
-        inputs.insert("check_mode".to_string(), Value::Bool(true));
-
-        let result = op.execute(inputs).unwrap();
-        assert_eq!(result.get("fresh"), Some(&Value::Bool(false)));
-        assert_eq!(result.get("skip"), Some(&Value::Bool(true)));
-        // skip_reason should mention check mode
-        let reason = result.get("skip_reason").and_then(|v| v.as_str()).unwrap();
-        assert!(reason.contains("check mode"));
-    }
-
-    #[test]
-    fn test_compare_content_check_mode_fresh() {
-        let op = CompareContentOp;
-        let mut inputs = HashMap::new();
-        inputs.insert(
-            "response".to_string(),
-            Value::Response(TransportResponse::File(FileResponse {
-                path: "Makefile".into(),
-                operation: FileOp::Read,
-                success: true,
-                content: Some("same".into()),
-                exists: None,
-                error: None,
-            })),
-        );
-        inputs.insert("expected_content".to_string(), Value::Str("same".into()));
-        inputs.insert("check_mode".to_string(), Value::Bool(true));
-
-        let result = op.execute(inputs).unwrap();
-        assert_eq!(result.get("fresh"), Some(&Value::Bool(true)));
-        assert_eq!(result.get("skip"), Some(&Value::Bool(true)));
-    }
-
-    // ========================================================================
-    // Existing tests
-    // ========================================================================
 
     #[test]
     fn test_prepare_file_write() {

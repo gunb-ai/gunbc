@@ -59,12 +59,12 @@ pub fn github_enterprise_api(base_url: &'static str) -> GitHubApi {
 // Request Builder
 // ============================================================================
 
-/// Build a REST request with GitHub API headers and auth.
+/// Build a REST request with GitHub API headers.
 ///
 /// This creates a GET request with:
 /// - Proper Accept header for GitHub API
 /// - X-GitHub-Api-Version header
-/// - Authentication from GITHUB_TOKEN env var
+/// - Authentication should be attached via `CredentialOp` at the DAG boundary
 ///
 /// # Arguments
 ///
@@ -85,7 +85,6 @@ pub fn github_rest_request(endpoint: &str) -> RestRequest {
     RestRequest::get(format!("{}{}", GITHUB_API.base_url, endpoint))
         .header("Accept", GITHUB_API.accept_header)
         .header("X-GitHub-Api-Version", GITHUB_API.api_version)
-        .auth_env("GITHUB_TOKEN")
 }
 
 /// Build a REST request for a specific GitHub API configuration.
@@ -95,7 +94,6 @@ pub fn github_rest_request_with_config(api: &GitHubApi, endpoint: &str) -> RestR
     RestRequest::get(format!("{}{}", api.base_url, endpoint))
         .header("Accept", api.accept_header)
         .header("X-GitHub-Api-Version", api.api_version)
-        .auth_env("GITHUB_TOKEN")
 }
 
 /// Build a POST request to the GitHub API.
@@ -132,7 +130,6 @@ impl RestRequestExt for RestRequest {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::transport::rest::AuthMethod;
 
     #[test]
     fn test_github_api_config() {
@@ -155,7 +152,7 @@ mod tests {
             req.headers.get("X-GitHub-Api-Version"),
             Some(&GITHUB_API_VERSION.to_string())
         );
-        assert!(matches!(req.auth, Some(AuthMethod::EnvVar(_))));
+        assert!(req.auth.is_none());
     }
 
     #[test]

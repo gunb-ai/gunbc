@@ -58,8 +58,7 @@ pub use chat::{
     MessageContent, ReasoningEffort, ReasoningSummary, ResponseBlock, Role, ThinkingConfig, Usage,
 };
 pub use provider::{
-    anthropic_provider, builtin_provider_ids, openai_provider, provider_by_id, ApiKeyEnvVar,
-    LlmProvider,
+    anthropic_provider, builtin_provider_ids, openai_provider, provider_by_id, LlmProvider,
 };
 
 use crate::transport::rest::{RestRequest, RestResponse};

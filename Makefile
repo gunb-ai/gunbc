@@ -10,19 +10,19 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help ensure-codegen codegen build clean testgen testgen-check fmt-fix lint-fix test test-fix check check-fix clippy clippy-fix fmt fmt-check ci-yaml gist gist-dry gist-diff gist-diff-dry gist-recent gist-recent-dry makegen makegen-dry deps deps-dry bootstrap bootstrap-dry ci ci-dry build-all build-all-dry
+.PHONY: help ensure-codegen codegen build clean testgen testgen-check verify fmt-fix lint-fix test test-fix check check-fix clippy clippy-fix fmt fmt-check ci-yaml gist gist-dry gist-diff gist-diff-dry gist-recent gist-recent-dry makegen makegen-dry deps deps-dry bootstrap bootstrap-dry ci ci-dry build-all build-all-dry
 
 # Ensure CLI entrypoints exist (bootstrap-safe)
 ensure-codegen:
-	@cargo run -p gunbc-codegen --release -- codegen
+	@RUSTFLAGS="-D warnings" cargo run -p gunbc-codegen --release -- codegen
 
 # Generate CLI entrypoints (DAG upsert)
 codegen: ensure-codegen
-	@cargo run -p gunbc-dag --bin gunbc-codegen-dag --release
+	@RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-codegen-dag --release
 
 # Full build transaction: codegen → testgen → gunbc-build
 build: codegen testgen
-	@cargo run -p gunbc-dag --bin gunbc-build --release
+	@RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-build --release
 
 # Clean build artifacts
 clean:
@@ -30,11 +30,17 @@ clean:
 
 # Regenerate tests from DAG structures and MockSpecs
 testgen: ensure-codegen
-	@cargo run -p gunbc-dag --bin gunbc-testgen --release
+	@RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-testgen --release
 
 # Check if generated tests are stale (fails if regeneration needed)
 testgen-check: ensure-codegen
-	@cargo run -p gunbc-dag --bin gunbc-testgen --release -- --check
+	@RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-testgen --release -- --check
+
+# Verify generated artifacts match their generators
+verify: ensure-codegen
+	@RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-makegen --release -- --check
+	@RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-bootstrap --release -- --check
+	@RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-testgen --release -- --check
 
 help:
 	@echo "gunbc tools - generated Makefile"
@@ -50,6 +56,7 @@ help:
 	@echo "  clean    - Remove build artifacts"
 	@echo "  testgen  - Regenerate tests from DAG structures"
 	@echo "  testgen-check  - Check if generated tests are stale"
+	@echo "  verify   - Verify generated artifacts match their generators"
 	@echo ""
 	@echo "Development:"
 	@echo "  test  - Run all tests"
@@ -87,24 +94,24 @@ lint-fix:
 	@cargo clippy --fix --workspace --allow-dirty --allow-staged -- -D warnings
 
 # test: Run all tests
-test: codegen testgen
-	@cargo run -p gunbc-dag --bin gunbc-build --release
+test: codegen testgen verify
+	@RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-build --release
 
 # test-fix: auto-fix then verify
-test-fix: fmt-fix lint-fix codegen testgen
-	@cargo run -p gunbc-dag --bin gunbc-build --release
+test-fix: fmt-fix lint-fix codegen testgen verify
+	@RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-build --release
 
 # check: Type check all targets
 check: ensure-codegen
-	@cargo check --all-targets
+	@RUSTFLAGS="-D warnings" cargo check --all-targets
 
 # check-fix: auto-fix then verify
 check-fix: fmt-fix ensure-codegen
-	@cargo check --all-targets
+	@RUSTFLAGS="-D warnings" cargo check --all-targets
 
 # clippy: Run clippy linter
 clippy: ensure-codegen
-	@cargo run -p gunbc-dag --bin gunbc-build --release
+	@RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-build --release
 
 # clippy-fix: auto-fix then verify
 clippy-fix: ensure-codegen
@@ -119,7 +126,7 @@ fmt-check:
 
 # ci-yaml: Generate CI workflow YAML (GitHub Actions & GitLab CI)
 ci-yaml:
-	@cargo run -p gunbc-codegen --release -- cigen
+	@RUSTFLAGS="-D warnings" cargo run -p gunbc-codegen --release -- cigen
 
 # gunbc-gist entrypoints: repo_path (String), extensions (String)
 gist: ensure-codegen

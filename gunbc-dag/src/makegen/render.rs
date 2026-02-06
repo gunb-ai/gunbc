@@ -150,6 +150,11 @@ fn render_makefile_content(registry: &ToolRegistry, config: &BuildConfig) -> Str
 /// Render core build system targets using BuildConfig.
 fn render_core_targets(config: &BuildConfig) -> String {
     let mut output = String::new();
+    let warning_prefix = if config.warnings == Warnings::Deny {
+        "RUSTFLAGS=\"-D warnings\" "
+    } else {
+        ""
+    };
 
     // Ensure-codegen: bootstrap-safe generation of CLI entrypoints
     output.push_str("# Ensure CLI entrypoints exist (bootstrap-safe)\n");
@@ -190,16 +195,16 @@ fn render_core_targets(config: &BuildConfig) -> String {
     output.push_str("# Verify generated artifacts match their generators\n");
     output.push_str("verify: ensure-codegen\n");
     output.push_str(&format!(
-        "{}@cargo run -p gunbc-dag --bin gunbc-makegen --release -- --check\n",
-        INDENT
+        "{}@{}cargo run -p gunbc-dag --bin gunbc-makegen --release -- --check\n",
+        INDENT, warning_prefix
     ));
     output.push_str(&format!(
-        "{}@cargo run -p gunbc-dag --bin gunbc-bootstrap --release -- --check\n",
-        INDENT
+        "{}@{}cargo run -p gunbc-dag --bin gunbc-bootstrap --release -- --check\n",
+        INDENT, warning_prefix
     ));
     output.push_str(&format!(
-        "{}@cargo run -p gunbc-dag --bin gunbc-testgen --release -- --check\n\n",
-        INDENT
+        "{}@{}cargo run -p gunbc-dag --bin gunbc-testgen --release -- --check\n\n",
+        INDENT, warning_prefix
     ));
 
     output

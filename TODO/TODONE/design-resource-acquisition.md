@@ -13,7 +13,7 @@
 ## Status
 **Phases 1-3 complete** (2026-02-05). Resource trait infrastructure implemented:
 - `Resource` trait with `resource_id()`, `access_mode()`, `kind()`
-- Per-resource environment nodes (FsEnv, PlatformEnv, ClockEnv, AuthEnv)
+- Per-resource environment nodes (FsEnv, PlatformEnv, ClockEnv, CredentialOp)
 - `res:` port naming convention and validation
 - DryRun mock extension for all resource types
 - Migrated existing inline violations to resource acquisition pattern
@@ -139,7 +139,7 @@ impl Resource for Platform {
 | `Platform` | Observation | `platform` | Read | `Platform::detect()` |
 | `Timestamp` | Observation | `clock` | Read | `SystemTime::now()` |
 | `EnvVars` | Observation | `env` | Read | `std::env::vars()` |
-| `AuthToken` | Capability | `auth:{service}` | Read | env var resolution |
+| `Credential` | Capability | `credential:{service}` | Read | env var resolution |
 
 ## 4. Environment Nodes
 
@@ -153,7 +153,7 @@ ToolEnv ──tool:clippy──→ LintNode
 FsEnv ──fs:write──→ PrepareGist
 PlatformEnv ──platform──→ GenerateScripts
 ClockEnv ──clock──→ PrepareFilename
-AuthEnv ──auth:github──→ PrepareRequest
+CredentialOp ──credential:github──→ PrepareRequest
 ```
 
 Rationale:
@@ -211,8 +211,8 @@ pub struct PlatformEnv;
 /// Clock environment — captures the current timestamp.
 pub struct ClockEnv;
 
-/// Auth environment — resolves auth tokens from env vars.
-pub struct AuthEnv {
+/// Credential environment — resolves credentials from env vars.
+pub struct CredentialOp {
     pub service: &'static str,
     pub env_var: &'static str,
 }
@@ -261,10 +261,9 @@ fn build_gist_graph() -> Dag<GistOp> {
     // Environment: acquire resources up front
     let fs_env = builder.add_node(FsEnv { scope: FsScope::Write });
     let clock_env = builder.add_node(ClockEnv);
-    let auth_env = builder.add_node(AuthEnv {
-        service: "github",
-        env_var: "GITHUB_TOKEN",
-    });
+    let credential_env = builder.add_node(CredentialOp::new(vec![
+        Arc::new(GitHubEnvVarProvider::new()),
+    ]));
 
     // Business logic nodes
     let prepare = builder.add_node(PrepareGistOp);
@@ -273,7 +272,10 @@ fn build_gist_graph() -> Dag<GistOp> {
     // Wire resources
     builder.add_edge(fs_env.output("fs:write"), prepare.input("res:fs"));
     builder.add_edge(clock_env.output("clock"), filename.input("res:clock"));
-    builder.add_edge(auth_env.output("auth:github"), prepare.input("res:auth"));
+    builder.add_edge(
+        credential_env.output("credential:github"),
+        prepare.input("res:credential"),
+    );
 
     // Wire data
     builder.add_edge(/* ... */);
@@ -395,7 +397,7 @@ Use the resource constructors to build explicit mock values:
 | `Platform` | `Platform::Linux` — deterministic default |
 | `Timestamp` | `Timestamp(0)` — epoch for reproducibility |
 | `EnvVars` | `HashMap::new()` — empty env |
-| `AuthToken` | `AuthToken::new(service, env_var, SecretString::new("..."))` |
+| `Credential` | `Credential::new(Secret::from_env_var(env_var, "..."), AuthScheme::Bearer)` |
 
 ## 8. Relationship to Existing Code
 
@@ -419,7 +421,7 @@ Use the resource constructors to build explicit mock values:
 | **Q2**: How to declare resource needs? | **Port convention** (`res:` prefix) | Scales, visible, type-safe. No new traits needed. |
 | **Q3**: Sub-DAG scoping? | **Zero-based budgeting** | Explicit delegation. No invisible inheritance. |
 | **Q4**: Filesystem detection? | **Deferred** | Start with `cross_platform()`. Add detection env node later. |
-| **Q5**: Env var resolution? | **AuthEnv node** | Resolves at boundary, emits concrete token. Executor receives resolved auth. |
+| **Q5**: Env var resolution? | **CredentialOp node** | Resolves at boundary, emits concrete credential. Executor receives resolved auth. |
 | **Q6**: Capabilities vs observations? | **Both are resources** | Distinguished by `ResourceKind`. Same acquisition pattern. |
 
 ## 10. Implementation Plan
@@ -437,7 +439,7 @@ Use the resource constructors to build explicit mock values:
 - [x] Implement `PlatformEnv` (simplest — just detects platform)
 - [x] Implement `ClockEnv` (snapshot `SystemTime::now()`)
 - [x] Implement `FsEnv` (emits `FilesystemHandle`)
-- [x] Implement `AuthEnv` (resolves env var → token)
+- [x] Implement `CredentialOp` (resolves env var → credential)
 - [x] Add DryRun mock constructors for each
 
 ### Phase 3: Migrate Existing Violations
@@ -445,7 +447,7 @@ Use the resource constructors to build explicit mock values:
 - [x] `sanitize_branch_for_filename()` — accept `&FilesystemHandle` input
 - [x] `generate_gist_filename()` — accept `Timestamp` input
 - [x] `Installer::for_platform()` — accept `Platform` input
-- [x] `execute_rest()` — accept resolved `AuthToken`, stop reading env vars
+- [x] `execute_rest()` — accept resolved `Credential`, stop reading env vars
 - [x] Wire env nodes into gist graph, deps graph, transport graph
 
 ### Phase 4: Sub-DAG Delegation
@@ -471,7 +473,7 @@ Use the resource constructors to build explicit mock values:
 
 - [x] `Resource` trait with `resource_id()`, `access_mode()`, `kind()`
 - [x] `ResourceKind::Capability` / `ResourceKind::Observation`
-- [x] Per-resource environment nodes (FsEnv, PlatformEnv, ClockEnv, AuthEnv)
+- [x] Per-resource environment nodes (FsEnv, PlatformEnv, ClockEnv, CredentialOp)
 - [x] `res:` port naming convention
 - [x] Resource wiring validation (`validate_resource_wiring()`)
 - [ ] Sub-DAG zero-based delegation model

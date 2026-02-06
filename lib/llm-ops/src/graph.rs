@@ -3,7 +3,7 @@
 //! Provides a composable DAG for the LLM chat completion pattern:
 //!
 //! ```text
-//! PrepareChatRequest (pure) → ResolveAuth (pure) → AuthEnv (env) → TransportOps::Execute (I/O) → ParseChatResponse (pure)
+//! PrepareChatRequest (pure) → ResolveAuth (pure) → CredentialOp (env) → TransportOps::Execute (I/O) → ParseChatResponse (pure)
 //! ```
 //!
 //! This graph can be embedded as a sub-DAG in larger workflows that need

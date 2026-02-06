@@ -97,10 +97,10 @@ pub use github_actions::{
 pub use http::{HttpMethod, HttpRequest, HttpResponse};
 pub use llm::{
     anthropic_provider, build_chat_request, builtin_provider_ids, openai_provider,
-    parse_chat_response, provider_by_id, ApiKeyEnvVar, ChatMessage, ChatRequest, ChatResponse,
+    parse_chat_response, provider_by_id, ChatMessage, ChatRequest, ChatResponse,
     FinishReason, LlmProvider, Role, Usage,
 };
-pub use rest::{AuthMethod, RestRequest, RestResponse};
+pub use rest::{RestRequest, RestResponse};
 pub use tcp::{TcpRequest, TcpResponse};
 pub use tool::{
     check_all_satisfiable,

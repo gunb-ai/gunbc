@@ -37,7 +37,7 @@
 use super::chat::{ChatRequest, ChatResponse, FinishReason, MessageContent, ThinkingConfig, Usage};
 use super::provider::openai_provider;
 use crate::transport::http::HttpMethod;
-use crate::transport::rest::{AuthMethod, RestRequest, RestResponse};
+use crate::transport::rest::{RestRequest, RestResponse};
 
 /// Build an OpenAI Chat Completions API request from a chat request.
 ///
@@ -99,7 +99,7 @@ pub fn build_openai_request(chat: &ChatRequest) -> RestRequest {
         method: HttpMethod::Post,
         headers,
         body: Some(body),
-        auth: Some(AuthMethod::EnvVar(provider.api_key_env.0.clone())),
+        auth: None,
         query: Default::default(),
         timeout_ms: Some(120_000),
     }
@@ -208,11 +208,9 @@ pub fn parse_openai_response(response: &RestResponse) -> Result<ChatResponse, St
 pub fn build_openai_compatible_request(
     chat: &ChatRequest,
     base_url: &str,
-    api_key_env: &str,
 ) -> RestRequest {
     let mut req = build_openai_request(chat);
     req.url = format!("{}/v1/chat/completions", base_url.trim_end_matches('/'));
-    req.auth = Some(AuthMethod::EnvVar(api_key_env.to_string()));
     req
 }
 
@@ -241,7 +239,7 @@ mod tests {
 
         assert_eq!(req.url, "https://api.openai.com/v1/chat/completions");
         assert_eq!(req.method, HttpMethod::Post);
-        assert!(matches!(req.auth, Some(AuthMethod::EnvVar(ref v)) if v == "OPENAI_API_KEY"));
+        assert!(req.auth.is_none());
 
         let body = req.body.unwrap();
         assert_eq!(body["model"], "gpt-4o");
@@ -399,9 +397,9 @@ mod tests {
     #[test]
     fn test_openai_compatible_request() {
         let chat = sample_request();
-        let req = build_openai_compatible_request(&chat, "http://localhost:11434", "OLLAMA_KEY");
+        let req = build_openai_compatible_request(&chat, "http://localhost:11434");
 
         assert_eq!(req.url, "http://localhost:11434/v1/chat/completions");
-        assert!(matches!(req.auth, Some(AuthMethod::EnvVar(ref v)) if v == "OLLAMA_KEY"));
+        assert!(req.auth.is_none());
     }
 }

@@ -519,7 +519,7 @@ external resources. Run on schedule or manual trigger only.
 
 | Producer | Transport variant | Why non-hermetic |
 |----------|-------------------|------------------|
-| `RestRequest` (GitHub) | `Rest` | Requires `AuthMethod` credentials, hits `api.github.com` |
+| `RestRequest` (GitHub) | `Rest` | Requires `Credential`, hits `api.github.com` |
 | `RestRequest` (LLM) | `Rest` | Requires API keys, hits OpenAI/Anthropic endpoints |
 | `GistRequest` (shell) | `Shell` | `gh gist create` requires `gh auth`, creates real resources |
 | `HttpRequest` | `Http` | Raw HTTP to remote hosts (currently stubbed to localhost-only) |

@@ -133,7 +133,7 @@ Modes:
 
 DryRun intercepts these node types:
 - Transport executors with an input port of type `TransportRequest`.
-- Environment nodes that emit `ToolHandle`, `FilesystemHandle`, `Timestamp`, `AuthToken`, or `Platform`.
+- Environment nodes that emit `ToolHandle`, `FilesystemHandle`, `Timestamp`, `Credential`, or `Platform`.
 - Tool consumer nodes that take `ToolHandle` as an input.
 
 Intercepted nodes require explicit mocks for all outputs. There are no silent defaults.

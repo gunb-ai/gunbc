@@ -13,8 +13,9 @@ use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::{
     build::*, BuilderError, Cardinality, Dag, DagBuilder, Node, Value, WorkflowSignature,
 };
+use gunbc_lib_blob::BlobOps;
 use gunbc_lib_transport::TransportOps;
-use gunbc_primitives::{CompareContentOp, PrepareFileReadOp, PrepareFileWriteOp};
+use gunbc_primitives::{PrepareFileReadOp, PrepareFileWriteOp};
 use std::collections::HashMap;
 
 /// The operation type for makegen graphs - a union of makegen ops, primitives, and transport.
@@ -26,8 +27,8 @@ pub enum MakegenGraphOp {
     PrepareFileRead(PrepareFileReadOp),
     /// Prepare file write (primitive - PURE)
     PrepareFileWrite(PrepareFileWriteOp),
-    /// Compare content (primitive - PURE)
-    CompareContent(CompareContentOp),
+    /// Blob operations (compare content - PURE)
+    Blob(BlobOps),
     /// Transport operations (boundary - actual I/O)
     Transport(TransportOps),
 }
@@ -38,7 +39,7 @@ impl Executable for MakegenGraphOp {
             MakegenGraphOp::Makegen(op) => op.execute(inputs),
             MakegenGraphOp::PrepareFileRead(op) => op.execute(inputs),
             MakegenGraphOp::PrepareFileWrite(op) => op.execute(inputs),
-            MakegenGraphOp::CompareContent(op) => op.execute(inputs),
+            MakegenGraphOp::Blob(op) => op.execute(inputs),
             MakegenGraphOp::Transport(op) => op.execute(inputs),
         }
     }
@@ -134,7 +135,7 @@ pub fn build_makegen_graph() -> Result<Dag<MakegenGraphOp>, BuilderError> {
 
     // === Compare content (PURE) ===
 
-    // Node: CompareContent - takes read response + expected content, outputs skip signal
+    // Node: CompareContent (BlobOps) - takes read response + expected content, outputs skip signal
     let compare_content = builder.add_node_after(
         Node::opaque(
             "compare_content",
@@ -148,7 +149,7 @@ pub fn build_makegen_graph() -> Result<Dag<MakegenGraphOp>, BuilderError> {
                 port("skip", "Bool"),
                 port("skip_reason", "String"),
             ],
-            MakegenGraphOp::CompareContent(CompareContentOp),
+            MakegenGraphOp::Blob(BlobOps::CompareContent),
         ),
         &execute_read,
     )?;
