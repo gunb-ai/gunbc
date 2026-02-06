@@ -9,3 +9,6 @@ description = "Execution engine for gunbc DAGs with boundary interception"
 gunbc-ir = { path = "../ir" }
 serde_json = { workspace = true }
 thiserror = "1.0"
+
+[dev-dependencies]
+tempfile = "3"

@@ -88,7 +88,7 @@ pub use github::cli::GH_TOOL;
 pub use github::{
     api::{github_rest_request, GitHubApi, GITHUB_API},
     cli::{gh_cli_commands, gh_cli_request, is_gh_installed, GHCommand},
-    GitHubAuth, GH_CLI_MIN_VERSION, GITHUB_API_VERSION, GITHUB_CONTRACT_VERSION,
+    GH_CLI_MIN_VERSION, GITHUB_API_VERSION, GITHUB_CONTRACT_VERSION,
 };
 pub use github_actions::{
     merge_permissions, Integration, PermissionLevel, PermissionScope, Permissions, RunnerImage,
@@ -98,7 +98,7 @@ pub use http::{HttpMethod, HttpRequest, HttpResponse};
 pub use llm::{
     anthropic_provider, build_chat_request, builtin_provider_ids, openai_provider,
     parse_chat_response, provider_by_id, ApiKeyEnvVar, ChatMessage, ChatRequest, ChatResponse,
-    FinishReason, LlmAuthStyle, LlmProvider, Role, Usage,
+    FinishReason, LlmProvider, Role, Usage,
 };
 pub use rest::{AuthMethod, RestRequest, RestResponse};
 pub use tcp::{TcpRequest, TcpResponse};

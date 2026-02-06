@@ -60,3 +60,13 @@ pub use tool_upsert::{
     install_inputs_to_platform_install, tool_to_platform_install,
 };
 pub use upsert::{UpsertPhase, UpsertResult};
+
+// ============================================================================
+// Generated Tests (from `make testgen`)
+// ============================================================================
+
+#[cfg(test)]
+mod generated_tests {
+    #![allow(unused_imports)]
+    include!("generated_tests.rs");
+}

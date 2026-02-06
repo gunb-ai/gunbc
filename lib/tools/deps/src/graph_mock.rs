@@ -39,6 +39,13 @@ install_cmd = "cargo install ripgrep"
 /// Only transport and resource mocks are required. Pure terminal outputs
 /// (parse_manifest.*, generate_scripts.*, parse_execute_result.*) are
 /// computed during DryRun execution, not mocked.
+#[gunbc_testgen_registry_macros::testgen_target(
+    name = "deps",
+    output = "lib/tools/deps/src/generated_tests.rs",
+    module = "deps_generated_tests",
+    builder = "crate::graph::build_deps_graph().unwrap()",
+    signature = "crate::deps_signature()"
+)]
 pub fn deps_mock_spec() -> MockSpec {
     // Build the actual DAG to extract requirements
     let dag = build_deps_graph().expect("deps graph should build");
@@ -80,6 +87,7 @@ pub fn deps_mock_spec() -> MockSpec {
 /// Mock spec for testing sudo elevation scenarios.
 ///
 /// Simulates a time-bounded sudo lease (5 minutes).
+#[gunbc_testgen_registry_macros::testgen_target(skip)]
 pub fn deps_mock_spec_with_sudo() -> MockSpec {
     deps_mock_spec()
         // Sudo lease: 5 minutes before re-auth needed
@@ -87,6 +95,7 @@ pub fn deps_mock_spec_with_sudo() -> MockSpec {
 }
 
 /// Mock spec for testing package manager failure.
+#[gunbc_testgen_registry_macros::testgen_target(skip)]
 pub fn deps_mock_spec_pkg_fails() -> MockSpec {
     // Build the actual DAG to extract requirements
     let dag = build_deps_graph().expect("deps graph should build");

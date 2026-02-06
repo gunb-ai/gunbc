@@ -11,7 +11,7 @@
 
 use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::{build::*, Dag, Node, Value};
-use gunbc_lib_transport::{AuthEnv, TransportOps};
+use gunbc_lib_transport::{CredentialOp, TransportOps};
 use std::collections::HashMap;
 
 use crate::LlmOps;
@@ -25,8 +25,8 @@ pub enum LlmGraphOp {
     Llm(LlmOps),
     /// Transport execution (BOUNDARY - actual I/O)
     Transport(TransportOps),
-    /// Auth environment (BOUNDARY - resolves provider auth)
-    Env(AuthEnv),
+    /// Credential environment (BOUNDARY - resolves provider credentials)
+    Cred(CredentialOp),
 }
 
 impl Executable for LlmGraphOp {
@@ -34,7 +34,7 @@ impl Executable for LlmGraphOp {
         match self {
             LlmGraphOp::Llm(op) => op.execute(inputs),
             LlmGraphOp::Transport(op) => op.execute(inputs),
-            LlmGraphOp::Env(op) => op.execute(inputs),
+            LlmGraphOp::Cred(op) => op.execute(inputs),
         }
     }
 }
@@ -80,16 +80,27 @@ pub fn build_chat_completion_graph() -> Dag<LlmGraphOp> {
     dag.add_node(Node::opaque(
         "resolve_auth",
         vec![port("provider", "String")],
-        vec![port("service", "String"), port("env_var", "String")],
+        vec![
+            port("service", "String"),
+            port("env_var", "String"),
+            port("scheme", "String"),
+            port("header_name", "String"),
+        ],
         LlmGraphOp::Llm(LlmOps::ResolveAuth),
     ));
 
-    // Node 3: Auth environment (resolves provider auth)
+    // Node 3: Credential environment (resolves provider credentials)
+    let cred_port = "credential:llm";
     dag.add_node(Node::opaque(
-        "auth_env",
-        vec![port("service", "String"), port("env_var", "String")],
-        vec![port("auth:llm", "AuthToken")],
-        LlmGraphOp::Env(AuthEnv::from_inputs("auth:llm")),
+        "credential_env",
+        vec![
+            port("service", "String"),
+            port("env_var", "String"),
+            port("scheme", "String"),
+            port("header_name", "String"),
+        ],
+        vec![port(cred_port, "Credential")],
+        LlmGraphOp::Cred(CredentialOp::from_inputs(cred_port)),
     ));
 
     // Node 4: Execute transport (I/O boundary)
@@ -97,7 +108,7 @@ pub fn build_chat_completion_graph() -> Dag<LlmGraphOp> {
         "execute",
         vec![
             port("request", "TransportRequest"),
-            port("res:auth", "AuthToken"),
+            port("res:credential", "Credential"),
         ],
         vec![port("response", "TransportResponse")],
         LlmGraphOp::Transport(TransportOps::Execute),
@@ -120,14 +131,16 @@ pub fn build_chat_completion_graph() -> Dag<LlmGraphOp> {
         LlmGraphOp::Llm(LlmOps::ParseChatResponse),
     ));
 
-    // Edges: prepare -> resolve_auth -> auth_env -> execute -> parse
+    // Edges: prepare -> resolve_auth -> credential_env -> execute -> parse
     dag.add_edge(edge("prepare", "request", "execute", "request"));
     dag.add_edge(edge("execute", "response", "parse", "response"));
     dag.add_edge(edge("prepare", "provider", "parse", "provider"));
     dag.add_edge(edge("prepare", "provider", "resolve_auth", "provider"));
-    dag.add_edge(edge("resolve_auth", "service", "auth_env", "service"));
-    dag.add_edge(edge("resolve_auth", "env_var", "auth_env", "env_var"));
-    dag.add_edge(edge("auth_env", "auth:llm", "execute", "res:auth"));
+    dag.add_edge(edge("resolve_auth", "service", "credential_env", "service"));
+    dag.add_edge(edge("resolve_auth", "env_var", "credential_env", "env_var"));
+    dag.add_edge(edge("resolve_auth", "scheme", "credential_env", "scheme"));
+    dag.add_edge(edge("resolve_auth", "header_name", "credential_env", "header_name"));
+    dag.add_edge(edge("credential_env", cred_port, "execute", "res:credential"));
 
     dag
 }
@@ -141,7 +154,7 @@ mod tests {
     fn test_chat_completion_graph_structure() {
         let dag = build_chat_completion_graph();
         assert_eq!(dag.nodes.len(), 5);
-        assert_eq!(dag.edges.len(), 7);
+        assert_eq!(dag.edges.len(), 9);
     }
 
     #[test]

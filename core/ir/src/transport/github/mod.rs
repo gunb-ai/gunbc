@@ -50,6 +50,10 @@ pub const GITHUB_CONTRACT_VERSION: &str = "2026.01.29.1";
 /// GitHub authentication methods.
 ///
 /// Supports multiple auth strategies that work across REST API and CLI.
+///
+/// **Deprecated**: Use [`Credential`](crate::transport::credential::Credential) with
+/// [`AuthScheme`](crate::transport::credential::AuthScheme) instead.
+#[deprecated(note = "use Credential with AuthScheme instead")]
 #[derive(Debug, Clone, PartialEq)]
 pub enum GitHubAuth {
     /// Direct token (e.g., PAT or fine-grained token)
@@ -67,9 +71,11 @@ pub enum GitHubAuth {
 /// Uses GITHUB_TOKEN environment variable, which is:
 /// - Automatically set in GitHub Actions
 /// - Standard for local development with PATs
+#[allow(deprecated)]
 pub const DEFAULT_AUTH: GitHubAuth = GitHubAuth::EnvVar("GITHUB_TOKEN");
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     use super::*;
 

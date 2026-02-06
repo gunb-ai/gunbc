@@ -15,7 +15,7 @@ use gunbc_ir::{build::*, Dag, Node, Value};
 use gunbc_lib_blob::BlobOps;
 use gunbc_lib_git_ops::GitOps;
 use gunbc_lib_llm_ops::LlmOps;
-use gunbc_lib_transport::{AuthEnv, TransportOps};
+use gunbc_lib_transport::{CredentialOp, TransportOps};
 use std::collections::HashMap;
 
 use crate::{ReviewOps, ReviewPipelineConfig};
@@ -37,8 +37,8 @@ pub enum ReviewGraphOp {
     Review(ReviewOps),
     /// LLM chat operations (PURE)
     Llm(LlmOps),
-    /// Auth environment (BOUNDARY - resolves provider auth)
-    Env(AuthEnv),
+    /// Credential environment (BOUNDARY - resolves provider credentials)
+    Cred(CredentialOp),
     /// Transport execution (BOUNDARY - actual I/O)
     Transport(TransportOps),
 }
@@ -50,7 +50,7 @@ impl Executable for ReviewGraphOp {
             ReviewGraphOp::Git(op) => op.execute(inputs),
             ReviewGraphOp::Review(op) => op.execute(inputs),
             ReviewGraphOp::Llm(op) => op.execute(inputs),
-            ReviewGraphOp::Env(op) => op.execute(inputs),
+            ReviewGraphOp::Cred(op) => op.execute(inputs),
             ReviewGraphOp::Transport(op) => op.execute(inputs),
         }
     }
@@ -81,9 +81,9 @@ impl Executable for ReviewGraphOp {
 ///                                     ↓
 ///                              prepare_prompt
 ///                                     ↓
-///                              prepare_llm → resolve_auth → auth_env → [execute_llm] → parse_llm
-///                                                                ↓
-///                                                         parse_response
+///                              prepare_llm → resolve_auth → credential_env → [execute_llm] → parse_llm
+///                                                                      ↓
+///                                                               parse_response
 /// ```
 ///
 /// Note: For inline blob sources, execute_blob is skipped (handled by prepare_blob).
@@ -169,19 +169,27 @@ pub fn build_review_phase_graph() -> Dag<ReviewGraphOp> {
     dag.add_node(Node::opaque(
         "resolve_auth",
         vec![port("provider", "String")],
-        vec![port("service", "String"), port("env_var", "String")],
+        vec![
+            port("service", "String"),
+            port("env_var", "String"),
+            port("scheme", "String"),
+            port("header_name", "String"),
+        ],
         ReviewGraphOp::Llm(LlmOps::ResolveAuth),
     ));
 
-    // Node 7: Auth environment (resolves provider auth)
-    let auth_port = "auth:llm";
-    let auth_env = AuthEnv::from_inputs(auth_port);
-    let auth_inputs = vec![port("service", "String"), port("env_var", "String")];
+    // Node 7: Credential environment (resolves provider credentials)
+    let cred_port = "credential:llm";
     dag.add_node(Node::opaque(
-        "auth_env",
-        auth_inputs,
-        vec![port(auth_port, "AuthToken")],
-        ReviewGraphOp::Env(auth_env),
+        "credential_env",
+        vec![
+            port("service", "String"),
+            port("env_var", "String"),
+            port("scheme", "String"),
+            port("header_name", "String"),
+        ],
+        vec![port(cred_port, "Credential")],
+        ReviewGraphOp::Cred(CredentialOp::from_inputs(cred_port)),
     ));
 
     // Node 8: Execute LLM call (I/O boundary)
@@ -189,7 +197,7 @@ pub fn build_review_phase_graph() -> Dag<ReviewGraphOp> {
         "execute_llm",
         vec![
             port("request", "TransportRequest"),
-            port("res:auth", "AuthToken"),
+            port("res:credential", "Credential"),
         ],
         vec![port("response", "TransportResponse")],
         ReviewGraphOp::Transport(TransportOps::Execute),
@@ -251,9 +259,11 @@ pub fn build_review_phase_graph() -> Dag<ReviewGraphOp> {
     ));
     dag.add_edge(edge("prepare_llm", "request", "execute_llm", "request"));
     dag.add_edge(edge("prepare_llm", "provider", "resolve_auth", "provider"));
-    dag.add_edge(edge("resolve_auth", "service", "auth_env", "service"));
-    dag.add_edge(edge("resolve_auth", "env_var", "auth_env", "env_var"));
-    dag.add_edge(edge("auth_env", auth_port, "execute_llm", "res:auth"));
+    dag.add_edge(edge("resolve_auth", "service", "credential_env", "service"));
+    dag.add_edge(edge("resolve_auth", "env_var", "credential_env", "env_var"));
+    dag.add_edge(edge("resolve_auth", "scheme", "credential_env", "scheme"));
+    dag.add_edge(edge("resolve_auth", "header_name", "credential_env", "header_name"));
+    dag.add_edge(edge("credential_env", cred_port, "execute_llm", "res:credential"));
     dag.add_edge(edge("execute_llm", "response", "parse_llm", "response"));
     dag.add_edge(edge("prepare_llm", "provider", "parse_llm", "provider"));
 
@@ -313,19 +323,27 @@ pub fn build_inline_review_graph() -> Dag<ReviewGraphOp> {
     dag.add_node(Node::opaque(
         "resolve_auth",
         vec![port("provider", "String")],
-        vec![port("service", "String"), port("env_var", "String")],
+        vec![
+            port("service", "String"),
+            port("env_var", "String"),
+            port("scheme", "String"),
+            port("header_name", "String"),
+        ],
         ReviewGraphOp::Llm(LlmOps::ResolveAuth),
     ));
 
-    // Node 4: Auth environment (resolves provider auth)
-    let auth_port = "auth:llm";
-    let auth_env = AuthEnv::from_inputs(auth_port);
-    let auth_inputs = vec![port("service", "String"), port("env_var", "String")];
+    // Node 4: Credential environment (resolves provider credentials)
+    let cred_port = "credential:llm";
     dag.add_node(Node::opaque(
-        "auth_env",
-        auth_inputs,
-        vec![port(auth_port, "AuthToken")],
-        ReviewGraphOp::Env(auth_env),
+        "credential_env",
+        vec![
+            port("service", "String"),
+            port("env_var", "String"),
+            port("scheme", "String"),
+            port("header_name", "String"),
+        ],
+        vec![port(cred_port, "Credential")],
+        ReviewGraphOp::Cred(CredentialOp::from_inputs(cred_port)),
     ));
 
     // Node 5: Execute LLM (I/O boundary)
@@ -333,7 +351,7 @@ pub fn build_inline_review_graph() -> Dag<ReviewGraphOp> {
         "execute_llm",
         vec![
             port("request", "TransportRequest"),
-            port("res:auth", "AuthToken"),
+            port("res:credential", "Credential"),
         ],
         vec![port("response", "TransportResponse")],
         ReviewGraphOp::Transport(TransportOps::Execute),
@@ -373,9 +391,11 @@ pub fn build_inline_review_graph() -> Dag<ReviewGraphOp> {
     ));
     dag.add_edge(edge("prepare_llm", "request", "execute_llm", "request"));
     dag.add_edge(edge("prepare_llm", "provider", "resolve_auth", "provider"));
-    dag.add_edge(edge("resolve_auth", "service", "auth_env", "service"));
-    dag.add_edge(edge("resolve_auth", "env_var", "auth_env", "env_var"));
-    dag.add_edge(edge("auth_env", auth_port, "execute_llm", "res:auth"));
+    dag.add_edge(edge("resolve_auth", "service", "credential_env", "service"));
+    dag.add_edge(edge("resolve_auth", "env_var", "credential_env", "env_var"));
+    dag.add_edge(edge("resolve_auth", "scheme", "credential_env", "scheme"));
+    dag.add_edge(edge("resolve_auth", "header_name", "credential_env", "header_name"));
+    dag.add_edge(edge("credential_env", cred_port, "execute_llm", "res:credential"));
     dag.add_edge(edge("execute_llm", "response", "parse_llm", "response"));
     dag.add_edge(edge("prepare_llm", "provider", "parse_llm", "provider"));
     dag.add_edge(edge("parse_llm", "answer", "parse_response", "answer"));
@@ -421,9 +441,9 @@ pub fn build_diff_review_graph() -> Dag<ReviewGraphOp> {
 ///                                                    ↓
 ///                                             prepare_prompt
 ///                                                    ↓
-///                                             prepare_llm → resolve_auth → auth_env → [execute_llm] → parse_llm
-///                                                                               ↓
-///                                                                        parse_response
+///                                             prepare_llm → resolve_auth → credential_env → [execute_llm] → parse_llm
+///                                                                                     ↓
+///                                                                              parse_response
 /// ```
 ///
 /// I/O Classification:
@@ -534,25 +554,33 @@ pub fn build_diff_review_graph_with(config: ReviewPipelineConfig) -> Dag<ReviewG
     dag.add_node(Node::opaque(
         "resolve_auth",
         vec![port("provider", "String")],
-        vec![port("service", "String"), port("env_var", "String")],
+        vec![
+            port("service", "String"),
+            port("env_var", "String"),
+            port("scheme", "String"),
+            port("header_name", "String"),
+        ],
         ReviewGraphOp::Llm(LlmOps::ResolveAuth),
     ));
 
-    let auth_port = "auth:llm";
-    let auth_env = AuthEnv::from_inputs(auth_port);
-    let auth_inputs = vec![port("service", "String"), port("env_var", "String")];
+    let cred_port = "credential:llm";
     dag.add_node(Node::opaque(
-        "auth_env",
-        auth_inputs,
-        vec![port(auth_port, "AuthToken")],
-        ReviewGraphOp::Env(auth_env),
+        "credential_env",
+        vec![
+            port("service", "String"),
+            port("env_var", "String"),
+            port("scheme", "String"),
+            port("header_name", "String"),
+        ],
+        vec![port(cred_port, "Credential")],
+        ReviewGraphOp::Cred(CredentialOp::from_inputs(cred_port)),
     ));
 
     dag.add_node(Node::opaque(
         "execute_llm",
         vec![
             port("request", "TransportRequest"),
-            port("res:auth", "AuthToken"),
+            port("res:credential", "Credential"),
         ],
         vec![port("response", "TransportResponse")],
         ReviewGraphOp::Transport(TransportOps::Execute),
@@ -630,9 +658,11 @@ pub fn build_diff_review_graph_with(config: ReviewPipelineConfig) -> Dag<ReviewG
         "system_prompt",
     ));
     dag.add_edge(edge("prepare_llm", "request", "execute_llm", "request"));
-    dag.add_edge(edge("resolve_auth", "service", "auth_env", "service"));
-    dag.add_edge(edge("resolve_auth", "env_var", "auth_env", "env_var"));
-    dag.add_edge(edge("auth_env", auth_port, "execute_llm", "res:auth"));
+    dag.add_edge(edge("resolve_auth", "service", "credential_env", "service"));
+    dag.add_edge(edge("resolve_auth", "env_var", "credential_env", "env_var"));
+    dag.add_edge(edge("resolve_auth", "scheme", "credential_env", "scheme"));
+    dag.add_edge(edge("resolve_auth", "header_name", "credential_env", "header_name"));
+    dag.add_edge(edge("credential_env", cred_port, "execute_llm", "res:credential"));
     dag.add_edge(edge("execute_llm", "response", "parse_llm", "response"));
     dag.add_edge(edge("prepare_llm", "provider", "parse_llm", "provider"));
 
@@ -730,25 +760,33 @@ pub fn build_multi_source_review_graph_with(config: ReviewPipelineConfig) -> Dag
     dag.add_node(Node::opaque(
         "resolve_auth",
         vec![port("provider", "String")],
-        vec![port("service", "String"), port("env_var", "String")],
+        vec![
+            port("service", "String"),
+            port("env_var", "String"),
+            port("scheme", "String"),
+            port("header_name", "String"),
+        ],
         ReviewGraphOp::Llm(LlmOps::ResolveAuth),
     ));
 
-    let auth_port = "auth:llm";
-    let auth_env = AuthEnv::from_inputs(auth_port);
-    let auth_inputs = vec![port("service", "String"), port("env_var", "String")];
+    let cred_port = "credential:llm";
     dag.add_node(Node::opaque(
-        "auth_env",
-        auth_inputs,
-        vec![port(auth_port, "AuthToken")],
-        ReviewGraphOp::Env(auth_env),
+        "credential_env",
+        vec![
+            port("service", "String"),
+            port("env_var", "String"),
+            port("scheme", "String"),
+            port("header_name", "String"),
+        ],
+        vec![port(cred_port, "Credential")],
+        ReviewGraphOp::Cred(CredentialOp::from_inputs(cred_port)),
     ));
 
     dag.add_node(Node::opaque(
         "execute_llm",
         vec![
             port("request", "TransportRequest"),
-            port("res:auth", "AuthToken"),
+            port("res:credential", "Credential"),
         ],
         vec![port("response", "TransportResponse")],
         ReviewGraphOp::Transport(TransportOps::Execute),
@@ -807,9 +845,11 @@ pub fn build_multi_source_review_graph_with(config: ReviewPipelineConfig) -> Dag
         "system_prompt",
     ));
     dag.add_edge(edge("prepare_llm", "request", "execute_llm", "request"));
-    dag.add_edge(edge("resolve_auth", "service", "auth_env", "service"));
-    dag.add_edge(edge("resolve_auth", "env_var", "auth_env", "env_var"));
-    dag.add_edge(edge("auth_env", auth_port, "execute_llm", "res:auth"));
+    dag.add_edge(edge("resolve_auth", "service", "credential_env", "service"));
+    dag.add_edge(edge("resolve_auth", "env_var", "credential_env", "env_var"));
+    dag.add_edge(edge("resolve_auth", "scheme", "credential_env", "scheme"));
+    dag.add_edge(edge("resolve_auth", "header_name", "credential_env", "header_name"));
+    dag.add_edge(edge("credential_env", cred_port, "execute_llm", "res:credential"));
     dag.add_edge(edge("execute_llm", "response", "parse_llm", "response"));
     dag.add_edge(edge("prepare_llm", "provider", "parse_llm", "provider"));
     dag.add_edge(edge("parse_llm", "answer", "parse_response", "answer"));
@@ -922,7 +962,7 @@ mod tests {
             ReviewGraphOp::Review(ReviewOps::HashFinding),
             ReviewGraphOp::Llm(LlmOps::PrepareSimpleRequest),
             ReviewGraphOp::Llm(LlmOps::ResolveAuth),
-            ReviewGraphOp::Env(AuthEnv::from_inputs("auth:llm")),
+            ReviewGraphOp::Cred(CredentialOp::from_inputs("credential:llm")),
             ReviewGraphOp::Transport(TransportOps::Execute),
         ];
 

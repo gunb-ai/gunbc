@@ -23,11 +23,16 @@ gunbc-deps = { path = "../lib/tools/deps" }
 gunbc-gist = { path = "../lib/tools/gist" }
 gunbc-clippy = { path = "../lib/tools/clippy" }
 gunbc-lib-llm-ops = { path = "../lib/llm-ops" }
+gunbc-testgen-registry = { path = "../core/testgen-registry" }
+gunbc-testgen-registry-macros = { path = "../core/testgen-registry-macros" }
+gunbc-lib-review = { path = "../lib/review" }
 
 serde_json = { workspace = true }
 
 [dev-dependencies]
 gunbc-test = { path = "../core/test" }
+glob = { workspace = true }
+
 
 [[bin]]
 name = "gunbc-ci"

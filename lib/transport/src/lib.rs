@@ -28,12 +28,10 @@
 #![allow(clippy::disallowed_methods)]
 
 pub mod credential;
-pub mod env;
 pub mod executor;
 pub mod ops;
 
 // STRUCTURAL ENFORCEMENT: Only export TransportOps
 // execute_transport and execute_request are internal - not exported
 pub use credential::{CredentialOp, GitHubEnvVarProvider, LlmEnvVarProvider, MockCredentialProvider};
-pub use env::AuthEnv;
 pub use ops::TransportOps;

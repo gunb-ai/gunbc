@@ -7,6 +7,8 @@ members = [
     "core/exec",
     "core/codegen",
     "core/test",
+    "core/testgen-registry",
+    "core/testgen-registry-macros",
     
     # Library crates (DAG op libraries)
     "lib/primitives",

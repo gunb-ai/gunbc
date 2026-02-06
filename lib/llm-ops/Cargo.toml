@@ -11,3 +11,5 @@ gunbc-exec = { path = "../../core/exec" }
 gunbc-lib-transport = { path = "../transport" }
 gunbc-test = { path = "../../core/test" }
 serde_json = { workspace = true }
+gunbc-testgen-registry = { path = "../../core/testgen-registry" }
+gunbc-testgen-registry-macros = { path = "../../core/testgen-registry-macros" }

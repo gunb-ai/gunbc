@@ -998,9 +998,9 @@ integration tests all added.
   and utility tests. Watch: some library targets call
   `.no_boundary_tests()` — verify generated suite still covers those
   invariants before deleting.
-- Makefile gen and CI gen should read `all_testgen_targets()` to
-  auto-generate check targets (testgen-improvements.md TODO 6.3).
-  This makes "add a new tool" a single edit instead of 3+.
+- Makefile gen and CI gen should read the testgen registry (inventory)
+  to auto-generate check targets (testgen-improvements.md TODO 6.3).
+  This keeps "add a new tool" to a single edit (`#[testgen_target]`).
 - The skipped-propagation pattern (§12) is mechanical — it affects the
   parse ops that sit after transport boundaries. This will grow as
   more DAGs are added, so worth fixing now.

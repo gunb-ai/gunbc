@@ -42,8 +42,9 @@ pub use control::{BranchOp, LoopOp};
 pub use data::{ConcatOp, ExtractOp, FormatMapOp, FormatOp, ParseOp, SplitOp, StableHashOp};
 pub use env::{ClockEnv, FsEnv};
 pub use io::{
-    EmbeddedFileExistsOp, EmbeddedShellOp, HttpRequestOp, PrepareDirectoryListOp,
-    PrepareFileExistsOp, PrepareFileReadOp, PrepareFileWriteOp, PrepareShellOp,
+    CompareContentOp, EmbeddedFileExistsOp, EmbeddedShellOp, HttpRequestOp,
+    PrepareDirectoryListOp, PrepareFileExistsOp, PrepareFileReadOp, PrepareFileWriteOp,
+    PrepareShellOp,
 };
 
 use gunbc_exec::{ExecError, Executable};
@@ -80,6 +81,8 @@ pub enum PrimitiveOp {
     PrepareShell(PrepareShellOp),
     PrepareDirectoryList(PrepareDirectoryListOp),
     HttpRequest(HttpRequestOp),
+    // Pure comparison (check phase of file content upsert)
+    CompareContent(CompareContentOp),
     // Embedded variants (hardcoded paths/commands, no input ports needed)
     EmbeddedFileExists(EmbeddedFileExistsOp),
     EmbeddedShell(EmbeddedShellOp),
@@ -117,6 +120,8 @@ impl Executable for PrimitiveOp {
             PrimitiveOp::PrepareShell(op) => op.execute(inputs),
             PrimitiveOp::PrepareDirectoryList(op) => op.execute(inputs),
             PrimitiveOp::HttpRequest(op) => op.execute(inputs),
+            // Pure comparison
+            PrimitiveOp::CompareContent(op) => op.execute(inputs),
             // I/O - Pure prepare ops (embedded)
             PrimitiveOp::EmbeddedFileExists(op) => op.execute(inputs),
             PrimitiveOp::EmbeddedShell(op) => op.execute(inputs),

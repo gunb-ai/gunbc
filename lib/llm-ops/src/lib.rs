@@ -46,6 +46,8 @@ pub enum LlmOps {
     /// Outputs:
     /// - `service`: String - canonical provider/service ID
     /// - `env_var`: String - environment variable for the API key
+    /// - `scheme`: String - auth scheme ("bearer" or "header")
+    /// - `header_name`: String - header name for "header" scheme (e.g., "x-api-key"), empty for "bearer"
     ResolveAuth,
     /// Build a chat completion REST request from inputs.
     ///
@@ -121,13 +123,27 @@ impl Executable for LlmOps {
 fn execute_resolve_auth(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
+    use gunbc_ir::AuthScheme;
+
     let provider_id = require_str(&inputs, "provider")?;
     let provider = llm::provider_by_id(provider_id)
         .ok_or_else(|| ExecError::new(format!("unknown provider '{}'", provider_id)))?;
 
+    let (scheme, header_name) = match &provider.auth_scheme {
+        AuthScheme::Bearer => ("bearer".to_string(), String::new()),
+        AuthScheme::Header { name } => ("header".to_string(), name.clone()),
+        AuthScheme::Basic { .. } => {
+            return Err(ExecError::new(
+                "basic auth is not supported for LLM providers",
+            ))
+        }
+    };
+
     OutputMap::new()
         .str("service", provider.id)
         .str("env_var", provider.api_key_env.0)
+        .str("scheme", scheme)
+        .str("header_name", header_name)
         .ok()
 }
 
@@ -553,6 +569,30 @@ mod tests {
         assert_eq!(
             result.get("env_var"),
             Some(&Value::Str("OPENAI_API_KEY".to_string()))
+        );
+        assert_eq!(
+            result.get("scheme"),
+            Some(&Value::Str("bearer".to_string()))
+        );
+        assert_eq!(
+            result.get("header_name"),
+            Some(&Value::Str(String::new()))
+        );
+    }
+
+    #[test]
+    fn test_resolve_auth_anthropic_scheme() {
+        let mut inputs = HashMap::new();
+        inputs.insert("provider".to_string(), Value::Str("anthropic".to_string()));
+
+        let result = LlmOps::ResolveAuth.execute(inputs).unwrap();
+        assert_eq!(
+            result.get("scheme"),
+            Some(&Value::Str("header".to_string()))
+        );
+        assert_eq!(
+            result.get("header_name"),
+            Some(&Value::Str("x-api-key".to_string()))
         );
     }
 

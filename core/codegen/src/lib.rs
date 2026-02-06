@@ -6,7 +6,7 @@
 //! - [`DagInfo`]: Combined boundary and entrypoint information
 //! - [`cli_gen`]: CLI generation from DAG entrypoints
 //! - [`testgen`]: Test generation from proof obligations
-//! - [`all_testgen_targets`]: All testgen targets (tools + libraries)
+//! - Testgen target registry (see gunbc-testgen-registry)
 //!
 //! # Note
 //!
@@ -30,8 +30,8 @@ pub use cli_gen::{
 pub use dag_gen::generate_graph_rs;
 pub use file_writer::{FileWriter, WriteResult};
 pub use registry::{
-    all_cleanable_outputs, all_testgen_targets, all_tools, core_outputs, DagDef, EdgeDef, NodeDef,
-    PortDef, TestgenTargetDef, ToolDef,
+    all_cleanable_outputs, all_tools, core_outputs, DagDef, EdgeDef, NodeDef, PortDef,
+    TestgenTargetDef, ToolDef,
 };
 pub use template::Template;
 

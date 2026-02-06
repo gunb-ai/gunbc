@@ -19,13 +19,20 @@ use gunbc_ir::{SecretString, Value};
 use gunbc_test::{InputConstraint, MockSpec, NodeExample, OutputMatcher};
 use std::collections::BTreeMap;
 
-fn mock_auth_token(service: &str, env_var: &str) -> Value {
+fn mock_credential() -> Value {
     let mut map = BTreeMap::new();
-    map.insert("service".to_string(), Value::Str(service.to_string()));
-    map.insert("env_var".to_string(), Value::Str(env_var.to_string()));
     map.insert(
         "token".to_string(),
         Value::Secret(SecretString::new("<MOCK_API_KEY>")),
+    );
+    map.insert(
+        "source_type".to_string(),
+        Value::Str("static".to_string()),
+    );
+    map.insert("scheme".to_string(), Value::Str("bearer".to_string()));
+    map.insert(
+        "cap".to_string(),
+        Value::Secret(SecretString::new("capability")),
     );
     Value::Map(map)
 }
@@ -42,6 +49,13 @@ fn mock_auth_token(service: &str, env_var: &str) -> Value {
 /// - `provider`: Must be "openai"
 /// - `model`: Non-empty string (e.g., "gpt-4o")
 /// - `messages`: JSON array of {role, content}
+#[gunbc_testgen_registry_macros::testgen_target(
+    name = "llm-openai",
+    output = "lib/llm-ops/src/generated_tests.rs",
+    module = "llm_openai_generated_tests",
+    builder = "crate::graph::build_chat_completion_graph()",
+    no_boundary_tests
+)]
 pub fn openai_mock_spec() -> MockSpec {
     let response = mock::mock_openai_response("The code looks good. No issues found.");
 
@@ -58,9 +72,9 @@ pub fn openai_mock_spec() -> MockSpec {
         )
         // Env: resolved auth token
         .boundary(
-            "auth_env",
-            "auth:llm",
-            mock_auth_token("openai", "OPENAI_API_KEY"),
+            "credential_env",
+            "credential:llm",
+            mock_credential(),
         )
         // Transport mock: execute node response (DryRun interception)
         .transport_mock(
@@ -114,6 +128,14 @@ pub fn openai_mock_spec() -> MockSpec {
                     "env_var",
                     OutputMatcher::exact(Value::Str("OPENAI_API_KEY".into())),
                 )
+                .output(
+                    "scheme",
+                    OutputMatcher::exact(Value::Str("bearer".into())),
+                )
+                .output(
+                    "header_name",
+                    OutputMatcher::exact(Value::Str(String::new())),
+                )
                 .description("Resolve auth maps OpenAI provider to API key env var"),
         )
         .node_example(
@@ -146,7 +168,7 @@ pub fn openai_mock_spec() -> MockSpec {
                 .output("model", OutputMatcher::Any)
                 .description("OpenAI parse handles skipped transport response"),
         )
-        .skip_node_example("auth_env")
+        .skip_node_example("credential_env")
 }
 
 /// Mock specification for Anthropic chat completion.
@@ -154,6 +176,13 @@ pub fn openai_mock_spec() -> MockSpec {
 /// # Boundary Mocks
 ///
 /// Same structure as OpenAI but with Anthropic-format responses.
+#[gunbc_testgen_registry_macros::testgen_target(
+    name = "llm-anthropic",
+    output = "lib/llm-ops/src/generated_tests_anthropic.rs",
+    module = "llm_anthropic_generated_tests",
+    builder = "crate::graph::build_chat_completion_graph()",
+    no_boundary_tests
+)]
 pub fn anthropic_mock_spec() -> MockSpec {
     let response = mock::mock_anthropic_response(
         "The function handles edge cases well. Consider adding a doc comment.",
@@ -176,9 +205,9 @@ pub fn anthropic_mock_spec() -> MockSpec {
         )
         // Env: resolved auth token
         .boundary(
-            "auth_env",
-            "auth:llm",
-            mock_auth_token("anthropic", "ANTHROPIC_API_KEY"),
+            "credential_env",
+            "credential:llm",
+            mock_credential(),
         )
         // Transport mock: execute node response (DryRun interception)
         .transport_mock(
@@ -241,6 +270,14 @@ pub fn anthropic_mock_spec() -> MockSpec {
                     "env_var",
                     OutputMatcher::exact(Value::Str("ANTHROPIC_API_KEY".into())),
                 )
+                .output(
+                    "scheme",
+                    OutputMatcher::exact(Value::Str("header".into())),
+                )
+                .output(
+                    "header_name",
+                    OutputMatcher::exact(Value::Str("x-api-key".into())),
+                )
                 .description("Resolve auth maps Anthropic provider to API key env var"),
         )
         .node_example(
@@ -276,12 +313,19 @@ pub fn anthropic_mock_spec() -> MockSpec {
                 .output("model", OutputMatcher::Any)
                 .description("Anthropic parse handles skipped transport response"),
         )
-        .skip_node_example("auth_env")
+        .skip_node_example("credential_env")
 }
 
 /// Mock specification for code review workflow.
 ///
 /// Simulates a code review request with a detailed response.
+#[gunbc_testgen_registry_macros::testgen_target(
+    name = "llm-code-review",
+    output = "lib/llm-ops/src/generated_tests_code_review.rs",
+    module = "llm_code_review_generated_tests",
+    builder = "crate::graph::build_chat_completion_graph()",
+    no_boundary_tests
+)]
 pub fn code_review_mock_spec() -> MockSpec {
     let review_content = "\
 ## Code Review\n\n\
@@ -305,9 +349,9 @@ Overall: The code is clean and well-structured. Minor fixes recommended.";
         ])))
         // Env: resolved auth token
         .boundary(
-            "auth_env",
-            "auth:llm",
-            mock_auth_token("openai", "OPENAI_API_KEY"),
+            "credential_env",
+            "credential:llm",
+            mock_credential(),
         )
         // Transport mock: execute node response
         .transport_mock(
@@ -350,6 +394,14 @@ Overall: The code is clean and well-structured. Minor fixes recommended.";
                     "env_var",
                     OutputMatcher::exact(Value::Str("OPENAI_API_KEY".into())),
                 )
+                .output(
+                    "scheme",
+                    OutputMatcher::exact(Value::Str("bearer".into())),
+                )
+                .output(
+                    "header_name",
+                    OutputMatcher::exact(Value::Str(String::new())),
+                )
                 .description("Resolve auth maps OpenAI provider to API key env var"),
         )
         .node_example(
@@ -372,13 +424,20 @@ Overall: The code is clean and well-structured. Minor fixes recommended.";
                 .output("model", OutputMatcher::Any)
                 .description("Code review parse handles skipped transport response"),
         )
-        .skip_node_example("auth_env")
+        .skip_node_example("credential_env")
 }
 
 /// Mock specification for testing API key as secret.
 ///
 /// Models the secret resolution pattern: the API key flows as a
 /// `Value::Secret` and gets resolved at the transport boundary.
+#[gunbc_testgen_registry_macros::testgen_target(
+    name = "llm-secrets",
+    output = "lib/llm-ops/src/generated_tests_secrets.rs",
+    module = "llm_secrets_generated_tests",
+    builder = "crate::graph::build_chat_completion_graph()",
+    no_boundary_tests
+)]
 pub fn secret_api_key_mock_spec() -> MockSpec {
     let response = mock::mock_openai_response("Response with secret auth.");
 
@@ -395,9 +454,9 @@ pub fn secret_api_key_mock_spec() -> MockSpec {
         )
         // Env: resolved auth token
         .boundary(
-            "auth_env",
-            "auth:llm",
-            mock_auth_token("openai", "OPENAI_API_KEY"),
+            "credential_env",
+            "credential:llm",
+            mock_credential(),
         )
         // Transport mock: execute node response
         .transport_mock(
@@ -443,6 +502,14 @@ pub fn secret_api_key_mock_spec() -> MockSpec {
                     "env_var",
                     OutputMatcher::exact(Value::Str("OPENAI_API_KEY".into())),
                 )
+                .output(
+                    "scheme",
+                    OutputMatcher::exact(Value::Str("bearer".into())),
+                )
+                .output(
+                    "header_name",
+                    OutputMatcher::exact(Value::Str(String::new())),
+                )
                 .description("Resolve auth maps OpenAI provider to API key env var"),
         )
         .node_example(
@@ -469,10 +536,11 @@ pub fn secret_api_key_mock_spec() -> MockSpec {
                 .output("model", OutputMatcher::Any)
                 .description("Secret auth parse handles skipped transport response"),
         )
-        .skip_node_example("auth_env")
+        .skip_node_example("credential_env")
 }
 
 /// Mock specification for testing rate limiting / error scenarios.
+#[gunbc_testgen_registry_macros::testgen_target(skip)]
 pub fn rate_limited_mock_spec() -> MockSpec {
     let error_response = mock::mock_openai_error(
         429,
@@ -493,9 +561,9 @@ pub fn rate_limited_mock_spec() -> MockSpec {
         )
         // Env: resolved auth token
         .boundary(
-            "auth_env",
-            "auth:llm",
-            mock_auth_token("openai", "OPENAI_API_KEY"),
+            "credential_env",
+            "credential:llm",
+            mock_credential(),
         )
         // Transport mock: execute node returns error response
         .transport_mock(
@@ -521,9 +589,17 @@ pub fn rate_limited_mock_spec() -> MockSpec {
                     "env_var",
                     OutputMatcher::exact(Value::Str("OPENAI_API_KEY".into())),
                 )
+                .output(
+                    "scheme",
+                    OutputMatcher::exact(Value::Str("bearer".into())),
+                )
+                .output(
+                    "header_name",
+                    OutputMatcher::exact(Value::Str(String::new())),
+                )
                 .description("Resolve auth maps OpenAI provider to API key env var"),
         )
-        .skip_node_example("auth_env")
+        .skip_node_example("credential_env")
 }
 
 #[cfg(test)]
@@ -568,11 +644,11 @@ mod tests {
     fn test_secret_api_key_mock_spec() {
         let spec = secret_api_key_mock_spec();
 
-        // Secret value should be present in auth token map
-        let auth = spec.get_boundary_mock("auth_env", "auth:llm").unwrap();
-        let token = match auth {
+        // Secret value should be present in credential map
+        let cred = spec.get_boundary_mock("credential_env", "credential:llm").unwrap();
+        let token = match cred {
             Value::Map(map) => map.get("token").cloned().unwrap(),
-            _ => panic!("Expected auth:llm to be a map"),
+            _ => panic!("Expected credential:llm to be a map"),
         };
         assert!(matches!(token, Value::Secret(_)));
 

@@ -4,7 +4,7 @@
 // DO NOT EDIT - regenerate with: make testgen
 // Obligations: 133 obligations (58 discharged, 75 testable: A=27, B=30, C=16, D=2)
 // Proven by construction: acyclicity, type compatibility, cardinality satisfaction.
-// Content-Hash: 1781f1ecbea1dda2507dd3a330a0a63c5b8569a47ca23bada4651fb292ec2cf8
+// Content-Hash: d0a26abab80c5ce7d3b9ac49fd0e902bec58f1830fdc5f6889734b6f5dbab743
 
 
 use gunbc_exec::{execute_with_mode, lower, BoundaryMocks, ExecutionMode};
@@ -24,8 +24,8 @@ fn mock_spec() -> MockSpec {
 /// Declared signature matches the DAG inputs/outputs.
 #[test]
 fn test_signature_matches_dag() {
-    let dag = crate::build_ci_graph().unwrap();
-    let sig = crate::ci_signature();
+    let dag = crate :: build_ci_graph().unwrap();
+    let sig = crate :: ci_signature();
     sig.validate(&dag).expect("signature should match DAG");
 }
 
@@ -63,7 +63,7 @@ fn test_signature_matches_dag() {
 /// with explicit boundary mocks, and verify it completes successfully.
 #[test]
 fn test_dryrun_completion() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let log = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("DryRun execution should complete without crash");
     assert!(!log.entries.is_empty(), "execution should produce log entries");
 }
@@ -74,7 +74,7 @@ fn test_dryrun_completion() {
 /// accidentally perform real I/O.
 #[test]
 fn test_transport_interception() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let result = assert_boundary_mockable(&dag, mock_spec().to_boundary_mocks());
     assert!(result.is_ok(), "All transports should be interceptable: {:?}", result.error);
     assert!(result.boundary_nodes.iter().any(|n| n == "execute_deps_exists"), "transport executor 'execute_deps_exists' should be in intercepted list");
@@ -125,7 +125,7 @@ fn test_transport_interception() {
 /// Proves: DAG handles count=0 (empty) for boundary port execute_stamp_write.response.
 #[test]
 fn test_cardinality_execute_stamp_write_response_empty_0() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_stamp_write", "response", Value::Unit);
     let _log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).expect("cardinality count=0 (empty) should not crash");
@@ -136,7 +136,7 @@ fn test_cardinality_execute_stamp_write_response_empty_0() {
 /// Proves: DAG handles count=1 (one) for boundary port execute_stamp_write.response.
 #[test]
 fn test_cardinality_execute_stamp_write_response_one_1() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_stamp_write", "response", Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: "<MOCK>".to_string(), stderr: "".to_string() })));
     let _log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).expect("cardinality count=1 (one) should not crash");
@@ -147,7 +147,7 @@ fn test_cardinality_execute_stamp_write_response_one_1() {
 /// Proves: DAG handles count=0 (empty) for boundary port execute_testgen.skip_reason.
 #[test]
 fn test_cardinality_execute_testgen_skip_reason_empty_0() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_testgen", "skip_reason", Value::Unit);
     let _log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).expect("cardinality count=0 (empty) should not crash");
@@ -158,7 +158,7 @@ fn test_cardinality_execute_testgen_skip_reason_empty_0() {
 /// Proves: DAG handles count=1 (one) for boundary port execute_testgen.skip_reason.
 #[test]
 fn test_cardinality_execute_testgen_skip_reason_one_1() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_testgen", "skip_reason", Value::Str("<MOCK>".to_string()));
     let _log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).expect("cardinality count=1 (one) should not crash");
@@ -169,7 +169,7 @@ fn test_cardinality_execute_testgen_skip_reason_one_1() {
 /// Proves: DAG handles count=0 (empty) for boundary port execute_build.skip_reason.
 #[test]
 fn test_cardinality_execute_build_skip_reason_empty_0() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_build", "skip_reason", Value::Unit);
     let _log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).expect("cardinality count=0 (empty) should not crash");
@@ -180,7 +180,7 @@ fn test_cardinality_execute_build_skip_reason_empty_0() {
 /// Proves: DAG handles count=1 (one) for boundary port execute_build.skip_reason.
 #[test]
 fn test_cardinality_execute_build_skip_reason_one_1() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_build", "skip_reason", Value::Str("<MOCK>".to_string()));
     let _log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).expect("cardinality count=1 (one) should not crash");
@@ -191,7 +191,7 @@ fn test_cardinality_execute_build_skip_reason_one_1() {
 /// Proves: DAG handles count=0 (empty) for boundary port execute_test.skip_reason.
 #[test]
 fn test_cardinality_execute_test_skip_reason_empty_0() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_test", "skip_reason", Value::Unit);
     let _log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).expect("cardinality count=0 (empty) should not crash");
@@ -202,7 +202,7 @@ fn test_cardinality_execute_test_skip_reason_empty_0() {
 /// Proves: DAG handles count=1 (one) for boundary port execute_test.skip_reason.
 #[test]
 fn test_cardinality_execute_test_skip_reason_one_1() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_test", "skip_reason", Value::Str("<MOCK>".to_string()));
     let _log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).expect("cardinality count=1 (one) should not crash");
@@ -213,7 +213,7 @@ fn test_cardinality_execute_test_skip_reason_one_1() {
 /// Proves: DAG handles count=0 (empty) for boundary port execute_guardrail_check.skip_reason.
 #[test]
 fn test_cardinality_execute_guardrail_check_skip_reason_empty_0() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_guardrail_check", "skip_reason", Value::Unit);
     let _log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).expect("cardinality count=0 (empty) should not crash");
@@ -224,7 +224,7 @@ fn test_cardinality_execute_guardrail_check_skip_reason_empty_0() {
 /// Proves: DAG handles count=1 (one) for boundary port execute_guardrail_check.skip_reason.
 #[test]
 fn test_cardinality_execute_guardrail_check_skip_reason_one_1() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_guardrail_check", "skip_reason", Value::Str("<MOCK>".to_string()));
     let _log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).expect("cardinality count=1 (one) should not crash");
@@ -244,7 +244,7 @@ fn test_cardinality_execute_guardrail_check_skip_reason_one_1() {
 /// Proves: workflow reaches terminal outputs with all transports mocked as success.
 #[test]
 fn test_scenario_all_succeed() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let log = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("all-succeed scenario should complete");
     let entry = log.get("execute_deps_exists").expect("'execute_deps_exists' should be in log");
     assert!(entry.was_intercepted, "'execute_deps_exists' should be intercepted in DryRun");
@@ -269,7 +269,7 @@ fn test_scenario_all_succeed() {
 /// Proves: failure propagation semantics are consistent.
 #[test]
 fn test_scenario_execute_deps_exists_fails() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     // Inject failure at 'execute_deps_exists'
     mocks.set_value("execute_deps_exists", "response", Value::Str("<TRANSPORT_FAILURE>".to_string()));
@@ -283,7 +283,7 @@ fn test_scenario_execute_deps_exists_fails() {
 /// Proves: failure propagation semantics are consistent.
 #[test]
 fn test_scenario_execute_codegen_exists_fails() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     // Inject failure at 'execute_codegen_exists'
     mocks.set_value("execute_codegen_exists", "response", Value::Str("<TRANSPORT_FAILURE>".to_string()));
@@ -297,7 +297,7 @@ fn test_scenario_execute_codegen_exists_fails() {
 /// Proves: failure propagation semantics are consistent.
 #[test]
 fn test_scenario_execute_codegen_fails() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     // Inject failure at 'execute_codegen'
     mocks.set_value("execute_codegen", "response", Value::Str("<TRANSPORT_FAILURE>".to_string()));
@@ -311,7 +311,7 @@ fn test_scenario_execute_codegen_fails() {
 /// Proves: failure propagation semantics are consistent.
 #[test]
 fn test_scenario_execute_stamp_write_fails() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     // Inject failure at 'execute_stamp_write'
     mocks.set_value("execute_stamp_write", "response", Value::Str("<TRANSPORT_FAILURE>".to_string()));
@@ -325,7 +325,7 @@ fn test_scenario_execute_stamp_write_fails() {
 /// Proves: failure propagation semantics are consistent.
 #[test]
 fn test_scenario_execute_testgen_fails() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     // Inject failure at 'execute_testgen'
     mocks.set_value("execute_testgen", "response", Value::Str("<TRANSPORT_FAILURE>".to_string()));
@@ -339,7 +339,7 @@ fn test_scenario_execute_testgen_fails() {
 /// Proves: failure propagation semantics are consistent.
 #[test]
 fn test_scenario_execute_build_fails() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     // Inject failure at 'execute_build'
     mocks.set_value("execute_build", "response", Value::Str("<TRANSPORT_FAILURE>".to_string()));
@@ -353,7 +353,7 @@ fn test_scenario_execute_build_fails() {
 /// Proves: failure propagation semantics are consistent.
 #[test]
 fn test_scenario_execute_test_fails() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     // Inject failure at 'execute_test'
     mocks.set_value("execute_test", "response", Value::Str("<TRANSPORT_FAILURE>".to_string()));
@@ -367,7 +367,7 @@ fn test_scenario_execute_test_fails() {
 /// Proves: failure propagation semantics are consistent.
 #[test]
 fn test_scenario_execute_guardrail_check_fails() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     // Inject failure at 'execute_guardrail_check'
     mocks.set_value("execute_guardrail_check", "response", Value::Str("<TRANSPORT_FAILURE>".to_string()));
@@ -383,7 +383,7 @@ fn test_scenario_execute_guardrail_check_fails() {
 /// without crashing.
 #[test]
 fn test_skip_propagation_execute_deps_exists() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_deps_exists", "response", Value::Skipped);
     let log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).expect("skip propagation should not crash or hang");
@@ -397,7 +397,7 @@ fn test_skip_propagation_execute_deps_exists() {
 /// without crashing.
 #[test]
 fn test_skip_propagation_execute_codegen_exists() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_codegen_exists", "response", Value::Skipped);
     let log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).expect("skip propagation should not crash or hang");
@@ -411,7 +411,7 @@ fn test_skip_propagation_execute_codegen_exists() {
 /// without crashing.
 #[test]
 fn test_skip_propagation_execute_codegen() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_codegen", "response", Value::Skipped);
     mocks.set_value("execute_codegen", "skip", Value::Skipped);
@@ -427,7 +427,7 @@ fn test_skip_propagation_execute_codegen() {
 /// without crashing.
 #[test]
 fn test_skip_propagation_execute_testgen() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_testgen", "response", Value::Skipped);
     mocks.set_value("execute_testgen", "skip", Value::Skipped);
@@ -444,7 +444,7 @@ fn test_skip_propagation_execute_testgen() {
 /// without crashing.
 #[test]
 fn test_skip_propagation_execute_build() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_build", "response", Value::Skipped);
     mocks.set_value("execute_build", "skip", Value::Skipped);
@@ -461,7 +461,7 @@ fn test_skip_propagation_execute_build() {
 /// without crashing.
 #[test]
 fn test_skip_propagation_execute_test() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_test", "response", Value::Skipped);
     mocks.set_value("execute_test", "skip", Value::Skipped);
@@ -478,7 +478,7 @@ fn test_skip_propagation_execute_test() {
 /// without crashing.
 #[test]
 fn test_skip_propagation_execute_guardrail_check() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_guardrail_check", "response", Value::Skipped);
     mocks.set_value("execute_guardrail_check", "skip", Value::Skipped);
@@ -535,7 +535,7 @@ fn test_resource_cargo_clippy_acquire() {
 /// and verifies that the pure node chain produces expected terminal outputs.
 #[test]
 fn test_flow_ci() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let spec = mock_spec();
     let mocks = spec.to_boundary_mocks();
     let log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).expect("DryRun execution should succeed");
@@ -556,7 +556,7 @@ fn test_flow_ci() {
 /// Window: prepare_codegen_command -> execute_codegen
 #[test]
 fn test_window_prepare_codegen_command_through_execute_codegen() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed");
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_codegen_command", "execute_codegen"));
@@ -570,7 +570,7 @@ fn test_window_prepare_codegen_command_through_execute_codegen() {
 /// Window: execute_codegen -> parse_codegen_result
 #[test]
 fn test_window_execute_codegen_through_parse_codegen_result() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed");
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_codegen", "parse_codegen_result"));
@@ -584,7 +584,7 @@ fn test_window_execute_codegen_through_parse_codegen_result() {
 /// Window: parse_codegen_result -> prepare_stamp_write
 #[test]
 fn test_window_parse_codegen_result_through_prepare_stamp_write() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed");
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("parse_codegen_result", "prepare_stamp_write"));
@@ -598,7 +598,7 @@ fn test_window_parse_codegen_result_through_prepare_stamp_write() {
 /// Window: execute_testgen -> parse_testgen
 #[test]
 fn test_window_execute_testgen_through_parse_testgen() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed");
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_testgen", "parse_testgen"));
@@ -612,7 +612,7 @@ fn test_window_execute_testgen_through_parse_testgen() {
 /// Window: parse_testgen -> prepare_build
 #[test]
 fn test_window_parse_testgen_through_prepare_build() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed");
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("parse_testgen", "prepare_build"));
@@ -626,7 +626,7 @@ fn test_window_parse_testgen_through_prepare_build() {
 /// Window: parse_test -> report
 #[test]
 fn test_window_parse_test_through_report() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed");
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("parse_test", "report"));
@@ -640,7 +640,7 @@ fn test_window_parse_test_through_report() {
 /// Window: prepare_codegen_command -> parse_codegen_result
 #[test]
 fn test_window_prepare_codegen_command_through_parse_codegen_result() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed");
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_codegen_command", "execute_codegen", "parse_codegen_result"));
@@ -654,7 +654,7 @@ fn test_window_prepare_codegen_command_through_parse_codegen_result() {
 /// Window: execute_codegen -> prepare_stamp_write
 #[test]
 fn test_window_execute_codegen_through_prepare_stamp_write() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed");
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_codegen", "parse_codegen_result", "prepare_stamp_write"));
@@ -668,7 +668,7 @@ fn test_window_execute_codegen_through_prepare_stamp_write() {
 /// Window: parse_codegen_result -> prepare_testgen
 #[test]
 fn test_window_parse_codegen_result_through_prepare_testgen() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed");
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("parse_codegen_result", "prepare_stamp_write", "prepare_testgen"));
@@ -682,7 +682,7 @@ fn test_window_parse_codegen_result_through_prepare_testgen() {
 /// Window: execute_testgen -> prepare_build
 #[test]
 fn test_window_execute_testgen_through_prepare_build() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed");
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_testgen", "parse_testgen", "prepare_build"));
@@ -696,7 +696,7 @@ fn test_window_execute_testgen_through_prepare_build() {
 /// Window: parse_testgen -> prepare_guardrail_check
 #[test]
 fn test_window_parse_testgen_through_prepare_guardrail_check() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed");
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("parse_testgen", "prepare_build", "prepare_guardrail_check"));
@@ -710,7 +710,7 @@ fn test_window_parse_testgen_through_prepare_guardrail_check() {
 /// Window: parse_clippy_lint -> report
 #[test]
 fn test_window_parse_clippy_lint_through_report() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed");
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("parse_clippy_lint", "parse_test", "report"));
@@ -724,7 +724,7 @@ fn test_window_parse_clippy_lint_through_report() {
 /// Window: prepare_codegen_command -> prepare_stamp_write
 #[test]
 fn test_window_prepare_codegen_command_through_prepare_stamp_write() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed");
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_codegen_command", "execute_codegen", "parse_codegen_result", "prepare_stamp_write"));
@@ -738,7 +738,7 @@ fn test_window_prepare_codegen_command_through_prepare_stamp_write() {
 /// Window: execute_codegen -> prepare_testgen
 #[test]
 fn test_window_execute_codegen_through_prepare_testgen() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed");
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen"));
@@ -752,7 +752,7 @@ fn test_window_execute_codegen_through_prepare_testgen() {
 /// Window: parse_codegen_result -> execute_stamp_write
 #[test]
 fn test_window_parse_codegen_result_through_execute_stamp_write() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed");
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "execute_stamp_write"));
@@ -766,7 +766,7 @@ fn test_window_parse_codegen_result_through_execute_stamp_write() {
 /// Window: execute_testgen -> prepare_guardrail_check
 #[test]
 fn test_window_execute_testgen_through_prepare_guardrail_check() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed");
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_testgen", "parse_testgen", "prepare_build", "prepare_guardrail_check"));
@@ -780,7 +780,7 @@ fn test_window_execute_testgen_through_prepare_guardrail_check() {
 /// Window: parse_testgen -> execute_build
 #[test]
 fn test_window_parse_testgen_through_execute_build() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed");
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("parse_testgen", "prepare_build", "prepare_guardrail_check", "execute_build"));
@@ -794,7 +794,7 @@ fn test_window_parse_testgen_through_execute_build() {
 /// Window: execute_test -> report
 #[test]
 fn test_window_execute_test_through_report() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed");
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_test", "parse_clippy_lint", "parse_test", "report"));
@@ -808,7 +808,7 @@ fn test_window_execute_test_through_report() {
 /// Window: prepare_codegen_command -> prepare_testgen
 #[test]
 fn test_window_prepare_codegen_command_through_prepare_testgen() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed");
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_codegen_command", "execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen"));
@@ -822,7 +822,7 @@ fn test_window_prepare_codegen_command_through_prepare_testgen() {
 /// Window: execute_codegen -> execute_stamp_write
 #[test]
 fn test_window_execute_codegen_through_execute_stamp_write() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed");
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "execute_stamp_write"));
@@ -836,7 +836,7 @@ fn test_window_execute_codegen_through_execute_stamp_write() {
 /// Window: parse_codegen_result -> execute_testgen
 #[test]
 fn test_window_parse_codegen_result_through_execute_testgen() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed");
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "execute_stamp_write", "execute_testgen"));
@@ -850,7 +850,7 @@ fn test_window_parse_codegen_result_through_execute_testgen() {
 /// Window: execute_testgen -> execute_build
 #[test]
 fn test_window_execute_testgen_through_execute_build() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed");
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_testgen", "parse_testgen", "prepare_build", "prepare_guardrail_check", "execute_build"));
@@ -864,7 +864,7 @@ fn test_window_execute_testgen_through_execute_build() {
 /// Window: parse_testgen -> execute_guardrail_check
 #[test]
 fn test_window_parse_testgen_through_execute_guardrail_check() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed");
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("parse_testgen", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check"));
@@ -878,10 +878,1018 @@ fn test_window_parse_testgen_through_execute_guardrail_check() {
 /// Window: clippy_lint -> report
 #[test]
 fn test_window_clippy_lint_through_report() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed");
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("clippy_lint", "execute_test", "parse_clippy_lint", "parse_test", "report"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: prepare_codegen_command -> execute_stamp_write
+#[test]
+fn test_window_prepare_codegen_command_through_execute_stamp_write() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("prepare_codegen_command", "execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "execute_stamp_write"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: execute_codegen -> execute_testgen
+#[test]
+fn test_window_execute_codegen_through_execute_testgen() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "execute_stamp_write", "execute_testgen"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: parse_codegen_result -> parse_testgen
+#[test]
+fn test_window_parse_codegen_result_through_parse_testgen() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "execute_stamp_write", "execute_testgen", "parse_testgen"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: execute_testgen -> execute_guardrail_check
+#[test]
+fn test_window_execute_testgen_through_execute_guardrail_check() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("execute_testgen", "parse_testgen", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: parse_testgen -> parse_build
+#[test]
+fn test_window_parse_testgen_through_parse_build() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("parse_testgen", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: prepare_test -> report
+#[test]
+fn test_window_prepare_test_through_report() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("prepare_test", "clippy_lint", "execute_test", "parse_clippy_lint", "parse_test", "report"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: prepare_codegen_command -> execute_testgen
+#[test]
+fn test_window_prepare_codegen_command_through_execute_testgen() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("prepare_codegen_command", "execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "execute_stamp_write", "execute_testgen"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: execute_codegen -> parse_testgen
+#[test]
+fn test_window_execute_codegen_through_parse_testgen() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "execute_stamp_write", "execute_testgen", "parse_testgen"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: parse_codegen_result -> prepare_build
+#[test]
+fn test_window_parse_codegen_result_through_prepare_build() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "execute_stamp_write", "execute_testgen", "parse_testgen", "prepare_build"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: execute_testgen -> parse_build
+#[test]
+fn test_window_execute_testgen_through_parse_build() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("execute_testgen", "parse_testgen", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: parse_testgen -> parse_guardrail_check
+#[test]
+fn test_window_parse_testgen_through_parse_guardrail_check() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("parse_testgen", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: prepare_clippy_lint -> report
+#[test]
+fn test_window_prepare_clippy_lint_through_report() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("prepare_clippy_lint", "prepare_test", "clippy_lint", "execute_test", "parse_clippy_lint", "parse_test", "report"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: prepare_codegen_command -> parse_testgen
+#[test]
+fn test_window_prepare_codegen_command_through_parse_testgen() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("prepare_codegen_command", "execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "execute_stamp_write", "execute_testgen", "parse_testgen"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: execute_codegen -> prepare_build
+#[test]
+fn test_window_execute_codegen_through_prepare_build() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "execute_stamp_write", "execute_testgen", "parse_testgen", "prepare_build"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: parse_codegen_result -> prepare_guardrail_check
+#[test]
+fn test_window_parse_codegen_result_through_prepare_guardrail_check() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "execute_stamp_write", "execute_testgen", "parse_testgen", "prepare_build", "prepare_guardrail_check"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: execute_testgen -> parse_guardrail_check
+#[test]
+fn test_window_execute_testgen_through_parse_guardrail_check() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("execute_testgen", "parse_testgen", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: parse_testgen -> prepare_clippy_lint
+#[test]
+fn test_window_parse_testgen_through_prepare_clippy_lint() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("parse_testgen", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: parse_guardrail_check -> report
+#[test]
+fn test_window_parse_guardrail_check_through_report() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("parse_guardrail_check", "prepare_clippy_lint", "prepare_test", "clippy_lint", "execute_test", "parse_clippy_lint", "parse_test", "report"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: prepare_codegen_command -> prepare_build
+#[test]
+fn test_window_prepare_codegen_command_through_prepare_build() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("prepare_codegen_command", "execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "execute_stamp_write", "execute_testgen", "parse_testgen", "prepare_build"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: execute_codegen -> prepare_guardrail_check
+#[test]
+fn test_window_execute_codegen_through_prepare_guardrail_check() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "execute_stamp_write", "execute_testgen", "parse_testgen", "prepare_build", "prepare_guardrail_check"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: parse_codegen_result -> execute_build
+#[test]
+fn test_window_parse_codegen_result_through_execute_build() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "execute_stamp_write", "execute_testgen", "parse_testgen", "prepare_build", "prepare_guardrail_check", "execute_build"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: execute_testgen -> prepare_clippy_lint
+#[test]
+fn test_window_execute_testgen_through_prepare_clippy_lint() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("execute_testgen", "parse_testgen", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: parse_testgen -> prepare_test
+#[test]
+fn test_window_parse_testgen_through_prepare_test() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("parse_testgen", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: parse_build -> report
+#[test]
+fn test_window_parse_build_through_report() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test", "clippy_lint", "execute_test", "parse_clippy_lint", "parse_test", "report"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: prepare_codegen_command -> prepare_guardrail_check
+#[test]
+fn test_window_prepare_codegen_command_through_prepare_guardrail_check() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("prepare_codegen_command", "execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "execute_stamp_write", "execute_testgen", "parse_testgen", "prepare_build", "prepare_guardrail_check"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: execute_codegen -> execute_build
+#[test]
+fn test_window_execute_codegen_through_execute_build() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "execute_stamp_write", "execute_testgen", "parse_testgen", "prepare_build", "prepare_guardrail_check", "execute_build"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: parse_codegen_result -> execute_guardrail_check
+#[test]
+fn test_window_parse_codegen_result_through_execute_guardrail_check() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "execute_stamp_write", "execute_testgen", "parse_testgen", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: execute_testgen -> prepare_test
+#[test]
+fn test_window_execute_testgen_through_prepare_test() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("execute_testgen", "parse_testgen", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: parse_testgen -> clippy_lint
+#[test]
+fn test_window_parse_testgen_through_clippy_lint() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("parse_testgen", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test", "clippy_lint"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: execute_guardrail_check -> report
+#[test]
+fn test_window_execute_guardrail_check_through_report() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test", "clippy_lint", "execute_test", "parse_clippy_lint", "parse_test", "report"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: prepare_codegen_command -> execute_build
+#[test]
+fn test_window_prepare_codegen_command_through_execute_build() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("prepare_codegen_command", "execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "execute_stamp_write", "execute_testgen", "parse_testgen", "prepare_build", "prepare_guardrail_check", "execute_build"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: execute_codegen -> execute_guardrail_check
+#[test]
+fn test_window_execute_codegen_through_execute_guardrail_check() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "execute_stamp_write", "execute_testgen", "parse_testgen", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: parse_codegen_result -> parse_build
+#[test]
+fn test_window_parse_codegen_result_through_parse_build() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "execute_stamp_write", "execute_testgen", "parse_testgen", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: execute_testgen -> clippy_lint
+#[test]
+fn test_window_execute_testgen_through_clippy_lint() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("execute_testgen", "parse_testgen", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test", "clippy_lint"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: parse_testgen -> execute_test
+#[test]
+fn test_window_parse_testgen_through_execute_test() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("parse_testgen", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test", "clippy_lint", "execute_test"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: execute_build -> report
+#[test]
+fn test_window_execute_build_through_report() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test", "clippy_lint", "execute_test", "parse_clippy_lint", "parse_test", "report"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: prepare_codegen_command -> execute_guardrail_check
+#[test]
+fn test_window_prepare_codegen_command_through_execute_guardrail_check() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("prepare_codegen_command", "execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "execute_stamp_write", "execute_testgen", "parse_testgen", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: execute_codegen -> parse_build
+#[test]
+fn test_window_execute_codegen_through_parse_build() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "execute_stamp_write", "execute_testgen", "parse_testgen", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: parse_codegen_result -> parse_guardrail_check
+#[test]
+fn test_window_parse_codegen_result_through_parse_guardrail_check() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "execute_stamp_write", "execute_testgen", "parse_testgen", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: execute_testgen -> execute_test
+#[test]
+fn test_window_execute_testgen_through_execute_test() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("execute_testgen", "parse_testgen", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test", "clippy_lint", "execute_test"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: parse_testgen -> parse_clippy_lint
+#[test]
+fn test_window_parse_testgen_through_parse_clippy_lint() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("parse_testgen", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test", "clippy_lint", "execute_test", "parse_clippy_lint"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: prepare_guardrail_check -> report
+#[test]
+fn test_window_prepare_guardrail_check_through_report() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test", "clippy_lint", "execute_test", "parse_clippy_lint", "parse_test", "report"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: prepare_codegen_command -> parse_build
+#[test]
+fn test_window_prepare_codegen_command_through_parse_build() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("prepare_codegen_command", "execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "execute_stamp_write", "execute_testgen", "parse_testgen", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: execute_codegen -> parse_guardrail_check
+#[test]
+fn test_window_execute_codegen_through_parse_guardrail_check() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "execute_stamp_write", "execute_testgen", "parse_testgen", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: parse_codegen_result -> prepare_clippy_lint
+#[test]
+fn test_window_parse_codegen_result_through_prepare_clippy_lint() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "execute_stamp_write", "execute_testgen", "parse_testgen", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: execute_testgen -> parse_clippy_lint
+#[test]
+fn test_window_execute_testgen_through_parse_clippy_lint() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("execute_testgen", "parse_testgen", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test", "clippy_lint", "execute_test", "parse_clippy_lint"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: parse_testgen -> parse_test
+#[test]
+fn test_window_parse_testgen_through_parse_test() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("parse_testgen", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test", "clippy_lint", "execute_test", "parse_clippy_lint", "parse_test"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: prepare_build -> report
+#[test]
+fn test_window_prepare_build_through_report() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test", "clippy_lint", "execute_test", "parse_clippy_lint", "parse_test", "report"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: prepare_codegen_command -> parse_guardrail_check
+#[test]
+fn test_window_prepare_codegen_command_through_parse_guardrail_check() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("prepare_codegen_command", "execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "execute_stamp_write", "execute_testgen", "parse_testgen", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: execute_codegen -> prepare_clippy_lint
+#[test]
+fn test_window_execute_codegen_through_prepare_clippy_lint() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "execute_stamp_write", "execute_testgen", "parse_testgen", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: parse_codegen_result -> prepare_test
+#[test]
+fn test_window_parse_codegen_result_through_prepare_test() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "execute_stamp_write", "execute_testgen", "parse_testgen", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: execute_testgen -> parse_test
+#[test]
+fn test_window_execute_testgen_through_parse_test() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("execute_testgen", "parse_testgen", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test", "clippy_lint", "execute_test", "parse_clippy_lint", "parse_test"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: parse_testgen -> report
+#[test]
+fn test_window_parse_testgen_through_report() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("parse_testgen", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test", "clippy_lint", "execute_test", "parse_clippy_lint", "parse_test", "report"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: prepare_codegen_command -> prepare_clippy_lint
+#[test]
+fn test_window_prepare_codegen_command_through_prepare_clippy_lint() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("prepare_codegen_command", "execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "execute_stamp_write", "execute_testgen", "parse_testgen", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: execute_codegen -> prepare_test
+#[test]
+fn test_window_execute_codegen_through_prepare_test() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "execute_stamp_write", "execute_testgen", "parse_testgen", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: parse_codegen_result -> clippy_lint
+#[test]
+fn test_window_parse_codegen_result_through_clippy_lint() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "execute_stamp_write", "execute_testgen", "parse_testgen", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test", "clippy_lint"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: execute_testgen -> report
+#[test]
+fn test_window_execute_testgen_through_report() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("execute_testgen", "parse_testgen", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test", "clippy_lint", "execute_test", "parse_clippy_lint", "parse_test", "report"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: prepare_codegen_command -> prepare_test
+#[test]
+fn test_window_prepare_codegen_command_through_prepare_test() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("prepare_codegen_command", "execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "execute_stamp_write", "execute_testgen", "parse_testgen", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: execute_codegen -> clippy_lint
+#[test]
+fn test_window_execute_codegen_through_clippy_lint() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "execute_stamp_write", "execute_testgen", "parse_testgen", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test", "clippy_lint"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: parse_codegen_result -> execute_test
+#[test]
+fn test_window_parse_codegen_result_through_execute_test() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "execute_stamp_write", "execute_testgen", "parse_testgen", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test", "clippy_lint", "execute_test"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: prepare_codegen_command -> clippy_lint
+#[test]
+fn test_window_prepare_codegen_command_through_clippy_lint() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("prepare_codegen_command", "execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "execute_stamp_write", "execute_testgen", "parse_testgen", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test", "clippy_lint"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: execute_codegen -> execute_test
+#[test]
+fn test_window_execute_codegen_through_execute_test() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "execute_stamp_write", "execute_testgen", "parse_testgen", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test", "clippy_lint", "execute_test"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: parse_codegen_result -> parse_clippy_lint
+#[test]
+fn test_window_parse_codegen_result_through_parse_clippy_lint() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "execute_stamp_write", "execute_testgen", "parse_testgen", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test", "clippy_lint", "execute_test", "parse_clippy_lint"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: prepare_codegen_command -> execute_test
+#[test]
+fn test_window_prepare_codegen_command_through_execute_test() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("prepare_codegen_command", "execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "execute_stamp_write", "execute_testgen", "parse_testgen", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test", "clippy_lint", "execute_test"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: execute_codegen -> parse_clippy_lint
+#[test]
+fn test_window_execute_codegen_through_parse_clippy_lint() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "execute_stamp_write", "execute_testgen", "parse_testgen", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test", "clippy_lint", "execute_test", "parse_clippy_lint"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: parse_codegen_result -> parse_test
+#[test]
+fn test_window_parse_codegen_result_through_parse_test() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "execute_stamp_write", "execute_testgen", "parse_testgen", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test", "clippy_lint", "execute_test", "parse_clippy_lint", "parse_test"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: prepare_codegen_command -> parse_clippy_lint
+#[test]
+fn test_window_prepare_codegen_command_through_parse_clippy_lint() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("prepare_codegen_command", "execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "execute_stamp_write", "execute_testgen", "parse_testgen", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test", "clippy_lint", "execute_test", "parse_clippy_lint"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: execute_codegen -> parse_test
+#[test]
+fn test_window_execute_codegen_through_parse_test() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "execute_stamp_write", "execute_testgen", "parse_testgen", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test", "clippy_lint", "execute_test", "parse_clippy_lint", "parse_test"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: parse_codegen_result -> report
+#[test]
+fn test_window_parse_codegen_result_through_report() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "execute_stamp_write", "execute_testgen", "parse_testgen", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test", "clippy_lint", "execute_test", "parse_clippy_lint", "parse_test", "report"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: prepare_codegen_command -> parse_test
+#[test]
+fn test_window_prepare_codegen_command_through_parse_test() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("prepare_codegen_command", "execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "execute_stamp_write", "execute_testgen", "parse_testgen", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test", "clippy_lint", "execute_test", "parse_clippy_lint", "parse_test"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: execute_codegen -> report
+#[test]
+fn test_window_execute_codegen_through_report() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "execute_stamp_write", "execute_testgen", "parse_testgen", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test", "clippy_lint", "execute_test", "parse_clippy_lint", "parse_test", "report"));
+    let mut mocks = mock_spec().to_boundary_mocks();
+    apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
+    let window_dag = window_subdag(&flat, &window);
+    let log = execute_with_mode(&window_dag, ExecutionMode::DryRun(mocks)).expect("window execution should succeed");
+    assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
+}
+
+/// Window: prepare_codegen_command -> report
+#[test]
+fn test_window_prepare_codegen_command_through_report() {
+    let dag = crate :: build_ci_graph().unwrap();
+    let flat = lower(&dag).expect("lower should succeed");
+    let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
+    let window = Window::from_nodes(&flat, vec!("prepare_codegen_command", "execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "execute_stamp_write", "execute_testgen", "parse_testgen", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test", "clippy_lint", "execute_test", "parse_clippy_lint", "parse_test", "report"));
     let mut mocks = mock_spec().to_boundary_mocks();
     apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
     let window_dag = window_subdag(&flat, &window);
@@ -901,7 +1909,7 @@ fn test_window_clippy_lint_through_report() {
 /// Tests that node 'report' produces expected outputs for given inputs.
 #[test]
 fn test_example_report_all_stages_pass_overall_success() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("build_success".to_string(), Value::Bool(true));
     inputs.insert("guardrail_success".to_string(), Value::Bool(true));
@@ -923,7 +1931,7 @@ fn test_example_report_all_stages_pass_overall_success() {
 /// Tests that node 'report' produces expected outputs for given inputs.
 #[test]
 fn test_example_report_build_failure_overall_failure() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("build_stderr".to_string(), Value::Str("error: compilation failed".to_string()));
     inputs.insert("build_success".to_string(), Value::Bool(false));
@@ -950,7 +1958,7 @@ fn test_example_report_build_failure_overall_failure() {
 /// Tests that node 'parse_deps_exists' produces expected outputs for given inputs.
 #[test]
 fn test_example_parse_deps_exists_file_exists_deps_toml_found_deps_exists_true() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("response".to_string(), Value::Response(gunbc_ir::transport::TransportResponse::File(gunbc_ir::transport::FileResponse { path: "deps.toml".to_string(), operation: gunbc_ir::transport::FileOp::Exists, success: true, content: None, exists: Some(true), error: None })));
     let outputs = gunbc_exec::execute_single_node(&dag, "parse_deps_exists", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'parse_deps_exists' should execute successfully");
@@ -974,7 +1982,7 @@ fn test_example_parse_deps_exists_file_exists_deps_toml_found_deps_exists_true()
 /// Tests that node 'parse_deps_exists' produces expected outputs for given inputs.
 #[test]
 fn test_example_parse_deps_exists_handles_skipped_transport_response_gracefully() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("response".to_string(), Value::Skipped);
     let outputs = gunbc_exec::execute_single_node(&dag, "parse_deps_exists", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'parse_deps_exists' should execute successfully");
@@ -989,7 +1997,7 @@ fn test_example_parse_deps_exists_handles_skipped_transport_response_gracefully(
 /// Tests that node 'parse_codegen_exists' produces expected outputs for given inputs.
 #[test]
 fn test_example_parse_codegen_exists_shell_exists_check_success_codegen_not_needed() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("response".to_string(), Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: "".to_string(), stderr: "".to_string() })));
     let outputs = gunbc_exec::execute_single_node(&dag, "parse_codegen_exists", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'parse_codegen_exists' should execute successfully");
@@ -1004,7 +2012,7 @@ fn test_example_parse_codegen_exists_shell_exists_check_success_codegen_not_need
 /// Tests that node 'parse_codegen_exists' produces expected outputs for given inputs.
 #[test]
 fn test_example_parse_codegen_exists_handles_skipped_transport_response_gracefully() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("response".to_string(), Value::Skipped);
     let outputs = gunbc_exec::execute_single_node(&dag, "parse_codegen_exists", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'parse_codegen_exists' should execute successfully");
@@ -1019,7 +2027,7 @@ fn test_example_parse_codegen_exists_handles_skipped_transport_response_graceful
 /// Tests that node 'parse_codegen_result' produces expected outputs for given inputs.
 #[test]
 fn test_example_parse_codegen_result_codegen_shell_success_prep_success_true_codegen_ran_true() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("response".to_string(), Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: "Generated 3 files".to_string(), stderr: "".to_string() })));
     inputs.insert("skip".to_string(), Value::Bool(false));
@@ -1041,7 +2049,7 @@ fn test_example_parse_codegen_result_codegen_shell_success_prep_success_true_cod
 /// Tests that node 'parse_codegen_result' produces expected outputs for given inputs.
 #[test]
 fn test_example_parse_codegen_result_skip_path_codegen_exists_prep_success_not_ran() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("skip".to_string(), Value::Bool(true));
     let outputs = gunbc_exec::execute_single_node(&dag, "parse_codegen_result", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'parse_codegen_result' should execute successfully");
@@ -1059,7 +2067,7 @@ fn test_example_parse_codegen_result_skip_path_codegen_exists_prep_success_not_r
 /// Tests that node 'prepare_stamp_write' produces expected outputs for given inputs.
 #[test]
 fn test_example_prepare_stamp_write_prep_success_stamp_write_request() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("prep_success".to_string(), Value::Bool(true));
     let outputs = gunbc_exec::execute_single_node(&dag, "prepare_stamp_write", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'prepare_stamp_write' should execute successfully");
@@ -1077,7 +2085,7 @@ fn test_example_prepare_stamp_write_prep_success_stamp_write_request() {
 /// Tests that node 'parse_testgen' produces expected outputs for given inputs.
 #[test]
 fn test_example_parse_testgen_testgen_shell_success_testgen_success_true() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("response".to_string(), Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: "Generated tests".to_string(), stderr: "".to_string() })));
     inputs.insert("skip".to_string(), Value::Bool(false));
@@ -1093,7 +2101,7 @@ fn test_example_parse_testgen_testgen_shell_success_testgen_success_true() {
 /// Tests that node 'parse_testgen' produces expected outputs for given inputs.
 #[test]
 fn test_example_parse_testgen_skip_path_testgen_skipped_success_false() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("skip".to_string(), Value::Bool(true));
     inputs.insert("skip_reason".to_string(), Value::Str("Skipped due to prep failure".to_string()));
@@ -1109,7 +2117,7 @@ fn test_example_parse_testgen_skip_path_testgen_skipped_success_false() {
 /// Tests that node 'parse_build' produces expected outputs for given inputs.
 #[test]
 fn test_example_parse_build_build_shell_success_build_success_true() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("response".to_string(), Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: "Compiling gunbc v0.1.0
     Finished dev".to_string(), stderr: "".to_string() })));
@@ -1132,7 +2140,7 @@ fn test_example_parse_build_build_shell_success_build_success_true() {
 /// Tests that node 'parse_build' produces expected outputs for given inputs.
 #[test]
 fn test_example_parse_build_skip_path_build_skipped_success_false_skipped_true() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("skip".to_string(), Value::Bool(true));
     inputs.insert("skip_reason".to_string(), Value::Str("Skipped due to prep failure".to_string()));
@@ -1151,7 +2159,7 @@ fn test_example_parse_build_skip_path_build_skipped_success_false_skipped_true()
 /// Tests that node 'parse_test' produces expected outputs for given inputs.
 #[test]
 fn test_example_parse_test_test_shell_success_test_success_true() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("response".to_string(), Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: "running 42 tests
 test result: ok. 42 passed".to_string(), stderr: "".to_string() })));
@@ -1174,7 +2182,7 @@ test result: ok. 42 passed".to_string(), stderr: "".to_string() })));
 /// Tests that node 'parse_test' produces expected outputs for given inputs.
 #[test]
 fn test_example_parse_test_skip_path_test_skipped_success_false_skipped_true() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("skip".to_string(), Value::Bool(true));
     inputs.insert("skip_reason".to_string(), Value::Str("Skipped due to build failure".to_string()));
@@ -1193,7 +2201,7 @@ fn test_example_parse_test_skip_path_test_skipped_success_false_skipped_true() {
 /// Tests that node 'prepare_codegen_exists' produces expected outputs for given inputs.
 #[test]
 fn test_example_prepare_codegen_exists_prepares_file_exists_check_for_codegen_dir() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let inputs = std::collections::HashMap::new();
     let outputs = gunbc_exec::execute_single_node(&dag, "prepare_codegen_exists", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'prepare_codegen_exists' should execute successfully");
 
@@ -1207,7 +2215,7 @@ fn test_example_prepare_codegen_exists_prepares_file_exists_check_for_codegen_di
 /// Tests that node 'prepare_codegen_command' produces expected outputs for given inputs.
 #[test]
 fn test_example_prepare_codegen_command_codegen_command_prepare_emits_skip_flag() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("codegen_needed".to_string(), Value::Bool(false));
     let outputs = gunbc_exec::execute_single_node(&dag, "prepare_codegen_command", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'prepare_codegen_command' should execute successfully");
@@ -1222,7 +2230,7 @@ fn test_example_prepare_codegen_command_codegen_command_prepare_emits_skip_flag(
 /// Tests that node 'prepare_testgen' produces expected outputs for given inputs.
 #[test]
 fn test_example_prepare_testgen_testgen_prepare_emits_skip_flag() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("prep_success".to_string(), Value::Bool(true));
     let outputs = gunbc_exec::execute_single_node(&dag, "prepare_testgen", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'prepare_testgen' should execute successfully");
@@ -1237,7 +2245,7 @@ fn test_example_prepare_testgen_testgen_prepare_emits_skip_flag() {
 /// Tests that node 'prepare_build' produces expected outputs for given inputs.
 #[test]
 fn test_example_prepare_build_build_prepare_emits_skip_flag() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("prep_success".to_string(), Value::Bool(true));
     inputs.insert("testgen_success".to_string(), Value::Bool(true));
@@ -1253,7 +2261,7 @@ fn test_example_prepare_build_build_prepare_emits_skip_flag() {
 /// Tests that node 'prepare_test' produces expected outputs for given inputs.
 #[test]
 fn test_example_prepare_test_test_prepare_emits_skip_flag() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("build_success".to_string(), Value::Bool(true));
     let outputs = gunbc_exec::execute_single_node(&dag, "prepare_test", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'prepare_test' should execute successfully");
@@ -1268,7 +2276,7 @@ fn test_example_prepare_test_test_prepare_emits_skip_flag() {
 /// Tests that node 'prepare_guardrail_check' produces expected outputs for given inputs.
 #[test]
 fn test_example_prepare_guardrail_check_guardrail_prepare_emits_skip_flag() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("testgen_success".to_string(), Value::Bool(true));
     let outputs = gunbc_exec::execute_single_node(&dag, "prepare_guardrail_check", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'prepare_guardrail_check' should execute successfully");
@@ -1283,7 +2291,7 @@ fn test_example_prepare_guardrail_check_guardrail_prepare_emits_skip_flag() {
 /// Tests that node 'prepare_clippy_lint' produces expected outputs for given inputs.
 #[test]
 fn test_example_prepare_clippy_lint_build_success_clippy_not_skipped() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("build_success".to_string(), Value::Bool(true));
     let outputs = gunbc_exec::execute_single_node(&dag, "prepare_clippy_lint", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'prepare_clippy_lint' should execute successfully");
@@ -1298,7 +2306,7 @@ fn test_example_prepare_clippy_lint_build_success_clippy_not_skipped() {
 /// Tests that node 'prepare_clippy_lint' produces expected outputs for given inputs.
 #[test]
 fn test_example_prepare_clippy_lint_build_failure_clippy_skipped() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("build_success".to_string(), Value::Bool(false));
     let outputs = gunbc_exec::execute_single_node(&dag, "prepare_clippy_lint", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'prepare_clippy_lint' should execute successfully");
@@ -1313,7 +2321,7 @@ fn test_example_prepare_clippy_lint_build_failure_clippy_skipped() {
 /// Tests that node 'parse_clippy_lint' produces expected outputs for given inputs.
 #[test]
 fn test_example_parse_clippy_lint_clippy_result_parse_produces_success_skipped_flags() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("skip".to_string(), Value::Bool(false));
     inputs.insert("stderr".to_string(), Value::Str("".to_string()));
@@ -1334,7 +2342,7 @@ fn test_example_parse_clippy_lint_clippy_result_parse_produces_success_skipped_f
 /// Tests that node 'parse_guardrail_check' produces expected outputs for given inputs.
 #[test]
 fn test_example_parse_guardrail_check_guardrail_check_success_guardrail_success_true() {
-    let dag = crate::build_ci_graph().unwrap();
+    let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("response".to_string(), Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: "OK".to_string(), stderr: "".to_string() })));
     inputs.insert("skip".to_string(), Value::Bool(false));

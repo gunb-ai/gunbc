@@ -1171,3 +1171,19 @@ Please fix these issues."#;
         assert_eq!(artifact, "(no changes)");
     }
 }
+
+// ============================================================================
+// Generated Tests (from `make testgen`)
+// ============================================================================
+
+#[cfg(test)]
+mod generated_tests_inline {
+    #![allow(unused_imports)]
+    include!("generated_tests_inline.rs");
+}
+
+#[cfg(test)]
+mod generated_tests_diff {
+    #![allow(unused_imports)]
+    include!("generated_tests_diff.rs");
+}

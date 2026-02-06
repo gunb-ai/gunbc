@@ -44,7 +44,7 @@ fn mock_clock() -> Value {
 ///
 /// - `repo_path`: Optional string (both modes)
 /// - `base_ref`: Optional string (diff mode only)
-pub fn gist_mock_spec(mode: &GistMode) -> MockSpec {
+fn gist_mock_spec(mode: &GistMode) -> MockSpec {
     // Build the actual DAG to extract requirements
     let dag = build_gist_graph(mode.clone(), vec![], false)
         .expect("gist graph should build");
@@ -160,14 +160,54 @@ pub fn gist_mock_spec(mode: &GistMode) -> MockSpec {
     spec
 }
 
+/// Mock spec for snapshot mode (default gist).
+#[gunbc_testgen_registry_macros::testgen_target(
+    name = "gist-snapshot",
+    output = "lib/tools/gist/src/generated_tests_snapshot.rs",
+    module = "gist_snapshot_generated_tests",
+    builder = "crate::build_gist_graph(crate::GistMode::Snapshot, vec![], false).unwrap()",
+    signature = "crate::gist_signature(&crate::GistMode::Snapshot)"
+)]
+pub fn gist_snapshot_mock_spec() -> MockSpec {
+    gist_mock_spec(&GistMode::Snapshot)
+}
+
+/// Mock spec for diff mode (gist-diff).
+#[gunbc_testgen_registry_macros::testgen_target(
+    name = "gist-diff",
+    output = "lib/tools/gist/src/generated_tests_diff.rs",
+    module = "gist_diff_generated_tests",
+    builder = r#"crate::build_gist_graph(crate::GistMode::Diff { base_ref: "main".to_string() }, vec![], false).unwrap()"#,
+    signature = r#"crate::gist_signature(&crate::GistMode::Diff { base_ref: "main".to_string() })"#
+)]
+pub fn gist_diff_mock_spec() -> MockSpec {
+    gist_mock_spec(&GistMode::Diff {
+        base_ref: "main".to_string(),
+    })
+}
+
+/// Mock spec for recent mode (gist-recent).
+#[gunbc_testgen_registry_macros::testgen_target(
+    name = "gist-recent",
+    output = "lib/tools/gist/src/generated_tests_recent.rs",
+    module = "gist_recent_generated_tests",
+    builder = "crate::build_gist_graph(crate::GistMode::Recent, vec![], false).unwrap()",
+    signature = "crate::gist_signature(&crate::GistMode::Recent)"
+)]
+pub fn gist_recent_mock_spec() -> MockSpec {
+    gist_mock_spec(&GistMode::Recent)
+}
+
 /// Mock spec for testing gist with file system lock simulation.
 ///
 /// Use this when testing tools that acquire file locks before reading.
+#[gunbc_testgen_registry_macros::testgen_target(skip)]
 pub fn gist_mock_spec_with_fs_lock() -> MockSpec {
     gist_mock_spec(&GistMode::Snapshot).resource_lock("fs:read")
 }
 
 /// Mock spec for testing lease expiration scenarios.
+#[gunbc_testgen_registry_macros::testgen_target(skip)]
 pub fn gist_mock_spec_lease_expires() -> MockSpec {
     gist_mock_spec(&GistMode::Snapshot).resource_lease_expires("github:api_token", 5000)
 }

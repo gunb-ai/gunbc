@@ -2,13 +2,13 @@
 
 **Status**: In Progress
 **Date**: 2026-02-02
-**Updated**: 2026-02-05
+**Updated**: 2026-02-06
 
 ## Problem Statement
 
 Current testgen has several deficiencies:
 
-1. **Manual target registration** - must add each DAG to `all_targets()` in `testgen.rs`
+1. **Manual target registration** - historically required adding each DAG to a list (now resolved via registry auto-discovery)
 2. **No staleness detection** - generated tests can drift from DAG/MockSpec
 3. **No auto-regeneration** - `make test` doesn't regenerate, easy to forget
 4. **MockSpecs are optional** - no enforcement, easy to skip
@@ -79,15 +79,13 @@ Both should be **required**, not optional.
 - [x] Add `testgen --check` mode that verifies files match — *already implemented in `testgen.rs:298`*
 - [x] `make test` runs `testgen-check` before `cargo test` — *via `MetaTarget.extra_deps`*
 
-**TODO 1.3: Auto-discover DAGs** ✅ (partial)
-- [x] Refactored `testgen.rs` to single registration site with generic `generate_target<T>`
-- [x] Eliminated 7 duplicate builder functions — each target is now 3 lines
-- [x] Consolidated two-site registration into one: removed `all_testgen_dags()` from
-  `codegen/registry.rs`, inlined `TestgenTargetDef` metadata directly alongside builder
-  closures in `testgen.rs`. Adding a new target is now a single addition in one place.
-- [x] Added `target!()` macro: each expression written once, macro both calls it
-  and stringifies it (with `crate::` replacement via `to_crate_path()`). ~5 lines per target.
-- [ ] Full auto-discovery deferred — see Phase 6 (Registry-Driven Testgen) below
+**TODO 1.3: Auto-discover DAGs** ✅
+- [x] Added `gunbc-testgen-registry` + `gunbc-testgen-registry-macros` using `inventory`
+- [x] `#[testgen_target(...)]` on each MockSpec registers a `TestgenTarget`
+- [x] Testgen binary iterates the registry (`iter_targets()`) and generates from `target.generate`
+- [x] Removed manual target lists (`all_testgen_targets`, `library_testgen_targets`) and `target!()` macro
+- [x] Added a test (`gunbc-dag/tests/mock_spec_registration.rs`) that enforces
+      every `pub fn ...mock_spec -> MockSpec` has `#[testgen_target]` (or `skip`)
 
 ### Phase 2: I/O Examples on Nodes
 
@@ -259,46 +257,28 @@ gunbc-codegen ──→ gunbc-ir
 
 **TODO 6.3: Wire registry to test generation** ✅
 
-The circular dep means the registry can't hold actual function references to
-DAG builders. The `target!()` macro already achieves single-site registration
-in testgen.rs — each expression is written once, the string form is derived
-via `stringify!`. Adding a registry layer would reintroduce two-site duplication.
+Registry is now the single source of truth for testgen. Each MockSpec is
+annotated with `#[testgen_target(...)]`, which registers a `TestgenTarget`
+in an `inventory` registry. The testgen binary iterates the registry and
+generates tests directly from those entries.
 
-What the registry CAN do: advertise which tools have testgen, so Makefile/CI
-generation can derive testgen targets automatically.
+- [x] Added `gunbc-testgen-registry` + `gunbc-testgen-registry-macros`
+- [x] Removed `.testgen(...)` from `ToolDef` and deleted `all_testgen_targets()`
+- [x] Testgen binary uses `iter_targets()` (no manual list)
+- [ ] Optional: Makefile/CI could consume the registry if explicit targets are needed
 
-- [x] Added `.testgen(TestgenTargetDef)` to bootstrap and makegen in `all_tools()`
-- [x] These configs are metadata-only (no function references)
-- [x] Added `all_testgen_targets()` — single list combining tool + library targets
-- [x] Library DAGs (llm-ops, 4 MockSpec variants) registered via `library_testgen_targets()`
-- [ ] Makefile generation reads `all_testgen_targets()` to auto-generate targets
-- [ ] CI generation reads it to know what to check
-- [x] testgen.rs remains the authority for actual generation (via `target!()`)
+**Design note — linking requirement:**
 
-**Design note — why two sites are unavoidable:**
-
-The `target!()` macro in testgen.rs IS the single-site registration for test
-generation. It holds both the metadata (via stringify) and the actual function
-call. The registry can't replace it because:
-
-1. `gunbc-codegen` can't depend on `gunbc-dag` (circular dependency)
-2. Function references can't be stored as data in the registry
-3. `stringify!` derives the string form from the expression, eliminating manual
-   string duplication
-
-The registry's role is to advertise testgen targets to OTHER consumers (Makefile,
-CI), not to drive testgen itself. This is the same pattern as ToolDef.boundaries —
-the registry stores CLI boundary metadata for codegen, while the actual DAG builder
-functions live in the tool crates.
+Inventory only includes crates linked into the binary. `gunbc-dag/src/bin/testgen.rs`
+force-links all crates that register testgen targets.
 
 ## Open Questions
 
 1. ~~**Commit or not?**~~ → Commit with staleness checks (decided above)
 
-2. **Auto-discover vs manifest?** How to find DAGs (TODO 1.3)
-   - Auto-discover: magic, might miss some
-   - Manifest: explicit, more work
-   - Current: hardcoded builder map — works but doesn't scale
+2. **Auto-discover vs manifest?** Resolved via `inventory` + `#[testgen_target]`
+   - Explicit annotation + registry auto-discovery, no manual list
+   - Caveat: crates must be linked into the testgen binary to register
 
 3. ~~**Example syntax?**~~ → Builder pattern on `NodeExample` (decided)
    - `NodeExample::new("node").input("port", val).output("port", matcher).description("...")`
@@ -310,7 +290,7 @@ functions live in the tool crates.
 
 After implementation:
 
-1. **Can't forget tests** - ~~testgen auto-discovers DAGs~~ (TODO 1.3 remaining), fails if no MockSpec ✅, panics if pure nodes lack examples ✅
+1. **Can't forget tests** - testgen auto-discovers DAGs via registry ✅, fails if no MockSpec ✅, panics if pure nodes lack examples ✅
 2. **Can't have stale tests** - staleness check in `make test` ✅, deterministic output ✅
 3. **I/O is tested** - node examples generate unit tests ✅, all 7 targets have examples ✅
 4. **Minimal ceremony** - just add `.node_example()` to MockSpec, tests appear ✅
@@ -438,12 +418,10 @@ Unify DAG builder location, MockSpec, signature, and testgen registration
 into a single `DagSpec` definition. This is the concrete form of
 "DAG definition = test specification."
 
-**Current**: Adding a new tool DAG requires edits in 3+ places:
+**Current**: Adding a new tool DAG requires edits in 2-3 places:
 1. Builder function in tool crate
-2. MockSpec in `graph_mock.rs`
-3. `target!()` entry in `testgen.rs`
-4. (optional) signature tests in `graph.rs`
-5. (optional) `TestgenTargetDef` in registry
+2. MockSpec in `graph_mock.rs` with `#[testgen_target(...)]`
+3. (optional) signature tests in `graph.rs`
 
 **Goal**: One `DagSpec` per DAG that carries everything:
 
@@ -470,7 +448,7 @@ functions live in tool crates, DagSpec would need to reference them).
       builder fn reference stays in tool crate via registration)
 
 **TODO 9.2: Migrate targets to DagSpec**
-- [ ] Convert `target!()` entries to DagSpec instances
+- [ ] Convert `#[testgen_target]` registrations to DagSpec instances
 - [ ] Each tool crate exports a `dag_specs()` function
 - [ ] Testgen, Makefile gen, and CI gen all consume DagSpec
 
@@ -524,6 +502,8 @@ pattern. Fixed by adding the variant and using `Stmt::tail()` in helper generati
 
 - Testgen module: `core/codegen/src/testgen/`
 - Testgen binary: `gunbc-dag/src/bin/testgen.rs`
+- Testgen registry: `core/testgen-registry/`
+- Testgen macro: `core/testgen-registry-macros/`
 - MockSpec: `core/test/src/mock_spec.rs`
 - Obligation model: `core/codegen/src/testgen/obligation.rs`
 - Tool registry: `core/codegen/src/registry.rs`

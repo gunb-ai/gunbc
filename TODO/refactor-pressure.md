@@ -117,14 +117,12 @@ one place (not sprinkled `#[allow]` at call sites). Approved categories:
 - [ ] CI guardrail: boundary erosion. Done when CI fails if new
       `#[allow(clippy::disallowed_methods)]` appears in runtime crates
       outside the explicit exceptions list.
-- [ ] **CI guardrail: generated artifact drift.** Done when CI verifies
-      generated files (CI YAML, Makefile, clippy.toml) match their
-      generator output. Without this, hand-edits silently reintroduce
-      drift — the exact "multiple sources of truth" pattern this doc
-      exists to prevent. See `consolidation.md §2` for the generators.
-      Minimum: `make verify` target that re-generates and diffs.
-      **Priority: HIGH** — this is the guardrail that prevents relapse
-      on the single-source-of-truth work already done.
+- [x] **CI guardrail: generated artifact drift.** ✅ `make verify` target
+      runs `--check` on makegen, bootstrap, and testgen. `make test`
+      includes `verify` in its dependency chain. Each `--check` flag
+      does dry-run + `verify_drift()` comparison against disk.
+      Remaining: cigen/clippy-toml use FileWriter, not DAG transport;
+      migrate later.
 - [ ] DagSpec / typed registry. Done when testgen, makegen, and CI
       generation all consume DagSpec, and registry dispatch is no longer
       string-based. (Note: `GraphBuilderId` enum already eliminates

@@ -10,24 +10,14 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::transport::credential::AuthScheme;
+
 /// Environment variable name for the API key.
 ///
 /// Providers reference env vars by name; resolution happens at execution time
 /// through `AuthMethod::EnvVar` (Bearer) or `AuthMethod::EnvVarHeader` (custom header).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ApiKeyEnvVar(pub String);
-
-/// Authentication style for the LLM API.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum LlmAuthStyle {
-    /// Bearer token in Authorization header (OpenAI, most providers).
-    BearerToken,
-    /// Custom header for API key (Anthropic uses x-api-key).
-    CustomHeader {
-        /// Header name (e.g., "x-api-key").
-        header: String,
-    },
-}
 
 /// LLM provider definition.
 ///
@@ -47,8 +37,8 @@ pub struct LlmProvider {
     /// Responses API endpoint path, if supported (e.g., "/v1/responses").
     #[serde(skip_serializing_if = "Option::is_none")]
     pub responses_endpoint: Option<String>,
-    /// Authentication style.
-    pub auth_style: LlmAuthStyle,
+    /// Authentication scheme for the provider.
+    pub auth_scheme: AuthScheme,
     /// Environment variable containing the API key.
     pub api_key_env: ApiKeyEnvVar,
     /// Additional required headers (e.g., anthropic-version).
@@ -80,7 +70,7 @@ pub fn openai_provider() -> LlmProvider {
         api_base: "https://api.openai.com".to_string(),
         chat_endpoint: "/v1/chat/completions".to_string(),
         responses_endpoint: Some("/v1/responses".to_string()),
-        auth_style: LlmAuthStyle::BearerToken,
+        auth_scheme: AuthScheme::Bearer,
         api_key_env: ApiKeyEnvVar("OPENAI_API_KEY".to_string()),
         extra_headers: vec![],
     }
@@ -94,8 +84,8 @@ pub fn anthropic_provider() -> LlmProvider {
         api_base: "https://api.anthropic.com".to_string(),
         chat_endpoint: "/v1/messages".to_string(),
         responses_endpoint: None,
-        auth_style: LlmAuthStyle::CustomHeader {
-            header: "x-api-key".to_string(),
+        auth_scheme: AuthScheme::Header {
+            name: "x-api-key".to_string(),
         },
         api_key_env: ApiKeyEnvVar("ANTHROPIC_API_KEY".to_string()),
         extra_headers: vec![("anthropic-version".to_string(), "2023-06-01".to_string())],
@@ -128,7 +118,7 @@ mod tests {
         let p = openai_provider();
         assert_eq!(p.id, "openai");
         assert_eq!(p.chat_url(), "https://api.openai.com/v1/chat/completions");
-        assert!(matches!(p.auth_style, LlmAuthStyle::BearerToken));
+        assert!(matches!(p.auth_scheme, AuthScheme::Bearer));
         assert_eq!(p.api_key_env.0, "OPENAI_API_KEY");
     }
 
@@ -137,7 +127,7 @@ mod tests {
         let p = anthropic_provider();
         assert_eq!(p.id, "anthropic");
         assert_eq!(p.chat_url(), "https://api.anthropic.com/v1/messages");
-        assert!(matches!(p.auth_style, LlmAuthStyle::CustomHeader { .. }));
+        assert!(matches!(p.auth_scheme, AuthScheme::Header { .. }));
         assert_eq!(p.api_key_env.0, "ANTHROPIC_API_KEY");
         assert!(!p.extra_headers.is_empty());
     }

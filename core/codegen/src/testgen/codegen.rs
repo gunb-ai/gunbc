@@ -481,10 +481,10 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             if port_type == "Json" || value_type == "Json" {
                 return true;
             }
-            // Map-backed types: ToolHandle, AuthToken, FilesystemHandle
+            // Map-backed types: ToolHandle, Credential, FilesystemHandle
             // These types serialize to/from Map when stored as Value
             if value_type == "Map" {
-                let map_backed_types = ["ToolHandle", "AuthToken", "FilesystemHandle"];
+                let map_backed_types = ["ToolHandle", "Credential", "FilesystemHandle"];
                 if map_backed_types.contains(&port_type) {
                     return true;
                 }
@@ -3050,10 +3050,10 @@ fn mock_element_expr(type_id: &str, index: Option<u32>) -> ValueExpr {
             ("stderr".to_string(), ValueExpr::Str(String::new())),
         ]),
         "Timestamp" => ValueExpr::Int(0),
-        "AuthToken" => ValueExpr::Map(vec![
-            ("service".to_string(), ValueExpr::Str("auth".to_string())),
-            ("env_var".to_string(), ValueExpr::Str("AUTH_TOKEN".to_string())),
+        "Credential" => ValueExpr::Map(vec![
             ("token".to_string(), ValueExpr::Secret("mock-token".to_string())),
+            ("source_type".to_string(), ValueExpr::Str("static".to_string())),
+            ("scheme".to_string(), ValueExpr::Str("bearer".to_string())),
             ("cap".to_string(), ValueExpr::Secret("capability".to_string())),
         ]),
         "FilesystemHandle" => ValueExpr::Map(vec![

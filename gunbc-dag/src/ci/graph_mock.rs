@@ -41,6 +41,14 @@ use gunbc_test::{extract_mock_requirements, MockSpec, NodeExample, OutputMatcher
 ///
 /// Uses the typed mock builder pattern: the DAG is built first, requirements
 /// are extracted from its structure, and mocks are type-checked at construction.
+#[gunbc_testgen_registry_macros::testgen_target(
+    name = "ci",
+    output = "gunbc-dag/src/ci/generated_tests.rs",
+    module = "ci_generated_tests",
+    builder = "crate::build_ci_graph().unwrap()",
+    signature = "crate::ci_signature()",
+    flow_tests
+)]
 pub fn ci_mock_spec() -> MockSpec {
     // Build the actual DAG to extract requirements
     let dag = build_ci_graph().expect("ci graph should build");
@@ -298,6 +306,7 @@ pub fn ci_mock_spec() -> MockSpec {
 }
 
 /// Mock spec for testing test failure.
+#[gunbc_testgen_registry_macros::testgen_target(skip)]
 ///
 /// Uses explicit mocks to model execute_test returning a failed response.
 pub fn ci_mock_spec_test_fails() -> MockSpec {
@@ -414,6 +423,7 @@ pub fn ci_mock_spec_test_fails() -> MockSpec {
 }
 
 /// Mock spec for testing build failure.
+#[gunbc_testgen_registry_macros::testgen_target(skip)]
 ///
 /// Uses explicit mocks to model execute_build returning a failed response.
 pub fn ci_mock_spec_build_fails() -> MockSpec {
@@ -522,6 +532,7 @@ pub fn ci_mock_spec_build_fails() -> MockSpec {
 }
 
 /// Mock spec for testing prep/codegen failure.
+#[gunbc_testgen_registry_macros::testgen_target(skip)]
 ///
 /// Uses explicit mocks to model execute_codegen returning a failed response.
 pub fn ci_mock_spec_prep_fails() -> MockSpec {
@@ -614,6 +625,7 @@ pub fn ci_mock_spec_prep_fails() -> MockSpec {
 }
 
 /// Mock spec for testing lint failure.
+#[gunbc_testgen_registry_macros::testgen_target(skip)]
 ///
 /// Uses explicit mocks to model clippy_lint returning a failure.
 pub fn ci_mock_spec_lint_fails() -> MockSpec {
@@ -729,6 +741,7 @@ pub fn ci_mock_spec_lint_fails() -> MockSpec {
 }
 
 /// Mock spec with build lock contention.
+#[gunbc_testgen_registry_macros::testgen_target(skip)]
 pub fn ci_mock_spec_build_contended() -> MockSpec {
     let dag = build_ci_graph().expect("ci graph should build");
 

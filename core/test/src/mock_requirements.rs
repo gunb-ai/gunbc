@@ -235,10 +235,10 @@ impl MockRequirements {
             return true;
         }
 
-        // Map-backed types (ToolHandle, AuthToken, FilesystemHandle)
+        // Map-backed types (ToolHandle, Credential, FilesystemHandle)
         // NOTE: This must match types_compatible in codegen/testgen/codegen.rs
         if actual == "Map" {
-            let map_backed = ["ToolHandle", "AuthToken", "FilesystemHandle"];
+            let map_backed = ["ToolHandle", "Credential", "FilesystemHandle"];
             if map_backed.contains(&expected) {
                 return true;
             }
@@ -463,10 +463,10 @@ pub fn extract_mock_requirements<T>(dag: &gunbc_ir::Dag<T>, name: &str) -> MockR
         .map(|n| n.id.0.as_str())
         .collect();
 
-    // Find resource/environment nodes (emit ToolHandle, AuthToken, etc.)
+    // Find resource/environment nodes (emit ToolHandle, Credential, etc.)
     let resource_types = [
         "ToolHandle",
-        "AuthToken",
+        "Credential",
         "FilesystemHandle",
         "Timestamp",
         "Platform",

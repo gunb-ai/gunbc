@@ -107,7 +107,7 @@ pub use patterns::{
 };
 pub use render::Renderable;
 pub use resource::{
-    AccessMode, AuthToken, Resource, ResourceAccess, ResourceConflict, ResourceId, ResourceKind,
+    AccessMode, Resource, ResourceAccess, ResourceConflict, ResourceId, ResourceKind,
     Timestamp,
 };
 pub use signature::{infer_signature, SignatureError, SignaturePort, WorkflowSignature};

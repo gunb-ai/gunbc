@@ -134,21 +134,56 @@ impl CredentialProvider for MockCredentialProvider {
 // CredentialOp
 // ---------------------------------------------------------------------------
 
+/// Internal mode for CredentialOp.
+#[derive(Debug, Clone)]
+enum CredentialOpMode {
+    /// Acquire credentials from pre-configured providers.
+    Static {
+        providers: Vec<Arc<dyn CredentialProvider>>,
+    },
+    /// Construct a credential from DAG inputs at runtime.
+    ///
+    /// Reads `service`, `env_var`, `scheme` (optional, default "bearer"),
+    /// `header_name` (optional) from inputs. Calls `std::env::var(env_var)`
+    /// to get the secret, then emits on the configured output port.
+    FromInputs {
+        output_port: String,
+    },
+}
+
 /// Boundary node that acquires credentials from providers and emits them
 /// on `"credential:{service_id}"` output ports.
+///
+/// Supports two modes:
+/// - **Static**: Pre-configured providers (original pattern)
+/// - **FromInputs**: Reads service/env_var/scheme from DAG inputs at runtime
 ///
 /// Follows the same pattern as [`AuthEnv`](super::AuthEnv):
 /// - `execute()` calls each provider's `acquire()`
 /// - `mock_outputs()` returns mock credentials for DryRun interception
 #[derive(Debug, Clone)]
 pub struct CredentialOp {
-    providers: Vec<Arc<dyn CredentialProvider>>,
+    mode: CredentialOpMode,
 }
 
 impl CredentialOp {
-    /// Create a new credential op with the given providers.
+    /// Create a new credential op with the given providers (Static mode).
     pub fn new(providers: Vec<Arc<dyn CredentialProvider>>) -> Self {
-        Self { providers }
+        Self {
+            mode: CredentialOpMode::Static { providers },
+        }
+    }
+
+    /// Create a credential op that reads inputs at runtime (FromInputs mode).
+    ///
+    /// Reads `service`, `env_var`, and optionally `scheme` / `header_name`
+    /// from DAG inputs. Emits a Credential on the given output port.
+    pub fn from_inputs(output_port: impl Into<String>) -> Self {
+        Self {
+            mode: CredentialOpMode::FromInputs {
+                output_port: output_port.into(),
+            },
+        }
     }
 
     /// Output port name for a given service.
@@ -158,26 +193,79 @@ impl CredentialOp {
 
     /// Mock outputs for DryRun / testgen.
     pub fn mock_outputs(&self) -> HashMap<String, Value> {
-        let mut builder = OutputMap::new();
-        for provider in &self.providers {
-            let port = Self::output_port(provider.service_id());
-            let secret = Secret::new("mock-token".to_string(), SecretSource::Static, None);
-            let cred = Credential::new(secret, AuthScheme::Bearer);
-            builder = builder.value(&port, cred.into());
+        match &self.mode {
+            CredentialOpMode::Static { providers } => {
+                let mut builder = OutputMap::new();
+                for provider in providers {
+                    let port = Self::output_port(provider.service_id());
+                    let secret =
+                        Secret::new("mock-token".to_string(), SecretSource::Static, None);
+                    let cred = Credential::new(secret, AuthScheme::Bearer);
+                    builder = builder.value(&port, cred.into());
+                }
+                builder.build()
+            }
+            CredentialOpMode::FromInputs { output_port } => {
+                let secret = Secret::new("mock-token".to_string(), SecretSource::Static, None);
+                let cred = Credential::new(secret, AuthScheme::Bearer);
+                OutputMap::new().value(output_port, cred.into()).build()
+            }
         }
-        builder.build()
     }
 }
 
 impl Executable for CredentialOp {
-    fn execute(&self, _inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        let mut builder = OutputMap::new();
-        for provider in &self.providers {
-            let cred = provider.acquire().map_err(|e| ExecError::new(e.to_string()))?;
-            let port = Self::output_port(provider.service_id());
-            builder = builder.value(&port, cred.into());
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        match &self.mode {
+            CredentialOpMode::Static { providers } => {
+                let mut builder = OutputMap::new();
+                for provider in providers {
+                    let cred =
+                        provider.acquire().map_err(|e| ExecError::new(e.to_string()))?;
+                    let port = Self::output_port(provider.service_id());
+                    builder = builder.value(&port, cred.into());
+                }
+                builder.ok()
+            }
+            CredentialOpMode::FromInputs { output_port } => {
+                let env_var = gunbc_exec::require_str(&inputs, "env_var")?;
+
+                let scheme_str = inputs
+                    .get("scheme")
+                    .and_then(Value::as_str)
+                    .unwrap_or("bearer");
+                let header_name = inputs
+                    .get("header_name")
+                    .and_then(Value::as_str)
+                    .map(|s| s.to_string());
+
+                let scheme = match scheme_str {
+                    "bearer" => AuthScheme::Bearer,
+                    "header" => {
+                        let name = header_name.ok_or_else(|| {
+                            ExecError::new(
+                                "scheme 'header' requires 'header_name' input",
+                            )
+                        })?;
+                        AuthScheme::Header { name }
+                    }
+                    other => {
+                        return Err(ExecError::new(format!(
+                            "unknown scheme '{}' (expected 'bearer' or 'header')",
+                            other
+                        )));
+                    }
+                };
+
+                let value = std::env::var(env_var).map_err(|_| {
+                    ExecError::new(format!("missing env var '{}'", env_var))
+                })?;
+                let secret = Secret::from_env_var(env_var, value);
+                let cred = Credential::new(secret, scheme);
+
+                OutputMap::new().value(output_port, cred.into()).ok()
+            }
         }
-        builder.ok()
     }
 }
 
@@ -300,6 +388,77 @@ mod tests {
         let oai_cred =
             Credential::try_from(outputs.get("credential:openai").unwrap()).expect("round-trip");
         assert_eq!(oai_cred.secret().expose(), "oai-tok");
+    }
+
+    #[test]
+    fn credential_op_from_inputs_bearer() {
+        let var = "GUNBC_TEST_CRED_FROM_INPUTS_4821";
+        std::env::set_var(var, "sk-test-from-inputs");
+
+        let op = CredentialOp::from_inputs("credential:llm");
+        let mut inputs = HashMap::new();
+        inputs.insert("service".to_string(), Value::Str("openai".to_string()));
+        inputs.insert("env_var".to_string(), Value::Str(var.to_string()));
+
+        let outputs = op.execute(inputs).expect("should succeed");
+        assert!(outputs.contains_key("credential:llm"));
+        let cred =
+            Credential::try_from(outputs.get("credential:llm").unwrap()).expect("round-trip");
+        assert_eq!(cred.secret().expose(), "sk-test-from-inputs");
+        assert!(matches!(cred.scheme(), AuthScheme::Bearer));
+
+        std::env::remove_var(var);
+    }
+
+    #[test]
+    fn credential_op_from_inputs_header_scheme() {
+        let var = "GUNBC_TEST_CRED_HEADER_7392";
+        std::env::set_var(var, "sk-ant-test-key");
+
+        let op = CredentialOp::from_inputs("credential:llm");
+        let mut inputs = HashMap::new();
+        inputs.insert("service".to_string(), Value::Str("anthropic".to_string()));
+        inputs.insert("env_var".to_string(), Value::Str(var.to_string()));
+        inputs.insert("scheme".to_string(), Value::Str("header".to_string()));
+        inputs.insert(
+            "header_name".to_string(),
+            Value::Str("x-api-key".to_string()),
+        );
+
+        let outputs = op.execute(inputs).expect("should succeed");
+        let cred =
+            Credential::try_from(outputs.get("credential:llm").unwrap()).expect("round-trip");
+        assert_eq!(cred.secret().expose(), "sk-ant-test-key");
+        assert!(matches!(
+            cred.scheme(),
+            AuthScheme::Header { ref name } if name == "x-api-key"
+        ));
+
+        std::env::remove_var(var);
+    }
+
+    #[test]
+    fn credential_op_from_inputs_missing_env_var() {
+        let var = "GUNBC_TEST_CRED_MISSING_9283";
+        std::env::remove_var(var);
+
+        let op = CredentialOp::from_inputs("credential:llm");
+        let mut inputs = HashMap::new();
+        inputs.insert("service".to_string(), Value::Str("openai".to_string()));
+        inputs.insert("env_var".to_string(), Value::Str(var.to_string()));
+
+        let err = op.execute(inputs).unwrap_err();
+        assert!(err.0.contains("missing env var"));
+    }
+
+    #[test]
+    fn credential_op_from_inputs_mock_outputs() {
+        let op = CredentialOp::from_inputs("credential:llm");
+        let mocks = op.mock_outputs();
+        assert!(mocks.contains_key("credential:llm"));
+        let cred = Credential::try_from(mocks.get("credential:llm").unwrap())
+            .expect("mock should be valid Credential");
+        assert_eq!(cred.secret().expose(), "mock-token");
     }
 
     #[test]

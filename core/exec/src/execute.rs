@@ -5,7 +5,7 @@
 //! DryRun mode intercepts **transport execution nodes** (nodes that consume
 //! `TransportRequest` values), **environment nodes** (nodes that emit
 //! resource outputs like `ToolHandle`, `FilesystemHandle`, `Timestamp`,
-//! `AuthToken`, or `Platform`), and **tool consumer nodes** (nodes that
+//! `Credential`, or `Platform`), and **tool consumer nodes** (nodes that
 //! consume `ToolHandle`). Intercepted nodes require **explicit mocks for every
 //! output port** — there is no default fallback.
 //!
@@ -19,7 +19,7 @@
 //! - It has an output port with type `ToolHandle`
 //!
 //! A node is considered a resource environment node if:
-//! - It has an output port with type `FilesystemHandle`, `Timestamp`, `AuthToken`, or `Platform`
+//! - It has an output port with type `FilesystemHandle`, `Timestamp`, `Credential`, or `Platform`
 //!
 //! A node is considered a tool consumer node if:
 //! - It has an input port with type `ToolHandle`
@@ -876,7 +876,7 @@ fn is_resource_env_node<T>(node: &Node<T>) -> bool {
     node.outputs.iter().any(|port| {
         matches!(
             port.type_id.0.as_str(),
-            "FilesystemHandle" | "Timestamp" | "AuthToken" | "Platform"
+            "FilesystemHandle" | "Timestamp" | "Credential" | "Platform"
         )
     })
 }

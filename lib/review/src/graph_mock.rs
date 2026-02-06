@@ -24,16 +24,23 @@ use crate::{Check, Criteria};
 use gunbc_ir::transport::llm::mock;
 use gunbc_ir::transport::{ShellResponse, TransportResponse};
 use gunbc_ir::{SecretString, Value};
-use gunbc_test::{extract_mock_requirements, InputConstraint, MockSpec};
+use gunbc_test::{extract_mock_requirements, InputConstraint, MockSpec, NodeExample, OutputMatcher};
 use std::collections::BTreeMap;
 
-fn mock_auth_token(service: &str, env_var: &str) -> Value {
+fn mock_credential() -> Value {
     let mut map = BTreeMap::new();
-    map.insert("service".to_string(), Value::Str(service.to_string()));
-    map.insert("env_var".to_string(), Value::Str(env_var.to_string()));
     map.insert(
         "token".to_string(),
         Value::Secret(SecretString::new("<MOCK_API_KEY>")),
+    );
+    map.insert(
+        "source_type".to_string(),
+        Value::Str("static".to_string()),
+    );
+    map.insert("scheme".to_string(), Value::Str("bearer".to_string()));
+    map.insert(
+        "cap".to_string(),
+        Value::Secret(SecretString::new("capability")),
     );
     Value::Map(map)
 }
@@ -96,6 +103,13 @@ pub fn default_criteria() -> Criteria {
 ///
 /// Uses the typed mock builder pattern: the DAG is built first, requirements
 /// are extracted from its structure, and mocks are type-checked at construction.
+#[gunbc_testgen_registry_macros::testgen_target(
+    name = "review-inline",
+    output = "lib/review/src/generated_tests_inline.rs",
+    module = "review_inline_generated_tests",
+    builder = "crate::graph::build_inline_review_graph()",
+    no_boundary_tests
+)]
 pub fn inline_review_mock_spec() -> MockSpec {
     // Build the actual DAG to extract requirements
     let dag = build_inline_review_graph();
@@ -116,11 +130,12 @@ pub fn inline_review_mock_spec() -> MockSpec {
     let llm_answer = serde_json::to_string_pretty(&review_json).unwrap();
     let llm_response = mock::mock_openai_response(&llm_answer);
     let criteria = default_criteria();
+    let criteria_json = Value::Json(serde_json::to_value(&criteria).unwrap());
 
     // Extract typed requirements from DAG structure
     extract_mock_requirements(&dag, "review-inline")
         // Resource: auth_env provides auth token
-        .boundary("auth_env", "auth:llm", mock_auth_token("openai", "OPENAI_API_KEY"))
+        .boundary("credential_env", "credential:llm", mock_credential())
         .expect("auth_env auth:llm should match type")
         // Transport: execute_llm (LLM API call)
         .transport_response("execute_llm", "response", llm_response.into())
@@ -136,7 +151,7 @@ pub fn inline_review_mock_spec() -> MockSpec {
         .input_mock(
             "prepare_prompt",
             "criteria",
-            Value::Json(serde_json::to_value(&criteria).unwrap()),
+            criteria_json.clone(),
         )
         .input_mock("prepare_llm", "provider", Value::Str("openai".into()))
         .input_mock("prepare_llm", "model", Value::Str("gpt-4o".into()))
@@ -144,7 +159,77 @@ pub fn inline_review_mock_spec() -> MockSpec {
         .expects_input("criteria", InputConstraint::NonEmpty)
         .expects_input("provider", InputConstraint::NonEmpty)
         .expects_input("model", InputConstraint::NonEmpty)
-        .skip_node_example("auth_env")
+        .node_example(
+            NodeExample::new("prepare_prompt")
+                .input("artifact", Value::Str("fn main() {}".into()))
+                .input("criteria", criteria_json.clone())
+                .output("question", OutputMatcher::non_empty())
+                .output("system_prompt", OutputMatcher::non_empty())
+                .description("builds prompt text from artifact + criteria"),
+        )
+        .node_example(
+            NodeExample::new("prepare_llm")
+                .input("content", Value::Str("fn main() {}".into()))
+                .input("question", Value::Str("Review this code".into()))
+                .input("provider", Value::Str("openai".into()))
+                .input("model", Value::Str("gpt-4o".into()))
+                .output("request", OutputMatcher::Any)
+                .output(
+                    "provider",
+                    OutputMatcher::exact(Value::Str("openai".into())),
+                )
+                .description("builds an LLM request from prompt content"),
+        )
+        .node_example(
+            NodeExample::new("resolve_auth")
+                .input("provider", Value::Str("openai".into()))
+                .output(
+                    "service",
+                    OutputMatcher::exact(Value::Str("openai".into())),
+                )
+                .output(
+                    "env_var",
+                    OutputMatcher::exact(Value::Str("OPENAI_API_KEY".into())),
+                )
+                .output(
+                    "scheme",
+                    OutputMatcher::exact(Value::Str("bearer".into())),
+                )
+                .output(
+                    "header_name",
+                    OutputMatcher::exact(Value::Str(String::new())),
+                )
+                .description("resolves OpenAI auth scheme and env var"),
+        )
+        .node_example(
+            NodeExample::new("credential_env")
+                .input("service", Value::Str("openai".into()))
+                .input("env_var", Value::Str("PATH".into()))
+                .input("scheme", Value::Str("bearer".into()))
+                .input("header_name", Value::Str(String::new()))
+                .output("credential:llm", OutputMatcher::Any)
+                .description("loads credential from environment variable"),
+        )
+        .node_example(
+            NodeExample::new("parse_llm")
+                .input("provider", Value::Str("openai".into()))
+                .input(
+                    "response",
+                    Value::Response(TransportResponse::Rest(
+                        mock::mock_openai_response(&llm_answer),
+                    )),
+                )
+                .output("answer", OutputMatcher::non_empty())
+                .description("extracts answer text from LLM response"),
+        )
+        .node_example(
+            NodeExample::new("parse_response")
+                .input("answer", Value::Str(llm_answer.clone()))
+                .input("criteria", criteria_json.clone())
+                .output("output", OutputMatcher::Any)
+                .output("errors", OutputMatcher::Any)
+                .description("parses LLM answer into review output"),
+        )
 }
 
 // ============================================================================
@@ -155,6 +240,13 @@ pub fn inline_review_mock_spec() -> MockSpec {
 ///
 /// Uses the typed mock builder pattern: the DAG is built first, requirements
 /// are extracted from its structure, and mocks are type-checked at construction.
+#[gunbc_testgen_registry_macros::testgen_target(
+    name = "review-diff",
+    output = "lib/review/src/generated_tests_diff.rs",
+    module = "review_diff_generated_tests",
+    builder = "crate::graph::build_diff_review_graph()",
+    no_boundary_tests
+)]
 pub fn diff_review_mock_spec() -> MockSpec {
     // Build the actual DAG to extract requirements
     let dag = build_diff_review_graph();
@@ -184,11 +276,13 @@ diff --git a/src/main.rs b/src/main.rs
 
     let llm_answer = serde_json::to_string_pretty(&review_json).unwrap();
     let llm_response = mock::mock_openai_response(&llm_answer);
+    let criteria = default_criteria();
+    let criteria_json = Value::Json(serde_json::to_value(&criteria).unwrap());
 
     // Extract typed requirements from DAG structure
     extract_mock_requirements(&dag, "review-diff")
         // Resource: auth_env provides auth token
-        .boundary("auth_env", "auth:llm", mock_auth_token("openai", "OPENAI_API_KEY"))
+        .boundary("credential_env", "credential:llm", mock_credential())
         .expect("auth_env auth:llm should match type")
         // Transport: execute_diff (git diff command)
         .transport_response(
@@ -203,7 +297,117 @@ diff --git a/src/main.rs b/src/main.rs
         // Build spec (pure terminal outputs are computed, not mocked)
         .build_unchecked()
         // No input mocks needed — provider, model, criteria come from config node
-        .skip_node_example("auth_env")
+        .node_example(
+            NodeExample::new("config")
+                .output(
+                    "provider",
+                    OutputMatcher::exact(Value::Str("openai".into())),
+                )
+                .output("model", OutputMatcher::exact(Value::Str("gpt-4o".into())))
+                .output("criteria", OutputMatcher::Any)
+                .description("emits pipeline config constants"),
+        )
+        .node_example(
+            NodeExample::new("prepare_diff")
+                .input("base_ref", Value::Str("main".into()))
+                .input("repo_path", Value::Str(".".into()))
+                .output("request", OutputMatcher::Any)
+                .description("builds git diff request"),
+        )
+        .node_example(
+            NodeExample::new("parse_diff")
+                .input(
+                    "response",
+                    Value::Response(TransportResponse::Shell(ShellResponse::ok(diff_output))),
+                )
+                .output("diff_files", OutputMatcher::Any)
+                .output("stats", OutputMatcher::Any)
+                .description("parses diff response into files + stats"),
+        )
+        .node_example(
+            NodeExample::new("format_artifact")
+                .input("diff_files", Value::str_map({
+                    let mut diff_files = BTreeMap::new();
+                    diff_files.insert(
+                        "src/main.rs".to_string(),
+                        "@@ -1,2 +1,3 @@\n fn main() {}\n+println!(\"hi\");".to_string(),
+                    );
+                    diff_files
+                }))
+                .output("artifact", OutputMatcher::contains("src/main.rs"))
+                .description("formats diff files into review artifact"),
+        )
+        .node_example(
+            NodeExample::new("prepare_prompt")
+                .input("artifact", Value::Str("diff artifact".into()))
+                .input("criteria", criteria_json.clone())
+                .output("question", OutputMatcher::non_empty())
+                .output("system_prompt", OutputMatcher::non_empty())
+                .description("builds prompt text from diff artifact"),
+        )
+        .node_example(
+            NodeExample::new("prepare_llm")
+                .input("content", Value::Str("diff artifact".into()))
+                .input("question", Value::Str("Review the diff".into()))
+                .input("provider", Value::Str("openai".into()))
+                .input("model", Value::Str("gpt-4o".into()))
+                .output("request", OutputMatcher::Any)
+                .output(
+                    "provider",
+                    OutputMatcher::exact(Value::Str("openai".into())),
+                )
+                .description("builds an LLM request from diff prompt"),
+        )
+        .node_example(
+            NodeExample::new("resolve_auth")
+                .input("provider", Value::Str("openai".into()))
+                .output(
+                    "service",
+                    OutputMatcher::exact(Value::Str("openai".into())),
+                )
+                .output(
+                    "env_var",
+                    OutputMatcher::exact(Value::Str("OPENAI_API_KEY".into())),
+                )
+                .output(
+                    "scheme",
+                    OutputMatcher::exact(Value::Str("bearer".into())),
+                )
+                .output(
+                    "header_name",
+                    OutputMatcher::exact(Value::Str(String::new())),
+                )
+                .description("resolves OpenAI auth scheme and env var"),
+        )
+        .node_example(
+            NodeExample::new("credential_env")
+                .input("service", Value::Str("openai".into()))
+                .input("env_var", Value::Str("PATH".into()))
+                .input("scheme", Value::Str("bearer".into()))
+                .input("header_name", Value::Str(String::new()))
+                .output("credential:llm", OutputMatcher::Any)
+                .description("loads credential from environment variable"),
+        )
+        .node_example(
+            NodeExample::new("parse_llm")
+                .input("provider", Value::Str("openai".into()))
+                .input(
+                    "response",
+                    Value::Response(TransportResponse::Rest(
+                        mock::mock_openai_response(&llm_answer),
+                    )),
+                )
+                .output("answer", OutputMatcher::non_empty())
+                .description("extracts answer text from LLM response"),
+        )
+        .node_example(
+            NodeExample::new("parse_response")
+                .input("answer", Value::Str(llm_answer.clone()))
+                .input("criteria", criteria_json.clone())
+                .output("output", OutputMatcher::Any)
+                .output("errors", OutputMatcher::Any)
+                .description("parses LLM answer into review output"),
+        )
 }
 
 // ============================================================================

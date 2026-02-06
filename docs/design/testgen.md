@@ -405,38 +405,33 @@ MockSpec::new("llm")
 
 ### Testgen Registry Auto-Discovery
 
-DAGs are registered centrally in `core/codegen/src/registry.rs`:
+DAGs register themselves via `#[testgen_target(...)]` on each `MockSpec`.
+The proc-macro submits a `TestgenTarget` into an `inventory` registry
+(`core/testgen-registry`), and the testgen binary iterates that registry.
 
 ```rust
-pub struct TestgenTargetDef {
-    pub name: String,              // "ci", "bootstrap", "llm-openai"
-    pub output_path: String,       // "gunbc-dag/src/ci/generated_tests.rs"
-    pub module_name: String,       // "ci_generated_tests"
-    pub mock_spec_path: String,    // "crate::ci::graph_mock::ci_mock_spec()"
-    pub dag_builder_call: String,  // "crate::build_ci_graph().unwrap()"
-    pub boundary_tests: bool,
-    pub chain_tests: bool,
-    pub flow_tests: bool,
-}
-
-pub fn all_testgen_dags() -> Vec<TestgenTargetDef> { ... }
+#[gunbc_testgen_registry_macros::testgen_target(
+    name = "ci",
+    output = "gunbc-dag/src/ci/generated_tests.rs",
+    module = "ci_generated_tests",
+    builder(crate::build_ci_graph().unwrap()),
+    signature(crate::ci_signature()),
+    flow_tests
+)]
+pub fn ci_mock_spec() -> MockSpec { ... }
 ```
 
-The testgen binary reads from this registry:
-
-```bash
-cargo run -p gunbc-dag --bin testgen -- --help
-# Shows: REGISTERED DAGS: bootstrap, ci, makegen, llm-openai, ...
-```
+The testgen binary uses `iter_targets()` and generates from each registered
+target; there is no manual list to maintain.
 
 ### Makefile Integration
 
 ```makefile
 testgen:
-    cargo run -p gunbc-dag --bin testgen --release
+    cargo run -p gunbc-dag --bin gunbc-testgen --release
 
 testgen-check:
-    cargo run -p gunbc-dag --bin testgen --release -- --check
+    cargo run -p gunbc-dag --bin gunbc-testgen --release -- --check
 ```
 
 Staleness detection via content hash in generated file header:

@@ -39,3 +39,25 @@ pub use graph::{
 pub use gunbc_lib_gist_ops::GistOps;
 pub use gunbc_lib_git_ops::GitOps;
 pub use gunbc_lib_markdown::MarkdownOp;
+
+// ============================================================================
+// Generated Tests (from `make testgen`)
+// ============================================================================
+
+#[cfg(test)]
+mod generated_tests_snapshot {
+    #![allow(unused_imports)]
+    include!("generated_tests_snapshot.rs");
+}
+
+#[cfg(test)]
+mod generated_tests_diff {
+    #![allow(unused_imports)]
+    include!("generated_tests_diff.rs");
+}
+
+#[cfg(test)]
+mod generated_tests_recent {
+    #![allow(unused_imports)]
+    include!("generated_tests_recent.rs");
+}

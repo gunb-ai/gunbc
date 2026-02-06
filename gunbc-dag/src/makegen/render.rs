@@ -103,7 +103,7 @@ fn render_makefile_content(registry: &ToolRegistry, config: &BuildConfig) -> Str
 
     // Phony targets - include core targets, meta targets, and tool targets
     output.push_str(
-        ".PHONY: help ensure-codegen codegen build clean testgen testgen-check fmt-fix lint-fix",
+        ".PHONY: help ensure-codegen codegen build clean testgen testgen-check verify fmt-fix lint-fix",
     );
 
     // Add meta targets (with check and fix variants)
@@ -186,6 +186,22 @@ fn render_core_targets(config: &BuildConfig) -> String {
     output.push_str("testgen-check: ensure-codegen\n");
     output.push_str(&format!("{}{}\n\n", INDENT, config.testgen_check_shell()));
 
+    // Verify: check all generated artifacts match their generators
+    output.push_str("# Verify generated artifacts match their generators\n");
+    output.push_str("verify: ensure-codegen\n");
+    output.push_str(&format!(
+        "{}@cargo run -p gunbc-dag --bin gunbc-makegen --release -- --check\n",
+        INDENT
+    ));
+    output.push_str(&format!(
+        "{}@cargo run -p gunbc-dag --bin gunbc-bootstrap --release -- --check\n",
+        INDENT
+    ));
+    output.push_str(&format!(
+        "{}@cargo run -p gunbc-dag --bin gunbc-testgen --release -- --check\n\n",
+        INDENT
+    ));
+
     output
 }
 
@@ -214,6 +230,7 @@ fn render_help_target(registry: &ToolRegistry, config: &BuildConfig) -> String {
     output.push_str("\t@echo \"  clean    - Remove build artifacts\"\n");
     output.push_str("\t@echo \"  testgen  - Regenerate tests from DAG structures\"\n");
     output.push_str("\t@echo \"  testgen-check  - Check if generated tests are stale\"\n");
+    output.push_str("\t@echo \"  verify   - Verify generated artifacts match their generators\"\n");
     output.push_str("\t@echo \"\"\n");
 
     // Meta targets section
@@ -581,8 +598,8 @@ mod tests {
 
         // Individual meta targets
         assert!(
-            makefile.contains("test: codegen testgen"),
-            "test should depend on codegen and testgen"
+            makefile.contains("test: codegen testgen verify"),
+            "test should depend on codegen, testgen, and verify"
         );
         assert!(makefile.contains("gunbc-build"));
 

@@ -11,6 +11,8 @@ gunbc-exec = { path = "../../../core/exec" }
 gunbc-primitives = { path = "../../primitives" }
 gunbc-lib-transport = { path = "../../transport" }
 gunbc-test = { path = "../../../core/test" }
+gunbc-testgen-registry = { path = "../../../core/testgen-registry" }
+gunbc-testgen-registry-macros = { path = "../../../core/testgen-registry-macros" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 toml = "0.8"
