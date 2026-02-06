@@ -318,6 +318,7 @@ causes a test failure.
 | R3 | ResourceDef registration | Only 2 defs exist |
 | E3 | Terminal emission | Ephemeral output, not a generated artifact |
 | V2 | Lint-allowances doc | Nice-to-have |
+| S1 | Enforce transport skip wiring | Missing `skip` currently defaults to false; testgen doesn't flag missing wiring. Consider `TransportOps::ExecuteSkippable` or a structural lint. |
 
 ---
 

@@ -4,7 +4,7 @@
 // DO NOT EDIT - regenerate with: make testgen
 // Obligations: 33 obligations (9 discharged, 24 testable: A=9, B=10, C=5, D=0)
 // Proven by construction: acyclicity, type compatibility, cardinality satisfaction.
-// Content-Hash: 6c25729bd3388101c3b85c03a7cf5661d4ed736a16a5bf69260a305f982ed216
+// Content-Hash: 54aef51e9b979ac04fdc044b9882bd3d8692475a111d7c02847fa9d6acbc413e
 
 
 use gunbc_exec::{execute_with_mode, lower, ExecutionMode};
@@ -353,7 +353,7 @@ fn test_input_expectations_documented() {
 #[test]
 fn test_window_prepare_load_manifest_through_execute_load_manifest() {
     let dag = crate :: graph :: build_deps_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_load_manifest", "execute_load_manifest"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -367,7 +367,7 @@ fn test_window_prepare_load_manifest_through_execute_load_manifest() {
 #[test]
 fn test_window_execute_load_manifest_through_parse_manifest() {
     let dag = crate :: graph :: build_deps_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_load_manifest", "parse_manifest"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -381,7 +381,7 @@ fn test_window_execute_load_manifest_through_parse_manifest() {
 #[test]
 fn test_window_parse_manifest_through_generate_scripts() {
     let dag = crate :: graph :: build_deps_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("parse_manifest", "generate_scripts"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -395,7 +395,7 @@ fn test_window_parse_manifest_through_generate_scripts() {
 #[test]
 fn test_window_generate_scripts_through_prepare_execute_installs() {
     let dag = crate :: graph :: build_deps_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("generate_scripts", "prepare_execute_installs"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -409,7 +409,7 @@ fn test_window_generate_scripts_through_prepare_execute_installs() {
 #[test]
 fn test_window_prepare_execute_installs_through_execute_installs() {
     let dag = crate :: graph :: build_deps_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_execute_installs", "execute_installs"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -423,7 +423,7 @@ fn test_window_prepare_execute_installs_through_execute_installs() {
 #[test]
 fn test_window_execute_installs_through_parse_execute_result() {
     let dag = crate :: graph :: build_deps_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_installs", "parse_execute_result"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -437,7 +437,7 @@ fn test_window_execute_installs_through_parse_execute_result() {
 #[test]
 fn test_window_prepare_load_manifest_through_parse_manifest() {
     let dag = crate :: graph :: build_deps_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_load_manifest", "execute_load_manifest", "parse_manifest"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -451,7 +451,7 @@ fn test_window_prepare_load_manifest_through_parse_manifest() {
 #[test]
 fn test_window_execute_load_manifest_through_generate_scripts() {
     let dag = crate :: graph :: build_deps_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_load_manifest", "parse_manifest", "generate_scripts"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -465,7 +465,7 @@ fn test_window_execute_load_manifest_through_generate_scripts() {
 #[test]
 fn test_window_parse_manifest_through_prepare_execute_installs() {
     let dag = crate :: graph :: build_deps_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("parse_manifest", "generate_scripts", "prepare_execute_installs"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -479,7 +479,7 @@ fn test_window_parse_manifest_through_prepare_execute_installs() {
 #[test]
 fn test_window_generate_scripts_through_execute_installs() {
     let dag = crate :: graph :: build_deps_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("generate_scripts", "prepare_execute_installs", "execute_installs"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -493,7 +493,7 @@ fn test_window_generate_scripts_through_execute_installs() {
 #[test]
 fn test_window_prepare_execute_installs_through_parse_execute_result() {
     let dag = crate :: graph :: build_deps_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_execute_installs", "execute_installs", "parse_execute_result"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -507,7 +507,7 @@ fn test_window_prepare_execute_installs_through_parse_execute_result() {
 #[test]
 fn test_window_prepare_load_manifest_through_generate_scripts() {
     let dag = crate :: graph :: build_deps_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_load_manifest", "execute_load_manifest", "parse_manifest", "generate_scripts"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -521,7 +521,7 @@ fn test_window_prepare_load_manifest_through_generate_scripts() {
 #[test]
 fn test_window_execute_load_manifest_through_prepare_execute_installs() {
     let dag = crate :: graph :: build_deps_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_load_manifest", "parse_manifest", "generate_scripts", "prepare_execute_installs"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -535,7 +535,7 @@ fn test_window_execute_load_manifest_through_prepare_execute_installs() {
 #[test]
 fn test_window_parse_manifest_through_execute_installs() {
     let dag = crate :: graph :: build_deps_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("parse_manifest", "generate_scripts", "prepare_execute_installs", "execute_installs"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -549,7 +549,7 @@ fn test_window_parse_manifest_through_execute_installs() {
 #[test]
 fn test_window_generate_scripts_through_parse_execute_result() {
     let dag = crate :: graph :: build_deps_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("generate_scripts", "prepare_execute_installs", "execute_installs", "parse_execute_result"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -563,7 +563,7 @@ fn test_window_generate_scripts_through_parse_execute_result() {
 #[test]
 fn test_window_platform_env_through_generate_scripts() {
     let dag = crate :: graph :: build_deps_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("platform_env", "prepare_load_manifest", "execute_load_manifest", "parse_manifest", "generate_scripts"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -577,7 +577,7 @@ fn test_window_platform_env_through_generate_scripts() {
 #[test]
 fn test_window_prepare_load_manifest_through_prepare_execute_installs() {
     let dag = crate :: graph :: build_deps_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_load_manifest", "execute_load_manifest", "parse_manifest", "generate_scripts", "prepare_execute_installs"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -591,7 +591,7 @@ fn test_window_prepare_load_manifest_through_prepare_execute_installs() {
 #[test]
 fn test_window_execute_load_manifest_through_execute_installs() {
     let dag = crate :: graph :: build_deps_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_load_manifest", "parse_manifest", "generate_scripts", "prepare_execute_installs", "execute_installs"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -605,7 +605,7 @@ fn test_window_execute_load_manifest_through_execute_installs() {
 #[test]
 fn test_window_parse_manifest_through_parse_execute_result() {
     let dag = crate :: graph :: build_deps_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("parse_manifest", "generate_scripts", "prepare_execute_installs", "execute_installs", "parse_execute_result"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -619,7 +619,7 @@ fn test_window_parse_manifest_through_parse_execute_result() {
 #[test]
 fn test_window_platform_env_through_prepare_execute_installs() {
     let dag = crate :: graph :: build_deps_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("platform_env", "prepare_load_manifest", "execute_load_manifest", "parse_manifest", "generate_scripts", "prepare_execute_installs"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -633,7 +633,7 @@ fn test_window_platform_env_through_prepare_execute_installs() {
 #[test]
 fn test_window_prepare_load_manifest_through_execute_installs() {
     let dag = crate :: graph :: build_deps_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_load_manifest", "execute_load_manifest", "parse_manifest", "generate_scripts", "prepare_execute_installs", "execute_installs"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -647,7 +647,7 @@ fn test_window_prepare_load_manifest_through_execute_installs() {
 #[test]
 fn test_window_execute_load_manifest_through_parse_execute_result() {
     let dag = crate :: graph :: build_deps_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_load_manifest", "parse_manifest", "generate_scripts", "prepare_execute_installs", "execute_installs", "parse_execute_result"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -661,7 +661,7 @@ fn test_window_execute_load_manifest_through_parse_execute_result() {
 #[test]
 fn test_window_platform_env_through_execute_installs() {
     let dag = crate :: graph :: build_deps_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("platform_env", "prepare_load_manifest", "execute_load_manifest", "parse_manifest", "generate_scripts", "prepare_execute_installs", "execute_installs"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -675,7 +675,7 @@ fn test_window_platform_env_through_execute_installs() {
 #[test]
 fn test_window_prepare_load_manifest_through_parse_execute_result() {
     let dag = crate :: graph :: build_deps_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_load_manifest", "execute_load_manifest", "parse_manifest", "generate_scripts", "prepare_execute_installs", "execute_installs", "parse_execute_result"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -689,7 +689,7 @@ fn test_window_prepare_load_manifest_through_parse_execute_result() {
 #[test]
 fn test_window_platform_env_through_parse_execute_result() {
     let dag = crate :: graph :: build_deps_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("platform_env", "prepare_load_manifest", "execute_load_manifest", "parse_manifest", "generate_scripts", "prepare_execute_installs", "execute_installs", "parse_execute_result"));
     let mut mocks = mock_spec().to_boundary_mocks();

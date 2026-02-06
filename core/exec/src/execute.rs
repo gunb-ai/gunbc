@@ -30,13 +30,13 @@
 
 use crate::error::{ExecError, IntoExecResult};
 use crate::intercept::BoundaryMocks;
-use crate::lower::lower;
+use crate::lower::{lower, LoopInfo};
 use crate::progress::{DagSnapshot, OutputSummary, ProgressObserver};
 use crate::topo::topo_sort;
 use crate::Executable;
 use gunbc_ir::{
-    canonical_edge_order, detect_boundaries, BoundaryInfo, Cardinality, Dag, Node, NodeBody,
-    NodeId, Value,
+    canonical_edge_order, detect_boundaries, detect_entrypoints, BoundaryInfo, Cardinality, Dag,
+    Node, NodeBody, NodeId, Value,
 };
 use std::collections::HashMap;
 use std::fmt;
@@ -236,19 +236,27 @@ pub fn execute_with_mode<T: Executable + Clone>(
 /// Execute a DAG with the specified execution mode and optional input mocks.
 ///
 /// Input mocks are injected into entrypoint ports (inputs with no upstream edge).
+/// Mock keys using original SubDag IDs are automatically remapped to the
+/// lowered inner entrypoint IDs.
 pub fn execute_with_mode_and_inputs<T: Executable + Clone>(
     dag: &Dag<T>,
     mode: ExecutionMode,
     input_mocks: Option<&BoundaryMocks>,
 ) -> Result<ExecutionLog, ExecError> {
     // Lower sub-DAGs first
-    let flat = lower(dag).exec_context("lowering failed")?;
+    let lowered = lower(dag).exec_context("lowering failed")?;
+
+    // Remap input mock keys from original SubDag IDs to lowered inner IDs
+    let remapped_mocks = input_mocks.map(|mocks| {
+        remap_input_mocks(mocks, &lowered.input_remaps)
+    });
+    let effective_mocks = remapped_mocks.as_ref().or(input_mocks);
 
     // Detect boundaries
-    let boundaries = detect_boundaries(&flat);
+    let boundaries = detect_boundaries(&lowered.dag);
 
     // Execute the flat DAG
-    execute_flat(&flat, &boundaries, &mode, None, None, input_mocks)
+    execute_flat(&lowered.dag, &boundaries, &mode, None, None, effective_mocks, &lowered.loops)
 }
 
 /// Execute a DAG with CI context for workflow command emission.
@@ -279,13 +287,13 @@ pub fn execute_with_mode_and_ci<T: Executable + Clone>(
     ci: &mut crate::CiContext,
 ) -> Result<ExecutionLog, ExecError> {
     // Lower sub-DAGs first
-    let flat = lower(dag).exec_context("lowering failed")?;
+    let lowered = lower(dag).exec_context("lowering failed")?;
 
     // Detect boundaries
-    let boundaries = detect_boundaries(&flat);
+    let boundaries = detect_boundaries(&lowered.dag);
 
     // Execute the flat DAG with CI context
-    execute_flat(&flat, &boundaries, &mode, Some(ci), None, None)
+    execute_flat(&lowered.dag, &boundaries, &mode, Some(ci), None, None, &lowered.loops)
 }
 
 /// Execute a DAG with a progress observer.
@@ -315,9 +323,9 @@ pub fn execute_with_progress_and_mode<T: Executable + Clone>(
     mode: ExecutionMode,
     observer: &mut dyn ProgressObserver,
 ) -> Result<ExecutionLog, ExecError> {
-    let flat = lower(dag).exec_context("lowering failed")?;
-    let boundaries = detect_boundaries(&flat);
-    execute_flat(&flat, &boundaries, &mode, None, Some(observer), None)
+    let lowered = lower(dag).exec_context("lowering failed")?;
+    let boundaries = detect_boundaries(&lowered.dag);
+    execute_flat(&lowered.dag, &boundaries, &mode, None, Some(observer), None, &lowered.loops)
 }
 
 /// Execute a DAG with both execution mode and progress observer plus input mocks.
@@ -327,9 +335,21 @@ pub fn execute_with_progress_and_mode_and_inputs<T: Executable + Clone>(
     observer: &mut dyn ProgressObserver,
     input_mocks: Option<&BoundaryMocks>,
 ) -> Result<ExecutionLog, ExecError> {
-    let flat = lower(dag).exec_context("lowering failed")?;
-    let boundaries = detect_boundaries(&flat);
-    execute_flat(&flat, &boundaries, &mode, None, Some(observer), input_mocks)
+    let lowered = lower(dag).exec_context("lowering failed")?;
+    let remapped_mocks = input_mocks.map(|mocks| {
+        remap_input_mocks(mocks, &lowered.input_remaps)
+    });
+    let effective_mocks = remapped_mocks.as_ref().or(input_mocks);
+    let boundaries = detect_boundaries(&lowered.dag);
+    execute_flat(
+        &lowered.dag,
+        &boundaries,
+        &mode,
+        None,
+        Some(observer),
+        effective_mocks,
+        &lowered.loops,
+    )
 }
 
 /// Execute a DAG with execution mode, CI context, and progress observer.
@@ -339,9 +359,17 @@ pub fn execute_with_all<T: Executable + Clone>(
     ci: &mut crate::CiContext,
     observer: &mut dyn ProgressObserver,
 ) -> Result<ExecutionLog, ExecError> {
-    let flat = lower(dag).exec_context("lowering failed")?;
-    let boundaries = detect_boundaries(&flat);
-    execute_flat(&flat, &boundaries, &mode, Some(ci), Some(observer), None)
+    let lowered = lower(dag).exec_context("lowering failed")?;
+    let boundaries = detect_boundaries(&lowered.dag);
+    execute_flat(
+        &lowered.dag,
+        &boundaries,
+        &mode,
+        Some(ci),
+        Some(observer),
+        None,
+        &lowered.loops,
+    )
 }
 
 /// Execute a single node from a DAG.
@@ -379,10 +407,10 @@ pub fn execute_single_node<T: Executable + Clone>(
     mode: ExecutionMode,
 ) -> Result<HashMap<String, Value>, ExecError> {
     // Lower sub-DAGs first (in case the target node is inside a sub-DAG)
-    let flat = lower(dag).exec_context("lowering failed")?;
+    let lowered = lower(dag).exec_context("lowering failed")?;
 
     // Find the node
-    let node = flat
+    let node = lowered.dag
         .nodes
         .iter()
         .find(|n| n.id.0 == node_id)
@@ -437,22 +465,23 @@ pub fn simulate<T: Executable + Clone>(
     config: SimConfig,
 ) -> Result<SimulationResult, ExecError> {
     // Lower sub-DAGs first
-    let flat = lower(dag).exec_context("lowering failed")?;
+    let lowered = lower(dag).exec_context("lowering failed")?;
 
     // Detect boundaries
-    let boundaries = detect_boundaries(&flat);
+    let boundaries = detect_boundaries(&lowered.dag);
 
     // Get topological order
-    let order = topo_sort(&flat);
+    let order = topo_sort(&lowered.dag);
 
     // Execute with simulation tracking (no CI context in simulation)
     let log = execute_flat(
-        &flat,
+        &lowered.dag,
         &boundaries,
         &ExecutionMode::Simulate(config.clone()),
         None,
         None,
         None,
+        &lowered.loops,
     )?;
 
     // Compute simulation metrics
@@ -462,7 +491,7 @@ pub fn simulate<T: Executable + Clone>(
         .map(|(_, start, dur)| *start + *dur)
         .max()
         .unwrap_or(Duration::ZERO);
-    let critical_path = compute_critical_path(&flat, &config);
+    let critical_path = compute_critical_path(&lowered.dag, &config);
     let resource_usage = ResourceUsage::default(); // Simplified for now
 
     Ok(SimulationResult {
@@ -496,14 +525,37 @@ fn compute_critical_path<T>(dag: &Dag<T>, _config: &SimConfig) -> Vec<NodeId> {
     topo_sort(dag)
 }
 
+/// Remap input mock keys from original SubDag IDs to lowered inner IDs.
+///
+/// When a user sets an input mock for a SubDag node (e.g., `("my_loop", "items")`),
+/// the lowered DAG has no `"my_loop"` node — instead it has `"my_loop/unpack"`.
+/// This function creates a new `BoundaryMocks` with keys remapped using the
+/// lowering's `input_remaps` table.
+fn remap_input_mocks(
+    mocks: &BoundaryMocks,
+    input_remaps: &HashMap<(String, String), Vec<(String, String)>>,
+) -> BoundaryMocks {
+    let mut result = mocks.clone();
+    for ((node_id, port_name), value) in mocks.iter_inputs() {
+        let key = (node_id.clone(), port_name.clone());
+        if let Some(targets) = input_remaps.get(&key) {
+            for (inner_id, inner_port) in targets {
+                result.set_input(inner_id.clone(), inner_port.clone(), value.clone());
+            }
+        }
+    }
+    result
+}
+
 /// Execute a flat (fully lowered) DAG.
-fn execute_flat<T: Executable>(
+fn execute_flat<T: Executable + Clone>(
     dag: &Dag<T>,
     boundaries: &BoundaryInfo,
     mode: &ExecutionMode,
     ci: Option<&mut crate::CiContext>,
     observer: Option<&mut dyn ProgressObserver>,
     input_mocks: Option<&BoundaryMocks>,
+    loops: &[LoopInfo<T>],
 ) -> Result<ExecutionLog, ExecError> {
     let order = topo_sort(dag);
     let node_map: HashMap<&str, &Node<T>> =
@@ -799,6 +851,36 @@ fn execute_flat<T: Executable>(
                 ci.end_group();
             }
         }
+
+        // Loop body execution: if this node is a loop unpack, execute the body
+        // template once per element and replace the element output with results.
+        if let Some(loop_info) = loops.iter().find(|l| l.unpack_id == *node_id) {
+            let body_entries = execute_loop_body(
+                loop_info,
+                &node_outputs,
+                mode,
+            )?;
+
+            // Collect body result values to replace unpack's element output.
+            let results: Vec<Value> = body_entries
+                .iter()
+                .filter_map(|e| {
+                    // The last node in each iteration's body produces "result".
+                    e.outputs.get("result").cloned()
+                })
+                .collect();
+
+            // Replace the element port output with body results so
+            // the unpack→pack edge carries transformed values to pack.
+            if let Some(unpack_out) = node_outputs.get_mut(&loop_info.unpack_id.0) {
+                unpack_out.insert(
+                    loop_info.element_port.clone(),
+                    Value::List(results),
+                );
+            }
+
+            entries.extend(body_entries);
+        }
     }
 
     // Notify observer of successful DAG completion
@@ -807,6 +889,94 @@ fn execute_flat<T: Executable>(
     }
 
     Ok(ExecutionLog { entries })
+}
+
+/// Execute a loop body template once per element from the unpack node.
+///
+/// For each element in the unpack's list output, the body template DAG is
+/// lowered, injected with the element value as an input mock, and executed.
+/// Each iteration's nodes get prefixed with `{unpack_id}/body_{i}/` for
+/// unique identification in the execution log.
+fn execute_loop_body<T: Executable + Clone>(
+    loop_info: &LoopInfo<T>,
+    node_outputs: &HashMap<String, HashMap<String, Value>>,
+    mode: &ExecutionMode,
+) -> Result<Vec<LogEntry>, ExecError> {
+    // Get the element list from the unpack outputs
+    let unpack_outputs = node_outputs.get(&loop_info.unpack_id.0).ok_or_else(|| {
+        ExecError::new(format!(
+            "loop body: unpack '{}' has no outputs",
+            loop_info.unpack_id.0
+        ))
+    })?;
+
+    let elements = match unpack_outputs.get(&loop_info.element_port) {
+        Some(Value::List(list)) => list.clone(),
+        Some(other) => vec![other.clone()],
+        None => vec![],
+    };
+
+    // Collect extra input values from the unpack's inputs (these were wired
+    // through the unpack node at build time and are available in its inputs).
+    // We look them up from node_outputs of upstream nodes feeding the unpack.
+    // For simplicity, we search all stored outputs for values that the body needs.
+    let body_entrypoints = detect_entrypoints(&loop_info.body_dag);
+    let mut extra_inputs: HashMap<String, Value> = HashMap::new();
+    for (_, port_name, _) in &body_entrypoints.entrypoint_ports {
+        if port_name.0 == loop_info.element_port || port_name.0.starts_with("res:") {
+            continue;
+        }
+        // Check if the unpack node received this as an input
+        if let Some(val) = unpack_outputs.get(&port_name.0) {
+            extra_inputs.insert(port_name.0.clone(), val.clone());
+        }
+    }
+
+    let mut all_entries = Vec::new();
+
+    for (i, element) in elements.iter().enumerate() {
+        // Build input mocks for this iteration: the element port gets the single element
+        let mut iter_mocks = BoundaryMocks::new();
+
+        // Find the body's entrypoint node for the element port
+        for (node_id, port_name, _) in &body_entrypoints.entrypoint_ports {
+            if port_name.0 == loop_info.element_port {
+                iter_mocks.set_input(&node_id.0, &port_name.0, element.clone());
+            }
+            // Inject extra inputs
+            if let Some(val) = extra_inputs.get(&port_name.0) {
+                iter_mocks.set_input(&node_id.0, &port_name.0, val.clone());
+            }
+        }
+
+        // Lower and execute the body template for this iteration
+        let lowered_body =
+            crate::lower::lower(&loop_info.body_dag).map_err(|e| ExecError::new(e.to_string()))?;
+        let body_boundaries = detect_boundaries(&lowered_body.dag);
+
+        // Execute in the same mode, with element injected as input mock
+        let body_log = execute_flat(
+            &lowered_body.dag,
+            &body_boundaries,
+            mode,
+            None,
+            None,
+            Some(&iter_mocks),
+            &lowered_body.loops,
+        )?;
+
+        // Prefix iteration entries for unique identification in the log
+        let prefix = format!("{}/body_{}", loop_info.unpack_id.0, i);
+        for entry in body_log.entries {
+            all_entries.push(LogEntry {
+                node_id: format!("{}/{}", prefix, entry.node_id),
+                outputs: entry.outputs,
+                was_intercepted: entry.was_intercepted,
+            });
+        }
+    }
+
+    Ok(all_entries)
 }
 
 /// Print a log entry's outputs to stdout.
@@ -1387,5 +1557,197 @@ mod tests {
         assert_eq!(config.resources.max_memory, Some(1024 * 1024));
         assert_eq!(config.resources.max_cpu_ms, Some(5000));
         assert_eq!(config.resources.max_concurrency, Some(4));
+    }
+
+    #[test]
+    fn test_loop_body_executes_per_element() {
+        use gunbc_ir::patterns::{LoopBuilder, PatternOp};
+
+        // Build a body DAG with a single transform node that appends "_processed"
+        #[derive(Debug, Clone)]
+        enum TestLoopOp {
+            Pattern(PatternOp),
+            AppendSuffix,
+        }
+
+        impl From<PatternOp> for TestLoopOp {
+            fn from(op: PatternOp) -> Self {
+                TestLoopOp::Pattern(op)
+            }
+        }
+
+        impl Executable for TestLoopOp {
+            fn execute(
+                &self,
+                inputs: HashMap<String, Value>,
+            ) -> Result<HashMap<String, Value>, ExecError> {
+                match self {
+                    TestLoopOp::Pattern(op) => op.execute(inputs),
+                    TestLoopOp::AppendSuffix => {
+                        let element = inputs
+                            .get("element")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("?");
+                        let mut out = HashMap::new();
+                        out.insert(
+                            "result".to_string(),
+                            Value::Str(format!("{}_processed", element)),
+                        );
+                        Ok(out)
+                    }
+                }
+            }
+        }
+
+        // Body DAG: single node that takes "element" and outputs "result"
+        let mut body_dag: Dag<TestLoopOp> = Dag::new();
+        body_dag.add_node(Node::opaque(
+            "transform",
+            vec![port("element", "String")],
+            vec![port("result", "String")],
+            TestLoopOp::AppendSuffix,
+        ));
+
+        // Build the loop node
+        let loop_node: Node<TestLoopOp> = LoopBuilder::new("test_loop")
+            .with_input("items", "String", Cardinality::ZERO_OR_MORE)
+            .with_element("element", "String")
+            .with_body(body_dag)
+            .with_output("results", "String")
+            .build();
+
+        // Build a DAG: producer → loop → consumer
+        let mut dag: Dag<TestLoopOp> = Dag::new();
+        dag.add_node(Node::opaque(
+            "source",
+            vec![],
+            vec![list("items", "String")],
+            TestLoopOp::Pattern(PatternOp::LoopUnpack {
+                // Repurpose as a producer that outputs a list
+                input_port: "unused".to_string(),
+                element_port: "items".to_string(),
+            }),
+        ));
+
+        // Actually, let's use a simpler approach: use input mocks
+        let mut dag: Dag<TestLoopOp> = Dag::new();
+        dag.add_node(loop_node);
+
+        // Use input mocks to inject the list (set_input for DAG entry injection)
+        let mut mocks = BoundaryMocks::new();
+        mocks.set_input(
+            "test_loop",
+            "items",
+            Value::List(vec![
+                Value::Str("alpha".to_string()),
+                Value::Str("beta".to_string()),
+                Value::Str("gamma".to_string()),
+            ]),
+        );
+
+        let log = execute_with_mode_and_inputs(
+            &dag,
+            ExecutionMode::Real,
+            Some(&mocks),
+        )
+        .unwrap();
+
+        // Find the pack node's output
+        let pack_entry = log
+            .entries
+            .iter()
+            .find(|e| e.node_id.ends_with("/pack"))
+            .expect("should have a pack node entry");
+
+        match pack_entry.outputs.get("results") {
+            Some(Value::List(items)) => {
+                assert_eq!(items.len(), 3, "should have 3 processed items");
+                assert_eq!(items[0], Value::Str("alpha_processed".to_string()));
+                assert_eq!(items[1], Value::Str("beta_processed".to_string()));
+                assert_eq!(items[2], Value::Str("gamma_processed".to_string()));
+            }
+            other => panic!("expected Value::List, got {:?}", other),
+        }
+
+        // Verify iteration count
+        match pack_entry.outputs.get("iterations") {
+            Some(Value::Int(n)) => assert_eq!(*n, 3),
+            other => panic!("expected iterations=3, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_loop_empty_list_produces_empty_output() {
+        use gunbc_ir::patterns::{LoopBuilder, PatternOp};
+
+        #[derive(Debug, Clone)]
+        enum TestLoopOp {
+            Pattern(PatternOp),
+            Identity,
+        }
+
+        impl From<PatternOp> for TestLoopOp {
+            fn from(op: PatternOp) -> Self {
+                TestLoopOp::Pattern(op)
+            }
+        }
+
+        impl Executable for TestLoopOp {
+            fn execute(
+                &self,
+                inputs: HashMap<String, Value>,
+            ) -> Result<HashMap<String, Value>, ExecError> {
+                match self {
+                    TestLoopOp::Pattern(op) => op.execute(inputs),
+                    TestLoopOp::Identity => {
+                        let mut out = HashMap::new();
+                        if let Some(v) = inputs.get("element") {
+                            out.insert("result".to_string(), v.clone());
+                        }
+                        Ok(out)
+                    }
+                }
+            }
+        }
+
+        let mut body_dag: Dag<TestLoopOp> = Dag::new();
+        body_dag.add_node(Node::opaque(
+            "passthrough",
+            vec![port("element", "String")],
+            vec![port("result", "String")],
+            TestLoopOp::Identity,
+        ));
+
+        let loop_node: Node<TestLoopOp> = LoopBuilder::new("empty_loop")
+            .with_input("items", "String", Cardinality::ZERO_OR_MORE)
+            .with_element("element", "String")
+            .with_body(body_dag)
+            .with_output("results", "String")
+            .build();
+
+        let mut dag: Dag<TestLoopOp> = Dag::new();
+        dag.add_node(loop_node);
+
+        // Inject empty list (set_input for DAG entry injection)
+        let mut mocks = BoundaryMocks::new();
+        mocks.set_input("empty_loop", "items", Value::List(vec![]));
+
+        let log = execute_with_mode_and_inputs(
+            &dag,
+            ExecutionMode::Real,
+            Some(&mocks),
+        )
+        .unwrap();
+
+        let pack_entry = log
+            .entries
+            .iter()
+            .find(|e| e.node_id.ends_with("/pack"))
+            .expect("should have a pack node entry");
+
+        match pack_entry.outputs.get("results") {
+            Some(Value::List(items)) => assert!(items.is_empty()),
+            other => panic!("expected empty Value::List, got {:?}", other),
+        }
     }
 }

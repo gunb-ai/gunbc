@@ -59,7 +59,7 @@ pub use helpers::{
     OutputMap, TransportResponseExt,
 };
 pub use intercept::{BoundaryMock, BoundaryMocks};
-pub use lower::{lower, LowerError};
+pub use lower::{lower, LoopInfo, LowerError, LowerResult};
 pub use progress::{
     DagPhase, DagProgress, DagSnapshot, EdgeProgress, EdgeState, FieldKind, FieldSummary,
     NodeProgress, NodeState, OutputSummary, ProgressEvent, ProgressObserver, RecordingObserver,

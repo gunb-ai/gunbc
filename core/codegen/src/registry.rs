@@ -416,6 +416,7 @@ pub fn all_tools() -> Vec<ToolDef> {
         .entrypoint(
             CliEntrypoint::new("repo_path", "String")
                 .short('r')
+                .default(".")
                 .help("Repository path to scan")
                 .make_var("REPO"),
         )
@@ -446,6 +447,7 @@ pub fn all_tools() -> Vec<ToolDef> {
         .entrypoint(
             CliEntrypoint::new("repo_path", "String")
                 .short('r')
+                .default(".")
                 .help("Repository path to scan")
                 .make_var("REPO"),
         )
@@ -483,6 +485,7 @@ pub fn all_tools() -> Vec<ToolDef> {
         .entrypoint(
             CliEntrypoint::new("repo_path", "String")
                 .short('r')
+                .default(".")
                 .help("Repository path to scan")
                 .make_var("REPO"),
         )
@@ -672,4 +675,32 @@ fn makegen_dag() -> DagDef {
             "write_makefile",
             "makefile_content",
         )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_gist_repo_path_default_is_dot() {
+        let tools = all_tools();
+        let tool_names = ["gist", "gist-diff", "gist-recent"];
+        for name in tool_names {
+            let tool = tools
+                .iter()
+                .find(|tool| tool.meta.tool_name == name)
+                .unwrap_or_else(|| panic!("missing tool definition for {}", name));
+            let repo_entry = tool
+                .entrypoints
+                .iter()
+                .find(|entry| entry.port_name == "repo_path")
+                .unwrap_or_else(|| panic!("missing repo_path entrypoint for {}", name));
+            assert_eq!(
+                repo_entry.default_value.as_deref(),
+                Some("."),
+                "repo_path default should be \".\" for {}",
+                name
+            );
+        }
+    }
 }

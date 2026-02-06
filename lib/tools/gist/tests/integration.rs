@@ -34,6 +34,13 @@ fn mock_env(mocks: &mut BoundaryMocks) {
     mocks.set_value("fs_env", "fs:write", fs.into());
     let clock = Timestamp::from_system_time(SystemTime::UNIX_EPOCH);
     mocks.set_value("clock_env", "clock", clock.into());
+    // Entry inputs (repo_path) for all gist modes
+    mocks.set_input("prepare_list_files", "repo_path", Value::Str(".".into()));
+    mocks.set_input("prepare_read_files", "repo_path", Value::Str(".".into()));
+    mocks.set_input("prepare_current_branch", "repo_path", Value::Str(".".into()));
+    mocks.set_input("prepare_remote_branches", "repo_path", Value::Str(".".into()));
+    mocks.set_input("prepare_diff", "repo_path", Value::Str(".".into()));
+    mocks.set_input("prepare_rev_list", "repo_path", Value::Str(".".into()));
 }
 
 /// Test that dry-run mode intercepts the transport boundaries.

@@ -115,24 +115,25 @@ fn run_with_progress<T: Executable + Clone>(
         }
     };
 
-    let boundaries = detect_boundaries(&flat);
-    let topo_order = topo_sort(&flat);
+    let boundaries = detect_boundaries(&flat.dag);
+    let topo_order = topo_sort(&flat.dag);
 
     // Build labels from node IDs
     let labels: HashMap<NodeId, String> = flat
+        .dag
         .nodes
         .iter()
         .map(|n| (n.id.clone(), n.id.0.clone()))
         .collect();
 
     // Compute layout from profile viewport
-    let layout = compute_layout(&topo_order, &flat.edges, &labels, &profile.viewport);
+    let layout = compute_layout(&topo_order, &flat.dag.edges, &labels, &profile.viewport);
 
     // Save levels before handing layout to renderer (for parallel animation)
     let levels = layout.levels.clone();
 
     // Create progress tracker and execute (instant)
-    let snapshot = DagSnapshot::from_dag(&flat, &topo_order, &boundaries);
+    let snapshot = DagSnapshot::from_dag(&flat.dag, &topo_order, &boundaries);
     let mut progress = DagProgress::new(snapshot.clone());
     let result = execute_with_progress_and_mode_and_inputs(dag, mode, &mut progress, input_mocks);
 

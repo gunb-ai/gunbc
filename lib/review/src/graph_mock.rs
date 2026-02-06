@@ -153,6 +153,12 @@ pub fn inline_review_mock_spec() -> MockSpec {
             "criteria",
             criteria_json.clone(),
         )
+        .input_mock("parse_response", "criteria", criteria_json.clone())
+        .input_mock(
+            "prepare_llm",
+            "content",
+            Value::Str("fn main() { let x: Option<i32> = None; x.unwrap(); }".into()),
+        )
         .input_mock("prepare_llm", "provider", Value::Str("openai".into()))
         .input_mock("prepare_llm", "model", Value::Str("gpt-4o".into()))
         .expects_input("artifact", InputConstraint::NonEmpty)
@@ -296,7 +302,8 @@ diff --git a/src/main.rs b/src/main.rs
         .expect("execute_llm response should match type")
         // Build spec (pure terminal outputs are computed, not mocked)
         .build_unchecked()
-        // Input expectations (repo_path is a required entrypoint)
+        // Input mocks / expectations (repo_path is a required entrypoint)
+        .input_mock("prepare_diff", "repo_path", Value::Str(".".into()))
         .expects_input("repo_path", InputConstraint::Any)
         // No input mocks needed — provider, model, criteria come from config node
         .node_example(

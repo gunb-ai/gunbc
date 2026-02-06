@@ -2437,10 +2437,10 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             return None;
         }
 
-        let flat =
+        let lowered =
             gunbc_exec::lower(self.dag).expect("window tests require DAG lowering to succeed");
-        let pure_nodes = collect_pure_nodes(&flat);
-        let windows = enumerate_window_specs(&flat, max_nodes, &pure_nodes);
+        let pure_nodes = collect_pure_nodes(&lowered.dag);
+        let windows = enumerate_window_specs(&lowered.dag, max_nodes, &pure_nodes);
         if windows.is_empty() {
             return None;
         }
@@ -2485,7 +2485,8 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                 Stmt::let_bind(
                     "flat",
                     Expr::call("lower", vec![Expr::var("dag").ref_of()])
-                        .method("expect", vec![Expr::Str("lower should succeed".into())]),
+                        .method("expect", vec![Expr::Str("lower should succeed".into())])
+                        .field("dag"),
                 ),
                 Stmt::let_bind("baseline", baseline),
                 Stmt::let_bind(

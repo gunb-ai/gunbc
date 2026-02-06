@@ -4,7 +4,7 @@
 // DO NOT EDIT - regenerate with: make testgen
 // Obligations: 31 obligations (8 discharged, 23 testable: A=8, B=11, C=4, D=0)
 // Proven by construction: acyclicity, type compatibility, cardinality satisfaction.
-// Content-Hash: c945855a0e7d37eae0c36d1c725354a78ce609c445ebb51622238fc9de8861d9
+// Content-Hash: 717d4524766a2cc7b7d871b07ad253131edc94a2eac481cde2df9277ba13622b
 
 
 use gunbc_exec::{execute_with_mode, lower, ExecutionMode};
@@ -307,7 +307,7 @@ fn test_flow_makegen() {
 #[test]
 fn test_window_compare_content_through_execute_write() {
     let dag = crate :: build_makegen_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("compare_content", "execute_write"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -321,7 +321,7 @@ fn test_window_compare_content_through_execute_write() {
 #[test]
 fn test_window_prepare_file_write_through_execute_write() {
     let dag = crate :: build_makegen_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_file_write", "compare_content", "execute_write"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -335,7 +335,7 @@ fn test_window_prepare_file_write_through_execute_write() {
 #[test]
 fn test_window_render_makefile_through_compare_content() {
     let dag = crate :: build_makegen_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("render_makefile", "execute_read", "prepare_file_write", "compare_content"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -349,7 +349,7 @@ fn test_window_render_makefile_through_compare_content() {
 #[test]
 fn test_window_execute_read_through_execute_write() {
     let dag = crate :: build_makegen_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_read", "prepare_file_write", "compare_content", "execute_write"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -363,7 +363,7 @@ fn test_window_execute_read_through_execute_write() {
 #[test]
 fn test_window_prepare_file_read_through_compare_content() {
     let dag = crate :: build_makegen_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_file_read", "render_makefile", "execute_read", "prepare_file_write", "compare_content"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -377,7 +377,7 @@ fn test_window_prepare_file_read_through_compare_content() {
 #[test]
 fn test_window_render_makefile_through_execute_write() {
     let dag = crate :: build_makegen_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("render_makefile", "execute_read", "prepare_file_write", "compare_content", "execute_write"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -391,7 +391,7 @@ fn test_window_render_makefile_through_execute_write() {
 #[test]
 fn test_window_load_registry_through_compare_content() {
     let dag = crate :: build_makegen_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("load_registry", "prepare_file_read", "render_makefile", "execute_read", "prepare_file_write", "compare_content"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -405,7 +405,7 @@ fn test_window_load_registry_through_compare_content() {
 #[test]
 fn test_window_prepare_file_read_through_execute_write() {
     let dag = crate :: build_makegen_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_file_read", "render_makefile", "execute_read", "prepare_file_write", "compare_content", "execute_write"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -419,7 +419,7 @@ fn test_window_prepare_file_read_through_execute_write() {
 #[test]
 fn test_window_load_registry_through_execute_write() {
     let dag = crate :: build_makegen_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("load_registry", "prepare_file_read", "render_makefile", "execute_read", "prepare_file_write", "compare_content", "execute_write"));
     let mut mocks = mock_spec().to_boundary_mocks();

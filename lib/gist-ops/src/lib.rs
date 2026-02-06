@@ -15,7 +15,8 @@
 
 #![deny(dead_code)]
 use gunbc_exec::{
-    optional_str, require_response, require_str, ExecError, Executable, IntoExecResult, OutputMap,
+    optional_str, propagate_skipped, require_response, require_str, ExecError, Executable,
+    IntoExecResult, OutputMap,
 };
 use gunbc_ir::transport::gist::GistRequest;
 use gunbc_ir::transport::{ShellResponse, TransportRequest, TransportResponse};
@@ -55,6 +56,9 @@ impl Executable for GistOps {
                 OutputMap::new().value("clock", ts.into()).ok()
             }
             GistOps::PrepareRequest { public } => {
+                if let Some(result) = propagate_skipped(&inputs, "markdown", &["request"]) {
+                    return result;
+                }
                 let markdown = require_str(&inputs, "markdown")?;
                 let branch = optional_str(&inputs, "branch");
                 let remote_branch = optional_str(&inputs, "remote_branch");

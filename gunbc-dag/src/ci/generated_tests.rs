@@ -4,7 +4,7 @@
 // DO NOT EDIT - regenerate with: make testgen
 // Obligations: 146 obligations (63 discharged, 83 testable: A=31, B=34, C=18, D=0)
 // Proven by construction: acyclicity, type compatibility, cardinality satisfaction.
-// Content-Hash: ac5384cc095a2acccaa1f1c63d819644d678773c9a8e0e69f5a0bbeaadc9c397
+// Content-Hash: 23812a0f93502f9665e2926e24bdd127b32b011ff1e7dbb5a3bc0ecfe8c06bc2
 
 
 use gunbc_exec::{execute_with_mode, lower, ExecutionMode};
@@ -619,7 +619,7 @@ fn test_flow_ci() {
 #[test]
 fn test_window_prepare_codegen_command_through_execute_codegen() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_codegen_command", "execute_codegen"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -633,7 +633,7 @@ fn test_window_prepare_codegen_command_through_execute_codegen() {
 #[test]
 fn test_window_execute_codegen_through_parse_codegen_result() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_codegen", "parse_codegen_result"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -647,7 +647,7 @@ fn test_window_execute_codegen_through_parse_codegen_result() {
 #[test]
 fn test_window_parse_codegen_result_through_prepare_stamp_write() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("parse_codegen_result", "prepare_stamp_write"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -661,7 +661,7 @@ fn test_window_parse_codegen_result_through_prepare_stamp_write() {
 #[test]
 fn test_window_parse_test_through_report() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("parse_test", "report"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -675,7 +675,7 @@ fn test_window_parse_test_through_report() {
 #[test]
 fn test_window_prepare_codegen_command_through_parse_codegen_result() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_codegen_command", "execute_codegen", "parse_codegen_result"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -689,7 +689,7 @@ fn test_window_prepare_codegen_command_through_parse_codegen_result() {
 #[test]
 fn test_window_execute_codegen_through_prepare_stamp_write() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_codegen", "parse_codegen_result", "prepare_stamp_write"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -703,7 +703,7 @@ fn test_window_execute_codegen_through_prepare_stamp_write() {
 #[test]
 fn test_window_parse_codegen_result_through_prepare_testgen() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("parse_codegen_result", "prepare_stamp_write", "prepare_testgen"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -717,7 +717,7 @@ fn test_window_parse_codegen_result_through_prepare_testgen() {
 #[test]
 fn test_window_parse_clippy_lint_through_report() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("parse_clippy_lint", "parse_test", "report"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -731,7 +731,7 @@ fn test_window_parse_clippy_lint_through_report() {
 #[test]
 fn test_window_prepare_codegen_command_through_prepare_stamp_write() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_codegen_command", "execute_codegen", "parse_codegen_result", "prepare_stamp_write"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -745,7 +745,7 @@ fn test_window_prepare_codegen_command_through_prepare_stamp_write() {
 #[test]
 fn test_window_execute_codegen_through_prepare_testgen() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -759,7 +759,7 @@ fn test_window_execute_codegen_through_prepare_testgen() {
 #[test]
 fn test_window_parse_codegen_result_through_prepare_verify_check() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "prepare_verify_check"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -773,7 +773,7 @@ fn test_window_parse_codegen_result_through_prepare_verify_check() {
 #[test]
 fn test_window_execute_test_through_report() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_test", "parse_clippy_lint", "parse_test", "report"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -787,7 +787,7 @@ fn test_window_execute_test_through_report() {
 #[test]
 fn test_window_prepare_codegen_command_through_prepare_testgen() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_codegen_command", "execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -801,7 +801,7 @@ fn test_window_prepare_codegen_command_through_prepare_testgen() {
 #[test]
 fn test_window_execute_codegen_through_prepare_verify_check() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "prepare_verify_check"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -815,7 +815,7 @@ fn test_window_execute_codegen_through_prepare_verify_check() {
 #[test]
 fn test_window_parse_codegen_result_through_execute_stamp_write() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "prepare_verify_check", "execute_stamp_write"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -829,7 +829,7 @@ fn test_window_parse_codegen_result_through_execute_stamp_write() {
 #[test]
 fn test_window_clippy_lint_through_report() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("clippy_lint", "execute_test", "parse_clippy_lint", "parse_test", "report"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -843,7 +843,7 @@ fn test_window_clippy_lint_through_report() {
 #[test]
 fn test_window_prepare_codegen_command_through_prepare_verify_check() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_codegen_command", "execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "prepare_verify_check"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -857,7 +857,7 @@ fn test_window_prepare_codegen_command_through_prepare_verify_check() {
 #[test]
 fn test_window_execute_codegen_through_execute_stamp_write() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "prepare_verify_check", "execute_stamp_write"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -871,7 +871,7 @@ fn test_window_execute_codegen_through_execute_stamp_write() {
 #[test]
 fn test_window_parse_codegen_result_through_execute_testgen() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "prepare_verify_check", "execute_stamp_write", "execute_testgen"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -885,7 +885,7 @@ fn test_window_parse_codegen_result_through_execute_testgen() {
 #[test]
 fn test_window_prepare_test_through_report() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_test", "clippy_lint", "execute_test", "parse_clippy_lint", "parse_test", "report"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -899,7 +899,7 @@ fn test_window_prepare_test_through_report() {
 #[test]
 fn test_window_prepare_codegen_command_through_execute_stamp_write() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_codegen_command", "execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "prepare_verify_check", "execute_stamp_write"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -913,7 +913,7 @@ fn test_window_prepare_codegen_command_through_execute_stamp_write() {
 #[test]
 fn test_window_execute_codegen_through_execute_testgen() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "prepare_verify_check", "execute_stamp_write", "execute_testgen"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -927,7 +927,7 @@ fn test_window_execute_codegen_through_execute_testgen() {
 #[test]
 fn test_window_parse_codegen_result_through_execute_verify_check() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "prepare_verify_check", "execute_stamp_write", "execute_testgen", "execute_verify_check"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -941,7 +941,7 @@ fn test_window_parse_codegen_result_through_execute_verify_check() {
 #[test]
 fn test_window_prepare_clippy_lint_through_report() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_clippy_lint", "prepare_test", "clippy_lint", "execute_test", "parse_clippy_lint", "parse_test", "report"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -955,7 +955,7 @@ fn test_window_prepare_clippy_lint_through_report() {
 #[test]
 fn test_window_prepare_codegen_command_through_execute_testgen() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_codegen_command", "execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "prepare_verify_check", "execute_stamp_write", "execute_testgen"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -969,7 +969,7 @@ fn test_window_prepare_codegen_command_through_execute_testgen() {
 #[test]
 fn test_window_execute_codegen_through_execute_verify_check() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "prepare_verify_check", "execute_stamp_write", "execute_testgen", "execute_verify_check"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -983,7 +983,7 @@ fn test_window_execute_codegen_through_execute_verify_check() {
 #[test]
 fn test_window_parse_codegen_result_through_parse_testgen() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "prepare_verify_check", "execute_stamp_write", "execute_testgen", "execute_verify_check", "parse_testgen"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -997,7 +997,7 @@ fn test_window_parse_codegen_result_through_parse_testgen() {
 #[test]
 fn test_window_parse_guardrail_check_through_report() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("parse_guardrail_check", "prepare_clippy_lint", "prepare_test", "clippy_lint", "execute_test", "parse_clippy_lint", "parse_test", "report"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1011,7 +1011,7 @@ fn test_window_parse_guardrail_check_through_report() {
 #[test]
 fn test_window_prepare_codegen_command_through_execute_verify_check() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_codegen_command", "execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "prepare_verify_check", "execute_stamp_write", "execute_testgen", "execute_verify_check"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1025,7 +1025,7 @@ fn test_window_prepare_codegen_command_through_execute_verify_check() {
 #[test]
 fn test_window_execute_codegen_through_parse_testgen() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "prepare_verify_check", "execute_stamp_write", "execute_testgen", "execute_verify_check", "parse_testgen"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1039,7 +1039,7 @@ fn test_window_execute_codegen_through_parse_testgen() {
 #[test]
 fn test_window_parse_codegen_result_through_parse_verify_check() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "prepare_verify_check", "execute_stamp_write", "execute_testgen", "execute_verify_check", "parse_testgen", "parse_verify_check"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1053,7 +1053,7 @@ fn test_window_parse_codegen_result_through_parse_verify_check() {
 #[test]
 fn test_window_parse_build_through_report() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test", "clippy_lint", "execute_test", "parse_clippy_lint", "parse_test", "report"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1067,7 +1067,7 @@ fn test_window_parse_build_through_report() {
 #[test]
 fn test_window_prepare_codegen_command_through_parse_testgen() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_codegen_command", "execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "prepare_verify_check", "execute_stamp_write", "execute_testgen", "execute_verify_check", "parse_testgen"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1081,7 +1081,7 @@ fn test_window_prepare_codegen_command_through_parse_testgen() {
 #[test]
 fn test_window_execute_codegen_through_parse_verify_check() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "prepare_verify_check", "execute_stamp_write", "execute_testgen", "execute_verify_check", "parse_testgen", "parse_verify_check"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1095,7 +1095,7 @@ fn test_window_execute_codegen_through_parse_verify_check() {
 #[test]
 fn test_window_parse_codegen_result_through_prepare_build() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "prepare_verify_check", "execute_stamp_write", "execute_testgen", "execute_verify_check", "parse_testgen", "parse_verify_check", "prepare_build"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1109,7 +1109,7 @@ fn test_window_parse_codegen_result_through_prepare_build() {
 #[test]
 fn test_window_execute_guardrail_check_through_report() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test", "clippy_lint", "execute_test", "parse_clippy_lint", "parse_test", "report"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1123,7 +1123,7 @@ fn test_window_execute_guardrail_check_through_report() {
 #[test]
 fn test_window_prepare_codegen_command_through_parse_verify_check() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_codegen_command", "execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "prepare_verify_check", "execute_stamp_write", "execute_testgen", "execute_verify_check", "parse_testgen", "parse_verify_check"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1137,7 +1137,7 @@ fn test_window_prepare_codegen_command_through_parse_verify_check() {
 #[test]
 fn test_window_execute_codegen_through_prepare_build() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "prepare_verify_check", "execute_stamp_write", "execute_testgen", "execute_verify_check", "parse_testgen", "parse_verify_check", "prepare_build"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1151,7 +1151,7 @@ fn test_window_execute_codegen_through_prepare_build() {
 #[test]
 fn test_window_parse_codegen_result_through_prepare_guardrail_check() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "prepare_verify_check", "execute_stamp_write", "execute_testgen", "execute_verify_check", "parse_testgen", "parse_verify_check", "prepare_build", "prepare_guardrail_check"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1165,7 +1165,7 @@ fn test_window_parse_codegen_result_through_prepare_guardrail_check() {
 #[test]
 fn test_window_execute_build_through_report() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test", "clippy_lint", "execute_test", "parse_clippy_lint", "parse_test", "report"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1179,7 +1179,7 @@ fn test_window_execute_build_through_report() {
 #[test]
 fn test_window_prepare_codegen_command_through_prepare_build() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_codegen_command", "execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "prepare_verify_check", "execute_stamp_write", "execute_testgen", "execute_verify_check", "parse_testgen", "parse_verify_check", "prepare_build"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1193,7 +1193,7 @@ fn test_window_prepare_codegen_command_through_prepare_build() {
 #[test]
 fn test_window_execute_codegen_through_prepare_guardrail_check() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "prepare_verify_check", "execute_stamp_write", "execute_testgen", "execute_verify_check", "parse_testgen", "parse_verify_check", "prepare_build", "prepare_guardrail_check"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1207,7 +1207,7 @@ fn test_window_execute_codegen_through_prepare_guardrail_check() {
 #[test]
 fn test_window_parse_codegen_result_through_execute_build() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "prepare_verify_check", "execute_stamp_write", "execute_testgen", "execute_verify_check", "parse_testgen", "parse_verify_check", "prepare_build", "prepare_guardrail_check", "execute_build"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1221,7 +1221,7 @@ fn test_window_parse_codegen_result_through_execute_build() {
 #[test]
 fn test_window_prepare_guardrail_check_through_report() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test", "clippy_lint", "execute_test", "parse_clippy_lint", "parse_test", "report"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1235,7 +1235,7 @@ fn test_window_prepare_guardrail_check_through_report() {
 #[test]
 fn test_window_prepare_codegen_command_through_prepare_guardrail_check() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_codegen_command", "execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "prepare_verify_check", "execute_stamp_write", "execute_testgen", "execute_verify_check", "parse_testgen", "parse_verify_check", "prepare_build", "prepare_guardrail_check"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1249,7 +1249,7 @@ fn test_window_prepare_codegen_command_through_prepare_guardrail_check() {
 #[test]
 fn test_window_execute_codegen_through_execute_build() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "prepare_verify_check", "execute_stamp_write", "execute_testgen", "execute_verify_check", "parse_testgen", "parse_verify_check", "prepare_build", "prepare_guardrail_check", "execute_build"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1263,7 +1263,7 @@ fn test_window_execute_codegen_through_execute_build() {
 #[test]
 fn test_window_parse_codegen_result_through_execute_guardrail_check() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "prepare_verify_check", "execute_stamp_write", "execute_testgen", "execute_verify_check", "parse_testgen", "parse_verify_check", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1277,7 +1277,7 @@ fn test_window_parse_codegen_result_through_execute_guardrail_check() {
 #[test]
 fn test_window_prepare_build_through_report() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test", "clippy_lint", "execute_test", "parse_clippy_lint", "parse_test", "report"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1291,7 +1291,7 @@ fn test_window_prepare_build_through_report() {
 #[test]
 fn test_window_prepare_codegen_command_through_execute_build() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_codegen_command", "execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "prepare_verify_check", "execute_stamp_write", "execute_testgen", "execute_verify_check", "parse_testgen", "parse_verify_check", "prepare_build", "prepare_guardrail_check", "execute_build"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1305,7 +1305,7 @@ fn test_window_prepare_codegen_command_through_execute_build() {
 #[test]
 fn test_window_execute_codegen_through_execute_guardrail_check() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "prepare_verify_check", "execute_stamp_write", "execute_testgen", "execute_verify_check", "parse_testgen", "parse_verify_check", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1319,7 +1319,7 @@ fn test_window_execute_codegen_through_execute_guardrail_check() {
 #[test]
 fn test_window_parse_codegen_result_through_parse_build() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "prepare_verify_check", "execute_stamp_write", "execute_testgen", "execute_verify_check", "parse_testgen", "parse_verify_check", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1333,7 +1333,7 @@ fn test_window_parse_codegen_result_through_parse_build() {
 #[test]
 fn test_window_parse_verify_check_through_report() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("parse_verify_check", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test", "clippy_lint", "execute_test", "parse_clippy_lint", "parse_test", "report"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1347,7 +1347,7 @@ fn test_window_parse_verify_check_through_report() {
 #[test]
 fn test_window_prepare_codegen_command_through_execute_guardrail_check() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_codegen_command", "execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "prepare_verify_check", "execute_stamp_write", "execute_testgen", "execute_verify_check", "parse_testgen", "parse_verify_check", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1361,7 +1361,7 @@ fn test_window_prepare_codegen_command_through_execute_guardrail_check() {
 #[test]
 fn test_window_execute_codegen_through_parse_build() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "prepare_verify_check", "execute_stamp_write", "execute_testgen", "execute_verify_check", "parse_testgen", "parse_verify_check", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1375,7 +1375,7 @@ fn test_window_execute_codegen_through_parse_build() {
 #[test]
 fn test_window_parse_codegen_result_through_parse_guardrail_check() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "prepare_verify_check", "execute_stamp_write", "execute_testgen", "execute_verify_check", "parse_testgen", "parse_verify_check", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1389,7 +1389,7 @@ fn test_window_parse_codegen_result_through_parse_guardrail_check() {
 #[test]
 fn test_window_parse_testgen_through_report() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("parse_testgen", "parse_verify_check", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test", "clippy_lint", "execute_test", "parse_clippy_lint", "parse_test", "report"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1403,7 +1403,7 @@ fn test_window_parse_testgen_through_report() {
 #[test]
 fn test_window_prepare_codegen_command_through_parse_build() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_codegen_command", "execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "prepare_verify_check", "execute_stamp_write", "execute_testgen", "execute_verify_check", "parse_testgen", "parse_verify_check", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1417,7 +1417,7 @@ fn test_window_prepare_codegen_command_through_parse_build() {
 #[test]
 fn test_window_execute_codegen_through_parse_guardrail_check() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "prepare_verify_check", "execute_stamp_write", "execute_testgen", "execute_verify_check", "parse_testgen", "parse_verify_check", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1431,7 +1431,7 @@ fn test_window_execute_codegen_through_parse_guardrail_check() {
 #[test]
 fn test_window_parse_codegen_result_through_prepare_clippy_lint() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "prepare_verify_check", "execute_stamp_write", "execute_testgen", "execute_verify_check", "parse_testgen", "parse_verify_check", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1445,7 +1445,7 @@ fn test_window_parse_codegen_result_through_prepare_clippy_lint() {
 #[test]
 fn test_window_execute_verify_check_through_report() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_verify_check", "parse_testgen", "parse_verify_check", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test", "clippy_lint", "execute_test", "parse_clippy_lint", "parse_test", "report"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1459,7 +1459,7 @@ fn test_window_execute_verify_check_through_report() {
 #[test]
 fn test_window_prepare_codegen_command_through_parse_guardrail_check() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_codegen_command", "execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "prepare_verify_check", "execute_stamp_write", "execute_testgen", "execute_verify_check", "parse_testgen", "parse_verify_check", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1473,7 +1473,7 @@ fn test_window_prepare_codegen_command_through_parse_guardrail_check() {
 #[test]
 fn test_window_execute_codegen_through_prepare_clippy_lint() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "prepare_verify_check", "execute_stamp_write", "execute_testgen", "execute_verify_check", "parse_testgen", "parse_verify_check", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1487,7 +1487,7 @@ fn test_window_execute_codegen_through_prepare_clippy_lint() {
 #[test]
 fn test_window_parse_codegen_result_through_prepare_test() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "prepare_verify_check", "execute_stamp_write", "execute_testgen", "execute_verify_check", "parse_testgen", "parse_verify_check", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1501,7 +1501,7 @@ fn test_window_parse_codegen_result_through_prepare_test() {
 #[test]
 fn test_window_execute_testgen_through_report() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_testgen", "execute_verify_check", "parse_testgen", "parse_verify_check", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test", "clippy_lint", "execute_test", "parse_clippy_lint", "parse_test", "report"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1515,7 +1515,7 @@ fn test_window_execute_testgen_through_report() {
 #[test]
 fn test_window_prepare_codegen_command_through_prepare_clippy_lint() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_codegen_command", "execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "prepare_verify_check", "execute_stamp_write", "execute_testgen", "execute_verify_check", "parse_testgen", "parse_verify_check", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1529,7 +1529,7 @@ fn test_window_prepare_codegen_command_through_prepare_clippy_lint() {
 #[test]
 fn test_window_execute_codegen_through_prepare_test() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "prepare_verify_check", "execute_stamp_write", "execute_testgen", "execute_verify_check", "parse_testgen", "parse_verify_check", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1543,7 +1543,7 @@ fn test_window_execute_codegen_through_prepare_test() {
 #[test]
 fn test_window_parse_codegen_result_through_clippy_lint() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "prepare_verify_check", "execute_stamp_write", "execute_testgen", "execute_verify_check", "parse_testgen", "parse_verify_check", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test", "clippy_lint"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1557,7 +1557,7 @@ fn test_window_parse_codegen_result_through_clippy_lint() {
 #[test]
 fn test_window_prepare_codegen_command_through_prepare_test() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_codegen_command", "execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "prepare_verify_check", "execute_stamp_write", "execute_testgen", "execute_verify_check", "parse_testgen", "parse_verify_check", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1571,7 +1571,7 @@ fn test_window_prepare_codegen_command_through_prepare_test() {
 #[test]
 fn test_window_execute_codegen_through_clippy_lint() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "prepare_verify_check", "execute_stamp_write", "execute_testgen", "execute_verify_check", "parse_testgen", "parse_verify_check", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test", "clippy_lint"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1585,7 +1585,7 @@ fn test_window_execute_codegen_through_clippy_lint() {
 #[test]
 fn test_window_parse_codegen_result_through_execute_test() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "prepare_verify_check", "execute_stamp_write", "execute_testgen", "execute_verify_check", "parse_testgen", "parse_verify_check", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test", "clippy_lint", "execute_test"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1599,7 +1599,7 @@ fn test_window_parse_codegen_result_through_execute_test() {
 #[test]
 fn test_window_prepare_codegen_command_through_clippy_lint() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_codegen_command", "execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "prepare_verify_check", "execute_stamp_write", "execute_testgen", "execute_verify_check", "parse_testgen", "parse_verify_check", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test", "clippy_lint"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1613,7 +1613,7 @@ fn test_window_prepare_codegen_command_through_clippy_lint() {
 #[test]
 fn test_window_execute_codegen_through_execute_test() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "prepare_verify_check", "execute_stamp_write", "execute_testgen", "execute_verify_check", "parse_testgen", "parse_verify_check", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test", "clippy_lint", "execute_test"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1627,7 +1627,7 @@ fn test_window_execute_codegen_through_execute_test() {
 #[test]
 fn test_window_parse_codegen_result_through_parse_clippy_lint() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "prepare_verify_check", "execute_stamp_write", "execute_testgen", "execute_verify_check", "parse_testgen", "parse_verify_check", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test", "clippy_lint", "execute_test", "parse_clippy_lint"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1641,7 +1641,7 @@ fn test_window_parse_codegen_result_through_parse_clippy_lint() {
 #[test]
 fn test_window_prepare_codegen_command_through_execute_test() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_codegen_command", "execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "prepare_verify_check", "execute_stamp_write", "execute_testgen", "execute_verify_check", "parse_testgen", "parse_verify_check", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test", "clippy_lint", "execute_test"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1655,7 +1655,7 @@ fn test_window_prepare_codegen_command_through_execute_test() {
 #[test]
 fn test_window_execute_codegen_through_parse_clippy_lint() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "prepare_verify_check", "execute_stamp_write", "execute_testgen", "execute_verify_check", "parse_testgen", "parse_verify_check", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test", "clippy_lint", "execute_test", "parse_clippy_lint"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1669,7 +1669,7 @@ fn test_window_execute_codegen_through_parse_clippy_lint() {
 #[test]
 fn test_window_parse_codegen_result_through_parse_test() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "prepare_verify_check", "execute_stamp_write", "execute_testgen", "execute_verify_check", "parse_testgen", "parse_verify_check", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test", "clippy_lint", "execute_test", "parse_clippy_lint", "parse_test"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1683,7 +1683,7 @@ fn test_window_parse_codegen_result_through_parse_test() {
 #[test]
 fn test_window_prepare_codegen_command_through_parse_clippy_lint() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_codegen_command", "execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "prepare_verify_check", "execute_stamp_write", "execute_testgen", "execute_verify_check", "parse_testgen", "parse_verify_check", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test", "clippy_lint", "execute_test", "parse_clippy_lint"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1697,7 +1697,7 @@ fn test_window_prepare_codegen_command_through_parse_clippy_lint() {
 #[test]
 fn test_window_execute_codegen_through_parse_test() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "prepare_verify_check", "execute_stamp_write", "execute_testgen", "execute_verify_check", "parse_testgen", "parse_verify_check", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test", "clippy_lint", "execute_test", "parse_clippy_lint", "parse_test"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1711,7 +1711,7 @@ fn test_window_execute_codegen_through_parse_test() {
 #[test]
 fn test_window_parse_codegen_result_through_report() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "prepare_verify_check", "execute_stamp_write", "execute_testgen", "execute_verify_check", "parse_testgen", "parse_verify_check", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test", "clippy_lint", "execute_test", "parse_clippy_lint", "parse_test", "report"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1725,7 +1725,7 @@ fn test_window_parse_codegen_result_through_report() {
 #[test]
 fn test_window_prepare_codegen_command_through_parse_test() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_codegen_command", "execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "prepare_verify_check", "execute_stamp_write", "execute_testgen", "execute_verify_check", "parse_testgen", "parse_verify_check", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test", "clippy_lint", "execute_test", "parse_clippy_lint", "parse_test"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1739,7 +1739,7 @@ fn test_window_prepare_codegen_command_through_parse_test() {
 #[test]
 fn test_window_execute_codegen_through_report() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "prepare_verify_check", "execute_stamp_write", "execute_testgen", "execute_verify_check", "parse_testgen", "parse_verify_check", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test", "clippy_lint", "execute_test", "parse_clippy_lint", "parse_test", "report"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1753,7 +1753,7 @@ fn test_window_execute_codegen_through_report() {
 #[test]
 fn test_window_prepare_codegen_command_through_report() {
     let dag = crate :: build_ci_graph().unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_codegen_command", "execute_codegen", "parse_codegen_result", "prepare_stamp_write", "prepare_testgen", "prepare_verify_check", "execute_stamp_write", "execute_testgen", "execute_verify_check", "parse_testgen", "parse_verify_check", "prepare_build", "prepare_guardrail_check", "execute_build", "execute_guardrail_check", "parse_build", "parse_guardrail_check", "prepare_clippy_lint", "prepare_test", "clippy_lint", "execute_test", "parse_clippy_lint", "parse_test", "report"));
     let mut mocks = mock_spec().to_boundary_mocks();

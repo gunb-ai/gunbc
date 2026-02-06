@@ -30,6 +30,10 @@ pub struct LowerResult<T> {
     /// Each entry describes one loop: the unpack/pack node IDs and
     /// the body template DAG to be iterated at execution time.
     pub loops: Vec<LoopInfo<T>>,
+    /// Input mock remappings: maps (original SubDag ID, port) to
+    /// the lowered inner entrypoint (node_id, port) pairs.
+    /// Used by the executor to remap BoundaryMocks keys.
+    pub input_remaps: HashMap<(String, String), Vec<(String, String)>>,
 }
 
 /// Describes a loop pattern detected during lowering.
@@ -335,9 +339,24 @@ pub fn lower<T: Clone>(dag: &Dag<T>) -> Result<LowerResult<T>, LowerError> {
         }
     }
 
+    // Build input remaps from SubDag mappings so the executor can
+    // remap BoundaryMocks keys from original SubDag IDs to lowered inner IDs.
+    let mut input_remaps: HashMap<(String, String), Vec<(String, String)>> = HashMap::new();
+    for (subdag_id, mapping) in &subdag_mappings {
+        for (port_name, targets) in &mapping.input_mappings {
+            let key = (subdag_id.0.clone(), port_name.0.clone());
+            let remapped: Vec<(String, String)> = targets
+                .iter()
+                .map(|(inner_id, inner_port)| (inner_id.0.clone(), inner_port.0.clone()))
+                .collect();
+            input_remaps.insert(key, remapped);
+        }
+    }
+
     Ok(LowerResult {
         dag: result,
         loops,
+        input_remaps,
     })
 }
 
@@ -385,7 +404,9 @@ fn lower_loop_subdag<T: Clone>(
     flat_dag.add_node(prefixed_unpack);
     flat_dag.add_node(prefixed_pack);
 
-    // Only keep the unpack→pack "count" edge (skip edges through body)
+    // Keep the unpack→pack "count" edge, and add a direct unpack→pack edge
+    // for the element/result port. The executor will replace the element list
+    // with body execution results before pack runs.
     for edge in &inner_dag.edges {
         if edge.from_node.0 == "unpack" && edge.to_node.0 == "pack" {
             flat_dag.add_edge(Edge::new(
@@ -396,6 +417,14 @@ fn lower_loop_subdag<T: Clone>(
             ));
         }
     }
+    // Direct element→result edge: unpack's element output feeds pack's result input.
+    // At runtime, the executor replaces this with the iterated body results.
+    flat_dag.add_edge(Edge::new(
+        unpack_id.0.clone(),
+        loop_pattern.element_port.clone(),
+        pack_id.0.clone(),
+        "result",
+    ));
 
     // Build port mapping for parent: the parent's input ports map to unpack,
     // and the parent's output ports map to pack.
@@ -443,6 +472,7 @@ fn lower_loop_subdag<T: Clone>(
         LowerResult {
             dag: flat_dag,
             loops: vec![loop_info],
+            input_remaps: HashMap::new(),
         },
         mapping,
     ))

@@ -4,7 +4,7 @@
 // DO NOT EDIT - regenerate with: make testgen
 // Obligations: 63 obligations (17 discharged, 46 testable: A=19, B=16, C=11, D=0)
 // Proven by construction: acyclicity, type compatibility, cardinality satisfaction.
-// Content-Hash: 89d9235fdc7c7825e60fdb4a2cb3d257b77929dde5fd659ef800a1eb13083d3c
+// Content-Hash: 867dbcc3a8e8e547ccb737570fbbe0d79c316670d2e406b2ad90ad655ab0203d
 
 
 use gunbc_exec::{execute_with_mode, lower, ExecutionMode};
@@ -349,7 +349,7 @@ fn test_input_expectations_documented() {
 fn test_window_prepare_read_files_through_execute_read_files() {
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_read_files", "execute_read_files"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -364,7 +364,7 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 fn test_window_execute_read_files_through_parse_read_files() {
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_read_files", "parse_read_files"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -379,7 +379,7 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 fn test_window_parse_read_files_through_render_markdown() {
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("parse_read_files", "render_markdown"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -394,7 +394,7 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 fn test_window_render_markdown_through_prepare_gist_request() {
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("render_markdown", "prepare_gist_request"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -409,7 +409,7 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 fn test_window_prepare_gist_request_through_execute_gist() {
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_gist_request", "execute_gist"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -424,7 +424,7 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 fn test_window_execute_gist_through_parse_gist_response() {
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_gist", "parse_gist_response"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -439,7 +439,7 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 fn test_window_prepare_read_files_through_parse_read_files() {
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_read_files", "execute_read_files", "parse_read_files"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -454,7 +454,7 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 fn test_window_execute_read_files_through_render_markdown() {
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_read_files", "parse_read_files", "render_markdown"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -469,7 +469,7 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 fn test_window_parse_read_files_through_prepare_gist_request() {
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("parse_read_files", "render_markdown", "prepare_gist_request"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -484,7 +484,7 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 fn test_window_render_markdown_through_execute_gist() {
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("render_markdown", "prepare_gist_request", "execute_gist"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -499,7 +499,7 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 fn test_window_prepare_gist_request_through_parse_gist_response() {
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_gist_request", "execute_gist", "parse_gist_response"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -514,7 +514,7 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 fn test_window_prepare_read_files_through_render_markdown() {
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_read_files", "execute_read_files", "parse_read_files", "render_markdown"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -529,7 +529,7 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 fn test_window_execute_read_files_through_prepare_gist_request() {
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_read_files", "parse_read_files", "render_markdown", "prepare_gist_request"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -544,7 +544,7 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 fn test_window_parse_read_files_through_execute_gist() {
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("parse_read_files", "render_markdown", "prepare_gist_request", "execute_gist"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -559,7 +559,7 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 fn test_window_render_markdown_through_parse_gist_response() {
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("render_markdown", "prepare_gist_request", "execute_gist", "parse_gist_response"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -574,7 +574,7 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 fn test_window_prepare_read_files_through_prepare_gist_request() {
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_read_files", "execute_read_files", "parse_read_files", "render_markdown", "prepare_gist_request"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -589,7 +589,7 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 fn test_window_execute_read_files_through_execute_gist() {
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_read_files", "parse_read_files", "render_markdown", "prepare_gist_request", "execute_gist"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -604,7 +604,7 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 fn test_window_parse_read_files_through_parse_gist_response() {
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("parse_read_files", "render_markdown", "prepare_gist_request", "execute_gist", "parse_gist_response"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -619,7 +619,7 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 fn test_window_parse_remote_branches_through_prepare_gist_request() {
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("parse_remote_branches", "prepare_read_files", "execute_read_files", "parse_read_files", "render_markdown", "prepare_gist_request"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -634,7 +634,7 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 fn test_window_prepare_read_files_through_execute_gist() {
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_read_files", "execute_read_files", "parse_read_files", "render_markdown", "prepare_gist_request", "execute_gist"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -649,7 +649,7 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 fn test_window_execute_read_files_through_parse_gist_response() {
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_read_files", "parse_read_files", "render_markdown", "prepare_gist_request", "execute_gist", "parse_gist_response"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -664,7 +664,7 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 fn test_window_parse_list_files_through_prepare_gist_request() {
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("parse_list_files", "parse_remote_branches", "prepare_read_files", "execute_read_files", "parse_read_files", "render_markdown", "prepare_gist_request"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -679,7 +679,7 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 fn test_window_parse_remote_branches_through_execute_gist() {
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("parse_remote_branches", "prepare_read_files", "execute_read_files", "parse_read_files", "render_markdown", "prepare_gist_request", "execute_gist"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -694,7 +694,7 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 fn test_window_prepare_read_files_through_parse_gist_response() {
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_read_files", "execute_read_files", "parse_read_files", "render_markdown", "prepare_gist_request", "execute_gist", "parse_gist_response"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -709,7 +709,7 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 fn test_window_parse_current_branch_through_prepare_gist_request() {
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("parse_current_branch", "parse_list_files", "parse_remote_branches", "prepare_read_files", "execute_read_files", "parse_read_files", "render_markdown", "prepare_gist_request"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -724,7 +724,7 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 fn test_window_parse_list_files_through_execute_gist() {
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("parse_list_files", "parse_remote_branches", "prepare_read_files", "execute_read_files", "parse_read_files", "render_markdown", "prepare_gist_request", "execute_gist"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -739,7 +739,7 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 fn test_window_parse_remote_branches_through_parse_gist_response() {
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("parse_remote_branches", "prepare_read_files", "execute_read_files", "parse_read_files", "render_markdown", "prepare_gist_request", "execute_gist", "parse_gist_response"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -754,7 +754,7 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 fn test_window_execute_remote_branches_through_prepare_gist_request() {
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_remote_branches", "parse_current_branch", "parse_list_files", "parse_remote_branches", "prepare_read_files", "execute_read_files", "parse_read_files", "render_markdown", "prepare_gist_request"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -769,7 +769,7 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 fn test_window_parse_current_branch_through_execute_gist() {
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("parse_current_branch", "parse_list_files", "parse_remote_branches", "prepare_read_files", "execute_read_files", "parse_read_files", "render_markdown", "prepare_gist_request", "execute_gist"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -784,7 +784,7 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 fn test_window_parse_list_files_through_parse_gist_response() {
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("parse_list_files", "parse_remote_branches", "prepare_read_files", "execute_read_files", "parse_read_files", "render_markdown", "prepare_gist_request", "execute_gist", "parse_gist_response"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -799,7 +799,7 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 fn test_window_execute_list_files_through_prepare_gist_request() {
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_list_files", "execute_remote_branches", "parse_current_branch", "parse_list_files", "parse_remote_branches", "prepare_read_files", "execute_read_files", "parse_read_files", "render_markdown", "prepare_gist_request"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -814,7 +814,7 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 fn test_window_execute_remote_branches_through_execute_gist() {
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_remote_branches", "parse_current_branch", "parse_list_files", "parse_remote_branches", "prepare_read_files", "execute_read_files", "parse_read_files", "render_markdown", "prepare_gist_request", "execute_gist"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -829,7 +829,7 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 fn test_window_parse_current_branch_through_parse_gist_response() {
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("parse_current_branch", "parse_list_files", "parse_remote_branches", "prepare_read_files", "execute_read_files", "parse_read_files", "render_markdown", "prepare_gist_request", "execute_gist", "parse_gist_response"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -844,7 +844,7 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 fn test_window_execute_current_branch_through_prepare_gist_request() {
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_current_branch", "execute_list_files", "execute_remote_branches", "parse_current_branch", "parse_list_files", "parse_remote_branches", "prepare_read_files", "execute_read_files", "parse_read_files", "render_markdown", "prepare_gist_request"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -859,7 +859,7 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 fn test_window_execute_list_files_through_execute_gist() {
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_list_files", "execute_remote_branches", "parse_current_branch", "parse_list_files", "parse_remote_branches", "prepare_read_files", "execute_read_files", "parse_read_files", "render_markdown", "prepare_gist_request", "execute_gist"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -874,7 +874,7 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 fn test_window_execute_remote_branches_through_parse_gist_response() {
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_remote_branches", "parse_current_branch", "parse_list_files", "parse_remote_branches", "prepare_read_files", "execute_read_files", "parse_read_files", "render_markdown", "prepare_gist_request", "execute_gist", "parse_gist_response"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -889,7 +889,7 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 fn test_window_prepare_remote_branches_through_prepare_gist_request() {
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_remote_branches", "execute_current_branch", "execute_list_files", "execute_remote_branches", "parse_current_branch", "parse_list_files", "parse_remote_branches", "prepare_read_files", "execute_read_files", "parse_read_files", "render_markdown", "prepare_gist_request"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -904,7 +904,7 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 fn test_window_execute_current_branch_through_execute_gist() {
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_current_branch", "execute_list_files", "execute_remote_branches", "parse_current_branch", "parse_list_files", "parse_remote_branches", "prepare_read_files", "execute_read_files", "parse_read_files", "render_markdown", "prepare_gist_request", "execute_gist"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -919,7 +919,7 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 fn test_window_execute_list_files_through_parse_gist_response() {
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_list_files", "execute_remote_branches", "parse_current_branch", "parse_list_files", "parse_remote_branches", "prepare_read_files", "execute_read_files", "parse_read_files", "render_markdown", "prepare_gist_request", "execute_gist", "parse_gist_response"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -934,7 +934,7 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 fn test_window_prepare_list_files_through_prepare_gist_request() {
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_list_files", "prepare_remote_branches", "execute_current_branch", "execute_list_files", "execute_remote_branches", "parse_current_branch", "parse_list_files", "parse_remote_branches", "prepare_read_files", "execute_read_files", "parse_read_files", "render_markdown", "prepare_gist_request"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -949,7 +949,7 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 fn test_window_prepare_remote_branches_through_execute_gist() {
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_remote_branches", "execute_current_branch", "execute_list_files", "execute_remote_branches", "parse_current_branch", "parse_list_files", "parse_remote_branches", "prepare_read_files", "execute_read_files", "parse_read_files", "render_markdown", "prepare_gist_request", "execute_gist"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -964,7 +964,7 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 fn test_window_execute_current_branch_through_parse_gist_response() {
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute_current_branch", "execute_list_files", "execute_remote_branches", "parse_current_branch", "parse_list_files", "parse_remote_branches", "prepare_read_files", "execute_read_files", "parse_read_files", "render_markdown", "prepare_gist_request", "execute_gist", "parse_gist_response"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -979,7 +979,7 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 fn test_window_prepare_current_branch_through_prepare_gist_request() {
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_current_branch", "prepare_list_files", "prepare_remote_branches", "execute_current_branch", "execute_list_files", "execute_remote_branches", "parse_current_branch", "parse_list_files", "parse_remote_branches", "prepare_read_files", "execute_read_files", "parse_read_files", "render_markdown", "prepare_gist_request"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -994,7 +994,7 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 fn test_window_prepare_list_files_through_execute_gist() {
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_list_files", "prepare_remote_branches", "execute_current_branch", "execute_list_files", "execute_remote_branches", "parse_current_branch", "parse_list_files", "parse_remote_branches", "prepare_read_files", "execute_read_files", "parse_read_files", "render_markdown", "prepare_gist_request", "execute_gist"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1009,7 +1009,7 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 fn test_window_prepare_remote_branches_through_parse_gist_response() {
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_remote_branches", "execute_current_branch", "execute_list_files", "execute_remote_branches", "parse_current_branch", "parse_list_files", "parse_remote_branches", "prepare_read_files", "execute_read_files", "parse_read_files", "render_markdown", "prepare_gist_request", "execute_gist", "parse_gist_response"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1024,7 +1024,7 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 fn test_window_fs_env_through_prepare_gist_request() {
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("fs_env", "prepare_current_branch", "prepare_list_files", "prepare_remote_branches", "execute_current_branch", "execute_list_files", "execute_remote_branches", "parse_current_branch", "parse_list_files", "parse_remote_branches", "prepare_read_files", "execute_read_files", "parse_read_files", "render_markdown", "prepare_gist_request"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1039,7 +1039,7 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 fn test_window_prepare_current_branch_through_execute_gist() {
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_current_branch", "prepare_list_files", "prepare_remote_branches", "execute_current_branch", "execute_list_files", "execute_remote_branches", "parse_current_branch", "parse_list_files", "parse_remote_branches", "prepare_read_files", "execute_read_files", "parse_read_files", "render_markdown", "prepare_gist_request", "execute_gist"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1054,7 +1054,7 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 fn test_window_prepare_list_files_through_parse_gist_response() {
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_list_files", "prepare_remote_branches", "execute_current_branch", "execute_list_files", "execute_remote_branches", "parse_current_branch", "parse_list_files", "parse_remote_branches", "prepare_read_files", "execute_read_files", "parse_read_files", "render_markdown", "prepare_gist_request", "execute_gist", "parse_gist_response"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1069,7 +1069,7 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 fn test_window_clock_env_through_prepare_gist_request() {
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("clock_env", "fs_env", "prepare_current_branch", "prepare_list_files", "prepare_remote_branches", "execute_current_branch", "execute_list_files", "execute_remote_branches", "parse_current_branch", "parse_list_files", "parse_remote_branches", "prepare_read_files", "execute_read_files", "parse_read_files", "render_markdown", "prepare_gist_request"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1084,7 +1084,7 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 fn test_window_fs_env_through_execute_gist() {
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("fs_env", "prepare_current_branch", "prepare_list_files", "prepare_remote_branches", "execute_current_branch", "execute_list_files", "execute_remote_branches", "parse_current_branch", "parse_list_files", "parse_remote_branches", "prepare_read_files", "execute_read_files", "parse_read_files", "render_markdown", "prepare_gist_request", "execute_gist"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1099,7 +1099,7 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 fn test_window_prepare_current_branch_through_parse_gist_response() {
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare_current_branch", "prepare_list_files", "prepare_remote_branches", "execute_current_branch", "execute_list_files", "execute_remote_branches", "parse_current_branch", "parse_list_files", "parse_remote_branches", "prepare_read_files", "execute_read_files", "parse_read_files", "render_markdown", "prepare_gist_request", "execute_gist", "parse_gist_response"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1114,7 +1114,7 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 fn test_window_clock_env_through_execute_gist() {
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("clock_env", "fs_env", "prepare_current_branch", "prepare_list_files", "prepare_remote_branches", "execute_current_branch", "execute_list_files", "execute_remote_branches", "parse_current_branch", "parse_list_files", "parse_remote_branches", "prepare_read_files", "execute_read_files", "parse_read_files", "render_markdown", "prepare_gist_request", "execute_gist"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1129,7 +1129,7 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 fn test_window_fs_env_through_parse_gist_response() {
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("fs_env", "prepare_current_branch", "prepare_list_files", "prepare_remote_branches", "execute_current_branch", "execute_list_files", "execute_remote_branches", "parse_current_branch", "parse_list_files", "parse_remote_branches", "prepare_read_files", "execute_read_files", "parse_read_files", "render_markdown", "prepare_gist_request", "execute_gist", "parse_gist_response"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -1144,7 +1144,7 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 fn test_window_clock_env_through_parse_gist_response() {
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("clock_env", "fs_env", "prepare_current_branch", "prepare_list_files", "prepare_remote_branches", "execute_current_branch", "execute_list_files", "execute_remote_branches", "parse_current_branch", "parse_list_files", "parse_remote_branches", "prepare_read_files", "execute_read_files", "parse_read_files", "render_markdown", "prepare_gist_request", "execute_gist", "parse_gist_response"));
     let mut mocks = mock_spec().to_boundary_mocks();

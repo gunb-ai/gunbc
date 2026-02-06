@@ -4,7 +4,7 @@
 // DO NOT EDIT - regenerate with: make testgen
 // Obligations: 23 obligations (9 discharged, 14 testable: A=6, B=5, C=3, D=0)
 // Proven by construction: acyclicity, type compatibility, cardinality satisfaction.
-// Content-Hash: fff5ee7520fa23669fa8b27a7a966e7568037aa3318c85b7eed4df6fb34bfbd1
+// Content-Hash: 7b8d5906ae420d57c31998eaa6cea85601509d030fad31a0f35d39e08154c29f
 
 
 use gunbc_exec::{execute_with_mode, lower, ExecutionMode};
@@ -209,7 +209,7 @@ fn test_input_expectations_documented() {
 #[test]
 fn test_window_prepare_through_resolve_auth() {
     let dag = crate :: graph :: build_chat_completion_graph();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare", "resolve_auth"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -223,7 +223,7 @@ fn test_window_prepare_through_resolve_auth() {
 #[test]
 fn test_window_resolve_auth_through_credential_env() {
     let dag = crate :: graph :: build_chat_completion_graph();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("resolve_auth", "credential_env"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -237,7 +237,7 @@ fn test_window_resolve_auth_through_credential_env() {
 #[test]
 fn test_window_credential_env_through_execute() {
     let dag = crate :: graph :: build_chat_completion_graph();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("credential_env", "execute"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -251,7 +251,7 @@ fn test_window_credential_env_through_execute() {
 #[test]
 fn test_window_execute_through_parse() {
     let dag = crate :: graph :: build_chat_completion_graph();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("execute", "parse"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -265,7 +265,7 @@ fn test_window_execute_through_parse() {
 #[test]
 fn test_window_prepare_through_credential_env() {
     let dag = crate :: graph :: build_chat_completion_graph();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare", "resolve_auth", "credential_env"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -279,7 +279,7 @@ fn test_window_prepare_through_credential_env() {
 #[test]
 fn test_window_resolve_auth_through_execute() {
     let dag = crate :: graph :: build_chat_completion_graph();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("resolve_auth", "credential_env", "execute"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -293,7 +293,7 @@ fn test_window_resolve_auth_through_execute() {
 #[test]
 fn test_window_credential_env_through_parse() {
     let dag = crate :: graph :: build_chat_completion_graph();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("credential_env", "execute", "parse"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -307,7 +307,7 @@ fn test_window_credential_env_through_parse() {
 #[test]
 fn test_window_prepare_through_execute() {
     let dag = crate :: graph :: build_chat_completion_graph();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare", "resolve_auth", "credential_env", "execute"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -321,7 +321,7 @@ fn test_window_prepare_through_execute() {
 #[test]
 fn test_window_resolve_auth_through_parse() {
     let dag = crate :: graph :: build_chat_completion_graph();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("resolve_auth", "credential_env", "execute", "parse"));
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -335,7 +335,7 @@ fn test_window_resolve_auth_through_parse() {
 #[test]
 fn test_window_prepare_through_parse() {
     let dag = crate :: graph :: build_chat_completion_graph();
-    let flat = lower(&dag).expect("lower should succeed");
+    let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
     let window = Window::from_nodes(&flat, vec!("prepare", "resolve_auth", "credential_env", "execute", "parse"));
     let mut mocks = mock_spec().to_boundary_mocks();

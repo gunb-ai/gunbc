@@ -176,6 +176,9 @@ const FILE_MARKER_END: &str = "===";
 fn execute_prepare_read_files(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
+    if matches!(inputs.get("files"), Some(Value::List(items)) if items.iter().any(|v| matches!(v, Value::Skipped))) {
+        return OutputMap::new().value("request", Value::Skipped).ok();
+    }
     if let Some(result) = propagate_skipped(&inputs, "files", &["request"]) {
         return result;
     }

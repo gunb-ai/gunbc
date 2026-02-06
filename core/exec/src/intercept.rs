@@ -161,6 +161,11 @@ impl BoundaryMocks {
         let key = (node_id.0.clone(), port_name.0.clone());
         self.mocks.contains_key(&key)
     }
+
+    /// Iterate over all input mocks as ((node_id, port_name), value).
+    pub fn iter_inputs(&self) -> impl Iterator<Item = (&(String, String), &Value)> {
+        self.input_mocks.iter()
+    }
 }
 
 #[cfg(test)]
