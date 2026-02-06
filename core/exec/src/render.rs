@@ -1,43 +1,18 @@
-//! Terminal renderer for DAG progress display.
+//! Render types — animation and render mode.
 //!
 //! # Architecture
 //!
 //! ```text
 //! DagProgress + DagLayout  →  build_frame() [pure]  →  Frame IR
 //! Frame IR  →  TextFrameWriter [I/O]  →  Write
-//! TerminalRenderer = coordinator (animation + delegation)
 //! ```
 //!
 //! Frame **building** (pure, returns `Frame` IR) is in [`frame_build`](super::frame_build).
 //! Frame **writing** (I/O, handles cursor control) is in [`frame_write`](super::frame_write).
-//! This module provides [`TerminalRenderer`] which coordinates the two.
-//!
-//! # Frame Loop
-//!
-//! The [`FrameLoop`] trait decouples execution events from display timing.
+//! This module provides [`Animation`] for spinner state and [`RenderMode`] for
+//! selecting between standard/compact/dynamic display.
 
-use crate::frame_build::build_frame;
-use crate::frame_write::{TermMedium, TextFrameWriter};
-use crate::progress::DagProgress;
-use gunbc_ir::layout::DagLayout;
-use gunbc_ir::symbols::{SymbolId, SymbolSet, Tier};
-use std::io::Write;
 use std::time::Duration;
-
-// ---------------------------------------------------------------------------
-// FrameLoop trait
-// ---------------------------------------------------------------------------
-
-/// Game-engine style update→render loop.
-///
-/// Decouples execution events from display timing. The renderer
-/// implements this trait; the caller drives the loop.
-pub trait FrameLoop {
-    /// Process pending state changes (from observer events).
-    fn update(&mut self, progress: &DagProgress, dt: Duration);
-    /// Produce a visual frame from current state.
-    fn render(&mut self, progress: &DagProgress);
-}
 
 // ---------------------------------------------------------------------------
 // RenderMode
@@ -155,109 +130,6 @@ impl Animation {
     }
 }
 
-// ---------------------------------------------------------------------------
-// TerminalRenderer — thin coordinator
-// ---------------------------------------------------------------------------
-
-/// Terminal renderer that coordinates frame building and writing.
-///
-/// Delegates pure frame construction to [`build_frame`] and I/O to
-/// [`TextFrameWriter`]. Owns the animation state (spinner).
-///
-/// The renderer requires at least `Tier::Unicode` — it is never instantiated
-/// for ASCII-only environments. Those environments get plain text output
-/// via `run_classic()` instead.
-pub struct TerminalRenderer<W: Write> {
-    writer: TextFrameWriter<W>,
-    tier: Tier,
-    symbol_set: &'static SymbolSet,
-    mode: RenderMode,
-    layout: DagLayout,
-    spinner: Animation,
-}
-
-impl<W: Write> TerminalRenderer<W> {
-    /// Create a new terminal renderer.
-    ///
-    /// - `is_tty`: controls cursor movement (overwrite previous frame).
-    ///   Production callers pass `true`; tests pass `false` to capture output.
-    /// - `color_enabled`: whether to emit ANSI color escape codes.
-    ///   Pass `profile.supports_color` from [`TerminalProfile`].
-    ///
-    /// # Panics (debug)
-    ///
-    /// Panics if `tier` is `Tier::Ascii`. The renderer requires Unicode or
-    /// better — ASCII environments should use plain text output instead.
-    pub fn new(
-        output: W,
-        symbol_set: &'static SymbolSet,
-        tier: Tier,
-        layout: DagLayout,
-        is_tty: bool,
-        color_enabled: bool,
-    ) -> Self {
-        debug_assert!(
-            !matches!(tier, Tier::Ascii),
-            "TerminalRenderer requires Tier::Unicode or Tier::Emoji — \
-             ASCII environments should use plain text output"
-        );
-
-        let spinner_frames: Vec<String> = [
-            SymbolId::Spinner0,
-            SymbolId::Spinner1,
-            SymbolId::Spinner2,
-            SymbolId::Spinner3,
-        ]
-        .iter()
-        .map(|id| symbol_set.resolve_tier(*id, tier).to_string())
-        .collect();
-
-        let medium = TermMedium::new(color_enabled, tier, symbol_set);
-        let writer = TextFrameWriter::new(output, medium, is_tty);
-
-        Self {
-            writer,
-            tier,
-            symbol_set,
-            mode: RenderMode::Standard,
-            layout,
-            spinner: Animation::cycle(spinner_frames, Duration::from_millis(150)),
-        }
-    }
-
-    /// Set the render mode.
-    pub fn set_mode(&mut self, mode: RenderMode) {
-        self.mode = mode;
-    }
-
-    /// Update the layout (e.g., after terminal resize).
-    pub fn set_layout(&mut self, layout: DagLayout) {
-        self.layout = layout;
-    }
-
-    /// Build a frame from progress state and write it to the output.
-    fn render_frame(&mut self, progress: &DagProgress) {
-        let frame = build_frame(
-            progress,
-            &self.layout,
-            self.mode,
-            self.spinner.frame(),
-            self.tier,
-            self.symbol_set,
-        );
-        let _ = self.writer.write_frame(&frame);
-    }
-}
-
-impl<W: Write> FrameLoop for TerminalRenderer<W> {
-    fn update(&mut self, _progress: &DagProgress, dt: Duration) {
-        self.spinner.tick(dt);
-    }
-
-    fn render(&mut self, progress: &DagProgress) {
-        self.render_frame(progress);
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -266,10 +138,12 @@ impl<W: Write> FrameLoop for TerminalRenderer<W> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::frame_build::{display_width, format_duration};
+    use crate::frame_build::{build_frame, display_width, format_duration};
+    use crate::frame_write::{TermMedium, TextFrameWriter};
     use crate::progress::{DagProgress, DagSnapshot, OutputSummary, ProgressObserver};
     use gunbc_ir::layout::{compute_layout, Viewport, ViewportUnit};
-    use gunbc_ir::symbols::STANDARD;
+    use gunbc_ir::render_ir::PlainText;
+    use gunbc_ir::symbols::{Tier, STANDARD};
     use gunbc_ir::{Edge, NodeId};
 
     fn test_snapshot() -> DagSnapshot {
@@ -306,8 +180,25 @@ mod tests {
         }
     }
 
-    fn make_renderer(buf: &mut Vec<u8>, layout: DagLayout) -> TerminalRenderer<&mut Vec<u8>> {
-        TerminalRenderer::new(buf, &STANDARD, Tier::Unicode, layout, false, false)
+    /// Build a frame and write it to a buffer using PlainText medium.
+    fn render_to_string(progress: &DagProgress, layout: &gunbc_ir::layout::DagLayout) -> String {
+        render_to_string_with_mode(progress, layout, RenderMode::Standard)
+    }
+
+    fn render_to_string_with_mode(
+        progress: &DagProgress,
+        layout: &gunbc_ir::layout::DagLayout,
+        mode: RenderMode,
+    ) -> String {
+        let frame = build_frame(progress, layout, mode, "◐", Tier::Unicode, &STANDARD);
+        let mut buf = Vec::new();
+        let medium = TermMedium::Plain(PlainText {
+            tier: Tier::Unicode,
+            symbol_set: &STANDARD,
+        });
+        let mut writer = TextFrameWriter::new(&mut buf, medium, false);
+        writer.write_frame(&frame).unwrap();
+        String::from_utf8(buf).unwrap()
     }
 
     #[test]
@@ -318,13 +209,7 @@ mod tests {
         let vp = Viewport::new(80, 24, ViewportUnit::Chars);
         let layout = compute_layout(&snap.topo_order, &snap.edges, &snap.labels, &vp);
 
-        let mut buf = Vec::new();
-        {
-            let mut renderer = make_renderer(&mut buf, layout);
-            renderer.render(&progress);
-        }
-
-        let output = String::from_utf8(buf).unwrap();
+        let output = render_to_string(&progress, &layout);
         assert!(!output.is_empty());
         assert!(output.contains("[A]"), "Missing [A]\n{}", output);
         assert!(output.contains("[B]"), "Missing [B]\n{}", output);
@@ -341,13 +226,7 @@ mod tests {
         let vp = Viewport::new(80, 24, ViewportUnit::Chars);
         let layout = compute_layout(&snap.topo_order, &snap.edges, &snap.labels, &vp);
 
-        let mut buf = Vec::new();
-        {
-            let mut renderer = make_renderer(&mut buf, layout);
-            renderer.render(&progress);
-        }
-
-        let output = String::from_utf8(buf).unwrap();
+        let output = render_to_string(&progress, &layout);
         assert!(output.contains("Running"));
         assert!(output.contains("lint"));
     }
@@ -369,13 +248,7 @@ mod tests {
         let vp = Viewport::new(80, 24, ViewportUnit::Chars);
         let layout = compute_layout(&snap.topo_order, &snap.edges, &snap.labels, &vp);
 
-        let mut buf = Vec::new();
-        {
-            let mut renderer = make_renderer(&mut buf, layout);
-            renderer.render(&progress);
-        }
-
-        let output = String::from_utf8(buf).unwrap();
+        let output = render_to_string(&progress, &layout);
         assert!(output.contains("Completed"));
     }
 
@@ -392,13 +265,7 @@ mod tests {
         let vp = Viewport::new(80, 24, ViewportUnit::Chars);
         let layout = compute_layout(&snap.topo_order, &snap.edges, &snap.labels, &vp);
 
-        let mut buf = Vec::new();
-        {
-            let mut renderer = make_renderer(&mut buf, layout);
-            renderer.render(&progress);
-        }
-
-        let output = String::from_utf8(buf).unwrap();
+        let output = render_to_string(&progress, &layout);
         assert!(output.contains("Failed"));
         assert!(output.contains("clippy error"));
     }
@@ -414,14 +281,7 @@ mod tests {
         let vp = Viewport::new(80, 24, ViewportUnit::Chars);
         let layout = compute_layout(&snap.topo_order, &snap.edges, &snap.labels, &vp);
 
-        let mut buf = Vec::new();
-        {
-            let mut renderer = make_renderer(&mut buf, layout);
-            renderer.set_mode(RenderMode::Compact);
-            renderer.render(&progress);
-        }
-
-        let output = String::from_utf8(buf).unwrap();
+        let output = render_to_string_with_mode(&progress, &layout, RenderMode::Compact);
         assert!(output.contains("1/3 done"));
     }
 
@@ -514,13 +374,7 @@ mod tests {
         let vp = Viewport::new(80, 24, ViewportUnit::Chars);
         let layout = compute_layout(&snap.topo_order, &snap.edges, &snap.labels, &vp);
 
-        let mut buf = Vec::new();
-        {
-            let mut renderer = make_renderer(&mut buf, layout);
-            renderer.render(&progress);
-        }
-
-        let output = String::from_utf8(buf).unwrap();
+        let output = render_to_string(&progress, &layout);
         assert!(output.contains("A"));
         assert!(output.contains("B"));
         assert!(output.contains("C"));
@@ -535,13 +389,7 @@ mod tests {
         let vp = Viewport::new(80, 24, ViewportUnit::Chars);
         let layout = compute_layout(&snap.topo_order, &snap.edges, &snap.labels, &vp);
 
-        let mut buf = Vec::new();
-        {
-            let mut renderer = make_renderer(&mut buf, layout);
-            renderer.render(&progress);
-        }
-
-        let output = String::from_utf8(buf).unwrap();
+        let output = render_to_string(&progress, &layout);
         let lines: Vec<&str> = output.lines().collect();
         let has_all_on_one_line = lines
             .iter()
@@ -580,13 +428,7 @@ mod tests {
         let vp = Viewport::new(80, 24, ViewportUnit::Chars);
         let layout = compute_layout(&snap.topo_order, &snap.edges, &snap.labels, &vp);
 
-        let mut buf = Vec::new();
-        {
-            let mut renderer = make_renderer(&mut buf, layout);
-            renderer.render(&progress);
-        }
-
-        let output = String::from_utf8(buf).unwrap();
+        let output = render_to_string(&progress, &layout);
         let b_line = output.lines().find(|l| l.contains("[B]"));
         let c_line = output.lines().find(|l| l.contains("[C]"));
         assert!(

@@ -13,16 +13,18 @@
 //!   no  → execute_with_mode_and_inputs → print log entries
 //! ```
 
+use crate::frame_build::build_frame;
+use crate::frame_write::{TermMedium, TextFrameWriter};
 use crate::intercept::BoundaryMocks;
 use crate::progress::{DagPhase, DagProgress, DagSnapshot, OutputSummary, ProgressObserver};
-use crate::render::{FrameLoop, TerminalRenderer};
+use crate::render::{Animation, RenderMode};
 use crate::terminal::TerminalProfile;
 use crate::{
     execute_with_mode_and_inputs, execute_with_progress_and_mode_and_inputs, lower, topo_sort,
     Executable, ExecutionMode, NodeState,
 };
 use gunbc_ir::layout::compute_layout;
-use gunbc_ir::symbols::STANDARD;
+use gunbc_ir::symbols::{SymbolId, STANDARD};
 use gunbc_ir::{detect_boundaries, Dag, NodeId, Value};
 use std::collections::HashMap;
 use std::io;
@@ -146,14 +148,35 @@ fn run_with_progress<T: Executable + Clone>(
     let mut visual = DagProgress::new(snapshot.clone());
     visual.on_dag_start(&snapshot);
 
-    let mut renderer = TerminalRenderer::new(
-        io::stdout(),
-        &STANDARD,
-        profile.tier,
-        layout,
-        profile.is_tty,
-        profile.supports_color,
-    );
+    // Set up spinner and frame writer directly
+    let spinner_frames: Vec<String> = [
+        SymbolId::Spinner0,
+        SymbolId::Spinner1,
+        SymbolId::Spinner2,
+        SymbolId::Spinner3,
+    ]
+    .iter()
+    .map(|id| STANDARD.resolve_tier(*id, profile.tier).to_string())
+    .collect();
+    let mut spinner = Animation::cycle(spinner_frames, Duration::from_millis(150));
+
+    let medium = TermMedium::new(profile.supports_color, profile.tier, &STANDARD);
+    let mut writer = TextFrameWriter::new(io::stdout(), medium, profile.is_tty);
+
+    let render = |visual: &DagProgress,
+                  spinner: &Animation,
+                  layout: &gunbc_ir::layout::DagLayout,
+                  writer: &mut TextFrameWriter<io::Stdout>| {
+        let frame = build_frame(
+            visual,
+            layout,
+            RenderMode::Standard,
+            spinner.frame(),
+            profile.tier,
+            &STANDARD,
+        );
+        let _ = writer.write_frame(&frame);
+    };
 
     // Animation timing: minimum 1 second total, 2 frames per level (start + complete)
     // Execution already ran at full speed — this is purely visual replay.
@@ -164,7 +187,7 @@ fn run_with_progress<T: Executable + Clone>(
     let frame_delay = Duration::from_millis(frame_ms);
 
     // Render initial state (all pending)
-    renderer.render(&visual);
+    render(&visual, &spinner, &layout, &mut writer);
 
     let empty_summary = || OutputSummary {
         fields: vec![],
@@ -177,7 +200,8 @@ fn run_with_progress<T: Executable + Clone>(
         for node_id in level {
             visual.on_node_start(node_id);
         }
-        renderer.render(&visual);
+        spinner.tick(frame_delay);
+        render(&visual, &spinner, &layout, &mut writer);
         thread::sleep(frame_delay);
 
         // Complete all nodes in this level simultaneously
@@ -202,7 +226,8 @@ fn run_with_progress<T: Executable + Clone>(
                 }
             }
         }
-        renderer.render(&visual);
+        spinner.tick(frame_delay);
+        render(&visual, &spinner, &layout, &mut writer);
         thread::sleep(frame_delay);
     }
 
@@ -218,7 +243,7 @@ fn run_with_progress<T: Executable + Clone>(
             visual.on_dag_complete(Duration::ZERO);
         }
     }
-    renderer.render(&visual);
+    render(&visual, &spinner, &layout, &mut writer);
 
     // Check execution result and exit code
     match result {

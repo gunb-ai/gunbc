@@ -1,8 +1,8 @@
 //! Pure frame building — produces [`Frame`] IR from progress state.
 //!
 //! All functions in this module are pure: no I/O, no `Write` trait.
-//! The caller (typically [`TerminalRenderer`](super::render::TerminalRenderer))
-//! passes the resulting [`Frame`] to a writer for actual output.
+//! The caller passes the resulting [`Frame`] to a
+//! [`TextFrameWriter`](super::frame_write::TextFrameWriter) for actual output.
 
 use crate::progress::{DagPhase, DagProgress, EdgeState, NodeState};
 use crate::render::RenderMode;

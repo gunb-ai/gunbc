@@ -48,9 +48,9 @@ registrations.
 **Plan**: Implement `unified-registration.md` phases 1-5. The design is
 complete; this is pure execution.
 
-#### Phase R1: Tool Registry crate (non-breaking)
+#### Phase R1: Tool Registry crate (non-breaking) — DONE
 
-**Create** `core/tool-registry/` and `core/tool-registry-macros/`:
+**Created** `core/tool-registry/` and `core/tool-registry-macros/`:
 - `ToolRegistration` struct (mirrors `TestgenTarget` design)
 - `#[tool_target]` proc macro
 - `inventory::collect!(ToolRegistration)` + `iter_tool_targets()`
@@ -65,30 +65,37 @@ complete; this is pure execution.
 **Acceptance**: crate compiles, `iter_tool_targets()` returns empty iterator,
 proc macro validates required fields at compile time.
 
-#### Phase R2: Annotate existing tools
+#### Phase R2: Annotate existing tools — DONE (partial)
 
-**Add** `#[tool_target(...)]` to each tool crate. **Keep** `all_tools()` as a
-shim delegating to `iter_tool_targets()`.
+Completed in two sub-phases:
+- **R2a**: Replaced `GraphBuilderId` enum with plain strings in `ToolMeta`.
+- **R2b**: Added 7 `#[tool_target]` annotations + validation test.
 
-Tool crates to annotate:
+**Added** `#[tool_target(...)]` to each tool crate (7 annotations):
 - `lib/tools/gist/src/lib.rs` (3 modes: snapshot, diff, recent)
 - `lib/tools/deps/src/lib.rs`
 - `lib/review/src/lib.rs`
-- `gunbc-dag/src/makegen/` (makegen tool)
-- `gunbc-dag/src/ci/` (ci tool)
-- `gunbc-dag/src/bootstrap/` (bootstrap tool)
+- `gunbc-dag/src/makegen/mod.rs` (makegen tool)
+- `gunbc-dag/src/bootstrap/mod.rs` (bootstrap tool)
 
-**Delete** `GraphBuilderId` enum — replaced by registration metadata. The
-`builder = "crate::build_gist_graph()"` field in the macro validates the
-expression at macro expansion time (same as testgen's `builder` field).
+**Not annotated** (intentionally excluded):
+- `gunbc-dag/src/ci/` — CI has a handwritten main.rs and is not in `all_tools()`
+
+**Validation test**: `gunbc-dag/tests/tool_registration.rs` checks bidirectional
+consistency between `all_tools()` and `iter_tool_targets()`.
+
+**Not yet done** (deferred to R3+):
+- `all_tools()` still hardcoded (cannot delegate to `iter_tool_targets()` due to
+  circular dep: `gunbc-codegen` cannot depend on tool crates)
+- `GraphBuilderId` already deleted (R2a)
 
 **Files**:
-- `core/codegen/src/registry.rs` — `all_tools()` becomes thin wrapper
-- `core/codegen/src/cli_gen.rs` — `GraphBuilderId` deleted
-- All tool crates above
+- `core/codegen/src/registry.rs` — `all_tools()` still hardcoded (R3 will unify)
+- `core/codegen/src/cli_gen.rs` — `GraphBuilderId` deleted (R2a)
+- All tool crates above + `gunbc-dag/tests/tool_registration.rs`
 
-**Acceptance**: byte-identical CLI, Makefile, and CI YAML output. `all_tools()`
-returns same tools in same order. `GraphBuilderId` grep returns 0 matches.
+**Acceptance**: annotations match `all_tools()` metadata (enforced by test).
+`GraphBuilderId` grep returns 0 matches.
 
 #### Phase R3: Boundary unification
 
@@ -128,14 +135,17 @@ approach (derive from Cargo.toml deps) may suffice.
 **Acceptance**: resource input patterns auto-update when crate directory changes.
 No hardcoded glob strings.
 
-#### Phase R5: Validation tests
+#### Phase R5: Validation tests — PARTIALLY DONE
 
-Add validation test (like `mock_spec_registration.rs`) checking:
-- Every tool crate with a `build_*_graph` function has `#[tool_target]`
-- Every `#[tool_target]` has a corresponding `#[testgen_target]`
-- No orphan registrations
+Validation test `gunbc-dag/tests/tool_registration.rs` added in R2b:
+- [x] Every `all_tools()` entry has a matching `#[tool_target]` (and vice versa)
+- [x] Metadata fields (crate_name, graph_builder_call, returns_result) match
 
-**Files**: `gunbc-dag/tests/tool_registration.rs` (new)
+Remaining:
+- [ ] Every `#[tool_target]` has a corresponding `#[testgen_target]`
+- [ ] Every tool crate with a `build_*_graph` function has `#[tool_target]`
+
+**Files**: `gunbc-dag/tests/tool_registration.rs` (exists)
 
 **Acceptance**: test catches unregistered tool crates.
 

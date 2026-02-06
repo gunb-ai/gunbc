@@ -64,7 +64,7 @@ pub use progress::{
     DagPhase, DagProgress, DagSnapshot, EdgeProgress, EdgeState, FieldKind, FieldSummary,
     NodeProgress, NodeState, OutputSummary, ProgressEvent, ProgressObserver, RecordingObserver,
 };
-pub use render::{Animation, AnimationMode, FrameLoop, RenderMode, TerminalRenderer};
+pub use render::{Animation, AnimationMode, RenderMode};
 pub use terminal::{Shell, TerminalProfile};
 pub use topo::topo_sort;
 
