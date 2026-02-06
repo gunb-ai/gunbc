@@ -4,7 +4,7 @@
 // DO NOT EDIT - regenerate with: make testgen
 // Obligations: 69 obligations (21 discharged, 48 testable: A=18, B=21, C=9, D=0)
 // Proven by construction: acyclicity, type compatibility, cardinality satisfaction.
-// Content-Hash: 52a1923613597fd2beac1d717d5b628d0773a2aeb0e5dd99583635fce511d268
+// Content-Hash: be4b6a99f5be3df144be5ab7da7148f7730e5d44e92fe47cd879aea822191595
 
 
 use gunbc_exec::{execute_with_mode, lower, ExecutionMode};
@@ -112,8 +112,7 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 fn test_optional_missing_collect_file_contents_filenames() {
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
-    let mut inputs = std::collections::HashMap::new();
-    inputs.insert("contents_list".to_string(), Value::List(vec![Value::Str("fn main() {}".to_string()), Value::Str("".to_string())]));
+    let inputs = std::collections::HashMap::new();
     let _outputs = gunbc_exec::execute_single_node(&dag, "collect_file_contents", inputs, gunbc_exec::ExecutionMode::Real).expect("optional input collect_file_contents.filenames missing should not error");
 }
 
@@ -125,7 +124,6 @@ fn test_optional_wrong_type_collect_file_contents_filenames() {
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let mut inputs = std::collections::HashMap::new();
-    inputs.insert("contents_list".to_string(), Value::List(vec![Value::Str("fn main() {}".to_string()), Value::Str("".to_string())]));
     inputs.insert("filenames".to_string(), Value::Int(1));
     let result = gunbc_exec::execute_single_node(&dag, "collect_file_contents", inputs, gunbc_exec::ExecutionMode::Real);
     assert!(result.is_err(), "optional input collect_file_contents.filenames wrong type should error");
@@ -138,8 +136,7 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 fn test_optional_missing_collect_file_contents_contents_list() {
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
-    let mut inputs = std::collections::HashMap::new();
-    inputs.insert("filenames".to_string(), Value::List(vec![Value::Str("src/main.rs".to_string()), Value::Str("README.md".to_string())]));
+    let inputs = std::collections::HashMap::new();
     let _outputs = gunbc_exec::execute_single_node(&dag, "collect_file_contents", inputs, gunbc_exec::ExecutionMode::Real).expect("optional input collect_file_contents.contents_list missing should not error");
 }
 
@@ -152,7 +149,6 @@ fn test_optional_wrong_type_collect_file_contents_contents_list() {
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("contents_list".to_string(), Value::Int(1));
-    inputs.insert("filenames".to_string(), Value::List(vec![Value::Str("src/main.rs".to_string()), Value::Str("README.md".to_string())]));
     let result = gunbc_exec::execute_single_node(&dag, "collect_file_contents", inputs, gunbc_exec::ExecutionMode::Real);
     assert!(result.is_err(), "optional input collect_file_contents.contents_list wrong type should error");
 }

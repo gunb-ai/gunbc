@@ -98,12 +98,6 @@ fn exec_prepare_test(inputs: HashMap<String, Value>) -> Result<HashMap<String, V
 
 fn exec_parse_test(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
     let skip = require_bool(&inputs, "skip")?;
-    let response = if matches!(inputs.get("response"), Some(Value::Skipped)) {
-        None
-    } else {
-        optional_response_strict(&inputs, "response")?
-    };
-
     if skip {
         return OutputMap::new()
             .bool("test_success", false)
@@ -113,6 +107,7 @@ fn exec_parse_test(inputs: HashMap<String, Value>) -> Result<HashMap<String, Val
             .ok();
     }
 
+    let response = optional_response_strict(&inputs, "response")?;
     let shell = match response {
         Some(response) => response.require_shell()?,
         None => {
@@ -158,12 +153,6 @@ fn exec_prepare_clippy(
 
 fn exec_parse_clippy(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
     let skip = require_bool(&inputs, "skip")?;
-    let response = if matches!(inputs.get("response"), Some(Value::Skipped)) {
-        None
-    } else {
-        optional_response_strict(&inputs, "response")?
-    };
-
     if skip {
         return OutputMap::new()
             .bool("clippy_success", false)
@@ -173,6 +162,7 @@ fn exec_parse_clippy(inputs: HashMap<String, Value>) -> Result<HashMap<String, V
             .ok();
     }
 
+    let response = optional_response_strict(&inputs, "response")?;
     let shell = match response {
         Some(response) => response.require_shell()?,
         None => {

@@ -330,7 +330,7 @@ pub fn build_deps_generate_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
         Node::opaque(
             "prepare_file_write",
             vec![scalar("content", "String"), port("path", "String")],
-            vec![port("request", "TransportRequest")],
+            vec![port("request", "TransportRequest"), port("skip", "Bool")],
             DepsGraphOp::PrepareFileWrite(PrepareFileWriteOp),
         ),
         &render_deps_toml,
@@ -341,7 +341,7 @@ pub fn build_deps_generate_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
     let execute_transport = builder.add_node_after(
         Node::opaque(
             "execute_transport",
-            vec![port("request", "TransportRequest")],
+            vec![port("request", "TransportRequest"), port("skip", "Bool")],
             vec![
                 port("response", "TransportResponse"),
                 port("written_path", "String"),
@@ -366,6 +366,10 @@ pub fn build_deps_generate_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
     builder.add_edge(
         prepare_write.out("request"),
         execute_transport.in_port("request"),
+    )?;
+    builder.add_edge(
+        prepare_write.out("skip"),
+        execute_transport.in_port("skip"),
     )?;
 
     let dag = builder.build();
@@ -396,6 +400,7 @@ impl Mockable for DepsGraphOp {
                         ),
                     ),
                 )
+                .bool("skip", false)
                 .build(),
             DepsGraphOp::Transport(_) => OutputMap::new()
                 .response(

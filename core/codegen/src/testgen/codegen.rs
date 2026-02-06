@@ -1485,18 +1485,6 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                 continue;
             }
 
-            if let Some(node) = self.dag.get_node(node_id) {
-                if node.is_subdag() {
-                    if skipped_nodes.insert(node_id.0.clone()) {
-                        notes.push(format!(
-                            "Optional input tests skipped for '{}': sub-DAG nodes are lowered during execution.",
-                            node_id.0
-                        ));
-                    }
-                    continue;
-                }
-            }
-
             let port_info = analysis
                 .port_cardinalities
                 .iter()
@@ -2570,31 +2558,66 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
         };
 
         let mut inputs = BTreeMap::new();
+        let mut required_names = HashSet::new();
+        for port in &node.inputs {
+            let needs_value = port.has_guard() || !port.cardinality.allows_empty();
+            if needs_value {
+                required_names.insert(port.name.0.clone());
+            }
+        }
+
+        let mut best_example: Option<&HashMap<String, Value>> = None;
+        let mut best_count = 0usize;
+
         if let Some(spec) = &self.mock_spec {
-            if let Some(example) = spec
-                .node_examples
-                .iter()
-                .find(|example| example.node_id == node_id.0)
-            {
-                for (name, value) in &example.inputs {
-                    if node.inputs.iter().any(|port| port.name.0 == *name) {
-                        inputs.insert(name.clone(), ValueExpr::from(value));
-                    }
+            for example in &spec.node_examples {
+                if example.node_id != node_id.0 {
+                    continue;
+                }
+                let count = required_names
+                    .iter()
+                    .filter(|name| example.inputs.contains_key(*name))
+                    .count();
+                if count > best_count {
+                    best_count = count;
+                    best_example = Some(&example.inputs);
+                }
+                if count == required_names.len() && count > 0 {
+                    break;
                 }
             }
         }
-        if inputs.is_empty() {
-            if let Some(example) = node.examples.first() {
-                for (name, value) in &example.inputs {
-                    if node.inputs.iter().any(|port| port.name.0 == *name) {
-                        inputs.insert(name.clone(), ValueExpr::from(value));
-                    }
+
+        if best_count < required_names.len() {
+            for example in &node.examples {
+                let count = required_names
+                    .iter()
+                    .filter(|name| example.inputs.contains_key(*name))
+                    .count();
+                if count > best_count {
+                    best_count = count;
+                    best_example = Some(&example.inputs);
+                }
+                if count == required_names.len() && count > 0 {
+                    break;
+                }
+            }
+        }
+
+        if let Some(example_inputs) = best_example {
+            for (name, value) in example_inputs {
+                if node.inputs.iter().any(|port| port.name.0 == *name) {
+                    inputs.insert(name.clone(), ValueExpr::from(value));
                 }
             }
         }
         let mut issues = Vec::new();
 
         for port in &node.inputs {
+            if port.name.0 == "skip" && port.type_id.0 == "Bool" {
+                inputs.insert(port.name.0.clone(), ValueExpr::Bool(false));
+                continue;
+            }
             if inputs.contains_key(&port.name.0) {
                 continue;
             }

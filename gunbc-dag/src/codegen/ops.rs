@@ -214,7 +214,6 @@ fn execute_parse_codegen_result(
         return result;
     }
 
-    let response = optional_response_strict(&inputs, "response")?;
     let skip = require_bool(&inputs, "skip")?;
     if skip {
         return OutputMap::new()
@@ -231,6 +230,8 @@ fn execute_parse_codegen_result(
     ) {
         return result;
     }
+
+    let response = optional_response_strict(&inputs, "response")?;
 
     let (success, message) = if let Some(response) = response {
         let shell = response.require_shell()?;

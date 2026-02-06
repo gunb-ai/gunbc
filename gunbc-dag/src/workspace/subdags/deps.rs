@@ -278,7 +278,7 @@ pub fn build_deps_generate_subdag() -> Node<WorkspaceOp> {
             Node::opaque(
                 "prepare_file_write",
                 vec![scalar("content", "String"), port("path", "String")],
-                vec![port("request", "TransportRequest")],
+                vec![port("request", "TransportRequest"), port("skip", "Bool")],
                 WorkspaceOp::Primitive(gunbc_primitives::PrimitiveOp::PrepareFileWrite(
                     PrepareFileWriteOp,
                 )),
@@ -292,7 +292,7 @@ pub fn build_deps_generate_subdag() -> Node<WorkspaceOp> {
         .add_node_after(
             Node::opaque(
                 "execute_transport",
-                vec![port("request", "TransportRequest")],
+                vec![port("request", "TransportRequest"), port("skip", "Bool")],
                 vec![
                     port("response", "TransportResponse"),
                     port("written_path", "String"),
@@ -317,6 +317,12 @@ pub fn build_deps_generate_subdag() -> Node<WorkspaceOp> {
             execute_transport.in_port("request"),
         )
         .expect("request edge");
+    builder
+        .add_edge(
+            prepare_write.out("skip"),
+            execute_transport.in_port("skip"),
+        )
+        .expect("skip edge");
 
     let inner_dag = builder.build();
 

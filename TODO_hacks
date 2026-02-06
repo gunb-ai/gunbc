@@ -199,16 +199,14 @@ node that checks the filesystem through a resource handle.
 Files:
   - gunbc-dag/src/codegen/ops.rs (`execute_prepare_codegen_exists`, ~line 41)
 
-### TransportOps::Execute skip default is implicit
+### TransportOps::Execute skip is explicit (resolved)
 
-`TransportOps::Execute` currently treats a missing `skip` input as `false`.
-That keeps wiring minimal, but it also means a missing `skip` edge and an
-intentional "do not skip" are indistinguishable at runtime.
+`TransportOps::Execute` now requires an explicit `skip` input, and transport
+graphs wire `skip` through from their prepare nodes. This removes the implicit
+default and makes skippability visible in the DAG.
 
-We tightened wrong-type handling (strict optional), but the broader question
-remains: should transport nodes require an explicit `skip` input to make
-skippability visible in the graph? If yes, this needs a helper or defaulting
-mechanism at the DAG-builder layer to avoid wiring churn.
+If wiring churn becomes a problem, add a small DAG-builder helper to connect
+`prepare.* -> execute.skip` by convention.
 
 Files:
   - lib/transport/src/ops.rs (`TransportOps::Execute`, ~line 25)
