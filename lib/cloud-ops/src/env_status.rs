@@ -27,10 +27,7 @@ fn env_truthy(name: &str) -> bool {
 fn build_status_message() -> String {
     let req = detect_cloud_env_requirements();
     let prefix = format!("Cloud env ({}/{})", req.provider.as_str(), req.runtime.as_str());
-
-    if !env_truthy("RUN_LIVE_INTEGRATION") {
-        return format!("{prefix}: live integration disabled (set RUN_LIVE_INTEGRATION=1)");
-    }
+    let is_ci = env_truthy("CI") || env_truthy("GITHUB_ACTIONS");
 
     let mut missing: Vec<&str> = Vec::new();
     for &var in req.required {
@@ -64,6 +61,9 @@ fn build_status_message() -> String {
         msg
     } else {
         let mut msg = format!("{prefix}: {}", parts.join("; "));
+        if !is_ci {
+            msg.push_str(" — local tests will skip live calls");
+        }
         if let Some(notes) = req.notes {
             msg.push_str(" — ");
             msg.push_str(notes);

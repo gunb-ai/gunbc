@@ -493,6 +493,41 @@ oidc_exchange -> access_token -> secret_fetch -> parse -> credential
   - Integration tests: “no transport I/O” for pure ops (only `TransportOps::Execute` nodes may emit I/O).
   - CI check: fail if any DAG introduces new nodes without resource declarations.
 
+## Sandboxability Roadmap (Keep It Simple First)
+
+**Goal:** make all DAG nodes naturally sandboxable and replayable by ensuring *all* I/O is explicit and centralized in transport boundaries.
+
+### Phase 0: Strict purity boundaries (cheap, high leverage)
+- **Rule**: Only transport-layer crates may do I/O (filesystem, network, process exec).
+- **Enforcement**: clippy `disallowed_methods` for `std::fs`, `std::process::Command`, `reqwest/ureq`, `git2`, etc.
+- **Policy**: allowlist only boundary crates (e.g., `lib/transport`, `lib/cloud-ops` if truly boundary, `lib/tools/*` if they wrap CLI execution).
+- **Migration path**: start as warnings, then flip to deny after violations are eliminated.
+
+### Phase 1: Resource declarations by construction
+- Update core DAG patterns so they *always* add `res:*` ports for any I/O:
+  - `add_transport_triplet*`
+  - `add_content_upsert_chain`
+  - `build_cli_upsert` (tool install + exec)
+- Define resource ids consistently: `res:file:<path>`, `res:tool:<id>`, `res:api:<provider>`, `res:repo`, `res:target`, etc.
+
+### Phase 2: Auto-registered resource tests (static purity)
+- Add a `#[resource_test_target]` macro that registers a function pointer.
+- Each DAG builder registers itself once; the test runner iterates all and runs:
+  - `derive_resource_accesses()`
+  - `detect_resource_conflicts()`
+  - `validate_resource_wiring_recursive()`
+- Integrate into CI (fast).
+
+### Phase 3: Lightweight runtime file guard (optional)
+- For test runs, snapshot mtime or hash for `res:file:*` before/after each node.
+- If a node writes without declared write access, fail the test.
+- Enabled only in tests or when `GUNBC_RESOURCE_GUARD=1`.
+
+### Phase 4: Sandbox + durability/replay (longer-term)
+- Record transport I/O operations (requests, responses, file writes).
+- Enable deterministic replay for tests and retries (durability).
+- Consider OS-level sandboxing later (ptrace/seccomp/containers) if needed.
+
 ## Resource Declaration Gap Audit (Per DAG)
 
 **Global pattern gaps**
@@ -621,6 +656,10 @@ oidc_exchange -> access_token -> secret_fetch -> parse -> credential
 - [ ] Add a “resource declaration gap” audit for each DAG (which nodes need `res:*` annotations).
 - [ ] Add purity enforcement tests (derive_resource_accesses + detect_resource_conflicts).
 - [ ] Ensure every DAG builder is registered (testgen registry) so purity tests cover the entire codebase.
+- [ ] Add clippy guardrails to forbid direct I/O in pure crates (only transport/boundary crates allowed).
+- [ ] Add `#[resource_test_target]` registry + test runner for codebase-wide purity checks.
+- [ ] Add optional runtime file guard for `res:file:*` during tests.
+- [ ] Draft a sandbox + durability/replay RFC (record/replay transport I/O, deterministic tests).
 
 ## Notes
 

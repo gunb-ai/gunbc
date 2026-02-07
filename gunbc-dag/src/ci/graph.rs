@@ -46,7 +46,8 @@ use gunbc_ir::transport::cli::CliToolOp;
 use gunbc_ir::{
     build::*,
     transport::github_actions::{
-        checkout, rust_toolchain, ubuntu_latest, Integration, Permissions, WorkflowConfig,
+        checkout, gcp_workload_identity, rust_toolchain, ubuntu_latest, Integration, Permissions,
+        WorkflowConfig,
     },
     add_skippable_transport_triplet, add_transport_triplet,
     BuilderError, Cardinality, Dag, DagBuilder, Node, NodeBody, NodeId, NodeRef, Value,
@@ -154,7 +155,7 @@ pub fn ci_signature() -> WorkflowSignature {
 
 /// Get the integrations used by the CI workflow.
 pub fn ci_integrations() -> Vec<Integration> {
-    vec![checkout(), rust_toolchain()]
+    vec![checkout(), rust_toolchain(), gcp_workload_identity()]
 }
 
 /// Get the complete workflow configuration for CI.

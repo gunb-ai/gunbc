@@ -22,10 +22,95 @@
 use crate::contract::{self, TypeContract};
 use crate::dag::Dag;
 use crate::type_lib;
-use crate::type_op::TypeOp;
+use crate::type_op::{TypeOp, WrapperKind};
 use crate::types::{Cardinality, TypeId};
 use std::collections::HashMap;
 use std::fmt;
+
+#[derive(Debug, Clone, PartialEq)]
+enum TypeExpr {
+    Named(String),
+    Wrapper(WrapperKind, Box<TypeExpr>),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ResolveMode {
+    Root,
+    InWrapper,
+}
+
+fn parse_wrapper_kind(name: &str) -> Option<WrapperKind> {
+    match name {
+        "Optional" | "Option" => Some(WrapperKind::Optional),
+        "List" => Some(WrapperKind::List),
+        "NonEmptyList" => Some(WrapperKind::NonEmptyList),
+        "Set" => Some(WrapperKind::Set),
+        "NonEmptySet" => Some(WrapperKind::NonEmptySet),
+        _ => None,
+    }
+}
+
+fn split_top_level_generic(expr: &str) -> Option<(&str, &str)> {
+    let mut depth = 0usize;
+    let mut start = None;
+    let mut end = None;
+
+    for (idx, ch) in expr.char_indices() {
+        match ch {
+            '<' => {
+                if depth == 0 {
+                    start = Some(idx);
+                }
+                depth += 1;
+            }
+            '>' => {
+                if depth == 0 {
+                    return None;
+                }
+                depth -= 1;
+                if depth == 0 {
+                    end = Some(idx);
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let (start, end) = (start?, end?);
+    if !expr[end + 1..].trim().is_empty() {
+        return None;
+    }
+
+    let name = expr[..start].trim();
+    let inner = expr[start + 1..end].trim();
+    if name.is_empty() || inner.is_empty() {
+        return None;
+    }
+
+    Some((name, inner))
+}
+
+fn parse_type_expr(raw: &str) -> Option<TypeExpr> {
+    let expr = raw.trim();
+    if expr.is_empty() {
+        return None;
+    }
+
+    if let Some((name, inner)) = split_top_level_generic(expr) {
+        if let Some(kind) = parse_wrapper_kind(name) {
+            let inner_expr = parse_type_expr(inner)?;
+            return Some(TypeExpr::Wrapper(kind, Box::new(inner_expr)));
+        }
+        return Some(TypeExpr::Named(expr.to_string()));
+    }
+
+    if expr.contains('<') || expr.contains('>') {
+        return None;
+    }
+
+    Some(TypeExpr::Named(expr.to_string()))
+}
 
 /// Registry for named type DAGs.
 ///
@@ -122,6 +207,39 @@ impl TypeRegistry {
         self.types.insert(name.into(), type_dag);
     }
 
+    /// Resolve a type DAG, honoring wrapper expressions like `Optional<T>`.
+    ///
+    /// Returns `None` if the type is not registered and no wrapper expression is present.
+    pub fn resolve_type(&self, type_id: &TypeId) -> Option<Dag<TypeOp>> {
+        let expr = parse_type_expr(&type_id.0)?;
+        self.resolve_expr(&expr, ResolveMode::Root)
+    }
+
+    fn resolve_expr(&self, expr: &TypeExpr, mode: ResolveMode) -> Option<Dag<TypeOp>> {
+        match expr {
+            TypeExpr::Named(name) => {
+                if let Some(dag) = self.get_by_name(name) {
+                    return Some(dag.clone());
+                }
+                match mode {
+                    ResolveMode::Root => None,
+                    ResolveMode::InWrapper => Some(type_lib::identity(name)),
+                }
+            }
+            TypeExpr::Wrapper(kind, inner) => {
+                let inner_dag = self.resolve_expr(inner, ResolveMode::InWrapper)?;
+                let dag = match kind {
+                    WrapperKind::Optional => type_lib::optional(inner_dag),
+                    WrapperKind::List => type_lib::list(inner_dag),
+                    WrapperKind::NonEmptyList => type_lib::non_empty_list(inner_dag),
+                    WrapperKind::Set => type_lib::set(inner_dag),
+                    WrapperKind::NonEmptySet => type_lib::non_empty_set(inner_dag),
+                };
+                Some(dag)
+            }
+        }
+    }
+
     /// Get a type DAG by name.
     pub fn get(&self, name: &TypeId) -> Option<&Dag<TypeOp>> {
         self.types.get(name)
@@ -152,21 +270,21 @@ impl TypeRegistry {
         self.types.is_empty()
     }
 
-    /// Infer cardinality from a registered type when the type DAG encodes a wrapper.
+    /// Infer cardinality from a registered type or wrapper expression.
     ///
     /// Returns `None` if the type is not registered or does not encode cardinality.
     pub fn infer_cardinality(&self, type_id: &TypeId) -> Option<Cardinality> {
-        let dag = self.get(type_id)?;
-        contract::wrapper_kind(dag)?;
-        Some(type_lib::infer_cardinality(dag))
+        let dag = self.resolve_type(type_id)?;
+        contract::wrapper_kind(&dag)?;
+        Some(type_lib::infer_cardinality(&dag))
     }
 
-    /// Get the base type name from a registered type.
+    /// Get the base type name from a registered type or wrapper expression.
     ///
     /// Returns `None` if the type is not registered.
     pub fn base_type_name(&self, type_id: &TypeId) -> Option<String> {
-        self.get(type_id)
-            .and_then(|dag| TypeContract::from_type_dag(dag).base_type)
+        self.resolve_type(type_id)
+            .and_then(|dag| TypeContract::from_type_dag(&dag).base_type)
     }
 
     /// Check if type A is compatible with type B.
@@ -192,12 +310,14 @@ impl TypeRegistry {
         }
 
         // Look up both types; if not registered, fall back to name equality (handled above).
-        let (Some(from_dag), Some(to_dag)) = (self.get(from), self.get(to)) else {
+        let (Some(from_dag), Some(to_dag)) =
+            (self.resolve_type(from), self.resolve_type(to))
+        else {
             return false;
         };
 
-        let from_contract = TypeContract::from_type_dag(from_dag);
-        let to_contract = TypeContract::from_type_dag(to_dag);
+        let from_contract = TypeContract::from_type_dag(&from_dag);
+        let to_contract = TypeContract::from_type_dag(&to_dag);
 
         from_contract
             .can_safely_coerce_to_with(&to_contract, |from, to| {
@@ -404,5 +524,30 @@ mod tests {
             Some("String".to_string())
         );
         assert_eq!(registry.base_type_name(&TypeId::from("Unknown")), None);
+    }
+
+    #[test]
+    fn test_type_expression_resolution() {
+        let registry = TypeRegistry::with_primitives();
+
+        let optional_string = TypeId::from("Optional<String>");
+        assert_eq!(
+            registry.infer_cardinality(&optional_string),
+            Some(Cardinality::ZERO_OR_ONE)
+        );
+        assert_eq!(
+            registry.base_type_name(&optional_string),
+            Some("String".to_string())
+        );
+
+        let optional_transport = TypeId::from("Optional<TransportResponse>");
+        assert_eq!(
+            registry.infer_cardinality(&optional_transport),
+            Some(Cardinality::ZERO_OR_ONE)
+        );
+        assert_eq!(
+            registry.base_type_name(&optional_transport),
+            Some("TransportResponse".to_string())
+        );
     }
 }

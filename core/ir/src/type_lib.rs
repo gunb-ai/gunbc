@@ -290,6 +290,35 @@ pub fn set(element_type: Dag<TypeOp>) -> Dag<TypeOp> {
     dag
 }
 
+/// Non-empty set type — wraps an inner type with OneOrMore cardinality.
+pub fn non_empty_set(element_type: Dag<TypeOp>) -> Dag<TypeOp> {
+    let mut dag = Dag::new();
+
+    // Input: non-empty set of values
+    dag.add_node(Node::opaque(
+        "input",
+        vec![Port::non_empty_list("in", "Any")],
+        vec![Port::non_empty_list("out", "Any")],
+        TypeOp::Wrap(WrapperKind::NonEmptySet),
+    ));
+
+    // Non-empty check
+    dag.add_node(Node::opaque(
+        "check_non_empty",
+        vec![Port::non_empty_list("in", "Any")],
+        vec![Port::non_empty_list("out", "Any")],
+        TypeOp::Validate(Predicate::NonEmpty),
+    ));
+
+    // Element type validation (as SubDag)
+    dag.add_node(Node::subdag("element_type", element_type));
+
+    dag.add_edge(Edge::new("input", "out", "check_non_empty", "in"));
+    dag.add_edge(Edge::new("check_non_empty", "out", "element_type", "in"));
+
+    dag
+}
+
 // =============================================================================
 // Composite Type Helpers
 // =============================================================================
@@ -376,10 +405,12 @@ mod tests {
         let optional_string = optional(string());
         let string_list = list(string());
         let non_empty_strings = non_empty_list(string());
+        let non_empty_set = non_empty_set(string());
 
         assert!(optional_string.nodes.len() >= 2);
         assert!(string_list.nodes.len() >= 2);
         assert!(non_empty_strings.nodes.len() >= 3);
+        assert!(non_empty_set.nodes.len() >= 3);
     }
 
     #[test]
@@ -388,11 +419,16 @@ mod tests {
         let optional_type = optional(string());
         let list_type = list(string());
         let non_empty_type = non_empty_list(string());
+        let non_empty_set_type = non_empty_set(string());
 
         assert_eq!(infer_cardinality(&string_type), Cardinality::ONE);
         assert_eq!(infer_cardinality(&optional_type), Cardinality::ZERO_OR_ONE);
         assert_eq!(infer_cardinality(&list_type), Cardinality::ZERO_OR_MORE);
         assert_eq!(infer_cardinality(&non_empty_type), Cardinality::ONE_OR_MORE);
+        assert_eq!(
+            infer_cardinality(&non_empty_set_type),
+            Cardinality::ONE_OR_MORE
+        );
     }
 
     #[test]

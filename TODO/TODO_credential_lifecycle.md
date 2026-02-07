@@ -467,7 +467,7 @@ Mark: `// TESTGEN-ABSORB: phase-5-windows, stateful-mocking`.
 ### Live integration tests (CI-gated, manual initially)
 
 These verify **real credentials work end-to-end**. They are gated by
-`RUN_LIVE_INTEGRATION=1`, secrets present, and `GUNBC_TEST_MAX_COST`.
+required secrets present and `GUNBC_TEST_MAX_COST` (CI defaults to `XL`).
 
 - **OpenAI live** — executes the LLM DAG in `ExecutionMode::Real`,
   asserts non-empty `parse.content`.
@@ -513,10 +513,13 @@ in CI (hermetic, no real secrets required).
 
 ### LLM Providers (used in `lib/llm-ops`, `lib/review`)
 
-- **OpenAI** — `OPENAI_API_KEY`, scheme = Bearer  
-  Resolved by `ResolveAuth` → `CredentialOp::from_inputs`.
-- **Anthropic** — `ANTHROPIC_API_KEY`, scheme = Header(`x-api-key`)  
-  Resolved by `ResolveAuth` → `CredentialOp::from_inputs`.
+- **OpenAI** — secret `GCP_SECRETS_PREFIX + "openai"`, scheme = Bearer  
+  Resolved by `ResolveAuth` → `cloud_credential` (GCP WIF + Secret Manager).
+- **Anthropic** — secret `GCP_SECRETS_PREFIX + "anthropic"`, scheme = Header(`x-api-key`)  
+  Resolved by `ResolveAuth` → `cloud_credential` (GCP WIF + Secret Manager).
+
+Legacy env-var providers remain for local/manual use but are not wired in the
+primary graphs.
 
 **CI requirement (hermetic):** generated tests cover credential
 acquisition, timeout, refresh, and revoke via `ResourceType::Credential`
@@ -526,30 +529,28 @@ simulation.
 exercise OpenAI + Anthropic with actual API calls when secrets are
 available. These are gated by:
 
-- `RUN_LIVE_INTEGRATION=1`
-- `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` present
-- `GUNBC_TEST_MAX_COST` (default `S` → live tests run only in `test-all`)
+- Required cloud secret envs present (GCP WIF + Secret Manager)
+- `GUNBC_TEST_MAX_COST` (default `S` locally; CI defaults to `XL`)
 
-### GitHub (env-var provider exists, but DAG usage is missing)
+### GitHub (cloud secret manager source)
 
-- **GitHub token** — `GITHUB_TOKEN`, scheme = Bearer  
-  Provider exists (`GitHubEnvVarProvider`), but no DAG currently wires
-  `credential:github` into a transport flow.
+- **GitHub token** — secret `GCP_SECRETS_PREFIX + "github"`, scheme = Bearer  
+  Provider exists (`GitHubEnvVarProvider`), but the primary path is now
+  the cloud secret manager DAG (`cloud_credential`).
 
 **CI requirement:** add a minimal credential DAG or wire an existing
 GitHub API flow to emit `credential:github` so testgen can generate
 lifecycle tests (acquire/timeout/refresh/revoke) in CI.
 
-### Live External Tests (optional, gated)
+### Live External Tests (auto when configured)
 
-Real secret usage should be **opt-in** only:
+Real secret usage should be **automatic when configured**:
 
 - Cost gating: real HTTP transports are `FermiCost::M` or higher, so
-  `GUNBC_TEST_MAX_COST` must allow them (default is `S`).
-- `RUN_LIVE_INTEGRATION=1` required.
+  `GUNBC_TEST_MAX_COST` must allow them (default is `S` locally; CI defaults to `XL`).
 - WIF configuration must be present (`GCP_WIF_PROVIDER`, `GCP_SECRETS_PROJECT`,
   `GCP_SECRETS_PREFIX`, and either `GCP_SECRETS_SA` or `GCP_SECRETS_IMPERSONATE_SA`).
-- If missing, tests **fail fast with reason** (guard panics with a clear message).
+- If missing in CI, tests **fail fast with reason**. Locally, they skip.
 
 ---
 
@@ -570,7 +571,7 @@ Real secret usage should be **opt-in** only:
   implemented) using stateful mocks and windowed phases once available.
 - Live OpenAI/Anthropic/GitHub integration tests run the DAG in
   `ExecutionMode::Real` and validate non-empty outputs when WIF
-  config is present (guarded by `RUN_LIVE_INTEGRATION` and Fermi cost).
+  config is present (guarded by required secrets + Fermi cost).
 - Generated integration tests run in the **default CI/test path** in a
   hermetic mode (mocked transport + mocked creds), with a clear opt-in
   path for **real external tests** (GitHub App / LLM keys) that are
@@ -616,7 +617,7 @@ Real secret usage should be **opt-in** only:
 - [ ] Compose secret names as `GCP_SECRETS_PREFIX + service` (e.g., `ci-openai`).
 - [ ] Add MockSpec + generated tests for WIF credential DAG (mocked transport).
 - [ ] Add live integration tests for OpenAI/Anthropic/GitHub via WIF (gated by
-  `RUN_LIVE_INTEGRATION` + `GUNBC_TEST_MAX_COST`).
+  required secrets + `GUNBC_TEST_MAX_COST`).
 
 ### Phase 3: GitHub App provider (first real lifecycle)
 

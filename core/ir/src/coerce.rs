@@ -206,11 +206,12 @@ pub fn validate_coercions_with_registry<T>(
             };
 
             if let Some(reg) = registry {
-                if let (Some(from_dag), Some(to_dag)) =
-                    (reg.get(&fp.type_id), reg.get(&tp.type_id))
-                {
-                    let mut from_contract = TypeContract::from_type_dag(from_dag);
-                    let mut to_contract = TypeContract::from_type_dag(to_dag);
+                if let (Some(from_dag), Some(to_dag)) = (
+                    reg.resolve_type(&fp.type_id),
+                    reg.resolve_type(&tp.type_id),
+                ) {
+                    let mut from_contract = TypeContract::from_type_dag(&from_dag);
+                    let mut to_contract = TypeContract::from_type_dag(&to_dag);
                     // Registry-provided wrappers override port cardinality.
                     from_contract.cardinality = from_card;
                     to_contract.cardinality = to_card;

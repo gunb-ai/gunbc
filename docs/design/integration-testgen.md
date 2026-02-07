@@ -91,13 +91,14 @@ Inference rules (initial heuristic, can be tuned later):
 Overrides:
 
 1. Allow per-target overrides in `#[testgen_target(...)]`.
-2. Allow global overrides via env (`GUNBC_TEST_MAX_COST`, `RUN_LIVE_INTEGRATION`).
+2. Allow global overrides via env (`GUNBC_TEST_MAX_COST`).
 
 ### Default Gating (Proposed)
 
 1. `make test` runs everything at or below `S` (default).
-2. `make test-all` sets `GUNBC_TEST_MAX_COST=XL` and `RUN_LIVE_INTEGRATION=1`.
-3. Live tests still require required secrets to be present in the environment.
+2. `make test-all` sets `GUNBC_TEST_MAX_COST=XL`.
+3. CI defaults to `XL` when `GUNBC_TEST_MAX_COST` is unset.
+4. Live tests run automatically when required secrets are present.
 
 Tests above the max cost should **skip** with a clear reason, not fail.
 
@@ -253,10 +254,10 @@ Legend:
 
 ### Tier 3: Live Integration Tests (Gated)
 
-1. OpenAI live test with `OPENAI_API_KEY`.
-2. Anthropic live test with `ANTHROPIC_API_KEY`.
-3. GitHub live test with `GITHUB_TOKEN` for gist creation (optional).
-4. Gate via env flag `RUN_LIVE_INTEGRATION=1`.
+1. OpenAI live test via GCP WIF + Secret Manager (secret `GCP_SECRETS_PREFIX + "openai"`).
+2. Anthropic live test via GCP WIF + Secret Manager (secret `GCP_SECRETS_PREFIX + "anthropic"`).
+3. GitHub live test via GCP WIF + Secret Manager (secret `GCP_SECRETS_PREFIX + "github"`).
+4. Gate via required secrets (no explicit live flag).
 
 ---
 
@@ -289,7 +290,7 @@ Layer B: Local HTTP mock (offline)
 
 Layer C: Live (gated)
 
-1. `RUN_LIVE_INTEGRATION=1` + `OPENAI_API_KEY` / `ANTHROPIC_API_KEY`.
+1. Required cloud secret envs present (GCP WIF + Secret Manager).
 2. Minimal prompt with low token budget.
 3. Assert response fields: `content`, `model`, `finish_reason`.
 

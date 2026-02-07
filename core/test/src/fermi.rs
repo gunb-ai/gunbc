@@ -80,7 +80,13 @@ pub fn max_cost_from_env() -> FermiCost {
     env::var("GUNBC_TEST_MAX_COST")
         .ok()
         .and_then(|v| FermiCost::parse(&v))
-        .unwrap_or(FermiCost::S)
+        .unwrap_or_else(|| {
+            if env_truthy("CI") || env_truthy("GITHUB_ACTIONS") {
+                FermiCost::XL
+            } else {
+                FermiCost::S
+            }
+        })
 }
 
 fn env_truthy(name: &str) -> bool {
@@ -95,24 +101,18 @@ fn env_truthy(name: &str) -> bool {
 pub fn guard(meta: TestMeta<'_>) -> bool {
     let max_cost = max_cost_from_env();
     if meta.cost > max_cost {
-        panic!(
-            "skipping {}: cost {} exceeds max {} (set GUNBC_TEST_MAX_COST=...)",
-            meta.name,
-            meta.cost.as_str(),
-            max_cost.as_str()
-        );
+        if env_truthy("CI") || env_truthy("GITHUB_ACTIONS") {
+            panic!(
+                "skipping {}: cost {} exceeds max {} (set GUNBC_TEST_MAX_COST=...)",
+                meta.name,
+                meta.cost.as_str(),
+                max_cost.as_str()
+            );
+        }
+        return false;
     }
 
     if !meta.secrets.is_empty() {
-        let live_ok = env_truthy("RUN_LIVE_INTEGRATION");
-        if !live_ok {
-            panic!(
-                "skipping {}: requires secrets [{}] (set RUN_LIVE_INTEGRATION=1)",
-                meta.name,
-                meta.secrets.join(", ")
-            );
-        }
-
         let missing: Vec<&str> = meta
             .secrets
             .iter()
@@ -120,11 +120,14 @@ pub fn guard(meta: TestMeta<'_>) -> bool {
             .filter(|k| env::var(k).is_err())
             .collect();
         if !missing.is_empty() {
-            panic!(
-                "skipping {}: missing secrets [{}]",
-                meta.name,
-                missing.join(", ")
-            );
+            if env_truthy("CI") || env_truthy("GITHUB_ACTIONS") {
+                panic!(
+                    "skipping {}: missing secrets [{}]",
+                    meta.name,
+                    missing.join(", ")
+                );
+            }
+            return false;
         }
     }
 
@@ -168,27 +171,15 @@ pub fn guard_test_with_env(
 ) -> bool {
     let max_cost = max_cost_from_env();
     if cost > max_cost {
-        panic!(
-            "skipping {}: cost {} exceeds max {} (set GUNBC_TEST_MAX_COST=...)",
-            name,
-            cost.as_str(),
-            max_cost.as_str()
-        );
-    }
-
-    let needs_live = !required.is_empty() || !required_any_of.is_empty();
-    if needs_live && !env_truthy("RUN_LIVE_INTEGRATION") {
-        let mut all = required.to_vec();
-        for group in required_any_of {
-            if let Some(first) = group.first() {
-                all.push(first);
-            }
+        if env_truthy("CI") || env_truthy("GITHUB_ACTIONS") {
+            panic!(
+                "skipping {}: cost {} exceeds max {} (set GUNBC_TEST_MAX_COST=...)",
+                name,
+                cost.as_str(),
+                max_cost.as_str()
+            );
         }
-        panic!(
-            "skipping {}: requires secrets [{}] (set RUN_LIVE_INTEGRATION=1)",
-            name,
-            all.join(", ")
-        );
+        return false;
     }
 
     if !required.is_empty() {
@@ -198,11 +189,14 @@ pub fn guard_test_with_env(
             .filter(|k| env::var(k).is_err())
             .collect();
         if !missing.is_empty() {
-            panic!(
-                "skipping {}: missing secrets [{}]",
-                name,
-                missing.join(", ")
-            );
+            if env_truthy("CI") || env_truthy("GITHUB_ACTIONS") {
+                panic!(
+                    "skipping {}: missing secrets [{}]",
+                    name,
+                    missing.join(", ")
+                );
+            }
+            return false;
         }
     }
 
@@ -215,11 +209,14 @@ pub fn guard_test_with_env(
             }
         }
         if !missing_groups.is_empty() {
-            panic!(
-                "skipping {}: missing secrets [{}]",
-                name,
-                missing_groups.join(", ")
-            );
+            if env_truthy("CI") || env_truthy("GITHUB_ACTIONS") {
+                panic!(
+                    "skipping {}: missing secrets [{}]",
+                    name,
+                    missing_groups.join(", ")
+                );
+            }
+            return false;
         }
     }
 

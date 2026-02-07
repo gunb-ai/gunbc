@@ -1014,7 +1014,7 @@ pub fn default_meta_targets() -> Vec<MetaTarget> {
             .with_fix_variant(vec![FixAlias::FmtFix, FixAlias::LintFix]),
         // test-all - run all tests regardless of cost (includes XL)
         MetaTarget::new("test-all", "Run all tests (<=XL)", ConfigField::Test)
-            .with_command_prefix("GUNBC_TEST_MAX_COST=XL RUN_LIVE_INTEGRATION=1")
+            .with_command_prefix("GUNBC_TEST_MAX_COST=XL")
             .needs(ResourceId::build("compiled_code"), ExecMode::Ensure)
             .needs(ResourceId::build("verified_artifacts"), ExecMode::Ensure),
         // check - type check without building (requires codegen + pragma)
