@@ -1,0 +1,13 @@
+[package]
+name = "gunbc-lib-cloud-ops"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+gunbc-exec = { path = "../../core/exec" }
+gunbc-ir = { path = "../../core/ir" }
+gunbc-lib-gcp-ops = { path = "../gcp-ops" }
+gunbc-lib-aws-ops = { path = "../aws-ops" }
+gunbc-lib-azure-ops = { path = "../azure-ops" }
+serde = { workspace = true }
+serde_json = { workspace = true }

@@ -12,6 +12,7 @@
 //! The `BuildConfig` struct is the single source of truth for all build/test/lint
 //! commands. This eliminates duplicate hardcoded commands across the codebase.
 
+use crate::WorkspaceBinary;
 use gunbc_infra::ResourceId;
 use gunbc_ir::cargo::{CargoCommand, Subcommand, Warnings};
 use gunbc_ir::resource::ExecMode;
@@ -127,8 +128,8 @@ impl BuildConfig {
     /// This is the repo's standard policy for both CI and local builds.
     pub fn cargo() -> Self {
         let w = Warnings::Deny;
-        let codegen_inv = CargoInvocation::composed("codegen", "dag");
-        let codegen_dag_inv = CargoInvocation::composed("codegen-dag", "dag");
+        let codegen_inv = WorkspaceBinary::Codegen.invocation();
+        let codegen_dag_inv = WorkspaceBinary::CodegenDag.invocation();
         let c = |cmd: CargoCommand| BuildCommand::Cargo(cmd);
         Self {
             build_system: BuildSystem::Cargo,
@@ -168,61 +169,54 @@ impl BuildConfig {
                 .trailing_arg("cigen")
                 .warnings(w)),
             testgen: c(
-                CargoCommand::new(Subcommand::Run(CargoInvocation::in_package(
-                    "gunbc-testgen",
-                    "gunbc-dag",
-                )))
+                CargoCommand::new(Subcommand::Run(
+                    WorkspaceBinary::Testgen.invocation(),
+                ))
                 .release()
                 .warnings(w),
             ),
             bootstrap: c(
-                CargoCommand::new(Subcommand::Run(CargoInvocation::in_package(
-                    "gunbc-bootstrap",
-                    "gunbc-dag",
-                )))
+                CargoCommand::new(Subcommand::Run(
+                    WorkspaceBinary::Bootstrap.invocation(),
+                ))
                 .release()
                 .warnings(w),
             ),
             pragma: c(
-                CargoCommand::new(Subcommand::Run(CargoInvocation::in_package(
-                    "gunbc-pragma",
-                    "gunbc-dag",
-                )))
+                CargoCommand::new(Subcommand::Run(
+                    WorkspaceBinary::Pragma.invocation(),
+                ))
                 .release()
                 .warnings(w),
             ),
             testgen_check: c(
-                CargoCommand::new(Subcommand::Run(CargoInvocation::in_package(
-                    "gunbc-testgen",
-                    "gunbc-dag",
-                )))
+                CargoCommand::new(Subcommand::Run(
+                    WorkspaceBinary::Testgen.invocation(),
+                ))
                 .release()
                 .trailing_arg("--mode=verify")
                 .warnings(w),
             ),
             makegen_check: c(
-                CargoCommand::new(Subcommand::Run(CargoInvocation::in_package(
-                    "gunbc-makegen",
-                    "gunbc-dag",
-                )))
+                CargoCommand::new(Subcommand::Run(
+                    WorkspaceBinary::Makegen.invocation(),
+                ))
                 .release()
                 .trailing_arg("--mode=verify")
                 .warnings(w),
             ),
             bootstrap_check: c(
-                CargoCommand::new(Subcommand::Run(CargoInvocation::in_package(
-                    "gunbc-bootstrap",
-                    "gunbc-dag",
-                )))
+                CargoCommand::new(Subcommand::Run(
+                    WorkspaceBinary::Bootstrap.invocation(),
+                ))
                 .release()
                 .trailing_arg("--mode=verify")
                 .warnings(w),
             ),
             pragma_check: c(
-                CargoCommand::new(Subcommand::Run(CargoInvocation::in_package(
-                    "gunbc-pragma",
-                    "gunbc-dag",
-                )))
+                CargoCommand::new(Subcommand::Run(
+                    WorkspaceBinary::Pragma.invocation(),
+                ))
                 .release()
                 .trailing_arg("--mode=verify")
                 .warnings(w),
@@ -236,7 +230,7 @@ impl BuildConfig {
     /// while internal ops (BuildOp/CI) still use raw cargo commands via `cargo()`.
     pub fn cargo_entrypoints() -> Self {
         let mut config = Self::cargo();
-        let build_inv = CargoInvocation::composed("build", "dag");
+        let build_inv = WorkspaceBinary::Build.invocation();
         let entry = BuildCommand::Cargo(
             CargoCommand::new(Subcommand::Run(build_inv))
                 .release()
@@ -256,8 +250,8 @@ impl BuildConfig {
     /// and `BuildCommand::Cargo` for commands that still use cargo (codegen, fmt).
     pub fn buck2() -> Self {
         let w = Warnings::Deny;
-        let codegen_inv = CargoInvocation::composed("codegen", "dag");
-        let codegen_dag_inv = CargoInvocation::composed("codegen-dag", "dag");
+        let codegen_inv = WorkspaceBinary::Codegen.invocation();
+        let codegen_dag_inv = WorkspaceBinary::CodegenDag.invocation();
         let c = |cmd: CargoCommand| BuildCommand::Cargo(cmd);
         let sh =
             |parts: &[&str]| BuildCommand::Shell(parts.iter().map(|s| s.to_string()).collect());
@@ -297,61 +291,54 @@ impl BuildConfig {
                 .warnings(w)),
             // testgen uses cargo (no buck2 equivalent yet)
             testgen: c(
-                CargoCommand::new(Subcommand::Run(CargoInvocation::in_package(
-                    "gunbc-testgen",
-                    "gunbc-dag",
-                )))
+                CargoCommand::new(Subcommand::Run(
+                    WorkspaceBinary::Testgen.invocation(),
+                ))
                 .release()
                 .warnings(w),
             ),
             bootstrap: c(
-                CargoCommand::new(Subcommand::Run(CargoInvocation::in_package(
-                    "gunbc-bootstrap",
-                    "gunbc-dag",
-                )))
+                CargoCommand::new(Subcommand::Run(
+                    WorkspaceBinary::Bootstrap.invocation(),
+                ))
                 .release()
                 .warnings(w),
             ),
             pragma: c(
-                CargoCommand::new(Subcommand::Run(CargoInvocation::in_package(
-                    "gunbc-pragma",
-                    "gunbc-dag",
-                )))
+                CargoCommand::new(Subcommand::Run(
+                    WorkspaceBinary::Pragma.invocation(),
+                ))
                 .release()
                 .warnings(w),
             ),
             testgen_check: c(
-                CargoCommand::new(Subcommand::Run(CargoInvocation::in_package(
-                    "gunbc-testgen",
-                    "gunbc-dag",
-                )))
+                CargoCommand::new(Subcommand::Run(
+                    WorkspaceBinary::Testgen.invocation(),
+                ))
                 .release()
                 .trailing_arg("--mode=verify")
                 .warnings(w),
             ),
             makegen_check: c(
-                CargoCommand::new(Subcommand::Run(CargoInvocation::in_package(
-                    "gunbc-makegen",
-                    "gunbc-dag",
-                )))
+                CargoCommand::new(Subcommand::Run(
+                    WorkspaceBinary::Makegen.invocation(),
+                ))
                 .release()
                 .trailing_arg("--mode=verify")
                 .warnings(w),
             ),
             bootstrap_check: c(
-                CargoCommand::new(Subcommand::Run(CargoInvocation::in_package(
-                    "gunbc-bootstrap",
-                    "gunbc-dag",
-                )))
+                CargoCommand::new(Subcommand::Run(
+                    WorkspaceBinary::Bootstrap.invocation(),
+                ))
                 .release()
                 .trailing_arg("--mode=verify")
                 .warnings(w),
             ),
             pragma_check: c(
-                CargoCommand::new(Subcommand::Run(CargoInvocation::in_package(
-                    "gunbc-pragma",
-                    "gunbc-dag",
-                )))
+                CargoCommand::new(Subcommand::Run(
+                    WorkspaceBinary::Pragma.invocation(),
+                ))
                 .release()
                 .trailing_arg("--mode=verify")
                 .warnings(w),
@@ -516,6 +503,19 @@ impl ToolInfo {
         Self {
             invocation: gunbc_ir::CargoInvocation::standalone(component),
             short_name: component.to_string(),
+            description: description.into(),
+            entrypoints: Vec::new(),
+            extra_targets: Vec::new(),
+            has_declarative_dag: false,
+            needs_generated_cli: true,
+        }
+    }
+
+    /// Create a tool that is a repo-local workspace binary.
+    pub fn workspace(binary: WorkspaceBinary, description: impl Into<String>) -> Self {
+        Self {
+            invocation: binary.invocation(),
+            short_name: binary.component().to_string(),
             description: description.into(),
             entrypoints: Vec::new(),
             extra_targets: Vec::new(),
@@ -1142,17 +1142,20 @@ impl ToolRegistry {
         // Manual additions: tools not in the codegen registry.
         // ci has a handwritten main.rs — it's the bootstrap tool that runs
         // codegen for other tools, so it can't depend on generated code.
-        registry.register(ToolInfo::composed("ci", "dag", "Run CI pipeline").manual());
+        registry.register(ToolInfo::workspace(WorkspaceBinary::Ci, "Run CI pipeline").manual());
         registry.register(
-            ToolInfo::composed("pragma", "dag", "Generate clippy.toml and pragma allowlists")
-                .manual(),
+            ToolInfo::workspace(
+                WorkspaceBinary::Pragma,
+                "Generate clippy.toml and pragma allowlists",
+            )
+            .manual(),
         );
 
         // build-all has a handwritten main.rs with DAG progress display.
         // This is the explicit pipeline entrypoint; core build/test/clippy
         // targets use BuildConfig commands (cargo by default).
         registry.register(ToolInfo {
-            invocation: gunbc_ir::CargoInvocation::composed("build", "dag"),
+            invocation: WorkspaceBinary::Build.invocation(),
             short_name: "build-all".to_string(),
             description: "Build, test, and lint with progress display".to_string(),
             entrypoints: Vec::new(),

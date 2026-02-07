@@ -25,6 +25,7 @@ use cargo_metadata::MetadataCommand;
 use gunbc_codegen::{
     all_cleanable_outputs, derive_tool_defs, generate_cli_with_import, FileWriter,
 };
+use gunbc_dag::WorkspaceBinary;
 use gunbc_ir::resource::{
     check_manifest_freshness, codegen_resource_def, load_manifest_default,
     update_resource_manifest, FreshnessOptions, ManagedResource, ManifestEntry, ManifestFreshness,
@@ -297,8 +298,8 @@ fn cmd_cigen(dry_run: bool) {
     let gitlab_provider = GitLabCiProvider::default();
 
     // Generate CI YAML for gunbc-ci
-    let codegen = gunbc_ir::CargoInvocation::composed("codegen", "dag");
-    let tool = gunbc_ir::CargoInvocation::composed("ci", "dag");
+    let codegen = WorkspaceBinary::Codegen.invocation();
+    let tool = WorkspaceBinary::Ci.invocation();
     let config = RenderConfig::new("ci", tool)
         .with_generator(&codegen.binary, &format!("{} -- cigen", codegen.command()))
         .with_runner(gunbc_ir::transport::github_actions::ubuntu_latest())

@@ -4032,6 +4032,7 @@ fn try_mock_element_value(type_id: &str, index: Option<u32>) -> Option<Value> {
         "Unit" => Value::Unit,
         "Json" => Value::Json(JsonValue::Null),
         "Map" => Value::Map(BTreeMap::new()),
+        "CloudSecretConfig" => Value::Json(JsonValue::Null),
         "Secret" => Value::Secret(SecretString::new("<MOCK_SECRET>")),
         "Any" => Value::Json(JsonValue::Null),
         "S" => Value::Str("<MOCK>".to_string()),

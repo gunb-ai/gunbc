@@ -6,6 +6,30 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::Value;
+
+// ---------------------------------------------------------------------------
+// Value conversions (CloudSecretConfig ↔ Value::Json)
+// ---------------------------------------------------------------------------
+
+impl From<CloudSecretConfig> for Value {
+    fn from(config: CloudSecretConfig) -> Self {
+        Value::Json(serde_json::to_value(config).unwrap_or(serde_json::Value::Null))
+    }
+}
+
+impl TryFrom<&Value> for CloudSecretConfig {
+    type Error = String;
+
+    fn try_from(value: &Value) -> Result<Self, Self::Error> {
+        match value {
+            Value::Json(json) => serde_json::from_value(json.clone())
+                .map_err(|e| format!("invalid CloudSecretConfig json: {e}")),
+            _ => Err("expected CloudSecretConfig as Json".to_string()),
+        }
+    }
+}
+
 /// Supported cloud providers for secret-backed credentials.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CloudProviderKind {

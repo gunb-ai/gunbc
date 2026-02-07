@@ -37,6 +37,7 @@
 
 use crate::ci::ops::CIOp;
 use crate::codegen::{build_codegen_graph_with_mode, CodegenGraphOp, CodegenOp};
+use crate::WorkspaceBinary;
 use gunbc_deps::DEFAULT_MANIFEST_FILENAME;
 use gunbc_exec::{require_bool, ExecError, Executable, IntoExecResult, OutputMap};
 use gunbc_ir::resource::ExecMode;
@@ -154,7 +155,7 @@ pub fn ci_integrations() -> Vec<Integration> {
 
 /// Get the complete workflow configuration for CI.
 pub fn ci_workflow_config() -> WorkflowConfig {
-    let ci_cmd = gunbc_ir::CargoInvocation::composed("ci", "dag").command();
+    let ci_cmd = WorkspaceBinary::Ci.command();
     WorkflowConfig::new("CI", ubuntu_latest(), ci_integrations()).with_run_command(format!(
         "|\n          {ci_cmd} -- run"
     ))

@@ -18,6 +18,7 @@
 
 #![deny(dead_code)]
 pub mod bootstrap;
+pub mod binaries;
 pub mod build;
 pub mod ci;
 pub mod codegen;
@@ -35,6 +36,7 @@ pub mod workspace;
 
 // Re-exports for convenience
 pub use file_ops_graph::FileOpsGraph;
+pub use binaries::WorkspaceBinary;
 pub use bootstrap::{bootstrap_signature, build_bootstrap_graph, BootstrapGraphOp, BootstrapOp};
 pub use build::{build_build_graph, build_signature, BuildGraphOp, BuildOp};
 pub use ci::{build_ci_graph, build_ci_graph_with_mode, ci_signature, ci_workflow_config, CIGraphOp, CIOp};

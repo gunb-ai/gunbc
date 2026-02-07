@@ -5,7 +5,8 @@ use gunbc_exec::{
     optional_response_strict, propagate_skipped, require_bool, require_response, ExecError,
     Executable, OutputMap, TransportResponseExt,
 };
-use gunbc_ir::cargo::{CargoCommand, CargoInvocation, Subcommand};
+use crate::WorkspaceBinary;
+use gunbc_ir::cargo::{CargoCommand, Subcommand};
 use gunbc_ir::resource::{
     check_manifest_freshness, codegen_resource_def, load_manifest_default, ExecMode,
     FreshnessOptions, ManifestFreshness, ManagedResource, ManifestEntry, ResourceDef, ResourceError,
@@ -190,7 +191,7 @@ fn execute_prepare_codegen_command(
         return OutputMap::new().bool("skip", true).ok();
     }
 
-    let inv = CargoInvocation::composed("codegen", "dag");
+    let inv = WorkspaceBinary::Codegen.invocation();
     let cmd = CargoCommand::new(Subcommand::Run(inv))
         .release()
         .trailing_arg("codegen");
