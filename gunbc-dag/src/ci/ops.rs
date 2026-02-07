@@ -23,6 +23,7 @@ use gunbc_ir::symbols::{Tier, STANDARD};
 use gunbc_ir::transport::{ShellRequest, TransportRequest};
 use gunbc_ir::PlainStructuredRenderer;
 use gunbc_ir::Value;
+use gunbc_testgen_registry::iter_dag_specs;
 use std::collections::HashMap;
 
 // ============================================================================
@@ -193,6 +194,13 @@ fn execute_prepare_testgen_command(
         return OutputMap::new()
             .bool("skip", true)
             .str("skip_reason", "Skipped due to prep failure")
+            .ok();
+    }
+
+    if iter_dag_specs().next().is_none() {
+        return OutputMap::new()
+            .bool("skip", true)
+            .str("skip_reason", "No DagSpec registrations found")
             .ok();
     }
 

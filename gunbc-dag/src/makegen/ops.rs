@@ -7,6 +7,7 @@
 
 use gunbc_exec::{ExecError, Executable, OutputMap};
 use gunbc_ir::Value;
+use gunbc_testgen_registry::iter_dag_specs;
 use std::collections::HashMap;
 
 use crate::makegen::registry::ToolRegistry;
@@ -46,6 +47,18 @@ fn execute_load_registry(
         .map(|t| t.short_name.clone())
         .collect();
 
+    let testgen_targets: Vec<serde_json::Value> = iter_dag_specs()
+        .map(|spec| {
+            serde_json::json!({
+                "name": spec.name,
+                "origin_crate": spec.origin_crate,
+                "output_path": spec.meta.output_path,
+                "module_name": spec.meta.module_name,
+                "tool_name": spec.meta.tool_name,
+            })
+        })
+        .collect();
+
     // Store registry as JSON for downstream
     let registry_json = serde_json::json!({
         "tools": registry.tools.iter().map(|t| {
@@ -64,7 +77,9 @@ fn execute_load_registry(
                     })
                 }).collect::<Vec<_>>()
             })
-        }).collect::<Vec<_>>()
+        }).collect::<Vec<_>>(),
+        "testgen_targets": testgen_targets,
+        "testgen_target_count": testgen_targets.len(),
     });
 
     OutputMap::new()
@@ -96,23 +111,39 @@ use gunbc_test::{CardinalityTestInput, ErrorTestCase, Mockable};
 impl Mockable for MakegenOp {
     fn mock_outputs(&self) -> HashMap<String, Value> {
         match self {
-            MakegenOp::LoadRegistry => OutputMap::new()
-                .int("tool_count", 3)
-                .str_list(
-                    "tool_names",
-                    vec!["gist".to_string(), "deps".to_string(), "buck2".to_string()],
-                )
-                .json(
-                    "registry",
-                    serde_json::json!({
-                        "tools": [
-                            {"binary_name": cargo::name("gist"), "short_name": "gist"},
-                            {"binary_name": cargo::name("deps"), "short_name": "deps"},
-                            {"binary_name": cargo::name("buck2"), "short_name": "buck2"},
-                        ]
-                    }),
-                )
-                .build(),
+            MakegenOp::LoadRegistry => {
+                let testgen_targets: Vec<serde_json::Value> = iter_dag_specs()
+                    .map(|spec| {
+                        serde_json::json!({
+                            "name": spec.name,
+                            "origin_crate": spec.origin_crate,
+                            "output_path": spec.meta.output_path,
+                            "module_name": spec.meta.module_name,
+                            "tool_name": spec.meta.tool_name,
+                        })
+                    })
+                    .collect();
+
+                OutputMap::new()
+                    .int("tool_count", 3)
+                    .str_list(
+                        "tool_names",
+                        vec!["gist".to_string(), "deps".to_string(), "buck2".to_string()],
+                    )
+                    .json(
+                        "registry",
+                        serde_json::json!({
+                            "tools": [
+                                {"binary_name": cargo::name("gist"), "short_name": "gist"},
+                                {"binary_name": cargo::name("deps"), "short_name": "deps"},
+                                {"binary_name": cargo::name("buck2"), "short_name": "buck2"},
+                            ],
+                            "testgen_targets": testgen_targets,
+                            "testgen_target_count": testgen_targets.len(),
+                        }),
+                    )
+                    .build()
+            }
             MakegenOp::RenderMakefile => {
                 let gist = CargoInvocation::standalone("gist").command();
                 let deps = CargoInvocation::standalone("deps").command();

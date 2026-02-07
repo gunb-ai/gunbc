@@ -29,6 +29,7 @@ use gunbc_lib_llm_ops as _;
 use gunbc_lib_review as _;
 use gunbc_testgen_registry::{iter_dag_specs, DagSpecDef};
 use std::env;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process;
 
@@ -91,6 +92,12 @@ fn main() {
         })
         .collect();
 
+    let mut path_by_node: HashMap<String, String> = HashMap::new();
+    for (name, path) in &target_info {
+        path_by_node.insert(format!("prepare_read_{name}"), path.clone());
+        path_by_node.insert(format!("prepare_write_{name}"), path.clone());
+    }
+
     // Set up entrypoint inputs
     let mut input_mocks = BoundaryMocks::new();
     let entrypoints = detect_entrypoints(&dag);
@@ -104,16 +111,11 @@ fn main() {
                 );
             }
             "path" => {
-                // Match node_id to target's output path
-                let path = target_info
-                    .iter()
-                    .find(|(name, _)| node_id.0.contains(name.as_str()))
-                    .map(|(_, path)| path.clone());
-                if let Some(path) = path {
+                if let Some(path) = path_by_node.get(&node_id.0) {
                     input_mocks.set_input(
                         node_id.0.clone(),
                         port_name.0.clone(),
-                        Value::Str(path),
+                        Value::Str(path.clone()),
                     );
                 }
             }
