@@ -61,6 +61,18 @@ pub enum CIOp {
     /// Parse the testgen shell response (pure)
     ParseTestgenResult,
 
+    // ========== Bootstrap stage ==========
+    /// Prepare the bootstrap shell command (pure)
+    PrepareBootstrapCommand,
+    /// Parse the bootstrap shell response (pure)
+    ParseBootstrapResult,
+
+    // ========== Pragma stage ==========
+    /// Prepare the pragma shell command (pure)
+    PreparePragmaCommand,
+    /// Parse the pragma shell response (pure)
+    ParsePragmaResult,
+
     // ========== Build stage ==========
     /// Prepare the build shell command (pure)
     /// Inputs: prep_success: Bool
@@ -111,6 +123,10 @@ impl Executable for CIOp {
             CIOp::ParseDepsExists => execute_parse_deps_exists(inputs),
             CIOp::PrepareTestgenCommand => execute_prepare_testgen_command(inputs),
             CIOp::ParseTestgenResult => execute_parse_testgen_result(inputs),
+            CIOp::PrepareBootstrapCommand => execute_prepare_bootstrap_command(inputs),
+            CIOp::ParseBootstrapResult => execute_parse_bootstrap_result(inputs),
+            CIOp::PreparePragmaCommand => execute_prepare_pragma_command(inputs),
+            CIOp::ParsePragmaResult => execute_parse_pragma_result(inputs),
             CIOp::PrepareBuildCommand => execute_prepare_build_command(inputs),
             CIOp::ParseBuildResult => execute_parse_build_result(inputs),
             CIOp::PrepareTestCommand => execute_prepare_test_command(inputs),
@@ -222,6 +238,138 @@ fn execute_parse_testgen_result(
     OutputMap::new()
         .bool("testgen_success", shell.success())
         .str("testgen_stderr", shell.stderr.clone())
+        .ok()
+}
+
+// ============================================================================
+// Bootstrap Stage - Pure Operations
+// ============================================================================
+
+/// Prepare the bootstrap shell command (pure).
+fn execute_prepare_bootstrap_command(
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    let prep_success = require_bool_or_skipped(&inputs, "prep_success", false)?;
+
+    if !prep_success {
+        return OutputMap::new()
+            .bool("skip", true)
+            .str("skip_reason", "Skipped due to prep failure")
+            .ok();
+    }
+
+    let config = BuildConfig::cargo();
+    let request = TransportRequest::Shell(config.bootstrap.to_shell_request());
+
+    OutputMap::new()
+        .request("request", request)
+        .bool("skip", false)
+        .ok()
+}
+
+/// Parse the bootstrap shell response (pure).
+fn execute_parse_bootstrap_result(
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    if let Some(result) = propagate_skipped(
+        &inputs,
+        "response",
+        &["bootstrap_success", "bootstrap_stderr"],
+    ) {
+        return result;
+    }
+
+    let skip = require_bool(&inputs, "skip")?;
+    let skip_reason = optional_str_strict(&inputs, "skip_reason")?;
+    let response = optional_response_strict(&inputs, "response")?;
+
+    if skip {
+        let reason = skip_reason.unwrap_or("Skipped");
+        return OutputMap::new()
+            .bool("bootstrap_success", false)
+            .str("bootstrap_stderr", reason)
+            .ok();
+    }
+
+    let shell = match response {
+        Some(response) => response.require_shell()?,
+        None => {
+            return OutputMap::new()
+                .bool("bootstrap_success", false)
+                .str("bootstrap_stderr", "missing response")
+                .ok();
+        }
+    };
+
+    OutputMap::new()
+        .bool("bootstrap_success", shell.success())
+        .str("bootstrap_stderr", shell.stderr.clone())
+        .ok()
+}
+
+// ============================================================================
+// Pragma Stage - Pure Operations
+// ============================================================================
+
+/// Prepare the pragma shell command (pure).
+fn execute_prepare_pragma_command(
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    let prep_success = require_bool_or_skipped(&inputs, "prep_success", false)?;
+
+    if !prep_success {
+        return OutputMap::new()
+            .bool("skip", true)
+            .str("skip_reason", "Skipped due to prep failure")
+            .ok();
+    }
+
+    let config = BuildConfig::cargo();
+    let request = TransportRequest::Shell(config.pragma.to_shell_request());
+
+    OutputMap::new()
+        .request("request", request)
+        .bool("skip", false)
+        .ok()
+}
+
+/// Parse the pragma shell response (pure).
+fn execute_parse_pragma_result(
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    if let Some(result) = propagate_skipped(
+        &inputs,
+        "response",
+        &["pragma_success", "pragma_stderr"],
+    ) {
+        return result;
+    }
+
+    let skip = require_bool(&inputs, "skip")?;
+    let skip_reason = optional_str_strict(&inputs, "skip_reason")?;
+    let response = optional_response_strict(&inputs, "response")?;
+
+    if skip {
+        let reason = skip_reason.unwrap_or("Skipped");
+        return OutputMap::new()
+            .bool("pragma_success", false)
+            .str("pragma_stderr", reason)
+            .ok();
+    }
+
+    let shell = match response {
+        Some(response) => response.require_shell()?,
+        None => {
+            return OutputMap::new()
+                .bool("pragma_success", false)
+                .str("pragma_stderr", "missing response")
+                .ok();
+        }
+    };
+
+    OutputMap::new()
+        .bool("pragma_success", shell.success())
+        .str("pragma_stderr", shell.stderr.clone())
         .ok()
 }
 
@@ -387,11 +535,19 @@ fn execute_prepare_clippy_lint(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
     let build_success = require_bool_or_skipped(&inputs, "build_success", false)?;
+    let pragma_success = require_bool_or_skipped(&inputs, "pragma_success", false)?;
 
     if !build_success {
         return OutputMap::new()
             .bool("skip", true)
             .str("skip_reason", "Skipped due to build failure")
+            .ok();
+    }
+
+    if !pragma_success {
+        return OutputMap::new()
+            .bool("skip", true)
+            .str("skip_reason", "Skipped due to pragma failure")
             .ok();
     }
 
@@ -443,11 +599,19 @@ fn execute_prepare_guardrail_check(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
     let testgen_success = require_bool_or_skipped(&inputs, "testgen_success", false)?;
+    let pragma_success = require_bool_or_skipped(&inputs, "pragma_success", false)?;
 
     if !testgen_success {
         return OutputMap::new()
             .bool("skip", true)
             .str("skip_reason", "Skipped due to testgen failure")
+            .ok();
+    }
+
+    if !pragma_success {
+        return OutputMap::new()
+            .bool("skip", true)
+            .str("skip_reason", "Skipped due to pragma failure")
             .ok();
     }
 
@@ -513,11 +677,35 @@ fn execute_prepare_verify_check(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
     let prep_success = require_bool_or_skipped(&inputs, "prep_success", false)?;
+    let bootstrap_success = require_bool_or_skipped(&inputs, "bootstrap_success", false)?;
+    let testgen_success = require_bool_or_skipped(&inputs, "testgen_success", false)?;
+    let pragma_success = require_bool_or_skipped(&inputs, "pragma_success", false)?;
 
     if !prep_success {
         return OutputMap::new()
             .bool("skip", true)
             .str("skip_reason", "Skipped due to codegen failure")
+            .ok();
+    }
+
+    if !bootstrap_success {
+        return OutputMap::new()
+            .bool("skip", true)
+            .str("skip_reason", "Skipped due to bootstrap failure")
+            .ok();
+    }
+
+    if !testgen_success {
+        return OutputMap::new()
+            .bool("skip", true)
+            .str("skip_reason", "Skipped due to testgen failure")
+            .ok();
+    }
+
+    if !pragma_success {
+        return OutputMap::new()
+            .bool("skip", true)
+            .str("skip_reason", "Skipped due to pragma failure")
             .ok();
     }
 
@@ -600,11 +788,19 @@ fn execute_report(inputs: HashMap<String, Value>) -> Result<HashMap<String, Valu
     let test_success = require_bool_or_skipped(&inputs, "test_success", true)?;
     let lint_success = require_bool_or_skipped(&inputs, "lint_success", true)?;
     let testgen_success = require_bool_or_skipped(&inputs, "testgen_success", true)?;
+    let bootstrap_success = require_bool_or_skipped(&inputs, "bootstrap_success", true)?;
+    let pragma_success = require_bool_or_skipped(&inputs, "pragma_success", true)?;
     let guardrail_success = require_bool_or_skipped(&inputs, "guardrail_success", true)?;
     let verify_success = require_bool_or_skipped(&inputs, "verify_success", true)?;
 
-    let overall_success =
-        build_success && test_success && lint_success && testgen_success && guardrail_success && verify_success;
+    let overall_success = build_success
+        && test_success
+        && lint_success
+        && testgen_success
+        && bootstrap_success
+        && pragma_success
+        && guardrail_success
+        && verify_success;
 
     let blocks = build_report_blocks(
         build_success,
@@ -612,6 +808,8 @@ fn execute_report(inputs: HashMap<String, Value>) -> Result<HashMap<String, Valu
         lint_success,
         verify_success,
         testgen_success,
+        bootstrap_success,
+        pragma_success,
         guardrail_success,
         overall_success,
         &inputs,
@@ -641,6 +839,8 @@ fn build_report_blocks(
     lint_success: bool,
     verify_success: bool,
     testgen_success: bool,
+    bootstrap_success: bool,
+    pragma_success: bool,
     guardrail_success: bool,
     overall_success: bool,
     inputs: &HashMap<String, Value>,
@@ -651,6 +851,8 @@ fn build_report_blocks(
     let test_stderr = optional_str_strict(inputs, "test_stderr")?.unwrap_or("");
     let lint_stderr = optional_str_strict(inputs, "lint_stderr")?.unwrap_or("");
     let testgen_stderr = optional_str_strict(inputs, "testgen_stderr")?.unwrap_or("");
+    let bootstrap_stderr = optional_str_strict(inputs, "bootstrap_stderr")?.unwrap_or("");
+    let pragma_stderr = optional_str_strict(inputs, "pragma_stderr")?.unwrap_or("");
     let guardrail_stderr = optional_str_strict(inputs, "guardrail_stderr")?.unwrap_or("");
     let verify_stderr = optional_str_strict(inputs, "verify_stderr")?.unwrap_or("");
 
@@ -661,6 +863,9 @@ fn build_report_blocks(
          Build: {}\n\
          Test:  {}\n\
          Lint:  {}\n\
+         Testgen: {}\n\
+         Bootstrap: {}\n\
+         Pragma: {}\n\
          Verify: {}\n\
          Guardrails: {}\n\
          ---------\n\
@@ -668,12 +873,11 @@ fn build_report_blocks(
         if build_success { "PASS" } else { "FAIL" },
         if test_success { "PASS" } else { "FAIL" },
         if lint_success { "PASS" } else { "FAIL" },
+        if testgen_success { "PASS" } else { "FAIL" },
+        if bootstrap_success { "PASS" } else { "FAIL" },
+        if pragma_success { "PASS" } else { "FAIL" },
         if verify_success { "PASS" } else { "FAIL" },
-        if testgen_success && guardrail_success {
-            "PASS"
-        } else {
-            "FAIL"
-        },
+        if guardrail_success { "PASS" } else { "FAIL" },
         if overall_success {
             "SUCCESS"
         } else {
@@ -709,6 +913,18 @@ fn build_report_blocks(
     if !lint_success && !lint_stderr.is_empty() {
         blocks.push(StructuredBlock::Raw(format!(
             "\n--- Lint stderr ---\n{lint_stderr}\n"
+        )));
+    }
+
+    if !bootstrap_success && !bootstrap_stderr.is_empty() {
+        blocks.push(StructuredBlock::Raw(format!(
+            "\n--- Bootstrap stderr ---\n{bootstrap_stderr}\n"
+        )));
+    }
+
+    if !pragma_success && !pragma_stderr.is_empty() {
+        blocks.push(StructuredBlock::Raw(format!(
+            "\n--- Pragma stderr ---\n{pragma_stderr}\n"
         )));
     }
 
@@ -786,6 +1002,30 @@ impl Mockable for CIOp {
             CIOp::ParseTestgenResult => OutputMap::new()
                 .bool("testgen_success", true)
                 .str("testgen_stderr", "")
+                .build(),
+            CIOp::PrepareBootstrapCommand => {
+                let config = BuildConfig::cargo();
+                let request = TransportRequest::Shell(config.bootstrap.to_shell_request());
+                OutputMap::new()
+                    .request("request", request)
+                    .bool("skip", false)
+                    .build()
+            }
+            CIOp::ParseBootstrapResult => OutputMap::new()
+                .bool("bootstrap_success", true)
+                .str("bootstrap_stderr", "")
+                .build(),
+            CIOp::PreparePragmaCommand => {
+                let config = BuildConfig::cargo();
+                let request = TransportRequest::Shell(config.pragma.to_shell_request());
+                OutputMap::new()
+                    .request("request", request)
+                    .bool("skip", false)
+                    .build()
+            }
+            CIOp::ParsePragmaResult => OutputMap::new()
+                .bool("pragma_success", true)
+                .str("pragma_stderr", "")
                 .build(),
             CIOp::PrepareBuildCommand => {
                 let config = BuildConfig::cargo();
@@ -968,6 +1208,8 @@ mod tests {
         inputs.insert("test_success".to_string(), Value::Bool(true));
         inputs.insert("lint_success".to_string(), Value::Bool(true));
         inputs.insert("testgen_success".to_string(), Value::Bool(true));
+        inputs.insert("bootstrap_success".to_string(), Value::Bool(true));
+        inputs.insert("pragma_success".to_string(), Value::Bool(true));
         inputs.insert("guardrail_success".to_string(), Value::Bool(true));
         inputs.insert("verify_success".to_string(), Value::Bool(true));
 
@@ -993,6 +1235,8 @@ mod tests {
         inputs.insert("lint_stdout".to_string(), Value::Str(String::new()));
         inputs.insert("lint_stderr".to_string(), Value::Str(String::new()));
         inputs.insert("testgen_success".to_string(), Value::Bool(true));
+        inputs.insert("bootstrap_success".to_string(), Value::Bool(true));
+        inputs.insert("pragma_success".to_string(), Value::Bool(true));
         inputs.insert("guardrail_success".to_string(), Value::Bool(true));
         inputs.insert("verify_success".to_string(), Value::Bool(true));
 

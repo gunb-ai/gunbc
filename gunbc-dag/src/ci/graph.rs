@@ -230,6 +230,39 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
         .expect("codegen DAG should include parse_codegen_result");
 
     // ========================================================================
+    // Bootstrap Stage
+    // ========================================================================
+
+    let bootstrap = add_skippable_transport_triplet(
+        &mut builder,
+        "bootstrap",
+        vec![port("prep_success", "Bool")],
+        vec![
+            port("bootstrap_success", "Bool"),
+            port("bootstrap_stderr", "String"),
+        ],
+        CIGraphOp::CI(CIOp::PrepareBootstrapCommand),
+        CIGraphOp::CI(CIOp::ParseBootstrapResult),
+        CIGraphOp::Transport(TransportOps::Execute),
+        parse_codegen_result,
+    )?;
+
+    // ========================================================================
+    // Pragma Stage
+    // ========================================================================
+
+    let pragma = add_skippable_transport_triplet(
+        &mut builder,
+        "pragma",
+        vec![port("prep_success", "Bool")],
+        vec![port("pragma_success", "Bool"), port("pragma_stderr", "String")],
+        CIGraphOp::CI(CIOp::PreparePragmaCommand),
+        CIGraphOp::CI(CIOp::ParsePragmaResult),
+        CIGraphOp::Transport(TransportOps::Execute),
+        parse_codegen_result,
+    )?;
+
+    // ========================================================================
     // Testgen Stage
     // ========================================================================
 
@@ -292,7 +325,7 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
     let prepare_clippy_lint = builder.add_node_after(
         Node::opaque(
             "prepare_clippy_lint",
-            vec![port("build_success", "Bool")],
+            vec![port("build_success", "Bool"), port("pragma_success", "Bool")],
             vec![port("skip", "Bool"), optional("skip_reason", "String")],
             CIGraphOp::CI(CIOp::PrepareClippyLint),
         ),
@@ -347,7 +380,7 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
     let guardrail = add_skippable_transport_triplet(
         &mut builder,
         "guardrail_check",
-        vec![port("testgen_success", "Bool")],
+        vec![port("testgen_success", "Bool"), port("pragma_success", "Bool")],
         vec![port("guardrail_success", "Bool"), port("guardrail_stderr", "String")],
         CIGraphOp::CI(CIOp::PrepareGuardrailCheck),
         CIGraphOp::CI(CIOp::ParseGuardrailResult),
@@ -362,7 +395,12 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
     let verify = add_skippable_transport_triplet(
         &mut builder,
         "verify_check",
-        vec![port("prep_success", "Bool")],
+        vec![
+            port("prep_success", "Bool"),
+            port("bootstrap_success", "Bool"),
+            port("testgen_success", "Bool"),
+            port("pragma_success", "Bool"),
+        ],
         vec![port("verify_success", "Bool"), port("verify_stderr", "String")],
         CIGraphOp::CI(CIOp::PrepareVerifyCheck),
         CIGraphOp::CI(CIOp::ParseVerifyResult),
@@ -382,10 +420,14 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
                 port("test_success", "Bool"),
                 port("lint_success", "Bool"),
                 port("testgen_success", "Bool"),
+                port("bootstrap_success", "Bool"),
+                port("pragma_success", "Bool"),
                 port("guardrail_success", "Bool"),
                 port("verify_success", "Bool"),
                 optional("build_stderr", "String"),
                 optional("testgen_stderr", "String"),
+                optional("bootstrap_stderr", "String"),
+                optional("pragma_stderr", "String"),
                 optional("test_stdout", "String"),
                 optional("test_stderr", "String"),
                 optional("lint_stderr", "String"),
@@ -404,6 +446,18 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
     // ========================================================================
 
     // Codegen DAG edges are wired during inlining.
+
+    // Bootstrap stage — codegen result feeds prepare
+    builder.add_edge(
+        parse_codegen_result.out("prep_success"),
+        bootstrap.prepare.in_port("prep_success"),
+    )?;
+
+    // Pragma stage — codegen result feeds prepare
+    builder.add_edge(
+        parse_codegen_result.out("prep_success"),
+        pragma.prepare.in_port("prep_success"),
+    )?;
 
     // Testgen stage — codegen result feeds prepare
     builder.add_edge(
@@ -432,6 +486,10 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
         build.parse.out("build_success"),
         prepare_clippy_lint.in_port("build_success"),
     )?;
+    builder.add_edge(
+        pragma.parse.out("pragma_success"),
+        prepare_clippy_lint.in_port("pragma_success"),
+    )?;
     builder.add_edge(prepare_clippy_lint.out("skip"), clippy_lint.in_port("skip"))?;
     builder.add_edge(clippy_lint.out("success"), parse_lint.in_port("success"))?;
     builder.add_edge(clippy_lint.out("stdout"), parse_lint.in_port("stdout"))?;
@@ -447,11 +505,27 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
         testgen.parse.out("testgen_success"),
         guardrail.prepare.in_port("testgen_success"),
     )?;
+    builder.add_edge(
+        pragma.parse.out("pragma_success"),
+        guardrail.prepare.in_port("pragma_success"),
+    )?;
 
     // Verify stage — codegen feeds prepare
     builder.add_edge(
         parse_codegen_result.out("prep_success"),
         verify.prepare.in_port("prep_success"),
+    )?;
+    builder.add_edge(
+        bootstrap.parse.out("bootstrap_success"),
+        verify.prepare.in_port("bootstrap_success"),
+    )?;
+    builder.add_edge(
+        testgen.parse.out("testgen_success"),
+        verify.prepare.in_port("testgen_success"),
+    )?;
+    builder.add_edge(
+        pragma.parse.out("pragma_success"),
+        verify.prepare.in_port("pragma_success"),
     )?;
 
     // Report — success flags and stderr for failure details
@@ -459,9 +533,25 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
     builder.add_edge(test.parse.out("test_success"), report.in_port("test_success"))?;
     builder.add_edge(parse_lint.out("lint_success"), report.in_port("lint_success"))?;
     builder.add_edge(testgen.parse.out("testgen_success"), report.in_port("testgen_success"))?;
+    builder.add_edge(
+        bootstrap.parse.out("bootstrap_success"),
+        report.in_port("bootstrap_success"),
+    )?;
+    builder.add_edge(
+        pragma.parse.out("pragma_success"),
+        report.in_port("pragma_success"),
+    )?;
     builder.add_edge(guardrail.parse.out("guardrail_success"), report.in_port("guardrail_success"))?;
     builder.add_edge(build.parse.out("build_stderr"), report.in_port("build_stderr"))?;
     builder.add_edge(testgen.parse.out("testgen_stderr"), report.in_port("testgen_stderr"))?;
+    builder.add_edge(
+        bootstrap.parse.out("bootstrap_stderr"),
+        report.in_port("bootstrap_stderr"),
+    )?;
+    builder.add_edge(
+        pragma.parse.out("pragma_stderr"),
+        report.in_port("pragma_stderr"),
+    )?;
     builder.add_edge(test.parse.out("test_stdout"), report.in_port("test_stdout"))?;
     builder.add_edge(test.parse.out("test_stderr"), report.in_port("test_stderr"))?;
     builder.add_edge(parse_lint.out("lint_stderr"), report.in_port("lint_stderr"))?;

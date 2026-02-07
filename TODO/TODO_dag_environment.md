@@ -24,8 +24,8 @@ general environment-node pattern is still ad-hoc:
 GOOD (tools):
   EnvOp ──tool:clippy──→ LintNode     (handle flows through edge)
 
-GOOD (filesystem, clock — tool-specific):
-  GistOps::FsEnv/ClockEnv → PrepareRequest (handles flow through edges)
+GOOD (filesystem, clock — shared env nodes):
+  FsEnv/ClockEnv → PrepareRequest (handles flow through edges)
 
 GOOD (platform — deps):
   PlatformEnv → GenerateScripts         (platform passed in as input)
@@ -74,19 +74,18 @@ Pure nodes build `TransportRequest` values. A single `TransportOps::Execute`
 node performs the I/O. Pure nodes parse the response. DryRun intercepts
 the Execute node. This is also the gold standard.
 
-### Filesystem handles — MODELED (tool-specific)
+### Filesystem handles — MODELED (shared env node)
 
 ```
-GistOps::FsEnv ──fs:write→ GistOps::PrepareRequest
+FsEnv ──fs:write→ GistOps::PrepareRequest
 ```
 
-**Key files**: `lib/gist-ops/src/lib.rs` (FsEnv + require_filesystem_handle),
+**Key files**: `lib/primitives/src/env.rs` (FsEnv),
 `lib/tools/gist/src/graph.rs` (fs:write port wiring)
 
-Gist now acquires a `FilesystemHandle` at the DAG boundary via `FsEnv`
+Gist acquires a `FilesystemHandle` at the DAG boundary via `FsEnv`
 and passes it to pure ops. This solves mockability and makes the handle
-visible in the graph, but the pattern is still tool-specific rather than
-a shared environment node.
+visible in the graph using a shared environment node.
 
 ### Platform — MODELED (deps)
 
@@ -101,16 +100,16 @@ Deps now acquires platform at the DAG boundary (`PlatformEnv`) and passes
 it to `GenerateScripts` via `res:platform`. Platform detection still exists
 in convenience constructors/tests, but the DAG path is now explicit.
 
-### Clock — MODELED (tool-specific)
+### Clock — MODELED (shared env node)
 
 ```
-GistOps::ClockEnv ──clock→ GistOps::PrepareRequest
+ClockEnv ──clock→ GistOps::PrepareRequest
 ```
 
-**Key files**: `lib/gist-ops/src/lib.rs`, `lib/tools/gist/src/graph.rs`
+**Key files**: `lib/primitives/src/env.rs`, `lib/tools/gist/src/graph.rs`
 
 Gist now captures time at the DAG boundary and passes a `Timestamp`
-through edges. This is still tool-specific; no shared clock env node.
+through edges using the shared `ClockEnv` node.
 
 ### Environment variables — MODELED AT DAG BOUNDARY
 

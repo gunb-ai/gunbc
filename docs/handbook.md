@@ -6,6 +6,7 @@ Companion documents:
 - `docs/design/overview.md` for design rationale and formal framing
 - `SPEC.md` for the formal IR specification
 - `docs/design/testgen.md` for the test generation model
+- `docs/ab-writing-workflows.md` for A/B workflow comparisons (imperative/OO/functional vs gunbc DAG)
 - `docs/design/unified-emission.md` for the rendering unification plan
 - `docs/design/unified-registration.md` for the registration unification plan
 - `AGENT.md` for onboarding guardrails and repo pointers
@@ -20,6 +21,7 @@ This file is self-contained: [Appendix A](#appendix-a-pattern-reference) has eve
 | `docs/design/overview.md` | Philosophy + formal model | You want design rationale and invariants |
 | `SPEC.md` | Formal IR spec | You need canonical definitions |
 | `docs/design/testgen.md` | Test generation theory | You are touching testgen or proof obligations |
+| `docs/ab-writing-workflows.md` | A/B workflow comparisons | You want marketing-ready examples of imperative/OO/functional vs gunbc DAG |
 | `docs/design/unified-emission.md` | Rendering unification | You are touching rendering or codegen |
 | `docs/design/unified-registration.md` | Registration unification | You are adding tools or auto-discovery |
 | `AGENT.md` | Onboarding + guardrails | You are new to the repo or doing refactors |
@@ -964,7 +966,12 @@ pub fn build_gist_graph(
     let fs_env = builder.add_root_node(Node::opaque(
         "fs_env", vec![],
         vec![port("fs:write", "FilesystemHandle")],
-        GistGraphOp::Gist(GistOps::FsEnv { scope: Scope::Write }),
+        GistGraphOp::FsEnv(FsEnv::new(Scope::Write)),
+    ))?;
+    let clock_env = builder.add_root_node(Node::opaque(
+        "clock_env", vec![],
+        vec![port("clock", "Timestamp")],
+        GistGraphOp::ClockEnv(ClockEnv),
     ))?;
 
     // Mode-specific content acquisition

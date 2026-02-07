@@ -5,12 +5,13 @@
 #   make <target>      - verify only (CI-safe, fails on issues)
 #   make <target>-fix  - auto-fix then verify (for dev)
 #
-# Dev workflow:     make test-fix  (fix everything, then test)
-# CI verification:  make test      (verify fmt + lint + test)
+# Dev default:     make test      (ensure generated artifacts, then test)
+# Dev workflow:    make test-fix  (fmt/lint fix + ensure generated artifacts, then test)
+# CI verification: make verify    (check generated artifacts)
 
 .DEFAULT_GOAL := help
 
-.PHONY: help ensure-codegen codegen build clean testgen testgen-check pragma-check verify fmt-fix lint-fix test test-fix test-all check check-fix clippy clippy-fix fmt fmt-check ci-yaml gist gist-dry gist-diff gist-diff-dry gist-recent gist-recent-dry makegen makegen-dry deps deps-dry bootstrap bootstrap-dry ci ci-dry pragma pragma-dry build-all build-all-dry
+.PHONY: help ensure-codegen codegen build clean testgen testgen-check pragma-check verify verify-fix fmt-fix lint-fix test test-fix test-all check check-fix clippy clippy-fix fmt fmt-check ci-yaml gist gist-dry gist-diff gist-diff-dry gist-recent gist-recent-dry makegen makegen-dry deps deps-dry bootstrap bootstrap-dry ci ci-dry pragma pragma-dry build-all build-all-dry
 
 # Ensure CLI entrypoints exist (bootstrap-safe)
 ensure-codegen:
@@ -47,6 +48,13 @@ verify: ensure-codegen
 	@RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-testgen --release -- --check
 	@RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-pragma --release -- --check
 
+# Ensure generated artifacts are up to date
+verify-fix: ensure-codegen
+	@RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-makegen --release
+	@RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-bootstrap --release
+	@RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-testgen --release
+	@RUSTFLAGS="-D warnings" cargo run -p gunbc-dag --bin gunbc-pragma --release
+
 help:
 	@echo "gunbc tools - generated Makefile"
 	@echo ""
@@ -63,6 +71,7 @@ help:
 	@echo "  testgen-check  - Check if generated tests are stale"
 	@echo "  pragma-check  - Check if pragma artifacts are stale"
 	@echo "  verify   - Verify generated artifacts match their generators"
+	@echo "  verify-fix  - Ensure generated artifacts are up to date"
 	@echo ""
 	@echo "Development:"
 	@echo "  test  - Run tests (<=S)"
@@ -102,15 +111,15 @@ lint-fix: pragma
 	@cargo clippy --fix --workspace --allow-dirty --allow-staged -- -D warnings
 
 # test: Run tests (<=S)
-test: build verify
+test: build verify-fix
 	@RUSTFLAGS="-D warnings" cargo test
 
 # test-fix: auto-fix then verify
-test-fix: fmt-fix lint-fix build verify
+test-fix: fmt-fix lint-fix build verify-fix
 	@RUSTFLAGS="-D warnings" cargo test
 
 # test-all: Run all tests (<=XL)
-test-all: build verify
+test-all: build verify-fix
 	@GUNBC_TEST_MAX_COST=XL RUN_LIVE_INTEGRATION=1 RUSTFLAGS="-D warnings" cargo test
 
 # check: Type check all targets

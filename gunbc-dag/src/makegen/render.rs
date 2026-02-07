@@ -118,8 +118,9 @@ fn build_makefile_blocks(registry: &ToolRegistry, config: &BuildConfig) -> Vec<S
          #   make <target>      - verify only (CI-safe, fails on issues)\n\
          #   make <target>-fix  - auto-fix then verify (for dev)\n\
          #\n\
-         # Dev workflow:     make test-fix  (fix everything, then test)\n\
-         # CI verification:  make test      (verify fmt + lint + test)\n\n"
+         # Dev default:     make test      (ensure generated artifacts, then test)\n\
+         # Dev workflow:    make test-fix  (fmt/lint fix + ensure generated artifacts, then test)\n\
+         # CI verification: make verify    (check generated artifacts)\n\n"
             .to_string(),
     ));
 
@@ -155,7 +156,7 @@ fn build_makefile_blocks(registry: &ToolRegistry, config: &BuildConfig) -> Vec<S
 /// Build the .PHONY line.
 fn build_phony_line(registry: &ToolRegistry) -> String {
     let mut phony = String::from(
-        ".PHONY: help ensure-codegen codegen build clean testgen testgen-check pragma-check verify fmt-fix lint-fix",
+        ".PHONY: help ensure-codegen codegen build clean testgen testgen-check pragma-check verify verify-fix fmt-fix lint-fix",
     );
 
     for meta in &registry.meta_targets {
@@ -282,6 +283,31 @@ fn build_core_targets(config: &BuildConfig) -> Vec<StructuredBlock> {
         ),
     }));
 
+    // verify-fix
+    blocks.push(StructuredBlock::Target(Target {
+        name: "verify-fix".to_string(),
+        deps: vec!["ensure-codegen".to_string()],
+        body: vec![
+            format!(
+                "@{}cargo run -p gunbc-dag --bin gunbc-makegen --release",
+                warning_prefix
+            ),
+            format!(
+                "@{}cargo run -p gunbc-dag --bin gunbc-bootstrap --release",
+                warning_prefix
+            ),
+            format!(
+                "@{}cargo run -p gunbc-dag --bin gunbc-testgen --release",
+                warning_prefix
+            ),
+            format!(
+                "@{}cargo run -p gunbc-dag --bin gunbc-pragma --release",
+                warning_prefix
+            ),
+        ],
+        comment: Some("Ensure generated artifacts are up to date".to_string()),
+    }));
+
     blocks
 }
 
@@ -315,6 +341,9 @@ fn build_help_target(registry: &ToolRegistry, config: &BuildConfig) -> Structure
     );
     lines.push(
         "@echo \"  verify   - Verify generated artifacts match their generators\"".to_string(),
+    );
+    lines.push(
+        "@echo \"  verify-fix  - Ensure generated artifacts are up to date\"".to_string(),
     );
     lines.push("@echo \"\"".to_string());
 
@@ -716,8 +745,8 @@ mod tests {
 
         // Individual meta targets
         assert!(
-            makefile.contains("test: build verify"),
-            "test should depend on build and verify (testgen is included in build)"
+            makefile.contains("test: build verify-fix"),
+            "test should depend on build and verify-fix (testgen is included in build)"
         );
         assert!(makefile.contains("cargo test"));
 

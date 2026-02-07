@@ -77,6 +77,7 @@ Port contract (fixed by the helper):
 ## 2. Adopt Transport Triplet Helpers
 
 **Status:** Done (migrated: build, codegen, CI, gist, deps, review, llm-ops)
+**Updated:** 2026-02-07
 **Effort:** Low
 **Location:** Existing helpers in `core/ir/src/patterns/transport_triplet.rs`
 

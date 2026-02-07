@@ -106,6 +106,10 @@ pub struct BuildConfig {
     pub ci_yaml: BuildCommand,
     /// Command to regenerate tests from DAGs
     pub testgen: BuildCommand,
+    /// Command to generate bootstrap artifacts (Makefile + .gitignore)
+    pub bootstrap: BuildCommand,
+    /// Command to generate pragma artifacts (clippy.toml + allowlists)
+    pub pragma: BuildCommand,
     /// Command to check if generated tests are stale
     pub testgen_check: BuildCommand,
     /// Command to check if generated Makefile is stale
@@ -166,6 +170,22 @@ impl BuildConfig {
             testgen: c(
                 CargoCommand::new(Subcommand::Run(CargoInvocation::in_package(
                     "gunbc-testgen",
+                    "gunbc-dag",
+                )))
+                .release()
+                .warnings(w),
+            ),
+            bootstrap: c(
+                CargoCommand::new(Subcommand::Run(CargoInvocation::in_package(
+                    "gunbc-bootstrap",
+                    "gunbc-dag",
+                )))
+                .release()
+                .warnings(w),
+            ),
+            pragma: c(
+                CargoCommand::new(Subcommand::Run(CargoInvocation::in_package(
+                    "gunbc-pragma",
                     "gunbc-dag",
                 )))
                 .release()
@@ -279,6 +299,22 @@ impl BuildConfig {
             testgen: c(
                 CargoCommand::new(Subcommand::Run(CargoInvocation::in_package(
                     "gunbc-testgen",
+                    "gunbc-dag",
+                )))
+                .release()
+                .warnings(w),
+            ),
+            bootstrap: c(
+                CargoCommand::new(Subcommand::Run(CargoInvocation::in_package(
+                    "gunbc-bootstrap",
+                    "gunbc-dag",
+                )))
+                .release()
+                .warnings(w),
+            ),
+            pragma: c(
+                CargoCommand::new(Subcommand::Run(CargoInvocation::in_package(
+                    "gunbc-pragma",
                     "gunbc-dag",
                 )))
                 .release()
@@ -827,10 +863,11 @@ impl ConfigField {
 ///
 /// # Dev UX Convention (from the-gunbai)
 ///
-/// - `make <target>` - verify only (CI-safe, fails on issues)
+/// - `make <target>` - verify by default (CI-safe, fails on issues)
 /// - `make <target>-fix` - auto-fix then verify (for dev)
 ///
-/// Example: `make test` runs tests, `make test-fix` runs fmt-fix + lint-fix first.
+/// Note: some resources can map Ensure to a fix target (e.g. generated artifacts),
+/// so `make test` may auto-repair drift before running tests.
 #[derive(Debug, Clone)]
 pub struct MetaTarget {
     /// Target name (e.g., "test")
@@ -894,8 +931,11 @@ impl MetaTarget {
     ///
     /// The fix variant runs the specified prerequisites before the main command.
     /// Following the-gunbai convention:
-    /// - `make test` - verify only (CI-safe)
+    /// - `make test` - verify by default (CI-safe)
     /// - `make test-fix` - auto-fix (fmt + lint) then verify
+    ///
+    /// Some resources can map Ensure to a fix target (e.g. verify-fix for
+    /// generated artifacts), so `make test` may auto-repair drift.
     pub fn with_fix_variant(mut self, prerequisites: Vec<FixAlias>) -> Self {
         self.has_fix_variant = true;
         self.fix_prerequisites = prerequisites;
@@ -958,12 +998,12 @@ impl MetaTarget {
 ///
 /// # Dev UX Convention (from the-gunbai)
 ///
-/// - `make <target>` - verify only (CI-safe, fails on issues)
+/// - `make <target>` - verify by default (CI-safe, fails on issues)
 /// - `make <target>-fix` - auto-fix then verify (for dev)
 ///
 /// Examples:
-/// - `make test` runs tests (CI uses this)
-/// - `make test-fix` runs fmt-fix + lint-fix, then tests (dev uses this)
+/// - `make test` runs tests (auto-repairs generated artifacts)
+/// - `make test-fix` runs fmt-fix + lint-fix, then tests
 pub fn default_meta_targets() -> Vec<MetaTarget> {
     vec![
         // test - run all tests (requires full build + verify)

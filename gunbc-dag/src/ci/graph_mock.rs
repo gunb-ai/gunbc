@@ -17,6 +17,8 @@
 //! - `execute_codegen_exists`: Check codegen output exists
 //! - `execute_codegen`: Run codegen if needed
 //! - `execute_stamp_write`: Write codegen stamp file
+//! - `execute_bootstrap`: Run bootstrap (Makefile + .gitignore)
+//! - `execute_pragma`: Run pragma (clippy.toml + allowlists)
 //! - `execute_testgen`: Run testgen after codegen
 //! - `execute_build`: Run cargo build
 //! - `execute_test`: Run cargo test
@@ -75,6 +77,8 @@ pub fn ci_mock_spec() -> MockSpec {
                 .input("test_success", Value::Bool(true))
                 .input("lint_success", Value::Bool(true))
                 .input("testgen_success", Value::Bool(true))
+                .input("bootstrap_success", Value::Bool(true))
+                .input("pragma_success", Value::Bool(true))
                 .input("guardrail_success", Value::Bool(true))
                 .input("verify_success", Value::Bool(true))
                 .output("overall_success", OutputMatcher::exact(Value::Bool(true)))
@@ -95,6 +99,8 @@ pub fn ci_mock_spec() -> MockSpec {
                 .input("lint_stdout", Value::Str(String::new()))
                 .input("lint_stderr", Value::Str(String::new()))
                 .input("testgen_success", Value::Bool(true))
+                .input("bootstrap_success", Value::Bool(true))
+                .input("pragma_success", Value::Bool(true))
                 .input("guardrail_success", Value::Bool(true))
                 .input("verify_success", Value::Bool(true))
                 .output("overall_success", OutputMatcher::exact(Value::Bool(false)))
@@ -192,6 +198,46 @@ pub fn ci_mock_spec() -> MockSpec {
                 )
                 .output("testgen_success", OutputMatcher::exact(Value::Bool(false)))
                 .description("Skip path: testgen skipped → success false"),
+        )
+        .node_example(
+            NodeExample::new("parse_bootstrap")
+                .input(
+                    "response",
+                    Value::Response(ShellResponse::ok("Generated bootstrap files").into()),
+                )
+                .input("skip", Value::Bool(false))
+                .output("bootstrap_success", OutputMatcher::exact(Value::Bool(true)))
+                .description("Bootstrap shell success → bootstrap_success true"),
+        )
+        .node_example(
+            NodeExample::new("parse_bootstrap")
+                .input("skip", Value::Bool(true))
+                .input(
+                    "skip_reason",
+                    Value::Str("Skipped due to prep failure".into()),
+                )
+                .output("bootstrap_success", OutputMatcher::exact(Value::Bool(false)))
+                .description("Skip path: bootstrap skipped → success false"),
+        )
+        .node_example(
+            NodeExample::new("parse_pragma")
+                .input(
+                    "response",
+                    Value::Response(ShellResponse::ok("Generated pragma files").into()),
+                )
+                .input("skip", Value::Bool(false))
+                .output("pragma_success", OutputMatcher::exact(Value::Bool(true)))
+                .description("Pragma shell success → pragma_success true"),
+        )
+        .node_example(
+            NodeExample::new("parse_pragma")
+                .input("skip", Value::Bool(true))
+                .input(
+                    "skip_reason",
+                    Value::Str("Skipped due to prep failure".into()),
+                )
+                .output("pragma_success", OutputMatcher::exact(Value::Bool(false)))
+                .description("Skip path: pragma skipped → success false"),
         )
         .node_example(
             NodeExample::new("parse_build")
@@ -860,6 +906,28 @@ fn with_ci_typed_mocks(
         .expect("execute_stamp_write response should match type")
         .boundary_bool("execute_stamp_write", "skip", false)
         .expect("execute_stamp_write skip should match type")
+        // Transport: execute_bootstrap (succeeds)
+        .transport_response(
+            "execute_bootstrap",
+            "response",
+            TransportResponse::Shell(ShellResponse::ok("Generated bootstrap files")),
+        )
+        .expect("execute_bootstrap response should match type")
+        .boundary_bool("execute_bootstrap", "skip", false)
+        .expect("execute_bootstrap skip should match type")
+        .boundary_str("execute_bootstrap", "skip_reason", "")
+        .expect("execute_bootstrap skip_reason should match type")
+        // Transport: execute_pragma (succeeds)
+        .transport_response(
+            "execute_pragma",
+            "response",
+            TransportResponse::Shell(ShellResponse::ok("Generated pragma files")),
+        )
+        .expect("execute_pragma response should match type")
+        .boundary_bool("execute_pragma", "skip", false)
+        .expect("execute_pragma skip should match type")
+        .boundary_str("execute_pragma", "skip_reason", "")
+        .expect("execute_pragma skip_reason should match type")
         // Transport: execute_testgen (succeeds)
         .transport_response(
             "execute_testgen",

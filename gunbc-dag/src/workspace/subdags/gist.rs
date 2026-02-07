@@ -11,9 +11,11 @@ use gunbc_ir::Node;
 fn convert_gist_op(op: GistGraphOp) -> WorkspaceOp {
     match op {
         // Gist-specific ops - wrap in Gist variant with a placeholder
-        // GistOps includes env + request/parse variants; internal ops use a placeholder
+        // GistOps includes request/parse variants; internal ops use a placeholder
         // The internal graph ops don't have direct WorkspaceOp equivalents
         GistGraphOp::Git(_)
+        | GistGraphOp::FsEnv(_)
+        | GistGraphOp::ClockEnv(_)
         | GistGraphOp::PrepareReadFiles
         | GistGraphOp::ParseReadFiles
         | GistGraphOp::PrepareReadFile

@@ -30,10 +30,6 @@ use std::time::SystemTime;
 /// All operations are PURE - no I/O. Use TransportOps::Execute for actual I/O.
 #[derive(Debug, Clone)]
 pub enum GistOps {
-    /// Filesystem environment (resource acquisition)
-    FsEnv { scope: filename::Scope },
-    /// Clock environment (timestamp snapshot)
-    ClockEnv,
     /// Prepare a gist creation request (PURE - no I/O)
     PrepareRequest { public: bool },
     /// Parse gist response to extract URL (PURE - no I/O)
@@ -43,18 +39,6 @@ pub enum GistOps {
 impl Executable for GistOps {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         match self {
-            GistOps::FsEnv { scope } => {
-                let fs = filename::FilesystemHandle::cross_platform(*scope);
-                let port = match scope {
-                    filename::Scope::Read => "fs:read",
-                    filename::Scope::Write => "fs:write",
-                };
-                OutputMap::new().value(port, fs.into()).ok()
-            }
-            GistOps::ClockEnv => {
-                let ts = Timestamp::now();
-                OutputMap::new().value("clock", ts.into()).ok()
-            }
             GistOps::PrepareRequest { public } => {
                 if let Some(result) = propagate_skipped(&inputs, "markdown", &["request"]) {
                     return result;

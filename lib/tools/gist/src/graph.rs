@@ -24,7 +24,7 @@ use gunbc_lib_gist_ops::GistOps;
 use gunbc_lib_git_ops::GitOps;
 use gunbc_lib_markdown::MarkdownOp;
 use gunbc_lib_transport::TransportOps;
-use gunbc_primitives::filename;
+use gunbc_primitives::{filename, ClockEnv, FsEnv};
 use std::collections::{BTreeMap, HashMap};
 
 /// Gist content acquisition mode.
@@ -73,6 +73,14 @@ pub enum GistGraphOp {
     // ========================================================================
     /// Git operations (PURE - builds requests, parses responses)
     Git(GitOps),
+
+    // ========================================================================
+    // Environment ops (resource acquisition)
+    // ========================================================================
+    /// Filesystem environment (resource acquisition)
+    FsEnv(FsEnv),
+    /// Clock environment (timestamp snapshot)
+    ClockEnv(ClockEnv),
 
     // ========================================================================
     // ReadFiles chain (batch): PrepareReadFiles -> Execute -> ParseReadFiles
@@ -130,6 +138,10 @@ impl Executable for GistGraphOp {
         match self {
             // Git operations (delegated to git-ops crate)
             GistGraphOp::Git(op) => op.execute(inputs),
+
+            // Environment ops (resource acquisition)
+            GistGraphOp::FsEnv(op) => op.execute(inputs),
+            GistGraphOp::ClockEnv(op) => op.execute(inputs),
 
             // ReadFiles chain - batch (pure)
             GistGraphOp::PrepareReadFiles => execute_prepare_read_files(inputs),
@@ -504,16 +516,14 @@ pub fn build_gist_graph(
         "fs_env",
         vec![],
         vec![port("fs:write", "FilesystemHandle")],
-        GistGraphOp::Gist(GistOps::FsEnv {
-            scope: filename::Scope::Write,
-        }),
+        GistGraphOp::FsEnv(FsEnv::new(filename::Scope::Write)),
     ))?;
 
     let clock_env = builder.add_root_node(Node::opaque(
         "clock_env",
         vec![],
         vec![port("clock", "Timestamp")],
-        GistGraphOp::Gist(GistOps::ClockEnv),
+        GistGraphOp::ClockEnv(ClockEnv),
     ))?;
 
     // ========================================================================
@@ -962,24 +972,26 @@ impl Mockable for GistGraphOp {
                 _ => HashMap::new(),
             },
 
+            // Environment ops
+            GistGraphOp::FsEnv(op) => {
+                let fs = filename::FilesystemHandle::cross_platform(op.scope);
+                let port = match op.scope {
+                    filename::Scope::Read => "fs:read",
+                    filename::Scope::Write => "fs:write",
+                };
+                OutputMap::new().value(port, fs.into()).build()
+            }
+            GistGraphOp::ClockEnv(_) => {
+                let ts =
+                    gunbc_ir::Timestamp::from_system_time(std::time::SystemTime::UNIX_EPOCH);
+                OutputMap::new().value("clock", ts.into()).build()
+            }
+
             // Pure ops
             GistGraphOp::Markdown(_) => OutputMap::new()
                 .str("markdown", "# Code Snapshot\n```rust\nfn main() {}\n```")
                 .build(),
             GistGraphOp::Gist(op) => match op {
-                GistOps::FsEnv { scope } => {
-                    let fs = filename::FilesystemHandle::cross_platform(*scope);
-                    let port = match scope {
-                        filename::Scope::Read => "fs:read",
-                        filename::Scope::Write => "fs:write",
-                    };
-                    OutputMap::new().value(port, fs.into()).build()
-                }
-                GistOps::ClockEnv => {
-                    let ts =
-                        gunbc_ir::Timestamp::from_system_time(std::time::SystemTime::UNIX_EPOCH);
-                    OutputMap::new().value("clock", ts.into()).build()
-                }
                 GistOps::PrepareRequest { .. } => OutputMap::new()
                     .request(
                         "request",
