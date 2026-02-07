@@ -661,6 +661,38 @@ oidc_exchange -> access_token -> secret_fetch -> parse -> credential
 - [ ] Add optional runtime file guard for `res:file:*` during tests.
 - [ ] Draft a sandbox + durability/replay RFC (record/replay transport I/O, deterministic tests).
 
+## Workflow Update Task List (Start ASAP)
+
+**Phase A: Define and enforce purity boundaries (now)**
+- [ ] Inventory which crates are allowed to do I/O (transport/boundary only).
+- [ ] Add clippy `disallowed_methods` for `std::fs`, `std::process::Command`, `reqwest/ureq`, `git2`, etc.
+- [ ] Clean up violations or move I/O into transport/boundary crates.
+
+**Phase B: Resource declarations by construction (now)**
+- [ ] Update `add_transport_triplet*` to always attach `res:*` ports (file/network/tool).
+- [ ] Update `add_content_upsert_chain` to declare `res:file:*` read/write for outputs.
+- [ ] Update `build_cli_upsert` to declare `res:tool:*` and any `res:target`/`res:pkg` locks.
+- [ ] Normalize resource id naming (`res:file:<path>`, `res:tool:<id>`, `res:api:<provider>`, `res:repo`, `res:target`).
+
+**Phase C: Codebase-wide purity checks (now)**
+- [ ] Implement `#[resource_test_target]` registry (auto-register DAG builders).
+- [ ] Add a single test runner that iterates all registered DAGs and runs:
+  - `derive_resource_accesses()`
+  - `detect_resource_conflicts()`
+  - `validate_resource_wiring_recursive()`
+- [ ] Wire into CI (fast, deterministic).
+
+**Phase D: Workflow consolidation + parallelism (next)**
+- [ ] Consolidate Makefile + CI + CLI to a single canonical workflow registry.
+- [ ] Add ready-queue executor with resource conflict gating (parallelism).
+- [ ] Add fast-path freshness check to skip full scans on clean repos.
+
+## Deferred: Full Sandbox + Durability (Roadmap)
+
+- [ ] Record/replay transport I/O for deterministic tests and retries.
+- [ ] Define durable I/O log schema (requests, responses, file writes, env).
+- [ ] Optional OS-level sandboxing (ptrace/seccomp/containers) for strong guarantees.
+
 ## Notes
 
 Key files for the audit:
