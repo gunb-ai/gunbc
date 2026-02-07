@@ -215,6 +215,11 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
                 .description("Provides timestamp for gist filename generation"),
         )
         .node_example(
+            NodeExample::new("credential_env")
+                .output("credential:github", OutputMatcher::Any)
+                .description("Provides GitHub credential for gist creation"),
+        )
+        .node_example(
             NodeExample::new("prepare_current_branch")
                 .input("repo_path", Value::Str(".".into()))
                 .output("request", OutputMatcher::IsRequest)
@@ -394,26 +399,38 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
 }
 
 /// Mock spec for snapshot mode (default gist).
+#[gunbc_testgen_registry_macros::resource_test_target(
+    skip,
+    name = "gist-snapshot",
+    builder = "crate::build_gist_graph(crate::GistMode::Snapshot, vec![], false).unwrap()",
+)]
 #[gunbc_testgen_registry_macros::testgen_target(
     name = "gist-snapshot",
     output = "lib/tools/gist/src/generated_tests_snapshot.rs",
     module = "gist_snapshot_generated_tests",
     builder = "crate::build_gist_graph(crate::GistMode::Snapshot, vec![], false).unwrap()",
     signature = "crate::gist_signature(&crate::GistMode::Snapshot)",
-    tool = "gist"
+    tool = "gist",
+    window_max_nodes = 1
 )]
 pub fn gist_snapshot_mock_spec() -> MockSpec {
     gist_mock_spec(&GistMode::Snapshot)
 }
 
 /// Mock spec for diff mode (gist-diff).
+#[gunbc_testgen_registry_macros::resource_test_target(
+    skip,
+    name = "gist-diff",
+    builder = r#"crate::build_gist_graph(crate::GistMode::Diff { base_ref: "main".to_string() }, vec![], false).unwrap()"#,
+)]
 #[gunbc_testgen_registry_macros::testgen_target(
     name = "gist-diff",
     output = "lib/tools/gist/src/generated_tests_diff.rs",
     module = "gist_diff_generated_tests",
     builder = r#"crate::build_gist_graph(crate::GistMode::Diff { base_ref: "main".to_string() }, vec![], false).unwrap()"#,
     signature = r#"crate::gist_signature(&crate::GistMode::Diff { base_ref: "main".to_string() })"#,
-    tool = "gist-diff"
+    tool = "gist-diff",
+    window_max_nodes = 1
 )]
 pub fn gist_diff_mock_spec() -> MockSpec {
     gist_mock_spec(&GistMode::Diff {
@@ -422,13 +439,19 @@ pub fn gist_diff_mock_spec() -> MockSpec {
 }
 
 /// Mock spec for recent mode (gist-recent).
+#[gunbc_testgen_registry_macros::resource_test_target(
+    skip,
+    name = "gist-recent",
+    builder = "crate::build_gist_graph(crate::GistMode::Recent, vec![], false).unwrap()",
+)]
 #[gunbc_testgen_registry_macros::testgen_target(
     name = "gist-recent",
     output = "lib/tools/gist/src/generated_tests_recent.rs",
     module = "gist_recent_generated_tests",
     builder = "crate::build_gist_graph(crate::GistMode::Recent, vec![], false).unwrap()",
     signature = "crate::gist_signature(&crate::GistMode::Recent)",
-    tool = "gist-recent"
+    tool = "gist-recent",
+    window_max_nodes = 1
 )]
 pub fn gist_recent_mock_spec() -> MockSpec {
     gist_mock_spec(&GistMode::Recent)

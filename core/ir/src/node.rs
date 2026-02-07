@@ -194,6 +194,25 @@ impl<T> Node<T> {
         self
     }
 
+    /// Map the operation type for this node, recursively for sub-DAGs.
+    pub fn map_ops<U, F>(self, f: &mut F) -> Node<U>
+    where
+        F: FnMut(T) -> U,
+    {
+        let body = match self.body {
+            NodeBody::Opaque(op) => NodeBody::Opaque(f(op)),
+            NodeBody::SubDag(dag) => NodeBody::SubDag(dag.map_ops(f)),
+        };
+
+        Node {
+            id: self.id,
+            inputs: self.inputs,
+            outputs: self.outputs,
+            body,
+            examples: self.examples,
+        }
+    }
+
     /// Check if this node is opaque (not a sub-DAG).
     pub fn is_opaque(&self) -> bool {
         matches!(self.body, NodeBody::Opaque(_))

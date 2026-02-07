@@ -26,6 +26,10 @@ fn mock_fs_handle() -> Value {
 }
 
 /// Mock specification for the pragma graph.
+#[gunbc_testgen_registry_macros::resource_test_target(
+    name = "pragma",
+    builder = "crate::build_pragma_graph().unwrap()",
+)]
 #[gunbc_testgen_registry_macros::testgen_target(
     name = "pragma",
     output = "gunbc-dag/src/pragma/generated_tests.rs",

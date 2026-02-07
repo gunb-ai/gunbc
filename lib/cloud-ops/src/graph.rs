@@ -58,18 +58,38 @@ pub fn build_cloud_secret_manager_credential_graph_from_config(
     }
 }
 
+#[gunbc_testgen_registry_macros::resource_test_target(
+    skip,
+    name = "cloud-secret-credential-gcp-github",
+    builder = "build_cloud_secret_manager_credential_graph_gcp_github()",
+)]
 pub fn build_cloud_secret_manager_credential_graph_gcp_github() -> Dag<CloudSecretManagerGraphOp> {
     build_cloud_secret_manager_credential_graph_gcp(CloudRuntimeKind::GitHubActions)
 }
 
+#[gunbc_testgen_registry_macros::resource_test_target(
+    skip,
+    name = "cloud-secret-credential-gcp-metadata",
+    builder = "build_cloud_secret_manager_credential_graph_gcp_metadata()",
+)]
 pub fn build_cloud_secret_manager_credential_graph_gcp_metadata() -> Dag<CloudSecretManagerGraphOp> {
     build_cloud_secret_manager_credential_graph_gcp(CloudRuntimeKind::CloudMetadata)
 }
 
+#[gunbc_testgen_registry_macros::resource_test_target(
+    skip,
+    name = "cloud-secret-credential-aws-stub",
+    builder = "build_cloud_secret_manager_credential_graph_aws_stub()",
+)]
 pub fn build_cloud_secret_manager_credential_graph_aws_stub() -> Dag<CloudSecretManagerGraphOp> {
     lift_aws(build_aws_secrets_manager_credential_graph())
 }
 
+#[gunbc_testgen_registry_macros::resource_test_target(
+    skip,
+    name = "cloud-secret-credential-azure-stub",
+    builder = "build_cloud_secret_manager_credential_graph_azure_stub()",
+)]
 pub fn build_cloud_secret_manager_credential_graph_azure_stub() -> Dag<CloudSecretManagerGraphOp> {
     lift_azure(build_azure_key_vault_credential_graph())
 }
@@ -88,18 +108,38 @@ pub fn build_cloud_secret_manager_upsert_graph_from_config(
     }
 }
 
+#[gunbc_testgen_registry_macros::resource_test_target(
+    skip,
+    name = "cloud-secret-upsert-gcp-github",
+    builder = "build_cloud_secret_manager_upsert_graph_gcp_github()",
+)]
 pub fn build_cloud_secret_manager_upsert_graph_gcp_github() -> Dag<CloudSecretManagerGraphOp> {
     build_cloud_secret_manager_upsert_graph_gcp(CloudRuntimeKind::GitHubActions)
 }
 
+#[gunbc_testgen_registry_macros::resource_test_target(
+    skip,
+    name = "cloud-secret-upsert-gcp-metadata",
+    builder = "build_cloud_secret_manager_upsert_graph_gcp_metadata()",
+)]
 pub fn build_cloud_secret_manager_upsert_graph_gcp_metadata() -> Dag<CloudSecretManagerGraphOp> {
     build_cloud_secret_manager_upsert_graph_gcp(CloudRuntimeKind::CloudMetadata)
 }
 
+#[gunbc_testgen_registry_macros::resource_test_target(
+    skip,
+    name = "cloud-secret-upsert-aws-stub",
+    builder = "build_cloud_secret_manager_upsert_graph_aws_stub()",
+)]
 pub fn build_cloud_secret_manager_upsert_graph_aws_stub() -> Dag<CloudSecretManagerGraphOp> {
     lift_aws(build_aws_secrets_manager_upsert_graph())
 }
 
+#[gunbc_testgen_registry_macros::resource_test_target(
+    skip,
+    name = "cloud-secret-upsert-azure-stub",
+    builder = "build_cloud_secret_manager_upsert_graph_azure_stub()",
+)]
 pub fn build_cloud_secret_manager_upsert_graph_azure_stub() -> Dag<CloudSecretManagerGraphOp> {
     lift_azure(build_azure_key_vault_upsert_graph())
 }

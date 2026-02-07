@@ -247,10 +247,16 @@ impl MockRequirements {
             return true;
         }
 
-        // Map-backed types (ToolHandle, Credential, FilesystemHandle, CliResult)
+        // Map-backed types (ToolHandle, Credential, FilesystemHandle, NetworkHandle, CliResult)
         // NOTE: This must match types_compatible in codegen/testgen/codegen.rs
         if actual == "Map" {
-            let map_backed = ["ToolHandle", "Credential", "FilesystemHandle", "CliResult"];
+            let map_backed = [
+                "ToolHandle",
+                "Credential",
+                "FilesystemHandle",
+                "NetworkHandle",
+                "CliResult",
+            ];
             if map_backed.contains(&expected) {
                 return true;
             }
@@ -507,6 +513,7 @@ pub fn extract_mock_requirements<T>(dag: &gunbc_ir::Dag<T>, name: &str) -> MockR
         "ToolHandle",
         "Credential",
         "FilesystemHandle",
+        "NetworkHandle",
         "Timestamp",
         "Platform",
         "CloudSecretConfig",

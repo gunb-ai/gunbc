@@ -14,6 +14,10 @@ fn mock_fs_handle() -> Value {
 }
 
 /// Mock specification for the testgen DAG graph (using test fixtures).
+#[gunbc_testgen_registry_macros::resource_test_target(
+    name = "testgen-dag",
+    builder = "crate::testgen_dag::graph::build_testgen_graph_for_test().unwrap()",
+)]
 #[gunbc_testgen_registry_macros::testgen_target(
     name = "testgen-dag",
     output = "gunbc-dag/src/testgen_dag/generated_tests.rs",

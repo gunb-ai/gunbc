@@ -273,6 +273,52 @@ impl ClippyConfig {
                 "std::process::Command::new",
                 "I6: No escape hatches. Use env nodes + tool handles. Command::new only in transport executor/cli.",
             )
+            // HTTP clients - enforce transport-only network I/O
+            .disallow(
+                "ureq::request",
+                "I6: No escape hatches. Network I/O must be in transport layer",
+            )
+            .disallow(
+                "ureq::get",
+                "I6: No escape hatches. Network I/O must be in transport layer",
+            )
+            .disallow(
+                "ureq::post",
+                "I6: No escape hatches. Network I/O must be in transport layer",
+            )
+            .disallow(
+                "reqwest::get",
+                "I6: No escape hatches. Network I/O must be in transport layer",
+            )
+            .disallow(
+                "reqwest::blocking::get",
+                "I6: No escape hatches. Network I/O must be in transport layer",
+            )
+            .disallow(
+                "reqwest::Client::new",
+                "I6: No escape hatches. Network I/O must be in transport layer",
+            )
+            .disallow(
+                "reqwest::blocking::Client::new",
+                "I6: No escape hatches. Network I/O must be in transport layer",
+            )
+            // git2 - enforce transport-only git I/O
+            .disallow(
+                "git2::Repository::open",
+                "I6: No escape hatches. Git I/O must be in transport layer",
+            )
+            .disallow(
+                "git2::Repository::open_bare",
+                "I6: No escape hatches. Git I/O must be in transport layer",
+            )
+            .disallow(
+                "git2::Repository::discover",
+                "I6: No escape hatches. Git I/O must be in transport layer",
+            )
+            .disallow(
+                "git2::Repository::init",
+                "I6: No escape hatches. Git I/O must be in transport layer",
+            )
             // Filesystem types - disallow owning raw file handles outside transport
             .disallow_type(
                 "std::fs::File",

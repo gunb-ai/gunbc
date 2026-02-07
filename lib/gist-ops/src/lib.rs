@@ -147,10 +147,10 @@ pub fn prepare_gist_request(
 
 /// Sanitize a branch name for use as a filename component.
 ///
-/// Falls back to `"snapshot"` if the branch is empty or entirely degenerate.
+/// Falls back to `"snapshot-<hash>"` if the branch is empty or entirely degenerate.
 ///
 /// Replaces spaces with the replacement char (convention, not a FS rule),
-/// then routes through the filesystem gateway. Falls back to `"snapshot"`
+/// then routes through the filesystem gateway. Falls back to `"snapshot-<hash>"`
 /// if the input is empty or sanitizes to the filesystem's default fallback.
 ///
 /// # Examples
@@ -161,6 +161,8 @@ pub fn prepare_gist_request(
 /// assert_eq!(sanitize_branch_for_filename(&fs, "claude/branch-name"), "claude-branch-name");
 /// ```
 pub fn sanitize_branch_for_filename(fs: &filename::FilesystemHandle, branch: &str) -> String {
+    let fallback = fallback_branch_name(branch);
+
     // Replace spaces before filesystem gateway (convention, not a FS rule)
     let no_spaces: String = branch
         .chars()
@@ -173,13 +175,24 @@ pub fn sanitize_branch_for_filename(fs: &filename::FilesystemHandle, branch: &st
     // literally named "untitled". A real "untitled" branch passes validation unchanged
     // (outcome is Valid), while a degenerate input produces Sanitized { sanitized: "untitled" }.
     if outcome.was_sanitized() && outcome.filename() == Some("untitled") {
-        return "snapshot".to_string();
+        return fallback;
     }
 
     match outcome.filename() {
         Some(name) if !name.is_empty() => name.to_string(),
-        _ => "snapshot".to_string(),
+        _ => fallback,
     }
+}
+
+fn fallback_branch_name(branch: &str) -> String {
+    // 64-bit FNV-1a for a short, deterministic suffix without extra dependencies.
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for byte in branch.as_bytes() {
+        hash ^= *byte as u64;
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    let suffix = format!("{:012x}", hash & 0xFFFFFFFFFFFF);
+    format!("snapshot-{}", suffix)
 }
 
 /// Generate a gist filename from a branch name, filesystem handle, and timestamp.
@@ -619,10 +632,22 @@ mod tests {
     #[test]
     fn test_sanitize_empty_and_degenerate() {
         let fs = test_fs();
-        assert_eq!(sanitize_branch_for_filename(&fs, ""), "snapshot");
-        assert_eq!(sanitize_branch_for_filename(&fs, "/"), "snapshot");
-        assert_eq!(sanitize_branch_for_filename(&fs, "///"), "snapshot");
-        assert_eq!(sanitize_branch_for_filename(&fs, "   "), "snapshot");
+        assert_eq!(
+            sanitize_branch_for_filename(&fs, ""),
+            fallback_branch_name("")
+        );
+        assert_eq!(
+            sanitize_branch_for_filename(&fs, "/"),
+            fallback_branch_name("/")
+        );
+        assert_eq!(
+            sanitize_branch_for_filename(&fs, "///"),
+            fallback_branch_name("///")
+        );
+        assert_eq!(
+            sanitize_branch_for_filename(&fs, "   "),
+            fallback_branch_name("   ")
+        );
     }
 
     #[test]

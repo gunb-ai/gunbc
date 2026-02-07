@@ -3,6 +3,7 @@
 use gunbc_ir::transport::rest::RestResponse;
 use gunbc_ir::transport::TransportResponse;
 use gunbc_ir::{AuthScheme, Credential, Secret, SecretString, Value};
+use gunbc_primitives::NetworkHandle;
 use gunbc_test::MockSpec;
 
 fn mock_credential() -> Value {
@@ -10,7 +11,16 @@ fn mock_credential() -> Value {
     cred.into()
 }
 
+fn mock_net_handle() -> Value {
+    NetworkHandle.into()
+}
+
 /// Mock spec for GCP GitHub Actions WIF + Secret Manager.
+#[gunbc_testgen_registry_macros::resource_test_target(
+    skip,
+    name = "gcp-wif-secret-github",
+    builder = "crate::graph::build_gcp_secret_manager_credential_graph_github()",
+)]
 #[gunbc_testgen_registry_macros::testgen_target(
     name = "gcp-wif-secret-github",
     output = "lib/gcp-ops/src/generated_tests.rs",
@@ -107,9 +117,26 @@ pub fn gcp_github_mock_spec() -> MockSpec {
             Value::Response(TransportResponse::Rest(secret_response)),
         )
         .boundary("build_credential", "credential", mock_credential())
+        .boundary("net_env", "net", mock_net_handle())
+        // Pure nodes — skip example enforcement for now
+        .skip_node_example("prepare_github_oidc")
+        .skip_node_example("parse_github_oidc")
+        .skip_node_example("prepare_sts")
+        .skip_node_example("parse_sts")
+        .skip_node_example("prepare_impersonate")
+        .skip_node_example("parse_impersonate")
+        .skip_node_example("prepare_secret_access")
+        .skip_node_example("parse_secret_access")
+        .skip_node_example("build_credential")
+        .skip_node_example("net_env")
 }
 
 /// Mock spec for GCP GitHub Actions WIF + Secret Manager upsert.
+#[gunbc_testgen_registry_macros::resource_test_target(
+    skip,
+    name = "gcp-wif-secret-upsert-github",
+    builder = "crate::graph::build_gcp_secret_manager_upsert_graph_github()",
+)]
 #[gunbc_testgen_registry_macros::testgen_target(
     name = "gcp-wif-secret-upsert-github",
     output = "lib/gcp-ops/src/generated_tests_upsert.rs",
@@ -226,9 +253,25 @@ pub fn gcp_github_upsert_mock_spec() -> MockSpec {
             "response",
             Value::Response(TransportResponse::Rest(secret_create_response)),
         )
+        .transport_mock("execute_secret_create", "skip", Value::Bool(false))
         .transport_mock(
             "execute_secret_add_version",
             "response",
             Value::Response(TransportResponse::Rest(add_version_response)),
         )
+        .boundary("net_env", "net", mock_net_handle())
+        // Pure nodes — skip example enforcement for now
+        .skip_node_example("prepare_github_oidc")
+        .skip_node_example("parse_github_oidc")
+        .skip_node_example("prepare_sts")
+        .skip_node_example("parse_sts")
+        .skip_node_example("prepare_impersonate")
+        .skip_node_example("parse_impersonate")
+        .skip_node_example("prepare_secret_get")
+        .skip_node_example("parse_secret_get")
+        .skip_node_example("prepare_secret_create")
+        .skip_node_example("parse_secret_create")
+        .skip_node_example("prepare_secret_add_version")
+        .skip_node_example("parse_secret_add_version")
+        .skip_node_example("net_env")
 }

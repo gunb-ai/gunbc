@@ -2,14 +2,16 @@
 
 use crate::ops::{GcpOps, GcpRuntimeKind};
 use gunbc_exec::{ExecError, Executable};
-use gunbc_ir::build::{optional, port};
+use gunbc_ir::build::{optional, port, resource, AccessMode};
 use gunbc_ir::{Dag, DagBuilder, Node, Value};
 use gunbc_lib_transport::TransportOps;
+use gunbc_primitives::NetEnv;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 pub enum GcpSecretManagerGraphOp {
     Gcp(GcpOps),
+    NetEnv(NetEnv),
     Transport(TransportOps),
 }
 
@@ -17,6 +19,7 @@ impl Executable for GcpSecretManagerGraphOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         match self {
             GcpSecretManagerGraphOp::Gcp(op) => op.execute(inputs),
+            GcpSecretManagerGraphOp::NetEnv(op) => op.execute(inputs),
             GcpSecretManagerGraphOp::Transport(op) => op.execute(inputs),
         }
     }
@@ -44,6 +47,15 @@ pub fn build_gcp_secret_manager_credential_graph(
 ) -> Dag<GcpSecretManagerGraphOp> {
     let mut builder: DagBuilder<GcpSecretManagerGraphOp> = DagBuilder::new();
 
+    let net_env = builder
+        .add_root_node(Node::opaque(
+            "net_env",
+            vec![],
+            vec![port("net", "NetworkHandle")],
+            GcpSecretManagerGraphOp::NetEnv(NetEnv),
+        ))
+        .expect("net_env");
+
     // ---------------------------------------------------------------------
     // OIDC subject token acquisition
     // ---------------------------------------------------------------------
@@ -55,8 +67,8 @@ pub fn build_gcp_secret_manager_credential_graph(
                     "prepare_github_oidc",
                     vec![
                         port("audience", "String"),
-                        port("request_url", "String"),
-                        port("request_token", "String"),
+                        optional("request_url", "OptionalString"),
+                        optional("request_token", "OptionalString"),
                     ],
                     vec![port("request", "TransportRequest"), port("skip", "Bool")],
                     GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareGitHubOidcRequest),
@@ -67,7 +79,11 @@ pub fn build_gcp_secret_manager_credential_graph(
                 .add_node_after(
                     Node::opaque(
                         "execute_github_oidc",
-                        vec![port("request", "TransportRequest"), port("skip", "Bool")],
+                        vec![
+                            port("request", "TransportRequest"),
+                            port("skip", "Bool"),
+                            resource("net", "NetworkHandle", AccessMode::Read),
+                        ],
                         vec![port("response", "TransportResponse")],
                         GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
                     ),
@@ -94,6 +110,9 @@ pub fn build_gcp_secret_manager_credential_graph(
                 .add_edge(prepare.out("skip"), execute.in_port("skip"))
                 .expect("prepare_github_oidc.skip -> execute_github_oidc.skip");
             builder
+                .add_edge(net_env.out("net"), execute.in_port("res:net"))
+                .expect("net_env -> execute_github_oidc.res:net");
+            builder
                 .add_edge(execute.out("response"), parse.in_port("response"))
                 .expect("execute_github_oidc.response -> parse_github_oidc.response");
 
@@ -113,7 +132,11 @@ pub fn build_gcp_secret_manager_credential_graph(
                 .add_node_after(
                     Node::opaque(
                         "execute_metadata_oidc",
-                        vec![port("request", "TransportRequest"), port("skip", "Bool")],
+                        vec![
+                            port("request", "TransportRequest"),
+                            port("skip", "Bool"),
+                            resource("net", "NetworkHandle", AccessMode::Read),
+                        ],
                         vec![port("response", "TransportResponse")],
                         GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
                     ),
@@ -139,6 +162,9 @@ pub fn build_gcp_secret_manager_credential_graph(
             builder
                 .add_edge(prepare.out("skip"), execute.in_port("skip"))
                 .expect("prepare_metadata_oidc.skip -> execute_metadata_oidc.skip");
+            builder
+                .add_edge(net_env.out("net"), execute.in_port("res:net"))
+                .expect("net_env -> execute_metadata_oidc.res:net");
             builder
                 .add_edge(execute.out("response"), parse.in_port("response"))
                 .expect("execute_metadata_oidc.response -> parse_metadata_oidc.response");
@@ -167,7 +193,11 @@ pub fn build_gcp_secret_manager_credential_graph(
         .add_node_after(
             Node::opaque(
                 "execute_sts",
-                vec![port("request", "TransportRequest"), port("skip", "Bool")],
+                vec![
+                    port("request", "TransportRequest"),
+                    port("skip", "Bool"),
+                    resource("net", "NetworkHandle", AccessMode::Read),
+                ],
                 vec![port("response", "TransportResponse")],
                 GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
             ),
@@ -200,6 +230,9 @@ pub fn build_gcp_secret_manager_credential_graph(
         .add_edge(prepare_sts.out("skip"), execute_sts.in_port("skip"))
         .expect("prepare_sts.skip -> execute_sts.skip");
     builder
+        .add_edge(net_env.out("net"), execute_sts.in_port("res:net"))
+        .expect("net_env -> execute_sts.res:net");
+    builder
         .add_edge(execute_sts.out("response"), parse_sts.in_port("response"))
         .expect("execute_sts.response -> parse_sts.response");
 
@@ -227,7 +260,11 @@ pub fn build_gcp_secret_manager_credential_graph(
         .add_node_after(
             Node::opaque(
                 "execute_impersonate",
-                vec![port("request", "TransportRequest"), port("skip", "Bool")],
+                vec![
+                    port("request", "TransportRequest"),
+                    port("skip", "Bool"),
+                    resource("net", "NetworkHandle", AccessMode::Read),
+                ],
                 vec![port("response", "TransportResponse")],
                 GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
             ),
@@ -266,6 +303,9 @@ pub fn build_gcp_secret_manager_credential_graph(
         )
         .expect("prepare_impersonate.skip -> execute_impersonate.skip");
     builder
+        .add_edge(net_env.out("net"), execute_impersonate.in_port("res:net"))
+        .expect("net_env -> execute_impersonate.res:net");
+    builder
         .add_edge(
             execute_impersonate.out("response"),
             parse_impersonate.in_port("response"),
@@ -297,7 +337,11 @@ pub fn build_gcp_secret_manager_credential_graph(
         .add_node_after(
             Node::opaque(
                 "execute_secret_access",
-                vec![port("request", "TransportRequest"), port("skip", "Bool")],
+                vec![
+                    port("request", "TransportRequest"),
+                    port("skip", "Bool"),
+                    resource("net", "NetworkHandle", AccessMode::Read),
+                ],
                 vec![port("response", "TransportResponse")],
                 GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
             ),
@@ -335,6 +379,9 @@ pub fn build_gcp_secret_manager_credential_graph(
             execute_secret.in_port("skip"),
         )
         .expect("prepare_secret.skip -> execute_secret.skip");
+    builder
+        .add_edge(net_env.out("net"), execute_secret.in_port("res:net"))
+        .expect("net_env -> execute_secret_access.res:net");
     builder
         .add_edge(
             execute_secret.out("response"),
@@ -374,6 +421,10 @@ pub fn build_gcp_secret_manager_credential_graph_github() -> Dag<GcpSecretManage
     build_gcp_secret_manager_credential_graph(GcpRuntimeKind::GitHubActions)
 }
 
+#[gunbc_testgen_registry_macros::resource_test_target(
+    name = "gcp-wif-secret-metadata",
+    builder = "build_gcp_secret_manager_credential_graph_metadata()",
+)]
 pub fn build_gcp_secret_manager_credential_graph_metadata() -> Dag<GcpSecretManagerGraphOp> {
     build_gcp_secret_manager_credential_graph(GcpRuntimeKind::GcpMetadata)
 }
@@ -397,6 +448,15 @@ pub fn build_gcp_secret_manager_upsert_graph(
 ) -> Dag<GcpSecretManagerGraphOp> {
     let mut builder: DagBuilder<GcpSecretManagerGraphOp> = DagBuilder::new();
 
+    let net_env = builder
+        .add_root_node(Node::opaque(
+            "net_env",
+            vec![],
+            vec![port("net", "NetworkHandle")],
+            GcpSecretManagerGraphOp::NetEnv(NetEnv),
+        ))
+        .expect("net_env");
+
     // ---------------------------------------------------------------------
     // OIDC subject token acquisition
     // ---------------------------------------------------------------------
@@ -408,8 +468,8 @@ pub fn build_gcp_secret_manager_upsert_graph(
                     "prepare_github_oidc",
                     vec![
                         port("audience", "String"),
-                        port("request_url", "String"),
-                        port("request_token", "String"),
+                        optional("request_url", "OptionalString"),
+                        optional("request_token", "OptionalString"),
                     ],
                     vec![port("request", "TransportRequest"), port("skip", "Bool")],
                     GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareGitHubOidcRequest),
@@ -420,7 +480,11 @@ pub fn build_gcp_secret_manager_upsert_graph(
                 .add_node_after(
                     Node::opaque(
                         "execute_github_oidc",
-                        vec![port("request", "TransportRequest"), port("skip", "Bool")],
+                        vec![
+                            port("request", "TransportRequest"),
+                            port("skip", "Bool"),
+                            resource("net", "NetworkHandle", AccessMode::Read),
+                        ],
                         vec![port("response", "TransportResponse")],
                         GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
                     ),
@@ -447,6 +511,9 @@ pub fn build_gcp_secret_manager_upsert_graph(
                 .add_edge(prepare.out("skip"), execute.in_port("skip"))
                 .expect("prepare_github_oidc.skip -> execute_github_oidc.skip");
             builder
+                .add_edge(net_env.out("net"), execute.in_port("res:net"))
+                .expect("net_env -> execute_github_oidc.res:net");
+            builder
                 .add_edge(execute.out("response"), parse.in_port("response"))
                 .expect("execute_github_oidc.response -> parse_github_oidc.response");
 
@@ -466,7 +533,11 @@ pub fn build_gcp_secret_manager_upsert_graph(
                 .add_node_after(
                     Node::opaque(
                         "execute_metadata_oidc",
-                        vec![port("request", "TransportRequest"), port("skip", "Bool")],
+                        vec![
+                            port("request", "TransportRequest"),
+                            port("skip", "Bool"),
+                            resource("net", "NetworkHandle", AccessMode::Read),
+                        ],
                         vec![port("response", "TransportResponse")],
                         GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
                     ),
@@ -492,6 +563,9 @@ pub fn build_gcp_secret_manager_upsert_graph(
             builder
                 .add_edge(prepare.out("skip"), execute.in_port("skip"))
                 .expect("prepare_metadata_oidc.skip -> execute_metadata_oidc.skip");
+            builder
+                .add_edge(net_env.out("net"), execute.in_port("res:net"))
+                .expect("net_env -> execute_metadata_oidc.res:net");
             builder
                 .add_edge(execute.out("response"), parse.in_port("response"))
                 .expect("execute_metadata_oidc.response -> parse_metadata_oidc.response");
@@ -520,7 +594,11 @@ pub fn build_gcp_secret_manager_upsert_graph(
         .add_node_after(
             Node::opaque(
                 "execute_sts",
-                vec![port("request", "TransportRequest"), port("skip", "Bool")],
+                vec![
+                    port("request", "TransportRequest"),
+                    port("skip", "Bool"),
+                    resource("net", "NetworkHandle", AccessMode::Read),
+                ],
                 vec![port("response", "TransportResponse")],
                 GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
             ),
@@ -553,6 +631,9 @@ pub fn build_gcp_secret_manager_upsert_graph(
         .add_edge(prepare_sts.out("skip"), execute_sts.in_port("skip"))
         .expect("prepare_sts.skip -> execute_sts.skip");
     builder
+        .add_edge(net_env.out("net"), execute_sts.in_port("res:net"))
+        .expect("net_env -> execute_sts.res:net");
+    builder
         .add_edge(execute_sts.out("response"), parse_sts.in_port("response"))
         .expect("execute_sts.response -> parse_sts.response");
 
@@ -580,7 +661,11 @@ pub fn build_gcp_secret_manager_upsert_graph(
         .add_node_after(
             Node::opaque(
                 "execute_impersonate",
-                vec![port("request", "TransportRequest"), port("skip", "Bool")],
+                vec![
+                    port("request", "TransportRequest"),
+                    port("skip", "Bool"),
+                    resource("net", "NetworkHandle", AccessMode::Read),
+                ],
                 vec![port("response", "TransportResponse")],
                 GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
             ),
@@ -619,6 +704,9 @@ pub fn build_gcp_secret_manager_upsert_graph(
         )
         .expect("prepare_impersonate.skip -> execute_impersonate.skip");
     builder
+        .add_edge(net_env.out("net"), execute_impersonate.in_port("res:net"))
+        .expect("net_env -> execute_impersonate.res:net");
+    builder
         .add_edge(
             execute_impersonate.out("response"),
             parse_impersonate.in_port("response"),
@@ -649,7 +737,11 @@ pub fn build_gcp_secret_manager_upsert_graph(
         .add_node_after(
             Node::opaque(
                 "execute_secret_get",
-                vec![port("request", "TransportRequest"), port("skip", "Bool")],
+                vec![
+                    port("request", "TransportRequest"),
+                    port("skip", "Bool"),
+                    resource("net", "NetworkHandle", AccessMode::Read),
+                ],
                 vec![port("response", "TransportResponse")],
                 GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
             ),
@@ -688,6 +780,9 @@ pub fn build_gcp_secret_manager_upsert_graph(
         )
         .expect("prepare_secret_get.skip -> execute_secret_get.skip");
     builder
+        .add_edge(net_env.out("net"), execute_get.in_port("res:net"))
+        .expect("net_env -> execute_secret_get.res:net");
+    builder
         .add_edge(execute_get.out("response"), parse_get.in_port("response"))
         .expect("execute_secret_get.response -> parse_secret_get.response");
 
@@ -712,7 +807,11 @@ pub fn build_gcp_secret_manager_upsert_graph(
         .add_node_after(
             Node::opaque(
                 "execute_secret_create",
-                vec![port("request", "TransportRequest"), port("skip", "Bool")],
+                vec![
+                    port("request", "TransportRequest"),
+                    port("skip", "Bool"),
+                    resource("net", "NetworkHandle", AccessMode::Read),
+                ],
                 vec![port("response", "TransportResponse"), port("skip", "Bool")],
                 GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
             ),
@@ -741,6 +840,9 @@ pub fn build_gcp_secret_manager_upsert_graph(
             execute_create.in_port("skip"),
         )
         .expect("prepare_secret_create.skip -> execute_secret_create.skip");
+    builder
+        .add_edge(net_env.out("net"), execute_create.in_port("res:net"))
+        .expect("net_env -> execute_secret_create.res:net");
 
     let prepare_add = builder
         .add_node_after(
@@ -764,7 +866,11 @@ pub fn build_gcp_secret_manager_upsert_graph(
         .add_node_after(
             Node::opaque(
                 "execute_secret_add_version",
-                vec![port("request", "TransportRequest"), port("skip", "Bool")],
+                vec![
+                    port("request", "TransportRequest"),
+                    port("skip", "Bool"),
+                    resource("net", "NetworkHandle", AccessMode::Read),
+                ],
                 vec![port("response", "TransportResponse")],
                 GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
             ),
@@ -806,6 +912,9 @@ pub fn build_gcp_secret_manager_upsert_graph(
         .add_edge(prepare_add.out("skip"), execute_add.in_port("skip"))
         .expect("prepare_secret_add_version.skip -> execute_secret_add_version.skip");
     builder
+        .add_edge(net_env.out("net"), execute_add.in_port("res:net"))
+        .expect("net_env -> execute_secret_add_version.res:net");
+    builder
         .add_edge(execute_add.out("response"), parse_add.in_port("response"))
         .expect("execute_secret_add_version.response -> parse_secret_add_version.response");
 
@@ -816,6 +925,10 @@ pub fn build_gcp_secret_manager_upsert_graph_github() -> Dag<GcpSecretManagerGra
     build_gcp_secret_manager_upsert_graph(GcpRuntimeKind::GitHubActions)
 }
 
+#[gunbc_testgen_registry_macros::resource_test_target(
+    name = "gcp-wif-secret-upsert-metadata",
+    builder = "build_gcp_secret_manager_upsert_graph_metadata()",
+)]
 pub fn build_gcp_secret_manager_upsert_graph_metadata() -> Dag<GcpSecretManagerGraphOp> {
     build_gcp_secret_manager_upsert_graph(GcpRuntimeKind::GcpMetadata)
 }

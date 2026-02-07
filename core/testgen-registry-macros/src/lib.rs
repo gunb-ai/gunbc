@@ -318,3 +318,133 @@ pub fn testgen_target(args: TokenStream, input: TokenStream) -> TokenStream {
 
     expanded.into()
 }
+
+#[proc_macro_attribute]
+pub fn resource_test_target(args: TokenStream, input: TokenStream) -> TokenStream {
+    let args = parse_macro_input!(args as AttributeArgs);
+    let input_fn = parse_macro_input!(input as ItemFn);
+
+    let mut name: Option<syn::LitStr> = None;
+    let mut builder: Option<Expr> = None;
+    let mut skip = false;
+
+    for arg in args {
+        match arg {
+            NestedMeta::Meta(Meta::NameValue(nv)) => {
+                let ident = nv.path.get_ident().map(|i| i.to_string());
+                match ident.as_deref() {
+                    Some("name") => {
+                        if let Lit::Str(s) = nv.lit {
+                            name = Some(s);
+                        } else {
+                            return syn::Error::new_spanned(nv, "name must be a string literal")
+                                .to_compile_error()
+                                .into();
+                        }
+                    }
+                    Some("builder") => {
+                        if let Lit::Str(s) = nv.lit {
+                            match syn::parse_str::<Expr>(&s.value()) {
+                                Ok(expr) => builder = Some(expr),
+                                Err(e) => return e.to_compile_error().into(),
+                            }
+                        } else {
+                            return syn::Error::new_spanned(
+                                nv,
+                                "builder must be a string literal or use builder(...) form",
+                            )
+                            .to_compile_error()
+                            .into();
+                        }
+                    }
+                    _ => {
+                        return syn::Error::new_spanned(nv, "unknown resource_test_target argument")
+                            .to_compile_error()
+                            .into();
+                    }
+                }
+            }
+            NestedMeta::Meta(Meta::List(list)) => {
+                let ident = list.path.get_ident().map(|i| i.to_string());
+                match ident.as_deref() {
+                    Some("builder") => match syn::parse2::<Expr>(list.nested.to_token_stream()) {
+                        Ok(expr) => builder = Some(expr),
+                        Err(e) => return e.to_compile_error().into(),
+                    },
+                    _ => {
+                        return syn::Error::new_spanned(list, "unknown resource_test_target list argument")
+                            .to_compile_error()
+                            .into();
+                    }
+                }
+            }
+            NestedMeta::Meta(Meta::Path(path)) => {
+                if let Some(ident) = path.get_ident() {
+                    match ident.to_string().as_str() {
+                        "skip" => skip = true,
+                        _ => {
+                            return syn::Error::new_spanned(path, "unknown resource_test_target flag")
+                                .to_compile_error()
+                                .into();
+                        }
+                    }
+                }
+            }
+            _ => {
+                return syn::Error::new_spanned(arg, "unsupported resource_test_target argument")
+                    .to_compile_error()
+                    .into();
+            }
+        }
+    }
+
+    if skip {
+        return quote!(#input_fn).into();
+    }
+
+    let name = match name {
+        Some(v) => v,
+        None => {
+            return syn::Error::new_spanned(
+                &input_fn.sig.ident,
+                "resource_test_target requires name = \"...\"",
+            )
+            .to_compile_error()
+            .into()
+        }
+    };
+    let builder = match builder {
+        Some(v) => v,
+        None => {
+            return syn::Error::new_spanned(
+                &input_fn.sig.ident,
+                "resource_test_target requires builder(...) or builder = \"...\"",
+            )
+            .to_compile_error()
+            .into()
+        }
+    };
+
+    let fn_ident = input_fn.sig.ident.clone();
+    let gen_ident = format_ident!("__resource_test_build_{}", fn_ident);
+
+    let expanded = quote! {
+        #input_fn
+
+        fn #gen_ident() -> gunbc_ir::Dag<()> {
+            let dag = #builder;
+            let mut mapper = |_| ();
+            dag.map_ops(&mut mapper)
+        }
+
+        gunbc_testgen_registry::inventory::submit! {
+            gunbc_testgen_registry::ResourceTestDef {
+                origin_crate: env!("CARGO_CRATE_NAME"),
+                name: #name,
+                build: #gen_ident,
+            }
+        }
+    };
+
+    expanded.into()
+}

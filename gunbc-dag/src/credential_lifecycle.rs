@@ -32,6 +32,10 @@ fn mock_cloud_config() -> Value {
 }
 
 /// Mock specification for GitHub credential lifecycle testing.
+#[gunbc_testgen_registry_macros::resource_test_target(
+    name = "github-credential-lifecycle",
+    builder = "gunbc_lib_cloud_ops::build_github_credential_graph()",
+)]
 #[gunbc_testgen_registry_macros::testgen_target(
     name = "github-credential-lifecycle",
     output = "gunbc-dag/src/generated_tests_credential_github.rs",
@@ -108,6 +112,7 @@ pub fn github_credential_lifecycle_mock_spec() -> MockSpec {
         )
         .skip_node_example("cloud_env")
         .skip_node_example("cloud_credential")
+        .skip_node_example("bind_secret")
 }
 
 // Generated tests (from `make testgen`)

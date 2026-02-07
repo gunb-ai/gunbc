@@ -55,6 +55,10 @@ pub fn codegen_signature() -> WorkflowSignature {
 }
 
 /// Build the codegen prep graph.
+#[gunbc_testgen_registry_macros::resource_test_target(
+    name = "codegen",
+    builder = "build_codegen_graph().unwrap()",
+)]
 pub fn build_codegen_graph() -> Result<Dag<CodegenGraphOp>, BuilderError> {
     build_codegen_graph_with_mode(ExecMode::Ensure)
 }

@@ -178,6 +178,10 @@ fn render_type_expr(expr: &TypeExpr) -> String {
     }
 }
 
+fn map_key_is_string(expr: &TypeExpr) -> bool {
+    matches!(expr, TypeExpr::Named(name) if name == "String")
+}
+
 fn parse_type_expr(raw: &str) -> Result<TypeExpr, TypeExprError> {
     let expr = raw.trim();
     if expr.is_empty() {
@@ -206,6 +210,9 @@ fn parse_type_expr(raw: &str) -> Result<TypeExpr, TypeExprError> {
             }
             let key = parse_type_expr(args[0])?;
             let value = parse_type_expr(args[1])?;
+            if !map_key_is_string(&key) {
+                return Err(TypeExprError::new(expr, "Map key type must be String"));
+            }
             return Ok(TypeExpr::Map(Box::new(key), Box::new(value)));
         }
         return Ok(TypeExpr::Named(expr.to_string()));
@@ -716,6 +723,9 @@ mod tests {
             .is_err());
         assert!(registry
             .validate_type_expr(&TypeId::from("Map<,Int>"))
+            .is_err());
+        assert!(registry
+            .validate_type_expr(&TypeId::from("Map<Int,String>"))
             .is_err());
     }
 }

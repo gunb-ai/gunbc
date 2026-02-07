@@ -46,6 +46,19 @@ impl<T> Dag<T> {
         self.nodes.iter_mut().find(|n| &n.id == id)
     }
 
+    /// Map all node operations to a new op type.
+    ///
+    /// Useful for structural analyses that don't care about op payloads.
+    pub fn map_ops<U, F>(self, f: &mut F) -> Dag<U>
+    where
+        F: FnMut(T) -> U,
+    {
+        Dag {
+            nodes: self.nodes.into_iter().map(|n| n.map_ops(f)).collect(),
+            edges: self.edges,
+        }
+    }
+
     /// Render this DAG as a Mermaid flowchart.
     ///
     /// SubDag nodes are rendered with double brackets [[name]] and include

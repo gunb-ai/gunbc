@@ -20,6 +20,11 @@ fn mock_cli_result() -> Value {
 ///
 /// The check node is mocked to return `exists = true` so the create node
 /// is skipped during DryRun. The resolve node returns a mock CliResult.
+#[gunbc_testgen_registry_macros::resource_test_target(
+    skip,
+    name = "clippy",
+    builder = "crate::build_clippy_graph_lint_all()",
+)]
 #[gunbc_testgen_registry_macros::testgen_target(skip, builder = "crate::build_clippy_graph_lint_all()")]
 pub fn clippy_mock_spec() -> MockSpec {
     MockSpec::new("clippy")

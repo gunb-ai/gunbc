@@ -1,6 +1,7 @@
 //! Environment resource acquisition ops.
 
 use crate::filename::{FilesystemHandle, Scope};
+use crate::network::NetworkHandle;
 use gunbc_exec::{env_single_output, EnvNode, ExecError};
 use gunbc_ir::{Timestamp, Value};
 use std::collections::HashMap;
@@ -74,6 +75,39 @@ impl ClockEnv {
 }
 
 impl EnvNode for ClockEnv {
+    fn env_outputs(&self) -> Result<HashMap<String, Value>, ExecError> {
+        Ok(self.outputs())
+    }
+
+    fn mock_outputs(&self) -> HashMap<String, Value> {
+        self.mock_output_map()
+    }
+}
+
+/// Network environment — acquires a NetworkHandle.
+#[derive(Debug, Clone, Copy)]
+pub struct NetEnv;
+
+impl NetEnv {
+    pub fn output_port(&self) -> &'static str {
+        "net"
+    }
+
+    /// Mock outputs for DryRun/testgen.
+    pub fn mock_outputs(&self) -> HashMap<String, Value> {
+        self.mock_output_map()
+    }
+
+    fn outputs(&self) -> HashMap<String, Value> {
+        env_single_output(self.output_port(), NetworkHandle)
+    }
+
+    fn mock_output_map(&self) -> HashMap<String, Value> {
+        self.outputs()
+    }
+}
+
+impl EnvNode for NetEnv {
     fn env_outputs(&self) -> Result<HashMap<String, Value>, ExecError> {
         Ok(self.outputs())
     }

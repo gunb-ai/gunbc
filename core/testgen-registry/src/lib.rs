@@ -102,6 +102,21 @@ pub fn iter_dag_specs() -> impl Iterator<Item = &'static DagSpecDef> {
     inventory::iter::<DagSpecDef>.into_iter()
 }
 
+/// Registered DAG builders for resource purity checks.
+#[derive(Debug)]
+pub struct ResourceTestDef {
+    pub origin_crate: &'static str,
+    pub name: &'static str,
+    pub build: fn() -> Dag<()>,
+}
+
+inventory::collect!(ResourceTestDef);
+
+/// Iterate over all registered resource test DAGs.
+pub fn iter_resource_tests() -> impl Iterator<Item = &'static ResourceTestDef> {
+    inventory::iter::<ResourceTestDef>.into_iter()
+}
+
 /// Shared test generation helper: builds test code from a DAG + MockSpec + config.
 ///
 /// This is the single codegen path — all targets use this function.
@@ -160,3 +175,72 @@ pub fn generate_target<T: Executable + Clone>(
 }
 
 // TestgenTargetDef is re-exported above for macro users.
+
+#[cfg(test)]
+mod resource_tests {
+    use super::iter_resource_tests;
+    use gunbc_ir::{
+        detect_resource_conflicts, derive_resource_accesses, validate_resource_wiring_recursive,
+    };
+
+    #[test]
+    fn resource_purity_checks() {
+        let defs: Vec<_> = iter_resource_tests().collect();
+        assert!(
+            !defs.is_empty(),
+            "no #[resource_test_target] registrations found"
+        );
+
+        let mut failures = Vec::new();
+
+        for def in defs {
+            let dag = (def.build)();
+
+            match derive_resource_accesses(&dag) {
+                Ok(_) => {}
+                Err(err) => {
+                    failures.push(format!(
+                        "{} ({}): derive_resource_accesses failed: {}",
+                        def.name, def.origin_crate, err
+                    ));
+                    continue;
+                }
+            }
+
+            match detect_resource_conflicts(&dag) {
+                Ok(conflicts) => {
+                    if !conflicts.is_empty() {
+                        failures.push(format!(
+                            "{} ({}): {} resource conflict(s): {:?}",
+                            def.name,
+                            def.origin_crate,
+                            conflicts.len(),
+                            conflicts
+                        ));
+                    }
+                }
+                Err(err) => failures.push(format!(
+                    "{} ({}): detect_resource_conflicts failed: {}",
+                    def.name, def.origin_crate, err
+                )),
+            }
+
+            let unwired = validate_resource_wiring_recursive(&dag);
+            if !unwired.is_empty() {
+                failures.push(format!(
+                    "{} ({}): {} unwired resource port(s): {:?}",
+                    def.name,
+                    def.origin_crate,
+                    unwired.len(),
+                    unwired
+                ));
+            }
+        }
+
+        assert!(
+            failures.is_empty(),
+            "resource purity checks failed:\n{}",
+            failures.join("\n")
+        );
+    }
+}

@@ -1,3 +1,4 @@
+#![recursion_limit = "1024"]
 //! GCP Workload Identity Federation + Secret Manager ops.
 //!
 //! This crate models:

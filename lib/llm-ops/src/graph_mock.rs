@@ -86,6 +86,10 @@ fn with_cloud_env(spec: MockSpec) -> MockSpec {
 /// - `provider`: Must be "openai"
 /// - `model`: Non-empty string (e.g., "gpt-4o")
 /// - `messages`: JSON array of {role, content}
+#[gunbc_testgen_registry_macros::resource_test_target(
+    name = "llm-openai",
+    builder = "crate::graph::build_chat_completion_graph()",
+)]
 #[gunbc_testgen_registry_macros::testgen_target(
     name = "llm-openai",
     output = "lib/llm-ops/src/generated_tests.rs",
@@ -198,6 +202,7 @@ pub fn openai_mock_spec() -> MockSpec {
         .resource_credential("credential:openai", Some(3_600_000))
         .skip_node_example("cloud_env")
         .skip_node_example("cloud_credential")
+        .skip_node_example("bind_secret")
 }
 
 /// Mock specification for Anthropic chat completion.
@@ -205,6 +210,10 @@ pub fn openai_mock_spec() -> MockSpec {
 /// # Boundary Mocks
 ///
 /// Same structure as OpenAI but with Anthropic-format responses.
+#[gunbc_testgen_registry_macros::resource_test_target(
+    name = "llm-anthropic",
+    builder = "crate::graph::build_chat_completion_graph()",
+)]
 #[gunbc_testgen_registry_macros::testgen_target(
     name = "llm-anthropic",
     output = "lib/llm-ops/src/generated_tests_anthropic.rs",
@@ -335,11 +344,16 @@ pub fn anthropic_mock_spec() -> MockSpec {
         .resource_credential("credential:anthropic", Some(3_600_000))
         .skip_node_example("cloud_env")
         .skip_node_example("cloud_credential")
+        .skip_node_example("bind_secret")
 }
 
 /// Mock specification for code review workflow.
 ///
 /// Simulates a code review request with a detailed response.
+#[gunbc_testgen_registry_macros::resource_test_target(
+    name = "llm-code-review",
+    builder = "crate::graph::build_chat_completion_graph()",
+)]
 #[gunbc_testgen_registry_macros::testgen_target(
     name = "llm-code-review",
     output = "lib/llm-ops/src/generated_tests_code_review.rs",
@@ -438,12 +452,17 @@ Overall: The code is clean and well-structured. Minor fixes recommended.";
         .resource_credential("credential:openai", Some(3_600_000))
         .skip_node_example("cloud_env")
         .skip_node_example("cloud_credential")
+        .skip_node_example("bind_secret")
 }
 
 /// Mock specification for testing API key as secret.
 ///
 /// Models the secret resolution pattern: the API key flows as a
 /// `Value::Secret` and gets resolved at the transport boundary.
+#[gunbc_testgen_registry_macros::resource_test_target(
+    name = "llm-secrets",
+    builder = "crate::graph::build_chat_completion_graph()",
+)]
 #[gunbc_testgen_registry_macros::testgen_target(
     name = "llm-secrets",
     output = "lib/llm-ops/src/generated_tests_secrets.rs",
@@ -542,6 +561,7 @@ pub fn secret_api_key_mock_spec() -> MockSpec {
         .resource_credential("credential:openai", Some(3_600_000))
         .skip_node_example("cloud_env")
         .skip_node_example("cloud_credential")
+        .skip_node_example("bind_secret")
 }
 
 /// Mock specification for testing rate limiting / error scenarios.
@@ -597,12 +617,17 @@ pub fn rate_limited_mock_spec() -> MockSpec {
         .resource_credential("credential:openai", Some(3_600_000))
         .skip_node_example("cloud_env")
         .skip_node_example("cloud_credential")
+        .skip_node_example("bind_secret")
 }
 
 /// Mock specification for credential lifecycle testing.
 ///
 /// Tests credential acquire/timeout/refresh/revoke behavior via resource simulation.
 /// Generates `generated_tests_credential.rs` with lifecycle-specific tests.
+#[gunbc_testgen_registry_macros::resource_test_target(
+    name = "llm-credential-lifecycle",
+    builder = "crate::graph::build_chat_completion_graph()",
+)]
 #[gunbc_testgen_registry_macros::testgen_target(
     name = "llm-credential-lifecycle",
     output = "lib/llm-ops/src/generated_tests_credential.rs",
@@ -705,11 +730,16 @@ pub fn credential_lifecycle_mock_spec() -> MockSpec {
         )
         .skip_node_example("cloud_env")
         .skip_node_example("cloud_credential")
+        .skip_node_example("bind_secret")
 }
 
 /// Mock specification for Anthropic credential lifecycle testing.
 ///
 /// Tests credential acquire/timeout/refresh/revoke behavior via resource simulation.
+#[gunbc_testgen_registry_macros::resource_test_target(
+    name = "llm-credential-lifecycle-anthropic",
+    builder = "crate::graph::build_chat_completion_graph()",
+)]
 #[gunbc_testgen_registry_macros::testgen_target(
     name = "llm-credential-lifecycle-anthropic",
     output = "lib/llm-ops/src/generated_tests_credential_anthropic.rs",
@@ -827,4 +857,5 @@ pub fn credential_lifecycle_anthropic_mock_spec() -> MockSpec {
         )
         .skip_node_example("cloud_env")
         .skip_node_example("cloud_credential")
+        .skip_node_example("bind_secret")
 }

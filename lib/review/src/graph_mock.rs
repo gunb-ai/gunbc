@@ -131,6 +131,10 @@ pub fn default_criteria() -> Criteria {
 ///
 /// Uses the typed mock builder pattern: the DAG is built first, requirements
 /// are extracted from its structure, and mocks are type-checked at construction.
+#[gunbc_testgen_registry_macros::resource_test_target(
+    name = "review-inline",
+    builder = "crate::graph::build_inline_review_graph()",
+)]
 #[gunbc_testgen_registry_macros::testgen_target(
     name = "review-inline",
     output = "lib/review/src/generated_tests_inline.rs",
@@ -179,6 +183,10 @@ pub fn inline_review_mock_spec() -> MockSpec {
         .expect("cloud_env request_token should match type")
         .boundary("cloud_credential", "credential", mock_credential())
         .expect("cloud_credential should match type")
+        .boundary("cloud_credential", "expires_in", Value::Int(3_600))
+        .expect("cloud_credential expires_in should match type")
+        .boundary("bind_secret", "config", mock_cloud_config())
+        .expect("bind_secret config should match type")
         // Transport: execute_llm (LLM API call)
         .transport_response("execute_llm", "response", llm_response.into())
         .expect("execute_llm response should match type")
@@ -267,6 +275,8 @@ pub fn inline_review_mock_spec() -> MockSpec {
         )
         .skip_node_example("cloud_env")
         .skip_node_example("cloud_credential")
+        .skip_node_example("fs_env")
+        .skip_node_example("bind_secret")
 }
 
 // ============================================================================
@@ -277,6 +287,10 @@ pub fn inline_review_mock_spec() -> MockSpec {
 ///
 /// Uses the typed mock builder pattern: the DAG is built first, requirements
 /// are extracted from its structure, and mocks are type-checked at construction.
+#[gunbc_testgen_registry_macros::resource_test_target(
+    name = "review-diff",
+    builder = "crate::graph::build_diff_review_graph()",
+)]
 #[gunbc_testgen_registry_macros::testgen_target(
     name = "review-diff",
     output = "lib/review/src/generated_tests_diff.rs",
@@ -339,6 +353,10 @@ diff --git a/src/main.rs b/src/main.rs
         .expect("cloud_env request_token should match type")
         .boundary("cloud_credential", "credential", mock_credential())
         .expect("cloud_credential should match type")
+        .boundary("cloud_credential", "expires_in", Value::Int(3_600))
+        .expect("cloud_credential expires_in should match type")
+        .boundary("bind_secret", "config", mock_cloud_config())
+        .expect("bind_secret config should match type")
         // Transport: execute_diff (git diff command)
         .transport_response(
             "execute_diff",
@@ -455,4 +473,6 @@ diff --git a/src/main.rs b/src/main.rs
         )
         .skip_node_example("cloud_env")
         .skip_node_example("cloud_credential")
+        .skip_node_example("fs_env")
+        .skip_node_example("bind_secret")
 }

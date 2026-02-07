@@ -1,3 +1,4 @@
+#![recursion_limit = "1024"]
 //! gunbc-gist: Gist generation tool built on gunbc.
 //!
 //! This tool composes library ops into a single parameterized graph:

@@ -27,6 +27,11 @@ fn mock_credential() -> Value {
 }
 
 /// Mock spec for Azure Key Vault stub graph.
+#[gunbc_testgen_registry_macros::resource_test_target(
+    skip,
+    name = "azure-keyvault-stub",
+    builder = "crate::graph::build_azure_key_vault_credential_graph()",
+)]
 #[gunbc_testgen_registry_macros::testgen_target(
     name = "azure-keyvault-stub",
     output = "lib/azure-ops/src/generated_tests.rs",

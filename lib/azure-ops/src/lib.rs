@@ -1,3 +1,4 @@
+#![recursion_limit = "1024"]
 //! Azure OIDC + Key Vault ops (stub).
 //!
 //! Placeholder implementation to keep provider-neutral modeling honest.

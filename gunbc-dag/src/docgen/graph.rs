@@ -169,6 +169,10 @@ fn add_docgen_read_triplet(
 ///
 /// One content-upsert chain:
 /// - docs/ab-writing-workflows.md (handwritten template + generated sections)
+#[gunbc_testgen_registry_macros::resource_test_target(
+    name = "docgen",
+    builder = "build_docgen_graph().unwrap()",
+)]
 pub fn build_docgen_graph() -> Result<Dag<DocgenGraphOp>, BuilderError> {
     let mut builder = DagBuilder::new();
 

@@ -1,3 +1,4 @@
+#![recursion_limit = "1024"]
 //! Clippy tool DAG and configuration.
 //!
 //! This crate provides Clippy integration using the fractal DAG pattern,
@@ -88,4 +89,3 @@ pub fn clippy_tool() {}
 mod generated_tests {
     include!("generated_tests.rs");
 }
-

@@ -1,3 +1,4 @@
+#![recursion_limit = "1024"]
 //! gunbc-deps: Tool dependency management with upsert pattern.
 //!
 //! This crate provides:

@@ -223,6 +223,10 @@ where
 ///
 /// Note: For inline blob sources, execute_blob is skipped (handled by prepare_blob).
 /// The graph handles this with conditional execution.
+#[gunbc_testgen_registry_macros::resource_test_target(
+    name = "review-phase",
+    builder = "build_review_phase_graph()",
+)]
 pub fn build_review_phase_graph() -> Dag<ReviewGraphOp> {
     let mut builder: DagBuilder<ReviewGraphOp> = DagBuilder::new();
 
@@ -967,6 +971,10 @@ pub fn build_diff_review_graph_with(config: ReviewPipelineConfig) -> Dag<ReviewG
 /// MergeOutputs declares a list port for `outputs` — the engine collects
 /// fan-in edges into `Value::List` automatically. Each source wires
 /// directly to the merge node without wrapper nodes.
+#[gunbc_testgen_registry_macros::resource_test_target(
+    name = "review-multi-source",
+    builder = "build_multi_source_review_graph()",
+)]
 pub fn build_multi_source_review_graph() -> Dag<ReviewGraphOp> {
     build_multi_source_review_graph_with(ReviewPipelineConfig::gunbc_default())
 }

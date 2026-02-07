@@ -242,6 +242,10 @@ pub fn deps_generate_signature() -> WorkflowSignature {
 ///
 /// This graph generates deps.toml from the tool registry, owning the file's
 /// generation in the same way makegen owns Makefile generation.
+#[gunbc_testgen_registry_macros::resource_test_target(
+    name = "deps-generate",
+    builder = "build_deps_generate_graph().unwrap()",
+)]
 pub fn build_deps_generate_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
     let mut builder = DagBuilder::new();
 

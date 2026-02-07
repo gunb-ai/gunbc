@@ -118,6 +118,14 @@ Codegen-derived tools (from `from_tool_def`) set `true`; manual tools
 (ci, pragma, build-all) set `false` via `.manual()` builder method.
 Renderer conditionally includes `ensure-codegen` dependency only when needed.
 
+## Gist branch sanitize fallback collisions (2026-02-07)
+
+**Resolved**: Degenerate branch names now fall back to `snapshot-<hash>` to
+preserve uniqueness instead of collapsing to a single `snapshot` label.
+
+Files:
+- `lib/gist-ops/src/lib.rs`
+
 Files:
 - `gunbc-dag/src/makegen/registry.rs`
 - `gunbc-dag/src/makegen/render.rs`

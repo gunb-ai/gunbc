@@ -39,6 +39,10 @@ fn mock_fs_handle() -> Value {
 ///
 /// Both transport mocks are required. Pure terminal outputs (load_registry.tool_count,
 /// load_registry.tool_names) are computed during DryRun execution.
+#[gunbc_testgen_registry_macros::resource_test_target(
+    name = "makegen",
+    builder = "crate::build_makegen_graph().unwrap()",
+)]
 #[gunbc_testgen_registry_macros::testgen_target(
     name = "makegen",
     output = "gunbc-dag/src/makegen/generated_tests.rs",

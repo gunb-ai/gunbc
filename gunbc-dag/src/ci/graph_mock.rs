@@ -49,6 +49,10 @@ fn mock_fs_handle() -> Value {
 ///
 /// Uses the typed mock builder pattern: the DAG is built first, requirements
 /// are extracted from its structure, and mocks are type-checked at construction.
+#[gunbc_testgen_registry_macros::resource_test_target(
+    name = "ci",
+    builder = "crate::build_ci_graph().unwrap()",
+)]
 #[gunbc_testgen_registry_macros::testgen_target(
     name = "ci",
     output = "gunbc-dag/src/ci/generated_tests.rs",

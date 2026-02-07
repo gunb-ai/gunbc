@@ -53,6 +53,11 @@ packages = ["ripgrep"]
 /// Only transport and resource mocks are required. Pure terminal outputs
 /// (parse_manifest.*, generate_scripts.*, parse_execute_result.*) are
 /// computed during DryRun execution, not mocked.
+#[gunbc_testgen_registry_macros::resource_test_target(
+    skip,
+    name = "deps",
+    builder = "crate::graph::build_deps_graph().unwrap()",
+)]
 #[gunbc_testgen_registry_macros::testgen_target(
     name = "deps",
     output = "lib/tools/deps/src/generated_tests.rs",
@@ -142,6 +147,11 @@ pub fn deps_mock_spec() -> MockSpec {
         // Resource: package manager lock
         .resource_lock("pkg:manager")
         // Node I/O examples
+        .node_example(
+            NodeExample::new("fs_env")
+                .output("fs:write", OutputMatcher::Any)
+                .description("Provides filesystem handle for deps operations"),
+        )
         .node_example(
             NodeExample::new("platform_env")
                 .output("platform", OutputMatcher::IsString)

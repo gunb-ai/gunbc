@@ -536,10 +536,16 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             if value_type == "Set" && port_type.ends_with("Set") {
                 return true;
             }
-            // Map-backed types: ToolHandle, Credential, FilesystemHandle, CliResult
+            // Map-backed types: ToolHandle, Credential, FilesystemHandle, NetworkHandle, CliResult
             // These types serialize to/from Map when stored as Value
             if value_type == "Map" {
-                let map_backed_types = ["ToolHandle", "Credential", "FilesystemHandle", "CliResult"];
+                let map_backed_types = [
+                    "ToolHandle",
+                    "Credential",
+                    "FilesystemHandle",
+                    "NetworkHandle",
+                    "CliResult",
+                ];
                 if map_backed_types.contains(&port_type) {
                     return true;
                 }
@@ -4109,6 +4115,18 @@ fn try_mock_element_value(type_id: &str, index: Option<u32>) -> Option<Value> {
             );
             Value::Map(map)
         }
+        "NetworkHandle" => {
+            let mut map = BTreeMap::new();
+            map.insert(
+                "type".to_string(),
+                Value::Str("network_handle".to_string()),
+            );
+            map.insert(
+                "cap".to_string(),
+                Value::Secret(SecretString::new("capability")),
+            );
+            Value::Map(map)
+        }
         "TransportRequest" => Value::Request(TransportRequest::Shell(ShellRequest::new("true"))),
         "TransportResponse" => Value::Response(TransportResponse::Shell(ShellResponse::ok(
             "<MOCK>",
@@ -4330,6 +4348,10 @@ fn mock_element_expr(type_id: &str, index: Option<u32>) -> ValueExpr {
             ("replacement".to_string(), ValueExpr::Str("-".to_string())),
             ("cap".to_string(), ValueExpr::Secret("capability".to_string())),
         ]),
+        "NetworkHandle" => ValueExpr::Map(vec![
+            ("type".to_string(), ValueExpr::Str("network_handle".to_string())),
+            ("cap".to_string(), ValueExpr::Secret("capability".to_string())),
+        ]),
         "TransportRequest" => ValueExpr::Struct {
             name: "TransportRequest::Shell".to_string(),
             fields: vec![
@@ -4395,6 +4417,7 @@ fn mock_wrong_type_expr(type_id: &str) -> Option<ValueExpr> {
         | "ToolHandle"
         | "Credential"
         | "FilesystemHandle"
+        | "NetworkHandle"
         | "TransportRequest"
         | "TransportResponse" => Some(ValueExpr::Str("<WRONG>".to_string())),
         // Unknown/Any/Json/Unit are too permissive or ambiguous

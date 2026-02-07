@@ -1,3 +1,4 @@
+#![recursion_limit = "1024"]
 //! AWS OIDC + Secrets Manager ops (stub).
 //!
 //! This is a placeholder to keep provider-neutral modeling honest.
