@@ -47,19 +47,33 @@ fn run_clippy(args: &[&str]) -> Result<()> {
 Helper implementations (simple sketch):
 
 ```rust
+use std::process::Command;
+
 fn clippy_installed() -> Result<bool> {
-    // Call `rustup component list --installed` or `clippy-driver --version`
-    // and return true if clippy is present.
-    Ok(true)
+    // `rustup component list --installed` and check for "clippy".
+    let out = Command::new("rustup")
+        .args(["component", "list", "--installed"])
+        .output()?;
+    Ok(String::from_utf8_lossy(&out.stdout).contains("clippy"))
 }
 
 fn install_clippy() -> Result<()> {
     // Run `rustup component add clippy` and return error on failure.
+    let status = Command::new("rustup")
+        .args(["component", "add", "clippy"])
+        .status()?;
+    if !status.success() {
+        return Err("rustup component add clippy failed".into());
+    }
     Ok(())
 }
 
 fn run_clippy_command(args: &[&str]) -> Result<()> {
     // Execute `cargo clippy {args...}` and return error on non-zero exit.
+    let status = Command::new("cargo").arg("clippy").args(args).status()?;
+    if !status.success() {
+        return Err("cargo clippy failed".into());
+    }
     Ok(())
 }
 ```
@@ -87,6 +101,23 @@ final class ClippyRunner {
         runner.run("clippy", args);
     }
 }
+
+final class ToolInstaller {
+    boolean isInstalled(String tool) throws IOException {
+        // Call `rustup component list --installed` and check for tool.
+        return true;
+    }
+
+    void install(String tool) throws IOException {
+        // Run `rustup component add <tool>`.
+    }
+}
+
+final class ToolRunner {
+    void run(String tool, String[] args) throws IOException {
+        // Execute `cargo clippy {args...}`.
+    }
+}
 ```
 
 What you get:
@@ -105,6 +136,21 @@ runClippy args = do
   installed <- clippyInstalled
   unless installed installClippy
   runClippyCommand args
+
+clippyInstalled :: IO Bool
+clippyInstalled = do
+  -- Check `rustup component list --installed` for clippy.
+  pure True
+
+installClippy :: IO ()
+installClippy = do
+  -- Run `rustup component add clippy`.
+  pure ()
+
+runClippyCommand :: [String] -> IO ()
+runClippyCommand _ = do
+  -- Execute `cargo clippy {args...}`.
+  pure ()
 ```
 
 What you get:
@@ -199,51 +245,6 @@ fn run_gist_snapshot(repo_path: &Path, public: bool) -> Result<String> {
     let url = parse_gist_response(response)?;
 
     Ok(url)
-}
-```
-
-Helper stubs (commented intent):
-
-```rust
-fn git_ls_files(repo_path: &Path) -> Result<Vec<String>> {
-    // Run `git ls-files` in repo_path and parse into a list of file paths.
-    Ok(vec![])
-}
-
-fn render_code_snapshot(contents: &BTreeMap<String, String>) -> String {
-    // Render file contents into fenced code blocks.
-    String::new()
-}
-
-fn git_current_branch(repo_path: &Path) -> Result<Option<String>> {
-    // Run `git rev-parse --abbrev-ref HEAD` and return branch name if available.
-    Ok(None)
-}
-
-fn git_remote_branches_at_head(repo_path: &Path) -> Result<Option<String>> {
-    // Run `git branch -r --points-at HEAD` and pick a remote branch if present.
-    Ok(None)
-}
-
-fn prepare_gist_request(
-    markdown: String,
-    branch: Option<String>,
-    remote_branch: Option<String>,
-    base_ref: Option<String>,
-    public: bool,
-) -> Result<TransportRequest> {
-    // Construct an HTTP request payload for gist creation.
-    unimplemented!()
-}
-
-fn execute_transport(req: TransportRequest) -> Result<TransportResponse> {
-    // Perform the I/O boundary (HTTP request) and return a response.
-    unimplemented!()
-}
-
-fn parse_gist_response(resp: TransportResponse) -> Result<String> {
-    // Parse JSON and extract the gist URL.
-    unimplemented!()
 }
 ```
 
@@ -391,7 +392,7 @@ Real run (DAG execution):
 
 ```rust
 use gunbc_exec::{execute_with_mode, ExecutionMode};
-use gunbc_lib_gist::graph::{build_gist_graph, GistMode};
+use gunbc_gist::{build_gist_graph, GistMode};
 
 let dag = build_gist_graph(GistMode::Snapshot, vec![], false)?;
 let _log = execute_with_mode(&dag, ExecutionMode::Real)?;
