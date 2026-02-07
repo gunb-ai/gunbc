@@ -5,7 +5,7 @@ use gunbc_gist::{build_gist_graph, GistMode};
 use gunbc_ir::transport::{ShellResponse, TransportResponse};
 use gunbc_ir::{detect_boundaries, Timestamp, Value};
 use gunbc_primitives::filename;
-use gunbc_test::assert_boundary_mockable;
+use gunbc_test::{assert_boundary_mockable, guard_test, FermiCost, TestClass};
 use std::time::SystemTime;
 
 /// Helper: mock for execute_current_branch boundary.
@@ -44,9 +44,27 @@ fn mock_env(mocks: &mut BoundaryMocks) {
     // Loop body transport nodes are auto-mocked by execute_loop_body in DryRun mode.
 }
 
+fn guard_hermetic(name: &str) -> bool {
+    guard_test(name, TestClass::Hermetic, FermiCost::S, &[], &[])
+}
+
+fn guard_integration(name: &str) -> bool {
+    guard_test(
+        name,
+        TestClass::Integration,
+        FermiCost::M,
+        &["git", "shell", "gh"],
+        &[],
+    )
+}
+
 /// Test that dry-run mode intercepts the transport boundaries.
 #[test]
 fn test_dry_run_intercepts_transport() {
+    if !guard_hermetic(stringify!(test_dry_run_intercepts_transport)) {
+        return;
+    }
+
     let dag =
         build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
 
@@ -135,6 +153,10 @@ fn test_dry_run_intercepts_transport() {
 /// Test that the graph structure correctly identifies boundaries.
 #[test]
 fn test_boundary_detection() {
+    if !guard_hermetic(stringify!(test_boundary_detection)) {
+        return;
+    }
+
     let dag =
         build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
     let boundaries = detect_boundaries(&dag);
@@ -153,6 +175,10 @@ fn test_boundary_detection() {
 /// Test that the gist graph passes the boundary mockable test.
 #[test]
 fn test_gist_graph_boundary_mockable() {
+    if !guard_hermetic(stringify!(test_gist_graph_boundary_mockable)) {
+        return;
+    }
+
     let dag =
         build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
 
@@ -203,6 +229,10 @@ fn test_gist_graph_boundary_mockable() {
 /// Test that real mode does NOT intercept boundaries.
 #[test]
 fn test_real_mode_no_interception() {
+    if !guard_integration(stringify!(test_real_mode_no_interception)) {
+        return;
+    }
+
     let dag =
         build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
 
@@ -238,6 +268,10 @@ fn test_real_mode_no_interception() {
 /// gist request creation with the branch-based filename.
 #[test]
 fn test_branch_name_in_gist_filename() {
+    if !guard_hermetic(stringify!(test_branch_name_in_gist_filename)) {
+        return;
+    }
+
     let dag =
         build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
 
@@ -302,6 +336,10 @@ fn test_branch_name_in_gist_filename() {
 /// would be problematic on Windows, macOS, or Linux.
 #[test]
 fn test_platform_challenging_branch_names() {
+    if !guard_hermetic(stringify!(test_platform_challenging_branch_names)) {
+        return;
+    }
+
     let challenging_branches = vec![
         // Slashes (common in git, invalid on all platforms)
         ("feature/my-feature", "feature-my-feature"),
@@ -370,6 +408,10 @@ fn test_platform_challenging_branch_names() {
 /// The gist filename should use "main" (remote prefix stripped).
 #[test]
 fn test_detached_head_uses_remote_branch_name() {
+    if !guard_hermetic(stringify!(test_detached_head_uses_remote_branch_name)) {
+        return;
+    }
+
     let dag =
         build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
 
@@ -425,6 +467,10 @@ fn test_detached_head_uses_remote_branch_name() {
 /// verify diff runs against it.
 #[test]
 fn test_recent_mode_dry_run() {
+    if !guard_hermetic(stringify!(test_recent_mode_dry_run)) {
+        return;
+    }
+
     let dag =
         build_gist_graph(GistMode::Recent, vec![], false).expect("Failed to build gist graph");
 
@@ -526,6 +572,10 @@ fn test_recent_mode_dry_run() {
 /// Test that recent mode with young repo (empty rev-list) produces graceful empty diff.
 #[test]
 fn test_recent_mode_young_repo() {
+    if !guard_hermetic(stringify!(test_recent_mode_young_repo)) {
+        return;
+    }
+
     let dag =
         build_gist_graph(GistMode::Recent, vec![], false).expect("Failed to build gist graph");
 
@@ -606,6 +656,10 @@ fn test_recent_mode_young_repo() {
 /// Test that detached HEAD with no remote branch falls back to "snapshot".
 #[test]
 fn test_detached_head_no_remote_uses_snapshot() {
+    if !guard_hermetic(stringify!(test_detached_head_no_remote_uses_snapshot)) {
+        return;
+    }
+
     let dag =
         build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
 

@@ -38,6 +38,7 @@
 #![deny(dead_code)]
 pub mod boundary;
 pub mod composition;
+pub mod fermi;
 pub mod mock;
 pub mod mock_requirements;
 pub mod mock_spec;
@@ -49,6 +50,7 @@ pub use boundary::{
     assert_boundary_mockable, default_mocks, mocks_with_values, BoundaryTestResult,
 };
 pub use composition::{assert_types_compatible, TypeCompatibility};
+pub use fermi::{guard, guard_test, max_cost_from_env, FermiCost, TestClass, TestMeta};
 pub use mock::{MockBehavior, MockOp, ScriptedDagBuilder};
 pub use mock_spec::{
     assert_boundaries, assert_transport_mocks, validate_chain, BoundaryMock, ChainError,

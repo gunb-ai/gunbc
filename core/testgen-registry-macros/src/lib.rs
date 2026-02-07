@@ -18,6 +18,10 @@ pub fn testgen_target(args: TokenStream, input: TokenStream) -> TokenStream {
     let mut no_chain_tests = false;
     let mut skip = false;
     let mut window_max_nodes: Option<usize> = None;
+    let mut test_class: Option<syn::LitStr> = None;
+    let mut fermi_cost: Option<syn::LitStr> = None;
+    let mut requires: Option<Vec<syn::LitStr>> = None;
+    let mut secrets: Option<Vec<syn::LitStr>> = None;
 
     for arg in args {
         match arg {
@@ -66,6 +70,14 @@ pub fn testgen_target(args: TokenStream, input: TokenStream) -> TokenStream {
                             return syn::Error::new_spanned(nv, "window_max_nodes must be an integer").to_compile_error().into();
                         }
                     }
+                    Some("class") => {
+                        if let Lit::Str(s) = nv.lit { test_class = Some(s); }
+                        else { return syn::Error::new_spanned(nv, "class must be a string literal").to_compile_error().into(); }
+                    }
+                    Some("fermi") => {
+                        if let Lit::Str(s) = nv.lit { fermi_cost = Some(s); }
+                        else { return syn::Error::new_spanned(nv, "fermi must be a string literal").to_compile_error().into(); }
+                    }
                     _ => {
                         return syn::Error::new_spanned(nv, "unknown testgen_target argument").to_compile_error().into();
                     }
@@ -85,6 +97,40 @@ pub fn testgen_target(args: TokenStream, input: TokenStream) -> TokenStream {
                             Ok(expr) => signature = Some(expr),
                             Err(e) => return e.to_compile_error().into(),
                         }
+                    }
+                    Some("requires") => {
+                        let mut items = Vec::new();
+                        for item in list.nested.iter() {
+                            match item {
+                                NestedMeta::Lit(Lit::Str(s)) => items.push(s.clone()),
+                                _ => {
+                                    return syn::Error::new_spanned(
+                                        item,
+                                        "requires(...) only supports string literals",
+                                    )
+                                    .to_compile_error()
+                                    .into();
+                                }
+                            }
+                        }
+                        requires = Some(items);
+                    }
+                    Some("secrets") => {
+                        let mut items = Vec::new();
+                        for item in list.nested.iter() {
+                            match item {
+                                NestedMeta::Lit(Lit::Str(s)) => items.push(s.clone()),
+                                _ => {
+                                    return syn::Error::new_spanned(
+                                        item,
+                                        "secrets(...) only supports string literals",
+                                    )
+                                    .to_compile_error()
+                                    .into();
+                                }
+                            }
+                        }
+                        secrets = Some(items);
                     }
                     _ => {
                         return syn::Error::new_spanned(list, "unknown testgen_target list argument").to_compile_error().into();
@@ -120,6 +166,10 @@ pub fn testgen_target(args: TokenStream, input: TokenStream) -> TokenStream {
             || no_boundary_tests
             || no_chain_tests
             || window_max_nodes.is_some()
+            || test_class.is_some()
+            || fermi_cost.is_some()
+            || requires.is_some()
+            || secrets.is_some()
         {
             return syn::Error::new_spanned(
                 &input_fn.sig.ident,
@@ -167,6 +217,56 @@ pub fn testgen_target(args: TokenStream, input: TokenStream) -> TokenStream {
         quote!(None)
     };
 
+    let class_tokens = if let Some(class) = test_class {
+        match class.value().to_lowercase().as_str() {
+            "unit" => quote!(Some(gunbc_test::TestClass::Unit)),
+            "hermetic" => quote!(Some(gunbc_test::TestClass::Hermetic)),
+            "integration" => quote!(Some(gunbc_test::TestClass::Integration)),
+            _ => {
+                return syn::Error::new_spanned(
+                    class,
+                    "class must be one of: unit, hermetic, integration",
+                )
+                .to_compile_error()
+                .into();
+            }
+        }
+    } else {
+        quote!(None)
+    };
+
+    let fermi_tokens = if let Some(cost) = fermi_cost {
+        match cost.value().to_uppercase().as_str() {
+            "XS" => quote!(Some(gunbc_test::FermiCost::XS)),
+            "S" => quote!(Some(gunbc_test::FermiCost::S)),
+            "M" => quote!(Some(gunbc_test::FermiCost::M)),
+            "L" => quote!(Some(gunbc_test::FermiCost::L)),
+            "XL" => quote!(Some(gunbc_test::FermiCost::XL)),
+            _ => {
+                return syn::Error::new_spanned(
+                    cost,
+                    "fermi must be one of: XS, S, M, L, XL",
+                )
+                .to_compile_error()
+                .into();
+            }
+        }
+    } else {
+        quote!(None)
+    };
+
+    let requires_tokens = if let Some(list) = requires {
+        quote!(Some(&[#(#list),*]))
+    } else {
+        quote!(None)
+    };
+
+    let secrets_tokens = if let Some(list) = secrets {
+        quote!(Some(&[#(#list),*]))
+    } else {
+        quote!(None)
+    };
+
     let expanded = quote! {
         #input_fn
 
@@ -189,6 +289,10 @@ pub fn testgen_target(args: TokenStream, input: TokenStream) -> TokenStream {
                 chain_tests: #chain_tests,
                 flow_tests: #flow,
                 window_max_nodes: #window_tokens,
+                test_class: #class_tokens,
+                fermi_cost: #fermi_tokens,
+                requires: #requires_tokens,
+                secrets: #secrets_tokens,
                 generate: #gen_ident,
             }
         }

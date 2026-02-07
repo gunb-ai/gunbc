@@ -4,12 +4,12 @@
 // DO NOT EDIT - regenerate with: make testgen
 // Obligations: 74 obligations (21 discharged, 53 testable: A=16, B=28, C=9, D=0)
 // Proven by construction: acyclicity, type compatibility, cardinality satisfaction.
-// Content-Hash: 5b1f3ae8b8fb240d7b685827f97da774df1e06b3f2e2cfe5f28647af108131f6
+// Content-Hash: 9bb02fdf5787007a8021f81a57f1194586ef613aeeeafdfd101418a1a1665e1f
 
 
 use gunbc_exec::{execute_with_mode, lower, ExecutionMode};
 use gunbc_ir::Value;
-use gunbc_test::{assert_boundary_mockable, MockSpec};
+use gunbc_test::{assert_boundary_mockable, guard_test, FermiCost, MockSpec, TestClass};
 use gunbc_test::{apply_window_inputs, assert_window_outputs, window_subdag, Window};
 use gunbc_test::ResourceAcquireResult;
 
@@ -24,6 +24,9 @@ fn mock_spec() -> MockSpec {
 /// Declared signature matches the DAG inputs/outputs.
 #[test]
 fn test_signature_matches_dag() {
+    if !guard_test("test_signature_matches_dag", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let sig = crate :: bootstrap_signature();
     sig.validate(&dag).expect("signature should match DAG");
@@ -55,6 +58,9 @@ fn test_signature_matches_dag() {
 /// with explicit boundary mocks, and verify it completes successfully.
 #[test]
 fn test_dryrun_completion() {
+    if !guard_test("test_dryrun_completion", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let log = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("DryRun execution should complete without crash");
     assert!(!log.entries.is_empty(), "execution should produce log entries");
@@ -66,6 +72,9 @@ fn test_dryrun_completion() {
 /// accidentally perform real I/O.
 #[test]
 fn test_transport_interception() {
+    if !guard_test("test_transport_interception", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let result = assert_boundary_mockable(&dag, mock_spec().to_boundary_mocks());
     assert!(result.is_ok(), "All transports should be interceptable: {:?}", result.error);
@@ -105,6 +114,9 @@ fn test_transport_interception() {
 /// Proves: DAG handles count=0 (empty) for boundary port execute_makefile_transport.makefile_response.
 #[test]
 fn test_cardinality_execute_makefile_transport_makefile_response_empty_0() {
+    if !guard_test("test_cardinality_execute_makefile_transport_makefile_response_empty_0", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_makefile_transport", "makefile_response", Value::Unit);
@@ -116,6 +128,9 @@ fn test_cardinality_execute_makefile_transport_makefile_response_empty_0() {
 /// Proves: DAG handles count=1 (one) for boundary port execute_makefile_transport.makefile_response.
 #[test]
 fn test_cardinality_execute_makefile_transport_makefile_response_one_1() {
+    if !guard_test("test_cardinality_execute_makefile_transport_makefile_response_one_1", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_makefile_transport", "makefile_response", Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: "<MOCK>".to_string(), stderr: "".to_string() })));
@@ -127,6 +142,9 @@ fn test_cardinality_execute_makefile_transport_makefile_response_one_1() {
 /// Proves: DAG handles count=0 (empty) for boundary port execute_makefile_transport.makefile_written_path.
 #[test]
 fn test_cardinality_execute_makefile_transport_makefile_written_path_empty_0() {
+    if !guard_test("test_cardinality_execute_makefile_transport_makefile_written_path_empty_0", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_makefile_transport", "makefile_written_path", Value::Unit);
@@ -138,6 +156,9 @@ fn test_cardinality_execute_makefile_transport_makefile_written_path_empty_0() {
 /// Proves: DAG handles count=1 (one) for boundary port execute_makefile_transport.makefile_written_path.
 #[test]
 fn test_cardinality_execute_makefile_transport_makefile_written_path_one_1() {
+    if !guard_test("test_cardinality_execute_makefile_transport_makefile_written_path_one_1", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_makefile_transport", "makefile_written_path", Value::Str("<MOCK>".to_string()));
@@ -149,6 +170,9 @@ fn test_cardinality_execute_makefile_transport_makefile_written_path_one_1() {
 /// Proves: DAG handles count=0 (empty) for boundary port execute_makefile_transport.makefile_content.
 #[test]
 fn test_cardinality_execute_makefile_transport_makefile_content_empty_0() {
+    if !guard_test("test_cardinality_execute_makefile_transport_makefile_content_empty_0", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_makefile_transport", "makefile_content", Value::Unit);
@@ -160,6 +184,9 @@ fn test_cardinality_execute_makefile_transport_makefile_content_empty_0() {
 /// Proves: DAG handles count=1 (one) for boundary port execute_makefile_transport.makefile_content.
 #[test]
 fn test_cardinality_execute_makefile_transport_makefile_content_one_1() {
+    if !guard_test("test_cardinality_execute_makefile_transport_makefile_content_one_1", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_makefile_transport", "makefile_content", Value::Str("<MOCK>".to_string()));
@@ -171,6 +198,9 @@ fn test_cardinality_execute_makefile_transport_makefile_content_one_1() {
 /// Proves: DAG handles count=0 (empty) for boundary port execute_makefile_transport.skip_reason.
 #[test]
 fn test_cardinality_execute_makefile_transport_skip_reason_empty_0() {
+    if !guard_test("test_cardinality_execute_makefile_transport_skip_reason_empty_0", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_makefile_transport", "skip_reason", Value::Unit);
@@ -182,6 +212,9 @@ fn test_cardinality_execute_makefile_transport_skip_reason_empty_0() {
 /// Proves: DAG handles count=1 (one) for boundary port execute_makefile_transport.skip_reason.
 #[test]
 fn test_cardinality_execute_makefile_transport_skip_reason_one_1() {
+    if !guard_test("test_cardinality_execute_makefile_transport_skip_reason_one_1", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_makefile_transport", "skip_reason", Value::Str("<MOCK>".to_string()));
@@ -193,6 +226,9 @@ fn test_cardinality_execute_makefile_transport_skip_reason_one_1() {
 /// Proves: DAG handles count=0 (empty) for boundary port execute_gitignore_transport.gitignore_response.
 #[test]
 fn test_cardinality_execute_gitignore_transport_gitignore_response_empty_0() {
+    if !guard_test("test_cardinality_execute_gitignore_transport_gitignore_response_empty_0", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_gitignore_transport", "gitignore_response", Value::Unit);
@@ -204,6 +240,9 @@ fn test_cardinality_execute_gitignore_transport_gitignore_response_empty_0() {
 /// Proves: DAG handles count=1 (one) for boundary port execute_gitignore_transport.gitignore_response.
 #[test]
 fn test_cardinality_execute_gitignore_transport_gitignore_response_one_1() {
+    if !guard_test("test_cardinality_execute_gitignore_transport_gitignore_response_one_1", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_gitignore_transport", "gitignore_response", Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: "<MOCK>".to_string(), stderr: "".to_string() })));
@@ -215,6 +254,9 @@ fn test_cardinality_execute_gitignore_transport_gitignore_response_one_1() {
 /// Proves: DAG handles count=0 (empty) for boundary port execute_gitignore_transport.gitignore_written_path.
 #[test]
 fn test_cardinality_execute_gitignore_transport_gitignore_written_path_empty_0() {
+    if !guard_test("test_cardinality_execute_gitignore_transport_gitignore_written_path_empty_0", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_gitignore_transport", "gitignore_written_path", Value::Unit);
@@ -226,6 +268,9 @@ fn test_cardinality_execute_gitignore_transport_gitignore_written_path_empty_0()
 /// Proves: DAG handles count=1 (one) for boundary port execute_gitignore_transport.gitignore_written_path.
 #[test]
 fn test_cardinality_execute_gitignore_transport_gitignore_written_path_one_1() {
+    if !guard_test("test_cardinality_execute_gitignore_transport_gitignore_written_path_one_1", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_gitignore_transport", "gitignore_written_path", Value::Str("<MOCK>".to_string()));
@@ -237,6 +282,9 @@ fn test_cardinality_execute_gitignore_transport_gitignore_written_path_one_1() {
 /// Proves: DAG handles count=0 (empty) for boundary port execute_gitignore_transport.gitignore_content.
 #[test]
 fn test_cardinality_execute_gitignore_transport_gitignore_content_empty_0() {
+    if !guard_test("test_cardinality_execute_gitignore_transport_gitignore_content_empty_0", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_gitignore_transport", "gitignore_content", Value::Unit);
@@ -248,6 +296,9 @@ fn test_cardinality_execute_gitignore_transport_gitignore_content_empty_0() {
 /// Proves: DAG handles count=1 (one) for boundary port execute_gitignore_transport.gitignore_content.
 #[test]
 fn test_cardinality_execute_gitignore_transport_gitignore_content_one_1() {
+    if !guard_test("test_cardinality_execute_gitignore_transport_gitignore_content_one_1", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_gitignore_transport", "gitignore_content", Value::Str("<MOCK>".to_string()));
@@ -259,6 +310,9 @@ fn test_cardinality_execute_gitignore_transport_gitignore_content_one_1() {
 /// Proves: DAG handles count=0 (empty) for boundary port execute_gitignore_transport.skip_reason.
 #[test]
 fn test_cardinality_execute_gitignore_transport_skip_reason_empty_0() {
+    if !guard_test("test_cardinality_execute_gitignore_transport_skip_reason_empty_0", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_gitignore_transport", "skip_reason", Value::Unit);
@@ -270,6 +324,9 @@ fn test_cardinality_execute_gitignore_transport_skip_reason_empty_0() {
 /// Proves: DAG handles count=1 (one) for boundary port execute_gitignore_transport.skip_reason.
 #[test]
 fn test_cardinality_execute_gitignore_transport_skip_reason_one_1() {
+    if !guard_test("test_cardinality_execute_gitignore_transport_skip_reason_one_1", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_gitignore_transport", "skip_reason", Value::Str("<MOCK>".to_string()));
@@ -281,6 +338,9 @@ fn test_cardinality_execute_gitignore_transport_skip_reason_one_1() {
 /// Proves: missing optional input does not crash.
 #[test]
 fn test_optional_missing_generate_makefile_crate_names() {
+    if !guard_test("test_optional_missing_generate_makefile_crate_names", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let inputs = std::collections::HashMap::new();
     let _outputs = gunbc_exec::execute_single_node(&dag, "generate_makefile", inputs, gunbc_exec::ExecutionMode::Real).expect("optional input generate_makefile.crate_names missing should not error");
@@ -291,6 +351,9 @@ fn test_optional_missing_generate_makefile_crate_names() {
 /// Proves: wrong-typed optional input is rejected.
 #[test]
 fn test_optional_wrong_type_generate_makefile_crate_names() {
+    if !guard_test("test_optional_wrong_type_generate_makefile_crate_names", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("crate_names".to_string(), Value::Int(1));
@@ -303,6 +366,9 @@ fn test_optional_wrong_type_generate_makefile_crate_names() {
 /// Proves: missing optional input does not crash.
 #[test]
 fn test_optional_missing_compare_makefile_content_check_mode() {
+    if !guard_test("test_optional_missing_compare_makefile_content_check_mode", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("expected_content".to_string(), Value::Str("<MOCK>".to_string()));
@@ -315,6 +381,9 @@ fn test_optional_missing_compare_makefile_content_check_mode() {
 /// Proves: wrong-typed optional input is rejected.
 #[test]
 fn test_optional_wrong_type_compare_makefile_content_check_mode() {
+    if !guard_test("test_optional_wrong_type_compare_makefile_content_check_mode", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("check_mode".to_string(), Value::Str("<WRONG>".to_string()));
@@ -329,6 +398,9 @@ fn test_optional_wrong_type_compare_makefile_content_check_mode() {
 /// Proves: missing optional input does not crash.
 #[test]
 fn test_optional_missing_generate_gitignore_crate_names() {
+    if !guard_test("test_optional_missing_generate_gitignore_crate_names", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let inputs = std::collections::HashMap::new();
     let _outputs = gunbc_exec::execute_single_node(&dag, "generate_gitignore", inputs, gunbc_exec::ExecutionMode::Real).expect("optional input generate_gitignore.crate_names missing should not error");
@@ -339,6 +411,9 @@ fn test_optional_missing_generate_gitignore_crate_names() {
 /// Proves: wrong-typed optional input is rejected.
 #[test]
 fn test_optional_wrong_type_generate_gitignore_crate_names() {
+    if !guard_test("test_optional_wrong_type_generate_gitignore_crate_names", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("crate_names".to_string(), Value::Int(1));
@@ -351,6 +426,9 @@ fn test_optional_wrong_type_generate_gitignore_crate_names() {
 /// Proves: missing optional input does not crash.
 #[test]
 fn test_optional_missing_compare_gitignore_content_check_mode() {
+    if !guard_test("test_optional_missing_compare_gitignore_content_check_mode", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("expected_content".to_string(), Value::Str("<MOCK>".to_string()));
@@ -363,6 +441,9 @@ fn test_optional_missing_compare_gitignore_content_check_mode() {
 /// Proves: wrong-typed optional input is rejected.
 #[test]
 fn test_optional_wrong_type_compare_gitignore_content_check_mode() {
+    if !guard_test("test_optional_wrong_type_compare_gitignore_content_check_mode", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("check_mode".to_string(), Value::Str("<WRONG>".to_string()));
@@ -386,6 +467,9 @@ fn test_optional_wrong_type_compare_gitignore_content_check_mode() {
 /// Proves: workflow reaches terminal outputs with all transports mocked as success.
 #[test]
 fn test_scenario_all_succeed() {
+    if !guard_test("test_scenario_all_succeed", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let log = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("all-succeed scenario should complete");
     let entry = log.get("execute_scan_workspace").expect("'execute_scan_workspace' should be in log");
@@ -405,6 +489,9 @@ fn test_scenario_all_succeed() {
 /// Proves: failure propagation semantics are consistent.
 #[test]
 fn test_scenario_execute_scan_workspace_fails() {
+    if !guard_test("test_scenario_execute_scan_workspace_fails", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     // Inject failure at 'execute_scan_workspace'
@@ -419,6 +506,9 @@ fn test_scenario_execute_scan_workspace_fails() {
 /// Proves: failure propagation semantics are consistent.
 #[test]
 fn test_scenario_execute_read_makefile_fails() {
+    if !guard_test("test_scenario_execute_read_makefile_fails", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     // Inject failure at 'execute_read_makefile'
@@ -433,6 +523,9 @@ fn test_scenario_execute_read_makefile_fails() {
 /// Proves: failure propagation semantics are consistent.
 #[test]
 fn test_scenario_execute_makefile_transport_fails() {
+    if !guard_test("test_scenario_execute_makefile_transport_fails", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     // Inject failure at 'execute_makefile_transport'
@@ -447,6 +540,9 @@ fn test_scenario_execute_makefile_transport_fails() {
 /// Proves: failure propagation semantics are consistent.
 #[test]
 fn test_scenario_execute_read_gitignore_fails() {
+    if !guard_test("test_scenario_execute_read_gitignore_fails", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     // Inject failure at 'execute_read_gitignore'
@@ -461,6 +557,9 @@ fn test_scenario_execute_read_gitignore_fails() {
 /// Proves: failure propagation semantics are consistent.
 #[test]
 fn test_scenario_execute_gitignore_transport_fails() {
+    if !guard_test("test_scenario_execute_gitignore_transport_fails", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     // Inject failure at 'execute_gitignore_transport'
@@ -477,6 +576,9 @@ fn test_scenario_execute_gitignore_transport_fails() {
 /// without crashing.
 #[test]
 fn test_skip_propagation_execute_scan_workspace() {
+    if !guard_test("test_skip_propagation_execute_scan_workspace", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_scan_workspace", "response", Value::Skipped);
@@ -491,6 +593,9 @@ fn test_skip_propagation_execute_scan_workspace() {
 /// without crashing.
 #[test]
 fn test_skip_propagation_execute_read_makefile() {
+    if !guard_test("test_skip_propagation_execute_read_makefile", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_read_makefile", "response", Value::Skipped);
@@ -505,6 +610,9 @@ fn test_skip_propagation_execute_read_makefile() {
 /// without crashing.
 #[test]
 fn test_skip_propagation_execute_read_gitignore() {
+    if !guard_test("test_skip_propagation_execute_read_gitignore", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_read_gitignore", "response", Value::Skipped);
@@ -522,6 +630,9 @@ fn test_skip_propagation_execute_read_gitignore() {
 /// Test resource 'fs:Makefile' (Lock) acquisition.
 #[test]
 fn test_resource_fs_makefile_acquire() {
+    if !guard_test("test_resource_fs_makefile_acquire", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let spec = mock_spec();
     let resource = spec.get_resource("fs:Makefile").expect("resource should exist");
     let result = resource.acquire();
@@ -531,6 +642,9 @@ fn test_resource_fs_makefile_acquire() {
 /// Test resource 'fs:.gitignore' (Lock) acquisition.
 #[test]
 fn test_resource_fs_gitignore_acquire() {
+    if !guard_test("test_resource_fs_gitignore_acquire", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let spec = mock_spec();
     let resource = spec.get_resource("fs:.gitignore").expect("resource should exist");
     let result = resource.acquire();
@@ -550,6 +664,9 @@ fn test_resource_fs_gitignore_acquire() {
 /// and verifies that the pure node chain produces expected terminal outputs.
 #[test]
 fn test_flow_bootstrap() {
+    if !guard_test("test_flow_bootstrap", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let spec = mock_spec();
     let mocks = spec.to_boundary_mocks();
@@ -571,6 +688,9 @@ fn test_flow_bootstrap() {
 /// Window: execute_scan_workspace -> parse_scan_result
 #[test]
 fn test_window_execute_scan_workspace_through_parse_scan_result() {
+    if !guard_test("test_window_execute_scan_workspace_through_parse_scan_result", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -585,6 +705,9 @@ fn test_window_execute_scan_workspace_through_parse_scan_result() {
 /// Window: parse_scan_result -> generate_gitignore
 #[test]
 fn test_window_parse_scan_result_through_generate_gitignore() {
+    if !guard_test("test_window_parse_scan_result_through_generate_gitignore", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -599,6 +722,9 @@ fn test_window_parse_scan_result_through_generate_gitignore() {
 /// Window: execute_scan_workspace -> generate_gitignore
 #[test]
 fn test_window_execute_scan_workspace_through_generate_gitignore() {
+    if !guard_test("test_window_execute_scan_workspace_through_generate_gitignore", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -613,6 +739,9 @@ fn test_window_execute_scan_workspace_through_generate_gitignore() {
 /// Window: parse_scan_result -> generate_makefile
 #[test]
 fn test_window_parse_scan_result_through_generate_makefile() {
+    if !guard_test("test_window_parse_scan_result_through_generate_makefile", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -627,6 +756,9 @@ fn test_window_parse_scan_result_through_generate_makefile() {
 /// Window: execute_scan_workspace -> generate_makefile
 #[test]
 fn test_window_execute_scan_workspace_through_generate_makefile() {
+    if !guard_test("test_window_execute_scan_workspace_through_generate_makefile", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -641,6 +773,9 @@ fn test_window_execute_scan_workspace_through_generate_makefile() {
 /// Window: parse_scan_result -> compare_gitignore_content
 #[test]
 fn test_window_parse_scan_result_through_compare_gitignore_content() {
+    if !guard_test("test_window_parse_scan_result_through_compare_gitignore_content", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -655,6 +790,9 @@ fn test_window_parse_scan_result_through_compare_gitignore_content() {
 /// Window: execute_scan_workspace -> compare_gitignore_content
 #[test]
 fn test_window_execute_scan_workspace_through_compare_gitignore_content() {
+    if !guard_test("test_window_execute_scan_workspace_through_compare_gitignore_content", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -669,6 +807,9 @@ fn test_window_execute_scan_workspace_through_compare_gitignore_content() {
 /// Window: parse_scan_result -> prepare_write_gitignore
 #[test]
 fn test_window_parse_scan_result_through_prepare_write_gitignore() {
+    if !guard_test("test_window_parse_scan_result_through_prepare_write_gitignore", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -683,6 +824,9 @@ fn test_window_parse_scan_result_through_prepare_write_gitignore() {
 /// Window: execute_scan_workspace -> prepare_write_gitignore
 #[test]
 fn test_window_execute_scan_workspace_through_prepare_write_gitignore() {
+    if !guard_test("test_window_execute_scan_workspace_through_prepare_write_gitignore", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -697,6 +841,9 @@ fn test_window_execute_scan_workspace_through_prepare_write_gitignore() {
 /// Window: parse_scan_result -> compare_makefile_content
 #[test]
 fn test_window_parse_scan_result_through_compare_makefile_content() {
+    if !guard_test("test_window_parse_scan_result_through_compare_makefile_content", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -711,6 +858,9 @@ fn test_window_parse_scan_result_through_compare_makefile_content() {
 /// Window: execute_scan_workspace -> compare_makefile_content
 #[test]
 fn test_window_execute_scan_workspace_through_compare_makefile_content() {
+    if !guard_test("test_window_execute_scan_workspace_through_compare_makefile_content", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -725,6 +875,9 @@ fn test_window_execute_scan_workspace_through_compare_makefile_content() {
 /// Window: parse_scan_result -> prepare_write_makefile
 #[test]
 fn test_window_parse_scan_result_through_prepare_write_makefile() {
+    if !guard_test("test_window_parse_scan_result_through_prepare_write_makefile", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -739,6 +892,9 @@ fn test_window_parse_scan_result_through_prepare_write_makefile() {
 /// Window: execute_read_makefile -> compare_makefile_content
 #[test]
 fn test_window_execute_read_makefile_through_compare_makefile_content() {
+    if !guard_test("test_window_execute_read_makefile_through_compare_makefile_content", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -753,6 +909,9 @@ fn test_window_execute_read_makefile_through_compare_makefile_content() {
 /// Window: execute_scan_workspace -> prepare_write_makefile
 #[test]
 fn test_window_execute_scan_workspace_through_prepare_write_makefile() {
+    if !guard_test("test_window_execute_scan_workspace_through_prepare_write_makefile", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -767,6 +926,9 @@ fn test_window_execute_scan_workspace_through_prepare_write_makefile() {
 /// Window: parse_scan_result -> execute_gitignore_transport
 #[test]
 fn test_window_parse_scan_result_through_execute_gitignore_transport() {
+    if !guard_test("test_window_parse_scan_result_through_execute_gitignore_transport", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -781,6 +943,9 @@ fn test_window_parse_scan_result_through_execute_gitignore_transport() {
 /// Window: execute_read_gitignore -> compare_makefile_content
 #[test]
 fn test_window_execute_read_gitignore_through_compare_makefile_content() {
+    if !guard_test("test_window_execute_read_gitignore_through_compare_makefile_content", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -795,6 +960,9 @@ fn test_window_execute_read_gitignore_through_compare_makefile_content() {
 /// Window: execute_read_makefile -> prepare_write_makefile
 #[test]
 fn test_window_execute_read_makefile_through_prepare_write_makefile() {
+    if !guard_test("test_window_execute_read_makefile_through_prepare_write_makefile", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -809,6 +977,9 @@ fn test_window_execute_read_makefile_through_prepare_write_makefile() {
 /// Window: execute_scan_workspace -> execute_gitignore_transport
 #[test]
 fn test_window_execute_scan_workspace_through_execute_gitignore_transport() {
+    if !guard_test("test_window_execute_scan_workspace_through_execute_gitignore_transport", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -823,6 +994,9 @@ fn test_window_execute_scan_workspace_through_execute_gitignore_transport() {
 /// Window: parse_scan_result -> execute_makefile_transport
 #[test]
 fn test_window_parse_scan_result_through_execute_makefile_transport() {
+    if !guard_test("test_window_parse_scan_result_through_execute_makefile_transport", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -837,6 +1011,9 @@ fn test_window_parse_scan_result_through_execute_makefile_transport() {
 /// Window: prepare_scan_workspace -> compare_makefile_content
 #[test]
 fn test_window_prepare_scan_workspace_through_compare_makefile_content() {
+    if !guard_test("test_window_prepare_scan_workspace_through_compare_makefile_content", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -851,6 +1028,9 @@ fn test_window_prepare_scan_workspace_through_compare_makefile_content() {
 /// Window: execute_read_gitignore -> prepare_write_makefile
 #[test]
 fn test_window_execute_read_gitignore_through_prepare_write_makefile() {
+    if !guard_test("test_window_execute_read_gitignore_through_prepare_write_makefile", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -865,6 +1045,9 @@ fn test_window_execute_read_gitignore_through_prepare_write_makefile() {
 /// Window: execute_read_makefile -> execute_gitignore_transport
 #[test]
 fn test_window_execute_read_makefile_through_execute_gitignore_transport() {
+    if !guard_test("test_window_execute_read_makefile_through_execute_gitignore_transport", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -879,6 +1062,9 @@ fn test_window_execute_read_makefile_through_execute_gitignore_transport() {
 /// Window: execute_scan_workspace -> execute_makefile_transport
 #[test]
 fn test_window_execute_scan_workspace_through_execute_makefile_transport() {
+    if !guard_test("test_window_execute_scan_workspace_through_execute_makefile_transport", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -893,6 +1079,9 @@ fn test_window_execute_scan_workspace_through_execute_makefile_transport() {
 /// Window: prepare_read_makefile -> compare_makefile_content
 #[test]
 fn test_window_prepare_read_makefile_through_compare_makefile_content() {
+    if !guard_test("test_window_prepare_read_makefile_through_compare_makefile_content", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -907,6 +1096,9 @@ fn test_window_prepare_read_makefile_through_compare_makefile_content() {
 /// Window: prepare_scan_workspace -> prepare_write_makefile
 #[test]
 fn test_window_prepare_scan_workspace_through_prepare_write_makefile() {
+    if !guard_test("test_window_prepare_scan_workspace_through_prepare_write_makefile", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -921,6 +1113,9 @@ fn test_window_prepare_scan_workspace_through_prepare_write_makefile() {
 /// Window: execute_read_gitignore -> execute_gitignore_transport
 #[test]
 fn test_window_execute_read_gitignore_through_execute_gitignore_transport() {
+    if !guard_test("test_window_execute_read_gitignore_through_execute_gitignore_transport", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -935,6 +1130,9 @@ fn test_window_execute_read_gitignore_through_execute_gitignore_transport() {
 /// Window: execute_read_makefile -> execute_makefile_transport
 #[test]
 fn test_window_execute_read_makefile_through_execute_makefile_transport() {
+    if !guard_test("test_window_execute_read_makefile_through_execute_makefile_transport", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -949,6 +1147,9 @@ fn test_window_execute_read_makefile_through_execute_makefile_transport() {
 /// Window: prepare_read_gitignore -> compare_makefile_content
 #[test]
 fn test_window_prepare_read_gitignore_through_compare_makefile_content() {
+    if !guard_test("test_window_prepare_read_gitignore_through_compare_makefile_content", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -963,6 +1164,9 @@ fn test_window_prepare_read_gitignore_through_compare_makefile_content() {
 /// Window: prepare_read_makefile -> prepare_write_makefile
 #[test]
 fn test_window_prepare_read_makefile_through_prepare_write_makefile() {
+    if !guard_test("test_window_prepare_read_makefile_through_prepare_write_makefile", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -977,6 +1181,9 @@ fn test_window_prepare_read_makefile_through_prepare_write_makefile() {
 /// Window: prepare_scan_workspace -> execute_gitignore_transport
 #[test]
 fn test_window_prepare_scan_workspace_through_execute_gitignore_transport() {
+    if !guard_test("test_window_prepare_scan_workspace_through_execute_gitignore_transport", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -991,6 +1198,9 @@ fn test_window_prepare_scan_workspace_through_execute_gitignore_transport() {
 /// Window: execute_read_gitignore -> execute_makefile_transport
 #[test]
 fn test_window_execute_read_gitignore_through_execute_makefile_transport() {
+    if !guard_test("test_window_execute_read_gitignore_through_execute_makefile_transport", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1005,6 +1215,9 @@ fn test_window_execute_read_gitignore_through_execute_makefile_transport() {
 /// Window: prepare_read_gitignore -> prepare_write_makefile
 #[test]
 fn test_window_prepare_read_gitignore_through_prepare_write_makefile() {
+    if !guard_test("test_window_prepare_read_gitignore_through_prepare_write_makefile", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1019,6 +1232,9 @@ fn test_window_prepare_read_gitignore_through_prepare_write_makefile() {
 /// Window: prepare_read_makefile -> execute_gitignore_transport
 #[test]
 fn test_window_prepare_read_makefile_through_execute_gitignore_transport() {
+    if !guard_test("test_window_prepare_read_makefile_through_execute_gitignore_transport", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1033,6 +1249,9 @@ fn test_window_prepare_read_makefile_through_execute_gitignore_transport() {
 /// Window: prepare_scan_workspace -> execute_makefile_transport
 #[test]
 fn test_window_prepare_scan_workspace_through_execute_makefile_transport() {
+    if !guard_test("test_window_prepare_scan_workspace_through_execute_makefile_transport", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1047,6 +1266,9 @@ fn test_window_prepare_scan_workspace_through_execute_makefile_transport() {
 /// Window: prepare_read_gitignore -> execute_gitignore_transport
 #[test]
 fn test_window_prepare_read_gitignore_through_execute_gitignore_transport() {
+    if !guard_test("test_window_prepare_read_gitignore_through_execute_gitignore_transport", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1061,6 +1283,9 @@ fn test_window_prepare_read_gitignore_through_execute_gitignore_transport() {
 /// Window: prepare_read_makefile -> execute_makefile_transport
 #[test]
 fn test_window_prepare_read_makefile_through_execute_makefile_transport() {
+    if !guard_test("test_window_prepare_read_makefile_through_execute_makefile_transport", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1075,6 +1300,9 @@ fn test_window_prepare_read_makefile_through_execute_makefile_transport() {
 /// Window: prepare_read_gitignore -> execute_makefile_transport
 #[test]
 fn test_window_prepare_read_gitignore_through_execute_makefile_transport() {
+    if !guard_test("test_window_prepare_read_gitignore_through_execute_makefile_transport", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1098,6 +1326,9 @@ fn test_window_prepare_read_gitignore_through_execute_makefile_transport() {
 /// Tests that node 'prepare_scan_workspace' produces expected outputs for given inputs.
 #[test]
 fn test_example_prepare_scan_workspace_prepares_a_workspace_scan_transport_request() {
+    if !guard_test("test_example_prepare_scan_workspace_prepares_a_workspace_scan_transport_request", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let inputs = std::collections::HashMap::new();
     let outputs = gunbc_exec::execute_single_node(&dag, "prepare_scan_workspace", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'prepare_scan_workspace' should execute successfully");
@@ -1112,6 +1343,9 @@ fn test_example_prepare_scan_workspace_prepares_a_workspace_scan_transport_reque
 /// Tests that node 'parse_scan_result' produces expected outputs for given inputs.
 #[test]
 fn test_example_parse_scan_result_parses_shell_stdout_to_extract_sorted_crate_names_and_count() {
+    if !guard_test("test_example_parse_scan_result_parses_shell_stdout_to_extract_sorted_crate_names_and_count", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("response".to_string(), Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: "crates/bar
@@ -1132,6 +1366,9 @@ crates/foo
 /// Tests that node 'parse_scan_result' produces expected outputs for given inputs.
 #[test]
 fn test_example_parse_scan_result_handles_skipped_transport_response_gracefully() {
+    if !guard_test("test_example_parse_scan_result_handles_skipped_transport_response_gracefully", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("response".to_string(), Value::Skipped);
@@ -1150,6 +1387,9 @@ fn test_example_parse_scan_result_handles_skipped_transport_response_gracefully(
 /// Tests that node 'generate_makefile' produces expected outputs for given inputs.
 #[test]
 fn test_example_generate_makefile_generates_makefile_content_from_registry() {
+    if !guard_test("test_example_generate_makefile_generates_makefile_content_from_registry", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let inputs = std::collections::HashMap::new();
     let outputs = gunbc_exec::execute_single_node(&dag, "generate_makefile", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'generate_makefile' should execute successfully");
@@ -1164,6 +1404,9 @@ fn test_example_generate_makefile_generates_makefile_content_from_registry() {
 /// Tests that node 'generate_gitignore' produces expected outputs for given inputs.
 #[test]
 fn test_example_generate_gitignore_generates_gitignore_content_from_build_config() {
+    if !guard_test("test_example_generate_gitignore_generates_gitignore_content_from_build_config", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_bootstrap_graph().unwrap();
     let inputs = std::collections::HashMap::new();
     let outputs = gunbc_exec::execute_single_node(&dag, "generate_gitignore", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'generate_gitignore' should execute successfully");

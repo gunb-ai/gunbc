@@ -7,6 +7,7 @@
 //!
 //! This enables automatic test generation based on the operation's declaration.
 
+use gunbc_exec::EnvNode;
 use gunbc_ir::Value;
 use std::collections::HashMap;
 
@@ -67,6 +68,12 @@ pub trait Mockable {
     /// Check if this operation has any error cases.
     fn has_error_tests(&self) -> bool {
         !self.error_cases().is_empty()
+    }
+}
+
+impl<T: EnvNode> Mockable for T {
+    fn mock_outputs(&self) -> HashMap<String, Value> {
+        EnvNode::mock_outputs(self)
     }
 }
 

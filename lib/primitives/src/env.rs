@@ -1,7 +1,7 @@
 //! Environment resource acquisition ops.
 
 use crate::filename::{FilesystemHandle, Scope};
-use gunbc_exec::{ExecError, Executable, OutputMap};
+use gunbc_exec::{env_single_output, EnvNode, ExecError};
 use gunbc_ir::{Timestamp, Value};
 use std::collections::HashMap;
 
@@ -25,20 +25,22 @@ impl FsEnv {
 
     /// Mock outputs for DryRun/testgen.
     pub fn mock_outputs(&self) -> HashMap<String, Value> {
+        self.outputs()
+    }
+
+    fn outputs(&self) -> HashMap<String, Value> {
         let fs = FilesystemHandle::cross_platform(self.scope);
-        OutputMap::new()
-            .value(self.output_port(), fs.into())
-            .build()
+        env_single_output(self.output_port(), fs)
     }
 }
 
-impl Executable for FsEnv {
-    fn execute(
-        &self,
-        _inputs: HashMap<String, Value>,
-    ) -> Result<HashMap<String, Value>, ExecError> {
-        let fs = FilesystemHandle::cross_platform(self.scope);
-        OutputMap::new().value(self.output_port(), fs.into()).ok()
+impl EnvNode for FsEnv {
+    fn env_outputs(&self) -> Result<HashMap<String, Value>, ExecError> {
+        Ok(self.outputs())
+    }
+
+    fn mock_outputs(&self) -> HashMap<String, Value> {
+        self.outputs()
     }
 }
 
@@ -53,19 +55,21 @@ impl ClockEnv {
 
     /// Mock outputs for DryRun/testgen.
     pub fn mock_outputs(&self) -> HashMap<String, Value> {
+        self.outputs()
+    }
+
+    fn outputs(&self) -> HashMap<String, Value> {
         let ts = Timestamp::now();
-        OutputMap::new()
-            .value(self.output_port(), ts.into())
-            .build()
+        env_single_output(self.output_port(), ts)
     }
 }
 
-impl Executable for ClockEnv {
-    fn execute(
-        &self,
-        _inputs: HashMap<String, Value>,
-    ) -> Result<HashMap<String, Value>, ExecError> {
-        let ts = Timestamp::now();
-        OutputMap::new().value(self.output_port(), ts.into()).ok()
+impl EnvNode for ClockEnv {
+    fn env_outputs(&self) -> Result<HashMap<String, Value>, ExecError> {
+        Ok(self.outputs())
+    }
+
+    fn mock_outputs(&self) -> HashMap<String, Value> {
+        self.outputs()
     }
 }

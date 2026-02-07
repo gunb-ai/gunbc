@@ -4,12 +4,12 @@
 // DO NOT EDIT - regenerate with: make testgen
 // Obligations: 35 obligations (11 discharged, 24 testable: A=9, B=10, C=5, D=0)
 // Proven by construction: acyclicity, type compatibility, cardinality satisfaction.
-// Content-Hash: 54aef51e9b979ac04fdc044b9882bd3d8692475a111d7c02847fa9d6acbc413e
+// Content-Hash: 3ad3ade04e041305823d5cc6d738244126da5213afbeff5dd628987c9fbb61dd
 
 
 use gunbc_exec::{execute_with_mode, lower, ExecutionMode};
 use gunbc_ir::{detect_boundaries, Value};
-use gunbc_test::{assert_boundary_mockable, MockSpec};
+use gunbc_test::{assert_boundary_mockable, guard_test, FermiCost, MockSpec, TestClass};
 use gunbc_test::{apply_window_inputs, assert_window_outputs, window_subdag, Window};
 use gunbc_test::ResourceAcquireResult;
 
@@ -24,6 +24,9 @@ fn mock_spec() -> MockSpec {
 /// Declared signature matches the DAG inputs/outputs.
 #[test]
 fn test_signature_matches_dag() {
+    if !guard_test("test_signature_matches_dag", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_deps_graph().unwrap();
     let sig = crate :: deps_signature();
     sig.validate(&dag).expect("signature should match DAG");
@@ -51,6 +54,9 @@ fn test_signature_matches_dag() {
 /// with explicit boundary mocks, and verify it completes successfully.
 #[test]
 fn test_dryrun_completion() {
+    if !guard_test("test_dryrun_completion", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_deps_graph().unwrap();
     let log = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("DryRun execution should complete without crash");
     assert!(!log.entries.is_empty(), "execution should produce log entries");
@@ -62,6 +68,9 @@ fn test_dryrun_completion() {
 /// accidentally perform real I/O.
 #[test]
 fn test_transport_interception() {
+    if !guard_test("test_transport_interception", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_deps_graph().unwrap();
     let result = assert_boundary_mockable(&dag, mock_spec().to_boundary_mocks());
     assert!(result.is_ok(), "All transports should be interceptable: {:?}", result.error);
@@ -89,6 +98,9 @@ fn test_transport_interception() {
 /// Proves: DAG handles count=0 (empty) for boundary port parse_manifest.dep_names.
 #[test]
 fn test_cardinality_parse_manifest_dep_names_empty_0() {
+    if !guard_test("test_cardinality_parse_manifest_dep_names_empty_0", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_deps_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("parse_manifest", "dep_names", Value::List(vec![]));
@@ -100,6 +112,9 @@ fn test_cardinality_parse_manifest_dep_names_empty_0() {
 /// Proves: DAG handles count=1 (one) for boundary port parse_manifest.dep_names.
 #[test]
 fn test_cardinality_parse_manifest_dep_names_one_1() {
+    if !guard_test("test_cardinality_parse_manifest_dep_names_one_1", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_deps_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("parse_manifest", "dep_names", Value::List(vec![Value::Str("<MOCK>".to_string())]));
@@ -111,6 +126,9 @@ fn test_cardinality_parse_manifest_dep_names_one_1() {
 /// Proves: DAG handles count=3 (many) for boundary port parse_manifest.dep_names.
 #[test]
 fn test_cardinality_parse_manifest_dep_names_many_3() {
+    if !guard_test("test_cardinality_parse_manifest_dep_names_many_3", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_deps_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("parse_manifest", "dep_names", Value::List(vec![Value::Str("<MOCK>".to_string()), Value::Str("<MOCK_2>".to_string()), Value::Str("<MOCK_3>".to_string())]));
@@ -122,6 +140,9 @@ fn test_cardinality_parse_manifest_dep_names_many_3() {
 /// Proves: DAG handles count=0 (empty) for boundary port generate_scripts.already_installed.
 #[test]
 fn test_cardinality_generate_scripts_already_installed_empty_0() {
+    if !guard_test("test_cardinality_generate_scripts_already_installed_empty_0", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_deps_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("generate_scripts", "already_installed", Value::List(vec![]));
@@ -133,6 +154,9 @@ fn test_cardinality_generate_scripts_already_installed_empty_0() {
 /// Proves: DAG handles count=1 (one) for boundary port generate_scripts.already_installed.
 #[test]
 fn test_cardinality_generate_scripts_already_installed_one_1() {
+    if !guard_test("test_cardinality_generate_scripts_already_installed_one_1", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_deps_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("generate_scripts", "already_installed", Value::List(vec![Value::Str("<MOCK>".to_string())]));
@@ -144,6 +168,9 @@ fn test_cardinality_generate_scripts_already_installed_one_1() {
 /// Proves: DAG handles count=3 (many) for boundary port generate_scripts.already_installed.
 #[test]
 fn test_cardinality_generate_scripts_already_installed_many_3() {
+    if !guard_test("test_cardinality_generate_scripts_already_installed_many_3", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_deps_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("generate_scripts", "already_installed", Value::List(vec![Value::Str("<MOCK>".to_string()), Value::Str("<MOCK_2>".to_string()), Value::Str("<MOCK_3>".to_string())]));
@@ -155,6 +182,9 @@ fn test_cardinality_generate_scripts_already_installed_many_3() {
 /// Proves: DAG handles count=0 (empty) for boundary port generate_scripts.needs_install.
 #[test]
 fn test_cardinality_generate_scripts_needs_install_empty_0() {
+    if !guard_test("test_cardinality_generate_scripts_needs_install_empty_0", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_deps_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("generate_scripts", "needs_install", Value::List(vec![]));
@@ -166,6 +196,9 @@ fn test_cardinality_generate_scripts_needs_install_empty_0() {
 /// Proves: DAG handles count=1 (one) for boundary port generate_scripts.needs_install.
 #[test]
 fn test_cardinality_generate_scripts_needs_install_one_1() {
+    if !guard_test("test_cardinality_generate_scripts_needs_install_one_1", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_deps_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("generate_scripts", "needs_install", Value::List(vec![Value::Str("<MOCK>".to_string())]));
@@ -177,6 +210,9 @@ fn test_cardinality_generate_scripts_needs_install_one_1() {
 /// Proves: DAG handles count=3 (many) for boundary port generate_scripts.needs_install.
 #[test]
 fn test_cardinality_generate_scripts_needs_install_many_3() {
+    if !guard_test("test_cardinality_generate_scripts_needs_install_many_3", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_deps_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("generate_scripts", "needs_install", Value::List(vec![Value::Str("<MOCK>".to_string()), Value::Str("<MOCK_2>".to_string()), Value::Str("<MOCK_3>".to_string())]));
@@ -197,6 +233,9 @@ fn test_cardinality_generate_scripts_needs_install_many_3() {
 /// Proves: workflow reaches terminal outputs with all transports mocked as success.
 #[test]
 fn test_scenario_all_succeed() {
+    if !guard_test("test_scenario_all_succeed", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_deps_graph().unwrap();
     let log = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("all-succeed scenario should complete");
     let entry = log.get("execute_load_manifest").expect("'execute_load_manifest' should be in log");
@@ -210,6 +249,9 @@ fn test_scenario_all_succeed() {
 /// Proves: failure propagation semantics are consistent.
 #[test]
 fn test_scenario_execute_load_manifest_fails() {
+    if !guard_test("test_scenario_execute_load_manifest_fails", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_deps_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     // Inject failure at 'execute_load_manifest'
@@ -224,6 +266,9 @@ fn test_scenario_execute_load_manifest_fails() {
 /// Proves: failure propagation semantics are consistent.
 #[test]
 fn test_scenario_execute_installs_fails() {
+    if !guard_test("test_scenario_execute_installs_fails", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_deps_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     // Inject failure at 'execute_installs'
@@ -240,6 +285,9 @@ fn test_scenario_execute_installs_fails() {
 /// without crashing.
 #[test]
 fn test_skip_propagation_execute_load_manifest() {
+    if !guard_test("test_skip_propagation_execute_load_manifest", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_deps_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_load_manifest", "response", Value::Skipped);
@@ -254,6 +302,9 @@ fn test_skip_propagation_execute_load_manifest() {
 /// without crashing.
 #[test]
 fn test_skip_propagation_execute_installs() {
+    if !guard_test("test_skip_propagation_execute_installs", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_deps_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_installs", "response", Value::Skipped);
@@ -271,6 +322,9 @@ fn test_skip_propagation_execute_installs() {
 /// Test resource 'pkg:manager' (Lock) acquisition.
 #[test]
 fn test_resource_pkg_manager_acquire() {
+    if !guard_test("test_resource_pkg_manager_acquire", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let spec = mock_spec();
     let resource = spec.get_resource("pkg:manager").expect("resource should exist");
     let result = resource.acquire();
@@ -284,6 +338,9 @@ fn test_resource_pkg_manager_acquire() {
 /// Test that all boundaries can be mocked.
 #[test]
 fn test_boundaries_mockable() {
+    if !guard_test("test_boundaries_mockable", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_deps_graph().unwrap();
     let result = assert_boundary_mockable(&dag, mock_spec().to_boundary_mocks());
     assert!(result.is_ok(), "Boundaries should be mockable: {:?}", result.error);
@@ -292,6 +349,9 @@ fn test_boundaries_mockable() {
 /// Test that parse_execute_result boundary can be mocked.
 #[test]
 fn test_boundary_parse_execute_result_mockable() {
+    if !guard_test("test_boundary_parse_execute_result_mockable", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_deps_graph().unwrap();
     let boundaries = detect_boundaries(&dag);
     assert!(boundaries.is_boundary_node(&"parse_execute_result".into()), "parse_execute_result should be a boundary");
@@ -318,6 +378,9 @@ fn test_boundary_parse_execute_result_mockable() {
 /// Test that this tool's mock spec is self-consistent.
 #[test]
 fn test_mock_spec_self_consistent() {
+    if !guard_test("test_mock_spec_self_consistent", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let spec = mock_spec();
     // Verify all boundary mocks are present
     assert!(spec.get_boundary_mock("platform_env", "platform").is_some(), "MockSpec should have boundary mock for platform_env.platform");
@@ -337,6 +400,9 @@ fn test_mock_spec_self_consistent() {
 /// Test that input expectations are documented.
 #[test]
 fn test_input_expectations_documented() {
+    if !guard_test("test_input_expectations_documented", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let spec = mock_spec();
     // Port 'manifest_path' expects: Any
     assert_eq!(spec.input_expectations.len(), 1);
@@ -352,6 +418,9 @@ fn test_input_expectations_documented() {
 /// Window: prepare_load_manifest -> execute_load_manifest
 #[test]
 fn test_window_prepare_load_manifest_through_execute_load_manifest() {
+    if !guard_test("test_window_prepare_load_manifest_through_execute_load_manifest", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_deps_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -366,6 +435,9 @@ fn test_window_prepare_load_manifest_through_execute_load_manifest() {
 /// Window: execute_load_manifest -> parse_manifest
 #[test]
 fn test_window_execute_load_manifest_through_parse_manifest() {
+    if !guard_test("test_window_execute_load_manifest_through_parse_manifest", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_deps_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -380,6 +452,9 @@ fn test_window_execute_load_manifest_through_parse_manifest() {
 /// Window: parse_manifest -> generate_scripts
 #[test]
 fn test_window_parse_manifest_through_generate_scripts() {
+    if !guard_test("test_window_parse_manifest_through_generate_scripts", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_deps_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -394,6 +469,9 @@ fn test_window_parse_manifest_through_generate_scripts() {
 /// Window: generate_scripts -> prepare_execute_installs
 #[test]
 fn test_window_generate_scripts_through_prepare_execute_installs() {
+    if !guard_test("test_window_generate_scripts_through_prepare_execute_installs", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_deps_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -408,6 +486,9 @@ fn test_window_generate_scripts_through_prepare_execute_installs() {
 /// Window: prepare_execute_installs -> execute_installs
 #[test]
 fn test_window_prepare_execute_installs_through_execute_installs() {
+    if !guard_test("test_window_prepare_execute_installs_through_execute_installs", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_deps_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -422,6 +503,9 @@ fn test_window_prepare_execute_installs_through_execute_installs() {
 /// Window: execute_installs -> parse_execute_result
 #[test]
 fn test_window_execute_installs_through_parse_execute_result() {
+    if !guard_test("test_window_execute_installs_through_parse_execute_result", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_deps_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -436,6 +520,9 @@ fn test_window_execute_installs_through_parse_execute_result() {
 /// Window: prepare_load_manifest -> parse_manifest
 #[test]
 fn test_window_prepare_load_manifest_through_parse_manifest() {
+    if !guard_test("test_window_prepare_load_manifest_through_parse_manifest", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_deps_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -450,6 +537,9 @@ fn test_window_prepare_load_manifest_through_parse_manifest() {
 /// Window: execute_load_manifest -> generate_scripts
 #[test]
 fn test_window_execute_load_manifest_through_generate_scripts() {
+    if !guard_test("test_window_execute_load_manifest_through_generate_scripts", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_deps_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -464,6 +554,9 @@ fn test_window_execute_load_manifest_through_generate_scripts() {
 /// Window: parse_manifest -> prepare_execute_installs
 #[test]
 fn test_window_parse_manifest_through_prepare_execute_installs() {
+    if !guard_test("test_window_parse_manifest_through_prepare_execute_installs", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_deps_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -478,6 +571,9 @@ fn test_window_parse_manifest_through_prepare_execute_installs() {
 /// Window: generate_scripts -> execute_installs
 #[test]
 fn test_window_generate_scripts_through_execute_installs() {
+    if !guard_test("test_window_generate_scripts_through_execute_installs", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_deps_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -492,6 +588,9 @@ fn test_window_generate_scripts_through_execute_installs() {
 /// Window: prepare_execute_installs -> parse_execute_result
 #[test]
 fn test_window_prepare_execute_installs_through_parse_execute_result() {
+    if !guard_test("test_window_prepare_execute_installs_through_parse_execute_result", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_deps_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -506,6 +605,9 @@ fn test_window_prepare_execute_installs_through_parse_execute_result() {
 /// Window: prepare_load_manifest -> generate_scripts
 #[test]
 fn test_window_prepare_load_manifest_through_generate_scripts() {
+    if !guard_test("test_window_prepare_load_manifest_through_generate_scripts", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_deps_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -520,6 +622,9 @@ fn test_window_prepare_load_manifest_through_generate_scripts() {
 /// Window: execute_load_manifest -> prepare_execute_installs
 #[test]
 fn test_window_execute_load_manifest_through_prepare_execute_installs() {
+    if !guard_test("test_window_execute_load_manifest_through_prepare_execute_installs", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_deps_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -534,6 +639,9 @@ fn test_window_execute_load_manifest_through_prepare_execute_installs() {
 /// Window: parse_manifest -> execute_installs
 #[test]
 fn test_window_parse_manifest_through_execute_installs() {
+    if !guard_test("test_window_parse_manifest_through_execute_installs", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_deps_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -548,6 +656,9 @@ fn test_window_parse_manifest_through_execute_installs() {
 /// Window: generate_scripts -> parse_execute_result
 #[test]
 fn test_window_generate_scripts_through_parse_execute_result() {
+    if !guard_test("test_window_generate_scripts_through_parse_execute_result", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_deps_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -562,6 +673,9 @@ fn test_window_generate_scripts_through_parse_execute_result() {
 /// Window: platform_env -> generate_scripts
 #[test]
 fn test_window_platform_env_through_generate_scripts() {
+    if !guard_test("test_window_platform_env_through_generate_scripts", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_deps_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -576,6 +690,9 @@ fn test_window_platform_env_through_generate_scripts() {
 /// Window: prepare_load_manifest -> prepare_execute_installs
 #[test]
 fn test_window_prepare_load_manifest_through_prepare_execute_installs() {
+    if !guard_test("test_window_prepare_load_manifest_through_prepare_execute_installs", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_deps_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -590,6 +707,9 @@ fn test_window_prepare_load_manifest_through_prepare_execute_installs() {
 /// Window: execute_load_manifest -> execute_installs
 #[test]
 fn test_window_execute_load_manifest_through_execute_installs() {
+    if !guard_test("test_window_execute_load_manifest_through_execute_installs", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_deps_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -604,6 +724,9 @@ fn test_window_execute_load_manifest_through_execute_installs() {
 /// Window: parse_manifest -> parse_execute_result
 #[test]
 fn test_window_parse_manifest_through_parse_execute_result() {
+    if !guard_test("test_window_parse_manifest_through_parse_execute_result", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_deps_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -618,6 +741,9 @@ fn test_window_parse_manifest_through_parse_execute_result() {
 /// Window: platform_env -> prepare_execute_installs
 #[test]
 fn test_window_platform_env_through_prepare_execute_installs() {
+    if !guard_test("test_window_platform_env_through_prepare_execute_installs", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_deps_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -632,6 +758,9 @@ fn test_window_platform_env_through_prepare_execute_installs() {
 /// Window: prepare_load_manifest -> execute_installs
 #[test]
 fn test_window_prepare_load_manifest_through_execute_installs() {
+    if !guard_test("test_window_prepare_load_manifest_through_execute_installs", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_deps_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -646,6 +775,9 @@ fn test_window_prepare_load_manifest_through_execute_installs() {
 /// Window: execute_load_manifest -> parse_execute_result
 #[test]
 fn test_window_execute_load_manifest_through_parse_execute_result() {
+    if !guard_test("test_window_execute_load_manifest_through_parse_execute_result", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_deps_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -660,6 +792,9 @@ fn test_window_execute_load_manifest_through_parse_execute_result() {
 /// Window: platform_env -> execute_installs
 #[test]
 fn test_window_platform_env_through_execute_installs() {
+    if !guard_test("test_window_platform_env_through_execute_installs", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_deps_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -674,6 +809,9 @@ fn test_window_platform_env_through_execute_installs() {
 /// Window: prepare_load_manifest -> parse_execute_result
 #[test]
 fn test_window_prepare_load_manifest_through_parse_execute_result() {
+    if !guard_test("test_window_prepare_load_manifest_through_parse_execute_result", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_deps_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -688,6 +826,9 @@ fn test_window_prepare_load_manifest_through_parse_execute_result() {
 /// Window: platform_env -> parse_execute_result
 #[test]
 fn test_window_platform_env_through_parse_execute_result() {
+    if !guard_test("test_window_platform_env_through_parse_execute_result", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_deps_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -711,6 +852,9 @@ fn test_window_platform_env_through_parse_execute_result() {
 /// Tests that node 'platform_env' produces expected outputs for given inputs.
 #[test]
 fn test_example_platform_env_detects_host_platform_as_a_string() {
+    if !guard_test("test_example_platform_env_detects_host_platform_as_a_string", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_deps_graph().unwrap();
     let inputs = std::collections::HashMap::new();
     let outputs = gunbc_exec::execute_single_node(&dag, "platform_env", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'platform_env' should execute successfully");
@@ -725,6 +869,9 @@ fn test_example_platform_env_detects_host_platform_as_a_string() {
 /// Tests that node 'prepare_load_manifest' produces expected outputs for given inputs.
 #[test]
 fn test_example_prepare_load_manifest_prepares_file_read_request_for_deps_toml() {
+    if !guard_test("test_example_prepare_load_manifest_prepares_file_read_request_for_deps_toml", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_deps_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("manifest_path".to_string(), Value::Str("deps.toml".to_string()));
@@ -743,6 +890,9 @@ fn test_example_prepare_load_manifest_prepares_file_read_request_for_deps_toml()
 /// Tests that node 'parse_manifest' produces expected outputs for given inputs.
 #[test]
 fn test_example_parse_manifest_parses_deps_toml_into_dependency_list_and_content() {
+    if !guard_test("test_example_parse_manifest_parses_deps_toml_into_dependency_list_and_content", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_deps_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("manifest_path".to_string(), Value::Str("deps.toml".to_string()));
@@ -779,6 +929,9 @@ packages = [\"ripgrep\"]
 /// Tests that node 'generate_scripts' produces expected outputs for given inputs.
 #[test]
 fn test_example_generate_scripts_generates_install_script_and_plan_for_linux() {
+    if !guard_test("test_example_generate_scripts_generates_install_script_and_plan_for_linux", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_deps_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("manifest_content".to_string(), Value::Str("[[dependency]]
@@ -812,6 +965,9 @@ packages = [\"ripgrep\"]
 /// Tests that node 'prepare_execute_installs' produces expected outputs for given inputs.
 #[test]
 fn test_example_prepare_execute_installs_prepares_shell_request_for_install_script() {
+    if !guard_test("test_example_prepare_execute_installs_prepares_shell_request_for_install_script", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_deps_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("install_script".to_string(), Value::Str("echo install".to_string()));
@@ -830,6 +986,9 @@ fn test_example_prepare_execute_installs_prepares_shell_request_for_install_scri
 /// Tests that node 'parse_execute_result' produces expected outputs for given inputs.
 #[test]
 fn test_example_parse_execute_result_parses_install_execution_result() {
+    if !guard_test("test_example_parse_execute_result_parses_install_execution_result", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_deps_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("response".to_string(), Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: "installed

@@ -11,7 +11,7 @@ use std::process::Command;
 use gunbc_ir::transport::cli::{CliToolDef, CliToolError, CliToolOp, ToolHandle, ToolPathResolver};
 use gunbc_ir::Value;
 
-/// Default resolver that uses the `which` command to find binaries on PATH.
+/// Resolver that uses the `which` command to find binaries on PATH (Unix).
 pub struct WhichResolver;
 
 impl ToolPathResolver for WhichResolver {
@@ -37,9 +37,56 @@ impl ToolPathResolver for WhichResolver {
     }
 }
 
-/// Resolve a tool binary path using the default resolver.
+/// Resolver that uses the `where` command to find binaries on PATH (Windows).
+pub struct WhereResolver;
+
+impl ToolPathResolver for WhereResolver {
+    fn resolve(&self, tool: &'static CliToolDef) -> Result<PathBuf, CliToolError> {
+        let binary = tool
+            .binary_name()
+            .ok_or_else(|| CliToolError::new(tool, "resolve", "No binary name defined"))?;
+
+        let output = Command::new("where").arg(binary).output().map_err(|e| {
+            CliToolError::new(tool, "resolve", format!("Failed to run where: {}", e))
+        })?;
+
+        if !output.status.success() {
+            return Err(CliToolError::new(
+                tool,
+                "resolve",
+                format!("Binary '{}' not found on PATH", binary),
+            ));
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let path_str = stdout
+            .lines()
+            .map(str::trim)
+            .find(|line| !line.is_empty())
+            .ok_or_else(|| {
+                CliToolError::new(
+                    tool,
+                    "resolve",
+                    format!("Binary '{}' not found on PATH", binary),
+                )
+            })?;
+
+        Ok(PathBuf::from(path_str))
+    }
+}
+
+/// Resolve a tool binary path using the platform default resolver.
 pub fn resolve_tool_path(tool: &'static CliToolDef) -> Result<PathBuf, CliToolError> {
-    resolve_tool_path_with(tool, &WhichResolver)
+    #[cfg(windows)]
+    {
+        let resolver = WhereResolver;
+        resolve_tool_path_with(tool, &resolver)
+    }
+    #[cfg(not(windows))]
+    {
+        let resolver = WhichResolver;
+        resolve_tool_path_with(tool, &resolver)
+    }
 }
 
 /// Resolve a tool binary path with an injected resolver.
@@ -52,7 +99,16 @@ pub fn resolve_tool_path_with(
 
 /// Upsert a tool using the default resolver.
 pub fn upsert_tool(tool: &'static CliToolDef) -> Result<PathBuf, CliToolError> {
-    upsert_tool_with(tool, &WhichResolver)
+    #[cfg(windows)]
+    {
+        let resolver = WhereResolver;
+        upsert_tool_with(tool, &resolver)
+    }
+    #[cfg(not(windows))]
+    {
+        let resolver = WhichResolver;
+        upsert_tool_with(tool, &resolver)
+    }
 }
 
 /// Upsert a tool with an injected resolver.
@@ -267,6 +323,7 @@ mod tests {
     };
 
     #[test]
+    #[cfg(not(windows))]
     fn test_which_resolver_finds_git() {
         let resolver = WhichResolver;
         let result = resolver.resolve(&TEST_TOOL_GIT);
@@ -281,8 +338,41 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(windows))]
     fn test_which_resolver_fails_for_nonexistent() {
         let resolver = WhichResolver;
+        let result = resolver.resolve(&TEST_TOOL_NONEXISTENT);
+
+        assert!(
+            result.is_err(),
+            "nonexistent tool should not resolve: {:?}",
+            result
+        );
+
+        let err = result.unwrap_err();
+        assert_eq!(err.tool_id, "nonexistent_tool_xyz_12345");
+        assert!(err.message.contains("not found"));
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn test_where_resolver_finds_git() {
+        let resolver = WhereResolver;
+        let result = resolver.resolve(&TEST_TOOL_GIT);
+
+        assert!(result.is_ok(), "git should be found: {:?}", result);
+        let path = result.unwrap();
+        assert!(path.exists(), "resolved path should exist");
+        assert!(
+            path.to_string_lossy().contains("git"),
+            "path should contain 'git'"
+        );
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn test_where_resolver_fails_for_nonexistent() {
+        let resolver = WhereResolver;
         let result = resolver.resolve(&TEST_TOOL_NONEXISTENT);
 
         assert!(
@@ -317,6 +407,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(windows))]
     fn test_resolve_tool_path_with_which() {
         let result = resolve_tool_path_with(&TEST_TOOL_GIT, &WhichResolver);
         assert!(result.is_ok(), "should resolve git: {:?}", result);

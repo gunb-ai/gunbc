@@ -36,23 +36,6 @@ and could be aligned with the env-dict pattern above if we standardize it.
 
 ---
 
-### 2. Tool path resolution defaults to `which` (Unix-only)
-
-**Where**: `lib/transport/src/cli.rs`
-
-**Current state**: Resolution is injectable via `ToolPathResolver` and
-`resolve_tool_path_with()`, and tests use `MockResolver`. The default
-`WhichResolver` still shells out to `which`.
-
-**Problem**: Default resolver is Unix-specific; Windows should use `where`.
-
-**Fix**: Add a Windows resolver (or a platform-agnostic resolver) and select
-based on platform. Keep `WhichResolver` for Unix.
-
-**Severity**: LOW — DI is solved, portability remains.
-
----
-
 ## Resolved (2026-02-06)
 
 - **FilesystemHandle in gist-ops**: `sanitize_branch_for_filename` and
@@ -72,3 +55,6 @@ based on platform. Keep `WhichResolver` for Unix.
   `env::vars()` once and passes a `HashMap<String, String>` into
   `load_step_inputs_from_env()` and `emit_step_outputs()`; those functions
   no longer read env vars directly.
+- **Tool path resolution uses platform resolvers**: default CLI tool resolver
+  now picks `which` on Unix and `where` on Windows, closing the portability
+  gap while keeping `ToolPathResolver` injection intact.

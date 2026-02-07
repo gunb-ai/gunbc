@@ -3,6 +3,7 @@
 //! Generates Makefile from tool registry.
 
 #![deny(dead_code)]
+use gunbc_codegen::file_writer::format_diff;
 use gunbc_dag::build_makegen_graph;
 use gunbc_exec::{
     execute_and_display, execute_with_mode_and_inputs, BoundaryMocks, ExecutionMode,
@@ -129,11 +130,12 @@ fn main() {
         // Check mode: bypass display, use execute_with_mode_and_inputs directly
         match execute_with_mode_and_inputs(&dag, mode, Some(&input_mocks)) {
             Ok(log) => {
-                // Scan log for compare_content.fresh
+                // Scan log for compare_*_content.fresh
                 let fresh = log
                     .entries
                     .iter()
-                    .find(|e| e.node_id == "compare_content")
+                    .find(|e| e.node_id == "compare_makegen_content")
+                    .or_else(|| log.entries.iter().find(|e| e.outputs.contains_key("fresh")))
                     .and_then(|e| e.outputs.get("fresh"))
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false);
@@ -143,6 +145,40 @@ fn main() {
                 } else {
                     eprintln!("makegen --check: drift detected");
                     eprintln!("  DRIFT  {}", path);
+                    // Try to show a diff between on-disk content and newly rendered output.
+                    let expected = log
+                        .entries
+                        .iter()
+                        .find(|e| e.node_id == "render_makefile")
+                        .and_then(|e| e.outputs.get("makefile_content"))
+                        .and_then(|v| v.as_str());
+
+                    let actual = log
+                        .entries
+                        .iter()
+                        .find(|e| e.node_id == "execute_read_makegen")
+                        .and_then(|e| e.outputs.get("response"))
+                        .and_then(|v| match v {
+                            Value::Response(TransportResponse::File(f)) => f.content.as_deref(),
+                            _ => None,
+                        });
+
+                    if let (Some(old), Some(new)) = (actual, expected) {
+                        eprintln!("\n--- Drift diff (expected vs disk) ---");
+                        eprintln!("{}", format_diff(old, new));
+                    } else {
+                        eprintln!("\n(no diff available: missing expected or actual content)");
+                    }
+
+                    let fix_cmd = if path == "Makefile" {
+                        "make makegen".to_string()
+                    } else {
+                        format!(
+                            "cargo run -p gunbc-dag --bin gunbc-makegen -- --path {}",
+                            path
+                        )
+                    };
+                    eprintln!("\nTo fix:\n  {}", fix_cmd);
                     process::exit(1);
                 }
             }

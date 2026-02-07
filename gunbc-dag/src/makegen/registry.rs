@@ -731,8 +731,8 @@ impl ResourceTargetMap {
                 },
                 ResourceTargetEntry {
                     id: ResourceId::build("verified_artifacts"),
-                    ensure_target: "verify".to_string(),
-                    verify_target: None, // always ensure
+                    ensure_target: "verify-fix".to_string(),
+                    verify_target: Some("verify".to_string()),
                 },
             ],
         }
@@ -839,6 +839,8 @@ pub struct MetaTarget {
     pub description: String,
     /// Which BuildConfig field to use for the command
     pub config_field: ConfigField,
+    /// Optional command prefix (e.g., env vars)
+    pub command_prefix: Option<String>,
     /// Whether this target has a check variant (e.g., fmt-check)
     pub has_check_variant: bool,
     /// Whether this target has a fix variant (e.g., test-fix, clippy-fix)
@@ -862,6 +864,7 @@ impl MetaTarget {
             name: name.into(),
             description: description.into(),
             config_field,
+            command_prefix: None,
             has_check_variant: false,
             has_fix_variant: false,
             resources: Vec::new(),
@@ -899,15 +902,23 @@ impl MetaTarget {
         self
     }
 
+    /// Set a command prefix (e.g., env vars) for this meta target.
+    pub fn with_command_prefix(mut self, prefix: impl Into<String>) -> Self {
+        self.command_prefix = Some(prefix.into());
+        self
+    }
+
     /// Get the command for this meta target from BuildConfig.
     pub fn get_command(&self, config: &BuildConfig) -> String {
-        self.config_field.get_command(config)
+        self.apply_prefix(self.config_field.get_command(config))
     }
 
     /// Get the check command for this meta target from BuildConfig.
     pub fn get_check_command(&self, config: &BuildConfig) -> Option<String> {
         if self.has_check_variant {
-            self.config_field.get_check_command(config)
+            self.config_field
+                .get_check_command(config)
+                .map(|cmd| self.apply_prefix(cmd))
         } else {
             None
         }
@@ -921,8 +932,24 @@ impl MetaTarget {
             self.config_field
                 .get_fix_command(config)
                 .or_else(|| Some(self.config_field.get_command(config)))
+                .map(|cmd| self.apply_prefix(cmd))
         } else {
             None
+        }
+    }
+
+    fn apply_prefix(&self, cmd: String) -> String {
+        match &self.command_prefix {
+            Some(prefix) => {
+                let base = cmd.strip_prefix('@').unwrap_or(&cmd);
+                let prefix = prefix.trim();
+                if prefix.is_empty() {
+                    cmd
+                } else {
+                    format!("@{} {}", prefix, base)
+                }
+            }
+            None => cmd,
         }
     }
 }
@@ -942,10 +969,15 @@ pub fn default_meta_targets() -> Vec<MetaTarget> {
         // test - run all tests (requires full build + verify)
         // build already includes testgen, so no separate generated_tests dependency needed
         // test-fix: fmt-fix + lint-fix first, then test
-        MetaTarget::new("test", "Run all tests", ConfigField::Test)
+        MetaTarget::new("test", "Run tests (<=S)", ConfigField::Test)
             .needs(ResourceId::build("compiled_code"), ExecMode::Ensure)
             .needs(ResourceId::build("verified_artifacts"), ExecMode::Ensure)
             .with_fix_variant(vec![FixAlias::FmtFix, FixAlias::LintFix]),
+        // test-all - run all tests regardless of cost (includes XL)
+        MetaTarget::new("test-all", "Run all tests (<=XL)", ConfigField::Test)
+            .with_command_prefix("GUNBC_TEST_MAX_COST=XL RUN_LIVE_INTEGRATION=1")
+            .needs(ResourceId::build("compiled_code"), ExecMode::Ensure)
+            .needs(ResourceId::build("verified_artifacts"), ExecMode::Ensure),
         // check - type check without building (requires codegen + pragma)
         // check-fix: fmt-fix first, then check
         MetaTarget::new("check", "Type check all targets", ConfigField::Check)
@@ -1201,8 +1233,9 @@ mod tests {
     fn test_default_meta_targets() {
         let targets = default_meta_targets();
 
-        // Should have test, check, clippy, fmt
+        // Should have test, test-all, check, clippy, fmt
         assert!(targets.iter().any(|t| t.name == "test"));
+        assert!(targets.iter().any(|t| t.name == "test-all"));
         assert!(targets.iter().any(|t| t.name == "check"));
         assert!(targets.iter().any(|t| t.name == "clippy"));
         assert!(targets.iter().any(|t| t.name == "fmt"));
@@ -1310,6 +1343,10 @@ mod tests {
             Some("testgen")
         );
         assert_eq!(
+            map.resolve(&ResourceId::build("verified_artifacts"), ExecMode::Ensure),
+            Some("verify-fix")
+        );
+        assert_eq!(
             map.resolve(&ResourceId::build("compiled_code"), ExecMode::Ensure),
             Some("build")
         );
@@ -1333,6 +1370,10 @@ mod tests {
         assert_eq!(
             map.resolve(&ResourceId::build("generated_cli"), ExecMode::Verify),
             Some("ensure-codegen")
+        );
+        assert_eq!(
+            map.resolve(&ResourceId::build("verified_artifacts"), ExecMode::Verify),
+            Some("verify")
         );
     }
 

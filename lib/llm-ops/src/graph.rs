@@ -10,7 +10,9 @@
 //! LLM capabilities (code review, code generation, etc.).
 
 use gunbc_exec::{ExecError, Executable};
-use gunbc_ir::{build::*, Dag, Node, Value};
+use gunbc_ir::{
+    add_transport_execute_parse_named_with_passthrough, build::*, Dag, DagBuilder, Node, Value,
+};
 use gunbc_lib_transport::{CredentialOp, TransportOps};
 use std::collections::HashMap;
 
@@ -56,73 +58,74 @@ impl Executable for LlmGraphOp {
 /// - `parse.input_tokens`: Int
 /// - `parse.output_tokens`: Int
 pub fn build_chat_completion_graph() -> Dag<LlmGraphOp> {
-    let mut dag = Dag::new();
+    let mut builder: DagBuilder<LlmGraphOp> = DagBuilder::new();
 
     // Node 1: PrepareChatRequest (pure)
-    dag.add_node(Node::opaque(
-        "prepare",
-        vec![
-            port("provider", "String"),
-            port("model", "String"),
-            port("messages", "Json"),
-            optional("system_prompt", "String"),
-            optional("temperature", "Json"),
-            optional("max_tokens", "Int"),
-        ],
-        vec![
-            port("request", "TransportRequest"),
-            port("provider", "String"),
-            port("skip", "Bool"),
-        ],
-        LlmGraphOp::Llm(LlmOps::PrepareChatRequest),
-    ));
+    let prepare = builder
+        .add_root_node(Node::opaque(
+            "prepare",
+            vec![
+                port("provider", "String"),
+                port("model", "String"),
+                port("messages", "Json"),
+                optional("system_prompt", "String"),
+                optional("temperature", "Json"),
+                optional("max_tokens", "Int"),
+            ],
+            vec![
+                port("request", "TransportRequest"),
+                port("provider", "String"),
+                port("skip", "Bool"),
+            ],
+            LlmGraphOp::Llm(LlmOps::PrepareChatRequest),
+        ))
+        .expect("prepare node");
 
     // Node 2: Resolve auth requirements (pure)
-    dag.add_node(Node::opaque(
-        "resolve_auth",
-        vec![port("provider", "String")],
-        vec![
-            port("service", "String"),
-            port("env_var", "String"),
-            port("scheme", "String"),
-            port("header_name", "String"),
-        ],
-        LlmGraphOp::Llm(LlmOps::ResolveAuth),
-    ));
+    let resolve_auth = builder
+        .add_node_after(
+            Node::opaque(
+                "resolve_auth",
+                vec![port("provider", "String")],
+                vec![
+                    port("service", "String"),
+                    port("env_var", "String"),
+                    port("scheme", "String"),
+                    port("header_name", "String"),
+                ],
+                LlmGraphOp::Llm(LlmOps::ResolveAuth),
+            ),
+            &prepare,
+        )
+        .expect("resolve_auth node");
 
     // Node 3: Credential environment (resolves provider credentials)
     let cred_port = "credential:llm";
-    dag.add_node(Node::opaque(
-        "credential_env",
-        vec![
-            port("service", "String"),
-            port("env_var", "String"),
-            port("scheme", "String"),
-            port("header_name", "String"),
-        ],
-        vec![port(cred_port, "Credential")],
-        LlmGraphOp::Cred(CredentialOp::from_inputs(cred_port)),
-    ));
+    let credential_env = builder
+        .add_node_after(
+            Node::opaque(
+                "credential_env",
+                vec![
+                    port("service", "String"),
+                    port("env_var", "String"),
+                    port("scheme", "String"),
+                    port("header_name", "String"),
+                ],
+                vec![port(cred_port, "Credential")],
+                LlmGraphOp::Cred(CredentialOp::from_inputs(cred_port)),
+            ),
+            &resolve_auth,
+        )
+        .expect("credential_env node");
 
-    // Node 4: Execute transport (I/O boundary)
-    dag.add_node(Node::opaque(
+    // Nodes 4-5: Execute transport + ParseChatResponse
+    let llm_triplet = add_transport_execute_parse_named_with_passthrough(
+        &mut builder,
+        &prepare,
         "execute",
-        vec![
-            port("request", "TransportRequest"),
-            resource("credential", "Credential", AccessMode::Read),
-            port("skip", "Bool"),
-        ],
-        vec![port("response", "TransportResponse")],
-        LlmGraphOp::Transport(TransportOps::Execute),
-    ));
-
-    // Node 5: ParseChatResponse (pure)
-    dag.add_node(Node::opaque(
         "parse",
-        vec![
-            port("provider", "String"),
-            port("response", "TransportResponse"),
-        ],
+        vec![port("provider", "String")],
+        vec![resource("credential", "Credential", AccessMode::Read)],
         vec![
             port("content", "String"),
             port("model", "String"),
@@ -131,21 +134,41 @@ pub fn build_chat_completion_graph() -> Dag<LlmGraphOp> {
             port("output_tokens", "Int"),
         ],
         LlmGraphOp::Llm(LlmOps::ParseChatResponse),
-    ));
+        LlmGraphOp::Transport(TransportOps::Execute),
+        Some(&credential_env),
+    )
+    .expect("llm triplet");
 
     // Edges: prepare -> resolve_auth -> credential_env -> execute -> parse
-    dag.add_edge(edge("prepare", "request", "execute", "request"));
-    dag.add_edge(edge("prepare", "skip", "execute", "skip"));
-    dag.add_edge(edge("execute", "response", "parse", "response"));
-    dag.add_edge(edge("prepare", "provider", "parse", "provider"));
-    dag.add_edge(edge("prepare", "provider", "resolve_auth", "provider"));
-    dag.add_edge(edge("resolve_auth", "service", "credential_env", "service"));
-    dag.add_edge(edge("resolve_auth", "env_var", "credential_env", "env_var"));
-    dag.add_edge(edge("resolve_auth", "scheme", "credential_env", "scheme"));
-    dag.add_edge(edge("resolve_auth", "header_name", "credential_env", "header_name"));
-    dag.add_edge(edge("credential_env", cred_port, "execute", "res:credential"));
+    builder
+        .add_edge(prepare.out("provider"), resolve_auth.in_port("provider"))
+        .expect("prepare.provider -> resolve_auth.provider");
+    builder
+        .add_edge(
+            resolve_auth.out("service"),
+            credential_env.in_port("service"),
+        )
+        .expect("resolve_auth.service -> credential_env.service");
+    builder
+        .add_edge(resolve_auth.out("env_var"), credential_env.in_port("env_var"))
+        .expect("resolve_auth.env_var -> credential_env.env_var");
+    builder
+        .add_edge(resolve_auth.out("scheme"), credential_env.in_port("scheme"))
+        .expect("resolve_auth.scheme -> credential_env.scheme");
+    builder
+        .add_edge(
+            resolve_auth.out("header_name"),
+            credential_env.in_port("header_name"),
+        )
+        .expect("resolve_auth.header_name -> credential_env.header_name");
+    builder
+        .add_edge(
+            credential_env.out(cred_port),
+            llm_triplet.execute.in_port("res:credential"),
+        )
+        .expect("credential_env -> execute.res:credential");
 
-    dag
+    builder.build()
 }
 
 #[cfg(test)]

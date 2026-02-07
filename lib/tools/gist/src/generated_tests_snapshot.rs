@@ -4,12 +4,12 @@
 // DO NOT EDIT - regenerate with: make testgen
 // Obligations: 69 obligations (21 discharged, 48 testable: A=18, B=21, C=9, D=0)
 // Proven by construction: acyclicity, type compatibility, cardinality satisfaction.
-// Content-Hash: be4b6a99f5be3df144be5ab7da7148f7730e5d44e92fe47cd879aea822191595
+// Content-Hash: 0ca6053c5106f5c90c2e1092f9a886701619e4a114984132c71fa65f373576b5
 
 
 use gunbc_exec::{execute_with_mode, lower, ExecutionMode};
 use gunbc_ir::{detect_boundaries, Value};
-use gunbc_test::{assert_boundary_mockable, MockSpec};
+use gunbc_test::{assert_boundary_mockable, guard_test, FermiCost, MockSpec, TestClass};
 use gunbc_test::{apply_window_inputs, assert_window_outputs, window_subdag, Window};
 
 fn mock_spec() -> MockSpec {
@@ -23,6 +23,9 @@ fn mock_spec() -> MockSpec {
 /// Declared signature matches the DAG inputs/outputs.
 #[test]
 fn test_signature_matches_dag() {
+    if !guard_test("test_signature_matches_dag", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let sig = crate :: gist_signature(& crate :: GistMode :: Snapshot);
@@ -58,6 +61,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// with explicit boundary mocks, and verify it completes successfully.
 #[test]
 fn test_dryrun_completion() {
+    if !guard_test("test_dryrun_completion", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let log = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("DryRun execution should complete without crash");
@@ -70,6 +76,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// accidentally perform real I/O.
 #[test]
 fn test_transport_interception() {
+    if !guard_test("test_transport_interception", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let result = assert_boundary_mockable(&dag, mock_spec().to_boundary_mocks());
@@ -110,6 +119,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Proves: missing optional input does not crash.
 #[test]
 fn test_optional_missing_collect_file_contents_filenames() {
+    if !guard_test("test_optional_missing_collect_file_contents_filenames", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let inputs = std::collections::HashMap::new();
@@ -121,6 +133,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Proves: wrong-typed optional input is rejected.
 #[test]
 fn test_optional_wrong_type_collect_file_contents_filenames() {
+    if !guard_test("test_optional_wrong_type_collect_file_contents_filenames", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let mut inputs = std::collections::HashMap::new();
@@ -134,6 +149,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Proves: missing optional input does not crash.
 #[test]
 fn test_optional_missing_collect_file_contents_contents_list() {
+    if !guard_test("test_optional_missing_collect_file_contents_contents_list", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let inputs = std::collections::HashMap::new();
@@ -145,6 +163,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Proves: wrong-typed optional input is rejected.
 #[test]
 fn test_optional_wrong_type_collect_file_contents_contents_list() {
+    if !guard_test("test_optional_wrong_type_collect_file_contents_contents_list", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let mut inputs = std::collections::HashMap::new();
@@ -158,6 +179,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Proves: missing optional input does not crash.
 #[test]
 fn test_optional_missing_prepare_gist_request_branch() {
+    if !guard_test("test_optional_missing_prepare_gist_request_branch", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let mut inputs = std::collections::HashMap::new();
@@ -172,6 +196,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Proves: wrong-typed optional input is rejected.
 #[test]
 fn test_optional_wrong_type_prepare_gist_request_branch() {
+    if !guard_test("test_optional_wrong_type_prepare_gist_request_branch", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let mut inputs = std::collections::HashMap::new();
@@ -188,6 +215,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Proves: missing optional input does not crash.
 #[test]
 fn test_optional_missing_prepare_gist_request_remote_branch() {
+    if !guard_test("test_optional_missing_prepare_gist_request_remote_branch", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let mut inputs = std::collections::HashMap::new();
@@ -203,6 +233,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Proves: wrong-typed optional input is rejected.
 #[test]
 fn test_optional_wrong_type_prepare_gist_request_remote_branch() {
+    if !guard_test("test_optional_wrong_type_prepare_gist_request_remote_branch", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let mut inputs = std::collections::HashMap::new();
@@ -220,6 +253,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Proves: missing optional input does not crash.
 #[test]
 fn test_optional_missing_prepare_gist_request_base_ref() {
+    if !guard_test("test_optional_missing_prepare_gist_request_base_ref", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let mut inputs = std::collections::HashMap::new();
@@ -235,6 +271,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Proves: wrong-typed optional input is rejected.
 #[test]
 fn test_optional_wrong_type_prepare_gist_request_base_ref() {
+    if !guard_test("test_optional_wrong_type_prepare_gist_request_base_ref", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let mut inputs = std::collections::HashMap::new();
@@ -261,6 +300,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Proves: workflow reaches terminal outputs with all transports mocked as success.
 #[test]
 fn test_scenario_all_succeed() {
+    if !guard_test("test_scenario_all_succeed", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let log = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("all-succeed scenario should complete");
@@ -279,6 +321,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Proves: failure propagation semantics are consistent.
 #[test]
 fn test_scenario_execute_list_files_fails() {
+    if !guard_test("test_scenario_execute_list_files_fails", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -294,6 +339,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Proves: failure propagation semantics are consistent.
 #[test]
 fn test_scenario_execute_current_branch_fails() {
+    if !guard_test("test_scenario_execute_current_branch_fails", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -309,6 +357,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Proves: failure propagation semantics are consistent.
 #[test]
 fn test_scenario_execute_remote_branches_fails() {
+    if !guard_test("test_scenario_execute_remote_branches_fails", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -324,6 +375,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Proves: failure propagation semantics are consistent.
 #[test]
 fn test_scenario_execute_gist_fails() {
+    if !guard_test("test_scenario_execute_gist_fails", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -341,6 +395,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// without crashing.
 #[test]
 fn test_skip_propagation_execute_list_files() {
+    if !guard_test("test_skip_propagation_execute_list_files", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -356,6 +413,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// without crashing.
 #[test]
 fn test_skip_propagation_execute_current_branch() {
+    if !guard_test("test_skip_propagation_execute_current_branch", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -371,6 +431,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// without crashing.
 #[test]
 fn test_skip_propagation_execute_remote_branches() {
+    if !guard_test("test_skip_propagation_execute_remote_branches", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -386,6 +449,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// without crashing.
 #[test]
 fn test_skip_propagation_execute_gist() {
+    if !guard_test("test_skip_propagation_execute_gist", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
@@ -401,6 +467,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Test that all boundaries can be mocked.
 #[test]
 fn test_boundaries_mockable() {
+    if !guard_test("test_boundaries_mockable", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let result = assert_boundary_mockable(&dag, mock_spec().to_boundary_mocks());
@@ -410,6 +479,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Test that parse_gist_response boundary can be mocked.
 #[test]
 fn test_boundary_parse_gist_response_mockable() {
+    if !guard_test("test_boundary_parse_gist_response_mockable", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let boundaries = detect_boundaries(&dag);
@@ -432,6 +504,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Test that this tool's mock spec is self-consistent.
 #[test]
 fn test_mock_spec_self_consistent() {
+    if !guard_test("test_mock_spec_self_consistent", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let spec = mock_spec();
     // Verify all boundary mocks are present
     assert!(spec.get_boundary_mock("fs_env", "fs:write").is_some(), "MockSpec should have boundary mock for fs_env.fs:write");
@@ -442,6 +517,9 @@ fn test_mock_spec_self_consistent() {
 /// Test that input expectations are documented.
 #[test]
 fn test_input_expectations_documented() {
+    if !guard_test("test_input_expectations_documented", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let spec = mock_spec();
     // Port 'repo_path' expects: Any
     assert_eq!(spec.input_expectations.len(), 1);
@@ -457,6 +535,9 @@ fn test_input_expectations_documented() {
 /// Window: read_files_loop/unpack -> read_files_loop/pack
 #[test]
 fn test_window_read_files_loop_unpack_through_read_files_loop_pack() {
+    if !guard_test("test_window_read_files_loop_unpack_through_read_files_loop_pack", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
@@ -472,6 +553,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Window: read_files_loop/pack -> collect_file_contents
 #[test]
 fn test_window_read_files_loop_pack_through_collect_file_contents() {
+    if !guard_test("test_window_read_files_loop_pack_through_collect_file_contents", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
@@ -487,6 +571,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Window: collect_file_contents -> render_markdown
 #[test]
 fn test_window_collect_file_contents_through_render_markdown() {
+    if !guard_test("test_window_collect_file_contents_through_render_markdown", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
@@ -502,6 +589,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Window: render_markdown -> prepare_gist_request
 #[test]
 fn test_window_render_markdown_through_prepare_gist_request() {
+    if !guard_test("test_window_render_markdown_through_prepare_gist_request", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
@@ -517,6 +607,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Window: prepare_gist_request -> execute_gist
 #[test]
 fn test_window_prepare_gist_request_through_execute_gist() {
+    if !guard_test("test_window_prepare_gist_request_through_execute_gist", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
@@ -532,6 +625,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Window: execute_gist -> parse_gist_response
 #[test]
 fn test_window_execute_gist_through_parse_gist_response() {
+    if !guard_test("test_window_execute_gist_through_parse_gist_response", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
@@ -547,6 +643,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Window: read_files_loop/unpack -> collect_file_contents
 #[test]
 fn test_window_read_files_loop_unpack_through_collect_file_contents() {
+    if !guard_test("test_window_read_files_loop_unpack_through_collect_file_contents", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
@@ -562,6 +661,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Window: read_files_loop/pack -> render_markdown
 #[test]
 fn test_window_read_files_loop_pack_through_render_markdown() {
+    if !guard_test("test_window_read_files_loop_pack_through_render_markdown", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
@@ -577,6 +679,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Window: collect_file_contents -> prepare_gist_request
 #[test]
 fn test_window_collect_file_contents_through_prepare_gist_request() {
+    if !guard_test("test_window_collect_file_contents_through_prepare_gist_request", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
@@ -592,6 +697,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Window: render_markdown -> execute_gist
 #[test]
 fn test_window_render_markdown_through_execute_gist() {
+    if !guard_test("test_window_render_markdown_through_execute_gist", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
@@ -607,6 +715,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Window: prepare_gist_request -> parse_gist_response
 #[test]
 fn test_window_prepare_gist_request_through_parse_gist_response() {
+    if !guard_test("test_window_prepare_gist_request_through_parse_gist_response", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
@@ -622,6 +733,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Window: read_files_loop/unpack -> render_markdown
 #[test]
 fn test_window_read_files_loop_unpack_through_render_markdown() {
+    if !guard_test("test_window_read_files_loop_unpack_through_render_markdown", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
@@ -637,6 +751,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Window: read_files_loop/pack -> prepare_gist_request
 #[test]
 fn test_window_read_files_loop_pack_through_prepare_gist_request() {
+    if !guard_test("test_window_read_files_loop_pack_through_prepare_gist_request", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
@@ -652,6 +769,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Window: collect_file_contents -> execute_gist
 #[test]
 fn test_window_collect_file_contents_through_execute_gist() {
+    if !guard_test("test_window_collect_file_contents_through_execute_gist", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
@@ -667,6 +787,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Window: render_markdown -> parse_gist_response
 #[test]
 fn test_window_render_markdown_through_parse_gist_response() {
+    if !guard_test("test_window_render_markdown_through_parse_gist_response", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
@@ -682,6 +805,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Window: read_files_loop/unpack -> prepare_gist_request
 #[test]
 fn test_window_read_files_loop_unpack_through_prepare_gist_request() {
+    if !guard_test("test_window_read_files_loop_unpack_through_prepare_gist_request", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
@@ -697,6 +823,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Window: read_files_loop/pack -> execute_gist
 #[test]
 fn test_window_read_files_loop_pack_through_execute_gist() {
+    if !guard_test("test_window_read_files_loop_pack_through_execute_gist", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
@@ -712,6 +841,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Window: collect_file_contents -> parse_gist_response
 #[test]
 fn test_window_collect_file_contents_through_parse_gist_response() {
+    if !guard_test("test_window_collect_file_contents_through_parse_gist_response", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
@@ -727,6 +859,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Window: parse_remote_branches -> prepare_gist_request
 #[test]
 fn test_window_parse_remote_branches_through_prepare_gist_request() {
+    if !guard_test("test_window_parse_remote_branches_through_prepare_gist_request", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
@@ -742,6 +877,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Window: read_files_loop/unpack -> execute_gist
 #[test]
 fn test_window_read_files_loop_unpack_through_execute_gist() {
+    if !guard_test("test_window_read_files_loop_unpack_through_execute_gist", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
@@ -757,6 +895,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Window: read_files_loop/pack -> parse_gist_response
 #[test]
 fn test_window_read_files_loop_pack_through_parse_gist_response() {
+    if !guard_test("test_window_read_files_loop_pack_through_parse_gist_response", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
@@ -772,6 +913,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Window: parse_list_files -> prepare_gist_request
 #[test]
 fn test_window_parse_list_files_through_prepare_gist_request() {
+    if !guard_test("test_window_parse_list_files_through_prepare_gist_request", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
@@ -787,6 +931,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Window: parse_remote_branches -> execute_gist
 #[test]
 fn test_window_parse_remote_branches_through_execute_gist() {
+    if !guard_test("test_window_parse_remote_branches_through_execute_gist", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
@@ -802,6 +949,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Window: read_files_loop/unpack -> parse_gist_response
 #[test]
 fn test_window_read_files_loop_unpack_through_parse_gist_response() {
+    if !guard_test("test_window_read_files_loop_unpack_through_parse_gist_response", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
@@ -817,6 +967,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Window: parse_current_branch -> prepare_gist_request
 #[test]
 fn test_window_parse_current_branch_through_prepare_gist_request() {
+    if !guard_test("test_window_parse_current_branch_through_prepare_gist_request", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
@@ -832,6 +985,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Window: parse_list_files -> execute_gist
 #[test]
 fn test_window_parse_list_files_through_execute_gist() {
+    if !guard_test("test_window_parse_list_files_through_execute_gist", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
@@ -847,6 +1003,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Window: parse_remote_branches -> parse_gist_response
 #[test]
 fn test_window_parse_remote_branches_through_parse_gist_response() {
+    if !guard_test("test_window_parse_remote_branches_through_parse_gist_response", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
@@ -862,6 +1021,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Window: execute_remote_branches -> prepare_gist_request
 #[test]
 fn test_window_execute_remote_branches_through_prepare_gist_request() {
+    if !guard_test("test_window_execute_remote_branches_through_prepare_gist_request", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
@@ -877,6 +1039,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Window: parse_current_branch -> execute_gist
 #[test]
 fn test_window_parse_current_branch_through_execute_gist() {
+    if !guard_test("test_window_parse_current_branch_through_execute_gist", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
@@ -892,6 +1057,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Window: parse_list_files -> parse_gist_response
 #[test]
 fn test_window_parse_list_files_through_parse_gist_response() {
+    if !guard_test("test_window_parse_list_files_through_parse_gist_response", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
@@ -907,6 +1075,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Window: execute_list_files -> prepare_gist_request
 #[test]
 fn test_window_execute_list_files_through_prepare_gist_request() {
+    if !guard_test("test_window_execute_list_files_through_prepare_gist_request", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
@@ -922,6 +1093,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Window: execute_remote_branches -> execute_gist
 #[test]
 fn test_window_execute_remote_branches_through_execute_gist() {
+    if !guard_test("test_window_execute_remote_branches_through_execute_gist", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
@@ -937,6 +1111,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Window: parse_current_branch -> parse_gist_response
 #[test]
 fn test_window_parse_current_branch_through_parse_gist_response() {
+    if !guard_test("test_window_parse_current_branch_through_parse_gist_response", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
@@ -952,6 +1129,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Window: execute_current_branch -> prepare_gist_request
 #[test]
 fn test_window_execute_current_branch_through_prepare_gist_request() {
+    if !guard_test("test_window_execute_current_branch_through_prepare_gist_request", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
@@ -967,6 +1147,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Window: execute_list_files -> execute_gist
 #[test]
 fn test_window_execute_list_files_through_execute_gist() {
+    if !guard_test("test_window_execute_list_files_through_execute_gist", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
@@ -982,6 +1165,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Window: execute_remote_branches -> parse_gist_response
 #[test]
 fn test_window_execute_remote_branches_through_parse_gist_response() {
+    if !guard_test("test_window_execute_remote_branches_through_parse_gist_response", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
@@ -997,6 +1183,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Window: prepare_remote_branches -> prepare_gist_request
 #[test]
 fn test_window_prepare_remote_branches_through_prepare_gist_request() {
+    if !guard_test("test_window_prepare_remote_branches_through_prepare_gist_request", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
@@ -1012,6 +1201,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Window: execute_current_branch -> execute_gist
 #[test]
 fn test_window_execute_current_branch_through_execute_gist() {
+    if !guard_test("test_window_execute_current_branch_through_execute_gist", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
@@ -1027,6 +1219,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Window: execute_list_files -> parse_gist_response
 #[test]
 fn test_window_execute_list_files_through_parse_gist_response() {
+    if !guard_test("test_window_execute_list_files_through_parse_gist_response", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
@@ -1042,6 +1237,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Window: prepare_list_files -> prepare_gist_request
 #[test]
 fn test_window_prepare_list_files_through_prepare_gist_request() {
+    if !guard_test("test_window_prepare_list_files_through_prepare_gist_request", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
@@ -1057,6 +1255,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Window: prepare_remote_branches -> execute_gist
 #[test]
 fn test_window_prepare_remote_branches_through_execute_gist() {
+    if !guard_test("test_window_prepare_remote_branches_through_execute_gist", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
@@ -1072,6 +1273,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Window: execute_current_branch -> parse_gist_response
 #[test]
 fn test_window_execute_current_branch_through_parse_gist_response() {
+    if !guard_test("test_window_execute_current_branch_through_parse_gist_response", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
@@ -1087,6 +1291,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Window: prepare_current_branch -> prepare_gist_request
 #[test]
 fn test_window_prepare_current_branch_through_prepare_gist_request() {
+    if !guard_test("test_window_prepare_current_branch_through_prepare_gist_request", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
@@ -1102,6 +1309,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Window: prepare_list_files -> execute_gist
 #[test]
 fn test_window_prepare_list_files_through_execute_gist() {
+    if !guard_test("test_window_prepare_list_files_through_execute_gist", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
@@ -1117,6 +1327,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Window: prepare_remote_branches -> parse_gist_response
 #[test]
 fn test_window_prepare_remote_branches_through_parse_gist_response() {
+    if !guard_test("test_window_prepare_remote_branches_through_parse_gist_response", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
@@ -1132,6 +1345,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Window: fs_env -> prepare_gist_request
 #[test]
 fn test_window_fs_env_through_prepare_gist_request() {
+    if !guard_test("test_window_fs_env_through_prepare_gist_request", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
@@ -1147,6 +1363,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Window: prepare_current_branch -> execute_gist
 #[test]
 fn test_window_prepare_current_branch_through_execute_gist() {
+    if !guard_test("test_window_prepare_current_branch_through_execute_gist", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
@@ -1162,6 +1381,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Window: prepare_list_files -> parse_gist_response
 #[test]
 fn test_window_prepare_list_files_through_parse_gist_response() {
+    if !guard_test("test_window_prepare_list_files_through_parse_gist_response", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
@@ -1177,6 +1399,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Window: clock_env -> prepare_gist_request
 #[test]
 fn test_window_clock_env_through_prepare_gist_request() {
+    if !guard_test("test_window_clock_env_through_prepare_gist_request", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
@@ -1192,6 +1417,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Window: fs_env -> execute_gist
 #[test]
 fn test_window_fs_env_through_execute_gist() {
+    if !guard_test("test_window_fs_env_through_execute_gist", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
@@ -1207,6 +1435,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Window: prepare_current_branch -> parse_gist_response
 #[test]
 fn test_window_prepare_current_branch_through_parse_gist_response() {
+    if !guard_test("test_window_prepare_current_branch_through_parse_gist_response", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
@@ -1222,6 +1453,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Window: clock_env -> execute_gist
 #[test]
 fn test_window_clock_env_through_execute_gist() {
+    if !guard_test("test_window_clock_env_through_execute_gist", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
@@ -1237,6 +1471,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Window: fs_env -> parse_gist_response
 #[test]
 fn test_window_fs_env_through_parse_gist_response() {
+    if !guard_test("test_window_fs_env_through_parse_gist_response", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
@@ -1252,6 +1489,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Window: clock_env -> parse_gist_response
 #[test]
 fn test_window_clock_env_through_parse_gist_response() {
+    if !guard_test("test_window_clock_env_through_parse_gist_response", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
@@ -1276,6 +1516,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Tests that node 'fs_env' produces expected outputs for given inputs.
 #[test]
 fn test_example_fs_env_provides_filesystem_handle_for_gist_filename_generation() {
+    if !guard_test("test_example_fs_env_provides_filesystem_handle_for_gist_filename_generation", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let inputs = std::collections::HashMap::new();
@@ -1291,6 +1534,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Tests that node 'clock_env' produces expected outputs for given inputs.
 #[test]
 fn test_example_clock_env_provides_timestamp_for_gist_filename_generation() {
+    if !guard_test("test_example_clock_env_provides_timestamp_for_gist_filename_generation", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let inputs = std::collections::HashMap::new();
@@ -1306,6 +1552,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Tests that node 'prepare_current_branch' produces expected outputs for given inputs.
 #[test]
 fn test_example_prepare_current_branch_prepares_git_rev_parse_request_for_current_branch() {
+    if !guard_test("test_example_prepare_current_branch_prepares_git_rev_parse_request_for_current_branch", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let mut inputs = std::collections::HashMap::new();
@@ -1322,6 +1571,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Tests that node 'parse_current_branch' produces expected outputs for given inputs.
 #[test]
 fn test_example_parse_current_branch_parses_current_branch_name_from_git_output() {
+    if !guard_test("test_example_parse_current_branch_parses_current_branch_name_from_git_output", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let mut inputs = std::collections::HashMap::new();
@@ -1339,6 +1591,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Tests that node 'prepare_remote_branches' produces expected outputs for given inputs.
 #[test]
 fn test_example_prepare_remote_branches_prepares_git_branch_r_points_at_head_request() {
+    if !guard_test("test_example_prepare_remote_branches_prepares_git_branch_r_points_at_head_request", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let mut inputs = std::collections::HashMap::new();
@@ -1355,6 +1610,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Tests that node 'parse_remote_branches' produces expected outputs for given inputs.
 #[test]
 fn test_example_parse_remote_branches_parses_remote_branch_name_from_git_output() {
+    if !guard_test("test_example_parse_remote_branches_parses_remote_branch_name_from_git_output", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let mut inputs = std::collections::HashMap::new();
@@ -1372,6 +1630,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Tests that node 'prepare_gist_request' produces expected outputs for given inputs.
 #[test]
 fn test_example_prepare_gist_request_builds_gist_creation_request_from_markdown() {
+    if !guard_test("test_example_prepare_gist_request_builds_gist_creation_request_from_markdown", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let mut inputs = std::collections::HashMap::new();
@@ -1391,6 +1652,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Tests that node 'parse_gist_response' produces expected outputs for given inputs.
 #[test]
 fn test_example_parse_gist_response_extracts_gist_url_from_response_json() {
+    if !guard_test("test_example_parse_gist_response_extracts_gist_url_from_response_json", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let mut inputs = std::collections::HashMap::new();
@@ -1407,6 +1671,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Tests that node 'prepare_list_files' produces expected outputs for given inputs.
 #[test]
 fn test_example_prepare_list_files_prepares_git_ls_files_request() {
+    if !guard_test("test_example_prepare_list_files_prepares_git_ls_files_request", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let mut inputs = std::collections::HashMap::new();
@@ -1423,6 +1690,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Tests that node 'parse_list_files' produces expected outputs for given inputs.
 #[test]
 fn test_example_parse_list_files_parses_git_ls_files_output_into_a_file_list() {
+    if !guard_test("test_example_parse_list_files_parses_git_ls_files_output_into_a_file_list", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let mut inputs = std::collections::HashMap::new();
@@ -1441,6 +1711,9 @@ README.md
 /// Tests that node 'collect_file_contents' produces expected outputs for given inputs.
 #[test]
 fn test_example_collect_file_contents_zips_filenames_contents_into_a_map_skipping_empty_content() {
+    if !guard_test("test_example_collect_file_contents_zips_filenames_contents_into_a_map_skipping_empty_content", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let mut inputs = std::collections::HashMap::new();
@@ -1458,6 +1731,9 @@ build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
 /// Tests that node 'render_markdown' produces expected outputs for given inputs.
 #[test]
 fn test_example_render_markdown_renders_markdown_code_snapshot() {
+    if !guard_test("test_example_render_markdown_renders_markdown_code_snapshot", TestClass::Hermetic, FermiCost::S, &["shell"], &[]) {
+    return ();
+};
     let dag = crate ::
 build_gist_graph(crate :: GistMode :: Snapshot, vec! [], false).unwrap();
     let mut inputs = std::collections::HashMap::new();

@@ -4,12 +4,12 @@
 // DO NOT EDIT - regenerate with: make testgen
 // Obligations: 177 obligations (65 discharged, 112 testable: A=31, B=63, C=18, D=0)
 // Proven by construction: acyclicity, type compatibility, cardinality satisfaction.
-// Content-Hash: 027e6249583bce8c8a1ee26d0973168db5b030b3663523f298c58dd60d7c7a70
+// Content-Hash: d7dbdc567de9665dc26c4d99a9b00ebaa82b461fc46ee0edc5330a7c7f7a639d
 
 
 use gunbc_exec::{execute_with_mode, lower, ExecutionMode};
 use gunbc_ir::Value;
-use gunbc_test::{assert_boundary_mockable, MockSpec};
+use gunbc_test::{assert_boundary_mockable, guard_test, FermiCost, MockSpec, TestClass};
 use gunbc_test::{apply_window_inputs, assert_window_outputs, window_subdag, Window};
 use gunbc_test::ResourceAcquireResult;
 
@@ -24,6 +24,9 @@ fn mock_spec() -> MockSpec {
 /// Declared signature matches the DAG inputs/outputs.
 #[test]
 fn test_signature_matches_dag() {
+    if !guard_test("test_signature_matches_dag", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let sig = crate :: ci_signature();
     sig.validate(&dag).expect("signature should match DAG");
@@ -66,6 +69,9 @@ fn test_signature_matches_dag() {
 /// with explicit boundary mocks, and verify it completes successfully.
 #[test]
 fn test_dryrun_completion() {
+    if !guard_test("test_dryrun_completion", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let log = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("DryRun execution should complete without crash");
     assert!(!log.entries.is_empty(), "execution should produce log entries");
@@ -77,6 +83,9 @@ fn test_dryrun_completion() {
 /// accidentally perform real I/O.
 #[test]
 fn test_transport_interception() {
+    if !guard_test("test_transport_interception", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let result = assert_boundary_mockable(&dag, mock_spec().to_boundary_mocks());
     assert!(result.is_ok(), "All transports should be interceptable: {:?}", result.error);
@@ -134,6 +143,9 @@ fn test_transport_interception() {
 /// Proves: DAG handles count=0 (empty) for boundary port execute_stamp_write.response.
 #[test]
 fn test_cardinality_execute_stamp_write_response_empty_0() {
+    if !guard_test("test_cardinality_execute_stamp_write_response_empty_0", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_stamp_write", "response", Value::Unit);
@@ -145,6 +157,9 @@ fn test_cardinality_execute_stamp_write_response_empty_0() {
 /// Proves: DAG handles count=1 (one) for boundary port execute_stamp_write.response.
 #[test]
 fn test_cardinality_execute_stamp_write_response_one_1() {
+    if !guard_test("test_cardinality_execute_stamp_write_response_one_1", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_stamp_write", "response", Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: "<MOCK>".to_string(), stderr: "".to_string() })));
@@ -156,6 +171,9 @@ fn test_cardinality_execute_stamp_write_response_one_1() {
 /// Proves: DAG handles count=0 (empty) for boundary port execute_testgen.skip_reason.
 #[test]
 fn test_cardinality_execute_testgen_skip_reason_empty_0() {
+    if !guard_test("test_cardinality_execute_testgen_skip_reason_empty_0", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_testgen", "skip_reason", Value::Unit);
@@ -167,6 +185,9 @@ fn test_cardinality_execute_testgen_skip_reason_empty_0() {
 /// Proves: DAG handles count=1 (one) for boundary port execute_testgen.skip_reason.
 #[test]
 fn test_cardinality_execute_testgen_skip_reason_one_1() {
+    if !guard_test("test_cardinality_execute_testgen_skip_reason_one_1", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_testgen", "skip_reason", Value::Str("<MOCK>".to_string()));
@@ -178,6 +199,9 @@ fn test_cardinality_execute_testgen_skip_reason_one_1() {
 /// Proves: DAG handles count=0 (empty) for boundary port execute_build.skip_reason.
 #[test]
 fn test_cardinality_execute_build_skip_reason_empty_0() {
+    if !guard_test("test_cardinality_execute_build_skip_reason_empty_0", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_build", "skip_reason", Value::Unit);
@@ -189,6 +213,9 @@ fn test_cardinality_execute_build_skip_reason_empty_0() {
 /// Proves: DAG handles count=1 (one) for boundary port execute_build.skip_reason.
 #[test]
 fn test_cardinality_execute_build_skip_reason_one_1() {
+    if !guard_test("test_cardinality_execute_build_skip_reason_one_1", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_build", "skip_reason", Value::Str("<MOCK>".to_string()));
@@ -200,6 +227,9 @@ fn test_cardinality_execute_build_skip_reason_one_1() {
 /// Proves: DAG handles count=0 (empty) for boundary port execute_test.skip_reason.
 #[test]
 fn test_cardinality_execute_test_skip_reason_empty_0() {
+    if !guard_test("test_cardinality_execute_test_skip_reason_empty_0", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_test", "skip_reason", Value::Unit);
@@ -211,6 +241,9 @@ fn test_cardinality_execute_test_skip_reason_empty_0() {
 /// Proves: DAG handles count=1 (one) for boundary port execute_test.skip_reason.
 #[test]
 fn test_cardinality_execute_test_skip_reason_one_1() {
+    if !guard_test("test_cardinality_execute_test_skip_reason_one_1", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_test", "skip_reason", Value::Str("<MOCK>".to_string()));
@@ -222,6 +255,9 @@ fn test_cardinality_execute_test_skip_reason_one_1() {
 /// Proves: DAG handles count=0 (empty) for boundary port execute_guardrail_check.skip_reason.
 #[test]
 fn test_cardinality_execute_guardrail_check_skip_reason_empty_0() {
+    if !guard_test("test_cardinality_execute_guardrail_check_skip_reason_empty_0", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_guardrail_check", "skip_reason", Value::Unit);
@@ -233,6 +269,9 @@ fn test_cardinality_execute_guardrail_check_skip_reason_empty_0() {
 /// Proves: DAG handles count=1 (one) for boundary port execute_guardrail_check.skip_reason.
 #[test]
 fn test_cardinality_execute_guardrail_check_skip_reason_one_1() {
+    if !guard_test("test_cardinality_execute_guardrail_check_skip_reason_one_1", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_guardrail_check", "skip_reason", Value::Str("<MOCK>".to_string()));
@@ -244,6 +283,9 @@ fn test_cardinality_execute_guardrail_check_skip_reason_one_1() {
 /// Proves: DAG handles count=0 (empty) for boundary port execute_verify_check.skip_reason.
 #[test]
 fn test_cardinality_execute_verify_check_skip_reason_empty_0() {
+    if !guard_test("test_cardinality_execute_verify_check_skip_reason_empty_0", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_verify_check", "skip_reason", Value::Unit);
@@ -255,6 +297,9 @@ fn test_cardinality_execute_verify_check_skip_reason_empty_0() {
 /// Proves: DAG handles count=1 (one) for boundary port execute_verify_check.skip_reason.
 #[test]
 fn test_cardinality_execute_verify_check_skip_reason_one_1() {
+    if !guard_test("test_cardinality_execute_verify_check_skip_reason_one_1", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_verify_check", "skip_reason", Value::Str("<MOCK>".to_string()));
@@ -266,6 +311,9 @@ fn test_cardinality_execute_verify_check_skip_reason_one_1() {
 /// Proves: missing optional input does not crash.
 #[test]
 fn test_optional_missing_parse_codegen_result_response() {
+    if !guard_test("test_optional_missing_parse_codegen_result_response", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("skip".to_string(), Value::Bool(false));
@@ -277,6 +325,9 @@ fn test_optional_missing_parse_codegen_result_response() {
 /// Proves: wrong-typed optional input is rejected.
 #[test]
 fn test_optional_wrong_type_parse_codegen_result_response() {
+    if !guard_test("test_optional_wrong_type_parse_codegen_result_response", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("response".to_string(), Value::Str("<WRONG>".to_string()));
@@ -290,6 +341,9 @@ fn test_optional_wrong_type_parse_codegen_result_response() {
 /// Proves: missing optional input does not crash.
 #[test]
 fn test_optional_missing_parse_testgen_response() {
+    if !guard_test("test_optional_missing_parse_testgen_response", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("skip".to_string(), Value::Bool(false));
@@ -301,6 +355,9 @@ fn test_optional_missing_parse_testgen_response() {
 /// Proves: wrong-typed optional input is rejected.
 #[test]
 fn test_optional_wrong_type_parse_testgen_response() {
+    if !guard_test("test_optional_wrong_type_parse_testgen_response", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("response".to_string(), Value::Str("<WRONG>".to_string()));
@@ -314,6 +371,9 @@ fn test_optional_wrong_type_parse_testgen_response() {
 /// Proves: missing optional input does not crash.
 #[test]
 fn test_optional_missing_parse_testgen_skip_reason() {
+    if !guard_test("test_optional_missing_parse_testgen_skip_reason", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("response".to_string(), Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: "Generated tests".to_string(), stderr: "".to_string() })));
@@ -326,6 +386,9 @@ fn test_optional_missing_parse_testgen_skip_reason() {
 /// Proves: wrong-typed optional input is rejected.
 #[test]
 fn test_optional_wrong_type_parse_testgen_skip_reason() {
+    if !guard_test("test_optional_wrong_type_parse_testgen_skip_reason", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("response".to_string(), Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: "Generated tests".to_string(), stderr: "".to_string() })));
@@ -340,6 +403,9 @@ fn test_optional_wrong_type_parse_testgen_skip_reason() {
 /// Proves: missing optional input does not crash.
 #[test]
 fn test_optional_missing_parse_build_response() {
+    if !guard_test("test_optional_missing_parse_build_response", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("skip".to_string(), Value::Bool(false));
@@ -351,6 +417,9 @@ fn test_optional_missing_parse_build_response() {
 /// Proves: wrong-typed optional input is rejected.
 #[test]
 fn test_optional_wrong_type_parse_build_response() {
+    if !guard_test("test_optional_wrong_type_parse_build_response", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("response".to_string(), Value::Str("<WRONG>".to_string()));
@@ -364,6 +433,9 @@ fn test_optional_wrong_type_parse_build_response() {
 /// Proves: missing optional input does not crash.
 #[test]
 fn test_optional_missing_parse_build_skip_reason() {
+    if !guard_test("test_optional_missing_parse_build_skip_reason", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("response".to_string(), Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: "Compiling gunbc v0.1.0
@@ -377,6 +449,9 @@ fn test_optional_missing_parse_build_skip_reason() {
 /// Proves: wrong-typed optional input is rejected.
 #[test]
 fn test_optional_wrong_type_parse_build_skip_reason() {
+    if !guard_test("test_optional_wrong_type_parse_build_skip_reason", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("response".to_string(), Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: "Compiling gunbc v0.1.0
@@ -392,6 +467,9 @@ fn test_optional_wrong_type_parse_build_skip_reason() {
 /// Proves: missing optional input does not crash.
 #[test]
 fn test_optional_missing_parse_test_response() {
+    if !guard_test("test_optional_missing_parse_test_response", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("skip".to_string(), Value::Bool(false));
@@ -403,6 +481,9 @@ fn test_optional_missing_parse_test_response() {
 /// Proves: wrong-typed optional input is rejected.
 #[test]
 fn test_optional_wrong_type_parse_test_response() {
+    if !guard_test("test_optional_wrong_type_parse_test_response", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("response".to_string(), Value::Str("<WRONG>".to_string()));
@@ -416,6 +497,9 @@ fn test_optional_wrong_type_parse_test_response() {
 /// Proves: missing optional input does not crash.
 #[test]
 fn test_optional_missing_parse_test_skip_reason() {
+    if !guard_test("test_optional_missing_parse_test_skip_reason", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("response".to_string(), Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: "running 42 tests
@@ -429,6 +513,9 @@ test result: ok. 42 passed".to_string(), stderr: "".to_string() })));
 /// Proves: wrong-typed optional input is rejected.
 #[test]
 fn test_optional_wrong_type_parse_test_skip_reason() {
+    if !guard_test("test_optional_wrong_type_parse_test_skip_reason", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("response".to_string(), Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: "running 42 tests
@@ -444,6 +531,9 @@ test result: ok. 42 passed".to_string(), stderr: "".to_string() })));
 /// Proves: missing optional input does not crash.
 #[test]
 fn test_optional_missing_parse_clippy_lint_success() {
+    if !guard_test("test_optional_missing_parse_clippy_lint_success", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("skip".to_string(), Value::Bool(false));
@@ -457,6 +547,9 @@ fn test_optional_missing_parse_clippy_lint_success() {
 /// Proves: wrong-typed optional input is rejected.
 #[test]
 fn test_optional_wrong_type_parse_clippy_lint_success() {
+    if !guard_test("test_optional_wrong_type_parse_clippy_lint_success", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("skip".to_string(), Value::Bool(false));
@@ -472,6 +565,9 @@ fn test_optional_wrong_type_parse_clippy_lint_success() {
 /// Proves: missing optional input does not crash.
 #[test]
 fn test_optional_missing_parse_clippy_lint_stdout() {
+    if !guard_test("test_optional_missing_parse_clippy_lint_stdout", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("skip".to_string(), Value::Bool(false));
@@ -485,6 +581,9 @@ fn test_optional_missing_parse_clippy_lint_stdout() {
 /// Proves: wrong-typed optional input is rejected.
 #[test]
 fn test_optional_wrong_type_parse_clippy_lint_stdout() {
+    if !guard_test("test_optional_wrong_type_parse_clippy_lint_stdout", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("skip".to_string(), Value::Bool(false));
@@ -500,6 +599,9 @@ fn test_optional_wrong_type_parse_clippy_lint_stdout() {
 /// Proves: missing optional input does not crash.
 #[test]
 fn test_optional_missing_parse_clippy_lint_stderr() {
+    if !guard_test("test_optional_missing_parse_clippy_lint_stderr", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("skip".to_string(), Value::Bool(false));
@@ -513,6 +615,9 @@ fn test_optional_missing_parse_clippy_lint_stderr() {
 /// Proves: wrong-typed optional input is rejected.
 #[test]
 fn test_optional_wrong_type_parse_clippy_lint_stderr() {
+    if !guard_test("test_optional_wrong_type_parse_clippy_lint_stderr", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("skip".to_string(), Value::Bool(false));
@@ -528,6 +633,9 @@ fn test_optional_wrong_type_parse_clippy_lint_stderr() {
 /// Proves: missing optional input does not crash.
 #[test]
 fn test_optional_missing_parse_clippy_lint_skip_reason() {
+    if !guard_test("test_optional_missing_parse_clippy_lint_skip_reason", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("skip".to_string(), Value::Bool(false));
@@ -542,6 +650,9 @@ fn test_optional_missing_parse_clippy_lint_skip_reason() {
 /// Proves: wrong-typed optional input is rejected.
 #[test]
 fn test_optional_wrong_type_parse_clippy_lint_skip_reason() {
+    if !guard_test("test_optional_wrong_type_parse_clippy_lint_skip_reason", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("skip".to_string(), Value::Bool(false));
@@ -558,6 +669,9 @@ fn test_optional_wrong_type_parse_clippy_lint_skip_reason() {
 /// Proves: missing optional input does not crash.
 #[test]
 fn test_optional_missing_parse_guardrail_check_response() {
+    if !guard_test("test_optional_missing_parse_guardrail_check_response", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("skip".to_string(), Value::Bool(false));
@@ -569,6 +683,9 @@ fn test_optional_missing_parse_guardrail_check_response() {
 /// Proves: wrong-typed optional input is rejected.
 #[test]
 fn test_optional_wrong_type_parse_guardrail_check_response() {
+    if !guard_test("test_optional_wrong_type_parse_guardrail_check_response", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("response".to_string(), Value::Str("<WRONG>".to_string()));
@@ -582,6 +699,9 @@ fn test_optional_wrong_type_parse_guardrail_check_response() {
 /// Proves: missing optional input does not crash.
 #[test]
 fn test_optional_missing_parse_guardrail_check_skip_reason() {
+    if !guard_test("test_optional_missing_parse_guardrail_check_skip_reason", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("response".to_string(), Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: "OK".to_string(), stderr: "".to_string() })));
@@ -594,6 +714,9 @@ fn test_optional_missing_parse_guardrail_check_skip_reason() {
 /// Proves: wrong-typed optional input is rejected.
 #[test]
 fn test_optional_wrong_type_parse_guardrail_check_skip_reason() {
+    if !guard_test("test_optional_wrong_type_parse_guardrail_check_skip_reason", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("response".to_string(), Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: "OK".to_string(), stderr: "".to_string() })));
@@ -608,6 +731,9 @@ fn test_optional_wrong_type_parse_guardrail_check_skip_reason() {
 /// Proves: missing optional input does not crash.
 #[test]
 fn test_optional_missing_parse_verify_check_response() {
+    if !guard_test("test_optional_missing_parse_verify_check_response", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("skip".to_string(), Value::Bool(false));
@@ -619,6 +745,9 @@ fn test_optional_missing_parse_verify_check_response() {
 /// Proves: wrong-typed optional input is rejected.
 #[test]
 fn test_optional_wrong_type_parse_verify_check_response() {
+    if !guard_test("test_optional_wrong_type_parse_verify_check_response", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("response".to_string(), Value::Str("<WRONG>".to_string()));
@@ -632,6 +761,9 @@ fn test_optional_wrong_type_parse_verify_check_response() {
 /// Proves: missing optional input does not crash.
 #[test]
 fn test_optional_missing_parse_verify_check_skip_reason() {
+    if !guard_test("test_optional_missing_parse_verify_check_skip_reason", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("response".to_string(), Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: "All checks passed".to_string(), stderr: "".to_string() })));
@@ -644,6 +776,9 @@ fn test_optional_missing_parse_verify_check_skip_reason() {
 /// Proves: wrong-typed optional input is rejected.
 #[test]
 fn test_optional_wrong_type_parse_verify_check_skip_reason() {
+    if !guard_test("test_optional_wrong_type_parse_verify_check_skip_reason", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("response".to_string(), Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: "All checks passed".to_string(), stderr: "".to_string() })));
@@ -658,6 +793,9 @@ fn test_optional_wrong_type_parse_verify_check_skip_reason() {
 /// Proves: missing optional input does not crash.
 #[test]
 fn test_optional_missing_report_build_stderr() {
+    if !guard_test("test_optional_missing_report_build_stderr", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("build_success".to_string(), Value::Bool(true));
@@ -674,6 +812,9 @@ fn test_optional_missing_report_build_stderr() {
 /// Proves: wrong-typed optional input is rejected.
 #[test]
 fn test_optional_wrong_type_report_build_stderr() {
+    if !guard_test("test_optional_wrong_type_report_build_stderr", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("build_stderr".to_string(), Value::Int(1));
@@ -692,6 +833,9 @@ fn test_optional_wrong_type_report_build_stderr() {
 /// Proves: missing optional input does not crash.
 #[test]
 fn test_optional_missing_report_testgen_stderr() {
+    if !guard_test("test_optional_missing_report_testgen_stderr", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("build_success".to_string(), Value::Bool(true));
@@ -708,6 +852,9 @@ fn test_optional_missing_report_testgen_stderr() {
 /// Proves: wrong-typed optional input is rejected.
 #[test]
 fn test_optional_wrong_type_report_testgen_stderr() {
+    if !guard_test("test_optional_wrong_type_report_testgen_stderr", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("build_success".to_string(), Value::Bool(true));
@@ -726,6 +873,9 @@ fn test_optional_wrong_type_report_testgen_stderr() {
 /// Proves: missing optional input does not crash.
 #[test]
 fn test_optional_missing_report_test_stdout() {
+    if !guard_test("test_optional_missing_report_test_stdout", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("build_success".to_string(), Value::Bool(true));
@@ -742,6 +892,9 @@ fn test_optional_missing_report_test_stdout() {
 /// Proves: wrong-typed optional input is rejected.
 #[test]
 fn test_optional_wrong_type_report_test_stdout() {
+    if !guard_test("test_optional_wrong_type_report_test_stdout", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("build_success".to_string(), Value::Bool(true));
@@ -760,6 +913,9 @@ fn test_optional_wrong_type_report_test_stdout() {
 /// Proves: missing optional input does not crash.
 #[test]
 fn test_optional_missing_report_test_stderr() {
+    if !guard_test("test_optional_missing_report_test_stderr", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("build_success".to_string(), Value::Bool(true));
@@ -776,6 +932,9 @@ fn test_optional_missing_report_test_stderr() {
 /// Proves: wrong-typed optional input is rejected.
 #[test]
 fn test_optional_wrong_type_report_test_stderr() {
+    if !guard_test("test_optional_wrong_type_report_test_stderr", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("build_success".to_string(), Value::Bool(true));
@@ -794,6 +953,9 @@ fn test_optional_wrong_type_report_test_stderr() {
 /// Proves: missing optional input does not crash.
 #[test]
 fn test_optional_missing_report_lint_stderr() {
+    if !guard_test("test_optional_missing_report_lint_stderr", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("build_success".to_string(), Value::Bool(true));
@@ -810,6 +972,9 @@ fn test_optional_missing_report_lint_stderr() {
 /// Proves: wrong-typed optional input is rejected.
 #[test]
 fn test_optional_wrong_type_report_lint_stderr() {
+    if !guard_test("test_optional_wrong_type_report_lint_stderr", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("build_success".to_string(), Value::Bool(true));
@@ -828,6 +993,9 @@ fn test_optional_wrong_type_report_lint_stderr() {
 /// Proves: missing optional input does not crash.
 #[test]
 fn test_optional_missing_report_guardrail_stderr() {
+    if !guard_test("test_optional_missing_report_guardrail_stderr", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("build_success".to_string(), Value::Bool(true));
@@ -844,6 +1012,9 @@ fn test_optional_missing_report_guardrail_stderr() {
 /// Proves: wrong-typed optional input is rejected.
 #[test]
 fn test_optional_wrong_type_report_guardrail_stderr() {
+    if !guard_test("test_optional_wrong_type_report_guardrail_stderr", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("build_success".to_string(), Value::Bool(true));
@@ -862,6 +1033,9 @@ fn test_optional_wrong_type_report_guardrail_stderr() {
 /// Proves: missing optional input does not crash.
 #[test]
 fn test_optional_missing_report_verify_stderr() {
+    if !guard_test("test_optional_missing_report_verify_stderr", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("build_success".to_string(), Value::Bool(true));
@@ -878,6 +1052,9 @@ fn test_optional_missing_report_verify_stderr() {
 /// Proves: wrong-typed optional input is rejected.
 #[test]
 fn test_optional_wrong_type_report_verify_stderr() {
+    if !guard_test("test_optional_wrong_type_report_verify_stderr", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("build_success".to_string(), Value::Bool(true));
@@ -905,6 +1082,9 @@ fn test_optional_wrong_type_report_verify_stderr() {
 /// Proves: workflow reaches terminal outputs with all transports mocked as success.
 #[test]
 fn test_scenario_all_succeed() {
+    if !guard_test("test_scenario_all_succeed", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let log = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("all-succeed scenario should complete");
     let entry = log.get("execute_deps_exists").expect("'execute_deps_exists' should be in log");
@@ -932,6 +1112,9 @@ fn test_scenario_all_succeed() {
 /// Proves: failure propagation semantics are consistent.
 #[test]
 fn test_scenario_execute_deps_exists_fails() {
+    if !guard_test("test_scenario_execute_deps_exists_fails", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     // Inject failure at 'execute_deps_exists'
@@ -946,6 +1129,9 @@ fn test_scenario_execute_deps_exists_fails() {
 /// Proves: failure propagation semantics are consistent.
 #[test]
 fn test_scenario_execute_codegen_exists_fails() {
+    if !guard_test("test_scenario_execute_codegen_exists_fails", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     // Inject failure at 'execute_codegen_exists'
@@ -960,6 +1146,9 @@ fn test_scenario_execute_codegen_exists_fails() {
 /// Proves: failure propagation semantics are consistent.
 #[test]
 fn test_scenario_execute_codegen_fails() {
+    if !guard_test("test_scenario_execute_codegen_fails", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     // Inject failure at 'execute_codegen'
@@ -974,6 +1163,9 @@ fn test_scenario_execute_codegen_fails() {
 /// Proves: failure propagation semantics are consistent.
 #[test]
 fn test_scenario_execute_stamp_write_fails() {
+    if !guard_test("test_scenario_execute_stamp_write_fails", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     // Inject failure at 'execute_stamp_write'
@@ -988,6 +1180,9 @@ fn test_scenario_execute_stamp_write_fails() {
 /// Proves: failure propagation semantics are consistent.
 #[test]
 fn test_scenario_execute_testgen_fails() {
+    if !guard_test("test_scenario_execute_testgen_fails", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     // Inject failure at 'execute_testgen'
@@ -1002,6 +1197,9 @@ fn test_scenario_execute_testgen_fails() {
 /// Proves: failure propagation semantics are consistent.
 #[test]
 fn test_scenario_execute_build_fails() {
+    if !guard_test("test_scenario_execute_build_fails", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     // Inject failure at 'execute_build'
@@ -1016,6 +1214,9 @@ fn test_scenario_execute_build_fails() {
 /// Proves: failure propagation semantics are consistent.
 #[test]
 fn test_scenario_execute_test_fails() {
+    if !guard_test("test_scenario_execute_test_fails", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     // Inject failure at 'execute_test'
@@ -1030,6 +1231,9 @@ fn test_scenario_execute_test_fails() {
 /// Proves: failure propagation semantics are consistent.
 #[test]
 fn test_scenario_execute_guardrail_check_fails() {
+    if !guard_test("test_scenario_execute_guardrail_check_fails", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     // Inject failure at 'execute_guardrail_check'
@@ -1044,6 +1248,9 @@ fn test_scenario_execute_guardrail_check_fails() {
 /// Proves: failure propagation semantics are consistent.
 #[test]
 fn test_scenario_execute_verify_check_fails() {
+    if !guard_test("test_scenario_execute_verify_check_fails", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     // Inject failure at 'execute_verify_check'
@@ -1060,6 +1267,9 @@ fn test_scenario_execute_verify_check_fails() {
 /// without crashing.
 #[test]
 fn test_skip_propagation_execute_deps_exists() {
+    if !guard_test("test_skip_propagation_execute_deps_exists", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_deps_exists", "response", Value::Skipped);
@@ -1074,6 +1284,9 @@ fn test_skip_propagation_execute_deps_exists() {
 /// without crashing.
 #[test]
 fn test_skip_propagation_execute_codegen_exists() {
+    if !guard_test("test_skip_propagation_execute_codegen_exists", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_codegen_exists", "response", Value::Skipped);
@@ -1088,6 +1301,9 @@ fn test_skip_propagation_execute_codegen_exists() {
 /// without crashing.
 #[test]
 fn test_skip_propagation_execute_codegen() {
+    if !guard_test("test_skip_propagation_execute_codegen", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_codegen", "response", Value::Skipped);
@@ -1104,6 +1320,9 @@ fn test_skip_propagation_execute_codegen() {
 /// without crashing.
 #[test]
 fn test_skip_propagation_execute_testgen() {
+    if !guard_test("test_skip_propagation_execute_testgen", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_testgen", "response", Value::Skipped);
@@ -1121,6 +1340,9 @@ fn test_skip_propagation_execute_testgen() {
 /// without crashing.
 #[test]
 fn test_skip_propagation_execute_build() {
+    if !guard_test("test_skip_propagation_execute_build", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_build", "response", Value::Skipped);
@@ -1138,6 +1360,9 @@ fn test_skip_propagation_execute_build() {
 /// without crashing.
 #[test]
 fn test_skip_propagation_execute_test() {
+    if !guard_test("test_skip_propagation_execute_test", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_test", "response", Value::Skipped);
@@ -1155,6 +1380,9 @@ fn test_skip_propagation_execute_test() {
 /// without crashing.
 #[test]
 fn test_skip_propagation_execute_guardrail_check() {
+    if !guard_test("test_skip_propagation_execute_guardrail_check", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_guardrail_check", "response", Value::Skipped);
@@ -1172,6 +1400,9 @@ fn test_skip_propagation_execute_guardrail_check() {
 /// without crashing.
 #[test]
 fn test_skip_propagation_execute_verify_check() {
+    if !guard_test("test_skip_propagation_execute_verify_check", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_verify_check", "response", Value::Skipped);
@@ -1192,6 +1423,9 @@ fn test_skip_propagation_execute_verify_check() {
 /// Test resource 'cargo:build' (Lock) acquisition.
 #[test]
 fn test_resource_cargo_build_acquire() {
+    if !guard_test("test_resource_cargo_build_acquire", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let spec = mock_spec();
     let resource = spec.get_resource("cargo:build").expect("resource should exist");
     let result = resource.acquire();
@@ -1201,6 +1435,9 @@ fn test_resource_cargo_build_acquire() {
 /// Test resource 'cargo:test' (Lock) acquisition.
 #[test]
 fn test_resource_cargo_test_acquire() {
+    if !guard_test("test_resource_cargo_test_acquire", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let spec = mock_spec();
     let resource = spec.get_resource("cargo:test").expect("resource should exist");
     let result = resource.acquire();
@@ -1210,6 +1447,9 @@ fn test_resource_cargo_test_acquire() {
 /// Test resource 'cargo:clippy' (Lock) acquisition.
 #[test]
 fn test_resource_cargo_clippy_acquire() {
+    if !guard_test("test_resource_cargo_clippy_acquire", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let spec = mock_spec();
     let resource = spec.get_resource("cargo:clippy").expect("resource should exist");
     let result = resource.acquire();
@@ -1229,6 +1469,9 @@ fn test_resource_cargo_clippy_acquire() {
 /// and verifies that the pure node chain produces expected terminal outputs.
 #[test]
 fn test_flow_ci() {
+    if !guard_test("test_flow_ci", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let spec = mock_spec();
     let mocks = spec.to_boundary_mocks();
@@ -1250,6 +1493,9 @@ fn test_flow_ci() {
 /// Window: prepare_codegen_command -> execute_codegen
 #[test]
 fn test_window_prepare_codegen_command_through_execute_codegen() {
+    if !guard_test("test_window_prepare_codegen_command_through_execute_codegen", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1264,6 +1510,9 @@ fn test_window_prepare_codegen_command_through_execute_codegen() {
 /// Window: execute_codegen -> parse_codegen_result
 #[test]
 fn test_window_execute_codegen_through_parse_codegen_result() {
+    if !guard_test("test_window_execute_codegen_through_parse_codegen_result", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1278,6 +1527,9 @@ fn test_window_execute_codegen_through_parse_codegen_result() {
 /// Window: parse_codegen_result -> prepare_stamp_write
 #[test]
 fn test_window_parse_codegen_result_through_prepare_stamp_write() {
+    if !guard_test("test_window_parse_codegen_result_through_prepare_stamp_write", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1292,6 +1544,9 @@ fn test_window_parse_codegen_result_through_prepare_stamp_write() {
 /// Window: parse_test -> report
 #[test]
 fn test_window_parse_test_through_report() {
+    if !guard_test("test_window_parse_test_through_report", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1306,6 +1561,9 @@ fn test_window_parse_test_through_report() {
 /// Window: prepare_codegen_command -> parse_codegen_result
 #[test]
 fn test_window_prepare_codegen_command_through_parse_codegen_result() {
+    if !guard_test("test_window_prepare_codegen_command_through_parse_codegen_result", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1320,6 +1578,9 @@ fn test_window_prepare_codegen_command_through_parse_codegen_result() {
 /// Window: execute_codegen -> prepare_stamp_write
 #[test]
 fn test_window_execute_codegen_through_prepare_stamp_write() {
+    if !guard_test("test_window_execute_codegen_through_prepare_stamp_write", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1334,6 +1595,9 @@ fn test_window_execute_codegen_through_prepare_stamp_write() {
 /// Window: parse_codegen_result -> prepare_testgen
 #[test]
 fn test_window_parse_codegen_result_through_prepare_testgen() {
+    if !guard_test("test_window_parse_codegen_result_through_prepare_testgen", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1348,6 +1612,9 @@ fn test_window_parse_codegen_result_through_prepare_testgen() {
 /// Window: parse_clippy_lint -> report
 #[test]
 fn test_window_parse_clippy_lint_through_report() {
+    if !guard_test("test_window_parse_clippy_lint_through_report", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1362,6 +1629,9 @@ fn test_window_parse_clippy_lint_through_report() {
 /// Window: prepare_codegen_command -> prepare_stamp_write
 #[test]
 fn test_window_prepare_codegen_command_through_prepare_stamp_write() {
+    if !guard_test("test_window_prepare_codegen_command_through_prepare_stamp_write", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1376,6 +1646,9 @@ fn test_window_prepare_codegen_command_through_prepare_stamp_write() {
 /// Window: execute_codegen -> prepare_testgen
 #[test]
 fn test_window_execute_codegen_through_prepare_testgen() {
+    if !guard_test("test_window_execute_codegen_through_prepare_testgen", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1390,6 +1663,9 @@ fn test_window_execute_codegen_through_prepare_testgen() {
 /// Window: parse_codegen_result -> prepare_verify_check
 #[test]
 fn test_window_parse_codegen_result_through_prepare_verify_check() {
+    if !guard_test("test_window_parse_codegen_result_through_prepare_verify_check", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1404,6 +1680,9 @@ fn test_window_parse_codegen_result_through_prepare_verify_check() {
 /// Window: execute_test -> report
 #[test]
 fn test_window_execute_test_through_report() {
+    if !guard_test("test_window_execute_test_through_report", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1418,6 +1697,9 @@ fn test_window_execute_test_through_report() {
 /// Window: prepare_codegen_command -> prepare_testgen
 #[test]
 fn test_window_prepare_codegen_command_through_prepare_testgen() {
+    if !guard_test("test_window_prepare_codegen_command_through_prepare_testgen", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1432,6 +1714,9 @@ fn test_window_prepare_codegen_command_through_prepare_testgen() {
 /// Window: execute_codegen -> prepare_verify_check
 #[test]
 fn test_window_execute_codegen_through_prepare_verify_check() {
+    if !guard_test("test_window_execute_codegen_through_prepare_verify_check", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1446,6 +1731,9 @@ fn test_window_execute_codegen_through_prepare_verify_check() {
 /// Window: parse_codegen_result -> execute_stamp_write
 #[test]
 fn test_window_parse_codegen_result_through_execute_stamp_write() {
+    if !guard_test("test_window_parse_codegen_result_through_execute_stamp_write", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1460,6 +1748,9 @@ fn test_window_parse_codegen_result_through_execute_stamp_write() {
 /// Window: clippy_lint -> report
 #[test]
 fn test_window_clippy_lint_through_report() {
+    if !guard_test("test_window_clippy_lint_through_report", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1474,6 +1765,9 @@ fn test_window_clippy_lint_through_report() {
 /// Window: prepare_codegen_command -> prepare_verify_check
 #[test]
 fn test_window_prepare_codegen_command_through_prepare_verify_check() {
+    if !guard_test("test_window_prepare_codegen_command_through_prepare_verify_check", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1488,6 +1782,9 @@ fn test_window_prepare_codegen_command_through_prepare_verify_check() {
 /// Window: execute_codegen -> execute_stamp_write
 #[test]
 fn test_window_execute_codegen_through_execute_stamp_write() {
+    if !guard_test("test_window_execute_codegen_through_execute_stamp_write", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1502,6 +1799,9 @@ fn test_window_execute_codegen_through_execute_stamp_write() {
 /// Window: parse_codegen_result -> execute_testgen
 #[test]
 fn test_window_parse_codegen_result_through_execute_testgen() {
+    if !guard_test("test_window_parse_codegen_result_through_execute_testgen", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1516,6 +1816,9 @@ fn test_window_parse_codegen_result_through_execute_testgen() {
 /// Window: prepare_test -> report
 #[test]
 fn test_window_prepare_test_through_report() {
+    if !guard_test("test_window_prepare_test_through_report", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1530,6 +1833,9 @@ fn test_window_prepare_test_through_report() {
 /// Window: prepare_codegen_command -> execute_stamp_write
 #[test]
 fn test_window_prepare_codegen_command_through_execute_stamp_write() {
+    if !guard_test("test_window_prepare_codegen_command_through_execute_stamp_write", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1544,6 +1850,9 @@ fn test_window_prepare_codegen_command_through_execute_stamp_write() {
 /// Window: execute_codegen -> execute_testgen
 #[test]
 fn test_window_execute_codegen_through_execute_testgen() {
+    if !guard_test("test_window_execute_codegen_through_execute_testgen", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1558,6 +1867,9 @@ fn test_window_execute_codegen_through_execute_testgen() {
 /// Window: parse_codegen_result -> execute_verify_check
 #[test]
 fn test_window_parse_codegen_result_through_execute_verify_check() {
+    if !guard_test("test_window_parse_codegen_result_through_execute_verify_check", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1572,6 +1884,9 @@ fn test_window_parse_codegen_result_through_execute_verify_check() {
 /// Window: prepare_clippy_lint -> report
 #[test]
 fn test_window_prepare_clippy_lint_through_report() {
+    if !guard_test("test_window_prepare_clippy_lint_through_report", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1586,6 +1901,9 @@ fn test_window_prepare_clippy_lint_through_report() {
 /// Window: prepare_codegen_command -> execute_testgen
 #[test]
 fn test_window_prepare_codegen_command_through_execute_testgen() {
+    if !guard_test("test_window_prepare_codegen_command_through_execute_testgen", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1600,6 +1918,9 @@ fn test_window_prepare_codegen_command_through_execute_testgen() {
 /// Window: execute_codegen -> execute_verify_check
 #[test]
 fn test_window_execute_codegen_through_execute_verify_check() {
+    if !guard_test("test_window_execute_codegen_through_execute_verify_check", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1614,6 +1935,9 @@ fn test_window_execute_codegen_through_execute_verify_check() {
 /// Window: parse_codegen_result -> parse_testgen
 #[test]
 fn test_window_parse_codegen_result_through_parse_testgen() {
+    if !guard_test("test_window_parse_codegen_result_through_parse_testgen", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1628,6 +1952,9 @@ fn test_window_parse_codegen_result_through_parse_testgen() {
 /// Window: parse_guardrail_check -> report
 #[test]
 fn test_window_parse_guardrail_check_through_report() {
+    if !guard_test("test_window_parse_guardrail_check_through_report", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1642,6 +1969,9 @@ fn test_window_parse_guardrail_check_through_report() {
 /// Window: prepare_codegen_command -> execute_verify_check
 #[test]
 fn test_window_prepare_codegen_command_through_execute_verify_check() {
+    if !guard_test("test_window_prepare_codegen_command_through_execute_verify_check", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1656,6 +1986,9 @@ fn test_window_prepare_codegen_command_through_execute_verify_check() {
 /// Window: execute_codegen -> parse_testgen
 #[test]
 fn test_window_execute_codegen_through_parse_testgen() {
+    if !guard_test("test_window_execute_codegen_through_parse_testgen", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1670,6 +2003,9 @@ fn test_window_execute_codegen_through_parse_testgen() {
 /// Window: parse_codegen_result -> parse_verify_check
 #[test]
 fn test_window_parse_codegen_result_through_parse_verify_check() {
+    if !guard_test("test_window_parse_codegen_result_through_parse_verify_check", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1684,6 +2020,9 @@ fn test_window_parse_codegen_result_through_parse_verify_check() {
 /// Window: parse_build -> report
 #[test]
 fn test_window_parse_build_through_report() {
+    if !guard_test("test_window_parse_build_through_report", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1698,6 +2037,9 @@ fn test_window_parse_build_through_report() {
 /// Window: prepare_codegen_command -> parse_testgen
 #[test]
 fn test_window_prepare_codegen_command_through_parse_testgen() {
+    if !guard_test("test_window_prepare_codegen_command_through_parse_testgen", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1712,6 +2054,9 @@ fn test_window_prepare_codegen_command_through_parse_testgen() {
 /// Window: execute_codegen -> parse_verify_check
 #[test]
 fn test_window_execute_codegen_through_parse_verify_check() {
+    if !guard_test("test_window_execute_codegen_through_parse_verify_check", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1726,6 +2071,9 @@ fn test_window_execute_codegen_through_parse_verify_check() {
 /// Window: parse_codegen_result -> prepare_build
 #[test]
 fn test_window_parse_codegen_result_through_prepare_build() {
+    if !guard_test("test_window_parse_codegen_result_through_prepare_build", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1740,6 +2088,9 @@ fn test_window_parse_codegen_result_through_prepare_build() {
 /// Window: execute_guardrail_check -> report
 #[test]
 fn test_window_execute_guardrail_check_through_report() {
+    if !guard_test("test_window_execute_guardrail_check_through_report", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1754,6 +2105,9 @@ fn test_window_execute_guardrail_check_through_report() {
 /// Window: prepare_codegen_command -> parse_verify_check
 #[test]
 fn test_window_prepare_codegen_command_through_parse_verify_check() {
+    if !guard_test("test_window_prepare_codegen_command_through_parse_verify_check", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1768,6 +2122,9 @@ fn test_window_prepare_codegen_command_through_parse_verify_check() {
 /// Window: execute_codegen -> prepare_build
 #[test]
 fn test_window_execute_codegen_through_prepare_build() {
+    if !guard_test("test_window_execute_codegen_through_prepare_build", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1782,6 +2139,9 @@ fn test_window_execute_codegen_through_prepare_build() {
 /// Window: parse_codegen_result -> prepare_guardrail_check
 #[test]
 fn test_window_parse_codegen_result_through_prepare_guardrail_check() {
+    if !guard_test("test_window_parse_codegen_result_through_prepare_guardrail_check", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1796,6 +2156,9 @@ fn test_window_parse_codegen_result_through_prepare_guardrail_check() {
 /// Window: execute_build -> report
 #[test]
 fn test_window_execute_build_through_report() {
+    if !guard_test("test_window_execute_build_through_report", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1810,6 +2173,9 @@ fn test_window_execute_build_through_report() {
 /// Window: prepare_codegen_command -> prepare_build
 #[test]
 fn test_window_prepare_codegen_command_through_prepare_build() {
+    if !guard_test("test_window_prepare_codegen_command_through_prepare_build", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1824,6 +2190,9 @@ fn test_window_prepare_codegen_command_through_prepare_build() {
 /// Window: execute_codegen -> prepare_guardrail_check
 #[test]
 fn test_window_execute_codegen_through_prepare_guardrail_check() {
+    if !guard_test("test_window_execute_codegen_through_prepare_guardrail_check", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1838,6 +2207,9 @@ fn test_window_execute_codegen_through_prepare_guardrail_check() {
 /// Window: parse_codegen_result -> execute_build
 #[test]
 fn test_window_parse_codegen_result_through_execute_build() {
+    if !guard_test("test_window_parse_codegen_result_through_execute_build", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1852,6 +2224,9 @@ fn test_window_parse_codegen_result_through_execute_build() {
 /// Window: prepare_guardrail_check -> report
 #[test]
 fn test_window_prepare_guardrail_check_through_report() {
+    if !guard_test("test_window_prepare_guardrail_check_through_report", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1866,6 +2241,9 @@ fn test_window_prepare_guardrail_check_through_report() {
 /// Window: prepare_codegen_command -> prepare_guardrail_check
 #[test]
 fn test_window_prepare_codegen_command_through_prepare_guardrail_check() {
+    if !guard_test("test_window_prepare_codegen_command_through_prepare_guardrail_check", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1880,6 +2258,9 @@ fn test_window_prepare_codegen_command_through_prepare_guardrail_check() {
 /// Window: execute_codegen -> execute_build
 #[test]
 fn test_window_execute_codegen_through_execute_build() {
+    if !guard_test("test_window_execute_codegen_through_execute_build", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1894,6 +2275,9 @@ fn test_window_execute_codegen_through_execute_build() {
 /// Window: parse_codegen_result -> execute_guardrail_check
 #[test]
 fn test_window_parse_codegen_result_through_execute_guardrail_check() {
+    if !guard_test("test_window_parse_codegen_result_through_execute_guardrail_check", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1908,6 +2292,9 @@ fn test_window_parse_codegen_result_through_execute_guardrail_check() {
 /// Window: prepare_build -> report
 #[test]
 fn test_window_prepare_build_through_report() {
+    if !guard_test("test_window_prepare_build_through_report", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1922,6 +2309,9 @@ fn test_window_prepare_build_through_report() {
 /// Window: prepare_codegen_command -> execute_build
 #[test]
 fn test_window_prepare_codegen_command_through_execute_build() {
+    if !guard_test("test_window_prepare_codegen_command_through_execute_build", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1936,6 +2326,9 @@ fn test_window_prepare_codegen_command_through_execute_build() {
 /// Window: execute_codegen -> execute_guardrail_check
 #[test]
 fn test_window_execute_codegen_through_execute_guardrail_check() {
+    if !guard_test("test_window_execute_codegen_through_execute_guardrail_check", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1950,6 +2343,9 @@ fn test_window_execute_codegen_through_execute_guardrail_check() {
 /// Window: parse_codegen_result -> parse_build
 #[test]
 fn test_window_parse_codegen_result_through_parse_build() {
+    if !guard_test("test_window_parse_codegen_result_through_parse_build", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1964,6 +2360,9 @@ fn test_window_parse_codegen_result_through_parse_build() {
 /// Window: parse_verify_check -> report
 #[test]
 fn test_window_parse_verify_check_through_report() {
+    if !guard_test("test_window_parse_verify_check_through_report", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1978,6 +2377,9 @@ fn test_window_parse_verify_check_through_report() {
 /// Window: prepare_codegen_command -> execute_guardrail_check
 #[test]
 fn test_window_prepare_codegen_command_through_execute_guardrail_check() {
+    if !guard_test("test_window_prepare_codegen_command_through_execute_guardrail_check", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -1992,6 +2394,9 @@ fn test_window_prepare_codegen_command_through_execute_guardrail_check() {
 /// Window: execute_codegen -> parse_build
 #[test]
 fn test_window_execute_codegen_through_parse_build() {
+    if !guard_test("test_window_execute_codegen_through_parse_build", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -2006,6 +2411,9 @@ fn test_window_execute_codegen_through_parse_build() {
 /// Window: parse_codegen_result -> parse_guardrail_check
 #[test]
 fn test_window_parse_codegen_result_through_parse_guardrail_check() {
+    if !guard_test("test_window_parse_codegen_result_through_parse_guardrail_check", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -2020,6 +2428,9 @@ fn test_window_parse_codegen_result_through_parse_guardrail_check() {
 /// Window: parse_testgen -> report
 #[test]
 fn test_window_parse_testgen_through_report() {
+    if !guard_test("test_window_parse_testgen_through_report", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -2034,6 +2445,9 @@ fn test_window_parse_testgen_through_report() {
 /// Window: prepare_codegen_command -> parse_build
 #[test]
 fn test_window_prepare_codegen_command_through_parse_build() {
+    if !guard_test("test_window_prepare_codegen_command_through_parse_build", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -2048,6 +2462,9 @@ fn test_window_prepare_codegen_command_through_parse_build() {
 /// Window: execute_codegen -> parse_guardrail_check
 #[test]
 fn test_window_execute_codegen_through_parse_guardrail_check() {
+    if !guard_test("test_window_execute_codegen_through_parse_guardrail_check", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -2062,6 +2479,9 @@ fn test_window_execute_codegen_through_parse_guardrail_check() {
 /// Window: parse_codegen_result -> prepare_clippy_lint
 #[test]
 fn test_window_parse_codegen_result_through_prepare_clippy_lint() {
+    if !guard_test("test_window_parse_codegen_result_through_prepare_clippy_lint", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -2076,6 +2496,9 @@ fn test_window_parse_codegen_result_through_prepare_clippy_lint() {
 /// Window: execute_verify_check -> report
 #[test]
 fn test_window_execute_verify_check_through_report() {
+    if !guard_test("test_window_execute_verify_check_through_report", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -2090,6 +2513,9 @@ fn test_window_execute_verify_check_through_report() {
 /// Window: prepare_codegen_command -> parse_guardrail_check
 #[test]
 fn test_window_prepare_codegen_command_through_parse_guardrail_check() {
+    if !guard_test("test_window_prepare_codegen_command_through_parse_guardrail_check", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -2104,6 +2530,9 @@ fn test_window_prepare_codegen_command_through_parse_guardrail_check() {
 /// Window: execute_codegen -> prepare_clippy_lint
 #[test]
 fn test_window_execute_codegen_through_prepare_clippy_lint() {
+    if !guard_test("test_window_execute_codegen_through_prepare_clippy_lint", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -2118,6 +2547,9 @@ fn test_window_execute_codegen_through_prepare_clippy_lint() {
 /// Window: parse_codegen_result -> prepare_test
 #[test]
 fn test_window_parse_codegen_result_through_prepare_test() {
+    if !guard_test("test_window_parse_codegen_result_through_prepare_test", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -2132,6 +2564,9 @@ fn test_window_parse_codegen_result_through_prepare_test() {
 /// Window: execute_testgen -> report
 #[test]
 fn test_window_execute_testgen_through_report() {
+    if !guard_test("test_window_execute_testgen_through_report", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -2146,6 +2581,9 @@ fn test_window_execute_testgen_through_report() {
 /// Window: prepare_codegen_command -> prepare_clippy_lint
 #[test]
 fn test_window_prepare_codegen_command_through_prepare_clippy_lint() {
+    if !guard_test("test_window_prepare_codegen_command_through_prepare_clippy_lint", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -2160,6 +2598,9 @@ fn test_window_prepare_codegen_command_through_prepare_clippy_lint() {
 /// Window: execute_codegen -> prepare_test
 #[test]
 fn test_window_execute_codegen_through_prepare_test() {
+    if !guard_test("test_window_execute_codegen_through_prepare_test", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -2174,6 +2615,9 @@ fn test_window_execute_codegen_through_prepare_test() {
 /// Window: parse_codegen_result -> clippy_lint
 #[test]
 fn test_window_parse_codegen_result_through_clippy_lint() {
+    if !guard_test("test_window_parse_codegen_result_through_clippy_lint", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -2188,6 +2632,9 @@ fn test_window_parse_codegen_result_through_clippy_lint() {
 /// Window: prepare_codegen_command -> prepare_test
 #[test]
 fn test_window_prepare_codegen_command_through_prepare_test() {
+    if !guard_test("test_window_prepare_codegen_command_through_prepare_test", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -2202,6 +2649,9 @@ fn test_window_prepare_codegen_command_through_prepare_test() {
 /// Window: execute_codegen -> clippy_lint
 #[test]
 fn test_window_execute_codegen_through_clippy_lint() {
+    if !guard_test("test_window_execute_codegen_through_clippy_lint", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -2216,6 +2666,9 @@ fn test_window_execute_codegen_through_clippy_lint() {
 /// Window: parse_codegen_result -> execute_test
 #[test]
 fn test_window_parse_codegen_result_through_execute_test() {
+    if !guard_test("test_window_parse_codegen_result_through_execute_test", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -2230,6 +2683,9 @@ fn test_window_parse_codegen_result_through_execute_test() {
 /// Window: prepare_codegen_command -> clippy_lint
 #[test]
 fn test_window_prepare_codegen_command_through_clippy_lint() {
+    if !guard_test("test_window_prepare_codegen_command_through_clippy_lint", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -2244,6 +2700,9 @@ fn test_window_prepare_codegen_command_through_clippy_lint() {
 /// Window: execute_codegen -> execute_test
 #[test]
 fn test_window_execute_codegen_through_execute_test() {
+    if !guard_test("test_window_execute_codegen_through_execute_test", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -2258,6 +2717,9 @@ fn test_window_execute_codegen_through_execute_test() {
 /// Window: parse_codegen_result -> parse_clippy_lint
 #[test]
 fn test_window_parse_codegen_result_through_parse_clippy_lint() {
+    if !guard_test("test_window_parse_codegen_result_through_parse_clippy_lint", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -2272,6 +2734,9 @@ fn test_window_parse_codegen_result_through_parse_clippy_lint() {
 /// Window: prepare_codegen_command -> execute_test
 #[test]
 fn test_window_prepare_codegen_command_through_execute_test() {
+    if !guard_test("test_window_prepare_codegen_command_through_execute_test", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -2286,6 +2751,9 @@ fn test_window_prepare_codegen_command_through_execute_test() {
 /// Window: execute_codegen -> parse_clippy_lint
 #[test]
 fn test_window_execute_codegen_through_parse_clippy_lint() {
+    if !guard_test("test_window_execute_codegen_through_parse_clippy_lint", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -2300,6 +2768,9 @@ fn test_window_execute_codegen_through_parse_clippy_lint() {
 /// Window: parse_codegen_result -> parse_test
 #[test]
 fn test_window_parse_codegen_result_through_parse_test() {
+    if !guard_test("test_window_parse_codegen_result_through_parse_test", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -2314,6 +2785,9 @@ fn test_window_parse_codegen_result_through_parse_test() {
 /// Window: prepare_codegen_command -> parse_clippy_lint
 #[test]
 fn test_window_prepare_codegen_command_through_parse_clippy_lint() {
+    if !guard_test("test_window_prepare_codegen_command_through_parse_clippy_lint", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -2328,6 +2802,9 @@ fn test_window_prepare_codegen_command_through_parse_clippy_lint() {
 /// Window: execute_codegen -> parse_test
 #[test]
 fn test_window_execute_codegen_through_parse_test() {
+    if !guard_test("test_window_execute_codegen_through_parse_test", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -2342,6 +2819,9 @@ fn test_window_execute_codegen_through_parse_test() {
 /// Window: parse_codegen_result -> report
 #[test]
 fn test_window_parse_codegen_result_through_report() {
+    if !guard_test("test_window_parse_codegen_result_through_report", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -2356,6 +2836,9 @@ fn test_window_parse_codegen_result_through_report() {
 /// Window: prepare_codegen_command -> parse_test
 #[test]
 fn test_window_prepare_codegen_command_through_parse_test() {
+    if !guard_test("test_window_prepare_codegen_command_through_parse_test", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -2370,6 +2853,9 @@ fn test_window_prepare_codegen_command_through_parse_test() {
 /// Window: execute_codegen -> report
 #[test]
 fn test_window_execute_codegen_through_report() {
+    if !guard_test("test_window_execute_codegen_through_report", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -2384,6 +2870,9 @@ fn test_window_execute_codegen_through_report() {
 /// Window: prepare_codegen_command -> report
 #[test]
 fn test_window_prepare_codegen_command_through_report() {
+    if !guard_test("test_window_prepare_codegen_command_through_report", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -2407,6 +2896,9 @@ fn test_window_prepare_codegen_command_through_report() {
 /// Tests that node 'report' produces expected outputs for given inputs.
 #[test]
 fn test_example_report_all_stages_pass_overall_success() {
+    if !guard_test("test_example_report_all_stages_pass_overall_success", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("build_success".to_string(), Value::Bool(true));
@@ -2430,6 +2922,9 @@ fn test_example_report_all_stages_pass_overall_success() {
 /// Tests that node 'report' produces expected outputs for given inputs.
 #[test]
 fn test_example_report_build_failure_overall_failure() {
+    if !guard_test("test_example_report_build_failure_overall_failure", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("build_stderr".to_string(), Value::Str("error: compilation failed".to_string()));
@@ -2458,6 +2953,9 @@ fn test_example_report_build_failure_overall_failure() {
 /// Tests that node 'parse_deps_exists' produces expected outputs for given inputs.
 #[test]
 fn test_example_parse_deps_exists_file_exists_deps_toml_found_deps_exists_true() {
+    if !guard_test("test_example_parse_deps_exists_file_exists_deps_toml_found_deps_exists_true", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("response".to_string(), Value::Response(gunbc_ir::transport::TransportResponse::File(gunbc_ir::transport::FileResponse { path: "deps.toml".to_string(), operation: gunbc_ir::transport::FileOp::Exists, success: true, content: None, exists: Some(true), error: None })));
@@ -2482,6 +2980,9 @@ fn test_example_parse_deps_exists_file_exists_deps_toml_found_deps_exists_true()
 /// Tests that node 'parse_deps_exists' produces expected outputs for given inputs.
 #[test]
 fn test_example_parse_deps_exists_handles_skipped_transport_response_gracefully() {
+    if !guard_test("test_example_parse_deps_exists_handles_skipped_transport_response_gracefully", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("response".to_string(), Value::Skipped);
@@ -2497,6 +2998,9 @@ fn test_example_parse_deps_exists_handles_skipped_transport_response_gracefully(
 /// Tests that node 'parse_codegen_exists' produces expected outputs for given inputs.
 #[test]
 fn test_example_parse_codegen_exists_shell_exists_check_success_codegen_not_needed() {
+    if !guard_test("test_example_parse_codegen_exists_shell_exists_check_success_codegen_not_needed", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("response".to_string(), Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: "".to_string(), stderr: "".to_string() })));
@@ -2512,6 +3016,9 @@ fn test_example_parse_codegen_exists_shell_exists_check_success_codegen_not_need
 /// Tests that node 'parse_codegen_exists' produces expected outputs for given inputs.
 #[test]
 fn test_example_parse_codegen_exists_handles_skipped_transport_response_gracefully() {
+    if !guard_test("test_example_parse_codegen_exists_handles_skipped_transport_response_gracefully", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("response".to_string(), Value::Skipped);
@@ -2527,6 +3034,9 @@ fn test_example_parse_codegen_exists_handles_skipped_transport_response_graceful
 /// Tests that node 'parse_codegen_result' produces expected outputs for given inputs.
 #[test]
 fn test_example_parse_codegen_result_codegen_shell_success_prep_success_true_codegen_ran_true() {
+    if !guard_test("test_example_parse_codegen_result_codegen_shell_success_prep_success_true_codegen_ran_true", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("response".to_string(), Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: "Generated 3 files".to_string(), stderr: "".to_string() })));
@@ -2549,6 +3059,9 @@ fn test_example_parse_codegen_result_codegen_shell_success_prep_success_true_cod
 /// Tests that node 'parse_codegen_result' produces expected outputs for given inputs.
 #[test]
 fn test_example_parse_codegen_result_skip_path_codegen_exists_prep_success_not_ran() {
+    if !guard_test("test_example_parse_codegen_result_skip_path_codegen_exists_prep_success_not_ran", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("skip".to_string(), Value::Bool(true));
@@ -2567,6 +3080,9 @@ fn test_example_parse_codegen_result_skip_path_codegen_exists_prep_success_not_r
 /// Tests that node 'prepare_stamp_write' produces expected outputs for given inputs.
 #[test]
 fn test_example_prepare_stamp_write_prep_success_stamp_write_request() {
+    if !guard_test("test_example_prepare_stamp_write_prep_success_stamp_write_request", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("prep_success".to_string(), Value::Bool(true));
@@ -2585,6 +3101,9 @@ fn test_example_prepare_stamp_write_prep_success_stamp_write_request() {
 /// Tests that node 'parse_testgen' produces expected outputs for given inputs.
 #[test]
 fn test_example_parse_testgen_testgen_shell_success_testgen_success_true() {
+    if !guard_test("test_example_parse_testgen_testgen_shell_success_testgen_success_true", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("response".to_string(), Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: "Generated tests".to_string(), stderr: "".to_string() })));
@@ -2601,6 +3120,9 @@ fn test_example_parse_testgen_testgen_shell_success_testgen_success_true() {
 /// Tests that node 'parse_testgen' produces expected outputs for given inputs.
 #[test]
 fn test_example_parse_testgen_skip_path_testgen_skipped_success_false() {
+    if !guard_test("test_example_parse_testgen_skip_path_testgen_skipped_success_false", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("skip".to_string(), Value::Bool(true));
@@ -2617,6 +3139,9 @@ fn test_example_parse_testgen_skip_path_testgen_skipped_success_false() {
 /// Tests that node 'parse_build' produces expected outputs for given inputs.
 #[test]
 fn test_example_parse_build_build_shell_success_build_success_true() {
+    if !guard_test("test_example_parse_build_build_shell_success_build_success_true", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("response".to_string(), Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: "Compiling gunbc v0.1.0
@@ -2640,6 +3165,9 @@ fn test_example_parse_build_build_shell_success_build_success_true() {
 /// Tests that node 'parse_build' produces expected outputs for given inputs.
 #[test]
 fn test_example_parse_build_skip_path_build_skipped_success_false_skipped_true() {
+    if !guard_test("test_example_parse_build_skip_path_build_skipped_success_false_skipped_true", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("skip".to_string(), Value::Bool(true));
@@ -2659,6 +3187,9 @@ fn test_example_parse_build_skip_path_build_skipped_success_false_skipped_true()
 /// Tests that node 'parse_test' produces expected outputs for given inputs.
 #[test]
 fn test_example_parse_test_test_shell_success_test_success_true() {
+    if !guard_test("test_example_parse_test_test_shell_success_test_success_true", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("response".to_string(), Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: "running 42 tests
@@ -2682,6 +3213,9 @@ test result: ok. 42 passed".to_string(), stderr: "".to_string() })));
 /// Tests that node 'parse_test' produces expected outputs for given inputs.
 #[test]
 fn test_example_parse_test_skip_path_test_skipped_success_false_skipped_true() {
+    if !guard_test("test_example_parse_test_skip_path_test_skipped_success_false_skipped_true", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("skip".to_string(), Value::Bool(true));
@@ -2701,6 +3235,9 @@ fn test_example_parse_test_skip_path_test_skipped_success_false_skipped_true() {
 /// Tests that node 'prepare_codegen_exists' produces expected outputs for given inputs.
 #[test]
 fn test_example_prepare_codegen_exists_prepares_file_exists_check_for_codegen_dir() {
+    if !guard_test("test_example_prepare_codegen_exists_prepares_file_exists_check_for_codegen_dir", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let inputs = std::collections::HashMap::new();
     let outputs = gunbc_exec::execute_single_node(&dag, "prepare_codegen_exists", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'prepare_codegen_exists' should execute successfully");
@@ -2715,6 +3252,9 @@ fn test_example_prepare_codegen_exists_prepares_file_exists_check_for_codegen_di
 /// Tests that node 'prepare_codegen_command' produces expected outputs for given inputs.
 #[test]
 fn test_example_prepare_codegen_command_codegen_command_prepare_emits_skip_flag() {
+    if !guard_test("test_example_prepare_codegen_command_codegen_command_prepare_emits_skip_flag", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("codegen_needed".to_string(), Value::Bool(false));
@@ -2730,6 +3270,9 @@ fn test_example_prepare_codegen_command_codegen_command_prepare_emits_skip_flag(
 /// Tests that node 'prepare_testgen' produces expected outputs for given inputs.
 #[test]
 fn test_example_prepare_testgen_testgen_prepare_emits_skip_flag() {
+    if !guard_test("test_example_prepare_testgen_testgen_prepare_emits_skip_flag", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("prep_success".to_string(), Value::Bool(true));
@@ -2745,6 +3288,9 @@ fn test_example_prepare_testgen_testgen_prepare_emits_skip_flag() {
 /// Tests that node 'prepare_build' produces expected outputs for given inputs.
 #[test]
 fn test_example_prepare_build_build_prepare_emits_skip_flag() {
+    if !guard_test("test_example_prepare_build_build_prepare_emits_skip_flag", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("prep_success".to_string(), Value::Bool(true));
@@ -2761,6 +3307,9 @@ fn test_example_prepare_build_build_prepare_emits_skip_flag() {
 /// Tests that node 'prepare_test' produces expected outputs for given inputs.
 #[test]
 fn test_example_prepare_test_test_prepare_emits_skip_flag() {
+    if !guard_test("test_example_prepare_test_test_prepare_emits_skip_flag", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("build_success".to_string(), Value::Bool(true));
@@ -2776,6 +3325,9 @@ fn test_example_prepare_test_test_prepare_emits_skip_flag() {
 /// Tests that node 'prepare_guardrail_check' produces expected outputs for given inputs.
 #[test]
 fn test_example_prepare_guardrail_check_guardrail_prepare_emits_skip_flag() {
+    if !guard_test("test_example_prepare_guardrail_check_guardrail_prepare_emits_skip_flag", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("testgen_success".to_string(), Value::Bool(true));
@@ -2791,6 +3343,9 @@ fn test_example_prepare_guardrail_check_guardrail_prepare_emits_skip_flag() {
 /// Tests that node 'prepare_clippy_lint' produces expected outputs for given inputs.
 #[test]
 fn test_example_prepare_clippy_lint_build_success_clippy_not_skipped() {
+    if !guard_test("test_example_prepare_clippy_lint_build_success_clippy_not_skipped", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("build_success".to_string(), Value::Bool(true));
@@ -2806,6 +3361,9 @@ fn test_example_prepare_clippy_lint_build_success_clippy_not_skipped() {
 /// Tests that node 'prepare_clippy_lint' produces expected outputs for given inputs.
 #[test]
 fn test_example_prepare_clippy_lint_build_failure_clippy_skipped() {
+    if !guard_test("test_example_prepare_clippy_lint_build_failure_clippy_skipped", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("build_success".to_string(), Value::Bool(false));
@@ -2821,6 +3379,9 @@ fn test_example_prepare_clippy_lint_build_failure_clippy_skipped() {
 /// Tests that node 'parse_clippy_lint' produces expected outputs for given inputs.
 #[test]
 fn test_example_parse_clippy_lint_clippy_result_parse_produces_success_skipped_flags() {
+    if !guard_test("test_example_parse_clippy_lint_clippy_result_parse_produces_success_skipped_flags", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("skip".to_string(), Value::Bool(false));
@@ -2842,6 +3403,9 @@ fn test_example_parse_clippy_lint_clippy_result_parse_produces_success_skipped_f
 /// Tests that node 'parse_guardrail_check' produces expected outputs for given inputs.
 #[test]
 fn test_example_parse_guardrail_check_guardrail_check_success_guardrail_success_true() {
+    if !guard_test("test_example_parse_guardrail_check_guardrail_check_success_guardrail_success_true", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("response".to_string(), Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: "OK".to_string(), stderr: "".to_string() })));
@@ -2858,6 +3422,9 @@ fn test_example_parse_guardrail_check_guardrail_check_success_guardrail_success_
 /// Tests that node 'prepare_verify_check' produces expected outputs for given inputs.
 #[test]
 fn test_example_prepare_verify_check_verify_prepare_emits_skip_flag() {
+    if !guard_test("test_example_prepare_verify_check_verify_prepare_emits_skip_flag", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("prep_success".to_string(), Value::Bool(true));
@@ -2873,6 +3440,9 @@ fn test_example_prepare_verify_check_verify_prepare_emits_skip_flag() {
 /// Tests that node 'parse_verify_check' produces expected outputs for given inputs.
 #[test]
 fn test_example_parse_verify_check_verify_check_success_verify_success_true() {
+    if !guard_test("test_example_parse_verify_check_verify_check_success_verify_success_true", TestClass::Hermetic, FermiCost::S, &["fs", "shell"], &[]) {
+    return ();
+};
     let dag = crate :: build_ci_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("response".to_string(), Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: "All checks passed".to_string(), stderr: "".to_string() })));

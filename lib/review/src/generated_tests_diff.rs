@@ -4,12 +4,12 @@
 // DO NOT EDIT - regenerate with: make testgen
 // Obligations: 55 obligations (23 discharged, 32 testable: A=13, B=14, C=5, D=0)
 // Proven by construction: acyclicity, type compatibility, cardinality satisfaction.
-// Content-Hash: 552bc54af8108068dedd2a5cbb34d29fd31b41b6c801683b3d2cc8bd5a3112b3
+// Content-Hash: 4208aac58f8840186e81ad78b6ab8c939c1763aee47b959f8d8752a10836f10d
 
 
 use gunbc_exec::{execute_with_mode, lower, ExecutionMode};
 use gunbc_ir::Value;
-use gunbc_test::{assert_boundary_mockable, MockSpec};
+use gunbc_test::{assert_boundary_mockable, guard_test, FermiCost, MockSpec, TestClass};
 use gunbc_test::{apply_window_inputs, assert_window_outputs, window_subdag, Window};
 
 fn mock_spec() -> MockSpec {
@@ -42,6 +42,9 @@ fn mock_spec() -> MockSpec {
 /// with explicit boundary mocks, and verify it completes successfully.
 #[test]
 fn test_dryrun_completion() {
+    if !guard_test("test_dryrun_completion", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let log = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("DryRun execution should complete without crash");
     assert!(!log.entries.is_empty(), "execution should produce log entries");
@@ -53,6 +56,9 @@ fn test_dryrun_completion() {
 /// accidentally perform real I/O.
 #[test]
 fn test_transport_interception() {
+    if !guard_test("test_transport_interception", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let result = assert_boundary_mockable(&dag, mock_spec().to_boundary_mocks());
     assert!(result.is_ok(), "All transports should be interceptable: {:?}", result.error);
@@ -86,6 +92,9 @@ fn test_transport_interception() {
 /// Proves: missing optional input does not crash.
 #[test]
 fn test_optional_missing_prepare_diff_base_ref() {
+    if !guard_test("test_optional_missing_prepare_diff_base_ref", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("repo_path".to_string(), Value::Str(".".to_string()));
@@ -97,6 +106,9 @@ fn test_optional_missing_prepare_diff_base_ref() {
 /// Proves: wrong-typed optional input is rejected.
 #[test]
 fn test_optional_wrong_type_prepare_diff_base_ref() {
+    if !guard_test("test_optional_wrong_type_prepare_diff_base_ref", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("base_ref".to_string(), Value::Int(1));
@@ -110,6 +122,9 @@ fn test_optional_wrong_type_prepare_diff_base_ref() {
 /// Proves: missing optional input does not crash.
 #[test]
 fn test_optional_missing_prepare_prompt_context() {
+    if !guard_test("test_optional_missing_prepare_prompt_context", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("artifact".to_string(), Value::Str("diff artifact".to_string()));
@@ -122,6 +137,9 @@ fn test_optional_missing_prepare_prompt_context() {
 /// Proves: wrong-typed optional input is rejected.
 #[test]
 fn test_optional_wrong_type_prepare_prompt_context() {
+    if !guard_test("test_optional_wrong_type_prepare_prompt_context", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("artifact".to_string(), Value::Str("diff artifact".to_string()));
@@ -136,6 +154,9 @@ fn test_optional_wrong_type_prepare_prompt_context() {
 /// Proves: missing optional input does not crash.
 #[test]
 fn test_optional_missing_prepare_llm_system_prompt() {
+    if !guard_test("test_optional_missing_prepare_llm_system_prompt", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("content".to_string(), Value::Str("diff artifact".to_string()));
@@ -150,6 +171,9 @@ fn test_optional_missing_prepare_llm_system_prompt() {
 /// Proves: wrong-typed optional input is rejected.
 #[test]
 fn test_optional_wrong_type_prepare_llm_system_prompt() {
+    if !guard_test("test_optional_wrong_type_prepare_llm_system_prompt", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("content".to_string(), Value::Str("diff artifact".to_string()));
@@ -175,6 +199,9 @@ fn test_optional_wrong_type_prepare_llm_system_prompt() {
 /// Proves: workflow reaches terminal outputs with all transports mocked as success.
 #[test]
 fn test_scenario_all_succeed() {
+    if !guard_test("test_scenario_all_succeed", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let log = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("all-succeed scenario should complete");
     let entry = log.get("execute_diff").expect("'execute_diff' should be in log");
@@ -188,6 +215,9 @@ fn test_scenario_all_succeed() {
 /// Proves: failure propagation semantics are consistent.
 #[test]
 fn test_scenario_execute_diff_fails() {
+    if !guard_test("test_scenario_execute_diff_fails", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let mut mocks = mock_spec().to_boundary_mocks();
     // Inject failure at 'execute_diff'
@@ -202,6 +232,9 @@ fn test_scenario_execute_diff_fails() {
 /// Proves: failure propagation semantics are consistent.
 #[test]
 fn test_scenario_execute_llm_fails() {
+    if !guard_test("test_scenario_execute_llm_fails", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let mut mocks = mock_spec().to_boundary_mocks();
     // Inject failure at 'execute_llm'
@@ -218,6 +251,9 @@ fn test_scenario_execute_llm_fails() {
 /// without crashing.
 #[test]
 fn test_skip_propagation_execute_diff() {
+    if !guard_test("test_skip_propagation_execute_diff", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_diff", "response", Value::Skipped);
@@ -232,6 +268,9 @@ fn test_skip_propagation_execute_diff() {
 /// without crashing.
 #[test]
 fn test_skip_propagation_execute_llm() {
+    if !guard_test("test_skip_propagation_execute_llm", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_llm", "response", Value::Skipped);
@@ -248,6 +287,9 @@ fn test_skip_propagation_execute_llm() {
 /// Test that this tool's mock spec is self-consistent.
 #[test]
 fn test_mock_spec_self_consistent() {
+    if !guard_test("test_mock_spec_self_consistent", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let spec = mock_spec();
     // Verify all boundary mocks are present
     assert!(spec.get_boundary_mock("credential_env", "credential:llm").is_some(), "MockSpec should have boundary mock for credential_env.credential:llm");
@@ -256,6 +298,9 @@ fn test_mock_spec_self_consistent() {
 /// Test that input expectations are documented.
 #[test]
 fn test_input_expectations_documented() {
+    if !guard_test("test_input_expectations_documented", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let spec = mock_spec();
     // Port 'repo_path' expects: Any
     assert_eq!(spec.input_expectations.len(), 1);
@@ -271,6 +316,9 @@ fn test_input_expectations_documented() {
 /// Window: parse_diff -> format_artifact
 #[test]
 fn test_window_parse_diff_through_format_artifact() {
+    if !guard_test("test_window_parse_diff_through_format_artifact", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -285,6 +333,9 @@ fn test_window_parse_diff_through_format_artifact() {
 /// Window: format_artifact -> prepare_prompt
 #[test]
 fn test_window_format_artifact_through_prepare_prompt() {
+    if !guard_test("test_window_format_artifact_through_prepare_prompt", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -299,6 +350,9 @@ fn test_window_format_artifact_through_prepare_prompt() {
 /// Window: prepare_prompt -> prepare_llm
 #[test]
 fn test_window_prepare_prompt_through_prepare_llm() {
+    if !guard_test("test_window_prepare_prompt_through_prepare_llm", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -313,6 +367,9 @@ fn test_window_prepare_prompt_through_prepare_llm() {
 /// Window: prepare_llm -> execute_llm
 #[test]
 fn test_window_prepare_llm_through_execute_llm() {
+    if !guard_test("test_window_prepare_llm_through_execute_llm", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -327,6 +384,9 @@ fn test_window_prepare_llm_through_execute_llm() {
 /// Window: execute_llm -> parse_llm
 #[test]
 fn test_window_execute_llm_through_parse_llm() {
+    if !guard_test("test_window_execute_llm_through_parse_llm", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -341,6 +401,9 @@ fn test_window_execute_llm_through_parse_llm() {
 /// Window: parse_llm -> parse_response
 #[test]
 fn test_window_parse_llm_through_parse_response() {
+    if !guard_test("test_window_parse_llm_through_parse_response", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -355,6 +418,9 @@ fn test_window_parse_llm_through_parse_response() {
 /// Window: parse_diff -> prepare_prompt
 #[test]
 fn test_window_parse_diff_through_prepare_prompt() {
+    if !guard_test("test_window_parse_diff_through_prepare_prompt", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -369,6 +435,9 @@ fn test_window_parse_diff_through_prepare_prompt() {
 /// Window: format_artifact -> prepare_llm
 #[test]
 fn test_window_format_artifact_through_prepare_llm() {
+    if !guard_test("test_window_format_artifact_through_prepare_llm", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -383,6 +452,9 @@ fn test_window_format_artifact_through_prepare_llm() {
 /// Window: prepare_prompt -> execute_llm
 #[test]
 fn test_window_prepare_prompt_through_execute_llm() {
+    if !guard_test("test_window_prepare_prompt_through_execute_llm", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -397,6 +469,9 @@ fn test_window_prepare_prompt_through_execute_llm() {
 /// Window: prepare_llm -> parse_llm
 #[test]
 fn test_window_prepare_llm_through_parse_llm() {
+    if !guard_test("test_window_prepare_llm_through_parse_llm", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -411,6 +486,9 @@ fn test_window_prepare_llm_through_parse_llm() {
 /// Window: execute_llm -> parse_response
 #[test]
 fn test_window_execute_llm_through_parse_response() {
+    if !guard_test("test_window_execute_llm_through_parse_response", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -425,6 +503,9 @@ fn test_window_execute_llm_through_parse_response() {
 /// Window: parse_diff -> prepare_llm
 #[test]
 fn test_window_parse_diff_through_prepare_llm() {
+    if !guard_test("test_window_parse_diff_through_prepare_llm", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -439,6 +520,9 @@ fn test_window_parse_diff_through_prepare_llm() {
 /// Window: format_artifact -> execute_llm
 #[test]
 fn test_window_format_artifact_through_execute_llm() {
+    if !guard_test("test_window_format_artifact_through_execute_llm", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -453,6 +537,9 @@ fn test_window_format_artifact_through_execute_llm() {
 /// Window: prepare_prompt -> parse_llm
 #[test]
 fn test_window_prepare_prompt_through_parse_llm() {
+    if !guard_test("test_window_prepare_prompt_through_parse_llm", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -467,6 +554,9 @@ fn test_window_prepare_prompt_through_parse_llm() {
 /// Window: prepare_llm -> parse_response
 #[test]
 fn test_window_prepare_llm_through_parse_response() {
+    if !guard_test("test_window_prepare_llm_through_parse_response", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -481,6 +571,9 @@ fn test_window_prepare_llm_through_parse_response() {
 /// Window: parse_diff -> execute_llm
 #[test]
 fn test_window_parse_diff_through_execute_llm() {
+    if !guard_test("test_window_parse_diff_through_execute_llm", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -495,6 +588,9 @@ fn test_window_parse_diff_through_execute_llm() {
 /// Window: format_artifact -> parse_llm
 #[test]
 fn test_window_format_artifact_through_parse_llm() {
+    if !guard_test("test_window_format_artifact_through_parse_llm", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -509,6 +605,9 @@ fn test_window_format_artifact_through_parse_llm() {
 /// Window: prepare_prompt -> parse_response
 #[test]
 fn test_window_prepare_prompt_through_parse_response() {
+    if !guard_test("test_window_prepare_prompt_through_parse_response", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -523,6 +622,9 @@ fn test_window_prepare_prompt_through_parse_response() {
 /// Window: credential_env -> execute_llm
 #[test]
 fn test_window_credential_env_through_execute_llm() {
+    if !guard_test("test_window_credential_env_through_execute_llm", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -537,6 +639,9 @@ fn test_window_credential_env_through_execute_llm() {
 /// Window: parse_diff -> parse_llm
 #[test]
 fn test_window_parse_diff_through_parse_llm() {
+    if !guard_test("test_window_parse_diff_through_parse_llm", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -551,6 +656,9 @@ fn test_window_parse_diff_through_parse_llm() {
 /// Window: format_artifact -> parse_response
 #[test]
 fn test_window_format_artifact_through_parse_response() {
+    if !guard_test("test_window_format_artifact_through_parse_response", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -565,6 +673,9 @@ fn test_window_format_artifact_through_parse_response() {
 /// Window: execute_diff -> execute_llm
 #[test]
 fn test_window_execute_diff_through_execute_llm() {
+    if !guard_test("test_window_execute_diff_through_execute_llm", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -579,6 +690,9 @@ fn test_window_execute_diff_through_execute_llm() {
 /// Window: credential_env -> parse_llm
 #[test]
 fn test_window_credential_env_through_parse_llm() {
+    if !guard_test("test_window_credential_env_through_parse_llm", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -593,6 +707,9 @@ fn test_window_credential_env_through_parse_llm() {
 /// Window: parse_diff -> parse_response
 #[test]
 fn test_window_parse_diff_through_parse_response() {
+    if !guard_test("test_window_parse_diff_through_parse_response", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -607,6 +724,9 @@ fn test_window_parse_diff_through_parse_response() {
 /// Window: config -> prepare_prompt
 #[test]
 fn test_window_config_through_prepare_prompt() {
+    if !guard_test("test_window_config_through_prepare_prompt", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -621,6 +741,9 @@ fn test_window_config_through_prepare_prompt() {
 /// Window: resolve_auth -> execute_llm
 #[test]
 fn test_window_resolve_auth_through_execute_llm() {
+    if !guard_test("test_window_resolve_auth_through_execute_llm", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -635,6 +758,9 @@ fn test_window_resolve_auth_through_execute_llm() {
 /// Window: execute_diff -> parse_llm
 #[test]
 fn test_window_execute_diff_through_parse_llm() {
+    if !guard_test("test_window_execute_diff_through_parse_llm", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -649,6 +775,9 @@ fn test_window_execute_diff_through_parse_llm() {
 /// Window: credential_env -> parse_response
 #[test]
 fn test_window_credential_env_through_parse_response() {
+    if !guard_test("test_window_credential_env_through_parse_response", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -663,6 +792,9 @@ fn test_window_credential_env_through_parse_response() {
 /// Window: config -> prepare_llm
 #[test]
 fn test_window_config_through_prepare_llm() {
+    if !guard_test("test_window_config_through_prepare_llm", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -677,6 +809,9 @@ fn test_window_config_through_prepare_llm() {
 /// Window: prepare_diff -> execute_llm
 #[test]
 fn test_window_prepare_diff_through_execute_llm() {
+    if !guard_test("test_window_prepare_diff_through_execute_llm", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -691,6 +826,9 @@ fn test_window_prepare_diff_through_execute_llm() {
 /// Window: resolve_auth -> parse_llm
 #[test]
 fn test_window_resolve_auth_through_parse_llm() {
+    if !guard_test("test_window_resolve_auth_through_parse_llm", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -705,6 +843,9 @@ fn test_window_resolve_auth_through_parse_llm() {
 /// Window: execute_diff -> parse_response
 #[test]
 fn test_window_execute_diff_through_parse_response() {
+    if !guard_test("test_window_execute_diff_through_parse_response", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -719,6 +860,9 @@ fn test_window_execute_diff_through_parse_response() {
 /// Window: config -> execute_llm
 #[test]
 fn test_window_config_through_execute_llm() {
+    if !guard_test("test_window_config_through_execute_llm", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -733,6 +877,9 @@ fn test_window_config_through_execute_llm() {
 /// Window: prepare_diff -> parse_llm
 #[test]
 fn test_window_prepare_diff_through_parse_llm() {
+    if !guard_test("test_window_prepare_diff_through_parse_llm", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -747,6 +894,9 @@ fn test_window_prepare_diff_through_parse_llm() {
 /// Window: resolve_auth -> parse_response
 #[test]
 fn test_window_resolve_auth_through_parse_response() {
+    if !guard_test("test_window_resolve_auth_through_parse_response", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -761,6 +911,9 @@ fn test_window_resolve_auth_through_parse_response() {
 /// Window: config -> parse_llm
 #[test]
 fn test_window_config_through_parse_llm() {
+    if !guard_test("test_window_config_through_parse_llm", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -775,6 +928,9 @@ fn test_window_config_through_parse_llm() {
 /// Window: prepare_diff -> parse_response
 #[test]
 fn test_window_prepare_diff_through_parse_response() {
+    if !guard_test("test_window_prepare_diff_through_parse_response", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -789,6 +945,9 @@ fn test_window_prepare_diff_through_parse_response() {
 /// Window: config -> parse_response
 #[test]
 fn test_window_config_through_parse_response() {
+    if !guard_test("test_window_config_through_parse_response", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -812,6 +971,9 @@ fn test_window_config_through_parse_response() {
 /// Tests that node 'config' produces expected outputs for given inputs.
 #[test]
 fn test_example_config_emits_pipeline_config_constants() {
+    if !guard_test("test_example_config_emits_pipeline_config_constants", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let inputs = std::collections::HashMap::new();
     let outputs = gunbc_exec::execute_single_node(&dag, "config", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'config' should execute successfully");
@@ -832,6 +994,9 @@ fn test_example_config_emits_pipeline_config_constants() {
 /// Tests that node 'prepare_diff' produces expected outputs for given inputs.
 #[test]
 fn test_example_prepare_diff_builds_git_diff_request() {
+    if !guard_test("test_example_prepare_diff_builds_git_diff_request", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("base_ref".to_string(), Value::Str("main".to_string()));
@@ -848,6 +1013,9 @@ fn test_example_prepare_diff_builds_git_diff_request() {
 /// Tests that node 'parse_diff' produces expected outputs for given inputs.
 #[test]
 fn test_example_parse_diff_parses_diff_response_into_files_stats() {
+    if !guard_test("test_example_parse_diff_parses_diff_response_into_files_stats", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("response".to_string(), Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: "diff --git a/src/main.rs b/src/main.rs
@@ -873,6 +1041,9 @@ fn test_example_parse_diff_parses_diff_response_into_files_stats() {
 /// Tests that node 'format_artifact' produces expected outputs for given inputs.
 #[test]
 fn test_example_format_artifact_formats_diff_files_into_review_artifact() {
+    if !guard_test("test_example_format_artifact_formats_diff_files_into_review_artifact", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("diff_files".to_string(), Value::Map(std::collections::BTreeMap::from([("src/main.rs".to_string(), Value::Str("@@ -1,2 +1,3 @@
@@ -890,6 +1061,9 @@ fn test_example_format_artifact_formats_diff_files_into_review_artifact() {
 /// Tests that node 'prepare_prompt' produces expected outputs for given inputs.
 #[test]
 fn test_example_prepare_prompt_builds_prompt_text_from_diff_artifact() {
+    if !guard_test("test_example_prepare_prompt_builds_prompt_text_from_diff_artifact", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("artifact".to_string(), Value::Str("diff artifact".to_string()));
@@ -909,6 +1083,9 @@ fn test_example_prepare_prompt_builds_prompt_text_from_diff_artifact() {
 /// Tests that node 'prepare_llm' produces expected outputs for given inputs.
 #[test]
 fn test_example_prepare_llm_builds_an_llm_request_from_diff_prompt() {
+    if !guard_test("test_example_prepare_llm_builds_an_llm_request_from_diff_prompt", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("content".to_string(), Value::Str("diff artifact".to_string()));
@@ -930,6 +1107,9 @@ fn test_example_prepare_llm_builds_an_llm_request_from_diff_prompt() {
 /// Tests that node 'resolve_auth' produces expected outputs for given inputs.
 #[test]
 fn test_example_resolve_auth_resolves_openai_auth_scheme_and_env_var() {
+    if !guard_test("test_example_resolve_auth_resolves_openai_auth_scheme_and_env_var", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("provider".to_string(), Value::Str("openai".to_string()));
@@ -954,6 +1134,9 @@ fn test_example_resolve_auth_resolves_openai_auth_scheme_and_env_var() {
 /// Tests that node 'credential_env' produces expected outputs for given inputs.
 #[test]
 fn test_example_credential_env_loads_credential_from_environment_variable() {
+    if !guard_test("test_example_credential_env_loads_credential_from_environment_variable", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("env_var".to_string(), Value::Str("PATH".to_string()));
@@ -972,6 +1155,9 @@ fn test_example_credential_env_loads_credential_from_environment_variable() {
 /// Tests that node 'parse_llm' produces expected outputs for given inputs.
 #[test]
 fn test_example_parse_llm_extracts_answer_text_from_llm_response() {
+    if !guard_test("test_example_parse_llm_extracts_answer_text_from_llm_response", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("provider".to_string(), Value::Str("openai".to_string()));
@@ -988,6 +1174,9 @@ fn test_example_parse_llm_extracts_answer_text_from_llm_response() {
 /// Tests that node 'parse_response' produces expected outputs for given inputs.
 #[test]
 fn test_example_parse_response_parses_llm_answer_into_review_output() {
+    if !guard_test("test_example_parse_response_parses_llm_answer_into_review_output", TestClass::Hermetic, FermiCost::S, &["shell", "http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_diff_review_graph();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("answer".to_string(), Value::Str("{

@@ -4,12 +4,12 @@
 // DO NOT EDIT - regenerate with: make testgen
 // Obligations: 33 obligations (13 discharged, 20 testable: A=8, B=9, C=3, D=0)
 // Proven by construction: acyclicity, type compatibility, cardinality satisfaction.
-// Content-Hash: b4ee4dd9ef59e2c36c164129d531879676658f4f2ef97162f4224867757e89b4
+// Content-Hash: 40a30e40b23ed4fd25a2458981ac26ecd2734af012394a9211c818e9ce682300
 
 
 use gunbc_exec::{execute_with_mode, lower, ExecutionMode};
 use gunbc_ir::Value;
-use gunbc_test::{assert_boundary_mockable, MockSpec};
+use gunbc_test::{assert_boundary_mockable, guard_test, FermiCost, MockSpec, TestClass};
 use gunbc_test::{apply_window_inputs, assert_window_outputs, window_subdag, Window};
 
 fn mock_spec() -> MockSpec {
@@ -38,6 +38,9 @@ fn mock_spec() -> MockSpec {
 /// with explicit boundary mocks, and verify it completes successfully.
 #[test]
 fn test_dryrun_completion() {
+    if !guard_test("test_dryrun_completion", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_inline_review_graph();
     let log = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("DryRun execution should complete without crash");
     assert!(!log.entries.is_empty(), "execution should produce log entries");
@@ -49,6 +52,9 @@ fn test_dryrun_completion() {
 /// accidentally perform real I/O.
 #[test]
 fn test_transport_interception() {
+    if !guard_test("test_transport_interception", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_inline_review_graph();
     let result = assert_boundary_mockable(&dag, mock_spec().to_boundary_mocks());
     assert!(result.is_ok(), "All transports should be interceptable: {:?}", result.error);
@@ -77,6 +83,9 @@ fn test_transport_interception() {
 /// Proves: missing optional input does not crash.
 #[test]
 fn test_optional_missing_prepare_prompt_context() {
+    if !guard_test("test_optional_missing_prepare_prompt_context", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_inline_review_graph();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("artifact".to_string(), Value::Str("fn main() {}".to_string()));
@@ -89,6 +98,9 @@ fn test_optional_missing_prepare_prompt_context() {
 /// Proves: wrong-typed optional input is rejected.
 #[test]
 fn test_optional_wrong_type_prepare_prompt_context() {
+    if !guard_test("test_optional_wrong_type_prepare_prompt_context", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_inline_review_graph();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("artifact".to_string(), Value::Str("fn main() {}".to_string()));
@@ -103,6 +115,9 @@ fn test_optional_wrong_type_prepare_prompt_context() {
 /// Proves: missing optional input does not crash.
 #[test]
 fn test_optional_missing_prepare_llm_system_prompt() {
+    if !guard_test("test_optional_missing_prepare_llm_system_prompt", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_inline_review_graph();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("content".to_string(), Value::Str("fn main() {}".to_string()));
@@ -117,6 +132,9 @@ fn test_optional_missing_prepare_llm_system_prompt() {
 /// Proves: wrong-typed optional input is rejected.
 #[test]
 fn test_optional_wrong_type_prepare_llm_system_prompt() {
+    if !guard_test("test_optional_wrong_type_prepare_llm_system_prompt", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_inline_review_graph();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("content".to_string(), Value::Str("fn main() {}".to_string()));
@@ -142,6 +160,9 @@ fn test_optional_wrong_type_prepare_llm_system_prompt() {
 /// Proves: workflow reaches terminal outputs with all transports mocked as success.
 #[test]
 fn test_scenario_all_succeed() {
+    if !guard_test("test_scenario_all_succeed", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_inline_review_graph();
     let log = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("all-succeed scenario should complete");
     let entry = log.get("execute_llm").expect("'execute_llm' should be in log");
@@ -153,6 +174,9 @@ fn test_scenario_all_succeed() {
 /// Proves: failure propagation semantics are consistent.
 #[test]
 fn test_scenario_execute_llm_fails() {
+    if !guard_test("test_scenario_execute_llm_fails", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_inline_review_graph();
     let mut mocks = mock_spec().to_boundary_mocks();
     // Inject failure at 'execute_llm'
@@ -169,6 +193,9 @@ fn test_scenario_execute_llm_fails() {
 /// without crashing.
 #[test]
 fn test_skip_propagation_execute_llm() {
+    if !guard_test("test_skip_propagation_execute_llm", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_inline_review_graph();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_llm", "response", Value::Skipped);
@@ -185,6 +212,9 @@ fn test_skip_propagation_execute_llm() {
 /// Test that this tool's mock spec is self-consistent.
 #[test]
 fn test_mock_spec_self_consistent() {
+    if !guard_test("test_mock_spec_self_consistent", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let spec = mock_spec();
     // Verify all boundary mocks are present
     assert!(spec.get_boundary_mock("credential_env", "credential:llm").is_some(), "MockSpec should have boundary mock for credential_env.credential:llm");
@@ -193,6 +223,9 @@ fn test_mock_spec_self_consistent() {
 /// Test that input expectations are documented.
 #[test]
 fn test_input_expectations_documented() {
+    if !guard_test("test_input_expectations_documented", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let spec = mock_spec();
     // Port 'artifact' expects: NonEmpty
     // Port 'criteria' expects: NonEmpty
@@ -211,6 +244,9 @@ fn test_input_expectations_documented() {
 /// Window: prepare_prompt -> prepare_llm
 #[test]
 fn test_window_prepare_prompt_through_prepare_llm() {
+    if !guard_test("test_window_prepare_prompt_through_prepare_llm", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_inline_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -225,6 +261,9 @@ fn test_window_prepare_prompt_through_prepare_llm() {
 /// Window: prepare_llm -> resolve_auth
 #[test]
 fn test_window_prepare_llm_through_resolve_auth() {
+    if !guard_test("test_window_prepare_llm_through_resolve_auth", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_inline_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -239,6 +278,9 @@ fn test_window_prepare_llm_through_resolve_auth() {
 /// Window: resolve_auth -> credential_env
 #[test]
 fn test_window_resolve_auth_through_credential_env() {
+    if !guard_test("test_window_resolve_auth_through_credential_env", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_inline_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -253,6 +295,9 @@ fn test_window_resolve_auth_through_credential_env() {
 /// Window: credential_env -> execute_llm
 #[test]
 fn test_window_credential_env_through_execute_llm() {
+    if !guard_test("test_window_credential_env_through_execute_llm", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_inline_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -267,6 +312,9 @@ fn test_window_credential_env_through_execute_llm() {
 /// Window: execute_llm -> parse_llm
 #[test]
 fn test_window_execute_llm_through_parse_llm() {
+    if !guard_test("test_window_execute_llm_through_parse_llm", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_inline_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -281,6 +329,9 @@ fn test_window_execute_llm_through_parse_llm() {
 /// Window: parse_llm -> parse_response
 #[test]
 fn test_window_parse_llm_through_parse_response() {
+    if !guard_test("test_window_parse_llm_through_parse_response", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_inline_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -295,6 +346,9 @@ fn test_window_parse_llm_through_parse_response() {
 /// Window: prepare_prompt -> resolve_auth
 #[test]
 fn test_window_prepare_prompt_through_resolve_auth() {
+    if !guard_test("test_window_prepare_prompt_through_resolve_auth", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_inline_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -309,6 +363,9 @@ fn test_window_prepare_prompt_through_resolve_auth() {
 /// Window: prepare_llm -> credential_env
 #[test]
 fn test_window_prepare_llm_through_credential_env() {
+    if !guard_test("test_window_prepare_llm_through_credential_env", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_inline_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -323,6 +380,9 @@ fn test_window_prepare_llm_through_credential_env() {
 /// Window: resolve_auth -> execute_llm
 #[test]
 fn test_window_resolve_auth_through_execute_llm() {
+    if !guard_test("test_window_resolve_auth_through_execute_llm", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_inline_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -337,6 +397,9 @@ fn test_window_resolve_auth_through_execute_llm() {
 /// Window: credential_env -> parse_llm
 #[test]
 fn test_window_credential_env_through_parse_llm() {
+    if !guard_test("test_window_credential_env_through_parse_llm", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_inline_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -351,6 +414,9 @@ fn test_window_credential_env_through_parse_llm() {
 /// Window: execute_llm -> parse_response
 #[test]
 fn test_window_execute_llm_through_parse_response() {
+    if !guard_test("test_window_execute_llm_through_parse_response", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_inline_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -365,6 +431,9 @@ fn test_window_execute_llm_through_parse_response() {
 /// Window: prepare_prompt -> credential_env
 #[test]
 fn test_window_prepare_prompt_through_credential_env() {
+    if !guard_test("test_window_prepare_prompt_through_credential_env", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_inline_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -379,6 +448,9 @@ fn test_window_prepare_prompt_through_credential_env() {
 /// Window: prepare_llm -> execute_llm
 #[test]
 fn test_window_prepare_llm_through_execute_llm() {
+    if !guard_test("test_window_prepare_llm_through_execute_llm", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_inline_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -393,6 +465,9 @@ fn test_window_prepare_llm_through_execute_llm() {
 /// Window: resolve_auth -> parse_llm
 #[test]
 fn test_window_resolve_auth_through_parse_llm() {
+    if !guard_test("test_window_resolve_auth_through_parse_llm", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_inline_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -407,6 +482,9 @@ fn test_window_resolve_auth_through_parse_llm() {
 /// Window: credential_env -> parse_response
 #[test]
 fn test_window_credential_env_through_parse_response() {
+    if !guard_test("test_window_credential_env_through_parse_response", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_inline_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -421,6 +499,9 @@ fn test_window_credential_env_through_parse_response() {
 /// Window: prepare_prompt -> execute_llm
 #[test]
 fn test_window_prepare_prompt_through_execute_llm() {
+    if !guard_test("test_window_prepare_prompt_through_execute_llm", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_inline_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -435,6 +516,9 @@ fn test_window_prepare_prompt_through_execute_llm() {
 /// Window: prepare_llm -> parse_llm
 #[test]
 fn test_window_prepare_llm_through_parse_llm() {
+    if !guard_test("test_window_prepare_llm_through_parse_llm", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_inline_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -449,6 +533,9 @@ fn test_window_prepare_llm_through_parse_llm() {
 /// Window: resolve_auth -> parse_response
 #[test]
 fn test_window_resolve_auth_through_parse_response() {
+    if !guard_test("test_window_resolve_auth_through_parse_response", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_inline_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -463,6 +550,9 @@ fn test_window_resolve_auth_through_parse_response() {
 /// Window: prepare_prompt -> parse_llm
 #[test]
 fn test_window_prepare_prompt_through_parse_llm() {
+    if !guard_test("test_window_prepare_prompt_through_parse_llm", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_inline_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -477,6 +567,9 @@ fn test_window_prepare_prompt_through_parse_llm() {
 /// Window: prepare_llm -> parse_response
 #[test]
 fn test_window_prepare_llm_through_parse_response() {
+    if !guard_test("test_window_prepare_llm_through_parse_response", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_inline_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -491,6 +584,9 @@ fn test_window_prepare_llm_through_parse_response() {
 /// Window: prepare_prompt -> parse_response
 #[test]
 fn test_window_prepare_prompt_through_parse_response() {
+    if !guard_test("test_window_prepare_prompt_through_parse_response", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_inline_review_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -514,6 +610,9 @@ fn test_window_prepare_prompt_through_parse_response() {
 /// Tests that node 'prepare_prompt' produces expected outputs for given inputs.
 #[test]
 fn test_example_prepare_prompt_builds_prompt_text_from_artifact_criteria() {
+    if !guard_test("test_example_prepare_prompt_builds_prompt_text_from_artifact_criteria", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_inline_review_graph();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("artifact".to_string(), Value::Str("fn main() {}".to_string()));
@@ -533,6 +632,9 @@ fn test_example_prepare_prompt_builds_prompt_text_from_artifact_criteria() {
 /// Tests that node 'prepare_llm' produces expected outputs for given inputs.
 #[test]
 fn test_example_prepare_llm_builds_an_llm_request_from_prompt_content() {
+    if !guard_test("test_example_prepare_llm_builds_an_llm_request_from_prompt_content", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_inline_review_graph();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("content".to_string(), Value::Str("fn main() {}".to_string()));
@@ -554,6 +656,9 @@ fn test_example_prepare_llm_builds_an_llm_request_from_prompt_content() {
 /// Tests that node 'resolve_auth' produces expected outputs for given inputs.
 #[test]
 fn test_example_resolve_auth_resolves_openai_auth_scheme_and_env_var() {
+    if !guard_test("test_example_resolve_auth_resolves_openai_auth_scheme_and_env_var", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_inline_review_graph();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("provider".to_string(), Value::Str("openai".to_string()));
@@ -578,6 +683,9 @@ fn test_example_resolve_auth_resolves_openai_auth_scheme_and_env_var() {
 /// Tests that node 'credential_env' produces expected outputs for given inputs.
 #[test]
 fn test_example_credential_env_loads_credential_from_environment_variable() {
+    if !guard_test("test_example_credential_env_loads_credential_from_environment_variable", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_inline_review_graph();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("env_var".to_string(), Value::Str("PATH".to_string()));
@@ -596,6 +704,9 @@ fn test_example_credential_env_loads_credential_from_environment_variable() {
 /// Tests that node 'parse_llm' produces expected outputs for given inputs.
 #[test]
 fn test_example_parse_llm_extracts_answer_text_from_llm_response() {
+    if !guard_test("test_example_parse_llm_extracts_answer_text_from_llm_response", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_inline_review_graph();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("provider".to_string(), Value::Str("openai".to_string()));
@@ -612,6 +723,9 @@ fn test_example_parse_llm_extracts_answer_text_from_llm_response() {
 /// Tests that node 'parse_response' produces expected outputs for given inputs.
 #[test]
 fn test_example_parse_response_parses_llm_answer_into_review_output() {
+    if !guard_test("test_example_parse_response_parses_llm_answer_into_review_output", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_inline_review_graph();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("answer".to_string(), Value::Str("{

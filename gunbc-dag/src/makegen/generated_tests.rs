@@ -4,12 +4,12 @@
 // DO NOT EDIT - regenerate with: make testgen
 // Obligations: 34 obligations (9 discharged, 25 testable: A=8, B=13, C=4, D=0)
 // Proven by construction: acyclicity, type compatibility, cardinality satisfaction.
-// Content-Hash: 4453e128d59f9bae8ee57e341c1b425e0a718a59c7adf1d92d17ab85b65ff589
+// Content-Hash: 8744205124de11a5573ff617b1cd57c86b40ea485b3373054700c7b05aed2f62
 
 
 use gunbc_exec::{execute_with_mode, lower, ExecutionMode};
 use gunbc_ir::Value;
-use gunbc_test::{assert_boundary_mockable, MockSpec};
+use gunbc_test::{assert_boundary_mockable, guard_test, FermiCost, MockSpec, TestClass};
 use gunbc_test::{apply_window_inputs, assert_window_outputs, window_subdag, Window};
 use gunbc_test::ResourceAcquireResult;
 
@@ -24,6 +24,9 @@ fn mock_spec() -> MockSpec {
 /// Declared signature matches the DAG inputs/outputs.
 #[test]
 fn test_signature_matches_dag() {
+    if !guard_test("test_signature_matches_dag", TestClass::Hermetic, FermiCost::S, &["fs"], &[]) {
+    return ();
+};
     let dag = crate :: build_makegen_graph().unwrap();
     let sig = crate :: makegen_signature();
     sig.validate(&dag).expect("signature should match DAG");
@@ -50,6 +53,9 @@ fn test_signature_matches_dag() {
 /// with explicit boundary mocks, and verify it completes successfully.
 #[test]
 fn test_dryrun_completion() {
+    if !guard_test("test_dryrun_completion", TestClass::Hermetic, FermiCost::S, &["fs"], &[]) {
+    return ();
+};
     let dag = crate :: build_makegen_graph().unwrap();
     let log = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("DryRun execution should complete without crash");
     assert!(!log.entries.is_empty(), "execution should produce log entries");
@@ -61,6 +67,9 @@ fn test_dryrun_completion() {
 /// accidentally perform real I/O.
 #[test]
 fn test_transport_interception() {
+    if !guard_test("test_transport_interception", TestClass::Hermetic, FermiCost::S, &["fs"], &[]) {
+    return ();
+};
     let dag = crate :: build_makegen_graph().unwrap();
     let result = assert_boundary_mockable(&dag, mock_spec().to_boundary_mocks());
     assert!(result.is_ok(), "All transports should be interceptable: {:?}", result.error);
@@ -89,6 +98,9 @@ fn test_transport_interception() {
 /// Proves: DAG handles count=1 (one) for boundary port load_registry.tool_names.
 #[test]
 fn test_cardinality_load_registry_tool_names_one_1() {
+    if !guard_test("test_cardinality_load_registry_tool_names_one_1", TestClass::Hermetic, FermiCost::S, &["fs"], &[]) {
+    return ();
+};
     let dag = crate :: build_makegen_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("load_registry", "tool_names", Value::List(vec![Value::Str("<MOCK>".to_string())]));
@@ -100,72 +112,93 @@ fn test_cardinality_load_registry_tool_names_one_1() {
 /// Proves: DAG handles count=2 (many) for boundary port load_registry.tool_names.
 #[test]
 fn test_cardinality_load_registry_tool_names_many_2() {
+    if !guard_test("test_cardinality_load_registry_tool_names_many_2", TestClass::Hermetic, FermiCost::S, &["fs"], &[]) {
+    return ();
+};
     let dag = crate :: build_makegen_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("load_registry", "tool_names", Value::List(vec![Value::Str("<MOCK>".to_string()), Value::Str("<MOCK_2>".to_string())]));
     let _log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).expect("cardinality count=2 (many) should not crash");
 }
 
-/// Cardinality coverage: execute_makegen_transport.response with 0 element(s) (cardinality: 0..1).
+/// Cardinality coverage: execute_makegen_transport.makegen_response with 0 element(s) (cardinality: 0..1).
 /// 
-/// Proves: DAG handles count=0 (empty) for boundary port execute_makegen_transport.response.
+/// Proves: DAG handles count=0 (empty) for boundary port execute_makegen_transport.makegen_response.
 #[test]
-fn test_cardinality_execute_makegen_transport_response_empty_0() {
+fn test_cardinality_execute_makegen_transport_makegen_response_empty_0() {
+    if !guard_test("test_cardinality_execute_makegen_transport_makegen_response_empty_0", TestClass::Hermetic, FermiCost::S, &["fs"], &[]) {
+    return ();
+};
     let dag = crate :: build_makegen_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_makegen_transport", "makegen_response", Value::Unit);
     let _log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).expect("cardinality count=0 (empty) should not crash");
 }
 
-/// Cardinality coverage: execute_makegen_transport.response with 1 element(s) (cardinality: 0..1).
+/// Cardinality coverage: execute_makegen_transport.makegen_response with 1 element(s) (cardinality: 0..1).
 /// 
-/// Proves: DAG handles count=1 (one) for boundary port execute_makegen_transport.response.
+/// Proves: DAG handles count=1 (one) for boundary port execute_makegen_transport.makegen_response.
 #[test]
-fn test_cardinality_execute_makegen_transport_response_one_1() {
+fn test_cardinality_execute_makegen_transport_makegen_response_one_1() {
+    if !guard_test("test_cardinality_execute_makegen_transport_makegen_response_one_1", TestClass::Hermetic, FermiCost::S, &["fs"], &[]) {
+    return ();
+};
     let dag = crate :: build_makegen_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_makegen_transport", "makegen_response", Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: "<MOCK>".to_string(), stderr: "".to_string() })));
     let _log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).expect("cardinality count=1 (one) should not crash");
 }
 
-/// Cardinality coverage: execute_makegen_transport.written_path with 0 element(s) (cardinality: 0..1).
+/// Cardinality coverage: execute_makegen_transport.makegen_written_path with 0 element(s) (cardinality: 0..1).
 /// 
-/// Proves: DAG handles count=0 (empty) for boundary port execute_makegen_transport.written_path.
+/// Proves: DAG handles count=0 (empty) for boundary port execute_makegen_transport.makegen_written_path.
 #[test]
-fn test_cardinality_execute_makegen_transport_written_path_empty_0() {
+fn test_cardinality_execute_makegen_transport_makegen_written_path_empty_0() {
+    if !guard_test("test_cardinality_execute_makegen_transport_makegen_written_path_empty_0", TestClass::Hermetic, FermiCost::S, &["fs"], &[]) {
+    return ();
+};
     let dag = crate :: build_makegen_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_makegen_transport", "makegen_written_path", Value::Unit);
     let _log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).expect("cardinality count=0 (empty) should not crash");
 }
 
-/// Cardinality coverage: execute_makegen_transport.written_path with 1 element(s) (cardinality: 0..1).
+/// Cardinality coverage: execute_makegen_transport.makegen_written_path with 1 element(s) (cardinality: 0..1).
 /// 
-/// Proves: DAG handles count=1 (one) for boundary port execute_makegen_transport.written_path.
+/// Proves: DAG handles count=1 (one) for boundary port execute_makegen_transport.makegen_written_path.
 #[test]
-fn test_cardinality_execute_makegen_transport_written_path_one_1() {
+fn test_cardinality_execute_makegen_transport_makegen_written_path_one_1() {
+    if !guard_test("test_cardinality_execute_makegen_transport_makegen_written_path_one_1", TestClass::Hermetic, FermiCost::S, &["fs"], &[]) {
+    return ();
+};
     let dag = crate :: build_makegen_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_makegen_transport", "makegen_written_path", Value::Str("<MOCK>".to_string()));
     let _log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).expect("cardinality count=1 (one) should not crash");
 }
 
-/// Cardinality coverage: execute_makegen_transport.content with 0 element(s) (cardinality: 0..1).
+/// Cardinality coverage: execute_makegen_transport.makegen_content with 0 element(s) (cardinality: 0..1).
 /// 
-/// Proves: DAG handles count=0 (empty) for boundary port execute_makegen_transport.content.
+/// Proves: DAG handles count=0 (empty) for boundary port execute_makegen_transport.makegen_content.
 #[test]
-fn test_cardinality_execute_makegen_transport_content_empty_0() {
+fn test_cardinality_execute_makegen_transport_makegen_content_empty_0() {
+    if !guard_test("test_cardinality_execute_makegen_transport_makegen_content_empty_0", TestClass::Hermetic, FermiCost::S, &["fs"], &[]) {
+    return ();
+};
     let dag = crate :: build_makegen_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_makegen_transport", "makegen_content", Value::Unit);
     let _log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).expect("cardinality count=0 (empty) should not crash");
 }
 
-/// Cardinality coverage: execute_makegen_transport.content with 1 element(s) (cardinality: 0..1).
+/// Cardinality coverage: execute_makegen_transport.makegen_content with 1 element(s) (cardinality: 0..1).
 /// 
-/// Proves: DAG handles count=1 (one) for boundary port execute_makegen_transport.content.
+/// Proves: DAG handles count=1 (one) for boundary port execute_makegen_transport.makegen_content.
 #[test]
-fn test_cardinality_execute_makegen_transport_content_one_1() {
+fn test_cardinality_execute_makegen_transport_makegen_content_one_1() {
+    if !guard_test("test_cardinality_execute_makegen_transport_makegen_content_one_1", TestClass::Hermetic, FermiCost::S, &["fs"], &[]) {
+    return ();
+};
     let dag = crate :: build_makegen_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_makegen_transport", "makegen_content", Value::Str("<MOCK>".to_string()));
@@ -177,6 +210,9 @@ fn test_cardinality_execute_makegen_transport_content_one_1() {
 /// Proves: DAG handles count=0 (empty) for boundary port execute_makegen_transport.skip_reason.
 #[test]
 fn test_cardinality_execute_makegen_transport_skip_reason_empty_0() {
+    if !guard_test("test_cardinality_execute_makegen_transport_skip_reason_empty_0", TestClass::Hermetic, FermiCost::S, &["fs"], &[]) {
+    return ();
+};
     let dag = crate :: build_makegen_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_makegen_transport", "skip_reason", Value::Unit);
@@ -188,6 +224,9 @@ fn test_cardinality_execute_makegen_transport_skip_reason_empty_0() {
 /// Proves: DAG handles count=1 (one) for boundary port execute_makegen_transport.skip_reason.
 #[test]
 fn test_cardinality_execute_makegen_transport_skip_reason_one_1() {
+    if !guard_test("test_cardinality_execute_makegen_transport_skip_reason_one_1", TestClass::Hermetic, FermiCost::S, &["fs"], &[]) {
+    return ();
+};
     let dag = crate :: build_makegen_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_makegen_transport", "skip_reason", Value::Str("<MOCK>".to_string()));
@@ -199,6 +238,9 @@ fn test_cardinality_execute_makegen_transport_skip_reason_one_1() {
 /// Proves: missing optional input does not crash.
 #[test]
 fn test_optional_missing_compare_makegen_content_check_mode() {
+    if !guard_test("test_optional_missing_compare_makegen_content_check_mode", TestClass::Hermetic, FermiCost::S, &["fs"], &[]) {
+    return ();
+};
     let dag = crate :: build_makegen_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("expected_content".to_string(), Value::Str("<MOCK>".to_string()));
@@ -211,6 +253,9 @@ fn test_optional_missing_compare_makegen_content_check_mode() {
 /// Proves: wrong-typed optional input is rejected.
 #[test]
 fn test_optional_wrong_type_compare_makegen_content_check_mode() {
+    if !guard_test("test_optional_wrong_type_compare_makegen_content_check_mode", TestClass::Hermetic, FermiCost::S, &["fs"], &[]) {
+    return ();
+};
     let dag = crate :: build_makegen_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("check_mode".to_string(), Value::Str("<WRONG>".to_string()));
@@ -234,6 +279,9 @@ fn test_optional_wrong_type_compare_makegen_content_check_mode() {
 /// Proves: workflow reaches terminal outputs with all transports mocked as success.
 #[test]
 fn test_scenario_all_succeed() {
+    if !guard_test("test_scenario_all_succeed", TestClass::Hermetic, FermiCost::S, &["fs"], &[]) {
+    return ();
+};
     let dag = crate :: build_makegen_graph().unwrap();
     let log = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("all-succeed scenario should complete");
     let entry = log.get("execute_read_makegen").expect("'execute_read_makegen' should be in log");
@@ -247,6 +295,9 @@ fn test_scenario_all_succeed() {
 /// Proves: failure propagation semantics are consistent.
 #[test]
 fn test_scenario_execute_read_makegen_fails() {
+    if !guard_test("test_scenario_execute_read_makegen_fails", TestClass::Hermetic, FermiCost::S, &["fs"], &[]) {
+    return ();
+};
     let dag = crate :: build_makegen_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     // Inject failure at 'execute_read_makegen'
@@ -261,10 +312,13 @@ fn test_scenario_execute_read_makegen_fails() {
 /// Proves: failure propagation semantics are consistent.
 #[test]
 fn test_scenario_execute_makegen_transport_fails() {
+    if !guard_test("test_scenario_execute_makegen_transport_fails", TestClass::Hermetic, FermiCost::S, &["fs"], &[]) {
+    return ();
+};
     let dag = crate :: build_makegen_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     // Inject failure at 'execute_makegen_transport'
-    mocks.set_value("execute_makegen_transport", "makegen_response", Value::Str("<TRANSPORT_FAILURE>".to_string()));
+    mocks.set_value("execute_makegen_transport", "response", Value::Str("<TRANSPORT_FAILURE>".to_string()));
     // Execution may succeed or fail depending on graph semantics;
     // the key property is that it doesn't crash/hang.
     let _result = execute_with_mode(&dag, ExecutionMode::DryRun(mocks));
@@ -277,6 +331,9 @@ fn test_scenario_execute_makegen_transport_fails() {
 /// without crashing.
 #[test]
 fn test_skip_propagation_execute_read_makegen() {
+    if !guard_test("test_skip_propagation_execute_read_makegen", TestClass::Hermetic, FermiCost::S, &["fs"], &[]) {
+    return ();
+};
     let dag = crate :: build_makegen_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute_read_makegen", "response", Value::Skipped);
@@ -294,6 +351,9 @@ fn test_skip_propagation_execute_read_makegen() {
 /// Test resource 'fs:Makefile' (Lock) acquisition.
 #[test]
 fn test_resource_fs_makefile_acquire() {
+    if !guard_test("test_resource_fs_makefile_acquire", TestClass::Hermetic, FermiCost::S, &["fs"], &[]) {
+    return ();
+};
     let spec = mock_spec();
     let resource = spec.get_resource("fs:Makefile").expect("resource should exist");
     let result = resource.acquire();
@@ -313,6 +373,9 @@ fn test_resource_fs_makefile_acquire() {
 /// and verifies that the pure node chain produces expected terminal outputs.
 #[test]
 fn test_flow_makegen() {
+    if !guard_test("test_flow_makegen", TestClass::Hermetic, FermiCost::S, &["fs"], &[]) {
+    return ();
+};
     let dag = crate :: build_makegen_graph().unwrap();
     let spec = mock_spec();
     let mocks = spec.to_boundary_mocks();
@@ -334,6 +397,9 @@ fn test_flow_makegen() {
 /// Window: compare_makegen_content -> execute_makegen_transport
 #[test]
 fn test_window_compare_makegen_content_through_execute_makegen_transport() {
+    if !guard_test("test_window_compare_makegen_content_through_execute_makegen_transport", TestClass::Hermetic, FermiCost::S, &["fs"], &[]) {
+    return ();
+};
     let dag = crate :: build_makegen_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -348,6 +414,9 @@ fn test_window_compare_makegen_content_through_execute_makegen_transport() {
 /// Window: prepare_write_makegen -> execute_makegen_transport
 #[test]
 fn test_window_prepare_write_makegen_through_execute_makegen_transport() {
+    if !guard_test("test_window_prepare_write_makegen_through_execute_makegen_transport", TestClass::Hermetic, FermiCost::S, &["fs"], &[]) {
+    return ();
+};
     let dag = crate :: build_makegen_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -362,6 +431,9 @@ fn test_window_prepare_write_makegen_through_execute_makegen_transport() {
 /// Window: render_makefile -> compare_makegen_content
 #[test]
 fn test_window_render_makefile_through_compare_makegen_content() {
+    if !guard_test("test_window_render_makefile_through_compare_makegen_content", TestClass::Hermetic, FermiCost::S, &["fs"], &[]) {
+    return ();
+};
     let dag = crate :: build_makegen_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -376,6 +448,9 @@ fn test_window_render_makefile_through_compare_makegen_content() {
 /// Window: execute_read_makegen -> execute_makegen_transport
 #[test]
 fn test_window_execute_read_makegen_through_execute_makegen_transport() {
+    if !guard_test("test_window_execute_read_makegen_through_execute_makegen_transport", TestClass::Hermetic, FermiCost::S, &["fs"], &[]) {
+    return ();
+};
     let dag = crate :: build_makegen_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -390,6 +465,9 @@ fn test_window_execute_read_makegen_through_execute_makegen_transport() {
 /// Window: prepare_read_makegen -> compare_makegen_content
 #[test]
 fn test_window_prepare_read_makegen_through_compare_makegen_content() {
+    if !guard_test("test_window_prepare_read_makegen_through_compare_makegen_content", TestClass::Hermetic, FermiCost::S, &["fs"], &[]) {
+    return ();
+};
     let dag = crate :: build_makegen_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -404,6 +482,9 @@ fn test_window_prepare_read_makegen_through_compare_makegen_content() {
 /// Window: render_makefile -> execute_makegen_transport
 #[test]
 fn test_window_render_makefile_through_execute_makegen_transport() {
+    if !guard_test("test_window_render_makefile_through_execute_makegen_transport", TestClass::Hermetic, FermiCost::S, &["fs"], &[]) {
+    return ();
+};
     let dag = crate :: build_makegen_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -418,6 +499,9 @@ fn test_window_render_makefile_through_execute_makegen_transport() {
 /// Window: load_registry -> compare_makegen_content
 #[test]
 fn test_window_load_registry_through_compare_makegen_content() {
+    if !guard_test("test_window_load_registry_through_compare_makegen_content", TestClass::Hermetic, FermiCost::S, &["fs"], &[]) {
+    return ();
+};
     let dag = crate :: build_makegen_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -432,6 +516,9 @@ fn test_window_load_registry_through_compare_makegen_content() {
 /// Window: prepare_read_makegen -> execute_makegen_transport
 #[test]
 fn test_window_prepare_read_makegen_through_execute_makegen_transport() {
+    if !guard_test("test_window_prepare_read_makegen_through_execute_makegen_transport", TestClass::Hermetic, FermiCost::S, &["fs"], &[]) {
+    return ();
+};
     let dag = crate :: build_makegen_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -446,6 +533,9 @@ fn test_window_prepare_read_makegen_through_execute_makegen_transport() {
 /// Window: load_registry -> execute_makegen_transport
 #[test]
 fn test_window_load_registry_through_execute_makegen_transport() {
+    if !guard_test("test_window_load_registry_through_execute_makegen_transport", TestClass::Hermetic, FermiCost::S, &["fs"], &[]) {
+    return ();
+};
     let dag = crate :: build_makegen_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -469,6 +559,9 @@ fn test_window_load_registry_through_execute_makegen_transport() {
 /// Tests that node 'load_registry' produces expected outputs for given inputs.
 #[test]
 fn test_example_load_registry_default_registry_loads_with_expected_tools() {
+    if !guard_test("test_example_load_registry_default_registry_loads_with_expected_tools", TestClass::Hermetic, FermiCost::S, &["fs"], &[]) {
+    return ();
+};
     let dag = crate :: build_makegen_graph().unwrap();
     let inputs = std::collections::HashMap::new();
     let outputs = gunbc_exec::execute_single_node(&dag, "load_registry", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'load_registry' should execute successfully");
@@ -486,6 +579,9 @@ fn test_example_load_registry_default_registry_loads_with_expected_tools() {
 /// Tests that node 'render_makefile' produces expected outputs for given inputs.
 #[test]
 fn test_example_render_makefile_rendered_makefile_contains_gist_target() {
+    if !guard_test("test_example_render_makefile_rendered_makefile_contains_gist_target", TestClass::Hermetic, FermiCost::S, &["fs"], &[]) {
+    return ();
+};
     let dag = crate :: build_makegen_graph().unwrap();
     let inputs = std::collections::HashMap::new();
     let outputs = gunbc_exec::execute_single_node(&dag, "render_makefile", inputs, gunbc_exec::ExecutionMode::Real).expect("node 'render_makefile' should execute successfully");

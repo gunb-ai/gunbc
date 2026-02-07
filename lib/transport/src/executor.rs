@@ -375,6 +375,7 @@ fn execute_shell(request: &ShellRequest) -> Result<ShellResponse, TransportError
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gunbc_test::{guard_test, FermiCost, TestClass};
     use std::env::temp_dir;
     use std::path::{Path, PathBuf};
 
@@ -385,12 +386,46 @@ mod tests {
         path
     }
 
+    fn guard_fs(name: &str) -> bool {
+        guard_test(
+            name,
+            TestClass::Integration,
+            FermiCost::S,
+            &["fs"],
+            &[],
+        )
+    }
+
+    fn guard_shell(name: &str) -> bool {
+        guard_test(
+            name,
+            TestClass::Integration,
+            FermiCost::M,
+            &["shell"],
+            &[],
+        )
+    }
+
+    fn guard_git(name: &str) -> bool {
+        guard_test(
+            name,
+            TestClass::Integration,
+            FermiCost::M,
+            &["git", "shell"],
+            &[],
+        )
+    }
+
     // ========================================================================
     // FileOp::Read tests
     // ========================================================================
 
     #[test]
     fn test_file_read_success() {
+        if !guard_fs(stringify!(test_file_read_success)) {
+            return;
+        }
+
         let request = FileRequest::read("Cargo.toml");
         let response = execute_file(&request).unwrap();
 
@@ -406,6 +441,10 @@ mod tests {
 
     #[test]
     fn test_file_read_not_found() {
+        if !guard_fs(stringify!(test_file_read_not_found)) {
+            return;
+        }
+
         let request = FileRequest::read("nonexistent_file_xyz_12345.txt");
         let response = execute_file(&request).unwrap();
 
@@ -421,6 +460,10 @@ mod tests {
 
     #[test]
     fn test_file_write_success() {
+        if !guard_fs(stringify!(test_file_write_success)) {
+            return;
+        }
+
         let path = temp_path("write_test.txt");
         let content = "hello, integration test!";
 
@@ -441,6 +484,10 @@ mod tests {
 
     #[test]
     fn test_file_write_overwrites() {
+        if !guard_fs(stringify!(test_file_write_overwrites)) {
+            return;
+        }
+
         let path = temp_path("write_overwrite.txt");
 
         // Write initial content
@@ -458,6 +505,10 @@ mod tests {
 
     #[test]
     fn test_file_write_creates_parents() {
+        if !guard_fs(stringify!(test_file_write_creates_parents)) {
+            return;
+        }
+
         let mut path = temp_path("nested");
         path.push("subdir");
         path.push("file.txt");
@@ -484,6 +535,10 @@ mod tests {
 
     #[test]
     fn test_file_append_to_existing() {
+        if !guard_fs(stringify!(test_file_append_to_existing)) {
+            return;
+        }
+
         let path = temp_path("append_test.txt");
 
         // Create initial file
@@ -502,6 +557,10 @@ mod tests {
 
     #[test]
     fn test_file_append_creates_file() {
+        if !guard_fs(stringify!(test_file_append_creates_file)) {
+            return;
+        }
+
         let path = temp_path("append_new.txt");
 
         // Ensure file doesn't exist
@@ -522,6 +581,10 @@ mod tests {
 
     #[test]
     fn test_file_delete_success() {
+        if !guard_fs(stringify!(test_file_delete_success)) {
+            return;
+        }
+
         let path = temp_path("delete_test.txt");
 
         // Create file to delete
@@ -538,6 +601,10 @@ mod tests {
 
     #[test]
     fn test_file_delete_not_found() {
+        if !guard_fs(stringify!(test_file_delete_not_found)) {
+            return;
+        }
+
         let path = temp_path("delete_nonexistent.txt");
         fs::remove_file(&path).ok(); // Ensure doesn't exist
 
@@ -554,6 +621,10 @@ mod tests {
 
     #[test]
     fn test_file_exists_true() {
+        if !guard_fs(stringify!(test_file_exists_true)) {
+            return;
+        }
+
         let request = FileRequest::exists("Cargo.toml");
         let response = execute_file(&request).unwrap();
 
@@ -564,6 +635,10 @@ mod tests {
 
     #[test]
     fn test_file_exists_false() {
+        if !guard_fs(stringify!(test_file_exists_false)) {
+            return;
+        }
+
         let request = FileRequest::exists("nonexistent_file_12345.txt");
         let response = execute_file(&request).unwrap();
 
@@ -573,6 +648,10 @@ mod tests {
 
     #[test]
     fn test_file_exists_directory() {
+        if !guard_fs(stringify!(test_file_exists_directory)) {
+            return;
+        }
+
         let request = FileRequest::exists("src");
         let response = execute_file(&request).unwrap();
 
@@ -586,6 +665,10 @@ mod tests {
 
     #[test]
     fn test_file_create_dir_success() {
+        if !guard_fs(stringify!(test_file_create_dir_success)) {
+            return;
+        }
+
         let path = temp_path("create_dir_test");
         fs::remove_dir_all(&path).ok(); // Ensure doesn't exist
 
@@ -601,6 +684,10 @@ mod tests {
 
     #[test]
     fn test_file_create_dir_nested() {
+        if !guard_fs(stringify!(test_file_create_dir_nested)) {
+            return;
+        }
+
         let mut path = temp_path("nested_dir");
         path.push("level1");
         path.push("level2");
@@ -617,6 +704,10 @@ mod tests {
 
     #[test]
     fn test_file_create_dir_already_exists() {
+        if !guard_fs(stringify!(test_file_create_dir_already_exists)) {
+            return;
+        }
+
         let path = temp_path("existing_dir");
         fs::create_dir_all(&path).ok();
 
@@ -634,6 +725,10 @@ mod tests {
 
     #[test]
     fn test_shell_echo_basic() {
+        if !guard_shell(stringify!(test_shell_echo_basic)) {
+            return;
+        }
+
         let request = ShellRequest::new("echo").arg("hello");
         let response = execute_shell(&request).unwrap();
 
@@ -644,6 +739,10 @@ mod tests {
 
     #[test]
     fn test_shell_multiple_args() {
+        if !guard_shell(stringify!(test_shell_multiple_args)) {
+            return;
+        }
+
         let request = ShellRequest::new("echo").arg("one").arg("two").arg("three");
         let response = execute_shell(&request).unwrap();
 
@@ -653,6 +752,10 @@ mod tests {
 
     #[test]
     fn test_shell_with_stdin() {
+        if !guard_shell(stringify!(test_shell_with_stdin)) {
+            return;
+        }
+
         let request = ShellRequest::new("cat").stdin("test input");
         let response = execute_shell(&request).unwrap();
 
@@ -662,6 +765,10 @@ mod tests {
 
     #[test]
     fn test_shell_stderr_capture() {
+        if !guard_shell(stringify!(test_shell_stderr_capture)) {
+            return;
+        }
+
         // Use sh -c to write to stderr
         let request = ShellRequest::new("sh")
             .arg("-c")
@@ -677,6 +784,10 @@ mod tests {
 
     #[test]
     fn test_shell_nonzero_exit() {
+        if !guard_shell(stringify!(test_shell_nonzero_exit)) {
+            return;
+        }
+
         let request = ShellRequest::new("sh").arg("-c").arg("exit 42");
         let response = execute_shell(&request).unwrap();
 
@@ -685,6 +796,10 @@ mod tests {
 
     #[test]
     fn test_shell_false_command() {
+        if !guard_shell(stringify!(test_shell_false_command)) {
+            return;
+        }
+
         let request = ShellRequest::new("false");
         let response = execute_shell(&request).unwrap();
 
@@ -693,6 +808,10 @@ mod tests {
 
     #[test]
     fn test_shell_env_vars() {
+        if !guard_shell(stringify!(test_shell_env_vars)) {
+            return;
+        }
+
         let request = ShellRequest::new("sh")
             .arg("-c")
             .arg("echo $TEST_VAR")
@@ -708,6 +827,10 @@ mod tests {
 
     #[test]
     fn test_shell_working_directory() {
+        if !guard_shell(stringify!(test_shell_working_directory)) {
+            return;
+        }
+
         let cwd = temp_dir();
         let request = ShellRequest::new("pwd").cwd(cwd.to_str().unwrap());
         let response = execute_shell(&request).unwrap();
@@ -720,6 +843,10 @@ mod tests {
 
     #[test]
     fn test_shell_command_not_found() {
+        if !guard_shell(stringify!(test_shell_command_not_found)) {
+            return;
+        }
+
         let request = ShellRequest::new("nonexistent_command_xyz_12345");
         let result = execute_shell(&request);
 
@@ -732,6 +859,10 @@ mod tests {
 
     #[test]
     fn test_execute_transport_file_dispatch() {
+        if !guard_fs(stringify!(test_execute_transport_file_dispatch)) {
+            return;
+        }
+
         let request = TransportRequest::File(FileRequest::exists("Cargo.toml"));
         let response = execute_transport(&request).unwrap();
 
@@ -746,6 +877,10 @@ mod tests {
 
     #[test]
     fn test_execute_transport_shell_dispatch() {
+        if !guard_shell(stringify!(test_execute_transport_shell_dispatch)) {
+            return;
+        }
+
         let request = TransportRequest::Shell(ShellRequest::new("echo").arg("test"));
         let response = execute_transport(&request).unwrap();
 
@@ -850,6 +985,10 @@ mod tests {
 
         #[test]
         fn test_git_ls_files_integration() {
+            if !guard_git(stringify!(test_git_ls_files_integration)) {
+                return;
+            }
+
             let repo = create_temp_git_repo("ls_files");
 
             // Add some files
@@ -878,6 +1017,10 @@ mod tests {
 
         #[test]
         fn test_git_current_branch_integration() {
+            if !guard_git(stringify!(test_git_current_branch_integration)) {
+                return;
+            }
+
             let repo = create_temp_git_repo("current_branch");
             add_and_commit(&repo, "file.txt", "content", "Initial");
 
@@ -906,6 +1049,10 @@ mod tests {
 
         #[test]
         fn test_git_diff_integration() {
+            if !guard_git(stringify!(test_git_diff_integration)) {
+                return;
+            }
+
             let repo = create_temp_git_repo("diff");
 
             // Initial commit on main
@@ -968,6 +1115,10 @@ mod tests {
 
         #[test]
         fn test_git_diff_name_only_integration() {
+            if !guard_git(stringify!(test_git_diff_name_only_integration)) {
+                return;
+            }
+
             let repo = create_temp_git_repo("diff_name_only");
 
             // Initial commit
@@ -1028,6 +1179,10 @@ mod tests {
 
         #[test]
         fn test_git_ls_files_with_pathspec() {
+            if !guard_git(stringify!(test_git_ls_files_with_pathspec)) {
+                return;
+            }
+
             let repo = create_temp_git_repo("pathspec");
 
             add_and_commit(&repo, "src/main.rs", "fn main() {}", "Add main");
@@ -1057,6 +1212,10 @@ mod tests {
 
         #[test]
         fn test_git_merge_base_integration() {
+            if !guard_git(stringify!(test_git_merge_base_integration)) {
+                return;
+            }
+
             let repo = create_temp_git_repo("merge_base");
 
             // Create initial commit

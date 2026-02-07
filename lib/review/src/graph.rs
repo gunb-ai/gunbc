@@ -11,7 +11,10 @@
 //! 2. LLM call
 
 use gunbc_exec::{ExecError, Executable};
-use gunbc_ir::{build::*, Dag, Node, Value};
+use gunbc_ir::{
+    add_transport_execute_parse_named_with_passthrough,
+    add_transport_triplet_named_with_passthrough, build::*, Dag, DagBuilder, Node, Value,
+};
 use gunbc_lib_blob::BlobOps;
 use gunbc_lib_git_ops::GitOps;
 use gunbc_lib_llm_ops::LlmOps;
@@ -89,198 +92,264 @@ impl Executable for ReviewGraphOp {
 /// Note: For inline blob sources, execute_blob is skipped (handled by prepare_blob).
 /// The graph handles this with conditional execution.
 pub fn build_review_phase_graph() -> Dag<ReviewGraphOp> {
-    let mut dag = Dag::new();
+    let mut builder: DagBuilder<ReviewGraphOp> = DagBuilder::new();
 
     // ========================================================================
     // Blob Acquisition
     // ========================================================================
 
     // Node 1: PrepareFetch - builds request or returns inline data
-    dag.add_node(Node::opaque(
-        "prepare_blob",
-        vec![port("source", "Json")],
-        vec![
-            port("request", "TransportRequest"),
-            port("skip_fetch", "Bool"),
-            port("skip", "Bool"),
-            port("handle", "Json"), // Present if inline
-            port("source", "Json"), // Echo for parse
-        ],
-        ReviewGraphOp::Blob(BlobOps::PrepareFetch),
-    ));
+    let prepare_blob = builder
+        .add_root_node(Node::opaque(
+            "prepare_blob",
+            vec![port("source", "Json")],
+            vec![
+                port("request", "TransportRequest"),
+                port("skip_fetch", "Bool"),
+                port("skip", "Bool"),
+                port("handle", "Json"), // Present if inline
+                port("source", "Json"), // Echo for parse
+            ],
+            ReviewGraphOp::Blob(BlobOps::PrepareFetch),
+        ))
+        .expect("prepare_blob node");
 
     // Node 2: Execute blob fetch (I/O boundary)
     // Note: This is skipped for inline sources (skip_fetch=true)
-    dag.add_node(Node::opaque(
-        "execute_blob",
-        vec![port("request", "TransportRequest"), port("skip", "Bool")],
-        vec![port("response", "TransportResponse")],
-        ReviewGraphOp::Transport(TransportOps::Execute),
-    ));
+    let execute_blob = builder
+        .add_node_after(
+            Node::opaque(
+                "execute_blob",
+                vec![port("request", "TransportRequest"), port("skip", "Bool")],
+                vec![port("response", "TransportResponse")],
+                ReviewGraphOp::Transport(TransportOps::Execute),
+            ),
+            &prepare_blob,
+        )
+        .expect("execute_blob node");
 
     // Node 3: ParseFetch - converts response to BlobHandle
-    dag.add_node(Node::opaque(
-        "parse_blob",
-        vec![
-            port("source", "Json"),
-            port("response", "TransportResponse"),
-            optional("handle", "Json"),
-            port("skip", "Bool"),
-        ],
-        vec![port("handle", "Json"), port("meta", "Json")],
-        ReviewGraphOp::Blob(BlobOps::ParseFetch),
-    ));
+    let parse_blob = builder
+        .add_node_after(
+            Node::opaque(
+                "parse_blob",
+                vec![
+                    port("source", "Json"),
+                    port("response", "TransportResponse"),
+                    optional("handle", "Json"),
+                    port("skip", "Bool"),
+                ],
+                vec![port("handle", "Json"), port("meta", "Json")],
+                ReviewGraphOp::Blob(BlobOps::ParseFetch),
+            ),
+            &execute_blob,
+        )
+        .expect("parse_blob node");
 
     // ========================================================================
     // Review Prompt Building
     // ========================================================================
 
     // Node 4: PrepareReviewPrompt - builds question from blob + criteria
-    dag.add_node(Node::opaque(
-        "prepare_prompt",
-        vec![
-            port("artifact", "String"),
-            port("criteria", "Json"),
-            optional("context", "String"),
-        ],
-        vec![port("question", "String"), port("system_prompt", "String")],
-        ReviewGraphOp::Review(ReviewOps::PrepareReviewPrompt),
-    ));
+    let prepare_prompt = builder
+        .add_root_node(Node::opaque(
+            "prepare_prompt",
+            vec![
+                port("artifact", "String"),
+                port("criteria", "Json"),
+                optional("context", "String"),
+            ],
+            vec![port("question", "String"), port("system_prompt", "String")],
+            ReviewGraphOp::Review(ReviewOps::PrepareReviewPrompt),
+        ))
+        .expect("prepare_prompt node");
 
     // ========================================================================
     // LLM Interaction
     // ========================================================================
 
     // Node 5: PrepareSimpleRequest - builds LLM request
-    dag.add_node(Node::opaque(
-        "prepare_llm",
-        vec![
-            port("content", "String"),
-            port("question", "String"),
-            port("provider", "String"),
-            port("model", "String"),
-            optional("system_prompt", "String"),
-        ],
-        vec![
-            port("request", "TransportRequest"),
-            port("provider", "String"),
-            port("skip", "Bool"),
-        ],
-        ReviewGraphOp::Llm(LlmOps::PrepareSimpleRequest),
-    ));
+    let prepare_llm = builder
+        .add_node_after(
+            Node::opaque(
+                "prepare_llm",
+                vec![
+                    port("content", "String"),
+                    port("question", "String"),
+                    port("provider", "String"),
+                    port("model", "String"),
+                    optional("system_prompt", "String"),
+                ],
+                vec![
+                    port("request", "TransportRequest"),
+                    port("provider", "String"),
+                    port("skip", "Bool"),
+                ],
+                ReviewGraphOp::Llm(LlmOps::PrepareSimpleRequest),
+            ),
+            &prepare_prompt,
+        )
+        .expect("prepare_llm node");
 
     // Node 6: Resolve auth requirements (pure)
-    dag.add_node(Node::opaque(
-        "resolve_auth",
-        vec![port("provider", "String")],
-        vec![
-            port("service", "String"),
-            port("env_var", "String"),
-            port("scheme", "String"),
-            port("header_name", "String"),
-        ],
-        ReviewGraphOp::Llm(LlmOps::ResolveAuth),
-    ));
+    let resolve_auth = builder
+        .add_node_after(
+            Node::opaque(
+                "resolve_auth",
+                vec![port("provider", "String")],
+                vec![
+                    port("service", "String"),
+                    port("env_var", "String"),
+                    port("scheme", "String"),
+                    port("header_name", "String"),
+                ],
+                ReviewGraphOp::Llm(LlmOps::ResolveAuth),
+            ),
+            &prepare_llm,
+        )
+        .expect("resolve_auth node");
 
     // Node 7: Credential environment (resolves provider credentials)
     let cred_port = "credential:llm";
-    dag.add_node(Node::opaque(
-        "credential_env",
-        vec![
-            port("service", "String"),
-            port("env_var", "String"),
-            port("scheme", "String"),
-            port("header_name", "String"),
-        ],
-        vec![port(cred_port, "Credential")],
-        ReviewGraphOp::Cred(CredentialOp::from_inputs(cred_port)),
-    ));
+    let credential_env = builder
+        .add_node_after(
+            Node::opaque(
+                "credential_env",
+                vec![
+                    port("service", "String"),
+                    port("env_var", "String"),
+                    port("scheme", "String"),
+                    port("header_name", "String"),
+                ],
+                vec![port(cred_port, "Credential")],
+                ReviewGraphOp::Cred(CredentialOp::from_inputs(cred_port)),
+            ),
+            &resolve_auth,
+        )
+        .expect("credential_env node");
 
-    // Node 8: Execute LLM call (I/O boundary)
-    dag.add_node(Node::opaque(
+    // Nodes 8-9: Execute LLM + ParseSimpleResponse
+    let llm_triplet = add_transport_execute_parse_named_with_passthrough(
+        &mut builder,
+        &prepare_llm,
         "execute_llm",
-        vec![
-            port("request", "TransportRequest"),
-            port("skip", "Bool"),
-            resource("credential", "Credential", AccessMode::Read),
-        ],
-        vec![port("response", "TransportResponse")],
-        ReviewGraphOp::Transport(TransportOps::Execute),
-    ));
-
-    // Node 9: ParseSimpleResponse - extracts answer
-    dag.add_node(Node::opaque(
         "parse_llm",
-        vec![
-            port("provider", "String"),
-            port("response", "TransportResponse"),
-        ],
+        vec![port("provider", "String")],
+        vec![resource("credential", "Credential", AccessMode::Read)],
         vec![port("answer", "String")],
         ReviewGraphOp::Llm(LlmOps::ParseSimpleResponse),
-    ));
+        ReviewGraphOp::Transport(TransportOps::Execute),
+        Some(&credential_env),
+    )
+    .expect("llm triplet");
 
     // ========================================================================
     // Review Response Parsing
     // ========================================================================
 
     // Node 10: ParseReviewResponse - converts answer to ReviewOutput
-    dag.add_node(Node::opaque(
-        "parse_response",
-        vec![port("answer", "String"), port("criteria", "Json")],
-        vec![port("output", "Json"), port("errors", "Json")],
-        ReviewGraphOp::Review(ReviewOps::ParseReviewResponse),
-    ));
+    let parse_response = builder
+        .add_node_after(
+            Node::opaque(
+                "parse_response",
+                vec![port("answer", "String"), port("criteria", "Json")],
+                vec![port("output", "Json"), port("errors", "Json")],
+                ReviewGraphOp::Review(ReviewOps::ParseReviewResponse),
+            ),
+            &llm_triplet.parse,
+        )
+        .expect("parse_response node");
 
     // ========================================================================
     // Edges
     // ========================================================================
 
     // Blob acquisition flow
-    dag.add_edge(edge("prepare_blob", "request", "execute_blob", "request"));
-    dag.add_edge(edge("prepare_blob", "skip", "execute_blob", "skip"));
-    dag.add_edge(edge("execute_blob", "response", "parse_blob", "response"));
-    dag.add_edge(edge("prepare_blob", "source", "parse_blob", "source"));
-    dag.add_edge(edge("prepare_blob", "handle", "parse_blob", "handle"));
-    dag.add_edge(edge("prepare_blob", "skip", "parse_blob", "skip"));
-
-    // Note: For inline sources, we need a way to bypass execute_blob.
-    // This is handled by the skip_fetch flag - the executor should check this.
-    // For now, we wire the full path. Conditional execution is a future enhancement.
-
-    // Review prompt building (uses blob data)
-    // The artifact comes from parse_blob.handle.data (extracted by the DAG runner)
-    // For simplicity, we expect the caller to provide artifact directly for now.
-    // A full implementation would use an Extract node to get blob.data.
+    builder
+        .add_edge(
+            prepare_blob.out("request"),
+            execute_blob.in_port("request"),
+        )
+        .expect("prepare_blob.request -> execute_blob.request");
+    builder
+        .add_edge(prepare_blob.out("skip"), execute_blob.in_port("skip"))
+        .expect("prepare_blob.skip -> execute_blob.skip");
+    builder
+        .add_edge(
+            execute_blob.out("response"),
+            parse_blob.in_port("response"),
+        )
+        .expect("execute_blob.response -> parse_blob.response");
+    builder
+        .add_edge(prepare_blob.out("source"), parse_blob.in_port("source"))
+        .expect("prepare_blob.source -> parse_blob.source");
+    builder
+        .add_edge(prepare_blob.out("handle"), parse_blob.in_port("handle"))
+        .expect("prepare_blob.handle -> parse_blob.handle");
+    builder
+        .add_edge(prepare_blob.out("skip"), parse_blob.in_port("skip"))
+        .expect("prepare_blob.skip -> parse_blob.skip");
 
     // LLM flow
-    dag.add_edge(edge(
-        "prepare_prompt",
-        "question",
-        "prepare_llm",
-        "question",
-    ));
-    dag.add_edge(edge(
-        "prepare_prompt",
-        "system_prompt",
-        "prepare_llm",
-        "system_prompt",
-    ));
-    dag.add_edge(edge("prepare_llm", "request", "execute_llm", "request"));
-    dag.add_edge(edge("prepare_llm", "skip", "execute_llm", "skip"));
-    dag.add_edge(edge("prepare_llm", "provider", "resolve_auth", "provider"));
-    dag.add_edge(edge("resolve_auth", "service", "credential_env", "service"));
-    dag.add_edge(edge("resolve_auth", "env_var", "credential_env", "env_var"));
-    dag.add_edge(edge("resolve_auth", "scheme", "credential_env", "scheme"));
-    dag.add_edge(edge("resolve_auth", "header_name", "credential_env", "header_name"));
-    dag.add_edge(edge("credential_env", cred_port, "execute_llm", "res:credential"));
-    dag.add_edge(edge("execute_llm", "response", "parse_llm", "response"));
-    dag.add_edge(edge("prepare_llm", "provider", "parse_llm", "provider"));
+    builder
+        .add_edge(
+            prepare_prompt.out("question"),
+            prepare_llm.in_port("question"),
+        )
+        .expect("prepare_prompt.question -> prepare_llm.question");
+    builder
+        .add_edge(
+            prepare_prompt.out("system_prompt"),
+            prepare_llm.in_port("system_prompt"),
+        )
+        .expect("prepare_prompt.system_prompt -> prepare_llm.system_prompt");
+    builder
+        .add_edge(
+            prepare_llm.out("provider"),
+            resolve_auth.in_port("provider"),
+        )
+        .expect("prepare_llm.provider -> resolve_auth.provider");
+    builder
+        .add_edge(
+            resolve_auth.out("service"),
+            credential_env.in_port("service"),
+        )
+        .expect("resolve_auth.service -> credential_env.service");
+    builder
+        .add_edge(
+            resolve_auth.out("env_var"),
+            credential_env.in_port("env_var"),
+        )
+        .expect("resolve_auth.env_var -> credential_env.env_var");
+    builder
+        .add_edge(
+            resolve_auth.out("scheme"),
+            credential_env.in_port("scheme"),
+        )
+        .expect("resolve_auth.scheme -> credential_env.scheme");
+    builder
+        .add_edge(
+            resolve_auth.out("header_name"),
+            credential_env.in_port("header_name"),
+        )
+        .expect("resolve_auth.header_name -> credential_env.header_name");
+    builder
+        .add_edge(
+            credential_env.out(cred_port),
+            llm_triplet.execute.in_port("res:credential"),
+        )
+        .expect("credential_env -> execute_llm.res:credential");
 
     // Response parsing
-    dag.add_edge(edge("parse_llm", "answer", "parse_response", "answer"));
+    builder
+        .add_edge(
+            llm_triplet.parse.out("answer"),
+            parse_response.in_port("answer"),
+        )
+        .expect("parse_llm.answer -> parse_response.answer");
     // criteria is an entrypoint, flows to both prepare_prompt and parse_response
 
-    dag
+    builder.build()
 }
 
 /// Build a simplified ReviewPhase DAG for inline content.
@@ -297,122 +366,167 @@ pub fn build_review_phase_graph() -> Dag<ReviewGraphOp> {
 /// - `parse_response.output`: Json — ReviewOutput
 /// - `parse_response.errors`: Json — Parse errors array
 pub fn build_inline_review_graph() -> Dag<ReviewGraphOp> {
-    let mut dag = Dag::new();
+    let mut builder: DagBuilder<ReviewGraphOp> = DagBuilder::new();
 
     // Node 1: PrepareReviewPrompt
-    dag.add_node(Node::opaque(
-        "prepare_prompt",
-        vec![
-            port("artifact", "String"),
-            port("criteria", "Json"),
-            optional("context", "String"),
-        ],
-        vec![port("question", "String"), port("system_prompt", "String")],
-        ReviewGraphOp::Review(ReviewOps::PrepareReviewPrompt),
-    ));
+    let prepare_prompt = builder
+        .add_root_node(Node::opaque(
+            "prepare_prompt",
+            vec![
+                port("artifact", "String"),
+                port("criteria", "Json"),
+                optional("context", "String"),
+            ],
+            vec![port("question", "String"), port("system_prompt", "String")],
+            ReviewGraphOp::Review(ReviewOps::PrepareReviewPrompt),
+        ))
+        .expect("prepare_prompt node");
 
     // Node 2: PrepareSimpleRequest
-    dag.add_node(Node::opaque(
-        "prepare_llm",
-        vec![
-            port("content", "String"),
-            port("question", "String"),
-            port("provider", "String"),
-            port("model", "String"),
-            optional("system_prompt", "String"),
-        ],
-        vec![
-            port("request", "TransportRequest"),
-            port("provider", "String"),
-            port("skip", "Bool"),
-        ],
-        ReviewGraphOp::Llm(LlmOps::PrepareSimpleRequest),
-    ));
+    let prepare_llm = builder
+        .add_node_after(
+            Node::opaque(
+                "prepare_llm",
+                vec![
+                    port("content", "String"),
+                    port("question", "String"),
+                    port("provider", "String"),
+                    port("model", "String"),
+                    optional("system_prompt", "String"),
+                ],
+                vec![
+                    port("request", "TransportRequest"),
+                    port("provider", "String"),
+                    port("skip", "Bool"),
+                ],
+                ReviewGraphOp::Llm(LlmOps::PrepareSimpleRequest),
+            ),
+            &prepare_prompt,
+        )
+        .expect("prepare_llm node");
 
     // Node 3: Resolve auth requirements (pure)
-    dag.add_node(Node::opaque(
-        "resolve_auth",
-        vec![port("provider", "String")],
-        vec![
-            port("service", "String"),
-            port("env_var", "String"),
-            port("scheme", "String"),
-            port("header_name", "String"),
-        ],
-        ReviewGraphOp::Llm(LlmOps::ResolveAuth),
-    ));
+    let resolve_auth = builder
+        .add_node_after(
+            Node::opaque(
+                "resolve_auth",
+                vec![port("provider", "String")],
+                vec![
+                    port("service", "String"),
+                    port("env_var", "String"),
+                    port("scheme", "String"),
+                    port("header_name", "String"),
+                ],
+                ReviewGraphOp::Llm(LlmOps::ResolveAuth),
+            ),
+            &prepare_llm,
+        )
+        .expect("resolve_auth node");
 
     // Node 4: Credential environment (resolves provider credentials)
     let cred_port = "credential:llm";
-    dag.add_node(Node::opaque(
-        "credential_env",
-        vec![
-            port("service", "String"),
-            port("env_var", "String"),
-            port("scheme", "String"),
-            port("header_name", "String"),
-        ],
-        vec![port(cred_port, "Credential")],
-        ReviewGraphOp::Cred(CredentialOp::from_inputs(cred_port)),
-    ));
+    let credential_env = builder
+        .add_node_after(
+            Node::opaque(
+                "credential_env",
+                vec![
+                    port("service", "String"),
+                    port("env_var", "String"),
+                    port("scheme", "String"),
+                    port("header_name", "String"),
+                ],
+                vec![port(cred_port, "Credential")],
+                ReviewGraphOp::Cred(CredentialOp::from_inputs(cred_port)),
+            ),
+            &resolve_auth,
+        )
+        .expect("credential_env node");
 
-    // Node 5: Execute LLM (I/O boundary)
-    dag.add_node(Node::opaque(
+    // Nodes 5-6: Execute LLM + ParseSimpleResponse
+    let llm_triplet = add_transport_execute_parse_named_with_passthrough(
+        &mut builder,
+        &prepare_llm,
         "execute_llm",
-        vec![
-            port("request", "TransportRequest"),
-            port("skip", "Bool"),
-            resource("credential", "Credential", AccessMode::Read),
-        ],
-        vec![port("response", "TransportResponse")],
-        ReviewGraphOp::Transport(TransportOps::Execute),
-    ));
-
-    // Node 6: ParseSimpleResponse
-    dag.add_node(Node::opaque(
         "parse_llm",
-        vec![
-            port("provider", "String"),
-            port("response", "TransportResponse"),
-        ],
+        vec![port("provider", "String")],
+        vec![resource("credential", "Credential", AccessMode::Read)],
         vec![port("answer", "String")],
         ReviewGraphOp::Llm(LlmOps::ParseSimpleResponse),
-    ));
+        ReviewGraphOp::Transport(TransportOps::Execute),
+        Some(&credential_env),
+    )
+    .expect("llm triplet");
 
     // Node 7: ParseReviewResponse
-    dag.add_node(Node::opaque(
-        "parse_response",
-        vec![port("answer", "String"), port("criteria", "Json")],
-        vec![port("output", "Json"), port("errors", "Json")],
-        ReviewGraphOp::Review(ReviewOps::ParseReviewResponse),
-    ));
+    let parse_response = builder
+        .add_node_after(
+            Node::opaque(
+                "parse_response",
+                vec![port("answer", "String"), port("criteria", "Json")],
+                vec![port("output", "Json"), port("errors", "Json")],
+                ReviewGraphOp::Review(ReviewOps::ParseReviewResponse),
+            ),
+            &llm_triplet.parse,
+        )
+        .expect("parse_response node");
 
     // Edges
-    dag.add_edge(edge(
-        "prepare_prompt",
-        "question",
-        "prepare_llm",
-        "question",
-    ));
-    dag.add_edge(edge(
-        "prepare_prompt",
-        "system_prompt",
-        "prepare_llm",
-        "system_prompt",
-    ));
-    dag.add_edge(edge("prepare_llm", "request", "execute_llm", "request"));
-    dag.add_edge(edge("prepare_llm", "skip", "execute_llm", "skip"));
-    dag.add_edge(edge("prepare_llm", "provider", "resolve_auth", "provider"));
-    dag.add_edge(edge("resolve_auth", "service", "credential_env", "service"));
-    dag.add_edge(edge("resolve_auth", "env_var", "credential_env", "env_var"));
-    dag.add_edge(edge("resolve_auth", "scheme", "credential_env", "scheme"));
-    dag.add_edge(edge("resolve_auth", "header_name", "credential_env", "header_name"));
-    dag.add_edge(edge("credential_env", cred_port, "execute_llm", "res:credential"));
-    dag.add_edge(edge("execute_llm", "response", "parse_llm", "response"));
-    dag.add_edge(edge("prepare_llm", "provider", "parse_llm", "provider"));
-    dag.add_edge(edge("parse_llm", "answer", "parse_response", "answer"));
+    builder
+        .add_edge(
+            prepare_prompt.out("question"),
+            prepare_llm.in_port("question"),
+        )
+        .expect("prepare_prompt.question -> prepare_llm.question");
+    builder
+        .add_edge(
+            prepare_prompt.out("system_prompt"),
+            prepare_llm.in_port("system_prompt"),
+        )
+        .expect("prepare_prompt.system_prompt -> prepare_llm.system_prompt");
+    builder
+        .add_edge(
+            prepare_llm.out("provider"),
+            resolve_auth.in_port("provider"),
+        )
+        .expect("prepare_llm.provider -> resolve_auth.provider");
+    builder
+        .add_edge(
+            resolve_auth.out("service"),
+            credential_env.in_port("service"),
+        )
+        .expect("resolve_auth.service -> credential_env.service");
+    builder
+        .add_edge(
+            resolve_auth.out("env_var"),
+            credential_env.in_port("env_var"),
+        )
+        .expect("resolve_auth.env_var -> credential_env.env_var");
+    builder
+        .add_edge(
+            resolve_auth.out("scheme"),
+            credential_env.in_port("scheme"),
+        )
+        .expect("resolve_auth.scheme -> credential_env.scheme");
+    builder
+        .add_edge(
+            resolve_auth.out("header_name"),
+            credential_env.in_port("header_name"),
+        )
+        .expect("resolve_auth.header_name -> credential_env.header_name");
+    builder
+        .add_edge(
+            credential_env.out(cred_port),
+            llm_triplet.execute.in_port("res:credential"),
+        )
+        .expect("credential_env -> execute_llm.res:credential");
+    builder
+        .add_edge(
+            llm_triplet.parse.out("answer"),
+            parse_response.in_port("answer"),
+        )
+        .expect("parse_llm.answer -> parse_response.answer");
 
-    dag
+    builder.build()
 }
 
 // ============================================================================
@@ -462,7 +576,7 @@ pub fn build_diff_review_graph() -> Dag<ReviewGraphOp> {
 /// - Two TransportOps::Execute calls: git diff (read), LLM (read)
 /// - Phase overall: Read-only
 pub fn build_diff_review_graph_with(config: ReviewPipelineConfig) -> Dag<ReviewGraphOp> {
-    let mut dag = Dag::new();
+    let mut builder: DagBuilder<ReviewGraphOp> = DagBuilder::new();
 
     let default_branch = config.default_branch.clone();
 
@@ -470,16 +584,18 @@ pub fn build_diff_review_graph_with(config: ReviewPipelineConfig) -> Dag<ReviewG
     // Pipeline Config (zero-input node, emits constants)
     // ========================================================================
 
-    dag.add_node(Node::opaque(
-        "config",
-        vec![],
-        vec![
-            port("provider", "String"),
-            port("model", "String"),
-            port("criteria", "Json"),
-        ],
-        ReviewGraphOp::Review(ReviewOps::LoadPipelineConfig(config)),
-    ));
+    let config_node = builder
+        .add_root_node(Node::opaque(
+            "config",
+            vec![],
+            vec![
+                port("provider", "String"),
+                port("model", "String"),
+                port("criteria", "Json"),
+            ],
+            ReviewGraphOp::Review(ReviewOps::LoadPipelineConfig(config)),
+        ))
+        .expect("config node");
 
     // ========================================================================
     // Git Diff Acquisition
@@ -488,204 +604,256 @@ pub fn build_diff_review_graph_with(config: ReviewPipelineConfig) -> Dag<ReviewG
     // PrepareDiff - builds git diff request.
     // base_ref default comes from pipeline config (GitConfig::default_branch);
     // the optional port allows CLI override.
-    dag.add_node(Node::opaque(
+    let diff_triplet = add_transport_triplet_named_with_passthrough(
+        &mut builder,
         "prepare_diff",
+        "execute_diff",
+        "parse_diff",
         vec![
             optional("base_ref", "String"),
             port("repo_path", "String"),
         ],
-        vec![port("request", "TransportRequest"), port("skip", "Bool")],
+        vec![],
+        vec![port("diff_files", "Map"), port("stats", "String")],
         ReviewGraphOp::Git(GitOps::PrepareDiff {
             base_ref: default_branch,
             extensions: vec![],
         }),
-    ));
-
-    // Execute git diff (I/O boundary)
-    dag.add_node(Node::opaque(
-        "execute_diff",
-        vec![port("request", "TransportRequest"), port("skip", "Bool")],
-        vec![port("response", "TransportResponse")],
-        ReviewGraphOp::Transport(TransportOps::Execute),
-    ));
-
-    // ParseDiff - extracts diff content
-    dag.add_node(Node::opaque(
-        "parse_diff",
-        vec![port("response", "TransportResponse")],
-        vec![port("diff_files", "Map"), port("stats", "String")],
         ReviewGraphOp::Git(GitOps::ParseDiff),
-    ));
+        ReviewGraphOp::Transport(TransportOps::Execute),
+        None,
+    )
+    .expect("diff triplet");
 
     // ========================================================================
     // Diff → Artifact Formatting
     // ========================================================================
 
-    dag.add_node(Node::opaque(
-        "format_artifact",
-        vec![port("diff_files", "Map")],
-        vec![port("artifact", "String")],
-        ReviewGraphOp::Review(ReviewOps::FormatDiffArtifact),
-    ));
+    let format_artifact = builder
+        .add_node_after(
+            Node::opaque(
+                "format_artifact",
+                vec![port("diff_files", "Map")],
+                vec![port("artifact", "String")],
+                ReviewGraphOp::Review(ReviewOps::FormatDiffArtifact),
+            ),
+            &diff_triplet.parse,
+        )
+        .expect("format_artifact node");
 
     // ========================================================================
     // Review Prompt Building
     // ========================================================================
 
-    dag.add_node(Node::opaque(
-        "prepare_prompt",
-        vec![
-            port("artifact", "String"),
-            port("criteria", "Json"),
-            optional("context", "String"),
-        ],
-        vec![port("question", "String"), port("system_prompt", "String")],
-        ReviewGraphOp::Review(ReviewOps::PrepareReviewPrompt),
-    ));
+    let prepare_prompt = builder
+        .add_node_after(
+            Node::opaque(
+                "prepare_prompt",
+                vec![
+                    port("artifact", "String"),
+                    port("criteria", "Json"),
+                    optional("context", "String"),
+                ],
+                vec![port("question", "String"), port("system_prompt", "String")],
+                ReviewGraphOp::Review(ReviewOps::PrepareReviewPrompt),
+            ),
+            &format_artifact,
+        )
+        .expect("prepare_prompt node");
 
     // ========================================================================
     // LLM Interaction
     // ========================================================================
 
-    dag.add_node(Node::opaque(
-        "prepare_llm",
-        vec![
-            port("content", "String"),
-            port("question", "String"),
-            port("provider", "String"),
-            port("model", "String"),
-            optional("system_prompt", "String"),
-        ],
-        vec![
-            port("request", "TransportRequest"),
-            port("provider", "String"),
-            port("skip", "Bool"),
-        ],
-        ReviewGraphOp::Llm(LlmOps::PrepareSimpleRequest),
-    ));
+    let prepare_llm = builder
+        .add_node_after(
+            Node::opaque(
+                "prepare_llm",
+                vec![
+                    port("content", "String"),
+                    port("question", "String"),
+                    port("provider", "String"),
+                    port("model", "String"),
+                    optional("system_prompt", "String"),
+                ],
+                vec![
+                    port("request", "TransportRequest"),
+                    port("provider", "String"),
+                    port("skip", "Bool"),
+                ],
+                ReviewGraphOp::Llm(LlmOps::PrepareSimpleRequest),
+            ),
+            &prepare_prompt,
+        )
+        .expect("prepare_llm node");
 
-    dag.add_node(Node::opaque(
-        "resolve_auth",
-        vec![port("provider", "String")],
-        vec![
-            port("service", "String"),
-            port("env_var", "String"),
-            port("scheme", "String"),
-            port("header_name", "String"),
-        ],
-        ReviewGraphOp::Llm(LlmOps::ResolveAuth),
-    ));
+    let resolve_auth = builder
+        .add_node_after(
+            Node::opaque(
+                "resolve_auth",
+                vec![port("provider", "String")],
+                vec![
+                    port("service", "String"),
+                    port("env_var", "String"),
+                    port("scheme", "String"),
+                    port("header_name", "String"),
+                ],
+                ReviewGraphOp::Llm(LlmOps::ResolveAuth),
+            ),
+            &prepare_llm,
+        )
+        .expect("resolve_auth node");
 
     let cred_port = "credential:llm";
-    dag.add_node(Node::opaque(
-        "credential_env",
-        vec![
-            port("service", "String"),
-            port("env_var", "String"),
-            port("scheme", "String"),
-            port("header_name", "String"),
-        ],
-        vec![port(cred_port, "Credential")],
-        ReviewGraphOp::Cred(CredentialOp::from_inputs(cred_port)),
-    ));
+    let credential_env = builder
+        .add_node_after(
+            Node::opaque(
+                "credential_env",
+                vec![
+                    port("service", "String"),
+                    port("env_var", "String"),
+                    port("scheme", "String"),
+                    port("header_name", "String"),
+                ],
+                vec![port(cred_port, "Credential")],
+                ReviewGraphOp::Cred(CredentialOp::from_inputs(cred_port)),
+            ),
+            &resolve_auth,
+        )
+        .expect("credential_env node");
 
-    dag.add_node(Node::opaque(
+    let llm_triplet = add_transport_execute_parse_named_with_passthrough(
+        &mut builder,
+        &prepare_llm,
         "execute_llm",
-        vec![
-            port("request", "TransportRequest"),
-            port("skip", "Bool"),
-            resource("credential", "Credential", AccessMode::Read),
-        ],
-        vec![port("response", "TransportResponse")],
-        ReviewGraphOp::Transport(TransportOps::Execute),
-    ));
-
-    dag.add_node(Node::opaque(
         "parse_llm",
-        vec![
-            port("provider", "String"),
-            port("response", "TransportResponse"),
-        ],
+        vec![port("provider", "String")],
+        vec![resource("credential", "Credential", AccessMode::Read)],
         vec![port("answer", "String")],
         ReviewGraphOp::Llm(LlmOps::ParseSimpleResponse),
-    ));
+        ReviewGraphOp::Transport(TransportOps::Execute),
+        Some(&credential_env),
+    )
+    .expect("llm triplet");
 
     // ========================================================================
     // Review Response Parsing
     // ========================================================================
 
-    dag.add_node(Node::opaque(
-        "parse_response",
-        vec![port("answer", "String"), port("criteria", "Json")],
-        vec![port("output", "Json"), port("errors", "Json")],
-        ReviewGraphOp::Review(ReviewOps::ParseReviewResponse),
-    ));
+    let parse_response = builder
+        .add_node_after(
+            Node::opaque(
+                "parse_response",
+                vec![port("answer", "String"), port("criteria", "Json")],
+                vec![port("output", "Json"), port("errors", "Json")],
+                ReviewGraphOp::Review(ReviewOps::ParseReviewResponse),
+            ),
+            &llm_triplet.parse,
+        )
+        .expect("parse_response node");
 
     // ========================================================================
     // Edges
     // ========================================================================
 
     // Config → downstream consumers
-    dag.add_edge(edge("config", "provider", "prepare_llm", "provider"));
-    dag.add_edge(edge("config", "model", "prepare_llm", "model"));
-    dag.add_edge(edge("config", "criteria", "prepare_prompt", "criteria"));
-    dag.add_edge(edge("config", "criteria", "parse_response", "criteria"));
-    dag.add_edge(edge("config", "provider", "resolve_auth", "provider"));
-
-    // Git diff flow
-    dag.add_edge(edge("prepare_diff", "request", "execute_diff", "request"));
-    dag.add_edge(edge("prepare_diff", "skip", "execute_diff", "skip"));
-    dag.add_edge(edge("execute_diff", "response", "parse_diff", "response"));
+    builder
+        .add_edge(config_node.out("provider"), prepare_llm.in_port("provider"))
+        .expect("config.provider -> prepare_llm.provider");
+    builder
+        .add_edge(config_node.out("model"), prepare_llm.in_port("model"))
+        .expect("config.model -> prepare_llm.model");
+    builder
+        .add_edge(
+            config_node.out("criteria"),
+            prepare_prompt.in_port("criteria"),
+        )
+        .expect("config.criteria -> prepare_prompt.criteria");
+    builder
+        .add_edge(
+            config_node.out("criteria"),
+            parse_response.in_port("criteria"),
+        )
+        .expect("config.criteria -> parse_response.criteria");
+    builder
+        .add_edge(config_node.out("provider"), resolve_auth.in_port("provider"))
+        .expect("config.provider -> resolve_auth.provider");
 
     // Diff → artifact formatting
-    dag.add_edge(edge(
-        "parse_diff",
-        "diff_files",
-        "format_artifact",
-        "diff_files",
-    ));
+    builder
+        .add_edge(
+            diff_triplet.parse.out("diff_files"),
+            format_artifact.in_port("diff_files"),
+        )
+        .expect("parse_diff.diff_files -> format_artifact.diff_files");
 
     // Artifact → review prompt + LLM content
-    dag.add_edge(edge(
-        "format_artifact",
-        "artifact",
-        "prepare_prompt",
-        "artifact",
-    ));
-    dag.add_edge(edge(
-        "format_artifact",
-        "artifact",
-        "prepare_llm",
-        "content",
-    ));
+    builder
+        .add_edge(
+            format_artifact.out("artifact"),
+            prepare_prompt.in_port("artifact"),
+        )
+        .expect("format_artifact.artifact -> prepare_prompt.artifact");
+    builder
+        .add_edge(
+            format_artifact.out("artifact"),
+            prepare_llm.in_port("content"),
+        )
+        .expect("format_artifact.artifact -> prepare_llm.content");
 
     // LLM flow
-    dag.add_edge(edge(
-        "prepare_prompt",
-        "question",
-        "prepare_llm",
-        "question",
-    ));
-    dag.add_edge(edge(
-        "prepare_prompt",
-        "system_prompt",
-        "prepare_llm",
-        "system_prompt",
-    ));
-    dag.add_edge(edge("prepare_llm", "request", "execute_llm", "request"));
-    dag.add_edge(edge("prepare_llm", "skip", "execute_llm", "skip"));
-    dag.add_edge(edge("resolve_auth", "service", "credential_env", "service"));
-    dag.add_edge(edge("resolve_auth", "env_var", "credential_env", "env_var"));
-    dag.add_edge(edge("resolve_auth", "scheme", "credential_env", "scheme"));
-    dag.add_edge(edge("resolve_auth", "header_name", "credential_env", "header_name"));
-    dag.add_edge(edge("credential_env", cred_port, "execute_llm", "res:credential"));
-    dag.add_edge(edge("execute_llm", "response", "parse_llm", "response"));
-    dag.add_edge(edge("prepare_llm", "provider", "parse_llm", "provider"));
+    builder
+        .add_edge(
+            prepare_prompt.out("question"),
+            prepare_llm.in_port("question"),
+        )
+        .expect("prepare_prompt.question -> prepare_llm.question");
+    builder
+        .add_edge(
+            prepare_prompt.out("system_prompt"),
+            prepare_llm.in_port("system_prompt"),
+        )
+        .expect("prepare_prompt.system_prompt -> prepare_llm.system_prompt");
+    builder
+        .add_edge(
+            resolve_auth.out("service"),
+            credential_env.in_port("service"),
+        )
+        .expect("resolve_auth.service -> credential_env.service");
+    builder
+        .add_edge(
+            resolve_auth.out("env_var"),
+            credential_env.in_port("env_var"),
+        )
+        .expect("resolve_auth.env_var -> credential_env.env_var");
+    builder
+        .add_edge(
+            resolve_auth.out("scheme"),
+            credential_env.in_port("scheme"),
+        )
+        .expect("resolve_auth.scheme -> credential_env.scheme");
+    builder
+        .add_edge(
+            resolve_auth.out("header_name"),
+            credential_env.in_port("header_name"),
+        )
+        .expect("resolve_auth.header_name -> credential_env.header_name");
+    builder
+        .add_edge(
+            credential_env.out(cred_port),
+            llm_triplet.execute.in_port("res:credential"),
+        )
+        .expect("credential_env -> execute_llm.res:credential");
 
     // Response parsing
-    dag.add_edge(edge("parse_llm", "answer", "parse_response", "answer"));
+    builder
+        .add_edge(
+            llm_triplet.parse.out("answer"),
+            parse_response.in_port("answer"),
+        )
+        .expect("parse_llm.answer -> parse_response.answer");
 
-    dag
+    builder.build()
 }
 
 // ============================================================================
@@ -725,158 +893,230 @@ pub fn build_multi_source_review_graph() -> Dag<ReviewGraphOp> {
 
 /// Build a MultiSourceReviewPhase DAG with explicit pipeline config.
 pub fn build_multi_source_review_graph_with(config: ReviewPipelineConfig) -> Dag<ReviewGraphOp> {
-    let mut dag = Dag::new();
+    let mut builder: DagBuilder<ReviewGraphOp> = DagBuilder::new();
 
     // ========================================================================
     // Pipeline Config
     // ========================================================================
 
-    dag.add_node(Node::opaque(
-        "config",
-        vec![],
-        vec![
-            port("provider", "String"),
-            port("model", "String"),
-            port("criteria", "Json"),
-        ],
-        ReviewGraphOp::Review(ReviewOps::LoadPipelineConfig(config)),
-    ));
+    let config_node = builder
+        .add_root_node(Node::opaque(
+            "config",
+            vec![],
+            vec![
+                port("provider", "String"),
+                port("model", "String"),
+                port("criteria", "Json"),
+            ],
+            ReviewGraphOp::Review(ReviewOps::LoadPipelineConfig(config)),
+        ))
+        .expect("config node");
 
     // ========================================================================
     // LLM Review Source (source 1)
     // ========================================================================
 
-    dag.add_node(Node::opaque(
-        "prepare_prompt",
-        vec![
-            port("artifact", "String"),
-            port("criteria", "Json"),
-            optional("context", "String"),
-        ],
-        vec![port("question", "String"), port("system_prompt", "String")],
-        ReviewGraphOp::Review(ReviewOps::PrepareReviewPrompt),
-    ));
+    let prepare_prompt = builder
+        .add_node_after(
+            Node::opaque(
+                "prepare_prompt",
+                vec![
+                    port("artifact", "String"),
+                    port("criteria", "Json"),
+                    optional("context", "String"),
+                ],
+                vec![port("question", "String"), port("system_prompt", "String")],
+                ReviewGraphOp::Review(ReviewOps::PrepareReviewPrompt),
+            ),
+            &config_node,
+        )
+        .expect("prepare_prompt node");
 
-    dag.add_node(Node::opaque(
-        "prepare_llm",
-        vec![
-            port("content", "String"),
-            port("question", "String"),
-            port("provider", "String"),
-            port("model", "String"),
-            optional("system_prompt", "String"),
-        ],
-        vec![
-            port("request", "TransportRequest"),
-            port("provider", "String"),
-            port("skip", "Bool"),
-        ],
-        ReviewGraphOp::Llm(LlmOps::PrepareSimpleRequest),
-    ));
+    let prepare_llm = builder
+        .add_node_after(
+            Node::opaque(
+                "prepare_llm",
+                vec![
+                    port("content", "String"),
+                    port("question", "String"),
+                    port("provider", "String"),
+                    port("model", "String"),
+                    optional("system_prompt", "String"),
+                ],
+                vec![
+                    port("request", "TransportRequest"),
+                    port("provider", "String"),
+                    port("skip", "Bool"),
+                ],
+                ReviewGraphOp::Llm(LlmOps::PrepareSimpleRequest),
+            ),
+            &prepare_prompt,
+        )
+        .expect("prepare_llm node");
 
-    dag.add_node(Node::opaque(
-        "resolve_auth",
-        vec![port("provider", "String")],
-        vec![
-            port("service", "String"),
-            port("env_var", "String"),
-            port("scheme", "String"),
-            port("header_name", "String"),
-        ],
-        ReviewGraphOp::Llm(LlmOps::ResolveAuth),
-    ));
+    let resolve_auth = builder
+        .add_node_after(
+            Node::opaque(
+                "resolve_auth",
+                vec![port("provider", "String")],
+                vec![
+                    port("service", "String"),
+                    port("env_var", "String"),
+                    port("scheme", "String"),
+                    port("header_name", "String"),
+                ],
+                ReviewGraphOp::Llm(LlmOps::ResolveAuth),
+            ),
+            &prepare_llm,
+        )
+        .expect("resolve_auth node");
 
     let cred_port = "credential:llm";
-    dag.add_node(Node::opaque(
-        "credential_env",
-        vec![
-            port("service", "String"),
-            port("env_var", "String"),
-            port("scheme", "String"),
-            port("header_name", "String"),
-        ],
-        vec![port(cred_port, "Credential")],
-        ReviewGraphOp::Cred(CredentialOp::from_inputs(cred_port)),
-    ));
+    let credential_env = builder
+        .add_node_after(
+            Node::opaque(
+                "credential_env",
+                vec![
+                    port("service", "String"),
+                    port("env_var", "String"),
+                    port("scheme", "String"),
+                    port("header_name", "String"),
+                ],
+                vec![port(cred_port, "Credential")],
+                ReviewGraphOp::Cred(CredentialOp::from_inputs(cred_port)),
+            ),
+            &resolve_auth,
+        )
+        .expect("credential_env node");
 
-    dag.add_node(Node::opaque(
+    let llm_triplet = add_transport_execute_parse_named_with_passthrough(
+        &mut builder,
+        &prepare_llm,
         "execute_llm",
-        vec![
-            port("request", "TransportRequest"),
-            port("skip", "Bool"),
-            resource("credential", "Credential", AccessMode::Read),
-        ],
-        vec![port("response", "TransportResponse")],
-        ReviewGraphOp::Transport(TransportOps::Execute),
-    ));
-
-    dag.add_node(Node::opaque(
         "parse_llm",
-        vec![
-            port("provider", "String"),
-            port("response", "TransportResponse"),
-        ],
+        vec![port("provider", "String")],
+        vec![resource("credential", "Credential", AccessMode::Read)],
         vec![port("answer", "String")],
         ReviewGraphOp::Llm(LlmOps::ParseSimpleResponse),
-    ));
+        ReviewGraphOp::Transport(TransportOps::Execute),
+        Some(&credential_env),
+    )
+    .expect("llm triplet");
 
-    dag.add_node(Node::opaque(
-        "parse_response",
-        vec![port("answer", "String"), port("criteria", "Json")],
-        vec![port("output", "Json"), port("errors", "Json")],
-        ReviewGraphOp::Review(ReviewOps::ParseReviewResponse),
-    ));
+    let parse_response = builder
+        .add_node_after(
+            Node::opaque(
+                "parse_response",
+                vec![port("answer", "String"), port("criteria", "Json")],
+                vec![port("output", "Json"), port("errors", "Json")],
+                ReviewGraphOp::Review(ReviewOps::ParseReviewResponse),
+            ),
+            &llm_triplet.parse,
+        )
+        .expect("parse_response node");
 
     // ========================================================================
     // Merge (combines sources)
     // ========================================================================
 
-    dag.add_node(Node::opaque(
-        "merge",
-        vec![list("outputs", "Json")],
-        vec![port("bundle", "Json"), port("conflicts", "Json")],
-        ReviewGraphOp::Review(ReviewOps::MergeOutputs),
-    ));
+    let merge = builder
+        .add_node_after(
+            Node::opaque(
+                "merge",
+                vec![list("outputs", "Json")],
+                vec![port("bundle", "Json"), port("conflicts", "Json")],
+                ReviewGraphOp::Review(ReviewOps::MergeOutputs),
+            ),
+            &parse_response,
+        )
+        .expect("merge node");
 
     // ========================================================================
     // Edges
     // ========================================================================
 
     // Config → downstream consumers
-    dag.add_edge(edge("config", "provider", "prepare_llm", "provider"));
-    dag.add_edge(edge("config", "model", "prepare_llm", "model"));
-    dag.add_edge(edge("config", "criteria", "prepare_prompt", "criteria"));
-    dag.add_edge(edge("config", "criteria", "parse_response", "criteria"));
-    dag.add_edge(edge("config", "provider", "resolve_auth", "provider"));
+    builder
+        .add_edge(config_node.out("provider"), prepare_llm.in_port("provider"))
+        .expect("config.provider -> prepare_llm.provider");
+    builder
+        .add_edge(config_node.out("model"), prepare_llm.in_port("model"))
+        .expect("config.model -> prepare_llm.model");
+    builder
+        .add_edge(
+            config_node.out("criteria"),
+            prepare_prompt.in_port("criteria"),
+        )
+        .expect("config.criteria -> prepare_prompt.criteria");
+    builder
+        .add_edge(
+            config_node.out("criteria"),
+            parse_response.in_port("criteria"),
+        )
+        .expect("config.criteria -> parse_response.criteria");
+    builder
+        .add_edge(config_node.out("provider"), resolve_auth.in_port("provider"))
+        .expect("config.provider -> resolve_auth.provider");
 
     // LLM review flow
-    dag.add_edge(edge(
-        "prepare_prompt",
-        "question",
-        "prepare_llm",
-        "question",
-    ));
-    dag.add_edge(edge(
-        "prepare_prompt",
-        "system_prompt",
-        "prepare_llm",
-        "system_prompt",
-    ));
-    dag.add_edge(edge("prepare_llm", "request", "execute_llm", "request"));
-    dag.add_edge(edge("prepare_llm", "skip", "execute_llm", "skip"));
-    dag.add_edge(edge("resolve_auth", "service", "credential_env", "service"));
-    dag.add_edge(edge("resolve_auth", "env_var", "credential_env", "env_var"));
-    dag.add_edge(edge("resolve_auth", "scheme", "credential_env", "scheme"));
-    dag.add_edge(edge("resolve_auth", "header_name", "credential_env", "header_name"));
-    dag.add_edge(edge("credential_env", cred_port, "execute_llm", "res:credential"));
-    dag.add_edge(edge("execute_llm", "response", "parse_llm", "response"));
-    dag.add_edge(edge("prepare_llm", "provider", "parse_llm", "provider"));
-    dag.add_edge(edge("parse_llm", "answer", "parse_response", "answer"));
+    builder
+        .add_edge(
+            prepare_prompt.out("question"),
+            prepare_llm.in_port("question"),
+        )
+        .expect("prepare_prompt.question -> prepare_llm.question");
+    builder
+        .add_edge(
+            prepare_prompt.out("system_prompt"),
+            prepare_llm.in_port("system_prompt"),
+        )
+        .expect("prepare_prompt.system_prompt -> prepare_llm.system_prompt");
+    builder
+        .add_edge(
+            resolve_auth.out("service"),
+            credential_env.in_port("service"),
+        )
+        .expect("resolve_auth.service -> credential_env.service");
+    builder
+        .add_edge(
+            resolve_auth.out("env_var"),
+            credential_env.in_port("env_var"),
+        )
+        .expect("resolve_auth.env_var -> credential_env.env_var");
+    builder
+        .add_edge(
+            resolve_auth.out("scheme"),
+            credential_env.in_port("scheme"),
+        )
+        .expect("resolve_auth.scheme -> credential_env.scheme");
+    builder
+        .add_edge(
+            resolve_auth.out("header_name"),
+            credential_env.in_port("header_name"),
+        )
+        .expect("resolve_auth.header_name -> credential_env.header_name");
+    builder
+        .add_edge(
+            credential_env.out(cred_port),
+            llm_triplet.execute.in_port("res:credential"),
+        )
+        .expect("credential_env -> execute_llm.res:credential");
+    builder
+        .add_edge(
+            llm_triplet.parse.out("answer"),
+            parse_response.in_port("answer"),
+        )
+        .expect("parse_llm.answer -> parse_response.answer");
 
     // Review output → merge (list port collects fan-in automatically)
-    dag.add_edge(edge("parse_response", "output", "merge", "outputs"));
+    builder
+        .add_edge(
+            parse_response.out("output"),
+            merge.in_port("outputs"),
+        )
+        .expect("parse_response.output -> merge.outputs");
 
-    dag
+    builder.build()
 }
 
 // ============================================================================

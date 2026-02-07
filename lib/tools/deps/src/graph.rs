@@ -16,7 +16,8 @@ use crate::manifest::DEFAULT_MANIFEST_FILENAME;
 use crate::ops::DepsOp;
 use gunbc_exec::{ExecError, Executable, OutputMap};
 use gunbc_ir::{
-    build::*, BuilderError, Cardinality, Dag, DagBuilder, Node, Value, WorkflowSignature,
+    add_transport_triplet_named_with_passthrough, build::*, BuilderError, Cardinality, Dag,
+    DagBuilder, Node, Value, WorkflowSignature,
 };
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::PrepareFileWriteOp;
@@ -93,46 +94,23 @@ pub fn build_deps_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
     // LoadManifest chain: PrepareLoadManifest -> Execute -> ParseManifest
     // ========================================================================
 
-    // Node: PrepareLoadManifest (PURE)
-    let prepare_load = builder.add_root_node(Node::opaque(
+    let load_manifest = add_transport_triplet_named_with_passthrough(
+        &mut builder,
         "prepare_load_manifest",
+        "execute_load_manifest",
+        "parse_manifest",
+        vec![port("manifest_path", "String")],
         vec![port("manifest_path", "String")],
         vec![
-            port("request", "TransportRequest"),
-            port("manifest_path", "String"),
-            port("skip", "Bool"),
+            scalar("dep_count", "Int"),
+            list("dep_names", "String"),
+            scalar("manifest_path", "String"),
+            scalar("manifest_content", "String"), // Pass content to GenerateScripts
         ],
         DepsGraphOp::Deps(DepsOp::PrepareLoadManifest),
-    ))?;
-
-    // Node: Execute manifest load (BOUNDARY)
-    let execute_load = builder.add_node_after(
-        Node::opaque(
-            "execute_load_manifest",
-            vec![port("request", "TransportRequest"), port("skip", "Bool")],
-            vec![port("response", "TransportResponse")],
-            DepsGraphOp::Transport(TransportOps::Execute),
-        ),
-        &prepare_load,
-    )?;
-
-    // Node: ParseManifest (PURE)
-    let parse_manifest = builder.add_node_after(
-        Node::opaque(
-            "parse_manifest",
-            vec![
-                port("response", "TransportResponse"),
-                port("manifest_path", "String"),
-            ],
-            vec![
-                scalar("dep_count", "Int"),
-                list("dep_names", "String"),
-                scalar("manifest_path", "String"),
-                scalar("manifest_content", "String"), // Pass content to GenerateScripts
-            ],
-            DepsGraphOp::Deps(DepsOp::ParseManifest),
-        ),
-        &execute_load,
+        DepsGraphOp::Deps(DepsOp::ParseManifest),
+        DepsGraphOp::Transport(TransportOps::Execute),
+        None,
     )?;
 
     // ========================================================================
@@ -155,7 +133,7 @@ pub fn build_deps_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
             ],
             DepsGraphOp::Deps(DepsOp::GenerateScripts),
         ),
-        &parse_manifest,
+        &load_manifest.parse,
     )?;
 
     // ========================================================================
@@ -163,49 +141,24 @@ pub fn build_deps_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
     // ========================================================================
 
     // Node: PrepareExecuteInstalls (PURE)
-    let prepare_execute = builder.add_node_after(
-        Node::opaque(
-            "prepare_execute_installs",
-            vec![scalar("install_script", "String")],
-            vec![
-                port("request", "TransportRequest"),
-                port("script", "String"),
-                port("skip", "Bool"),
-            ],
-            DepsGraphOp::Deps(DepsOp::PrepareExecuteInstalls),
-        ),
-        &generate_scripts,
-    )?;
-
-    // Node: Execute installs (BOUNDARY)
-    let execute_installs = builder.add_node_after(
-        Node::opaque(
-            "execute_installs",
-            vec![port("request", "TransportRequest"), port("skip", "Bool")],
-            vec![port("response", "TransportResponse")],
-            DepsGraphOp::Transport(TransportOps::Execute),
-        ),
-        &prepare_execute,
-    )?;
-
-    // Node: ParseExecuteResult (PURE)
-    let parse_result = builder.add_node_after(
-        Node::opaque(
-            "parse_execute_result",
-            vec![
-                port("response", "TransportResponse"),
-                port("script", "String"),
-            ],
-            vec![
-                scalar("executed", "Bool"),
-                scalar("success", "Bool"),
-                scalar("script", "String"),
-                scalar("stdout", "String"),
-                scalar("stderr", "String"),
-            ],
-            DepsGraphOp::Deps(DepsOp::ParseExecuteResult),
-        ),
-        &execute_installs,
+    let execute_installs = add_transport_triplet_named_with_passthrough(
+        &mut builder,
+        "prepare_execute_installs",
+        "execute_installs",
+        "parse_execute_result",
+        vec![scalar("install_script", "String")],
+        vec![scalar("script", "String")],
+        vec![
+            scalar("executed", "Bool"),
+            scalar("success", "Bool"),
+            scalar("script", "String"),
+            scalar("stdout", "String"),
+            scalar("stderr", "String"),
+        ],
+        DepsGraphOp::Deps(DepsOp::PrepareExecuteInstalls),
+        DepsGraphOp::Deps(DepsOp::ParseExecuteResult),
+        DepsGraphOp::Transport(TransportOps::Execute),
+        Some(&generate_scripts),
     )?;
 
     // ========================================================================
@@ -213,20 +166,9 @@ pub fn build_deps_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
     // ========================================================================
 
     // LoadManifest chain
-    builder.add_edge(prepare_load.out("request"), execute_load.in_port("request"))?;
-    builder.add_edge(prepare_load.out("skip"), execute_load.in_port("skip"))?;
-    builder.add_edge(
-        execute_load.out("response"),
-        parse_manifest.in_port("response"),
-    )?;
-    builder.add_edge(
-        prepare_load.out("manifest_path"),
-        parse_manifest.in_port("manifest_path"),
-    )?;
-
     // To GenerateScripts (now receives manifest_content instead of path)
     builder.add_edge(
-        parse_manifest.out("manifest_content"),
+        load_manifest.parse.out("manifest_content"),
         generate_scripts.in_port("manifest_content"),
     )?;
     builder.add_edge(
@@ -237,23 +179,7 @@ pub fn build_deps_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
     // ExecuteInstalls chain
     builder.add_edge(
         generate_scripts.out("install_script"),
-        prepare_execute.in_port("install_script"),
-    )?;
-    builder.add_edge(
-        prepare_execute.out("request"),
-        execute_installs.in_port("request"),
-    )?;
-    builder.add_edge(
-        prepare_execute.out("skip"),
-        execute_installs.in_port("skip"),
-    )?;
-    builder.add_edge(
-        execute_installs.out("response"),
-        parse_result.in_port("response"),
-    )?;
-    builder.add_edge(
-        prepare_execute.out("script"),
-        parse_result.in_port("script"),
+        execute_installs.prepare.in_port("install_script"),
     )?;
 
     let dag = builder.build();
@@ -430,7 +356,7 @@ mod tests {
     fn test_graph_builds_successfully() {
         let dag = build_deps_graph().expect("graph should build");
         // 8 nodes: platform_env + prepare_load, execute_load, parse_manifest,
-        //          generate_scripts, prepare_execute, execute_installs, parse_result
+        //          generate_scripts, prepare_execute, execute_installs, parse_execute_result
         assert_eq!(dag.nodes.len(), 8);
     }
 

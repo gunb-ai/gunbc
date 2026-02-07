@@ -4,12 +4,12 @@
 // DO NOT EDIT - regenerate with: make testgen
 // Obligations: 27 obligations (10 discharged, 17 testable: A=6, B=8, C=3, D=0)
 // Proven by construction: acyclicity, type compatibility, cardinality satisfaction.
-// Content-Hash: 6fb6be14a78e797c6ff3bb96de8420fd2ec131fbb55538ff8aa4954bdef93e44
+// Content-Hash: 0b70427e4a381dd36b685f8293af5350ab64e87af8853711e94a891c0e478ef6
 
 
 use gunbc_exec::{execute_with_mode, lower, ExecutionMode};
 use gunbc_ir::Value;
-use gunbc_test::{assert_boundary_mockable, MockSpec};
+use gunbc_test::{assert_boundary_mockable, guard_test, FermiCost, MockSpec, TestClass};
 use gunbc_test::{apply_window_inputs, assert_window_outputs, window_subdag, Window};
 use gunbc_test::{ResourceAcquireResult, ResourceRefreshResult};
 
@@ -37,6 +37,9 @@ fn mock_spec() -> MockSpec {
 /// with explicit boundary mocks, and verify it completes successfully.
 #[test]
 fn test_dryrun_completion() {
+    if !guard_test("test_dryrun_completion", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_chat_completion_graph();
     let log = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("DryRun execution should complete without crash");
     assert!(!log.entries.is_empty(), "execution should produce log entries");
@@ -48,6 +51,9 @@ fn test_dryrun_completion() {
 /// accidentally perform real I/O.
 #[test]
 fn test_transport_interception() {
+    if !guard_test("test_transport_interception", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_chat_completion_graph();
     let result = assert_boundary_mockable(&dag, mock_spec().to_boundary_mocks());
     assert!(result.is_ok(), "All transports should be interceptable: {:?}", result.error);
@@ -74,6 +80,9 @@ fn test_transport_interception() {
 /// Proves: missing optional input does not crash.
 #[test]
 fn test_optional_missing_prepare_system_prompt() {
+    if !guard_test("test_optional_missing_prepare_system_prompt", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_chat_completion_graph();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("messages".to_string(), Value::Str("Credential lifecycle test".to_string()));
@@ -87,6 +96,9 @@ fn test_optional_missing_prepare_system_prompt() {
 /// Proves: wrong-typed optional input is rejected.
 #[test]
 fn test_optional_wrong_type_prepare_system_prompt() {
+    if !guard_test("test_optional_wrong_type_prepare_system_prompt", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_chat_completion_graph();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("messages".to_string(), Value::Str("Credential lifecycle test".to_string()));
@@ -102,6 +114,9 @@ fn test_optional_wrong_type_prepare_system_prompt() {
 /// Proves: missing optional input does not crash.
 #[test]
 fn test_optional_missing_prepare_temperature() {
+    if !guard_test("test_optional_missing_prepare_temperature", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_chat_completion_graph();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("messages".to_string(), Value::Str("Credential lifecycle test".to_string()));
@@ -115,6 +130,9 @@ fn test_optional_missing_prepare_temperature() {
 /// Proves: missing optional input does not crash.
 #[test]
 fn test_optional_missing_prepare_max_tokens() {
+    if !guard_test("test_optional_missing_prepare_max_tokens", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_chat_completion_graph();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("messages".to_string(), Value::Str("Credential lifecycle test".to_string()));
@@ -128,6 +146,9 @@ fn test_optional_missing_prepare_max_tokens() {
 /// Proves: wrong-typed optional input is rejected.
 #[test]
 fn test_optional_wrong_type_prepare_max_tokens() {
+    if !guard_test("test_optional_wrong_type_prepare_max_tokens", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_chat_completion_graph();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("max_tokens".to_string(), Value::Str("<WRONG>".to_string()));
@@ -152,6 +173,9 @@ fn test_optional_wrong_type_prepare_max_tokens() {
 /// Proves: workflow reaches terminal outputs with all transports mocked as success.
 #[test]
 fn test_scenario_all_succeed() {
+    if !guard_test("test_scenario_all_succeed", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_chat_completion_graph();
     let log = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("all-succeed scenario should complete");
     let entry = log.get("execute").expect("'execute' should be in log");
@@ -163,6 +187,9 @@ fn test_scenario_all_succeed() {
 /// Proves: failure propagation semantics are consistent.
 #[test]
 fn test_scenario_execute_fails() {
+    if !guard_test("test_scenario_execute_fails", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_chat_completion_graph();
     let mut mocks = mock_spec().to_boundary_mocks();
     // Inject failure at 'execute'
@@ -179,6 +206,9 @@ fn test_scenario_execute_fails() {
 /// without crashing.
 #[test]
 fn test_skip_propagation_execute() {
+    if !guard_test("test_skip_propagation_execute", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_chat_completion_graph();
     let mut mocks = mock_spec().to_boundary_mocks();
     mocks.set_value("execute", "response", Value::Skipped);
@@ -197,6 +227,9 @@ fn test_skip_propagation_execute() {
 /// Test resource 'credential:llm' (Credential) acquisition.
 #[test]
 fn test_resource_credential_llm_acquire() {
+    if !guard_test("test_resource_credential_llm_acquire", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let spec = mock_spec();
     let resource = spec.get_resource("credential:llm").expect("resource should exist");
     let result = resource.acquire();
@@ -206,6 +239,9 @@ fn test_resource_credential_llm_acquire() {
 /// Test resource 'credential:llm' expiration after 3600000ms.
 #[test]
 fn test_resource_credential_llm_timeout() {
+    if !guard_test("test_resource_credential_llm_timeout", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let spec = mock_spec();
     let resource = spec.get_resource("credential:llm").expect("resource should exist");
     assert!(!resource.should_timeout(1800000), "should not timeout before duration");
@@ -216,6 +252,9 @@ fn test_resource_credential_llm_timeout() {
 /// Test resource 'credential:llm:refreshable' (Credential) acquisition.
 #[test]
 fn test_resource_credential_llm_refreshable_acquire() {
+    if !guard_test("test_resource_credential_llm_refreshable_acquire", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let spec = mock_spec();
     let resource = spec.get_resource("credential:llm:refreshable").expect("resource should exist");
     let result = resource.acquire();
@@ -225,6 +264,9 @@ fn test_resource_credential_llm_refreshable_acquire() {
 /// Test resource 'credential:llm:refreshable' expiration after 3600000ms.
 #[test]
 fn test_resource_credential_llm_refreshable_timeout() {
+    if !guard_test("test_resource_credential_llm_refreshable_timeout", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let spec = mock_spec();
     let resource = spec.get_resource("credential:llm:refreshable").expect("resource should exist");
     assert!(!resource.should_timeout(1800000), "should not timeout before duration");
@@ -234,6 +276,9 @@ fn test_resource_credential_llm_refreshable_timeout() {
 /// Test resource 'credential:llm:refreshable' credential refresh.
 #[test]
 fn test_resource_credential_llm_refreshable_refresh() {
+    if !guard_test("test_resource_credential_llm_refreshable_refresh", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let spec = mock_spec();
     let resource = spec.get_resource("credential:llm:refreshable").expect("resource should exist");
     let result = resource.refresh();
@@ -249,6 +294,9 @@ fn test_resource_credential_llm_refreshable_refresh() {
 /// Test that this tool's mock spec is self-consistent.
 #[test]
 fn test_mock_spec_self_consistent() {
+    if !guard_test("test_mock_spec_self_consistent", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let spec = mock_spec();
     // Verify all boundary mocks are present
     assert!(spec.get_boundary_mock("credential_env", "credential:llm").is_some(), "MockSpec should have boundary mock for credential_env.credential:llm");
@@ -263,6 +311,9 @@ fn test_mock_spec_self_consistent() {
 /// Test that input expectations are documented.
 #[test]
 fn test_input_expectations_documented() {
+    if !guard_test("test_input_expectations_documented", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let spec = mock_spec();
     // Port 'provider' expects: NonEmpty
     // Port 'model' expects: NonEmpty
@@ -279,6 +330,9 @@ fn test_input_expectations_documented() {
 /// Window: prepare -> resolve_auth
 #[test]
 fn test_window_prepare_through_resolve_auth() {
+    if !guard_test("test_window_prepare_through_resolve_auth", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_chat_completion_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -293,6 +347,9 @@ fn test_window_prepare_through_resolve_auth() {
 /// Window: resolve_auth -> credential_env
 #[test]
 fn test_window_resolve_auth_through_credential_env() {
+    if !guard_test("test_window_resolve_auth_through_credential_env", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_chat_completion_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -307,6 +364,9 @@ fn test_window_resolve_auth_through_credential_env() {
 /// Window: credential_env -> execute
 #[test]
 fn test_window_credential_env_through_execute() {
+    if !guard_test("test_window_credential_env_through_execute", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_chat_completion_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -321,6 +381,9 @@ fn test_window_credential_env_through_execute() {
 /// Window: execute -> parse
 #[test]
 fn test_window_execute_through_parse() {
+    if !guard_test("test_window_execute_through_parse", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_chat_completion_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -335,6 +398,9 @@ fn test_window_execute_through_parse() {
 /// Window: prepare -> credential_env
 #[test]
 fn test_window_prepare_through_credential_env() {
+    if !guard_test("test_window_prepare_through_credential_env", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_chat_completion_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -349,6 +415,9 @@ fn test_window_prepare_through_credential_env() {
 /// Window: resolve_auth -> execute
 #[test]
 fn test_window_resolve_auth_through_execute() {
+    if !guard_test("test_window_resolve_auth_through_execute", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_chat_completion_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -363,6 +432,9 @@ fn test_window_resolve_auth_through_execute() {
 /// Window: credential_env -> parse
 #[test]
 fn test_window_credential_env_through_parse() {
+    if !guard_test("test_window_credential_env_through_parse", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_chat_completion_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -377,6 +449,9 @@ fn test_window_credential_env_through_parse() {
 /// Window: prepare -> execute
 #[test]
 fn test_window_prepare_through_execute() {
+    if !guard_test("test_window_prepare_through_execute", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_chat_completion_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -391,6 +466,9 @@ fn test_window_prepare_through_execute() {
 /// Window: resolve_auth -> parse
 #[test]
 fn test_window_resolve_auth_through_parse() {
+    if !guard_test("test_window_resolve_auth_through_parse", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_chat_completion_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -405,6 +483,9 @@ fn test_window_resolve_auth_through_parse() {
 /// Window: prepare -> parse
 #[test]
 fn test_window_prepare_through_parse() {
+    if !guard_test("test_window_prepare_through_parse", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_chat_completion_graph();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
@@ -428,6 +509,9 @@ fn test_window_prepare_through_parse() {
 /// Tests that node 'prepare' produces expected outputs for given inputs.
 #[test]
 fn test_example_prepare_credential_lifecycle_prepare_emits_rest_request_and_echoes_provider() {
+    if !guard_test("test_example_prepare_credential_lifecycle_prepare_emits_rest_request_and_echoes_provider", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_chat_completion_graph();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("messages".to_string(), Value::Str("Credential lifecycle test".to_string()));
@@ -448,6 +532,9 @@ fn test_example_prepare_credential_lifecycle_prepare_emits_rest_request_and_echo
 /// Tests that node 'resolve_auth' produces expected outputs for given inputs.
 #[test]
 fn test_example_resolve_auth_resolve_auth_maps_openai_provider_to_api_key_env_var() {
+    if !guard_test("test_example_resolve_auth_resolve_auth_maps_openai_provider_to_api_key_env_var", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_chat_completion_graph();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("provider".to_string(), Value::Str("openai".to_string()));
@@ -472,6 +559,9 @@ fn test_example_resolve_auth_resolve_auth_maps_openai_provider_to_api_key_env_va
 /// Tests that node 'parse' produces expected outputs for given inputs.
 #[test]
 fn test_example_parse_credential_lifecycle_parse_extracts_content_from_rest_response() {
+    if !guard_test("test_example_parse_credential_lifecycle_parse_extracts_content_from_rest_response", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_chat_completion_graph();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("provider".to_string(), Value::Str("openai".to_string()));
@@ -491,6 +581,9 @@ fn test_example_parse_credential_lifecycle_parse_extracts_content_from_rest_resp
 /// Tests that node 'parse' produces expected outputs for given inputs.
 #[test]
 fn test_example_parse_parse_handles_skipped_transport_response() {
+    if !guard_test("test_example_parse_parse_handles_skipped_transport_response", TestClass::Hermetic, FermiCost::S, &["http"], &[]) {
+    return ();
+};
     let dag = crate :: graph :: build_chat_completion_graph();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("provider".to_string(), Value::Str("openai".to_string()));

@@ -15,6 +15,7 @@
 use crate::cli_gen::{CliEntrypoint, ToolMeta};
 use gunbc_ir::cargo;
 use gunbc_ir::types::Cardinality;
+use gunbc_test::{FermiCost, TestClass};
 
 // ============================================================================
 // DAG Definition Structures
@@ -224,6 +225,14 @@ pub struct TestgenTargetDef {
     pub flow_tests: bool,
     /// Max window size for windowed tests (None = no limit)
     pub window_max_nodes: Option<usize>,
+    /// Test class override (unit/hermetic/integration)
+    pub test_class: Option<TestClass>,
+    /// Fermi cost override
+    pub fermi_cost: Option<FermiCost>,
+    /// External requirements override
+    pub requires: Option<Vec<String>>,
+    /// Required secrets override (env vars)
+    pub secrets: Option<Vec<String>>,
 }
 
 impl TestgenTargetDef {
@@ -240,6 +249,10 @@ impl TestgenTargetDef {
             chain_tests: true,
             flow_tests: false,
             window_max_nodes: Some(5),
+            test_class: None,
+            fermi_cost: None,
+            requires: None,
+            secrets: None,
         }
     }
 

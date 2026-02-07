@@ -9,11 +9,15 @@
 //! This module provides helpers that stamp out the full triplet (nodes + internal
 //! wiring) in one call, eliminating ~40 lines of boilerplate per triplet.
 //!
-//! Two variants exist:
+//! Variants:
 //!
 //! - [`add_skippable_transport_triplet`]: The prepare node may decide to skip,
 //!   propagating `skip` and `skip_reason` through execute to parse.
 //! - [`add_transport_triplet`]: Every request is executed unconditionally.
+//! - [`add_transport_triplet_named_with_passthrough`]: Explicit node names with
+//!   passthrough ports from prepare to parse.
+//! - [`add_transport_execute_parse_named_with_passthrough`]: Attach execute+parse
+//!   to an existing prepare node with passthrough ports.
 
 use crate::build::{optional, port};
 use crate::builder::{BuilderError, DagBuilder, NodeRef};
@@ -197,6 +201,106 @@ pub fn add_transport_triplet<T>(
     })
 }
 
+/// Add a non-skippable transport triplet with explicit node names and passthrough ports.
+///
+/// This variant is useful when callers need stable node IDs and/or must pass
+/// extra values from prepare to parse (e.g., a script or path).
+///
+/// `passthrough` ports are added to the prepare outputs and parse inputs, and
+/// the helper wires `prepare.<port> → parse.<port>` for each of them.
+#[allow(clippy::too_many_arguments)]
+pub fn add_transport_triplet_named_with_passthrough<T>(
+    builder: &mut DagBuilder<T>,
+    prepare_name: &str,
+    execute_name: &str,
+    parse_name: &str,
+    prepare_inputs: Vec<Port>,
+    passthrough: Vec<Port>,
+    parse_outputs: Vec<Port>,
+    prepare_op: T,
+    parse_op: T,
+    transport_op: T,
+    after: Option<&NodeRef<T>>,
+) -> Result<TransportTriplet<T>, BuilderError> {
+    let mut prepare_outputs = vec![port("request", "TransportRequest"), port("skip", "Bool")];
+    prepare_outputs.extend(passthrough.clone());
+
+    let prepare_node = Node::opaque(prepare_name, prepare_inputs, prepare_outputs, prepare_op);
+    let prepare = match after {
+        None => builder.add_root_node(prepare_node)?,
+        Some(dep) => builder.add_node_after(prepare_node, dep)?,
+    };
+
+    add_transport_execute_parse_named_with_passthrough(
+        builder,
+        &prepare,
+        execute_name,
+        parse_name,
+        passthrough,
+        vec![],
+        parse_outputs,
+        parse_op,
+        transport_op,
+        None,
+    )
+}
+
+/// Add execute + parse nodes for an existing prepare node (non-skippable).
+///
+/// Useful when execute must come after an external dependency (e.g., a
+/// credential env node) but prepare already exists.
+#[allow(clippy::too_many_arguments)]
+pub fn add_transport_execute_parse_named_with_passthrough<T>(
+    builder: &mut DagBuilder<T>,
+    prepare: &NodeRef<T>,
+    execute_name: &str,
+    parse_name: &str,
+    passthrough: Vec<Port>,
+    execute_inputs_extra: Vec<Port>,
+    parse_outputs: Vec<Port>,
+    parse_op: T,
+    transport_op: T,
+    execute_after: Option<&NodeRef<T>>,
+) -> Result<TransportTriplet<T>, BuilderError> {
+    let mut execute_inputs = vec![port("request", "TransportRequest"), port("skip", "Bool")];
+    execute_inputs.extend(execute_inputs_extra);
+
+    let execute_node = Node::opaque(
+        execute_name,
+        execute_inputs,
+        vec![port("response", "TransportResponse")],
+        transport_op,
+    );
+
+    let execute = match execute_after {
+        None => builder.add_node_after(execute_node, prepare)?,
+        Some(dep) if dep.id() == prepare.id() => builder.add_node_after(execute_node, prepare)?,
+        Some(dep) => builder.add_node_after_all(execute_node, &[prepare, dep])?,
+    };
+
+    let mut parse_inputs = vec![port("response", "TransportResponse")];
+    parse_inputs.extend(passthrough.clone());
+    let parse = builder.add_node_after(
+        Node::opaque(parse_name, parse_inputs, parse_outputs, parse_op),
+        &execute,
+    )?;
+
+    builder.add_edge(prepare.out("request"), execute.in_port("request"))?;
+    builder.add_edge(prepare.out("skip"), execute.in_port("skip"))?;
+    builder.add_edge(execute.out("response"), parse.in_port("response"))?;
+
+    for port in passthrough {
+        let name = port.name.clone();
+        builder.add_edge(prepare.out(name.clone()), parse.in_port(name))?;
+    }
+
+    Ok(TransportTriplet {
+        prepare: prepare.clone(),
+        execute,
+        parse,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -273,5 +377,86 @@ mod tests {
         assert!(dag.get_node(&"prepare_deps_exists".into()).is_some());
         assert!(dag.get_node(&"execute_deps_exists".into()).is_some());
         assert!(dag.get_node(&"parse_deps_exists".into()).is_some());
+    }
+
+    #[test]
+    fn test_named_triplet_with_passthrough() {
+        let mut builder: DagBuilder<TestOp> = DagBuilder::new();
+
+        let _triplet = add_transport_triplet_named_with_passthrough(
+            &mut builder,
+            "prepare_manifest",
+            "execute_manifest",
+            "parse_manifest",
+            vec![port("manifest_path", "String")],
+            vec![port("manifest_path", "String")],
+            vec![port("ok", "Bool")],
+            TestOp::Prepare,
+            TestOp::Parse,
+            TestOp::Execute,
+            None,
+        )
+        .unwrap();
+
+        let dag = builder.build();
+        assert_eq!(dag.nodes.len(), 3);
+        // request + skip + response + passthrough
+        assert_eq!(dag.edges.len(), 4);
+
+        assert!(dag.get_node(&"prepare_manifest".into()).is_some());
+        assert!(dag.get_node(&"execute_manifest".into()).is_some());
+        assert!(dag.get_node(&"parse_manifest".into()).is_some());
+    }
+
+    #[test]
+    fn test_execute_parse_with_passthrough_after() {
+        let mut builder: DagBuilder<TestOp> = DagBuilder::new();
+
+        let prepare = builder
+            .add_root_node(Node::opaque(
+                "prepare",
+                vec![],
+                vec![
+                    port("request", "TransportRequest"),
+                    port("skip", "Bool"),
+                    port("provider", "String"),
+                ],
+                TestOp::Prepare,
+            ))
+            .unwrap();
+
+        let after = builder
+            .add_node_after(
+                Node::opaque(
+                    "after",
+                    vec![],
+                    vec![port("ok", "Bool")],
+                    TestOp::Execute,
+                ),
+                &prepare,
+            )
+            .unwrap();
+
+        let _triplet = add_transport_execute_parse_named_with_passthrough(
+            &mut builder,
+            &prepare,
+            "execute",
+            "parse",
+            vec![port("provider", "String")],
+            vec![],
+            vec![port("answer", "String")],
+            TestOp::Parse,
+            TestOp::Execute,
+            Some(&after),
+        )
+        .unwrap();
+
+        let dag = builder.build();
+        assert_eq!(dag.nodes.len(), 4);
+        // request + skip + response + passthrough
+        assert_eq!(dag.edges.len(), 4);
+
+        assert!(dag.get_node(&"execute".into()).is_some());
+        assert!(dag.get_node(&"parse".into()).is_some());
     }
 }

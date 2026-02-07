@@ -10,7 +10,7 @@ use gunbc_gist::{build_gist_graph, GistMode};
 use gunbc_ir::transport::{ShellResponse, TransportResponse};
 use gunbc_ir::{detect_boundaries, Timestamp, Value};
 use gunbc_primitives::filename;
-use gunbc_test::{assert_boundary_mockable, assert_types_compatible};
+use gunbc_test::{assert_boundary_mockable, assert_types_compatible, guard_test, FermiCost, TestClass};
 use std::time::SystemTime;
 
 /// Helper: mock for execute_current_branch boundary.
@@ -51,6 +51,10 @@ fn mock_env(mocks: &mut BoundaryMocks) {
     mocks.set_input("prepare_remote_branches", "repo_path", Value::Str(".".into()));
 }
 
+fn guard_hermetic(name: &str) -> bool {
+    guard_test(name, TestClass::Hermetic, FermiCost::S, &[], &[])
+}
+
 // ============================================================================
 // BOUNDARY TESTS
 // ============================================================================
@@ -58,6 +62,10 @@ fn mock_env(mocks: &mut BoundaryMocks) {
 /// Test that all boundaries can be mocked.
 #[test]
 fn test_boundaries_mockable() {
+    if !guard_hermetic(stringify!(test_boundaries_mockable)) {
+        return;
+    }
+
     let dag =
         build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
 
@@ -114,6 +122,10 @@ fn test_boundaries_mockable() {
 /// Test that parse_gist_response boundary can be mocked.
 #[test]
 fn test_boundary_parse_gist_response_mockable() {
+    if !guard_hermetic(stringify!(test_boundary_parse_gist_response_mockable)) {
+        return;
+    }
+
     let dag =
         build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
     let boundaries = detect_boundaries(&dag);
@@ -176,6 +188,10 @@ fn test_boundary_parse_gist_response_mockable() {
 /// Test that prepare_gist_request is NOT a boundary (pure logic).
 #[test]
 fn test_prepare_gist_request_not_boundary() {
+    if !guard_hermetic(stringify!(test_prepare_gist_request_not_boundary)) {
+        return;
+    }
+
     let dag =
         build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
     let boundaries = detect_boundaries(&dag);
@@ -192,6 +208,10 @@ fn test_prepare_gist_request_not_boundary() {
 /// Test that all edge types are compatible.
 #[test]
 fn test_all_edges_compatible() {
+    if !guard_hermetic(stringify!(test_all_edges_compatible)) {
+        return;
+    }
+
     let dag =
         build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
     let results = assert_types_compatible(&dag);
@@ -207,6 +227,10 @@ fn test_all_edges_compatible() {
 /// Test edge prepare_list_files.request -> execute_list_files.request type compatibility.
 #[test]
 fn test_edge_prepare_list_to_execute_list() {
+    if !guard_hermetic(stringify!(test_edge_prepare_list_to_execute_list)) {
+        return;
+    }
+
     let dag =
         build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
     // TransportRequest -> TransportRequest: verified by edge existence in graph
@@ -219,6 +243,10 @@ fn test_edge_prepare_list_to_execute_list() {
 /// Test edge execute_list_files.response -> parse_list_files.response type compatibility.
 #[test]
 fn test_edge_execute_list_to_parse_list() {
+    if !guard_hermetic(stringify!(test_edge_execute_list_to_parse_list)) {
+        return;
+    }
+
     let dag =
         build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
     // TransportResponse -> TransportResponse: verified by edge existence in graph
@@ -232,6 +260,10 @@ fn test_edge_execute_list_to_parse_list() {
 /// (Snapshot mode uses a LoopBuilder for per-file reads.)
 #[test]
 fn test_edge_parse_list_files_to_read_files_loop() {
+    if !guard_hermetic(stringify!(test_edge_parse_list_files_to_read_files_loop)) {
+        return;
+    }
+
     let dag =
         build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
     // List -> List: verified by edge existence in graph
@@ -244,6 +276,10 @@ fn test_edge_parse_list_files_to_read_files_loop() {
 /// Test edge parse_list_files.files -> collect_file_contents.filenames type compatibility.
 #[test]
 fn test_edge_parse_list_files_to_collect_file_contents() {
+    if !guard_hermetic(stringify!(test_edge_parse_list_files_to_collect_file_contents)) {
+        return;
+    }
+
     let dag =
         build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
     // List -> List: verified by edge existence in graph
@@ -256,6 +292,10 @@ fn test_edge_parse_list_files_to_collect_file_contents() {
 /// Test edge read_files_loop.contents -> collect_file_contents.contents_list type compatibility.
 #[test]
 fn test_edge_read_files_loop_to_collect_file_contents() {
+    if !guard_hermetic(stringify!(test_edge_read_files_loop_to_collect_file_contents)) {
+        return;
+    }
+
     let dag =
         build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
     // List -> List: verified by edge existence in graph
@@ -268,6 +308,10 @@ fn test_edge_read_files_loop_to_collect_file_contents() {
 /// Test edge collect_file_contents.contents -> render_markdown.contents type compatibility.
 #[test]
 fn test_edge_collect_file_contents_to_render_markdown() {
+    if !guard_hermetic(stringify!(test_edge_collect_file_contents_to_render_markdown)) {
+        return;
+    }
+
     let dag =
         build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
     // Map -> Map: verified by edge existence in graph
@@ -280,6 +324,10 @@ fn test_edge_collect_file_contents_to_render_markdown() {
 /// Test edge render_markdown.markdown -> prepare_gist_request.markdown type compatibility.
 #[test]
 fn test_edge_render_markdown_markdown_to_prepare_gist_request_markdown() {
+    if !guard_hermetic(stringify!(test_edge_render_markdown_markdown_to_prepare_gist_request_markdown)) {
+        return;
+    }
+
     let dag =
         build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
     // String -> String: verified by edge existence in graph
@@ -292,6 +340,10 @@ fn test_edge_render_markdown_markdown_to_prepare_gist_request_markdown() {
 /// Test edge prepare_gist_request.request -> execute_gist.request type compatibility.
 #[test]
 fn test_edge_prepare_gist_request_to_execute_gist() {
+    if !guard_hermetic(stringify!(test_edge_prepare_gist_request_to_execute_gist)) {
+        return;
+    }
+
     let dag =
         build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
     // TransportRequest -> TransportRequest: verified by edge existence in graph
@@ -304,6 +356,10 @@ fn test_edge_prepare_gist_request_to_execute_gist() {
 /// Test edge execute_gist.response -> parse_gist_response.response type compatibility.
 #[test]
 fn test_edge_execute_gist_to_parse_gist_response() {
+    if !guard_hermetic(stringify!(test_edge_execute_gist_to_parse_gist_response)) {
+        return;
+    }
+
     let dag =
         build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
     // TransportResponse -> TransportResponse: verified by edge existence in graph
@@ -320,6 +376,10 @@ fn test_edge_execute_gist_to_parse_gist_response() {
 /// Test edge prepare_current_branch.request -> execute_current_branch.request type compatibility.
 #[test]
 fn test_edge_prepare_current_branch_to_execute_current_branch() {
+    if !guard_hermetic(stringify!(test_edge_prepare_current_branch_to_execute_current_branch)) {
+        return;
+    }
+
     let dag =
         build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
     assert!(dag
@@ -332,6 +392,10 @@ fn test_edge_prepare_current_branch_to_execute_current_branch() {
 /// Test edge execute_current_branch.response -> parse_current_branch.response type compatibility.
 #[test]
 fn test_edge_execute_current_branch_to_parse_current_branch() {
+    if !guard_hermetic(stringify!(test_edge_execute_current_branch_to_parse_current_branch)) {
+        return;
+    }
+
     let dag =
         build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
     assert!(dag.edges.iter().any(
@@ -342,6 +406,10 @@ fn test_edge_execute_current_branch_to_parse_current_branch() {
 /// Test edge parse_current_branch.branch -> prepare_gist_request.branch type compatibility.
 #[test]
 fn test_edge_parse_current_branch_to_prepare_gist_request() {
+    if !guard_hermetic(stringify!(test_edge_parse_current_branch_to_prepare_gist_request)) {
+        return;
+    }
+
     let dag =
         build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
     assert!(dag
@@ -357,6 +425,10 @@ fn test_edge_parse_current_branch_to_prepare_gist_request() {
 /// Test edge prepare_remote_branches.request -> execute_remote_branches.request type compatibility.
 #[test]
 fn test_edge_prepare_remote_branches_to_execute_remote_branches() {
+    if !guard_hermetic(stringify!(test_edge_prepare_remote_branches_to_execute_remote_branches)) {
+        return;
+    }
+
     let dag =
         build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
     assert!(dag
@@ -369,6 +441,10 @@ fn test_edge_prepare_remote_branches_to_execute_remote_branches() {
 /// Test edge execute_remote_branches.response -> parse_remote_branches.response type compatibility.
 #[test]
 fn test_edge_execute_remote_branches_to_parse_remote_branches() {
+    if !guard_hermetic(stringify!(test_edge_execute_remote_branches_to_parse_remote_branches)) {
+        return;
+    }
+
     let dag =
         build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
     assert!(dag.edges.iter().any(
@@ -380,6 +456,10 @@ fn test_edge_execute_remote_branches_to_parse_remote_branches() {
 /// Test edge parse_remote_branches.remote_branch -> prepare_gist_request.remote_branch type compatibility.
 #[test]
 fn test_edge_parse_remote_branches_to_prepare_gist_request() {
+    if !guard_hermetic(stringify!(test_edge_parse_remote_branches_to_prepare_gist_request)) {
+        return;
+    }
+
     let dag =
         build_gist_graph(GistMode::Snapshot, vec![], false).expect("Failed to build gist graph");
     assert!(dag.edges.iter().any(
@@ -395,6 +475,10 @@ fn test_edge_parse_remote_branches_to_prepare_gist_request() {
 /// Test edge prepare_rev_list.request -> execute_rev_list.request type compatibility.
 #[test]
 fn test_edge_prepare_rev_list_to_execute_rev_list() {
+    if !guard_hermetic(stringify!(test_edge_prepare_rev_list_to_execute_rev_list)) {
+        return;
+    }
+
     let dag =
         build_gist_graph(GistMode::Recent, vec![], false).expect("Failed to build gist graph");
     assert!(dag
@@ -406,6 +490,10 @@ fn test_edge_prepare_rev_list_to_execute_rev_list() {
 /// Test edge execute_rev_list.response -> parse_rev_list.response type compatibility.
 #[test]
 fn test_edge_execute_rev_list_to_parse_rev_list() {
+    if !guard_hermetic(stringify!(test_edge_execute_rev_list_to_parse_rev_list)) {
+        return;
+    }
+
     let dag =
         build_gist_graph(GistMode::Recent, vec![], false).expect("Failed to build gist graph");
     assert!(dag
@@ -417,6 +505,10 @@ fn test_edge_execute_rev_list_to_parse_rev_list() {
 /// Test edge parse_rev_list.base_ref -> prepare_diff.base_ref type compatibility.
 #[test]
 fn test_edge_parse_rev_list_to_prepare_diff() {
+    if !guard_hermetic(stringify!(test_edge_parse_rev_list_to_prepare_diff)) {
+        return;
+    }
+
     let dag =
         build_gist_graph(GistMode::Recent, vec![], false).expect("Failed to build gist graph");
     assert!(dag
@@ -428,6 +520,10 @@ fn test_edge_parse_rev_list_to_prepare_diff() {
 /// Test that execute_rev_list is NOT a boundary node (its output is consumed by parse_rev_list).
 #[test]
 fn test_execute_rev_list_not_boundary() {
+    if !guard_hermetic(stringify!(test_execute_rev_list_not_boundary)) {
+        return;
+    }
+
     let dag =
         build_gist_graph(GistMode::Recent, vec![], false).expect("Failed to build gist graph");
     let boundaries = detect_boundaries(&dag);

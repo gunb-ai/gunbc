@@ -76,7 +76,7 @@ Port contract (fixed by the helper):
 
 ## 2. Adopt Transport Triplet Helpers
 
-**Status:** In progress (migrated: build, codegen, CI, gist)
+**Status:** Done (migrated: build, codegen, CI, gist, deps, review, llm-ops)
 **Effort:** Low
 **Location:** Existing helpers in `core/ir/src/patterns/transport_triplet.rs`
 
@@ -98,9 +98,9 @@ Potential API improvement: the current helpers require callers to pass full inpu
 | `gunbc-dag/src/build/graph.rs` | 3 | Mixed | build (no), test (yes), clippy (yes) | Done |
 | `gunbc-dag/src/ci/graph.rs` | 6 | Mixed | deps_exists (no), testgen/build/test/guardrail/verify (yes) | Done |
 | `lib/tools/gist/src/graph.rs` | 5-8 | No | Mode-dependent; loop body has inner triplet | Done |
-| `lib/tools/deps/src/graph.rs` | 2-3 | No | install + generate graphs | Pending |
-| `lib/review/src/graph.rs` | 2-4 | No | Varies by review mode | Pending |
-| `lib/llm-ops/src/graph.rs` | 1 | No | chat completion | Pending |
+| `lib/tools/deps/src/graph.rs` | 2-3 | No | install + generate graphs | Done |
+| `lib/review/src/graph.rs` | 2-4 | No | Varies by review mode | Done |
+| `lib/llm-ops/src/graph.rs` | 1 | No | chat completion | Done |
 
 ### Steps
 

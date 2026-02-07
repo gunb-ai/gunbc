@@ -31,7 +31,7 @@ use gunbc_ir::boundary_label;
 use gunbc_ir::language::NamingCase;
 use gunbc_ir::{Cardinality, Dag, NodeId, PortName, SecretString, Value, ValueExpr};
 use gunbc_ir::transport::{ShellRequest, ShellResponse, TransportRequest, TransportResponse};
-use gunbc_test::{MockSpec, OutputMatcher};
+use gunbc_test::{FermiCost, MockSpec, OutputMatcher, TestClass};
 use serde_json::Value as JsonValue;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use gunbc_infra::hash::ContentHash;
@@ -77,6 +77,14 @@ pub struct TestConfig {
     pub window_max_nodes: Option<usize>,
     /// Test module visibility
     pub visibility: String,
+    /// Test class (unit/hermetic/integration)
+    pub test_class: TestClass,
+    /// Fermi-style cost bucket
+    pub fermi_cost: FermiCost,
+    /// External requirements (informational)
+    pub requires: Vec<String>,
+    /// Required secrets (env vars) for live integration tests
+    pub secrets: Vec<String>,
 }
 
 impl Default for TestConfig {
@@ -93,6 +101,10 @@ impl Default for TestConfig {
             optional_input_tests: true,
             window_max_nodes: Some(5),
             visibility: "pub".to_string(),
+            test_class: TestClass::Hermetic,
+            fermi_cost: FermiCost::S,
+            requires: Vec::new(),
+            secrets: Vec::new(),
         }
     }
 }
@@ -665,7 +677,10 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                 items: vec![
                     "assert_boundary_mockable".to_string(),
                     "assert_types_compatible".to_string(),
+                    "guard_test".to_string(),
+                    "FermiCost".to_string(),
                     "MockSpec".to_string(),
+                    "TestClass".to_string(),
                 ],
             });
         } else {
@@ -674,6 +689,9 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                 items: vec![
                     "assert_boundary_mockable".to_string(),
                     "assert_types_compatible".to_string(),
+                    "guard_test".to_string(),
+                    "FermiCost".to_string(),
+                    "TestClass".to_string(),
                 ],
             });
         }
@@ -829,9 +847,63 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             }
         }
 
+        self.inject_test_guards(&mut file);
         Self::prune_unused_imports(&mut file);
 
         file
+    }
+
+    fn inject_test_guards(&self, file: &mut TestFile) {
+        let class_variant = Self::class_variant(self.config.test_class);
+        let cost_variant = Self::cost_variant(self.config.fermi_cost);
+        let class_expr = Expr::path(&["TestClass", class_variant]);
+        let cost_expr = Expr::path(&["FermiCost", cost_variant]);
+        let requires_expr = Self::slice_expr(&self.config.requires);
+        let secrets_expr = Self::slice_expr(&self.config.secrets);
+
+        for section in &mut file.sections {
+            for test in &mut section.tests {
+                let guard_call = Expr::call(
+                    "guard_test",
+                    vec![
+                        Expr::Str(test.name.clone()),
+                        class_expr.clone(),
+                        cost_expr.clone(),
+                        requires_expr.clone(),
+                        secrets_expr.clone(),
+                    ],
+                );
+                let guard_stmt = Stmt::Expr(Expr::If {
+                    cond: Box::new(guard_call.logical_not()),
+                    then_body: vec![Stmt::Return(Expr::raw("()"))],
+                    else_body: None,
+                });
+                test.body.insert(0, guard_stmt);
+            }
+        }
+    }
+
+    fn slice_expr(items: &[String]) -> Expr {
+        let entries: Vec<Expr> = items.iter().map(|s| Expr::str_lit(s)).collect();
+        Expr::Ref(Box::new(Expr::Array(entries)))
+    }
+
+    fn class_variant(class: TestClass) -> &'static str {
+        match class {
+            TestClass::Unit => "Unit",
+            TestClass::Hermetic => "Hermetic",
+            TestClass::Integration => "Integration",
+        }
+    }
+
+    fn cost_variant(cost: FermiCost) -> &'static str {
+        match cost {
+            FermiCost::XS => "XS",
+            FermiCost::S => "S",
+            FermiCost::M => "M",
+            FermiCost::L => "L",
+            FermiCost::XL => "XL",
+        }
     }
 
     fn prune_unused_imports(file: &mut TestFile) {

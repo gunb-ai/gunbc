@@ -191,11 +191,21 @@ impl std::error::Error for BuilderError {}
 ///
 /// `NodeRef` is returned when adding nodes and is used to create edges.
 /// The generation tracks the node's topological level in the DAG.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct NodeRef<T> {
     id: NodeId,
     generation: usize,
     _phantom: PhantomData<T>,
+}
+
+impl<T> Clone for NodeRef<T> {
+    fn clone(&self) -> Self {
+        Self {
+            id: self.id.clone(),
+            generation: self.generation,
+            _phantom: PhantomData,
+        }
+    }
 }
 
 impl<T> NodeRef<T> {

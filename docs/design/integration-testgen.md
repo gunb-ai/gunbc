@@ -95,9 +95,9 @@ Overrides:
 
 ### Default Gating (Proposed)
 
-1. `make test` runs `Unit` + `Hermetic` up to `S`.
-2. `make test-integration` (or `GUNBC_TEST_MAX_COST=M`) opts into integration tests.
-3. `RUN_LIVE_INTEGRATION=1` required for `L`/`XL` tests that hit external APIs.
+1. `make test` runs everything at or below `S` (default).
+2. `make test-all` sets `GUNBC_TEST_MAX_COST=XL` and `RUN_LIVE_INTEGRATION=1`.
+3. Live tests still require required secrets to be present in the environment.
 
 Tests above the max cost should **skip** with a clear reason, not fail.
 

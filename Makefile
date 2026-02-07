@@ -10,7 +10,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help ensure-codegen codegen build clean testgen testgen-check pragma-check verify fmt-fix lint-fix test test-fix check check-fix clippy clippy-fix fmt fmt-check ci-yaml gist gist-dry gist-diff gist-diff-dry gist-recent gist-recent-dry makegen makegen-dry deps deps-dry bootstrap bootstrap-dry ci ci-dry pragma pragma-dry build-all build-all-dry
+.PHONY: help ensure-codegen codegen build clean testgen testgen-check pragma-check verify fmt-fix lint-fix test test-fix test-all check check-fix clippy clippy-fix fmt fmt-check ci-yaml gist gist-dry gist-diff gist-diff-dry gist-recent gist-recent-dry makegen makegen-dry deps deps-dry bootstrap bootstrap-dry ci ci-dry pragma pragma-dry build-all build-all-dry
 
 # Ensure CLI entrypoints exist (bootstrap-safe)
 ensure-codegen:
@@ -65,8 +65,9 @@ help:
 	@echo "  verify   - Verify generated artifacts match their generators"
 	@echo ""
 	@echo "Development:"
-	@echo "  test  - Run all tests"
-	@echo "  test-fix  - Run all tests (fmt-fix + lint-fix first)"
+	@echo "  test  - Run tests (<=S)"
+	@echo "  test-fix  - Run tests (<=S) (fmt-fix + lint-fix first)"
+	@echo "  test-all  - Run all tests (<=XL)"
 	@echo "  check  - Type check all targets"
 	@echo "  check-fix  - Type check all targets (fmt-fix first)"
 	@echo "  clippy  - Run clippy linter"
@@ -100,13 +101,17 @@ fmt-fix:
 lint-fix: pragma
 	@cargo clippy --fix --workspace --allow-dirty --allow-staged -- -D warnings
 
-# test: Run all tests
+# test: Run tests (<=S)
 test: build verify
 	@RUSTFLAGS="-D warnings" cargo test
 
 # test-fix: auto-fix then verify
 test-fix: fmt-fix lint-fix build verify
 	@RUSTFLAGS="-D warnings" cargo test
+
+# test-all: Run all tests (<=XL)
+test-all: build verify
+	@GUNBC_TEST_MAX_COST=XL RUN_LIVE_INTEGRATION=1 RUSTFLAGS="-D warnings" cargo test
 
 # check: Type check all targets
 check: ensure-codegen pragma-check

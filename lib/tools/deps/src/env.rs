@@ -1,7 +1,7 @@
 //! Environment ops for deps graphs.
 
 use crate::platform::Platform;
-use gunbc_exec::{ExecError, Executable, OutputMap};
+use gunbc_exec::{env_single_output, EnvNode, ExecError};
 use gunbc_ir::Value;
 use std::collections::HashMap;
 
@@ -15,21 +15,21 @@ impl PlatformEnv {
     }
 
     pub fn mock_outputs(&self) -> HashMap<String, Value> {
+        self.outputs()
+    }
+
+    fn outputs(&self) -> HashMap<String, Value> {
         let platform = Platform::detect();
-        OutputMap::new()
-            .value(self.output_port(), platform.into())
-            .build()
+        env_single_output(self.output_port(), platform)
     }
 }
 
-impl Executable for PlatformEnv {
-    fn execute(
-        &self,
-        _inputs: HashMap<String, Value>,
-    ) -> Result<HashMap<String, Value>, ExecError> {
-        let platform = Platform::detect();
-        OutputMap::new()
-            .value(self.output_port(), platform.into())
-            .ok()
+impl EnvNode for PlatformEnv {
+    fn env_outputs(&self) -> Result<HashMap<String, Value>, ExecError> {
+        Ok(self.outputs())
+    }
+
+    fn mock_outputs(&self) -> HashMap<String, Value> {
+        self.outputs()
     }
 }

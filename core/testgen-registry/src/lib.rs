@@ -8,11 +8,15 @@
 // Re-export inventory so macros can submit without depending on it directly.
 pub use inventory;
 
+mod fermi;
+
+use crate::fermi::{infer_fermi_cost, infer_requires, infer_test_class};
+use gunbc_codegen::testgen::analyze::analyze_dag;
 use gunbc_codegen::testgen::{TestConfig, TestGenerator};
 pub use gunbc_codegen::TestgenTargetDef;
 use gunbc_exec::Executable;
 use gunbc_ir::Dag;
-use gunbc_test::MockSpec;
+use gunbc_test::{MockSpec, TestClass, FermiCost};
 
 /// A registered testgen target (auto-discovered via inventory).
 ///
@@ -31,6 +35,10 @@ pub struct TestgenTarget {
     pub chain_tests: bool,
     pub flow_tests: bool,
     pub window_max_nodes: Option<usize>,
+    pub test_class: Option<TestClass>,
+    pub fermi_cost: Option<FermiCost>,
+    pub requires: Option<&'static [&'static str]>,
+    pub secrets: Option<&'static [&'static str]>,
     pub generate: fn(&TestgenTargetDef) -> String,
 }
 
@@ -57,6 +65,10 @@ impl TestgenTarget {
         def.chain_tests = self.chain_tests;
         def.flow_tests = self.flow_tests;
         def.window_max_nodes = self.window_max_nodes;
+        def.test_class = self.test_class;
+        def.fermi_cost = self.fermi_cost;
+        def.requires = self.requires.map(|items| items.iter().map(|s| s.to_string()).collect());
+        def.secrets = self.secrets.map(|items| items.iter().map(|s| s.to_string()).collect());
         def
     }
 }
@@ -77,11 +89,28 @@ pub fn generate_target<T: Executable + Clone>(
     dag: Dag<T>,
     spec: MockSpec,
 ) -> String {
+    let analysis = analyze_dag(&dag);
+    let inferred_class = infer_test_class(&analysis);
+    let inferred_requires = infer_requires(&spec);
+    let inferred_cost = infer_fermi_cost(inferred_class);
+
+    let test_class = config.test_class.unwrap_or(inferred_class);
+    let fermi_cost = config.fermi_cost.unwrap_or(inferred_cost);
+    let requires = config
+        .requires
+        .clone()
+        .unwrap_or_else(|| inferred_requires.clone());
+    let secrets = config.secrets.clone().unwrap_or_default();
+
     let test_config = TestConfig {
         boundary_tests: config.boundary_tests,
         chain_tests: config.chain_tests,
         flow_tests: config.flow_tests,
         window_max_nodes: config.window_max_nodes,
+        test_class,
+        fermi_cost,
+        requires,
+        secrets,
         ..TestConfig::default()
     };
     let mut generator = TestGenerator::new(&dag)

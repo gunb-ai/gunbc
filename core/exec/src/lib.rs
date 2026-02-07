@@ -30,6 +30,7 @@
 #![deny(dead_code)]
 pub mod ci_context;
 pub mod display;
+pub mod env;
 pub mod error;
 pub mod execute;
 pub mod frame_build;
@@ -45,6 +46,7 @@ pub mod topo;
 
 pub use ci_context::CiContext;
 pub use display::{execute_and_display, print_value};
+pub use env::{single_output as env_single_output, EnvNode};
 pub use error::{ExecError, IntoExecResult, ResultExt};
 pub use execute::{
     execute, execute_single_node, execute_with_all, execute_with_ci, execute_with_mode,
