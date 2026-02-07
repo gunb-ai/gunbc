@@ -206,8 +206,8 @@ pub fn infer_signature<T>(dag: &Dag<T>) -> WorkflowSignature {
 
     let mut inputs = Vec::new();
     let mut outputs = Vec::new();
-    let mut seen_inputs: HashSet<(String, String, Cardinality)> = HashSet::new();
-    let mut seen_outputs: HashSet<(String, String, Cardinality)> = HashSet::new();
+    let mut seen_inputs: HashSet<(PortName, TypeId, Cardinality)> = HashSet::new();
+    let mut seen_outputs: HashSet<(PortName, TypeId, Cardinality)> = HashSet::new();
 
     // Collect entrypoint ports as inputs
     // entrypoint_ports is Vec<(NodeId, PortName, TypeId)>

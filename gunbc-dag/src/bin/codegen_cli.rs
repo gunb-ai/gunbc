@@ -33,7 +33,7 @@ use gunbc_ir::resource::{
 use gunbc_ir::transport::ci::{
     yaml_block, CacheConfig, CiRenderer, GitHubActionsProvider, GitLabCiProvider, RenderConfig,
 };
-use gunbc_ir::CODEGEN_BIN_DIR;
+use gunbc_ir::{CODEGEN_BIN_DIR, CODEGEN_LIB_DIR};
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fs;

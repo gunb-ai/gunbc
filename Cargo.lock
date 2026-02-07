@@ -185,16 +185,13 @@ dependencies = [
 name = "gunbc-codegen"
 version = "0.1.0"
 dependencies = [
- "cargo_metadata",
  "gunbc-cli",
- "gunbc-clippy",
  "gunbc-exec",
  "gunbc-infra",
  "gunbc-ir",
  "gunbc-test",
  "gunbc-tool-registry",
  "serde_json",
- "toml_edit",
 ]
 
 [[package]]

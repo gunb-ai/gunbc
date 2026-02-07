@@ -566,7 +566,7 @@ impl ToolInfo {
             description: def.meta.description.clone(),
             entrypoints: Vec::new(),
             extra_targets: Vec::new(),
-            has_declarative_dag: false,
+            has_declarative_dag: def.meta.tool_name == "makegen",
             needs_generated_cli: true,
         };
 
