@@ -268,7 +268,7 @@ generates tests directly from those entries.
 - [x] Added `gunbc-testgen-registry` + `gunbc-testgen-registry-macros`
 - [x] Removed `.testgen(...)` from `ToolDef` and deleted `all_testgen_targets()`
 - [x] Testgen binary uses `iter_dag_specs()` (no manual list)
-- [ ] Optional: Makefile/CI could consume the registry if explicit targets are needed
+- [x] Optional: Makefile/CI now consume DagSpec registry (2026-02-07)
 
 **Design note — linking requirement:**
 

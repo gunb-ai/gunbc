@@ -197,7 +197,7 @@ impl BuildConfig {
                     "gunbc-dag",
                 )))
                 .release()
-                .trailing_arg("--check")
+                .trailing_arg("--mode=verify")
                 .warnings(w),
             ),
             makegen_check: c(
@@ -206,7 +206,7 @@ impl BuildConfig {
                     "gunbc-dag",
                 )))
                 .release()
-                .trailing_arg("--check")
+                .trailing_arg("--mode=verify")
                 .warnings(w),
             ),
             bootstrap_check: c(
@@ -215,7 +215,7 @@ impl BuildConfig {
                     "gunbc-dag",
                 )))
                 .release()
-                .trailing_arg("--check")
+                .trailing_arg("--mode=verify")
                 .warnings(w),
             ),
             pragma_check: c(
@@ -224,7 +224,7 @@ impl BuildConfig {
                     "gunbc-dag",
                 )))
                 .release()
-                .trailing_arg("--check")
+                .trailing_arg("--mode=verify")
                 .warnings(w),
             ),
         }
@@ -326,7 +326,7 @@ impl BuildConfig {
                     "gunbc-dag",
                 )))
                 .release()
-                .trailing_arg("--check")
+                .trailing_arg("--mode=verify")
                 .warnings(w),
             ),
             makegen_check: c(
@@ -335,7 +335,7 @@ impl BuildConfig {
                     "gunbc-dag",
                 )))
                 .release()
-                .trailing_arg("--check")
+                .trailing_arg("--mode=verify")
                 .warnings(w),
             ),
             bootstrap_check: c(
@@ -344,7 +344,7 @@ impl BuildConfig {
                     "gunbc-dag",
                 )))
                 .release()
-                .trailing_arg("--check")
+                .trailing_arg("--mode=verify")
                 .warnings(w),
             ),
             pragma_check: c(
@@ -353,7 +353,7 @@ impl BuildConfig {
                     "gunbc-dag",
                 )))
                 .release()
-                .trailing_arg("--check")
+                .trailing_arg("--mode=verify")
                 .warnings(w),
             ),
         }

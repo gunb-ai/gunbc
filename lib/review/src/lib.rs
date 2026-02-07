@@ -1205,6 +1205,17 @@ Please fix these issues."#;
 pub fn review_tool() {}
 
 // ============================================================================
+// DagSpec Registry Helpers
+// ============================================================================
+
+/// Return DagSpec registrations originating from this crate.
+pub fn dag_specs() -> Vec<&'static gunbc_testgen_registry::DagSpecDef> {
+    gunbc_testgen_registry::iter_dag_specs()
+        .filter(|spec| spec.origin_crate == env!("CARGO_CRATE_NAME"))
+        .collect()
+}
+
+// ============================================================================
 // Generated Tests (from `make testgen`)
 // ============================================================================
 
@@ -1216,15 +1227,4 @@ mod generated_tests_inline {
 #[cfg(test)]
 mod generated_tests_diff {
     include!("generated_tests_diff.rs");
-}
-
-// ============================================================================
-// DagSpec Registry Helpers
-// ============================================================================
-
-/// Return DagSpec registrations originating from this crate.
-pub fn dag_specs() -> Vec<&'static gunbc_testgen_registry::DagSpecDef> {
-    gunbc_testgen_registry::iter_dag_specs()
-        .filter(|spec| spec.origin_crate == env!("CARGO_CRATE_NAME"))
-        .collect()
 }

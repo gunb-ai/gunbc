@@ -6,9 +6,7 @@
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fmt;
-use std::fs;
-use std::io;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 /// A content hash representing the state of a resource's inputs.
 ///
@@ -114,44 +112,6 @@ impl HashBuilder {
         self
     }
 
-    /// Add a file's contents to the hash (by reading it from disk).
-    pub fn update_file(self, path: impl AsRef<Path>) -> Result<Self, io::Error> {
-        let path = path.as_ref();
-        let contents = fs::read(path)?;
-        Ok(self.update_file_content(path, &contents))
-    }
-
-    /// Add all files matching a glob pattern to the hash (sorted).
-    ///
-    /// Returns the updated builder, file count, and the list of paths hashed.
-    pub fn update_glob_with_paths(
-        self,
-        pattern: &str,
-    ) -> Result<(Self, usize, Vec<String>), io::Error> {
-        let entries = glob::glob(pattern)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
-
-        let mut paths: Vec<PathBuf> = Vec::new();
-        for entry in entries {
-            let path = entry.map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
-            if path.is_file() {
-                paths.push(path);
-            }
-        }
-
-        paths.sort();
-
-        let mut builder = self;
-        let mut out_paths: Vec<String> = Vec::new();
-        for path in paths {
-            builder = builder.update_file(&path)?;
-            out_paths.push(path.to_string_lossy().to_string());
-        }
-
-        let count = out_paths.len();
-        Ok((builder, count, out_paths))
-    }
-
     /// Add the output of a command to the hash.
     ///
     /// Hashes the stdout bytes from the command.
@@ -167,27 +127,6 @@ impl HashBuilder {
         self.hasher.update([0u8]);
         self.hasher.update(stdout);
         self
-    }
-
-    /// Run a command and add its stdout to the hash.
-    pub fn update_command_output(
-        self,
-        command: &str,
-        args: &[String],
-    ) -> Result<Self, io::Error> {
-        let output = std::process::Command::new(command).args(args).output()?;
-        if !output.status.success() {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                format!(
-                    "command failed: {} {:?} (status {})",
-                    command,
-                    args,
-                    output.status
-                ),
-            ));
-        }
-        Ok(self.update_command_output_bytes(command, args, &output.stdout))
     }
 
     /// Finalize and return the computed hash.

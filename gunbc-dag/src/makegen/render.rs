@@ -248,7 +248,7 @@ fn build_core_targets(config: &BuildConfig) -> Vec<StructuredBlock> {
         name: "pragma-check".to_string(),
         deps: vec!["ensure-codegen".to_string()],
         body: vec![format!(
-            "@{}cargo run -p gunbc-dag --bin gunbc-pragma --release -- --check",
+            "@{}cargo run -p gunbc-dag --bin gunbc-pragma --release -- --mode=verify",
             warning_prefix
         )],
         comment: Some(
@@ -262,19 +262,19 @@ fn build_core_targets(config: &BuildConfig) -> Vec<StructuredBlock> {
         deps: vec!["ensure-codegen".to_string()],
         body: vec![
             format!(
-                "@{}cargo run -p gunbc-dag --bin gunbc-makegen --release -- --check",
+                "@{}cargo run -p gunbc-dag --bin gunbc-makegen --release -- --mode=verify",
                 warning_prefix
             ),
             format!(
-                "@{}cargo run -p gunbc-dag --bin gunbc-bootstrap --release -- --check",
+                "@{}cargo run -p gunbc-dag --bin gunbc-bootstrap --release -- --mode=verify",
                 warning_prefix
             ),
             format!(
-                "@{}cargo run -p gunbc-dag --bin gunbc-testgen --release -- --check",
+                "@{}cargo run -p gunbc-dag --bin gunbc-testgen --release -- --mode=verify",
                 warning_prefix
             ),
             format!(
-                "@{}cargo run -p gunbc-dag --bin gunbc-pragma --release -- --check",
+                "@{}cargo run -p gunbc-dag --bin gunbc-pragma --release -- --mode=verify",
                 warning_prefix
             ),
         ],
@@ -289,19 +289,19 @@ fn build_core_targets(config: &BuildConfig) -> Vec<StructuredBlock> {
         deps: vec!["ensure-codegen".to_string()],
         body: vec![
             format!(
-                "@{}cargo run -p gunbc-dag --bin gunbc-makegen --release",
+                "@{}cargo run -p gunbc-dag --bin gunbc-makegen --release -- --mode=ensure",
                 warning_prefix
             ),
             format!(
-                "@{}cargo run -p gunbc-dag --bin gunbc-bootstrap --release",
+                "@{}cargo run -p gunbc-dag --bin gunbc-bootstrap --release -- --mode=ensure",
                 warning_prefix
             ),
             format!(
-                "@{}cargo run -p gunbc-dag --bin gunbc-testgen --release",
+                "@{}cargo run -p gunbc-dag --bin gunbc-testgen --release -- --mode=ensure",
                 warning_prefix
             ),
             format!(
-                "@{}cargo run -p gunbc-dag --bin gunbc-pragma --release",
+                "@{}cargo run -p gunbc-dag --bin gunbc-pragma --release -- --mode=ensure",
                 warning_prefix
             ),
         ],
@@ -731,7 +731,7 @@ mod tests {
         assert!(makefile.contains("testgen: ensure-codegen"));
         assert!(makefile.contains("testgen-check: ensure-codegen"));
         assert!(makefile.contains("pragma-check: ensure-codegen"));
-        assert!(makefile.contains("gunbc-pragma --release -- --check"));
+        assert!(makefile.contains("gunbc-pragma --release -- --mode=verify"));
         assert!(makefile.contains("clean:"));
     }
 

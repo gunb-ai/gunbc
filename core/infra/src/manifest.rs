@@ -8,16 +8,13 @@ use crate::hash::ContentHash;
 use crate::ResourceId;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fs;
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 /// Default manifest file location.
 pub const DEFAULT_MANIFEST_PATH: &str = "target/.resource-manifest.json";
 
 /// Manifest for tracking resource freshness.
-///
-/// The manifest is stored on disk and loaded/saved atomically.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ResourceManifest {
     /// Schema version for forward compatibility.
@@ -94,23 +91,9 @@ impl ResourceManifest {
         }
     }
 
-    /// Load manifest from the default location.
-    pub fn load_default() -> io::Result<Self> {
-        Self::load(DEFAULT_MANIFEST_PATH)
-    }
-
-    /// Load manifest from a file path.
-    ///
-    /// Returns an empty manifest if the file doesn't exist.
-    pub fn load(path: impl AsRef<Path>) -> io::Result<Self> {
-        let path = path.as_ref();
-
-        if !path.exists() {
-            return Ok(Self::new());
-        }
-
-        let content = fs::read_to_string(path)?;
-        let manifest: Self = serde_json::from_str(&content).map_err(|e| {
+    /// Parse a manifest from JSON.
+    pub fn from_json_str(content: &str) -> io::Result<Self> {
+        let manifest: Self = serde_json::from_str(content).map_err(|e| {
             io::Error::new(
                 io::ErrorKind::InvalidData,
                 format!("Invalid manifest JSON: {}", e),
@@ -120,36 +103,14 @@ impl ResourceManifest {
         Ok(manifest)
     }
 
-    /// Save manifest to the default location.
-    pub fn save_default(&self) -> io::Result<()> {
-        self.save(DEFAULT_MANIFEST_PATH)
-    }
-
-    /// Save manifest atomically to a file path.
-    ///
-    /// Uses write-to-temp-then-rename for atomicity.
-    pub fn save(&self, path: impl AsRef<Path>) -> io::Result<()> {
-        let path = path.as_ref();
-
-        // Ensure parent directory exists
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)?;
-        }
-
-        // Write to temp file
-        let tmp_path = path.with_extension("json.tmp");
-        let content = serde_json::to_string_pretty(self).map_err(|e| {
+    /// Serialize this manifest to pretty JSON.
+    pub fn to_json_pretty(&self) -> io::Result<String> {
+        serde_json::to_string_pretty(self).map_err(|e| {
             io::Error::new(
                 io::ErrorKind::InvalidData,
                 format!("Failed to serialize manifest: {}", e),
             )
-        })?;
-        fs::write(&tmp_path, content)?;
-
-        // Atomic rename
-        fs::rename(tmp_path, path)?;
-
-        Ok(())
+        })
     }
 
     /// Get an entry for a resource.
@@ -203,16 +164,6 @@ fn current_timestamp_millis() -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::env;
-
-    fn temp_manifest_path() -> PathBuf {
-        let mut path = env::temp_dir();
-        path.push(format!(
-            "test-manifest-{}.json",
-            std::process::id()
-        ));
-        path
-    }
 
     #[test]
     fn test_manifest_new() {
@@ -254,32 +205,22 @@ mod tests {
     }
 
     #[test]
-    fn test_manifest_save_load() {
-        let path = temp_manifest_path();
-
-        // Clean up any existing file
-        let _ = fs::remove_file(&path);
-
-        // Create and save
+    fn test_manifest_round_trip() {
         let mut manifest = ResourceManifest::new();
         let id = ResourceId::new("build:test");
         manifest.insert(id.clone(), ManifestEntry::new(ContentHash::from_bytes(b"data"), 0));
-        manifest.save(&path).expect("save failed");
 
-        // Load and verify
-        let loaded = ResourceManifest::load(&path).expect("load failed");
+        let json = manifest.to_json_pretty().expect("serialize failed");
+        let loaded = ResourceManifest::from_json_str(&json).expect("parse failed");
+
         assert_eq!(loaded.len(), 1);
         assert!(loaded.get(&id).is_some());
-
-        // Clean up
-        let _ = fs::remove_file(&path);
     }
 
     #[test]
-    fn test_manifest_load_nonexistent() {
-        let path = PathBuf::from("/nonexistent/path/manifest.json");
-        let manifest = ResourceManifest::load(&path).expect("should return empty");
-        assert!(manifest.is_empty());
+    fn test_manifest_parse_invalid_json() {
+        let err = ResourceManifest::from_json_str("{not json}").unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
     }
 
     #[test]

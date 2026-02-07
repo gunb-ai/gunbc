@@ -9,6 +9,7 @@ use gunbc_exec::{
     execute_and_display, execute_with_mode_and_inputs, BoundaryMocks, ExecutionMode,
     TerminalProfile,
 };
+use gunbc_ir::resource::ExecMode;
 use gunbc_ir::transport::{FileOp, FileResponse, TransportResponse};
 use gunbc_ir::{detect_entrypoints, Value};
 use std::env;
@@ -20,7 +21,8 @@ fn main() {
     // Parse arguments
     let mut path = "Makefile".to_string();
     let mut dry_run = false;
-    let mut check = false;
+    let mut resource_mode = ExecMode::Ensure;
+    let mut check_deprecated = false;
 
     let mut i = 1;
     while i < args.len() {
@@ -32,7 +34,36 @@ fn main() {
                 }
             }
             "-n" | "--dry-run" => dry_run = true,
-            "--check" => check = true,
+            "-c" | "--check" => {
+                resource_mode = ExecMode::Verify;
+                check_deprecated = true;
+            }
+            "--mode" => {
+                i += 1;
+                if i < args.len() {
+                    if let Some(parsed) = ExecMode::parse(&args[i]) {
+                        resource_mode = parsed;
+                    } else {
+                        eprintln!(
+                            "Warning: Unknown mode '{}', using '{}'",
+                            args[i], resource_mode
+                        );
+                    }
+                } else {
+                    eprintln!("Warning: --mode requires a value (verify|ensure)");
+                }
+            }
+            arg if arg.starts_with("--mode=") => {
+                let mode_str = arg.trim_start_matches("--mode=");
+                if let Some(parsed) = ExecMode::parse(mode_str) {
+                    resource_mode = parsed;
+                } else {
+                    eprintln!(
+                        "Warning: Unknown mode '{}', using '{}'",
+                        mode_str, resource_mode
+                    );
+                }
+            }
             "-h" | "--help" => {
                 print_help();
                 return;
@@ -40,6 +71,10 @@ fn main() {
             _ => {}
         }
         i += 1;
+    }
+
+    if check_deprecated {
+        eprintln!("Warning: --check is deprecated; use --mode=verify");
     }
 
     // Build the graph
@@ -67,7 +102,7 @@ fn main() {
                 input_mocks.set_input(
                     node_id.0.clone(),
                     port_name.0.clone(),
-                    Value::Bool(check),
+                    Value::Bool(resource_mode == ExecMode::Verify),
                 );
             }
             _ => {}
@@ -75,10 +110,10 @@ fn main() {
     }
 
     // Set up execution mode
-    // In --check mode, we run Real (read transport must execute), but check_mode=true
+    // In verify mode, we run Real (read transport must execute), but check_mode=true
     // forces compare_content to set skip=true on the write transport.
-    // In --dry-run mode (without --check), mock all transports.
-    let mode = if dry_run && !check {
+    // In --dry-run mode (without verify), mock all transports.
+    let mode = if dry_run && resource_mode != ExecMode::Verify {
         let mut mocks = BoundaryMocks::new();
         mocks.set_value(
             "execute_read_makegen",
@@ -130,7 +165,7 @@ fn main() {
         ExecutionMode::Real
     };
 
-    if check {
+    if resource_mode == ExecMode::Verify {
         // Check mode: bypass display, use execute_with_mode_and_inputs directly
         match execute_with_mode_and_inputs(&dag, mode, Some(&input_mocks)) {
             Ok(log) => {
@@ -145,9 +180,9 @@ fn main() {
                     .unwrap_or(false);
 
                 if fresh {
-                    println!("makegen --check: 1 file up to date");
+                    println!("makegen --mode=verify: 1 file up to date");
                 } else {
-                    eprintln!("makegen --check: drift detected");
+                    eprintln!("makegen --mode=verify: drift detected");
                     eprintln!("  DRIFT  {}", path);
                     // Try to show a diff between on-disk content and newly rendered output.
                     let expected = log
@@ -198,10 +233,8 @@ fn main() {
         // Print header
         println!("makegen");
         println!("  path: {}", path);
-        println!(
-            "  mode: {}",
-            if dry_run { "dry-run" } else { "real" }
-        );
+        println!("  mode: {}", if dry_run { "dry-run" } else { "real" });
+        println!("  resource_mode: {}", resource_mode);
         println!();
 
         // Execute and display (progress or classic based on terminal)
@@ -216,8 +249,9 @@ fn print_help() {
     println!("    makegen [OPTIONS]");
     println!();
     println!("OPTIONS:");
-    println!("    -o, --path <VAL>            Output Makefile path");
+    println!("    -o, --path <VAL>     Output Makefile path");
     println!("    -n, --dry-run        Don't perform actual I/O");
-    println!("        --check          Verify generated files match disk");
+    println!("    --mode=MODE          Resource mode: verify (CI) or ensure (default)");
+    println!("    -c, --check          Deprecated alias for --mode=verify");
     println!("    -h, --help           Print this help");
 }

@@ -122,10 +122,9 @@ one place (not sprinkled `#[allow]` at call sites). Approved categories:
       includes `verify` in its dependency chain. Each `--check` flag
       does dry-run + `verify_drift()` comparison against disk.
       Remaining: cigen uses FileWriter, not DAG transport; migrate later.
-- [ ] DagSpec / typed registry. Done when testgen, makegen, and CI
-      generation all consume DagSpec, and registry dispatch is no longer
-      string-based. (Note: `GraphBuilderId` enum already eliminates
-      string-based builder dispatch.)
+- [x] DagSpec / typed registry. ✅ Testgen, makegen, and CI generation
+      now consume DagSpec (2026-02-07). (Note: `GraphBuilderId` enum
+      already eliminates string-based builder dispatch.)
 - [x] Resource acquisition completion. ✅ Phases 1-5 landed (2026-02-05):
       sub-DAG delegation + resource accounting. See TODONE/design-resource-acquisition.md.
 - [x] Type/cardinality unification. ✅ Interval model `Cardinality { min, max }`

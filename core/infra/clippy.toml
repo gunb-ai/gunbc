@@ -1,5 +1,3 @@
 # gunbc-infra: Infrastructure layer
 #
-# This crate IS the infrastructure layer - it provides hashing, manifests,
-# and other low-level primitives that need direct filesystem access.
-# No disallowed_methods here; direct std::fs usage is intentional.
+# Pure hashing/manifest primitives; no direct filesystem access.

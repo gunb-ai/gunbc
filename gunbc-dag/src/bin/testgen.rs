@@ -6,7 +6,7 @@
 //! Usage:
 //!     cargo run -p gunbc-dag --bin gunbc-testgen
 //!     cargo run -p gunbc-dag --bin gunbc-testgen -- --dry-run
-//!     cargo run -p gunbc-dag --bin gunbc-testgen -- --check
+//!     cargo run -p gunbc-dag --bin gunbc-testgen -- --mode=verify
 //!     cargo run -p gunbc-dag --bin gunbc-testgen -- --output-dir /path/to/output
 
 #![deny(dead_code)]
@@ -17,11 +17,12 @@ use gunbc_exec::{
     TerminalProfile,
 };
 use gunbc_ir::resource::{
-    update_resource_manifest, ManagedResource, ManifestEntry, ManifestUpdateError, ResourceDef,
-    ResourceError, ResourceManifest,
+    update_resource_manifest, ExecMode, ManagedResource, ManifestEntry, ManifestUpdateError,
+    ResourceDef, ResourceError, ResourceIo, ResourceManifest,
 };
 use gunbc_ir::transport::{FileOp, FileResponse, TransportResponse};
 use gunbc_ir::{detect_entrypoints, Value};
+use gunbc_lib_transport::TransportIo;
 // Force-link crates that register testgen targets.
 use gunbc_deps as _;
 use gunbc_gist as _;
@@ -45,7 +46,8 @@ fn main() {
 
     let mut output_dir = PathBuf::from(".");
     let mut dry_run = false;
-    let mut check = false;
+    let mut resource_mode = ExecMode::Ensure;
+    let mut check_deprecated = false;
 
     let mut i = 1;
     while i < args.len() {
@@ -57,7 +59,36 @@ fn main() {
                 }
             }
             "-n" | "--dry-run" => dry_run = true,
-            "-c" | "--check" => check = true,
+            "-c" | "--check" => {
+                resource_mode = ExecMode::Verify;
+                check_deprecated = true;
+            }
+            "--mode" => {
+                i += 1;
+                if i < args.len() {
+                    if let Some(parsed) = ExecMode::parse(&args[i]) {
+                        resource_mode = parsed;
+                    } else {
+                        eprintln!(
+                            "Warning: Unknown mode '{}', using '{}'",
+                            args[i], resource_mode
+                        );
+                    }
+                } else {
+                    eprintln!("Warning: --mode requires a value (verify|ensure)");
+                }
+            }
+            arg if arg.starts_with("--mode=") => {
+                let mode_str = arg.trim_start_matches("--mode=");
+                if let Some(parsed) = ExecMode::parse(mode_str) {
+                    resource_mode = parsed;
+                } else {
+                    eprintln!(
+                        "Warning: Unknown mode '{}', using '{}'",
+                        mode_str, resource_mode
+                    );
+                }
+            }
             "-h" | "--help" => {
                 print_help();
                 return;
@@ -65,6 +96,10 @@ fn main() {
             _ => {}
         }
         i += 1;
+    }
+
+    if check_deprecated {
+        eprintln!("Warning: --check is deprecated; use --mode=verify");
     }
 
     let targets = build_targets();
@@ -107,7 +142,7 @@ fn main() {
                 input_mocks.set_input(
                     node_id.0.clone(),
                     port_name.0.clone(),
-                    Value::Bool(check),
+                    Value::Bool(resource_mode == ExecMode::Verify),
                 );
             }
             "path" => {
@@ -124,7 +159,7 @@ fn main() {
     }
 
     // Set up execution mode
-    let mode = if dry_run && !check {
+    let mode = if dry_run && resource_mode != ExecMode::Verify {
         let mut mocks = BoundaryMocks::new();
 
         for (name, path) in &target_info {
@@ -181,7 +216,7 @@ fn main() {
         ExecutionMode::Real
     };
 
-    if check {
+    if resource_mode == ExecMode::Verify {
         // Check mode: bypass display, use execute_with_mode_and_inputs directly
         match execute_with_mode_and_inputs(&dag, mode, Some(&input_mocks)) {
             Ok(log) => {
@@ -231,10 +266,8 @@ fn main() {
         // Print header
         println!("testgen");
         println!("  output_dir: {}", output_dir.display());
-        println!(
-            "  mode: {}",
-            if dry_run { "dry-run" } else { "real" }
-        );
+        println!("  mode: {}", if dry_run { "dry-run" } else { "real" });
+        println!("  resource_mode: {}", resource_mode);
         println!("  targets: {}", targets.len());
         println!();
 
@@ -242,7 +275,7 @@ fn main() {
         execute_and_display(&dag, mode, &profile, None, Some(&input_mocks));
 
         // Update manifest after successful generation (not in DAG - post-execution step)
-        if !dry_run {
+        if !dry_run && resource_mode == ExecMode::Ensure {
             update_manifest_after_testgen();
         }
     }
@@ -268,8 +301,13 @@ fn update_manifest_after_testgen() {
             &self.def
         }
 
-        fn create(&self, manifest: &ResourceManifest) -> Result<ManifestEntry, ResourceError> {
-            let (key, file_count, input_files) = self.compute_key_with_file_list(manifest)?;
+        fn create(
+            &self,
+            manifest: &ResourceManifest,
+            io: &dyn ResourceIo,
+        ) -> Result<ManifestEntry, ResourceError> {
+            let (key, file_count, input_files) =
+                self.compute_key_with_file_list(manifest, io)?;
             Ok(ManifestEntry::new(key, file_count)
                 .with_outputs(self.outputs.clone())
                 .with_input_files(input_files))
@@ -282,7 +320,8 @@ fn update_manifest_after_testgen() {
         outputs: Vec::new(),
     };
 
-    match update_resource_manifest(&resource) {
+    let io = TransportIo::new();
+    match update_resource_manifest(&resource, &io) {
         Ok(()) => {
             println!("Resource manifest updated.");
         }
@@ -306,7 +345,8 @@ fn print_help() {
     println!("Options:");
     println!("    -o, --output-dir <DIR>  Output directory (default: current)");
     println!("    -n, --dry-run           Show what would be generated without writing");
-    println!("    -c, --check             Check if generated tests are up to date (CI mode)");
+    println!("    --mode=MODE             Resource mode: verify (CI) or ensure (default)");
+    println!("    -c, --check             Deprecated alias for --mode=verify");
     println!("    -h, --help              Show this help message");
     println!();
     println!("Progress display is automatic based on terminal capabilities.");

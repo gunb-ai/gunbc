@@ -108,7 +108,7 @@ pub enum CIOp {
 
     // ========== Verify stage ==========
     /// Prepare the verify shell command (pure)
-    /// Runs all four `--check` commands to verify generated artifacts are fresh.
+    /// Runs all four `--mode=verify` commands to verify generated artifacts are fresh.
     PrepareVerifyCheck,
     /// Parse the verify shell response (pure)
     ParseVerifyResult,
@@ -679,7 +679,7 @@ fn execute_parse_guardrail_result(
 
 /// Prepare the verify shell command (pure).
 ///
-/// Runs all four `--check` commands sequentially. If any fails, the combined
+/// Runs all four `--mode=verify` commands sequentially. If any fails, the combined
 /// command fails and stderr reports which generator drifted.
 fn execute_prepare_verify_check(
     inputs: HashMap<String, Value>,
@@ -718,7 +718,7 @@ fn execute_prepare_verify_check(
     }
 
     let config = BuildConfig::cargo();
-    // Build a combined shell command that runs all four --check verifiers.
+    // Build a combined shell command that runs all four --mode=verify verifiers.
     // Each uses the same binary commands as `make verify`.
     let makegen_check = config.makegen_check.to_shell();
     let bootstrap_check = config.bootstrap_check.to_shell();

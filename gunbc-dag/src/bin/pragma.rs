@@ -8,6 +8,7 @@ use gunbc_exec::{
     execute_and_display, execute_with_mode_and_inputs, BoundaryMocks, ExecutionMode,
     TerminalProfile,
 };
+use gunbc_ir::resource::ExecMode;
 use gunbc_ir::transport::{FileOp, FileResponse, TransportResponse};
 use gunbc_ir::{detect_entrypoints, Value};
 use std::env;
@@ -18,13 +19,43 @@ fn main() {
 
     // Parse arguments
     let mut dry_run = false;
-    let mut check = false;
+    let mut resource_mode = ExecMode::Ensure;
+    let mut check_deprecated = false;
 
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
             "-n" | "--dry-run" => dry_run = true,
-            "-c" | "--check" => check = true,
+            "-c" | "--check" => {
+                resource_mode = ExecMode::Verify;
+                check_deprecated = true;
+            }
+            "--mode" => {
+                i += 1;
+                if i < args.len() {
+                    if let Some(parsed) = ExecMode::parse(&args[i]) {
+                        resource_mode = parsed;
+                    } else {
+                        eprintln!(
+                            "Warning: Unknown mode '{}', using '{}'",
+                            args[i], resource_mode
+                        );
+                    }
+                } else {
+                    eprintln!("Warning: --mode requires a value (verify|ensure)");
+                }
+            }
+            arg if arg.starts_with("--mode=") => {
+                let mode_str = arg.trim_start_matches("--mode=");
+                if let Some(parsed) = ExecMode::parse(mode_str) {
+                    resource_mode = parsed;
+                } else {
+                    eprintln!(
+                        "Warning: Unknown mode '{}', using '{}'",
+                        mode_str, resource_mode
+                    );
+                }
+            }
             "-h" | "--help" => {
                 print_help();
                 return;
@@ -32,6 +63,10 @@ fn main() {
             _ => {}
         }
         i += 1;
+    }
+
+    if check_deprecated {
+        eprintln!("Warning: --check is deprecated; use --mode=verify");
     }
 
     // Build the graph
@@ -59,7 +94,7 @@ fn main() {
                 input_mocks.set_input(
                     node_id.0.clone(),
                     port_name.0.clone(),
-                    Value::Bool(check),
+                    Value::Bool(resource_mode == ExecMode::Verify),
                 );
             }
             "path" => {
@@ -81,10 +116,10 @@ fn main() {
     }
 
     // Set up execution mode
-    // In --check mode, we run Real (read transports must execute), but check_mode=true
+    // In verify mode, we run Real (read transports must execute), but check_mode=true
     // forces compare_content to set skip=true on the write transports.
-    // In --dry-run mode (without --check), mock all transports.
-    let mode = if dry_run && !check {
+    // In --dry-run mode (without verify), mock all transports.
+    let mode = if dry_run && resource_mode != ExecMode::Verify {
         let mut mocks = BoundaryMocks::new();
 
         for (key, path) in file_paths {
@@ -141,7 +176,7 @@ fn main() {
         ExecutionMode::Real
     };
 
-    if check {
+    if resource_mode == ExecMode::Verify {
         // Check mode: bypass display, use execute_with_mode_and_inputs directly
         match execute_with_mode_and_inputs(&dag, mode, Some(&input_mocks)) {
             Ok(log) => {
@@ -167,12 +202,12 @@ fn main() {
 
                 if drifted.is_empty() {
                     println!(
-                        "pragma --check: {} file{} up to date",
+                        "pragma --mode=verify: {} file{} up to date",
                         ok_count,
                         if ok_count == 1 { "" } else { "s" }
                     );
                 } else {
-                    eprintln!("pragma --check: drift detected");
+                    eprintln!("pragma --mode=verify: drift detected");
                     for path in &drifted {
                         eprintln!("  DRIFT  {}", path);
                     }
@@ -197,10 +232,8 @@ fn main() {
 
         // Print header
         println!("pragma");
-        println!(
-            "  mode: {}",
-            if dry_run { "dry-run" } else { "real" }
-        );
+        println!("  mode: {}", if dry_run { "dry-run" } else { "real" });
+        println!("  resource_mode: {}", resource_mode);
         println!();
 
         // Execute and display (progress or classic based on terminal)
@@ -216,7 +249,8 @@ fn print_help() {
     println!();
     println!("OPTIONS:");
     println!("    -n, --dry-run        Don't perform actual I/O");
-    println!("    -c, --check          Fail if generated files are stale");
+    println!("    --mode=MODE          Resource mode: verify (CI) or ensure (default)");
+    println!("    -c, --check          Deprecated alias for --mode=verify");
     println!("    -h, --help           Print this help");
     println!();
     println!("Progress display is automatic based on terminal capabilities.");

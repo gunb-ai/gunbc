@@ -35,27 +35,9 @@ const CRATE_POLICIES: &[CratePolicy] = &[
         CrateRole::TransportBoundary,
         "IS the I/O boundary - the designated place for I/O",
     ),
-    CratePolicy::allow_disallowed_methods(
-        "gunbc-codegen",
-        CrateRole::CodegenBootstrap,
-        "Bootstrap code - can't use transport (chicken/egg)",
-    ),
-    CratePolicy::allow_disallowed_methods(
-        "gunbc-infra",
-        CrateRole::Infra,
-        "Infra hub (fs helpers, test utilities)",
-    ),
 ];
 
 const DISALLOWED_METHODS_ALLOWLIST: &[DisallowedMethodsAllowPattern] = &[
-    DisallowedMethodsAllowPattern {
-        pattern: "core/codegen/",
-        rationale: "codegen bootstrap I/O",
-    },
-    DisallowedMethodsAllowPattern {
-        pattern: "core/infra/",
-        rationale: "infra hub (fs helpers, test utilities)",
-    },
     DisallowedMethodsAllowPattern {
         pattern: "lib/transport/",
         rationale: "transport boundary",

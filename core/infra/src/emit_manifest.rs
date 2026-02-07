@@ -6,9 +6,7 @@
 
 use crate::hash::ContentHash;
 use serde::{Deserialize, Serialize};
-use std::fs;
 use std::io;
-use std::path::Path;
 
 /// Record of one emitted artifact.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -24,15 +22,9 @@ pub struct EmitManifest {
 }
 
 impl EmitManifest {
-    /// Load a manifest from a file path.
-    ///
-    /// Returns an empty manifest if the file doesn't exist.
-    pub fn load(path: &Path) -> io::Result<Self> {
-        if !path.exists() {
-            return Ok(Self::default());
-        }
-        let content = fs::read_to_string(path)?;
-        serde_json::from_str(&content).map_err(|e| {
+    /// Parse a manifest from JSON.
+    pub fn from_json_str(content: &str) -> io::Result<Self> {
+        serde_json::from_str(content).map_err(|e| {
             io::Error::new(
                 io::ErrorKind::InvalidData,
                 format!("Invalid emit manifest JSON: {}", e),
@@ -40,23 +32,14 @@ impl EmitManifest {
         })
     }
 
-    /// Save the manifest to a file path.
-    ///
-    /// Uses write-to-temp-then-rename for atomicity.
-    pub fn save(&self, path: &Path) -> io::Result<()> {
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        let tmp_path = path.with_extension("json.tmp");
-        let content = serde_json::to_string_pretty(self).map_err(|e| {
+    /// Serialize this manifest to pretty JSON.
+    pub fn to_json_pretty(&self) -> io::Result<String> {
+        serde_json::to_string_pretty(self).map_err(|e| {
             io::Error::new(
                 io::ErrorKind::InvalidData,
                 format!("Failed to serialize emit manifest: {}", e),
             )
-        })?;
-        fs::write(&tmp_path, content)?;
-        fs::rename(tmp_path, path)?;
-        Ok(())
+        })
     }
 
     /// Record an emitted artifact.
@@ -81,9 +64,6 @@ mod tests {
 
     #[test]
     fn test_manifest_round_trip() {
-        let dir = std::env::temp_dir();
-        let path = dir.join(format!("emit-manifest-{}.json", std::process::id()));
-
         let mut manifest = EmitManifest::default();
         manifest.record(
             "output/Makefile".to_string(),
@@ -94,15 +74,12 @@ mod tests {
             ContentHash::from_bytes(b"ci yaml content"),
         );
 
-        manifest.save(&path).expect("save failed");
-
-        let loaded = EmitManifest::load(&path).expect("load failed");
+        let json = manifest.to_json_pretty().expect("serialize failed");
+        let loaded = EmitManifest::from_json_str(&json).expect("parse failed");
         assert_eq!(loaded.records.len(), 2);
         assert_eq!(loaded.records[0].path, "output/Makefile");
         assert_eq!(loaded.records[1].path, "output/ci.yml");
         assert_eq!(loaded.records, manifest.records);
-
-        let _ = fs::remove_file(&path);
     }
 
     #[test]
@@ -125,10 +102,9 @@ mod tests {
     }
 
     #[test]
-    fn test_manifest_load_nonexistent() {
-        let path = Path::new("/nonexistent/emit-manifest.json");
-        let manifest = EmitManifest::load(path).expect("should return empty");
-        assert!(manifest.records.is_empty());
+    fn test_manifest_parse_invalid_json() {
+        let err = EmitManifest::from_json_str("{not json}").unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
     }
 
     #[test]

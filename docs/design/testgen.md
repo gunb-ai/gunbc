@@ -431,7 +431,7 @@ testgen:
     cargo run -p gunbc-dag --bin gunbc-testgen --release
 
 testgen-check:
-    cargo run -p gunbc-dag --bin gunbc-testgen --release -- --check
+    cargo run -p gunbc-dag --bin gunbc-testgen --release -- --mode=verify
 ```
 
 Staleness detection via content hash in generated file header:

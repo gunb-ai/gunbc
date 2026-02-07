@@ -4,9 +4,10 @@
 //! runs the bootstrapper if missing, and writes a stamp file.
 
 #![deny(dead_code)]
-use gunbc_dag::codegen::build_codegen_graph;
+use gunbc_dag::codegen::build_codegen_graph_with_mode;
 use gunbc_dag::CODEGEN_STAMP_PATH;
 use gunbc_exec::{execute_and_display, BoundaryMocks, ExecutionMode, TerminalProfile};
+use gunbc_ir::resource::ExecMode;
 use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse, TransportResponse};
 use gunbc_ir::Value;
 use std::env;
@@ -17,11 +18,43 @@ fn main() {
 
     // Parse arguments
     let mut dry_run = false;
+    let mut resource_mode = ExecMode::Ensure;
+    let mut check_deprecated = false;
 
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
             "-n" | "--dry-run" => dry_run = true,
+            "-c" | "--check" => {
+                resource_mode = ExecMode::Verify;
+                check_deprecated = true;
+            }
+            "--mode" => {
+                i += 1;
+                if i < args.len() {
+                    if let Some(parsed) = ExecMode::parse(&args[i]) {
+                        resource_mode = parsed;
+                    } else {
+                        eprintln!(
+                            "Warning: Unknown mode '{}', using '{}'",
+                            args[i], resource_mode
+                        );
+                    }
+                } else {
+                    eprintln!("Warning: --mode requires a value (verify|ensure)");
+                }
+            }
+            arg if arg.starts_with("--mode=") => {
+                let mode_str = arg.trim_start_matches("--mode=");
+                if let Some(parsed) = ExecMode::parse(mode_str) {
+                    resource_mode = parsed;
+                } else {
+                    eprintln!(
+                        "Warning: Unknown mode '{}', using '{}'",
+                        mode_str, resource_mode
+                    );
+                }
+            }
             "-h" | "--help" => {
                 print_help();
                 return;
@@ -31,11 +64,15 @@ fn main() {
         i += 1;
     }
 
+    if check_deprecated {
+        eprintln!("Warning: --check is deprecated; use --mode=verify");
+    }
+
     // Detect terminal environment
     let profile = TerminalProfile::detect();
 
     // Build the graph
-    let dag = match build_codegen_graph() {
+    let dag = match build_codegen_graph_with_mode(resource_mode) {
         Ok(d) => d,
         Err(e) => {
             eprintln!("Error building graph: {}", e);
@@ -44,7 +81,7 @@ fn main() {
     };
 
     // Set up execution mode
-    let mode = if dry_run {
+    let mode = if dry_run && resource_mode != ExecMode::Verify {
         let mut mocks = BoundaryMocks::new();
         let ok_shell = || {
             Value::Response(TransportResponse::Shell(ShellResponse::ok("")))
@@ -83,6 +120,7 @@ fn main() {
     // Print header
     println!("codegen");
     println!("  mode: {}", if dry_run { "dry-run" } else { "real" });
+    println!("  resource_mode: {}", resource_mode);
     println!();
 
     // Execute and display (progress or classic based on terminal)
@@ -97,6 +135,8 @@ fn print_help() {
     println!();
     println!("OPTIONS:");
     println!("    -n, --dry-run        Don't perform actual I/O");
+    println!("    --mode=MODE          Resource mode: verify or ensure");
+    println!("    -c, --check          Deprecated alias for --mode=verify");
     println!("    -h, --help           Print this help");
     println!();
     println!("Checks for generated CLI entrypoints and runs gunbc-codegen if missing.");

@@ -10,11 +10,19 @@ use gunbc_ir::transport::{
     TransportResponse,
 };
 use std::collections::{BTreeMap, BTreeSet};
+use std::path::Path;
 use std::sync::Mutex;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+#[derive(Debug, Clone)]
+struct FileEntry {
+    content: String,
+    modified_millis: i64,
+}
 
 #[derive(Debug, Default)]
 struct VirtualFilesystem {
-    files: BTreeMap<String, String>,
+    files: BTreeMap<String, FileEntry>,
     dirs: BTreeSet<String>,
 }
 
@@ -33,6 +41,13 @@ impl VirtualFilesystem {
             }
         }
         out
+    }
+
+    fn now_millis() -> i64 {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_millis() as i64)
+            .unwrap_or(0)
     }
 
     fn ensure_dir(&mut self, path: &str) {
@@ -63,7 +78,13 @@ impl VirtualFilesystem {
                 self.ensure_dir(parent.0);
             }
         }
-        self.files.insert(norm.clone(), content.to_string());
+        self.files.insert(
+            norm.clone(),
+            FileEntry {
+                content: content.to_string(),
+                modified_millis: Self::now_millis(),
+            },
+        );
         FileResponse::written(norm)
     }
 
@@ -74,8 +95,12 @@ impl VirtualFilesystem {
                 self.ensure_dir(parent.0);
             }
         }
-        let entry = self.files.entry(norm.clone()).or_default();
-        entry.push_str(content);
+        let entry = self.files.entry(norm.clone()).or_insert_with(|| FileEntry {
+            content: String::new(),
+            modified_millis: Self::now_millis(),
+        });
+        entry.content.push_str(content);
+        entry.modified_millis = Self::now_millis();
         FileResponse {
             path: norm,
             operation: FileOp::Append,
@@ -89,7 +114,7 @@ impl VirtualFilesystem {
     fn read_file(&self, path: &str) -> FileResponse {
         let norm = Self::normalize_path(path);
         match self.files.get(&norm) {
-            Some(content) => FileResponse::read_ok(norm, content.clone()),
+            Some(entry) => FileResponse::read_ok(norm, entry.content.clone()),
             None => FileResponse::error(norm, FileOp::Read, "file not found"),
         }
     }
@@ -112,8 +137,38 @@ impl VirtualFilesystem {
 
     fn exists(&self, path: &str) -> FileResponse {
         let norm = Self::normalize_path(path);
-        let exists = self.files.contains_key(&norm);
+        let exists = self.files.contains_key(&norm) || self.dirs.contains(&norm);
         FileResponse::exists_result(norm, exists)
+    }
+
+    fn metadata(&self, path: &str) -> FileResponse {
+        let norm = Self::normalize_path(path);
+        match self.files.get(&norm) {
+            Some(entry) => FileResponse::metadata_result(norm, entry.modified_millis),
+            None => FileResponse::error(norm, FileOp::Metadata, "file not found"),
+        }
+    }
+
+    fn glob_files(&self, pattern: &str) -> FileResponse {
+        let pat = match glob::Pattern::new(pattern) {
+            Ok(p) => p,
+            Err(e) => {
+                return FileResponse::error(
+                    pattern.to_string(),
+                    FileOp::Glob,
+                    e.to_string(),
+                )
+            }
+        };
+
+        let mut matches: Vec<String> = self
+            .files
+            .keys()
+            .filter(|path| pat.matches_path(Path::new(path)))
+            .cloned()
+            .collect();
+        matches.sort();
+        FileResponse::glob_result(pattern.to_string(), matches)
     }
 
     fn list_dirs(&self, base: &str, maxdepth: usize, mindepth: usize) -> Vec<String> {
@@ -170,7 +225,7 @@ impl VirtualTransportBackend {
     pub fn read_file(&self, path: &str) -> Option<String> {
         let fs = self.fs.lock().expect("virtual fs lock poisoned");
         let norm = VirtualFilesystem::normalize_path(path);
-        fs.files.get(&norm).cloned()
+        fs.files.get(&norm).map(|entry| entry.content.clone())
     }
 
     fn execute_file(&self, request: &FileRequest) -> FileResponse {
@@ -200,6 +255,8 @@ impl VirtualTransportBackend {
                     error: None,
                 }
             }
+            FileOp::Glob => fs.glob_files(&request.path),
+            FileOp::Metadata => fs.metadata(&request.path),
         }
     }
 

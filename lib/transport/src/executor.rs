@@ -281,6 +281,61 @@ fn execute_file(request: &FileRequest) -> Result<FileResponse, TransportError> {
                 e.to_string(),
             )),
         },
+        FileOp::Glob => {
+            let entries = match glob::glob(&request.path) {
+                Ok(e) => e,
+                Err(e) => {
+                    return Ok(FileResponse::error(
+                        &request.path,
+                        FileOp::Glob,
+                        e.to_string(),
+                    ))
+                }
+            };
+
+            let mut paths: Vec<String> = Vec::new();
+            for entry in entries {
+                match entry {
+                    Ok(path) => {
+                        if path.is_file() {
+                            paths.push(path.to_string_lossy().to_string());
+                        }
+                    }
+                    Err(e) => {
+                        return Ok(FileResponse::error(
+                            &request.path,
+                            FileOp::Glob,
+                            e.to_string(),
+                        ));
+                    }
+                }
+            }
+
+            paths.sort();
+            Ok(FileResponse::glob_result(&request.path, paths))
+        }
+        FileOp::Metadata => match fs::metadata(&request.path) {
+            Ok(meta) => match meta.modified() {
+                Ok(mtime) => {
+                    use std::time::{Duration, UNIX_EPOCH};
+                    let millis = mtime
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap_or(Duration::from_secs(0))
+                        .as_millis() as i64;
+                    Ok(FileResponse::metadata_result(&request.path, millis))
+                }
+                Err(e) => Ok(FileResponse::error(
+                    &request.path,
+                    FileOp::Metadata,
+                    e.to_string(),
+                )),
+            },
+            Err(e) => Ok(FileResponse::error(
+                &request.path,
+                FileOp::Metadata,
+                e.to_string(),
+            )),
+        },
     }
 }
 

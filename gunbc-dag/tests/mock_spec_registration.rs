@@ -1,10 +1,10 @@
-use glob::glob;
-use std::fs;
+use gunbc_ir::resource::ResourceIo;
+use gunbc_lib_transport::TransportIo;
 use std::path::Path;
 
-#[allow(clippy::disallowed_methods)] // Test reads source files to validate registration
 #[test]
 fn all_mock_specs_are_registered() {
+    let io = TransportIo::new();
     let root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("workspace root");
@@ -12,14 +12,20 @@ fn all_mock_specs_are_registered() {
 
     let mut missing = Vec::new();
 
-    for entry in glob(&pattern).expect("glob pattern should be valid") {
-        let path = entry.expect("glob entry should be valid");
+    let paths = io
+        .glob_paths(&pattern)
+        .expect("glob pattern should be valid");
+
+    for path in paths {
         let path_str = path.to_string_lossy();
         if path_str.contains("/target/") || path_str.contains("/buck-out/") {
             continue;
         }
 
-        let content = fs::read_to_string(&path)
+        let content = io
+            .read_file(&path)
+            .map_err(|e| format!("failed to read {}: {}", path.display(), e))
+            .and_then(|bytes| String::from_utf8(bytes).map_err(|e| e.to_string()))
             .unwrap_or_else(|e| panic!("failed to read {}: {}", path.display(), e));
         let lines: Vec<&str> = content.lines().collect();
 

@@ -8,7 +8,7 @@
 > Freshness keys are **derived from declared inputs**, not configured.
 
 ## Ownership
-- [ ] Unassigned
+- [x] Taken by Codex (2026-02-07)
 
 ## Status
 **Phases 1-6 implemented** (2026-02-06). Core infrastructure is in place:
@@ -20,7 +20,6 @@
 - Phase 6: MetaTarget uses ResourceNeed + ResourceTargetMap (replaces PrepLevel/extra_deps/fix_deps)
 
 **Remaining work:**
-- Phase 7: ToolHandle unification (optional)
 - Section 11: Extension candidates (deps.toml, Makefile tracking, etc.)
 
 ## 1. Problem Statement
@@ -817,11 +816,10 @@ MetaTarget::new("test", ...)
 
 **Modify:**
 - `core/ir/src/transport/cli.rs`:
-  - `ToolHandle` becomes type alias for `ResourceHandle<ToolResource>`
-  - Keep backward-compatible API
+  - `ToolHandle` wraps `ResourceHandle<ToolResource>` internally
+  - Keep backward-compatible API and Value encoding (`tool_handle`)
 
-**This is optional/deferred** — can be done incrementally since the pattern
-is already correct for tools.
+**Completed (2026-02-07).**
 
 **Estimated scope:** ~100 LOC modified
 
@@ -891,27 +889,27 @@ is already correct for tools.
 ### Phase 5: ExecMode Integration ✓
 - [x] `ExecMode` enum (in state.rs)
 - [x] `--mode` flag in CI tool
-- [ ] `--mode` flag in testgen (deferred)
-- [ ] `--mode` flag in other bins (deferred)
-- [ ] Deprecate `--check` flag (deferred)
+- [x] `--mode` flag in testgen (2026-02-07)
+- [x] `--mode` flag in other bins (2026-02-07)
+- [x] Deprecate `--check` flag (2026-02-07)
 
 ### Phase 6: Makefile Simplification (Done — 2026-02-06)
 - [x] Remove `extra_deps` from `MetaTarget`
 - [x] Remove `fix_deps` from `MetaTarget` (now `fix_prerequisites`)
 - [x] Remove `PrepLevel` enum
 - [x] Replace `prep_dep_name()` with `ResourceTargetMap::resolve()`
-- [ ] Emit `--mode` in renderer (deferred — not needed until bins accept `--mode`)
+- [x] Emit `--mode` in renderer (2026-02-07)
 - [x] Test generated Makefile (output unchanged, all existing assertions pass)
 - [x] Add `ResourceNeed` + `ResourceTargetMap` types
 - [x] MetaTarget uses `.needs(ResourceId, ExecMode)` builder
 
-### Phase 7: ToolHandle Unification (Optional)
-- [ ] `ToolHandle` as `ResourceHandle<ToolResource>`
+### Phase 7: ToolHandle Unification (Done — 2026-02-07)
+- [x] `ToolHandle` as `ResourceHandle<ToolResource>` (2026-02-07)
 
 ### Phase 8: Cleanup ✓
 - [x] Update TODO_hacks
 - [x] Mark resolved TODOs in TODONE
-- [ ] Update README (deferred)
+- [x] Update README/docs for `--mode` flag (2026-02-07)
 
 ---
 

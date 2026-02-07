@@ -26,20 +26,18 @@ use gunbc_codegen::{
     all_cleanable_outputs, derive_tool_defs, generate_cli_with_import, FileWriter,
 };
 use gunbc_ir::resource::{
-    check_manifest_freshness, codegen_resource_def, update_resource_manifest, FreshnessOptions,
-    ManagedResource, ManifestEntry, ManifestFreshness, ManifestUpdateError, ResourceDef,
-    ResourceError, ResourceManifest,
+    check_manifest_freshness, codegen_resource_def, load_manifest_default,
+    update_resource_manifest, FreshnessOptions, ManagedResource, ManifestEntry, ManifestFreshness,
+    ManifestUpdateError, ResourceDef, ResourceError, ResourceIo, ResourceManifest,
 };
 use gunbc_ir::transport::ci::{
     yaml_block, CacheConfig, CiRenderer, GitHubActionsProvider, GitLabCiProvider, RenderConfig,
 };
 use gunbc_ir::{CODEGEN_BIN_DIR, CODEGEN_LIB_DIR};
+use gunbc_lib_transport::TransportIo;
 use std::collections::{HashMap, HashSet};
 use std::env;
-use std::fs;
-use std::io;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use toml_edit::{value, ArrayOfTables, DocumentMut, Item, Table};
 
 // Force-link crates that register tool targets via inventory.
@@ -95,24 +93,25 @@ fn main() {
 
 /// Full build transaction: codegen → cargo build → setup bin directory
 fn cmd_commit(dry_run: bool) {
+    let io = TransportIo::new();
     println!("gunbc-codegen: commit transaction");
     println!("  mode: {}", if dry_run { "dry-run" } else { "real" });
     println!();
 
     // Step 1: Generate CLIs
     println!("[1/3] Generating CLIs...");
-    if !codegen_clis(dry_run) {
+    if !codegen_clis(dry_run, &io) {
         eprintln!("Codegen failed");
         std::process::exit(1);
     }
 
     // Update resource manifest to record successful codegen
-    update_manifest_after_codegen(dry_run);
+    update_manifest_after_codegen(dry_run, &io);
 
     // Step 2: Build with cargo
     println!("\n[2/3] Building binaries...");
     if !dry_run {
-        match run_cargo_build() {
+        match run_cargo_build(&io) {
             Ok(()) => println!("  cargo build --release: success"),
             Err(e) => {
                 eprintln!("Cargo build failed: {}", e);
@@ -126,7 +125,7 @@ fn cmd_commit(dry_run: bool) {
     // Step 3: Setup bin directory (cross-platform)
     println!("\n[3/3] Setting up bin directory...");
     if !dry_run {
-        match setup_bin_directory() {
+        match setup_bin_directory(&io) {
             Ok(()) => println!("  bin -> target/release (symlink or copy)"),
             Err(e) => {
                 eprintln!("Warning: Could not setup bin directory: {}", e);
@@ -141,45 +140,30 @@ fn cmd_commit(dry_run: bool) {
     println!("\nCommit complete. Binaries available at ./bin/ or ./target/release/");
 }
 
-/// Run cargo build --release
-///
-/// Note: This is the bootstrapper - it can't use the transport pattern
-/// because it needs to build the transport layer first.
-#[allow(clippy::disallowed_methods)]
-fn run_cargo_build() -> io::Result<()> {
-    let status = Command::new("cargo")
-        .args(["build", "--release"])
-        .status()?;
-
-    if status.success() {
-        Ok(())
-    } else {
-        Err(io::Error::other(format!(
-            "cargo exited with status: {}",
-            status
-        )))
-    }
+/// Run cargo build --release via the transport boundary.
+fn run_cargo_build(io: &dyn ResourceIo) -> Result<(), ResourceError> {
+    let args = vec!["build".to_string(), "--release".to_string()];
+    io.command_output("cargo", &args).map(|_| ())
 }
 
-/// Setup bin directory - symlink on Unix, copy on Windows, with fallback
-#[allow(clippy::disallowed_methods)]
-fn setup_bin_directory() -> io::Result<()> {
+/// Setup bin directory - symlink on Unix, marker on Windows.
+fn setup_bin_directory(io: &dyn ResourceIo) -> Result<(), ResourceError> {
     let bin_path = Path::new("bin");
     let target_path = Path::new("target/release");
 
     // Remove existing bin directory/symlink/file
-    if bin_path.exists() || bin_path.is_symlink() {
-        if bin_path.is_dir() && !bin_path.is_symlink() {
-            fs::remove_dir_all(bin_path)?;
-        } else {
-            fs::remove_file(bin_path)?;
-        }
-    }
+    remove_path(io, bin_path)?;
 
     // Try symlink first (works on Unix and some Windows configurations)
     #[cfg(unix)]
     {
-        std::os::unix::fs::symlink(target_path, bin_path)
+        let args = vec![
+            "-s".to_string(),
+            target_path.to_string_lossy().to_string(),
+            bin_path.to_string_lossy().to_string(),
+        ];
+        io.command_output("ln", &args)?;
+        return Ok(());
     }
 
     // On Windows, try to create a directory junction, or fall back to documenting the location
@@ -188,7 +172,8 @@ fn setup_bin_directory() -> io::Result<()> {
         // Windows symlinks require admin privileges, so just create a simple
         // marker file pointing users to the right location
         let marker_content = "Binaries are in target/release/\n";
-        fs::write(bin_path.join(".location"), marker_content)?;
+        let marker_path = bin_path.join(".location");
+        io.write_file(&marker_path, marker_content.as_bytes())?;
         return Ok(());
     }
 
@@ -199,9 +184,48 @@ fn setup_bin_directory() -> io::Result<()> {
     }
 }
 
+fn remove_path(io: &dyn ResourceIo, path: &Path) -> Result<(), ResourceError> {
+    if !io.file_exists(path)? {
+        return Ok(());
+    }
+
+    #[cfg(windows)]
+    {
+        let path_str = path.to_string_lossy().to_string();
+        let _ = io.command_output(
+            "cmd",
+            &[
+                "/C".to_string(),
+                "rmdir".to_string(),
+                "/S".to_string(),
+                "/Q".to_string(),
+                path_str.clone(),
+            ],
+        );
+        let _ = io.command_output(
+            "cmd",
+            &[
+                "/C".to_string(),
+                "del".to_string(),
+                "/F".to_string(),
+                "/Q".to_string(),
+                path_str,
+            ],
+        );
+        return Ok(());
+    }
+
+    #[cfg(not(windows))]
+    {
+        let args = vec!["-rf".to_string(), path.to_string_lossy().to_string()];
+        io.command_output("rm", &args)?;
+        Ok(())
+    }
+}
+
 /// Rollback: remove all generated artifacts
-#[allow(clippy::disallowed_methods)]
 fn cmd_rollback(dry_run: bool) {
+    let io = TransportIo::new();
     println!("gunbc-codegen: rollback transaction");
     println!("  mode: {}", if dry_run { "dry-run" } else { "real" });
     println!();
@@ -211,21 +235,15 @@ fn cmd_rollback(dry_run: bool) {
 
     for target in &targets {
         let path = Path::new(target);
-        if path.exists() || path.is_symlink() {
+        if io.file_exists(path).unwrap_or(false) {
             if dry_run {
                 println!("  would remove: {}", target);
             } else {
-                let result = if path.is_dir() && !path.is_symlink() {
-                    fs::remove_dir_all(path)
-                } else {
-                    fs::remove_file(path)
-                };
-
-                match result {
+                match remove_path(&io, path) {
                     Ok(()) => println!("  removed: {}", target),
                     Err(e) => {
                         eprintln!("  failed to remove {}: {}", target, e);
-                        errors.push((target.clone(), e));
+                        errors.push((target.clone(), e.to_string()));
                     }
                 }
             }
@@ -250,17 +268,18 @@ fn cmd_codegen(dry_run: bool) {
     println!("  mode: {}", if dry_run { "dry-run" } else { "real" });
     println!();
 
-    if !dry_run && should_skip_codegen() {
+    let io = TransportIo::new();
+    if !dry_run && should_skip_codegen(&io) {
         return;
     }
 
-    if !codegen_clis(dry_run) {
+    if !codegen_clis(dry_run, &io) {
         eprintln!("Codegen failed");
         std::process::exit(1);
     }
 
     // Update resource manifest to record successful codegen
-    update_manifest_after_codegen(dry_run);
+    update_manifest_after_codegen(dry_run, &io);
 }
 
 /// Generate CI workflow YAML files.
@@ -271,7 +290,8 @@ fn cmd_cigen(dry_run: bool) {
     println!("  mode: {}", if dry_run { "dry-run" } else { "real" });
     println!();
 
-    let writer = FileWriter::new(dry_run);
+    let io = TransportIo::new();
+    let writer = FileWriter::new(dry_run, &io);
 
     let github_provider = GitHubActionsProvider;
     let gitlab_provider = GitLabCiProvider::default();
@@ -480,9 +500,8 @@ fn ensure_bin_entry(doc: &mut DocumentMut, bin_name: &str, bin_path: &str) -> Re
 }
 
 /// Generate CLI main.rs files for all tools and register binary targets.
-#[allow(clippy::disallowed_methods)]
-fn codegen_clis(dry_run: bool) -> bool {
-    let writer = FileWriter::new(dry_run);
+fn codegen_clis(dry_run: bool, io: &dyn ResourceIo) -> bool {
+    let writer = FileWriter::new(dry_run, io);
     let tools = derive_tool_defs();
     let output_dir = CODEGEN_BIN_DIR;
 
@@ -516,8 +535,19 @@ fn codegen_clis(dry_run: bool) -> bool {
         };
 
         let cargo_toml_path = crate_dir.join("Cargo.toml");
-        let cargo_content = match fs::read_to_string(&cargo_toml_path) {
-            Ok(c) => c,
+        let cargo_content = match io.read_file(&cargo_toml_path) {
+            Ok(bytes) => match String::from_utf8(bytes) {
+                Ok(c) => c,
+                Err(e) => {
+                    errors.push(format!(
+                        "[{}] could not parse {} as UTF-8: {}",
+                        tool.meta.tool_name,
+                        cargo_toml_path.display(),
+                        e
+                    ));
+                    continue;
+                }
+            },
             Err(e) => {
                 errors.push(format!(
                     "[{}] could not read {}: {}",
@@ -691,23 +721,25 @@ impl ManagedResource for CodegenResource {
         &self.def
     }
 
-    fn create(&self, manifest: &ResourceManifest) -> Result<ManifestEntry, ResourceError> {
-        let (key, file_count, input_files) = self.compute_key_with_file_list(manifest)?;
+    fn create(
+        &self,
+        manifest: &ResourceManifest,
+        io: &dyn ResourceIo,
+    ) -> Result<ManifestEntry, ResourceError> {
+        let (key, file_count, input_files) =
+            self.compute_key_with_file_list(manifest, io)?;
         Ok(ManifestEntry::new(key, file_count)
             .with_outputs(self.outputs.clone())
             .with_input_files(input_files))
     }
 }
 
-fn should_skip_codegen() -> bool {
-    let output_exists = codegen_outputs_exist();
-    let manifest = match ResourceManifest::load_default() {
+fn should_skip_codegen(io: &dyn ResourceIo) -> bool {
+    let output_exists = codegen_outputs_exist(io);
+    let manifest = match load_manifest_default(io) {
         Ok(m) if m.is_empty() => return false,
         Ok(m) => m,
         Err(e) => {
-            if e.kind() == std::io::ErrorKind::NotFound {
-                return false;
-            }
             eprintln!("  Warning: could not load resource manifest: {}", e);
             return false;
         }
@@ -721,6 +753,7 @@ fn should_skip_codegen() -> bool {
             output_exists: Some(output_exists),
             use_mtime: true,
         },
+        io,
     ) {
         ManifestFreshness::Fresh => {
             println!("  Codegen outputs are fresh (manifest + outputs). Skipping.");
@@ -738,7 +771,7 @@ fn should_skip_codegen() -> bool {
     }
 }
 
-fn codegen_outputs_exist() -> bool {
+fn codegen_outputs_exist(io: &dyn ResourceIo) -> bool {
     let mut paths: Vec<PathBuf> = Vec::new();
 
     for tool in derive_tool_defs() {
@@ -756,11 +789,13 @@ fn codegen_outputs_exist() -> bool {
         return true;
     }
 
-    paths.iter().all(|path| path.exists())
+    paths
+        .iter()
+        .all(|path| io.file_exists(path).unwrap_or(false))
 }
 
 /// Update the resource manifest after successful codegen.
-fn update_manifest_after_codegen(dry_run: bool) {
+fn update_manifest_after_codegen(dry_run: bool, io: &dyn ResourceIo) {
     if dry_run {
         println!("\n  (dry-run: would update resource manifest)");
         return;
@@ -769,7 +804,7 @@ fn update_manifest_after_codegen(dry_run: bool) {
     println!("\n  Updating resource manifest...");
     let resource = CodegenResource::new();
 
-    match update_resource_manifest(&resource) {
+    match update_resource_manifest(&resource, io) {
         Ok(()) => {
             println!("  Updated resource manifest: target/.resource-manifest.json");
         }

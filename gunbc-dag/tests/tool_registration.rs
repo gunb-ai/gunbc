@@ -1,8 +1,8 @@
-use glob::glob;
 use gunbc_codegen::derive_tool_defs;
+use gunbc_ir::resource::ResourceIo;
+use gunbc_lib_transport::TransportIo;
 use gunbc_tool_registry::iter_tool_targets;
 use std::collections::HashSet;
-use std::fs;
 use std::path::Path;
 
 // Force the linker to include inventory submissions from dependency crates.
@@ -67,7 +67,6 @@ fn derive_tool_defs_matches_inventory() {
 /// Every #[tool_target] builder function has at least one #[testgen_target]
 /// covering it in the same crate. This prevents adding a tool without test
 /// generation coverage.
-#[allow(clippy::disallowed_methods)] // Test reads source files to validate registration
 #[test]
 fn tool_targets_have_testgen_coverage() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -111,20 +110,27 @@ fn tool_targets_have_testgen_coverage() {
 }
 
 /// Extract (builder_fn_name, crate_dir, source_location) from #[tool_target] annotations.
-#[allow(clippy::disallowed_methods)] // Test reads source files to validate registration
 fn collect_tool_target_builders(root: &Path) -> Vec<(String, String, String)> {
+    let io = TransportIo::new();
     let pattern = format!("{}/**/*.rs", root.display());
     let mut results = Vec::new();
 
-    for entry in glob(&pattern).expect("glob") {
-        let path = entry.expect("glob entry");
+    let paths = match io.glob_paths(&pattern) {
+        Ok(p) => p,
+        Err(_) => return results,
+    };
+
+    for path in paths {
         let path_str = path.to_string_lossy();
         if path_str.contains("/target/") || path_str.contains("/buck-out/") {
             continue;
         }
 
-        let content = match fs::read_to_string(&path) {
-            Ok(c) => c,
+        let content = match io.read_file(&path) {
+            Ok(bytes) => match String::from_utf8(bytes) {
+                Ok(c) => c,
+                Err(_) => continue,
+            },
             Err(_) => continue,
         };
         let lines: Vec<&str> = content.lines().collect();
@@ -157,20 +163,27 @@ fn collect_tool_target_builders(root: &Path) -> Vec<(String, String, String)> {
 
 /// Extract builder function names from #[testgen_target] annotations in graph_mock.rs files.
 /// Returns (function_name, crate_dir).
-#[allow(clippy::disallowed_methods)] // Test reads source files to validate registration
 fn collect_testgen_builder_functions(root: &Path) -> Vec<(String, String)> {
+    let io = TransportIo::new();
     let pattern = format!("{}/**/graph_mock.rs", root.display());
     let mut results = Vec::new();
 
-    for entry in glob(&pattern).expect("glob") {
-        let path = entry.expect("glob entry");
+    let paths = match io.glob_paths(&pattern) {
+        Ok(p) => p,
+        Err(_) => return results,
+    };
+
+    for path in paths {
         let path_str = path.to_string_lossy();
         if path_str.contains("/target/") || path_str.contains("/buck-out/") {
             continue;
         }
 
-        let content = match fs::read_to_string(&path) {
-            Ok(c) => c,
+        let content = match io.read_file(&path) {
+            Ok(bytes) => match String::from_utf8(bytes) {
+                Ok(c) => c,
+                Err(_) => continue,
+            },
             Err(_) => continue,
         };
 

@@ -38,16 +38,18 @@
 //! # Example
 //!
 //! ```ignore
-//! use gunbc_ir::resource::{ResourceManifest, ExecMode, ManagedResource};
+//! use gunbc_ir::resource::{load_manifest_default, save_manifest_default, ExecMode, ManagedResource};
+//! use gunbc_lib_transport::TransportIo;
 //!
+//! let io = TransportIo::new();
 //! // Load manifest
-//! let mut manifest = ResourceManifest::load_default()?;
+//! let mut manifest = load_manifest_default(&io)?;
 //!
 //! // Acquire a resource (checks freshness, creates if needed based on mode)
-//! let handle = my_resource.acquire(ExecMode::Ensure, &mut manifest)?;
+//! let handle = my_resource.acquire(ExecMode::Ensure, &mut manifest, &io)?;
 //!
 //! // Save updated manifest
-//! manifest.save_default()?;
+//! save_manifest_default(&io, &manifest)?;
 //! ```
 
 // Submodules
@@ -64,8 +66,9 @@ pub use defs::{codegen_resource_def, CODEGEN_INPUT_FILES, CODEGEN_INPUT_GLOBS};
 pub use handle::{HandleParseError, ResourceHandle};
 pub use gunbc_infra::hash::{ContentHash, HashBuilder};
 pub use managed::{
-    check_manifest_freshness, compute_key_with_files, update_resource_manifest, FreshnessOptions,
-    ManagedResource, ManifestFreshness, ManifestUpdateError, ResourceError, SimpleResource,
+    check_manifest_freshness, compute_key_with_files, load_manifest, load_manifest_default,
+    save_manifest, save_manifest_default, update_resource_manifest, FreshnessOptions, ManagedResource,
+    ManifestFreshness, ManifestUpdateError, ResourceError, ResourceIo, SimpleResource,
 };
 pub use gunbc_infra::manifest::{ManifestEntry, ResourceManifest, DEFAULT_MANIFEST_PATH};
 pub use registry::{ResolutionError, ResourceRegistry};

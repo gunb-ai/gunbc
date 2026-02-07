@@ -35,7 +35,8 @@ use std::marker::PhantomData;
 use std::path::PathBuf;
 
 use crate::resource::{
-    capability_marker, ensure_capability_marker, AccessMode, Resource, ResourceId, ResourceKind,
+    capability_marker, ensure_capability_marker, AccessMode, ContentHash, Resource, ResourceHandle,
+    ResourceId, ResourceKind,
 };
 
 /// Definition of a CLI tool for the upsert pattern.
@@ -84,6 +85,10 @@ impl CliToolDef {
 // ToolHandle - Capability-Based Access
 // ============================================================================
 
+/// Marker type for tool resources (used with `ResourceHandle`).
+#[derive(Debug, Clone, Copy)]
+pub struct ToolResource;
+
 /// A handle to an acquired tool. This is the ONLY way to run tool commands.
 ///
 /// You cannot construct this directly - it only comes from tool acquisition
@@ -95,6 +100,7 @@ impl CliToolDef {
 /// 1. You cannot use a tool without acquiring it first
 /// 2. Acquisition happens via an environment node that provides resources
 /// 3. The handle carries the resolved path to the tool binary
+/// 4. The handle wraps a `ResourceHandle<ToolResource>` for unified resource tracking
 ///
 /// # Example
 ///
@@ -112,6 +118,8 @@ pub struct ToolHandle {
     /// Resolved path to the tool binary (e.g., "/usr/bin/cargo").
     /// For mocked handles, this may be a placeholder path.
     path: PathBuf,
+    /// Unified resource handle (freshness proof + capability marker).
+    resource_handle: ResourceHandle<ToolResource>,
     /// Private field prevents direct construction outside this module.
     _acquired: PhantomData<()>,
 }
@@ -124,9 +132,12 @@ impl ToolHandle {
     /// acquiring a tool. User operation code should receive ToolHandle
     /// values through DAG inputs, not construct them directly.
     pub fn acquire(tool: &'static CliToolDef, path: impl Into<PathBuf>) -> Self {
+        let path = path.into();
+        let resource_handle = tool_resource_handle(tool, &path);
         Self {
             tool,
-            path: path.into(),
+            path,
+            resource_handle,
             _acquired: PhantomData,
         }
     }
@@ -135,9 +146,12 @@ impl ToolHandle {
     ///
     /// The path will be `/mock/{tool_id}` to make it obvious this is not real.
     pub fn mock(tool: &'static CliToolDef) -> Self {
+        let path = PathBuf::from(format!("/mock/{}", tool.id));
+        let resource_handle = tool_resource_handle(tool, &path);
         Self {
             tool,
-            path: PathBuf::from(format!("/mock/{}", tool.id)),
+            path,
+            resource_handle,
             _acquired: PhantomData,
         }
     }
@@ -157,6 +171,16 @@ impl ToolHandle {
         &self.path
     }
 
+    /// Access the underlying unified resource handle.
+    pub fn resource_handle(&self) -> &ResourceHandle<ToolResource> {
+        &self.resource_handle
+    }
+
+    /// Get the freshness key for this tool handle.
+    pub fn key(&self) -> &ContentHash {
+        self.resource_handle.key()
+    }
+
     /// Run the tool with the given arguments.
     /// This is the ONLY way to execute a tool - you need the handle.
     pub fn run(&self, args: &[&str]) -> CliToolOp {
@@ -165,7 +189,7 @@ impl ToolHandle {
 
     /// Get the resource ID for this tool handle.
     pub fn resource_id(&self) -> ResourceId {
-        self.tool.resource_id()
+        self.resource_handle.resource_id().clone()
     }
 }
 
@@ -261,9 +285,12 @@ impl TryFrom<&crate::Value> for ToolHandle {
             message: format!("Unknown tool ID: {}", tool_id),
         })?;
 
+        let resource_handle = tool_resource_handle(tool, &path);
+
         Ok(ToolHandle {
             tool,
             path,
+            resource_handle,
             _acquired: PhantomData,
         })
     }
@@ -271,7 +298,7 @@ impl TryFrom<&crate::Value> for ToolHandle {
 
 impl Resource for ToolHandle {
     fn resource_id(&self) -> ResourceId {
-        self.tool.resource_id()
+        self.resource_handle.resource_id().clone()
     }
 
     fn access_mode(&self) -> AccessMode {
@@ -281,6 +308,14 @@ impl Resource for ToolHandle {
     fn kind(&self) -> ResourceKind {
         ResourceKind::Capability
     }
+}
+
+fn tool_resource_handle(
+    tool: &'static CliToolDef,
+    path: &PathBuf,
+) -> ResourceHandle<ToolResource> {
+    let key = ContentHash::from_path(path);
+    ResourceHandle::acquire(tool.resource_id(), key)
 }
 
 /// Look up a tool definition by ID.

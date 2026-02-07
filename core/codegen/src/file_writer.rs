@@ -1,7 +1,6 @@
 //! File writing with dry-run support.
 
-use std::fs;
-use std::io;
+use gunbc_ir::resource::{ResourceError, ResourceIo};
 use std::path::Path;
 
 /// Result of a file write operation.
@@ -41,24 +40,25 @@ impl WriteResult {
 
 /// File writer with dry-run support.
 #[derive(Debug, Clone)]
-pub struct FileWriter {
+pub struct FileWriter<'a> {
     dry_run: bool,
+    io: &'a dyn ResourceIo,
 }
 
-impl FileWriter {
+impl<'a> FileWriter<'a> {
     /// Create a new file writer.
-    pub fn new(dry_run: bool) -> Self {
-        Self { dry_run }
+    pub fn new(dry_run: bool, io: &'a dyn ResourceIo) -> Self {
+        Self { dry_run, io }
     }
 
     /// Create a real-mode file writer.
-    pub fn real() -> Self {
-        Self::new(false)
+    pub fn real(io: &'a dyn ResourceIo) -> Self {
+        Self::new(false, io)
     }
 
     /// Create a dry-run file writer.
-    pub fn dry_run() -> Self {
-        Self::new(true)
+    pub fn dry_run(io: &'a dyn ResourceIo) -> Self {
+        Self::new(true, io)
     }
 
     /// Check if this writer is in dry-run mode.
@@ -73,25 +73,21 @@ impl FileWriter {
         &self,
         path: impl AsRef<Path>,
         content: impl Into<String>,
-    ) -> io::Result<WriteResult> {
+    ) -> Result<WriteResult, ResourceError> {
         let path = path.as_ref();
         let content = content.into();
         let path_str = path.display().to_string();
 
         // Check if content differs from existing file
-        let changed = match fs::read_to_string(path) {
-            Ok(existing) => existing != content,
+        let changed = match self.io.read_file(path) {
+            Ok(existing) => String::from_utf8(existing).map(|s| s != content).unwrap_or(true),
             Err(_) => true, // File doesn't exist, so it's a change
         };
 
         if self.dry_run {
             Ok(WriteResult::dry_run(path_str, content, changed))
         } else {
-            // Create parent directories if needed
-            if let Some(parent) = path.parent() {
-                fs::create_dir_all(parent)?;
-            }
-            fs::write(path, &content)?;
+            self.io.write_file(path, content.as_bytes())?;
             Ok(WriteResult::written(path_str, content, changed))
         }
     }
@@ -101,14 +97,14 @@ impl FileWriter {
         &self,
         path: impl AsRef<Path>,
         content: impl Into<String>,
-    ) -> io::Result<WriteResult> {
+    ) -> Result<WriteResult, ResourceError> {
         let path = path.as_ref();
         let content = content.into();
         let path_str = path.display().to_string();
 
         // Check if content differs from existing file
-        let changed = match fs::read_to_string(path) {
-            Ok(existing) => existing != content,
+        let changed = match self.io.read_file(path) {
+            Ok(existing) => String::from_utf8(existing).map(|s| s != content).unwrap_or(true),
             Err(_) => true,
         };
 
@@ -124,18 +120,9 @@ impl FileWriter {
         if self.dry_run {
             Ok(WriteResult::dry_run(path_str, content, true))
         } else {
-            if let Some(parent) = path.parent() {
-                fs::create_dir_all(parent)?;
-            }
-            fs::write(path, &content)?;
+            self.io.write_file(path, content.as_bytes())?;
             Ok(WriteResult::written(path_str, content, true))
         }
-    }
-}
-
-impl Default for FileWriter {
-    fn default() -> Self {
-        Self::real()
     }
 }
 
@@ -169,61 +156,89 @@ pub fn format_diff(old: &str, new: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::env;
+
+    #[derive(Default)]
+    struct MemoryIo {
+        files: std::cell::RefCell<std::collections::HashMap<std::path::PathBuf, Vec<u8>>>,
+    }
+
+    impl ResourceIo for MemoryIo {
+        fn read_file(&self, path: &Path) -> Result<Vec<u8>, ResourceError> {
+            self.files
+                .borrow()
+                .get(path)
+                .cloned()
+                .ok_or_else(|| ResourceError::Io(std::io::Error::other("missing file")))
+        }
+
+        fn write_file(&self, path: &Path, contents: &[u8]) -> Result<(), ResourceError> {
+            self.files
+                .borrow_mut()
+                .insert(path.to_path_buf(), contents.to_vec());
+            Ok(())
+        }
+
+        fn file_exists(&self, path: &Path) -> Result<bool, ResourceError> {
+            Ok(self.files.borrow().contains_key(path))
+        }
+
+        fn glob_paths(&self, _pattern: &str) -> Result<Vec<std::path::PathBuf>, ResourceError> {
+            Ok(Vec::new())
+        }
+
+        fn command_output(&self, _command: &str, _args: &[String]) -> Result<Vec<u8>, ResourceError> {
+            Err(ResourceError::Io(std::io::Error::other(
+                "command output not supported",
+            )))
+        }
+
+        fn file_mtime(&self, _path: &Path) -> Result<std::time::SystemTime, ResourceError> {
+            Err(ResourceError::Io(std::io::Error::other(
+                "mtime not supported",
+            )))
+        }
+    }
 
     #[test]
     fn test_dry_run_doesnt_write() {
-        let writer = FileWriter::dry_run();
-        let temp_path = env::temp_dir().join("gunbc-test-dry-run.txt");
+        let io = MemoryIo::default();
+        let writer = FileWriter::dry_run(&io);
+        let path = std::path::PathBuf::from("dry-run.txt");
 
-        // Clean up any existing file
-        let _ = fs::remove_file(&temp_path);
-
-        let result = writer.write(&temp_path, "test content").unwrap();
+        let result = writer.write(&path, "test content").unwrap();
 
         assert!(!result.written);
         assert!(result.changed);
         assert_eq!(result.content, "test content");
-
-        // File should not exist
-        assert!(!temp_path.exists());
+        assert!(!io.file_exists(&path).unwrap());
     }
 
     #[test]
     fn test_real_mode_writes() {
-        let writer = FileWriter::real();
-        let temp_path = env::temp_dir().join("gunbc-test-real-write.txt");
+        let io = MemoryIo::default();
+        let writer = FileWriter::real(&io);
+        let path = std::path::PathBuf::from("real-write.txt");
 
-        // Clean up any existing file
-        let _ = fs::remove_file(&temp_path);
-
-        let result = writer.write(&temp_path, "test content").unwrap();
+        let result = writer.write(&path, "test content").unwrap();
 
         assert!(result.written);
         assert!(result.changed);
 
-        // File should exist with correct content
-        let content = fs::read_to_string(&temp_path).unwrap();
-        assert_eq!(content, "test content");
-
-        // Clean up
-        let _ = fs::remove_file(&temp_path);
+        let content = io.read_file(&path).unwrap();
+        assert_eq!(String::from_utf8(content).unwrap(), "test content");
     }
 
     #[test]
     fn test_write_if_changed_skips_unchanged() {
-        let writer = FileWriter::real();
-        let temp_path = env::temp_dir().join("gunbc-test-unchanged.txt");
+        let io = MemoryIo::default();
+        let writer = FileWriter::real(&io);
+        let path = std::path::PathBuf::from("unchanged.txt");
 
-        // Write initial content
-        fs::write(&temp_path, "same content").unwrap();
+        io.write_file(&path, b"same content").unwrap();
 
-        let result = writer.write_if_changed(&temp_path, "same content").unwrap();
+        let result = writer.write_if_changed(&path, "same content").unwrap();
 
         assert!(!result.written);
         assert!(!result.changed);
-
-        // Clean up
-        let _ = fs::remove_file(&temp_path);
     }
 }

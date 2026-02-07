@@ -296,13 +296,13 @@ but two verification gaps remain.
 
 #### Phase V1: Confirm `make verify` runs in CI
 
-`make verify` exists and runs all generators in `--check` mode:
+`make verify` exists and runs all generators in `--mode=verify` mode:
 ```makefile
 verify: ensure-codegen
-    cargo run -p gunbc-dag --bin gunbc-makegen --release -- --check
-    cargo run -p gunbc-dag --bin gunbc-bootstrap --release -- --check
-    cargo run -p gunbc-dag --bin gunbc-testgen --release -- --check
-    cargo run -p gunbc-dag --bin gunbc-pragma --release -- --check
+    cargo run -p gunbc-dag --bin gunbc-makegen --release -- --mode=verify
+    cargo run -p gunbc-dag --bin gunbc-bootstrap --release -- --mode=verify
+    cargo run -p gunbc-dag --bin gunbc-testgen --release -- --mode=verify
+    cargo run -p gunbc-dag --bin gunbc-pragma --release -- --mode=verify
 ```
 
 **Verify**: this target is actually invoked in CI. If not, add it to the CI
@@ -316,7 +316,7 @@ output.
 
 #### Phase V2: Clippy config CI verification
 
-The clippy model generates `clippy.toml` (verified via `gunbc-pragma --check`
+The clippy model generates `clippy.toml` (verified via `gunbc-pragma --mode=verify`
 in `make verify`). This is already covered IF `make verify` runs in CI
 (Phase V1).
 

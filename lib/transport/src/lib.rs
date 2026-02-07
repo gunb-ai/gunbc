@@ -37,6 +37,7 @@ pub mod backend;
 pub mod cli;
 pub mod executor;
 pub mod ops;
+pub mod resource_io;
 pub mod test_backend;
 
 // STRUCTURAL ENFORCEMENT: TransportOps + transport-layer CLI helpers only
@@ -44,6 +45,7 @@ pub mod test_backend;
 pub use credential::{CredentialOp, GitHubEnvVarProvider, LlmEnvVarProvider, MockCredentialProvider};
 pub use backend::{TransportBackend, TransportBackendGuard};
 pub use ops::TransportOps;
+pub use resource_io::TransportIo;
 
 #[cfg(test)]
 mod pragma_lint;

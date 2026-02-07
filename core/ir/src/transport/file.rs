@@ -17,6 +17,10 @@ pub enum FileOp {
     Exists,
     /// Create directory
     CreateDir,
+    /// Expand a glob pattern into file paths (content = newline-separated list)
+    Glob,
+    /// Fetch file metadata (content = modified millis since epoch)
+    Metadata,
 }
 
 /// File operation request.
@@ -110,6 +114,26 @@ impl FileRequest {
         }
     }
 
+    /// Create a glob expansion request.
+    pub fn glob(pattern: impl Into<String>) -> Self {
+        Self {
+            path: pattern.into(),
+            operation: FileOp::Glob,
+            content: None,
+            create_parents: false,
+        }
+    }
+
+    /// Create a metadata request.
+    pub fn metadata(path: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            operation: FileOp::Metadata,
+            content: None,
+            create_parents: false,
+        }
+    }
+
     /// Set whether to create parent directories.
     pub fn with_create_parents(mut self, create: bool) -> Self {
         self.create_parents = create;
@@ -165,6 +189,34 @@ impl FileResponse {
             error: None,
         }
     }
+
+    /// Create a glob response (newline-separated list in content).
+    pub fn glob_result(path: impl Into<String>, paths: Vec<String>) -> Self {
+        let mut content = paths.join("\n");
+        if !content.is_empty() {
+            content.push('\n');
+        }
+        Self {
+            path: path.into(),
+            operation: FileOp::Glob,
+            success: true,
+            content: Some(content),
+            exists: None,
+            error: None,
+        }
+    }
+
+    /// Create a metadata response (modified millis in content).
+    pub fn metadata_result(path: impl Into<String>, modified_millis: i64) -> Self {
+        Self {
+            path: path.into(),
+            operation: FileOp::Metadata,
+            success: true,
+            content: Some(modified_millis.to_string()),
+            exists: None,
+            error: None,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -188,5 +240,19 @@ mod tests {
         let resp = FileResponse::read_ok("/tmp/test.txt", "file content");
         assert!(resp.success);
         assert_eq!(resp.content, Some("file content".to_string()));
+    }
+
+    #[test]
+    fn test_file_request_glob() {
+        let req = FileRequest::glob("src/**/*.rs");
+        assert_eq!(req.operation, FileOp::Glob);
+        assert_eq!(req.path, "src/**/*.rs");
+    }
+
+    #[test]
+    fn test_file_request_metadata() {
+        let req = FileRequest::metadata("Cargo.toml");
+        assert_eq!(req.operation, FileOp::Metadata);
+        assert_eq!(req.path, "Cargo.toml");
     }
 }

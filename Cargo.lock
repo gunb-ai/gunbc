@@ -276,7 +276,6 @@ dependencies = [
 name = "gunbc-infra"
 version = "0.1.0"
 dependencies = [
- "glob",
  "hex",
  "serde",
  "serde_json",

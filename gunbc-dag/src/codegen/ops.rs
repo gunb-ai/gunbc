@@ -7,12 +7,14 @@ use gunbc_exec::{
 };
 use gunbc_ir::cargo::{CargoCommand, CargoInvocation, Subcommand};
 use gunbc_ir::resource::{
-    check_manifest_freshness, codegen_resource_def, ExecMode, FreshnessOptions, ManifestFreshness,
-    ManagedResource, ManifestEntry, ResourceDef, ResourceError, ResourceManifest,
+    check_manifest_freshness, codegen_resource_def, load_manifest_default, ExecMode,
+    FreshnessOptions, ManifestFreshness, ManagedResource, ManifestEntry, ResourceDef, ResourceError,
+    ResourceIo, ResourceManifest,
 };
 use gunbc_ir::transport::{FileRequest, ShellRequest, TransportRequest};
 use gunbc_ir::Value;
 use gunbc_ir::{CODEGEN_BIN_DIR, CODEGEN_STAMP_PATH};
+use gunbc_lib_transport::TransportIo;
 use std::collections::HashMap;
 
 /// Operations for the codegen DAG.
@@ -141,7 +143,11 @@ impl ManagedResource for CodegenResourceCheck {
         &self.def
     }
 
-    fn create(&self, _manifest: &ResourceManifest) -> Result<ManifestEntry, ResourceError> {
+    fn create(
+        &self,
+        _manifest: &ResourceManifest,
+        _io: &dyn ResourceIo,
+    ) -> Result<ManifestEntry, ResourceError> {
         Err(ResourceError::CreateFailed(self.def.id.clone(), "not supported".into()))
     }
 }
@@ -152,16 +158,11 @@ impl ManagedResource for CodegenResourceCheck {
 /// Also verifies that representative output files exist (manifest might be
 /// restored from cache without the actual generated files).
 fn check_codegen_manifest_freshness(output_exists: bool) -> ManifestFreshness {
-    let manifest = match ResourceManifest::load_default() {
+    let io = TransportIo::new();
+    let manifest = match load_manifest_default(&io) {
         Ok(m) if m.is_empty() => return ManifestFreshness::Missing,
         Ok(m) => m,
-        Err(e) => {
-            let kind = e.kind();
-            if kind == std::io::ErrorKind::NotFound {
-                return ManifestFreshness::Missing;
-            }
-            return ManifestFreshness::Error(format!("manifest load failed: {}", e));
-        }
+        Err(e) => return ManifestFreshness::Error(format!("manifest load failed: {}", e)),
     };
 
     let resource = CodegenResourceCheck::new();
@@ -172,6 +173,7 @@ fn check_codegen_manifest_freshness(output_exists: bool) -> ManifestFreshness {
             output_exists: Some(output_exists),
             use_mtime: true,
         },
+        &io,
     )
 }
 

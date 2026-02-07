@@ -15,8 +15,6 @@
 //! registrations from all tool crates are linked in.
 
 #![deny(dead_code)]
-// Codegen is the bootstrapper - can't use transport layer (circular dependency)
-#![allow(clippy::disallowed_methods)]
 
 pub mod cli_gen;
 pub mod file_writer;
