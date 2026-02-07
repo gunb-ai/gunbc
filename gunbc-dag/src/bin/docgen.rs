@@ -13,7 +13,6 @@ use std::env;
 use std::process;
 
 const AB_DOC_PATH: &str = "docs/ab-writing-workflows.md";
-const AB_GENERATED_DOC_PATH: &str = "docs/ab-writing-workflows-generated.md";
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -55,7 +54,6 @@ fn main() {
 fn build_dry_run_mocks() -> BoundaryMocks {
     let mut mocks = BoundaryMocks::new();
     set_chain_mocks(&mut mocks, "ab_workflows_doc", AB_DOC_PATH);
-    set_chain_mocks(&mut mocks, "ab_workflows_generated_doc", AB_GENERATED_DOC_PATH);
     mocks
 }
 

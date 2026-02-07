@@ -43,9 +43,8 @@ impl Executable for DocgenGraphOp {
 
 /// Build the docgen graph.
 ///
-/// Two content-upsert chains:
+/// One content-upsert chain:
 /// - docs/ab-writing-workflows.md (handwritten template + generated sections)
-/// - docs/ab-writing-workflows-generated.md (verbatim generated code)
 pub fn build_docgen_graph() -> Result<Dag<DocgenGraphOp>, BuilderError> {
     let mut builder = DagBuilder::new();
 
@@ -77,34 +76,6 @@ pub fn build_docgen_graph() -> Result<Dag<DocgenGraphOp>, BuilderError> {
         chain_ab_doc.prepare_write.in_port("path"),
     )?;
 
-    // Generate companion doc (verbatim generated artifacts)
-    let render_ab_generated = builder.add_root_node(Node::opaque(
-        "render_ab_workflows_generated_doc",
-        vec![],
-        vec![scalar("content", "String"), scalar("path", "String")],
-        DocgenGraphOp::Docgen(DocgenOp::RenderAbWorkflowsGeneratedDoc),
-    ))?;
-
-    let chain_ab_generated = add_content_upsert_chain(
-        &mut builder,
-        "ab_workflows_generated_doc",
-        &render_ab_generated,
-        "content",
-        DocgenGraphOp::PrepareFileRead(PrepareFileReadOp),
-        DocgenGraphOp::PrepareFileWrite(PrepareFileWriteOp),
-        DocgenGraphOp::Blob(BlobOps::CompareContent),
-        DocgenGraphOp::Transport(TransportOps::Execute),
-    )?;
-
-    builder.add_edge(
-        render_ab_generated.out("path"),
-        chain_ab_generated.prepare_read.in_port("path"),
-    )?;
-    builder.add_edge(
-        render_ab_generated.out("path"),
-        chain_ab_generated.prepare_write.in_port("path"),
-    )?;
-
     Ok(builder.build())
 }
 
@@ -116,10 +87,10 @@ mod tests {
     #[test]
     fn test_graph_builds() {
         let dag = build_docgen_graph().expect("graph should build");
-        // 2 render nodes + 2 content upsert chains (5 nodes each) = 12 nodes
-        assert_eq!(dag.nodes.len(), 12);
-        // Each chain wires 8 internal edges + 2 path edges, total 10 per chain
-        assert_eq!(dag.edges.len(), 20);
+        // 1 render node + 1 content upsert chain (5 nodes) = 6 nodes
+        assert_eq!(dag.nodes.len(), 6);
+        // One chain wires 8 internal edges + 2 path edges
+        assert_eq!(dag.edges.len(), 10);
     }
 
     #[test]
@@ -127,6 +98,5 @@ mod tests {
         let dag = build_docgen_graph().expect("graph should build");
         let boundaries = detect_boundaries(&dag);
         assert!(boundaries.is_boundary_node(&"execute_ab_workflows_doc_transport".into()));
-        assert!(boundaries.is_boundary_node(&"execute_ab_workflows_generated_doc_transport".into()));
     }
 }
