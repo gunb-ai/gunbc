@@ -783,10 +783,112 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                     ),
                 ],
             };
+
+            let build_port_membership_loop = |declared_binding: &str,
+                                              candidate_binding: &str,
+                                              declared_iter: Expr,
+                                              inferred_iter: Expr,
+                                              message: &str|
+             -> Stmt {
+                let cond = Expr::var(candidate_binding)
+                    .field("name")
+                    .bin_op(
+                        "==",
+                        Expr::var(declared_binding).field("name"),
+                    )
+                    .bin_op(
+                        "&&",
+                        Expr::var(candidate_binding)
+                            .field("type_id")
+                            .bin_op(
+                                "==",
+                                Expr::var(declared_binding).field("type_id"),
+                            ),
+                    )
+                    .bin_op(
+                        "&&",
+                        Expr::var(candidate_binding)
+                            .field("cardinality")
+                            .bin_op(
+                                "==",
+                                Expr::var(declared_binding).field("cardinality"),
+                            ),
+                    );
+
+                Stmt::For {
+                    binding: declared_binding.to_string(),
+                    iter: declared_iter,
+                    body: vec![
+                        Stmt::let_mut("found", Expr::BoolLit(false)),
+                        Stmt::For {
+                            binding: candidate_binding.to_string(),
+                            iter: inferred_iter,
+                            body: vec![Stmt::Expr(Expr::If {
+                                cond: Box::new(cond),
+                                then_body: vec![Stmt::Expr(Expr::raw("found = true"))],
+                                else_body: None,
+                            })],
+                        },
+                        Stmt::Assert(Assert::True {
+                            expr: Expr::var("found"),
+                            message: message.to_string(),
+                        }),
+                    ],
+                }
+            };
+
+            let inferred_test = TestFn {
+                name: "test_inferred_signature_matches_declared".to_string(),
+                doc: vec!["Inferred signature matches the declared inputs/outputs.".to_string()],
+                body: vec![
+                    Stmt::let_bind("dag", Expr::var(graph_builder_fn)),
+                    Stmt::let_bind("sig", Expr::var(signature_fn)),
+                    Stmt::let_bind(
+                        "inferred",
+                        Expr::call(
+                            "gunbc_ir::infer_signature",
+                            vec![Expr::var("dag").ref_of()],
+                        ),
+                    ),
+                    Stmt::Assert(Assert::Eq {
+                        left: Expr::var("sig")
+                            .field("inputs")
+                            .method("len", vec![]),
+                        right: Expr::var("inferred")
+                            .field("inputs")
+                            .method("len", vec![]),
+                        message: "declared inputs length matches inferred".to_string(),
+                    }),
+                    build_port_membership_loop(
+                        "declared_input",
+                        "inferred_input",
+                        Expr::var("sig").field("inputs").method("iter", vec![]),
+                        Expr::var("inferred").field("inputs").method("iter", vec![]),
+                        "declared input should exist in inferred signature",
+                    ),
+                    Stmt::Assert(Assert::Eq {
+                        left: Expr::var("sig")
+                            .field("outputs")
+                            .method("len", vec![]),
+                        right: Expr::var("inferred")
+                            .field("outputs")
+                            .method("len", vec![]),
+                        message: "declared outputs length matches inferred".to_string(),
+                    }),
+                    build_port_membership_loop(
+                        "declared_output",
+                        "inferred_output",
+                        Expr::var("sig").field("outputs").method("iter", vec![]),
+                        Expr::var("inferred").field("outputs").method("iter", vec![]),
+                        "declared output should exist in inferred signature",
+                    ),
+                ],
+            };
+
             file.sections.push(TestSection {
                 title: "Signature Validation".to_string(),
                 notes: Vec::new(),
-                tests: vec![test],
+                tests: vec![test, inferred_test],
             });
         }
 

@@ -876,3 +876,8 @@ mod generated_tests_secrets {
 mod generated_tests_credential {
     include!("generated_tests_credential.rs");
 }
+
+#[cfg(test)]
+mod generated_tests_credential_anthropic {
+    include!("generated_tests_credential_anthropic.rs");
+}

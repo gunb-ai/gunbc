@@ -290,23 +290,27 @@ pub fn testgen_target(args: TokenStream, input: TokenStream) -> TokenStream {
         }
 
         gunbc_testgen_registry::inventory::submit! {
-            gunbc_testgen_registry::TestgenTarget {
+            gunbc_testgen_registry::DagSpecDef {
                 origin_crate: env!("CARGO_CRATE_NAME"),
                 name: #name,
-                output_path: #output,
-                module_name: #module,
                 dag_builder_call: stringify!(#builder),
                 mock_spec_path: concat!(module_path!(), "::", stringify!(#fn_ident), "()"),
                 signature_path: #signature_tokens,
-                boundary_tests: #boundary_tests,
-                chain_tests: #chain_tests,
-                flow_tests: #flow,
-                window_max_nodes: #window_tokens,
-                test_class: #class_tokens,
-                fermi_cost: #fermi_tokens,
-                requires: #requires_tokens,
-                secrets: #secrets_tokens,
-                tool_name: #tool_tokens,
+                meta: gunbc_testgen_registry::DagSpecMeta {
+                    output_path: #output,
+                    module_name: #module,
+                    tool_name: #tool_tokens,
+                },
+                testgen: gunbc_testgen_registry::DagSpecTestgen {
+                    boundary_tests: #boundary_tests,
+                    chain_tests: #chain_tests,
+                    flow_tests: #flow,
+                    window_max_nodes: #window_tokens,
+                    test_class: #class_tokens,
+                    fermi_cost: #fermi_tokens,
+                    requires: #requires_tokens,
+                    secrets: #secrets_tokens,
+                },
                 generate: #gen_ident,
             }
         }

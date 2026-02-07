@@ -3,13 +3,24 @@
 //! Produces documentation content by stitching together handwritten text
 //! and live code/test excerpts.
 
-use gunbc_exec::{ExecError, Executable, OutputMap};
+use gunbc_exec::{require_response, require_str, ExecError, Executable, OutputMap, TransportResponseExt};
+use gunbc_ir::transport::{FileOp, FileRequest, TransportRequest};
 use gunbc_ir::Value;
 use std::collections::HashMap;
-use std::fs;
-use std::path::{Path, PathBuf};
 
-const AB_DOC_PATH: &str = "docs/ab-writing-workflows.md";
+pub const AB_DOC_PATH: &str = "docs/ab-writing-workflows.md";
+pub const CLIPPY_GRAPH_MOCK_PATH: &str = "lib/tools/clippy/src/graph_mock.rs";
+pub const CLIPPY_GENERATED_TESTS_PATH: &str = "lib/tools/clippy/src/generated_tests.rs";
+pub const CLIPPY_CONFIG_PATH: &str = "lib/tools/clippy/src/config.rs";
+pub const CLIPPY_GRAPH_PATH: &str = "lib/tools/clippy/src/graph.rs";
+pub const CLIPPY_LIB_PATH: &str = "lib/tools/clippy/src/lib.rs";
+pub const CLIPPY_LINT_PATH: &str = "lib/tools/clippy/src/lint.rs";
+pub const CLIPPY_OPS_PATH: &str = "lib/tools/clippy/src/ops.rs";
+pub const CLIPPY_POLICY_PATH: &str = "lib/tools/clippy/src/policy.rs";
+pub const GIST_GRAPH_MOCK_PATH: &str = "lib/tools/gist/src/graph_mock.rs";
+pub const GIST_GENERATED_TESTS_SNAPSHOT_PATH: &str = "lib/tools/gist/src/generated_tests_snapshot.rs";
+pub const GIST_GENERATED_INTEGRATION_TESTS_PATH: &str = "lib/tools/gist/tests/generated_tests.rs";
+pub const GIST_CODEGEN_CLI_PATH: &str = "target/codegen/bin/gist/main.rs";
 const MARKER_CLIPPY_MOCK_SPEC: &str = "clippy_mock_spec";
 const MARKER_CLIPPY_GENERATED_TEST_EXCERPT: &str = "clippy_generated_test_excerpt";
 const MARKER_APPENDIX_A_CLIPPY: &str = "appendix_a_clippy";
@@ -22,63 +33,194 @@ const MARKER_APPENDIX_D: &str = "appendix_d";
 #[derive(Debug, Clone)]
 pub enum DocgenOp {
     RenderAbWorkflowsDoc,
+    PrepareFileRead { path: String },
+    ParseFileContent { path: String, allow_missing: bool },
 }
 
 impl Executable for DocgenOp {
-    fn execute(&self, _inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         match self {
-            DocgenOp::RenderAbWorkflowsDoc => execute_render_ab_workflows_doc(),
+            DocgenOp::RenderAbWorkflowsDoc => execute_render_ab_workflows_doc(inputs),
+            DocgenOp::PrepareFileRead { path } => execute_prepare_file_read(path),
+            DocgenOp::ParseFileContent { path, allow_missing } => {
+                execute_parse_file_content(path, *allow_missing, inputs)
+            }
         }
     }
 }
 
-fn execute_render_ab_workflows_doc() -> Result<HashMap<String, Value>, ExecError> {
-    let content = render_ab_workflows_doc()?;
+#[derive(Debug, Clone)]
+struct DocgenSources {
+    template: String,
+    clippy_graph_mock: String,
+    clippy_generated_tests: String,
+    clippy_config: String,
+    clippy_graph: String,
+    clippy_lib: String,
+    clippy_lint: String,
+    clippy_ops: String,
+    clippy_policy: String,
+    gist_graph_mock: String,
+    gist_generated_tests_snapshot: String,
+    gist_generated_integration_tests: String,
+    gist_codegen_cli: String,
+}
+
+impl DocgenSources {
+    fn from_inputs(inputs: HashMap<String, Value>) -> Result<Self, ExecError> {
+        let template = require_str(&inputs, "template")?.to_string();
+        let clippy_graph_mock = require_str(&inputs, "clippy_graph_mock")?.to_string();
+        let clippy_generated_tests = require_str(&inputs, "clippy_generated_tests")?.to_string();
+        let clippy_config = require_str(&inputs, "clippy_config")?.to_string();
+        let clippy_graph = require_str(&inputs, "clippy_graph")?.to_string();
+        let clippy_lib = require_str(&inputs, "clippy_lib")?.to_string();
+        let clippy_lint = require_str(&inputs, "clippy_lint")?.to_string();
+        let clippy_ops = require_str(&inputs, "clippy_ops")?.to_string();
+        let clippy_policy = require_str(&inputs, "clippy_policy")?.to_string();
+        let gist_graph_mock = require_str(&inputs, "gist_graph_mock")?.to_string();
+        let gist_generated_tests_snapshot =
+            require_str(&inputs, "gist_generated_tests_snapshot")?.to_string();
+        let gist_generated_integration_tests =
+            require_str(&inputs, "gist_generated_integration_tests")?.to_string();
+        let gist_codegen_cli = require_str(&inputs, "gist_codegen_cli")?.to_string();
+
+        Ok(Self {
+            template,
+            clippy_graph_mock,
+            clippy_generated_tests,
+            clippy_config,
+            clippy_graph,
+            clippy_lib,
+            clippy_lint,
+            clippy_ops,
+            clippy_policy,
+            gist_graph_mock,
+            gist_generated_tests_snapshot,
+            gist_generated_integration_tests,
+            gist_codegen_cli,
+        })
+    }
+}
+
+fn execute_prepare_file_read(path: &str) -> Result<HashMap<String, Value>, ExecError> {
+    let request = TransportRequest::File(FileRequest::read(path));
+    OutputMap::new()
+        .request("request", request)
+        .bool("skip", false)
+        .ok()
+}
+
+fn execute_parse_file_content(
+    path: &str,
+    allow_missing: bool,
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    let response = require_response(&inputs, "response")?;
+    let file_resp = response.require_file()?;
+
+    if file_resp.operation != FileOp::Read {
+        return Err(ExecError::new(format!(
+            "docgen: expected file read response for {path}"
+        )));
+    }
+
+    if !file_resp.success {
+        let err = file_resp.error.as_deref().unwrap_or("unknown error");
+        if allow_missing {
+            return OutputMap::new()
+                .str("content", format!("// Missing file: {path} ({err})"))
+                .ok();
+        }
+        return Err(ExecError::new(format!("docgen: failed to read {path}: {err}")));
+    }
+
+    let content = match &file_resp.content {
+        Some(content) => content.clone(),
+        None => {
+            if allow_missing {
+                format!("// Missing file: {path} (empty response)")
+            } else {
+                return Err(ExecError::new(format!(
+                    "docgen: missing content for {path}"
+                )));
+            }
+        }
+    };
+
+    OutputMap::new().str("content", content).ok()
+}
+
+fn execute_render_ab_workflows_doc(
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    let sources = DocgenSources::from_inputs(inputs)?;
+    let content = render_ab_workflows_doc(&sources)?;
     OutputMap::new()
         .str("content", content)
         .str("path", AB_DOC_PATH)
         .ok()
 }
 
-fn render_ab_workflows_doc() -> Result<String, ExecError> {
-    let template = read_to_string(AB_DOC_PATH)
-        .map_err(|e| ExecError::new(format!("docgen: failed to read {AB_DOC_PATH}: {e}")))?;
-
-    let mut output = template;
-    output = replace_section(&output, MARKER_CLIPPY_MOCK_SPEC, &render_clippy_mock_spec()?)?;
+fn render_ab_workflows_doc(sources: &DocgenSources) -> Result<String, ExecError> {
+    let mut output = sources.template.clone();
+    output = replace_section(
+        &output,
+        MARKER_CLIPPY_MOCK_SPEC,
+        &render_clippy_mock_spec(&sources.clippy_graph_mock)?,
+    )?;
     output = replace_section(
         &output,
         MARKER_CLIPPY_GENERATED_TEST_EXCERPT,
-        &render_clippy_generated_test_excerpt()?,
+        &render_clippy_generated_test_excerpt(&sources.clippy_generated_tests)?,
     )?;
-    output = replace_section(&output, MARKER_APPENDIX_A_CLIPPY, &render_appendix_a_clippy()?)?;
-    output = replace_section(&output, MARKER_APPENDIX_A_GIST, &render_appendix_a_gist()?)?;
-    output = replace_section(&output, MARKER_APPENDIX_B, &render_appendix_b()?)?;
+    output = replace_section(
+        &output,
+        MARKER_APPENDIX_A_CLIPPY,
+        &render_appendix_a_clippy(&sources.clippy_generated_tests)?,
+    )?;
+    output = replace_section(
+        &output,
+        MARKER_APPENDIX_A_GIST,
+        &render_appendix_a_gist(&sources.gist_generated_tests_snapshot)?,
+    )?;
+    output = replace_section(&output, MARKER_APPENDIX_B, &render_appendix_b(sources)?)?;
     output = replace_section(&output, MARKER_APPENDIX_C, &render_appendix_c())?;
-    output = replace_section(&output, MARKER_APPENDIX_D, &render_appendix_d())?;
+    output = replace_section(&output, MARKER_APPENDIX_D, &render_appendix_d(sources))?;
 
     Ok(output)
 }
 
-fn render_appendix_d() -> String {
+fn render_appendix_d(sources: &DocgenSources) -> String {
     let sections = [
-        ("Clippy MockSpec", "lib/tools/clippy/src/graph_mock.rs"),
+        (
+            "Clippy MockSpec",
+            CLIPPY_GRAPH_MOCK_PATH,
+            sources.clippy_graph_mock.as_str(),
+        ),
         (
             "Clippy Generated Tests",
-            "lib/tools/clippy/src/generated_tests.rs",
+            CLIPPY_GENERATED_TESTS_PATH,
+            sources.clippy_generated_tests.as_str(),
         ),
-        ("Gist MockSpec", "lib/tools/gist/src/graph_mock.rs"),
+        (
+            "Gist MockSpec",
+            GIST_GRAPH_MOCK_PATH,
+            sources.gist_graph_mock.as_str(),
+        ),
         (
             "Gist Generated Tests (Snapshot)",
-            "lib/tools/gist/src/generated_tests_snapshot.rs",
+            GIST_GENERATED_TESTS_SNAPSHOT_PATH,
+            sources.gist_generated_tests_snapshot.as_str(),
         ),
         (
             "Gist Generated Integration Tests",
-            "lib/tools/gist/tests/generated_tests.rs",
+            GIST_GENERATED_INTEGRATION_TESTS_PATH,
+            sources.gist_generated_integration_tests.as_str(),
         ),
         (
             "Gist Generated CLI (Snapshot)",
-            "target/codegen/bin/gist/main.rs",
+            GIST_CODEGEN_CLI_PATH,
+            sources.gist_codegen_cli.as_str(),
         ),
     ];
 
@@ -101,12 +243,7 @@ fn render_appendix_d() -> String {
     out.push("</details>".to_string());
     out.push(String::new());
 
-    for (idx, (title, path)) in sections.iter().enumerate() {
-        let content = match read_to_string(path) {
-            Ok(s) => s,
-            Err(e) => format!("// Missing file: {path} ({e})"),
-        };
-
+    for (idx, (title, path, content)) in sections.iter().enumerate() {
         out.push(String::new());
         let section_num = idx + 1;
         let anchor = match *title {
@@ -134,15 +271,13 @@ fn render_appendix_d() -> String {
     out.join("\n")
 }
 
-fn render_clippy_mock_spec() -> Result<String, ExecError> {
-    let src = read_to_string("lib/tools/clippy/src/graph_mock.rs")?;
-    let snippet = strip_module_docs(&src);
+fn render_clippy_mock_spec(src: &str) -> Result<String, ExecError> {
+    let snippet = strip_module_docs(src);
     Ok(wrap_rust(&snippet))
 }
 
-fn render_clippy_generated_test_excerpt() -> Result<String, ExecError> {
-    let src = read_to_string("lib/tools/clippy/src/generated_tests.rs")?;
-    let mut snippet = extract_fn(&src, "test_dryrun_completion")
+fn render_clippy_generated_test_excerpt(src: &str) -> Result<String, ExecError> {
+    let mut snippet = extract_fn(src, "test_dryrun_completion")
         .ok_or_else(|| ExecError::new("docgen: missing test_dryrun_completion in clippy generated tests"))?;
     snippet = strip_guard_test(&snippet);
     snippet = normalize_colons(&snippet);
@@ -152,13 +287,12 @@ fn render_clippy_generated_test_excerpt() -> Result<String, ExecError> {
     ))
 }
 
-fn render_appendix_a_clippy() -> Result<String, ExecError> {
-    render_clippy_generated_test_excerpt()
+fn render_appendix_a_clippy(src: &str) -> Result<String, ExecError> {
+    render_clippy_generated_test_excerpt(src)
 }
 
-fn render_appendix_a_gist() -> Result<String, ExecError> {
-    let src = read_to_string("lib/tools/gist/src/generated_tests_snapshot.rs")?;
-    let mut snippet = extract_fn(&src, "test_transport_interception")
+fn render_appendix_a_gist(src: &str) -> Result<String, ExecError> {
+    let mut snippet = extract_fn(src, "test_transport_interception")
         .ok_or_else(|| ExecError::new("docgen: missing test_transport_interception in gist generated tests"))?;
     snippet = strip_guard_test(&snippet);
     snippet = normalize_colons(&snippet);
@@ -168,14 +302,24 @@ fn render_appendix_a_gist() -> Result<String, ExecError> {
     ))
 }
 
-fn render_appendix_b() -> Result<String, ExecError> {
-    let clippy_generated = collect_tests_from_file("lib/tools/clippy/src/generated_tests.rs")?;
-    let clippy_manual = collect_tests_from_dir(
-        Path::new("lib/tools/clippy/src"),
-        &["generated_tests.rs"],
-    )?;
-    let gist_generated = collect_tests_from_file("lib/tools/gist/src/generated_tests_snapshot.rs")?;
-    let gist_integration = collect_tests_from_file("lib/tools/gist/tests/generated_tests.rs")?;
+fn render_appendix_b(sources: &DocgenSources) -> Result<String, ExecError> {
+    let clippy_generated = collect_tests_from_content(&sources.clippy_generated_tests, false);
+    let mut clippy_manual = Vec::new();
+    let manual_sources = [
+        &sources.clippy_config,
+        &sources.clippy_graph,
+        &sources.clippy_graph_mock,
+        &sources.clippy_lib,
+        &sources.clippy_lint,
+        &sources.clippy_ops,
+        &sources.clippy_policy,
+    ];
+    for src in manual_sources {
+        clippy_manual.extend(collect_tests_from_content(src, true));
+    }
+    clippy_manual.sort_by(|a, b| a.name.cmp(&b.name));
+    let gist_generated = collect_tests_from_content(&sources.gist_generated_tests_snapshot, false);
+    let gist_integration = collect_tests_from_content(&sources.gist_generated_integration_tests, false);
 
     let mut out = Vec::new();
 
@@ -396,52 +540,10 @@ fn normalize_colons(src: &str) -> String {
     s
 }
 
-fn read_to_string(path: &str) -> Result<String, ExecError> {
-    fs::read_to_string(path).map_err(|e| ExecError::new(format!("failed to read {path}: {e}")))
-}
-
 #[derive(Debug, Clone)]
 struct TestCase {
     name: String,
     description: String,
-}
-
-fn collect_tests_from_file(path: &str) -> Result<Vec<TestCase>, ExecError> {
-    let content = read_to_string(path)?;
-    Ok(collect_tests_from_content(&content, false))
-}
-
-fn collect_tests_from_dir(dir: &Path, exclude: &[&str]) -> Result<Vec<TestCase>, ExecError> {
-    let mut files = Vec::new();
-    collect_rs_files(dir, &mut files)?;
-    files.sort();
-
-    let mut tests = Vec::new();
-    for path in files {
-        if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
-            if exclude.iter().any(|ex| ex == &name) {
-                continue;
-            }
-        }
-        let content = read_to_string(path.to_str().unwrap_or_default())?;
-        tests.extend(collect_tests_from_content(&content, true));
-    }
-
-    tests.sort_by(|a, b| a.name.cmp(&b.name));
-    Ok(tests)
-}
-
-fn collect_rs_files(dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), ExecError> {
-    for entry in fs::read_dir(dir).map_err(|e| ExecError::new(format!("failed to read {dir:?}: {e}")))? {
-        let entry = entry.map_err(|e| ExecError::new(format!("failed to read dir entry: {e}")))?;
-        let path = entry.path();
-        if path.is_dir() {
-            collect_rs_files(&path, out)?;
-        } else if path.extension().and_then(|s| s.to_str()) == Some("rs") {
-            out.push(path);
-        }
-    }
-    Ok(())
 }
 
 fn collect_tests_from_content(content: &str, allow_non_test_attr: bool) -> Vec<TestCase> {

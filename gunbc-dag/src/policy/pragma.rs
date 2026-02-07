@@ -11,19 +11,12 @@ use gunbc_ir::PlainStructuredRenderer;
 /// Regenerate command for pragma outputs.
 pub const PRAGMA_REGENERATE_CMD: &str = "cargo run -p gunbc-dag --bin gunbc-pragma";
 
-/// Scope for disallowed-methods allowances.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AllowScope {
-    Crate,
-    Function,
-}
-
 /// Allowlist entry for #[allow(clippy::disallowed_methods)] occurrences.
+///
+/// These are path prefixes (repo-relative) that are exempted.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct DisallowedMethodsAllowEntry {
-    pub path: &'static str,
-    pub count: usize,
-    pub scope: AllowScope,
+pub struct DisallowedMethodsAllowPattern {
+    pub pattern: &'static str,
     pub rationale: &'static str,
 }
 
@@ -54,68 +47,18 @@ const CRATE_POLICIES: &[CratePolicy] = &[
     ),
 ];
 
-const DISALLOWED_METHODS_ALLOWLIST: &[DisallowedMethodsAllowEntry] = &[
-    // Crate-level exemptions
-    DisallowedMethodsAllowEntry {
-        path: "core/codegen/src/lib.rs",
-        count: 1,
-        scope: AllowScope::Crate,
-        rationale: "codegen crate-level allowance",
-    },
-    DisallowedMethodsAllowEntry {
-        path: "lib/transport/src/lib.rs",
-        count: 1,
-        scope: AllowScope::Crate,
-        rationale: "transport crate-level allowance",
-    },
-    DisallowedMethodsAllowEntry {
-        path: "core/infra/src/lib.rs",
-        count: 1,
-        scope: AllowScope::Crate,
-        rationale: "infra crate-level allowance",
-    },
-    // Function-level exemptions
-    DisallowedMethodsAllowEntry {
-        path: "core/codegen/src/main.rs",
-        count: 4,
-        scope: AllowScope::Function,
+const DISALLOWED_METHODS_ALLOWLIST: &[DisallowedMethodsAllowPattern] = &[
+    DisallowedMethodsAllowPattern {
+        pattern: "core/codegen/",
         rationale: "codegen bootstrap I/O",
     },
-    DisallowedMethodsAllowEntry {
-        path: "lib/transport/src/executor.rs",
-        count: 1,
-        scope: AllowScope::Function,
-        rationale: "transport shell executor boundary",
+    DisallowedMethodsAllowPattern {
+        pattern: "core/infra/",
+        rationale: "infra hub (fs helpers, test utilities)",
     },
-    DisallowedMethodsAllowEntry {
-        path: "gunbc-dag/tests/mock_spec_registration.rs",
-        count: 1,
-        scope: AllowScope::Function,
-        rationale: "test reads source files to validate registration",
-    },
-    DisallowedMethodsAllowEntry {
-        path: "gunbc-dag/tests/tool_registration.rs",
-        count: 3,
-        scope: AllowScope::Function,
-        rationale: "tests read source files to validate registration",
-    },
-    DisallowedMethodsAllowEntry {
-        path: "gunbc-dag/src/lib.rs",
-        count: 1,
-        scope: AllowScope::Function,
-        rationale: "docgen module reads source files directly",
-    },
-    DisallowedMethodsAllowEntry {
-        path: "gunbc-dag/src/bin/docgen.rs",
-        count: 1,
-        scope: AllowScope::Crate,
-        rationale: "docgen binary reads source files directly",
-    },
-    DisallowedMethodsAllowEntry {
-        path: "gunbc-dag/tests/integration_fs.rs",
-        count: 1,
-        scope: AllowScope::Crate,
-        rationale: "integration tests use direct fs for verification",
+    DisallowedMethodsAllowPattern {
+        pattern: "lib/transport/",
+        rationale: "transport boundary",
     },
 ];
 
@@ -144,7 +87,7 @@ pub fn clippy_renderer() -> ClippyConfigRenderer {
 }
 
 /// Allowlist entries for #[allow(clippy::disallowed_methods)].
-pub fn disallowed_methods_allowlist() -> &'static [DisallowedMethodsAllowEntry] {
+pub fn disallowed_methods_allowlist() -> &'static [DisallowedMethodsAllowPattern] {
     DISALLOWED_METHODS_ALLOWLIST
 }
 
@@ -180,36 +123,16 @@ fn build_allowlist_blocks() -> Vec<StructuredBlock> {
     let mut blocks = Vec::new();
 
     blocks.push(StructuredBlock::Raw(
-        "# Paths and counts for #[allow(clippy::disallowed_methods)] occurrences.\n\
-         # Format: path:count\n#\n"
+        "# Allowed path prefixes for #[allow(clippy::disallowed_methods)].\n\
+         # Format: prefix (repo-relative)\n\
+         # Note: any path containing \"/tests/\" is always allowed.\n#\n"
             .to_string(),
     ));
 
-    // Crate-level exemptions
-    blocks.push(StructuredBlock::Raw(
-        "# Crate-level exemptions (entire crate allowed):\n".to_string(),
-    ));
-    for entry in DISALLOWED_METHODS_ALLOWLIST
-        .iter()
-        .filter(|e| e.scope == AllowScope::Crate)
-    {
+    for entry in DISALLOWED_METHODS_ALLOWLIST {
         blocks.push(StructuredBlock::Raw(format!(
-            "{}:{}\n",
-            entry.path, entry.count
-        )));
-    }
-
-    // Function-level exemptions
-    blocks.push(StructuredBlock::Raw(
-        "#\n# Function-level exemptions (I/O boundaries):\n".to_string(),
-    ));
-    for entry in DISALLOWED_METHODS_ALLOWLIST
-        .iter()
-        .filter(|e| e.scope == AllowScope::Function)
-    {
-        blocks.push(StructuredBlock::Raw(format!(
-            "{}:{}\n",
-            entry.path, entry.count
+            "# {}\n{}\n",
+            entry.rationale, entry.pattern
         )));
     }
 

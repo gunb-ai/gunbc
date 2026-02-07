@@ -441,6 +441,20 @@ Testgen coverage: Requires **multi-phase flows** (Phase 5 windowed
 testing) AND **stateful mocking** (revoke changes subsequent responses).
 Mark: `// TESTGEN-ABSORB: phase-5-windows, stateful-mocking`.
 
+### Live integration tests (CI-gated, manual initially)
+
+These verify **real credentials work end-to-end**. They are gated by
+`RUN_LIVE_INTEGRATION=1`, secrets present, and `GUNBC_TEST_MAX_COST`.
+
+- **OpenAI live** — executes the LLM DAG in `ExecutionMode::Real`,
+  asserts non-empty `parse.content`.
+- **Anthropic live** — same as above for Anthropic.
+- **GitHub live** — once a GitHub credential DAG exists, call a benign
+  endpoint (e.g., `/rate_limit`) and assert 200.
+
+These start as manual tests; migrate into generated tests when live
+testgen mode lands.
+
 ### Testgen improvements needed (cross-reference)
 
 These are additions to `testgen-improvements.md` that credential
@@ -465,6 +479,75 @@ of this doc — we write manual tests now and absorb later.
   for stateful transport mocking
 - `TODO 10.3`: Generate credential lifecycle test suites when
   `CredentialOp` nodes are detected in a DAG (Bucket C extension)
+
+---
+
+## Existing Credential Inventory (Repo)
+
+**As of 2026-02-07**, these are the credential sources already present
+in the codebase. Each must have **generated lifecycle tests** that run
+in CI (hermetic, no real secrets required).
+
+### LLM Providers (used in `lib/llm-ops`, `lib/review`)
+
+- **OpenAI** — `OPENAI_API_KEY`, scheme = Bearer  
+  Resolved by `ResolveAuth` → `CredentialOp::from_inputs`.
+- **Anthropic** — `ANTHROPIC_API_KEY`, scheme = Header(`x-api-key`)  
+  Resolved by `ResolveAuth` → `CredentialOp::from_inputs`.
+
+**CI requirement (hermetic):** generated tests cover credential
+acquisition, timeout, refresh, and revoke via `ResourceType::Credential`
+simulation.
+
+**CI requirement (live):** **Real-mode** integration tests
+exercise OpenAI + Anthropic with actual API calls when secrets are
+available. These are gated by:
+
+- `RUN_LIVE_INTEGRATION=1`
+- `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` present
+- `GUNBC_TEST_MAX_COST` (default `S` → live tests run only in `test-all`)
+
+### GitHub (env-var provider exists, but DAG usage is missing)
+
+- **GitHub token** — `GITHUB_TOKEN`, scheme = Bearer  
+  Provider exists (`GitHubEnvVarProvider`), but no DAG currently wires
+  `credential:github` into a transport flow.
+
+**CI requirement:** add a minimal credential DAG or wire an existing
+GitHub API flow to emit `credential:github` so testgen can generate
+lifecycle tests (acquire/timeout/refresh/revoke) in CI.
+
+### Live External Tests (optional, gated)
+
+Real secret usage should be **opt-in** only:
+
+- `RUN_LIVE_INTEGRATION=1` required.
+- Secrets must be present (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`,
+  and optionally `GITHUB_TOKEN`).
+- If missing, tests **skip with reason** (do not fail).
+
+---
+
+## Acceptance Criteria
+
+- All auth flows use `Secret`, `AuthScheme`, `Credential`, and
+  `CredentialProvider`; env-var auth variants are removed from request
+  builders and resolved at the DAG boundary via `CredentialOp`.
+- All DAG graphs include `CredentialOp` where auth is required, and
+  DryRun can execute the full credential lifecycle without touching the
+  real environment.
+- Testgen generates **integration tests** for credential lifecycle
+  flows (OpenAI, Anthropic, GitHub env-var provider; GitHub App when
+  implemented) using stateful mocks and windowed phases once available.
+- Live OpenAI/Anthropic integration tests run the DAG in
+  `ExecutionMode::Real` and validate non-empty outputs when secrets
+  are present (guarded by `RUN_LIVE_INTEGRATION` and Fermi cost).
+- Generated integration tests run in the **default CI/test path** in a
+  hermetic mode (mocked transport + mocked creds), with a clear opt-in
+  path for **real external tests** (GitHub App / LLM keys) that are
+  skipped when secrets are not configured.
+- Manual tests marked `// TESTGEN-ABSORB` are removed once equivalent
+  generated integration tests exist.
 
 ---
 

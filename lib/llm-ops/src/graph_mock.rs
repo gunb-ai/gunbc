@@ -724,71 +724,132 @@ pub fn credential_lifecycle_mock_spec() -> MockSpec {
         .skip_node_example("credential_env")
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+/// Mock specification for Anthropic credential lifecycle testing.
+///
+/// Tests credential acquire/timeout/refresh/revoke behavior via resource simulation.
+#[gunbc_testgen_registry_macros::testgen_target(
+    name = "llm-credential-lifecycle-anthropic",
+    output = "lib/llm-ops/src/generated_tests_credential_anthropic.rs",
+    module = "llm_credential_lifecycle_anthropic_generated_tests",
+    builder = "crate::graph::build_chat_completion_graph()",
+    no_boundary_tests
+)]
+pub fn credential_lifecycle_anthropic_mock_spec() -> MockSpec {
+    let response = mock::mock_anthropic_response("Credential lifecycle test response.");
 
-    #[test]
-    fn test_openai_mock_spec_content() {
-        let spec = openai_mock_spec();
-        let content = spec.get_boundary_mock("parse", "content").unwrap();
-        if let Value::Str(s) = content {
-            assert!(s.contains("looks good"));
-        } else {
-            panic!("Expected string content");
-        }
-    }
-
-    #[test]
-    fn test_anthropic_mock_spec_content() {
-        let spec = anthropic_mock_spec();
-        let content = spec.get_boundary_mock("parse", "content").unwrap();
-        if let Value::Str(s) = content {
-            assert!(s.contains("doc comment"));
-        } else {
-            panic!("Expected string content");
-        }
-    }
-
-    #[test]
-    fn test_code_review_mock_spec() {
-        let spec = code_review_mock_spec();
-        let content = spec.get_boundary_mock("parse", "content").unwrap();
-        if let Value::Str(s) = content {
-            assert!(s.contains("Code Review"));
-            assert!(s.contains("Missing error handling"));
-        } else {
-            panic!("Expected string content");
-        }
-    }
-
-    #[test]
-    fn test_secret_api_key_mock_spec() {
-        let spec = secret_api_key_mock_spec();
-
-        // Secret value should be present in credential map
-        let cred = spec.get_boundary_mock("credential_env", "credential:llm").unwrap();
-        let token = match cred {
-            Value::Map(map) => map.get("token").cloned().unwrap(),
-            _ => panic!("Expected credential:llm to be a map"),
-        };
-        assert!(matches!(token, Value::Secret(_)));
-
-        // Secret should be redacted in display
-        assert_eq!(format!("{}", token), "***");
-
-        // API key lease should be present
-        assert!(spec.get_resource("api:openai_key").is_some());
-    }
-
-    #[test]
-    fn test_secret_lease_expiration() {
-        let spec = secret_api_key_mock_spec();
-        let resource = spec.get_resource("api:openai_key").unwrap();
-
-        // Should not timeout before duration
-        assert!(!resource.should_timeout(1_800_000)); // 30 min
-                                                      // Should timeout after duration
-        assert!(resource.should_timeout(3_600_001)); // 1 hour + 1ms
-    }
+    MockSpec::new("llm-credential-lifecycle-anthropic")
+        // Input mocks for DAG entry points
+        .input_mock("prepare", "provider", Value::Str("anthropic".into()))
+        .input_mock(
+            "prepare",
+            "model",
+            Value::Str("claude-sonnet-4-20250514".into()),
+        )
+        .input_mock(
+            "prepare",
+            "messages",
+            Value::Json(serde_json::json!([
+                {"role": "user", "content": "Credential lifecycle test"}
+            ])),
+        )
+        // Env: resolved auth token
+        .boundary(
+            "credential_env",
+            "credential:llm",
+            mock_credential(),
+        )
+        // Transport mock
+        .transport_mock(
+            "execute",
+            "response",
+            Value::Response(gunbc_ir::transport::TransportResponse::Rest(
+                response.clone(),
+            )),
+        )
+        .boundary(
+            "execute",
+            "response",
+            Value::Response(gunbc_ir::transport::TransportResponse::Rest(response)),
+        )
+        .boundary(
+            "parse",
+            "content",
+            Value::Str("Credential lifecycle test response.".into()),
+        )
+        .boundary(
+            "parse",
+            "model",
+            Value::Str("claude-sonnet-4-20250514".into()),
+        )
+        .boundary("parse", "finish_reason", Value::Str("Stop".into()))
+        .boundary("parse", "input_tokens", Value::Int(10))
+        .boundary("parse", "output_tokens", Value::Int(20))
+        .expects_input("provider", InputConstraint::NonEmpty)
+        .expects_input("model", InputConstraint::NonEmpty)
+        // Credential resource: basic (acquire + timeout)
+        .resource_credential("credential:llm", Some(3_600_000))
+        // Credential resource: refreshable (acquire + timeout + refresh)
+        .resource_credential_refreshable("credential:llm:refreshable", 3_600_000, 3_600_000)
+        // Node I/O examples
+        .node_example(
+            NodeExample::new("prepare")
+                .input("provider", Value::Str("anthropic".into()))
+                .input("model", Value::Str("claude-sonnet-4-20250514".into()))
+                .input("messages", Value::Str("Credential lifecycle test".into()))
+                .output("request", OutputMatcher::non_empty())
+                .output(
+                    "provider",
+                    OutputMatcher::exact(Value::Str("anthropic".into())),
+                )
+                .description("Credential lifecycle prepare emits REST request and echoes provider"),
+        )
+        .node_example(
+            NodeExample::new("resolve_auth")
+                .input("provider", Value::Str("anthropic".into()))
+                .output(
+                    "service",
+                    OutputMatcher::exact(Value::Str("anthropic".into())),
+                )
+                .output(
+                    "env_var",
+                    OutputMatcher::exact(Value::Str("ANTHROPIC_API_KEY".into())),
+                )
+                .output(
+                    "scheme",
+                    OutputMatcher::exact(Value::Str("header".into())),
+                )
+                .output(
+                    "header_name",
+                    OutputMatcher::exact(Value::Str("x-api-key".into())),
+                )
+                .description("Resolve auth maps Anthropic provider to API key env var"),
+        )
+        .node_example(
+            NodeExample::new("parse")
+                .input("provider", Value::Str("anthropic".into()))
+                .input(
+                    "response",
+                    Value::Response(gunbc_ir::transport::TransportResponse::Rest(
+                        mock::mock_anthropic_response("Credential lifecycle test response."),
+                    )),
+                )
+                .output(
+                    "content",
+                    OutputMatcher::exact(Value::Str("Credential lifecycle test response.".into())),
+                )
+                .output(
+                    "model",
+                    OutputMatcher::exact(Value::Str("claude-sonnet-4-20250514".into())),
+                )
+                .description("Credential lifecycle parse extracts content from REST response"),
+        )
+        .node_example(
+            NodeExample::new("parse")
+                .input("provider", Value::Str("anthropic".into()))
+                .input("response", Value::Skipped)
+                .output("content", OutputMatcher::Any)
+                .output("model", OutputMatcher::Any)
+                .description("Parse handles skipped transport response"),
+        )
+        .skip_node_example("credential_env")
 }

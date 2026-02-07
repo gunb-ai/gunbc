@@ -183,14 +183,3 @@ pub fn pragma_mock_spec() -> MockSpec {
         .skip_node_example("prepare_write_policy")
         .skip_node_example("compare_policy_content")
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_typed_builder_rejects_wrong_slot() {
-        let dag = build_pragma_graph().expect("graph should build");
-        gunbc_test::assert_typed_builder_rejects_invalid_slot(&dag, "pragma");
-    }
-}

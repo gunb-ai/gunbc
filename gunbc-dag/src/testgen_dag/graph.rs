@@ -9,13 +9,13 @@ use gunbc_ir::{add_content_upsert_chain, build::*, BuilderError, Dag, DagBuilder
 use gunbc_lib_blob::BlobOps;
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::{PrepareFileReadOp, PrepareFileWriteOp};
-use gunbc_testgen_registry::TestgenTarget;
+use gunbc_testgen_registry::DagSpecDef;
 use std::path::Path;
 
 /// The operation type for testgen graphs - a union of testgen ops, primitives, and transport.
 pub type TestgenGraphOp = FileOpsGraph<TestgenOp>;
 
-/// Build the testgen graph from discovered targets.
+/// Build the testgen graph from discovered DAG specs.
 ///
 /// For each target, builds a 6-node upsert chain:
 /// ```text
@@ -25,7 +25,7 @@ pub type TestgenGraphOp = FileOpsGraph<TestgenOp>;
 ///
 /// All chains are independent (parallel roots).
 pub fn build_testgen_graph(
-    targets: &[&TestgenTarget],
+    targets: &[&DagSpecDef],
     output_dir: &Path,
 ) -> Result<Dag<TestgenGraphOp>, BuilderError> {
     let mut builder = DagBuilder::new();

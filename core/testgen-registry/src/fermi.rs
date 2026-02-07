@@ -15,10 +15,17 @@ pub fn infer_test_class(analysis: &DagAnalysis) -> TestClass {
     }
 }
 
-pub fn infer_fermi_cost(class: TestClass) -> FermiCost {
-    let _ = class;
-    // Default to XS unless explicitly overridden by the test target.
-    FermiCost::XS
+pub fn infer_fermi_cost(class: TestClass, requires: &[String]) -> FermiCost {
+    match class {
+        TestClass::Integration => {
+            if requires.iter().any(|r| r == "http" || r == "tcp") {
+                FermiCost::M
+            } else {
+                FermiCost::S
+            }
+        }
+        TestClass::Hermetic | TestClass::Unit => FermiCost::XS,
+    }
 }
 
 pub fn infer_requires(spec: &MockSpec) -> Vec<String> {

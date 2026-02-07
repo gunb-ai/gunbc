@@ -18,19 +18,19 @@ use gunbc_exec::Executable;
 use gunbc_ir::Dag;
 use gunbc_test::{MockSpec, TestClass, FermiCost};
 
-/// A registered testgen target (auto-discovered via inventory).
-///
-/// Uses &'static str fields so registration can be const.
-#[derive(Debug)]
-pub struct TestgenTarget {
-    /// Originating crate name (for crate:: path rewriting)
-    pub origin_crate: &'static str,
-    pub name: &'static str,
+/// Metadata for a DAG spec (output and ownership details).
+#[derive(Debug, Clone)]
+pub struct DagSpecMeta {
     pub output_path: &'static str,
     pub module_name: &'static str,
-    pub dag_builder_call: &'static str,
-    pub mock_spec_path: &'static str,
-    pub signature_path: Option<&'static str>,
+    /// Tool name for CLI contract test generation. When set, entrypoints
+    /// are looked up from `all_tools()` and a CLI contract test is emitted.
+    pub tool_name: Option<&'static str>,
+}
+
+/// Testgen configuration for a DAG spec.
+#[derive(Debug, Clone)]
+pub struct DagSpecTestgen {
     pub boundary_tests: bool,
     pub chain_tests: bool,
     pub flow_tests: bool,
@@ -39,13 +39,25 @@ pub struct TestgenTarget {
     pub fermi_cost: Option<FermiCost>,
     pub requires: Option<&'static [&'static str]>,
     pub secrets: Option<&'static [&'static str]>,
-    /// Tool name for CLI contract test generation. When set, entrypoints
-    /// are looked up from `all_tools()` and a CLI contract test is emitted.
-    pub tool_name: Option<&'static str>,
+}
+
+/// A registered DAG spec (auto-discovered via inventory).
+///
+/// Uses &'static str fields so registration can be const.
+#[derive(Debug)]
+pub struct DagSpecDef {
+    /// Originating crate name (for crate:: path rewriting)
+    pub origin_crate: &'static str,
+    pub name: &'static str,
+    pub dag_builder_call: &'static str,
+    pub mock_spec_path: &'static str,
+    pub signature_path: Option<&'static str>,
+    pub meta: DagSpecMeta,
+    pub testgen: DagSpecTestgen,
     pub generate: fn(&TestgenTargetDef) -> String,
 }
 
-impl TestgenTarget {
+impl DagSpecDef {
     /// Convert this registration into a TestgenTargetDef (owned strings).
     pub fn to_def(&self) -> TestgenTargetDef {
         fn to_crate_path(path: &str, origin: &str) -> String {
@@ -59,29 +71,43 @@ impl TestgenTarget {
             }
         }
 
-        let mut def = TestgenTargetDef::new(self.name, self.output_path, self.module_name);
+        let mut def = TestgenTargetDef::new(self.name, self.meta.output_path, self.meta.module_name);
         def.dag_builder_call = to_crate_path(self.dag_builder_call, self.origin_crate);
         def.mock_spec_path = to_crate_path(self.mock_spec_path, self.origin_crate);
         def.signature_path =
             self.signature_path.map(|s| to_crate_path(s, self.origin_crate));
-        def.boundary_tests = self.boundary_tests;
-        def.chain_tests = self.chain_tests;
-        def.flow_tests = self.flow_tests;
-        def.window_max_nodes = self.window_max_nodes;
-        def.test_class = self.test_class;
-        def.fermi_cost = self.fermi_cost;
-        def.requires = self.requires.map(|items| items.iter().map(|s| s.to_string()).collect());
-        def.secrets = self.secrets.map(|items| items.iter().map(|s| s.to_string()).collect());
-        def.tool_name = self.tool_name.map(|s| s.to_string());
+        def.boundary_tests = self.testgen.boundary_tests;
+        def.chain_tests = self.testgen.chain_tests;
+        def.flow_tests = self.testgen.flow_tests;
+        def.window_max_nodes = self.testgen.window_max_nodes;
+        def.test_class = self.testgen.test_class;
+        def.fermi_cost = self.testgen.fermi_cost;
+        def.requires = self
+            .testgen
+            .requires
+            .map(|items| items.iter().map(|s| s.to_string()).collect());
+        def.secrets = self
+            .testgen
+            .secrets
+            .map(|items| items.iter().map(|s| s.to_string()).collect());
+        def.tool_name = self.meta.tool_name.map(|s| s.to_string());
         def
     }
 }
 
-inventory::collect!(TestgenTarget);
+inventory::collect!(DagSpecDef);
 
-/// Iterate over all registered testgen targets.
-pub fn iter_targets() -> impl Iterator<Item = &'static TestgenTarget> {
-    inventory::iter::<TestgenTarget>.into_iter()
+/// Iterate over all registered DAG specs.
+pub fn iter_dag_specs() -> impl Iterator<Item = &'static DagSpecDef> {
+    inventory::iter::<DagSpecDef>.into_iter()
+}
+
+/// Backwards-compatible alias: TestgenTarget == DagSpecDef.
+pub type TestgenTarget = DagSpecDef;
+
+/// Backwards-compatible iterator for testgen targets.
+pub fn iter_targets() -> impl Iterator<Item = &'static DagSpecDef> {
+    iter_dag_specs()
 }
 
 /// Shared test generation helper: builds test code from a DAG + MockSpec + config.
@@ -96,7 +122,7 @@ pub fn generate_target<T: Executable + Clone>(
     let analysis = analyze_dag(&dag);
     let inferred_class = infer_test_class(&analysis);
     let inferred_requires = infer_requires(&spec);
-    let inferred_cost = infer_fermi_cost(inferred_class);
+    let inferred_cost = infer_fermi_cost(inferred_class, &inferred_requires);
 
     let test_class = config.test_class.unwrap_or(inferred_class);
     let fermi_cost = config.fermi_cost.unwrap_or(inferred_cost);

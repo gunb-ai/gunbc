@@ -419,31 +419,3 @@ diff --git a/src/main.rs b/src/main.rs
                 .description("parses LLM answer into review output"),
         )
 }
-
-// ============================================================================
-// Tests
-// ============================================================================
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    // ========================================================================
-    // Mock spec tests (Pattern B - mock value properties)
-    // ========================================================================
-
-    #[test]
-    fn test_default_criteria() {
-        let criteria = default_criteria();
-        assert_eq!(criteria.name, "code-review");
-        assert_eq!(criteria.checks.len(), 4);
-        assert!(criteria.checks.iter().any(|c| c.id == "correctness"));
-        assert!(criteria.checks.iter().any(|c| c.id == "security"));
-    }
-
-    #[test]
-    fn test_typed_builder_rejects_wrong_slot() {
-        let dag = build_inline_review_graph();
-        gunbc_test::assert_typed_builder_rejects_invalid_slot(&dag, "review-inline");
-    }
-}

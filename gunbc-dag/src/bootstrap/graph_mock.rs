@@ -461,14 +461,3 @@ pub fn bootstrap_mock_spec_all_fail() -> MockSpec {
         .resource_lock_fails("fs:Makefile", "Permission denied")
         .resource_lock_fails("fs:.gitignore", "Permission denied")
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_typed_builder_rejects_wrong_slot() {
-        let dag = build_bootstrap_graph().expect("graph should build");
-        gunbc_test::assert_typed_builder_rejects_invalid_slot(&dag, "bootstrap");
-    }
-}

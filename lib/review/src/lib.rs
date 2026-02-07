@@ -702,6 +702,7 @@ fn parse_location(loc: Option<&serde_json::Value>) -> Result<Location, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::graph_mock::default_criteria;
 
     fn test_criteria() -> Criteria {
         Criteria {
@@ -720,6 +721,15 @@ mod tests {
                 },
             ],
         }
+    }
+
+    #[test]
+    fn test_default_criteria() {
+        let criteria = default_criteria();
+        assert_eq!(criteria.name, "code-review");
+        assert_eq!(criteria.checks.len(), 4);
+        assert!(criteria.checks.iter().any(|c| c.id == "correctness"));
+        assert!(criteria.checks.iter().any(|c| c.id == "security"));
     }
 
     #[test]

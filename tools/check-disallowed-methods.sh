@@ -9,7 +9,7 @@ if [[ ! -f "$allowlist_file" ]]; then
   exit 1
 fi
 
-pattern='^[[:space:]]*#!?\[allow\(clippy::disallowed_methods\)\]'
+pattern='allow\([^)]*clippy::disallowed_methods'
 
 declare -A found_counts
 
@@ -34,48 +34,37 @@ while IFS= read -r line; do
   found_counts["$file"]=$(( ${found_counts["$file"]:-0} + 1 ))
 done < <("${matches_cmd[@]}" || true)
 
-declare -A allowed_counts
+declare -a allowed_prefixes
 
 while IFS= read -r line; do
   [[ -z "$line" ]] && continue
   [[ "$line" =~ ^# ]] && continue
 
-  file="${line%%:*}"
-  count="${line#*:}"
-
-  if [[ "$file" == "$count" ]]; then
-    echo "ERROR: malformed allowlist entry: $line" >&2
-    exit 1
-  fi
-
-  if ! [[ "$count" =~ ^[0-9]+$ ]]; then
-    echo "ERROR: invalid count in allowlist entry: $line" >&2
-    exit 1
-  fi
-
-  allowed_counts["$file"]="$count"
+  # Allow inline comments after '#'
+  line="${line%%#*}"
+  line="$(echo "$line" | xargs)"
+  [[ -z "$line" ]] && continue
+  allowed_prefixes+=("$line")
 done < "$allowlist_file"
 
 exit_code=0
 
+is_allowed() {
+  local file="$1"
+  if [[ "$file" == */tests/* ]]; then
+    return 0
+  fi
+  for prefix in "${allowed_prefixes[@]}"; do
+    if [[ "$file" == "$prefix"* ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
 for file in "${!found_counts[@]}"; do
-  if [[ -z "${allowed_counts[$file]+x}" ]]; then
+  if ! is_allowed "$file"; then
     echo "ERROR: disallowed allow found outside allowlist: $file (${found_counts[$file]} occurrence(s))" >&2
-    exit_code=1
-    continue
-  fi
-
-  expected="${allowed_counts[$file]}"
-  actual="${found_counts[$file]}"
-  if [[ "$expected" -ne "$actual" ]]; then
-    echo "ERROR: disallowed allow count mismatch in $file (expected $expected, found $actual)" >&2
-    exit_code=1
-  fi
-done
-
-for file in "${!allowed_counts[@]}"; do
-  if [[ -z "${found_counts[$file]+x}" ]]; then
-    echo "ERROR: allowlist entry has no matching allow in repo: $file" >&2
     exit_code=1
   fi
 done

@@ -114,14 +114,3 @@ pub fn testgen_dag_mock_spec() -> MockSpec {
 
     spec
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_typed_builder_rejects_wrong_slot() {
-        let dag = build_testgen_graph_for_test().expect("graph should build");
-        gunbc_test::assert_typed_builder_rejects_invalid_slot(&dag, "testgen-dag");
-    }
-}

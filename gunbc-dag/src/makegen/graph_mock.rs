@@ -234,14 +234,3 @@ fn mock_makefile_content() -> String {
          \t@{makegen} -- $(if $(OUTPUT),--output $(OUTPUT))\n"
     )
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_typed_builder_rejects_wrong_slot() {
-        let dag = build_makegen_graph().expect("graph should build");
-        gunbc_test::assert_typed_builder_rejects_invalid_slot(&dag, "makegen");
-    }
-}

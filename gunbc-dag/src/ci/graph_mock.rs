@@ -1008,14 +1008,3 @@ fn with_ci_typed_mocks(
         .boundary_str("execute_verify_check", "skip_reason", "")
         .expect("execute_verify_check skip_reason should match type")
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_typed_builder_rejects_wrong_slot() {
-        let dag = build_ci_graph().expect("graph should build");
-        gunbc_test::assert_typed_builder_rejects_invalid_slot(&dag, "ci");
-    }
-}

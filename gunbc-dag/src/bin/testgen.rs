@@ -27,14 +27,14 @@ use gunbc_deps as _;
 use gunbc_gist as _;
 use gunbc_lib_llm_ops as _;
 use gunbc_lib_review as _;
-use gunbc_testgen_registry::{iter_targets, TestgenTarget};
+use gunbc_testgen_registry::{iter_dag_specs, DagSpecDef};
 use std::env;
 use std::path::PathBuf;
 use std::process;
 
 /// Build all testgen targets from the auto-discovery registry.
-fn build_targets() -> Vec<&'static TestgenTarget> {
-    let mut targets: Vec<&'static TestgenTarget> = iter_targets().collect();
+fn build_targets() -> Vec<&'static DagSpecDef> {
+    let mut targets: Vec<&'static DagSpecDef> = iter_dag_specs().collect();
     targets.sort_by(|a, b| a.name.cmp(b.name));
     targets
 }

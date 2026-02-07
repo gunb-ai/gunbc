@@ -867,4 +867,20 @@ mod tests {
         // MockSpec should have the boundary mock
         assert!(spec.get_boundary_mock("source", "output").is_some());
     }
+
+    #[test]
+    fn test_rejects_unknown_slot() {
+        use gunbc_ir::build::port;
+        use gunbc_ir::{Dag, Node};
+
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque(
+            "source",
+            vec![],
+            vec![port("output", "String")],
+            (),
+        ));
+
+        crate::assert_typed_builder_rejects_invalid_slot(&dag, "test");
+    }
 }

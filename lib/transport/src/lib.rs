@@ -32,6 +32,7 @@
 #![allow(clippy::disallowed_methods)]
 
 pub mod credential;
+pub mod credential_graph;
 pub mod backend;
 pub mod cli;
 pub mod executor;

@@ -110,12 +110,13 @@ one place (not sprinkled `#[allow]` at call sites). Approved categories:
 
 - [x] Add a short "Refactor-Pressure Checklist" to `AGENT.md` and/or
       `SPEC.md`. ✅ Both files contain the checklist (AGENT.md, SPEC.md).
-- [ ] CI guardrail: generated code linting. Done when CI runs
-      `make codegen && make testgen && cargo clippy --all-targets -- -D warnings`
-      and fails on any lint in generated output.
-- [ ] CI guardrail: boundary erosion. Done when CI fails if new
-      `#[allow(clippy::disallowed_methods)]` appears in runtime crates
-      outside the explicit exceptions list.
+- [x] CI guardrail: generated code linting. ✅ CI DAG runs codegen (prep
+      stage) → testgen (prep stage) → clippy (lint stage, `-D warnings`) →
+      verify (freshness check). Any lint in generated code fails the pipeline.
+- [x] CI guardrail: boundary erosion. ✅ Two mechanisms:
+      (1) `pragma_lint::lint_allow_pragmas_and_migrations` test scans all .rs
+      files and asserts against the generated allowlist (runs in `cargo test`).
+      (2) CI guardrail stage runs `tools/check-disallowed-methods.sh`.
 - [x] **CI guardrail: generated artifact drift.** ✅ `make verify` target
       runs `--check` on makegen, bootstrap, and testgen. `make test`
       includes `verify` in its dependency chain. Each `--check` flag
@@ -127,12 +128,10 @@ one place (not sprinkled `#[allow]` at call sites). Approved categories:
       string-based builder dispatch.)
 - [x] Resource acquisition completion. ✅ Phases 1-5 landed (2026-02-05):
       sub-DAG delegation + resource accounting. See TODONE/design-resource-acquisition.md.
-- [ ] Type/cardinality unification. Done when cardinality has a single
-      source of truth (TypeContract or equivalent) and port cardinality
-      is derived or validated with no fallback semantics.
-      **Decision needed:** interval model (property-based) vs current enum.
-      See `TODO_hacks` "Cardinality constants are flat" and type coercion
-      design doc. Deciding this unblocks the remaining dual-encoding cleanup.
+- [x] Type/cardinality unification. ✅ Interval model `Cardinality { min, max }`
+      with lattice algebra landed (see TODONE/cardinality-transparent-execution.md).
+      Single source of truth via `TypeContract`. Remaining type *coercion*
+      work (contract-based edge validation) tracked in `design-type-coercion.md`.
 - [x] Fast path for freshness checks. ✅ mtime fast path in
       `core/infra/src/freshness.rs`. `ManifestEntry.input_file_count` tracks
       file count for fast invalidation.

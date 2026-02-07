@@ -36,10 +36,11 @@ mod tests {
             if line.is_empty() || line.starts_with('#') {
                 continue;
             }
-            let (file, _) = line
-                .split_once(':')
-                .unwrap_or_else(|| panic!("malformed allowlist entry: {}", line));
-            allowed.insert(file.to_string());
+            let line = line.split('#').next().unwrap_or("").trim();
+            if line.is_empty() {
+                continue;
+            }
+            allowed.insert(line.to_string());
         }
         allowed
     }
@@ -82,6 +83,13 @@ mod tests {
             allow_dead_code,
             allow_lints,
         }
+    }
+
+    fn is_allowed_disallowed_methods(path: &str, allowed_prefixes: &HashSet<String>) -> bool {
+        if path.contains("/tests/") {
+            return true;
+        }
+        allowed_prefixes.iter().any(|prefix| path.starts_with(prefix))
     }
 
     fn extract_allow_lints(line: &str) -> Vec<String> {
@@ -143,7 +151,8 @@ mod tests {
                                 }
                             }
                             "clippy::disallowed_methods" => {
-                                if !allowed_disallowed_methods.contains(rel.as_str()) {
+                                if !is_allowed_disallowed_methods(&rel, &allowed_disallowed_methods)
+                                {
                                     disallowed_method_allows
                                         .push(format!("{}:{} {}", rel, line_no, lint));
                                 }

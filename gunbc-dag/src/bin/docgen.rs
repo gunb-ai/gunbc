@@ -3,9 +3,7 @@
 //! Generates documentation artifacts from live code/test sources.
 
 #![deny(dead_code)]
-#![allow(clippy::disallowed_methods)] // Docgen binary reads source files directly
-#![allow(clippy::vec_init_then_push)]
-use gunbc_dag::build_docgen_graph;
+use gunbc_dag::{build_docgen_graph, DOCGEN_READ_TARGETS};
 use gunbc_exec::{execute_with_mode, BoundaryMocks, ExecutionMode};
 use gunbc_ir::transport::{FileOp, FileResponse, TransportResponse};
 use gunbc_ir::Value;
@@ -53,8 +51,27 @@ fn main() {
 
 fn build_dry_run_mocks() -> BoundaryMocks {
     let mut mocks = BoundaryMocks::new();
+    for target in DOCGEN_READ_TARGETS {
+        set_read_mock(&mut mocks, target.name, target.path);
+    }
     set_chain_mocks(&mut mocks, "ab_workflows_doc", AB_DOC_PATH);
     mocks
+}
+
+fn set_read_mock(mocks: &mut BoundaryMocks, name: &str, path: &str) {
+    let read_node = format!("execute_{name}");
+    mocks.set_value(
+        &read_node,
+        "response",
+        Value::Response(TransportResponse::File(FileResponse {
+            path: path.to_string(),
+            operation: FileOp::Read,
+            success: true,
+            content: Some("<DRY-RUN>".to_string()),
+            exists: None,
+            error: None,
+        })),
+    );
 }
 
 fn set_chain_mocks(mocks: &mut BoundaryMocks, name: &str, path: &str) {
