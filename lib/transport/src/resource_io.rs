@@ -123,11 +123,15 @@ impl ResourceIo for TransportIo {
         let response = execute_request(&request).map_err(exec_to_resource)?;
         match response {
             TransportResponse::File(file) if file.success => {
-                let millis = file
-                    .content
-                    .as_deref()
-                    .and_then(|s| s.trim().parse::<i64>().ok())
-                    .unwrap_or(0);
+                let content = file.content.ok_or_else(|| {
+                    ResourceError::Io(io::Error::other("metadata missing content"))
+                })?;
+                let millis = content.trim().parse::<i64>().map_err(|e| {
+                    ResourceError::Io(io::Error::other(format!(
+                        "metadata parse failed: {}",
+                        e
+                    )))
+                })?;
                 if millis >= 0 {
                     Ok(UNIX_EPOCH + Duration::from_millis(millis as u64))
                 } else {

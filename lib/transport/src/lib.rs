@@ -23,7 +23,7 @@
 //!
 //! # Note
 //!
-//! This is the ONLY crate (besides codegen) that performs direct I/O operations
+//! This is the ONLY crate that performs direct I/O operations
 //! via std::fs and std::process::Command. All other crates MUST use
 //! PrepareXxxOp + TransportOps::Execute.
 

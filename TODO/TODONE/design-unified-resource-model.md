@@ -11,6 +11,8 @@
 - [x] Taken by Codex (2026-02-07)
 
 ## Status
+**Completed** (2026-02-07). Moved to TODONE. Extension candidates tracked in `consolidation.md` §16.
+
 **Phases 1-6 implemented** (2026-02-06). Core infrastructure is in place:
 - ContentHash, HashBuilder for freshness keys
 - ResourceManifest for on-disk storage
@@ -18,6 +20,7 @@
 - CI uses manifest-based freshness (replaces brittle file check)
 - ExecMode (Verify/Ensure) via `--mode` flag
 - Phase 6: MetaTarget uses ResourceNeed + ResourceTargetMap (replaces PrepLevel/extra_deps/fix_deps)
+- Phase 7: ToolHandle wraps ResourceHandle (2026-02-07)
 
 **Remaining work:**
 - Section 11: Extension candidates (deps.toml, Makefile tracking, etc.)

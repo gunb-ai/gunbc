@@ -516,7 +516,7 @@ pub enum TransportResponse {
 | `core/exec/src/intercept.rs` | DryRun interception of transport nodes |
 
 **Enforcement:**
-- `clippy.toml` disallows `std::fs` and `std::process` in all crates except explicit allowlist entries; crate-level exemptions are `lib/transport` and `core/codegen` (see `TODO/TODONE/clippy-pragma-audit.md`).
+- `clippy.toml` disallows `std::fs` and `std::process` in all crates except explicit allowlist entries; the only crate-level exemption is `lib/transport` (see `TODO/TODONE/clippy-pragma-audit.md`).
 - DryRun mode intercepts all nodes whose inputs include `TransportRequest`.
 
 **Design decisions:**
@@ -531,7 +531,7 @@ review:  prepare_llm_request  → execute → parse_llm_response
 deps:    prepare_file_write   → execute → (terminal node)
 ```
 
-**Known issue:** `core/codegen/src/main.rs` (the bootstrapper) bypasses transport for file I/O — by design (circular dependency).
+**Known issue:** None — all I/O routes through transport boundaries.
 
 ---
 

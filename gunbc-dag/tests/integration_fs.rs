@@ -23,13 +23,14 @@ impl TempWorkspace {
         root.push(format!("gunbc-test-{}-{}-{}", label, std::process::id(), nanos));
 
         let io = TransportIo::new();
-        let _ = io.command_output(
+        io.command_output(
             "mkdir",
             &[
                 "-p".to_string(),
                 root.to_string_lossy().to_string(),
             ],
-        );
+        )
+        .expect("create temp workspace");
 
         Self { root }
     }
@@ -204,13 +205,14 @@ fn run_bootstrap_case(kind: BackendKind) {
             let workspace = TempWorkspace::new("bootstrap-real-fs");
             let crates_dir = workspace.path().join("crates").join("example");
             let io = TransportIo::new();
-            let _ = io.command_output(
+            io.command_output(
                 "mkdir",
                 &[
                     "-p".to_string(),
                     crates_dir.to_string_lossy().to_string(),
                 ],
-            );
+            )
+            .expect("create crates/example");
 
             let _cwd = CurrentDirGuard::new(workspace.path());
             execute_with_mode_and_inputs(&dag, ExecutionMode::Real, Some(&input_mocks))

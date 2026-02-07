@@ -1,7 +1,8 @@
 # Refactor Pressure: Structural Gaps That Drive Churn
 
-**Status**: Draft
+**Status**: Completed
 **Date**: 2026-02-05
+**Moved to TODONE**: 2026-02-07
 
 ## Goal
 
@@ -118,9 +119,9 @@ one place (not sprinkled `#[allow]` at call sites). Approved categories:
       files and asserts against the generated allowlist (runs in `cargo test`).
       (2) CI guardrail stage runs `tools/check-disallowed-methods.sh`.
 - [x] **CI guardrail: generated artifact drift.** ✅ `make verify` target
-      runs `--check` on makegen, bootstrap, and testgen. `make test`
-      includes `verify` in its dependency chain. Each `--check` flag
-      does dry-run + `verify_drift()` comparison against disk.
+      runs `--mode=verify` on makegen, bootstrap, testgen, and pragma.
+      `make test` includes `verify` in its dependency chain. Each
+      `--mode=verify` run does a read-only compare against disk.
       Remaining: cigen uses FileWriter, not DAG transport; migrate later.
 - [x] DagSpec / typed registry. ✅ Testgen, makegen, and CI generation
       now consume DagSpec (2026-02-07). (Note: `GraphBuilderId` enum
