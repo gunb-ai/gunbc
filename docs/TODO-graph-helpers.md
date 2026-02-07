@@ -1,6 +1,7 @@
 # TODO: Graph Helper Refactoring
 
 **Created:** 2026-02-06
+**Updated:** 2026-02-07
 
 Five refactoring opportunities to reduce graph-building boilerplate, ordered by priority.
 
@@ -75,7 +76,7 @@ Port contract (fixed by the helper):
 
 ## 2. Adopt Transport Triplet Helpers
 
-**Status:** Not started
+**Status:** In progress (migrated: build, codegen, CI, gist)
 **Effort:** Low
 **Location:** Existing helpers in `core/ir/src/patterns/transport_triplet.rs`
 
@@ -91,14 +92,15 @@ Potential API improvement: the current helpers require callers to pass full inpu
 
 ### Migration Targets
 
-| File | Triplets | Skippable? | Notes |
-|------|----------|------------|-------|
-| `gunbc-dag/src/codegen/graph.rs` | 3 | Mixed | exists_check (no), codegen (no), stamp_write (no parse) |
-| `gunbc-dag/src/build/graph.rs` | 3 | Mixed | build (no), test (yes), clippy (yes) |
-| `lib/tools/gist/src/graph.rs` | 5-8 | No | Mode-dependent; loop body has inner triplet |
-| `lib/tools/deps/src/graph.rs` | 2-3 | No | install + generate graphs |
-| `lib/review/src/graph.rs` | 2-4 | No | Varies by review mode |
-| `lib/llm-ops/src/graph.rs` | 1 | No | chat completion |
+| File | Triplets | Skippable? | Notes | Status |
+|------|----------|------------|-------|--------|
+| `gunbc-dag/src/codegen/graph.rs` | 3 | Mixed | exists_check (no), codegen (no), stamp_write (no parse) | Done |
+| `gunbc-dag/src/build/graph.rs` | 3 | Mixed | build (no), test (yes), clippy (yes) | Done |
+| `gunbc-dag/src/ci/graph.rs` | 6 | Mixed | deps_exists (no), testgen/build/test/guardrail/verify (yes) | Done |
+| `lib/tools/gist/src/graph.rs` | 5-8 | No | Mode-dependent; loop body has inner triplet | Done |
+| `lib/tools/deps/src/graph.rs` | 2-3 | No | install + generate graphs | Pending |
+| `lib/review/src/graph.rs` | 2-4 | No | Varies by review mode | Pending |
+| `lib/llm-ops/src/graph.rs` | 1 | No | chat completion | Pending |
 
 ### Steps
 
@@ -119,7 +121,7 @@ Potential API improvement: the current helpers require callers to pass full inpu
 
 ## 3. Generic `convert_dag` for Workspace
 
-**Status:** Not started
+**Status:** Done
 **Effort:** Low
 **Location:** `gunbc-dag/src/workspace/convert.rs` (new file)
 
@@ -174,12 +176,12 @@ pub fn build_ci_subdag() -> Node<WorkspaceOp> {
 
 The per-tool `convert_foo_op` mapping functions stay (they encode the domain-specific variant mapping). Only the structural recursion is eliminated.
 
-### Steps
+### Steps (completed)
 
-1. Add `convert.rs` to `gunbc-dag/src/workspace/` (or to `core/ir` if useful beyond workspace)
-2. Migrate one subdag file (e.g., clippy — simplest)
-3. Migrate remaining subdag files
-4. Delete old `convert_*_node` / `convert_*_dag` functions
+1. Added `gunbc-dag/src/workspace/convert.rs` with `convert_dag` and `convert_node`
+2. Migrated subdags that need op remapping (CI, gist)
+3. Simplified subdags that only need `convert_node` (clippy, languages)
+4. Removed per-tool `convert_*` helpers (none remain)
 
 ### Open Question
 
@@ -189,7 +191,7 @@ Decision: keep `convert_dag`/`convert_node` in `gunbc-dag/src/workspace/convert.
 
 ## 4. Handbook Entry for Content Upsert Pattern
 
-**Status:** Not started
+**Status:** Done
 **Effort:** Low
 **Location:** `docs/handbook.md`
 
@@ -210,10 +212,10 @@ Add section **A.2.4 Content Upsert** (or A.12, depending on numbering preference
 - Helper API: reference `add_content_upsert_chain` (once item 1 is done)
 - Examples: testgen (dynamic N chains), pragma (3 static parallel chains), bootstrap (2 parallel chains after scan), makegen (1 chain)
 
-### Steps
+### Steps (completed)
 
-1. Write the handbook entry after item 1 is implemented (so we can reference the helper)
-2. If item 1 is deferred, write the entry anyway describing the manual pattern
+1. Added A.2.4 Content Upsert entry in `docs/handbook.md`
+2. Updated the entry to reference the shared `add_content_upsert_chain` helper
 
 ---
 

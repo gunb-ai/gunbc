@@ -136,6 +136,7 @@ pub fn add_skippable_transport_triplet<T>(
 ///
 /// `parse_outputs` are the *extra* outputs for the parse node — the helper
 /// automatically prepends `port("response", "TransportResponse")` to inputs.
+#[allow(clippy::too_many_arguments)]
 pub fn add_transport_triplet<T>(
     builder: &mut DagBuilder<T>,
     name: &str,
@@ -144,18 +145,23 @@ pub fn add_transport_triplet<T>(
     prepare_op: T,
     parse_op: T,
     transport_op: T,
+    after: Option<&NodeRef<T>>,
 ) -> Result<TransportTriplet<T>, BuilderError> {
     let prepare_name = format!("prepare_{name}");
     let execute_name = format!("execute_{name}");
     let parse_name = format!("parse_{name}");
 
     // Prepare node: caller inputs + request + skip output
-    let prepare = builder.add_root_node(Node::opaque(
+    let prepare_node = Node::opaque(
         prepare_name.as_str(),
         prepare_inputs,
         vec![port("request", "TransportRequest"), port("skip", "Bool")],
         prepare_op,
-    ))?;
+    );
+    let prepare = match after {
+        None => builder.add_root_node(prepare_node)?,
+        Some(dep) => builder.add_node_after(prepare_node, dep)?,
+    };
 
     // Execute node: standard transport shape (skip wired to false upstream)
     let execute = builder.add_node_after(
@@ -256,6 +262,7 @@ mod tests {
             TestOp::Prepare,
             TestOp::Parse,
             TestOp::Execute,
+            None,
         )
         .unwrap();
 

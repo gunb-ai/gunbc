@@ -2,7 +2,7 @@
 
 **Status**: In Progress
 **Date**: 2026-02-04
-**Updated**: 2026-02-06
+**Updated**: 2026-02-07
 
 System resources (filesystems, platform, environment, clock) should be
 acquired at DAG boundaries and injected into business logic — not
@@ -15,33 +15,7 @@ transport executor), then pass it down as a parameter or DAG input.
 
 ## Active violations (remaining)
 
-### 1. std::env in codegen-generated CI runners
-
-**Where**: `core/codegen/src/cli_gen.rs:724,748,767`
-
-```rust
-fn load_step_inputs_from_env(step_name: &str) -> HashMap<String, Value> {
-    for (key, value) in env::vars() { ... }
-}
-
-fn emit_step_outputs(step_name: &str, outputs: &HashMap<String, Value>) {
-    if let Ok(output_file) = env::var("GITHUB_OUTPUT") { ... }
-    } else if env::var("GITLAB_CI").is_ok() { ... }
-}
-```
-
-**Problem**: Generated runner functions read env vars directly, making CI
-behavior hard to test or mock.
-
-**Fix**: Generated functions should accept an env dictionary parameter
-(`HashMap<String, String>`), and `main()` should call `env::vars()` once
-and pass the map down.
-
-**Severity**: MEDIUM — generated code, but sets a bad pattern.
-
----
-
-### 2. CI provider detection reads env vars directly
+### 1. CI provider detection reads env vars directly
 
 **Where**: `core/ir/src/transport/ci/provider.rs:79-99`
 
@@ -62,29 +36,20 @@ and could be aligned with the env-dict pattern above if we standardize it.
 
 ---
 
-### 3. resolve_tool_path() shells out to `which`
+### 2. Tool path resolution defaults to `which` (Unix-only)
 
-**Where**: `core/ir/src/transport/cli.rs:260-281`
+**Where**: `lib/transport/src/cli.rs`
 
-```rust
-pub fn resolve_tool_path(tool: &'static CliToolDef) -> Result<PathBuf, CliToolError> {
-    let output = Command::new("which")
-        .arg(binary)
-        .output()?;
-    // ...
-}
-```
+**Current state**: Resolution is injectable via `ToolPathResolver` and
+`resolve_tool_path_with()`, and tests use `MockResolver`. The default
+`WhichResolver` still shells out to `which`.
 
-**Problem**: Direct system call to `which` — not mockable and not portable
-(Windows uses `where`).
+**Problem**: Default resolver is Unix-specific; Windows should use `where`.
 
-**Mitigating factor**: Called from `upsert_tool()` at the tool acquisition
-boundary, which is the correct place for this I/O.
+**Fix**: Add a Windows resolver (or a platform-agnostic resolver) and select
+based on platform. Keep `WhichResolver` for Unix.
 
-**Fix**: Add a trait-based resolver (mockable) or express resolution as a
-transport operation.
-
-**Severity**: MEDIUM — correct boundary, but hard to test/mock.
+**Severity**: LOW — DI is solved, portability remains.
 
 ---
 
@@ -100,3 +65,10 @@ transport operation.
   DAG boundary.
 - **SystemTime in gist filename generation**: timestamp is now passed in as
   a parameter.
+
+## Resolved (2026-02-07)
+
+- **Env dict injection in codegen step runners**: step-mode CLI now captures
+  `env::vars()` once and passes a `HashMap<String, String>` into
+  `load_step_inputs_from_env()` and `emit_step_outputs()`; those functions
+  no longer read env vars directly.

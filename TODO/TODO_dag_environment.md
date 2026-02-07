@@ -1,7 +1,7 @@
 # Design: DAG Environment Model
 
 **Status**: Phases 1-2 COMPLETE, Phase 3 open questions
-**Date**: 2026-02-04 (updated 2026-02-05)
+**Date**: 2026-02-04 (updated 2026-02-07)
 
 ## Ownership
 - [x] Taken by Codex (2026-02-05)
@@ -17,23 +17,21 @@ current state, proposes a direction, and poses design questions.
 Every DAG node is a pure function: `HashMap<String, Value> → HashMap<String, Value>`.
 System resources should flow through edges like any other value. But
 today, some nodes cheat — they reach outside the DAG to grab what they
-need:
+need. Several of these have been fixed in specific tools, but the
+general environment-node pattern is still ad-hoc:
 
 ```
 GOOD (tools):
   EnvOp ──tool:clippy──→ LintNode     (handle flows through edge)
 
-BAD (filesystem):
-  GistOps::PrepareRequest              (constructs FilesystemHandle inline)
+GOOD (filesystem, clock — tool-specific):
+  GistOps::FsEnv/ClockEnv → PrepareRequest (handles flow through edges)
 
-BAD (platform):
-  DepsOps::GenerateScripts             (calls Installer::new() → Platform::detect())
+GOOD (platform — deps):
+  PlatformEnv → GenerateScripts         (platform passed in as input)
 
-BAD (clock):
-  gist_ops::generate_gist_filename     (calls SystemTime::now() inline)
-
-BAD (env vars):
-  executor::execute_rest               (calls std::env::var() inline)
+BAD (env vars, edge case):
+  CI provider detection                (reads env at boundary)
 ```
 
 The `EnvOp` pattern works: acquire at the boundary, flow through edges.
@@ -76,53 +74,53 @@ Pure nodes build `TransportRequest` values. A single `TransportOps::Execute`
 node performs the I/O. Pure nodes parse the response. DryRun intercepts
 the Execute node. This is also the gold standard.
 
-### Filesystem handles — NOT MODELED
+### Filesystem handles — MODELED (tool-specific)
 
 ```
-GistOps::PrepareRequest
-  └─ calls sanitize_branch_for_filename()
-       └─ constructs FilesystemHandle::cross_platform(Scope::Write) INLINE
+GistOps::FsEnv ──fs:write→ GistOps::PrepareRequest
 ```
 
-**Key file**: `lib/gist-ops/src/lib.rs:113`
+**Key files**: `lib/gist-ops/src/lib.rs` (FsEnv + require_filesystem_handle),
+`lib/tools/gist/src/graph.rs` (fs:write port wiring)
 
-No DAG node acquires a filesystem handle. The function that needs it
-just creates one. This means:
-- Can't swap the filesystem target (e.g., test with FAT32 constraints)
-- Can't mock it in DryRun
-- The handle isn't visible in the DAG graph
+Gist now acquires a `FilesystemHandle` at the DAG boundary via `FsEnv`
+and passes it to pure ops. This solves mockability and makes the handle
+visible in the graph, but the pattern is still tool-specific rather than
+a shared environment node.
 
-### Platform — NOT MODELED
-
-```
-DepsOps::GenerateScripts
-  └─ calls Installer::new()
-       └─ calls Platform::detect() INLINE (compile-time cfg!)
-```
-
-**Key files**: `lib/tools/deps/src/installer.rs:39`, `ops.rs:211`
-
-Platform is detected at compile time and baked into the Installer.
-No DAG node emits platform info. Downstream nodes can't declare
-"I need platform info" as an input port.
-
-### Clock — NOT MODELED
+### Platform — MODELED (deps)
 
 ```
-gist_ops::generate_gist_filename()
-  └─ calls SystemTime::now() INLINE
+PlatformEnv ──platform→ DepsOps::GenerateScripts
 ```
 
-**Key file**: `lib/gist-ops/src/lib.rs:145`
+**Key files**: `lib/tools/deps/src/env.rs`, `lib/tools/deps/src/graph.rs`,
+`lib/tools/deps/src/ops.rs`
 
-No DAG node captures "now". The timestamp is grabbed inline by the
-function that formats it. Tests can't control the time.
+Deps now acquires platform at the DAG boundary (`PlatformEnv`) and passes
+it to `GenerateScripts` via `res:platform`. Platform detection still exists
+in convenience constructors/tests, but the DAG path is now explicit.
+
+### Clock — MODELED (tool-specific)
+
+```
+GistOps::ClockEnv ──clock→ GistOps::PrepareRequest
+```
+
+**Key files**: `lib/gist-ops/src/lib.rs`, `lib/tools/gist/src/graph.rs`
+
+Gist now captures time at the DAG boundary and passes a `Timestamp`
+through edges. This is still tool-specific; no shared clock env node.
 
 ### Environment variables — MODELED AT DAG BOUNDARY
 
 Auth env var resolution now happens via `CredentialOp` at the DAG boundary.
 `TransportOps` expects a resolved `Credential` (`res:credential`) and applies
 it before execution; the executor no longer reads env vars directly.
+
+Step-mode CLIs now capture `env::vars()` once at the boundary and pass an
+env dict into `load_step_inputs_from_env()` / `emit_step_outputs()` to keep
+CI behavior injectable in generated runners.
 
 **Key files**: `lib/transport/src/credential.rs`, `lib/transport/src/ops.rs`
 

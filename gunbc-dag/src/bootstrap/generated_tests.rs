@@ -41,13 +41,13 @@ fn test_signature_matches_dag() {
 // - 'prepare_scan_workspace': same inputs → same outputs
 // - 'parse_scan_result': same inputs → same outputs
 // - 'generate_makefile': same inputs → same outputs
-// - 'prepare_makefile_read': same inputs → same outputs
+// - 'prepare_read_makefile': same inputs → same outputs
 // - 'compare_makefile_content': same inputs → same outputs
-// - 'prepare_makefile_write': same inputs → same outputs
+// - 'prepare_write_makefile': same inputs → same outputs
 // - 'generate_gitignore': same inputs → same outputs
-// - 'prepare_gitignore_read': same inputs → same outputs
+// - 'prepare_read_gitignore': same inputs → same outputs
 // - 'compare_gitignore_content': same inputs → same outputs
-// - 'prepare_gitignore_write': same inputs → same outputs
+// - 'prepare_write_gitignore': same inputs → same outputs
 
 /// DryRun execution completes without crash.
 /// 
@@ -70,9 +70,9 @@ fn test_transport_interception() {
     let result = assert_boundary_mockable(&dag, mock_spec().to_boundary_mocks());
     assert!(result.is_ok(), "All transports should be interceptable: {:?}", result.error);
     assert!(result.boundary_nodes.iter().any(|n| n == "execute_scan_workspace"), "transport executor 'execute_scan_workspace' should be in intercepted list");
-    assert!(result.boundary_nodes.iter().any(|n| n == "execute_makefile_read"), "transport executor 'execute_makefile_read' should be in intercepted list");
+    assert!(result.boundary_nodes.iter().any(|n| n == "execute_read_makefile"), "transport executor 'execute_read_makefile' should be in intercepted list");
     assert!(result.boundary_nodes.iter().any(|n| n == "execute_makefile_transport"), "transport executor 'execute_makefile_transport' should be in intercepted list");
-    assert!(result.boundary_nodes.iter().any(|n| n == "execute_gitignore_read"), "transport executor 'execute_gitignore_read' should be in intercepted list");
+    assert!(result.boundary_nodes.iter().any(|n| n == "execute_read_gitignore"), "transport executor 'execute_read_gitignore' should be in intercepted list");
     assert!(result.boundary_nodes.iter().any(|n| n == "execute_gitignore_transport"), "transport executor 'execute_gitignore_transport' should be in intercepted list");
 }
 
@@ -86,16 +86,16 @@ fn test_transport_interception() {
 // - 'execute_scan_workspace': valid inputs → valid outputs
 // - 'parse_scan_result': valid inputs → valid outputs
 // - 'generate_makefile': valid inputs → valid outputs
-// - 'prepare_makefile_read': valid inputs → valid outputs
-// - 'execute_makefile_read': valid inputs → valid outputs
+// - 'prepare_read_makefile': valid inputs → valid outputs
+// - 'execute_read_makefile': valid inputs → valid outputs
 // - 'compare_makefile_content': valid inputs → valid outputs
-// - 'prepare_makefile_write': valid inputs → valid outputs
+// - 'prepare_write_makefile': valid inputs → valid outputs
 // - 'execute_makefile_transport': valid inputs → valid outputs
 // - 'generate_gitignore': valid inputs → valid outputs
-// - 'prepare_gitignore_read': valid inputs → valid outputs
-// - 'execute_gitignore_read': valid inputs → valid outputs
+// - 'prepare_read_gitignore': valid inputs → valid outputs
+// - 'execute_read_gitignore': valid inputs → valid outputs
 // - 'compare_gitignore_content': valid inputs → valid outputs
-// - 'prepare_gitignore_write': valid inputs → valid outputs
+// - 'prepare_write_gitignore': valid inputs → valid outputs
 // - 'execute_gitignore_transport': valid inputs → valid outputs
 // 6 optional input handling obligations.
 // Optional inputs must accept missing values and reject wrong-typed inputs.
@@ -390,12 +390,12 @@ fn test_scenario_all_succeed() {
     let log = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("all-succeed scenario should complete");
     let entry = log.get("execute_scan_workspace").expect("'execute_scan_workspace' should be in log");
     assert!(entry.was_intercepted, "'execute_scan_workspace' should be intercepted in DryRun");
-    let entry = log.get("execute_makefile_read").expect("'execute_makefile_read' should be in log");
-    assert!(entry.was_intercepted, "'execute_makefile_read' should be intercepted in DryRun");
+    let entry = log.get("execute_read_makefile").expect("'execute_read_makefile' should be in log");
+    assert!(entry.was_intercepted, "'execute_read_makefile' should be intercepted in DryRun");
     let entry = log.get("execute_makefile_transport").expect("'execute_makefile_transport' should be in log");
     assert!(entry.was_intercepted, "'execute_makefile_transport' should be intercepted in DryRun");
-    let entry = log.get("execute_gitignore_read").expect("'execute_gitignore_read' should be in log");
-    assert!(entry.was_intercepted, "'execute_gitignore_read' should be intercepted in DryRun");
+    let entry = log.get("execute_read_gitignore").expect("'execute_read_gitignore' should be in log");
+    assert!(entry.was_intercepted, "'execute_read_gitignore' should be intercepted in DryRun");
     let entry = log.get("execute_gitignore_transport").expect("'execute_gitignore_transport' should be in log");
     assert!(entry.was_intercepted, "'execute_gitignore_transport' should be intercepted in DryRun");
 }
@@ -414,15 +414,15 @@ fn test_scenario_execute_scan_workspace_fails() {
     let _result = execute_with_mode(&dag, ExecutionMode::DryRun(mocks));
 }
 
-/// Single failure: 'execute_makefile_read' transport fails.
+/// Single failure: 'execute_read_makefile' transport fails.
 /// 
 /// Proves: failure propagation semantics are consistent.
 #[test]
-fn test_scenario_execute_makefile_read_fails() {
+fn test_scenario_execute_read_makefile_fails() {
     let dag = crate :: build_bootstrap_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
-    // Inject failure at 'execute_makefile_read'
-    mocks.set_value("execute_makefile_read", "response", Value::Str("<TRANSPORT_FAILURE>".to_string()));
+    // Inject failure at 'execute_read_makefile'
+    mocks.set_value("execute_read_makefile", "response", Value::Str("<TRANSPORT_FAILURE>".to_string()));
     // Execution may succeed or fail depending on graph semantics;
     // the key property is that it doesn't crash/hang.
     let _result = execute_with_mode(&dag, ExecutionMode::DryRun(mocks));
@@ -442,15 +442,15 @@ fn test_scenario_execute_makefile_transport_fails() {
     let _result = execute_with_mode(&dag, ExecutionMode::DryRun(mocks));
 }
 
-/// Single failure: 'execute_gitignore_read' transport fails.
+/// Single failure: 'execute_read_gitignore' transport fails.
 /// 
 /// Proves: failure propagation semantics are consistent.
 #[test]
-fn test_scenario_execute_gitignore_read_fails() {
+fn test_scenario_execute_read_gitignore_fails() {
     let dag = crate :: build_bootstrap_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
-    // Inject failure at 'execute_gitignore_read'
-    mocks.set_value("execute_gitignore_read", "response", Value::Str("<TRANSPORT_FAILURE>".to_string()));
+    // Inject failure at 'execute_read_gitignore'
+    mocks.set_value("execute_read_gitignore", "response", Value::Str("<TRANSPORT_FAILURE>".to_string()));
     // Execution may succeed or fail depending on graph semantics;
     // the key property is that it doesn't crash/hang.
     let _result = execute_with_mode(&dag, ExecutionMode::DryRun(mocks));
@@ -484,30 +484,30 @@ fn test_skip_propagation_execute_scan_workspace() {
     assert!(log.get("parse_scan_result").is_some(), "downstream 'parse_scan_result' should still appear in log");
 }
 
-/// Skip propagation: 'execute_makefile_read' returns Skipped → downstream handles it.
+/// Skip propagation: 'execute_read_makefile' returns Skipped → downstream handles it.
 /// 
 /// Proves: when a transport's output is Skipped, downstream nodes
 /// either skip themselves (guarded) or process the Skipped value
 /// without crashing.
 #[test]
-fn test_skip_propagation_execute_makefile_read() {
+fn test_skip_propagation_execute_read_makefile() {
     let dag = crate :: build_bootstrap_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
-    mocks.set_value("execute_makefile_read", "response", Value::Skipped);
+    mocks.set_value("execute_read_makefile", "response", Value::Skipped);
     let log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).expect("skip propagation should not crash or hang");
     assert!(log.get("compare_makefile_content").is_some(), "downstream 'compare_makefile_content' should still appear in log");
 }
 
-/// Skip propagation: 'execute_gitignore_read' returns Skipped → downstream handles it.
+/// Skip propagation: 'execute_read_gitignore' returns Skipped → downstream handles it.
 /// 
 /// Proves: when a transport's output is Skipped, downstream nodes
 /// either skip themselves (guarded) or process the Skipped value
 /// without crashing.
 #[test]
-fn test_skip_propagation_execute_gitignore_read() {
+fn test_skip_propagation_execute_read_gitignore() {
     let dag = crate :: build_bootstrap_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
-    mocks.set_value("execute_gitignore_read", "response", Value::Skipped);
+    mocks.set_value("execute_read_gitignore", "response", Value::Skipped);
     let log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).expect("skip propagation should not crash or hang");
     assert!(log.get("compare_gitignore_content").is_some(), "downstream 'compare_gitignore_content' should still appear in log");
 }
@@ -666,13 +666,13 @@ fn test_window_execute_scan_workspace_through_compare_gitignore_content() {
     assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
 }
 
-/// Window: parse_scan_result -> prepare_gitignore_write
+/// Window: parse_scan_result -> prepare_write_gitignore
 #[test]
-fn test_window_parse_scan_result_through_prepare_gitignore_write() {
+fn test_window_parse_scan_result_through_prepare_write_gitignore() {
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
-    let window = Window::from_nodes(&flat, vec!("parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_gitignore_write"));
+    let window = Window::from_nodes(&flat, vec!("parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_write_gitignore"));
     let mut mocks = mock_spec().to_boundary_mocks();
     apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
     let window_dag = window_subdag(&flat, &window);
@@ -680,13 +680,13 @@ fn test_window_parse_scan_result_through_prepare_gitignore_write() {
     assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
 }
 
-/// Window: execute_scan_workspace -> prepare_gitignore_write
+/// Window: execute_scan_workspace -> prepare_write_gitignore
 #[test]
-fn test_window_execute_scan_workspace_through_prepare_gitignore_write() {
+fn test_window_execute_scan_workspace_through_prepare_write_gitignore() {
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
-    let window = Window::from_nodes(&flat, vec!("execute_scan_workspace", "parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_gitignore_write"));
+    let window = Window::from_nodes(&flat, vec!("execute_scan_workspace", "parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_write_gitignore"));
     let mut mocks = mock_spec().to_boundary_mocks();
     apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
     let window_dag = window_subdag(&flat, &window);
@@ -700,7 +700,7 @@ fn test_window_parse_scan_result_through_compare_makefile_content() {
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
-    let window = Window::from_nodes(&flat, vec!("parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_gitignore_write", "compare_makefile_content"));
+    let window = Window::from_nodes(&flat, vec!("parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_write_gitignore", "compare_makefile_content"));
     let mut mocks = mock_spec().to_boundary_mocks();
     apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
     let window_dag = window_subdag(&flat, &window);
@@ -714,7 +714,7 @@ fn test_window_execute_scan_workspace_through_compare_makefile_content() {
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
-    let window = Window::from_nodes(&flat, vec!("execute_scan_workspace", "parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_gitignore_write", "compare_makefile_content"));
+    let window = Window::from_nodes(&flat, vec!("execute_scan_workspace", "parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_write_gitignore", "compare_makefile_content"));
     let mut mocks = mock_spec().to_boundary_mocks();
     apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
     let window_dag = window_subdag(&flat, &window);
@@ -722,13 +722,13 @@ fn test_window_execute_scan_workspace_through_compare_makefile_content() {
     assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
 }
 
-/// Window: parse_scan_result -> prepare_makefile_write
+/// Window: parse_scan_result -> prepare_write_makefile
 #[test]
-fn test_window_parse_scan_result_through_prepare_makefile_write() {
+fn test_window_parse_scan_result_through_prepare_write_makefile() {
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
-    let window = Window::from_nodes(&flat, vec!("parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_gitignore_write", "compare_makefile_content", "prepare_makefile_write"));
+    let window = Window::from_nodes(&flat, vec!("parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_write_gitignore", "compare_makefile_content", "prepare_write_makefile"));
     let mut mocks = mock_spec().to_boundary_mocks();
     apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
     let window_dag = window_subdag(&flat, &window);
@@ -736,13 +736,13 @@ fn test_window_parse_scan_result_through_prepare_makefile_write() {
     assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
 }
 
-/// Window: execute_makefile_read -> compare_makefile_content
+/// Window: execute_read_makefile -> compare_makefile_content
 #[test]
-fn test_window_execute_makefile_read_through_compare_makefile_content() {
+fn test_window_execute_read_makefile_through_compare_makefile_content() {
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
-    let window = Window::from_nodes(&flat, vec!("execute_makefile_read", "execute_scan_workspace", "parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_gitignore_write", "compare_makefile_content"));
+    let window = Window::from_nodes(&flat, vec!("execute_read_makefile", "execute_scan_workspace", "parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_write_gitignore", "compare_makefile_content"));
     let mut mocks = mock_spec().to_boundary_mocks();
     apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
     let window_dag = window_subdag(&flat, &window);
@@ -750,13 +750,13 @@ fn test_window_execute_makefile_read_through_compare_makefile_content() {
     assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
 }
 
-/// Window: execute_scan_workspace -> prepare_makefile_write
+/// Window: execute_scan_workspace -> prepare_write_makefile
 #[test]
-fn test_window_execute_scan_workspace_through_prepare_makefile_write() {
+fn test_window_execute_scan_workspace_through_prepare_write_makefile() {
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
-    let window = Window::from_nodes(&flat, vec!("execute_scan_workspace", "parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_gitignore_write", "compare_makefile_content", "prepare_makefile_write"));
+    let window = Window::from_nodes(&flat, vec!("execute_scan_workspace", "parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_write_gitignore", "compare_makefile_content", "prepare_write_makefile"));
     let mut mocks = mock_spec().to_boundary_mocks();
     apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
     let window_dag = window_subdag(&flat, &window);
@@ -770,7 +770,7 @@ fn test_window_parse_scan_result_through_execute_gitignore_transport() {
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
-    let window = Window::from_nodes(&flat, vec!("parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_gitignore_write", "compare_makefile_content", "prepare_makefile_write", "execute_gitignore_transport"));
+    let window = Window::from_nodes(&flat, vec!("parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_write_gitignore", "compare_makefile_content", "prepare_write_makefile", "execute_gitignore_transport"));
     let mut mocks = mock_spec().to_boundary_mocks();
     apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
     let window_dag = window_subdag(&flat, &window);
@@ -778,13 +778,13 @@ fn test_window_parse_scan_result_through_execute_gitignore_transport() {
     assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
 }
 
-/// Window: execute_gitignore_read -> compare_makefile_content
+/// Window: execute_read_gitignore -> compare_makefile_content
 #[test]
-fn test_window_execute_gitignore_read_through_compare_makefile_content() {
+fn test_window_execute_read_gitignore_through_compare_makefile_content() {
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
-    let window = Window::from_nodes(&flat, vec!("execute_gitignore_read", "execute_makefile_read", "execute_scan_workspace", "parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_gitignore_write", "compare_makefile_content"));
+    let window = Window::from_nodes(&flat, vec!("execute_read_gitignore", "execute_read_makefile", "execute_scan_workspace", "parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_write_gitignore", "compare_makefile_content"));
     let mut mocks = mock_spec().to_boundary_mocks();
     apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
     let window_dag = window_subdag(&flat, &window);
@@ -792,13 +792,13 @@ fn test_window_execute_gitignore_read_through_compare_makefile_content() {
     assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
 }
 
-/// Window: execute_makefile_read -> prepare_makefile_write
+/// Window: execute_read_makefile -> prepare_write_makefile
 #[test]
-fn test_window_execute_makefile_read_through_prepare_makefile_write() {
+fn test_window_execute_read_makefile_through_prepare_write_makefile() {
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
-    let window = Window::from_nodes(&flat, vec!("execute_makefile_read", "execute_scan_workspace", "parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_gitignore_write", "compare_makefile_content", "prepare_makefile_write"));
+    let window = Window::from_nodes(&flat, vec!("execute_read_makefile", "execute_scan_workspace", "parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_write_gitignore", "compare_makefile_content", "prepare_write_makefile"));
     let mut mocks = mock_spec().to_boundary_mocks();
     apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
     let window_dag = window_subdag(&flat, &window);
@@ -812,7 +812,7 @@ fn test_window_execute_scan_workspace_through_execute_gitignore_transport() {
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
-    let window = Window::from_nodes(&flat, vec!("execute_scan_workspace", "parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_gitignore_write", "compare_makefile_content", "prepare_makefile_write", "execute_gitignore_transport"));
+    let window = Window::from_nodes(&flat, vec!("execute_scan_workspace", "parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_write_gitignore", "compare_makefile_content", "prepare_write_makefile", "execute_gitignore_transport"));
     let mut mocks = mock_spec().to_boundary_mocks();
     apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
     let window_dag = window_subdag(&flat, &window);
@@ -826,7 +826,7 @@ fn test_window_parse_scan_result_through_execute_makefile_transport() {
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
-    let window = Window::from_nodes(&flat, vec!("parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_gitignore_write", "compare_makefile_content", "prepare_makefile_write", "execute_gitignore_transport", "execute_makefile_transport"));
+    let window = Window::from_nodes(&flat, vec!("parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_write_gitignore", "compare_makefile_content", "prepare_write_makefile", "execute_gitignore_transport", "execute_makefile_transport"));
     let mut mocks = mock_spec().to_boundary_mocks();
     apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
     let window_dag = window_subdag(&flat, &window);
@@ -840,7 +840,7 @@ fn test_window_prepare_scan_workspace_through_compare_makefile_content() {
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
-    let window = Window::from_nodes(&flat, vec!("prepare_scan_workspace", "execute_gitignore_read", "execute_makefile_read", "execute_scan_workspace", "parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_gitignore_write", "compare_makefile_content"));
+    let window = Window::from_nodes(&flat, vec!("prepare_scan_workspace", "execute_read_gitignore", "execute_read_makefile", "execute_scan_workspace", "parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_write_gitignore", "compare_makefile_content"));
     let mut mocks = mock_spec().to_boundary_mocks();
     apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
     let window_dag = window_subdag(&flat, &window);
@@ -848,13 +848,13 @@ fn test_window_prepare_scan_workspace_through_compare_makefile_content() {
     assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
 }
 
-/// Window: execute_gitignore_read -> prepare_makefile_write
+/// Window: execute_read_gitignore -> prepare_write_makefile
 #[test]
-fn test_window_execute_gitignore_read_through_prepare_makefile_write() {
+fn test_window_execute_read_gitignore_through_prepare_write_makefile() {
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
-    let window = Window::from_nodes(&flat, vec!("execute_gitignore_read", "execute_makefile_read", "execute_scan_workspace", "parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_gitignore_write", "compare_makefile_content", "prepare_makefile_write"));
+    let window = Window::from_nodes(&flat, vec!("execute_read_gitignore", "execute_read_makefile", "execute_scan_workspace", "parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_write_gitignore", "compare_makefile_content", "prepare_write_makefile"));
     let mut mocks = mock_spec().to_boundary_mocks();
     apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
     let window_dag = window_subdag(&flat, &window);
@@ -862,13 +862,13 @@ fn test_window_execute_gitignore_read_through_prepare_makefile_write() {
     assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
 }
 
-/// Window: execute_makefile_read -> execute_gitignore_transport
+/// Window: execute_read_makefile -> execute_gitignore_transport
 #[test]
-fn test_window_execute_makefile_read_through_execute_gitignore_transport() {
+fn test_window_execute_read_makefile_through_execute_gitignore_transport() {
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
-    let window = Window::from_nodes(&flat, vec!("execute_makefile_read", "execute_scan_workspace", "parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_gitignore_write", "compare_makefile_content", "prepare_makefile_write", "execute_gitignore_transport"));
+    let window = Window::from_nodes(&flat, vec!("execute_read_makefile", "execute_scan_workspace", "parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_write_gitignore", "compare_makefile_content", "prepare_write_makefile", "execute_gitignore_transport"));
     let mut mocks = mock_spec().to_boundary_mocks();
     apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
     let window_dag = window_subdag(&flat, &window);
@@ -882,7 +882,7 @@ fn test_window_execute_scan_workspace_through_execute_makefile_transport() {
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
-    let window = Window::from_nodes(&flat, vec!("execute_scan_workspace", "parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_gitignore_write", "compare_makefile_content", "prepare_makefile_write", "execute_gitignore_transport", "execute_makefile_transport"));
+    let window = Window::from_nodes(&flat, vec!("execute_scan_workspace", "parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_write_gitignore", "compare_makefile_content", "prepare_write_makefile", "execute_gitignore_transport", "execute_makefile_transport"));
     let mut mocks = mock_spec().to_boundary_mocks();
     apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
     let window_dag = window_subdag(&flat, &window);
@@ -890,13 +890,13 @@ fn test_window_execute_scan_workspace_through_execute_makefile_transport() {
     assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
 }
 
-/// Window: prepare_makefile_read -> compare_makefile_content
+/// Window: prepare_read_makefile -> compare_makefile_content
 #[test]
-fn test_window_prepare_makefile_read_through_compare_makefile_content() {
+fn test_window_prepare_read_makefile_through_compare_makefile_content() {
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
-    let window = Window::from_nodes(&flat, vec!("prepare_makefile_read", "prepare_scan_workspace", "execute_gitignore_read", "execute_makefile_read", "execute_scan_workspace", "parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_gitignore_write", "compare_makefile_content"));
+    let window = Window::from_nodes(&flat, vec!("prepare_read_makefile", "prepare_scan_workspace", "execute_read_gitignore", "execute_read_makefile", "execute_scan_workspace", "parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_write_gitignore", "compare_makefile_content"));
     let mut mocks = mock_spec().to_boundary_mocks();
     apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
     let window_dag = window_subdag(&flat, &window);
@@ -904,13 +904,13 @@ fn test_window_prepare_makefile_read_through_compare_makefile_content() {
     assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
 }
 
-/// Window: prepare_scan_workspace -> prepare_makefile_write
+/// Window: prepare_scan_workspace -> prepare_write_makefile
 #[test]
-fn test_window_prepare_scan_workspace_through_prepare_makefile_write() {
+fn test_window_prepare_scan_workspace_through_prepare_write_makefile() {
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
-    let window = Window::from_nodes(&flat, vec!("prepare_scan_workspace", "execute_gitignore_read", "execute_makefile_read", "execute_scan_workspace", "parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_gitignore_write", "compare_makefile_content", "prepare_makefile_write"));
+    let window = Window::from_nodes(&flat, vec!("prepare_scan_workspace", "execute_read_gitignore", "execute_read_makefile", "execute_scan_workspace", "parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_write_gitignore", "compare_makefile_content", "prepare_write_makefile"));
     let mut mocks = mock_spec().to_boundary_mocks();
     apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
     let window_dag = window_subdag(&flat, &window);
@@ -918,13 +918,13 @@ fn test_window_prepare_scan_workspace_through_prepare_makefile_write() {
     assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
 }
 
-/// Window: execute_gitignore_read -> execute_gitignore_transport
+/// Window: execute_read_gitignore -> execute_gitignore_transport
 #[test]
-fn test_window_execute_gitignore_read_through_execute_gitignore_transport() {
+fn test_window_execute_read_gitignore_through_execute_gitignore_transport() {
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
-    let window = Window::from_nodes(&flat, vec!("execute_gitignore_read", "execute_makefile_read", "execute_scan_workspace", "parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_gitignore_write", "compare_makefile_content", "prepare_makefile_write", "execute_gitignore_transport"));
+    let window = Window::from_nodes(&flat, vec!("execute_read_gitignore", "execute_read_makefile", "execute_scan_workspace", "parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_write_gitignore", "compare_makefile_content", "prepare_write_makefile", "execute_gitignore_transport"));
     let mut mocks = mock_spec().to_boundary_mocks();
     apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
     let window_dag = window_subdag(&flat, &window);
@@ -932,13 +932,13 @@ fn test_window_execute_gitignore_read_through_execute_gitignore_transport() {
     assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
 }
 
-/// Window: execute_makefile_read -> execute_makefile_transport
+/// Window: execute_read_makefile -> execute_makefile_transport
 #[test]
-fn test_window_execute_makefile_read_through_execute_makefile_transport() {
+fn test_window_execute_read_makefile_through_execute_makefile_transport() {
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
-    let window = Window::from_nodes(&flat, vec!("execute_makefile_read", "execute_scan_workspace", "parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_gitignore_write", "compare_makefile_content", "prepare_makefile_write", "execute_gitignore_transport", "execute_makefile_transport"));
+    let window = Window::from_nodes(&flat, vec!("execute_read_makefile", "execute_scan_workspace", "parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_write_gitignore", "compare_makefile_content", "prepare_write_makefile", "execute_gitignore_transport", "execute_makefile_transport"));
     let mut mocks = mock_spec().to_boundary_mocks();
     apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
     let window_dag = window_subdag(&flat, &window);
@@ -946,13 +946,13 @@ fn test_window_execute_makefile_read_through_execute_makefile_transport() {
     assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
 }
 
-/// Window: prepare_gitignore_read -> compare_makefile_content
+/// Window: prepare_read_gitignore -> compare_makefile_content
 #[test]
-fn test_window_prepare_gitignore_read_through_compare_makefile_content() {
+fn test_window_prepare_read_gitignore_through_compare_makefile_content() {
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
-    let window = Window::from_nodes(&flat, vec!("prepare_gitignore_read", "prepare_makefile_read", "prepare_scan_workspace", "execute_gitignore_read", "execute_makefile_read", "execute_scan_workspace", "parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_gitignore_write", "compare_makefile_content"));
+    let window = Window::from_nodes(&flat, vec!("prepare_read_gitignore", "prepare_read_makefile", "prepare_scan_workspace", "execute_read_gitignore", "execute_read_makefile", "execute_scan_workspace", "parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_write_gitignore", "compare_makefile_content"));
     let mut mocks = mock_spec().to_boundary_mocks();
     apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
     let window_dag = window_subdag(&flat, &window);
@@ -960,13 +960,13 @@ fn test_window_prepare_gitignore_read_through_compare_makefile_content() {
     assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
 }
 
-/// Window: prepare_makefile_read -> prepare_makefile_write
+/// Window: prepare_read_makefile -> prepare_write_makefile
 #[test]
-fn test_window_prepare_makefile_read_through_prepare_makefile_write() {
+fn test_window_prepare_read_makefile_through_prepare_write_makefile() {
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
-    let window = Window::from_nodes(&flat, vec!("prepare_makefile_read", "prepare_scan_workspace", "execute_gitignore_read", "execute_makefile_read", "execute_scan_workspace", "parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_gitignore_write", "compare_makefile_content", "prepare_makefile_write"));
+    let window = Window::from_nodes(&flat, vec!("prepare_read_makefile", "prepare_scan_workspace", "execute_read_gitignore", "execute_read_makefile", "execute_scan_workspace", "parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_write_gitignore", "compare_makefile_content", "prepare_write_makefile"));
     let mut mocks = mock_spec().to_boundary_mocks();
     apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
     let window_dag = window_subdag(&flat, &window);
@@ -980,7 +980,7 @@ fn test_window_prepare_scan_workspace_through_execute_gitignore_transport() {
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
-    let window = Window::from_nodes(&flat, vec!("prepare_scan_workspace", "execute_gitignore_read", "execute_makefile_read", "execute_scan_workspace", "parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_gitignore_write", "compare_makefile_content", "prepare_makefile_write", "execute_gitignore_transport"));
+    let window = Window::from_nodes(&flat, vec!("prepare_scan_workspace", "execute_read_gitignore", "execute_read_makefile", "execute_scan_workspace", "parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_write_gitignore", "compare_makefile_content", "prepare_write_makefile", "execute_gitignore_transport"));
     let mut mocks = mock_spec().to_boundary_mocks();
     apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
     let window_dag = window_subdag(&flat, &window);
@@ -988,13 +988,13 @@ fn test_window_prepare_scan_workspace_through_execute_gitignore_transport() {
     assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
 }
 
-/// Window: execute_gitignore_read -> execute_makefile_transport
+/// Window: execute_read_gitignore -> execute_makefile_transport
 #[test]
-fn test_window_execute_gitignore_read_through_execute_makefile_transport() {
+fn test_window_execute_read_gitignore_through_execute_makefile_transport() {
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
-    let window = Window::from_nodes(&flat, vec!("execute_gitignore_read", "execute_makefile_read", "execute_scan_workspace", "parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_gitignore_write", "compare_makefile_content", "prepare_makefile_write", "execute_gitignore_transport", "execute_makefile_transport"));
+    let window = Window::from_nodes(&flat, vec!("execute_read_gitignore", "execute_read_makefile", "execute_scan_workspace", "parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_write_gitignore", "compare_makefile_content", "prepare_write_makefile", "execute_gitignore_transport", "execute_makefile_transport"));
     let mut mocks = mock_spec().to_boundary_mocks();
     apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
     let window_dag = window_subdag(&flat, &window);
@@ -1002,13 +1002,13 @@ fn test_window_execute_gitignore_read_through_execute_makefile_transport() {
     assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
 }
 
-/// Window: prepare_gitignore_read -> prepare_makefile_write
+/// Window: prepare_read_gitignore -> prepare_write_makefile
 #[test]
-fn test_window_prepare_gitignore_read_through_prepare_makefile_write() {
+fn test_window_prepare_read_gitignore_through_prepare_write_makefile() {
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
-    let window = Window::from_nodes(&flat, vec!("prepare_gitignore_read", "prepare_makefile_read", "prepare_scan_workspace", "execute_gitignore_read", "execute_makefile_read", "execute_scan_workspace", "parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_gitignore_write", "compare_makefile_content", "prepare_makefile_write"));
+    let window = Window::from_nodes(&flat, vec!("prepare_read_gitignore", "prepare_read_makefile", "prepare_scan_workspace", "execute_read_gitignore", "execute_read_makefile", "execute_scan_workspace", "parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_write_gitignore", "compare_makefile_content", "prepare_write_makefile"));
     let mut mocks = mock_spec().to_boundary_mocks();
     apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
     let window_dag = window_subdag(&flat, &window);
@@ -1016,13 +1016,13 @@ fn test_window_prepare_gitignore_read_through_prepare_makefile_write() {
     assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
 }
 
-/// Window: prepare_makefile_read -> execute_gitignore_transport
+/// Window: prepare_read_makefile -> execute_gitignore_transport
 #[test]
-fn test_window_prepare_makefile_read_through_execute_gitignore_transport() {
+fn test_window_prepare_read_makefile_through_execute_gitignore_transport() {
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
-    let window = Window::from_nodes(&flat, vec!("prepare_makefile_read", "prepare_scan_workspace", "execute_gitignore_read", "execute_makefile_read", "execute_scan_workspace", "parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_gitignore_write", "compare_makefile_content", "prepare_makefile_write", "execute_gitignore_transport"));
+    let window = Window::from_nodes(&flat, vec!("prepare_read_makefile", "prepare_scan_workspace", "execute_read_gitignore", "execute_read_makefile", "execute_scan_workspace", "parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_write_gitignore", "compare_makefile_content", "prepare_write_makefile", "execute_gitignore_transport"));
     let mut mocks = mock_spec().to_boundary_mocks();
     apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
     let window_dag = window_subdag(&flat, &window);
@@ -1036,7 +1036,7 @@ fn test_window_prepare_scan_workspace_through_execute_makefile_transport() {
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
-    let window = Window::from_nodes(&flat, vec!("prepare_scan_workspace", "execute_gitignore_read", "execute_makefile_read", "execute_scan_workspace", "parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_gitignore_write", "compare_makefile_content", "prepare_makefile_write", "execute_gitignore_transport", "execute_makefile_transport"));
+    let window = Window::from_nodes(&flat, vec!("prepare_scan_workspace", "execute_read_gitignore", "execute_read_makefile", "execute_scan_workspace", "parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_write_gitignore", "compare_makefile_content", "prepare_write_makefile", "execute_gitignore_transport", "execute_makefile_transport"));
     let mut mocks = mock_spec().to_boundary_mocks();
     apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
     let window_dag = window_subdag(&flat, &window);
@@ -1044,13 +1044,13 @@ fn test_window_prepare_scan_workspace_through_execute_makefile_transport() {
     assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
 }
 
-/// Window: prepare_gitignore_read -> execute_gitignore_transport
+/// Window: prepare_read_gitignore -> execute_gitignore_transport
 #[test]
-fn test_window_prepare_gitignore_read_through_execute_gitignore_transport() {
+fn test_window_prepare_read_gitignore_through_execute_gitignore_transport() {
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
-    let window = Window::from_nodes(&flat, vec!("prepare_gitignore_read", "prepare_makefile_read", "prepare_scan_workspace", "execute_gitignore_read", "execute_makefile_read", "execute_scan_workspace", "parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_gitignore_write", "compare_makefile_content", "prepare_makefile_write", "execute_gitignore_transport"));
+    let window = Window::from_nodes(&flat, vec!("prepare_read_gitignore", "prepare_read_makefile", "prepare_scan_workspace", "execute_read_gitignore", "execute_read_makefile", "execute_scan_workspace", "parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_write_gitignore", "compare_makefile_content", "prepare_write_makefile", "execute_gitignore_transport"));
     let mut mocks = mock_spec().to_boundary_mocks();
     apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
     let window_dag = window_subdag(&flat, &window);
@@ -1058,13 +1058,13 @@ fn test_window_prepare_gitignore_read_through_execute_gitignore_transport() {
     assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
 }
 
-/// Window: prepare_makefile_read -> execute_makefile_transport
+/// Window: prepare_read_makefile -> execute_makefile_transport
 #[test]
-fn test_window_prepare_makefile_read_through_execute_makefile_transport() {
+fn test_window_prepare_read_makefile_through_execute_makefile_transport() {
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
-    let window = Window::from_nodes(&flat, vec!("prepare_makefile_read", "prepare_scan_workspace", "execute_gitignore_read", "execute_makefile_read", "execute_scan_workspace", "parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_gitignore_write", "compare_makefile_content", "prepare_makefile_write", "execute_gitignore_transport", "execute_makefile_transport"));
+    let window = Window::from_nodes(&flat, vec!("prepare_read_makefile", "prepare_scan_workspace", "execute_read_gitignore", "execute_read_makefile", "execute_scan_workspace", "parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_write_gitignore", "compare_makefile_content", "prepare_write_makefile", "execute_gitignore_transport", "execute_makefile_transport"));
     let mut mocks = mock_spec().to_boundary_mocks();
     apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
     let window_dag = window_subdag(&flat, &window);
@@ -1072,13 +1072,13 @@ fn test_window_prepare_makefile_read_through_execute_makefile_transport() {
     assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
 }
 
-/// Window: prepare_gitignore_read -> execute_makefile_transport
+/// Window: prepare_read_gitignore -> execute_makefile_transport
 #[test]
-fn test_window_prepare_gitignore_read_through_execute_makefile_transport() {
+fn test_window_prepare_read_gitignore_through_execute_makefile_transport() {
     let dag = crate :: build_bootstrap_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
-    let window = Window::from_nodes(&flat, vec!("prepare_gitignore_read", "prepare_makefile_read", "prepare_scan_workspace", "execute_gitignore_read", "execute_makefile_read", "execute_scan_workspace", "parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_gitignore_write", "compare_makefile_content", "prepare_makefile_write", "execute_gitignore_transport", "execute_makefile_transport"));
+    let window = Window::from_nodes(&flat, vec!("prepare_read_gitignore", "prepare_read_makefile", "prepare_scan_workspace", "execute_read_gitignore", "execute_read_makefile", "execute_scan_workspace", "parse_scan_result", "generate_gitignore", "generate_makefile", "compare_gitignore_content", "prepare_write_gitignore", "compare_makefile_content", "prepare_write_makefile", "execute_gitignore_transport", "execute_makefile_transport"));
     let mut mocks = mock_spec().to_boundary_mocks();
     apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
     let window_dag = window_subdag(&flat, &window);

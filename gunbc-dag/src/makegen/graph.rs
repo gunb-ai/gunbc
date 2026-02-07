@@ -11,7 +11,8 @@
 use crate::makegen::ops::MakegenOp;
 use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::{
-    build::*, BuilderError, Cardinality, Dag, DagBuilder, Node, Value, WorkflowSignature,
+    add_content_upsert_chain, build::*, BuilderError, Cardinality, Dag, DagBuilder, Node, Value,
+    WorkflowSignature,
 };
 use gunbc_lib_blob::BlobOps;
 use gunbc_lib_transport::TransportOps;
@@ -51,13 +52,13 @@ pub fn makegen_signature() -> WorkflowSignature {
         // Inputs (entrypoints)
         .with_input("check_mode", "Bool", Cardinality::ZERO_OR_ONE)
         .with_input("path", "String", Cardinality::ONE)
-        // Outputs from execute_write (boundary)
-        .with_output("response", "TransportResponse", Cardinality::ZERO_OR_ONE)
-        .with_output("written_path", "String", Cardinality::ZERO_OR_ONE)
-        .with_output("content", "String", Cardinality::ZERO_OR_ONE)
+        // Outputs from execute_makegen_transport (boundary)
+        .with_output("makegen_response", "TransportResponse", Cardinality::ZERO_OR_ONE)
+        .with_output("makegen_written_path", "String", Cardinality::ZERO_OR_ONE)
+        .with_output("makegen_content", "String", Cardinality::ZERO_OR_ONE)
         .with_output("skip", "Bool", Cardinality::ONE)
         .with_output("skip_reason", "String", Cardinality::ZERO_OR_ONE)
-        // Outputs from compare_content (freshness)
+        // Outputs from compare_makegen_content (freshness)
         .with_output("fresh", "Bool", Cardinality::ONE)
         // Informational outputs from load_registry (secondary boundaries)
         .with_output("tool_count", "Int", Cardinality::ONE)
@@ -107,138 +108,22 @@ pub fn build_makegen_graph() -> Result<Dag<MakegenGraphOp>, BuilderError> {
         &load_registry,
     )?;
 
-    // === Read chain: PrepareFileRead -> ExecuteRead ===
-
-    // Node: PrepareFileRead (primitive - PURE)
-    let prepare_file_read = builder.add_node_after(
-        Node::opaque(
-            "prepare_file_read",
-            vec![port("path", "String")],
-            vec![port("request", "TransportRequest"), port("skip", "Bool")],
-            MakegenGraphOp::PrepareFileRead(PrepareFileReadOp),
-        ),
-        &render_makefile,
-    )?;
-
-    // Node: ExecuteRead (transport - BOUNDARY)
-    let execute_read = builder.add_node_after(
-        Node::opaque(
-            "execute_read",
-            vec![port("request", "TransportRequest"), port("skip", "Bool")],
-            vec![port("response", "TransportResponse")],
-            MakegenGraphOp::Transport(TransportOps::Execute),
-        ),
-        &prepare_file_read,
-    )?;
-
-    // === Compare content (PURE) ===
-
-    // Node: CompareContent (BlobOps) - takes read response + expected content, outputs skip signal
-    let compare_content = builder.add_node_after(
-        Node::opaque(
-            "compare_content",
-            vec![
-                port("response", "TransportResponse"),
-                port("expected_content", "String"),
-                optional("check_mode", "Bool"),
-            ],
-            vec![
-                port("fresh", "Bool"),
-                port("skip", "Bool"),
-                port("skip_reason", "String"),
-            ],
-            MakegenGraphOp::Blob(BlobOps::CompareContent),
-        ),
-        &execute_read,
-    )?;
-
-    // === Write chain: PrepareFileWrite -> ExecuteWrite ===
-
-    // Node: PrepareFileWrite (primitive - PURE)
-    let prepare_file_write = builder.add_node_after(
-        Node::opaque(
-            "prepare_file_write",
-            vec![port("content", "String"), port("path", "String")],
-            vec![port("request", "TransportRequest")],
-            MakegenGraphOp::PrepareFileWrite(PrepareFileWriteOp),
-        ),
-        &render_makefile,
-    )?;
-
-    // Node: ExecuteWrite (transport - BOUNDARY, skippable)
-    let execute_write = builder.add_node_after(
-        Node::opaque(
-            "execute_write",
-            vec![
-                port("request", "TransportRequest"),
-                port("skip", "Bool"),
-                optional("skip_reason", "String"),
-            ],
-            vec![
-                optional("response", "TransportResponse"),
-                optional("written_path", "String"),
-                optional("content", "String"),
-                port("skip", "Bool"),
-                optional("skip_reason", "String"),
-            ],
-            MakegenGraphOp::Transport(TransportOps::Execute),
-        ),
-        &compare_content,
-    )?;
-
-    // === Wire up the pipeline ===
-
     // LoadRegistry -> RenderMakefile
     builder.add_edge(
         load_registry.out("registry"),
         render_makefile.in_port("registry"),
     )?;
 
-    // RenderMakefile -> PrepareFileRead (via expected_content to compare_content)
-    // RenderMakefile content -> CompareContent expected_content
-    builder.add_edge(
-        render_makefile.out("makefile_content"),
-        compare_content.in_port("expected_content"),
-    )?;
-
-    // RenderMakefile content -> PrepareFileWrite content
-    builder.add_edge(
-        render_makefile.out("makefile_content"),
-        prepare_file_write.in_port("content"),
-    )?;
-
-    // PrepareFileRead -> ExecuteRead
-    builder.add_edge(
-        prepare_file_read.out("request"),
-        execute_read.in_port("request"),
-    )?;
-    builder.add_edge(
-        prepare_file_read.out("skip"),
-        execute_read.in_port("skip"),
-    )?;
-
-    // ExecuteRead -> CompareContent
-    builder.add_edge(
-        execute_read.out("response"),
-        compare_content.in_port("response"),
-    )?;
-
-    // CompareContent skip -> ExecuteWrite skip
-    builder.add_edge(
-        compare_content.out("skip"),
-        execute_write.in_port("skip"),
-    )?;
-
-    // CompareContent skip_reason -> ExecuteWrite skip_reason
-    builder.add_edge(
-        compare_content.out("skip_reason"),
-        execute_write.in_port("skip_reason"),
-    )?;
-
-    // PrepareFileWrite -> ExecuteWrite
-    builder.add_edge(
-        prepare_file_write.out("request"),
-        execute_write.in_port("request"),
+    // Content upsert chain
+    add_content_upsert_chain(
+        &mut builder,
+        "makegen",
+        &render_makefile,
+        "makefile_content",
+        MakegenGraphOp::PrepareFileRead(PrepareFileReadOp),
+        MakegenGraphOp::PrepareFileWrite(PrepareFileWriteOp),
+        MakegenGraphOp::Blob(BlobOps::CompareContent),
+        MakegenGraphOp::Transport(TransportOps::Execute),
     )?;
 
     Ok(builder.build())
@@ -267,11 +152,11 @@ mod tests {
         let boundaries = detect_boundaries(&dag);
 
         // ExecuteWrite is a boundary (terminal transport node with unconnected outputs)
-        assert!(boundaries.is_boundary_node(&"execute_write".into()));
+        assert!(boundaries.is_boundary_node(&"execute_makegen_transport".into()));
         // CompareContent is a boundary (fresh output is terminal)
-        assert!(boundaries.is_boundary_node(&"compare_content".into()));
-        // ExecuteRead is NOT a boundary (its response output is connected to compare_content)
-        assert!(!boundaries.is_boundary_node(&"execute_read".into()));
+        assert!(boundaries.is_boundary_node(&"compare_makegen_content".into()));
+        // ExecuteRead is NOT a boundary (its response output is connected to compare)
+        assert!(!boundaries.is_boundary_node(&"execute_read_makegen".into()));
     }
 
     #[test]
@@ -279,12 +164,12 @@ mod tests {
         let dag = build_makegen_graph().expect("graph should build");
         let entrypoints = detect_entrypoints(&dag);
 
-        // path is an entrypoint (input to prepare_file_write with no upstream)
-        assert!(entrypoints.is_entrypoint_port(&"prepare_file_write".into(), &"path".into()));
-        // path is an entrypoint (input to prepare_file_read with no upstream)
-        assert!(entrypoints.is_entrypoint_port(&"prepare_file_read".into(), &"path".into()));
-        // check_mode is an entrypoint (input to compare_content with no upstream)
-        assert!(entrypoints.is_entrypoint_port(&"compare_content".into(), &"check_mode".into()));
+        // path is an entrypoint (input to prepare_write_makegen with no upstream)
+        assert!(entrypoints.is_entrypoint_port(&"prepare_write_makegen".into(), &"path".into()));
+        // path is an entrypoint (input to prepare_read_makegen with no upstream)
+        assert!(entrypoints.is_entrypoint_port(&"prepare_read_makegen".into(), &"path".into()));
+        // check_mode is an entrypoint (input to compare_makegen_content with no upstream)
+        assert!(entrypoints.is_entrypoint_port(&"compare_makegen_content".into(), &"check_mode".into()));
     }
 
     #[test]
@@ -300,8 +185,8 @@ mod tests {
         let boundaries = detect_boundaries(&dag);
 
         // Pure prepare nodes are NOT boundaries (all outputs connected)
-        assert!(!boundaries.is_boundary_node(&"prepare_file_write".into()));
-        assert!(!boundaries.is_boundary_node(&"prepare_file_read".into()));
+        assert!(!boundaries.is_boundary_node(&"prepare_write_makegen".into()));
+        assert!(!boundaries.is_boundary_node(&"prepare_read_makegen".into()));
         assert!(!boundaries.is_boundary_node(&"render_makefile".into()));
     }
 

@@ -76,9 +76,9 @@ help:
 	@echo "  ci-yaml  - Generate CI workflow YAML (GitHub Actions & GitLab CI)"
 	@echo ""
 	@echo "Tools:"
-	@echo "  gist [REPO=.] [EXT=...]  - Create a GitHub gist from code files"
-	@echo "  gist-diff [REPO=.] [BASE=main] [EXT=...]  - Create a GitHub gist from branch diff"
-	@echo "  gist-recent [REPO=.] [EXT=...]  - Create a GitHub gist from recent changes (last 7 days)"
+	@echo "  gist [REPO=.] [EXT=... ...]  - Create a GitHub gist from code files"
+	@echo "  gist-diff [REPO=.] [BASE=main] [EXT=... ...]  - Create a GitHub gist from branch diff"
+	@echo "  gist-recent [REPO=.] [EXT=... ...]  - Create a GitHub gist from recent changes (last 7 days)"
 	@echo "  makegen [OUTPUT=Makefile]  - Generate Makefile from tool registry"
 	@echo "  deps [MANIFEST=...]  - Install tool dependencies"
 	@echo "  bootstrap   - Generate Makefile and .gitignore"
@@ -137,24 +137,24 @@ ci-yaml:
 
 # gunbc-gist entrypoints: repo_path (String), extensions (String)
 gist: ensure-codegen
-	@RUSTFLAGS="-D warnings" cargo run -p gunbc-gist --bin gunbc-gist -- $(if $(REPO),--repo-path $(REPO)) $(if $(EXT),--extensions $(EXT))
+	@RUSTFLAGS="-D warnings" cargo run -p gunbc-gist --bin gunbc-gist -- $(if $(REPO),--repo-path $(REPO)) $(if $(EXT),$(foreach v,$(EXT),--extensions $(v)))
 
 gist-dry: ensure-codegen
-	@RUSTFLAGS="-D warnings" cargo run -p gunbc-gist --bin gunbc-gist -- --dry-run $(if $(REPO),--repo-path $(REPO)) $(if $(EXT),--extensions $(EXT))
+	@RUSTFLAGS="-D warnings" cargo run -p gunbc-gist --bin gunbc-gist -- --dry-run $(if $(REPO),--repo-path $(REPO)) $(if $(EXT),$(foreach v,$(EXT),--extensions $(v)))
 
 # gunbc-gist-diff entrypoints: repo_path (String), base_ref (String), extensions (String)
 gist-diff: ensure-codegen
-	@RUSTFLAGS="-D warnings" cargo run -p gunbc-gist --bin gunbc-gist-diff -- $(if $(REPO),--repo-path $(REPO)) $(if $(BASE),--base-ref $(BASE)) $(if $(EXT),--extensions $(EXT))
+	@RUSTFLAGS="-D warnings" cargo run -p gunbc-gist --bin gunbc-gist-diff -- $(if $(REPO),--repo-path $(REPO)) $(if $(BASE),--base-ref $(BASE)) $(if $(EXT),$(foreach v,$(EXT),--extensions $(v)))
 
 gist-diff-dry: ensure-codegen
-	@RUSTFLAGS="-D warnings" cargo run -p gunbc-gist --bin gunbc-gist-diff -- --dry-run $(if $(REPO),--repo-path $(REPO)) $(if $(BASE),--base-ref $(BASE)) $(if $(EXT),--extensions $(EXT))
+	@RUSTFLAGS="-D warnings" cargo run -p gunbc-gist --bin gunbc-gist-diff -- --dry-run $(if $(REPO),--repo-path $(REPO)) $(if $(BASE),--base-ref $(BASE)) $(if $(EXT),$(foreach v,$(EXT),--extensions $(v)))
 
 # gunbc-gist-recent entrypoints: repo_path (String), extensions (String)
 gist-recent: ensure-codegen
-	@RUSTFLAGS="-D warnings" cargo run -p gunbc-gist --bin gunbc-gist-recent -- $(if $(REPO),--repo-path $(REPO)) $(if $(EXT),--extensions $(EXT))
+	@RUSTFLAGS="-D warnings" cargo run -p gunbc-gist --bin gunbc-gist-recent -- $(if $(REPO),--repo-path $(REPO)) $(if $(EXT),$(foreach v,$(EXT),--extensions $(v)))
 
 gist-recent-dry: ensure-codegen
-	@RUSTFLAGS="-D warnings" cargo run -p gunbc-gist --bin gunbc-gist-recent -- --dry-run $(if $(REPO),--repo-path $(REPO)) $(if $(EXT),--extensions $(EXT))
+	@RUSTFLAGS="-D warnings" cargo run -p gunbc-gist --bin gunbc-gist-recent -- --dry-run $(if $(REPO),--repo-path $(REPO)) $(if $(EXT),$(foreach v,$(EXT),--extensions $(v)))
 
 # gunbc-makegen entrypoints: path (String)
 makegen: ensure-codegen

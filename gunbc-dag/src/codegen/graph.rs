@@ -14,6 +14,7 @@
 use crate::codegen::ops::CodegenOp;
 use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::{
+    add_transport_triplet,
     build::*, BuilderError, Cardinality, Dag, DagBuilder, Node, Value, WorkflowSignature,
 };
 use gunbc_ir::resource::ExecMode;
@@ -62,31 +63,15 @@ pub fn build_codegen_graph_with_mode(mode: ExecMode) -> Result<Dag<CodegenGraphO
     // Exists check stage
     // ========================================================================
 
-    let prepare_codegen_exists = builder.add_root_node(Node::opaque(
-        "prepare_codegen_exists",
+    let codegen_exists = add_transport_triplet(
+        &mut builder,
+        "codegen_exists",
         vec![],
-        vec![port("request", "TransportRequest"), port("skip", "Bool")],
+        vec![port("codegen_needed", "Bool")],
         CodegenGraphOp::Codegen(CodegenOp::PrepareCodegenExists),
-    ))?;
-
-    let execute_codegen_exists = builder.add_node_after(
-        Node::opaque(
-            "execute_codegen_exists",
-            vec![port("request", "TransportRequest"), port("skip", "Bool")],
-            vec![port("response", "TransportResponse")],
-            CodegenGraphOp::Transport(TransportOps::Execute),
-        ),
-        &prepare_codegen_exists,
-    )?;
-
-    let parse_codegen_exists = builder.add_node_after(
-        Node::opaque(
-            "parse_codegen_exists",
-            vec![port("response", "TransportResponse")],
-            vec![port("codegen_needed", "Bool")],
-            CodegenGraphOp::Codegen(CodegenOp::ParseCodegenExists(mode)),
-        ),
-        &execute_codegen_exists,
+        CodegenGraphOp::Codegen(CodegenOp::ParseCodegenExists(mode)),
+        CodegenGraphOp::Transport(TransportOps::Execute),
+        None,
     )?;
 
     // ========================================================================
@@ -103,7 +88,7 @@ pub fn build_codegen_graph_with_mode(mode: ExecMode) -> Result<Dag<CodegenGraphO
             ],
             CodegenGraphOp::Codegen(CodegenOp::PrepareCodegenCommand),
         ),
-        &parse_codegen_exists,
+        &codegen_exists.parse,
     )?;
 
     let execute_codegen = builder.add_node_after(
@@ -177,20 +162,7 @@ pub fn build_codegen_graph_with_mode(mode: ExecMode) -> Result<Dag<CodegenGraphO
     // ========================================================================
 
     builder.add_edge(
-        prepare_codegen_exists.out("request"),
-        execute_codegen_exists.in_port("request"),
-    )?;
-    builder.add_edge(
-        prepare_codegen_exists.out("skip"),
-        execute_codegen_exists.in_port("skip"),
-    )?;
-    builder.add_edge(
-        execute_codegen_exists.out("response"),
-        parse_codegen_exists.in_port("response"),
-    )?;
-
-    builder.add_edge(
-        parse_codegen_exists.out("codegen_needed"),
+        codegen_exists.parse.out("codegen_needed"),
         prepare_codegen_command.in_port("codegen_needed"),
     )?;
 

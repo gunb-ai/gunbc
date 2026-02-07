@@ -107,6 +107,7 @@ pub use node::{Node, NodeBody, NodeIoExample};
 pub use patterns::{
     AtomicBuilder, BackoffStrategy, FailureClassifier, PatternOp, PollBuilder, RepeatPolicy,
     ResourceInput, RetryBuilder, TransactionBuilder, UpsertBuilder, WhileBuilder,
+    content_upsert::{ContentUpsertChain, add_content_upsert_chain},
     transport_triplet::{TransportTriplet, add_skippable_transport_triplet, add_transport_triplet},
 };
 pub use makefile_render::MakefileStructuredRenderer;

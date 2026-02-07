@@ -13,7 +13,8 @@
 use crate::bootstrap::ops::BootstrapOp;
 use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::{
-    build::*, BuilderError, Cardinality, Dag, DagBuilder, Node, Value, WorkflowSignature,
+    add_content_upsert_chain, build::*, BuilderError, Cardinality, Dag, DagBuilder, Node, Value,
+    WorkflowSignature,
 };
 use gunbc_lib_blob::BlobOps;
 use gunbc_lib_transport::TransportOps;
@@ -114,178 +115,6 @@ pub fn build_bootstrap_graph() -> Result<Dag<BootstrapGraphOp>, BuilderError> {
     )?;
 
     // ========================================================================
-    // Makefile upsert chain
-    // ========================================================================
-
-    // Generate
-    let generate_makefile = builder.add_node_after(
-        Node::opaque(
-            "generate_makefile",
-            vec![list("crate_names", "String")],
-            vec![port("makefile_content", "String")],
-            BootstrapGraphOp::Bootstrap(BootstrapOp::GenerateMakefile),
-        ),
-        &scan_workspace,
-    )?;
-
-    // Read chain
-    let prepare_makefile_read = builder.add_node_after(
-        Node::opaque(
-            "prepare_makefile_read",
-            vec![port("path", "String")],
-            vec![port("request", "TransportRequest"), port("skip", "Bool")],
-            BootstrapGraphOp::PrepareFileRead(PrepareFileReadOp),
-        ),
-        &generate_makefile,
-    )?;
-
-    let execute_makefile_read = builder.add_node_after(
-        Node::opaque(
-            "execute_makefile_read",
-            vec![port("request", "TransportRequest"), port("skip", "Bool")],
-            vec![port("response", "TransportResponse")],
-            BootstrapGraphOp::Transport(TransportOps::Execute),
-        ),
-        &prepare_makefile_read,
-    )?;
-
-    // Compare — uses BlobOps::CompareContent (response + expected_content compat path)
-    let compare_makefile_content = builder.add_node_after(
-        Node::opaque(
-            "compare_makefile_content",
-            vec![
-                port("response", "TransportResponse"),
-                port("expected_content", "String"),
-                optional("check_mode", "Bool"),
-            ],
-            vec![
-                port("fresh", "Bool"),
-                port("skip", "Bool"),
-                port("skip_reason", "String"),
-            ],
-            BootstrapGraphOp::Blob(BlobOps::CompareContent),
-        ),
-        &execute_makefile_read,
-    )?;
-
-    // Write chain
-    let prepare_makefile = builder.add_node_after(
-        Node::opaque(
-            "prepare_makefile_write",
-            vec![port("path", "String"), port("content", "String")],
-            vec![port("request", "TransportRequest")],
-            BootstrapGraphOp::PrepareFileWrite(PrepareFileWriteOp),
-        ),
-        &generate_makefile,
-    )?;
-
-    let execute_makefile = builder.add_node_after(
-        Node::opaque(
-            "execute_makefile_transport",
-            vec![
-                port("request", "TransportRequest"),
-                port("skip", "Bool"),
-                optional("skip_reason", "String"),
-            ],
-            vec![
-                optional("makefile_response", "TransportResponse"),
-                optional("makefile_written_path", "String"),
-                optional("makefile_content", "String"),
-                port("skip", "Bool"),
-                optional("skip_reason", "String"),
-            ],
-            BootstrapGraphOp::Transport(TransportOps::Execute),
-        ),
-        &compare_makefile_content,
-    )?;
-
-    // ========================================================================
-    // Gitignore upsert chain
-    // ========================================================================
-
-    // Generate
-    let generate_gitignore = builder.add_node_after(
-        Node::opaque(
-            "generate_gitignore",
-            vec![list("crate_names", "String")],
-            vec![port("gitignore_content", "String")],
-            BootstrapGraphOp::Bootstrap(BootstrapOp::GenerateGitignore),
-        ),
-        &scan_workspace,
-    )?;
-
-    // Read chain
-    let prepare_gitignore_read = builder.add_node_after(
-        Node::opaque(
-            "prepare_gitignore_read",
-            vec![port("path", "String")],
-            vec![port("request", "TransportRequest"), port("skip", "Bool")],
-            BootstrapGraphOp::PrepareFileRead(PrepareFileReadOp),
-        ),
-        &generate_gitignore,
-    )?;
-
-    let execute_gitignore_read = builder.add_node_after(
-        Node::opaque(
-            "execute_gitignore_read",
-            vec![port("request", "TransportRequest"), port("skip", "Bool")],
-            vec![port("response", "TransportResponse")],
-            BootstrapGraphOp::Transport(TransportOps::Execute),
-        ),
-        &prepare_gitignore_read,
-    )?;
-
-    // Compare — uses BlobOps::CompareContent (response + expected_content compat path)
-    let compare_gitignore_content = builder.add_node_after(
-        Node::opaque(
-            "compare_gitignore_content",
-            vec![
-                port("response", "TransportResponse"),
-                port("expected_content", "String"),
-                optional("check_mode", "Bool"),
-            ],
-            vec![
-                port("fresh", "Bool"),
-                port("skip", "Bool"),
-                port("skip_reason", "String"),
-            ],
-            BootstrapGraphOp::Blob(BlobOps::CompareContent),
-        ),
-        &execute_gitignore_read,
-    )?;
-
-    // Write chain
-    let prepare_gitignore = builder.add_node_after(
-        Node::opaque(
-            "prepare_gitignore_write",
-            vec![port("path", "String"), port("content", "String")],
-            vec![port("request", "TransportRequest")],
-            BootstrapGraphOp::PrepareFileWrite(PrepareFileWriteOp),
-        ),
-        &generate_gitignore,
-    )?;
-
-    let execute_gitignore = builder.add_node_after(
-        Node::opaque(
-            "execute_gitignore_transport",
-            vec![
-                port("request", "TransportRequest"),
-                port("skip", "Bool"),
-                optional("skip_reason", "String"),
-            ],
-            vec![
-                optional("gitignore_response", "TransportResponse"),
-                optional("gitignore_written_path", "String"),
-                optional("gitignore_content", "String"),
-                port("skip", "Bool"),
-                optional("skip_reason", "String"),
-            ],
-            BootstrapGraphOp::Transport(TransportOps::Execute),
-        ),
-        &compare_gitignore_content,
-    )?;
-
-    // ========================================================================
     // Wire up the ScanWorkspace chain
     // ========================================================================
     builder.add_edge(prepare_scan.out("request"), execute_scan.in_port("request"))?;
@@ -296,115 +125,63 @@ pub fn build_bootstrap_graph() -> Result<Dag<BootstrapGraphOp>, BuilderError> {
     )?;
 
     // ========================================================================
-    // Wire up the Makefile upsert chain
+    // Makefile upsert chain
     // ========================================================================
 
-    // ParseScanResult -> GenerateMakefile
+    let generate_makefile = builder.add_node_after(
+        Node::opaque(
+            "generate_makefile",
+            vec![list("crate_names", "String")],
+            vec![port("makefile_content", "String")],
+            BootstrapGraphOp::Bootstrap(BootstrapOp::GenerateMakefile),
+        ),
+        &scan_workspace,
+    )?;
+
     builder.add_edge(
         scan_workspace.out("crate_names"),
         generate_makefile.in_port("crate_names"),
     )?;
 
-    // GenerateMakefile content -> CompareMakefileContent expected_content
-    builder.add_edge(
-        generate_makefile.out("makefile_content"),
-        compare_makefile_content.in_port("expected_content"),
-    )?;
-
-    // GenerateMakefile content -> PrepareMakefileWrite content
-    builder.add_edge(
-        generate_makefile.out("makefile_content"),
-        prepare_makefile.in_port("content"),
-    )?;
-
-    // PrepareReadMakefile -> ExecuteReadMakefile
-    builder.add_edge(
-        prepare_makefile_read.out("request"),
-        execute_makefile_read.in_port("request"),
-    )?;
-    builder.add_edge(
-        prepare_makefile_read.out("skip"),
-        execute_makefile_read.in_port("skip"),
-    )?;
-
-    // ExecuteReadMakefile -> CompareMakefileContent
-    builder.add_edge(
-        execute_makefile_read.out("response"),
-        compare_makefile_content.in_port("response"),
-    )?;
-
-    // CompareMakefileContent skip -> ExecuteMakefileTransport skip
-    builder.add_edge(
-        compare_makefile_content.out("skip"),
-        execute_makefile.in_port("skip"),
-    )?;
-
-    // CompareMakefileContent skip_reason -> ExecuteMakefileTransport skip_reason
-    builder.add_edge(
-        compare_makefile_content.out("skip_reason"),
-        execute_makefile.in_port("skip_reason"),
-    )?;
-
-    // PrepareMakefileWrite -> ExecuteMakefileTransport
-    builder.add_edge(
-        prepare_makefile.out("request"),
-        execute_makefile.in_port("request"),
+    add_content_upsert_chain(
+        &mut builder,
+        "makefile",
+        &generate_makefile,
+        "makefile_content",
+        BootstrapGraphOp::PrepareFileRead(PrepareFileReadOp),
+        BootstrapGraphOp::PrepareFileWrite(PrepareFileWriteOp),
+        BootstrapGraphOp::Blob(BlobOps::CompareContent),
+        BootstrapGraphOp::Transport(TransportOps::Execute),
     )?;
 
     // ========================================================================
-    // Wire up the Gitignore upsert chain
+    // Gitignore upsert chain
     // ========================================================================
 
-    // ParseScanResult -> GenerateGitignore
+    let generate_gitignore = builder.add_node_after(
+        Node::opaque(
+            "generate_gitignore",
+            vec![list("crate_names", "String")],
+            vec![port("gitignore_content", "String")],
+            BootstrapGraphOp::Bootstrap(BootstrapOp::GenerateGitignore),
+        ),
+        &scan_workspace,
+    )?;
+
     builder.add_edge(
         scan_workspace.out("crate_names"),
         generate_gitignore.in_port("crate_names"),
     )?;
 
-    // GenerateGitignore content -> CompareGitignoreContent expected_content
-    builder.add_edge(
-        generate_gitignore.out("gitignore_content"),
-        compare_gitignore_content.in_port("expected_content"),
-    )?;
-
-    // GenerateGitignore content -> PrepareGitignoreWrite content
-    builder.add_edge(
-        generate_gitignore.out("gitignore_content"),
-        prepare_gitignore.in_port("content"),
-    )?;
-
-    // PrepareReadGitignore -> ExecuteReadGitignore
-    builder.add_edge(
-        prepare_gitignore_read.out("request"),
-        execute_gitignore_read.in_port("request"),
-    )?;
-    builder.add_edge(
-        prepare_gitignore_read.out("skip"),
-        execute_gitignore_read.in_port("skip"),
-    )?;
-
-    // ExecuteReadGitignore -> CompareGitignoreContent
-    builder.add_edge(
-        execute_gitignore_read.out("response"),
-        compare_gitignore_content.in_port("response"),
-    )?;
-
-    // CompareGitignoreContent skip -> ExecuteGitignoreTransport skip
-    builder.add_edge(
-        compare_gitignore_content.out("skip"),
-        execute_gitignore.in_port("skip"),
-    )?;
-
-    // CompareGitignoreContent skip_reason -> ExecuteGitignoreTransport skip_reason
-    builder.add_edge(
-        compare_gitignore_content.out("skip_reason"),
-        execute_gitignore.in_port("skip_reason"),
-    )?;
-
-    // PrepareGitignoreWrite -> ExecuteGitignoreTransport
-    builder.add_edge(
-        prepare_gitignore.out("request"),
-        execute_gitignore.in_port("request"),
+    add_content_upsert_chain(
+        &mut builder,
+        "gitignore",
+        &generate_gitignore,
+        "gitignore_content",
+        BootstrapGraphOp::PrepareFileRead(PrepareFileReadOp),
+        BootstrapGraphOp::PrepareFileWrite(PrepareFileWriteOp),
+        BootstrapGraphOp::Blob(BlobOps::CompareContent),
+        BootstrapGraphOp::Transport(TransportOps::Execute),
     )?;
 
     Ok(builder.build())
@@ -431,9 +208,9 @@ mod tests {
 
         // Verify transport nodes exist
         assert!(dag.get_node(&"execute_scan_workspace".into()).is_some());
-        assert!(dag.get_node(&"execute_makefile_read".into()).is_some());
+        assert!(dag.get_node(&"execute_read_makefile".into()).is_some());
         assert!(dag.get_node(&"execute_makefile_transport".into()).is_some());
-        assert!(dag.get_node(&"execute_gitignore_read".into()).is_some());
+        assert!(dag.get_node(&"execute_read_gitignore".into()).is_some());
         assert!(dag
             .get_node(&"execute_gitignore_transport".into())
             .is_some());
@@ -447,8 +224,8 @@ mod tests {
         // check_mode and read paths are entrypoints
         assert!(entrypoints.is_entrypoint_port(&"compare_makefile_content".into(), &"check_mode".into()));
         assert!(entrypoints.is_entrypoint_port(&"compare_gitignore_content".into(), &"check_mode".into()));
-        assert!(entrypoints.is_entrypoint_port(&"prepare_makefile_read".into(), &"path".into()));
-        assert!(entrypoints.is_entrypoint_port(&"prepare_gitignore_read".into(), &"path".into()));
+        assert!(entrypoints.is_entrypoint_port(&"prepare_read_makefile".into(), &"path".into()));
+        assert!(entrypoints.is_entrypoint_port(&"prepare_read_gitignore".into(), &"path".into()));
     }
 
     #[test]
@@ -464,10 +241,10 @@ mod tests {
         let boundaries = detect_boundaries(&dag);
 
         // Prepare and compare nodes are NOT boundaries - they're pure
-        assert!(!boundaries.is_boundary_node(&"prepare_makefile_write".into()));
-        assert!(!boundaries.is_boundary_node(&"prepare_gitignore_write".into()));
-        assert!(!boundaries.is_boundary_node(&"prepare_makefile_read".into()));
-        assert!(!boundaries.is_boundary_node(&"prepare_gitignore_read".into()));
+        assert!(!boundaries.is_boundary_node(&"prepare_write_makefile".into()));
+        assert!(!boundaries.is_boundary_node(&"prepare_write_gitignore".into()));
+        assert!(!boundaries.is_boundary_node(&"prepare_read_makefile".into()));
+        assert!(!boundaries.is_boundary_node(&"prepare_read_gitignore".into()));
         // Generate nodes are NOT boundaries - all outputs connected
         assert!(!boundaries.is_boundary_node(&"generate_makefile".into()));
         assert!(!boundaries.is_boundary_node(&"generate_gitignore".into()));

@@ -217,6 +217,7 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
         CIGraphOp::PrepareFileExists(EmbeddedFileExistsOp::new(DEFAULT_MANIFEST_FILENAME)),
         CIGraphOp::CI(CIOp::ParseDepsExists),
         CIGraphOp::Transport(TransportOps::Execute),
+        None,
     )?;
 
     // ========================================================================

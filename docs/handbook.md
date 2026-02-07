@@ -392,7 +392,7 @@ Six nodes in the chain:
 |------|------|
 | `lib/blob/src/lib.rs` | `BlobOps::CompareContent` semantics (fresh/skip/skip_reason) |
 | `gunbc-dag/src/makegen/graph.rs` | Single-chain reference implementation |
-| `gunbc-dag/src/testgen_dag/graph.rs` | Dynamic N chains (local helper) |
+| `gunbc-dag/src/testgen_dag/graph.rs` | Dynamic N chains (shared helper) |
 
 **Design decisions:**
 - Comparison is pure; all I/O stays in the transport read/write nodes.
@@ -403,9 +403,10 @@ Six nodes in the chain:
 
 **Relationship to A.2.1 (Upsert):** Upsert acquires resources (check → create → resolve). Content upsert generates files (render → read → compare → write). Different intent, different shape.
 
-**Helper API:** A shared builder is planned (`add_content_upsert_chain` in `core/ir/src/patterns/content_upsert.rs`). Until then, wire the chain manually or reuse the local testgen helper.
+**Helper API:** Use `add_content_upsert_chain` in `core/ir/src/patterns/content_upsert.rs` to stamp out the 6-node pattern with standard wiring.
 
 **Examples:**
+- `gunbc-dag/src/testgen_dag/graph.rs` — Dynamic N chains
 - `gunbc-dag/src/pragma/graph.rs` — 3 static parallel chains
 - `gunbc-dag/src/bootstrap/graph.rs` — 2 parallel chains after scan
 - `gunbc-dag/src/makegen/graph.rs` — single chain

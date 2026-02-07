@@ -28,6 +28,7 @@
 
 pub mod atomic;
 pub mod branch;
+pub mod content_upsert;
 pub mod emit;
 pub mod loop_pattern;
 pub mod pattern_op;

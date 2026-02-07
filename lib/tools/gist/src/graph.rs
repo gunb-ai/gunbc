@@ -17,6 +17,7 @@ use gunbc_exec::{
 use gunbc_ir::transport::{ShellRequest, TransportResponse};
 use gunbc_ir::patterns::PatternOp;
 use gunbc_ir::{
+    add_transport_triplet,
     build::*, BuilderError, Cardinality, Dag, DagBuilder, Node, Value, WorkflowSignature,
 };
 use gunbc_lib_gist_ops::GistOps;
@@ -535,99 +536,30 @@ pub fn build_gist_graph(
     // Branch name acquisition (parallel to content acquisition)
     // ========================================================================
 
-    // Node: PrepareCurrentBranch (PURE - builds git rev-parse request)
-    let prepare_current_branch = builder.add_root_node(Node::opaque(
-        "prepare_current_branch",
+    let current_branch = add_transport_triplet(
+        &mut builder,
+        "current_branch",
         vec![port("repo_path", "String")],
-        vec![port("request", "TransportRequest"), port("skip", "Bool")],
+        vec![optional("branch", "String")],
         GistGraphOp::Git(GitOps::PrepareCurrentBranch),
-    ))?;
-
-    // Node: ExecuteCurrentBranch (BOUNDARY - actual I/O)
-    let execute_current_branch = builder.add_node_after(
-        Node::opaque(
-            "execute_current_branch",
-            vec![port("request", "TransportRequest"), port("skip", "Bool")],
-            vec![port("response", "TransportResponse")],
-            GistGraphOp::Transport(TransportOps::Execute),
-        ),
-        &prepare_current_branch,
-    )?;
-
-    // Node: ParseCurrentBranch (PURE - extracts branch name)
-    let parse_current_branch = builder.add_node_after(
-        Node::opaque(
-            "parse_current_branch",
-            vec![port("response", "TransportResponse")],
-            vec![optional("branch", "String")],
-            GistGraphOp::Git(GitOps::ParseCurrentBranch),
-        ),
-        &execute_current_branch,
-    )?;
-
-    // Wire branch acquisition chain
-    builder.add_edge(
-        prepare_current_branch.out("request"),
-        execute_current_branch.in_port("request"),
-    )?;
-    builder.add_edge(
-        prepare_current_branch.out("skip"),
-        execute_current_branch.in_port("skip"),
-    )?;
-    builder.add_edge(
-        execute_current_branch.out("response"),
-        parse_current_branch.in_port("response"),
+        GistGraphOp::Git(GitOps::ParseCurrentBranch),
+        GistGraphOp::Transport(TransportOps::Execute),
+        None,
     )?;
 
     // ========================================================================
     // Remote branch resolution (parallel — for detached HEAD)
     // ========================================================================
-    // This is a separate question from "what branch are we on?". When HEAD
-    // is detached (e.g., `git checkout origin/main`), this chain resolves
-    // which remote tracking branch points at the current commit.
 
-    // Node: PrepareRemoteBranches (PURE - builds git branch -r --points-at HEAD request)
-    let prepare_remote_branches = builder.add_root_node(Node::opaque(
-        "prepare_remote_branches",
+    let remote_branches = add_transport_triplet(
+        &mut builder,
+        "remote_branches",
         vec![port("repo_path", "String")],
-        vec![port("request", "TransportRequest"), port("skip", "Bool")],
+        vec![optional("remote_branch", "String")],
         GistGraphOp::Git(GitOps::PrepareRemoteBranchesAtHead),
-    ))?;
-
-    // Node: ExecuteRemoteBranches (BOUNDARY - actual I/O)
-    let execute_remote_branches = builder.add_node_after(
-        Node::opaque(
-            "execute_remote_branches",
-            vec![port("request", "TransportRequest"), port("skip", "Bool")],
-            vec![port("response", "TransportResponse")],
-            GistGraphOp::Transport(TransportOps::Execute),
-        ),
-        &prepare_remote_branches,
-    )?;
-
-    // Node: ParseRemoteBranches (PURE - extracts remote branch name)
-    let parse_remote_branches = builder.add_node_after(
-        Node::opaque(
-            "parse_remote_branches",
-            vec![port("response", "TransportResponse")],
-            vec![optional("remote_branch", "String")],
-            GistGraphOp::Git(GitOps::ParseRemoteBranchesAtHead),
-        ),
-        &execute_remote_branches,
-    )?;
-
-    // Wire remote branch chain
-    builder.add_edge(
-        prepare_remote_branches.out("request"),
-        execute_remote_branches.in_port("request"),
-    )?;
-    builder.add_edge(
-        prepare_remote_branches.out("skip"),
-        execute_remote_branches.in_port("skip"),
-    )?;
-    builder.add_edge(
-        execute_remote_branches.out("response"),
-        parse_remote_branches.in_port("response"),
+        GistGraphOp::Git(GitOps::ParseRemoteBranchesAtHead),
+        GistGraphOp::Transport(TransportOps::Execute),
+        None,
     )?;
 
     // ========================================================================
@@ -680,11 +612,11 @@ pub fn build_gist_graph(
         prepare_gist_request.in_port("markdown"),
     )?;
     builder.add_edge(
-        parse_current_branch.out("branch"),
+        current_branch.parse.out("branch"),
         prepare_gist_request.in_port("branch"),
     )?;
     builder.add_edge(
-        parse_remote_branches.out("remote_branch"),
+        remote_branches.parse.out("remote_branch"),
         prepare_gist_request.in_port("remote_branch"),
     )?;
     builder.add_edge(
@@ -732,34 +664,15 @@ fn build_snapshot_acquire(
     builder: &mut DagBuilder<GistGraphOp>,
     extensions: Vec<String>,
 ) -> Result<gunbc_ir::builder::NodeRef<GistGraphOp>, BuilderError> {
-    // Node: PrepareLsFiles (PURE - extensions pushed into git pathspec)
-    let prepare_list_files = builder.add_root_node(Node::opaque(
-        "prepare_list_files",
+    let list_files = add_transport_triplet(
+        builder,
+        "list_files",
         vec![port("repo_path", "String")],
-        vec![port("request", "TransportRequest"), port("skip", "Bool")],
+        vec![list("files", "String")],
         GistGraphOp::Git(GitOps::PrepareLsFiles { extensions }),
-    ))?;
-
-    // Node: Execute list files (BOUNDARY)
-    let execute_list_files = builder.add_node_after(
-        Node::opaque(
-            "execute_list_files",
-            vec![port("request", "TransportRequest"), port("skip", "Bool")],
-            vec![port("response", "TransportResponse")],
-            GistGraphOp::Transport(TransportOps::Execute),
-        ),
-        &prepare_list_files,
-    )?;
-
-    // Node: ParseLsFiles (PURE)
-    let parse_list_files = builder.add_node_after(
-        Node::opaque(
-            "parse_list_files",
-            vec![port("response", "TransportResponse")],
-            vec![list("files", "String")],
-            GistGraphOp::Git(GitOps::ParseLsFiles),
-        ),
-        &execute_list_files,
+        GistGraphOp::Git(GitOps::ParseLsFiles),
+        GistGraphOp::Transport(TransportOps::Execute),
+        None,
     )?;
 
     // Node: LoopBuilder for per-file reading
@@ -773,7 +686,7 @@ fn build_snapshot_acquire(
         .with_output("contents", "String")
         .build();
 
-    let read_files_loop = builder.add_node_after(loop_node, &parse_list_files)?;
+    let read_files_loop = builder.add_node_after(loop_node, &list_files.parse)?;
 
     // Node: CollectFileContents (PURE - zips filenames + contents into Map)
     let collect_file_contents = builder.add_node_after(
@@ -797,25 +710,13 @@ fn build_snapshot_acquire(
         &collect_file_contents,
     )?;
 
-    // Wire snapshot pipeline
+    // Wire snapshot pipeline (internal triplet edges handled by helper)
     builder.add_edge(
-        prepare_list_files.out("request"),
-        execute_list_files.in_port("request"),
-    )?;
-    builder.add_edge(
-        prepare_list_files.out("skip"),
-        execute_list_files.in_port("skip"),
-    )?;
-    builder.add_edge(
-        execute_list_files.out("response"),
-        parse_list_files.in_port("response"),
-    )?;
-    builder.add_edge(
-        parse_list_files.out("files"),
+        list_files.parse.out("files"),
         read_files_loop.in_port("files"),
     )?;
     builder.add_edge(
-        parse_list_files.out("files"),
+        list_files.parse.out("files"),
         collect_file_contents.in_port("filenames"),
     )?;
     builder.add_edge(
@@ -838,40 +739,21 @@ fn build_diff_acquire(
     base_ref: &str,
     extensions: Vec<String>,
 ) -> Result<gunbc_ir::builder::NodeRef<GistGraphOp>, BuilderError> {
-    // Node: PrepareDiff (PURE - extensions pushed into git pathspec)
-    let prepare_diff = builder.add_root_node(Node::opaque(
-        "prepare_diff",
+    let diff = add_transport_triplet(
+        builder,
+        "diff",
         vec![
             port("repo_path", "String"),
             optional("base_ref", "String"),
         ],
-        vec![port("request", "TransportRequest"), port("skip", "Bool")],
+        vec![port("diff_files", "Map"), scalar("stats", "String")],
         GistGraphOp::Git(GitOps::PrepareDiff {
             base_ref: base_ref.to_string(),
             extensions,
         }),
-    ))?;
-
-    // Node: Execute diff (BOUNDARY)
-    let execute_diff = builder.add_node_after(
-        Node::opaque(
-            "execute_diff",
-            vec![port("request", "TransportRequest"), port("skip", "Bool")],
-            vec![port("response", "TransportResponse")],
-            GistGraphOp::Transport(TransportOps::Execute),
-        ),
-        &prepare_diff,
-    )?;
-
-    // Node: ParseDiff (PURE)
-    let parse_diff = builder.add_node_after(
-        Node::opaque(
-            "parse_diff",
-            vec![port("response", "TransportResponse")],
-            vec![port("diff_files", "Map"), scalar("stats", "String")],
-            GistGraphOp::Git(GitOps::ParseDiff),
-        ),
-        &execute_diff,
+        GistGraphOp::Git(GitOps::ParseDiff),
+        GistGraphOp::Transport(TransportOps::Execute),
+        None,
     )?;
 
     // Node: RenderDiffSnapshot (PURE)
@@ -882,18 +764,15 @@ fn build_diff_acquire(
             vec![scalar("markdown", "String")],
             GistGraphOp::Markdown(MarkdownOp::RenderDiffSnapshot),
         ),
-        &parse_diff,
+        &diff.parse,
     )?;
 
-    // Wire diff pipeline
-    builder.add_edge(prepare_diff.out("request"), execute_diff.in_port("request"))?;
-    builder.add_edge(prepare_diff.out("skip"), execute_diff.in_port("skip"))?;
-    builder.add_edge(execute_diff.out("response"), parse_diff.in_port("response"))?;
+    // Wire diff → render (internal triplet edges handled by helper)
     builder.add_edge(
-        parse_diff.out("diff_files"),
+        diff.parse.out("diff_files"),
         render_markdown.in_port("diff_files"),
     )?;
-    builder.add_edge(parse_diff.out("stats"), render_markdown.in_port("stats"))?;
+    builder.add_edge(diff.parse.out("stats"), render_markdown.in_port("stats"))?;
 
     Ok(render_markdown)
 }
@@ -920,93 +799,38 @@ fn build_recent_acquire(
     // Rev-list chain: find commit from 3 days ago
     // ========================================================================
 
-    // Node: PrepareRevListBefore (PURE)
-    let prepare_rev_list = builder.add_root_node(Node::opaque(
-        "prepare_rev_list",
+    let rev_list = add_transport_triplet(
+        builder,
+        "rev_list",
         vec![port("repo_path", "String")],
-        vec![port("request", "TransportRequest"), port("skip", "Bool")],
+        vec![optional("base_ref", "String")],
         GistGraphOp::Git(GitOps::PrepareRevListBefore {
             before: "3 days ago".to_string(),
         }),
-    ))?;
-
-    // Node: ExecuteRevList (BOUNDARY)
-    let execute_rev_list = builder.add_node_after(
-        Node::opaque(
-            "execute_rev_list",
-            vec![port("request", "TransportRequest"), port("skip", "Bool")],
-            vec![port("response", "TransportResponse")],
-            GistGraphOp::Transport(TransportOps::Execute),
-        ),
-        &prepare_rev_list,
-    )?;
-
-    // Node: ParseRevListBefore (PURE)
-    let parse_rev_list = builder.add_node_after(
-        Node::opaque(
-            "parse_rev_list",
-            vec![port("response", "TransportResponse")],
-            vec![optional("base_ref", "String")],
-            GistGraphOp::Git(GitOps::ParseRevListBefore),
-        ),
-        &execute_rev_list,
-    )?;
-
-    // Wire rev-list chain
-    builder.add_edge(
-        prepare_rev_list.out("request"),
-        execute_rev_list.in_port("request"),
-    )?;
-    builder.add_edge(
-        prepare_rev_list.out("skip"),
-        execute_rev_list.in_port("skip"),
-    )?;
-    builder.add_edge(
-        execute_rev_list.out("response"),
-        parse_rev_list.in_port("response"),
+        GistGraphOp::Git(GitOps::ParseRevListBefore),
+        GistGraphOp::Transport(TransportOps::Execute),
+        None,
     )?;
 
     // ========================================================================
     // Diff chain: diff against the resolved base_ref
     // ========================================================================
 
-    // Node: PrepareDiff (PURE - default base_ref is "HEAD" for young repos)
-    let prepare_diff = builder.add_node_after(
-        Node::opaque(
-            "prepare_diff",
-            vec![
-                port("repo_path", "String"),
-                optional("base_ref", "String"),
-            ],
-            vec![port("request", "TransportRequest"), port("skip", "Bool")],
-            GistGraphOp::Git(GitOps::PrepareDiff {
-                base_ref: "HEAD".to_string(),
-                extensions,
-            }),
-        ),
-        &parse_rev_list,
-    )?;
-
-    // Node: Execute diff (BOUNDARY)
-    let execute_diff = builder.add_node_after(
-        Node::opaque(
-            "execute_diff",
-            vec![port("request", "TransportRequest"), port("skip", "Bool")],
-            vec![port("response", "TransportResponse")],
-            GistGraphOp::Transport(TransportOps::Execute),
-        ),
-        &prepare_diff,
-    )?;
-
-    // Node: ParseDiff (PURE)
-    let parse_diff = builder.add_node_after(
-        Node::opaque(
-            "parse_diff",
-            vec![port("response", "TransportResponse")],
-            vec![port("diff_files", "Map"), scalar("stats", "String")],
-            GistGraphOp::Git(GitOps::ParseDiff),
-        ),
-        &execute_diff,
+    let diff = add_transport_triplet(
+        builder,
+        "diff",
+        vec![
+            port("repo_path", "String"),
+            optional("base_ref", "String"),
+        ],
+        vec![port("diff_files", "Map"), scalar("stats", "String")],
+        GistGraphOp::Git(GitOps::PrepareDiff {
+            base_ref: "HEAD".to_string(),
+            extensions,
+        }),
+        GistGraphOp::Git(GitOps::ParseDiff),
+        GistGraphOp::Transport(TransportOps::Execute),
+        Some(&rev_list.parse),
     )?;
 
     // Node: RenderDiffSnapshot (PURE)
@@ -1017,26 +841,21 @@ fn build_recent_acquire(
             vec![scalar("markdown", "String")],
             GistGraphOp::Markdown(MarkdownOp::RenderDiffSnapshot),
         ),
-        &parse_diff,
+        &diff.parse,
     )?;
 
-    // Wire rev-list → diff (base_ref flows from parse_rev_list to prepare_diff)
+    // Wire cross-triplet edges (internal triplet edges handled by helpers)
     builder.add_edge(
-        parse_rev_list.out("base_ref"),
-        prepare_diff.in_port("base_ref"),
+        rev_list.parse.out("base_ref"),
+        diff.prepare.in_port("base_ref"),
     )?;
-
-    // Wire diff pipeline
-    builder.add_edge(prepare_diff.out("request"), execute_diff.in_port("request"))?;
-    builder.add_edge(prepare_diff.out("skip"), execute_diff.in_port("skip"))?;
-    builder.add_edge(execute_diff.out("response"), parse_diff.in_port("response"))?;
     builder.add_edge(
-        parse_diff.out("diff_files"),
+        diff.parse.out("diff_files"),
         render_markdown.in_port("diff_files"),
     )?;
-    builder.add_edge(parse_diff.out("stats"), render_markdown.in_port("stats"))?;
+    builder.add_edge(diff.parse.out("stats"), render_markdown.in_port("stats"))?;
 
-    Ok((render_markdown, parse_rev_list))
+    Ok((render_markdown, rev_list.parse))
 }
 
 // Mockable implementation for test generation

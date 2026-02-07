@@ -517,10 +517,11 @@ fn render_help_params(params: &[EntrypointParam]) -> String {
     params
         .iter()
         .map(|p| {
+            let repeat_suffix = if p.repeatable { " ..." } else { "" };
             if let Some(ref default) = p.default {
-                format!("[{}={}]", p.make_var, default)
+                format!("[{}={}{}]", p.make_var, default, repeat_suffix)
             } else {
-                format!("[{}=...]", p.make_var)
+                format!("[{}=...{}]", p.make_var, repeat_suffix)
             }
         })
         .collect::<Vec<_>>()
@@ -609,8 +610,19 @@ fn render_cli_args(params: &[EntrypointParam]) -> String {
     let args: Vec<String> = params
         .iter()
         .map(|p| {
-            // $(if $(VAR),--flag $(VAR))
-            format!(" $(if $({}),{} $({}))", p.make_var, p.cli_flag, p.make_var)
+            if p.repeatable {
+                // $(if $(VAR),$(foreach v,$(VAR),--flag $(v)))
+                format!(
+                    " $(if $({}),$(foreach v,$({}),{} $(v)))",
+                    p.make_var, p.make_var, p.cli_flag
+                )
+            } else {
+                // $(if $(VAR),--flag $(VAR))
+                format!(
+                    " $(if $({}),{} $({}))",
+                    p.make_var, p.cli_flag, p.make_var
+                )
+            }
         })
         .collect();
 
@@ -651,6 +663,32 @@ mod tests {
         // Should have conditional variable expansion
         assert!(makefile.contains("$(if $(REPO)"));
         assert!(makefile.contains("--repo"));
+    }
+
+    #[test]
+    fn test_render_makefile_repeatable_cli_args() {
+        let registry = ToolRegistry::default_registry();
+        let makefile = render_makefile(&registry);
+
+        assert!(
+            makefile.contains("$(foreach v,$(EXT),--extensions $(v))"),
+            "repeatable vars should expand into repeated flags"
+        );
+    }
+
+    #[test]
+    fn test_render_help_params_repeatable() {
+        let params = vec![EntrypointParam {
+            port_name: "extensions".to_string(),
+            make_var: "EXT".to_string(),
+            cli_flag: "--extensions".to_string(),
+            type_hint: "String".to_string(),
+            default: None,
+            repeatable: true,
+        }];
+
+        let rendered = render_help_params(&params);
+        assert_eq!(rendered, "[EXT=... ...]");
     }
 
     #[test]

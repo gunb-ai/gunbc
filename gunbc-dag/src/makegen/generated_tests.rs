@@ -40,9 +40,9 @@ fn test_signature_matches_dag() {
 // from gunbc_exec with baseline-derived inputs (Tier 1 infra).
 // - 'load_registry': same inputs → same outputs
 // - 'render_makefile': same inputs → same outputs
-// - 'prepare_file_read': same inputs → same outputs
-// - 'compare_content': same inputs → same outputs
-// - 'prepare_file_write': same inputs → same outputs
+// - 'prepare_read_makegen': same inputs → same outputs
+// - 'compare_makegen_content': same inputs → same outputs
+// - 'prepare_write_makegen': same inputs → same outputs
 
 /// DryRun execution completes without crash.
 /// 
@@ -64,8 +64,8 @@ fn test_transport_interception() {
     let dag = crate :: build_makegen_graph().unwrap();
     let result = assert_boundary_mockable(&dag, mock_spec().to_boundary_mocks());
     assert!(result.is_ok(), "All transports should be interceptable: {:?}", result.error);
-    assert!(result.boundary_nodes.iter().any(|n| n == "execute_read"), "transport executor 'execute_read' should be in intercepted list");
-    assert!(result.boundary_nodes.iter().any(|n| n == "execute_write"), "transport executor 'execute_write' should be in intercepted list");
+    assert!(result.boundary_nodes.iter().any(|n| n == "execute_read_makegen"), "transport executor 'execute_read_makegen' should be in intercepted list");
+    assert!(result.boundary_nodes.iter().any(|n| n == "execute_makegen_transport"), "transport executor 'execute_makegen_transport' should be in intercepted list");
 }
 
 // =========================================================================
@@ -76,11 +76,11 @@ fn test_transport_interception() {
 // 6 node contract compliance obligations.
 // Per-node compliance tests use `execute_single_node` (Tier 1 infra).
 // - 'render_makefile': valid inputs → valid outputs
-// - 'prepare_file_read': valid inputs → valid outputs
-// - 'execute_read': valid inputs → valid outputs
-// - 'compare_content': valid inputs → valid outputs
-// - 'prepare_file_write': valid inputs → valid outputs
-// - 'execute_write': valid inputs → valid outputs
+// - 'prepare_read_makegen': valid inputs → valid outputs
+// - 'execute_read_makegen': valid inputs → valid outputs
+// - 'compare_makegen_content': valid inputs → valid outputs
+// - 'prepare_write_makegen': valid inputs → valid outputs
+// - 'execute_makegen_transport': valid inputs → valid outputs
 // 2 optional input handling obligations.
 // Optional inputs must accept missing values and reject wrong-typed inputs.
 
@@ -106,118 +106,118 @@ fn test_cardinality_load_registry_tool_names_many_2() {
     let _log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).expect("cardinality count=2 (many) should not crash");
 }
 
-/// Cardinality coverage: execute_write.response with 0 element(s) (cardinality: 0..1).
+/// Cardinality coverage: execute_makegen_transport.response with 0 element(s) (cardinality: 0..1).
 /// 
-/// Proves: DAG handles count=0 (empty) for boundary port execute_write.response.
+/// Proves: DAG handles count=0 (empty) for boundary port execute_makegen_transport.response.
 #[test]
-fn test_cardinality_execute_write_response_empty_0() {
+fn test_cardinality_execute_makegen_transport_response_empty_0() {
     let dag = crate :: build_makegen_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
-    mocks.set_value("execute_write", "response", Value::Unit);
+    mocks.set_value("execute_makegen_transport", "makegen_response", Value::Unit);
     let _log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).expect("cardinality count=0 (empty) should not crash");
 }
 
-/// Cardinality coverage: execute_write.response with 1 element(s) (cardinality: 0..1).
+/// Cardinality coverage: execute_makegen_transport.response with 1 element(s) (cardinality: 0..1).
 /// 
-/// Proves: DAG handles count=1 (one) for boundary port execute_write.response.
+/// Proves: DAG handles count=1 (one) for boundary port execute_makegen_transport.response.
 #[test]
-fn test_cardinality_execute_write_response_one_1() {
+fn test_cardinality_execute_makegen_transport_response_one_1() {
     let dag = crate :: build_makegen_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
-    mocks.set_value("execute_write", "response", Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: "<MOCK>".to_string(), stderr: "".to_string() })));
+    mocks.set_value("execute_makegen_transport", "makegen_response", Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: "<MOCK>".to_string(), stderr: "".to_string() })));
     let _log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).expect("cardinality count=1 (one) should not crash");
 }
 
-/// Cardinality coverage: execute_write.written_path with 0 element(s) (cardinality: 0..1).
+/// Cardinality coverage: execute_makegen_transport.written_path with 0 element(s) (cardinality: 0..1).
 /// 
-/// Proves: DAG handles count=0 (empty) for boundary port execute_write.written_path.
+/// Proves: DAG handles count=0 (empty) for boundary port execute_makegen_transport.written_path.
 #[test]
-fn test_cardinality_execute_write_written_path_empty_0() {
+fn test_cardinality_execute_makegen_transport_written_path_empty_0() {
     let dag = crate :: build_makegen_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
-    mocks.set_value("execute_write", "written_path", Value::Unit);
+    mocks.set_value("execute_makegen_transport", "makegen_written_path", Value::Unit);
     let _log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).expect("cardinality count=0 (empty) should not crash");
 }
 
-/// Cardinality coverage: execute_write.written_path with 1 element(s) (cardinality: 0..1).
+/// Cardinality coverage: execute_makegen_transport.written_path with 1 element(s) (cardinality: 0..1).
 /// 
-/// Proves: DAG handles count=1 (one) for boundary port execute_write.written_path.
+/// Proves: DAG handles count=1 (one) for boundary port execute_makegen_transport.written_path.
 #[test]
-fn test_cardinality_execute_write_written_path_one_1() {
+fn test_cardinality_execute_makegen_transport_written_path_one_1() {
     let dag = crate :: build_makegen_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
-    mocks.set_value("execute_write", "written_path", Value::Str("<MOCK>".to_string()));
+    mocks.set_value("execute_makegen_transport", "makegen_written_path", Value::Str("<MOCK>".to_string()));
     let _log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).expect("cardinality count=1 (one) should not crash");
 }
 
-/// Cardinality coverage: execute_write.content with 0 element(s) (cardinality: 0..1).
+/// Cardinality coverage: execute_makegen_transport.content with 0 element(s) (cardinality: 0..1).
 /// 
-/// Proves: DAG handles count=0 (empty) for boundary port execute_write.content.
+/// Proves: DAG handles count=0 (empty) for boundary port execute_makegen_transport.content.
 #[test]
-fn test_cardinality_execute_write_content_empty_0() {
+fn test_cardinality_execute_makegen_transport_content_empty_0() {
     let dag = crate :: build_makegen_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
-    mocks.set_value("execute_write", "content", Value::Unit);
+    mocks.set_value("execute_makegen_transport", "makegen_content", Value::Unit);
     let _log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).expect("cardinality count=0 (empty) should not crash");
 }
 
-/// Cardinality coverage: execute_write.content with 1 element(s) (cardinality: 0..1).
+/// Cardinality coverage: execute_makegen_transport.content with 1 element(s) (cardinality: 0..1).
 /// 
-/// Proves: DAG handles count=1 (one) for boundary port execute_write.content.
+/// Proves: DAG handles count=1 (one) for boundary port execute_makegen_transport.content.
 #[test]
-fn test_cardinality_execute_write_content_one_1() {
+fn test_cardinality_execute_makegen_transport_content_one_1() {
     let dag = crate :: build_makegen_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
-    mocks.set_value("execute_write", "content", Value::Str("<MOCK>".to_string()));
+    mocks.set_value("execute_makegen_transport", "makegen_content", Value::Str("<MOCK>".to_string()));
     let _log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).expect("cardinality count=1 (one) should not crash");
 }
 
-/// Cardinality coverage: execute_write.skip_reason with 0 element(s) (cardinality: 0..1).
+/// Cardinality coverage: execute_makegen_transport.skip_reason with 0 element(s) (cardinality: 0..1).
 /// 
-/// Proves: DAG handles count=0 (empty) for boundary port execute_write.skip_reason.
+/// Proves: DAG handles count=0 (empty) for boundary port execute_makegen_transport.skip_reason.
 #[test]
-fn test_cardinality_execute_write_skip_reason_empty_0() {
+fn test_cardinality_execute_makegen_transport_skip_reason_empty_0() {
     let dag = crate :: build_makegen_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
-    mocks.set_value("execute_write", "skip_reason", Value::Unit);
+    mocks.set_value("execute_makegen_transport", "skip_reason", Value::Unit);
     let _log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).expect("cardinality count=0 (empty) should not crash");
 }
 
-/// Cardinality coverage: execute_write.skip_reason with 1 element(s) (cardinality: 0..1).
+/// Cardinality coverage: execute_makegen_transport.skip_reason with 1 element(s) (cardinality: 0..1).
 /// 
-/// Proves: DAG handles count=1 (one) for boundary port execute_write.skip_reason.
+/// Proves: DAG handles count=1 (one) for boundary port execute_makegen_transport.skip_reason.
 #[test]
-fn test_cardinality_execute_write_skip_reason_one_1() {
+fn test_cardinality_execute_makegen_transport_skip_reason_one_1() {
     let dag = crate :: build_makegen_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
-    mocks.set_value("execute_write", "skip_reason", Value::Str("<MOCK>".to_string()));
+    mocks.set_value("execute_makegen_transport", "skip_reason", Value::Str("<MOCK>".to_string()));
     let _log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).expect("cardinality count=1 (one) should not crash");
 }
 
-/// Optional input: compare_content.check_mode (cardinality: 0..1).
+/// Optional input: compare_makegen_content.check_mode (cardinality: 0..1).
 /// 
 /// Proves: missing optional input does not crash.
 #[test]
-fn test_optional_missing_compare_content_check_mode() {
+fn test_optional_missing_compare_makegen_content_check_mode() {
     let dag = crate :: build_makegen_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("expected_content".to_string(), Value::Str("<MOCK>".to_string()));
     inputs.insert("response".to_string(), Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: "<MOCK>".to_string(), stderr: "".to_string() })));
-    let _outputs = gunbc_exec::execute_single_node(&dag, "compare_content", inputs, gunbc_exec::ExecutionMode::Real).expect("optional input compare_content.check_mode missing should not error");
+    let _outputs = gunbc_exec::execute_single_node(&dag, "compare_makegen_content", inputs, gunbc_exec::ExecutionMode::Real).expect("optional input compare_makegen_content.check_mode missing should not error");
 }
 
-/// Optional input: compare_content.check_mode (cardinality: 0..1).
+/// Optional input: compare_makegen_content.check_mode (cardinality: 0..1).
 /// 
 /// Proves: wrong-typed optional input is rejected.
 #[test]
-fn test_optional_wrong_type_compare_content_check_mode() {
+fn test_optional_wrong_type_compare_makegen_content_check_mode() {
     let dag = crate :: build_makegen_graph().unwrap();
     let mut inputs = std::collections::HashMap::new();
     inputs.insert("check_mode".to_string(), Value::Str("<WRONG>".to_string()));
     inputs.insert("expected_content".to_string(), Value::Str("<MOCK>".to_string()));
     inputs.insert("response".to_string(), Value::Response(gunbc_ir::transport::TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: "<MOCK>".to_string(), stderr: "".to_string() })));
-    let result = gunbc_exec::execute_single_node(&dag, "compare_content", inputs, gunbc_exec::ExecutionMode::Real);
-    assert!(result.is_err(), "optional input compare_content.check_mode wrong type should error");
+    let result = gunbc_exec::execute_single_node(&dag, "compare_makegen_content", inputs, gunbc_exec::ExecutionMode::Real);
+    assert!(result.is_err(), "optional input compare_makegen_content.check_mode wrong type should error");
 }
 
 // =========================================================================
@@ -236,52 +236,52 @@ fn test_optional_wrong_type_compare_content_check_mode() {
 fn test_scenario_all_succeed() {
     let dag = crate :: build_makegen_graph().unwrap();
     let log = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("all-succeed scenario should complete");
-    let entry = log.get("execute_read").expect("'execute_read' should be in log");
-    assert!(entry.was_intercepted, "'execute_read' should be intercepted in DryRun");
-    let entry = log.get("execute_write").expect("'execute_write' should be in log");
-    assert!(entry.was_intercepted, "'execute_write' should be intercepted in DryRun");
+    let entry = log.get("execute_read_makegen").expect("'execute_read_makegen' should be in log");
+    assert!(entry.was_intercepted, "'execute_read_makegen' should be intercepted in DryRun");
+    let entry = log.get("execute_makegen_transport").expect("'execute_makegen_transport' should be in log");
+    assert!(entry.was_intercepted, "'execute_makegen_transport' should be intercepted in DryRun");
 }
 
-/// Single failure: 'execute_read' transport fails.
+/// Single failure: 'execute_read_makegen' transport fails.
 /// 
 /// Proves: failure propagation semantics are consistent.
 #[test]
-fn test_scenario_execute_read_fails() {
+fn test_scenario_execute_read_makegen_fails() {
     let dag = crate :: build_makegen_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
-    // Inject failure at 'execute_read'
-    mocks.set_value("execute_read", "response", Value::Str("<TRANSPORT_FAILURE>".to_string()));
+    // Inject failure at 'execute_read_makegen'
+    mocks.set_value("execute_read_makegen", "response", Value::Str("<TRANSPORT_FAILURE>".to_string()));
     // Execution may succeed or fail depending on graph semantics;
     // the key property is that it doesn't crash/hang.
     let _result = execute_with_mode(&dag, ExecutionMode::DryRun(mocks));
 }
 
-/// Single failure: 'execute_write' transport fails.
+/// Single failure: 'execute_makegen_transport' transport fails.
 /// 
 /// Proves: failure propagation semantics are consistent.
 #[test]
-fn test_scenario_execute_write_fails() {
+fn test_scenario_execute_makegen_transport_fails() {
     let dag = crate :: build_makegen_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
-    // Inject failure at 'execute_write'
-    mocks.set_value("execute_write", "response", Value::Str("<TRANSPORT_FAILURE>".to_string()));
+    // Inject failure at 'execute_makegen_transport'
+    mocks.set_value("execute_makegen_transport", "makegen_response", Value::Str("<TRANSPORT_FAILURE>".to_string()));
     // Execution may succeed or fail depending on graph semantics;
     // the key property is that it doesn't crash/hang.
     let _result = execute_with_mode(&dag, ExecutionMode::DryRun(mocks));
 }
 
-/// Skip propagation: 'execute_read' returns Skipped → downstream handles it.
+/// Skip propagation: 'execute_read_makegen' returns Skipped → downstream handles it.
 /// 
 /// Proves: when a transport's output is Skipped, downstream nodes
 /// either skip themselves (guarded) or process the Skipped value
 /// without crashing.
 #[test]
-fn test_skip_propagation_execute_read() {
+fn test_skip_propagation_execute_read_makegen() {
     let dag = crate :: build_makegen_graph().unwrap();
     let mut mocks = mock_spec().to_boundary_mocks();
-    mocks.set_value("execute_read", "response", Value::Skipped);
+    mocks.set_value("execute_read_makegen", "response", Value::Skipped);
     let log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).expect("skip propagation should not crash or hang");
-    assert!(log.get("compare_content").is_some(), "downstream 'compare_content' should still appear in log");
+    assert!(log.get("compare_makegen_content").is_some(), "downstream 'compare_makegen_content' should still appear in log");
 }
 
 // =========================================================================
@@ -331,13 +331,13 @@ fn test_flow_makegen() {
 // These tests execute contiguous windows of the DAG using baseline DryRun
 // values as injected inputs, then verify window exit outputs match baseline.
 
-/// Window: compare_content -> execute_write
+/// Window: compare_makegen_content -> execute_makegen_transport
 #[test]
-fn test_window_compare_content_through_execute_write() {
+fn test_window_compare_makegen_content_through_execute_makegen_transport() {
     let dag = crate :: build_makegen_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
-    let window = Window::from_nodes(&flat, vec!("compare_content", "execute_write"));
+    let window = Window::from_nodes(&flat, vec!("compare_makegen_content", "execute_makegen_transport"));
     let mut mocks = mock_spec().to_boundary_mocks();
     apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
     let window_dag = window_subdag(&flat, &window);
@@ -345,13 +345,13 @@ fn test_window_compare_content_through_execute_write() {
     assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
 }
 
-/// Window: prepare_file_write -> execute_write
+/// Window: prepare_write_makegen -> execute_makegen_transport
 #[test]
-fn test_window_prepare_file_write_through_execute_write() {
+fn test_window_prepare_write_makegen_through_execute_makegen_transport() {
     let dag = crate :: build_makegen_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
-    let window = Window::from_nodes(&flat, vec!("prepare_file_write", "compare_content", "execute_write"));
+    let window = Window::from_nodes(&flat, vec!("prepare_write_makegen", "compare_makegen_content", "execute_makegen_transport"));
     let mut mocks = mock_spec().to_boundary_mocks();
     apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
     let window_dag = window_subdag(&flat, &window);
@@ -359,13 +359,13 @@ fn test_window_prepare_file_write_through_execute_write() {
     assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
 }
 
-/// Window: render_makefile -> compare_content
+/// Window: render_makefile -> compare_makegen_content
 #[test]
-fn test_window_render_makefile_through_compare_content() {
+fn test_window_render_makefile_through_compare_makegen_content() {
     let dag = crate :: build_makegen_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
-    let window = Window::from_nodes(&flat, vec!("render_makefile", "execute_read", "prepare_file_write", "compare_content"));
+    let window = Window::from_nodes(&flat, vec!("render_makefile", "execute_read_makegen", "prepare_write_makegen", "compare_makegen_content"));
     let mut mocks = mock_spec().to_boundary_mocks();
     apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
     let window_dag = window_subdag(&flat, &window);
@@ -373,13 +373,13 @@ fn test_window_render_makefile_through_compare_content() {
     assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
 }
 
-/// Window: execute_read -> execute_write
+/// Window: execute_read_makegen -> execute_makegen_transport
 #[test]
-fn test_window_execute_read_through_execute_write() {
+fn test_window_execute_read_makegen_through_execute_makegen_transport() {
     let dag = crate :: build_makegen_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
-    let window = Window::from_nodes(&flat, vec!("execute_read", "prepare_file_write", "compare_content", "execute_write"));
+    let window = Window::from_nodes(&flat, vec!("execute_read_makegen", "prepare_write_makegen", "compare_makegen_content", "execute_makegen_transport"));
     let mut mocks = mock_spec().to_boundary_mocks();
     apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
     let window_dag = window_subdag(&flat, &window);
@@ -387,13 +387,13 @@ fn test_window_execute_read_through_execute_write() {
     assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
 }
 
-/// Window: prepare_file_read -> compare_content
+/// Window: prepare_read_makegen -> compare_makegen_content
 #[test]
-fn test_window_prepare_file_read_through_compare_content() {
+fn test_window_prepare_read_makegen_through_compare_makegen_content() {
     let dag = crate :: build_makegen_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
-    let window = Window::from_nodes(&flat, vec!("prepare_file_read", "render_makefile", "execute_read", "prepare_file_write", "compare_content"));
+    let window = Window::from_nodes(&flat, vec!("prepare_read_makegen", "render_makefile", "execute_read_makegen", "prepare_write_makegen", "compare_makegen_content"));
     let mut mocks = mock_spec().to_boundary_mocks();
     apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
     let window_dag = window_subdag(&flat, &window);
@@ -401,13 +401,13 @@ fn test_window_prepare_file_read_through_compare_content() {
     assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
 }
 
-/// Window: render_makefile -> execute_write
+/// Window: render_makefile -> execute_makegen_transport
 #[test]
-fn test_window_render_makefile_through_execute_write() {
+fn test_window_render_makefile_through_execute_makegen_transport() {
     let dag = crate :: build_makegen_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
-    let window = Window::from_nodes(&flat, vec!("render_makefile", "execute_read", "prepare_file_write", "compare_content", "execute_write"));
+    let window = Window::from_nodes(&flat, vec!("render_makefile", "execute_read_makegen", "prepare_write_makegen", "compare_makegen_content", "execute_makegen_transport"));
     let mut mocks = mock_spec().to_boundary_mocks();
     apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
     let window_dag = window_subdag(&flat, &window);
@@ -415,13 +415,13 @@ fn test_window_render_makefile_through_execute_write() {
     assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
 }
 
-/// Window: load_registry -> compare_content
+/// Window: load_registry -> compare_makegen_content
 #[test]
-fn test_window_load_registry_through_compare_content() {
+fn test_window_load_registry_through_compare_makegen_content() {
     let dag = crate :: build_makegen_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
-    let window = Window::from_nodes(&flat, vec!("load_registry", "prepare_file_read", "render_makefile", "execute_read", "prepare_file_write", "compare_content"));
+    let window = Window::from_nodes(&flat, vec!("load_registry", "prepare_read_makegen", "render_makefile", "execute_read_makegen", "prepare_write_makegen", "compare_makegen_content"));
     let mut mocks = mock_spec().to_boundary_mocks();
     apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
     let window_dag = window_subdag(&flat, &window);
@@ -429,13 +429,13 @@ fn test_window_load_registry_through_compare_content() {
     assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
 }
 
-/// Window: prepare_file_read -> execute_write
+/// Window: prepare_read_makegen -> execute_makegen_transport
 #[test]
-fn test_window_prepare_file_read_through_execute_write() {
+fn test_window_prepare_read_makegen_through_execute_makegen_transport() {
     let dag = crate :: build_makegen_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
-    let window = Window::from_nodes(&flat, vec!("prepare_file_read", "render_makefile", "execute_read", "prepare_file_write", "compare_content", "execute_write"));
+    let window = Window::from_nodes(&flat, vec!("prepare_read_makegen", "render_makefile", "execute_read_makegen", "prepare_write_makegen", "compare_makegen_content", "execute_makegen_transport"));
     let mut mocks = mock_spec().to_boundary_mocks();
     apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
     let window_dag = window_subdag(&flat, &window);
@@ -443,13 +443,13 @@ fn test_window_prepare_file_read_through_execute_write() {
     assert_window_outputs(&flat, &window, &baseline, &log).expect("window outputs should match baseline");
 }
 
-/// Window: load_registry -> execute_write
+/// Window: load_registry -> execute_makegen_transport
 #[test]
-fn test_window_load_registry_through_execute_write() {
+fn test_window_load_registry_through_execute_makegen_transport() {
     let dag = crate :: build_makegen_graph().unwrap();
     let flat = lower(&dag).expect("lower should succeed").dag;
     let baseline = execute_with_mode(&dag, ExecutionMode::DryRun(mock_spec().to_boundary_mocks())).expect("baseline DryRun should succeed");
-    let window = Window::from_nodes(&flat, vec!("load_registry", "prepare_file_read", "render_makefile", "execute_read", "prepare_file_write", "compare_content", "execute_write"));
+    let window = Window::from_nodes(&flat, vec!("load_registry", "prepare_read_makegen", "render_makefile", "execute_read_makegen", "prepare_write_makegen", "compare_makegen_content", "execute_makegen_transport"));
     let mut mocks = mock_spec().to_boundary_mocks();
     apply_window_inputs(&flat, &window, &baseline, &mut mocks).expect("window inputs should be derivable from baseline");
     let window_dag = window_subdag(&flat, &window);

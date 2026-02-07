@@ -10,7 +10,8 @@
 use crate::pragma::ops::PragmaOp;
 use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::{
-    build::*, BuilderError, Cardinality, Dag, DagBuilder, Node, Value, WorkflowSignature,
+    add_content_upsert_chain, build::*, BuilderError, Cardinality, Dag, DagBuilder, Node, Value,
+    WorkflowSignature,
 };
 use gunbc_lib_blob::BlobOps;
 use gunbc_lib_transport::TransportOps;
@@ -74,22 +75,18 @@ pub fn pragma_signature() -> WorkflowSignature {
 /// Pipeline (three parallel content upsert chains):
 /// ```text
 /// render_clippy ──→ prepare_read_clippy → execute_read_clippy → compare_clippy_content → execute_clippy_transport
-///                 └→ prepare_clippy_write ─────────────────────────────────────────────→ (request)
+///                 └→ prepare_write_clippy ─────────────────────────────────────────────→ (request)
 ///
 /// render_allowlist → prepare_read_allowlist → execute_read_allowlist → compare_allowlist_content → execute_allowlist_transport
-///                  └→ prepare_allowlist_write ──────────────────────────────────────────────────→ (request)
+///                  └→ prepare_write_allowlist ──────────────────────────────────────────────────→ (request)
 ///
 /// render_policy ──→ prepare_read_policy → execute_read_policy → compare_policy_content → execute_policy_transport
-///                 └→ prepare_policy_write ──────────────────────────────────────────────→ (request)
+///                 └→ prepare_write_policy ──────────────────────────────────────────────→ (request)
 /// ```
 pub fn build_pragma_graph() -> Result<Dag<PragmaGraphOp>, BuilderError> {
     let mut builder = DagBuilder::new();
 
-    // ========================================================================
     // Clippy upsert chain
-    // ========================================================================
-
-    // Render
     let render_clippy = builder.add_root_node(Node::opaque(
         "render_clippy",
         vec![],
@@ -97,82 +94,18 @@ pub fn build_pragma_graph() -> Result<Dag<PragmaGraphOp>, BuilderError> {
         PragmaGraphOp::Pragma(PragmaOp::RenderClippy),
     ))?;
 
-    // Read chain
-    let prepare_read_clippy = builder.add_node_after(
-        Node::opaque(
-            "prepare_read_clippy",
-            vec![port("path", "String")],
-            vec![port("request", "TransportRequest"), port("skip", "Bool")],
-            PragmaGraphOp::PrepareFileRead(PrepareFileReadOp),
-        ),
+    add_content_upsert_chain(
+        &mut builder,
+        "clippy",
         &render_clippy,
+        "content",
+        PragmaGraphOp::PrepareFileRead(PrepareFileReadOp),
+        PragmaGraphOp::PrepareFileWrite(PrepareFileWriteOp),
+        PragmaGraphOp::Blob(BlobOps::CompareContent),
+        PragmaGraphOp::Transport(TransportOps::Execute),
     )?;
 
-    let execute_read_clippy = builder.add_node_after(
-        Node::opaque(
-            "execute_read_clippy",
-            vec![port("request", "TransportRequest"), port("skip", "Bool")],
-            vec![port("response", "TransportResponse")],
-            PragmaGraphOp::Transport(TransportOps::Execute),
-        ),
-        &prepare_read_clippy,
-    )?;
-
-    // Compare
-    let compare_clippy_content = builder.add_node_after(
-        Node::opaque(
-            "compare_clippy_content",
-            vec![
-                port("response", "TransportResponse"),
-                port("expected_content", "String"),
-                optional("check_mode", "Bool"),
-            ],
-            vec![
-                port("fresh", "Bool"),
-                port("skip", "Bool"),
-                port("skip_reason", "String"),
-            ],
-            PragmaGraphOp::Blob(BlobOps::CompareContent),
-        ),
-        &execute_read_clippy,
-    )?;
-
-    // Write chain
-    let prepare_clippy_write = builder.add_node_after(
-        Node::opaque(
-            "prepare_clippy_write",
-            vec![port("path", "String"), port("content", "String")],
-            vec![port("request", "TransportRequest")],
-            PragmaGraphOp::PrepareFileWrite(PrepareFileWriteOp),
-        ),
-        &render_clippy,
-    )?;
-
-    let execute_clippy_transport = builder.add_node_after(
-        Node::opaque(
-            "execute_clippy_transport",
-            vec![
-                port("request", "TransportRequest"),
-                port("skip", "Bool"),
-                optional("skip_reason", "String"),
-            ],
-            vec![
-                optional("clippy_response", "TransportResponse"),
-                optional("clippy_written_path", "String"),
-                optional("clippy_content", "String"),
-                port("skip", "Bool"),
-                optional("skip_reason", "String"),
-            ],
-            PragmaGraphOp::Transport(TransportOps::Execute),
-        ),
-        &compare_clippy_content,
-    )?;
-
-    // ========================================================================
     // Allowlist upsert chain
-    // ========================================================================
-
-    // Render
     let render_allowlist = builder.add_root_node(Node::opaque(
         "render_allowlist",
         vec![],
@@ -180,82 +113,18 @@ pub fn build_pragma_graph() -> Result<Dag<PragmaGraphOp>, BuilderError> {
         PragmaGraphOp::Pragma(PragmaOp::RenderAllowlist),
     ))?;
 
-    // Read chain
-    let prepare_read_allowlist = builder.add_node_after(
-        Node::opaque(
-            "prepare_read_allowlist",
-            vec![port("path", "String")],
-            vec![port("request", "TransportRequest"), port("skip", "Bool")],
-            PragmaGraphOp::PrepareFileRead(PrepareFileReadOp),
-        ),
+    add_content_upsert_chain(
+        &mut builder,
+        "allowlist",
         &render_allowlist,
+        "content",
+        PragmaGraphOp::PrepareFileRead(PrepareFileReadOp),
+        PragmaGraphOp::PrepareFileWrite(PrepareFileWriteOp),
+        PragmaGraphOp::Blob(BlobOps::CompareContent),
+        PragmaGraphOp::Transport(TransportOps::Execute),
     )?;
 
-    let execute_read_allowlist = builder.add_node_after(
-        Node::opaque(
-            "execute_read_allowlist",
-            vec![port("request", "TransportRequest"), port("skip", "Bool")],
-            vec![port("response", "TransportResponse")],
-            PragmaGraphOp::Transport(TransportOps::Execute),
-        ),
-        &prepare_read_allowlist,
-    )?;
-
-    // Compare
-    let compare_allowlist_content = builder.add_node_after(
-        Node::opaque(
-            "compare_allowlist_content",
-            vec![
-                port("response", "TransportResponse"),
-                port("expected_content", "String"),
-                optional("check_mode", "Bool"),
-            ],
-            vec![
-                port("fresh", "Bool"),
-                port("skip", "Bool"),
-                port("skip_reason", "String"),
-            ],
-            PragmaGraphOp::Blob(BlobOps::CompareContent),
-        ),
-        &execute_read_allowlist,
-    )?;
-
-    // Write chain
-    let prepare_allowlist_write = builder.add_node_after(
-        Node::opaque(
-            "prepare_allowlist_write",
-            vec![port("path", "String"), port("content", "String")],
-            vec![port("request", "TransportRequest")],
-            PragmaGraphOp::PrepareFileWrite(PrepareFileWriteOp),
-        ),
-        &render_allowlist,
-    )?;
-
-    let execute_allowlist_transport = builder.add_node_after(
-        Node::opaque(
-            "execute_allowlist_transport",
-            vec![
-                port("request", "TransportRequest"),
-                port("skip", "Bool"),
-                optional("skip_reason", "String"),
-            ],
-            vec![
-                optional("allowlist_response", "TransportResponse"),
-                optional("allowlist_written_path", "String"),
-                optional("allowlist_content", "String"),
-                port("skip", "Bool"),
-                optional("skip_reason", "String"),
-            ],
-            PragmaGraphOp::Transport(TransportOps::Execute),
-        ),
-        &compare_allowlist_content,
-    )?;
-
-    // ========================================================================
     // Policy upsert chain
-    // ========================================================================
-
-    // Render
     let render_policy = builder.add_root_node(Node::opaque(
         "render_policy",
         vec![],
@@ -263,225 +132,15 @@ pub fn build_pragma_graph() -> Result<Dag<PragmaGraphOp>, BuilderError> {
         PragmaGraphOp::Pragma(PragmaOp::RenderLintPolicy),
     ))?;
 
-    // Read chain
-    let prepare_read_policy = builder.add_node_after(
-        Node::opaque(
-            "prepare_read_policy",
-            vec![port("path", "String")],
-            vec![port("request", "TransportRequest"), port("skip", "Bool")],
-            PragmaGraphOp::PrepareFileRead(PrepareFileReadOp),
-        ),
+    add_content_upsert_chain(
+        &mut builder,
+        "policy",
         &render_policy,
-    )?;
-
-    let execute_read_policy = builder.add_node_after(
-        Node::opaque(
-            "execute_read_policy",
-            vec![port("request", "TransportRequest"), port("skip", "Bool")],
-            vec![port("response", "TransportResponse")],
-            PragmaGraphOp::Transport(TransportOps::Execute),
-        ),
-        &prepare_read_policy,
-    )?;
-
-    // Compare
-    let compare_policy_content = builder.add_node_after(
-        Node::opaque(
-            "compare_policy_content",
-            vec![
-                port("response", "TransportResponse"),
-                port("expected_content", "String"),
-                optional("check_mode", "Bool"),
-            ],
-            vec![
-                port("fresh", "Bool"),
-                port("skip", "Bool"),
-                port("skip_reason", "String"),
-            ],
-            PragmaGraphOp::Blob(BlobOps::CompareContent),
-        ),
-        &execute_read_policy,
-    )?;
-
-    // Write chain
-    let prepare_policy_write = builder.add_node_after(
-        Node::opaque(
-            "prepare_policy_write",
-            vec![port("path", "String"), port("content", "String")],
-            vec![port("request", "TransportRequest")],
-            PragmaGraphOp::PrepareFileWrite(PrepareFileWriteOp),
-        ),
-        &render_policy,
-    )?;
-
-    let execute_policy_transport = builder.add_node_after(
-        Node::opaque(
-            "execute_policy_transport",
-            vec![
-                port("request", "TransportRequest"),
-                port("skip", "Bool"),
-                optional("skip_reason", "String"),
-            ],
-            vec![
-                optional("policy_response", "TransportResponse"),
-                optional("policy_written_path", "String"),
-                optional("policy_content", "String"),
-                port("skip", "Bool"),
-                optional("skip_reason", "String"),
-            ],
-            PragmaGraphOp::Transport(TransportOps::Execute),
-        ),
-        &compare_policy_content,
-    )?;
-
-    // ========================================================================
-    // Wire up the Clippy upsert chain
-    // ========================================================================
-
-    // Render content -> Compare expected_content
-    builder.add_edge(
-        render_clippy.out("content"),
-        compare_clippy_content.in_port("expected_content"),
-    )?;
-
-    // Render content -> PrepareWrite content
-    builder.add_edge(
-        render_clippy.out("content"),
-        prepare_clippy_write.in_port("content"),
-    )?;
-
-    // PrepareRead -> ExecuteRead
-    builder.add_edge(
-        prepare_read_clippy.out("request"),
-        execute_read_clippy.in_port("request"),
-    )?;
-    builder.add_edge(
-        prepare_read_clippy.out("skip"),
-        execute_read_clippy.in_port("skip"),
-    )?;
-
-    // ExecuteRead -> Compare
-    builder.add_edge(
-        execute_read_clippy.out("response"),
-        compare_clippy_content.in_port("response"),
-    )?;
-
-    // Compare skip -> ExecuteWrite skip
-    builder.add_edge(
-        compare_clippy_content.out("skip"),
-        execute_clippy_transport.in_port("skip"),
-    )?;
-
-    // Compare skip_reason -> ExecuteWrite skip_reason
-    builder.add_edge(
-        compare_clippy_content.out("skip_reason"),
-        execute_clippy_transport.in_port("skip_reason"),
-    )?;
-
-    // PrepareWrite -> ExecuteWrite
-    builder.add_edge(
-        prepare_clippy_write.out("request"),
-        execute_clippy_transport.in_port("request"),
-    )?;
-
-    // ========================================================================
-    // Wire up the Allowlist upsert chain
-    // ========================================================================
-
-    // Render content -> Compare expected_content
-    builder.add_edge(
-        render_allowlist.out("content"),
-        compare_allowlist_content.in_port("expected_content"),
-    )?;
-
-    // Render content -> PrepareWrite content
-    builder.add_edge(
-        render_allowlist.out("content"),
-        prepare_allowlist_write.in_port("content"),
-    )?;
-
-    // PrepareRead -> ExecuteRead
-    builder.add_edge(
-        prepare_read_allowlist.out("request"),
-        execute_read_allowlist.in_port("request"),
-    )?;
-    builder.add_edge(
-        prepare_read_allowlist.out("skip"),
-        execute_read_allowlist.in_port("skip"),
-    )?;
-
-    // ExecuteRead -> Compare
-    builder.add_edge(
-        execute_read_allowlist.out("response"),
-        compare_allowlist_content.in_port("response"),
-    )?;
-
-    // Compare skip -> ExecuteWrite skip
-    builder.add_edge(
-        compare_allowlist_content.out("skip"),
-        execute_allowlist_transport.in_port("skip"),
-    )?;
-
-    // Compare skip_reason -> ExecuteWrite skip_reason
-    builder.add_edge(
-        compare_allowlist_content.out("skip_reason"),
-        execute_allowlist_transport.in_port("skip_reason"),
-    )?;
-
-    // PrepareWrite -> ExecuteWrite
-    builder.add_edge(
-        prepare_allowlist_write.out("request"),
-        execute_allowlist_transport.in_port("request"),
-    )?;
-
-    // ========================================================================
-    // Wire up the Policy upsert chain
-    // ========================================================================
-
-    // Render content -> Compare expected_content
-    builder.add_edge(
-        render_policy.out("content"),
-        compare_policy_content.in_port("expected_content"),
-    )?;
-
-    // Render content -> PrepareWrite content
-    builder.add_edge(
-        render_policy.out("content"),
-        prepare_policy_write.in_port("content"),
-    )?;
-
-    // PrepareRead -> ExecuteRead
-    builder.add_edge(
-        prepare_read_policy.out("request"),
-        execute_read_policy.in_port("request"),
-    )?;
-    builder.add_edge(
-        prepare_read_policy.out("skip"),
-        execute_read_policy.in_port("skip"),
-    )?;
-
-    // ExecuteRead -> Compare
-    builder.add_edge(
-        execute_read_policy.out("response"),
-        compare_policy_content.in_port("response"),
-    )?;
-
-    // Compare skip -> ExecuteWrite skip
-    builder.add_edge(
-        compare_policy_content.out("skip"),
-        execute_policy_transport.in_port("skip"),
-    )?;
-
-    // Compare skip_reason -> ExecuteWrite skip_reason
-    builder.add_edge(
-        compare_policy_content.out("skip_reason"),
-        execute_policy_transport.in_port("skip_reason"),
-    )?;
-
-    // PrepareWrite -> ExecuteWrite
-    builder.add_edge(
-        prepare_policy_write.out("request"),
-        execute_policy_transport.in_port("request"),
+        "content",
+        PragmaGraphOp::PrepareFileRead(PrepareFileReadOp),
+        PragmaGraphOp::PrepareFileWrite(PrepareFileWriteOp),
+        PragmaGraphOp::Blob(BlobOps::CompareContent),
+        PragmaGraphOp::Transport(TransportOps::Execute),
     )?;
 
     Ok(builder.build())
@@ -535,9 +194,9 @@ mod tests {
         let boundaries = detect_boundaries(&dag);
 
         // Prepare and compare nodes are NOT boundaries
-        assert!(!boundaries.is_boundary_node(&"prepare_clippy_write".into()));
-        assert!(!boundaries.is_boundary_node(&"prepare_allowlist_write".into()));
-        assert!(!boundaries.is_boundary_node(&"prepare_policy_write".into()));
+        assert!(!boundaries.is_boundary_node(&"prepare_write_clippy".into()));
+        assert!(!boundaries.is_boundary_node(&"prepare_write_allowlist".into()));
+        assert!(!boundaries.is_boundary_node(&"prepare_write_policy".into()));
         assert!(!boundaries.is_boundary_node(&"prepare_read_clippy".into()));
         assert!(!boundaries.is_boundary_node(&"prepare_read_allowlist".into()));
         assert!(!boundaries.is_boundary_node(&"prepare_read_policy".into()));
