@@ -289,6 +289,82 @@ impl TypeContract {
             wrapper_kind: wrapper_kind(type_dag),
         }
     }
+
+    /// Check whether this contract can safely coerce to a target contract.
+    ///
+    /// A coercion is safe only if it is a widening on all three levels:
+    /// - L1: Cardinality containment
+    /// - L2: Base type upcast
+    /// - L3: Predicate entailment (source predicates cover target predicates)
+    pub fn can_safely_coerce_to(&self, target: &TypeContract) -> CoercionResult {
+        if let Err(mismatch) = self.cardinality.check_satisfies(target.cardinality) {
+            return CoercionResult::err(format!(
+                "cardinality {} does not satisfy {} ({})",
+                mismatch.output, mismatch.input, mismatch.reason
+            ));
+        }
+
+        match (&self.base_type, &target.base_type) {
+            (Some(from), Some(to)) if !base_type_upcasts_to(from, to) => {
+                return CoercionResult::err(format!(
+                    "base type '{}' cannot upcast to '{}'",
+                    from, to
+                ));
+            }
+            (None, Some(to)) => {
+                return CoercionResult::err(format!(
+                    "unknown source base type cannot prove compatibility with '{}'",
+                    to
+                ));
+            }
+            _ => {}
+        }
+
+        for tp in &target.predicates {
+            if !self.predicates.iter().any(|sp| sp.entails(tp)) {
+                return CoercionResult::err(format!(
+                    "source predicates do not entail target predicate {:?}",
+                    tp
+                ));
+            }
+        }
+
+        CoercionResult::Ok
+    }
+}
+
+/// Result of a coercion check between two contracts.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CoercionResult {
+    /// Coercion is safe — values flow directly or via a deducible upcast.
+    Ok,
+    /// Coercion is not possible.
+    Err(String),
+}
+
+impl CoercionResult {
+    pub fn err(msg: impl Into<String>) -> Self {
+        CoercionResult::Err(msg.into())
+    }
+
+    pub fn is_ok(&self) -> bool {
+        matches!(self, CoercionResult::Ok)
+    }
+}
+
+/// Can `from` safely upcast to `to` in the base type lattice?
+fn base_type_upcasts_to(from: &str, to: &str) -> bool {
+    if from == to {
+        return true;
+    }
+
+    match (from, to) {
+        // Everything upcasts to Json (top of lattice)
+        (_, "Json") => true,
+        // Url is a refinement of String (when represented as base types)
+        ("Url", "String") => true,
+        _ => false,
+    }
 }
 
 #[cfg(test)]

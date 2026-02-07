@@ -96,6 +96,46 @@ pub enum PredicateValue {
     Str(String),
 }
 
+impl Predicate {
+    /// Check whether this predicate entails another (i.e., is at least as strict).
+    ///
+    /// This is intentionally conservative: only provable entailments return true.
+    pub fn entails(&self, other: &Predicate) -> bool {
+        if self == other {
+            return true;
+        }
+
+        match (self, other) {
+            (Predicate::And(_), Predicate::And(targets)) => {
+                targets.iter().all(|t| self.entails(t))
+            }
+            (Predicate::And(preds), target) => preds.iter().any(|p| p.entails(target)),
+            (source, Predicate::And(targets)) => targets.iter().all(|t| source.entails(t)),
+
+            (Predicate::Or(preds), target) => preds.iter().all(|p| p.entails(target)),
+            (source, Predicate::Or(targets)) => targets.iter().any(|t| source.entails(t)),
+
+            (Predicate::All(a), Predicate::All(b)) => a.entails(b),
+            (Predicate::Any(a), Predicate::Any(b)) => a.entails(b),
+            (Predicate::Not(a), Predicate::Not(b)) => a.entails(b),
+
+            (
+                Predicate::InRange { min, max },
+                Predicate::InRange {
+                    min: target_min,
+                    max: target_max,
+                },
+            ) => min >= target_min && max <= target_max,
+            (Predicate::Equals(PredicateValue::Int(v)), Predicate::InRange { min, max }) => {
+                v >= min && v <= max
+            }
+            (Predicate::Equals(a), Predicate::Equals(b)) => a == b,
+
+            _ => false,
+        }
+    }
+}
+
 /// Coercion between base types.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Coercion {
@@ -196,6 +236,21 @@ mod tests {
         let combined = Predicate::And(vec![non_empty.clone(), matches_url.clone()]);
 
         assert!(matches!(combined, Predicate::And(_)));
+    }
+
+    #[test]
+    fn test_predicate_entails() {
+        let non_empty = Predicate::NonEmpty;
+        let matches_url = Predicate::Matches(r"https?://.*".to_string());
+        let combined = Predicate::And(vec![non_empty.clone(), matches_url.clone()]);
+
+        assert!(combined.entails(&non_empty));
+        assert!(!non_empty.entails(&combined));
+
+        let narrow = Predicate::InRange { min: 1, max: 5 };
+        let wide = Predicate::InRange { min: 0, max: 10 };
+        assert!(narrow.entails(&wide));
+        assert!(!wide.entails(&narrow));
     }
 
     #[test]

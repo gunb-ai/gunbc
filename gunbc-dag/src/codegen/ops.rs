@@ -190,7 +190,7 @@ fn execute_prepare_codegen_command(
         return OutputMap::new().bool("skip", true).ok();
     }
 
-    let inv = CargoInvocation::standalone("codegen");
+    let inv = CargoInvocation::composed("codegen", "dag");
     let cmd = CargoCommand::new(Subcommand::Run(inv))
         .release()
         .trailing_arg("codegen");

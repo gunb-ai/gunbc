@@ -297,7 +297,7 @@ fn cmd_cigen(dry_run: bool) {
     let gitlab_provider = GitLabCiProvider::default();
 
     // Generate CI YAML for gunbc-ci
-    let codegen = gunbc_ir::CargoInvocation::standalone("codegen");
+    let codegen = gunbc_ir::CargoInvocation::composed("codegen", "dag");
     let tool = gunbc_ir::CargoInvocation::composed("ci", "dag");
     let config = RenderConfig::new("ci", tool)
         .with_generator(&codegen.binary, &format!("{} -- cigen", codegen.command()))

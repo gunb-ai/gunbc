@@ -18,6 +18,8 @@ members = [
     "lib/blob",
     "lib/git-ops",
     "lib/gist-ops",
+    "lib/aws-ops",
+    "lib/azure-ops",
     "lib/llm-ops",
     "lib/review",
     "lib/markdown",

@@ -296,6 +296,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "gunbc-lib-aws-ops"
+version = "0.1.0"
+dependencies = [
+ "gunbc-exec",
+ "gunbc-ir",
+ "serde",
+]
+
+[[package]]
+name = "gunbc-lib-azure-ops"
+version = "0.1.0"
+dependencies = [
+ "gunbc-exec",
+ "gunbc-ir",
+ "serde",
+]
+
+[[package]]
 name = "gunbc-lib-blob"
 version = "0.1.0"
 dependencies = [

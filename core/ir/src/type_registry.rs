@@ -19,6 +19,7 @@
 //! let url_type = registry.get("Url").unwrap();
 //! ```
 
+use crate::contract::TypeContract;
 use crate::dag::Dag;
 use crate::type_lib;
 use crate::type_op::TypeOp;
@@ -160,32 +161,10 @@ impl TypeRegistry {
             return false;
         };
 
-        // Check cardinality compatibility.
-        let from_card = type_lib::infer_cardinality(from_dag);
-        let to_card = type_lib::infer_cardinality(to_dag);
-        if !from_card.satisfies(to_card) {
-            return false;
-        }
+        let from_contract = TypeContract::from_type_dag(from_dag);
+        let to_contract = TypeContract::from_type_dag(to_dag);
 
-        // Check base type compatibility.
-        let from_base = type_lib::base_type_name(from_dag);
-        let to_base = type_lib::base_type_name(to_dag);
-        match (from_base, to_base) {
-            (Some(f), Some(t)) if f == t => {}
-            _ => return false,
-        }
-
-        // Check predicate entailment (source must cover all target predicates).
-        let from_preds = type_lib::predicates(from_dag);
-        let to_preds = type_lib::predicates(to_dag);
-        if to_preds.is_empty() {
-            return true;
-        }
-        if from_preds.is_empty() && !to_preds.is_empty() {
-            return false;
-        }
-
-        to_preds.iter().all(|tp| from_preds.iter().any(|fp| fp == tp))
+        from_contract.can_safely_coerce_to(&to_contract).is_ok()
     }
 }
 
@@ -281,6 +260,15 @@ mod tests {
             &TypeId::from("String"),
             &TypeId::from("NonEmptyString")
         ));
+
+        // Primitive upcasts to Json are safe.
+        assert!(registry.is_compatible(&TypeId::from("Int"), &TypeId::from("Json")));
+        assert!(registry.is_compatible(&TypeId::from("Bool"), &TypeId::from("Json")));
+        assert!(registry.is_compatible(
+            &TypeId::from("String"),
+            &TypeId::from("Json")
+        ));
+        assert!(!registry.is_compatible(&TypeId::from("Json"), &TypeId::from("Int")));
     }
 
     #[test]

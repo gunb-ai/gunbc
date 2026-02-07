@@ -41,6 +41,7 @@
 
 pub mod ci;
 pub mod cli;
+pub mod cloud;
 pub mod credential;
 pub mod file;
 pub mod gist;
@@ -56,6 +57,7 @@ pub mod tool;
 pub use credential::{
     AuthScheme, Credential, CredentialError, CredentialProvider, Secret, SecretSource,
 };
+pub use cloud::{CloudProviderKind, CloudRuntimeKind, CloudSecretConfig, CloudSecretRef};
 pub use ci::{
     detect_provider, is_ci, AnnotationLevel, CiProvider, FileLocation, GitHubActionsProvider,
     GitLabCiProvider, GitLabRunner, PlainTextProvider, Runner, WorkflowCommand,

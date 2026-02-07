@@ -127,7 +127,7 @@ impl BuildConfig {
     /// This is the repo's standard policy for both CI and local builds.
     pub fn cargo() -> Self {
         let w = Warnings::Deny;
-        let codegen_inv = CargoInvocation::standalone("codegen");
+        let codegen_inv = CargoInvocation::composed("codegen", "dag");
         let codegen_dag_inv = CargoInvocation::composed("codegen-dag", "dag");
         let c = |cmd: CargoCommand| BuildCommand::Cargo(cmd);
         Self {
@@ -256,7 +256,7 @@ impl BuildConfig {
     /// and `BuildCommand::Cargo` for commands that still use cargo (codegen, fmt).
     pub fn buck2() -> Self {
         let w = Warnings::Deny;
-        let codegen_inv = CargoInvocation::standalone("codegen");
+        let codegen_inv = CargoInvocation::composed("codegen", "dag");
         let codegen_dag_inv = CargoInvocation::composed("codegen-dag", "dag");
         let c = |cmd: CargoCommand| BuildCommand::Cargo(cmd);
         let sh =

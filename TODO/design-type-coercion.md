@@ -332,11 +332,11 @@ use explicit patterns when needed.**
 
 ### Phase 1: Contract-Based Edge Validation
 
-- [ ] Add `can_safely_coerce_to()` to `TypeContract`
-- [ ] Add `base_type_upcasts_to()` with hardcoded primitive lattice
-- [ ] Add `Predicate::entails()` method for predicate subsumption
-- [ ] Wire into `DagBuilder::add_edge()` as an optional check
-  (alongside existing `satisfies()` check)
+- [x] Add `can_safely_coerce_to()` to `TypeContract` (2026-02-07)
+- [x] Add `base_type_upcasts_to()` with hardcoded primitive lattice (2026-02-07)
+- [x] Add `Predicate::entails()` method for predicate subsumption (2026-02-07)
+- [x] Wire into `DagBuilder::add_edge()` via `TypeRegistry::is_compatible()`
+  (registry-powered edge validation) (2026-02-07)
 
 ### Phase 2: Registry-Driven Refinement
 

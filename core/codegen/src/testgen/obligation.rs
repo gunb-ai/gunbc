@@ -1048,14 +1048,12 @@ fn check_predicate_entailment(
                 };
             }
 
-            // Both have predicates — check if source predicates subsume target
-            // This is a conservative check: we only verify exact matches.
-            // More sophisticated entailment (e.g., InRange subsumption) is future work.
-            let all_target_covered = to_preds.iter().all(|tp| {
-                from_preds
-                    .iter()
-                    .any(|fp| format!("{:?}", fp) == format!("{:?}", tp))
-            });
+            // Both have predicates — check if source predicates subsume target.
+            // This is conservative but allows provable entailments
+            // (e.g., InRange subsumption, And/Or structure).
+            let all_target_covered = to_preds
+                .iter()
+                .all(|tp| from_preds.iter().any(|fp| fp.entails(tp)));
 
             if all_target_covered {
                 EntailmentStatus::Verified
