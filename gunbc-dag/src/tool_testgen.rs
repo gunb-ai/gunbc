@@ -30,6 +30,7 @@ inventory::submit! {
         fermi_cost: None,
         requires: None,
         secrets: None,
+        tool_name: None,
         generate: clippy_generate,
     }
 }

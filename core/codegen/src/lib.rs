@@ -19,7 +19,6 @@
 #![allow(clippy::disallowed_methods)]
 
 pub mod cli_gen;
-pub mod cli_contract;
 pub mod dag_gen;
 pub mod file_writer;
 pub mod registry;
@@ -27,7 +26,6 @@ pub mod template;
 pub mod testgen;
 
 pub use cli_gen::{generate_cli, generate_cli_with_import, CliEntrypoint, ToolMeta};
-pub use cli_contract::{group_cli_contract_tools, render_cli_contract_tests, CliContractTool};
 pub use dag_gen::generate_graph_rs;
 pub use file_writer::{FileWriter, WriteResult};
 pub use registry::{

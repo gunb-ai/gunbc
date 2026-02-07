@@ -1,6 +1,8 @@
 //! DAG structure: edges, ports, and the graph itself.
 
 use crate::node::Node;
+use crate::type_op::TypeOp;
+use crate::type_registry::TypeRegistry;
 use crate::resource::AccessMode;
 use crate::types::{Cardinality, NodeId, PortName, TypeId};
 use crate::value::Value;
@@ -387,6 +389,11 @@ impl Port {
             // Fall back to declared cardinality
             self.cardinality
         }
+    }
+
+    /// Resolve this port's type DAG from a registry (if registered).
+    pub fn type_dag<'a>(&self, registry: &'a TypeRegistry) -> Option<&'a Dag<TypeOp>> {
+        registry.get(&self.type_id)
     }
 }
 

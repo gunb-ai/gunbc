@@ -38,6 +38,7 @@ use gunbc_test::{extract_mock_requirements, InputConstraint, MockSpec, NodeExamp
     module = "makegen_generated_tests",
     builder = "crate::build_makegen_graph().unwrap()",
     signature = "crate::makegen_signature()",
+    tool = "makegen",
     flow_tests
 )]
 pub fn makegen_mock_spec() -> MockSpec {

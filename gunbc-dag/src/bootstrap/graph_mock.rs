@@ -37,6 +37,7 @@ use gunbc_test::{extract_mock_requirements, MockSpec, NodeExample, OutputMatcher
     module = "bootstrap_generated_tests",
     builder = "crate::build_bootstrap_graph().unwrap()",
     signature = "crate::bootstrap_signature()",
+    tool = "bootstrap",
     flow_tests
 )]
 pub fn bootstrap_mock_spec() -> MockSpec {

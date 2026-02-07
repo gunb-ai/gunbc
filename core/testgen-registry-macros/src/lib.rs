@@ -22,6 +22,7 @@ pub fn testgen_target(args: TokenStream, input: TokenStream) -> TokenStream {
     let mut fermi_cost: Option<syn::LitStr> = None;
     let mut requires: Option<Vec<syn::LitStr>> = None;
     let mut secrets: Option<Vec<syn::LitStr>> = None;
+    let mut tool: Option<syn::LitStr> = None;
 
     for arg in args {
         match arg {
@@ -77,6 +78,10 @@ pub fn testgen_target(args: TokenStream, input: TokenStream) -> TokenStream {
                     Some("fermi") => {
                         if let Lit::Str(s) = nv.lit { fermi_cost = Some(s); }
                         else { return syn::Error::new_spanned(nv, "fermi must be a string literal").to_compile_error().into(); }
+                    }
+                    Some("tool") => {
+                        if let Lit::Str(s) = nv.lit { tool = Some(s); }
+                        else { return syn::Error::new_spanned(nv, "tool must be a string literal").to_compile_error().into(); }
                     }
                     _ => {
                         return syn::Error::new_spanned(nv, "unknown testgen_target argument").to_compile_error().into();
@@ -169,6 +174,7 @@ pub fn testgen_target(args: TokenStream, input: TokenStream) -> TokenStream {
             || fermi_cost.is_some()
             || requires.is_some()
             || secrets.is_some()
+            || tool.is_some()
         {
             return syn::Error::new_spanned(
                 &input_fn.sig.ident,
@@ -268,6 +274,12 @@ pub fn testgen_target(args: TokenStream, input: TokenStream) -> TokenStream {
         quote!(None)
     };
 
+    let tool_tokens = if let Some(t) = tool {
+        quote!(Some(#t))
+    } else {
+        quote!(None)
+    };
+
     let expanded = quote! {
         #input_fn
 
@@ -294,6 +306,7 @@ pub fn testgen_target(args: TokenStream, input: TokenStream) -> TokenStream {
                 fermi_cost: #fermi_tokens,
                 requires: #requires_tokens,
                 secrets: #secrets_tokens,
+                tool_name: #tool_tokens,
                 generate: #gen_ident,
             }
         }

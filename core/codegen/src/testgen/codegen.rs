@@ -29,7 +29,7 @@ use crate::testgen::test_ir::{
 };
 use gunbc_ir::boundary_label;
 use gunbc_ir::language::NamingCase;
-use gunbc_ir::{Cardinality, Dag, NodeId, PortName, SecretString, Value, ValueExpr};
+use gunbc_ir::{contract, Cardinality, Dag, NodeId, PortName, SecretString, TypeRegistry, Value, ValueExpr};
 use gunbc_ir::transport::{ShellRequest, ShellResponse, TransportRequest, TransportResponse};
 use gunbc_test::{FermiCost, MockSpec, OutputMatcher, TestClass};
 use serde_json::Value as JsonValue;
@@ -123,6 +123,8 @@ pub struct TestGenerator<'a, T> {
     signature_fn: Option<String>,
     /// CLI entrypoints for contract test generation: (tool_name, entrypoints).
     cli_entrypoints: Option<(String, Vec<crate::cli_gen::CliEntrypoint>)>,
+    /// Optional type registry for contract-derived witness values.
+    type_registry: Option<TypeRegistry>,
 }
 
 impl<'a, T: Clone> TestGenerator<'a, T> {
@@ -135,6 +137,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             mock_spec_fn: None,
             signature_fn: None,
             cli_entrypoints: None,
+            type_registry: Some(TypeRegistry::with_core_types()),
         }
     }
 
@@ -175,6 +178,12 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
         entrypoints: Vec<crate::cli_gen::CliEntrypoint>,
     ) -> Self {
         self.cli_entrypoints = Some((tool_name, entrypoints));
+        self
+    }
+
+    /// Set a type registry for contract-derived witness values.
+    pub fn with_type_registry(mut self, registry: TypeRegistry) -> Self {
+        self.type_registry = Some(registry);
         self
     }
 
@@ -1389,7 +1398,12 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                         count
                     );
 
-                    let mock_value = mock_value_expr_for_count(type_id, *cardinality, count);
+                    let mock_value = mock_value_expr_for_count(
+                        type_id,
+                        *cardinality,
+                        count,
+                        self.type_registry.as_ref(),
+                    );
                     let mocks_expr = self.dryrun_mocks_expr(analysis, "cardinality coverage tests");
 
                     let exec = Expr::call(
@@ -2724,9 +2738,9 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             }
 
             let value = if port.has_guard() {
-                select_guard_value(port)
+                select_guard_value(port, self.type_registry.as_ref())
             } else {
-                required_value_for_port(port)
+                required_value_for_port(port, self.type_registry.as_ref())
             };
 
             match value {
@@ -3566,6 +3580,128 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             tests,
         })
     }
+
+    /// Build a CLI contract test section from entrypoints.
+    ///
+    /// This verifies that `gunbc_cli::parse()` handles the tool's CLI schema
+    /// correctly by parsing sample arguments and checking the results.
+    fn build_cli_contract_section(&self) -> Option<TestSection> {
+        let (tool_name, entrypoints) = self.cli_entrypoints.as_ref()?;
+
+        let test_name = format!(
+            "test_cli_contract_{}",
+            tool_name.replace('-', "_")
+        );
+
+        let mut body_lines: Vec<String> = Vec::new();
+
+        // Build schema
+        body_lines.push("let schema = vec![".to_string());
+        for ep in entrypoints {
+            let mut chain = format!(
+                "    CliParam::new(\"{}\", \"{}\")",
+                ep.port_name, ep.type_id
+            );
+            if ep.cardinality.allows_many() {
+                chain.push_str(".with_cardinality(Cardinality::ZERO_OR_MORE)");
+            }
+            if let Some(c) = ep.short_flag {
+                chain.push_str(&format!(".short('{}')", c));
+            }
+            if let Some(ref d) = ep.default_value {
+                chain.push_str(&format!(".default(\"{}\")", cli_escape(d)));
+            }
+            chain.push(',');
+            body_lines.push(chain);
+        }
+        body_lines.push("]".to_string());
+
+        // Build argv
+        let mut argv_parts: Vec<String> = vec![
+            format!("\"{}\"", tool_name),
+            "\"--dry-run\"".to_string(),
+        ];
+        let mut assertions: Vec<String> = Vec::new();
+
+        for ep in entrypoints {
+            let flag = format!("--{}", ep.flag_name());
+            if ep.is_repeatable() {
+                let (v1, v2) = cli_sample_repeatable(ep);
+                argv_parts.push(format!("\"{}\"", cli_escape(&flag)));
+                argv_parts.push(format!("\"{}\"", cli_escape(&v1)));
+                argv_parts.push(format!("\"{}\"", cli_escape(&flag)));
+                argv_parts.push(format!("\"{}\"", cli_escape(&v2)));
+                assertions.push(format!(
+                    "assert_eq!(result.values[\"{}\"], Value::str_list(vec![\"{}\".into(), \"{}\".into()]), \"repeatable param '{}' mismatch\")",
+                    ep.port_name, cli_escape(&v1), cli_escape(&v2), ep.port_name
+                ));
+            } else {
+                match ep.type_id.as_str() {
+                    "Bool" => {
+                        argv_parts.push(format!("\"{}\"", cli_escape(&flag)));
+                        assertions.push(format!(
+                            "assert_eq!(result.values[\"{}\"], Value::Bool(true), \"bool param '{}' mismatch\")",
+                            ep.port_name, ep.port_name
+                        ));
+                    }
+                    "Int" => {
+                        let value = cli_sample_int(ep);
+                        argv_parts.push(format!("\"{}\"", cli_escape(&flag)));
+                        argv_parts.push(format!("\"{}\"", cli_escape(&value)));
+                        assertions.push(format!(
+                            "assert_eq!(result.values[\"{}\"], Value::Int({}), \"int param '{}' mismatch\")",
+                            ep.port_name, value, ep.port_name
+                        ));
+                    }
+                    _ => {
+                        let value = cli_sample_string(ep);
+                        argv_parts.push(format!("\"{}\"", cli_escape(&flag)));
+                        argv_parts.push(format!("\"{}\"", cli_escape(&value)));
+                        assertions.push(format!(
+                            "assert_eq!(result.values[\"{}\"], Value::Str(\"{}\".into()), \"string param '{}' mismatch\")",
+                            ep.port_name, cli_escape(&value), ep.port_name
+                        ));
+                    }
+                }
+            }
+        }
+        assertions.push("assert!(result.dry_run, \"dry_run should be true\")".to_string());
+
+        let argv_str = argv_parts.join(", ");
+        body_lines.push(format!(
+            "let argv: Vec<String> = [{}].iter().map(|s| s.to_string()).collect()",
+            argv_str
+        ));
+        body_lines.push(
+            "let result = parse(&argv, &schema).expect(\"parse should succeed\")".to_string(),
+        );
+
+        let mut body: Vec<Stmt> = body_lines
+            .into_iter()
+            .map(|line| Stmt::Expr(Expr::raw(line)))
+            .collect();
+        for assertion in assertions {
+            body.push(Stmt::Expr(Expr::raw(assertion)));
+        }
+
+        let test = TestFn {
+            name: test_name,
+            doc: vec![format!(
+                "CLI contract: verify gunbc_cli::parse() handles '{}' arguments.",
+                tool_name
+            )],
+            body,
+        };
+
+        Some(TestSection {
+            title: "CLI Contract Tests".to_string(),
+            notes: vec![
+                "Verifies CLI argument parsing for this tool's entrypoints.".to_string(),
+                "Uses gunbc_cli::parse() for in-process validation (no subprocess).".to_string(),
+            ],
+            tests: vec![test],
+        })
+    }
 }
 
 /// Sanitize a description string into a valid snake_case identifier fragment.
@@ -3619,6 +3755,74 @@ fn sanitize_resource_id(id: &str) -> String {
         result.pop();
     }
     result
+}
+
+// ============================================================================
+// CLI Contract Test Helpers
+// ============================================================================
+
+/// Escape a string for use inside a Rust string literal in generated code.
+fn cli_escape(value: &str) -> String {
+    let mut out = String::new();
+    for ch in value.chars() {
+        match ch {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            _ => out.push(ch),
+        }
+    }
+    out
+}
+
+/// Sample a string value for a CLI entrypoint in contract tests.
+fn cli_sample_string(ep: &crate::cli_gen::CliEntrypoint) -> String {
+    let lower = ep.port_name.to_lowercase();
+    let mut value = if lower.contains("repo") {
+        "test-repo".to_string()
+    } else if lower.contains("manifest") {
+        "deps.toml".to_string()
+    } else if lower == "path" || lower.contains("makefile") {
+        "Makefile.test".to_string()
+    } else if lower.contains("path") {
+        "out/path".to_string()
+    } else if lower.contains("base") || lower.contains("branch") || lower.contains("ref") {
+        "feature/test".to_string()
+    } else if lower.contains("ext") {
+        ".rs".to_string()
+    } else {
+        format!("{}_value", ep.port_name)
+    };
+    if let Some(default) = ep.default_value.as_deref() {
+        if value == default {
+            value = format!("{}_override", ep.port_name);
+        }
+    }
+    value
+}
+
+/// Sample an int value for a CLI entrypoint in contract tests.
+fn cli_sample_int(ep: &crate::cli_gen::CliEntrypoint) -> String {
+    let mut value = "42".to_string();
+    if let Some(default) = ep.default_value.as_deref() {
+        if default == value {
+            value = "7".to_string();
+        }
+    }
+    value
+}
+
+/// Sample repeatable values for a CLI entrypoint in contract tests.
+fn cli_sample_repeatable(ep: &crate::cli_gen::CliEntrypoint) -> (String, String) {
+    let lower = ep.port_name.to_lowercase();
+    if lower.contains("ext") {
+        return (".rs".to_string(), ".toml".to_string());
+    }
+    let first = format!("{}_one", ep.port_name);
+    let second = format!("{}_two", ep.port_name);
+    (first, second)
 }
 
 /// Render an output matcher assertion as a single line of Rust code.
@@ -3797,7 +4001,50 @@ fn try_mock_element_value(type_id: &str, index: Option<u32>) -> Option<Value> {
     Some(value)
 }
 
-fn try_mock_value_for_count(type_id: &str, cardinality: Cardinality, count: u32) -> Option<Value> {
+fn witness_value_for_count(
+    type_id: &str,
+    cardinality: Cardinality,
+    count: u32,
+    registry: Option<&TypeRegistry>,
+) -> Option<Value> {
+    let registry = registry?;
+    let type_dag = registry.get_by_name(type_id)?;
+    let witnesses = contract::witnesses(type_dag);
+
+    let nonzero = witnesses
+        .iter()
+        .find(|w| w.count == 1)
+        .or_else(|| witnesses.iter().find(|w| w.count > 0))
+        .map(|w| w.value.clone());
+
+    if cardinality.is_list() {
+        if count == 0 {
+            return Some(Value::List(vec![]));
+        }
+        let elem = nonzero?;
+        let mut elements = Vec::new();
+        for _ in 0..count {
+            elements.push(elem.clone());
+        }
+        return Some(Value::List(elements));
+    }
+
+    if count == 0 {
+        return Some(Value::Unit);
+    }
+
+    nonzero
+}
+
+fn try_mock_value_for_count(
+    type_id: &str,
+    cardinality: Cardinality,
+    count: u32,
+    registry: Option<&TypeRegistry>,
+) -> Option<Value> {
+    if let Some(value) = witness_value_for_count(type_id, cardinality, count, registry) {
+        return Some(value);
+    }
     if cardinality.is_list() {
         if count == 0 {
             return Some(Value::List(vec![]));
@@ -3829,10 +4076,18 @@ fn required_count_for_port(port: &gunbc_ir::Port) -> Option<u32> {
     Some(1)
 }
 
-fn candidate_values_for_guard(port: &gunbc_ir::Port) -> Vec<Value> {
+fn candidate_values_for_guard(
+    port: &gunbc_ir::Port,
+    registry: Option<&TypeRegistry>,
+) -> Vec<Value> {
     let Some(count) = required_count_for_port(port) else {
         return Vec::new();
     };
+    if let Some(value) =
+        witness_value_for_count(port.type_id.0.as_str(), port.cardinality, count, registry)
+    {
+        return vec![value];
+    }
     let mut values = Vec::new();
     for seed in [1u32, 2u32] {
         if port.cardinality.is_list() {
@@ -3855,15 +4110,15 @@ fn candidate_values_for_guard(port: &gunbc_ir::Port) -> Vec<Value> {
     values
 }
 
-fn select_guard_value(port: &gunbc_ir::Port) -> Option<Value> {
-    candidate_values_for_guard(port)
+fn select_guard_value(port: &gunbc_ir::Port, registry: Option<&TypeRegistry>) -> Option<Value> {
+    candidate_values_for_guard(port, registry)
         .into_iter()
         .find(|candidate| port.check_guard(candidate))
 }
 
-fn required_value_for_port(port: &gunbc_ir::Port) -> Option<Value> {
+fn required_value_for_port(port: &gunbc_ir::Port, registry: Option<&TypeRegistry>) -> Option<Value> {
     let count = required_count_for_port(port)?;
-    try_mock_value_for_count(port.type_id.0.as_str(), port.cardinality, count)
+    try_mock_value_for_count(port.type_id.0.as_str(), port.cardinality, count, registry)
 }
 
 /// Generate a mock ValueExpr for a specific count and cardinality.
@@ -3874,7 +4129,15 @@ fn required_value_for_port(port: &gunbc_ir::Port) -> Option<Value> {
 /// For count=0, scalar types emit `Value::Unit` (absence), not concrete
 /// "empty content" like `false` or `0`. List cardinalities emit empty
 /// collections (which correctly represent zero elements).
-fn mock_value_expr_for_count(type_id: &str, cardinality: Cardinality, count: u32) -> ValueExpr {
+fn mock_value_expr_for_count(
+    type_id: &str,
+    cardinality: Cardinality,
+    count: u32,
+    registry: Option<&TypeRegistry>,
+) -> ValueExpr {
+    if let Some(value) = witness_value_for_count(type_id, cardinality, count, registry) {
+        return ValueExpr::from(&value);
+    }
     if cardinality.is_list() {
         if count == 0 {
             return ValueExpr::List(vec![]);
@@ -4428,13 +4691,20 @@ mod tests {
 
     #[test]
     fn test_mock_value_respects_cardinality() {
-        let list_expr = mock_value_expr_for_count("String", Cardinality::ZERO_OR_MORE, 1);
+        let registry = TypeRegistry::with_core_types();
+        let list_expr = mock_value_expr_for_count(
+            "String",
+            Cardinality::ZERO_OR_MORE,
+            1,
+            Some(&registry),
+        );
         assert_eq!(
             list_expr,
-            ValueExpr::List(vec![ValueExpr::Str("<MOCK>".to_string())])
+            ValueExpr::List(vec![ValueExpr::Str("example".to_string())])
         );
 
-        let opt_zero = mock_value_expr_for_count("String", Cardinality::ZERO_OR_ONE, 0);
+        let opt_zero =
+            mock_value_expr_for_count("String", Cardinality::ZERO_OR_ONE, 0, Some(&registry));
         assert_eq!(opt_zero, ValueExpr::Unit);
     }
 

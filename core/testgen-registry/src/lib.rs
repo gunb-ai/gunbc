@@ -13,7 +13,6 @@ mod fermi;
 use crate::fermi::{infer_fermi_cost, infer_requires, infer_test_class};
 use gunbc_codegen::testgen::analyze::analyze_dag;
 use gunbc_codegen::testgen::{TestConfig, TestGenerator};
-use gunbc_codegen::CliEntrypoint;
 pub use gunbc_codegen::TestgenTargetDef;
 use gunbc_exec::Executable;
 use gunbc_ir::Dag;

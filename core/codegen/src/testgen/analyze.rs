@@ -207,6 +207,7 @@ fn analyze_port_cardinalities<T>(dag: &Dag<T>) -> Vec<PortCardinalityInfo> {
 /// Analyze edge types in a DAG.
 fn analyze_edges<T>(dag: &Dag<T>) -> Vec<EdgeTypeInfo> {
     let mut results = Vec::new();
+    let registry = TypeRegistry::with_core_types();
 
     for edge in &dag.edges {
         let from_node = dag.get_node(&edge.from_node);
@@ -217,7 +218,7 @@ fn analyze_edges<T>(dag: &Dag<T>) -> Vec<EdgeTypeInfo> {
             let to_port = to.inputs.iter().find(|p| p.name == edge.to_port);
 
             if let (Some(fp), Some(tp)) = (from_port, to_port) {
-                let compatible = types_compatible(&fp.type_id, &tp.type_id);
+                let compatible = types_compatible(&fp.type_id, &tp.type_id, &registry);
 
                 results.push(EdgeTypeInfo {
                     from_node: edge.from_node.0.clone(),
@@ -236,8 +237,8 @@ fn analyze_edges<T>(dag: &Dag<T>) -> Vec<EdgeTypeInfo> {
 }
 
 /// Check if two types are compatible.
-fn types_compatible(from: &TypeId, to: &TypeId) -> bool {
-    from.0 == to.0 || from.0 == "Any" || to.0 == "Any"
+fn types_compatible(from: &TypeId, to: &TypeId, registry: &TypeRegistry) -> bool {
+    registry.is_compatible(from, to)
 }
 
 #[cfg(test)]

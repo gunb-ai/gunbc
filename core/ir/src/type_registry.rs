@@ -58,6 +58,32 @@ impl TypeRegistry {
         self.register("Json", type_lib::json());
     }
 
+    /// Register common refined/core types used across the repo.
+    ///
+    /// These are structural refinements over primitives (e.g., Url is a refined String).
+    pub fn register_core_types(&mut self) {
+        self.register("NonEmptyString", type_lib::non_empty_string());
+        self.register("Url", type_lib::url());
+        self.register("FilePath", type_lib::file_path());
+        self.register("Path", type_lib::file_path());
+        self.register("Email", type_lib::email());
+        self.register("PositiveInt", type_lib::positive_int());
+        self.register("NonNegativeInt", type_lib::non_negative_int());
+
+        // Legacy/container aliases (cardinality now lives in Port.cardinality).
+        self.register("OptionalUrl", type_lib::optional_url());
+        self.register("UrlList", type_lib::url_list());
+        self.register("FilePathList", type_lib::file_path_list());
+        self.register("NonEmptyFilePathList", type_lib::non_empty_file_path_list());
+    }
+
+    /// Create a type registry with primitives + common refined/core types.
+    pub fn with_core_types() -> Self {
+        let mut registry = Self::with_primitives();
+        registry.register_core_types();
+        registry
+    }
+
     /// Register a type DAG with a name.
     pub fn register(&mut self, name: impl Into<TypeId>, type_dag: Dag<TypeOp>) {
         self.types.insert(name.into(), type_dag);
@@ -110,41 +136,56 @@ impl TypeRegistry {
     /// Check if type A is compatible with type B.
     ///
     /// Compatibility is determined by:
-    /// 1. Same type name (structural equality)
-    /// 2. A's cardinality satisfies B's cardinality
-    /// 3. A's predicates are a superset of B's predicates (stricter is compatible with looser)
+    /// 1. Same type name (exact match)
+    /// 2. Target is "Any" (accepts anything)
+    /// 3. Structural refinement: A's contract entails B's contract
     pub fn is_compatible(&self, from: &TypeId, to: &TypeId) -> bool {
-        // Same type is always compatible
+        // Same type is always compatible.
         if from == to {
             return true;
         }
 
-        // Look up both types
-        let from_dag = match self.get(from) {
-            Some(d) => d,
-            None => return false,
-        };
-        let to_dag = match self.get(to) {
-            Some(d) => d,
-            None => return false,
+        // Target Any accepts anything.
+        if to.0 == "Any" {
+            return true;
+        }
+
+        // Source Any does not entail specific targets.
+        if from.0 == "Any" {
+            return false;
+        }
+
+        // Look up both types; if not registered, fall back to name equality (handled above).
+        let (Some(from_dag), Some(to_dag)) = (self.get(from), self.get(to)) else {
+            return false;
         };
 
-        // Check cardinality compatibility
+        // Check cardinality compatibility.
         let from_card = type_lib::infer_cardinality(from_dag);
         let to_card = type_lib::infer_cardinality(to_dag);
-
         if !from_card.satisfies(to_card) {
             return false;
         }
 
-        // Check base type compatibility
+        // Check base type compatibility.
         let from_base = type_lib::base_type_name(from_dag);
         let to_base = type_lib::base_type_name(to_dag);
-
         match (from_base, to_base) {
-            (Some(f), Some(t)) => f == t,
-            _ => false,
+            (Some(f), Some(t)) if f == t => {}
+            _ => return false,
         }
+
+        // Check predicate entailment (source must cover all target predicates).
+        let from_preds = type_lib::predicates(from_dag);
+        let to_preds = type_lib::predicates(to_dag);
+        if to_preds.is_empty() {
+            return true;
+        }
+        if from_preds.is_empty() && !to_preds.is_empty() {
+            return false;
+        }
+
+        to_preds.iter().all(|tp| from_preds.iter().any(|fp| fp == tp))
     }
 }
 
@@ -220,12 +261,26 @@ mod tests {
     fn test_type_compatibility() {
         let mut registry = TypeRegistry::with_primitives();
         registry.register("Url", type_lib::url());
+        registry.register("NonEmptyString", type_lib::non_empty_string());
 
         // Same type is compatible
         assert!(registry.is_compatible(&TypeId::from("String"), &TypeId::from("String")));
 
-        // Different types with same base might be compatible
-        // (URL is a refined String, so String -> Url should work for base type)
+        // Refined types are compatible with their base (Url -> String).
+        assert!(registry.is_compatible(&TypeId::from("Url"), &TypeId::from("String")));
+
+        // Base types are NOT compatible with refined types (String -> Url).
+        assert!(!registry.is_compatible(&TypeId::from("String"), &TypeId::from("Url")));
+
+        // NonEmptyString is a refinement of String.
+        assert!(registry.is_compatible(
+            &TypeId::from("NonEmptyString"),
+            &TypeId::from("String")
+        ));
+        assert!(!registry.is_compatible(
+            &TypeId::from("String"),
+            &TypeId::from("NonEmptyString")
+        ));
     }
 
     #[test]

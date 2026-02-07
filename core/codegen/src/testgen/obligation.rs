@@ -181,8 +181,9 @@ pub enum Obligation {
         kind: gunbc_ir::coerce::CoercionKind,
     },
 
-    // NOTE: WitnessCompatibility (L4) removed — requires Tier 3 infrastructure
-    // (types-as-DAGs, witness generation). Will be re-added when witnesses exist.
+    // NOTE: WitnessCompatibility (L4) removed — requires L4 witness-based
+    // obligations (types-as-DAGs + witness tests). Re-add when obligation model
+    // grows witness coverage beyond mock generation.
     /// Node contract compliance: given valid inputs, outputs satisfy contracts.
     ///
     /// Non-tautological because the node's implementation can be wrong

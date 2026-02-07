@@ -391,7 +391,8 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
     output = "lib/tools/gist/src/generated_tests_snapshot.rs",
     module = "gist_snapshot_generated_tests",
     builder = "crate::build_gist_graph(crate::GistMode::Snapshot, vec![], false).unwrap()",
-    signature = "crate::gist_signature(&crate::GistMode::Snapshot)"
+    signature = "crate::gist_signature(&crate::GistMode::Snapshot)",
+    tool = "gist"
 )]
 pub fn gist_snapshot_mock_spec() -> MockSpec {
     gist_mock_spec(&GistMode::Snapshot)
@@ -403,7 +404,8 @@ pub fn gist_snapshot_mock_spec() -> MockSpec {
     output = "lib/tools/gist/src/generated_tests_diff.rs",
     module = "gist_diff_generated_tests",
     builder = r#"crate::build_gist_graph(crate::GistMode::Diff { base_ref: "main".to_string() }, vec![], false).unwrap()"#,
-    signature = r#"crate::gist_signature(&crate::GistMode::Diff { base_ref: "main".to_string() })"#
+    signature = r#"crate::gist_signature(&crate::GistMode::Diff { base_ref: "main".to_string() })"#,
+    tool = "gist-diff"
 )]
 pub fn gist_diff_mock_spec() -> MockSpec {
     gist_mock_spec(&GistMode::Diff {
@@ -417,7 +419,8 @@ pub fn gist_diff_mock_spec() -> MockSpec {
     output = "lib/tools/gist/src/generated_tests_recent.rs",
     module = "gist_recent_generated_tests",
     builder = "crate::build_gist_graph(crate::GistMode::Recent, vec![], false).unwrap()",
-    signature = "crate::gist_signature(&crate::GistMode::Recent)"
+    signature = "crate::gist_signature(&crate::GistMode::Recent)",
+    tool = "gist-recent"
 )]
 pub fn gist_recent_mock_spec() -> MockSpec {
     gist_mock_spec(&GistMode::Recent)

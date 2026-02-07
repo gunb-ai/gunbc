@@ -30,6 +30,7 @@
 
 use crate::dag::{Dag, Edge};
 use crate::node::Node;
+use crate::type_registry::TypeRegistry;
 use crate::types::{Cardinality, NodeId, PortName, TypeId};
 use std::collections::HashMap;
 use std::fmt;
@@ -322,6 +323,8 @@ pub struct DagBuilder<T> {
     generations: HashMap<NodeId, usize>,
     /// Counter for assigning unique edge indices
     next_edge_index: usize,
+    /// Optional type registry for structural compatibility checks
+    type_registry: Option<TypeRegistry>,
 }
 
 impl<T> Default for DagBuilder<T> {
@@ -338,7 +341,20 @@ impl<T> DagBuilder<T> {
             edges: Vec::new(),
             generations: HashMap::new(),
             next_edge_index: 0,
+            type_registry: Some(TypeRegistry::with_core_types()),
         }
+    }
+
+    /// Set a type registry used for structural compatibility checks.
+    pub fn with_type_registry(mut self, registry: TypeRegistry) -> Self {
+        self.type_registry = Some(registry);
+        self
+    }
+
+    /// Disable structural type checks (fall back to exact type_id equality).
+    pub fn without_type_registry(mut self) -> Self {
+        self.type_registry = None;
+        self
     }
 
     /// Add a root node (generation 0, no dependencies).
@@ -430,7 +446,7 @@ impl<T> DagBuilder<T> {
     /// The edge is validated immediately:
     /// - Generation check: from.generation < to.generation (prevents cycles)
     /// - Port existence check: both ports must exist on their respective nodes
-    /// - Type check: port types must match
+    /// - Type check: port types must match (or be structurally compatible)
     /// - Cardinality check: output cardinality must satisfy input cardinality
     ///
     /// # Errors
@@ -477,8 +493,15 @@ impl<T> DagBuilder<T> {
         }
         let to_port = to_port.unwrap();
 
-        // Check type compatibility
-        if from_port.type_id != to_port.type_id {
+        // Check type compatibility (structural when registry is available)
+        let type_match = if from_port.type_id == to_port.type_id {
+            true
+        } else if let Some(registry) = &self.type_registry {
+            registry.is_compatible(&from_port.type_id, &to_port.type_id)
+        } else {
+            false
+        };
+        if !type_match {
             return Err(BuilderError::TypeMismatch {
                 from_node: from.node_id.clone(),
                 from_port: from.port.clone(),

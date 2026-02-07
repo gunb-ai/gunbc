@@ -251,6 +251,7 @@ pub fn inline_review_mock_spec() -> MockSpec {
     output = "lib/review/src/generated_tests_diff.rs",
     module = "review_diff_generated_tests",
     builder = "crate::graph::build_diff_review_graph()",
+    tool = "review",
     no_boundary_tests
 )]
 pub fn diff_review_mock_spec() -> MockSpec {

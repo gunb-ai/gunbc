@@ -52,7 +52,8 @@ packages = ["ripgrep"]
     output = "lib/tools/deps/src/generated_tests.rs",
     module = "deps_generated_tests",
     builder = "crate::graph::build_deps_graph().unwrap()",
-    signature = "crate::deps_signature()"
+    signature = "crate::deps_signature()",
+    tool = "deps"
 )]
 pub fn deps_mock_spec() -> MockSpec {
     // Build the actual DAG to extract requirements

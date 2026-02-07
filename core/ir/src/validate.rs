@@ -10,6 +10,7 @@ use crate::boundary::detect_boundaries;
 use crate::dag::{Dag, Port};
 use crate::entrypoint::detect_entrypoints;
 use crate::node::{Node, NodeBody};
+use crate::type_registry::TypeRegistry;
 use crate::types::{NodeId, PortName, TypeId};
 use std::fmt;
 
@@ -166,8 +167,9 @@ impl fmt::Display for UnwiredResource {
 ///
 /// Returns all errors found (does not stop at the first).
 pub fn validate_subdag_interfaces<T>(dag: &Dag<T>) -> Vec<SubDagError> {
+    let registry = TypeRegistry::with_core_types();
     let mut errors = Vec::new();
-    validate_dag_recursive(dag, &mut errors);
+    validate_dag_recursive(dag, &mut errors, &registry);
     errors
 }
 
@@ -228,13 +230,17 @@ fn validate_resource_wiring_recursive_impl<T>(dag: &Dag<T>, unwired: &mut Vec<Un
     }
 }
 
-fn validate_dag_recursive<T>(dag: &Dag<T>, errors: &mut Vec<SubDagError>) {
+fn validate_dag_recursive<T>(
+    dag: &Dag<T>,
+    errors: &mut Vec<SubDagError>,
+    registry: &TypeRegistry,
+) {
     for node in &dag.nodes {
         if let NodeBody::SubDag(ref inner) = node.body {
-            validate_single_subdag(node, inner, errors);
+            validate_single_subdag(node, inner, registry, errors);
             // Recurse into the inner DAG
             let mut nested_errors = Vec::new();
-            validate_dag_recursive(inner, &mut nested_errors);
+            validate_dag_recursive(inner, &mut nested_errors, registry);
             for err in nested_errors {
                 errors.push(SubDagError::Nested {
                     parent: node.id.clone(),
@@ -248,6 +254,7 @@ fn validate_dag_recursive<T>(dag: &Dag<T>, errors: &mut Vec<SubDagError>) {
 fn validate_single_subdag<T>(
     parent_node: &Node<T>,
     inner_dag: &Dag<T>,
+    registry: &TypeRegistry,
     errors: &mut Vec<SubDagError>,
 ) {
     let entrypoints = detect_entrypoints(inner_dag);
@@ -281,6 +288,7 @@ fn validate_single_subdag<T>(
                     PortDirection::Input,
                     &parent_port.type_id,
                     inner_type,
+                    registry,
                     errors,
                 );
             }
@@ -319,6 +327,7 @@ fn validate_single_subdag<T>(
                             PortDirection::Output,
                             &parent_port.type_id,
                             &inner_port.type_id,
+                            registry,
                             errors,
                         );
                     }
@@ -362,9 +371,14 @@ fn check_type_match(
     direction: PortDirection,
     parent_type: &TypeId,
     inner_type: &TypeId,
+    registry: &TypeRegistry,
     errors: &mut Vec<SubDagError>,
 ) {
-    if parent_type != inner_type {
+    let compatible = match direction {
+        PortDirection::Input => registry.is_compatible(parent_type, inner_type),
+        PortDirection::Output => registry.is_compatible(inner_type, parent_type),
+    };
+    if !compatible {
         errors.push(SubDagError::TypeMismatch {
             node: node.clone(),
             port: port.clone(),

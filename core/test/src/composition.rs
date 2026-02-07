@@ -2,7 +2,7 @@
 //!
 //! Composition tests verify that edges between nodes have compatible types.
 
-use gunbc_ir::{Dag, TypeId};
+use gunbc_ir::{Dag, TypeId, TypeRegistry};
 
 /// Result of type compatibility check.
 #[derive(Debug)]
@@ -29,17 +29,7 @@ impl TypeCompatibility {
 /// For now, types are compatible if they are equal.
 /// This could be extended to support subtyping or coercion.
 pub fn types_compatible(from: &TypeId, to: &TypeId) -> bool {
-    // Exact match
-    if from.0 == to.0 {
-        return true;
-    }
-
-    // "Any" is compatible with anything
-    if from.0 == "Any" || to.0 == "Any" {
-        return true;
-    }
-
-    false
+    TypeRegistry::with_core_types().is_compatible(from, to)
 }
 
 /// Assert that all edges in a DAG have compatible types.
