@@ -110,18 +110,6 @@ mod tests {
     use gunbc_ir::{detect_boundaries, detect_entrypoints};
 
     #[test]
-    fn test_graph_builds_successfully() {
-        let dag = build_makegen_graph().expect("graph should build");
-        // 7 nodes: LoadRegistry, RenderMakefile, PrepareFileRead, ExecuteRead,
-        //          CompareContent, PrepareFileWrite, ExecuteWrite
-        assert_eq!(dag.nodes.len(), 7);
-        // 9 edges: registry->render, content->compare, content->prepare_write,
-        //          request->execute_read, skip->execute_read, response->compare,
-        //          skip->execute_write, skip_reason->execute_write, request->execute_write
-        assert_eq!(dag.edges.len(), 9);
-    }
-
-    #[test]
     fn test_graph_has_transport_boundaries() {
         let dag = build_makegen_graph().expect("graph should build");
         let boundaries = detect_boundaries(&dag);
@@ -145,13 +133,6 @@ mod tests {
         assert!(entrypoints.is_entrypoint_port(&"prepare_read_makegen".into(), &"path".into()));
         // check_mode is an entrypoint (input to compare_makegen_content with no upstream)
         assert!(entrypoints.is_entrypoint_port(&"compare_makegen_content".into(), &"check_mode".into()));
-    }
-
-    #[test]
-    fn test_graph_structure() {
-        let dag = build_makegen_graph().expect("graph should build");
-        assert_eq!(dag.nodes.len(), 7);
-        assert_eq!(dag.edges.len(), 9);
     }
 
     #[test]

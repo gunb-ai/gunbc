@@ -1129,12 +1129,6 @@ mod tests {
     use gunbc_ir::{detect_boundaries, detect_entrypoints};
 
     #[test]
-    fn test_review_phase_graph_structure() {
-        let dag = build_review_phase_graph();
-        assert_eq!(dag.nodes.len(), 10);
-    }
-
-    #[test]
     fn test_review_phase_graph_boundaries() {
         let dag = build_review_phase_graph();
         let boundaries = detect_boundaries(&dag);
@@ -1174,13 +1168,6 @@ mod tests {
             entrypoints.is_entrypoint_node(&"prepare_llm".into()),
             "prepare_llm should have entrypoints"
         );
-    }
-
-    #[test]
-    fn test_inline_review_graph_structure() {
-        let dag = build_inline_review_graph();
-        assert_eq!(dag.nodes.len(), 7);
-        // No blob nodes - content provided directly
     }
 
     #[test]
@@ -1236,15 +1223,6 @@ mod tests {
     // ========================================================================
     // DiffReviewPhase tests
     // ========================================================================
-
-    #[test]
-    fn test_diff_review_graph_structure() {
-        let dag = build_diff_review_graph();
-        // 12 nodes: config, prepare_diff, execute_diff, parse_diff,
-        //           format_artifact, prepare_prompt, prepare_llm,
-        //           resolve_auth, credential_env, execute_llm, parse_llm, parse_response
-        assert_eq!(dag.nodes.len(), 12);
-    }
 
     #[test]
     fn test_diff_review_graph_boundaries() {
@@ -1312,29 +1290,9 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_diff_review_graph_with_custom_config() {
-        let config = ReviewPipelineConfig {
-            provider: "anthropic".to_string(),
-            model: "claude-sonnet-4-20250514".to_string(),
-            criteria: crate::graph_mock::default_criteria(),
-            default_branch: "develop".to_string(),
-        };
-        let dag = build_diff_review_graph_with(config);
-        assert_eq!(dag.nodes.len(), 12);
-    }
-
     // ========================================================================
     // MultiSourceReviewPhase tests
     // ========================================================================
-
-    #[test]
-    fn test_multi_source_review_graph_structure() {
-        let dag = build_multi_source_review_graph();
-        // 9 nodes: config, prepare_prompt, prepare_llm, resolve_auth, credential_env,
-        //          execute_llm, parse_llm, parse_response, merge
-        assert_eq!(dag.nodes.len(), 9);
-    }
 
     #[test]
     fn test_multi_source_review_graph_boundaries() {

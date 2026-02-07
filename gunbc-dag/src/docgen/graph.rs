@@ -230,16 +230,6 @@ mod tests {
     use gunbc_ir::detect_boundaries;
 
     #[test]
-    fn test_graph_builds() {
-        let dag = build_docgen_graph().expect("graph should build");
-        let read_targets = DOCGEN_READ_TARGETS.len();
-        // 1 render node + 1 content upsert chain (5 nodes) + 3 per read target
-        assert_eq!(dag.nodes.len(), 6 + (3 * read_targets));
-        // One chain wires 8 internal edges + 2 path edges + 4 per read target
-        assert_eq!(dag.edges.len(), 10 + (4 * read_targets));
-    }
-
-    #[test]
     fn test_transport_boundaries_present() {
         let dag = build_docgen_graph().expect("graph should build");
         let boundaries = detect_boundaries(&dag);

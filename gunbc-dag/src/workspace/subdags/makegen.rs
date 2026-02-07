@@ -152,11 +152,6 @@ mod tests {
 
         match &node.body {
             NodeBody::SubDag(dag) => {
-                // 4 nodes: load_registry, render_makefile, prepare_file_write, execute_transport
-                assert_eq!(dag.nodes.len(), 4);
-                // 4 edges
-                assert_eq!(dag.edges.len(), 4);
-
                 let node_ids: Vec<_> = dag.nodes.iter().map(|n| n.id.0.as_str()).collect();
                 assert!(node_ids.contains(&"load_registry"));
                 assert!(node_ids.contains(&"render_makefile"));

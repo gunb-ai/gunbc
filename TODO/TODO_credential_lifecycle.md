@@ -248,6 +248,21 @@ impl CredentialProvider for LlmEnvVarProvider {
 }
 ```
 
+#### GCP WIF + Secret Manager (primary for CI/prod)
+
+Use Workload Identity Federation (WIF) to avoid long-lived keys:
+
+- Acquire OIDC subject token from runtime:
+  - GitHub Actions: `ACTIONS_ID_TOKEN_REQUEST_URL` + `ACTIONS_ID_TOKEN_REQUEST_TOKEN`
+  - GCP runtime: metadata server (`Metadata-Flavor: Google`)
+- STS exchange against the WIF audience (`GCP_WIF_PROVIDER`).
+- Optional service account impersonation (CI: `GCP_SECRETS_SA_*`, dev: `GCP_SECRETS_IMPERSONATE_SA`).
+- Secret Manager access in `GCP_SECRETS_PROJECT`, with secret names composed as
+  `GCP_SECRETS_PREFIX + service` (e.g., `ci-openai`, `dev-anthropic`).
+- Secret payload is base64 decoded and wrapped in `Credential` with per-service `AuthScheme`.
+
+Env-var providers remain as a **local-only** escape hatch. CI/prod must use WIF.
+
 ---
 
 ## DAG Integration
@@ -362,7 +377,7 @@ Three capabilities are missing for full lifecycle test generation:
 | Gap | Description | Blocking testgen phase |
 |-----|-------------|----------------------|
 | **Stateful mocking** | Mocks are static per-node. Can't return token A on first call, token B after refresh. Need predicate-based or call-count-aware mock responses. | New capability — `ConditionalMock` or stateful `MockSequence` |
-| **Multi-phase flows** | No way to test "run nodes 1-3, assert intermediate state, then run 4-5." The full acquire → use → refresh → use → destroy sequence is a choreography that DryRun runs in one shot with static mocks. | **Phase 5: Window-based testing** (`testgen-improvements.md`) |
+| **Multi-phase flows** | No way to test "run nodes 1-3, assert intermediate state, then run 4-5." The full acquire → use → refresh → use → destroy sequence is a choreography that DryRun runs in one shot with static mocks. | **Phase 5: Window-based testing** (`TODO/TODONE/testgen-improvements.md`) |
 | **Credential resource type** | Resource sim has Lock/Lease but not acquire/refresh/revoke semantics. Lease timeout tests TTL but can't test "refresh extends the lease" or "revoke invalidates." | Extension to Bucket D — add `ResourceType::Credential` with refresh/revoke behaviors |
 
 **Dependency chain:**
@@ -392,7 +407,7 @@ Stateful mocking (new)
 ### Manual baseline tests (written now, absorbed by testgen later)
 
 These are the tests we write by hand for Phases 1-3. They become
-absorption targets per `testgen-improvements.md` Phase 8 when the
+absorption targets per `TODO/TODONE/testgen-improvements.md` Phase 8 when the
 gaps above are filled. Mark each with `// TESTGEN-ABSORB: <gap>` so
 they're easy to find.
 
@@ -457,7 +472,7 @@ testgen mode lands.
 
 ### Testgen improvements needed (cross-reference)
 
-These are additions to `testgen-improvements.md` that credential
+These are additions to `TODO/TODONE/testgen-improvements.md` that credential
 lifecycle testing depends on. They are NOT blockers for Phases 1-3
 of this doc — we write manual tests now and absorb later.
 
@@ -471,7 +486,7 @@ of this doc — we write manual tests now and absorb later.
   above are absorption targets. TODO 8.1–8.4 define the assertion types
   testgen needs to replace hand-written tests.
 
-**New items for testgen-improvements.md (document, don't block on):**
+**New items for TODO/TODONE/testgen-improvements.md (document, don't block on):**
 
 - `TODO 10.1`: Add `ResourceType::Credential` with refresh/revoke
   behaviors to resource simulation (Bucket D extension)
@@ -521,10 +536,12 @@ lifecycle tests (acquire/timeout/refresh/revoke) in CI.
 
 Real secret usage should be **opt-in** only:
 
+- Cost gating: real HTTP transports are `FermiCost::M` or higher, so
+  `GUNBC_TEST_MAX_COST` must allow them (default is `S`).
 - `RUN_LIVE_INTEGRATION=1` required.
-- Secrets must be present (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`,
-  and optionally `GITHUB_TOKEN`).
-- If missing, tests **skip with reason** (do not fail).
+- WIF configuration must be present (`GCP_WIF_PROVIDER`, `GCP_SECRETS_PROJECT`,
+  `GCP_SECRETS_PREFIX`, and either `GCP_SECRETS_SA` or `GCP_SECRETS_IMPERSONATE_SA`).
+- If missing, tests **fail fast with reason** (guard panics with a clear message).
 
 ---
 
@@ -536,16 +553,18 @@ Real secret usage should be **opt-in** only:
 - All DAG graphs include `CredentialOp` where auth is required, and
   DryRun can execute the full credential lifecycle without touching the
   real environment.
+- GCP WIF + Secret Manager is the **primary** credential source for CI/prod:
+  GitHub/OpenAI/Anthropic secrets are retrieved via WIF (no long-lived keys).
 - Testgen generates **integration tests** for credential lifecycle
   flows (OpenAI, Anthropic, GitHub env-var provider; GitHub App when
   implemented) using stateful mocks and windowed phases once available.
-- Live OpenAI/Anthropic integration tests run the DAG in
-  `ExecutionMode::Real` and validate non-empty outputs when secrets
-  are present (guarded by `RUN_LIVE_INTEGRATION` and Fermi cost).
+- Live OpenAI/Anthropic/GitHub integration tests run the DAG in
+  `ExecutionMode::Real` and validate non-empty outputs when WIF
+  config is present (guarded by `RUN_LIVE_INTEGRATION` and Fermi cost).
 - Generated integration tests run in the **default CI/test path** in a
   hermetic mode (mocked transport + mocked creds), with a clear opt-in
   path for **real external tests** (GitHub App / LLM keys) that are
-  skipped when secrets are not configured.
+  gated by env + cost and fail fast with a clear message when missing.
 - Manual tests marked `// TESTGEN-ABSORB` are removed once equivalent
   generated integration tests exist.
 
@@ -572,6 +591,18 @@ Real secret usage should be **opt-in** only:
 - [ ] Add `MockSpec` for credential DAG (DryRun, scenarios, I/O examples auto-generated by testgen)
 - [ ] Manual test: env var acquire/fail cycle (Test 2 — `// TESTGEN-ABSORB: stateful-mocking`)
 
+### Phase 2b: GCP WIF + Secret Manager (primary source)
+
+- [x] Add `lib/gcp-ops` with pure ops + DAG for WIF + Secret Manager.
+- [ ] Add `GcpWifSecretProvider` that uses the DAG to mint per-service `Credential`.
+- [ ] Add `GcpWifConfig` environment model (match `gunb.ai` keys):
+  `GCP_WIF_PROVIDER`, `GCP_SECRETS_PROJECT`, `GCP_SECRETS_PREFIX`,
+  `GCP_SECRETS_SA` / `GCP_SECRETS_IMPERSONATE_SA`.
+- [ ] Compose secret names as `GCP_SECRETS_PREFIX + service` (e.g., `ci-openai`).
+- [ ] Add MockSpec + generated tests for WIF credential DAG (mocked transport).
+- [ ] Add live integration tests for OpenAI/Anthropic/GitHub via WIF (gated by
+  `RUN_LIVE_INTEGRATION` + `GUNBC_TEST_MAX_COST`).
+
 ### Phase 3: GitHub App provider (first real lifecycle)
 
 - [ ] Add `GitHubAppProvider` (JWT exchange → installation token)
@@ -593,7 +624,7 @@ Real secret usage should be **opt-in** only:
 - [x] Remove env-var wrapper type (replace with `api_key_env: String`)
 - [ ] Update all DAG graphs to include CredentialOp boundary node
 
-### Phase 5: Testgen absorption (after testgen-improvements Phase 5 + 8)
+### Phase 5: Testgen absorption (after TODO/TODONE/testgen-improvements.md Phase 5 + 8)
 
 - [x] TODO 10.1: Add `ResourceType::Credential` to resource simulation
 - [x] TODO 10.2: Add `MockSequence`/`ConditionalMock` to MockSpec

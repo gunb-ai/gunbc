@@ -247,7 +247,7 @@ impl BuildResource {
                 }
             }
             BuildResource::GeneratedTests => {
-                // Run testgen --check, parse exit code
+                // Run testgen --mode=verify (deprecated --check), parse exit code
                 match ctx.run_testgen_check() {
                     Ok(()) => ResourceState::Fresh,
                     Err(stale_files) => ResourceState::Stale {

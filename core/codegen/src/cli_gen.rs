@@ -305,6 +305,14 @@ fn build_cli_imports(
             path: vec!["std".to_string(), "collections".to_string()],
             items: vec!["HashMap".to_string()],
         }));
+        items.push(Item::Use(Import {
+            path: vec!["gunbc_ir".to_string(), "resource".to_string()],
+            items: vec!["ResourceIo".to_string()],
+        }));
+        items.push(Item::Use(Import {
+            path: vec!["gunbc_lib_transport".to_string()],
+            items: vec!["TransportIo".to_string()],
+        }));
     }
     items.push(Item::Use(Import {
         path: vec!["std".to_string(), "env".to_string()],
@@ -964,22 +972,34 @@ fn build_emit_step_outputs_fn() -> FnDef {
 // Check if we're in GitHub Actions\n\
 if let Some(output_file) = env_dict.get(\"GITHUB_OUTPUT\") {\n\
     // GitHub Actions format: write to $GITHUB_OUTPUT file\n\
-    if let Ok(mut file) = std::fs::OpenOptions::new()\n\
-        .create(true)\n\
-        .append(true)\n\
-        .open(&output_file)\n\
-    {\n\
-        use std::io::Write;\n\
-        for (port, value) in outputs {\n\
-            let str_value = match value {\n\
-                Value::Str(s) => s.clone(),\n\
-                Value::Int(i) => i.to_string(),\n\
-                Value::Bool(b) => b.to_string(),\n\
-                _ => continue,\n\
-            };\n\
-            let _ = writeln!(file, \"STEP_{}_{}={}\",\n\
-                step_name.to_uppercase(), port.to_uppercase(), str_value);\n\
+    let io = TransportIo::new();\n\
+    let mut payload = String::new();\n\
+    for (port, value) in outputs {\n\
+        let str_value = match value {\n\
+            Value::Str(s) => s.clone(),\n\
+            Value::Int(i) => i.to_string(),\n\
+            Value::Bool(b) => b.to_string(),\n\
+            _ => continue,\n\
+        };\n\
+        if !payload.is_empty() {\n\
+            payload.push('\\n');\n\
         }\n\
+        payload.push_str(&format!(\"STEP_{}_{}={}\",\n\
+            step_name.to_uppercase(), port.to_uppercase(), str_value));\n\
+    }\n\
+    if !payload.is_empty() {\n\
+        let mut combined = String::new();\n\
+        if let Ok(existing) = io.read_file(std::path::Path::new(output_file)) {\n\
+            if let Ok(existing_str) = String::from_utf8(existing) {\n\
+                combined = existing_str;\n\
+            }\n\
+        }\n\
+        if !combined.is_empty() && !combined.ends_with('\\n') {\n\
+            combined.push('\\n');\n\
+        }\n\
+        combined.push_str(&payload);\n\
+        combined.push('\\n');\n\
+        let _ = io.write_file(std::path::Path::new(output_file), combined.as_bytes());\n\
     }\n\
 } else if env_dict.contains_key(\"GITLAB_CI\") {\n\
     // GitLab CI format: export to dotenv artifact\n\

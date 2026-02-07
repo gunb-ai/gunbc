@@ -208,7 +208,7 @@ Small, mechanical items that each reduce noise and improve consistency.
 
 **D1. Make `graph_mock.rs` data-only** (in progress via testgen Phase 8)
 
-Per `testgen-improvements.md`, patterns already safe to delete:
+Per `TODO/TODONE/testgen-improvements.md`, patterns already safe to delete:
 - Pattern A (boundary presence checks) — testgen Bucket A covers this
 - Pattern C (self-chain checks) — testgen generates these
 - Pattern D (resource presence) — testgen emits lease tests
@@ -244,16 +244,17 @@ active code paths.
 
 ### Current state
 
-`make verify` runs `--check` on makegen, bootstrap, testgen, and pragma.
+`make verify` runs `--mode=verify` on makegen, bootstrap, testgen, and pragma.
 `make test` includes `verify` in its dependency chain.
 
 ### Gaps
 
 **V1. Clippy config verification** (small effort)
 
-The pragma binary generates `clippy.toml`. `make pragma --check` exists
-and is wired into `make verify`. Confirm this is actually in the CI
-pipeline (not just the Makefile).
+The pragma binary generates `clippy.toml`. `make pragma-check`
+(`gunbc-pragma --mode=verify`, deprecated `--check`) exists and is wired
+into `make verify`. Confirm this is actually in the CI pipeline (not just
+the Makefile).
 
 **V2. Lint-allowances documentation** (low priority)
 
@@ -310,12 +311,12 @@ causes a test failure.
 
 ## Cross-references
 
-- `TODO/testgen-improvements.md` — Phases 8-9 (graph_mock cleanup, DagSpec)
+- `TODO/TODONE/testgen-improvements.md` — Phases 8-9 (graph_mock cleanup, DagSpec)
 - `TODO/consolidation.md` — Generic ops, rendering DAGs
-- `TODO/refactor-pressure.md` — Structural gap prevention
+- `TODO/TODONE/refactor-pressure.md` — Structural gap prevention
 - `TODO/design-codegen-quality.md` — IR completeness
 - `TODO_hacks` — Dual encoding, ShellResponse, compound shell commands
-- `TODO/design-unified-resource-model.md` — Resource phases 6-7
+- `TODO/TODONE/design-unified-resource-model.md` — Resource phases 6-7
 
 ---
 

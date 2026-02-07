@@ -127,15 +127,6 @@ mod tests {
     use gunbc_ir::{detect_boundaries, detect_entrypoints};
 
     #[test]
-    fn test_graph_builds_successfully() {
-        let dag = build_pragma_graph().expect("graph should build");
-        // 18 nodes: 3 chains x 6 nodes (render, prepare_read, execute_read, compare, prepare_write, execute_write)
-        assert_eq!(dag.nodes.len(), 18);
-        // 24 edges: 3 chains x 8 edges each
-        assert_eq!(dag.edges.len(), 24);
-    }
-
-    #[test]
     fn test_graph_has_transport_boundaries() {
         let dag = build_pragma_graph().expect("graph should build");
 

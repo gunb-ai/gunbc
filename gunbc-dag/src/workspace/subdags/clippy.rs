@@ -54,9 +54,6 @@ mod tests {
         let node = build_clippy_subdag(&[]);
 
         if let NodeBody::SubDag(subdag) = &node.body {
-            // Upsert pattern has 3 nodes: check, create, resolve
-            assert_eq!(subdag.nodes.len(), 3);
-
             let ids: Vec<&str> = subdag.nodes.iter().map(|n| n.id.0.as_str()).collect();
             assert!(ids.contains(&"check"));
             assert!(ids.contains(&"create"));

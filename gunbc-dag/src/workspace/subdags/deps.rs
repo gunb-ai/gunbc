@@ -332,7 +332,6 @@ pub fn build_deps_generate_subdag() -> Node<WorkspaceOp> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gunbc_ir::NodeBody;
 
     #[test]
     fn test_deps_install_subdag_is_subdag() {
@@ -342,35 +341,10 @@ mod tests {
     }
 
     #[test]
-    fn test_deps_install_subdag_structure() {
-        let node = build_deps_install_subdag();
-
-        match &node.body {
-            NodeBody::SubDag(dag) => {
-                // 8 nodes in install pipeline (includes platform_env)
-                assert_eq!(dag.nodes.len(), 8);
-            }
-            _ => panic!("Expected SubDag"),
-        }
-    }
-
-    #[test]
     fn test_deps_generate_subdag_is_subdag() {
         let node = build_deps_generate_subdag();
         assert!(node.is_subdag());
         assert_eq!(node.id.0, "deps_generate");
     }
 
-    #[test]
-    fn test_deps_generate_subdag_structure() {
-        let node = build_deps_generate_subdag();
-
-        match &node.body {
-            NodeBody::SubDag(dag) => {
-                // 4 nodes in generate pipeline
-                assert_eq!(dag.nodes.len(), 4);
-            }
-            _ => panic!("Expected SubDag"),
-        }
-    }
 }

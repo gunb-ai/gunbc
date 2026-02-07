@@ -168,16 +168,6 @@ mod tests {
     use gunbc_ir::{detect_boundaries, detect_entrypoints};
 
     #[test]
-    fn test_graph_builds_successfully() {
-        let dag = build_bootstrap_graph().expect("graph should build");
-        // 15 nodes: prepare_scan, execute_scan, parse_scan,
-        //           gen_makefile, prep_makefile_read, exec_makefile_read, compare_makefile, prep_makefile_write, exec_makefile_transport,
-        //           gen_gitignore, prep_gitignore_read, exec_gitignore_read, compare_gitignore, prep_gitignore_write, exec_gitignore_transport
-        assert_eq!(dag.nodes.len(), 15);
-        assert_eq!(dag.edges.len(), 21);
-    }
-
-    #[test]
     fn test_graph_has_transport_boundaries() {
         let dag = build_bootstrap_graph().expect("graph should build");
 
@@ -201,13 +191,6 @@ mod tests {
         assert!(entrypoints.is_entrypoint_port(&"compare_gitignore_content".into(), &"check_mode".into()));
         assert!(entrypoints.is_entrypoint_port(&"prepare_read_makefile".into(), &"path".into()));
         assert!(entrypoints.is_entrypoint_port(&"prepare_read_gitignore".into(), &"path".into()));
-    }
-
-    #[test]
-    fn test_graph_structure() {
-        let dag = build_bootstrap_graph().expect("graph should build");
-        assert_eq!(dag.nodes.len(), 15);
-        assert_eq!(dag.edges.len(), 21);
     }
 
     #[test]

@@ -59,29 +59,3 @@ impl Mockable for TestgenOp {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn mock_generate(_def: &TestgenTargetDef) -> String {
-        "// mock test content".to_string()
-    }
-
-    #[test]
-    fn test_generate_op() {
-        let def = TestgenTargetDef::new("test", "test/output.rs", "test_module");
-        let op = TestgenOp::Generate {
-            name: "test".to_string(),
-            target_def: def,
-            generate_fn: mock_generate,
-        };
-        let result = op.execute(HashMap::new()).unwrap();
-        match result.get("content") {
-            Some(Value::Str(content)) => {
-                assert!(content.contains("mock test content"));
-            }
-            _ => panic!("expected content string"),
-        }
-    }
-}

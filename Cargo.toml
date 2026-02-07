@@ -22,6 +22,7 @@ members = [
     "lib/review",
     "lib/markdown",
     "lib/transport",
+    "lib/gcp-ops",
     
     # General tool definitions (reusable by any project)
     "lib/tools/gist",

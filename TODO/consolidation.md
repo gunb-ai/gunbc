@@ -400,7 +400,7 @@ deleted or reduced to edge-case-only suites.
 ~33 hand-written tests remain across 8 `graph_mock.rs` files (down from
 49 after consolidation cleanup deleted 16 Pattern A/D tests). These test
 MockSpec properties (mock value content, chain validation, typed builder
-rejection). See `testgen-improvements.md` Phase 8 for the full extraction
+rejection). See `TODO/TODONE/testgen-improvements.md` Phase 8 for the full extraction
 plan and updated per-file test counts.
 
 **Completed**: Patterns A (boundary presence) and D (resource acquire)
@@ -721,7 +721,7 @@ compiler version is now captured directly, regardless of environment setup.
 - [ ] Design rendering DAG for Makefile generation (when adding Justfile) — §2
 - [ ] Design rendering DAG for CI workflow generation (when adding second provider) — §2
 - [ ] Review hand-written tests for redundancy with testgen (Pattern 1, 5) — §7
-- [ ] Remove fragile node-count assertions from graph structure tests (Pattern 2) — §7
+- [x] Remove fragile node-count assertions from graph structure tests (Pattern 2) — §7
 - [ ] Design hermeticity annotation for `Shell` transport (see §8 design problem)
 
 ### Remaining (extension features — from architecture-debt.md §16)
@@ -770,7 +770,7 @@ integration tests all added.
   `.no_boundary_tests()` — verify generated suite still covers those
   invariants before deleting.
 - Makefile gen and CI gen should read the testgen registry (inventory)
-  to auto-generate check targets (testgen-improvements.md TODO 6.3).
+  to auto-generate check targets (TODO/TODONE/testgen-improvements.md TODO 6.3).
   This keeps "add a new tool" to a single edit (`#[testgen_target]`).
 - The skipped-propagation pattern (§12) is mechanical — it affects the
   parse ops that sit after transport boundaries. This will grow as

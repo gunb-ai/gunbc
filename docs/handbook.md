@@ -148,12 +148,12 @@ Intercepted nodes require explicit mocks for all outputs. There are no silent de
 
 ## Transport System
 
-Transport requests/responses are defined in `core/ir/src/transport/mod.rs`. Runtime DAG I/O is performed only by `TransportOps::Execute` in `lib/transport`. Direct I/O outside the DAG is limited to explicit bootstrap/generator/tooling boundaries (see `TODO/TODONE/clippy-pragma-audit.md`).
+Transport requests/responses are defined in `core/ir/src/transport/mod.rs`. Runtime DAG I/O is performed only by `TransportOps::Execute` in `lib/transport`. Direct I/O outside the DAG is limited to the transport layer (`lib/transport`); tests are exempt by pragma policy.
 
 Key invariants:
 - Pure ops **prepare** `TransportRequest` values.
 - Only `TransportOps::Execute` performs runtime DAG I/O.
-- Direct I/O is limited to `lib/transport` plus explicit exceptions (codegen/testgen binaries, CLI tool layer, deps manifest/installer; see `TODO/TODONE/clippy-pragma-audit.md`).
+- Direct I/O is limited to `lib/transport` (tests are exempt by pragma policy).
 
 See `lib/transport/src/lib.rs` and `lib/transport/src/ops.rs`.
 
@@ -225,7 +225,7 @@ Quick reference of all patterns. Full details in [Appendix A](#appendix-a-patter
 | `core/exec/` | Execution engine, DryRun interception, simulation |
 | `core/codegen/` | CLI and test generation | 
 | `core/test/` | MockSpec and test utilities |
-| `lib/transport/` | Canonical runtime I/O boundary; a few bootstrap/generator/tooling crates do direct I/O by exception (see `TODO/TODONE/clippy-pragma-audit.md`) |
+| `lib/transport/` | Canonical runtime I/O boundary; direct I/O elsewhere is banned (tests exempt by pragma policy) |
 | `lib/tools/` | General-purpose tool wrappers (clippy, deps, gist) |
 | `gunbc-dag/` | Repo-specific DAGs and CLI entrypoints (ci, makegen, codegen, testgen, bootstrap) |
 | `docs/design/` | Design documentation |
@@ -485,7 +485,7 @@ Poll:   [check] ──false──▶ [wait] ──▶ [check]  (until condition 
 
 ## A.4 Transport Boundary
 
-**Intent:** Runtime DAG world I/O happens at explicit transport execution nodes. Pure nodes prepare requests and parse responses. Direct I/O outside the DAG is limited to explicit bootstrap/generator/tooling exceptions (see `TODO/TODONE/clippy-pragma-audit.md`).
+**Intent:** Runtime DAG world I/O happens at explicit transport execution nodes. Pure nodes prepare requests and parse responses. Direct I/O outside the DAG is limited to the transport layer (`lib/transport`); tests are exempt by pragma policy.
 
 ```
 [prepare]  ──▶  [execute]  ──▶  [parse]
@@ -516,7 +516,7 @@ pub enum TransportResponse {
 | `core/exec/src/intercept.rs` | DryRun interception of transport nodes |
 
 **Enforcement:**
-- `clippy.toml` disallows `std::fs` and `std::process` in all crates except explicit allowlist entries; the only crate-level exemption is `lib/transport` (see `TODO/TODONE/clippy-pragma-audit.md`).
+- `clippy.toml` disallows `std::fs` and `std::process::Command::new` in all crates; the only crate-level exemption is `lib/transport` (tests are exempt by pragma policy).
 - DryRun mode intercepts all nodes whose inputs include `TransportRequest`.
 
 **Design decisions:**

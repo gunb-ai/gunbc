@@ -34,7 +34,7 @@ but implemented separately:
 |--------------|-------|--------|---------|---------------|
 | **ToolHandle** | `which {tool}` | `cargo install` | Return path | ✅ Done (EnvOp) |
 | **GeneratedCli** | File exists? | Run codegen | Return manifest | ❌ Brittle hack |
-| **GeneratedTests** | `--check` mode | Run testgen | Return success | ❌ Two targets |
+| **GeneratedTests** | `--mode=verify` (deprecated `--check`) | Run testgen | Return success | ❌ Two targets |
 | **FormattedCode** | `cargo fmt --check` | `cargo fmt` | Return success | ❌ Two targets |
 | **Credential** | Env var set? | Error | Return secret | ✅ Done (CredentialOp) |
 

@@ -39,7 +39,7 @@ impl WriteResult {
 }
 
 /// File writer with dry-run support.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct FileWriter<'a> {
     dry_run: bool,
     io: &'a dyn ResourceIo,

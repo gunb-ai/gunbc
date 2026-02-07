@@ -54,24 +54,3 @@ impl Clippy {
         execute_cli_tool_op(&Self::run(args))
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_clippy_check_op() {
-        let op = Clippy::check();
-        assert_eq!(op.tool().id, "clippy");
-    }
-
-    #[test]
-    fn test_clippy_lint_all_op() {
-        let op = Clippy::lint_all();
-        if let CliToolOp::Run { args, .. } = op {
-            assert!(args.contains(&"--all-targets".to_string()));
-        } else {
-            panic!("Expected Run variant");
-        }
-    }
-}

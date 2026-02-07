@@ -1016,19 +1016,6 @@ mod tests {
     // ========================================================================
 
     #[test]
-    fn test_snapshot_graph_builds_successfully() {
-        let dag = build_gist_graph(GistMode::Snapshot, vec![], false).expect("graph should build");
-        // 17 nodes: fs_env, clock_env, prepare_list, execute_list, parse_list,
-        //           read_files_loop (SubDag), collect_file_contents, render_markdown,
-        //           prepare_current_branch, execute_current_branch, parse_current_branch,
-        //           prepare_remote_branches, execute_remote_branches, parse_remote_branches,
-        //           prepare_gist, execute_gist, parse_gist_response
-        assert_eq!(dag.nodes.len(), 17);
-        // 21 edges across snapshot, branch, remote branch, and gist tail wiring
-        assert_eq!(dag.edges.len(), 21);
-    }
-
-    #[test]
     fn test_snapshot_graph_has_transport_boundaries() {
         let dag = build_gist_graph(GistMode::Snapshot, vec![], false).expect("graph should build");
 
@@ -1094,26 +1081,6 @@ mod tests {
     // ========================================================================
     // Diff mode tests
     // ========================================================================
-
-    #[test]
-    fn test_diff_graph_builds_successfully() {
-        let dag = build_gist_graph(
-            GistMode::Diff {
-                base_ref: "main".to_string(),
-            },
-            vec![],
-            false,
-        )
-        .expect("diff graph should build");
-        // 15 nodes: fs_env, clock_env, prepare_diff, execute_diff, parse_diff,
-        //           render_markdown,
-        //           prepare_current_branch, execute_current_branch, parse_current_branch,
-        //           prepare_remote_branches, execute_remote_branches, parse_remote_branches,
-        //           prepare_gist, execute_gist, parse_gist_response
-        assert_eq!(dag.nodes.len(), 15);
-        // 19 edges across diff, branch, remote branch, and gist tail wiring
-        assert_eq!(dag.edges.len(), 19);
-    }
 
     #[test]
     fn test_diff_graph_has_transport_boundaries() {
@@ -1293,25 +1260,6 @@ mod tests {
     // ========================================================================
 
     #[test]
-    fn test_recent_graph_builds_successfully() {
-        let dag =
-            build_gist_graph(GistMode::Recent, vec![], false).expect("recent graph should build");
-        // 18 nodes: fs_env, clock_env,
-        //           prepare_rev_list, execute_rev_list, parse_rev_list,
-        //           prepare_diff, execute_diff, parse_diff, render_markdown,
-        //           prepare_current_branch, execute_current_branch, parse_current_branch,
-        //           prepare_remote_branches, execute_remote_branches, parse_remote_branches,
-        //           prepare_gist, execute_gist, parse_gist_response
-        assert_eq!(dag.nodes.len(), 18);
-        // 24 edges: 3 (rev-list chain) + 1 (rev-list→diff) + 5 (diff chain)
-        //         + 2 (branch chain) + 2 (remote chain)
-        //         + 7 (gist tail: markdown→gist, branch→gist, remote→gist, fs→gist, clock→gist, gist→execute, execute→parse)
-        //         + 1 (parse_rev_list→prepare_gist_request base_ref)
-        //         + 3 (skip wiring for skippable transports)
-        assert_eq!(dag.edges.len(), 24);
-    }
-
-    #[test]
     fn test_recent_graph_has_transport_boundaries() {
         let dag =
             build_gist_graph(GistMode::Recent, vec![], false).expect("recent graph should build");
@@ -1433,9 +1381,6 @@ mod tests {
     #[test]
     fn test_read_file_body_dag_structure() {
         let dag = build_read_file_body_dag();
-
-        assert_eq!(dag.nodes.len(), 3);
-        assert_eq!(dag.edges.len(), 4);
 
         assert!(dag.get_node(&"prepare".into()).is_some());
         assert!(dag.get_node(&"execute".into()).is_some());

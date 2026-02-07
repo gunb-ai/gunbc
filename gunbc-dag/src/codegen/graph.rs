@@ -207,13 +207,6 @@ mod tests {
     use gunbc_ir::{detect_boundaries, infer_signature};
 
     #[test]
-    fn test_graph_builds_successfully() {
-        let dag = build_codegen_graph().expect("graph should build");
-        assert_eq!(dag.nodes.len(), 8);
-        assert_eq!(dag.edges.len(), 11);
-    }
-
-    #[test]
     fn test_graph_has_transport_nodes() {
         let dag = build_codegen_graph().expect("graph should build");
         let transport_nodes: Vec<_> = dag

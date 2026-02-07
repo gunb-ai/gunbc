@@ -227,7 +227,6 @@ pub fn build_bootstrap_subdag() -> Node<WorkspaceOp> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gunbc_ir::NodeBody;
 
     #[test]
     fn test_bootstrap_subdag_is_subdag() {
@@ -236,18 +235,4 @@ mod tests {
         assert_eq!(node.id.0, "bootstrap");
     }
 
-    #[test]
-    fn test_bootstrap_subdag_structure() {
-        let node = build_bootstrap_subdag();
-
-        match &node.body {
-            NodeBody::SubDag(dag) => {
-                // 9 nodes in the pipeline
-                assert_eq!(dag.nodes.len(), 9);
-                // 11 edges
-                assert_eq!(dag.edges.len(), 11);
-            }
-            _ => panic!("Expected SubDag"),
-        }
-    }
 }

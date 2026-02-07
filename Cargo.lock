@@ -287,6 +287,7 @@ dependencies = [
 name = "gunbc-ir"
 version = "0.1.0"
 dependencies = [
+ "glob",
  "gunbc-infra",
  "proptest",
  "serde",
@@ -303,6 +304,20 @@ dependencies = [
  "gunbc-ir",
  "gunbc-lib-transport",
  "gunbc-test",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "gunbc-lib-gcp-ops"
+version = "0.1.0"
+dependencies = [
+ "gunbc-exec",
+ "gunbc-ir",
+ "gunbc-lib-transport",
+ "gunbc-test",
+ "gunbc-testgen-registry",
+ "gunbc-testgen-registry-macros",
  "serde",
  "serde_json",
 ]
@@ -374,6 +389,7 @@ dependencies = [
 name = "gunbc-lib-transport"
 version = "0.1.0"
 dependencies = [
+ "glob",
  "gunbc-exec",
  "gunbc-ir",
  "gunbc-test",

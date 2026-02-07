@@ -177,13 +177,6 @@ mod tests {
     use gunbc_ir::{detect_boundaries, detect_entrypoints};
 
     #[test]
-    fn test_chat_completion_graph_structure() {
-        let dag = build_chat_completion_graph();
-        assert_eq!(dag.nodes.len(), 5);
-        assert_eq!(dag.edges.len(), 10);
-    }
-
-    #[test]
     fn test_chat_completion_graph_boundaries() {
         let dag = build_chat_completion_graph();
         let boundaries = detect_boundaries(&dag);

@@ -130,7 +130,6 @@ impl ClippyConfig {
     ///
     /// ## Approved Exceptions (must have documented reason):
     /// - `gunbc-lib-transport` — IS the I/O boundary (the one place I/O is allowed)
-    /// - `gunbc-codegen` — Bootstrap code (chicken/egg problem with transport)
     pub fn transport_pattern() -> Self {
         Self::transport_pattern_base()
             // Document approved crates (minimal exceptions)
@@ -138,10 +137,6 @@ impl ClippyConfig {
             .allow_crate(
                 "gunbc-lib-transport",
                 "IS the I/O boundary - the designated place for I/O",
-            )
-            .allow_crate(
-                "gunbc-codegen",
-                "Bootstrap code - can't use transport (chicken/egg)",
             )
     }
 
@@ -167,7 +162,43 @@ impl ClippyConfig {
                 "I6: No escape hatches. Use PrepareDirectoryListOp + TransportOps::Execute",
             )
             .disallow(
+                "std::fs::read_link",
+                "I6: No escape hatches. Direct filesystem ops must be in transport layer",
+            )
+            .disallow(
+                "std::fs::canonicalize",
+                "I6: No escape hatches. Direct filesystem ops must be in transport layer",
+            )
+            .disallow(
+                "std::fs::metadata",
+                "I6: No escape hatches. Direct filesystem ops must be in transport layer",
+            )
+            .disallow(
+                "std::fs::symlink_metadata",
+                "I6: No escape hatches. Direct filesystem ops must be in transport layer",
+            )
+            .disallow(
+                "std::fs::copy",
+                "I6: No escape hatches. Direct filesystem ops must be in transport layer",
+            )
+            .disallow(
+                "std::fs::rename",
+                "I6: No escape hatches. Direct filesystem ops must be in transport layer",
+            )
+            .disallow(
+                "std::fs::hard_link",
+                "I6: No escape hatches. Direct filesystem ops must be in transport layer",
+            )
+            .disallow(
+                "std::fs::create_dir",
+                "I6: No escape hatches. Direct filesystem ops must be in transport layer",
+            )
+            .disallow(
                 "std::fs::remove_file",
+                "I6: No escape hatches. Direct filesystem ops must be in transport layer",
+            )
+            .disallow(
+                "std::fs::remove_dir",
                 "I6: No escape hatches. Direct filesystem ops must be in transport layer",
             )
             .disallow(
@@ -176,6 +207,38 @@ impl ClippyConfig {
             )
             .disallow(
                 "std::fs::create_dir_all",
+                "I6: No escape hatches. Direct filesystem ops must be in transport layer",
+            )
+            .disallow(
+                "std::fs::set_permissions",
+                "I6: No escape hatches. Direct filesystem ops must be in transport layer",
+            )
+            .disallow(
+                "std::fs::File::open",
+                "I6: No escape hatches. Direct filesystem ops must be in transport layer",
+            )
+            .disallow(
+                "std::fs::File::create",
+                "I6: No escape hatches. Direct filesystem ops must be in transport layer",
+            )
+            .disallow(
+                "std::fs::File::options",
+                "I6: No escape hatches. Direct filesystem ops must be in transport layer",
+            )
+            .disallow(
+                "std::fs::OpenOptions::new",
+                "I6: No escape hatches. Direct filesystem ops must be in transport layer",
+            )
+            .disallow(
+                "std::fs::OpenOptions::open",
+                "I6: No escape hatches. Direct filesystem ops must be in transport layer",
+            )
+            .disallow(
+                "std::fs::DirBuilder::new",
+                "I6: No escape hatches. Direct filesystem ops must be in transport layer",
+            )
+            .disallow(
+                "std::fs::DirBuilder::create",
                 "I6: No escape hatches. Direct filesystem ops must be in transport layer",
             )
             // Process execution - enforces I6
@@ -472,10 +535,6 @@ mod tests {
             .crate_allowances
             .iter()
             .any(|c| c.crate_name == "gunbc-lib-transport"));
-        assert!(config
-            .crate_allowances
-            .iter()
-            .any(|c| c.crate_name == "gunbc-codegen"));
     }
 
     #[test]
