@@ -3,6 +3,8 @@
 //! Generates documentation artifacts from live code/test sources.
 
 #![deny(dead_code)]
+#![allow(clippy::disallowed_methods)] // Docgen binary reads source files directly
+#![allow(clippy::vec_init_then_push)]
 use gunbc_dag::build_docgen_graph;
 use gunbc_exec::{execute_with_mode, BoundaryMocks, ExecutionMode};
 use gunbc_ir::transport::{FileOp, FileResponse, TransportResponse};
@@ -87,8 +89,8 @@ fn set_chain_mocks(mocks: &mut BoundaryMocks, name: &str, path: &str) {
         })),
     );
 
-    mocks.set_value(&write_node, &format!("{name}_written_path"), Value::Str("<DRY-RUN>".to_string()));
-    mocks.set_value(&write_node, &format!("{name}_content"), Value::Str("<DRY-RUN>".to_string()));
+    mocks.set_value(&write_node, format!("{name}_written_path"), Value::Str("<DRY-RUN>".to_string()));
+    mocks.set_value(&write_node, format!("{name}_content"), Value::Str("<DRY-RUN>".to_string()));
     mocks.set_value(&write_node, "skip", Value::Bool(false));
     mocks.set_value(&write_node, "skip_reason", Value::Str("<DRY-RUN>".to_string()));
 }

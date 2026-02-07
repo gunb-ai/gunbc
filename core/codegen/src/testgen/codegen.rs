@@ -1090,7 +1090,9 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                 }
             }
             Expr::RawCode(code) => {
-                Self::record_ident(code, used);
+                // Extract identifiers from raw code using the same splitter
+                // as collect_idents_from_type — splits on non-alphanumeric chars.
+                Self::collect_idents_from_type(code, used);
             }
         }
     }
@@ -3593,30 +3595,31 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             tool_name.replace('-', "_")
         );
 
-        let mut body_lines: Vec<String> = Vec::new();
+        // Build the entire test body as raw code to avoid Stmt::Expr semicolons
+        // interfering with multi-line constructs like vec![...].
+        let mut code = String::new();
 
-        // Build schema
-        body_lines.push("let schema = vec![".to_string());
+        // Schema
+        code.push_str("let schema = vec![\n");
         for ep in entrypoints {
-            let mut chain = format!(
+            code.push_str(&format!(
                 "    CliParam::new(\"{}\", \"{}\")",
                 ep.port_name, ep.type_id
-            );
+            ));
             if ep.cardinality.allows_many() {
-                chain.push_str(".with_cardinality(Cardinality::ZERO_OR_MORE)");
+                code.push_str(".with_cardinality(Cardinality::ZERO_OR_MORE)");
             }
             if let Some(c) = ep.short_flag {
-                chain.push_str(&format!(".short('{}')", c));
+                code.push_str(&format!(".short('{}')", c));
             }
             if let Some(ref d) = ep.default_value {
-                chain.push_str(&format!(".default(\"{}\")", cli_escape(d)));
+                code.push_str(&format!(".default(\"{}\")", cli_escape(d)));
             }
-            chain.push(',');
-            body_lines.push(chain);
+            code.push_str(",\n");
         }
-        body_lines.push("]".to_string());
+        code.push_str("];\n");
 
-        // Build argv
+        // Build argv and assertions
         let mut argv_parts: Vec<String> = vec![
             format!("\"{}\"", tool_name),
             "\"--dry-run\"".to_string(),
@@ -3632,7 +3635,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                 argv_parts.push(format!("\"{}\"", cli_escape(&flag)));
                 argv_parts.push(format!("\"{}\"", cli_escape(&v2)));
                 assertions.push(format!(
-                    "assert_eq!(result.values[\"{}\"], Value::str_list(vec![\"{}\".into(), \"{}\".into()]), \"repeatable param '{}' mismatch\")",
+                    "assert_eq!(result.values[\"{}\"], Value::str_list(vec![\"{}\".into(), \"{}\".into()]), \"repeatable param '{}' mismatch\");\n",
                     ep.port_name, cli_escape(&v1), cli_escape(&v2), ep.port_name
                 ));
             } else {
@@ -3640,7 +3643,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                     "Bool" => {
                         argv_parts.push(format!("\"{}\"", cli_escape(&flag)));
                         assertions.push(format!(
-                            "assert_eq!(result.values[\"{}\"], Value::Bool(true), \"bool param '{}' mismatch\")",
+                            "assert_eq!(result.values[\"{}\"], Value::Bool(true), \"bool param '{}' mismatch\");\n",
                             ep.port_name, ep.port_name
                         ));
                     }
@@ -3649,7 +3652,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                         argv_parts.push(format!("\"{}\"", cli_escape(&flag)));
                         argv_parts.push(format!("\"{}\"", cli_escape(&value)));
                         assertions.push(format!(
-                            "assert_eq!(result.values[\"{}\"], Value::Int({}), \"int param '{}' mismatch\")",
+                            "assert_eq!(result.values[\"{}\"], Value::Int({}), \"int param '{}' mismatch\");\n",
                             ep.port_name, value, ep.port_name
                         ));
                     }
@@ -3658,31 +3661,30 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                         argv_parts.push(format!("\"{}\"", cli_escape(&flag)));
                         argv_parts.push(format!("\"{}\"", cli_escape(&value)));
                         assertions.push(format!(
-                            "assert_eq!(result.values[\"{}\"], Value::Str(\"{}\".into()), \"string param '{}' mismatch\")",
+                            "assert_eq!(result.values[\"{}\"], Value::Str(\"{}\".into()), \"string param '{}' mismatch\");\n",
                             ep.port_name, cli_escape(&value), ep.port_name
                         ));
                     }
                 }
             }
         }
-        assertions.push("assert!(result.dry_run, \"dry_run should be true\")".to_string());
+        assertions.push("assert!(result.dry_run, \"dry_run should be true\");\n".to_string());
 
         let argv_str = argv_parts.join(", ");
-        body_lines.push(format!(
-            "let argv: Vec<String> = [{}].iter().map(|s| s.to_string()).collect()",
+        code.push_str(&format!(
+            "let argv: Vec<String> = [{}].iter().map(|s| s.to_string()).collect();\n",
             argv_str
         ));
-        body_lines.push(
-            "let result = parse(&argv, &schema).expect(\"parse should succeed\")".to_string(),
+        code.push_str(
+            "let result = parse(&argv, &schema).expect(\"parse should succeed\");\n",
         );
-
-        let mut body: Vec<Stmt> = body_lines
-            .into_iter()
-            .map(|line| Stmt::Expr(Expr::raw(line)))
-            .collect();
-        for assertion in assertions {
-            body.push(Stmt::Expr(Expr::raw(assertion)));
+        for assertion in &assertions {
+            code.push_str(assertion);
         }
+
+        // Wrap entire body in a single TailExpr to avoid extra semicolons.
+        // The raw code already has its own semicolons where needed.
+        let body = vec![Stmt::TailExpr(Expr::raw(code.trim_end()))];
 
         let test = TestFn {
             name: test_name,

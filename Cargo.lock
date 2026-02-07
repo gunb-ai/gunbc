@@ -354,6 +354,7 @@ dependencies = [
 name = "gunbc-lib-review"
 version = "0.1.0"
 dependencies = [
+ "gunbc-cli",
  "gunbc-exec",
  "gunbc-ir",
  "gunbc-lib-blob",

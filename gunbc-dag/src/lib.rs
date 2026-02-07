@@ -21,6 +21,7 @@ pub mod bootstrap;
 pub mod build;
 pub mod ci;
 pub mod codegen;
+#[allow(clippy::disallowed_methods, clippy::vec_init_then_push)] // Docgen reads source files directly
 pub mod docgen;
 pub mod file_ops_graph;
 pub mod makegen;

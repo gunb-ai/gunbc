@@ -273,7 +273,12 @@ impl<M: TextMedium> CodeRenderer<M> for RustCodeRenderer<M> {
             }
             Stmt::Blank => "\n".to_string(),
             Stmt::Return(expr) => {
-                format!("{}return {};\n", pad, self.render_expr(expr))
+                let rendered = self.render_expr(expr);
+                if rendered == "()" {
+                    format!("{}return;\n", pad)
+                } else {
+                    format!("{}return {};\n", pad, rendered)
+                }
             }
             Stmt::TailExpr(expr) => {
                 format!("{}{}\n", pad, self.render_expr(expr))

@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_methods)] // Integration tests use direct fs for test verification
+
 use gunbc_dag::{build_bootstrap_graph, build_makegen_graph};
 use gunbc_exec::{execute_with_mode_and_inputs, BoundaryMocks, ExecutionMode};
 use gunbc_infra::test_utils::{cleanup_dir, temp_dir};

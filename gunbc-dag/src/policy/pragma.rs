@@ -99,12 +99,31 @@ const DISALLOWED_METHODS_ALLOWLIST: &[DisallowedMethodsAllowEntry] = &[
         scope: AllowScope::Function,
         rationale: "tests read source files to validate registration",
     },
+    DisallowedMethodsAllowEntry {
+        path: "gunbc-dag/src/lib.rs",
+        count: 1,
+        scope: AllowScope::Function,
+        rationale: "docgen module reads source files directly",
+    },
+    DisallowedMethodsAllowEntry {
+        path: "gunbc-dag/src/bin/docgen.rs",
+        count: 1,
+        scope: AllowScope::Crate,
+        rationale: "docgen binary reads source files directly",
+    },
+    DisallowedMethodsAllowEntry {
+        path: "gunbc-dag/tests/integration_fs.rs",
+        count: 1,
+        scope: AllowScope::Crate,
+        rationale: "integration tests use direct fs for verification",
+    },
 ];
 
 const PRAGMA_LINT_POLICY: PragmaLintPolicy = PragmaLintPolicy {
     allow_dead_code: &[],
     allow_lints: &[
         LintId::clippy("too_many_arguments"),
+        LintId::clippy("vec_init_then_push"),
         LintId::rustc("unused_variables"),
     ],
 };
