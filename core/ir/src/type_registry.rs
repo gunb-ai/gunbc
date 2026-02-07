@@ -164,7 +164,47 @@ impl TypeRegistry {
         let from_contract = TypeContract::from_type_dag(from_dag);
         let to_contract = TypeContract::from_type_dag(to_dag);
 
-        from_contract.can_safely_coerce_to(&to_contract).is_ok()
+        from_contract
+            .can_safely_coerce_to_with(&to_contract, |from, to| {
+                self.base_type_upcasts_to(from, to)
+            })
+            .is_ok()
+    }
+
+    /// Check whether `from` is a structural refinement of `to`.
+    ///
+    /// A refinement can safely coerce to its base type (widening).
+    pub fn is_refinement_of(&self, from: &TypeId, to: &TypeId) -> bool {
+        self.is_compatible(from, to)
+    }
+
+    fn base_type_upcasts_to(&self, from: &str, to: &str) -> bool {
+        if from == to {
+            return true;
+        }
+
+        // Everything upcasts to Json (top of lattice)
+        if to == "Json" {
+            return true;
+        }
+
+        let mut visited: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut current = from.to_string();
+
+        while visited.insert(current.clone()) {
+            let Some(dag) = self.get_by_name(&current) else {
+                break;
+            };
+            let Some(base) = crate::contract::base_type(dag) else {
+                break;
+            };
+            if base == to {
+                return true;
+            }
+            current = base;
+        }
+
+        false
     }
 }
 
@@ -241,6 +281,10 @@ mod tests {
         let mut registry = TypeRegistry::with_primitives();
         registry.register("Url", type_lib::url());
         registry.register("NonEmptyString", type_lib::non_empty_string());
+        registry.register(
+            "CustomUrl",
+            type_lib::refined("Url", vec![crate::type_op::Predicate::NonEmpty]),
+        );
 
         // Same type is compatible
         assert!(registry.is_compatible(&TypeId::from("String"), &TypeId::from("String")));
@@ -269,6 +313,16 @@ mod tests {
             &TypeId::from("Json")
         ));
         assert!(!registry.is_compatible(&TypeId::from("Json"), &TypeId::from("Int")));
+
+        // Registry-driven refinement: CustomUrl (refines Url) upcasts to String via Url.
+        assert!(registry.is_compatible(
+            &TypeId::from("CustomUrl"),
+            &TypeId::from("String")
+        ));
+        assert!(!registry.is_compatible(
+            &TypeId::from("String"),
+            &TypeId::from("CustomUrl")
+        ));
     }
 
     #[test]

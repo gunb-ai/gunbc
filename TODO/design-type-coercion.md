@@ -340,10 +340,10 @@ use explicit patterns when needed.**
 
 ### Phase 2: Registry-Driven Refinement
 
-- [ ] Enhance `base_type_upcasts_to()` to consult `TypeRegistry`
-- [ ] Add `TypeRegistry::is_refinement_of(from, to) -> bool`
-- [ ] Update `check_predicate_entailment()` in obligation model to use
-  contract-based coercion instead of ad-hoc string comparison
+- [x] Enhance `base_type_upcasts_to()` to consult `TypeRegistry` (2026-02-07)
+- [x] Add `TypeRegistry::is_refinement_of(from, to) -> bool` (2026-02-07)
+- [x] Update `check_predicate_entailment()` in obligation model to use
+  contract-based coercion instead of ad-hoc string comparison (2026-02-07)
 
 ### Phase 3: Deprecate Dual Encoding
 

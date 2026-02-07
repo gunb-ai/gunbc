@@ -297,6 +297,19 @@ impl TypeContract {
     /// - L2: Base type upcast
     /// - L3: Predicate entailment (source predicates cover target predicates)
     pub fn can_safely_coerce_to(&self, target: &TypeContract) -> CoercionResult {
+        self.can_safely_coerce_to_with(target, base_type_upcasts_to)
+    }
+
+    /// Check whether this contract can safely coerce to a target contract,
+    /// using a caller-provided base type lattice.
+    pub fn can_safely_coerce_to_with<F>(
+        &self,
+        target: &TypeContract,
+        base_upcasts_to: F,
+    ) -> CoercionResult
+    where
+        F: Fn(&str, &str) -> bool,
+    {
         if let Err(mismatch) = self.cardinality.check_satisfies(target.cardinality) {
             return CoercionResult::err(format!(
                 "cardinality {} does not satisfy {} ({})",
@@ -305,7 +318,7 @@ impl TypeContract {
         }
 
         match (&self.base_type, &target.base_type) {
-            (Some(from), Some(to)) if !base_type_upcasts_to(from, to) => {
+            (Some(from), Some(to)) if !base_upcasts_to(from, to) => {
                 return CoercionResult::err(format!(
                     "base type '{}' cannot upcast to '{}'",
                     from, to
@@ -454,6 +467,25 @@ mod tests {
         assert!(!contract.predicates.is_empty());
         assert!(!contract.is_container);
         assert_eq!(contract.wrapper_kind, None);
+    }
+
+    #[test]
+    fn test_contract_coercion() {
+        let url_type = type_lib::url();
+        let string_type = type_lib::string();
+        let int_type = type_lib::int();
+        let json_type = type_lib::json();
+
+        let url_contract = TypeContract::from_type_dag(&url_type);
+        let string_contract = TypeContract::from_type_dag(&string_type);
+        let int_contract = TypeContract::from_type_dag(&int_type);
+        let json_contract = TypeContract::from_type_dag(&json_type);
+
+        assert!(url_contract.can_safely_coerce_to(&string_contract).is_ok());
+        assert!(!string_contract
+            .can_safely_coerce_to(&url_contract)
+            .is_ok());
+        assert!(int_contract.can_safely_coerce_to(&json_contract).is_ok());
     }
 
     // --- Witness generation tests ---
