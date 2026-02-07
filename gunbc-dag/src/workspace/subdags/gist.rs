@@ -2,23 +2,10 @@
 //!
 //! Wraps the gist tool as a SubDag node using WorkspaceOp.
 
+use crate::workspace::convert::convert_dag;
 use crate::workspace::WorkspaceOp;
 use gunbc_gist::{build_gist_graph, GistGraphOp, GistMode, GistOps};
-use gunbc_ir::{Dag, Node};
-
-/// Convert a Node<GistGraphOp> to Node<WorkspaceOp>.
-fn convert_gist_node(node: Node<GistGraphOp>) -> Node<WorkspaceOp> {
-    Node {
-        id: node.id,
-        inputs: node.inputs,
-        outputs: node.outputs,
-        body: match node.body {
-            gunbc_ir::NodeBody::Opaque(op) => gunbc_ir::NodeBody::Opaque(convert_gist_op(op)),
-            gunbc_ir::NodeBody::SubDag(dag) => gunbc_ir::NodeBody::SubDag(convert_gist_dag(dag)),
-        },
-        examples: Vec::new(),
-    }
-}
+use gunbc_ir::Node;
 
 /// Convert a GistGraphOp to WorkspaceOp.
 fn convert_gist_op(op: GistGraphOp) -> WorkspaceOp {
@@ -42,14 +29,6 @@ fn convert_gist_op(op: GistGraphOp) -> WorkspaceOp {
         }
         GistGraphOp::Gist(gist_op) => WorkspaceOp::Gist(gist_op),
         GistGraphOp::Transport(t) => WorkspaceOp::Transport(t),
-    }
-}
-
-/// Convert a Dag<GistGraphOp> to Dag<WorkspaceOp>.
-fn convert_gist_dag(dag: Dag<GistGraphOp>) -> Dag<WorkspaceOp> {
-    Dag {
-        nodes: dag.nodes.into_iter().map(convert_gist_node).collect(),
-        edges: dag.edges,
     }
 }
 
@@ -80,7 +59,7 @@ pub fn build_gist_subdag(
 ) -> Node<WorkspaceOp> {
     let original =
         build_gist_graph(mode, extensions, create_gist).expect("Gist graph should build");
-    let converted_dag = convert_gist_dag(original);
+    let converted_dag = convert_dag(original, &convert_gist_op);
 
     Node::subdag("gist", converted_dag)
 }

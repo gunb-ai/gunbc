@@ -2,6 +2,7 @@
 //!
 //! Wraps the languages DAG as a SubDag node using WorkspaceOp.
 
+use crate::workspace::convert::convert_node;
 use crate::workspace::WorkspaceOp;
 use gunbc_ir::language::{
     build_comment_prefix_subdag, build_config_format_subdag, build_gitignore_subdag,
@@ -11,28 +12,8 @@ use gunbc_ir::language::{
 };
 use gunbc_ir::{Dag, Node};
 
-/// Convert a Node<LanguageOp> to Node<WorkspaceOp>.
-fn convert_language_node(node: Node<LanguageOp>) -> Node<WorkspaceOp> {
-    Node {
-        id: node.id,
-        inputs: node.inputs,
-        outputs: node.outputs,
-        body: match node.body {
-            gunbc_ir::NodeBody::Opaque(op) => gunbc_ir::NodeBody::Opaque(WorkspaceOp::Language(op)),
-            gunbc_ir::NodeBody::SubDag(dag) => {
-                gunbc_ir::NodeBody::SubDag(convert_language_dag(dag))
-            }
-        },
-        examples: Vec::new(),
-    }
-}
-
-/// Convert a Dag<LanguageOp> to Dag<WorkspaceOp>.
-fn convert_language_dag(dag: Dag<LanguageOp>) -> Dag<WorkspaceOp> {
-    Dag {
-        nodes: dag.nodes.into_iter().map(convert_language_node).collect(),
-        edges: dag.edges,
-    }
+fn convert_language_op(op: LanguageOp) -> WorkspaceOp {
+    WorkspaceOp::Language(op)
 }
 
 /// Build the languages SubDag node.
@@ -52,23 +33,23 @@ pub fn build_languages_subdag() -> Node<WorkspaceOp> {
     let mut inner: Dag<WorkspaceOp> = Dag::new();
 
     // Pattern SubDags (foundations)
-    inner.add_node(convert_language_node(build_regex_subdag()));
-    inner.add_node(convert_language_node(build_glob_subdag()));
-    inner.add_node(convert_language_node(build_variable_syntax_subdag()));
+    inner.add_node(convert_node(build_regex_subdag(), &convert_language_op));
+    inner.add_node(convert_node(build_glob_subdag(), &convert_language_op));
+    inner.add_node(convert_node(build_variable_syntax_subdag(), &convert_language_op));
 
     // Trait SubDags (composable characteristics)
-    inner.add_node(convert_language_node(build_type_system_mapping_subdag()));
-    inner.add_node(convert_language_node(build_naming_conventions_subdag()));
-    inner.add_node(convert_language_node(build_comment_prefix_subdag()));
+    inner.add_node(convert_node(build_type_system_mapping_subdag(), &convert_language_op));
+    inner.add_node(convert_node(build_naming_conventions_subdag(), &convert_language_op));
+    inner.add_node(convert_node(build_comment_prefix_subdag(), &convert_language_op));
 
     // Category SubDags
-    inner.add_node(convert_language_node(build_turing_complete_subdag()));
-    inner.add_node(convert_language_node(build_config_format_subdag()));
+    inner.add_node(convert_node(build_turing_complete_subdag(), &convert_language_op));
+    inner.add_node(convert_node(build_config_format_subdag(), &convert_language_op));
 
     // Language/Format SubDags
-    inner.add_node(convert_language_node(build_rust_subdag()));
-    inner.add_node(convert_language_node(build_gitignore_subdag()));
-    inner.add_node(convert_language_node(build_makefile_subdag()));
+    inner.add_node(convert_node(build_rust_subdag(), &convert_language_op));
+    inner.add_node(convert_node(build_gitignore_subdag(), &convert_language_op));
+    inner.add_node(convert_node(build_makefile_subdag(), &convert_language_op));
 
     // Wrap as SubDag with explicit interface
     Node::subdag(

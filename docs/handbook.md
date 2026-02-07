@@ -196,6 +196,7 @@ Quick reference of all patterns. Full details in [Appendix A](#appendix-a-patter
 | Multi-Phase: Upsert | Check → Create → Resolve (idempotent) | `core/ir/src/patterns/upsert.rs` |
 | Multi-Phase: Transaction | Begin → Body → Commit/Rollback | `core/ir/src/patterns/transaction.rs` |
 | Multi-Phase: Atomic | Precondition → Op → Postcondition | `core/ir/src/patterns/atomic.rs` |
+| Multi-Phase: Content Upsert | Render → Read → Compare → Write (skippable) | `gunbc-dag/src/makegen/graph.rs` |
 | Control Flow: Branch | Conditional execution with merge | `core/ir/src/patterns/branch.rs` |
 | Control Flow: Loop | Iteration over collections | `core/ir/src/patterns/loop_pattern.rs` |
 | Control Flow: Repeat | Retry, While, Poll | `core/ir/src/patterns/repeat.rs` |
@@ -293,9 +294,9 @@ All pattern builders (Upsert, Transaction, Branch, Loop, etc.) produce SubDag no
 
 ---
 
-## A.2 Multi-Phase Patterns (Upsert, Transaction, Atomic)
+## A.2 Multi-Phase Patterns (Upsert, Transaction, Atomic, Content Upsert)
 
-These three patterns are variants of **guarded multi-phase operations** — they all model a sequence of steps wrapped in a SubDag, with guards controlling which steps execute.
+These patterns are variants of **guarded multi-phase operations**. Upsert, Transaction, and Atomic are packaged as SubDags with explicit guards; Content Upsert is typically a 6-node chain wired directly in the outer DAG (and can be wrapped in a SubDag if you want a single reusable node).
 
 ### A.2.1 Upsert
 
@@ -364,13 +365,59 @@ Used when an operation must be atomic — either all steps succeed or the system
 - Preconditions are pure and fast — they validate state before committing to an expensive operation.
 - Postconditions verify the result, not just success. They check that the world state matches expectations after the operation.
 
-### Relationship between the three
+### A.2.4 Content Upsert
+
+**Intent:** Idempotent file generation — render expected content, read current file, compare, skip write if fresh.
+
+```
+generate ─┬─→ prepare_read → execute_read ─→ compare ─┬─→ execute_write
+          └─→ prepare_write ──────────────────────────┘
+```
+
+Six nodes in the chain:
+- **generate**: Pure renderer that produces expected content (String).
+- **prepare_read**: Builds a read request from `path` (pure).
+- **execute_read**: Transport boundary read (`TransportOps::Execute`).
+- **compare**: `BlobOps::CompareContent` — compares expected vs actual content (pure).
+- **prepare_write**: Builds a write request from `path` + content (pure).
+- **execute_write**: Transport boundary write, **skippable** via compare outputs.
+
+**Port contract:**
+- Generator content wires to `compare.expected_content` and `prepare_write.content`.
+- `compare` takes `response` from execute_read and optional `check_mode`.
+- `compare` outputs `fresh`, `skip`, `skip_reason`.
+- `execute_write` must accept `skip` and optional `skip_reason` so it can no-op when fresh.
+
+| File | Role |
+|------|------|
+| `lib/blob/src/lib.rs` | `BlobOps::CompareContent` semantics (fresh/skip/skip_reason) |
+| `gunbc-dag/src/makegen/graph.rs` | Single-chain reference implementation |
+| `gunbc-dag/src/testgen_dag/graph.rs` | Dynamic N chains (local helper) |
+
+**Design decisions:**
+- Comparison is pure; all I/O stays in the transport read/write nodes.
+- `check_mode` forces `skip = true` even if content differs (used for check-only runs).
+- `fresh` is typically left as a boundary output for reporting.
+
+**Relationship to A.11 (Freshness):** A.11 is the infra-level mtime fast path. Content upsert is the graph-level pattern that compares expected vs actual content (hashing when possible) once you decide a file might be stale.
+
+**Relationship to A.2.1 (Upsert):** Upsert acquires resources (check → create → resolve). Content upsert generates files (render → read → compare → write). Different intent, different shape.
+
+**Helper API:** A shared builder is planned (`add_content_upsert_chain` in `core/ir/src/patterns/content_upsert.rs`). Until then, wire the chain manually or reuse the local testgen helper.
+
+**Examples:**
+- `gunbc-dag/src/pragma/graph.rs` — 3 static parallel chains
+- `gunbc-dag/src/bootstrap/graph.rs` — 2 parallel chains after scan
+- `gunbc-dag/src/makegen/graph.rs` — single chain
+
+### Relationship between the patterns
 
 | Variant | Guard strategy | Failure handling |
 |---------|---------------|------------------|
 | Upsert | Guard on create (skip if exists) | No rollback — resolve verifies |
 | Transaction | Guard on commit (rollback on failure) | Explicit rollback branch |
 | Atomic | Guard on operation (precondition must pass) | No rollback — postcondition verifies |
+| Content Upsert | Guard on write (skip if fresh or check_mode) | No rollback — compare outputs freshness + reason |
 
 **Known issue:** The emission pattern (Prepare → Format → Write) is structurally an upsert but doesn't use UpsertBuilder.
 

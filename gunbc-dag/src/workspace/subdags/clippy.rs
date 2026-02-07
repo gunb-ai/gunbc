@@ -2,31 +2,14 @@
 //!
 //! Wraps the clippy tool as a SubDag node using WorkspaceOp.
 
+use crate::workspace::convert::convert_node;
 use crate::workspace::WorkspaceOp;
 use gunbc_clippy::build_clippy_upsert;
 use gunbc_ir::transport::cli::CliToolOp;
-use gunbc_ir::{Dag, Node};
+use gunbc_ir::Node;
 
-/// Convert a Node<CliToolOp> to Node<WorkspaceOp>.
-fn convert_clippy_node(node: Node<CliToolOp>) -> Node<WorkspaceOp> {
-    Node {
-        id: node.id,
-        inputs: node.inputs,
-        outputs: node.outputs,
-        body: match node.body {
-            gunbc_ir::NodeBody::Opaque(op) => gunbc_ir::NodeBody::Opaque(WorkspaceOp::Clippy(op)),
-            gunbc_ir::NodeBody::SubDag(dag) => gunbc_ir::NodeBody::SubDag(convert_clippy_dag(dag)),
-        },
-        examples: Vec::new(),
-    }
-}
-
-/// Convert a Dag<CliToolOp> to Dag<WorkspaceOp>.
-fn convert_clippy_dag(dag: Dag<CliToolOp>) -> Dag<WorkspaceOp> {
-    Dag {
-        nodes: dag.nodes.into_iter().map(convert_clippy_node).collect(),
-        edges: dag.edges,
-    }
+fn convert_clippy_op(op: CliToolOp) -> WorkspaceOp {
+    WorkspaceOp::Clippy(op)
 }
 
 /// Build the clippy SubDag node with custom arguments.
@@ -44,7 +27,7 @@ fn convert_clippy_dag(dag: Dag<CliToolOp>) -> Dag<WorkspaceOp> {
 /// - Inputs: None (self-contained)
 /// - Outputs: success, stdout, stderr from the run step
 pub fn build_clippy_subdag(args: &[&str]) -> Node<WorkspaceOp> {
-    convert_clippy_node(build_clippy_upsert(args))
+    convert_node(build_clippy_upsert(args), &convert_clippy_op)
 }
 
 /// Build the clippy lint-all SubDag with standard flags.
