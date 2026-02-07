@@ -23,9 +23,10 @@ use gunbc_ir::{
 use gunbc_lib_gist_ops::GistOps;
 use gunbc_lib_git_ops::GitOps;
 use gunbc_lib_markdown::MarkdownOp;
-use gunbc_lib_transport::TransportOps;
+use gunbc_lib_transport::{CredentialOp, GitHubEnvVarProvider, TransportOps};
 use gunbc_primitives::{filename, ClockEnv, FsEnv};
 use std::collections::{BTreeMap, HashMap};
+use std::sync::Arc;
 
 /// Gist content acquisition mode.
 ///
@@ -81,6 +82,8 @@ pub enum GistGraphOp {
     FsEnv(FsEnv),
     /// Clock environment (timestamp snapshot)
     ClockEnv(ClockEnv),
+    /// Credential environment (GitHub token acquisition)
+    Credential(CredentialOp),
 
     // ========================================================================
     // ReadFiles chain (batch): PrepareReadFiles -> Execute -> ParseReadFiles
@@ -142,6 +145,7 @@ impl Executable for GistGraphOp {
             // Environment ops (resource acquisition)
             GistGraphOp::FsEnv(op) => op.execute(inputs),
             GistGraphOp::ClockEnv(op) => op.execute(inputs),
+            GistGraphOp::Credential(op) => op.execute(inputs),
 
             // ReadFiles chain - batch (pure)
             GistGraphOp::PrepareReadFiles => execute_prepare_read_files(inputs),
@@ -431,7 +435,11 @@ pub fn build_read_file_body_dag() -> Dag<GistGraphOp> {
     // Execute node
     dag.add_node(Node::opaque(
         "execute",
-        vec![port("request", "TransportRequest"), port("skip", "Bool")],
+        vec![
+            port("request", "TransportRequest"),
+            port("skip", "Bool"),
+            resource("fs", "FilesystemHandle", AccessMode::Read),
+        ],
         vec![port("response", "TransportResponse")],
         GistGraphOp::Transport(TransportOps::Execute),
     ));
@@ -526,18 +534,27 @@ pub fn build_gist_graph(
         GistGraphOp::ClockEnv(ClockEnv),
     ))?;
 
+    let credential_env = builder.add_root_node(Node::opaque(
+        "credential_env",
+        vec![],
+        vec![port("credential:github", "Credential")],
+        GistGraphOp::Credential(CredentialOp::new(vec![Arc::new(
+            GitHubEnvVarProvider::new(),
+        )])),
+    ))?;
+
     // ========================================================================
     // Content acquisition (mode-dependent)
     // ========================================================================
     // Both modes produce a render_markdown node handle that outputs "markdown".
 
     let (render_markdown, recent_parse_rev_list) = match mode {
-        GistMode::Snapshot => (build_snapshot_acquire(&mut builder, extensions)?, None),
+        GistMode::Snapshot => (build_snapshot_acquire(&mut builder, &fs_env, extensions)?, None),
         GistMode::Diff { base_ref } => {
-            (build_diff_acquire(&mut builder, &base_ref, extensions)?, None)
+            (build_diff_acquire(&mut builder, &fs_env, &base_ref, extensions)?, None)
         }
         GistMode::Recent => {
-            let (md, rev) = build_recent_acquire(&mut builder, extensions)?;
+            let (md, rev) = build_recent_acquire(&mut builder, &fs_env, extensions)?;
             (md, Some(rev))
         }
     };
@@ -550,6 +567,7 @@ pub fn build_gist_graph(
         &mut builder,
         "current_branch",
         vec![port("repo_path", "String")],
+        vec![resource("fs", "FilesystemHandle", AccessMode::Read)],
         vec![optional("branch", "OptionalString")],
         GistGraphOp::Git(GitOps::PrepareCurrentBranch),
         GistGraphOp::Git(GitOps::ParseCurrentBranch),
@@ -565,6 +583,7 @@ pub fn build_gist_graph(
         &mut builder,
         "remote_branches",
         vec![port("repo_path", "String")],
+        vec![resource("fs", "FilesystemHandle", AccessMode::Read)],
         vec![optional("remote_branch", "OptionalString")],
         GistGraphOp::Git(GitOps::PrepareRemoteBranchesAtHead),
         GistGraphOp::Git(GitOps::ParseRemoteBranchesAtHead),
@@ -598,7 +617,11 @@ pub fn build_gist_graph(
     let execute_gist = builder.add_node_after(
         Node::opaque(
             "execute_gist",
-            vec![scalar("request", "TransportRequest"), scalar("skip", "Bool")],
+            vec![
+                scalar("request", "TransportRequest"),
+                scalar("skip", "Bool"),
+                resource("credential", "Credential", AccessMode::Read),
+            ],
             vec![scalar("response", "TransportResponse")],
             GistGraphOp::Transport(TransportOps::Execute),
         ),
@@ -653,9 +676,17 @@ pub fn build_gist_graph(
         execute_gist.in_port("skip"),
     )?;
     builder.add_edge(
+        credential_env.out("credential:github"),
+        execute_gist.in_port("res:credential"),
+    )?;
+    builder.add_edge(
         execute_gist.out("response"),
         parse_gist_response.in_port("response"),
     )?;
+
+    // Resource wiring
+    builder.add_edge(fs_env.out("fs:write"), current_branch.execute.in_port("res:fs"))?;
+    builder.add_edge(fs_env.out("fs:write"), remote_branches.execute.in_port("res:fs"))?;
 
     let dag = builder.build();
     if let Some(unwired) = gunbc_ir::validate_resource_wiring(&dag).first() {
@@ -672,12 +703,14 @@ pub fn build_gist_graph(
 /// Returns the render_markdown node ref (output: "markdown").
 fn build_snapshot_acquire(
     builder: &mut DagBuilder<GistGraphOp>,
+    fs_env: &gunbc_ir::builder::NodeRef<GistGraphOp>,
     extensions: Vec<String>,
 ) -> Result<gunbc_ir::builder::NodeRef<GistGraphOp>, BuilderError> {
     let list_files = add_transport_triplet(
         builder,
         "list_files",
         vec![port("repo_path", "String")],
+        vec![resource("fs", "FilesystemHandle", AccessMode::Read)],
         vec![list("files", "StringList")],
         GistGraphOp::Git(GitOps::PrepareLsFiles { extensions }),
         GistGraphOp::Git(GitOps::ParseLsFiles),
@@ -685,18 +718,25 @@ fn build_snapshot_acquire(
         None,
     )?;
 
+    builder.add_edge(
+        fs_env.out("fs:write"),
+        list_files.execute.in_port("res:fs"),
+    )?;
+
     // Node: LoopBuilder for per-file reading
-    use gunbc_ir::patterns::LoopBuilder;
+    use gunbc_ir::patterns::{LoopBuilder, ResourceInput};
 
     let body = build_read_file_body_dag();
     let loop_node: Node<GistGraphOp> = LoopBuilder::new("read_files_loop")
         .with_input("files", "String", Cardinality::ZERO_OR_MORE)
         .with_element("filename", "String")
+        .with_resource_input(ResourceInput::new("res:fs", "FilesystemHandle"))
         .with_body(body)
         .with_output("contents", "String")
         .build();
 
     let read_files_loop = builder.add_node_after(loop_node, &list_files.parse)?;
+    builder.add_edge(fs_env.out("fs:write"), read_files_loop.in_port("res:fs"))?;
 
     // Node: CollectFileContents (PURE - zips filenames + contents into Map)
     let collect_file_contents = builder.add_node_after(
@@ -746,6 +786,7 @@ fn build_snapshot_acquire(
 /// Returns the render_markdown node ref (output: "markdown").
 fn build_diff_acquire(
     builder: &mut DagBuilder<GistGraphOp>,
+    fs_env: &gunbc_ir::builder::NodeRef<GistGraphOp>,
     base_ref: &str,
     extensions: Vec<String>,
 ) -> Result<gunbc_ir::builder::NodeRef<GistGraphOp>, BuilderError> {
@@ -756,6 +797,7 @@ fn build_diff_acquire(
             port("repo_path", "String"),
             optional("base_ref", "OptionalString"),
         ],
+        vec![resource("fs", "FilesystemHandle", AccessMode::Read)],
         vec![port("diff_files", "Map"), scalar("stats", "String")],
         GistGraphOp::Git(GitOps::PrepareDiff {
             base_ref: base_ref.to_string(),
@@ -765,6 +807,8 @@ fn build_diff_acquire(
         GistGraphOp::Transport(TransportOps::Execute),
         None,
     )?;
+
+    builder.add_edge(fs_env.out("fs:write"), diff.execute.in_port("res:fs"))?;
 
     // Node: RenderDiffSnapshot (PURE)
     let render_markdown = builder.add_node_after(
@@ -797,6 +841,7 @@ fn build_diff_acquire(
 /// to `prepare_gist_request` so the commit range appears in the gist filename.
 fn build_recent_acquire(
     builder: &mut DagBuilder<GistGraphOp>,
+    fs_env: &gunbc_ir::builder::NodeRef<GistGraphOp>,
     extensions: Vec<String>,
 ) -> Result<
     (
@@ -813,6 +858,7 @@ fn build_recent_acquire(
         builder,
         "rev_list",
         vec![port("repo_path", "String")],
+        vec![resource("fs", "FilesystemHandle", AccessMode::Read)],
         vec![optional("base_ref", "OptionalString")],
         GistGraphOp::Git(GitOps::PrepareRevListBefore {
             before: "3 days ago".to_string(),
@@ -821,6 +867,8 @@ fn build_recent_acquire(
         GistGraphOp::Transport(TransportOps::Execute),
         None,
     )?;
+
+    builder.add_edge(fs_env.out("fs:write"), rev_list.execute.in_port("res:fs"))?;
 
     // ========================================================================
     // Diff chain: diff against the resolved base_ref
@@ -833,6 +881,7 @@ fn build_recent_acquire(
             port("repo_path", "String"),
             optional("base_ref", "OptionalString"),
         ],
+        vec![resource("fs", "FilesystemHandle", AccessMode::Read)],
         vec![port("diff_files", "Map"), scalar("stats", "String")],
         GistGraphOp::Git(GitOps::PrepareDiff {
             base_ref: "HEAD".to_string(),
@@ -842,6 +891,8 @@ fn build_recent_acquire(
         GistGraphOp::Transport(TransportOps::Execute),
         Some(&rev_list.parse),
     )?;
+
+    builder.add_edge(fs_env.out("fs:write"), diff.execute.in_port("res:fs"))?;
 
     // Node: RenderDiffSnapshot (PURE)
     let render_markdown = builder.add_node_after(
@@ -975,6 +1026,7 @@ impl Mockable for GistGraphOp {
             // Environment ops
             GistGraphOp::FsEnv(op) => op.mock_outputs(),
             GistGraphOp::ClockEnv(op) => op.mock_outputs(),
+            GistGraphOp::Credential(op) => op.mock_outputs(),
 
             // Pure ops
             GistGraphOp::Markdown(_) => OutputMap::new()

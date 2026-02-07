@@ -2,7 +2,7 @@
 
 use gunbc_ir::transport::rest::RestResponse;
 use gunbc_ir::transport::TransportResponse;
-use gunbc_ir::{AuthScheme, Credential, Secret, Value};
+use gunbc_ir::{AuthScheme, Credential, Secret, SecretString, Value};
 use gunbc_test::MockSpec;
 
 fn mock_credential() -> Value {
@@ -107,4 +107,128 @@ pub fn gcp_github_mock_spec() -> MockSpec {
             Value::Response(TransportResponse::Rest(secret_response)),
         )
         .boundary("build_credential", "credential", mock_credential())
+}
+
+/// Mock spec for GCP GitHub Actions WIF + Secret Manager upsert.
+#[gunbc_testgen_registry_macros::testgen_target(
+    name = "gcp-wif-secret-upsert-github",
+    output = "lib/gcp-ops/src/generated_tests_upsert.rs",
+    module = "gcp_wif_secret_upsert_generated_tests",
+    builder = "crate::graph::build_gcp_secret_manager_upsert_graph_github()",
+    no_boundary_tests
+)]
+pub fn gcp_github_upsert_mock_spec() -> MockSpec {
+    let oidc_response = RestResponse::ok(serde_json::json!({"value": "mock-oidc-token"}));
+    let sts_response = RestResponse::ok(serde_json::json!({
+        "access_token": "mock-sts-token",
+        "expires_in": 3600
+    }));
+    let impersonate_response = RestResponse::ok(serde_json::json!({
+        "accessToken": "mock-sa-token",
+        "expireTime": "2025-01-01T00:00:00Z"
+    }));
+    let secret_get_response = RestResponse::new(404, serde_json::json!({"error": "not found"}));
+    let secret_create_response =
+        RestResponse::ok(serde_json::json!({"name": "projects/mock/secrets/github"}));
+    let add_version_response = RestResponse::ok(serde_json::json!({
+        "name": "projects/mock/secrets/github/versions/1"
+    }));
+
+    MockSpec::new("gcp-wif-secret-upsert-github")
+        .input_mock(
+            "prepare_github_oidc",
+            "audience",
+            Value::Str(
+                "projects/123/locations/global/workloadIdentityPools/github/providers/gha"
+                    .into(),
+            ),
+        )
+        .input_mock(
+            "prepare_github_oidc",
+            "request_url",
+            Value::Str("https://example.com/oidc".into()),
+        )
+        .input_mock(
+            "prepare_github_oidc",
+            "request_token",
+            Value::Str("mock-oidc-request-token".into()),
+        )
+        .input_mock(
+            "prepare_sts",
+            "audience",
+            Value::Str(
+                "projects/123/locations/global/workloadIdentityPools/github/providers/gha"
+                    .into(),
+            ),
+        )
+        .input_mock(
+            "prepare_impersonate",
+            "service_account",
+            Value::Str("ci-secrets@mock.iam.gserviceaccount.com".into()),
+        )
+        .input_mock(
+            "prepare_secret_get",
+            "project",
+            Value::Str("mock-secrets".into()),
+        )
+        .input_mock(
+            "prepare_secret_get",
+            "secret",
+            Value::Str("github".into()),
+        )
+        .input_mock(
+            "prepare_secret_create",
+            "project",
+            Value::Str("mock-secrets".into()),
+        )
+        .input_mock(
+            "prepare_secret_create",
+            "secret",
+            Value::Str("github".into()),
+        )
+        .input_mock(
+            "prepare_secret_add_version",
+            "project",
+            Value::Str("mock-secrets".into()),
+        )
+        .input_mock(
+            "prepare_secret_add_version",
+            "secret",
+            Value::Str("github".into()),
+        )
+        .input_mock(
+            "prepare_secret_add_version",
+            "secret_value",
+            Value::Secret(SecretString::new("mock-secret-value")),
+        )
+        .transport_mock(
+            "execute_github_oidc",
+            "response",
+            Value::Response(TransportResponse::Rest(oidc_response)),
+        )
+        .transport_mock(
+            "execute_sts",
+            "response",
+            Value::Response(TransportResponse::Rest(sts_response)),
+        )
+        .transport_mock(
+            "execute_impersonate",
+            "response",
+            Value::Response(TransportResponse::Rest(impersonate_response)),
+        )
+        .transport_mock(
+            "execute_secret_get",
+            "response",
+            Value::Response(TransportResponse::Rest(secret_get_response)),
+        )
+        .transport_mock(
+            "execute_secret_create",
+            "response",
+            Value::Response(TransportResponse::Rest(secret_create_response)),
+        )
+        .transport_mock(
+            "execute_secret_add_version",
+            "response",
+            Value::Response(TransportResponse::Rest(add_version_response)),
+        )
 }

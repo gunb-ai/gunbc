@@ -27,6 +27,7 @@ use gunbc_ir::transport::cloud::{
 use gunbc_ir::transport::llm::mock;
 use gunbc_ir::transport::{ShellResponse, TransportResponse};
 use gunbc_ir::{SecretString, Value};
+use gunbc_primitives::filename;
 use gunbc_test::{extract_mock_requirements, InputConstraint, MockSpec, NodeExample, OutputMatcher};
 use std::collections::BTreeMap;
 
@@ -65,6 +66,11 @@ fn mock_cloud_config() -> Value {
         impersonate_account_or_role: None,
     }
     .into()
+}
+
+fn mock_fs_handle() -> Value {
+    let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
+    fs.into()
 }
 
 // ============================================================================
@@ -313,6 +319,9 @@ diff --git a/src/main.rs b/src/main.rs
 
     // Extract typed requirements from DAG structure
     extract_mock_requirements(&dag, "review-diff")
+        // Filesystem env (git diff access)
+        .boundary("fs_env", "fs:write", mock_fs_handle())
+        .expect("fs_env should match type")
         // Cloud env + credential boundaries
         .boundary("cloud_env", "config", mock_cloud_config())
         .expect("cloud_env config should match type")

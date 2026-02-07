@@ -31,6 +31,7 @@ use std::fmt;
 enum TypeExpr {
     Named(String),
     Wrapper(WrapperKind, Box<TypeExpr>),
+    Map(Box<TypeExpr>, Box<TypeExpr>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -38,6 +39,29 @@ enum ResolveMode {
     Root,
     InWrapper,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TypeExprError {
+    expr: String,
+    message: String,
+}
+
+impl TypeExprError {
+    fn new(expr: &str, message: impl Into<String>) -> Self {
+        Self {
+            expr: expr.to_string(),
+            message: message.into(),
+        }
+    }
+}
+
+impl fmt::Display for TypeExprError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "invalid type expression '{}': {}", self.expr, self.message)
+    }
+}
+
+impl std::error::Error for TypeExprError {}
 
 fn parse_wrapper_kind(name: &str) -> Option<WrapperKind> {
     match name {
@@ -50,22 +74,24 @@ fn parse_wrapper_kind(name: &str) -> Option<WrapperKind> {
     }
 }
 
-fn split_top_level_generic(expr: &str) -> Option<(&str, &str)> {
+fn split_top_level_generic(expr: &str) -> Result<Option<(&str, &str)>, TypeExprError> {
     let mut depth = 0usize;
     let mut start = None;
     let mut end = None;
+    let mut saw_lt = false;
 
     for (idx, ch) in expr.char_indices() {
         match ch {
             '<' => {
                 if depth == 0 {
                     start = Some(idx);
+                    saw_lt = true;
                 }
                 depth += 1;
             }
             '>' => {
                 if depth == 0 {
-                    return None;
+                    return Err(TypeExprError::new(expr, "unexpected '>'"));
                 }
                 depth -= 1;
                 if depth == 0 {
@@ -77,39 +103,122 @@ fn split_top_level_generic(expr: &str) -> Option<(&str, &str)> {
         }
     }
 
-    let (start, end) = (start?, end?);
+    if !saw_lt {
+        return Ok(None);
+    }
+
+    if depth != 0 {
+        return Err(TypeExprError::new(expr, "unbalanced '<'"));
+    }
+
+    let (start, end) = match (start, end) {
+        (Some(start), Some(end)) => (start, end),
+        _ => return Err(TypeExprError::new(expr, "missing generic arguments")),
+    };
     if !expr[end + 1..].trim().is_empty() {
-        return None;
+        return Err(TypeExprError::new(
+            expr,
+            "trailing characters after generic",
+        ));
     }
 
     let name = expr[..start].trim();
     let inner = expr[start + 1..end].trim();
     if name.is_empty() || inner.is_empty() {
-        return None;
+        return Err(TypeExprError::new(
+            expr,
+            "generic name or arguments are empty",
+        ));
     }
 
-    Some((name, inner))
+    Ok(Some((name, inner)))
 }
 
-fn parse_type_expr(raw: &str) -> Option<TypeExpr> {
-    let expr = raw.trim();
-    if expr.is_empty() {
-        return None;
+fn split_top_level_args(inner: &str) -> Vec<&str> {
+    let mut args = Vec::new();
+    let mut depth = 0usize;
+    let mut start = 0usize;
+
+    for (idx, ch) in inner.char_indices() {
+        match ch {
+            '<' => depth += 1,
+            '>' => {
+                depth = depth.saturating_sub(1);
+            }
+            ',' if depth == 0 => {
+                args.push(inner[start..idx].trim());
+                start = idx + 1;
+            }
+            _ => {}
+        }
     }
 
-    if let Some((name, inner)) = split_top_level_generic(expr) {
-        if let Some(kind) = parse_wrapper_kind(name) {
-            let inner_expr = parse_type_expr(inner)?;
-            return Some(TypeExpr::Wrapper(kind, Box::new(inner_expr)));
+    args.push(inner[start..].trim());
+    args
+}
+
+fn render_type_expr(expr: &TypeExpr) -> String {
+    match expr {
+        TypeExpr::Named(name) => name.clone(),
+        TypeExpr::Wrapper(kind, inner) => {
+            let wrapper = match kind {
+                WrapperKind::Optional => "Optional",
+                WrapperKind::List => "List",
+                WrapperKind::NonEmptyList => "NonEmptyList",
+                WrapperKind::Set => "Set",
+                WrapperKind::NonEmptySet => "NonEmptySet",
+            };
+            format!("{wrapper}<{}>", render_type_expr(inner))
         }
-        return Some(TypeExpr::Named(expr.to_string()));
+        TypeExpr::Map(key, value) => format!(
+            "Map<{},{}>",
+            render_type_expr(key),
+            render_type_expr(value)
+        ),
+    }
+}
+
+fn parse_type_expr(raw: &str) -> Result<TypeExpr, TypeExprError> {
+    let expr = raw.trim();
+    if expr.is_empty() {
+        return Err(TypeExprError::new(raw, "empty type expression"));
+    }
+
+    if let Some((name, inner)) = split_top_level_generic(expr)? {
+        if let Some(kind) = parse_wrapper_kind(name) {
+            let args = split_top_level_args(inner);
+            if args.len() != 1 || args.iter().any(|arg| arg.is_empty()) {
+                return Err(TypeExprError::new(
+                    expr,
+                    "wrapper expects a single type argument",
+                ));
+            }
+            let inner_expr = parse_type_expr(args[0])?;
+            return Ok(TypeExpr::Wrapper(kind, Box::new(inner_expr)));
+        }
+        if name == "Map" {
+            let args = split_top_level_args(inner);
+            if args.len() != 2 || args.iter().any(|arg| arg.is_empty()) {
+                return Err(TypeExprError::new(
+                    expr,
+                    "Map expects exactly two type arguments",
+                ));
+            }
+            let key = parse_type_expr(args[0])?;
+            let value = parse_type_expr(args[1])?;
+            return Ok(TypeExpr::Map(Box::new(key), Box::new(value)));
+        }
+        return Ok(TypeExpr::Named(expr.to_string()));
     }
 
     if expr.contains('<') || expr.contains('>') {
-        return None;
+        return Err(TypeExprError::new(expr, "unbalanced generic brackets"));
+    }
+    if expr.contains(',') {
+        return Err(TypeExprError::new(expr, "unexpected ','"));
     }
 
-    Some(TypeExpr::Named(expr.to_string()))
+    Ok(TypeExpr::Named(expr.to_string()))
 }
 
 /// Registry for named type DAGs.
@@ -211,8 +320,23 @@ impl TypeRegistry {
     ///
     /// Returns `None` if the type is not registered and no wrapper expression is present.
     pub fn resolve_type(&self, type_id: &TypeId) -> Option<Dag<TypeOp>> {
+        self.resolve_type_checked(type_id).ok().flatten()
+    }
+
+    /// Resolve a type DAG, returning a diagnostic if the expression is invalid.
+    ///
+    /// Returns `Ok(None)` when the type is syntactically valid but not registered.
+    pub fn resolve_type_checked(
+        &self,
+        type_id: &TypeId,
+    ) -> Result<Option<Dag<TypeOp>>, TypeExprError> {
         let expr = parse_type_expr(&type_id.0)?;
-        self.resolve_expr(&expr, ResolveMode::Root)
+        Ok(self.resolve_expr(&expr, ResolveMode::Root))
+    }
+
+    /// Validate that a type expression is syntactically well-formed.
+    pub fn validate_type_expr(&self, type_id: &TypeId) -> Result<(), TypeExprError> {
+        parse_type_expr(&type_id.0).map(|_| ())
     }
 
     fn resolve_expr(&self, expr: &TypeExpr, mode: ResolveMode) -> Option<Dag<TypeOp>> {
@@ -236,6 +360,15 @@ impl TypeRegistry {
                     WrapperKind::NonEmptySet => type_lib::non_empty_set(inner_dag),
                 };
                 Some(dag)
+            }
+            TypeExpr::Map(key, value) => {
+                let _ = self.resolve_expr(key, ResolveMode::InWrapper)?;
+                let _ = self.resolve_expr(value, ResolveMode::InWrapper)?;
+                let name = render_type_expr(expr);
+                if let Some(dag) = self.get_by_name(&name) {
+                    return Some(dag.clone());
+                }
+                Some(type_lib::identity(&name))
             }
         }
     }
@@ -549,5 +682,40 @@ mod tests {
             registry.base_type_name(&optional_transport),
             Some("TransportResponse".to_string())
         );
+
+        let map_type = TypeId::from("Map<String,Int>");
+        assert_eq!(
+            registry.base_type_name(&map_type),
+            Some("Map<String,Int>".to_string())
+        );
+        assert_eq!(registry.infer_cardinality(&map_type), None);
+
+        let nested = TypeId::from("Optional<Map<String, Optional<Int>>>");
+        assert_eq!(
+            registry.base_type_name(&nested),
+            Some("Map<String,Optional<Int>>".to_string())
+        );
+        assert_eq!(
+            registry.infer_cardinality(&nested),
+            Some(Cardinality::ZERO_OR_ONE)
+        );
+    }
+
+    #[test]
+    fn test_invalid_type_expression_diagnostics() {
+        let registry = TypeRegistry::with_primitives();
+
+        assert!(registry
+            .validate_type_expr(&TypeId::from("Optional<String"))
+            .is_err());
+        assert!(registry
+            .validate_type_expr(&TypeId::from("Map<String>"))
+            .is_err());
+        assert!(registry
+            .validate_type_expr(&TypeId::from("List<String,Int>"))
+            .is_err());
+        assert!(registry
+            .validate_type_expr(&TypeId::from("Map<,Int>"))
+            .is_err());
     }
 }

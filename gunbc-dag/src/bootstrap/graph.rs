@@ -18,7 +18,7 @@ use gunbc_ir::{
 };
 use gunbc_lib_blob::BlobOps;
 use gunbc_lib_transport::TransportOps;
-use gunbc_primitives::{PrepareFileReadOp, PrepareFileWriteOp};
+use gunbc_primitives::{filename, FsEnv, PrepareFileReadOp, PrepareFileWriteOp};
 
 /// The operation type for bootstrap graphs - a union of bootstrap ops, primitives, and transport.
 pub type BootstrapGraphOp = FileOpsGraph<BootstrapOp>;
@@ -58,6 +58,13 @@ pub fn bootstrap_signature() -> WorkflowSignature {
 pub fn build_bootstrap_graph() -> Result<Dag<BootstrapGraphOp>, BuilderError> {
     let mut builder = DagBuilder::new();
 
+    let fs_env = builder.add_root_node(Node::opaque(
+        "fs_env",
+        vec![],
+        vec![port("fs:write", "FilesystemHandle")],
+        BootstrapGraphOp::FsEnv(FsEnv::new(filename::Scope::Write)),
+    ))?;
+
     // ========================================================================
     // ScanWorkspace chain: PrepareScanWorkspace -> Execute -> ParseScanResult
     // ========================================================================
@@ -72,7 +79,11 @@ pub fn build_bootstrap_graph() -> Result<Dag<BootstrapGraphOp>, BuilderError> {
     let execute_scan = builder.add_node_after(
         Node::opaque(
             "execute_scan_workspace",
-            vec![port("request", "TransportRequest"), port("skip", "Bool")],
+            vec![
+                port("request", "TransportRequest"),
+                port("skip", "Bool"),
+                resource("fs", "FilesystemHandle", AccessMode::Read),
+            ],
             vec![port("response", "TransportResponse")],
             BootstrapGraphOp::Transport(TransportOps::Execute),
         ),
@@ -118,11 +129,15 @@ pub fn build_bootstrap_graph() -> Result<Dag<BootstrapGraphOp>, BuilderError> {
         generate_makefile.in_port("crate_names"),
     )?;
 
-    add_content_upsert_chain(
+    let makefile_read = resource("fs:Makefile", "FilesystemHandle", AccessMode::Read);
+    let makefile_write = resource("fs:Makefile", "FilesystemHandle", AccessMode::Write);
+    let makefile_chain = add_content_upsert_chain(
         &mut builder,
         "makefile",
         &generate_makefile,
         "makefile_content",
+        vec![makefile_read],
+        vec![makefile_write],
         BootstrapGraphOp::PrepareFileRead(PrepareFileReadOp),
         BootstrapGraphOp::PrepareFileWrite(PrepareFileWriteOp),
         BootstrapGraphOp::Blob(BlobOps::CompareContent),
@@ -148,15 +163,38 @@ pub fn build_bootstrap_graph() -> Result<Dag<BootstrapGraphOp>, BuilderError> {
         generate_gitignore.in_port("crate_names"),
     )?;
 
-    add_content_upsert_chain(
+    let gitignore_read = resource("fs:.gitignore", "FilesystemHandle", AccessMode::Read);
+    let gitignore_write = resource("fs:.gitignore", "FilesystemHandle", AccessMode::Write);
+    let gitignore_chain = add_content_upsert_chain(
         &mut builder,
         "gitignore",
         &generate_gitignore,
         "gitignore_content",
+        vec![gitignore_read],
+        vec![gitignore_write],
         BootstrapGraphOp::PrepareFileRead(PrepareFileReadOp),
         BootstrapGraphOp::PrepareFileWrite(PrepareFileWriteOp),
         BootstrapGraphOp::Blob(BlobOps::CompareContent),
         BootstrapGraphOp::Transport(TransportOps::Execute),
+    )?;
+
+    // Resource wiring
+    builder.add_edge(fs_env.out("fs:write"), execute_scan.in_port("res:fs"))?;
+    builder.add_edge(
+        fs_env.out("fs:write"),
+        makefile_chain.execute_read.in_port("res:fs:Makefile"),
+    )?;
+    builder.add_edge(
+        fs_env.out("fs:write"),
+        makefile_chain.execute_write.in_port("res:fs:Makefile"),
+    )?;
+    builder.add_edge(
+        fs_env.out("fs:write"),
+        gitignore_chain.execute_read.in_port("res:fs:.gitignore"),
+    )?;
+    builder.add_edge(
+        fs_env.out("fs:write"),
+        gitignore_chain.execute_write.in_port("res:fs:.gitignore"),
     )?;
 
     Ok(builder.build())

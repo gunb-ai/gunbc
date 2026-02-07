@@ -129,7 +129,9 @@ pub fn map_type(abstract_type: &str, language: &str) -> Option<String> {
         }
         _ if abstract_type.starts_with("Map<") => {
             let inner = &abstract_type[4..abstract_type.len() - 1];
-            if let Some((key, val)) = inner.split_once(", ") {
+            if let Some(comma_pos) = inner.find(',') {
+                let key = inner[..comma_pos].trim();
+                let val = inner[comma_pos + 1..].trim();
                 let key_type = map_type(key, language)?;
                 let val_type = map_type(val, language)?;
                 mapping

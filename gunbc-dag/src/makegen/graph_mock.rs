@@ -24,7 +24,13 @@ use crate::makegen::graph::build_makegen_graph;
 use crate::WorkspaceBinary;
 use gunbc_ir::transport::{FileOp, FileResponse, TransportResponse};
 use gunbc_ir::{CargoInvocation, Value};
+use gunbc_primitives::filename;
 use gunbc_test::{extract_mock_requirements, InputConstraint, MockSpec, NodeExample, OutputMatcher};
+
+fn mock_fs_handle() -> Value {
+    let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
+    fs.into()
+}
 
 /// Mock specification for the makegen graph.
 ///
@@ -48,6 +54,8 @@ pub fn makegen_mock_spec() -> MockSpec {
 
     // Extract typed requirements from DAG structure
     extract_mock_requirements(&dag, "makegen")
+        .boundary("fs_env", "fs:write", mock_fs_handle())
+        .expect("fs_env should match type")
         // Transport: execute_read (file read) - mock the read response
         .transport_response(
             "execute_read_makegen",
@@ -99,6 +107,11 @@ pub fn makegen_mock_spec() -> MockSpec {
         .expected_output("load_registry", "tool_count", Value::Int(9))
         // Node I/O examples: verify pure node behavior
         .node_example(
+            NodeExample::new("fs_env")
+                .output("fs:write", OutputMatcher::Any)
+                .description("Provides filesystem handle for Makefile writes"),
+        )
+        .node_example(
             NodeExample::new("load_registry")
                 .output("tool_count", OutputMatcher::IntGe(2))
                 .output("tool_names", OutputMatcher::non_empty())
@@ -122,6 +135,8 @@ pub fn makegen_mock_spec_no_change() -> MockSpec {
     let dag = build_makegen_graph().expect("makegen graph should build");
 
     extract_mock_requirements(&dag, "makegen")
+        .boundary("fs_env", "fs:write", mock_fs_handle())
+        .expect("fs_env should match type")
         .transport_response(
             "execute_read_makegen",
             "response",
@@ -171,6 +186,8 @@ pub fn makegen_mock_spec_fs_fails() -> MockSpec {
     let dag = build_makegen_graph().expect("makegen graph should build");
 
     extract_mock_requirements(&dag, "makegen")
+        .boundary("fs_env", "fs:write", mock_fs_handle())
+        .expect("fs_env should match type")
         .transport_response(
             "execute_read_makegen",
             "response",

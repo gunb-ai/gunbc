@@ -16,7 +16,7 @@ use gunbc_ir::{
 };
 use gunbc_lib_blob::BlobOps;
 use gunbc_lib_transport::TransportOps;
-use gunbc_primitives::{PrepareFileReadOp, PrepareFileWriteOp};
+use gunbc_primitives::{filename, FsEnv, PrepareFileReadOp, PrepareFileWriteOp};
 
 /// The operation type for makegen graphs - a union of makegen ops, primitives, and transport.
 pub type MakegenGraphOp = FileOpsGraph<MakegenOp>;
@@ -60,6 +60,13 @@ pub fn makegen_signature() -> WorkflowSignature {
 pub fn build_makegen_graph() -> Result<Dag<MakegenGraphOp>, BuilderError> {
     let mut builder = DagBuilder::new();
 
+    let fs_env = builder.add_root_node(Node::opaque(
+        "fs_env",
+        vec![],
+        vec![port("fs:write", "FilesystemHandle")],
+        MakegenGraphOp::FsEnv(FsEnv::new(filename::Scope::Write)),
+    ))?;
+
     // Node: LoadRegistry (makegen-specific) - generation 0
     let load_registry = builder.add_root_node(Node::opaque(
         "load_registry",
@@ -90,15 +97,28 @@ pub fn build_makegen_graph() -> Result<Dag<MakegenGraphOp>, BuilderError> {
     )?;
 
     // Content upsert chain
-    add_content_upsert_chain(
+    let makefile_read = resource("fs:Makefile", "FilesystemHandle", AccessMode::Read);
+    let makefile_write = resource("fs:Makefile", "FilesystemHandle", AccessMode::Write);
+    let makegen_chain = add_content_upsert_chain(
         &mut builder,
         "makegen",
         &render_makefile,
         "makefile_content",
+        vec![makefile_read],
+        vec![makefile_write],
         MakegenGraphOp::PrepareFileRead(PrepareFileReadOp),
         MakegenGraphOp::PrepareFileWrite(PrepareFileWriteOp),
         MakegenGraphOp::Blob(BlobOps::CompareContent),
         MakegenGraphOp::Transport(TransportOps::Execute),
+    )?;
+
+    builder.add_edge(
+        fs_env.out("fs:write"),
+        makegen_chain.execute_read.in_port("res:fs:Makefile"),
+    )?;
+    builder.add_edge(
+        fs_env.out("fs:write"),
+        makegen_chain.execute_write.in_port("res:fs:Makefile"),
     )?;
 
     Ok(builder.build())

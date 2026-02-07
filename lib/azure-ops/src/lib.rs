@@ -6,7 +6,10 @@ mod ops;
 mod graph;
 pub mod graph_mock;
 
-pub use graph::{build_azure_key_vault_credential_graph, AzureKeyVaultGraphOp};
+pub use graph::{
+    build_azure_key_vault_credential_graph, build_azure_key_vault_upsert_graph,
+    AzureKeyVaultGraphOp,
+};
 pub use ops::AzureOps;
 
 // ============================================================================

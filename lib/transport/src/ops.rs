@@ -99,9 +99,29 @@ pub(crate) fn execute_request(request: &TransportRequest) -> Result<TransportRes
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gunbc_ir::transport::{FileRequest, ShellRequest};
-    use gunbc_ir::{Secret, AuthScheme, Value};
+    use crate::executor::TransportError;
+    use crate::{TransportBackend, TransportBackendGuard};
+    use gunbc_ir::transport::{FileRequest, RestResponse, ShellRequest, TransportRequest, TransportResponse};
+    use gunbc_ir::{AuthScheme, Secret, Value};
     use std::collections::HashMap;
+    use std::sync::{Arc, Mutex};
+
+    #[derive(Debug, Clone)]
+    struct CaptureBackend {
+        captured: Arc<Mutex<Option<TransportRequest>>>,
+    }
+
+    impl TransportBackend for CaptureBackend {
+        fn execute(&self, request: &TransportRequest) -> Result<TransportResponse, TransportError> {
+            *self.captured.lock().expect("capture lock") = Some(request.clone());
+            match request {
+                TransportRequest::Rest(_) => Ok(TransportResponse::Rest(RestResponse::ok(
+                    serde_json::json!({}),
+                ))),
+                _ => Err(TransportError::new("unexpected transport request")),
+            }
+        }
+    }
 
     #[test]
     fn test_transport_ops_requires_request() {
@@ -143,17 +163,36 @@ mod tests {
         let cred = Credential::new(Secret::static_value("sk-test-123"), AuthScheme::Bearer);
         let cred_value: Value = cred.into();
 
+        let captured = Arc::new(Mutex::new(None));
+        let backend = Arc::new(CaptureBackend {
+            captured: captured.clone(),
+        });
+        let _guard = TransportBackendGuard::install(backend);
+
         let mut inputs = HashMap::new();
         inputs.insert("request".to_string(), Value::Request(request));
         inputs.insert("res:credential".to_string(), cred_value);
         inputs.insert("skip".to_string(), Value::Bool(false));
 
-        let result = TransportOps::Execute.execute(inputs);
-        // The request will fail (no real server), but we can verify the credential was
-        // accepted (no parsing error). The actual HTTP call will fail, which is fine.
-        assert!(result.is_err()); // HTTP call fails, but no auth error
-        let err_msg = result.unwrap_err().0;
-        assert!(!err_msg.contains("res:credential"), "credential should parse successfully");
+        let result = TransportOps::Execute
+            .execute(inputs)
+            .expect("transport should execute");
+        assert_eq!(result.get("skip"), Some(&Value::Bool(false)));
+
+        let captured_req = captured
+            .lock()
+            .expect("capture lock")
+            .clone()
+            .expect("captured request");
+        let rest = match captured_req {
+            TransportRequest::Rest(r) => r,
+            other => panic!("expected REST request, got {:?}", other),
+        };
+        assert_eq!(
+            rest.headers.get("Authorization"),
+            Some(&"Bearer sk-test-123".to_string())
+        );
+        assert!(rest.auth.is_none(), "auth should be cleared after apply()");
     }
 
     #[test]
@@ -169,15 +208,36 @@ mod tests {
         );
         let cred_value: Value = cred.into();
 
+        let captured = Arc::new(Mutex::new(None));
+        let backend = Arc::new(CaptureBackend {
+            captured: captured.clone(),
+        });
+        let _guard = TransportBackendGuard::install(backend);
+
         let mut inputs = HashMap::new();
         inputs.insert("request".to_string(), Value::Request(request));
         inputs.insert("res:credential".to_string(), cred_value);
         inputs.insert("skip".to_string(), Value::Bool(false));
 
-        let result = TransportOps::Execute.execute(inputs);
-        assert!(result.is_err()); // HTTP call fails
-        let err_msg = result.unwrap_err().0;
-        assert!(!err_msg.contains("res:credential"), "credential should parse successfully");
+        let result = TransportOps::Execute
+            .execute(inputs)
+            .expect("transport should execute");
+        assert_eq!(result.get("skip"), Some(&Value::Bool(false)));
+
+        let captured_req = captured
+            .lock()
+            .expect("capture lock")
+            .clone()
+            .expect("captured request");
+        let rest = match captured_req {
+            TransportRequest::Rest(r) => r,
+            other => panic!("expected REST request, got {:?}", other),
+        };
+        assert_eq!(
+            rest.headers.get("x-api-key"),
+            Some(&"sk-ant-key".to_string())
+        );
+        assert!(rest.auth.is_none(), "auth should be cleared after apply()");
     }
 
     #[test]

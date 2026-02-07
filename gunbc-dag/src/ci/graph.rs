@@ -55,7 +55,7 @@ use gunbc_ir::{
 };
 use gunbc_lib_transport::cli::{execute_cli_tool_op, upsert_tool_with, WhichResolver};
 use gunbc_lib_transport::TransportOps;
-use gunbc_primitives::EmbeddedFileExistsOp;
+use gunbc_primitives::{EmbeddedFileExistsOp, FsEnv};
 use std::collections::HashMap;
 
 // ============================================================================
@@ -78,6 +78,8 @@ pub enum CIGraphOp {
     Codegen(CodegenOp),
     /// Cloud env status (resource acquisition)
     CloudEnv(CloudEnvStatus),
+    /// Filesystem environment (resource acquisition)
+    FsEnv(FsEnv),
     /// Prepare file exists check (pure - path embedded, from primitives)
     PrepareFileExists(EmbeddedFileExistsOp),
     /// Transport operations (boundary - actual I/O)
@@ -92,6 +94,7 @@ impl Executable for CIGraphOp {
             CIGraphOp::CI(op) => op.execute(inputs),
             CIGraphOp::Codegen(op) => op.execute(inputs),
             CIGraphOp::CloudEnv(op) => op.execute(inputs),
+            CIGraphOp::FsEnv(op) => op.execute(inputs),
             CIGraphOp::PrepareFileExists(op) => op.execute(inputs),
             CIGraphOp::Transport(op) => op.execute(inputs),
             CIGraphOp::CliTool(op) => {
@@ -206,6 +209,8 @@ pub fn build_ci_graph() -> Result<Dag<CIGraphOp>, BuilderError> {
 pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, BuilderError> {
     let mut builder = DagBuilder::new();
 
+    let fs_resource = resource("fs", "FilesystemHandle", AccessMode::Write);
+
     let cloud_env_status = builder
         .add_root_node(Node::opaque(
             "cloud_env_status",
@@ -223,6 +228,7 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
         &mut builder,
         "deps_exists",
         vec![],
+        vec![fs_resource.clone()],
         vec![
             port("deps_exists", "Bool"),
             port("deps_checked", "Bool"),
@@ -243,6 +249,10 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
     let parse_codegen_result = codegen_nodes
         .get(&NodeId::from("parse_codegen_result"))
         .expect("codegen DAG should include parse_codegen_result");
+    let fs_env = codegen_nodes
+        .get(&NodeId::from("fs_env"))
+        .expect("codegen DAG should include fs_env")
+        .clone();
 
     // ========================================================================
     // Bootstrap Stage
@@ -252,6 +262,7 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
         &mut builder,
         "bootstrap",
         vec![port("prep_success", "Bool")],
+        vec![fs_resource.clone()],
         vec![
             port("bootstrap_success", "Bool"),
             port("bootstrap_stderr", "String"),
@@ -270,6 +281,7 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
         &mut builder,
         "pragma",
         vec![port("prep_success", "Bool")],
+        vec![fs_resource.clone()],
         vec![port("pragma_success", "Bool"), port("pragma_stderr", "String")],
         CIGraphOp::CI(CIOp::PreparePragmaCommand),
         CIGraphOp::CI(CIOp::ParsePragmaResult),
@@ -285,6 +297,7 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
         &mut builder,
         "testgen",
         vec![port("prep_success", "Bool")],
+        vec![fs_resource.clone()],
         vec![port("testgen_success", "Bool"), port("testgen_stderr", "String")],
         CIGraphOp::CI(CIOp::PrepareTestgenCommand),
         CIGraphOp::CI(CIOp::ParseTestgenResult),
@@ -300,6 +313,7 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
         &mut builder,
         "build",
         vec![port("prep_success", "Bool"), port("testgen_success", "Bool")],
+        vec![fs_resource.clone()],
         vec![
             port("build_success", "Bool"),
             port("build_skipped", "Bool"),
@@ -320,6 +334,7 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
         &mut builder,
         "test",
         vec![port("build_success", "Bool")],
+        vec![fs_resource.clone()],
         vec![
             port("test_success", "Bool"),
             port("test_skipped", "Bool"),
@@ -396,6 +411,7 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
         &mut builder,
         "guardrail_check",
         vec![port("testgen_success", "Bool"), port("pragma_success", "Bool")],
+        vec![fs_resource.clone()],
         vec![port("guardrail_success", "Bool"), port("guardrail_stderr", "String")],
         CIGraphOp::CI(CIOp::PrepareGuardrailCheck),
         CIGraphOp::CI(CIOp::ParseGuardrailResult),
@@ -416,6 +432,7 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
             port("testgen_success", "Bool"),
             port("pragma_success", "Bool"),
         ],
+        vec![fs_resource.clone()],
         vec![port("verify_success", "Bool"), port("verify_stderr", "String")],
         CIGraphOp::CI(CIOp::PrepareVerifyCheck),
         CIGraphOp::CI(CIOp::ParseVerifyResult),
@@ -579,6 +596,16 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
         report.in_port("cloud_env_status"),
     )?;
 
+    // Resource wiring (filesystem handle for transport nodes)
+    builder.add_edge(fs_env.out("fs:write"), _deps_exists.execute.in_port("res:fs"))?;
+    builder.add_edge(fs_env.out("fs:write"), bootstrap.execute.in_port("res:fs"))?;
+    builder.add_edge(fs_env.out("fs:write"), pragma.execute.in_port("res:fs"))?;
+    builder.add_edge(fs_env.out("fs:write"), testgen.execute.in_port("res:fs"))?;
+    builder.add_edge(fs_env.out("fs:write"), build.execute.in_port("res:fs"))?;
+    builder.add_edge(fs_env.out("fs:write"), test.execute.in_port("res:fs"))?;
+    builder.add_edge(fs_env.out("fs:write"), guardrail.execute.in_port("res:fs"))?;
+    builder.add_edge(fs_env.out("fs:write"), verify.execute.in_port("res:fs"))?;
+
     Ok(builder.build())
 }
 
@@ -610,6 +637,7 @@ fn inline_codegen_dag(
 
         let mapped = match op {
             CodegenGraphOp::Codegen(op) => CIGraphOp::Codegen(op.clone()),
+            CodegenGraphOp::FsEnv(op) => CIGraphOp::FsEnv(op.clone()),
             CodegenGraphOp::Transport(op) => CIGraphOp::Transport(op.clone()),
         };
 
@@ -666,33 +694,60 @@ mod tests {
     #[test]
     fn test_graph_builds_successfully() {
         let dag = build_ci_graph().expect("graph should build");
-        // Should have many more nodes now with explicit transport
-        assert!(
-            dag.nodes.len() > 6,
-            "expected more nodes with explicit transport, got {}",
-            dag.nodes.len()
-        );
+        let expected_nodes = [
+            "cloud_env_status",
+            "execute_deps_exists",
+            "execute_codegen",
+            "execute_stamp_write",
+            "execute_build",
+            "execute_test",
+            "clippy_lint",
+            "execute_guardrail",
+            "execute_verify",
+            "report",
+        ];
+
+        for node_id in expected_nodes {
+            assert!(
+                dag.get_node(&node_id.into()).is_some(),
+                "missing node: {}",
+                node_id
+            );
+        }
     }
 
     #[test]
     fn test_graph_has_transport_nodes() {
         let dag = build_ci_graph().expect("graph should build");
 
-        // Count transport nodes (execute_* for traditional transport, clippy_lint for CLI tool)
-        let transport_nodes: Vec<_> = dag
-            .nodes
-            .iter()
-            .filter(|n| {
-                n.id.0.starts_with("execute_") || n.id.0 == "clippy_lint"
-            })
-            .collect();
+        for node_id in [
+            "execute_deps_exists",
+            "execute_codegen",
+            "execute_stamp_write",
+            "execute_bootstrap",
+            "execute_pragma",
+            "execute_testgen",
+            "execute_build",
+            "execute_test",
+            "execute_guardrail",
+            "execute_verify",
+        ] {
+            let node = dag
+                .get_node(&node_id.into())
+                .unwrap_or_else(|| panic!("missing transport node: {}", node_id));
+            assert!(
+                matches!(node.body, NodeBody::Opaque(CIGraphOp::Transport(_))),
+                "{} should be a transport node",
+                node_id
+            );
+        }
 
-        // Should have nodes for: deps_exists, codegen_exists, codegen, stamp_write, build, test,
-        // clippy_lint, guardrail_check, verify_check
+        let clippy_node = dag
+            .get_node(&"clippy_lint".into())
+            .expect("clippy_lint node should exist");
         assert!(
-            transport_nodes.len() >= 6,
-            "expected at least 6 transport/tool nodes, got {}",
-            transport_nodes.len()
+            matches!(clippy_node.body, NodeBody::Opaque(CIGraphOp::CliTool(_))),
+            "clippy_lint should be a CLI tool node"
         );
     }
 

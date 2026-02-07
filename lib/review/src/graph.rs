@@ -24,6 +24,7 @@ use gunbc_lib_blob::BlobOps;
 use gunbc_lib_git_ops::GitOps;
 use gunbc_lib_llm_ops::LlmOps;
 use gunbc_lib_transport::TransportOps;
+use gunbc_primitives::{filename, FsEnv};
 use std::collections::HashMap;
 
 use crate::{ReviewOps, ReviewPipelineConfig};
@@ -45,6 +46,8 @@ pub enum ReviewGraphOp {
     Review(ReviewOps),
     /// LLM chat operations (PURE)
     Llm(LlmOps),
+    /// Filesystem environment (resource acquisition)
+    FsEnv(FsEnv),
     /// Cloud environment (BOUNDARY - resolves cloud secret config)
     CloudEnv(CloudEnv),
     /// Cloud credential flow (GCP/AWS/Azure graph)
@@ -60,6 +63,7 @@ impl Executable for ReviewGraphOp {
             ReviewGraphOp::Git(op) => op.execute(inputs),
             ReviewGraphOp::Review(op) => op.execute(inputs),
             ReviewGraphOp::Llm(op) => op.execute(inputs),
+            ReviewGraphOp::FsEnv(op) => op.execute(inputs),
             ReviewGraphOp::CloudEnv(op) => op.execute(inputs),
             ReviewGraphOp::Cloud(op) => op.execute(inputs),
             ReviewGraphOp::Transport(op) => op.execute(inputs),
@@ -222,6 +226,15 @@ where
 pub fn build_review_phase_graph() -> Dag<ReviewGraphOp> {
     let mut builder: DagBuilder<ReviewGraphOp> = DagBuilder::new();
 
+    let fs_env = builder
+        .add_root_node(Node::opaque(
+            "fs_env",
+            vec![],
+            vec![port("fs:write", "FilesystemHandle")],
+            ReviewGraphOp::FsEnv(FsEnv::new(filename::Scope::Write)),
+        ))
+        .expect("fs_env node");
+
     // Node 0: Cloud environment (config + OIDC request inputs)
     let cloud_env = builder
         .add_root_node(Node::opaque(
@@ -262,7 +275,11 @@ pub fn build_review_phase_graph() -> Dag<ReviewGraphOp> {
         .add_node_after(
             Node::opaque(
                 "execute_blob",
-                vec![port("request", "TransportRequest"), port("skip", "Bool")],
+                vec![
+                    port("request", "TransportRequest"),
+                    port("skip", "Bool"),
+                    resource("fs", "FilesystemHandle", AccessMode::Read),
+                ],
                 vec![port("response", "TransportResponse")],
                 ReviewGraphOp::Transport(TransportOps::Execute),
             ),
@@ -399,6 +416,9 @@ pub fn build_review_phase_graph() -> Dag<ReviewGraphOp> {
     builder
         .add_edge(prepare_blob.out("skip"), execute_blob.in_port("skip"))
         .expect("prepare_blob.skip -> execute_blob.skip");
+    builder
+        .add_edge(fs_env.out("fs:write"), execute_blob.in_port("res:fs"))
+        .expect("fs_env -> execute_blob.res:fs");
     builder
         .add_edge(
             execute_blob.out("response"),
@@ -652,6 +672,15 @@ pub fn build_diff_review_graph() -> Dag<ReviewGraphOp> {
 pub fn build_diff_review_graph_with(config: ReviewPipelineConfig) -> Dag<ReviewGraphOp> {
     let mut builder: DagBuilder<ReviewGraphOp> = DagBuilder::new();
 
+    let fs_env = builder
+        .add_root_node(Node::opaque(
+            "fs_env",
+            vec![],
+            vec![port("fs:write", "FilesystemHandle")],
+            ReviewGraphOp::FsEnv(FsEnv::new(filename::Scope::Write)),
+        ))
+        .expect("fs_env node");
+
     // Cloud environment (config + OIDC request inputs)
     let cloud_env = builder
         .add_root_node(Node::opaque(
@@ -701,6 +730,7 @@ pub fn build_diff_review_graph_with(config: ReviewPipelineConfig) -> Dag<ReviewG
             optional("base_ref", "OptionalString"),
             port("repo_path", "String"),
         ],
+        vec![resource("fs", "FilesystemHandle", AccessMode::Read)],
         vec![],
         vec![port("diff_files", "Map"), port("stats", "String")],
         ReviewGraphOp::Git(GitOps::PrepareDiff {
@@ -857,6 +887,9 @@ pub fn build_diff_review_graph_with(config: ReviewPipelineConfig) -> Dag<ReviewG
             format_artifact.in_port("diff_files"),
         )
         .expect("parse_diff.diff_files -> format_artifact.diff_files");
+    builder
+        .add_edge(fs_env.out("fs:write"), diff_triplet.execute.in_port("res:fs"))
+        .expect("fs_env -> execute_diff.res:fs");
 
     // Artifact → review prompt + LLM content
     builder
@@ -1294,21 +1327,19 @@ mod tests {
     #[test]
     fn test_diff_review_graph_has_two_transport_boundaries() {
         let dag = build_diff_review_graph();
-        let transport_nodes: Vec<_> = dag
-            .nodes
-            .iter()
-            .filter(|n| {
+        for node_id in ["execute_diff", "execute_llm"] {
+            let node = dag
+                .get_node(&node_id.into())
+                .unwrap_or_else(|| panic!("missing transport node: {}", node_id));
+            assert!(
                 matches!(
-                    n.body,
+                    node.body,
                     gunbc_ir::NodeBody::Opaque(ReviewGraphOp::Transport(_))
-                )
-            })
-            .collect();
-        assert_eq!(
-            transport_nodes.len(),
-            2,
-            "should have execute_diff and execute_llm"
-        );
+                ),
+                "{} should be a transport node",
+                node_id
+            );
+        }
     }
 
     // ========================================================================

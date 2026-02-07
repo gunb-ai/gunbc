@@ -49,6 +49,15 @@ pub enum SubDagError {
         parent_type: TypeId,
         inner_type: TypeId,
     },
+    /// Port uses an invalid type expression.
+    InvalidTypeExpression {
+        node: NodeId,
+        port: PortName,
+        direction: PortDirection,
+        type_id: TypeId,
+        error: crate::type_registry::TypeExprError,
+        source: TypeExprSource,
+    },
     /// Nested SubDag failed validation.
     Nested {
         parent: NodeId,
@@ -61,6 +70,13 @@ pub enum SubDagError {
 pub enum PortDirection {
     Input,
     Output,
+}
+
+/// Whether the invalid type expression came from the parent or inner port.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TypeExprSource {
+    Parent,
+    Inner,
 }
 
 impl fmt::Display for PortDirection {
@@ -134,6 +150,28 @@ impl fmt::Display for SubDagError {
                     f,
                     "SubDag '{}': {} port '{}' type mismatch: parent declares '{}', inner has '{}'",
                     node, direction, port, parent_type, inner_type
+                )
+            }
+            SubDagError::InvalidTypeExpression {
+                node,
+                port,
+                direction,
+                type_id,
+                error,
+                source,
+            } => {
+                write!(
+                    f,
+                    "invalid type expression on {} {} port '{}:{}' ({}): {}",
+                    match source {
+                        TypeExprSource::Parent => "parent",
+                        TypeExprSource::Inner => "inner",
+                    },
+                    direction,
+                    node,
+                    port,
+                    type_id,
+                    error
                 )
             }
             SubDagError::Nested { parent, inner } => {
@@ -374,6 +412,30 @@ fn check_type_match(
     registry: &TypeRegistry,
     errors: &mut Vec<SubDagError>,
 ) {
+    if let Err(error) = registry.validate_type_expr(parent_type) {
+        errors.push(SubDagError::InvalidTypeExpression {
+            node: node.clone(),
+            port: port.clone(),
+            direction,
+            type_id: parent_type.clone(),
+            error,
+            source: TypeExprSource::Parent,
+        });
+        return;
+    }
+
+    if let Err(error) = registry.validate_type_expr(inner_type) {
+        errors.push(SubDagError::InvalidTypeExpression {
+            node: node.clone(),
+            port: port.clone(),
+            direction,
+            type_id: inner_type.clone(),
+            error,
+            source: TypeExprSource::Inner,
+        });
+        return;
+    }
+
     let compatible = match direction {
         PortDirection::Input => registry.is_compatible(parent_type, inner_type),
         PortDirection::Output => registry.is_compatible(inner_type, parent_type),

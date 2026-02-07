@@ -250,20 +250,20 @@ fn compute_lint_key(io: &dyn ResourceIo, files: &[PathBuf]) -> Result<ContentHas
         }
     }
 
-    if let Ok(stdout) = io.command_output("rustc", &vec!["--version".to_string()]) {
+    if let Ok(stdout) = io.command_output("rustc", &["--version".to_string()]) {
         hash_builder =
-            hash_builder.update_command_output_bytes("rustc", &vec!["--version".to_string()], &stdout);
+            hash_builder.update_command_output_bytes("rustc", &["--version".to_string()], &stdout);
     } else {
         hash_builder = hash_builder.update(b"rustc:missing\0");
     }
 
     if let Ok(stdout) = io.command_output(
         "cargo",
-        &vec!["clippy".to_string(), "--version".to_string()],
+        &["clippy".to_string(), "--version".to_string()],
     ) {
         hash_builder = hash_builder.update_command_output_bytes(
             "cargo",
-            &vec!["clippy".to_string(), "--version".to_string()],
+            &["clippy".to_string(), "--version".to_string()],
             &stdout,
         );
     } else {

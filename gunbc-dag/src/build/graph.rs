@@ -22,6 +22,7 @@ use gunbc_ir::{
     build::*, BuilderError, Cardinality, Dag, DagBuilder, Node, Value, WorkflowSignature,
 };
 use gunbc_lib_transport::TransportOps;
+use gunbc_primitives::{filename, FsEnv};
 use std::collections::HashMap;
 
 /// Union type for build graph operations.
@@ -29,6 +30,8 @@ use std::collections::HashMap;
 pub enum BuildGraphOp {
     /// Build-specific pure operations.
     Build(BuildOp),
+    /// Filesystem environment (resource acquisition).
+    FsEnv(FsEnv),
     /// Transport operations (boundary - actual I/O).
     Transport(TransportOps),
 }
@@ -37,6 +40,7 @@ impl Executable for BuildGraphOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         match self {
             BuildGraphOp::Build(op) => op.execute(inputs),
+            BuildGraphOp::FsEnv(op) => op.execute(inputs),
             BuildGraphOp::Transport(op) => op.execute(inputs),
         }
     }
@@ -54,6 +58,19 @@ pub fn build_build_graph() -> Result<Dag<BuildGraphOp>, BuilderError> {
     let mut builder = DagBuilder::new();
 
     // ========================================================================
+    // Environment: filesystem handle
+    // ========================================================================
+
+    let fs_env = builder.add_root_node(Node::opaque(
+        "fs_env",
+        vec![],
+        vec![port("fs:write", "FilesystemHandle")],
+        BuildGraphOp::FsEnv(FsEnv::new(filename::Scope::Write)),
+    ))?;
+
+    let fs_resource = resource("fs", "FilesystemHandle", AccessMode::Write);
+
+    // ========================================================================
     // Build Stage
     // ========================================================================
 
@@ -61,6 +78,7 @@ pub fn build_build_graph() -> Result<Dag<BuildGraphOp>, BuilderError> {
         &mut builder,
         "build",
         vec![],
+        vec![fs_resource.clone()],
         vec![
             port("build_success", "Bool"),
             port("build_stdout", "String"),
@@ -80,6 +98,7 @@ pub fn build_build_graph() -> Result<Dag<BuildGraphOp>, BuilderError> {
         &mut builder,
         "test",
         vec![port("build_success", "Bool")],
+        vec![fs_resource.clone()],
         vec![
             port("test_success", "Bool"),
             port("test_skipped", "Bool"),
@@ -100,6 +119,7 @@ pub fn build_build_graph() -> Result<Dag<BuildGraphOp>, BuilderError> {
         &mut builder,
         "clippy",
         vec![port("build_success", "Bool")],
+        vec![fs_resource.clone()],
         vec![
             port("clippy_success", "Bool"),
             port("clippy_skipped", "Bool"),
@@ -175,31 +195,57 @@ pub fn build_build_graph() -> Result<Dag<BuildGraphOp>, BuilderError> {
         summary.in_port("clippy_stderr"),
     )?;
 
+    // Resource wiring
+    builder.add_edge(fs_env.out("fs:write"), build.execute.in_port("res:fs"))?;
+    builder.add_edge(fs_env.out("fs:write"), test.execute.in_port("res:fs"))?;
+    builder.add_edge(fs_env.out("fs:write"), clippy.execute.in_port("res:fs"))?;
+
     Ok(builder.build())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gunbc_ir::detect_boundaries;
+    use gunbc_ir::{detect_boundaries, NodeBody};
 
     #[test]
     fn test_graph_builds_successfully() {
         let dag = build_build_graph().expect("graph should build");
-        // 10 nodes: prepare/execute/parse × build + test + clippy + summary
-        assert_eq!(dag.nodes.len(), 10);
+        let expected_nodes = [
+            "prepare_build",
+            "execute_build",
+            "parse_build",
+            "prepare_test",
+            "execute_test",
+            "parse_test",
+            "prepare_clippy",
+            "execute_clippy",
+            "parse_clippy",
+            "summary",
+        ];
+
+        for node_id in expected_nodes {
+            assert!(
+                dag.get_node(&node_id.into()).is_some(),
+                "missing node: {}",
+                node_id
+            );
+        }
     }
 
     #[test]
     fn test_graph_has_transport_nodes() {
         let dag = build_build_graph().expect("graph should build");
-        let transport_nodes: Vec<_> = dag
-            .nodes
-            .iter()
-            .filter(|n| n.id.0.starts_with("execute_"))
-            .collect();
-        // 3 transport nodes: execute_build, execute_test, execute_clippy
-        assert_eq!(transport_nodes.len(), 3);
+        for node_id in ["execute_build", "execute_test", "execute_clippy"] {
+            let node = dag
+                .get_node(&node_id.into())
+                .unwrap_or_else(|| panic!("missing transport node: {}", node_id));
+            assert!(
+                matches!(node.body, NodeBody::Opaque(BuildGraphOp::Transport(_))),
+                "{} should be a transport node",
+                node_id
+            );
+        }
     }
 
     #[test]

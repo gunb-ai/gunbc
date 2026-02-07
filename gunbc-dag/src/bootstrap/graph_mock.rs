@@ -25,7 +25,13 @@
 use crate::bootstrap::graph::build_bootstrap_graph;
 use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse, TransportResponse};
 use gunbc_ir::Value;
+use gunbc_primitives::filename;
 use gunbc_test::{extract_mock_requirements, MockSpec, NodeExample, OutputMatcher};
+
+fn mock_fs_handle() -> Value {
+    let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
+    fs.into()
+}
 
 /// Mock specification for the bootstrap graph.
 ///
@@ -46,6 +52,8 @@ pub fn bootstrap_mock_spec() -> MockSpec {
 
     // Extract typed requirements from DAG structure
     extract_mock_requirements(&dag, "bootstrap")
+        .boundary("fs_env", "fs:write", mock_fs_handle())
+        .expect("fs_env should match type")
         // Transport: execute_scan_workspace (workspace scan)
         .transport_response(
             "execute_scan_workspace",
@@ -141,6 +149,11 @@ pub fn bootstrap_mock_spec() -> MockSpec {
         .expected_output("parse_scan_result", "crate_count", Value::Int(2))
         // Node I/O examples: verify pure node behavior
         .node_example(
+            NodeExample::new("fs_env")
+                .output("fs:write", OutputMatcher::Any)
+                .description("Provides filesystem handle for bootstrap writes"),
+        )
+        .node_example(
             NodeExample::new("prepare_scan_workspace")
                 .output("request", OutputMatcher::non_empty())
                 .description("Prepares a workspace scan transport request"),
@@ -196,6 +209,8 @@ pub fn bootstrap_mock_spec_makefile_only() -> MockSpec {
     let dag = build_bootstrap_graph().expect("bootstrap graph should build");
 
     extract_mock_requirements(&dag, "bootstrap")
+        .boundary("fs_env", "fs:write", mock_fs_handle())
+        .expect("fs_env should match type")
         .transport_response(
             "execute_scan_workspace",
             "response",
@@ -286,6 +301,8 @@ pub fn bootstrap_mock_spec_makefile_fails() -> MockSpec {
     let dag = build_bootstrap_graph().expect("bootstrap graph should build");
 
     extract_mock_requirements(&dag, "bootstrap")
+        .boundary("fs_env", "fs:write", mock_fs_handle())
+        .expect("fs_env should match type")
         .transport_response(
             "execute_scan_workspace",
             "response",
@@ -377,6 +394,8 @@ pub fn bootstrap_mock_spec_all_fail() -> MockSpec {
     let dag = build_bootstrap_graph().expect("bootstrap graph should build");
 
     extract_mock_requirements(&dag, "bootstrap")
+        .boundary("fs_env", "fs:write", mock_fs_handle())
+        .expect("fs_env should match type")
         .transport_response(
             "execute_scan_workspace",
             "response",

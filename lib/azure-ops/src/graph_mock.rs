@@ -51,4 +51,5 @@ pub fn azure_stub_mock_spec() -> MockSpec {
             Value::Str("mock-oidc-token".into()),
         )
         .boundary("azure_key_vault_stub", "credential", mock_credential())
+        .skip_node_example("azure_key_vault_stub")
 }

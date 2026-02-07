@@ -8,7 +8,10 @@ mod ops;
 mod graph;
 pub mod graph_mock;
 
-pub use graph::{build_aws_secrets_manager_credential_graph, AwsSecretManagerGraphOp};
+pub use graph::{
+    build_aws_secrets_manager_credential_graph, build_aws_secrets_manager_upsert_graph,
+    AwsSecretManagerGraphOp,
+};
 pub use ops::AwsOps;
 
 // ============================================================================

@@ -20,7 +20,7 @@ use gunbc_ir::{
     DagBuilder, Node, Value, WorkflowSignature,
 };
 use gunbc_lib_transport::TransportOps;
-use gunbc_primitives::PrepareFileWriteOp;
+use gunbc_primitives::{filename, FsEnv, PrepareFileWriteOp};
 use std::collections::HashMap;
 
 /// Union type for deps graph operations.
@@ -32,6 +32,8 @@ pub enum DepsGraphOp {
     Deps(DepsOp),
     /// Environment ops (resource acquisition)
     Env(PlatformEnv),
+    /// Filesystem environment (resource acquisition)
+    FsEnv(FsEnv),
     /// Prepare file write (primitive - PURE)
     PrepareFileWrite(PrepareFileWriteOp),
     /// Transport operations (boundary - actual I/O)
@@ -43,6 +45,7 @@ impl Executable for DepsGraphOp {
         match self {
             DepsGraphOp::Deps(op) => op.execute(inputs),
             DepsGraphOp::Env(op) => op.execute(inputs),
+            DepsGraphOp::FsEnv(op) => op.execute(inputs),
             DepsGraphOp::PrepareFileWrite(op) => op.execute(inputs),
             DepsGraphOp::Transport(op) => op.execute(inputs),
         }
@@ -90,6 +93,13 @@ pub fn build_deps_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
         DepsGraphOp::Env(PlatformEnv),
     ))?;
 
+    let fs_env = builder.add_root_node(Node::opaque(
+        "fs_env",
+        vec![],
+        vec![port("fs:write", "FilesystemHandle")],
+        DepsGraphOp::FsEnv(FsEnv::new(filename::Scope::Write)),
+    ))?;
+
     // ========================================================================
     // LoadManifest chain: PrepareLoadManifest -> Execute -> ParseManifest
     // ========================================================================
@@ -100,6 +110,7 @@ pub fn build_deps_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
         "execute_load_manifest",
         "parse_manifest",
         vec![port("manifest_path", "String")],
+        vec![resource("fs:deps.toml", "FilesystemHandle", AccessMode::Read)],
         vec![port("manifest_path", "String")],
         vec![
             scalar("dep_count", "Int"),
@@ -147,6 +158,7 @@ pub fn build_deps_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
         "execute_installs",
         "parse_execute_result",
         vec![scalar("install_script", "String")],
+        vec![resource("fs", "FilesystemHandle", AccessMode::Write)],
         vec![scalar("script", "String")],
         vec![
             scalar("executed", "Bool"),
@@ -180,6 +192,15 @@ pub fn build_deps_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
     builder.add_edge(
         generate_scripts.out("install_script"),
         execute_installs.prepare.in_port("install_script"),
+    )?;
+
+    builder.add_edge(
+        fs_env.out("fs:write"),
+        load_manifest.execute.in_port("res:fs:deps.toml"),
+    )?;
+    builder.add_edge(
+        fs_env.out("fs:write"),
+        execute_installs.execute.in_port("res:fs"),
     )?;
 
     let dag = builder.build();
@@ -224,6 +245,13 @@ pub fn deps_generate_signature() -> WorkflowSignature {
 pub fn build_deps_generate_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
     let mut builder = DagBuilder::new();
 
+    let fs_env = builder.add_root_node(Node::opaque(
+        "fs_env",
+        vec![],
+        vec![port("fs:write", "FilesystemHandle")],
+        DepsGraphOp::FsEnv(FsEnv::new(filename::Scope::Write)),
+    ))?;
+
     // Node: LoadToolRegistry (deps-specific) - generation 0
     // No inputs (uses default registry)
     // Outputs: tool metadata (informational)
@@ -267,7 +295,11 @@ pub fn build_deps_generate_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
     let execute_transport = builder.add_node_after(
         Node::opaque(
             "execute_transport",
-            vec![port("request", "TransportRequest"), port("skip", "Bool")],
+            vec![
+                port("request", "TransportRequest"),
+                port("skip", "Bool"),
+                resource("fs:deps.toml", "FilesystemHandle", AccessMode::Write),
+            ],
             vec![
                 port("response", "TransportResponse"),
                 port("written_path", "String"),
@@ -298,6 +330,11 @@ pub fn build_deps_generate_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
         execute_transport.in_port("skip"),
     )?;
 
+    builder.add_edge(
+        fs_env.out("fs:write"),
+        execute_transport.in_port("res:fs:deps.toml"),
+    )?;
+
     let dag = builder.build();
     if let Some(unwired) = gunbc_ir::validate_resource_wiring(&dag).first() {
         return Err(BuilderError::UnwiredResourceInput {
@@ -316,6 +353,7 @@ impl Mockable for DepsGraphOp {
         match self {
             DepsGraphOp::Deps(op) => op.mock_outputs(),
             DepsGraphOp::Env(op) => op.mock_outputs(),
+            DepsGraphOp::FsEnv(op) => op.mock_outputs(),
             DepsGraphOp::PrepareFileWrite(_) => OutputMap::new()
                 .request(
                     "request",
@@ -355,9 +393,25 @@ mod tests {
     #[test]
     fn test_graph_builds_successfully() {
         let dag = build_deps_graph().expect("graph should build");
-        // 8 nodes: platform_env + prepare_load, execute_load, parse_manifest,
-        //          generate_scripts, prepare_execute, execute_installs, parse_execute_result
-        assert_eq!(dag.nodes.len(), 8);
+        let expected_nodes = [
+            "platform_env",
+            "fs_env",
+            "prepare_load_manifest",
+            "execute_load_manifest",
+            "parse_manifest",
+            "generate_scripts",
+            "prepare_execute_installs",
+            "execute_installs",
+            "parse_execute_result",
+        ];
+
+        for node_id in expected_nodes {
+            assert!(
+                dag.get_node(&node_id.into()).is_some(),
+                "missing node: {}",
+                node_id
+            );
+        }
     }
 
     #[test]

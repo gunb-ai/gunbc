@@ -51,4 +51,5 @@ pub fn aws_stub_mock_spec() -> MockSpec {
             Value::Str("mock-oidc-token".into()),
         )
         .boundary("aws_secrets_manager_stub", "credential", mock_credential())
+        .skip_node_example("aws_secrets_manager_stub")
 }

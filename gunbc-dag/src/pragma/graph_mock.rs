@@ -17,7 +17,13 @@
 use crate::pragma::graph::build_pragma_graph;
 use gunbc_ir::transport::{FileOp, FileResponse, TransportResponse};
 use gunbc_ir::Value;
+use gunbc_primitives::filename;
 use gunbc_test::{extract_mock_requirements, MockSpec, NodeExample, OutputMatcher};
+
+fn mock_fs_handle() -> Value {
+    let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
+    fs.into()
+}
 
 /// Mock specification for the pragma graph.
 #[gunbc_testgen_registry_macros::testgen_target(
@@ -32,6 +38,8 @@ pub fn pragma_mock_spec() -> MockSpec {
     let dag = build_pragma_graph().expect("pragma graph should build");
 
     extract_mock_requirements(&dag, "pragma")
+        .boundary("fs_env", "fs:write", mock_fs_handle())
+        .expect("fs_env should match type")
         // Transport: execute_read_clippy
         .transport_response(
             "execute_read_clippy",
@@ -157,6 +165,11 @@ pub fn pragma_mock_spec() -> MockSpec {
         .resource_lock("fs:tools/disallowed-methods-allowlist.txt")
         .resource_lock("fs:tools/pragma-lint-policy.txt")
         // Node I/O examples
+        .node_example(
+            NodeExample::new("fs_env")
+                .output("fs:write", OutputMatcher::Any)
+                .description("Provides filesystem handle for pragma writes"),
+        )
         .node_example(
             NodeExample::new("render_clippy")
                 .output("content", OutputMatcher::contains("disallowed-methods"))

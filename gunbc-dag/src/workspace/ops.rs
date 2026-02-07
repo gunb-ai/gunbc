@@ -23,7 +23,7 @@ use gunbc_lib_cloud_ops::CloudEnvStatus;
 // Infrastructure ops
 use gunbc_lib_transport::cli::execute_cli_tool_op;
 use gunbc_lib_transport::TransportOps;
-use gunbc_primitives::PrimitiveOp;
+use gunbc_primitives::{FsEnv, PrimitiveOp};
 
 /// Unified operation enum for the workspace DAG.
 ///
@@ -59,6 +59,8 @@ pub enum WorkspaceOp {
     Clippy(CliToolOp),
     /// Cloud environment status (resource acquisition)
     CloudEnv(CloudEnvStatus),
+    /// Filesystem environment (resource acquisition)
+    FsEnv(FsEnv),
 
     // ========================================================================
     // Language Ops (from Languages DAG)
@@ -96,6 +98,7 @@ impl Executable for WorkspaceOp {
             // CliToolOp execution lives in the transport layer
             WorkspaceOp::Clippy(op) => execute_cli_tool_op(op).exec_context("CliToolOp error"),
             WorkspaceOp::CloudEnv(op) => op.execute(inputs),
+            WorkspaceOp::FsEnv(op) => op.execute(inputs),
             // Language ops
             WorkspaceOp::Language(_op) => {
                 // LanguageOp nodes are mostly config nodes - return empty for now

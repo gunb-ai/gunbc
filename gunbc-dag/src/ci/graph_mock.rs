@@ -37,7 +37,13 @@
 use crate::ci::graph::build_ci_graph;
 use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse, TransportResponse};
 use gunbc_ir::Value;
+use gunbc_primitives::filename;
 use gunbc_test::{extract_mock_requirements, MockSpec, NodeExample, OutputMatcher};
+
+fn mock_fs_handle() -> Value {
+    let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
+    fs.into()
+}
 
 /// Mock specification for the CI graph.
 ///
@@ -71,6 +77,16 @@ pub fn ci_mock_spec() -> MockSpec {
         // Expected outputs: verified after DryRun execution
         .expected_output("report", "overall_success", Value::Bool(true))
         // Node I/O examples: verify pure node behavior
+        .node_example(
+            NodeExample::new("fs_env")
+                .output("fs:write", OutputMatcher::Any)
+                .description("Provides filesystem handle for CI stages"),
+        )
+        .node_example(
+            NodeExample::new("cloud_env_status")
+                .output("status", OutputMatcher::Any)
+                .description("Reports detected cloud environment status"),
+        )
         .node_example(
             NodeExample::new("report")
                 .input("build_success", Value::Bool(true))
@@ -884,6 +900,8 @@ fn with_ci_typed_mocks(
     reqs: gunbc_test::MockRequirements,
 ) -> gunbc_test::MockRequirements {
     reqs
+        .boundary("fs_env", "fs:write", mock_fs_handle())
+        .expect("fs_env should match type")
         // Transport: execute_deps_exists (check deps.toml)
         .transport_response(
             "execute_deps_exists",

@@ -16,7 +16,7 @@ use gunbc_ir::{
 };
 use gunbc_lib_blob::BlobOps;
 use gunbc_lib_transport::TransportOps;
-use gunbc_primitives::{PrepareFileReadOp, PrepareFileWriteOp};
+use gunbc_primitives::{filename, FsEnv, PrepareFileReadOp, PrepareFileWriteOp};
 use std::collections::HashMap;
 
 /// Union type for docgen graph operations.
@@ -24,6 +24,8 @@ use std::collections::HashMap;
 pub enum DocgenGraphOp {
     /// Docgen-specific pure operations.
     Docgen(DocgenOp),
+    /// Filesystem environment (resource acquisition).
+    FsEnv(FsEnv),
     /// Prepare file read (pure).
     PrepareFileRead(PrepareFileReadOp),
     /// Prepare file write (pure).
@@ -38,6 +40,7 @@ impl Executable for DocgenGraphOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         match self {
             DocgenGraphOp::Docgen(op) => op.execute(inputs),
+            DocgenGraphOp::FsEnv(op) => op.execute(inputs),
             DocgenGraphOp::PrepareFileRead(op) => op.execute(inputs),
             DocgenGraphOp::PrepareFileWrite(op) => op.execute(inputs),
             DocgenGraphOp::Blob(op) => op.execute(inputs),
@@ -137,12 +140,14 @@ pub const DOCGEN_READ_TARGETS: &[DocgenReadTarget] = &[
 
 fn add_docgen_read_triplet(
     builder: &mut DagBuilder<DocgenGraphOp>,
+    fs_env: &gunbc_ir::builder::NodeRef<DocgenGraphOp>,
     target: &DocgenReadTarget,
 ) -> Result<gunbc_ir::builder::NodeRef<DocgenGraphOp>, BuilderError> {
     let triplet = add_transport_triplet(
         builder,
         target.name,
         vec![],
+        vec![resource("fs", "FilesystemHandle", AccessMode::Read)],
         vec![port("content", "String")],
         DocgenGraphOp::Docgen(DocgenOp::PrepareFileRead {
             path: target.path.to_string(),
@@ -155,6 +160,8 @@ fn add_docgen_read_triplet(
         None,
     )?;
 
+    builder.add_edge(fs_env.out("fs:write"), triplet.execute.in_port("res:fs"))?;
+
     Ok(triplet.parse)
 }
 
@@ -165,10 +172,17 @@ fn add_docgen_read_triplet(
 pub fn build_docgen_graph() -> Result<Dag<DocgenGraphOp>, BuilderError> {
     let mut builder = DagBuilder::new();
 
+    let fs_env = builder.add_root_node(Node::opaque(
+        "fs_env",
+        vec![],
+        vec![port("fs:write", "FilesystemHandle")],
+        DocgenGraphOp::FsEnv(FsEnv::new(filename::Scope::Write)),
+    ))?;
+
     let mut read_nodes: HashMap<&'static str, gunbc_ir::builder::NodeRef<DocgenGraphOp>> =
         HashMap::new();
     for target in DOCGEN_READ_TARGETS {
-        let parse = add_docgen_read_triplet(&mut builder, target)?;
+        let parse = add_docgen_read_triplet(&mut builder, &fs_env, target)?;
         read_nodes.insert(target.input_port, parse);
     }
 
@@ -201,11 +215,15 @@ pub fn build_docgen_graph() -> Result<Dag<DocgenGraphOp>, BuilderError> {
         builder.add_edge(parse.out("content"), render_ab_doc.in_port(target.input_port))?;
     }
 
+    let doc_read = resource("fs:docs/ab-writing-workflows.md", "FilesystemHandle", AccessMode::Read);
+    let doc_write = resource("fs:docs/ab-writing-workflows.md", "FilesystemHandle", AccessMode::Write);
     let chain_ab_doc = add_content_upsert_chain(
         &mut builder,
         "ab_workflows_doc",
         &render_ab_doc,
         "content",
+        vec![doc_read],
+        vec![doc_write],
         DocgenGraphOp::PrepareFileRead(PrepareFileReadOp),
         DocgenGraphOp::PrepareFileWrite(PrepareFileWriteOp),
         DocgenGraphOp::Blob(BlobOps::CompareContent),
@@ -219,6 +237,15 @@ pub fn build_docgen_graph() -> Result<Dag<DocgenGraphOp>, BuilderError> {
     builder.add_edge(
         render_ab_doc.out("path"),
         chain_ab_doc.prepare_write.in_port("path"),
+    )?;
+
+    builder.add_edge(
+        fs_env.out("fs:write"),
+        chain_ab_doc.execute_read.in_port("res:fs:docs/ab-writing-workflows.md"),
+    )?;
+    builder.add_edge(
+        fs_env.out("fs:write"),
+        chain_ab_doc.execute_write.in_port("res:fs:docs/ab-writing-workflows.md"),
     )?;
 
     Ok(builder.build())

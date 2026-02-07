@@ -29,7 +29,7 @@ The codebase has multiple code generation IRs:
 
 | IR | Location | Generates |
 |----|----------|-----------|
-| Test IR | `core/codegen/src/testgen/test_ir.rs` | `generated_tests.rs` files |
+| Test IR | `core/ir/src/code_ir.rs` | `generated_tests.rs` files |
 | CLI IR | `core/codegen/src/cli_gen.rs` | CLI `main.rs` entrypoints |
 | DAG IR | `core/codegen/src/dag_gen.rs` | `graph.rs` DAG builders |
 
@@ -121,14 +121,20 @@ When a lint fires on generated code:
 
 ## Open TODOs
 
-### TODO: Audit all generated code for lint violations
-- [ ] Run `cargo clippy` on fresh `make codegen && make testgen` output
-- [ ] Categorize each lint: IR gap vs config vs bug
-- [ ] Fix IR gaps, configure preferences, fix bugs
+### ~~TODO: Audit all generated code for lint violations~~ DONE (2026-02-07)
+- [x] Run `cargo clippy` on fresh `make codegen && make testgen` output
+- [x] Categorize each lint: IR gap vs config vs bug
+- [x] Fix IR gaps, configure preferences, fix bugs
+
+**Results**: All 27 generated files (19 `generated_tests*.rs` + 8 CLI entrypoints) are clean:
+- Zero `#[allow(...)]` annotations
+- Zero `needless_return` — all `return;` are legitimate early-exit guards
+- Zero other clippy-triggering patterns (no redundant clones, unused vars properly `_`-prefixed)
+- Pre-existing clippy issues in hand-written code were fixed: `type_registry.rs` (question_mark, implicit_saturating_sub), `preflight.rs` (useless_vec ×4), `gcp-ops/ops.rs` (should_implement_trait, manual_is_multiple_of), `cloud-ops/env_status.rs` (new_without_default), `codegen_cli.rs` (needless_return restructured into per-platform helpers)
 
 ### TODO: Add lint CI check for generated code
-- [ ] CI step that regenerates all code and runs clippy
-- [ ] Fails if any lints fire (ensures IR stays complete)
+- [x] CI step that regenerates all code and runs clippy (gunbc-ci runs codegen/testgen/pragma + clippy)
+- [x] Fails if any lints fire (ensures IR stays complete)
 
 ### TODO: Cross-language idiom coverage
 - [ ] When Python/TypeScript backends are implemented, audit for their idioms
@@ -136,7 +142,7 @@ When a lint fires on generated code:
 
 ## References
 
-- Test IR implementation: `core/codegen/src/testgen/test_ir.rs`
+- Test IR implementation: `core/ir/src/code_ir.rs`
 - Test IR renderer: `core/codegen/src/testgen/render_rust.rs`
 - Original codegen-on-DAG design: `TODO/TODONE/TODO_codegen_dag.md`
 - Testgen improvements: `TODO/TODONE/testgen-improvements.md` (Phase 11 references this doc)

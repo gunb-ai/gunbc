@@ -64,6 +64,13 @@ pub enum BuilderError {
         to_port: PortName,
         to_type: TypeId,
     },
+    /// Port uses an invalid type expression.
+    InvalidTypeExpression {
+        node: NodeId,
+        port: PortName,
+        type_id: TypeId,
+        error: crate::type_registry::TypeExprError,
+    },
     /// Edge connects ports with incompatible cardinalities.
     CardinalityMismatch {
         from_node: NodeId,
@@ -136,6 +143,18 @@ impl fmt::Display for BuilderError {
                     f,
                     "type mismatch: {}:{} has type '{}', but {}:{} expects type '{}'",
                     from_node, from_port, from_type, to_node, to_port, to_type
+                )
+            }
+            BuilderError::InvalidTypeExpression {
+                node,
+                port,
+                type_id,
+                error,
+            } => {
+                write!(
+                    f,
+                    "invalid type expression on {}:{} ({}): {}",
+                    node, port, type_id, error
                 )
             }
             BuilderError::CardinalityMismatch {
@@ -492,6 +511,25 @@ impl<T> DagBuilder<T> {
             });
         }
         let to_port = to_port.unwrap();
+
+        if let Some(registry) = &self.type_registry {
+            if let Err(error) = registry.validate_type_expr(&from_port.type_id) {
+                return Err(BuilderError::InvalidTypeExpression {
+                    node: from.node_id.clone(),
+                    port: from.port.clone(),
+                    type_id: from_port.type_id.clone(),
+                    error,
+                });
+            }
+            if let Err(error) = registry.validate_type_expr(&to_port.type_id) {
+                return Err(BuilderError::InvalidTypeExpression {
+                    node: to.node_id.clone(),
+                    port: to.port.clone(),
+                    type_id: to_port.type_id.clone(),
+                    error,
+                });
+            }
+        }
 
         // Check type compatibility (structural when registry is available)
         let type_match = if from_port.type_id == to_port.type_id {

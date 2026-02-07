@@ -42,3 +42,19 @@ pub fn build_azure_key_vault_credential_graph() -> Dag<AzureKeyVaultGraphOp> {
 
     builder.build()
 }
+
+/// Placeholder DAG for Azure Key Vault secret upsert.
+pub fn build_azure_key_vault_upsert_graph() -> Dag<AzureKeyVaultGraphOp> {
+    let mut builder: DagBuilder<AzureKeyVaultGraphOp> = DagBuilder::new();
+
+    builder
+        .add_root_node(Node::opaque(
+            "azure_key_vault_upsert_stub",
+            vec![port("config", "CloudSecretConfig"), port("secret_value", "Secret")],
+            vec![port("version", "String")],
+            AzureKeyVaultGraphOp::Azure(AzureOps::Unsupported),
+        ))
+        .expect("azure_key_vault_upsert_stub node");
+
+    builder.build()
+}

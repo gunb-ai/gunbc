@@ -45,3 +45,19 @@ pub fn build_aws_secrets_manager_credential_graph() -> Dag<AwsSecretManagerGraph
 
     builder.build()
 }
+
+/// Placeholder DAG for AWS Secrets Manager secret upsert.
+pub fn build_aws_secrets_manager_upsert_graph() -> Dag<AwsSecretManagerGraphOp> {
+    let mut builder: DagBuilder<AwsSecretManagerGraphOp> = DagBuilder::new();
+
+    builder
+        .add_root_node(Node::opaque(
+            "aws_secrets_manager_upsert_stub",
+            vec![port("config", "CloudSecretConfig"), port("secret_value", "Secret")],
+            vec![port("version", "String")],
+            AwsSecretManagerGraphOp::Aws(AwsOps::Unsupported),
+        ))
+        .expect("aws_secrets_manager_upsert_stub node");
+
+    builder.build()
+}

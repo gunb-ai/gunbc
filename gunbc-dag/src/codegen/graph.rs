@@ -19,6 +19,7 @@ use gunbc_ir::{
 };
 use gunbc_ir::resource::ExecMode;
 use gunbc_lib_transport::TransportOps;
+use gunbc_primitives::{filename, FsEnv};
 use std::collections::HashMap;
 
 /// Union type for codegen graph operations.
@@ -26,6 +27,8 @@ use std::collections::HashMap;
 pub enum CodegenGraphOp {
     /// Codegen-specific pure operations.
     Codegen(CodegenOp),
+    /// Filesystem environment (resource acquisition).
+    FsEnv(FsEnv),
     /// Transport operations (boundary - actual I/O).
     Transport(TransportOps),
 }
@@ -34,6 +37,7 @@ impl Executable for CodegenGraphOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         match self {
             CodegenGraphOp::Codegen(op) => op.execute(inputs),
+            CodegenGraphOp::FsEnv(op) => op.execute(inputs),
             CodegenGraphOp::Transport(op) => op.execute(inputs),
         }
     }
@@ -59,6 +63,15 @@ pub fn build_codegen_graph() -> Result<Dag<CodegenGraphOp>, BuilderError> {
 pub fn build_codegen_graph_with_mode(mode: ExecMode) -> Result<Dag<CodegenGraphOp>, BuilderError> {
     let mut builder = DagBuilder::new();
 
+    let fs_env = builder.add_root_node(Node::opaque(
+        "fs_env",
+        vec![],
+        vec![port("fs:write", "FilesystemHandle")],
+        CodegenGraphOp::FsEnv(FsEnv::new(filename::Scope::Write)),
+    ))?;
+
+    let fs_resource = resource("fs", "FilesystemHandle", AccessMode::Write);
+
     // ========================================================================
     // Exists check stage
     // ========================================================================
@@ -67,6 +80,7 @@ pub fn build_codegen_graph_with_mode(mode: ExecMode) -> Result<Dag<CodegenGraphO
         &mut builder,
         "codegen_exists",
         vec![],
+        vec![fs_resource.clone()],
         vec![port("codegen_needed", "Bool")],
         CodegenGraphOp::Codegen(CodegenOp::PrepareCodegenExists),
         CodegenGraphOp::Codegen(CodegenOp::ParseCodegenExists(mode)),
@@ -97,6 +111,7 @@ pub fn build_codegen_graph_with_mode(mode: ExecMode) -> Result<Dag<CodegenGraphO
             vec![
                 optional("request", "TransportRequest"),
                 port("skip", "Bool"),
+                resource("fs", "FilesystemHandle", AccessMode::Write),
             ],
             vec![
                 optional("response", "TransportResponse"),
@@ -147,6 +162,7 @@ pub fn build_codegen_graph_with_mode(mode: ExecMode) -> Result<Dag<CodegenGraphO
             vec![
                 optional("request", "TransportRequest"),
                 port("skip", "Bool"),
+                resource("fs", "FilesystemHandle", AccessMode::Write),
             ],
             vec![
                 optional("response", "TransportResponse"),
@@ -198,23 +214,32 @@ pub fn build_codegen_graph_with_mode(mode: ExecMode) -> Result<Dag<CodegenGraphO
         execute_stamp_write.in_port("skip"),
     )?;
 
+    // Resource wiring
+    builder.add_edge(fs_env.out("fs:write"), codegen_exists.execute.in_port("res:fs"))?;
+    builder.add_edge(fs_env.out("fs:write"), execute_codegen.in_port("res:fs"))?;
+    builder.add_edge(fs_env.out("fs:write"), execute_stamp_write.in_port("res:fs"))?;
+
     Ok(builder.build())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gunbc_ir::{detect_boundaries, infer_signature};
+    use gunbc_ir::{detect_boundaries, infer_signature, NodeBody};
 
     #[test]
     fn test_graph_has_transport_nodes() {
         let dag = build_codegen_graph().expect("graph should build");
-        let transport_nodes: Vec<_> = dag
-            .nodes
-            .iter()
-            .filter(|n| n.id.0.starts_with("execute_"))
-            .collect();
-        assert_eq!(transport_nodes.len(), 3);
+        for node_id in ["execute_codegen_exists", "execute_codegen", "execute_stamp_write"] {
+            let node = dag
+                .get_node(&node_id.into())
+                .unwrap_or_else(|| panic!("missing transport node: {}", node_id));
+            assert!(
+                matches!(node.body, NodeBody::Opaque(CodegenGraphOp::Transport(_))),
+                "{} should be a transport node",
+                node_id
+            );
+        }
     }
 
     #[test]

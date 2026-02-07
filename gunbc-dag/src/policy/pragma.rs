@@ -105,7 +105,7 @@ fn build_allowlist_blocks() -> Vec<StructuredBlock> {
     let mut blocks = Vec::new();
 
     blocks.push(StructuredBlock::Raw(
-        "# Allowed path prefixes for #[allow(clippy::disallowed_methods)].\n\
+        "# Allowed path prefixes for #[allow(clippy::disallowed_methods)] and #[allow(clippy::disallowed_types)].\n\
          # Format: prefix (repo-relative)\n\
          # Note: any path containing \"/tests/\" is always allowed.\n#\n"
             .to_string(),

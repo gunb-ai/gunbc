@@ -14,6 +14,8 @@ pub enum CloudOps {
     BindSecretName,
     /// Validate config and map to GCP-specific inputs.
     MapToGcpInputs { runtime: CloudRuntimeKind },
+    /// Validate config and map to GCP-specific inputs for secret upsert.
+    MapToGcpSecretInputs { runtime: CloudRuntimeKind },
 }
 
 impl Executable for CloudOps {
@@ -126,6 +128,75 @@ impl Executable for CloudOps {
 
                 if let Some(header_name) = inputs.get("header_name").and_then(Value::as_str) {
                     out.insert("header_name".to_string(), Value::Str(header_name.to_string()));
+                }
+
+                if let Some(lifetime) = inputs.get("lifetime_seconds").and_then(Value::as_int) {
+                    out.insert("lifetime_seconds".to_string(), Value::Int(lifetime));
+                }
+
+                if matches!(runtime, CloudRuntimeKind::GitHubActions) {
+                    let request_url = require_str(&inputs, "request_url")?;
+                    let request_token = require_str(&inputs, "request_token")?;
+                    out.insert("request_url".to_string(), Value::Str(request_url.to_string()));
+                    out.insert(
+                        "request_token".to_string(),
+                        Value::Str(request_token.to_string()),
+                    );
+                }
+
+                Ok(out)
+            }
+            CloudOps::MapToGcpSecretInputs { runtime } => {
+                let provider = require_str(&inputs, "provider")?;
+                if CloudProviderKind::parse(provider) != Some(CloudProviderKind::Gcp) {
+                    return Err(ExecError::new(format!(
+                        "cloud config provider '{provider}' is not gcp"
+                    )));
+                }
+
+                let runtime_str = require_str(&inputs, "runtime")?;
+                if CloudRuntimeKind::parse(runtime_str) != Some(*runtime) {
+                    return Err(ExecError::new(format!(
+                        "cloud config runtime '{runtime_str}' does not match expected '{}'",
+                        runtime.as_str()
+                    )));
+                }
+
+                let audience = require_str(&inputs, "audience")?;
+                let project = require_str(&inputs, "project_or_account")?;
+                let secret = require_str(&inputs, "secret")?;
+
+                let service_account = match inputs
+                    .get("impersonate_account_or_role")
+                    .and_then(Value::as_str)
+                    .map(|s| s.trim())
+                    .filter(|s| !s.is_empty())
+                {
+                    Some(value) => value.to_string(),
+                    None => match inputs
+                        .get("service_account_or_role")
+                        .and_then(Value::as_str)
+                        .map(|s| s.trim())
+                        .filter(|s| !s.is_empty())
+                    {
+                        Some(value) => value.to_string(),
+                        None => {
+                            return Err(ExecError::new(
+                                "missing service_account_or_role for gcp config",
+                            ))
+                        }
+                    },
+                };
+
+                let mut out = OutputMap::new()
+                    .str("audience", audience)
+                    .str("project", project)
+                    .str("secret", secret)
+                    .str("service_account", service_account)
+                    .ok()?;
+
+                if let Some(version) = inputs.get("version").and_then(Value::as_str) {
+                    out.insert("version".to_string(), Value::Str(version.to_string()));
                 }
 
                 if let Some(lifetime) = inputs.get("lifetime_seconds").and_then(Value::as_int) {

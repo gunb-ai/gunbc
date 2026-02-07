@@ -220,6 +220,13 @@ impl MockRequirements {
             return true;
         }
 
+        // Optional types accept the inner type or Unit (none)
+        if let Some(inner) = expected.strip_prefix("Optional") {
+            if actual == inner || actual == "Unit" {
+                return true;
+            }
+        }
+
         // Skipped is compatible with any type
         if actual == "Skipped" {
             return true;
@@ -227,6 +234,16 @@ impl MockRequirements {
 
         // Json is flexible
         if expected == "Json" || actual == "Json" {
+            return true;
+        }
+
+        // List-backed types (StringList, NonEmptyStringList, etc.)
+        if actual == "List" && expected.ends_with("List") {
+            return true;
+        }
+
+        // Set-backed types (StringSet, etc.)
+        if actual == "Set" && expected.ends_with("Set") {
             return true;
         }
 

@@ -243,6 +243,11 @@ pub enum Obligation {
     // In the capability-grant model, resources are input ports and edges.
     // These tests verify the structural wiring is correct.
     // -----------------------------------------------------------------------
+    /// Transport executors must declare at least one resource input port.
+    ///
+    /// A transport node without a resource input is an unmodeled I/O escape hatch.
+    TransportResourceDeclared { node_id: NodeId },
+
     /// Every resource/tool input port has an incoming edge.
     ResourceInputConnected {
         node_id: NodeId,
@@ -843,7 +848,9 @@ fn is_resource_type(type_id: &TypeId) -> bool {
 
 /// Whether a port is a resource port (by name prefix or type).
 fn is_resource_port(port: &gunbc_ir::dag::Port) -> bool {
-    port.name.0.starts_with("resource:")
+    port.resource_access.is_some()
+        || port.name.0.starts_with("res:")
+        || port.name.0.starts_with("resource:")
         || port.name.0.starts_with("tool:")
         || is_resource_type(&port.type_id)
 }
@@ -854,6 +861,51 @@ fn collect_resource_obligations<T>(
     resource_accesses: Option<&[ResourceAccess]>,
     obligations: &mut Vec<ProofObligation>,
 ) {
+    // D.0: Transport nodes must declare at least one resource input
+    for node in &dag.nodes {
+        let is_transport = node
+            .inputs
+            .iter()
+            .any(|p| p.type_id.0 == "TransportRequest");
+        if !is_transport {
+            continue;
+        }
+
+        let has_resource_input = node.inputs.iter().any(is_resource_port);
+        if has_resource_input {
+            obligations.push(
+                ProofObligation::new(
+                    Obligation::TransportResourceDeclared {
+                        node_id: node.id.clone(),
+                    },
+                    format!(
+                        "Transport node '{}' declares at least one resource input",
+                        node.id.0
+                    ),
+                    ObligationSource::ResourceModel,
+                )
+                .discharge("Resource input declared on transport node"),
+            );
+        } else {
+            obligations.push(
+                ProofObligation::new(
+                    Obligation::TransportResourceDeclared {
+                        node_id: node.id.clone(),
+                    },
+                    format!(
+                        "Transport node '{}' has NO resource inputs (unmodeled I/O)",
+                        node.id.0
+                    ),
+                    ObligationSource::ResourceModel,
+                )
+                .invalidate(format!(
+                    "Transport node '{}' missing resource input",
+                    node.id.0
+                )),
+            );
+        }
+    }
+
     // D.1: Resource input connectivity — every resource/tool input has an edge
     for node in &dag.nodes {
         for port in &node.inputs {
@@ -1186,6 +1238,12 @@ mod tests {
     fn test_transport_obligations() {
         let mut dag: Dag<()> = Dag::new();
         dag.add_node(Node::opaque(
+            "fs_env",
+            vec![],
+            vec![Port::resource("fs", "FilesystemHandle", AccessMode::Read)],
+            (),
+        ));
+        dag.add_node(Node::opaque(
             "prepare",
             vec![],
             vec![Port::scalar("request", "TransportRequest")],
@@ -1193,7 +1251,10 @@ mod tests {
         ));
         dag.add_node(Node::opaque(
             "execute",
-            vec![Port::scalar("request", "TransportRequest")],
+            vec![
+                Port::scalar("request", "TransportRequest"),
+                Port::resource("fs", "FilesystemHandle", AccessMode::Read),
+            ],
             vec![Port::scalar("response", "TransportResponse")],
             (),
         ));
@@ -1204,6 +1265,7 @@ mod tests {
             (),
         ));
         dag.add_edge(edge("prepare", "request", "execute", "request"));
+        dag.add_edge(edge("fs_env", "res:fs", "execute", "res:fs"));
         dag.add_edge(edge("execute", "response", "parse", "response"));
 
         let obligations = collect_obligations(&dag, None, None);
@@ -1222,6 +1284,12 @@ mod tests {
         assert!(obligations.all.iter().any(|o| matches!(
             &o.kind,
             Obligation::SingleTransportFailure { node_id } if node_id.0 == "execute"
+        )));
+
+        // Transport node should declare a resource input (discharged)
+        assert!(obligations.all.iter().any(|o| matches!(
+            &o.kind,
+            Obligation::TransportResourceDeclared { node_id } if node_id.0 == "execute"
         )));
     }
 

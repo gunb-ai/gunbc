@@ -5,7 +5,7 @@ use gunbc_exec::{EnvNode, ExecError, OutputMap};
 use gunbc_ir::Value;
 use std::collections::HashMap;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct CloudEnvStatus;
 
 impl CloudEnvStatus {

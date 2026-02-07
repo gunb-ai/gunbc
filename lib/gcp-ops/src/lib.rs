@@ -15,6 +15,9 @@ pub use graph::{
     build_gcp_secret_manager_credential_graph,
     build_gcp_secret_manager_credential_graph_github,
     build_gcp_secret_manager_credential_graph_metadata,
+    build_gcp_secret_manager_upsert_graph,
+    build_gcp_secret_manager_upsert_graph_github,
+    build_gcp_secret_manager_upsert_graph_metadata,
     GcpSecretManagerGraphOp,
 };
 pub use ops::{GcpOps, GcpRuntimeKind};
@@ -37,4 +40,9 @@ pub fn dag_specs() -> Vec<&'static gunbc_testgen_registry::DagSpecDef> {
 #[cfg(test)]
 mod generated_tests {
     include!("generated_tests.rs");
+}
+
+#[cfg(test)]
+mod generated_tests_upsert {
+    include!("generated_tests_upsert.rs");
 }

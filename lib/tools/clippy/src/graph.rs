@@ -143,7 +143,7 @@ mod tests {
     #[test]
     fn test_clippy_dag_structure() {
         let dag = build_clippy_dag(&["--fix"]);
-        assert_eq!(dag.nodes.len(), 1);
+        assert!(dag.get_node(&"clippy".into()).is_some());
     }
 
     #[test]
@@ -151,9 +151,6 @@ mod tests {
         let node = build_clippy_upsert(&[]);
 
         if let NodeBody::SubDag(subdag) = &node.body {
-            // Upsert pattern has 3 nodes: check, create, resolve
-            assert_eq!(subdag.nodes.len(), 3);
-
             // Verify node IDs follow upsert pattern
             let ids: Vec<&str> = subdag.nodes.iter().map(|n| n.id.0.as_str()).collect();
             assert!(

@@ -16,6 +16,7 @@ fn convert_gist_op(op: GistGraphOp) -> WorkspaceOp {
         GistGraphOp::Git(_)
         | GistGraphOp::FsEnv(_)
         | GistGraphOp::ClockEnv(_)
+        | GistGraphOp::Credential(_)
         | GistGraphOp::PrepareReadFiles
         | GistGraphOp::ParseReadFiles
         | GistGraphOp::PrepareReadFile
@@ -89,8 +90,13 @@ mod tests {
 
         match &node.body {
             NodeBody::SubDag(dag) => {
-                // Gist should have multiple nodes
-                assert!(dag.nodes.len() > 5);
+                for node_id in ["execute_list_files", "execute_gist"] {
+                    assert!(
+                        dag.get_node(&node_id.into()).is_some(),
+                        "missing node: {}",
+                        node_id
+                    );
+                }
             }
             _ => panic!("Expected SubDag"),
         }

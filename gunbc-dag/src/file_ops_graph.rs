@@ -7,7 +7,7 @@ use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::Value;
 use gunbc_lib_blob::BlobOps;
 use gunbc_lib_transport::TransportOps;
-use gunbc_primitives::{PrepareFileReadOp, PrepareFileWriteOp};
+use gunbc_primitives::{FsEnv, PrepareFileReadOp, PrepareFileWriteOp};
 use std::collections::HashMap;
 
 /// Generic graph op enum for file-based DAGs.
@@ -15,6 +15,8 @@ use std::collections::HashMap;
 pub enum FileOpsGraph<D> {
     /// Domain-specific operations.
     Domain(D),
+    /// Filesystem environment (resource acquisition).
+    FsEnv(FsEnv),
     /// Prepare file read (primitive - PURE).
     PrepareFileRead(PrepareFileReadOp),
     /// Prepare file write (primitive - PURE).
@@ -29,6 +31,7 @@ impl<D: Executable> Executable for FileOpsGraph<D> {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         match self {
             FileOpsGraph::Domain(op) => op.execute(inputs),
+            FileOpsGraph::FsEnv(op) => op.execute(inputs),
             FileOpsGraph::PrepareFileRead(op) => op.execute(inputs),
             FileOpsGraph::PrepareFileWrite(op) => op.execute(inputs),
             FileOpsGraph::Blob(op) => op.execute(inputs),

@@ -513,6 +513,12 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             if port_type == "Any" || value_type == "Any" {
                 return true;
             }
+            // Optional types accept the inner type or Unit (none)
+            if let Some(inner) = port_type.strip_prefix("Optional") {
+                if value_type == inner || value_type == "Unit" {
+                    return true;
+                }
+            }
             // Skipped is a control flow value, compatible with any type
             if value_type == "Skipped" {
                 return true;
@@ -520,6 +526,14 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             // Json is flexible - can hold structured data that might be typed differently
             // NOTE: This is intentionally permissive; consider tightening if type drift is a concern
             if port_type == "Json" || value_type == "Json" {
+                return true;
+            }
+            // List-backed types (StringList, NonEmptyStringList, etc.)
+            if value_type == "List" && port_type.ends_with("List") {
+                return true;
+            }
+            // Set-backed types (StringSet, etc.)
+            if value_type == "Set" && port_type.ends_with("Set") {
                 return true;
             }
             // Map-backed types: ToolHandle, Credential, FilesystemHandle, CliResult

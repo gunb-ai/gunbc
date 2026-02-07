@@ -46,8 +46,7 @@ pub fn execute_transport(request: &TransportRequest) -> Result<TransportResponse
 
 /// Execute a REST request.
 ///
-/// Note: This is a simplified implementation. In production, you'd use
-/// a proper HTTP client like reqwest.
+/// Uses the HTTP executor and parses JSON responses.
 fn execute_rest(request: &RestRequest) -> Result<RestResponse, TransportError> {
     // Apply credential (if any) to headers before conversion.
     let mut request = request.clone();
@@ -56,7 +55,8 @@ fn execute_rest(request: &RestRequest) -> Result<RestResponse, TransportError> {
     }
 
     // For now, convert to HTTP and use that
-    let mut http_req = HttpRequest::post(&request.url);
+    let url = append_query(&request.url, &request.query);
+    let mut http_req = HttpRequest::post(url);
     http_req.method = request.method;
 
     // Add headers
@@ -92,94 +92,94 @@ fn execute_rest(request: &RestRequest) -> Result<RestResponse, TransportError> {
 
 /// Execute a raw HTTP request.
 ///
-/// This is a simplified implementation using std::net.
-/// In production, use reqwest or similar.
+/// Uses ureq for synchronous HTTP with TLS support.
 fn execute_http(request: &HttpRequest) -> Result<HttpResponse, TransportError> {
-    // Parse URL to extract host and path
-    let url = &request.url;
-
-    // For now, return a mock response for non-local URLs
-    // A real implementation would use reqwest or similar
-    if !url.starts_with("http://localhost") && !url.starts_with("http://127.0.0.1") {
-        return Err(TransportError::new(
-            "HTTP transport not fully implemented - use Shell transport with curl for now",
-        ));
-    }
-
-    // Simple localhost handling
-    let parts: Vec<&str> = url.trim_start_matches("http://").splitn(2, '/').collect();
-    let host_port = parts[0];
-    let path = format!("/{}", parts.get(1).unwrap_or(&""));
-
-    let mut stream = TcpStream::connect(host_port)
-        .map_err(|e| TransportError::new(format!("connection failed: {}", e)))?;
+    let mut req = ureq::request(request.method.as_str(), &request.url);
 
     if let Some(timeout) = request.timeout_ms {
-        stream
-            .set_read_timeout(Some(Duration::from_millis(timeout)))
-            .ok();
-        stream
-            .set_write_timeout(Some(Duration::from_millis(timeout)))
-            .ok();
+        req = req.timeout(Duration::from_millis(timeout));
     }
-
-    // Build request
-    let mut req_str = format!("{} {} HTTP/1.1\r\n", request.method, path);
-    req_str.push_str(&format!("Host: {}\r\n", host_port));
 
     for (key, value) in &request.headers {
-        req_str.push_str(&format!("{}: {}\r\n", key, value));
+        req = req.set(key, value);
     }
 
-    if let Some(ref body) = request.body {
-        req_str.push_str(&format!("Content-Length: {}\r\n", body.len()));
-    }
+    let response = match request.body.as_ref() {
+        Some(body) => match req.send_string(body) {
+            Ok(resp) => resp,
+            Err(ureq::Error::Status(_, resp)) => resp,
+            Err(e) => {
+                return Err(TransportError::new(format!(
+                    "http request failed: {}",
+                    e
+                )))
+            }
+        },
+        None => match req.call() {
+            Ok(resp) => resp,
+            Err(ureq::Error::Status(_, resp)) => resp,
+            Err(e) => {
+                return Err(TransportError::new(format!(
+                    "http request failed: {}",
+                    e
+                )))
+            }
+        },
+    };
 
-    req_str.push_str("\r\n");
-
-    if let Some(ref body) = request.body {
-        req_str.push_str(body);
-    }
-
-    stream
-        .write_all(req_str.as_bytes())
-        .map_err(|e| TransportError::new(format!("write failed: {}", e)))?;
-
-    // Read response
-    let mut response = String::new();
-    stream
-        .read_to_string(&mut response)
-        .map_err(|e| TransportError::new(format!("read failed: {}", e)))?;
-
-    // Parse response (very basic)
-    let mut lines = response.lines();
-    let status_line = lines.next().unwrap_or("HTTP/1.1 500 Error");
-    let status: u16 = status_line
-        .split_whitespace()
-        .nth(1)
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(500);
-
+    let status = response.status() as u16;
     let mut headers = HashMap::new();
-    let mut body = String::new();
-    let mut in_body = false;
-
-    for line in lines {
-        if in_body {
-            body.push_str(line);
-            body.push('\n');
-        } else if line.is_empty() {
-            in_body = true;
-        } else if let Some((key, value)) = line.split_once(": ") {
-            headers.insert(key.to_string(), value.to_string());
+    for name in response.headers_names() {
+        if let Some(value) = response.header(&name) {
+            headers.insert(name.to_string(), value.to_string());
         }
     }
+    let body = response.into_string().unwrap_or_default();
 
-    Ok(HttpResponse {
-        status,
-        headers,
-        body,
-    })
+    Ok(HttpResponse { status, headers, body })
+}
+
+fn append_query(url: &str, query: &HashMap<String, String>) -> String {
+    if query.is_empty() {
+        return url.to_string();
+    }
+    let mut out = String::from(url);
+    out.push(if url.contains('?') { '&' } else { '?' });
+
+    let mut first = true;
+    for (key, value) in query {
+        if !first {
+            out.push('&');
+        }
+        first = false;
+        out.push_str(&url_encode(key));
+        out.push('=');
+        out.push_str(&url_encode(value));
+    }
+    out
+}
+
+fn url_encode(input: &str) -> String {
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+    let bytes = input.as_bytes();
+    let mut out = String::with_capacity(bytes.len());
+    for &b in bytes {
+        if is_unreserved_url_byte(b) {
+            out.push(b as char);
+        } else {
+            out.push('%');
+            out.push(HEX[(b >> 4) as usize] as char);
+            out.push(HEX[(b & 0x0f) as usize] as char);
+        }
+    }
+    out
+}
+
+fn is_unreserved_url_byte(b: u8) -> bool {
+    matches!(
+        b,
+        b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~'
+    )
 }
 
 /// Execute a file operation.

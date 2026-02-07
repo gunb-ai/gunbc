@@ -5,7 +5,13 @@
 use crate::testgen_dag::graph::build_testgen_graph_for_test;
 use gunbc_ir::transport::{FileOp, FileResponse, TransportResponse};
 use gunbc_ir::Value;
+use gunbc_primitives::filename;
 use gunbc_test::{extract_mock_requirements, MockSpec, NodeExample, OutputMatcher};
+
+fn mock_fs_handle() -> Value {
+    let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
+    fs.into()
+}
 
 /// Mock specification for the testgen DAG graph (using test fixtures).
 #[gunbc_testgen_registry_macros::testgen_target(
@@ -18,7 +24,9 @@ use gunbc_test::{extract_mock_requirements, MockSpec, NodeExample, OutputMatcher
 pub fn testgen_dag_mock_spec() -> MockSpec {
     let dag = build_testgen_graph_for_test().expect("testgen graph should build");
 
-    let mut reqs = extract_mock_requirements(&dag, "testgen-dag");
+    let mut reqs = extract_mock_requirements(&dag, "testgen-dag")
+        .boundary("fs_env", "fs:write", mock_fs_handle())
+        .expect("fs_env should match type");
 
     for name in &["mock-alpha", "mock-beta"] {
         let read_node = format!("execute_read_{}", name);
@@ -95,6 +103,11 @@ pub fn testgen_dag_mock_spec() -> MockSpec {
     }
 
     spec = spec
+        .node_example(
+            NodeExample::new("fs_env")
+                .output("fs:write", OutputMatcher::Any)
+                .description("Provides filesystem handle for generated test writes"),
+        )
         .node_example(
             NodeExample::new("generate_mock-alpha")
                 .output("content", OutputMatcher::contains("mock_alpha_generated_tests"))

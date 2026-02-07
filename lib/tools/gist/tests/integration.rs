@@ -3,7 +3,7 @@
 use gunbc_exec::{execute_with_mode, BoundaryMocks, ExecutionMode};
 use gunbc_gist::{build_gist_graph, GistMode};
 use gunbc_ir::transport::{ShellResponse, TransportResponse};
-use gunbc_ir::{detect_boundaries, Timestamp, Value};
+use gunbc_ir::{AuthScheme, Credential, Secret, Timestamp, Value};
 use gunbc_primitives::filename;
 use gunbc_test::{assert_boundary_mockable, guard_test, FermiCost, TestClass};
 use std::time::SystemTime;
@@ -34,6 +34,8 @@ fn mock_env(mocks: &mut BoundaryMocks) {
     mocks.set_value("fs_env", "fs:write", fs.into());
     let clock = Timestamp::from_system_time(SystemTime::UNIX_EPOCH);
     mocks.set_value("clock_env", "clock", clock.into());
+    let cred = Credential::new(Secret::static_value("mock-token"), AuthScheme::Bearer);
+    mocks.set_value("credential_env", "credential:github", cred.into());
     // Entry inputs (repo_path) for all gist modes
     mocks.set_input("prepare_list_files", "repo_path", Value::Str(".".into()));
     mocks.set_input("read_files_loop", "repo_path", Value::Str(".".into()));

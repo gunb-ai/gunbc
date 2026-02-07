@@ -22,7 +22,13 @@ use crate::graph::build_deps_graph;
 use crate::Platform;
 use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse, TransportResponse};
 use gunbc_ir::Value;
+use gunbc_primitives::filename;
 use gunbc_test::{extract_mock_requirements, InputConstraint, MockSpec, NodeExample, OutputMatcher};
+
+fn mock_fs_handle() -> Value {
+    let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
+    fs.into()
+}
 
 fn mock_manifest() -> &'static str {
     r#"[[dependency]]
@@ -61,6 +67,8 @@ pub fn deps_mock_spec() -> MockSpec {
 
     // Extract typed requirements from DAG structure
     extract_mock_requirements(&dag, "deps")
+        .boundary("fs_env", "fs:write", mock_fs_handle())
+        .expect("fs_env should match type")
         // Resource: platform environment
         .boundary("platform_env", "platform", Platform::Linux)
         .expect("platform mock should match type")
@@ -88,14 +96,26 @@ pub fn deps_mock_spec() -> MockSpec {
         // Boundary: parse_manifest outputs (terminal)
         .boundary_int("parse_manifest", "dep_count", 1)
         .expect("parse_manifest dep_count should match type")
-        .boundary_str("parse_manifest", "dep_names", "ripgrep")
+        .boundary(
+            "parse_manifest",
+            "dep_names",
+            Value::str_list(vec!["ripgrep".into()]),
+        )
         .expect("parse_manifest dep_names should match type")
         .boundary_str("parse_manifest", "manifest_path", "deps.toml")
         .expect("parse_manifest manifest_path should match type")
         // Boundary: generate_scripts outputs (terminal)
-        .boundary_str("generate_scripts", "already_installed", "ripgrep")
+        .boundary(
+            "generate_scripts",
+            "already_installed",
+            Value::str_list(vec!["ripgrep".into()]),
+        )
         .expect("generate_scripts already_installed should match type")
-        .boundary_str("generate_scripts", "needs_install", "ripgrep")
+        .boundary(
+            "generate_scripts",
+            "needs_install",
+            Value::str_list(vec!["ripgrep".into()]),
+        )
         .expect("generate_scripts needs_install should match type")
         .boundary_str("generate_scripts", "platform", "linux")
         .expect("generate_scripts platform should match type")
@@ -210,6 +230,8 @@ pub fn deps_mock_spec_pkg_fails() -> MockSpec {
 
     // Extract typed requirements from DAG structure
     extract_mock_requirements(&dag, "deps")
+        .boundary("fs_env", "fs:write", mock_fs_handle())
+        .expect("fs_env should match type")
         // Resource: platform environment
         .boundary("platform_env", "platform", Platform::Linux)
         .expect("platform mock should match type")

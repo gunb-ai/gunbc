@@ -126,6 +126,7 @@ mod tests {
 
         let mut dead_code_allows = Vec::new();
         let mut disallowed_method_allows = Vec::new();
+        let mut disallowed_type_allows = Vec::new();
         let mut migration_tags = Vec::new();
         let mut forbidden_allows = Vec::new();
 
@@ -154,6 +155,13 @@ mod tests {
                                 if !is_allowed_disallowed_methods(&rel, &allowed_disallowed_methods)
                                 {
                                     disallowed_method_allows
+                                        .push(format!("{}:{} {}", rel, line_no, lint));
+                                }
+                            }
+                            "clippy::disallowed_types" => {
+                                if !is_allowed_disallowed_methods(&rel, &allowed_disallowed_methods)
+                                {
+                                    disallowed_type_allows
                                         .push(format!("{}:{} {}", rel, line_no, lint));
                                 }
                             }
@@ -186,6 +194,11 @@ mod tests {
             disallowed_method_allows.is_empty(),
             "Found #[allow(clippy::disallowed_methods)] outside allowlist:\n{}",
             disallowed_method_allows.join("\n")
+        );
+        assert!(
+            disallowed_type_allows.is_empty(),
+            "Found #[allow(clippy::disallowed_types)] outside allowlist:\n{}",
+            disallowed_type_allows.join("\n")
         );
 
         assert!(

@@ -8,7 +8,7 @@ use crate::testgen_dag::ops::TestgenOp;
 use gunbc_ir::{add_content_upsert_chain, build::*, BuilderError, Dag, DagBuilder, Node};
 use gunbc_lib_blob::BlobOps;
 use gunbc_lib_transport::TransportOps;
-use gunbc_primitives::{PrepareFileReadOp, PrepareFileWriteOp};
+use gunbc_primitives::{filename, FsEnv, PrepareFileReadOp, PrepareFileWriteOp};
 use gunbc_testgen_registry::DagSpecDef;
 use std::path::Path;
 
@@ -30,12 +30,20 @@ pub fn build_testgen_graph(
 ) -> Result<Dag<TestgenGraphOp>, BuilderError> {
     let mut builder = DagBuilder::new();
 
+    let fs_env = builder.add_root_node(Node::opaque(
+        "fs_env",
+        vec![],
+        vec![port("fs:write", "FilesystemHandle")],
+        TestgenGraphOp::FsEnv(FsEnv::new(filename::Scope::Write)),
+    ))?;
+
     for target in targets {
         let config = target.to_def();
         let name = config.name.clone();
 
         add_upsert_chain(
             &mut builder,
+            &fs_env,
             &name,
             TestgenGraphOp::Domain(TestgenOp::Generate {
                 name: name.clone(),
@@ -67,12 +75,19 @@ pub fn build_testgen_graph_for_test() -> Result<Dag<TestgenGraphOp>, BuilderErro
     ];
 
     let mut builder = DagBuilder::new();
+    let fs_env = builder.add_root_node(Node::opaque(
+        "fs_env",
+        vec![],
+        vec![port("fs:write", "FilesystemHandle")],
+        TestgenGraphOp::FsEnv(FsEnv::new(filename::Scope::Write)),
+    ))?;
 
     for (name, output_path, module_name) in &targets {
         let def = TestgenTargetDef::new(name, output_path, module_name);
 
         add_upsert_chain(
             &mut builder,
+            &fs_env,
             name,
             TestgenGraphOp::Domain(TestgenOp::Generate {
                 name: name.to_string(),
@@ -88,6 +103,7 @@ pub fn build_testgen_graph_for_test() -> Result<Dag<TestgenGraphOp>, BuilderErro
 /// Add a single 6-node upsert chain for a named target.
 fn add_upsert_chain(
     builder: &mut DagBuilder<TestgenGraphOp>,
+    fs_env: &gunbc_ir::builder::NodeRef<TestgenGraphOp>,
     name: &str,
     generate_op: TestgenGraphOp,
 ) -> Result<(), BuilderError> {
@@ -101,15 +117,25 @@ fn add_upsert_chain(
         generate_op,
     ))?;
 
-    add_content_upsert_chain(
+    let read_res = resource("fs", "FilesystemHandle", AccessMode::Read);
+    let write_res = resource("fs", "FilesystemHandle", AccessMode::Write);
+    let chain = add_content_upsert_chain(
         builder,
         name,
         &generate,
         "content",
+        vec![read_res],
+        vec![write_res],
         TestgenGraphOp::PrepareFileRead(PrepareFileReadOp),
         TestgenGraphOp::PrepareFileWrite(PrepareFileWriteOp),
         TestgenGraphOp::Blob(BlobOps::CompareContent),
         TestgenGraphOp::Transport(TransportOps::Execute),
+    )?;
+
+    builder.add_edge(fs_env.out("fs:write"), chain.execute_read.in_port("res:fs"))?;
+    builder.add_edge(
+        fs_env.out("fs:write"),
+        chain.execute_write.in_port("res:fs"),
     )?;
 
     Ok(())

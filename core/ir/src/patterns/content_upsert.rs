@@ -64,6 +64,8 @@ pub fn add_content_upsert_chain<T: Clone>(
     name: &str,
     generate: &NodeRef<T>,
     content_port: &str,
+    read_resource_inputs: Vec<crate::dag::Port>,
+    write_resource_inputs: Vec<crate::dag::Port>,
     prepare_read_op: T,
     prepare_write_op: T,
     compare_op: T,
@@ -93,7 +95,11 @@ pub fn add_content_upsert_chain<T: Clone>(
     let execute_read = builder.add_node_after(
         Node::opaque(
             exec_read_id.as_str(),
-            vec![port("request", "TransportRequest"), port("skip", "Bool")],
+            {
+                let mut inputs = vec![port("request", "TransportRequest"), port("skip", "Bool")];
+                inputs.extend(read_resource_inputs);
+                inputs
+            },
             vec![port("response", "TransportResponse")],
             transport_op.clone(),
         ),
@@ -134,11 +140,15 @@ pub fn add_content_upsert_chain<T: Clone>(
     let execute_write = builder.add_node_after(
         Node::opaque(
             exec_write_id.as_str(),
-            vec![
-                port("request", "TransportRequest"),
-                port("skip", "Bool"),
-                optional("skip_reason", "OptionalString"),
-            ],
+            {
+                let mut inputs = vec![
+                    port("request", "TransportRequest"),
+                    port("skip", "Bool"),
+                    optional("skip_reason", "OptionalString"),
+                ];
+                inputs.extend(write_resource_inputs);
+                inputs
+            },
             vec![
                 optional(response_port.as_str(), "TransportResponse"),
                 optional(path_port.as_str(), "OptionalString"),
@@ -202,6 +212,8 @@ mod tests {
             "test",
             &generate,
             "content",
+            vec![],
+            vec![],
             TestOp::PrepareRead,
             TestOp::PrepareWrite,
             TestOp::Compare,
@@ -250,6 +262,8 @@ mod tests {
             "makefile",
             &generate,
             "makefile_content",
+            vec![],
+            vec![],
             TestOp::PrepareRead,
             TestOp::PrepareWrite,
             TestOp::Compare,

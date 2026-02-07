@@ -10,7 +10,7 @@
 
 use crate::graph::{build_gist_graph, GistMode};
 use gunbc_ir::transport::{ShellResponse, TransportResponse};
-use gunbc_ir::{Timestamp, Value};
+use gunbc_ir::{AuthScheme, Credential, Secret, Timestamp, Value};
 use gunbc_primitives::filename;
 use gunbc_test::{extract_mock_requirements, InputConstraint, MockSpec, NodeExample, OutputMatcher};
 use std::collections::BTreeMap;
@@ -23,6 +23,12 @@ fn mock_fs_handle() -> Value {
 
 fn mock_clock() -> Value {
     Timestamp::from_system_time(SystemTime::UNIX_EPOCH).into()
+}
+
+fn mock_credential() -> Value {
+    let secret = Secret::static_value("mock-token");
+    let cred = Credential::new(secret, AuthScheme::Bearer);
+    cred.into()
 }
 
 fn mock_diff_response() -> &'static str {
@@ -83,7 +89,9 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
         .boundary("fs_env", "fs:write", mock_fs_handle())
         .expect("fs:write mock should match type")
         .boundary("clock_env", "clock", mock_clock())
-        .expect("clock mock should match type");
+        .expect("clock mock should match type")
+        .boundary("credential_env", "credential:github", mock_credential())
+        .expect("credential mock should match type");
 
     // Mode-specific transport mocks
     match mode {

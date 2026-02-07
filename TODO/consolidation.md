@@ -719,6 +719,7 @@ compiler version is now captured directly, regardless of environment setup.
 - [x] Deleted stale `buck-out/` directory (9 generated CLI entrypoints from removed Buck2 build)
 - [x] Deleted unused backward-compat shims: `TestgenTarget` type alias, `iter_targets()` fn, `RustRenderer` type alias
 - [x] Eliminated `test_ir.rs` re-export shim — `codegen.rs` now imports directly from `gunbc_ir::code_ir`
+- [x] Removed fragile node-count assertions from tool graph tests (build/ci/codegen/gist/deps/review/clippy)
 
 ### Remaining (blocked on design/dependencies)
 

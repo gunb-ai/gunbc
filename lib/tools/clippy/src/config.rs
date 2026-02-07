@@ -48,6 +48,24 @@ impl DisallowedMethod {
     }
 }
 
+/// A clippy disallowed type rule.
+///
+/// Maps to entries in the `disallowed-types` array in clippy.toml.
+#[derive(Debug, Clone)]
+pub struct DisallowedType {
+    /// Full path to the type (e.g., "std::fs::File")
+    pub path: &'static str,
+    /// Human-readable reason why this type is disallowed
+    pub reason: &'static str,
+}
+
+impl DisallowedType {
+    /// Create a new disallowed type rule.
+    pub const fn new(path: &'static str, reason: &'static str) -> Self {
+        Self { path, reason }
+    }
+}
+
 /// A crate-level allowance for bypassing disallowed methods.
 ///
 /// Documents which crates have `#![allow(clippy::disallowed_methods)]`
@@ -75,6 +93,8 @@ impl CrateAllowance {
 pub struct ClippyConfig {
     /// Methods that are disallowed (unless crate has an allowance).
     pub disallowed_methods: Vec<DisallowedMethod>,
+    /// Types that are disallowed (unless crate has an allowance).
+    pub disallowed_types: Vec<DisallowedType>,
     /// Crates that are allowed to bypass disallowed methods.
     pub crate_allowances: Vec<CrateAllowance>,
     /// Threshold for large error types (in bytes).
@@ -92,6 +112,13 @@ impl ClippyConfig {
     pub fn disallow(mut self, path: &'static str, reason: &'static str) -> Self {
         self.disallowed_methods
             .push(DisallowedMethod::new(path, reason));
+        self
+    }
+
+    /// Add a disallowed type.
+    pub fn disallow_type(mut self, path: &'static str, reason: &'static str) -> Self {
+        self.disallowed_types
+            .push(DisallowedType::new(path, reason));
         self
     }
 
@@ -245,6 +272,39 @@ impl ClippyConfig {
             .disallow(
                 "std::process::Command::new",
                 "I6: No escape hatches. Use env nodes + tool handles. Command::new only in transport executor/cli.",
+            )
+            // Filesystem types - disallow owning raw file handles outside transport
+            .disallow_type(
+                "std::fs::File",
+                "I6: No escape hatches. Direct filesystem types must be in transport layer",
+            )
+            .disallow_type(
+                "std::fs::OpenOptions",
+                "I6: No escape hatches. Direct filesystem types must be in transport layer",
+            )
+            .disallow_type(
+                "std::fs::DirBuilder",
+                "I6: No escape hatches. Direct filesystem types must be in transport layer",
+            )
+            .disallow_type(
+                "std::fs::DirEntry",
+                "I6: No escape hatches. Direct filesystem types must be in transport layer",
+            )
+            .disallow_type(
+                "std::fs::ReadDir",
+                "I6: No escape hatches. Direct filesystem types must be in transport layer",
+            )
+            .disallow_type(
+                "std::fs::Metadata",
+                "I6: No escape hatches. Direct filesystem types must be in transport layer",
+            )
+            .disallow_type(
+                "std::fs::Permissions",
+                "I6: No escape hatches. Direct filesystem types must be in transport layer",
+            )
+            .disallow_type(
+                "std::fs::FileType",
+                "I6: No escape hatches. Direct filesystem types must be in transport layer",
             )
     }
 
@@ -405,6 +465,47 @@ fn build_clippy_toml_blocks(config: &ClippyConfig) -> Vec<StructuredBlock> {
         blocks.push(StructuredBlock::Raw(array));
     }
 
+    // Disallowed types array
+    if !config.disallowed_types.is_empty() {
+        let fs_types: Vec<_> = config
+            .disallowed_types
+            .iter()
+            .filter(|t| t.path.starts_with("std::fs::"))
+            .collect();
+        let other_types: Vec<_> = config
+            .disallowed_types
+            .iter()
+            .filter(|t| !t.path.starts_with("std::fs::"))
+            .collect();
+
+        let mut array = String::from("\ndisallowed-types = [\n");
+
+        if !fs_types.is_empty() {
+            array.push_str(
+                "    # Filesystem types - use FilesystemHandle and transport ops instead\n",
+            );
+            for ty in &fs_types {
+                array.push_str(&format!(
+                    "    {{ path = \"{}\", reason = \"{}\" }},\n",
+                    ty.path, ty.reason
+                ));
+            }
+        }
+
+        if !other_types.is_empty() {
+            array.push_str("    # Other disallowed types\n");
+            for ty in &other_types {
+                array.push_str(&format!(
+                    "    {{ path = \"{}\", reason = \"{}\" }},\n",
+                    ty.path, ty.reason
+                ));
+            }
+        }
+
+        array.push_str("]\n");
+        blocks.push(StructuredBlock::Raw(array));
+    }
+
     blocks
 }
 
@@ -493,6 +594,13 @@ mod tests {
     }
 
     #[test]
+    fn test_disallowed_type_creation() {
+        let ty = DisallowedType::new("std::fs::File", "Use transport layer");
+        assert_eq!(ty.path, "std::fs::File");
+        assert_eq!(ty.reason, "Use transport layer");
+    }
+
+    #[test]
     fn test_crate_allowance_creation() {
         let allowance = CrateAllowance::new("gunbc-lib-transport", "I/O boundary");
         assert_eq!(allowance.crate_name, "gunbc-lib-transport");
@@ -504,9 +612,11 @@ mod tests {
         let config = ClippyConfig::new()
             .disallow("std::fs::read", "reason1")
             .disallow("std::fs::write", "reason2")
+            .disallow_type("std::fs::File", "reason3")
             .allow_crate("my-crate", "special case");
 
         assert_eq!(config.disallowed_methods.len(), 2);
+        assert_eq!(config.disallowed_types.len(), 1);
         assert_eq!(config.crate_allowances.len(), 1);
     }
 
@@ -530,6 +640,12 @@ mod tests {
             .iter()
             .any(|m| m.path == "std::process::Command::new"));
 
+        // Should have filesystem types disallowed
+        assert!(config
+            .disallowed_types
+            .iter()
+            .any(|t| t.path == "std::fs::File"));
+
         // Should have approved crates
         assert!(config
             .crate_allowances
@@ -550,10 +666,12 @@ mod tests {
 
         // Should contain disallowed-methods array
         assert!(toml.contains("disallowed-methods = ["));
+        assert!(toml.contains("disallowed-types = ["));
 
         // Should contain specific methods
         assert!(toml.contains("std::fs::read"));
         assert!(toml.contains("std::process::Command::new"));
+        assert!(toml.contains("std::fs::File"));
     }
 
     #[test]

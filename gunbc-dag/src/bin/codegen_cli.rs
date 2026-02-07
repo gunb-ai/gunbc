@@ -161,34 +161,31 @@ fn setup_bin_directory(io: &dyn ResourceIo) -> Result<(), ResourceError> {
     // Remove existing bin directory/symlink/file
     remove_path(io, bin_path)?;
 
-    // Try symlink first (works on Unix and some Windows configurations)
-    #[cfg(unix)]
-    {
-        let args = vec![
-            "-s".to_string(),
-            target_path.to_string_lossy().to_string(),
-            bin_path.to_string_lossy().to_string(),
-        ];
-        io.command_output("ln", &args)?;
-        return Ok(());
-    }
+    setup_bin_link(io, bin_path, target_path)
+}
 
-    // On Windows, try to create a directory junction, or fall back to documenting the location
-    #[cfg(windows)]
-    {
-        // Windows symlinks require admin privileges, so just create a simple
-        // marker file pointing users to the right location
-        let marker_content = "Binaries are in target/release/\n";
-        let marker_path = bin_path.join(".location");
-        io.write_file(&marker_path, marker_content.as_bytes())?;
-        return Ok(());
-    }
+#[cfg(unix)]
+fn setup_bin_link(io: &dyn ResourceIo, bin_path: &Path, target_path: &Path) -> Result<(), ResourceError> {
+    let args = vec![
+        "-s".to_string(),
+        target_path.to_string_lossy().to_string(),
+        bin_path.to_string_lossy().to_string(),
+    ];
+    io.command_output("ln", &args)?;
+    Ok(())
+}
 
-    // Fallback for other platforms
-    #[cfg(not(any(unix, windows)))]
-    {
-        Ok(()) // Just skip - binaries are in target/release
-    }
+#[cfg(windows)]
+fn setup_bin_link(io: &dyn ResourceIo, bin_path: &Path, _target_path: &Path) -> Result<(), ResourceError> {
+    let marker_content = "Binaries are in target/release/\n";
+    let marker_path = bin_path.join(".location");
+    io.write_file(&marker_path, marker_content.as_bytes())?;
+    Ok(())
+}
+
+#[cfg(not(any(unix, windows)))]
+fn setup_bin_link(_io: &dyn ResourceIo, _bin_path: &Path, _target_path: &Path) -> Result<(), ResourceError> {
+    Ok(())
 }
 
 fn remove_path(io: &dyn ResourceIo, path: &Path) -> Result<(), ResourceError> {

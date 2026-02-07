@@ -55,6 +55,7 @@ pub fn add_skippable_transport_triplet<T>(
     builder: &mut DagBuilder<T>,
     name: &str,
     prepare_inputs: Vec<Port>,
+    execute_resource_inputs: Vec<Port>,
     parse_outputs: Vec<Port>,
     prepare_op: T,
     parse_op: T,
@@ -84,10 +85,14 @@ pub fn add_skippable_transport_triplet<T>(
     let execute = builder.add_node_after(
         Node::opaque(
             execute_name.as_str(),
-            vec![
-                optional("request", "TransportRequest"),
-                port("skip", "Bool"),
-            ],
+            {
+                let mut inputs = vec![
+                    optional("request", "TransportRequest"),
+                    port("skip", "Bool"),
+                ];
+                inputs.extend(execute_resource_inputs);
+                inputs
+            },
             vec![
                 optional("response", "TransportResponse"),
                 port("skip", "Bool"),
@@ -145,6 +150,7 @@ pub fn add_transport_triplet<T>(
     builder: &mut DagBuilder<T>,
     name: &str,
     prepare_inputs: Vec<Port>,
+    execute_resource_inputs: Vec<Port>,
     parse_outputs: Vec<Port>,
     prepare_op: T,
     parse_op: T,
@@ -171,7 +177,11 @@ pub fn add_transport_triplet<T>(
     let execute = builder.add_node_after(
         Node::opaque(
             execute_name.as_str(),
-            vec![port("request", "TransportRequest"), port("skip", "Bool")],
+            {
+                let mut inputs = vec![port("request", "TransportRequest"), port("skip", "Bool")];
+                inputs.extend(execute_resource_inputs);
+                inputs
+            },
             vec![port("response", "TransportResponse")],
             transport_op,
         ),
@@ -215,6 +225,7 @@ pub fn add_transport_triplet_named_with_passthrough<T>(
     execute_name: &str,
     parse_name: &str,
     prepare_inputs: Vec<Port>,
+    execute_resource_inputs: Vec<Port>,
     passthrough: Vec<Port>,
     parse_outputs: Vec<Port>,
     prepare_op: T,
@@ -237,7 +248,7 @@ pub fn add_transport_triplet_named_with_passthrough<T>(
         execute_name,
         parse_name,
         passthrough,
-        vec![],
+        execute_resource_inputs,
         parse_outputs,
         parse_op,
         transport_op,
@@ -330,6 +341,7 @@ mod tests {
             &mut builder,
             "my_step",
             vec![port("success", "Bool")],
+            vec![],
             vec![port("step_ok", "Bool")],
             TestOp::Prepare,
             TestOp::Parse,
@@ -362,6 +374,7 @@ mod tests {
             &mut builder,
             "deps_exists",
             vec![], // no extra prepare inputs
+            vec![],
             vec![port("exists", "Bool")],
             TestOp::Prepare,
             TestOp::Parse,
@@ -389,6 +402,7 @@ mod tests {
             "execute_manifest",
             "parse_manifest",
             vec![port("manifest_path", "String")],
+            vec![],
             vec![port("manifest_path", "String")],
             vec![port("ok", "Bool")],
             TestOp::Prepare,

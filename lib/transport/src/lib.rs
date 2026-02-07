@@ -30,6 +30,7 @@
 #![deny(dead_code)]
 // This crate IS the transport layer - it's allowed to use direct I/O
 #![allow(clippy::disallowed_methods)]
+#![allow(clippy::disallowed_types)]
 
 pub mod credential;
 pub mod backend;

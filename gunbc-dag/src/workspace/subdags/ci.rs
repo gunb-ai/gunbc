@@ -18,6 +18,7 @@ fn convert_ci_op(op: CIGraphOp) -> WorkspaceOp {
         CIGraphOp::Transport(t) => WorkspaceOp::Transport(t),
         CIGraphOp::CliTool(cli) => WorkspaceOp::Clippy(cli),
         CIGraphOp::CloudEnv(env) => WorkspaceOp::CloudEnv(env),
+        CIGraphOp::FsEnv(env) => WorkspaceOp::FsEnv(env),
     }
 }
 
@@ -57,8 +58,13 @@ mod tests {
 
         match &node.body {
             NodeBody::SubDag(dag) => {
-                // CI should have multiple nodes
-                assert!(dag.nodes.len() > 10);
+                for node_id in ["execute_build", "execute_test", "execute_verify", "clippy_lint"] {
+                    assert!(
+                        dag.get_node(&node_id.into()).is_some(),
+                        "missing node: {}",
+                        node_id
+                    );
+                }
             }
             _ => panic!("Expected SubDag"),
         }
