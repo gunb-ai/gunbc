@@ -863,6 +863,7 @@ fn build_report_blocks(
     let pragma_stderr = optional_str_strict(inputs, "pragma_stderr")?.unwrap_or("");
     let guardrail_stderr = optional_str_strict(inputs, "guardrail_stderr")?.unwrap_or("");
     let verify_stderr = optional_str_strict(inputs, "verify_stderr")?.unwrap_or("");
+    let cloud_env_status = optional_str_strict(inputs, "cloud_env_status")?.unwrap_or("");
 
     // Summary section
     blocks.push(StructuredBlock::Raw(format!(
@@ -951,6 +952,12 @@ fn build_report_blocks(
     if !verify_success && !verify_stderr.is_empty() {
         blocks.push(StructuredBlock::Raw(format!(
             "\n--- Verify stderr ---\n{verify_stderr}\n"
+        )));
+    }
+
+    if !cloud_env_status.is_empty() {
+        blocks.push(StructuredBlock::Raw(format!(
+            "\n--- Cloud env ---\n{cloud_env_status}\n"
         )));
     }
 

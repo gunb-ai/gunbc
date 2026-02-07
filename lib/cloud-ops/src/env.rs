@@ -1,6 +1,6 @@
 //! Cloud environment acquisition (provider-neutral baseline).
 
-use gunbc_exec::{env_single_output, EnvNode, ExecError, OutputMap};
+use gunbc_exec::{EnvNode, ExecError, OutputMap};
 use gunbc_ir::transport::cloud::{
     CloudProviderKind, CloudRuntimeKind, CloudSecretConfig, CloudSecretRef,
 };

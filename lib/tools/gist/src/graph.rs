@@ -678,7 +678,7 @@ fn build_snapshot_acquire(
         builder,
         "list_files",
         vec![port("repo_path", "String")],
-        vec![list("files", "String")],
+        vec![list("files", "StringList")],
         GistGraphOp::Git(GitOps::PrepareLsFiles { extensions }),
         GistGraphOp::Git(GitOps::ParseLsFiles),
         GistGraphOp::Transport(TransportOps::Execute),
@@ -702,7 +702,7 @@ fn build_snapshot_acquire(
     let collect_file_contents = builder.add_node_after(
         Node::opaque(
             "collect_file_contents",
-            vec![list("filenames", "String"), list("contents_list", "String")],
+            vec![list("filenames", "StringList"), list("contents_list", "StringList")],
             vec![port("contents", "Map")],
             GistGraphOp::CollectFileContents,
         ),

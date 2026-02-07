@@ -58,7 +58,7 @@ pub fn build_markdown_subdag() -> Node<LanguageOp> {
         "render_code_block",
         vec![
             Port::scalar("code", "String"),
-            Port::optional("language", "String"),
+            Port::optional("language", "OptionalString"),
         ],
         vec![Port::scalar("block", "String")],
         LanguageOp::MarkdownRenderCodeBlock,

@@ -290,35 +290,6 @@ pub fn set(element_type: Dag<TypeOp>) -> Dag<TypeOp> {
     dag
 }
 
-/// Non-empty set type — wraps an inner type with OneOrMore cardinality and set semantics.
-pub fn non_empty_set(element_type: Dag<TypeOp>) -> Dag<TypeOp> {
-    let mut dag = Dag::new();
-
-    // Input: non-empty set of values
-    dag.add_node(Node::opaque(
-        "input",
-        vec![Port::non_empty_list("in", "Any")],
-        vec![Port::non_empty_list("out", "Any")],
-        TypeOp::Wrap(WrapperKind::NonEmptySet),
-    ));
-
-    // Non-empty check
-    dag.add_node(Node::opaque(
-        "check_non_empty",
-        vec![Port::non_empty_list("in", "Any")],
-        vec![Port::non_empty_list("out", "Any")],
-        TypeOp::Validate(Predicate::NonEmpty),
-    ));
-
-    // Element type validation (as SubDag)
-    dag.add_node(Node::subdag("element_type", element_type));
-
-    dag.add_edge(Edge::new("input", "out", "check_non_empty", "in"));
-    dag.add_edge(Edge::new("check_non_empty", "out", "element_type", "in"));
-
-    dag
-}
-
 // =============================================================================
 // Composite Type Helpers
 // =============================================================================

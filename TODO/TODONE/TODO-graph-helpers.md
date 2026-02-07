@@ -116,7 +116,7 @@ Potential API improvement: the current helpers require callers to pass full inpu
 
 - **Stamp write in codegen** has no parse node (2-node triplet, not 3). The helper assumes 3 nodes. Either skip this one or add a `add_transport_pair` variant.
 - **Loop body triplet in gist** is inside a SubDag. The helper should work on any `DagBuilder<T>` regardless of nesting, but verify.
-- **Auth chain in review/llm** (resolve_auth → credential_env → execute) isn't a standard triplet — leave these manual.
+- **Auth chain in review/llm** (resolve_auth → cloud_credential → execute) isn't a standard triplet — leave these manual.
 
 ---
 

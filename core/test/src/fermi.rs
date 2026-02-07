@@ -153,3 +153,79 @@ pub fn guard_test(
         secrets,
     })
 }
+
+/// Guard helper for env requirements that include "any-of" groups.
+///
+/// `required` are checked directly. Each group in `required_any_of` requires at
+/// least one env var to be present.
+pub fn guard_test_with_env(
+    name: &str,
+    _class: TestClass,
+    cost: FermiCost,
+    requires: &[&str],
+    required: &[&str],
+    required_any_of: &[&[&str]],
+) -> bool {
+    let max_cost = max_cost_from_env();
+    if cost > max_cost {
+        panic!(
+            "skipping {}: cost {} exceeds max {} (set GUNBC_TEST_MAX_COST=...)",
+            name,
+            cost.as_str(),
+            max_cost.as_str()
+        );
+    }
+
+    let needs_live = !required.is_empty() || !required_any_of.is_empty();
+    if needs_live && !env_truthy("RUN_LIVE_INTEGRATION") {
+        let mut all = required.to_vec();
+        for group in required_any_of {
+            if let Some(first) = group.first() {
+                all.push(first);
+            }
+        }
+        panic!(
+            "skipping {}: requires secrets [{}] (set RUN_LIVE_INTEGRATION=1)",
+            name,
+            all.join(", ")
+        );
+    }
+
+    if !required.is_empty() {
+        let missing: Vec<&str> = required
+            .iter()
+            .copied()
+            .filter(|k| env::var(k).is_err())
+            .collect();
+        if !missing.is_empty() {
+            panic!(
+                "skipping {}: missing secrets [{}]",
+                name,
+                missing.join(", ")
+            );
+        }
+    }
+
+    if !required_any_of.is_empty() {
+        let mut missing_groups: Vec<String> = Vec::new();
+        for group in required_any_of {
+            let present = group.iter().any(|k| env::var(k).is_ok());
+            if !present {
+                missing_groups.push(group.join(" | "));
+            }
+        }
+        if !missing_groups.is_empty() {
+            panic!(
+                "skipping {}: missing secrets [{}]",
+                name,
+                missing_groups.join(", ")
+            );
+        }
+    }
+
+    if !requires.is_empty() {
+        let _ = requires;
+    }
+
+    true
+}

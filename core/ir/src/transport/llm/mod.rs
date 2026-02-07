@@ -28,14 +28,6 @@
 //! ]).temperature(0.3);
 //! let rest_request = build_chat_request("openai", &chat).unwrap();
 //!
-//! // Reasoning model via Responses API
-//! let chat = ChatRequest::new("o3", vec![
-//!     ChatMessage::user("Solve this problem."),
-//! ]).thinking(ThinkingConfig::openai_with_summary(
-//!     ReasoningEffort::High, ReasoningSummary::Concise,
-//! ));
-//! let rest_request = build_responses_request("openai", &chat).unwrap();
-//!
 //! // Anthropic with caching and extended thinking
 //! let chat = ChatRequest::new("claude-sonnet-4-5", vec![
 //!     ChatMessage::system_blocks(vec![
@@ -69,8 +61,6 @@ use crate::transport::rest::{RestRequest, RestResponse};
 /// - `"openai"` → OpenAI Chat Completions (`/v1/chat/completions`)
 /// - `"anthropic"` → Anthropic Messages (`/v1/messages`)
 ///
-/// For OpenAI reasoning models with summaries, use `build_responses_request` instead.
-///
 /// # Errors
 ///
 /// Returns `Err` if the provider ID is not recognized.
@@ -79,28 +69,6 @@ pub fn build_chat_request(provider_id: &str, chat: &ChatRequest) -> Result<RestR
         "openai" => Ok(openai::build_openai_request(chat)),
         "anthropic" => Ok(anthropic::build_anthropic_request(chat)),
         _ => Err(format!("unknown LLM provider: '{}'", provider_id)),
-    }
-}
-
-/// Build a REST request for the OpenAI Responses API (`/v1/responses`).
-///
-/// The Responses API is recommended for reasoning models (o1, o3, o4-mini)
-/// because it supports reasoning summaries, persisted reasoning between tool
-/// calls, and better cache utilization.
-///
-/// # Errors
-///
-/// Returns `Err` if the provider doesn't support the Responses API.
-pub fn build_responses_request(
-    provider_id: &str,
-    chat: &ChatRequest,
-) -> Result<RestRequest, String> {
-    match provider_id {
-        "openai" => Ok(openai_responses::build_openai_responses_request(chat)),
-        _ => Err(format!(
-            "provider '{}' does not support the Responses API",
-            provider_id
-        )),
     }
 }
 
@@ -120,25 +88,6 @@ pub fn parse_chat_response(
         "openai" => openai::parse_openai_response(response),
         "anthropic" => anthropic::parse_anthropic_response(response),
         _ => Err(format!("unknown LLM provider: '{}'", provider_id)),
-    }
-}
-
-/// Parse a REST response from the OpenAI Responses API.
-///
-/// # Errors
-///
-/// Returns `Err` if the provider doesn't support the Responses API or the
-/// response cannot be parsed.
-pub fn parse_responses_response(
-    provider_id: &str,
-    response: &RestResponse,
-) -> Result<ChatResponse, String> {
-    match provider_id {
-        "openai" => openai_responses::parse_openai_responses_response(response),
-        _ => Err(format!(
-            "provider '{}' does not support the Responses API",
-            provider_id
-        )),
     }
 }
 

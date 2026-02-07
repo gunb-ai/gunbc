@@ -229,10 +229,11 @@ pub fn build_chat_completion_graph() -> Dag<LlmGraphOp> {
 fn lift_cloud_dag(
     dag: Dag<CloudSecretManagerGraphOp>,
 ) -> Dag<LlmGraphOp> {
-    map_dag_ops(dag, |op| LlmGraphOp::Cloud(op))
+    let mut lift = |op| LlmGraphOp::Cloud(op);
+    map_dag_ops(dag, &mut lift)
 }
 
-fn map_dag_ops<T, U, F>(dag: Dag<T>, mut f: F) -> Dag<U>
+fn map_dag_ops<T, U, F>(dag: Dag<T>, f: &mut F) -> Dag<U>
 where
     T: Clone,
     U: Clone,
@@ -243,7 +244,7 @@ where
     out.nodes = dag
         .nodes
         .into_iter()
-        .map(|node| map_node_ops(node, &mut f))
+        .map(|node| map_node_ops(node, f))
         .collect();
     out
 }

@@ -141,10 +141,11 @@ fn add_cloud_credential_chain(
 fn lift_cloud_dag(
     dag: Dag<CloudSecretManagerGraphOp>,
 ) -> Dag<ReviewGraphOp> {
-    map_dag_ops(dag, |op| ReviewGraphOp::Cloud(op))
+    let mut lift = |op| ReviewGraphOp::Cloud(op);
+    map_dag_ops(dag, &mut lift)
 }
 
-fn map_dag_ops<T, U, F>(dag: Dag<T>, mut f: F) -> Dag<U>
+fn map_dag_ops<T, U, F>(dag: Dag<T>, f: &mut F) -> Dag<U>
 where
     T: Clone,
     U: Clone,
@@ -155,7 +156,7 @@ where
     out.nodes = dag
         .nodes
         .into_iter()
-        .map(|node| map_node_ops(node, &mut f))
+        .map(|node| map_node_ops(node, f))
         .collect();
     out
 }
@@ -1066,7 +1067,7 @@ pub fn build_multi_source_review_graph_with(config: ReviewPipelineConfig) -> Dag
         .add_node_after(
             Node::opaque(
                 "merge",
-                vec![list("outputs", "Json")],
+                vec![list("outputs", "JsonList")],
                 vec![port("bundle", "Json"), port("conflicts", "Json")],
                 ReviewGraphOp::Review(ReviewOps::MergeOutputs),
             ),

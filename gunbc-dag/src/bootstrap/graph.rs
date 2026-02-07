@@ -83,7 +83,7 @@ pub fn build_bootstrap_graph() -> Result<Dag<BootstrapGraphOp>, BuilderError> {
         Node::opaque(
             "parse_scan_result",
             vec![port("response", "TransportResponse")],
-            vec![port("crate_count", "Int"), list("crate_names", "String")],
+            vec![port("crate_count", "Int"), list("crate_names", "StringList")],
             BootstrapGraphOp::Domain(BootstrapOp::ParseScanResult),
         ),
         &execute_scan,
@@ -106,7 +106,7 @@ pub fn build_bootstrap_graph() -> Result<Dag<BootstrapGraphOp>, BuilderError> {
     let generate_makefile = builder.add_node_after(
         Node::opaque(
             "generate_makefile",
-            vec![list("crate_names", "String")],
+            vec![list("crate_names", "StringList")],
             vec![port("makefile_content", "String")],
             BootstrapGraphOp::Domain(BootstrapOp::GenerateMakefile),
         ),
@@ -136,7 +136,7 @@ pub fn build_bootstrap_graph() -> Result<Dag<BootstrapGraphOp>, BuilderError> {
     let generate_gitignore = builder.add_node_after(
         Node::opaque(
             "generate_gitignore",
-            vec![list("crate_names", "String")],
+            vec![list("crate_names", "StringList")],
             vec![port("gitignore_content", "String")],
             BootstrapGraphOp::Domain(BootstrapOp::GenerateGitignore),
         ),

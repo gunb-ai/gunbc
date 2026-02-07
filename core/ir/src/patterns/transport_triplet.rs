@@ -36,7 +36,7 @@ pub struct TransportTriplet<T> {
 /// The execute node has the standard skippable shape:
 ///   inputs:  `[optional("request", "TransportRequest"), port("skip", "Bool")]`
 ///   outputs: `[optional("response", "TransportResponse"), port("skip", "Bool"),
-///             optional("skip_reason", "String")]`
+///             optional("skip_reason", "OptionalString")]`
 ///
 /// Standard wiring included:
 ///   - `prepare.request → execute.request`
@@ -73,7 +73,7 @@ pub fn add_skippable_transport_triplet<T>(
             vec![
                 optional("request", "TransportRequest"),
                 port("skip", "Bool"),
-                optional("skip_reason", "String"),
+                optional("skip_reason", "OptionalString"),
             ],
             prepare_op,
         ),
@@ -91,7 +91,7 @@ pub fn add_skippable_transport_triplet<T>(
             vec![
                 optional("response", "TransportResponse"),
                 port("skip", "Bool"),
-                optional("skip_reason", "String"),
+                optional("skip_reason", "OptionalString"),
             ],
             transport_op,
         ),
@@ -102,7 +102,7 @@ pub fn add_skippable_transport_triplet<T>(
     let parse_inputs = vec![
         optional("response", "TransportResponse"),
         port("skip", "Bool"),
-        optional("skip_reason", "String"),
+        optional("skip_reason", "OptionalString"),
     ];
 
     let parse = builder.add_node_after(

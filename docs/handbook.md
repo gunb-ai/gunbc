@@ -148,12 +148,12 @@ Intercepted nodes require explicit mocks for all outputs. There are no silent de
 
 ## Transport System
 
-Transport requests/responses are defined in `core/ir/src/transport/mod.rs`. Runtime DAG I/O is performed only by `TransportOps::Execute` in `lib/transport`. Direct I/O outside the DAG is limited to the transport layer (`lib/transport`); tests are exempt by pragma policy.
+Transport requests/responses are defined in `core/ir/src/transport/mod.rs`. Runtime DAG I/O is performed only by `TransportOps::Execute` in `lib/transport`. Direct I/O outside the DAG is limited to `lib/transport` plus a small set of explicitly audited exceptions: build-time generators (`core/codegen`), bootstrap/config loaders (`gunbc-dag/src/bootstrap`), and the manifest/freshness layer (`core/infra`). Tests are exempt by pragma policy. The full exception list is maintained in `TODO/TODONE/clippy-pragma-audit.md`.
 
 Key invariants:
 - Pure ops **prepare** `TransportRequest` values.
 - Only `TransportOps::Execute` performs runtime DAG I/O.
-- Direct I/O is limited to `lib/transport` (tests are exempt by pragma policy).
+- Direct I/O is limited to `lib/transport` plus explicitly audited build-time/bootstrap exceptions (see `TODO/TODONE/clippy-pragma-audit.md`). Tests are exempt by pragma policy.
 
 See `lib/transport/src/lib.rs` and `lib/transport/src/ops.rs`.
 
@@ -714,10 +714,14 @@ pub struct ResourceInput {
 **Intent:** Model credential acquisition, expiry, refresh, and revocation as typed resource flows through DAG boundaries.
 
 ```
-[resolve_auth]  ──▶  [credential_env]  ──▶  [execute]
-    (pure)           (env boundary)         (transport)
-  maps provider     acquires credential    uses credential
-  to env_var/scheme  from environment       in request
+[resolve_auth]      [cloud_env]
+    (pure)          (env boundary)
+       \             /
+        \           /
+         ──▶ [cloud_credential] ──▶ [execute]
+             (secret manager)       (transport)
+  maps provider     acquires secret     uses credential
+  to scheme/header  + builds Credential in request
 ```
 
 ```rust
@@ -738,6 +742,8 @@ pub enum AuthScheme { Bearer, Header { name: String } }
 |------|------|
 | `core/ir/src/transport/credential.rs` | Credential, AuthScheme, CredentialProvider trait |
 | `lib/transport/src/credential.rs` | Providers (GitHub, LLM, Mock) + CredentialOp |
+| `lib/cloud-ops/src/env.rs` | CloudEnv (provider-neutral config + OIDC inputs) |
+| `lib/cloud-ops/src/graph.rs` | Cloud secret manager graphs (GCP/AWS/Azure) |
 | `core/test/src/mock_spec.rs` | ResourceType::Credential, refresh/revoke simulation |
 | `lib/llm-ops/src/graph_mock.rs` | Credential lifecycle MockSpec |
 
@@ -749,6 +755,9 @@ pub enum AuthScheme { Bearer, Header { name: String } }
 | `LlmEnvVarProvider::openai()` | openai | `OPENAI_API_KEY` | Bearer |
 | `LlmEnvVarProvider::anthropic()` | anthropic | `ANTHROPIC_API_KEY` | Header(x-api-key) |
 | `MockCredentialProvider` | configurable | N/A | configurable |
+
+**Primary path:** CI/prod credentials are sourced via cloud secret manager
+(GCP WIF today). Env-var providers remain for local dev and tests.
 
 **Resource simulation:**
 ```rust
@@ -1136,13 +1145,13 @@ fn test_resource_credential_llm_timeout() {
 **Windowed Segment Tests:**
 ```rust
 #[test]
-fn test_window_credential_env_through_execute() {
+fn test_window_cloud_credential_through_execute() {
     let dag = crate::graph::build_chat_completion_graph();
     let flat = lower(&dag).expect("lower should succeed");
     let baseline = execute_with_mode(&dag,
         ExecutionMode::DryRun(mock_spec().to_boundary_mocks()))
         .expect("baseline should succeed");
-    let window = Window::from_nodes(&flat, vec!("credential_env", "execute"));
+    let window = Window::from_nodes(&flat, vec!("cloud_env", "cloud_credential", "execute"));
     let mut mocks = mock_spec().to_boundary_mocks();
     apply_window_inputs(&flat, &window, &baseline, &mut mocks)
         .expect("window inputs derivable from baseline");

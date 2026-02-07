@@ -35,7 +35,7 @@ pub fn build_makegen_subdag() -> Node<WorkspaceOp> {
             vec![],
             vec![
                 scalar("tool_count", "Int"),
-                non_empty_list("tool_names", "String"),
+                non_empty_list("tool_names", "NonEmptyStringList"),
                 scalar("registry", "Json"),
             ],
             WorkspaceOp::Makegen(MakegenOp::LoadRegistry),

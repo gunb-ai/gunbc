@@ -89,8 +89,8 @@ pub fn build_github_credential_graph() -> Dag<GitHubCredentialGraphOp> {
             vec![],
             vec![
                 port("config", "CloudSecretConfig"),
-                optional("request_url", "String"),
-                optional("request_token", "String"),
+                optional("request_url", "OptionalString"),
+                optional("request_token", "OptionalString"),
             ],
             GitHubCredentialGraphOp::CloudEnv(CloudEnv::new()),
         ))
@@ -118,7 +118,7 @@ pub fn build_github_credential_graph() -> Dag<GitHubCredentialGraphOp> {
                 vec![
                     port("config", "CloudSecretConfig"),
                     port("service", "String"),
-                    optional("secret_name", "String"),
+                    optional("secret_name", "OptionalString"),
                 ],
                 vec![port("config", "CloudSecretConfig")],
                 GitHubCredentialGraphOp::Cloud(CloudSecretManagerGraphOp::Cloud(
@@ -212,10 +212,11 @@ pub fn build_github_credential_graph() -> Dag<GitHubCredentialGraphOp> {
 }
 
 fn lift_cloud_dag(dag: Dag<CloudSecretManagerGraphOp>) -> Dag<GitHubCredentialGraphOp> {
-    map_dag_ops(dag, |op| GitHubCredentialGraphOp::Cloud(op))
+    let mut lift = |op| GitHubCredentialGraphOp::Cloud(op);
+    map_dag_ops(dag, &mut lift)
 }
 
-fn map_dag_ops<T, U, F>(dag: Dag<T>, mut f: F) -> Dag<U>
+fn map_dag_ops<T, U, F>(dag: Dag<T>, f: &mut F) -> Dag<U>
 where
     T: Clone,
     U: Clone,
@@ -226,7 +227,7 @@ where
     out.nodes = dag
         .nodes
         .into_iter()
-        .map(|node| map_node_ops(node, &mut f))
+        .map(|node| map_node_ops(node, f))
         .collect();
     out
 }

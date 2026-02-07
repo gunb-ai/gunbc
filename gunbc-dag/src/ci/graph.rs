@@ -38,6 +38,7 @@
 use crate::ci::ops::CIOp;
 use crate::codegen::{build_codegen_graph_with_mode, CodegenGraphOp, CodegenOp};
 use crate::WorkspaceBinary;
+use gunbc_lib_cloud_ops::CloudEnvStatus;
 use gunbc_deps::DEFAULT_MANIFEST_FILENAME;
 use gunbc_exec::{require_bool, ExecError, Executable, IntoExecResult, OutputMap};
 use gunbc_ir::resource::ExecMode;
@@ -74,6 +75,8 @@ pub enum CIGraphOp {
     CI(CIOp),
     /// Codegen DAG operations (inlined into CI)
     Codegen(CodegenOp),
+    /// Cloud env status (resource acquisition)
+    CloudEnv(CloudEnvStatus),
     /// Prepare file exists check (pure - path embedded, from primitives)
     PrepareFileExists(EmbeddedFileExistsOp),
     /// Transport operations (boundary - actual I/O)
@@ -87,6 +90,7 @@ impl Executable for CIGraphOp {
         match self {
             CIGraphOp::CI(op) => op.execute(inputs),
             CIGraphOp::Codegen(op) => op.execute(inputs),
+            CIGraphOp::CloudEnv(op) => op.execute(inputs),
             CIGraphOp::PrepareFileExists(op) => op.execute(inputs),
             CIGraphOp::Transport(op) => op.execute(inputs),
             CIGraphOp::CliTool(op) => {
@@ -200,6 +204,15 @@ pub fn build_ci_graph() -> Result<Dag<CIGraphOp>, BuilderError> {
 /// the need for the `GUNBC_EXEC_MODE` environment variable.
 pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, BuilderError> {
     let mut builder = DagBuilder::new();
+
+    let cloud_env_status = builder
+        .add_root_node(Node::opaque(
+            "cloud_env_status",
+            vec![],
+            vec![port("status", "String")],
+            CIGraphOp::CloudEnv(CloudEnvStatus::new()),
+        ))
+        .expect("cloud_env_status node");
 
     // ========================================================================
     // SetupDeps Stage: Check if deps.toml exists
@@ -327,7 +340,7 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
         Node::opaque(
             "prepare_clippy_lint",
             vec![port("build_success", "Bool"), port("pragma_success", "Bool")],
-            vec![port("skip", "Bool"), optional("skip_reason", "String")],
+            vec![port("skip", "Bool"), optional("skip_reason", "OptionalString")],
             CIGraphOp::CI(CIOp::PrepareClippyLint),
         ),
         &build.parse,
@@ -339,9 +352,9 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
             "clippy_lint",
             vec![port("skip", "Bool")],
             vec![
-                optional("success", "Bool"),
-                optional("stdout", "String"),
-                optional("stderr", "String"),
+                optional("success", "OptionalBool"),
+                optional("stdout", "OptionalString"),
+                optional("stderr", "OptionalString"),
                 port("skip", "Bool"),
             ],
             CIGraphOp::CliTool(CliToolOp::run(
@@ -357,11 +370,11 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
         Node::opaque(
             "parse_clippy_lint",
             vec![
-                optional("success", "Bool"),
-                optional("stdout", "String"),
-                optional("stderr", "String"),
+                optional("success", "OptionalBool"),
+                optional("stdout", "OptionalString"),
+                optional("stderr", "OptionalString"),
                 port("skip", "Bool"),
-                optional("skip_reason", "String"),
+                optional("skip_reason", "OptionalString"),
             ],
             vec![
                 port("lint_success", "Bool"),
@@ -425,15 +438,16 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
                 port("pragma_success", "Bool"),
                 port("guardrail_success", "Bool"),
                 port("verify_success", "Bool"),
-                optional("build_stderr", "String"),
-                optional("testgen_stderr", "String"),
-                optional("bootstrap_stderr", "String"),
-                optional("pragma_stderr", "String"),
-                optional("test_stdout", "String"),
-                optional("test_stderr", "String"),
-                optional("lint_stderr", "String"),
-                optional("guardrail_stderr", "String"),
-                optional("verify_stderr", "String"),
+                optional("build_stderr", "OptionalString"),
+                optional("testgen_stderr", "OptionalString"),
+                optional("bootstrap_stderr", "OptionalString"),
+                optional("pragma_stderr", "OptionalString"),
+                optional("test_stdout", "OptionalString"),
+                optional("test_stderr", "OptionalString"),
+                optional("lint_stderr", "OptionalString"),
+                optional("guardrail_stderr", "OptionalString"),
+                optional("verify_stderr", "OptionalString"),
+                optional("cloud_env_status", "OptionalString"),
             ],
             vec![port("overall_success", "Bool"), port("report", "String")],
             CIGraphOp::CI(CIOp::Report),
@@ -559,6 +573,10 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
     builder.add_edge(guardrail.parse.out("guardrail_stderr"), report.in_port("guardrail_stderr"))?;
     builder.add_edge(verify.parse.out("verify_success"), report.in_port("verify_success"))?;
     builder.add_edge(verify.parse.out("verify_stderr"), report.in_port("verify_stderr"))?;
+    builder.add_edge(
+        cloud_env_status.out("status"),
+        report.in_port("cloud_env_status"),
+    )?;
 
     Ok(builder.build())
 }

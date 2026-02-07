@@ -523,6 +523,19 @@ mod tests {
         assert!(int_contract.can_safely_coerce_to(&json_contract).is_ok());
     }
 
+    #[test]
+    fn test_type_contract_container_inner_predicates() {
+        let url_list = type_lib::list(type_lib::url());
+        let contract = TypeContract::from_type_dag(&url_list);
+
+        assert_eq!(contract.cardinality, Cardinality::ZERO_OR_MORE);
+        assert_eq!(contract.base_type, Some("String".to_string()));
+        assert!(contract
+            .predicates
+            .iter()
+            .any(|p| matches!(p, Predicate::All(_))));
+    }
+
     // --- Witness generation tests ---
 
     #[test]

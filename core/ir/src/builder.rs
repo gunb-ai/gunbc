@@ -1278,7 +1278,7 @@ mod tests {
         let node_b = test_node("b", vec![], vec![("out", "String")]);
         let node_c = Node::opaque(
             "c",
-            vec![Port::list("in", "String")], // List to accept fan-in
+            vec![Port::list("in", "StringList")], // List to accept fan-in
             vec![],
             "op_c".to_string(),
         );
@@ -1365,7 +1365,7 @@ mod tests {
         let node_c = test_node("c", vec![], vec![("out", "String")]);
         let node_d = Node::opaque(
             "d",
-            vec![Port::list("in", "String")],
+            vec![Port::list("in", "StringList")],
             vec![],
             "op_d".to_string(),
         );

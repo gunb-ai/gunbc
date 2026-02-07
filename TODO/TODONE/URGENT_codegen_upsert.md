@@ -100,6 +100,9 @@ This follows the resource acquisition pattern - the manifest IS the upsert key, 
 - `core/codegen/src/main.rs` - codegen entry point (would write manifest)
 - New: manifest schema, hash computation logic
 
-## Temporary Workaround (Current)
+## Previous Workaround (Removed)
 
-Checking for `target/codegen/bin/deps/main.rs` - works but brittle. Acceptable short-term because the GitHub Actions workflow runs codegen unconditionally before the CI DAG anyway.
+The original CI check tested for `target/codegen/bin/deps/main.rs` existence —
+brittle and stale-blind. Replaced by manifest-based freshness: codegen now
+writes a `ManifestEntry` with `input_hash` + `input_file_count`, and the CI
+DAG's `PrepareCodegenExistsCheck` compares computed hashes against the manifest.

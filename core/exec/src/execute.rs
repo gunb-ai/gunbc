@@ -1429,8 +1429,8 @@ mod tests {
         ));
         dag.add_node(Node::opaque(
             "C",
-            vec![list("items", "String")], // list port: cardinality ZeroOrMore
-            vec![list("items", "String")], // echo: passes inputs through as outputs (list→list)
+            vec![list("items", "StringList")], // list port: cardinality ZeroOrMore
+            vec![list("items", "StringList")], // echo: passes inputs through as outputs (list→list)
             TestOp::echo(),
         ));
         // Two edges to the same list port, with explicit indices for ordering
@@ -1457,7 +1457,7 @@ mod tests {
         dag.add_node(Node::opaque(
             "A",
             vec![],
-            vec![list("items", "String")],
+            vec![list("items", "StringList")],
             TestOp::produce(
                 "items",
                 Value::List(vec![
@@ -1468,8 +1468,8 @@ mod tests {
         ));
         dag.add_node(Node::opaque(
             "B",
-            vec![list("items", "String")],
-            vec![list("items", "String")],
+            vec![list("items", "StringList")],
+            vec![list("items", "StringList")],
             TestOp::echo(),
         ));
         dag.add_edge(edge("A", "items", "B", "items"));
@@ -1552,8 +1552,8 @@ mod tests {
         let mut dag: Dag<TestOp> = Dag::new();
         dag.add_node(Node::opaque(
             "A",
-            vec![list("items", "String")],
-            vec![list("items", "String")],
+            vec![list("items", "StringList")],
+            vec![list("items", "StringList")],
             TestOp::echo(),
         ));
 
@@ -1573,13 +1573,13 @@ mod tests {
         dag.add_node(Node::opaque(
             "A",
             vec![],
-            vec![optional("item", "String")],
+            vec![optional("item", "OptionalString")],
             TestOp::produce("item", Value::Unit),
         ));
         dag.add_node(Node::opaque(
             "B",
-            vec![list("items", "String")],
-            vec![list("items", "String")],
+            vec![list("items", "StringList")],
+            vec![list("items", "StringList")],
             TestOp::echo(),
         ));
         dag.add_edge(edge("A", "item", "B", "items"));
@@ -1600,13 +1600,13 @@ mod tests {
         dag.add_node(Node::opaque(
             "A",
             vec![],
-            vec![optional("item", "String")],
+            vec![optional("item", "OptionalString")],
             TestOp::produce("item", Value::Skipped),
         ));
         dag.add_node(Node::opaque(
             "B",
-            vec![list("items", "String")],
-            vec![list("items", "String")],
+            vec![list("items", "StringList")],
+            vec![list("items", "StringList")],
             TestOp::echo(),
         ));
         dag.add_edge(edge("A", "item", "B", "items"));
@@ -1713,7 +1713,7 @@ mod tests {
         dag.add_node(Node::opaque(
             "source",
             vec![],
-            vec![list("items", "String")],
+            vec![list("items", "StringList")],
             TestLoopOp::Pattern(PatternOp::LoopUnpack {
                 // Repurpose as a producer that outputs a list
                 input_port: "unused".to_string(),

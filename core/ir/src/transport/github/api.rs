@@ -101,16 +101,6 @@ pub fn github_rest_post(endpoint: &str) -> RestRequest {
     github_rest_request(endpoint).method(HttpMethod::Post)
 }
 
-/// Build a PUT request to the GitHub API.
-pub fn github_rest_put(endpoint: &str) -> RestRequest {
-    github_rest_request(endpoint).method(HttpMethod::Put)
-}
-
-/// Build a DELETE request to the GitHub API.
-pub fn github_rest_delete(endpoint: &str) -> RestRequest {
-    github_rest_request(endpoint).method(HttpMethod::Delete)
-}
-
 // ============================================================================
 // Helper trait for method chaining
 // ============================================================================

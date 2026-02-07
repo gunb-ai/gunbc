@@ -457,7 +457,7 @@ mod window_helper_tests {
         dag.add_node(Node::opaque("b", vec![], vec![port("out", "Int")], ()));
         dag.add_node(Node::opaque(
             "z",
-            vec![list("items", "Int")],
+            vec![list("items", "IntList")],
             vec![port("out", "Int")],
             (),
         ));
@@ -485,10 +485,10 @@ mod window_helper_tests {
     #[test]
     fn apply_window_inputs_flattens_list_outputs() {
         let mut dag: Dag<()> = Dag::new();
-        dag.add_node(Node::opaque("a", vec![], vec![list("items", "Int")], ()));
+        dag.add_node(Node::opaque("a", vec![], vec![list("items", "IntList")], ()));
         dag.add_node(Node::opaque(
             "b",
-            vec![list("items", "Int")],
+            vec![list("items", "IntList")],
             vec![port("out", "Int")],
             (),
         ));

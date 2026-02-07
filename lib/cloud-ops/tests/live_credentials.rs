@@ -1,29 +1,23 @@
 use gunbc_exec::{execute_with_mode, ExecutionMode};
 use gunbc_ir::Value;
-use gunbc_lib_cloud_ops::build_github_credential_graph;
-use gunbc_test::{guard_test, FermiCost, TestClass};
+use gunbc_ir::transport::cloud::CloudProviderKind;
+use gunbc_lib_cloud_ops::{build_github_credential_graph, detect_cloud_env_requirements};
+use gunbc_test::{guard_test_with_env, FermiCost, TestClass};
 
 #[test]
 fn test_github_live_rate_limit() {
-    if !guard_test(
+    let env_req = detect_cloud_env_requirements();
+    if env_req.provider != CloudProviderKind::Gcp {
+        return;
+    }
+    if !guard_test_with_env(
         "test_github_live_rate_limit",
         TestClass::Integration,
         FermiCost::M,
         &["http"],
-        &[
-            "GCP_WIF_PROVIDER",
-            "GCP_SECRETS_PROJECT",
-            "GCP_SECRETS_PREFIX",
-            "ACTIONS_ID_TOKEN_REQUEST_URL",
-            "ACTIONS_ID_TOKEN_REQUEST_TOKEN",
-        ],
+        env_req.required,
+        env_req.required_any_of,
     ) {
-        return;
-    }
-
-    if std::env::var("GCP_SECRETS_SA").is_err()
-        && std::env::var("GCP_SECRETS_IMPERSONATE_SA").is_err()
-    {
         return;
     }
 

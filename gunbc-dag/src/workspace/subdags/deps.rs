@@ -80,7 +80,7 @@ pub fn build_deps_install_subdag() -> Node<WorkspaceOp> {
                 ],
                 vec![
                     scalar("dep_count", "Int"),
-                    list("dep_names", "String"),
+                    list("dep_names", "StringList"),
                     scalar("manifest_path", "String"),
                     scalar("manifest_content", "String"),
                 ],
@@ -101,8 +101,8 @@ pub fn build_deps_install_subdag() -> Node<WorkspaceOp> {
                 ],
                 vec![
                     scalar("install_script", "String"),
-                    list("already_installed", "String"),
-                    list("needs_install", "String"),
+                    list("already_installed", "StringList"),
+                    list("needs_install", "StringList"),
                     scalar("platform", "String"),
                 ],
                 WorkspaceOp::Deps(DepsOp::GenerateScripts),
@@ -253,7 +253,7 @@ pub fn build_deps_generate_subdag() -> Node<WorkspaceOp> {
             vec![],
             vec![
                 scalar("tool_count", "Int"),
-                non_empty_list("tool_names", "String"),
+                non_empty_list("tool_names", "NonEmptyStringList"),
             ],
             WorkspaceOp::Deps(DepsOp::LoadToolRegistry),
         ))

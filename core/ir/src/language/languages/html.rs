@@ -57,7 +57,7 @@ pub fn build_html_subdag() -> Node<LanguageOp> {
         "render",
         vec![
             Port::scalar("title", "String"),
-            Port::optional("head", "String"),
+            Port::optional("head", "OptionalString"),
             Port::scalar("body", "String"),
         ],
         vec![Port::scalar("document", "String")],

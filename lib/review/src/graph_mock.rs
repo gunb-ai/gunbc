@@ -164,11 +164,13 @@ pub fn inline_review_mock_spec() -> MockSpec {
             "request_url",
             Value::Str("https://example.com/oidc".into()),
         )
+        .expect("cloud_env request_url should match type")
         .boundary(
             "cloud_env",
             "request_token",
             Value::Str("mock-oidc-token".into()),
         )
+        .expect("cloud_env request_token should match type")
         .boundary("cloud_credential", "credential", mock_credential())
         .expect("cloud_credential should match type")
         // Transport: execute_llm (LLM API call)
@@ -319,11 +321,13 @@ diff --git a/src/main.rs b/src/main.rs
             "request_url",
             Value::Str("https://example.com/oidc".into()),
         )
+        .expect("cloud_env request_url should match type")
         .boundary(
             "cloud_env",
             "request_token",
             Value::Str("mock-oidc-token".into()),
         )
+        .expect("cloud_env request_token should match type")
         .boundary("cloud_credential", "credential", mock_credential())
         .expect("cloud_credential should match type")
         // Transport: execute_diff (git diff command)

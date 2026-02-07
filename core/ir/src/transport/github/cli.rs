@@ -154,16 +154,6 @@ pub fn gh_cli_request(subcommand: &[&str]) -> ShellRequest {
     ShellRequest::new(GH_TOOL.command).args(subcommand.iter().map(|s| s.to_string()))
 }
 
-/// Build a shell request for gh auth status.
-pub fn gh_auth_status_request() -> ShellRequest {
-    gh_cli_request(&["auth", "status"])
-}
-
-/// Build a shell request for gh api (raw API call).
-pub fn gh_api_request(endpoint: &str) -> ShellRequest {
-    gh_cli_request(&["api", endpoint])
-}
-
 // ============================================================================
 // deps.toml Generation
 // ============================================================================

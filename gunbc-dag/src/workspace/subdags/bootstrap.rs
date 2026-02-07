@@ -58,7 +58,7 @@ pub fn build_bootstrap_subdag() -> Node<WorkspaceOp> {
             Node::opaque(
                 "parse_scan_result",
                 vec![port("response", "TransportResponse")],
-                vec![port("crate_count", "Int"), list("crate_names", "String")],
+                vec![port("crate_count", "Int"), list("crate_names", "StringList")],
                 WorkspaceOp::Bootstrap(BootstrapOp::ParseScanResult),
             ),
             &execute_scan,
@@ -71,7 +71,7 @@ pub fn build_bootstrap_subdag() -> Node<WorkspaceOp> {
         .add_node_after(
             Node::opaque(
                 "generate_makefile",
-                vec![list("crate_names", "String")],
+                vec![list("crate_names", "StringList")],
                 vec![port("makefile_content", "String")],
                 WorkspaceOp::Bootstrap(BootstrapOp::GenerateMakefile),
             ),
@@ -115,7 +115,7 @@ pub fn build_bootstrap_subdag() -> Node<WorkspaceOp> {
         .add_node_after(
             Node::opaque(
                 "generate_gitignore",
-                vec![list("crate_names", "String")],
+                vec![list("crate_names", "StringList")],
                 vec![port("gitignore_content", "String")],
                 WorkspaceOp::Bootstrap(BootstrapOp::GenerateGitignore),
             ),

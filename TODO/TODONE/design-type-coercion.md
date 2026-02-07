@@ -352,7 +352,7 @@ use explicit patterns when needed.**
 
 - [x] Replace `CoercionKind` detection with `CoercionResult`-based analysis (2026-02-07)
 - [x] Surface `Err` results as build-time errors with diagnostic messages (2026-02-07)
-- [ ] Deferred: define type-specific coercion strategies as needed
+- [x] Define type-specific coercion strategies for refinements (2026-02-07)
 
 ## 7. Relationship to Existing Code
 

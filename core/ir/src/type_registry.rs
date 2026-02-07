@@ -165,7 +165,8 @@ impl TypeRegistry {
     ///
     /// Returns `None` if the type is not registered.
     pub fn base_type_name(&self, type_id: &TypeId) -> Option<String> {
-        self.get(type_id).and_then(type_lib::base_type_name)
+        self.get(type_id)
+            .and_then(|dag| TypeContract::from_type_dag(dag).base_type)
     }
 
     /// Check if type A is compatible with type B.
@@ -371,6 +372,22 @@ mod tests {
             &TypeId::from("String"),
             &TypeId::from("CustomUrl")
         ));
+    }
+
+    #[test]
+    fn test_coercion_strategy_for_refinement() {
+        let mut registry = TypeRegistry::with_primitives();
+        registry.register("Url", type_lib::url());
+
+        let strategy = registry.coercion_strategy(&TypeId::from("String"), &TypeId::from("Url"));
+        assert_eq!(
+            strategy,
+            Some(CoercionStrategy::ValidateTo(TypeId::from("Url")))
+        );
+
+        // Safe upcast returns no strategy.
+        let strategy = registry.coercion_strategy(&TypeId::from("Url"), &TypeId::from("String"));
+        assert!(strategy.is_none());
     }
 
     #[test]

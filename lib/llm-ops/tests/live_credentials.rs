@@ -1,7 +1,9 @@
 use gunbc_exec::{execute_with_mode_and_inputs, BoundaryMocks, ExecutionMode};
 use gunbc_ir::Value;
+use gunbc_ir::transport::cloud::CloudProviderKind;
+use gunbc_lib_cloud_ops::detect_cloud_env_requirements;
 use gunbc_lib_llm_ops::graph::build_chat_completion_graph;
-use gunbc_test::{guard_test, FermiCost, TestClass};
+use gunbc_test::{guard_test_with_env, FermiCost, TestClass};
 
 fn input_mocks(provider: &str, model: &str) -> BoundaryMocks {
     let mut mocks = BoundaryMocks::new();
@@ -19,13 +21,18 @@ fn input_mocks(provider: &str, model: &str) -> BoundaryMocks {
     mocks
 }
 
-fn run_live_chat(name: &str, provider: &str, model: &str, secret: &str) {
-    if !guard_test(
+fn run_live_chat(name: &str, provider: &str, model: &str) {
+    let env_req = detect_cloud_env_requirements();
+    if env_req.provider != CloudProviderKind::Gcp {
+        return;
+    }
+    if !guard_test_with_env(
         name,
         TestClass::Integration,
         FermiCost::M,
         &["http"],
-        &[secret],
+        env_req.required,
+        env_req.required_any_of,
     ) {
         return;
     }
@@ -64,7 +71,6 @@ fn test_openai_live_chat_completion() {
         "test_openai_live_chat_completion",
         "openai",
         "gpt-4o",
-        "OPENAI_API_KEY",
     );
 }
 
@@ -74,6 +80,5 @@ fn test_anthropic_live_chat_completion() {
         "test_anthropic_live_chat_completion",
         "anthropic",
         "claude-sonnet-4-20250514",
-        "ANTHROPIC_API_KEY",
     );
 }

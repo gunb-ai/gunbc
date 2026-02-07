@@ -66,7 +66,7 @@ pub fn build_makegen_graph() -> Result<Dag<MakegenGraphOp>, BuilderError> {
         vec![],
         vec![
             scalar("tool_count", "Int"),
-            non_empty_list("tool_names", "String"),
+            non_empty_list("tool_names", "NonEmptyStringList"),
             scalar("registry", "Json"),
         ],
         MakegenGraphOp::Domain(MakegenOp::LoadRegistry),
