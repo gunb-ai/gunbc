@@ -24,7 +24,7 @@ pub struct DagSpecMeta {
     pub output_path: &'static str,
     pub module_name: &'static str,
     /// Tool name for CLI contract test generation. When set, entrypoints
-    /// are looked up from `all_tools()` and a CLI contract test is emitted.
+    /// are looked up from `derive_tool_defs()` and a CLI contract test is emitted.
     pub tool_name: Option<&'static str>,
 }
 
@@ -153,7 +153,7 @@ pub fn generate_target<T: Executable + Clone>(
 
     // Look up CLI entrypoints for contract test generation.
     if let Some(tool_name) = &config.tool_name {
-        let tools = gunbc_codegen::all_tools();
+        let tools = gunbc_codegen::derive_tool_defs();
         if let Some(tool) = tools.iter().find(|t| t.meta.tool_name == *tool_name) {
             if !tool.entrypoints.is_empty() {
                 generator = generator.with_cli_entrypoints(

@@ -192,6 +192,7 @@ dependencies = [
  "gunbc-infra",
  "gunbc-ir",
  "gunbc-test",
+ "gunbc-tool-registry",
  "serde_json",
  "toml_edit",
 ]
@@ -200,6 +201,7 @@ dependencies = [
 name = "gunbc-dag"
 version = "0.1.0"
 dependencies = [
+ "cargo_metadata",
  "glob",
  "gunbc-cli",
  "gunbc-clippy",
@@ -221,6 +223,7 @@ dependencies = [
  "gunbc-tool-registry",
  "gunbc-tool-registry-macros",
  "serde_json",
+ "toml_edit",
 ]
 
 [[package]]

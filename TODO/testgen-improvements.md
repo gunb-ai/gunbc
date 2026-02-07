@@ -2,7 +2,7 @@
 
 **Status**: In Progress
 **Date**: 2026-02-02
-**Updated**: 2026-02-06
+**Updated**: 2026-02-07
 
 ## Problem Statement
 
@@ -452,8 +452,8 @@ and consumers). The Phase 8 cleanup is complete.
 
 **TODO 9.2: Migrate targets to DagSpec**
 - [x] Convert `#[testgen_target]` registrations to DagSpec instances
-- [ ] Each tool crate exports a `dag_specs()` function
-- [ ] Testgen, Makefile gen, and CI gen all consume DagSpec (testgen done; makegen/ci pending)
+- [x] Each tool crate exports a `dag_specs()` function
+- [x] Testgen, Makefile gen, and CI gen all consume DagSpec
 
 **Design (2026-02-07): DagSpec shape + ownership**
 

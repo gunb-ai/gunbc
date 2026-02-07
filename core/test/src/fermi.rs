@@ -83,32 +83,34 @@ pub fn max_cost_from_env() -> FermiCost {
         .unwrap_or(FermiCost::S)
 }
 
+fn env_truthy(name: &str) -> bool {
+    env::var(name)
+        .map(|v| matches!(v.as_str(), "1" | "true" | "TRUE"))
+        .unwrap_or(false)
+}
+
 /// Guard a test based on its metadata.
 ///
 /// Returns true if the test should run, false if it should be skipped.
 pub fn guard(meta: TestMeta<'_>) -> bool {
     let max_cost = max_cost_from_env();
     if meta.cost > max_cost {
-        eprintln!(
+        panic!(
             "skipping {}: cost {} exceeds max {} (set GUNBC_TEST_MAX_COST=...)",
             meta.name,
             meta.cost.as_str(),
             max_cost.as_str()
         );
-        return false;
     }
 
     if !meta.secrets.is_empty() {
-        let live_ok = env::var("RUN_LIVE_INTEGRATION")
-            .map(|v| matches!(v.as_str(), "1" | "true" | "TRUE"))
-            .unwrap_or(false);
+        let live_ok = env_truthy("RUN_LIVE_INTEGRATION");
         if !live_ok {
-            eprintln!(
+            panic!(
                 "skipping {}: requires secrets [{}] (set RUN_LIVE_INTEGRATION=1)",
                 meta.name,
                 meta.secrets.join(", ")
             );
-            return false;
         }
 
         let missing: Vec<&str> = meta
@@ -118,12 +120,11 @@ pub fn guard(meta: TestMeta<'_>) -> bool {
             .filter(|k| env::var(k).is_err())
             .collect();
         if !missing.is_empty() {
-            eprintln!(
+            panic!(
                 "skipping {}: missing secrets [{}]",
                 meta.name,
                 missing.join(", ")
             );
-            return false;
         }
     }
 

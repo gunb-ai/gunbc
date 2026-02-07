@@ -4,7 +4,6 @@
 //! - `commit` (default): Generate CLIs, build binaries, create bin directory
 //! - `rollback`: Remove all generated artifacts
 //! - `codegen`: Just generate CLIs (partial commit)
-//! - `daggen`: Generate graph.rs from declarative DAG definitions
 //! - `cigen`: Generate CI workflow YAML (GitHub Actions and GitLab CI)
 //!
 //! Usage:
@@ -12,24 +11,19 @@
 //!   gunbc-codegen commit             # full build transaction
 //!   gunbc-codegen rollback           # undo all generated files
 //!   gunbc-codegen codegen            # just generate CLIs
-//!   gunbc-codegen daggen             # generate graph.rs files
 //!   gunbc-codegen cigen              # generate CI YAML files
 //!   gunbc-codegen codegen --dry-run  # preview codegen
 //!
 //! # Architecture Note
 //!
-//! This tool is the bootstrapper - it generates CLIs for other tools. As such,
-//! it cannot use the transport pattern (which would create a circular dependency).
-//! It uses direct filesystem and process operations by design.
-//!
-//! Future improvement: Express codegen as a DAG executed by a minimal bootstrap
-//! executor that doesn't depend on the generated tools.
+//! This binary lives in gunbc-dag (not gunbc-codegen) so that inventory
+//! registrations from all tool crates are linked in. The codegen library
+//! remains in core/codegen as a leaf crate.
 
 #![deny(dead_code)]
 use cargo_metadata::MetadataCommand;
 use gunbc_codegen::{
-    all_cleanable_outputs, all_tools, generate_cli_with_import, generate_graph_rs,
-    FileWriter,
+    all_cleanable_outputs, derive_tool_defs, generate_cli_with_import, FileWriter,
 };
 use gunbc_ir::resource::{
     check_manifest_freshness, codegen_resource_def, update_resource_manifest, FreshnessOptions,
@@ -39,7 +33,7 @@ use gunbc_ir::resource::{
 use gunbc_ir::transport::ci::{
     yaml_block, CacheConfig, CiRenderer, GitHubActionsProvider, GitLabCiProvider, RenderConfig,
 };
-use gunbc_ir::{CODEGEN_BIN_DIR, CODEGEN_LIB_DIR};
+use gunbc_ir::CODEGEN_BIN_DIR;
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fs;
@@ -48,7 +42,27 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use toml_edit::{value, ArrayOfTables, DocumentMut, Item, Table};
 
+// Force-link crates that register tool targets via inventory.
+// Without these references, the linker may dead-strip the inventory symbols
+// and derive_tool_defs() would return an empty list.
+use gunbc_clippy::clippy_tool;
+use gunbc_deps::deps_tool;
+use gunbc_gist::{gist_diff_tool, gist_recent_tool, gist_snapshot_tool};
+use gunbc_lib_review::review_tool;
+use gunbc_dag::bootstrap::bootstrap_tool;
+use gunbc_dag::makegen::makegen_tool;
+
 fn main() {
+    // Touch the functions to prevent the linker from stripping them.
+    let _: fn() = clippy_tool;
+    let _: fn() = gist_snapshot_tool;
+    let _: fn() = gist_diff_tool;
+    let _: fn() = gist_recent_tool;
+    let _: fn() = deps_tool;
+    let _: fn() = review_tool;
+    let _: fn() = makegen_tool;
+    let _: fn() = bootstrap_tool;
+
     let args: Vec<String> = env::args().collect();
 
     // Parse command (first non-flag argument)
@@ -70,7 +84,6 @@ fn main() {
         "commit" => cmd_commit(dry_run),
         "rollback" => cmd_rollback(dry_run),
         "codegen" => cmd_codegen(dry_run),
-        "daggen" => cmd_daggen(dry_run),
         "cigen" => cmd_cigen(dry_run),
         _ => {
             eprintln!("Unknown command: {}", command);
@@ -149,7 +162,7 @@ fn run_cargo_build() -> io::Result<()> {
 }
 
 /// Setup bin directory - symlink on Unix, copy on Windows, with fallback
-#[allow(clippy::disallowed_methods)] // Codegen main.rs is the bootstrapper, allowed to use fs ops
+#[allow(clippy::disallowed_methods)]
 fn setup_bin_directory() -> io::Result<()> {
     let bin_path = Path::new("bin");
     let target_path = Path::new("target/release");
@@ -187,7 +200,7 @@ fn setup_bin_directory() -> io::Result<()> {
 }
 
 /// Rollback: remove all generated artifacts
-#[allow(clippy::disallowed_methods)] // Codegen main.rs is the bootstrapper, allowed to use fs ops
+#[allow(clippy::disallowed_methods)]
 fn cmd_rollback(dry_run: bool) {
     println!("gunbc-codegen: rollback transaction");
     println!("  mode: {}", if dry_run { "dry-run" } else { "real" });
@@ -250,61 +263,9 @@ fn cmd_codegen(dry_run: bool) {
     update_manifest_after_codegen(dry_run);
 }
 
-/// Generate graph.rs files from declarative DAG definitions.
-fn cmd_daggen(dry_run: bool) {
-    println!("gunbc-codegen: daggen");
-    println!("  mode: {}", if dry_run { "dry-run" } else { "real" });
-    println!();
-
-    let writer = FileWriter::new(dry_run);
-    let tools = all_tools();
-    let output_dir = CODEGEN_LIB_DIR;
-
-    let mut generated = 0;
-    let mut skipped = 0;
-
-    for tool in &tools {
-        if let Some(code) = generate_graph_rs(tool) {
-            let tool_dir = Path::new(output_dir).join(&tool.meta.tool_name);
-            let graph_path = tool_dir.join("graph.rs");
-
-            match writer.write_if_changed(&graph_path, &code) {
-                Ok(result) => {
-                    let status = if dry_run {
-                        "dry-run"
-                    } else if result.changed {
-                        "written"
-                    } else {
-                        "unchanged"
-                    };
-                    println!(
-                        "  [{}] {} ({})",
-                        tool.meta.tool_name,
-                        graph_path.display(),
-                        status
-                    );
-                    generated += 1;
-                }
-                Err(e) => {
-                    eprintln!("  [{}] ERROR: {}", tool.meta.tool_name, e);
-                }
-            }
-        } else {
-            println!("  [{}] skipped (no declarative DAG)", tool.meta.tool_name);
-            skipped += 1;
-        }
-    }
-
-    println!();
-    println!("Generated: {}, Skipped: {}", generated, skipped);
-}
-
 /// Generate CI workflow YAML files.
 ///
 /// Generates both GitHub Actions and GitLab CI configurations.
-/// The CI tool (gunbc-ci) has a handwritten main.rs that handles
-/// the resource acquisition pattern internally - it runs codegen
-/// if generated files are missing.
 fn cmd_cigen(dry_run: bool) {
     println!("gunbc-codegen: cigen");
     println!("  mode: {}", if dry_run { "dry-run" } else { "real" });
@@ -316,7 +277,6 @@ fn cmd_cigen(dry_run: bool) {
     let gitlab_provider = GitLabCiProvider::default();
 
     // Generate CI YAML for gunbc-ci
-    // gunbc-ci is special - it has a handwritten main.rs that handles codegen internally
     let codegen = gunbc_ir::CargoInvocation::standalone("codegen");
     let tool = gunbc_ir::CargoInvocation::composed("ci", "dag");
     let config = RenderConfig::new("ci", tool)
@@ -362,16 +322,12 @@ fn cmd_cigen(dry_run: bool) {
 }
 
 /// Generate GitHub Actions YAML template.
-///
-/// Renders checkout, cache, and steps from `RenderConfig` model types
-/// rather than hardcoding them in the template.
 fn generate_github_actions_template(config: &RenderConfig) -> String {
     let mut yaml = String::new();
 
     yaml.push_str(&config.header("#"));
     yaml.push_str(&format!("\n\nname: {}\n\n", config.workflow_name));
 
-    // Triggers — derived from git config
     let branches = config.git.ci_branches();
     yaml.push_str("on:\n  push:\n");
     yaml_block(&mut yaml, "    branches:", &branches, |b| {
@@ -382,18 +338,15 @@ fn generate_github_actions_template(config: &RenderConfig) -> String {
         format!("      - {}", b)
     });
 
-    // Environment — derived from cargo env + manual overrides
     yaml_block(&mut yaml, "env:", &config.all_env(), |(k, v)| {
         format!("  {}: {}", k, v)
     });
 
-    // Job
     yaml.push_str(&format!(
         "jobs:\n  {}:\n    runs-on: {}\n    steps:\n",
         config.workflow_name, config.runner.id,
     ));
 
-    // Checkout (from config model)
     if let Some(checkout) = &config.checkout {
         yaml.push_str("      - name: Checkout\n        uses: actions/checkout@v4\n");
         if let Some(depth) = checkout.fetch_depth {
@@ -405,10 +358,8 @@ fn generate_github_actions_template(config: &RenderConfig) -> String {
         yaml.push('\n');
     }
 
-    // Rust toolchain
     yaml.push_str("      - name: Setup Rust\n        uses: dtolnay/rust-toolchain@stable\n\n");
 
-    // Cache (from config model)
     if let Some(cache) = &config.cache {
         yaml.push_str("      - name: Cache Cargo\n        uses: actions/cache@v4\n        with:\n");
         yaml_block(&mut yaml, "          path: |", &cache.paths, |p| {
@@ -423,7 +374,6 @@ fn generate_github_actions_template(config: &RenderConfig) -> String {
         );
     }
 
-    // Run CI Pipeline
     yaml.push_str(&format!(
         "      - name: Run CI Pipeline\n        run: {} --release\n",
         config.tool.command(),
@@ -439,19 +389,16 @@ fn generate_gitlab_ci_template(config: &RenderConfig) -> String {
     yaml.push_str(&config.header("#"));
     yaml.push_str("\n\nimage: rust:latest\n\n");
 
-    // Variables — derived from cargo env + manual overrides
     yaml_block(&mut yaml, "variables:", &config.all_env(), |(k, v)| {
         format!("  {}: \"{}\"", k, v)
     });
 
     yaml.push_str("stages:\n  - ci\n\n");
 
-    // Cache — GitLab uses CI_COMMIT_REF_SLUG and relative paths
     yaml.push_str(
         "cache:\n  key: cargo-${CI_COMMIT_REF_SLUG}\n  paths:\n    - .cargo/\n    - target/\n\n",
     );
 
-    // CI job
     yaml.push_str(&format!(
         "{}:\n  stage: ci\n  script:\n    - {} --release\n",
         config.workflow_name,
@@ -462,8 +409,6 @@ fn generate_gitlab_ci_template(config: &RenderConfig) -> String {
 }
 
 /// Resolve workspace package names to their directory paths using cargo metadata.
-///
-/// Returns `(workspace_root, package_name → manifest_dir)`.
 fn resolve_workspace_packages() -> Option<(PathBuf, HashMap<String, PathBuf>)> {
     let metadata = MetadataCommand::new().no_deps().exec().ok()?;
     let workspace_root = PathBuf::from(metadata.workspace_root.as_std_path());
@@ -535,10 +480,10 @@ fn ensure_bin_entry(doc: &mut DocumentMut, bin_name: &str, bin_path: &str) -> Re
 }
 
 /// Generate CLI main.rs files for all tools and register binary targets.
-#[allow(clippy::disallowed_methods)] // Codegen writes files directly (bootstrap I/O boundary)
+#[allow(clippy::disallowed_methods)]
 fn codegen_clis(dry_run: bool) -> bool {
     let writer = FileWriter::new(dry_run);
-    let tools = all_tools();
+    let tools = derive_tool_defs();
     let output_dir = CODEGEN_BIN_DIR;
 
     struct BinRegistration {
@@ -662,15 +607,7 @@ fn codegen_clis(dry_run: bool) -> bool {
         return false;
     }
 
-    // Step 2: Ensure [[bin]] entries exist in target Cargo.toml files.
-    //
-    // Rule: if codegen generates a binary entrypoint (main.rs), it also
-    // ensures the corresponding [[bin]] entry exists in the target crate's
-    // Cargo.toml. The path points from the crate directory to the generated
-    // file under target/codegen/bin/.
-    //
-    // Tools with handwritten [[bin]] entries (e.g., in gunbc-dag) are
-    // detected and skipped.
+    // Ensure [[bin]] entries exist in target Cargo.toml files.
     println!();
     println!("  Registering binary targets...");
 
@@ -804,7 +741,7 @@ fn should_skip_codegen() -> bool {
 fn codegen_outputs_exist() -> bool {
     let mut paths: Vec<PathBuf> = Vec::new();
 
-    for tool in all_tools() {
+    for tool in derive_tool_defs() {
         if tool.invocation.is_none() {
             continue;
         }
@@ -823,8 +760,6 @@ fn codegen_outputs_exist() -> bool {
 }
 
 /// Update the resource manifest after successful codegen.
-///
-/// Called at the end of successful codegen operations (commit, codegen).
 fn update_manifest_after_codegen(dry_run: bool) {
     if dry_run {
         println!("\n  (dry-run: would update resource manifest)");
@@ -847,8 +782,6 @@ fn update_manifest_after_codegen(dry_run: bool) {
             eprintln!("  ERROR: Could not write manifest: {}", e);
             eprintln!("  Codegen outputs exist but freshness cannot be verified.");
             eprintln!("  CI --mode=verify will fail until manifest is written.");
-            // Don't exit(1) - codegen outputs are valid, just untracked.
-            // Next run should succeed in writing the manifest.
         }
         Err(ManifestUpdateError::Acquire(e)) => {
             eprintln!("  ERROR: Could not update manifest: {}", e);
@@ -868,7 +801,6 @@ fn print_help() {
     println!("    commit       Generate CLIs, build binaries, create symlink (default)");
     println!("    rollback     Remove all generated artifacts (clean)");
     println!("    codegen      Just generate CLIs (partial commit)");
-    println!("    daggen       Generate graph.rs from declarative DAG definitions");
     println!("    cigen        Generate CI workflow YAML (GitHub Actions & GitLab CI)");
     println!();
     println!("OPTIONS:");
@@ -879,6 +811,5 @@ fn print_help() {
     println!("    gunbc-codegen                # full build");
     println!("    gunbc-codegen rollback       # clean everything");
     println!("    gunbc-codegen codegen -n     # preview CLI generation");
-    println!("    gunbc-codegen daggen         # generate graph.rs for tools with DAG defs");
     println!("    gunbc-codegen cigen          # generate CI YAML files");
 }

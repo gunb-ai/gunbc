@@ -21,6 +21,7 @@ use syn::{parse_macro_input, AttributeArgs, ItemFn, Lit, Meta, NestedMeta};
 /// - `entrypoints = "..."` — JSON array of entrypoint definitions
 /// - `package = "..."` — Cargo package name for invocation
 /// - `binary = "..."` — Binary name (defaults to tool name)
+/// - `has_invocation` — Tool has a runnable binary (generates CargoInvocation)
 /// - `returns_result` — Graph builder returns `Result<Dag, BuilderError>`
 /// - `enable_step_mode` — Generate step subcommand for CI
 /// - `skip` — Skip registration (emit function only, no inventory submit)
@@ -57,6 +58,7 @@ pub fn tool_target(args: TokenStream, input: TokenStream) -> TokenStream {
     let mut entrypoints: Option<syn::LitStr> = None;
     let mut package: Option<syn::LitStr> = None;
     let mut binary: Option<syn::LitStr> = None;
+    let mut has_invocation = false;
     let mut returns_result = false;
     let mut enable_step_mode = false;
     let mut skip = false;
@@ -193,6 +195,7 @@ pub fn tool_target(args: TokenStream, input: TokenStream) -> TokenStream {
             NestedMeta::Meta(Meta::Path(path)) => {
                 if let Some(ident) = path.get_ident() {
                     match ident.to_string().as_str() {
+                        "has_invocation" => has_invocation = true,
                         "returns_result" => returns_result = true,
                         "enable_step_mode" => enable_step_mode = true,
                         "skip" => skip = true,
@@ -225,6 +228,7 @@ pub fn tool_target(args: TokenStream, input: TokenStream) -> TokenStream {
             || entrypoints.is_some()
             || package.is_some()
             || binary.is_some()
+            || has_invocation
             || returns_result
             || enable_step_mode
         {
@@ -338,6 +342,7 @@ pub fn tool_target(args: TokenStream, input: TokenStream) -> TokenStream {
                 entrypoints_json: #entrypoints_tokens,
                 package: #package_tokens,
                 binary: #binary_tokens,
+                has_invocation: #has_invocation,
             }
         }
     };

@@ -32,6 +32,8 @@ gunbc-lib-review = { path = "../lib/review" }
 gunbc-cli = { path = "../core/cli" }
 
 serde_json = { workspace = true }
+cargo_metadata = "0.18"
+toml_edit = "0.22"
 
 [dev-dependencies]
 gunbc-test = { path = "../core/test" }
@@ -65,6 +67,10 @@ path = "src/bin/pragma.rs"
 [[bin]]
 name = "gunbc-codegen-dag"
 path = "src/bin/codegen.rs"
+
+[[bin]]
+name = "gunbc-codegen"
+path = "src/bin/codegen_cli.rs"
 
 [[bin]]
 name = "gunbc-docgen"

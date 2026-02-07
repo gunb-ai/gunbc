@@ -1,6 +1,6 @@
 //! Pure operations for the codegen DAG.
 
-use gunbc_codegen::registry::all_tools;
+use gunbc_codegen::registry::derive_tool_defs;
 use gunbc_exec::{
     optional_response_strict, propagate_skipped, require_bool, require_response, ExecError,
     Executable, OutputMap, TransportResponseExt,
@@ -275,7 +275,7 @@ fn execute_prepare_stamp_write(
 }
 
 fn expected_codegen_paths() -> Vec<String> {
-    all_tools()
+    derive_tool_defs()
         .into_iter()
         .filter(|tool| tool.invocation.is_some())
         .map(|tool| format!("{}/{}/main.rs", CODEGEN_BIN_DIR, tool.meta.tool_name))

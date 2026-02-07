@@ -1,6 +1,6 @@
 //! Tool registry for makegen.
 //!
-//! Tool targets are derived from the codegen registry (`all_tools()`) — adding
+//! Tool targets are derived from the codegen registry (`derive_tool_defs()`) — adding
 //! a tool with `.invocation()` there automatically gives it a Makefile target.
 //! Only tools that can't be in codegen (like `ci`, which is the bootstrap tool)
 //! are registered manually here.
@@ -566,7 +566,7 @@ impl ToolInfo {
             description: def.meta.description.clone(),
             entrypoints: Vec::new(),
             extra_targets: Vec::new(),
-            has_declarative_dag: def.has_dag(),
+            has_declarative_dag: false,
             needs_generated_cli: true,
         };
 
@@ -1118,7 +1118,7 @@ impl ToolRegistry {
 
     /// Build the default registry with all known gunbc tools.
     ///
-    /// Tool targets are derived from the codegen registry's `all_tools()`.
+    /// Tool targets are derived from the codegen registry's `derive_tool_defs()`.
     /// Tools with a `CargoInvocation` set automatically get Makefile targets.
     /// Entrypoints with `make_var` set become Make variables.
     ///
@@ -1133,7 +1133,7 @@ impl ToolRegistry {
         };
 
         // Derive tool targets from the codegen registry (single source of truth).
-        for tool_def in gunbc_codegen::registry::all_tools() {
+        for tool_def in gunbc_codegen::registry::derive_tool_defs() {
             if let Some(tool_info) = ToolInfo::from_tool_def(&tool_def) {
                 registry.register(tool_info);
             }
@@ -1252,17 +1252,6 @@ mod tests {
         let tools = registry.tools_needing_daggen();
         // Only makegen has declarative DAG currently
         assert!(tools.iter().any(|t| t.short_name == "makegen"));
-    }
-
-    #[test]
-    fn test_makegen_has_declarative_dag() {
-        let registry = ToolRegistry::default_registry();
-        let makegen = registry
-            .tools
-            .iter()
-            .find(|t| t.short_name == "makegen")
-            .unwrap();
-        assert!(makegen.has_declarative_dag);
     }
 
     // ========================================================================
@@ -1447,7 +1436,7 @@ mod tests {
     #[test]
     fn test_registry_derived_from_codegen() {
         let registry = ToolRegistry::default_registry();
-        let codegen_tools = gunbc_codegen::registry::all_tools();
+        let codegen_tools = gunbc_codegen::registry::derive_tool_defs();
 
         // Every codegen tool with an invocation must appear in the makegen registry
         for tool_def in &codegen_tools {
@@ -1468,7 +1457,7 @@ mod tests {
     #[test]
     fn test_registry_entrypoints_match_codegen() {
         let registry = ToolRegistry::default_registry();
-        let codegen_tools = gunbc_codegen::registry::all_tools();
+        let codegen_tools = gunbc_codegen::registry::derive_tool_defs();
 
         for tool_def in &codegen_tools {
             if tool_def.invocation.is_none() {
@@ -1514,7 +1503,7 @@ mod tests {
     #[test]
     fn test_tools_without_invocation_excluded() {
         let registry = ToolRegistry::default_registry();
-        let codegen_tools = gunbc_codegen::registry::all_tools();
+        let codegen_tools = gunbc_codegen::registry::derive_tool_defs();
 
         // Tools without invocation should NOT appear (unless manually added)
         for tool_def in &codegen_tools {

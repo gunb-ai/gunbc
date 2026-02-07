@@ -1,7 +1,7 @@
 use glob::glob;
-use gunbc_codegen::all_tools;
+use gunbc_codegen::derive_tool_defs;
 use gunbc_tool_registry::iter_tool_targets;
-use std::collections::HashMap;
+use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 
@@ -16,8 +16,9 @@ use gunbc_lib_review::review_tool;
 use gunbc_dag::bootstrap::bootstrap_tool;
 use gunbc_dag::makegen::makegen_tool;
 
+/// Verify that derive_tool_defs() returns all expected tools from inventory.
 #[test]
-fn tool_registrations_match_all_tools() {
+fn derive_tool_defs_matches_inventory() {
     // Touch the functions to prevent the linker from stripping them.
     let _: fn() = clippy_tool;
     let _: fn() = gist_snapshot_tool;
@@ -28,82 +29,38 @@ fn tool_registrations_match_all_tools() {
     let _: fn() = makegen_tool;
     let _: fn() = bootstrap_tool;
 
-    let all = all_tools();
-    let regs: HashMap<&str, _> = iter_tool_targets().map(|r| (r.tool_name, r)).collect();
+    let tools = derive_tool_defs();
+    let tool_names: HashSet<&str> = tools.iter().map(|t| t.meta.tool_name.as_str()).collect();
+    let reg_names: HashSet<&str> = iter_tool_targets().map(|r| r.tool_name).collect();
 
-    // Every all_tools entry has a matching registration
-    for tool in &all {
-        let reg = regs.get(tool.meta.tool_name.as_str()).unwrap_or_else(|| {
-            panic!(
-                "tool '{}' in all_tools() has no #[tool_target] annotation",
-                tool.meta.tool_name
-            )
-        });
-        assert_eq!(
-            reg.crate_name, tool.meta.crate_name,
-            "crate_name mismatch for '{}'",
-            tool.meta.tool_name
-        );
-        assert_eq!(
-            reg.graph_builder_call, tool.meta.graph_builder_call,
-            "graph_builder_call mismatch for '{}'",
-            tool.meta.tool_name
-        );
-        assert_eq!(
-            reg.returns_result, tool.meta.returns_result,
-            "returns_result mismatch for '{}'",
-            tool.meta.tool_name
-        );
-        // mock_spec_call: each ToolDef sets it inline via .mock_spec_call().
-        // The #[tool_target] annotation carries the same value as validation.
-        assert_eq!(
-            reg.mock_spec_call.map(|s| s.to_string()),
-            tool.meta.mock_spec_call,
-            "mock_spec_call mismatch for '{}' — update .mock_spec_call() in registry.rs",
-            tool.meta.tool_name
-        );
+    // derive_tool_defs and inventory must agree
+    assert_eq!(
+        tool_names, reg_names,
+        "derive_tool_defs() and iter_tool_targets() should contain the same tool names"
+    );
 
-        // Validate entrypoints match between annotation and registry.
-        // Both use the same JSON format — parse annotation JSON and compare port names.
-        let reg_entrypoints = gunbc_codegen::CliEntrypoint::from_json(reg.entrypoints_json);
-        assert_eq!(
-            reg_entrypoints.len(),
-            tool.entrypoints.len(),
-            "entrypoint count mismatch for '{}': annotation has {}, registry has {}",
-            tool.meta.tool_name, reg_entrypoints.len(), tool.entrypoints.len()
+    // Verify expected count (8 tools)
+    let expected = [
+        "bootstrap", "clippy", "deps", "gist", "gist-diff", "gist-recent",
+        "makegen", "review",
+    ];
+    for name in &expected {
+        assert!(
+            tool_names.contains(name),
+            "expected tool '{}' not found in derive_tool_defs()",
+            name
         );
-        for (i, (reg_ep, tool_ep)) in reg_entrypoints.iter().zip(tool.entrypoints.iter()).enumerate() {
-            assert_eq!(
-                reg_ep.port_name, tool_ep.port_name,
-                "entrypoint[{}] port_name mismatch for '{}'",
-                i, tool.meta.tool_name
-            );
-            assert_eq!(
-                reg_ep.type_id, tool_ep.type_id,
-                "entrypoint[{}] type_id mismatch for '{}'",
-                i, tool.meta.tool_name
-            );
-            assert_eq!(
-                reg_ep.short_flag, tool_ep.short_flag,
-                "entrypoint[{}] short_flag mismatch for '{}'",
-                i, tool.meta.tool_name
-            );
-            assert_eq!(
-                reg_ep.default_value, tool_ep.default_value,
-                "entrypoint[{}] default_value mismatch for '{}'",
-                i, tool.meta.tool_name
-            );
-        }
     }
 
-    // Every registration has a matching all_tools entry
-    let tool_names: Vec<&str> = all.iter().map(|t| t.meta.tool_name.as_str()).collect();
-    for reg in iter_tool_targets() {
-        assert!(
-            tool_names.contains(&reg.tool_name),
-            "tool '{}' has #[tool_target] but is missing from all_tools()",
-            reg.tool_name
-        );
+    // Verify tools with invocations have package info
+    for tool in &tools {
+        if let Some(inv) = &tool.invocation {
+            assert!(
+                !inv.binary.is_empty(),
+                "tool '{}' has empty binary in invocation",
+                tool.meta.tool_name
+            );
+        }
     }
 }
 
@@ -118,8 +75,6 @@ fn tool_targets_have_testgen_coverage() {
         .expect("workspace root");
 
     // Collect tool_target builder names and their source locations.
-    // We scan all .rs files for #[...tool_target(... builder = "NAME" ...)]
-    // and extract the builder function name.
     let tool_builders = collect_tool_target_builders(root);
     assert!(
         !tool_builders.is_empty(),
@@ -127,8 +82,6 @@ fn tool_targets_have_testgen_coverage() {
     );
 
     // Collect testgen_target builder calls from graph_mock.rs files.
-    // Each testgen_target has a builder = "crate::some_fn(...)" — we extract
-    // the function name from that expression.
     let testgen_builders = collect_testgen_builder_functions(root);
     assert!(
         !testgen_builders.is_empty(),
@@ -232,8 +185,6 @@ fn collect_testgen_builder_functions(root: &Path) -> Vec<(String, String)> {
             }
             if in_testgen_target {
                 if let Some(builder_call) = extract_attr_value(trimmed, "builder") {
-                    // builder_call is like "crate::build_gist_graph(...).unwrap()"
-                    // Extract the function name (last path segment before '(')
                     let fn_name = extract_fn_name_from_call(&builder_call);
                     results.push((fn_name, crate_dir.clone()));
                 }
@@ -248,16 +199,13 @@ fn collect_testgen_builder_functions(root: &Path) -> Vec<(String, String)> {
 }
 
 /// Extract a string value from an attribute key-value pair.
-/// Handles both `key = "value"` and `key = r#"value"#` syntax.
 fn extract_attr_value(line: &str, key: &str) -> Option<String> {
-    // Try regular string: key = "value"
     let needle = format!("{} = \"", key);
     if let Some(start) = line.find(&needle) {
         let after = &line[start + needle.len()..];
         let end = after.find('"')?;
         return Some(after[..end].to_string());
     }
-    // Try raw string: key = r#"value"#
     let raw_needle = format!("{} = r#\"", key);
     if let Some(start) = line.find(&raw_needle) {
         let after = &line[start + raw_needle.len()..];
@@ -268,13 +216,8 @@ fn extract_attr_value(line: &str, key: &str) -> Option<String> {
 }
 
 /// Extract the function name from a builder call expression.
-/// e.g. "crate::build_gist_graph(crate::GistMode::Snapshot, ...)" → "build_gist_graph"
-/// e.g. "build_deps_graph" → "build_deps_graph"
-/// e.g. "crate::build_deps_graph().unwrap()" → "build_deps_graph"
 fn extract_fn_name_from_call(call: &str) -> String {
-    // Strip everything from first '(' onward (removes args)
     let without_args = call.split('(').next().unwrap_or(call);
-    // Strip crate:: or module:: prefixes (take last segment)
     without_args
         .rsplit("::")
         .next()
@@ -283,11 +226,8 @@ fn extract_fn_name_from_call(call: &str) -> String {
 }
 
 /// Derive the crate directory (relative to workspace root) from a file path.
-/// e.g. /root/lib/tools/gist/src/lib.rs → "lib/tools/gist"
-/// e.g. /root/gunbc-dag/src/makegen/mod.rs → "gunbc-dag"
 fn crate_dir_from_path(root: &Path, file: &Path) -> String {
     let relative = file.strip_prefix(root).unwrap_or(file);
-    // Walk up from the file to find the directory containing Cargo.toml
     let mut dir = relative.parent().unwrap_or(relative);
     loop {
         if root.join(dir).join("Cargo.toml").exists() {

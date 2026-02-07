@@ -66,6 +66,9 @@ pub struct ToolRegistration {
     pub package: Option<&'static str>,
     /// Binary name (e.g., "gist-diff"). When None, defaults to tool_name.
     pub binary: Option<&'static str>,
+    /// Whether this tool has a runnable binary (generates a CargoInvocation).
+    /// When false, the tool is library-only or a sub-DAG component.
+    pub has_invocation: bool,
 }
 
 impl ToolRegistration {

@@ -33,6 +33,7 @@ pub use render::{render_makefile, render_makefile_with_config};
     package = "dag",
     binary = "makegen",
     entrypoints = r#"[{"port_name":"path","type_id":"String","short":"o","default":"Makefile","help":"Output Makefile path","make_var":"OUTPUT"}]"#,
+    has_invocation,
     returns_result
 )]
 pub fn makegen_tool() {}

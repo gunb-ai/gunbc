@@ -206,6 +206,8 @@ pub fn infer_signature<T>(dag: &Dag<T>) -> WorkflowSignature {
 
     let mut inputs = Vec::new();
     let mut outputs = Vec::new();
+    let mut seen_inputs: HashSet<(String, String, Cardinality)> = HashSet::new();
+    let mut seen_outputs: HashSet<(String, String, Cardinality)> = HashSet::new();
 
     // Collect entrypoint ports as inputs
     // entrypoint_ports is Vec<(NodeId, PortName, TypeId)>
@@ -218,11 +220,14 @@ pub fn infer_signature<T>(dag: &Dag<T>) -> WorkflowSignature {
 
         if let Some(node) = dag.get_node(node_id) {
             if let Some(port) = node.inputs.iter().find(|p| &p.name == port_name) {
-                inputs.push(SignaturePort::new(
-                    port.name.clone(),
-                    port.type_id.clone(),
-                    port.cardinality,
-                ));
+                let key = (port.name.clone(), port.type_id.clone(), port.cardinality);
+                if seen_inputs.insert(key.clone()) {
+                    inputs.push(SignaturePort::new(
+                        key.0.clone(),
+                        key.1.clone(),
+                        key.2,
+                    ));
+                }
             }
         }
     }
@@ -232,11 +237,14 @@ pub fn infer_signature<T>(dag: &Dag<T>) -> WorkflowSignature {
     for (node_id, port_name) in &boundaries.boundary_ports {
         if let Some(node) = dag.get_node(node_id) {
             if let Some(port) = node.outputs.iter().find(|p| &p.name == port_name) {
-                outputs.push(SignaturePort::new(
-                    port.name.clone(),
-                    port.type_id.clone(),
-                    port.cardinality,
-                ));
+                let key = (port.name.clone(), port.type_id.clone(), port.cardinality);
+                if seen_outputs.insert(key.clone()) {
+                    outputs.push(SignaturePort::new(
+                        key.0.clone(),
+                        key.1.clone(),
+                        key.2,
+                    ));
+                }
             }
         }
     }

@@ -6,10 +6,7 @@
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fmt;
-use std::fs;
-use std::io;
 use std::path::Path;
-use std::process::Command;
 
 /// A content hash representing the state of a resource's inputs.
 ///
@@ -29,12 +26,6 @@ impl ContentHash {
         let mut hasher = Sha256::new();
         hasher.update(bytes);
         Self(hex::encode(hasher.finalize()))
-    }
-
-    /// Create a content hash from a file's contents.
-    pub fn from_file(path: impl AsRef<Path>) -> io::Result<Self> {
-        let contents = fs::read(path)?;
-        Ok(Self::from_bytes(&contents))
     }
 
     /// Create a content hash from a file's path (for existence-based keys).
@@ -111,120 +102,31 @@ impl HashBuilder {
     ///
     /// Includes the file path and content length to prevent boundary collisions.
     /// Format: path_bytes + NUL + length_le64 + contents + NUL
-    ///
-    /// Returns an error if the file cannot be read.
-    pub fn update_file(mut self, path: impl AsRef<Path>) -> io::Result<Self> {
+    pub fn update_file_content(mut self, path: impl AsRef<Path>, contents: &[u8]) -> Self {
         let path = path.as_ref();
-        let contents = fs::read(path)?;
-
-        // Hash: path + NUL + length + contents + NUL
-        // This prevents boundary collisions (e.g., A="ab",B="c" vs A="a",B="bc")
         self.hasher.update(path.to_string_lossy().as_bytes());
         self.hasher.update([0u8]); // delimiter
         self.hasher.update((contents.len() as u64).to_le_bytes());
-        self.hasher.update(&contents);
+        self.hasher.update(contents);
         self.hasher.update([0u8]); // delimiter
-
-        Ok(self)
-    }
-
-    /// Add multiple files matching a glob pattern to the hash.
-    ///
-    /// Files are sorted by path for deterministic ordering.
-    /// Each file contributes: path + NUL + length + contents + NUL
-    /// The glob pattern itself is also hashed to distinguish "no matches" states.
-    ///
-    /// Returns a tuple of (builder, count of files hashed), or an error.
-    pub fn update_glob(mut self, pattern: &str) -> io::Result<(Self, usize)> {
-        // Hash the glob pattern itself so "no matches" is a distinct contribution
-        self.hasher.update(b"glob:");
-        self.hasher.update(pattern.as_bytes());
-        self.hasher.update([0u8]);
-
-        let entries: Result<Vec<_>, _> = glob::glob(pattern)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?
-            .collect();
-
-        // Propagate glob traversal errors instead of silently ignoring them
-        let mut paths: Vec<_> = entries.map_err(|e| {
-            io::Error::other(
-                format!("glob traversal error: {}", e),
-            )
-        })?;
-
-        // Sort for deterministic ordering
-        paths.sort();
-
-        let count = paths.len();
-        for path in paths {
-            self = self.update_file(&path)?;
-        }
-
-        Ok((self, count))
-    }
-
-    /// Add multiple files matching a glob pattern to the hash, returning file paths.
-    ///
-    /// Like `update_glob`, but also returns the list of matched file paths.
-    pub fn update_glob_with_paths(mut self, pattern: &str) -> io::Result<(Self, usize, Vec<String>)> {
-        // Hash the glob pattern itself so "no matches" is a distinct contribution
-        self.hasher.update(b"glob:");
-        self.hasher.update(pattern.as_bytes());
-        self.hasher.update([0u8]);
-
-        let entries: Result<Vec<_>, _> = glob::glob(pattern)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?
-            .collect();
-
-        let mut paths: Vec<_> = entries.map_err(|e| {
-            io::Error::other(
-                format!("glob traversal error: {}", e),
-            )
-        })?;
-
-        paths.sort();
-
-        let count = paths.len();
-        let path_strings: Vec<String> = paths.iter().map(|p| p.to_string_lossy().to_string()).collect();
-        for path in paths {
-            self = self.update_file(&path)?;
-        }
-
-        Ok((self, count, path_strings))
+        self
     }
 
     /// Add the output of a command to the hash.
     ///
-    /// Runs the command, captures stdout, and hashes it.
+    /// Hashes the stdout bytes from the command.
     /// Format: "cmd:" tag + command name + NUL + stdout bytes
-    ///
-    /// Fails if the command cannot be executed or exits with non-zero status.
-    pub fn update_command_output(mut self, command: &str, args: &[String]) -> io::Result<Self> {
-        let output = Command::new(command)
-            .args(args)
-            .output()
-            .map_err(|e| {
-                io::Error::new(
-                    e.kind(),
-                    format!("failed to run '{}': {}", command, e),
-                )
-            })?;
-
-        if !output.status.success() {
-            return Err(io::Error::other(format!(
-                "'{}' exited with status {}: {}",
-                command,
-                output.status,
-                String::from_utf8_lossy(&output.stderr)
-            )));
-        }
-
+    pub fn update_command_output_bytes(
+        mut self,
+        command: &str,
+        _args: &[String],
+        stdout: &[u8],
+    ) -> Self {
         self.hasher.update(b"cmd:");
         self.hasher.update(command.as_bytes());
         self.hasher.update([0u8]);
-        self.hasher.update(&output.stdout);
-
-        Ok(self)
+        self.hasher.update(stdout);
+        self
     }
 
     /// Finalize and return the computed hash.
@@ -320,36 +222,25 @@ mod tests {
     }
 
     #[test]
-    fn test_update_command_output_deterministic() {
+    fn test_update_command_output_bytes_deterministic() {
         let h1 = HashBuilder::new()
-            .update_command_output("echo", &["hello".to_string()])
-            .unwrap()
+            .update_command_output_bytes("echo", &["hello".to_string()], b"hello\n")
             .finalize();
         let h2 = HashBuilder::new()
-            .update_command_output("echo", &["hello".to_string()])
-            .unwrap()
+            .update_command_output_bytes("echo", &["hello".to_string()], b"hello\n")
             .finalize();
         assert_eq!(h1, h2);
     }
 
     #[test]
-    fn test_update_command_output_different_args() {
+    fn test_update_command_output_bytes_different_args() {
         let h1 = HashBuilder::new()
-            .update_command_output("echo", &["hello".to_string()])
-            .unwrap()
+            .update_command_output_bytes("echo", &["hello".to_string()], b"hello\n")
             .finalize();
         let h2 = HashBuilder::new()
-            .update_command_output("echo", &["world".to_string()])
-            .unwrap()
+            .update_command_output_bytes("echo", &["world".to_string()], b"world\n")
             .finalize();
         assert_ne!(h1, h2);
-    }
-
-    #[test]
-    fn test_update_command_output_missing_command() {
-        let err = HashBuilder::new()
-            .update_command_output("nonexistent_command_12345", &[]);
-        assert!(err.is_err());
     }
 
     #[test]
