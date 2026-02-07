@@ -492,6 +492,7 @@ pub fn extract_mock_requirements<T>(dag: &gunbc_ir::Dag<T>, name: &str) -> MockR
         "FilesystemHandle",
         "Timestamp",
         "Platform",
+        "CloudSecretConfig",
     ];
     let resource_nodes: HashSet<&str> = dag
         .nodes

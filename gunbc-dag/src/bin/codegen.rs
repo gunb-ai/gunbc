@@ -10,6 +10,7 @@ use gunbc_exec::{execute_and_display, BoundaryMocks, ExecutionMode, TerminalProf
 use gunbc_ir::resource::ExecMode;
 use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse, TransportResponse};
 use gunbc_ir::Value;
+use gunbc_lib_transport::preflight::ensure_lint_upsert;
 use std::env;
 use std::process;
 
@@ -66,6 +67,11 @@ fn main() {
 
     if check_deprecated {
         eprintln!("Warning: --check is deprecated; use --mode=verify");
+    }
+
+    if let Err(err) = ensure_lint_upsert() {
+        eprintln!("preflight failed: {}", err);
+        process::exit(1);
     }
 
     // Detect terminal environment

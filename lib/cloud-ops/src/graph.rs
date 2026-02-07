@@ -91,9 +91,9 @@ fn build_cloud_secret_manager_credential_graph_gcp(
                 port("audience", "String"),
                 port("project_or_account", "String"),
                 port("secret", "String"),
-                optional("version", "String"),
-                optional("service_account_or_role", "String"),
-                optional("impersonate_account_or_role", "String"),
+                optional("version", "OptionalString"),
+                optional("service_account_or_role", "OptionalString"),
+                optional("impersonate_account_or_role", "OptionalString"),
             ],
             CloudSecretManagerGraphOp::Cloud(CloudOps::ResolveConfig),
         ))
@@ -109,29 +109,29 @@ fn build_cloud_secret_manager_credential_graph_gcp(
                     port("audience", "String"),
                     port("project_or_account", "String"),
                     port("secret", "String"),
-                    optional("version", "String"),
-                    optional("service_account_or_role", "String"),
-                    optional("impersonate_account_or_role", "String"),
+                    optional("version", "OptionalString"),
+                    optional("service_account_or_role", "OptionalString"),
+                    optional("impersonate_account_or_role", "OptionalString"),
                     // Pass-through inputs for the GCP graph.
                     port("scheme", "String"),
-                    optional("header_name", "String"),
+                    optional("header_name", "OptionalString"),
                     port("source_id", "String"),
-                    optional("lifetime_seconds", "Int"),
-                    optional("request_url", "String"),
-                    optional("request_token", "String"),
+                    optional("lifetime_seconds", "OptionalInt"),
+                    optional("request_url", "OptionalString"),
+                    optional("request_token", "OptionalString"),
                 ],
                 vec![
                     port("audience", "String"),
                     port("project", "String"),
                     port("secret", "String"),
-                    optional("version", "String"),
+                    optional("version", "OptionalString"),
                     port("service_account", "String"),
                     port("scheme", "String"),
-                    optional("header_name", "String"),
+                    optional("header_name", "OptionalString"),
                     port("source_id", "String"),
-                    optional("lifetime_seconds", "Int"),
-                    optional("request_url", "String"),
-                    optional("request_token", "String"),
+                    optional("lifetime_seconds", "OptionalInt"),
+                    optional("request_url", "OptionalString"),
+                    optional("request_token", "OptionalString"),
                 ],
                 CloudSecretManagerGraphOp::Cloud(CloudOps::MapToGcpInputs { runtime }),
             ),
@@ -234,18 +234,21 @@ fn build_cloud_secret_manager_credential_graph_gcp(
 // ---------------------------------------------------------------------------
 
 fn lift_gcp(dag: Dag<GcpSecretManagerGraphOp>) -> Dag<CloudSecretManagerGraphOp> {
-    map_dag_ops(dag, |op| CloudSecretManagerGraphOp::Gcp(op))
+    let mut lift = |op| CloudSecretManagerGraphOp::Gcp(op);
+    map_dag_ops(dag, &mut lift)
 }
 
 fn lift_aws(dag: Dag<AwsSecretManagerGraphOp>) -> Dag<CloudSecretManagerGraphOp> {
-    map_dag_ops(dag, |op| CloudSecretManagerGraphOp::Aws(op))
+    let mut lift = |op| CloudSecretManagerGraphOp::Aws(op);
+    map_dag_ops(dag, &mut lift)
 }
 
 fn lift_azure(dag: Dag<AzureKeyVaultGraphOp>) -> Dag<CloudSecretManagerGraphOp> {
-    map_dag_ops(dag, |op| CloudSecretManagerGraphOp::Azure(op))
+    let mut lift = |op| CloudSecretManagerGraphOp::Azure(op);
+    map_dag_ops(dag, &mut lift)
 }
 
-fn map_dag_ops<T, U, F>(dag: Dag<T>, mut f: F) -> Dag<U>
+fn map_dag_ops<T, U, F>(dag: Dag<T>, f: &mut F) -> Dag<U>
 where
     T: Clone,
     U: Clone,
@@ -256,7 +259,7 @@ where
     out.nodes = dag
         .nodes
         .into_iter()
-        .map(|node| map_node_ops(node, &mut f))
+        .map(|node| map_node_ops(node, f))
         .collect();
     out
 }

@@ -10,6 +10,8 @@ use std::collections::HashMap;
 pub enum CloudOps {
     /// Parse a CloudSecretConfig and emit standardized fields.
     ResolveConfig,
+    /// Bind a secret name to the config (default: service).
+    BindSecretName,
     /// Validate config and map to GCP-specific inputs.
     MapToGcpInputs { runtime: CloudRuntimeKind },
 }
@@ -46,6 +48,22 @@ impl Executable for CloudOps {
                 }
 
                 Ok(out)
+            }
+            CloudOps::BindSecretName => {
+                let config_val = inputs
+                    .get("config")
+                    .ok_or_else(|| ExecError::new("missing 'config' input"))?;
+                let mut config = CloudSecretConfig::try_from(config_val)
+                    .map_err(|e| ExecError::new(format!("invalid cloud config: {e}")))?;
+                let service = require_str(&inputs, "service")?;
+                let secret_name = inputs
+                    .get("secret_name")
+                    .and_then(Value::as_str)
+                    .unwrap_or(service);
+
+                config.secret.name = secret_name.to_string();
+
+                OutputMap::new().value("config", config.into()).ok()
             }
             CloudOps::MapToGcpInputs { runtime } => {
                 let provider = require_str(&inputs, "provider")?;

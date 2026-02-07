@@ -28,7 +28,6 @@
 //! let dag = builder.build();
 //! ```
 
-use crate::contract;
 use crate::dag::{Dag, Edge};
 use crate::node::Node;
 use crate::type_registry::TypeRegistry;
@@ -85,20 +84,6 @@ pub enum BuilderError {
     InvalidResourceOutputPort { node: NodeId, port: PortName },
     /// Resource input port is not wired to any upstream edge.
     UnwiredResourceInput { node: NodeId, port: PortName },
-}
-
-/// Non-fatal warnings emitted during DAG construction.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum BuilderWarning {
-    /// Port cardinality disagrees with the cardinality implied by its type DAG.
-    PortCardinalityMismatch {
-        node: NodeId,
-        port: PortName,
-        kind: PortKind,
-        type_id: TypeId,
-        declared: Cardinality,
-        inferred: Cardinality,
-    },
 }
 
 /// Whether a port is an input or output.
@@ -312,31 +297,6 @@ impl<T> InputRef<T> {
     }
 }
 
-impl fmt::Display for BuilderWarning {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            BuilderWarning::PortCardinalityMismatch {
-                node,
-                port,
-                kind,
-                type_id,
-                declared,
-                inferred,
-            } => {
-                let kind_label = match kind {
-                    PortKind::Input => "input",
-                    PortKind::Output => "output",
-                };
-                write!(
-                    f,
-                    "node '{}' {} port '{}' declares cardinality {} but type '{}' implies {}",
-                    node, kind_label, port, declared, type_id, inferred
-                )
-            }
-        }
-    }
-}
-
 /// A builder for constructing DAGs with generation tracking.
 ///
 /// The builder prevents cycles by tracking node "generations" (topological levels)
@@ -365,7 +325,6 @@ pub struct DagBuilder<T> {
     next_edge_index: usize,
     /// Optional type registry for structural compatibility checks
     type_registry: Option<TypeRegistry>,
-    warnings: Vec<BuilderWarning>,
 }
 
 impl<T> Default for DagBuilder<T> {
@@ -383,7 +342,6 @@ impl<T> DagBuilder<T> {
             generations: HashMap::new(),
             next_edge_index: 0,
             type_registry: Some(TypeRegistry::with_core_types()),
-            warnings: Vec::new(),
         }
     }
 
@@ -397,11 +355,6 @@ impl<T> DagBuilder<T> {
     pub fn without_type_registry(mut self) -> Self {
         self.type_registry = None;
         self
-    }
-
-    /// Get non-fatal warnings collected during construction.
-    pub fn warnings(&self) -> &[BuilderWarning] {
-        &self.warnings
     }
 
     /// Add a root node (generation 0, no dependencies).
@@ -477,8 +430,6 @@ impl<T> DagBuilder<T> {
             }
         }
 
-        self.record_cardinality_warnings(&node);
-
         let id = node.id.clone();
         self.generations.insert(id.clone(), generation);
         self.nodes.push(node);
@@ -488,40 +439,6 @@ impl<T> DagBuilder<T> {
             generation,
             _phantom: PhantomData,
         })
-    }
-
-    fn record_cardinality_warnings(&mut self, node: &Node<T>) {
-        let Some(registry) = &self.type_registry else {
-            return;
-        };
-
-        let mut check_ports = |kind: PortKind, ports: &[crate::dag::Port]| {
-            for port in ports {
-                let Some(type_dag) = registry.get(&port.type_id) else {
-                    continue;
-                };
-
-                // Only warn when the type DAG encodes a wrapper/cardinality.
-                if contract::wrapper_kind(type_dag).is_none() {
-                    continue;
-                }
-
-                let inferred = contract::cardinality(type_dag);
-                if inferred != port.cardinality {
-                    self.warnings.push(BuilderWarning::PortCardinalityMismatch {
-                        node: node.id.clone(),
-                        port: port.name.clone(),
-                        kind,
-                        type_id: port.type_id.clone(),
-                        declared: port.cardinality,
-                        inferred,
-                    });
-                }
-            }
-        };
-
-        check_ports(PortKind::Input, &node.inputs);
-        check_ports(PortKind::Output, &node.outputs);
     }
 
     /// Add an edge between an output port and an input port.
@@ -595,26 +512,35 @@ impl<T> DagBuilder<T> {
             });
         }
 
+        let from_cardinality = match &self.type_registry {
+            Some(registry) => from_port.infer_cardinality(registry),
+            None => from_port.cardinality,
+        };
+        let to_cardinality = match &self.type_registry {
+            Some(registry) => to_port.infer_cardinality(registry),
+            None => to_port.cardinality,
+        };
+
         // Check cardinality compatibility
-        if !from_port.cardinality.satisfies(to_port.cardinality) {
+        if !from_cardinality.satisfies(to_cardinality) {
             return Err(BuilderError::CardinalityMismatch {
                 from_node: from.node_id.clone(),
                 from_port: from.port.clone(),
-                from_cardinality: from_port.cardinality,
+                from_cardinality,
                 to_node: to.node_id.clone(),
                 to_port: to.port.clone(),
-                to_cardinality: to_port.cardinality,
+                to_cardinality,
             });
         }
 
         // Reject fan-in to scalar/optional ports (must be list-typed to accept multiple edges).
         let existing_edges = self.edge_count_to_port(&to.node_id, &to.port);
-        if existing_edges > 0 && !to_port.cardinality.is_list() {
+        if existing_edges > 0 && !to_cardinality.is_list() {
             return Err(BuilderError::FanInOnScalar {
                 node: to.node_id.clone(),
                 port: to.port.clone(),
                 existing_edges,
-                cardinality: to_port.cardinality,
+                cardinality: to_cardinality,
             });
         }
 
@@ -700,12 +626,6 @@ impl<T> DagBuilder<T> {
     /// Since all edges were validated during construction, the resulting DAG
     /// is guaranteed to be acyclic.
     pub fn build(self) -> Dag<T> {
-        if !self.warnings.is_empty() {
-            for warning in &self.warnings {
-                eprintln!("Warning: {}", warning);
-            }
-        }
-
         Dag {
             nodes: self.nodes,
             edges: self.edges,

@@ -3,7 +3,7 @@
 //! Provides a composable DAG for the LLM chat completion pattern:
 //!
 //! ```text
-//! PrepareChatRequest (pure) → ResolveAuth (pure) → CredentialOp (env) → TransportOps::Execute (I/O) → ParseChatResponse (pure)
+//! PrepareChatRequest (pure) → ResolveAuth (pure) → CloudEnv (env) → CloudSecretManager (subdag) → TransportOps::Execute (I/O) → ParseChatResponse (pure)
 //! ```
 //!
 //! This graph can be embedded as a sub-DAG in larger workflows that need
@@ -11,9 +11,14 @@
 
 use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::{
-    add_transport_execute_parse_named_with_passthrough, build::*, Dag, DagBuilder, Node, Value,
+    add_transport_execute_parse_named_with_passthrough, build::*, Dag, DagBuilder, Node, NodeBody,
+    Value,
 };
-use gunbc_lib_transport::{CredentialOp, TransportOps};
+use gunbc_lib_cloud_ops::{
+    build_cloud_secret_manager_credential_graph_gcp_github, CloudEnv, CloudOps,
+    CloudSecretManagerGraphOp,
+};
+use gunbc_lib_transport::TransportOps;
 use std::collections::HashMap;
 
 use crate::LlmOps;
@@ -27,8 +32,10 @@ pub enum LlmGraphOp {
     Llm(LlmOps),
     /// Transport execution (BOUNDARY - actual I/O)
     Transport(TransportOps),
-    /// Credential environment (BOUNDARY - resolves provider credentials)
-    Cred(CredentialOp),
+    /// Cloud environment (BOUNDARY - resolves cloud secret config)
+    CloudEnv(CloudEnv),
+    /// Cloud credential flow (GCP/AWS/Azure graph)
+    Cloud(CloudSecretManagerGraphOp),
 }
 
 impl Executable for LlmGraphOp {
@@ -36,7 +43,8 @@ impl Executable for LlmGraphOp {
         match self {
             LlmGraphOp::Llm(op) => op.execute(inputs),
             LlmGraphOp::Transport(op) => op.execute(inputs),
-            LlmGraphOp::Cred(op) => op.execute(inputs),
+            LlmGraphOp::CloudEnv(op) => op.execute(inputs),
+            LlmGraphOp::Cloud(op) => op.execute(inputs),
         }
     }
 }
@@ -60,6 +68,20 @@ impl Executable for LlmGraphOp {
 pub fn build_chat_completion_graph() -> Dag<LlmGraphOp> {
     let mut builder: DagBuilder<LlmGraphOp> = DagBuilder::new();
 
+    // Node 0: Cloud environment (config + OIDC request inputs)
+    let cloud_env = builder
+        .add_root_node(Node::opaque(
+            "cloud_env",
+            vec![],
+            vec![
+                port("config", "CloudSecretConfig"),
+                optional("request_url", "OptionalString"),
+                optional("request_token", "OptionalString"),
+            ],
+            LlmGraphOp::CloudEnv(CloudEnv::new()),
+        ))
+        .expect("cloud_env node");
+
     // Node 1: PrepareChatRequest (pure)
     let prepare = builder
         .add_root_node(Node::opaque(
@@ -68,9 +90,9 @@ pub fn build_chat_completion_graph() -> Dag<LlmGraphOp> {
                 port("provider", "String"),
                 port("model", "String"),
                 port("messages", "Json"),
-                optional("system_prompt", "String"),
-                optional("temperature", "Json"),
-                optional("max_tokens", "Int"),
+                optional("system_prompt", "OptionalString"),
+                optional("temperature", "OptionalJson"),
+                optional("max_tokens", "OptionalInt"),
             ],
             vec![
                 port("request", "TransportRequest"),
@@ -89,7 +111,6 @@ pub fn build_chat_completion_graph() -> Dag<LlmGraphOp> {
                 vec![port("provider", "String")],
                 vec![
                     port("service", "String"),
-                    port("env_var", "String"),
                     port("scheme", "String"),
                     port("header_name", "String"),
                 ],
@@ -99,26 +120,33 @@ pub fn build_chat_completion_graph() -> Dag<LlmGraphOp> {
         )
         .expect("resolve_auth node");
 
-    // Node 3: Credential environment (resolves provider credentials)
-    let cred_port = "credential:llm";
-    let credential_env = builder
-        .add_node_after(
+    // Node 3: Bind secret name onto cloud config
+    let bind_secret = builder
+        .add_node_after_all(
             Node::opaque(
-                "credential_env",
+                "bind_secret",
                 vec![
+                    port("config", "CloudSecretConfig"),
                     port("service", "String"),
-                    port("env_var", "String"),
-                    port("scheme", "String"),
-                    port("header_name", "String"),
+                    optional("secret_name", "OptionalString"),
                 ],
-                vec![port(cred_port, "Credential")],
-                LlmGraphOp::Cred(CredentialOp::from_inputs(cred_port)),
+                vec![port("config", "CloudSecretConfig")],
+                LlmGraphOp::Cloud(CloudSecretManagerGraphOp::Cloud(CloudOps::BindSecretName)),
             ),
-            &resolve_auth,
+            &[&cloud_env, &resolve_auth],
         )
-        .expect("credential_env node");
+        .expect("bind_secret node");
 
-    // Nodes 4-5: Execute transport + ParseChatResponse
+    // Node 4: Cloud credential acquisition graph (GCP WIF + Secret Manager)
+    let cloud_subdag = lift_cloud_dag(build_cloud_secret_manager_credential_graph_gcp_github());
+    let cloud_credential = builder
+        .add_node_after(
+            Node::subdag("cloud_credential", cloud_subdag),
+            &bind_secret,
+        )
+        .expect("cloud_credential node");
+
+    // Nodes 5-6: Execute transport + ParseChatResponse
     let llm_triplet = add_transport_execute_parse_named_with_passthrough(
         &mut builder,
         &prepare,
@@ -135,40 +163,115 @@ pub fn build_chat_completion_graph() -> Dag<LlmGraphOp> {
         ],
         LlmGraphOp::Llm(LlmOps::ParseChatResponse),
         LlmGraphOp::Transport(TransportOps::Execute),
-        Some(&credential_env),
+        Some(&cloud_credential),
     )
     .expect("llm triplet");
 
-    // Edges: prepare -> resolve_auth -> credential_env -> execute -> parse
+    // Edges: prepare -> resolve_auth -> bind_secret -> cloud_credential -> execute -> parse
     builder
         .add_edge(prepare.out("provider"), resolve_auth.in_port("provider"))
         .expect("prepare.provider -> resolve_auth.provider");
     builder
+        .add_edge(cloud_env.out("config"), bind_secret.in_port("config"))
+        .expect("cloud_env.config -> bind_secret.config");
+    builder
         .add_edge(
             resolve_auth.out("service"),
-            credential_env.in_port("service"),
+            bind_secret.in_port("service"),
         )
-        .expect("resolve_auth.service -> credential_env.service");
+        .expect("resolve_auth.service -> bind_secret.service");
     builder
-        .add_edge(resolve_auth.out("env_var"), credential_env.in_port("env_var"))
-        .expect("resolve_auth.env_var -> credential_env.env_var");
+        .add_edge(
+            bind_secret.out("config"),
+            cloud_credential.in_port("config"),
+        )
+        .expect("bind_secret.config -> cloud_credential.config");
     builder
-        .add_edge(resolve_auth.out("scheme"), credential_env.in_port("scheme"))
-        .expect("resolve_auth.scheme -> credential_env.scheme");
+        .add_edge(
+            resolve_auth.out("service"),
+            cloud_credential.in_port("source_id"),
+        )
+        .expect("resolve_auth.service -> cloud_credential.source_id");
+    builder
+        .add_edge(
+            resolve_auth.out("scheme"),
+            cloud_credential.in_port("scheme"),
+        )
+        .expect("resolve_auth.scheme -> cloud_credential.scheme");
     builder
         .add_edge(
             resolve_auth.out("header_name"),
-            credential_env.in_port("header_name"),
+            cloud_credential.in_port("header_name"),
         )
-        .expect("resolve_auth.header_name -> credential_env.header_name");
+        .expect("resolve_auth.header_name -> cloud_credential.header_name");
     builder
         .add_edge(
-            credential_env.out(cred_port),
+            cloud_env.out("request_url"),
+            cloud_credential.in_port("request_url"),
+        )
+        .expect("cloud_env.request_url -> cloud_credential.request_url");
+    builder
+        .add_edge(
+            cloud_env.out("request_token"),
+            cloud_credential.in_port("request_token"),
+        )
+        .expect("cloud_env.request_token -> cloud_credential.request_token");
+    builder
+        .add_edge(
+            cloud_credential.out("credential"),
             llm_triplet.execute.in_port("res:credential"),
         )
-        .expect("credential_env -> execute.res:credential");
+        .expect("cloud_credential -> execute.res:credential");
 
     builder.build()
+}
+
+fn lift_cloud_dag(
+    dag: Dag<CloudSecretManagerGraphOp>,
+) -> Dag<LlmGraphOp> {
+    map_dag_ops(dag, |op| LlmGraphOp::Cloud(op))
+}
+
+fn map_dag_ops<T, U, F>(dag: Dag<T>, mut f: F) -> Dag<U>
+where
+    T: Clone,
+    U: Clone,
+    F: FnMut(T) -> U,
+{
+    let mut out = Dag::new();
+    out.edges = dag.edges.clone();
+    out.nodes = dag
+        .nodes
+        .into_iter()
+        .map(|node| map_node_ops(node, &mut f))
+        .collect();
+    out
+}
+
+fn map_node_ops<T, U, F>(node: Node<T>, f: &mut F) -> Node<U>
+where
+    T: Clone,
+    U: Clone,
+    F: FnMut(T) -> U,
+{
+    let Node {
+        id,
+        inputs,
+        outputs,
+        body,
+        examples,
+    } = node;
+    let body = match body {
+        NodeBody::Opaque(op) => NodeBody::Opaque(f(op)),
+        NodeBody::SubDag(subdag) => NodeBody::SubDag(map_dag_ops(subdag, f)),
+    };
+    Node {
+        id,
+        inputs,
+        outputs,
+        body,
+        examples,
+    }
 }
 
 #[cfg(test)]

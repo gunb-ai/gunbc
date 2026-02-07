@@ -24,7 +24,7 @@ use crate::testgen::analyze::{analyze_dag, DagAnalysis};
 use crate::testgen::obligation::{collect_obligations, DischargeStatus, Obligation, ObligationSet};
 use crate::testgen::render_rust::plain_rust_renderer;
 use gunbc_ir::render_ir::CodeRenderer;
-use crate::testgen::test_ir::{
+use gunbc_ir::code_ir::{
     Assert, Expr, HelperFn, Import, Stmt, TestFile, TestFn, TestSection,
 };
 use gunbc_ir::boundary_label;
@@ -4264,20 +4264,20 @@ fn mock_value_expr_for_count(
 /// When `index` is provided, string/int/bool values are varied for readability.
 fn mock_element_expr(type_id: &str, index: Option<u32>) -> ValueExpr {
     match type_id {
-        "String" => match index {
+        "String" | "OptionalString" | "StringList" | "NonEmptyStringList" => match index {
             Some(1) | None => ValueExpr::Str("<MOCK>".to_string()),
             Some(i) => ValueExpr::Str(format!("<MOCK_{}>", i)),
         },
-        "Bool" => match index {
+        "Bool" | "OptionalBool" | "BoolList" => match index {
             Some(i) => ValueExpr::Bool(i % 2 == 1),
             None => ValueExpr::Bool(true),
         },
-        "Int" | "i64" | "i32" => match index {
+        "Int" | "i64" | "i32" | "OptionalInt" | "IntList" => match index {
             Some(i) => ValueExpr::Int(i as i64),
             None => ValueExpr::Int(0),
         },
         "Unit" => ValueExpr::Unit,
-        "Json" => ValueExpr::Json(JsonValue::Null),
+        "Json" | "OptionalJson" | "JsonList" => ValueExpr::Json(JsonValue::Null),
         "Map" => ValueExpr::Map(vec![]),
         "Secret" => ValueExpr::Secret("<MOCK_SECRET>".to_string()),
         "Any" => ValueExpr::Json(JsonValue::Null),
@@ -4286,8 +4286,7 @@ fn mock_element_expr(type_id: &str, index: Option<u32>) -> ValueExpr {
         "SourceIR" => ValueExpr::Str("<SOURCE_IR>".to_string()),
         "Platform" => ValueExpr::Str("linux".to_string()),
         "Error" => ValueExpr::Str("<ERROR>".to_string()),
-        // "OptionalString", "StringList", "NonEmptyStringList" removed:
-        // cardinality now lives in Port.cardinality, not in type_id.
+        // Container aliases: element value derives from the inner type.
         "Tier" => ValueExpr::Str("Ascii".to_string()),
         "Unknown" => ValueExpr::Json(JsonValue::Null),
         "ToolId" => ValueExpr::Str("clippy".to_string()),
@@ -4353,14 +4352,26 @@ fn mock_element_expr(type_id: &str, index: Option<u32>) -> ValueExpr {
 fn mock_wrong_type_expr(type_id: &str) -> Option<ValueExpr> {
     match type_id {
         // String-like types → use Int
-        "String" | "Path" | "FilePath" | "SourceIR" | "Platform" | "Error" | "Tier" | "ToolId"
+        "String"
+        | "OptionalString"
+        | "StringList"
+        | "NonEmptyStringList"
+        | "Path"
+        | "FilePath"
+        | "SourceIR"
+        | "Platform"
+        | "Error"
+        | "Tier"
+        | "ToolId"
         | "S" => {
             Some(ValueExpr::Int(1))
         }
         // Int-like types → use String
-        "Int" | "i64" | "i32" | "Timestamp" => Some(ValueExpr::Str("<WRONG>".to_string())),
+        "Int" | "i64" | "i32" | "Timestamp" | "OptionalInt" | "IntList" => {
+            Some(ValueExpr::Str("<WRONG>".to_string()))
+        }
         // Bool → use String
-        "Bool" => Some(ValueExpr::Str("<WRONG>".to_string())),
+        "Bool" | "OptionalBool" | "BoolList" => Some(ValueExpr::Str("<WRONG>".to_string())),
         // Secret → use String
         "Secret" => Some(ValueExpr::Str("<WRONG>".to_string())),
         // Map → use Bool
@@ -4373,7 +4384,7 @@ fn mock_wrong_type_expr(type_id: &str) -> Option<ValueExpr> {
         | "TransportRequest"
         | "TransportResponse" => Some(ValueExpr::Str("<WRONG>".to_string())),
         // Unknown/Any/Json/Unit are too permissive or ambiguous
-        "Json" | "Any" | "Unknown" | "Unit" => None,
+        "Json" | "OptionalJson" | "JsonList" | "Any" | "Unknown" | "Unit" => None,
         _ => None,
     }
 }

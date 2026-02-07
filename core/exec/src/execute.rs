@@ -1146,7 +1146,7 @@ fn is_resource_env_node<T>(node: &Node<T>) -> bool {
     node.outputs.iter().any(|port| {
         matches!(
             port.type_id.0.as_str(),
-            "FilesystemHandle" | "Timestamp" | "Credential" | "Platform"
+            "FilesystemHandle" | "Timestamp" | "Credential" | "Platform" | "CloudSecretConfig"
         )
     })
 }

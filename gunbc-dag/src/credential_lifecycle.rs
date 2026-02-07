@@ -1,5 +1,8 @@
 //! Credential lifecycle testgen targets.
 
+use gunbc_ir::transport::cloud::{
+    CloudProviderKind, CloudRuntimeKind, CloudSecretConfig, CloudSecretRef,
+};
 use gunbc_ir::transport::rest::RestResponse;
 use gunbc_ir::{AuthScheme, Credential, Secret, Value};
 use gunbc_test::{MockSpec, NodeExample, OutputMatcher};
@@ -9,20 +12,50 @@ fn mock_credential() -> Value {
     cred.into()
 }
 
+fn mock_cloud_config() -> Value {
+    CloudSecretConfig {
+        provider: CloudProviderKind::Gcp,
+        runtime: CloudRuntimeKind::GitHubActions,
+        audience: "projects/123/locations/global/workloadIdentityPools/github/providers/gha"
+            .to_string(),
+        project_or_account: "mock-secrets".to_string(),
+        secret: CloudSecretRef {
+            prefix: "ci-".to_string(),
+            name: String::new(),
+            delimiter: String::new(),
+            version: None,
+        },
+        service_account_or_role: Some("ci-secrets@mock.iam.gserviceaccount.com".to_string()),
+        impersonate_account_or_role: None,
+    }
+    .into()
+}
+
 /// Mock specification for GitHub credential lifecycle testing.
 #[gunbc_testgen_registry_macros::testgen_target(
     name = "github-credential-lifecycle",
     output = "gunbc-dag/src/generated_tests_credential_github.rs",
     module = "github_credential_lifecycle_generated_tests",
-    builder = "gunbc_lib_transport::credential_graph::build_github_credential_graph()",
+    builder = "gunbc_lib_cloud_ops::build_github_credential_graph()",
     no_boundary_tests
 )]
 pub fn github_credential_lifecycle_mock_spec() -> MockSpec {
     let response = RestResponse::ok(serde_json::json!({"resources": {}}));
 
     MockSpec::new("github-credential-lifecycle")
-        // Env: resolved auth token
-        .boundary("credential_env", "credential:github", mock_credential())
+        // Cloud env + credential
+        .boundary("cloud_env", "config", mock_cloud_config())
+        .boundary(
+            "cloud_env",
+            "request_url",
+            Value::Str("https://example.com/oidc".into()),
+        )
+        .boundary(
+            "cloud_env",
+            "request_token",
+            Value::Str("mock-oidc-token".into()),
+        )
+        .boundary("cloud_credential", "credential", mock_credential())
         // Transport mock
         .transport_mock(
             "execute",
@@ -46,10 +79,6 @@ pub fn github_credential_lifecycle_mock_spec() -> MockSpec {
             NodeExample::new("resolve_auth")
                 .output("service", OutputMatcher::exact(Value::Str("github".into())))
                 .output(
-                    "env_var",
-                    OutputMatcher::exact(Value::Str("GITHUB_TOKEN".into())),
-                )
-                .output(
                     "scheme",
                     OutputMatcher::exact(Value::Str("bearer".into())),
                 )
@@ -57,7 +86,7 @@ pub fn github_credential_lifecycle_mock_spec() -> MockSpec {
                     "header_name",
                     OutputMatcher::exact(Value::Str(String::new())),
                 )
-                .description("Resolve auth maps GitHub to GITHUB_TOKEN bearer auth"),
+                .description("Resolve auth maps GitHub to bearer auth"),
         )
         .node_example(
             NodeExample::new("prepare_request")
@@ -77,7 +106,8 @@ pub fn github_credential_lifecycle_mock_spec() -> MockSpec {
                 .output("ok", OutputMatcher::exact(Value::Bool(true)))
                 .description("Parse status extracts HTTP status and ok flag"),
         )
-        .skip_node_example("credential_env")
+        .skip_node_example("cloud_env")
+        .skip_node_example("cloud_credential")
 }
 
 // Generated tests (from `make testgen`)

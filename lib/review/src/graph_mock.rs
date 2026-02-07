@@ -17,10 +17,13 @@
 //!
 //! # Resource Mocks
 //!
-//! - `credential_env`: Provides credential for LLM provider
+//! - `cloud_credential`: Provides credential for LLM provider
 
 use crate::graph::{build_diff_review_graph, build_inline_review_graph};
 use crate::{Check, Criteria};
+use gunbc_ir::transport::cloud::{
+    CloudProviderKind, CloudRuntimeKind, CloudSecretConfig, CloudSecretRef,
+};
 use gunbc_ir::transport::llm::mock;
 use gunbc_ir::transport::{ShellResponse, TransportResponse};
 use gunbc_ir::{SecretString, Value};
@@ -43,6 +46,25 @@ fn mock_credential() -> Value {
         Value::Secret(SecretString::new("capability")),
     );
     Value::Map(map)
+}
+
+fn mock_cloud_config() -> Value {
+    CloudSecretConfig {
+        provider: CloudProviderKind::Gcp,
+        runtime: CloudRuntimeKind::GitHubActions,
+        audience: "projects/123/locations/global/workloadIdentityPools/github/providers/gha"
+            .to_string(),
+        project_or_account: "mock-secrets".to_string(),
+        secret: CloudSecretRef {
+            prefix: "ci-".to_string(),
+            name: String::new(),
+            delimiter: String::new(),
+            version: None,
+        },
+        service_account_or_role: Some("ci-secrets@mock.iam.gserviceaccount.com".to_string()),
+        impersonate_account_or_role: None,
+    }
+    .into()
 }
 
 // ============================================================================
@@ -134,9 +156,21 @@ pub fn inline_review_mock_spec() -> MockSpec {
 
     // Extract typed requirements from DAG structure
     extract_mock_requirements(&dag, "review-inline")
-        // Resource: credential_env provides credential
-        .boundary("credential_env", "credential:llm", mock_credential())
-        .expect("credential_env credential:llm should match type")
+        // Cloud env + credential boundaries
+        .boundary("cloud_env", "config", mock_cloud_config())
+        .expect("cloud_env config should match type")
+        .boundary(
+            "cloud_env",
+            "request_url",
+            Value::Str("https://example.com/oidc".into()),
+        )
+        .boundary(
+            "cloud_env",
+            "request_token",
+            Value::Str("mock-oidc-token".into()),
+        )
+        .boundary("cloud_credential", "credential", mock_credential())
+        .expect("cloud_credential should match type")
         // Transport: execute_llm (LLM API call)
         .transport_response("execute_llm", "response", llm_response.into())
         .expect("execute_llm response should match type")
@@ -194,10 +228,6 @@ pub fn inline_review_mock_spec() -> MockSpec {
                     OutputMatcher::exact(Value::Str("openai".into())),
                 )
                 .output(
-                    "env_var",
-                    OutputMatcher::exact(Value::Str("OPENAI_API_KEY".into())),
-                )
-                .output(
                     "scheme",
                     OutputMatcher::exact(Value::Str("bearer".into())),
                 )
@@ -205,16 +235,7 @@ pub fn inline_review_mock_spec() -> MockSpec {
                     "header_name",
                     OutputMatcher::exact(Value::Str(String::new())),
                 )
-                .description("resolves OpenAI auth scheme and env var"),
-        )
-        .node_example(
-            NodeExample::new("credential_env")
-                .input("service", Value::Str("openai".into()))
-                .input("env_var", Value::Str("PATH".into()))
-                .input("scheme", Value::Str("bearer".into()))
-                .input("header_name", Value::Str(String::new()))
-                .output("credential:llm", OutputMatcher::Any)
-                .description("loads credential from environment variable"),
+                .description("resolves OpenAI auth scheme and header"),
         )
         .node_example(
             NodeExample::new("parse_llm")
@@ -236,6 +257,8 @@ pub fn inline_review_mock_spec() -> MockSpec {
                 .output("errors", OutputMatcher::Any)
                 .description("parses LLM answer into review output"),
         )
+        .skip_node_example("cloud_env")
+        .skip_node_example("cloud_credential")
 }
 
 // ============================================================================
@@ -288,9 +311,21 @@ diff --git a/src/main.rs b/src/main.rs
 
     // Extract typed requirements from DAG structure
     extract_mock_requirements(&dag, "review-diff")
-        // Resource: credential_env provides credential
-        .boundary("credential_env", "credential:llm", mock_credential())
-        .expect("credential_env credential:llm should match type")
+        // Cloud env + credential boundaries
+        .boundary("cloud_env", "config", mock_cloud_config())
+        .expect("cloud_env config should match type")
+        .boundary(
+            "cloud_env",
+            "request_url",
+            Value::Str("https://example.com/oidc".into()),
+        )
+        .boundary(
+            "cloud_env",
+            "request_token",
+            Value::Str("mock-oidc-token".into()),
+        )
+        .boundary("cloud_credential", "credential", mock_credential())
+        .expect("cloud_credential should match type")
         // Transport: execute_diff (git diff command)
         .transport_response(
             "execute_diff",
@@ -376,10 +411,6 @@ diff --git a/src/main.rs b/src/main.rs
                     OutputMatcher::exact(Value::Str("openai".into())),
                 )
                 .output(
-                    "env_var",
-                    OutputMatcher::exact(Value::Str("OPENAI_API_KEY".into())),
-                )
-                .output(
                     "scheme",
                     OutputMatcher::exact(Value::Str("bearer".into())),
                 )
@@ -387,16 +418,7 @@ diff --git a/src/main.rs b/src/main.rs
                     "header_name",
                     OutputMatcher::exact(Value::Str(String::new())),
                 )
-                .description("resolves OpenAI auth scheme and env var"),
-        )
-        .node_example(
-            NodeExample::new("credential_env")
-                .input("service", Value::Str("openai".into()))
-                .input("env_var", Value::Str("PATH".into()))
-                .input("scheme", Value::Str("bearer".into()))
-                .input("header_name", Value::Str(String::new()))
-                .output("credential:llm", OutputMatcher::Any)
-                .description("loads credential from environment variable"),
+                .description("resolves OpenAI auth scheme and header"),
         )
         .node_example(
             NodeExample::new("parse_llm")
@@ -418,4 +440,6 @@ diff --git a/src/main.rs b/src/main.rs
                 .output("errors", OutputMatcher::Any)
                 .description("parses LLM answer into review output"),
         )
+        .skip_node_example("cloud_env")
+        .skip_node_example("cloud_credential")
 }

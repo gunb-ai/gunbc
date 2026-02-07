@@ -30,6 +30,7 @@ use gunbc_ir::resource::ExecMode;
 use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse};
 use gunbc_ir::CODEGEN_STAMP_PATH;
 use gunbc_ir::Value;
+use gunbc_lib_transport::preflight::ensure_lint_upsert;
 use std::env;
 use std::process;
 
@@ -44,6 +45,11 @@ fn main() {
     if args.iter().any(|a| a == "-h" || a == "--help") {
         print_help();
         return;
+    }
+
+    if let Err(err) = ensure_lint_upsert() {
+        eprintln!("preflight failed: {}", err);
+        process::exit(1);
     }
 
     // Build the CI graph with the exec mode embedded in the inlined codegen DAG

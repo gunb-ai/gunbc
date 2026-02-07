@@ -40,7 +40,7 @@ pub fn build_yaml_subdag() -> Node<LanguageOp> {
         vec![
             Port::scalar("id", "String"),
             Port::scalar("name", "String"),
-            Port::list("extensions", "String"),
+            Port::list("extensions", "StringList"),
             Port::scalar("comment_prefix", "String"),
         ],
         LanguageOp::YamlConfig,

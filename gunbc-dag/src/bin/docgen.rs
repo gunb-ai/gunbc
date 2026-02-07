@@ -7,6 +7,7 @@ use gunbc_dag::{build_docgen_graph, DOCGEN_READ_TARGETS};
 use gunbc_exec::{execute_with_mode, BoundaryMocks, ExecutionMode};
 use gunbc_ir::transport::{FileOp, FileResponse, TransportResponse};
 use gunbc_ir::Value;
+use gunbc_lib_transport::preflight::ensure_lint_upsert;
 use std::env;
 use std::process;
 
@@ -27,6 +28,11 @@ fn main() {
             _ => {}
         }
         i += 1;
+    }
+
+    if let Err(err) = ensure_lint_upsert() {
+        eprintln!("preflight failed: {}", err);
+        process::exit(1);
     }
 
     let dag = match build_docgen_graph() {

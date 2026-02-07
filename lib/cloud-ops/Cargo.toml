@@ -9,5 +9,9 @@ gunbc-ir = { path = "../../core/ir" }
 gunbc-lib-gcp-ops = { path = "../gcp-ops" }
 gunbc-lib-aws-ops = { path = "../aws-ops" }
 gunbc-lib-azure-ops = { path = "../azure-ops" }
+gunbc-lib-transport = { path = "../transport" }
 serde = { workspace = true }
 serde_json = { workspace = true }
+
+[dev-dependencies]
+gunbc-test = { path = "../../core/test" }

@@ -23,6 +23,7 @@ use gunbc_ir::resource::{
 use gunbc_ir::transport::{FileOp, FileResponse, TransportResponse};
 use gunbc_ir::{detect_entrypoints, Value};
 use gunbc_lib_transport::TransportIo;
+use gunbc_lib_transport::preflight::ensure_lint_upsert;
 // Force-link crates that register testgen targets.
 use gunbc_deps as _;
 use gunbc_gist as _;
@@ -100,6 +101,11 @@ fn main() {
 
     if check_deprecated {
         eprintln!("Warning: --check is deprecated; use --mode=verify");
+    }
+
+    if let Err(err) = ensure_lint_upsert() {
+        eprintln!("preflight failed: {}", err);
+        process::exit(1);
     }
 
     let targets = build_targets();

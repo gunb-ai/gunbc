@@ -744,9 +744,6 @@ impl<M: TextMedium> RustCodeRenderer<M> {
     }
 }
 
-// Backward-compatible type alias
-pub type RustRenderer = RustCodeRenderer<gunbc_ir::render_ir::PlainText>;
-
 /// Create a RustCodeRenderer with PlainText medium (most common usage).
 pub fn plain_rust_renderer() -> RustCodeRenderer<gunbc_ir::render_ir::PlainText> {
     RustCodeRenderer::new(gunbc_ir::render_ir::PlainText {

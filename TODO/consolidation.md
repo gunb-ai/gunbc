@@ -714,6 +714,12 @@ compiler version is now captured directly, regardless of environment setup.
 
 **Completed tasks moved to**: `TODO/TODONE/consolidation-complete.md`
 
+### Completed (2026-02-07 cleanup)
+
+- [x] Deleted stale `buck-out/` directory (9 generated CLI entrypoints from removed Buck2 build)
+- [x] Deleted unused backward-compat shims: `TestgenTarget` type alias, `iter_targets()` fn, `RustRenderer` type alias
+- [x] Eliminated `test_ir.rs` re-export shim — `codegen.rs` now imports directly from `gunbc_ir::code_ir`
+
 ### Remaining (blocked on design/dependencies)
 
 - [ ] Consider `ToolGraphOp<D>` generic wrapper (dag-pattern-ux.md Phase 4) — §3

@@ -3,6 +3,8 @@
 //! Detects implicit cardinality coercions in a DAG — edges where the output
 //! port's cardinality differs from the input port's cardinality but is
 //! compatible, requiring the execution engine to transform the value shape.
+//! When a `TypeRegistry` is available, `validate_coercions_with_registry`
+//! performs full L1–L3 contract checks before classifying coercions.
 //!
 //! # Motivation
 //!
@@ -20,7 +22,9 @@
 //! // Reports: parse_response.output [1,1] → merge.outputs [0,∞) = WrapScalar
 //! ```
 
+use crate::contract::{CoercionResult, TypeContract};
 use crate::dag::Dag;
+use crate::type_registry::TypeRegistry;
 use crate::types::{Cardinality, NodeId, PortName};
 
 /// Describes an implicit cardinality coercion at a specific edge.
@@ -169,6 +173,17 @@ impl std::fmt::Display for CoercionError {
 /// - `coercions`: edges where implicit coercion is needed and safe
 /// - `errors`: edges where cardinalities are incompatible
 pub fn validate_coercions<T>(dag: &Dag<T>) -> CoercionReport {
+    validate_coercions_with_registry(dag, None)
+}
+
+/// Validate all edges in a DAG for cardinality compatibility and safe coercion.
+///
+/// When a registry is provided, L1–L3 contract coercion checks are applied
+/// before cardinality-only analysis.
+pub fn validate_coercions_with_registry<T>(
+    dag: &Dag<T>,
+    registry: Option<&TypeRegistry>,
+) -> CoercionReport {
     let mut coercions = Vec::new();
     let mut errors = Vec::new();
 
@@ -181,8 +196,51 @@ pub fn validate_coercions<T>(dag: &Dag<T>) -> CoercionReport {
             .and_then(|n| n.inputs.iter().find(|p| p.name == edge.to_port));
 
         if let (Some(fp), Some(tp)) = (from_port, to_port) {
-            let from_card = fp.cardinality;
-            let to_card = tp.cardinality;
+            let from_card = match registry {
+                Some(registry) => fp.infer_cardinality(registry),
+                None => fp.cardinality,
+            };
+            let to_card = match registry {
+                Some(registry) => tp.infer_cardinality(registry),
+                None => tp.cardinality,
+            };
+
+            if let Some(reg) = registry {
+                if let (Some(from_dag), Some(to_dag)) =
+                    (reg.get(&fp.type_id), reg.get(&tp.type_id))
+                {
+                    let mut from_contract = TypeContract::from_type_dag(from_dag);
+                    let mut to_contract = TypeContract::from_type_dag(to_dag);
+                    // Registry-provided wrappers override port cardinality.
+                    from_contract.cardinality = from_card;
+                    to_contract.cardinality = to_card;
+
+                    match from_contract.can_safely_coerce_to_with(&to_contract, |from, to| {
+                        reg.base_type_upcasts_to(from, to)
+                    }) {
+                        CoercionResult::Ok => {}
+                        CoercionResult::Err(reason) => {
+                            let reason = if let Some(strategy) =
+                                reg.coercion_strategy(&fp.type_id, &tp.type_id)
+                            {
+                                format!("{reason}. Explicit transform: {strategy}")
+                            } else {
+                                reason
+                            };
+                            errors.push(CoercionError {
+                                from_node: edge.from_node.clone(),
+                                from_port: edge.from_port.clone(),
+                                to_node: edge.to_node.clone(),
+                                to_port: edge.to_port.clone(),
+                                from_cardinality: from_card,
+                                to_cardinality: to_card,
+                                reason,
+                            });
+                            continue;
+                        }
+                    }
+                }
+            }
 
             if from_card == to_card {
                 // Identical — no coercion needed

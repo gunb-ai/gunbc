@@ -26,7 +26,7 @@
 //!
 //! This gives "ALL deducible non-tautological tests" by construction.
 
-use gunbc_ir::coerce::detect_coercions;
+use gunbc_ir::coerce::validate_coercions_with_registry;
 use gunbc_ir::resource::{detect_conflicts, ResourceAccess, ResourceConflict};
 use gunbc_ir::types::{Cardinality, NodeId, PortName, TypeId};
 use gunbc_ir::{contract, detect_boundaries, Dag, TypeRegistry};
@@ -179,6 +179,17 @@ pub enum Obligation {
         from_cardinality: Cardinality,
         to_cardinality: Cardinality,
         kind: gunbc_ir::coerce::CoercionKind,
+    },
+
+    /// Coercion compatibility error: edge contracts cannot be safely coerced.
+    EdgeCoercionCompatibility {
+        from_node: NodeId,
+        from_port: PortName,
+        to_node: NodeId,
+        to_port: PortName,
+        from_cardinality: Cardinality,
+        to_cardinality: Cardinality,
+        reason: String,
     },
 
     // NOTE: WitnessCompatibility (L4) removed — requires L4 witness-based
@@ -690,11 +701,35 @@ fn collect_contract_obligations<T>(
         }
     }
 
-    // B.4: Coercion coverage — for each edge with an implicit cardinality
-    // coercion, add a coverage obligation. The engine transforms values at
-    // these edges (e.g., wrapping scalars in lists), and tests verify this.
-    let coercions = detect_coercions(dag);
-    for coercion in coercions {
+    // B.4: Coercion compatibility + coverage — validate edge contracts with
+    // contract-aware coercion. Emit invalid obligations for incompatibilities,
+    // and coverage obligations for implicit cardinality coercions.
+    let coercion_report = validate_coercions_with_registry(dag, registry);
+    for error in coercion_report.errors {
+        let edge_label = format!(
+            "{}.{} → {}.{}",
+            error.from_node.0, error.from_port.0, error.to_node.0, error.to_port.0
+        );
+        let reason = format!("Edge {}: coercion invalid ({})", edge_label, error.reason);
+        obligations.push(
+            ProofObligation::new(
+                Obligation::EdgeCoercionCompatibility {
+                    from_node: error.from_node.clone(),
+                    from_port: error.from_port.clone(),
+                    to_node: error.to_node.clone(),
+                    to_port: error.to_port.clone(),
+                    from_cardinality: error.from_cardinality,
+                    to_cardinality: error.to_cardinality,
+                    reason: error.reason.clone(),
+                },
+                &reason,
+                ObligationSource::Contract,
+            )
+            .invalidate(reason),
+        );
+    }
+
+    for coercion in coercion_report.coercions {
         obligations.push(ProofObligation::runtime(
             Obligation::CoercionCoverage {
                 from_node: coercion.from_node.clone(),
@@ -1405,6 +1440,33 @@ mod tests {
         assert!(
             coercion_obs.is_empty(),
             "no coercion for matching cardinalities"
+        );
+    }
+
+    #[test]
+    fn test_coercion_errors_surface_invalid_obligations() {
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque(
+            "list_producer",
+            vec![],
+            vec![Port::list("out", "Json")],
+            (),
+        ));
+        dag.add_node(Node::opaque(
+            "scalar_consumer",
+            vec![Port::scalar("in", "Json")],
+            vec![],
+            (),
+        ));
+        dag.add_edge(edge("list_producer", "out", "scalar_consumer", "in"));
+
+        let obligations = collect_obligations(&dag, None, None);
+        let invalids = obligations.invalids();
+        assert!(
+            invalids
+                .iter()
+                .any(|o| matches!(o.kind, Obligation::EdgeCoercionCompatibility { .. })),
+            "expected an invalid coercion obligation"
         );
     }
 }

@@ -102,14 +102,6 @@ pub fn iter_dag_specs() -> impl Iterator<Item = &'static DagSpecDef> {
     inventory::iter::<DagSpecDef>.into_iter()
 }
 
-/// Backwards-compatible alias: TestgenTarget == DagSpecDef.
-pub type TestgenTarget = DagSpecDef;
-
-/// Backwards-compatible iterator for testgen targets.
-pub fn iter_targets() -> impl Iterator<Item = &'static DagSpecDef> {
-    iter_dag_specs()
-}
-
 /// Shared test generation helper: builds test code from a DAG + MockSpec + config.
 ///
 /// This is the single codegen path — all targets use this function.

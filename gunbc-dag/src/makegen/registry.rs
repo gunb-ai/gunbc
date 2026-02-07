@@ -17,7 +17,6 @@ use gunbc_infra::ResourceId;
 use gunbc_ir::cargo::{CargoCommand, Subcommand, Warnings};
 use gunbc_ir::resource::ExecMode;
 use gunbc_ir::transport::ShellRequest;
-use gunbc_ir::CargoInvocation;
 
 // ============================================================================
 // Build Configuration - Single source of truth for build commands
@@ -747,7 +746,7 @@ impl ResourceTargetMap {
             entries: vec![
                 ResourceTargetEntry {
                     id: ResourceId::build("generated_cli"),
-                    ensure_target: "ensure-codegen".to_string(),
+                    ensure_target: "lint-upsert".to_string(),
                     verify_target: None, // always ensure
                 },
                 ResourceTargetEntry {
@@ -1382,6 +1381,10 @@ mod tests {
             map.resolve(&ResourceId::build("compiled_code"), ExecMode::Ensure),
             Some("build")
         );
+        assert_eq!(
+            map.resolve(&ResourceId::build("generated_cli"), ExecMode::Ensure),
+            Some("lint-upsert")
+        );
     }
 
     #[test]
@@ -1401,7 +1404,7 @@ mod tests {
         // No verify target → fallback to ensure
         assert_eq!(
             map.resolve(&ResourceId::build("generated_cli"), ExecMode::Verify),
-            Some("ensure-codegen")
+            Some("lint-upsert")
         );
         assert_eq!(
             map.resolve(&ResourceId::build("verified_artifacts"), ExecMode::Verify),

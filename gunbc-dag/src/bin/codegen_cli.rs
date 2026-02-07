@@ -36,6 +36,7 @@ use gunbc_ir::transport::ci::{
 };
 use gunbc_ir::{CODEGEN_BIN_DIR, CODEGEN_LIB_DIR};
 use gunbc_lib_transport::TransportIo;
+use gunbc_lib_transport::preflight::ensure_lint_upsert;
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::path::{Path, PathBuf};
@@ -77,6 +78,11 @@ fn main() {
     if args.iter().any(|a| a == "-h" || a == "--help") {
         print_help();
         return;
+    }
+
+    if let Err(err) = ensure_lint_upsert() {
+        eprintln!("preflight failed: {}", err);
+        std::process::exit(1);
     }
 
     match command {

@@ -61,7 +61,7 @@ pub fn build_gitignore_subdag() -> Node<LanguageOp> {
         vec![],
         vec![
             Port::scalar("id", "String"),
-            Port::list("file_patterns", "String"),
+            Port::list("file_patterns", "StringList"),
             Port::scalar("comment_prefix", "String"),
         ],
         LanguageOp::GitignoreConfig,
@@ -70,7 +70,7 @@ pub fn build_gitignore_subdag() -> Node<LanguageOp> {
     // Render patterns to content
     inner.add_node(Node::opaque(
         "render",
-        vec![Port::list("patterns", "String")],
+        vec![Port::list("patterns", "StringList")],
         vec![Port::scalar("content", "String")],
         LanguageOp::GitignoreRender,
     ));

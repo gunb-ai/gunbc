@@ -32,12 +32,12 @@
 #![allow(clippy::disallowed_methods)]
 
 pub mod credential;
-pub mod credential_graph;
 pub mod backend;
 pub mod cli;
 pub mod executor;
 pub mod ops;
 pub mod resource_io;
+pub mod preflight;
 pub mod test_backend;
 
 // STRUCTURAL ENFORCEMENT: TransportOps + transport-layer CLI helpers only
@@ -46,6 +46,7 @@ pub use credential::{CredentialOp, GitHubEnvVarProvider, LlmEnvVarProvider, Mock
 pub use backend::{TransportBackend, TransportBackendGuard};
 pub use ops::TransportOps;
 pub use resource_io::TransportIo;
+pub use preflight::ensure_lint_upsert;
 
 #[cfg(test)]
 mod pragma_lint;

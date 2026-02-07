@@ -263,6 +263,23 @@ pub fn wrapper_kind(type_dag: &Dag<TypeOp>) -> Option<WrapperKind> {
     None
 }
 
+fn inner_type_dag(type_dag: &Dag<TypeOp>) -> Option<&Dag<TypeOp>> {
+    type_dag.nodes.iter().find_map(|node| {
+        if let NodeBody::SubDag(subdag) = &node.body {
+            Some(subdag)
+        } else {
+            None
+        }
+    })
+}
+
+fn wrap_predicate_for_container(pred: Predicate) -> Predicate {
+    match pred {
+        Predicate::All(_) | Predicate::Any(_) => pred,
+        other => Predicate::All(Box::new(other)),
+    }
+}
+
 /// Full contract summary for a type.
 #[derive(Debug, Clone)]
 pub struct TypeContract {
@@ -281,12 +298,30 @@ pub struct TypeContract {
 impl TypeContract {
     /// Extract full contract from a type DAG.
     pub fn from_type_dag(type_dag: &Dag<TypeOp>) -> Self {
+        let wrapper = wrapper_kind(type_dag);
+        let is_container = is_container(type_dag);
+        let mut base = base_type(type_dag);
+        let mut preds = predicates(type_dag);
+
+        if wrapper.is_some() {
+            if let Some(inner) = inner_type_dag(type_dag) {
+                let inner_contract = TypeContract::from_type_dag(inner);
+                base = inner_contract.base_type;
+                preds.extend(
+                    inner_contract
+                        .predicates
+                        .into_iter()
+                        .map(wrap_predicate_for_container),
+                );
+            }
+        }
+
         Self {
             cardinality: cardinality(type_dag),
-            base_type: base_type(type_dag),
-            predicates: predicates(type_dag),
-            is_container: is_container(type_dag),
-            wrapper_kind: wrapper_kind(type_dag),
+            base_type: base,
+            predicates: preds,
+            is_container,
+            wrapper_kind: wrapper,
         }
     }
 

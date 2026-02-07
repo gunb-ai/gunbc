@@ -143,7 +143,6 @@ fn execute_resolve_auth(
 
     OutputMap::new()
         .str("service", provider.id)
-        .str("env_var", provider.api_key_env)
         .str("scheme", scheme)
         .str("header_name", header_name)
         .ok()
@@ -569,10 +568,6 @@ mod tests {
         assert_eq!(
             result.get("service"),
             Some(&Value::Str("openai".to_string()))
-        );
-        assert_eq!(
-            result.get("env_var"),
-            Some(&Value::Str("OPENAI_API_KEY".to_string()))
         );
         assert_eq!(
             result.get("scheme"),

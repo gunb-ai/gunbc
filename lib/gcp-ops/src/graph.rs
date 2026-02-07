@@ -214,7 +214,7 @@ pub fn build_gcp_secret_manager_credential_graph(
                 vec![
                     port("access_token", "String"),
                     port("service_account", "String"),
-                    optional("lifetime_seconds", "Int"),
+                    optional("lifetime_seconds", "OptionalInt"),
                 ],
                 vec![port("request", "TransportRequest"), port("skip", "Bool")],
                 GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareImpersonate),
@@ -284,7 +284,7 @@ pub fn build_gcp_secret_manager_credential_graph(
                     port("access_token", "String"),
                     port("project", "String"),
                     port("secret", "String"),
-                    optional("version", "String"),
+                    optional("version", "OptionalString"),
                 ],
                 vec![port("request", "TransportRequest"), port("skip", "Bool")],
                 GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareSecretAccess),
@@ -353,7 +353,7 @@ pub fn build_gcp_secret_manager_credential_graph(
                 vec![
                     port("secret", "String"),
                     port("scheme", "String"),
-                    optional("header_name", "String"),
+                    optional("header_name", "OptionalString"),
                     port("source_id", "String"),
                 ],
                 vec![port("credential", "Credential")],

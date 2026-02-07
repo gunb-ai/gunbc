@@ -156,7 +156,7 @@ fn build_makefile_blocks(registry: &ToolRegistry, config: &BuildConfig) -> Vec<S
 /// Build the .PHONY line.
 fn build_phony_line(registry: &ToolRegistry) -> String {
     let mut phony = String::from(
-        ".PHONY: help ensure-codegen codegen build clean testgen testgen-check pragma-check verify verify-fix fmt-fix lint-fix",
+        ".PHONY: help preflight-fix lint-upsert ensure-codegen codegen build clean testgen testgen-check pragma-check verify verify-fix fmt-fix lint-fix",
     );
 
     for meta in &registry.meta_targets {
@@ -188,18 +188,41 @@ fn build_core_targets(config: &BuildConfig) -> Vec<StructuredBlock> {
         ""
     };
 
+    // preflight-fix
+    blocks.push(StructuredBlock::Target(Target {
+        name: "preflight-fix".to_string(),
+        deps: vec![],
+        body: vec![
+            "@cargo fix --workspace --all-targets --allow-dirty --allow-staged".to_string(),
+        ],
+        comment: Some(
+            "Preflight: auto-fix rustc warnings before running generators".to_string(),
+        ),
+    }));
+
     // ensure-codegen
     blocks.push(StructuredBlock::Target(Target {
         name: "ensure-codegen".to_string(),
-        deps: vec![],
+        deps: vec!["preflight-fix".to_string()],
         body: vec![config.ensure_codegen_shell()],
         comment: Some("Ensure CLI entrypoints exist (bootstrap-safe)".to_string()),
+    }));
+
+    // lint-upsert
+    let lint_cmd = config.lint.to_shell();
+    let lint_fix_cmd = config.lint_fix.to_shell();
+    let lint_upsert = format!("@{} || ({} && {})", lint_cmd, lint_fix_cmd, lint_cmd);
+    blocks.push(StructuredBlock::Target(Target {
+        name: "lint-upsert".to_string(),
+        deps: vec!["ensure-codegen".to_string(), "pragma".to_string()],
+        body: vec![lint_upsert],
+        comment: Some("Lint upsert: fix if needed, then verify".to_string()),
     }));
 
     // codegen
     blocks.push(StructuredBlock::Target(Target {
         name: "codegen".to_string(),
-        deps: vec!["ensure-codegen".to_string()],
+        deps: vec!["lint-upsert".to_string()],
         body: vec![config.codegen_shell()],
         comment: Some("Generate CLI entrypoints (DAG upsert)".to_string()),
     }));
@@ -228,7 +251,7 @@ fn build_core_targets(config: &BuildConfig) -> Vec<StructuredBlock> {
     // testgen
     blocks.push(StructuredBlock::Target(Target {
         name: "testgen".to_string(),
-        deps: vec!["ensure-codegen".to_string()],
+        deps: vec!["lint-upsert".to_string()],
         body: vec![config.testgen_shell()],
         comment: Some("Regenerate tests from DAG structures and MockSpecs".to_string()),
     }));
@@ -236,7 +259,7 @@ fn build_core_targets(config: &BuildConfig) -> Vec<StructuredBlock> {
     // testgen-check
     blocks.push(StructuredBlock::Target(Target {
         name: "testgen-check".to_string(),
-        deps: vec!["ensure-codegen".to_string()],
+        deps: vec!["lint-upsert".to_string()],
         body: vec![config.testgen_check_shell()],
         comment: Some(
             "Check if generated tests are stale (fails if regeneration needed)".to_string(),
@@ -246,7 +269,7 @@ fn build_core_targets(config: &BuildConfig) -> Vec<StructuredBlock> {
     // pragma-check
     blocks.push(StructuredBlock::Target(Target {
         name: "pragma-check".to_string(),
-        deps: vec!["ensure-codegen".to_string()],
+        deps: vec!["lint-upsert".to_string()],
         body: vec![format!(
             "@{}cargo run -p gunbc-dag --bin gunbc-pragma --release -- --mode=verify",
             warning_prefix
@@ -259,7 +282,7 @@ fn build_core_targets(config: &BuildConfig) -> Vec<StructuredBlock> {
     // verify
     blocks.push(StructuredBlock::Target(Target {
         name: "verify".to_string(),
-        deps: vec!["ensure-codegen".to_string()],
+        deps: vec!["lint-upsert".to_string()],
         body: vec![
             format!(
                 "@{}cargo run -p gunbc-dag --bin gunbc-makegen --release -- --mode=verify",
@@ -286,7 +309,7 @@ fn build_core_targets(config: &BuildConfig) -> Vec<StructuredBlock> {
     // verify-fix
     blocks.push(StructuredBlock::Target(Target {
         name: "verify-fix".to_string(),
-        deps: vec!["ensure-codegen".to_string()],
+        deps: vec!["lint-upsert".to_string()],
         body: vec![
             format!(
                 "@{}cargo run -p gunbc-dag --bin gunbc-makegen --release -- --mode=ensure",
@@ -332,6 +355,12 @@ fn build_help_target(registry: &ToolRegistry, config: &BuildConfig) -> Structure
     lines.push("@echo \"  codegen  - Generate CLI entrypoints\"".to_string());
     lines.push(
         "@echo \"  ensure-codegen  - Bootstrap CLI entrypoints (safe on clean)\"".to_string(),
+    );
+    lines.push(
+        "@echo \"  preflight-fix  - Auto-fix rustc warnings (workspace)\"".to_string(),
+    );
+    lines.push(
+        "@echo \"  lint-upsert  - Auto-fix lint issues then verify\"".to_string(),
     );
     lines.push("@echo \"  clean    - Remove build artifacts\"".to_string());
     lines.push("@echo \"  testgen  - Regenerate tests from DAG structures\"".to_string());
@@ -574,10 +603,12 @@ fn build_tool_target(tool: &ToolInfo, config: &BuildConfig) -> StructuredBlock {
 
     let cli_args = render_cli_args(&tool.entrypoints);
 
-    let deps = if tool.needs_generated_cli {
-        vec!["ensure-codegen".to_string()]
+    let deps = if tool.short_name == "pragma" {
+        vec!["preflight-fix".to_string()]
+    } else if tool.needs_generated_cli {
+        vec!["lint-upsert".to_string()]
     } else {
-        vec![]
+        vec!["preflight-fix".to_string()]
     };
 
     StructuredBlock::Target(Target {
@@ -598,10 +629,12 @@ fn build_dry_run_target(tool: &ToolInfo, config: &BuildConfig) -> StructuredBloc
 
     let cli_args = render_cli_args(&tool.entrypoints);
 
-    let deps = if tool.needs_generated_cli {
-        vec!["ensure-codegen".to_string()]
+    let deps = if tool.short_name == "pragma" {
+        vec!["preflight-fix".to_string()]
+    } else if tool.needs_generated_cli {
+        vec!["lint-upsert".to_string()]
     } else {
-        vec![]
+        vec!["preflight-fix".to_string()]
     };
 
     StructuredBlock::Target(Target {
@@ -725,12 +758,12 @@ mod tests {
         let registry = ToolRegistry::default_registry();
         let makefile = render_makefile(&registry);
 
-        assert!(makefile.contains("ensure-codegen:"));
-        assert!(makefile.contains("codegen: ensure-codegen"));
+        assert!(makefile.contains("ensure-codegen: preflight-fix"));
+        assert!(makefile.contains("codegen: lint-upsert"));
         assert!(makefile.contains("build: codegen testgen"));
-        assert!(makefile.contains("testgen: ensure-codegen"));
-        assert!(makefile.contains("testgen-check: ensure-codegen"));
-        assert!(makefile.contains("pragma-check: ensure-codegen"));
+        assert!(makefile.contains("testgen: lint-upsert"));
+        assert!(makefile.contains("testgen-check: lint-upsert"));
+        assert!(makefile.contains("pragma-check: lint-upsert"));
         assert!(makefile.contains("gunbc-pragma --release -- --mode=verify"));
         assert!(makefile.contains("clean:"));
     }
@@ -750,10 +783,10 @@ mod tests {
         );
         assert!(makefile.contains("cargo test"));
 
-        assert!(makefile.contains("check: ensure-codegen"));
+        assert!(makefile.contains("check: lint-upsert"));
         assert!(makefile.contains("cargo check --all-targets"));
 
-        assert!(makefile.contains("clippy: ensure-codegen"));
+        assert!(makefile.contains("clippy: lint-upsert"));
         assert!(makefile.contains("cargo clippy --all-targets"));
 
         assert!(makefile.contains("fmt:"));
@@ -769,6 +802,8 @@ mod tests {
         assert!(makefile.contains("Build commands:"));
         assert!(makefile.contains("codegen  - Generate CLI entrypoints"));
         assert!(makefile.contains("ensure-codegen  - Bootstrap CLI entrypoints"));
+        assert!(makefile.contains("preflight-fix  - Auto-fix rustc warnings"));
+        assert!(makefile.contains("lint-upsert  - Auto-fix lint issues"));
         assert!(makefile.contains("Development:"));
         assert!(makefile.contains("Tools:"));
     }
@@ -807,6 +842,10 @@ mod tests {
         assert!(
             makefile.contains("ensure-codegen"),
             "should include ensure-codegen in .PHONY"
+        );
+        assert!(
+            makefile.contains("lint-upsert"),
+            "should include lint-upsert in .PHONY"
         );
         assert!(
             makefile.contains("codegen"),
@@ -916,7 +955,7 @@ mod tests {
         assert!(makefile.contains("lint-fix"));
 
         // clippy-fix should exist
-        assert!(makefile.contains("clippy-fix: ensure-codegen pragma"));
+        assert!(makefile.contains("clippy-fix: lint-upsert pragma"));
 
         // check-fix should exist
         assert!(makefile.contains("check-fix:"));

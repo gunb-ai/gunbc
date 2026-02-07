@@ -13,12 +13,17 @@
 use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::{
     add_transport_execute_parse_named_with_passthrough,
-    add_transport_triplet_named_with_passthrough, build::*, Dag, DagBuilder, Node, Value,
+    add_transport_triplet_named_with_passthrough, build::*, Dag, DagBuilder, Node, NodeBody,
+    NodeRef, Value,
+};
+use gunbc_lib_cloud_ops::{
+    build_cloud_secret_manager_credential_graph_gcp_github, CloudEnv, CloudOps,
+    CloudSecretManagerGraphOp,
 };
 use gunbc_lib_blob::BlobOps;
 use gunbc_lib_git_ops::GitOps;
 use gunbc_lib_llm_ops::LlmOps;
-use gunbc_lib_transport::{CredentialOp, TransportOps};
+use gunbc_lib_transport::TransportOps;
 use std::collections::HashMap;
 
 use crate::{ReviewOps, ReviewPipelineConfig};
@@ -40,8 +45,10 @@ pub enum ReviewGraphOp {
     Review(ReviewOps),
     /// LLM chat operations (PURE)
     Llm(LlmOps),
-    /// Credential environment (BOUNDARY - resolves provider credentials)
-    Cred(CredentialOp),
+    /// Cloud environment (BOUNDARY - resolves cloud secret config)
+    CloudEnv(CloudEnv),
+    /// Cloud credential flow (GCP/AWS/Azure graph)
+    Cloud(CloudSecretManagerGraphOp),
     /// Transport execution (BOUNDARY - actual I/O)
     Transport(TransportOps),
 }
@@ -53,9 +60,129 @@ impl Executable for ReviewGraphOp {
             ReviewGraphOp::Git(op) => op.execute(inputs),
             ReviewGraphOp::Review(op) => op.execute(inputs),
             ReviewGraphOp::Llm(op) => op.execute(inputs),
-            ReviewGraphOp::Cred(op) => op.execute(inputs),
+            ReviewGraphOp::CloudEnv(op) => op.execute(inputs),
+            ReviewGraphOp::Cloud(op) => op.execute(inputs),
             ReviewGraphOp::Transport(op) => op.execute(inputs),
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Cloud credential wiring helpers
+// ---------------------------------------------------------------------------
+
+fn add_cloud_credential_chain(
+    builder: &mut DagBuilder<ReviewGraphOp>,
+    cloud_env: &NodeRef<ReviewGraphOp>,
+    resolve_auth: &NodeRef<ReviewGraphOp>,
+) -> NodeRef<ReviewGraphOp> {
+    let bind_secret = builder
+        .add_node_after_all(
+            Node::opaque(
+                "bind_secret",
+                vec![
+                    port("config", "CloudSecretConfig"),
+                    port("service", "String"),
+                    optional("secret_name", "OptionalString"),
+                ],
+                vec![port("config", "CloudSecretConfig")],
+                ReviewGraphOp::Cloud(CloudSecretManagerGraphOp::Cloud(CloudOps::BindSecretName)),
+            ),
+            &[cloud_env, resolve_auth],
+        )
+        .expect("bind_secret node");
+
+    builder
+        .add_edge(cloud_env.out("config"), bind_secret.in_port("config"))
+        .expect("cloud_env.config -> bind_secret.config");
+    builder
+        .add_edge(resolve_auth.out("service"), bind_secret.in_port("service"))
+        .expect("resolve_auth.service -> bind_secret.service");
+
+    let cloud_subdag = lift_cloud_dag(build_cloud_secret_manager_credential_graph_gcp_github());
+    let cloud_credential = builder
+        .add_node_after(Node::subdag("cloud_credential", cloud_subdag), &bind_secret)
+        .expect("cloud_credential node");
+
+    builder
+        .add_edge(bind_secret.out("config"), cloud_credential.in_port("config"))
+        .expect("bind_secret.config -> cloud_credential.config");
+    builder
+        .add_edge(
+            resolve_auth.out("service"),
+            cloud_credential.in_port("source_id"),
+        )
+        .expect("resolve_auth.service -> cloud_credential.source_id");
+    builder
+        .add_edge(resolve_auth.out("scheme"), cloud_credential.in_port("scheme"))
+        .expect("resolve_auth.scheme -> cloud_credential.scheme");
+    builder
+        .add_edge(
+            resolve_auth.out("header_name"),
+            cloud_credential.in_port("header_name"),
+        )
+        .expect("resolve_auth.header_name -> cloud_credential.header_name");
+    builder
+        .add_edge(
+            cloud_env.out("request_url"),
+            cloud_credential.in_port("request_url"),
+        )
+        .expect("cloud_env.request_url -> cloud_credential.request_url");
+    builder
+        .add_edge(
+            cloud_env.out("request_token"),
+            cloud_credential.in_port("request_token"),
+        )
+        .expect("cloud_env.request_token -> cloud_credential.request_token");
+
+    cloud_credential
+}
+
+fn lift_cloud_dag(
+    dag: Dag<CloudSecretManagerGraphOp>,
+) -> Dag<ReviewGraphOp> {
+    map_dag_ops(dag, |op| ReviewGraphOp::Cloud(op))
+}
+
+fn map_dag_ops<T, U, F>(dag: Dag<T>, mut f: F) -> Dag<U>
+where
+    T: Clone,
+    U: Clone,
+    F: FnMut(T) -> U,
+{
+    let mut out = Dag::new();
+    out.edges = dag.edges.clone();
+    out.nodes = dag
+        .nodes
+        .into_iter()
+        .map(|node| map_node_ops(node, &mut f))
+        .collect();
+    out
+}
+
+fn map_node_ops<T, U, F>(node: Node<T>, f: &mut F) -> Node<U>
+where
+    T: Clone,
+    U: Clone,
+    F: FnMut(T) -> U,
+{
+    let Node {
+        id,
+        inputs,
+        outputs,
+        body,
+        examples,
+    } = node;
+    let body = match body {
+        NodeBody::Opaque(op) => NodeBody::Opaque(f(op)),
+        NodeBody::SubDag(subdag) => NodeBody::SubDag(map_dag_ops(subdag, f)),
+    };
+    Node {
+        id,
+        inputs,
+        outputs,
+        body,
+        examples,
     }
 }
 
@@ -84,7 +211,7 @@ impl Executable for ReviewGraphOp {
 ///                                     ↓
 ///                              prepare_prompt
 ///                                     ↓
-///                              prepare_llm → resolve_auth → credential_env → [execute_llm] → parse_llm
+///                              prepare_llm → resolve_auth → cloud_credential → [execute_llm] → parse_llm
 ///                                                                      ↓
 ///                                                               parse_response
 /// ```
@@ -93,6 +220,20 @@ impl Executable for ReviewGraphOp {
 /// The graph handles this with conditional execution.
 pub fn build_review_phase_graph() -> Dag<ReviewGraphOp> {
     let mut builder: DagBuilder<ReviewGraphOp> = DagBuilder::new();
+
+    // Node 0: Cloud environment (config + OIDC request inputs)
+    let cloud_env = builder
+        .add_root_node(Node::opaque(
+            "cloud_env",
+            vec![],
+            vec![
+                port("config", "CloudSecretConfig"),
+                optional("request_url", "OptionalString"),
+                optional("request_token", "OptionalString"),
+            ],
+            ReviewGraphOp::CloudEnv(CloudEnv::new()),
+        ))
+        .expect("cloud_env node");
 
     // ========================================================================
     // Blob Acquisition
@@ -136,7 +277,7 @@ pub fn build_review_phase_graph() -> Dag<ReviewGraphOp> {
                 vec![
                     port("source", "Json"),
                     port("response", "TransportResponse"),
-                    optional("handle", "Json"),
+                    optional("handle", "OptionalJson"),
                     port("skip", "Bool"),
                 ],
                 vec![port("handle", "Json"), port("meta", "Json")],
@@ -157,7 +298,7 @@ pub fn build_review_phase_graph() -> Dag<ReviewGraphOp> {
             vec![
                 port("artifact", "String"),
                 port("criteria", "Json"),
-                optional("context", "String"),
+                optional("context", "OptionalString"),
             ],
             vec![port("question", "String"), port("system_prompt", "String")],
             ReviewGraphOp::Review(ReviewOps::PrepareReviewPrompt),
@@ -178,7 +319,7 @@ pub fn build_review_phase_graph() -> Dag<ReviewGraphOp> {
                     port("question", "String"),
                     port("provider", "String"),
                     port("model", "String"),
-                    optional("system_prompt", "String"),
+                    optional("system_prompt", "OptionalString"),
                 ],
                 vec![
                     port("request", "TransportRequest"),
@@ -199,7 +340,6 @@ pub fn build_review_phase_graph() -> Dag<ReviewGraphOp> {
                 vec![port("provider", "String")],
                 vec![
                     port("service", "String"),
-                    port("env_var", "String"),
                     port("scheme", "String"),
                     port("header_name", "String"),
                 ],
@@ -209,24 +349,8 @@ pub fn build_review_phase_graph() -> Dag<ReviewGraphOp> {
         )
         .expect("resolve_auth node");
 
-    // Node 7: Credential environment (resolves provider credentials)
-    let cred_port = "credential:llm";
-    let credential_env = builder
-        .add_node_after(
-            Node::opaque(
-                "credential_env",
-                vec![
-                    port("service", "String"),
-                    port("env_var", "String"),
-                    port("scheme", "String"),
-                    port("header_name", "String"),
-                ],
-                vec![port(cred_port, "Credential")],
-                ReviewGraphOp::Cred(CredentialOp::from_inputs(cred_port)),
-            ),
-            &resolve_auth,
-        )
-        .expect("credential_env node");
+    // Node 7: Cloud credential acquisition (resolves provider credentials)
+    let cloud_credential = add_cloud_credential_chain(&mut builder, &cloud_env, &resolve_auth);
 
     // Nodes 8-9: Execute LLM + ParseSimpleResponse
     let llm_triplet = add_transport_execute_parse_named_with_passthrough(
@@ -239,7 +363,7 @@ pub fn build_review_phase_graph() -> Dag<ReviewGraphOp> {
         vec![port("answer", "String")],
         ReviewGraphOp::Llm(LlmOps::ParseSimpleResponse),
         ReviewGraphOp::Transport(TransportOps::Execute),
-        Some(&credential_env),
+        Some(&cloud_credential),
     )
     .expect("llm triplet");
 
@@ -311,34 +435,10 @@ pub fn build_review_phase_graph() -> Dag<ReviewGraphOp> {
         .expect("prepare_llm.provider -> resolve_auth.provider");
     builder
         .add_edge(
-            resolve_auth.out("service"),
-            credential_env.in_port("service"),
-        )
-        .expect("resolve_auth.service -> credential_env.service");
-    builder
-        .add_edge(
-            resolve_auth.out("env_var"),
-            credential_env.in_port("env_var"),
-        )
-        .expect("resolve_auth.env_var -> credential_env.env_var");
-    builder
-        .add_edge(
-            resolve_auth.out("scheme"),
-            credential_env.in_port("scheme"),
-        )
-        .expect("resolve_auth.scheme -> credential_env.scheme");
-    builder
-        .add_edge(
-            resolve_auth.out("header_name"),
-            credential_env.in_port("header_name"),
-        )
-        .expect("resolve_auth.header_name -> credential_env.header_name");
-    builder
-        .add_edge(
-            credential_env.out(cred_port),
+            cloud_credential.out("credential"),
             llm_triplet.execute.in_port("res:credential"),
         )
-        .expect("credential_env -> execute_llm.res:credential");
+        .expect("cloud_credential -> execute_llm.res:credential");
 
     // Response parsing
     builder
@@ -368,6 +468,20 @@ pub fn build_review_phase_graph() -> Dag<ReviewGraphOp> {
 pub fn build_inline_review_graph() -> Dag<ReviewGraphOp> {
     let mut builder: DagBuilder<ReviewGraphOp> = DagBuilder::new();
 
+    // Node 0: Cloud environment (config + OIDC request inputs)
+    let cloud_env = builder
+        .add_root_node(Node::opaque(
+            "cloud_env",
+            vec![],
+            vec![
+                port("config", "CloudSecretConfig"),
+                optional("request_url", "OptionalString"),
+                optional("request_token", "OptionalString"),
+            ],
+            ReviewGraphOp::CloudEnv(CloudEnv::new()),
+        ))
+        .expect("cloud_env node");
+
     // Node 1: PrepareReviewPrompt
     let prepare_prompt = builder
         .add_root_node(Node::opaque(
@@ -375,7 +489,7 @@ pub fn build_inline_review_graph() -> Dag<ReviewGraphOp> {
             vec![
                 port("artifact", "String"),
                 port("criteria", "Json"),
-                optional("context", "String"),
+                optional("context", "OptionalString"),
             ],
             vec![port("question", "String"), port("system_prompt", "String")],
             ReviewGraphOp::Review(ReviewOps::PrepareReviewPrompt),
@@ -392,7 +506,7 @@ pub fn build_inline_review_graph() -> Dag<ReviewGraphOp> {
                     port("question", "String"),
                     port("provider", "String"),
                     port("model", "String"),
-                    optional("system_prompt", "String"),
+                    optional("system_prompt", "OptionalString"),
                 ],
                 vec![
                     port("request", "TransportRequest"),
@@ -413,7 +527,6 @@ pub fn build_inline_review_graph() -> Dag<ReviewGraphOp> {
                 vec![port("provider", "String")],
                 vec![
                     port("service", "String"),
-                    port("env_var", "String"),
                     port("scheme", "String"),
                     port("header_name", "String"),
                 ],
@@ -423,24 +536,8 @@ pub fn build_inline_review_graph() -> Dag<ReviewGraphOp> {
         )
         .expect("resolve_auth node");
 
-    // Node 4: Credential environment (resolves provider credentials)
-    let cred_port = "credential:llm";
-    let credential_env = builder
-        .add_node_after(
-            Node::opaque(
-                "credential_env",
-                vec![
-                    port("service", "String"),
-                    port("env_var", "String"),
-                    port("scheme", "String"),
-                    port("header_name", "String"),
-                ],
-                vec![port(cred_port, "Credential")],
-                ReviewGraphOp::Cred(CredentialOp::from_inputs(cred_port)),
-            ),
-            &resolve_auth,
-        )
-        .expect("credential_env node");
+    // Node 4: Cloud credential acquisition (resolves provider credentials)
+    let cloud_credential = add_cloud_credential_chain(&mut builder, &cloud_env, &resolve_auth);
 
     // Nodes 5-6: Execute LLM + ParseSimpleResponse
     let llm_triplet = add_transport_execute_parse_named_with_passthrough(
@@ -453,7 +550,7 @@ pub fn build_inline_review_graph() -> Dag<ReviewGraphOp> {
         vec![port("answer", "String")],
         ReviewGraphOp::Llm(LlmOps::ParseSimpleResponse),
         ReviewGraphOp::Transport(TransportOps::Execute),
-        Some(&credential_env),
+        Some(&cloud_credential),
     )
     .expect("llm triplet");
 
@@ -491,34 +588,10 @@ pub fn build_inline_review_graph() -> Dag<ReviewGraphOp> {
         .expect("prepare_llm.provider -> resolve_auth.provider");
     builder
         .add_edge(
-            resolve_auth.out("service"),
-            credential_env.in_port("service"),
-        )
-        .expect("resolve_auth.service -> credential_env.service");
-    builder
-        .add_edge(
-            resolve_auth.out("env_var"),
-            credential_env.in_port("env_var"),
-        )
-        .expect("resolve_auth.env_var -> credential_env.env_var");
-    builder
-        .add_edge(
-            resolve_auth.out("scheme"),
-            credential_env.in_port("scheme"),
-        )
-        .expect("resolve_auth.scheme -> credential_env.scheme");
-    builder
-        .add_edge(
-            resolve_auth.out("header_name"),
-            credential_env.in_port("header_name"),
-        )
-        .expect("resolve_auth.header_name -> credential_env.header_name");
-    builder
-        .add_edge(
-            credential_env.out(cred_port),
+            cloud_credential.out("credential"),
             llm_triplet.execute.in_port("res:credential"),
         )
-        .expect("credential_env -> execute_llm.res:credential");
+        .expect("cloud_credential -> execute_llm.res:credential");
     builder
         .add_edge(
             llm_triplet.parse.out("answer"),
@@ -567,7 +640,7 @@ pub fn build_diff_review_graph() -> Dag<ReviewGraphOp> {
 ///                                                    ↓
 ///                                             prepare_prompt
 ///                                                    ↓
-///                                             prepare_llm → resolve_auth → credential_env → [execute_llm] → parse_llm
+///                                             prepare_llm → resolve_auth → cloud_credential → [execute_llm] → parse_llm
 ///                                                                                     ↓
 ///                                                                              parse_response
 /// ```
@@ -577,6 +650,20 @@ pub fn build_diff_review_graph() -> Dag<ReviewGraphOp> {
 /// - Phase overall: Read-only
 pub fn build_diff_review_graph_with(config: ReviewPipelineConfig) -> Dag<ReviewGraphOp> {
     let mut builder: DagBuilder<ReviewGraphOp> = DagBuilder::new();
+
+    // Cloud environment (config + OIDC request inputs)
+    let cloud_env = builder
+        .add_root_node(Node::opaque(
+            "cloud_env",
+            vec![],
+            vec![
+                port("config", "CloudSecretConfig"),
+                optional("request_url", "OptionalString"),
+                optional("request_token", "OptionalString"),
+            ],
+            ReviewGraphOp::CloudEnv(CloudEnv::new()),
+        ))
+        .expect("cloud_env node");
 
     let default_branch = config.default_branch.clone();
 
@@ -610,7 +697,7 @@ pub fn build_diff_review_graph_with(config: ReviewPipelineConfig) -> Dag<ReviewG
         "execute_diff",
         "parse_diff",
         vec![
-            optional("base_ref", "String"),
+            optional("base_ref", "OptionalString"),
             port("repo_path", "String"),
         ],
         vec![],
@@ -652,7 +739,7 @@ pub fn build_diff_review_graph_with(config: ReviewPipelineConfig) -> Dag<ReviewG
                 vec![
                     port("artifact", "String"),
                     port("criteria", "Json"),
-                    optional("context", "String"),
+                    optional("context", "OptionalString"),
                 ],
                 vec![port("question", "String"), port("system_prompt", "String")],
                 ReviewGraphOp::Review(ReviewOps::PrepareReviewPrompt),
@@ -674,7 +761,7 @@ pub fn build_diff_review_graph_with(config: ReviewPipelineConfig) -> Dag<ReviewG
                     port("question", "String"),
                     port("provider", "String"),
                     port("model", "String"),
-                    optional("system_prompt", "String"),
+                    optional("system_prompt", "OptionalString"),
                 ],
                 vec![
                     port("request", "TransportRequest"),
@@ -694,7 +781,6 @@ pub fn build_diff_review_graph_with(config: ReviewPipelineConfig) -> Dag<ReviewG
                 vec![port("provider", "String")],
                 vec![
                     port("service", "String"),
-                    port("env_var", "String"),
                     port("scheme", "String"),
                     port("header_name", "String"),
                 ],
@@ -704,23 +790,7 @@ pub fn build_diff_review_graph_with(config: ReviewPipelineConfig) -> Dag<ReviewG
         )
         .expect("resolve_auth node");
 
-    let cred_port = "credential:llm";
-    let credential_env = builder
-        .add_node_after(
-            Node::opaque(
-                "credential_env",
-                vec![
-                    port("service", "String"),
-                    port("env_var", "String"),
-                    port("scheme", "String"),
-                    port("header_name", "String"),
-                ],
-                vec![port(cred_port, "Credential")],
-                ReviewGraphOp::Cred(CredentialOp::from_inputs(cred_port)),
-            ),
-            &resolve_auth,
-        )
-        .expect("credential_env node");
+    let cloud_credential = add_cloud_credential_chain(&mut builder, &cloud_env, &resolve_auth);
 
     let llm_triplet = add_transport_execute_parse_named_with_passthrough(
         &mut builder,
@@ -732,7 +802,7 @@ pub fn build_diff_review_graph_with(config: ReviewPipelineConfig) -> Dag<ReviewG
         vec![port("answer", "String")],
         ReviewGraphOp::Llm(LlmOps::ParseSimpleResponse),
         ReviewGraphOp::Transport(TransportOps::Execute),
-        Some(&credential_env),
+        Some(&cloud_credential),
     )
     .expect("llm triplet");
 
@@ -816,34 +886,10 @@ pub fn build_diff_review_graph_with(config: ReviewPipelineConfig) -> Dag<ReviewG
         .expect("prepare_prompt.system_prompt -> prepare_llm.system_prompt");
     builder
         .add_edge(
-            resolve_auth.out("service"),
-            credential_env.in_port("service"),
-        )
-        .expect("resolve_auth.service -> credential_env.service");
-    builder
-        .add_edge(
-            resolve_auth.out("env_var"),
-            credential_env.in_port("env_var"),
-        )
-        .expect("resolve_auth.env_var -> credential_env.env_var");
-    builder
-        .add_edge(
-            resolve_auth.out("scheme"),
-            credential_env.in_port("scheme"),
-        )
-        .expect("resolve_auth.scheme -> credential_env.scheme");
-    builder
-        .add_edge(
-            resolve_auth.out("header_name"),
-            credential_env.in_port("header_name"),
-        )
-        .expect("resolve_auth.header_name -> credential_env.header_name");
-    builder
-        .add_edge(
-            credential_env.out(cred_port),
+            cloud_credential.out("credential"),
             llm_triplet.execute.in_port("res:credential"),
         )
-        .expect("credential_env -> execute_llm.res:credential");
+        .expect("cloud_credential -> execute_llm.res:credential");
 
     // Response parsing
     builder
@@ -895,6 +941,20 @@ pub fn build_multi_source_review_graph() -> Dag<ReviewGraphOp> {
 pub fn build_multi_source_review_graph_with(config: ReviewPipelineConfig) -> Dag<ReviewGraphOp> {
     let mut builder: DagBuilder<ReviewGraphOp> = DagBuilder::new();
 
+    // Cloud environment (config + OIDC request inputs)
+    let cloud_env = builder
+        .add_root_node(Node::opaque(
+            "cloud_env",
+            vec![],
+            vec![
+                port("config", "CloudSecretConfig"),
+                optional("request_url", "OptionalString"),
+                optional("request_token", "OptionalString"),
+            ],
+            ReviewGraphOp::CloudEnv(CloudEnv::new()),
+        ))
+        .expect("cloud_env node");
+
     // ========================================================================
     // Pipeline Config
     // ========================================================================
@@ -923,7 +983,7 @@ pub fn build_multi_source_review_graph_with(config: ReviewPipelineConfig) -> Dag
                 vec![
                     port("artifact", "String"),
                     port("criteria", "Json"),
-                    optional("context", "String"),
+                    optional("context", "OptionalString"),
                 ],
                 vec![port("question", "String"), port("system_prompt", "String")],
                 ReviewGraphOp::Review(ReviewOps::PrepareReviewPrompt),
@@ -941,7 +1001,7 @@ pub fn build_multi_source_review_graph_with(config: ReviewPipelineConfig) -> Dag
                     port("question", "String"),
                     port("provider", "String"),
                     port("model", "String"),
-                    optional("system_prompt", "String"),
+                    optional("system_prompt", "OptionalString"),
                 ],
                 vec![
                     port("request", "TransportRequest"),
@@ -961,7 +1021,6 @@ pub fn build_multi_source_review_graph_with(config: ReviewPipelineConfig) -> Dag
                 vec![port("provider", "String")],
                 vec![
                     port("service", "String"),
-                    port("env_var", "String"),
                     port("scheme", "String"),
                     port("header_name", "String"),
                 ],
@@ -971,23 +1030,7 @@ pub fn build_multi_source_review_graph_with(config: ReviewPipelineConfig) -> Dag
         )
         .expect("resolve_auth node");
 
-    let cred_port = "credential:llm";
-    let credential_env = builder
-        .add_node_after(
-            Node::opaque(
-                "credential_env",
-                vec![
-                    port("service", "String"),
-                    port("env_var", "String"),
-                    port("scheme", "String"),
-                    port("header_name", "String"),
-                ],
-                vec![port(cred_port, "Credential")],
-                ReviewGraphOp::Cred(CredentialOp::from_inputs(cred_port)),
-            ),
-            &resolve_auth,
-        )
-        .expect("credential_env node");
+    let cloud_credential = add_cloud_credential_chain(&mut builder, &cloud_env, &resolve_auth);
 
     let llm_triplet = add_transport_execute_parse_named_with_passthrough(
         &mut builder,
@@ -999,7 +1042,7 @@ pub fn build_multi_source_review_graph_with(config: ReviewPipelineConfig) -> Dag
         vec![port("answer", "String")],
         ReviewGraphOp::Llm(LlmOps::ParseSimpleResponse),
         ReviewGraphOp::Transport(TransportOps::Execute),
-        Some(&credential_env),
+        Some(&cloud_credential),
     )
     .expect("llm triplet");
 
@@ -1073,34 +1116,10 @@ pub fn build_multi_source_review_graph_with(config: ReviewPipelineConfig) -> Dag
         .expect("prepare_prompt.system_prompt -> prepare_llm.system_prompt");
     builder
         .add_edge(
-            resolve_auth.out("service"),
-            credential_env.in_port("service"),
-        )
-        .expect("resolve_auth.service -> credential_env.service");
-    builder
-        .add_edge(
-            resolve_auth.out("env_var"),
-            credential_env.in_port("env_var"),
-        )
-        .expect("resolve_auth.env_var -> credential_env.env_var");
-    builder
-        .add_edge(
-            resolve_auth.out("scheme"),
-            credential_env.in_port("scheme"),
-        )
-        .expect("resolve_auth.scheme -> credential_env.scheme");
-    builder
-        .add_edge(
-            resolve_auth.out("header_name"),
-            credential_env.in_port("header_name"),
-        )
-        .expect("resolve_auth.header_name -> credential_env.header_name");
-    builder
-        .add_edge(
-            credential_env.out(cred_port),
+            cloud_credential.out("credential"),
             llm_triplet.execute.in_port("res:credential"),
         )
-        .expect("credential_env -> execute_llm.res:credential");
+        .expect("cloud_credential -> execute_llm.res:credential");
     builder
         .add_edge(
             llm_triplet.parse.out("answer"),
@@ -1208,7 +1227,8 @@ mod tests {
             ReviewGraphOp::Review(ReviewOps::HashFinding),
             ReviewGraphOp::Llm(LlmOps::PrepareSimpleRequest),
             ReviewGraphOp::Llm(LlmOps::ResolveAuth),
-            ReviewGraphOp::Cred(CredentialOp::from_inputs("credential:llm")),
+            ReviewGraphOp::CloudEnv(CloudEnv::new()),
+            ReviewGraphOp::Cloud(CloudSecretManagerGraphOp::Cloud(CloudOps::ResolveConfig)),
             ReviewGraphOp::Transport(TransportOps::Execute),
         ];
 

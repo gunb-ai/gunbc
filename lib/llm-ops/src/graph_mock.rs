@@ -14,6 +14,9 @@
 //! The `execute` boundary returns provider-specific REST responses that
 //! the `parse` node then converts to unified outputs.
 
+use gunbc_ir::transport::cloud::{
+    CloudProviderKind, CloudRuntimeKind, CloudSecretConfig, CloudSecretRef,
+};
 use gunbc_ir::transport::llm::mock;
 use gunbc_ir::{SecretString, Value};
 use gunbc_test::{InputConstraint, MockSpec, NodeExample, OutputMatcher};
@@ -35,6 +38,40 @@ fn mock_credential() -> Value {
         Value::Secret(SecretString::new("capability")),
     );
     Value::Map(map)
+}
+
+fn mock_cloud_config() -> Value {
+    CloudSecretConfig {
+        provider: CloudProviderKind::Gcp,
+        runtime: CloudRuntimeKind::GitHubActions,
+        audience: "projects/123/locations/global/workloadIdentityPools/github/providers/gha"
+            .to_string(),
+        project_or_account: "mock-secrets".to_string(),
+        secret: CloudSecretRef {
+            prefix: "ci-".to_string(),
+            name: String::new(),
+            delimiter: String::new(),
+            version: None,
+        },
+        service_account_or_role: Some("ci-secrets@mock.iam.gserviceaccount.com".to_string()),
+        impersonate_account_or_role: None,
+    }
+    .into()
+}
+
+fn with_cloud_env(spec: MockSpec) -> MockSpec {
+    spec.boundary("cloud_env", "config", mock_cloud_config())
+        .boundary(
+            "cloud_env",
+            "request_url",
+            Value::Str("https://example.com/oidc".into()),
+        )
+        .boundary(
+            "cloud_env",
+            "request_token",
+            Value::Str("mock-oidc-token".into()),
+        )
+        .boundary("cloud_credential", "credential", mock_credential())
 }
 
 /// Mock specification for OpenAI chat completion.
@@ -59,7 +96,7 @@ fn mock_credential() -> Value {
 pub fn openai_mock_spec() -> MockSpec {
     let response = mock::mock_openai_response("The code looks good. No issues found.");
 
-    MockSpec::new("llm-openai")
+    with_cloud_env(MockSpec::new("llm-openai"))
         // Input mocks for DAG entry points (dangling inputs on prepare node)
         .input_mock("prepare", "provider", Value::Str("openai".into()))
         .input_mock("prepare", "model", Value::Str("gpt-4o".into()))
@@ -69,12 +106,6 @@ pub fn openai_mock_spec() -> MockSpec {
             Value::Json(serde_json::json!([
                 {"role": "user", "content": "Review this code: fn main() {}"}
             ])),
-        )
-        // Env: resolved auth token
-        .boundary(
-            "credential_env",
-            "credential:llm",
-            mock_credential(),
         )
         // Transport mock: execute node response (DryRun interception)
         .transport_mock(
@@ -125,10 +156,6 @@ pub fn openai_mock_spec() -> MockSpec {
                 .input("provider", Value::Str("openai".into()))
                 .output("service", OutputMatcher::exact(Value::Str("openai".into())))
                 .output(
-                    "env_var",
-                    OutputMatcher::exact(Value::Str("OPENAI_API_KEY".into())),
-                )
-                .output(
                     "scheme",
                     OutputMatcher::exact(Value::Str("bearer".into())),
                 )
@@ -168,8 +195,9 @@ pub fn openai_mock_spec() -> MockSpec {
                 .output("model", OutputMatcher::Any)
                 .description("OpenAI parse handles skipped transport response"),
         )
-        .resource_credential("credential:llm", Some(3_600_000))
-        .skip_node_example("credential_env")
+        .resource_credential("credential:openai", Some(3_600_000))
+        .skip_node_example("cloud_env")
+        .skip_node_example("cloud_credential")
 }
 
 /// Mock specification for Anthropic chat completion.
@@ -189,7 +217,7 @@ pub fn anthropic_mock_spec() -> MockSpec {
         "The function handles edge cases well. Consider adding a doc comment.",
     );
 
-    MockSpec::new("llm-anthropic")
+    with_cloud_env(MockSpec::new("llm-anthropic"))
         // Input mocks for DAG entry points (dangling inputs on prepare node)
         .input_mock("prepare", "provider", Value::Str("anthropic".into()))
         .input_mock(
@@ -203,12 +231,6 @@ pub fn anthropic_mock_spec() -> MockSpec {
             Value::Json(serde_json::json!([
                 {"role": "user", "content": "Review this function for edge cases"}
             ])),
-        )
-        // Env: resolved auth token
-        .boundary(
-            "credential_env",
-            "credential:llm",
-            mock_credential(),
         )
         // Transport mock: execute node response (DryRun interception)
         .transport_mock(
@@ -268,10 +290,6 @@ pub fn anthropic_mock_spec() -> MockSpec {
                     OutputMatcher::exact(Value::Str("anthropic".into())),
                 )
                 .output(
-                    "env_var",
-                    OutputMatcher::exact(Value::Str("ANTHROPIC_API_KEY".into())),
-                )
-                .output(
                     "scheme",
                     OutputMatcher::exact(Value::Str("header".into())),
                 )
@@ -279,7 +297,7 @@ pub fn anthropic_mock_spec() -> MockSpec {
                     "header_name",
                     OutputMatcher::exact(Value::Str("x-api-key".into())),
                 )
-                .description("Resolve auth maps Anthropic provider to API key env var"),
+                .description("Resolve auth maps Anthropic provider to header auth"),
         )
         .node_example(
             NodeExample::new("parse")
@@ -314,8 +332,9 @@ pub fn anthropic_mock_spec() -> MockSpec {
                 .output("model", OutputMatcher::Any)
                 .description("Anthropic parse handles skipped transport response"),
         )
-        .resource_credential("credential:llm", Some(3_600_000))
-        .skip_node_example("credential_env")
+        .resource_credential("credential:anthropic", Some(3_600_000))
+        .skip_node_example("cloud_env")
+        .skip_node_example("cloud_credential")
 }
 
 /// Mock specification for code review workflow.
@@ -341,7 +360,7 @@ Overall: The code is clean and well-structured. Minor fixes recommended.";
 
     let response = mock::mock_openai_response_full(review_content, "gpt-4o", "stop", 150, 85);
 
-    MockSpec::new("llm-code-review")
+    with_cloud_env(MockSpec::new("llm-code-review"))
         // Input mocks for DAG entry points
         .input_mock("prepare", "provider", Value::Str("openai".into()))
         .input_mock("prepare", "model", Value::Str("gpt-4o".into()))
@@ -349,12 +368,6 @@ Overall: The code is clean and well-structured. Minor fixes recommended.";
             {"role": "system", "content": "You are a code reviewer. Review the following code."},
             {"role": "user", "content": "fn main() { let x = Some(1); x.unwrap(); }"}
         ])))
-        // Env: resolved auth token
-        .boundary(
-            "credential_env",
-            "credential:llm",
-            mock_credential(),
-        )
         // Transport mock: execute node response
         .transport_mock(
             "execute",
@@ -393,10 +406,6 @@ Overall: The code is clean and well-structured. Minor fixes recommended.";
                 .input("provider", Value::Str("openai".into()))
                 .output("service", OutputMatcher::exact(Value::Str("openai".into())))
                 .output(
-                    "env_var",
-                    OutputMatcher::exact(Value::Str("OPENAI_API_KEY".into())),
-                )
-                .output(
                     "scheme",
                     OutputMatcher::exact(Value::Str("bearer".into())),
                 )
@@ -404,7 +413,7 @@ Overall: The code is clean and well-structured. Minor fixes recommended.";
                     "header_name",
                     OutputMatcher::exact(Value::Str(String::new())),
                 )
-                .description("Resolve auth maps OpenAI provider to API key env var"),
+                .description("Resolve auth maps OpenAI provider to bearer auth"),
         )
         .node_example(
             NodeExample::new("parse")
@@ -426,8 +435,9 @@ Overall: The code is clean and well-structured. Minor fixes recommended.";
                 .output("model", OutputMatcher::Any)
                 .description("Code review parse handles skipped transport response"),
         )
-        .resource_credential("credential:llm", Some(3_600_000))
-        .skip_node_example("credential_env")
+        .resource_credential("credential:openai", Some(3_600_000))
+        .skip_node_example("cloud_env")
+        .skip_node_example("cloud_credential")
 }
 
 /// Mock specification for testing API key as secret.
@@ -444,7 +454,7 @@ Overall: The code is clean and well-structured. Minor fixes recommended.";
 pub fn secret_api_key_mock_spec() -> MockSpec {
     let response = mock::mock_openai_response("Response with secret auth.");
 
-    MockSpec::new("llm-secrets")
+    with_cloud_env(MockSpec::new("llm-secrets"))
         // Input mocks for DAG entry points
         .input_mock("prepare", "provider", Value::Str("openai".into()))
         .input_mock("prepare", "model", Value::Str("gpt-4o".into()))
@@ -454,12 +464,6 @@ pub fn secret_api_key_mock_spec() -> MockSpec {
             Value::Json(serde_json::json!([
                 {"role": "user", "content": "Hello with auth"}
             ])),
-        )
-        // Env: resolved auth token
-        .boundary(
-            "credential_env",
-            "credential:llm",
-            mock_credential(),
         )
         // Transport mock: execute node response
         .transport_mock(
@@ -502,10 +506,6 @@ pub fn secret_api_key_mock_spec() -> MockSpec {
                 .input("provider", Value::Str("openai".into()))
                 .output("service", OutputMatcher::exact(Value::Str("openai".into())))
                 .output(
-                    "env_var",
-                    OutputMatcher::exact(Value::Str("OPENAI_API_KEY".into())),
-                )
-                .output(
                     "scheme",
                     OutputMatcher::exact(Value::Str("bearer".into())),
                 )
@@ -513,7 +513,7 @@ pub fn secret_api_key_mock_spec() -> MockSpec {
                     "header_name",
                     OutputMatcher::exact(Value::Str(String::new())),
                 )
-                .description("Resolve auth maps OpenAI provider to API key env var"),
+                .description("Resolve auth maps OpenAI provider to bearer auth"),
         )
         .node_example(
             NodeExample::new("parse")
@@ -539,8 +539,9 @@ pub fn secret_api_key_mock_spec() -> MockSpec {
                 .output("model", OutputMatcher::Any)
                 .description("Secret auth parse handles skipped transport response"),
         )
-        .resource_credential("credential:llm", Some(3_600_000))
-        .skip_node_example("credential_env")
+        .resource_credential("credential:openai", Some(3_600_000))
+        .skip_node_example("cloud_env")
+        .skip_node_example("cloud_credential")
 }
 
 /// Mock specification for testing rate limiting / error scenarios.
@@ -552,7 +553,7 @@ pub fn rate_limited_mock_spec() -> MockSpec {
         "Rate limit exceeded. Please retry after 60 seconds.",
     );
 
-    MockSpec::new("llm-rate-limited")
+    with_cloud_env(MockSpec::new("llm-rate-limited"))
         // Input mocks for DAG entry points
         .input_mock("prepare", "provider", Value::Str("openai".into()))
         .input_mock("prepare", "model", Value::Str("gpt-4o".into()))
@@ -562,12 +563,6 @@ pub fn rate_limited_mock_spec() -> MockSpec {
             Value::Json(serde_json::json!([
                 {"role": "user", "content": "This request will be rate limited"}
             ])),
-        )
-        // Env: resolved auth token
-        .boundary(
-            "credential_env",
-            "credential:llm",
-            mock_credential(),
         )
         // Transport mock: execute node returns error response
         .transport_mock(
@@ -590,10 +585,6 @@ pub fn rate_limited_mock_spec() -> MockSpec {
                 .input("provider", Value::Str("openai".into()))
                 .output("service", OutputMatcher::exact(Value::Str("openai".into())))
                 .output(
-                    "env_var",
-                    OutputMatcher::exact(Value::Str("OPENAI_API_KEY".into())),
-                )
-                .output(
                     "scheme",
                     OutputMatcher::exact(Value::Str("bearer".into())),
                 )
@@ -601,10 +592,11 @@ pub fn rate_limited_mock_spec() -> MockSpec {
                     "header_name",
                     OutputMatcher::exact(Value::Str(String::new())),
                 )
-                .description("Resolve auth maps OpenAI provider to API key env var"),
+                .description("Resolve auth maps OpenAI provider to bearer auth"),
         )
-        .resource_credential("credential:llm", Some(3_600_000))
-        .skip_node_example("credential_env")
+        .resource_credential("credential:openai", Some(3_600_000))
+        .skip_node_example("cloud_env")
+        .skip_node_example("cloud_credential")
 }
 
 /// Mock specification for credential lifecycle testing.
@@ -621,7 +613,7 @@ pub fn rate_limited_mock_spec() -> MockSpec {
 pub fn credential_lifecycle_mock_spec() -> MockSpec {
     let response = mock::mock_openai_response("Credential lifecycle test response.");
 
-    MockSpec::new("llm-credential-lifecycle")
+    with_cloud_env(MockSpec::new("llm-credential-lifecycle"))
         // Input mocks for DAG entry points
         .input_mock("prepare", "provider", Value::Str("openai".into()))
         .input_mock("prepare", "model", Value::Str("gpt-4o".into()))
@@ -631,12 +623,6 @@ pub fn credential_lifecycle_mock_spec() -> MockSpec {
             Value::Json(serde_json::json!([
                 {"role": "user", "content": "Credential lifecycle test"}
             ])),
-        )
-        // Env: resolved auth token
-        .boundary(
-            "credential_env",
-            "credential:llm",
-            mock_credential(),
         )
         // Transport mock
         .transport_mock(
@@ -663,9 +649,9 @@ pub fn credential_lifecycle_mock_spec() -> MockSpec {
         .expects_input("provider", InputConstraint::NonEmpty)
         .expects_input("model", InputConstraint::NonEmpty)
         // Credential resource: basic (acquire + timeout)
-        .resource_credential("credential:llm", Some(3_600_000))
+        .resource_credential("credential:openai", Some(3_600_000))
         // Credential resource: refreshable (acquire + timeout + refresh)
-        .resource_credential_refreshable("credential:llm:refreshable", 3_600_000, 3_600_000)
+        .resource_credential_refreshable("credential:openai:refreshable", 3_600_000, 3_600_000)
         // Node I/O examples
         .node_example(
             NodeExample::new("prepare")
@@ -684,10 +670,6 @@ pub fn credential_lifecycle_mock_spec() -> MockSpec {
                 .input("provider", Value::Str("openai".into()))
                 .output("service", OutputMatcher::exact(Value::Str("openai".into())))
                 .output(
-                    "env_var",
-                    OutputMatcher::exact(Value::Str("OPENAI_API_KEY".into())),
-                )
-                .output(
                     "scheme",
                     OutputMatcher::exact(Value::Str("bearer".into())),
                 )
@@ -695,7 +677,7 @@ pub fn credential_lifecycle_mock_spec() -> MockSpec {
                     "header_name",
                     OutputMatcher::exact(Value::Str(String::new())),
                 )
-                .description("Resolve auth maps OpenAI provider to API key env var"),
+                .description("Resolve auth maps OpenAI provider to bearer auth"),
         )
         .node_example(
             NodeExample::new("parse")
@@ -721,7 +703,8 @@ pub fn credential_lifecycle_mock_spec() -> MockSpec {
                 .output("model", OutputMatcher::Any)
                 .description("Parse handles skipped transport response"),
         )
-        .skip_node_example("credential_env")
+        .skip_node_example("cloud_env")
+        .skip_node_example("cloud_credential")
 }
 
 /// Mock specification for Anthropic credential lifecycle testing.
@@ -737,7 +720,7 @@ pub fn credential_lifecycle_mock_spec() -> MockSpec {
 pub fn credential_lifecycle_anthropic_mock_spec() -> MockSpec {
     let response = mock::mock_anthropic_response("Credential lifecycle test response.");
 
-    MockSpec::new("llm-credential-lifecycle-anthropic")
+    with_cloud_env(MockSpec::new("llm-credential-lifecycle-anthropic"))
         // Input mocks for DAG entry points
         .input_mock("prepare", "provider", Value::Str("anthropic".into()))
         .input_mock(
@@ -753,11 +736,6 @@ pub fn credential_lifecycle_anthropic_mock_spec() -> MockSpec {
             ])),
         )
         // Env: resolved auth token
-        .boundary(
-            "credential_env",
-            "credential:llm",
-            mock_credential(),
-        )
         // Transport mock
         .transport_mock(
             "execute",
@@ -787,9 +765,9 @@ pub fn credential_lifecycle_anthropic_mock_spec() -> MockSpec {
         .expects_input("provider", InputConstraint::NonEmpty)
         .expects_input("model", InputConstraint::NonEmpty)
         // Credential resource: basic (acquire + timeout)
-        .resource_credential("credential:llm", Some(3_600_000))
+        .resource_credential("credential:anthropic", Some(3_600_000))
         // Credential resource: refreshable (acquire + timeout + refresh)
-        .resource_credential_refreshable("credential:llm:refreshable", 3_600_000, 3_600_000)
+        .resource_credential_refreshable("credential:anthropic:refreshable", 3_600_000, 3_600_000)
         // Node I/O examples
         .node_example(
             NodeExample::new("prepare")
@@ -811,10 +789,6 @@ pub fn credential_lifecycle_anthropic_mock_spec() -> MockSpec {
                     OutputMatcher::exact(Value::Str("anthropic".into())),
                 )
                 .output(
-                    "env_var",
-                    OutputMatcher::exact(Value::Str("ANTHROPIC_API_KEY".into())),
-                )
-                .output(
                     "scheme",
                     OutputMatcher::exact(Value::Str("header".into())),
                 )
@@ -822,7 +796,7 @@ pub fn credential_lifecycle_anthropic_mock_spec() -> MockSpec {
                     "header_name",
                     OutputMatcher::exact(Value::Str("x-api-key".into())),
                 )
-                .description("Resolve auth maps Anthropic provider to API key env var"),
+                .description("Resolve auth maps Anthropic provider to header auth"),
         )
         .node_example(
             NodeExample::new("parse")
@@ -851,5 +825,6 @@ pub fn credential_lifecycle_anthropic_mock_spec() -> MockSpec {
                 .output("model", OutputMatcher::Any)
                 .description("Parse handles skipped transport response"),
         )
-        .skip_node_example("credential_env")
+        .skip_node_example("cloud_env")
+        .skip_node_example("cloud_credential")
 }

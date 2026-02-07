@@ -8,6 +8,7 @@ use gunbc_dag::build::build_build_graph;
 use gunbc_exec::{execute_and_display, BoundaryMocks, ExecutionMode, TerminalProfile};
 use gunbc_ir::transport::{ShellResponse, TransportResponse};
 use gunbc_ir::Value;
+use gunbc_lib_transport::preflight::ensure_lint_upsert;
 use std::env;
 use std::process;
 
@@ -28,6 +29,11 @@ fn main() {
             _ => {}
         }
         i += 1;
+    }
+
+    if let Err(err) = ensure_lint_upsert() {
+        eprintln!("preflight failed: {}", err);
+        process::exit(1);
     }
 
     // Detect terminal environment

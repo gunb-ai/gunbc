@@ -318,22 +318,22 @@ mod tests {
     fn test_analyze_credential_detection() {
         let mut dag: Dag<()> = Dag::new();
         dag.add_node(Node::opaque(
-            "credential_env",
+            "cloud_credential",
             vec![],
-            vec![port("credential:llm", "Credential")],
+            vec![port("credential", "Credential")],
             (),
         ));
         dag.add_node(Node::opaque(
             "execute",
-            vec![port("credential:llm", "Credential")],
+            vec![port("credential", "Credential")],
             vec![port("response", "String")],
             (),
         ));
-        dag.add_edge(edge("credential_env", "credential:llm", "execute", "credential:llm"));
+        dag.add_edge(edge("cloud_credential", "credential", "execute", "credential"));
 
         let analysis = analyze_dag(&dag);
 
-        assert_eq!(analysis.credential_nodes, vec!["credential_env"]);
+        assert_eq!(analysis.credential_nodes, vec!["cloud_credential"]);
     }
 
     #[test]

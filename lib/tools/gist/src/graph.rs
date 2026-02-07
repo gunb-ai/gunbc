@@ -550,7 +550,7 @@ pub fn build_gist_graph(
         &mut builder,
         "current_branch",
         vec![port("repo_path", "String")],
-        vec![optional("branch", "String")],
+        vec![optional("branch", "OptionalString")],
         GistGraphOp::Git(GitOps::PrepareCurrentBranch),
         GistGraphOp::Git(GitOps::ParseCurrentBranch),
         GistGraphOp::Transport(TransportOps::Execute),
@@ -565,7 +565,7 @@ pub fn build_gist_graph(
         &mut builder,
         "remote_branches",
         vec![port("repo_path", "String")],
-        vec![optional("remote_branch", "String")],
+        vec![optional("remote_branch", "OptionalString")],
         GistGraphOp::Git(GitOps::PrepareRemoteBranchesAtHead),
         GistGraphOp::Git(GitOps::ParseRemoteBranchesAtHead),
         GistGraphOp::Transport(TransportOps::Execute),
@@ -582,9 +582,9 @@ pub fn build_gist_graph(
             "prepare_gist_request",
             vec![
                 scalar("markdown", "String"),
-                optional("branch", "String"),
-                optional("remote_branch", "String"),
-                optional("base_ref", "String"),
+                optional("branch", "OptionalString"),
+                optional("remote_branch", "OptionalString"),
+                optional("base_ref", "OptionalString"),
                 resource("fs", "FilesystemHandle", AccessMode::Read),
                 resource("clock", "Timestamp", AccessMode::Read),
             ],
@@ -754,7 +754,7 @@ fn build_diff_acquire(
         "diff",
         vec![
             port("repo_path", "String"),
-            optional("base_ref", "String"),
+            optional("base_ref", "OptionalString"),
         ],
         vec![port("diff_files", "Map"), scalar("stats", "String")],
         GistGraphOp::Git(GitOps::PrepareDiff {
@@ -770,7 +770,7 @@ fn build_diff_acquire(
     let render_markdown = builder.add_node_after(
         Node::opaque(
             "render_markdown",
-            vec![port("diff_files", "Map"), optional("stats", "String")],
+            vec![port("diff_files", "Map"), optional("stats", "OptionalString")],
             vec![scalar("markdown", "String")],
             GistGraphOp::Markdown(MarkdownOp::RenderDiffSnapshot),
         ),
@@ -813,7 +813,7 @@ fn build_recent_acquire(
         builder,
         "rev_list",
         vec![port("repo_path", "String")],
-        vec![optional("base_ref", "String")],
+        vec![optional("base_ref", "OptionalString")],
         GistGraphOp::Git(GitOps::PrepareRevListBefore {
             before: "3 days ago".to_string(),
         }),
@@ -831,7 +831,7 @@ fn build_recent_acquire(
         "diff",
         vec![
             port("repo_path", "String"),
-            optional("base_ref", "String"),
+            optional("base_ref", "OptionalString"),
         ],
         vec![port("diff_files", "Map"), scalar("stats", "String")],
         GistGraphOp::Git(GitOps::PrepareDiff {
@@ -847,7 +847,7 @@ fn build_recent_acquire(
     let render_markdown = builder.add_node_after(
         Node::opaque(
             "render_markdown",
-            vec![port("diff_files", "Map"), optional("stats", "String")],
+            vec![port("diff_files", "Map"), optional("stats", "OptionalString")],
             vec![scalar("markdown", "String")],
             GistGraphOp::Markdown(MarkdownOp::RenderDiffSnapshot),
         ),

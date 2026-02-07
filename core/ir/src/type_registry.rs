@@ -19,12 +19,13 @@
 //! let url_type = registry.get("Url").unwrap();
 //! ```
 
-use crate::contract::TypeContract;
+use crate::contract::{self, TypeContract};
 use crate::dag::Dag;
 use crate::type_lib;
 use crate::type_op::TypeOp;
 use crate::types::{Cardinality, TypeId};
 use std::collections::HashMap;
+use std::fmt;
 
 /// Registry for named type DAGs.
 ///
@@ -33,6 +34,23 @@ use std::collections::HashMap;
 pub struct TypeRegistry {
     /// Map from type name to type DAG.
     types: HashMap<TypeId, Dag<TypeOp>>,
+}
+
+/// Suggested explicit transformation strategy for an unsafe coercion.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CoercionStrategy {
+    /// Run the target type's validation/transform DAG explicitly.
+    ValidateTo(TypeId),
+}
+
+impl fmt::Display for CoercionStrategy {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CoercionStrategy::ValidateTo(target) => {
+                write!(f, "validate to '{}'", target.0)
+            }
+        }
+    }
 }
 
 impl TypeRegistry {
@@ -71,7 +89,21 @@ impl TypeRegistry {
         self.register("PositiveInt", type_lib::positive_int());
         self.register("NonNegativeInt", type_lib::non_negative_int());
 
-        // Legacy/container aliases (cardinality now lives in Port.cardinality).
+        // Container aliases (cardinality encoded in the type DAG).
+        self.register("OptionalString", type_lib::optional(type_lib::string()));
+        self.register("OptionalInt", type_lib::optional(type_lib::int()));
+        self.register("OptionalBool", type_lib::optional(type_lib::bool()));
+        self.register("OptionalJson", type_lib::optional(type_lib::json()));
+        self.register("StringList", type_lib::list(type_lib::string()));
+        self.register(
+            "NonEmptyStringList",
+            type_lib::non_empty_list(type_lib::string()),
+        );
+        self.register("IntList", type_lib::list(type_lib::int()));
+        self.register("BoolList", type_lib::list(type_lib::bool()));
+        self.register("JsonList", type_lib::list(type_lib::json()));
+
+        // Legacy/container aliases (cardinality encoded in the type DAG).
         self.register("OptionalUrl", type_lib::optional_url());
         self.register("UrlList", type_lib::url_list());
         self.register("FilePathList", type_lib::file_path_list());
@@ -120,11 +152,13 @@ impl TypeRegistry {
         self.types.is_empty()
     }
 
-    /// Infer cardinality from a registered type.
+    /// Infer cardinality from a registered type when the type DAG encodes a wrapper.
     ///
-    /// Returns `None` if the type is not registered.
+    /// Returns `None` if the type is not registered or does not encode cardinality.
     pub fn infer_cardinality(&self, type_id: &TypeId) -> Option<Cardinality> {
-        self.get(type_id).map(type_lib::infer_cardinality)
+        let dag = self.get(type_id)?;
+        contract::wrapper_kind(dag)?;
+        Some(type_lib::infer_cardinality(dag))
     }
 
     /// Get the base type name from a registered type.
@@ -178,7 +212,24 @@ impl TypeRegistry {
         self.is_compatible(from, to)
     }
 
-    fn base_type_upcasts_to(&self, from: &str, to: &str) -> bool {
+    /// Suggest an explicit coercion strategy when a safe upcast is not possible.
+    pub fn coercion_strategy(&self, from: &TypeId, to: &TypeId) -> Option<CoercionStrategy> {
+        if from == to {
+            return None;
+        }
+
+        if self.is_compatible(from, to) {
+            return None;
+        }
+
+        if self.is_refinement_of(to, from) {
+            return Some(CoercionStrategy::ValidateTo(to.clone()));
+        }
+
+        None
+    }
+
+    pub(crate) fn base_type_upcasts_to(&self, from: &str, to: &str) -> bool {
         if from == to {
             return true;
         }
@@ -262,10 +313,7 @@ mod tests {
         registry.register("MaybeValue", type_lib::optional(type_lib::string()));
         registry.register("ValueCollection", type_lib::list(type_lib::string()));
 
-        assert_eq!(
-            registry.infer_cardinality(&TypeId::from("String")),
-            Some(Cardinality::ONE)
-        );
+        assert_eq!(registry.infer_cardinality(&TypeId::from("String")), None);
         assert_eq!(
             registry.infer_cardinality(&TypeId::from("MaybeValue")),
             Some(Cardinality::ZERO_OR_ONE)

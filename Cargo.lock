@@ -209,6 +209,7 @@ dependencies = [
  "gunbc-infra",
  "gunbc-ir",
  "gunbc-lib-blob",
+ "gunbc-lib-cloud-ops",
  "gunbc-lib-gist-ops",
  "gunbc-lib-llm-ops",
  "gunbc-lib-review",
@@ -301,7 +302,11 @@ version = "0.1.0"
 dependencies = [
  "gunbc-exec",
  "gunbc-ir",
+ "gunbc-test",
+ "gunbc-testgen-registry",
+ "gunbc-testgen-registry-macros",
  "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -310,7 +315,11 @@ version = "0.1.0"
 dependencies = [
  "gunbc-exec",
  "gunbc-ir",
+ "gunbc-test",
+ "gunbc-testgen-registry",
+ "gunbc-testgen-registry-macros",
  "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -320,6 +329,21 @@ dependencies = [
  "gunbc-exec",
  "gunbc-infra",
  "gunbc-ir",
+ "gunbc-lib-transport",
+ "gunbc-test",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "gunbc-lib-cloud-ops"
+version = "0.1.0"
+dependencies = [
+ "gunbc-exec",
+ "gunbc-ir",
+ "gunbc-lib-aws-ops",
+ "gunbc-lib-azure-ops",
+ "gunbc-lib-gcp-ops",
  "gunbc-lib-transport",
  "gunbc-test",
  "serde",
@@ -366,6 +390,7 @@ version = "0.1.0"
 dependencies = [
  "gunbc-exec",
  "gunbc-ir",
+ "gunbc-lib-cloud-ops",
  "gunbc-lib-transport",
  "gunbc-test",
  "gunbc-testgen-registry",
@@ -390,6 +415,7 @@ dependencies = [
  "gunbc-exec",
  "gunbc-ir",
  "gunbc-lib-blob",
+ "gunbc-lib-cloud-ops",
  "gunbc-lib-git-ops",
  "gunbc-lib-llm-ops",
  "gunbc-lib-transport",

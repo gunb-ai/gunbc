@@ -44,10 +44,10 @@ pub fn build_glob_subdag() -> Node<LanguageOp> {
         "glob_match",
         vec![
             Port::scalar("pattern", "String"),
-            Port::list("files", "String"),
+            Port::list("files", "StringList"),
         ],
         vec![
-            Port::list("matched", "String"),
+            Port::list("matched", "StringList"),
             Port::scalar("negated", "Bool"),
         ],
         LanguageOp::GlobMatch,

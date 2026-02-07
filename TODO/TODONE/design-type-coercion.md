@@ -1,5 +1,8 @@
 # Design: Type-Aware Safe Coercion
 
+**Status**: Completed (deferred items noted below)
+**Date**: 2026-02-07
+
 > Resolves: cardinality-transparent-execution.md Task 11 (Map semantics)
 > and Task 12 (Embed cardinality in type system).
 >
@@ -153,32 +156,26 @@ its type DAG says `Wrap(Optional)` → `[0,1]`. `infer_cardinality()` tries
 to resolve this by preferring the type DAG, but the fallback to the port's
 declared cardinality is a source of bugs.
 
-### 4.2 Proposed: TypeContract as the Source of Truth
+### 4.2 Proposed: Explicit Port Cardinality (Migration Path)
 
-Instead of `Port { type_id, cardinality }` with two independent fields,
-the **type contract extracted from the type DAG** becomes authoritative:
+Ports keep an explicit `cardinality` field that is used for edge validation.
+The type DAG remains the source of truth for base type + predicates (L2/L3).
+When a type DAG **explicitly encodes a wrapper**, its cardinality overrides
+the port declaration. If the type DAG does *not* encode cardinality, the port
+declaration remains authoritative.
 
 ```rust
-// The type DAG IS the type. Cardinality is a derived property.
+// The type DAG defines L2/L3. Cardinality is explicit unless the type DAG
+// encodes a wrapper.
 let contract = TypeContract::from_type_dag(registry.get(&port.type_id));
-let cardinality = contract.cardinality;  // L1
+let cardinality = port.cardinality;      // L1
 let base = contract.base_type;           // L2
 let preds = contract.predicates;         // L3
 ```
 
-The port's `cardinality` field becomes a **declaration hint** that is
-validated against the type DAG at build time:
-
-```rust
-// In DagBuilder::add_edge():
-let source_contract = TypeContract::from_source(registry, &from_port);
-let target_contract = TypeContract::from_source(registry, &to_port);
-
-// Check all three levels
-if !source_contract.can_safely_coerce_to(&target_contract) {
-    return Err(BuilderError::IncompatibleTypes { ... });
-}
-```
+Future work can still remove the `cardinality` field entirely and derive
+it from the type DAG, but until then we treat it as explicit unless the
+type DAG encodes a wrapper.
 
 ### 4.3 TypeContract Coercion Check
 
@@ -345,23 +342,23 @@ use explicit patterns when needed.**
 - [x] Update `check_predicate_entailment()` in obligation model to use
   contract-based coercion instead of ad-hoc string comparison (2026-02-07)
 
-### Phase 3: Deprecate Dual Encoding
+### Phase 3: Remove Cardinality Hinting
 
-- [ ] Validate port cardinality against type DAG at build time
-- [ ] Emit warnings when port cardinality disagrees with type DAG
-- [ ] Eventually: derive port cardinality from type DAG only
+- [x] Remove port-cardinality hinting/warnings (2026-02-07)
+- [x] Prefer type-DAG cardinality when wrapper is encoded (2026-02-07)
+- [ ] Deferred: derive port cardinality from type DAG only
 
 ### Phase 4: CoercionResult in Obligation Model
 
-- [ ] Replace `CoercionKind` detection with `CoercionResult`-based analysis
-- [ ] Surface `Err` results as build-time errors with diagnostic messages
-- [ ] Define type-specific coercion strategies as needed (not up front)
+- [x] Replace `CoercionKind` detection with `CoercionResult`-based analysis (2026-02-07)
+- [x] Surface `Err` results as build-time errors with diagnostic messages (2026-02-07)
+- [ ] Deferred: define type-specific coercion strategies as needed
 
 ## 7. Relationship to Existing Code
 
 | Existing | Role in New Design |
 |----------|-------------------|
-| `TypeContract` | Source of truth for all three levels |
+| `TypeContract` | L2/L3 source of truth; L1 from port unless wrapper encoded |
 | `TypeOp::Transform(Coercion)` | Explicit base type coercion in type DAGs |
 | `Predicate` enum | L3 predicate model (entailment logic needed) |
 | `WrapperKind` | L1 cardinality encoding in type DAGs |
@@ -386,10 +383,11 @@ use explicit patterns when needed.**
 
 ## Checklist
 
-- [ ] Contract-based edge validation (`can_safely_coerce_to`)
-- [ ] Base type upcast lattice (primitives)
-- [ ] Predicate entailment (`Predicate::entails()`)
-- [ ] Wire contract coercion into `DagBuilder::add_edge()`
-- [ ] Registry-driven refinement discovery
-- [ ] Deprecate dual cardinality encoding
-- [ ] Map semantics: resolved as explicit-only (no implicit auto-iteration)
+- [x] Contract-based edge validation (`can_safely_coerce_to`)
+- [x] Base type upcast lattice (primitives)
+- [x] Predicate entailment (`Predicate::entails()`)
+- [x] Wire contract coercion into `DagBuilder::add_edge()`
+- [x] Registry-driven refinement discovery
+- [x] Remove port-cardinality hinting
+- [ ] Deferred: derive port cardinality from type DAG only
+- [x] Map semantics: resolved as explicit-only (no implicit auto-iteration)

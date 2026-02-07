@@ -372,15 +372,15 @@ impl Port {
 
     /// Infer cardinality from the type registry.
     ///
-    /// If the port's type is registered in the registry, returns the cardinality
-    /// derived from the type DAG structure. Otherwise, returns the port's
-    /// declared cardinality.
+    /// If the port's type is registered in the registry and encodes a wrapper,
+    /// returns the cardinality derived from the type DAG structure. Otherwise,
+    /// returns the port's declared cardinality.
     ///
     /// This enables type-driven cardinality inference:
     /// - `Optional<T>` types → `ZeroOrOne`
     /// - `List<T>` types → `ZeroOrMore`
     /// - `NonEmptyList<T>` types → `OneOrMore`
-    /// - Everything else → `One` (or the declared cardinality)
+    /// - Everything else → declared cardinality (until full migration)
     pub fn infer_cardinality(&self, registry: &crate::type_registry::TypeRegistry) -> Cardinality {
         // Try to look up the type in the registry and infer cardinality from it
         if let Some(inferred) = registry.infer_cardinality(&self.type_id) {
@@ -593,7 +593,7 @@ mod tests {
             type_lib::non_empty_list(type_lib::string()),
         );
 
-        // Port with registered type - should infer cardinality
+        // Port with base type (no wrapper) falls back to declared cardinality
         let port1 = Port::scalar("p1", "String");
         assert_eq!(port1.infer_cardinality(&registry), Cardinality::ONE);
 

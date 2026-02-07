@@ -2,7 +2,7 @@
 
 use crate::ops::AzureOps;
 use gunbc_exec::{ExecError, Executable};
-use gunbc_ir::build::port;
+use gunbc_ir::build::{optional, port};
 use gunbc_ir::{Dag, DagBuilder, Node, Value};
 use std::collections::HashMap;
 
@@ -26,7 +26,15 @@ pub fn build_azure_key_vault_credential_graph() -> Dag<AzureKeyVaultGraphOp> {
     builder
         .add_root_node(Node::opaque(
             "azure_key_vault_stub",
-            vec![],
+            vec![
+                port("config", "CloudSecretConfig"),
+                port("scheme", "String"),
+                optional("header_name", "OptionalString"),
+                port("source_id", "String"),
+                optional("lifetime_seconds", "OptionalInt"),
+                optional("request_url", "OptionalString"),
+                optional("request_token", "OptionalString"),
+            ],
             vec![port("credential", "Credential")],
             AzureKeyVaultGraphOp::Azure(AzureOps::Unsupported),
         ))

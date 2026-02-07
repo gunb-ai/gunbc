@@ -287,6 +287,13 @@ fn build_cli_imports(
             path: vec!["gunbc_ir".to_string()],
             items: vec!["detect_entrypoints".to_string(), "Value".to_string()],
         }),
+        Item::Use(Import {
+            path: vec![
+                "gunbc_lib_transport".to_string(),
+                "preflight".to_string(),
+            ],
+            items: vec!["ensure_lint_upsert".to_string()],
+        }),
     ];
 
     // Tool-specific import
@@ -597,6 +604,12 @@ fn build_main_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDef {
          \n\
          // Parse arguments\n\
          {arg_parsing}\n\
+         // Preflight lint (auto-fix if stale)\n\
+         if let Err(err) = ensure_lint_upsert() {{\n\
+             eprintln!(\"preflight failed: {{}}\", err);\n\
+             process::exit(1);\n\
+         }}\n\
+         \n\
          // Detect terminal environment\n\
          let profile = TerminalProfile::detect();\n\
          \n\
@@ -762,6 +775,12 @@ fn build_run_full_dag_fn(tool: &ToolMeta, entrypoints: &[CliEntrypoint]) -> FnDe
          args.extend_from_slice(raw_args);\n\
          \n\
          {arg_parsing}\n\
+         // Preflight lint (auto-fix if stale)\n\
+         if let Err(err) = ensure_lint_upsert() {{\n\
+             eprintln!(\"preflight failed: {{}}\", err);\n\
+             process::exit(1);\n\
+         }}\n\
+         \n\
          // Detect terminal environment\n\
          let profile = TerminalProfile::detect();\n\
          \n\
@@ -823,6 +842,12 @@ fn build_run_single_step_fn(tool: &ToolMeta) -> FnDef {
                  \"-n\" | \"--dry-run\" => dry_run = true,\n\
                  _ => {{}}\n\
              }}\n\
+         }}\n\
+         \n\
+         // Preflight lint (auto-fix if stale)\n\
+         if let Err(err) = ensure_lint_upsert() {{\n\
+             eprintln!(\"preflight failed: {{}}\", err);\n\
+             process::exit(1);\n\
          }}\n\
          \n\
          // Build the graph\n\

@@ -6,4 +6,8 @@ edition = "2021"
 [dependencies]
 gunbc-exec = { path = "../../core/exec" }
 gunbc-ir = { path = "../../core/ir" }
+gunbc-test = { path = "../../core/test" }
+gunbc-testgen-registry = { path = "../../core/testgen-registry" }
+gunbc-testgen-registry-macros = { path = "../../core/testgen-registry-macros" }
 serde = { workspace = true }
+serde_json = { workspace = true }
