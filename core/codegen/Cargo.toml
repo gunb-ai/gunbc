@@ -10,6 +10,7 @@ gunbc-infra = { path = "../infra" }
 gunbc-ir = { path = "../ir" }
 gunbc-test = { path = "../test" }
 gunbc-exec = { path = "../exec" }
+gunbc-cli = { path = "../cli" }
 gunbc-clippy = { path = "../../lib/tools/clippy" }
 serde_json = { workspace = true }
 cargo_metadata = "0.18"

@@ -15,9 +15,13 @@ gunbc-testgen-registry = { path = "../../../core/testgen-registry" }
 gunbc-testgen-registry-macros = { path = "../../../core/testgen-registry-macros" }
 gunbc-tool-registry = { path = "../../../core/tool-registry" }
 gunbc-tool-registry-macros = { path = "../../../core/tool-registry-macros" }
+gunbc-cli = { path = "../../../core/cli" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 toml = "0.8"
+
+[dev-dependencies]
+gunbc-test = { path = "../../../core/test" }
 
 [[bin]]
 name = "gunbc-deps"

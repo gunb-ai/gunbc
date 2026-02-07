@@ -1,6 +1,6 @@
 # Consolidation: Dependency Injection for System Resources
 
-**Status**: In Progress
+**Status**: Completed
 **Date**: 2026-02-04
 **Updated**: 2026-02-07
 
@@ -15,24 +15,7 @@ transport executor), then pass it down as a parameter or DAG input.
 
 ## Active violations (remaining)
 
-### 1. CI provider detection reads env vars directly
-
-**Where**: `core/ir/src/transport/ci/provider.rs:79-99`
-
-```rust
-pub fn detect_provider() -> Box<dyn CiProvider> {
-    if std::env::var("GITHUB_ACTIONS").is_ok() { ... }
-    if std::env::var("GITLAB_CI").is_ok() { ... }
-}
-```
-
-**Problem**: Reads env vars to auto-detect CI provider. Not injectable.
-
-**Mitigating factor**: This is called at the application boundary
-(`main()`/`CiContext::detect()`), which is acceptable. This is low-priority
-and could be aligned with the env-dict pattern above if we standardize it.
-
-**Severity**: LOW
+None.
 
 ---
 
@@ -58,3 +41,5 @@ and could be aligned with the env-dict pattern above if we standardize it.
 - **Tool path resolution uses platform resolvers**: default CLI tool resolver
   now picks `which` on Unix and `where` on Windows, closing the portability
   gap while keeping `ToolPathResolver` injection intact.
+- **CI provider detection uses injected env map**: `detect_provider` now takes
+  an env map and `CiContext::detect()` snapshots env at the boundary.

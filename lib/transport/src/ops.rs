@@ -14,7 +14,7 @@
 //! Note: `execute_request()` is internal to this crate and not exported.
 //! This structural enforcement ensures all I/O goes through visible DAG nodes.
 
-use crate::executor::execute_transport;
+use crate::backend::execute_transport_with_backend;
 use gunbc_exec::{require_bool, require_request, ExecError, Executable, IntoExecResult, OutputMap};
 use gunbc_ir::transport::{TransportRequest, TransportResponse};
 use gunbc_ir::{Credential, Value};
@@ -93,7 +93,7 @@ impl Executable for TransportOps {
 /// This function is NOT exported - it's only callable from within this crate.
 /// External code must use `TransportOps::Execute` nodes in a DAG.
 pub(crate) fn execute_request(request: &TransportRequest) -> Result<TransportResponse, ExecError> {
-    execute_transport(request).exec_context("transport error")
+    execute_transport_with_backend(request).exec_context("transport error")
 }
 
 #[cfg(test)]

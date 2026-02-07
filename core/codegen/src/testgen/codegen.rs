@@ -102,7 +102,7 @@ impl Default for TestConfig {
             window_max_nodes: Some(5),
             visibility: "pub".to_string(),
             test_class: TestClass::Hermetic,
-            fermi_cost: FermiCost::S,
+            fermi_cost: FermiCost::XS,
             requires: Vec::new(),
             secrets: Vec::new(),
         }
@@ -121,6 +121,8 @@ pub struct TestGenerator<'a, T> {
     mock_spec_fn: Option<String>,
     /// Function path to call for declared signature (e.g., "crate::makegen_signature()")
     signature_fn: Option<String>,
+    /// CLI entrypoints for contract test generation: (tool_name, entrypoints).
+    cli_entrypoints: Option<(String, Vec<crate::cli_gen::CliEntrypoint>)>,
 }
 
 impl<'a, T: Clone> TestGenerator<'a, T> {
@@ -132,6 +134,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             mock_spec: None,
             mock_spec_fn: None,
             signature_fn: None,
+            cli_entrypoints: None,
         }
     }
 
@@ -159,6 +162,19 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
     /// Set the signature function path (e.g., "crate::ci::ci_signature()").
     pub fn with_signature_fn(mut self, path: impl Into<String>) -> Self {
         self.signature_fn = Some(path.into());
+        self
+    }
+
+    /// Set CLI entrypoints for contract test generation.
+    ///
+    /// When set, a CLI contract test section is emitted that verifies
+    /// `gunbc_cli::parse()` handles the tool's argument schema correctly.
+    pub fn with_cli_entrypoints(
+        mut self,
+        tool_name: String,
+        entrypoints: Vec<crate::cli_gen::CliEntrypoint>,
+    ) -> Self {
+        self.cli_entrypoints = Some((tool_name, entrypoints));
         self
     }
 
@@ -497,10 +513,10 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             if port_type == "Json" || value_type == "Json" {
                 return true;
             }
-            // Map-backed types: ToolHandle, Credential, FilesystemHandle
+            // Map-backed types: ToolHandle, Credential, FilesystemHandle, CliResult
             // These types serialize to/from Map when stored as Value
             if value_type == "Map" {
-                let map_backed_types = ["ToolHandle", "Credential", "FilesystemHandle"];
+                let map_backed_types = ["ToolHandle", "Credential", "FilesystemHandle", "CliResult"];
                 if map_backed_types.contains(&port_type) {
                     return true;
                 }
@@ -847,6 +863,15 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             }
         }
 
+        if let Some(section) = self.build_cli_contract_section() {
+            // CLI contract tests need gunbc_cli imports
+            file.imports.push(Import {
+                path: vec!["gunbc_cli".to_string()],
+                items: vec!["parse".to_string(), "CliParam".to_string()],
+            });
+            file.sections.push(section);
+        }
+
         self.inject_test_guards(&mut file);
         Self::prune_unused_imports(&mut file);
 
@@ -884,7 +909,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
     }
 
     fn slice_expr(items: &[String]) -> Expr {
-        let entries: Vec<Expr> = items.iter().map(|s| Expr::str_lit(s)).collect();
+        let entries: Vec<Expr> = items.iter().map(Expr::str_lit).collect();
         Expr::Ref(Box::new(Expr::Array(entries)))
     }
 

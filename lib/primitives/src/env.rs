@@ -25,12 +25,16 @@ impl FsEnv {
 
     /// Mock outputs for DryRun/testgen.
     pub fn mock_outputs(&self) -> HashMap<String, Value> {
-        self.outputs()
+        self.mock_output_map()
     }
 
     fn outputs(&self) -> HashMap<String, Value> {
         let fs = FilesystemHandle::cross_platform(self.scope);
         env_single_output(self.output_port(), fs)
+    }
+
+    fn mock_output_map(&self) -> HashMap<String, Value> {
+        self.outputs()
     }
 }
 
@@ -40,7 +44,7 @@ impl EnvNode for FsEnv {
     }
 
     fn mock_outputs(&self) -> HashMap<String, Value> {
-        self.outputs()
+        self.mock_output_map()
     }
 }
 
@@ -55,11 +59,16 @@ impl ClockEnv {
 
     /// Mock outputs for DryRun/testgen.
     pub fn mock_outputs(&self) -> HashMap<String, Value> {
-        self.outputs()
+        self.mock_output_map()
     }
 
     fn outputs(&self) -> HashMap<String, Value> {
         let ts = Timestamp::now();
+        env_single_output(self.output_port(), ts)
+    }
+
+    fn mock_output_map(&self) -> HashMap<String, Value> {
+        let ts = Timestamp::from_system_time(std::time::SystemTime::UNIX_EPOCH);
         env_single_output(self.output_port(), ts)
     }
 }
@@ -70,6 +79,6 @@ impl EnvNode for ClockEnv {
     }
 
     fn mock_outputs(&self) -> HashMap<String, Value> {
-        self.outputs()
+        self.mock_output_map()
     }
 }

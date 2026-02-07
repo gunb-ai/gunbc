@@ -160,7 +160,6 @@ pub fn testgen_target(args: TokenStream, input: TokenStream) -> TokenStream {
         if name.is_some()
             || output.is_some()
             || module.is_some()
-            || builder.is_some()
             || signature.is_some()
             || flow_tests
             || no_boundary_tests
@@ -173,11 +172,13 @@ pub fn testgen_target(args: TokenStream, input: TokenStream) -> TokenStream {
         {
             return syn::Error::new_spanned(
                 &input_fn.sig.ident,
-                "testgen_target(skip) cannot be combined with other arguments",
+                "testgen_target(skip) cannot be combined with other arguments (except builder for coverage tracking)",
             )
             .to_compile_error()
             .into();
         }
+        // skip emits the function unchanged — builder is allowed purely so the
+        // source-level coverage scanner in tool_registration.rs can see it.
         return quote!(#input_fn).into();
     }
 

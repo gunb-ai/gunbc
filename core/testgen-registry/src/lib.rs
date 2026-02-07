@@ -13,6 +13,7 @@ mod fermi;
 use crate::fermi::{infer_fermi_cost, infer_requires, infer_test_class};
 use gunbc_codegen::testgen::analyze::analyze_dag;
 use gunbc_codegen::testgen::{TestConfig, TestGenerator};
+use gunbc_codegen::CliEntrypoint;
 pub use gunbc_codegen::TestgenTargetDef;
 use gunbc_exec::Executable;
 use gunbc_ir::Dag;
@@ -39,6 +40,9 @@ pub struct TestgenTarget {
     pub fermi_cost: Option<FermiCost>,
     pub requires: Option<&'static [&'static str]>,
     pub secrets: Option<&'static [&'static str]>,
+    /// Tool name for CLI contract test generation. When set, entrypoints
+    /// are looked up from `all_tools()` and a CLI contract test is emitted.
+    pub tool_name: Option<&'static str>,
     pub generate: fn(&TestgenTargetDef) -> String,
 }
 
@@ -69,6 +73,7 @@ impl TestgenTarget {
         def.fermi_cost = self.fermi_cost;
         def.requires = self.requires.map(|items| items.iter().map(|s| s.to_string()).collect());
         def.secrets = self.secrets.map(|items| items.iter().map(|s| s.to_string()).collect());
+        def.tool_name = self.tool_name.map(|s| s.to_string());
         def
     }
 }
@@ -120,6 +125,20 @@ pub fn generate_target<T: Executable + Clone>(
     if let Some(signature_fn) = &config.signature_path {
         generator = generator.with_signature_fn(signature_fn);
     }
+
+    // Look up CLI entrypoints for contract test generation.
+    if let Some(tool_name) = &config.tool_name {
+        let tools = gunbc_codegen::all_tools();
+        if let Some(tool) = tools.iter().find(|t| t.meta.tool_name == *tool_name) {
+            if !tool.entrypoints.is_empty() {
+                generator = generator.with_cli_entrypoints(
+                    tool_name.clone(),
+                    tool.entrypoints.clone(),
+                );
+            }
+        }
+    }
+
     generator.generate_test_module(&config.module_name, &config.dag_builder_call)
 }
 

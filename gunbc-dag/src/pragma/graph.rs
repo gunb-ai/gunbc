@@ -7,43 +7,18 @@
 //! - disallowed-methods-allowlist: render → read → compare → write
 //! - pragma-lint-policy: render → read → compare → write
 
+use crate::file_ops_graph::FileOpsGraph;
 use crate::pragma::ops::PragmaOp;
-use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::{
-    add_content_upsert_chain, build::*, BuilderError, Cardinality, Dag, DagBuilder, Node, Value,
+    add_content_upsert_chain, build::*, BuilderError, Cardinality, Dag, DagBuilder, Node,
     WorkflowSignature,
 };
 use gunbc_lib_blob::BlobOps;
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::{PrepareFileReadOp, PrepareFileWriteOp};
-use std::collections::HashMap;
 
 /// The operation type for pragma graphs - a union of pragma ops, primitives, and transport.
-#[derive(Debug, Clone)]
-pub enum PragmaGraphOp {
-    /// Pragma-specific operations
-    Pragma(PragmaOp),
-    /// Prepare file read (primitive - PURE)
-    PrepareFileRead(PrepareFileReadOp),
-    /// Prepare file write (primitive - PURE)
-    PrepareFileWrite(PrepareFileWriteOp),
-    /// Blob operations (compare content - PURE)
-    Blob(BlobOps),
-    /// Transport operations (boundary - actual I/O)
-    Transport(TransportOps),
-}
-
-impl Executable for PragmaGraphOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        match self {
-            PragmaGraphOp::Pragma(op) => op.execute(inputs),
-            PragmaGraphOp::PrepareFileRead(op) => op.execute(inputs),
-            PragmaGraphOp::PrepareFileWrite(op) => op.execute(inputs),
-            PragmaGraphOp::Blob(op) => op.execute(inputs),
-            PragmaGraphOp::Transport(op) => op.execute(inputs),
-        }
-    }
-}
+pub type PragmaGraphOp = FileOpsGraph<PragmaOp>;
 
 /// Get the declared signature for the pragma workflow.
 pub fn pragma_signature() -> WorkflowSignature {
@@ -91,7 +66,7 @@ pub fn build_pragma_graph() -> Result<Dag<PragmaGraphOp>, BuilderError> {
         "render_clippy",
         vec![],
         vec![port("content", "String")],
-        PragmaGraphOp::Pragma(PragmaOp::RenderClippy),
+        PragmaGraphOp::Domain(PragmaOp::RenderClippy),
     ))?;
 
     add_content_upsert_chain(
@@ -110,7 +85,7 @@ pub fn build_pragma_graph() -> Result<Dag<PragmaGraphOp>, BuilderError> {
         "render_allowlist",
         vec![],
         vec![port("content", "String")],
-        PragmaGraphOp::Pragma(PragmaOp::RenderAllowlist),
+        PragmaGraphOp::Domain(PragmaOp::RenderAllowlist),
     ))?;
 
     add_content_upsert_chain(
@@ -129,7 +104,7 @@ pub fn build_pragma_graph() -> Result<Dag<PragmaGraphOp>, BuilderError> {
         "render_policy",
         vec![],
         vec![port("content", "String")],
-        PragmaGraphOp::Pragma(PragmaOp::RenderLintPolicy),
+        PragmaGraphOp::Domain(PragmaOp::RenderLintPolicy),
     ))?;
 
     add_content_upsert_chain(

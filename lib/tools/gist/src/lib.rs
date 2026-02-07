@@ -52,6 +52,9 @@ pub use gunbc_lib_markdown::MarkdownOp;
     args = "GistMode::Snapshot, extensions.clone(), public",
     import = "use gunbc_gist::{build_gist_graph, GistMode};",
     mock_spec = "gunbc_gist::graph_mock::gist_snapshot_mock_spec()",
+    package = "gist",
+    binary = "gist",
+    entrypoints = r#"[{"port_name":"repo_path","type_id":"String","short":"r","default":".","help":"Repository path to scan","make_var":"REPO"},{"port_name":"extensions","type_id":"String","cardinality":"ZERO_OR_MORE","short":"e","help":"File extensions to include (can be repeated)","make_var":"EXT"},{"port_name":"public","type_id":"Bool","short":"p","help":"Make gist public"}]"#,
     returns_result
 )]
 pub fn gist_snapshot_tool() {}
@@ -64,6 +67,9 @@ pub fn gist_snapshot_tool() {}
     args = "GistMode::Diff { base_ref: base_ref.clone() }, extensions.clone(), public",
     import = "use gunbc_gist::{build_gist_graph, GistMode};",
     mock_spec = "gunbc_gist::graph_mock::gist_diff_mock_spec()",
+    package = "gist",
+    binary = "gist-diff",
+    entrypoints = r#"[{"port_name":"repo_path","type_id":"String","short":"r","default":".","help":"Repository path to scan","make_var":"REPO"},{"port_name":"base_ref","type_id":"String","short":"b","default":"main","help":"Base branch for diff","make_var":"BASE"},{"port_name":"extensions","type_id":"String","cardinality":"ZERO_OR_MORE","short":"e","help":"File extensions to include (can be repeated)","make_var":"EXT"},{"port_name":"public","type_id":"Bool","short":"p","help":"Make gist public"}]"#,
     returns_result
 )]
 pub fn gist_diff_tool() {}
@@ -76,6 +82,9 @@ pub fn gist_diff_tool() {}
     args = "GistMode::Recent, extensions.clone(), public",
     import = "use gunbc_gist::{build_gist_graph, GistMode};",
     mock_spec = "gunbc_gist::graph_mock::gist_recent_mock_spec()",
+    package = "gist",
+    binary = "gist-recent",
+    entrypoints = r#"[{"port_name":"repo_path","type_id":"String","short":"r","default":".","help":"Repository path to scan","make_var":"REPO"},{"port_name":"extensions","type_id":"String","cardinality":"ZERO_OR_MORE","short":"e","help":"File extensions to include (can be repeated)","make_var":"EXT"},{"port_name":"public","type_id":"Bool","short":"p","help":"Make gist public"}]"#,
     returns_result
 )]
 pub fn gist_recent_tool() {}

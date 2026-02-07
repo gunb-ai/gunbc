@@ -29,6 +29,7 @@ gunbc-testgen-registry-macros = { path = "../core/testgen-registry-macros" }
 gunbc-tool-registry = { path = "../core/tool-registry" }
 gunbc-tool-registry-macros = { path = "../core/tool-registry-macros" }
 gunbc-lib-review = { path = "../lib/review" }
+gunbc-cli = { path = "../core/cli" }
 
 serde_json = { workspace = true }
 
@@ -64,3 +65,7 @@ path = "src/bin/pragma.rs"
 [[bin]]
 name = "gunbc-codegen-dag"
 path = "src/bin/codegen.rs"
+
+[[bin]]
+name = "gunbc-docgen"
+path = "src/bin/docgen.rs"

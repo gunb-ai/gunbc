@@ -9,6 +9,7 @@ use std::path::Path;
 // Without these references, the linker may dead-strip the inventory symbols
 // and iter_tool_targets() would return an empty iterator.
 use gunbc_deps::deps_tool;
+use gunbc_clippy::clippy_tool;
 use gunbc_gist::{gist_diff_tool, gist_recent_tool, gist_snapshot_tool};
 use gunbc_lib_review::review_tool;
 // These are in gunbc-dag itself (same binary), but reference for completeness.
@@ -18,6 +19,7 @@ use gunbc_dag::makegen::makegen_tool;
 #[test]
 fn tool_registrations_match_all_tools() {
     // Touch the functions to prevent the linker from stripping them.
+    let _: fn() = clippy_tool;
     let _: fn() = gist_snapshot_tool;
     let _: fn() = gist_diff_tool;
     let _: fn() = gist_recent_tool;
@@ -60,6 +62,38 @@ fn tool_registrations_match_all_tools() {
             "mock_spec_call mismatch for '{}' — update .mock_spec_call() in registry.rs",
             tool.meta.tool_name
         );
+
+        // Validate entrypoints match between annotation and registry.
+        // Both use the same JSON format — parse annotation JSON and compare port names.
+        let reg_entrypoints = gunbc_codegen::CliEntrypoint::from_json(reg.entrypoints_json);
+        assert_eq!(
+            reg_entrypoints.len(),
+            tool.entrypoints.len(),
+            "entrypoint count mismatch for '{}': annotation has {}, registry has {}",
+            tool.meta.tool_name, reg_entrypoints.len(), tool.entrypoints.len()
+        );
+        for (i, (reg_ep, tool_ep)) in reg_entrypoints.iter().zip(tool.entrypoints.iter()).enumerate() {
+            assert_eq!(
+                reg_ep.port_name, tool_ep.port_name,
+                "entrypoint[{}] port_name mismatch for '{}'",
+                i, tool.meta.tool_name
+            );
+            assert_eq!(
+                reg_ep.type_id, tool_ep.type_id,
+                "entrypoint[{}] type_id mismatch for '{}'",
+                i, tool.meta.tool_name
+            );
+            assert_eq!(
+                reg_ep.short_flag, tool_ep.short_flag,
+                "entrypoint[{}] short_flag mismatch for '{}'",
+                i, tool.meta.tool_name
+            );
+            assert_eq!(
+                reg_ep.default_value, tool_ep.default_value,
+                "entrypoint[{}] default_value mismatch for '{}'",
+                i, tool.meta.tool_name
+            );
+        }
     }
 
     // Every registration has a matching all_tools entry

@@ -72,6 +72,8 @@ pub use upsert::{UpsertPhase, UpsertResult};
     builder = "build_deps_graph",
     import = "use gunbc_deps::build_deps_graph;",
     mock_spec = "gunbc_deps::graph_mock::deps_mock_spec()",
+    package = "deps",
+    entrypoints = r#"[{"port_name":"manifest_path","type_id":"String","short":"m","help":"Path to deps.toml manifest","make_var":"MANIFEST"}]"#,
     returns_result
 )]
 pub fn deps_tool() {}

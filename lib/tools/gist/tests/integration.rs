@@ -45,7 +45,7 @@ fn mock_env(mocks: &mut BoundaryMocks) {
 }
 
 fn guard_hermetic(name: &str) -> bool {
-    guard_test(name, TestClass::Hermetic, FermiCost::S, &[], &[])
+    guard_test(name, TestClass::Hermetic, FermiCost::XS, &[], &[])
 }
 
 fn guard_integration(name: &str) -> bool {

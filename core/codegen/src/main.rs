@@ -28,7 +28,8 @@
 #![deny(dead_code)]
 use cargo_metadata::MetadataCommand;
 use gunbc_codegen::{
-    all_cleanable_outputs, all_tools, generate_cli_with_import, generate_graph_rs, FileWriter,
+    all_cleanable_outputs, all_tools, generate_cli_with_import, generate_graph_rs,
+    group_cli_contract_tools, render_cli_contract_tests, FileWriter,
 };
 use gunbc_ir::resource::{
     check_manifest_freshness, codegen_resource_def, update_resource_manifest, FreshnessOptions,
@@ -85,10 +86,14 @@ fn cmd_commit(dry_run: bool) {
     println!("  mode: {}", if dry_run { "dry-run" } else { "real" });
     println!();
 
-    // Step 1: Generate CLIs
+    // Step 1: Generate CLIs and CLI contract tests
     println!("[1/3] Generating CLIs...");
     if !codegen_clis(dry_run) {
         eprintln!("Codegen failed");
+        std::process::exit(1);
+    }
+    if !codegen_cli_contract_tests(dry_run) {
+        eprintln!("CLI contract test generation failed");
         std::process::exit(1);
     }
 
@@ -242,6 +247,11 @@ fn cmd_codegen(dry_run: bool) {
 
     if !codegen_clis(dry_run) {
         eprintln!("Codegen failed");
+        std::process::exit(1);
+    }
+
+    if !codegen_cli_contract_tests(dry_run) {
+        eprintln!("CLI contract test generation failed");
         std::process::exit(1);
     }
 
@@ -713,6 +723,60 @@ fn codegen_clis(dry_run: bool) -> bool {
                     "[{}] could not update {}: {}",
                     reg.tool_name,
                     reg.cargo_toml_path.display(),
+                    e
+                ));
+            }
+        }
+    }
+
+    if !errors.is_empty() {
+        for err in &errors {
+            eprintln!("  ERROR: {}", err);
+        }
+        return false;
+    }
+
+    true
+}
+
+/// Generate CLI dry-run contract tests per tool crate.
+#[allow(clippy::disallowed_methods)] // Codegen writes files directly (bootstrap I/O boundary)
+fn codegen_cli_contract_tests(dry_run: bool) -> bool {
+    let writer = FileWriter::new(dry_run);
+    let tools = all_tools();
+
+    let Some((_workspace_root, package_dirs)) = resolve_workspace_packages() else {
+        eprintln!("  ERROR: could not resolve workspace packages via cargo metadata");
+        return false;
+    };
+
+    let grouped = group_cli_contract_tools(&tools);
+    let mut errors: Vec<String> = Vec::new();
+
+    for (package, tool_list) in grouped {
+        let Some(crate_dir) = package_dirs.get(&package) else {
+            errors.push(format!("[cli-contract] package '{}' not found in workspace", package));
+            continue;
+        };
+
+        let output_path = crate_dir.join("tests").join("generated_tests_cli_contract.rs");
+        let code = render_cli_contract_tests(&tool_list);
+
+        match writer.write_if_changed(&output_path, &code) {
+            Ok(result) => {
+                let status = if dry_run {
+                    "dry-run"
+                } else if result.changed {
+                    "written"
+                } else {
+                    "unchanged"
+                };
+                println!("  [cli-contract] {} ({})", output_path.display(), status);
+            }
+            Err(e) => {
+                errors.push(format!(
+                    "[cli-contract] could not write {}: {}",
+                    output_path.display(),
                     e
                 ));
             }

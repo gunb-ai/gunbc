@@ -405,7 +405,7 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
         CIGraphOp::CI(CIOp::PrepareVerifyCheck),
         CIGraphOp::CI(CIOp::ParseVerifyResult),
         CIGraphOp::Transport(TransportOps::Execute),
-        parse_codegen_result,
+        &bootstrap.parse,
     )?;
 
     // ========================================================================

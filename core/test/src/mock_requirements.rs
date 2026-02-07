@@ -230,10 +230,10 @@ impl MockRequirements {
             return true;
         }
 
-        // Map-backed types (ToolHandle, Credential, FilesystemHandle)
+        // Map-backed types (ToolHandle, Credential, FilesystemHandle, CliResult)
         // NOTE: This must match types_compatible in codegen/testgen/codegen.rs
         if actual == "Map" {
-            let map_backed = ["ToolHandle", "Credential", "FilesystemHandle"];
+            let map_backed = ["ToolHandle", "Credential", "FilesystemHandle", "CliResult"];
             if map_backed.contains(&expected) {
                 return true;
             }

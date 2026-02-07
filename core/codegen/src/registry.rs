@@ -233,6 +233,10 @@ pub struct TestgenTargetDef {
     pub requires: Option<Vec<String>>,
     /// Required secrets override (env vars)
     pub secrets: Option<Vec<String>>,
+    /// Tool name for CLI contract test generation. When set, entrypoints
+    /// are looked up from `all_tools()` and a CLI contract test is emitted
+    /// alongside the DAG tests.
+    pub tool_name: Option<String>,
 }
 
 impl TestgenTargetDef {
@@ -253,6 +257,7 @@ impl TestgenTargetDef {
             fermi_cost: None,
             requires: None,
             secrets: None,
+            tool_name: None,
         }
     }
 
@@ -382,6 +387,15 @@ impl ToolDef {
         self
     }
 
+    /// Set entrypoints from a JSON string (matching the format in `#[tool_target]` annotations).
+    ///
+    /// This is the preferred way to define entrypoints — the JSON is the single
+    /// source of truth, shared between `all_tools()` and the `#[tool_target]` annotation.
+    pub fn entrypoints_json(mut self, json: &str) -> Self {
+        self.entrypoints = CliEntrypoint::from_json(json);
+        self
+    }
+
     /// Set the mock_spec_call expression for dry-run boundary mocking.
     ///
     /// When set, generated CLIs call this expression to get a MockSpec
@@ -394,7 +408,33 @@ impl ToolDef {
 
 }
 
+// ============================================================================
+// Entrypoint JSON constants (shared with #[tool_target] annotations)
+// ============================================================================
+
+/// Entrypoints for gist snapshot (repo_path, extensions, public).
+const GIST_ENTRYPOINTS: &str = r#"[{"port_name":"repo_path","type_id":"String","short":"r","default":".","help":"Repository path to scan","make_var":"REPO"},{"port_name":"extensions","type_id":"String","cardinality":"ZERO_OR_MORE","short":"e","help":"File extensions to include (can be repeated)","make_var":"EXT"},{"port_name":"public","type_id":"Bool","short":"p","help":"Make gist public"}]"#;
+
+/// Entrypoints for gist-diff (adds base_ref).
+const GIST_DIFF_ENTRYPOINTS: &str = r#"[{"port_name":"repo_path","type_id":"String","short":"r","default":".","help":"Repository path to scan","make_var":"REPO"},{"port_name":"base_ref","type_id":"String","short":"b","default":"main","help":"Base branch for diff","make_var":"BASE"},{"port_name":"extensions","type_id":"String","cardinality":"ZERO_OR_MORE","short":"e","help":"File extensions to include (can be repeated)","make_var":"EXT"},{"port_name":"public","type_id":"Bool","short":"p","help":"Make gist public"}]"#;
+
+/// Entrypoints for gist-recent (same as gist snapshot).
+const GIST_RECENT_ENTRYPOINTS: &str = GIST_ENTRYPOINTS;
+
+/// Entrypoints for makegen (path).
+const MAKEGEN_ENTRYPOINTS: &str = r#"[{"port_name":"path","type_id":"String","short":"o","default":"Makefile","help":"Output Makefile path","make_var":"OUTPUT"}]"#;
+
+/// Entrypoints for deps (manifest_path).
+const DEPS_ENTRYPOINTS: &str = r#"[{"port_name":"manifest_path","type_id":"String","short":"m","help":"Path to deps.toml manifest","make_var":"MANIFEST"}]"#;
+
+/// Entrypoints for review (repo_path, base_ref).
+const REVIEW_ENTRYPOINTS: &str = r#"[{"port_name":"repo_path","type_id":"String","short":"r","help":"Repository path to diff","make_var":"REPO"},{"port_name":"base_ref","type_id":"String","short":"b","default":"main","help":"Base branch for diff (default: main)"}]"#;
+
 /// Get all tool definitions for CLI generation.
+///
+/// Entrypoints are defined as JSON constants that are shared with `#[tool_target]`
+/// annotations. The `tool_registrations_match_all_tools` test validates that
+/// these match the annotations at compile time.
 pub fn all_tools() -> Vec<ToolDef> {
     let tools = vec![
         // gunbc-gist (uses DagBuilder - returns Result)
@@ -409,25 +449,7 @@ pub fn all_tools() -> Vec<ToolDef> {
         .mock_spec_call("gunbc_gist::graph_mock::gist_snapshot_mock_spec()")
         .invocation(cargo::CargoInvocation::composed("gist", "gist"))
         .import("use gunbc_gist::{build_gist_graph, GistMode};")
-        .entrypoint(
-            CliEntrypoint::new("repo_path", "String")
-                .short('r')
-                .default(".")
-                .help("Repository path to scan")
-                .make_var("REPO"),
-        )
-        .entrypoint(
-            CliEntrypoint::new("extensions", "String")
-                .with_cardinality(Cardinality::ZERO_OR_MORE)
-                .short('e')
-                .help("File extensions to include (can be repeated)")
-                .make_var("EXT"),
-        )
-        .entrypoint(
-            CliEntrypoint::new("public", "Bool")
-                .short('p')
-                .help("Make gist public"),
-        ), // gist creates a remote gist, no local output
+        .entrypoints_json(GIST_ENTRYPOINTS),
 
         // gunbc-gist-diff (diff mode variant - same package, different binary)
         ToolDef::new(
@@ -441,32 +463,7 @@ pub fn all_tools() -> Vec<ToolDef> {
         .mock_spec_call("gunbc_gist::graph_mock::gist_diff_mock_spec()")
         .invocation(cargo::CargoInvocation::composed("gist-diff", "gist"))
         .import("use gunbc_gist::{build_gist_graph, GistMode};")
-        .entrypoint(
-            CliEntrypoint::new("repo_path", "String")
-                .short('r')
-                .default(".")
-                .help("Repository path to scan")
-                .make_var("REPO"),
-        )
-        .entrypoint(
-            CliEntrypoint::new("base_ref", "String")
-                .short('b')
-                .default("main")
-                .help("Base branch for diff")
-                .make_var("BASE"),
-        )
-        .entrypoint(
-            CliEntrypoint::new("extensions", "String")
-                .with_cardinality(Cardinality::ZERO_OR_MORE)
-                .short('e')
-                .help("File extensions to include (can be repeated)")
-                .make_var("EXT"),
-        )
-        .entrypoint(
-            CliEntrypoint::new("public", "Bool")
-                .short('p')
-                .help("Make gist public"),
-        ), // gist-diff creates a remote gist from branch diff
+        .entrypoints_json(GIST_DIFF_ENTRYPOINTS),
 
         // gunbc-gist-recent (recent mode variant - same package, different binary)
         ToolDef::new(
@@ -480,25 +477,7 @@ pub fn all_tools() -> Vec<ToolDef> {
         .mock_spec_call("gunbc_gist::graph_mock::gist_recent_mock_spec()")
         .invocation(cargo::CargoInvocation::composed("gist-recent", "gist"))
         .import("use gunbc_gist::{build_gist_graph, GistMode};")
-        .entrypoint(
-            CliEntrypoint::new("repo_path", "String")
-                .short('r')
-                .default(".")
-                .help("Repository path to scan")
-                .make_var("REPO"),
-        )
-        .entrypoint(
-            CliEntrypoint::new("extensions", "String")
-                .with_cardinality(Cardinality::ZERO_OR_MORE)
-                .short('e')
-                .help("File extensions to include (can be repeated)")
-                .make_var("EXT"),
-        )
-        .entrypoint(
-            CliEntrypoint::new("public", "Bool")
-                .short('p')
-                .help("Make gist public"),
-        ), // gist-recent creates a remote gist from recent changes
+        .entrypoints_json(GIST_RECENT_ENTRYPOINTS),
 
         // gunbc-makegen (uses DagBuilder - returns Result)
         ToolDef::new(
@@ -514,13 +493,7 @@ pub fn all_tools() -> Vec<ToolDef> {
         .import("use gunbc_makegen::build_makegen_graph;")
         // Declarative DAG definition (POC for graph generation)
         .dag(makegen_dag())
-        .entrypoint(
-            CliEntrypoint::new("path", "String")
-                .short('o')
-                .default("Makefile")
-                .help("Output Makefile path")
-                .make_var("OUTPUT"),
-        ),
+        .entrypoints_json(MAKEGEN_ENTRYPOINTS),
 
         // gunbc-deps (uses DagBuilder - returns Result)
         ToolDef::new(
@@ -534,20 +507,12 @@ pub fn all_tools() -> Vec<ToolDef> {
         .mock_spec_call("gunbc_deps::graph_mock::deps_mock_spec()")
         .invocation(cargo::CargoInvocation::standalone("deps"))
         .import("use gunbc_deps::build_deps_graph;")
-        .entrypoint(
-            CliEntrypoint::new("manifest_path", "String")
-                .short('m')
-                .help("Path to deps.toml manifest")
-                .make_var("MANIFEST"),
-        ),
+        .entrypoints_json(DEPS_ENTRYPOINTS),
 
         // gunbc-review (diff review using LLM)
         //
         // Provider, model, and criteria are pipeline config (baked into DAG via
         // LoadPipelineConfig node), NOT CLI flags.
-        // The CLI default for base_ref mirrors ReviewPipelineConfig::default_branch.
-        // The graph builder's config is the source of truth; this CLI default is
-        // only a fallback for when no config override is provided.
         ToolDef::new(
             "gunbc-lib-review",
             "review",
@@ -557,25 +522,13 @@ pub fn all_tools() -> Vec<ToolDef> {
         )
         .mock_spec_call("gunbc_lib_review::graph_mock::diff_review_mock_spec()")
         .import("use gunbc_lib_review::graph::build_diff_review_graph;")
-        .entrypoint(
-            CliEntrypoint::new("repo_path", "String")
-                .short('r')
-                .help("Repository path to diff")
-                .make_var("REPO"),
-        )
-        .entrypoint(
-            CliEntrypoint::new("base_ref", "String")
-                .short('b')
-                .default("main")
-                .help("Base branch for diff (default: main)"),
-        ),
+        .entrypoints_json(REVIEW_ENTRYPOINTS),
 
         // NOTE: gunbc-ci is NOT in this registry.
         // It has a handwritten main.rs because it's the bootstrap tool that
         // runs codegen for other tools. It cannot depend on generated code.
-        // See lib/tools/ci/src/main.rs
 
-        // gunbc-bootstrap (uses DagBuilder - returns Result)
+        // gunbc-bootstrap (uses DagBuilder - returns Result, no entrypoints)
         ToolDef::new(
             &cargo::name("bootstrap"),
             "bootstrap",
@@ -586,16 +539,19 @@ pub fn all_tools() -> Vec<ToolDef> {
         .returns_result()
         .mock_spec_call("gunbc_dag::bootstrap::graph_mock::bootstrap_mock_spec()")
         .invocation(cargo::CargoInvocation::composed("bootstrap", "dag"))
-        .import("use gunbc_bootstrap::build_bootstrap_graph;")
-        ,
-        // NOTE: prep tool has been removed - its functionality is now
-        // consolidated into CI's Prep stage, using BuildConfig from makegen
-        //
-        // NOTE: gunbc-build is NOT in this registry.
-        // It has a handwritten main.rs with its own DAG-based progress display.
-        // It's registered in the makegen registry as "build-all" to avoid
-        // conflicting with the core "build" Make target (cargo build --all-targets).
-        // See gunbc-dag/src/bin/build.rs
+        .import("use gunbc_bootstrap::build_bootstrap_graph;"),
+
+        // gunbc-clippy (sub-DAG, no standalone CLI — used as a component in CI)
+        ToolDef::new(
+            "gunbc-clippy",
+            "clippy",
+            "Run clippy via upsert (check → install → run)",
+            "build_clippy_graph_lint_all",
+            "",
+        )
+        .returns_result()
+        .mock_spec_call("gunbc_clippy::graph_mock::clippy_mock_spec()")
+        .import("use gunbc_clippy::build_clippy_graph_lint_all;"),
     ];
 
     tools

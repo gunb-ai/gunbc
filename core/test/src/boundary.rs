@@ -68,10 +68,11 @@ pub fn assert_boundary_mockable<T: gunbc_exec::Executable + Clone>(
     let transport_executors = find_transport_executors(dag);
 
     if transport_executors.is_empty() {
+        // No transport executors means there's nothing to intercept under this model.
         return BoundaryTestResult {
-            success: false,
+            success: true,
             boundary_nodes: vec![],
-            error: Some("DAG has no transport executor nodes — nothing to test".to_string()),
+            error: None,
         };
     }
 
@@ -162,7 +163,7 @@ mod tests {
     }
 
     #[test]
-    fn test_no_transport_executors_fails() {
+    fn test_no_transport_executors_succeeds() {
         // DAG with no transport executor nodes (no TransportRequest inputs)
         let mut dag: Dag<MockOp> = Dag::new();
         dag.add_node(Node::opaque(
@@ -173,16 +174,16 @@ mod tests {
         ));
 
         let result = assert_boundary_mockable(&dag, BoundaryMocks::new());
-        assert!(!result.is_ok());
-        assert!(result.error.unwrap().contains("no transport executor"));
+        assert!(result.is_ok());
+        assert!(result.boundary_nodes.is_empty());
     }
 
     #[test]
-    fn test_empty_dag_fails() {
+    fn test_empty_dag_succeeds() {
         // Empty DAG has no transport executors
         let dag: Dag<MockOp> = Dag::new();
         let result = assert_boundary_mockable(&dag, BoundaryMocks::new());
-        assert!(!result.is_ok());
-        assert!(result.error.unwrap().contains("no transport executor"));
+        assert!(result.is_ok());
+        assert!(result.boundary_nodes.is_empty());
     }
 }

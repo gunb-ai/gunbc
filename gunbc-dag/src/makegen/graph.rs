@@ -8,43 +8,18 @@
 //! - Compare content (pure) — check phase of upsert
 //! - Write file if stale (transport boundary, skippable)
 
+use crate::file_ops_graph::FileOpsGraph;
 use crate::makegen::ops::MakegenOp;
-use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::{
-    add_content_upsert_chain, build::*, BuilderError, Cardinality, Dag, DagBuilder, Node, Value,
+    add_content_upsert_chain, build::*, BuilderError, Cardinality, Dag, DagBuilder, Node,
     WorkflowSignature,
 };
 use gunbc_lib_blob::BlobOps;
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::{PrepareFileReadOp, PrepareFileWriteOp};
-use std::collections::HashMap;
 
 /// The operation type for makegen graphs - a union of makegen ops, primitives, and transport.
-#[derive(Debug, Clone)]
-pub enum MakegenGraphOp {
-    /// Makegen-specific operations
-    Makegen(MakegenOp),
-    /// Prepare file read (primitive - PURE)
-    PrepareFileRead(PrepareFileReadOp),
-    /// Prepare file write (primitive - PURE)
-    PrepareFileWrite(PrepareFileWriteOp),
-    /// Blob operations (compare content - PURE)
-    Blob(BlobOps),
-    /// Transport operations (boundary - actual I/O)
-    Transport(TransportOps),
-}
-
-impl Executable for MakegenGraphOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        match self {
-            MakegenGraphOp::Makegen(op) => op.execute(inputs),
-            MakegenGraphOp::PrepareFileRead(op) => op.execute(inputs),
-            MakegenGraphOp::PrepareFileWrite(op) => op.execute(inputs),
-            MakegenGraphOp::Blob(op) => op.execute(inputs),
-            MakegenGraphOp::Transport(op) => op.execute(inputs),
-        }
-    }
-}
+pub type MakegenGraphOp = FileOpsGraph<MakegenOp>;
 
 /// Get the declared signature for the makegen workflow.
 pub fn makegen_signature() -> WorkflowSignature {
@@ -94,7 +69,7 @@ pub fn build_makegen_graph() -> Result<Dag<MakegenGraphOp>, BuilderError> {
             non_empty_list("tool_names", "String"),
             scalar("registry", "Json"),
         ],
-        MakegenGraphOp::Makegen(MakegenOp::LoadRegistry),
+        MakegenGraphOp::Domain(MakegenOp::LoadRegistry),
     ))?;
 
     // Node: RenderMakefile (makegen-specific) - generation 1
@@ -103,7 +78,7 @@ pub fn build_makegen_graph() -> Result<Dag<MakegenGraphOp>, BuilderError> {
             "render_makefile",
             vec![scalar("registry", "Json")],
             vec![scalar("makefile_content", "String")],
-            MakegenGraphOp::Makegen(MakegenOp::RenderMakefile),
+            MakegenGraphOp::Domain(MakegenOp::RenderMakefile),
         ),
         &load_registry,
     )?;

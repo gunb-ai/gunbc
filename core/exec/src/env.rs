@@ -11,6 +11,10 @@ use gunbc_ir::Value;
 use std::collections::HashMap;
 use std::fmt;
 
+// ---------------------------------------------------------------------------
+// Traits
+// ---------------------------------------------------------------------------
+
 /// Trait for environment boundary nodes.
 ///
 /// Environment nodes are zero-input ops that acquire system resources and emit
@@ -24,13 +28,21 @@ pub trait EnvNode: fmt::Debug {
     fn mock_outputs(&self) -> HashMap<String, Value>;
 }
 
-impl<T: EnvNode> Executable for T {
-    fn execute(&self, _inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        self.env_outputs()
-    }
-}
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 /// Helper for single-output environment nodes.
 pub fn single_output(port: &'static str, value: impl Into<Value>) -> HashMap<String, Value> {
     OutputMap::new().value(port, value.into()).build()
+}
+
+// ---------------------------------------------------------------------------
+// Executable bridge
+// ---------------------------------------------------------------------------
+
+impl<T: EnvNode> Executable for T {
+    fn execute(&self, _inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+        self.env_outputs()
+    }
 }

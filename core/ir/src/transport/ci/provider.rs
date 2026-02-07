@@ -15,8 +15,10 @@
 //!
 //! ```ignore
 //! use gunbc_ir::transport::ci::{CiProvider, WorkflowCommand, detect_provider};
+//! use std::collections::HashMap;
 //!
-//! let provider = detect_provider();
+//! let env: HashMap<String, String> = std::env::vars().collect();
+//! let provider = detect_provider(&env);
 //! let cmd = WorkflowCommand::group_start("build");
 //! println!("{}", provider.format(&cmd));
 //! // GitHub Actions: "::group::build"
@@ -26,6 +28,7 @@
 
 use super::command::WorkflowCommand;
 use super::runner::Runner;
+use std::collections::HashMap;
 
 /// Trait for CI provider-specific output formatting.
 ///
@@ -63,7 +66,7 @@ pub trait CiProvider: Send + Sync {
     fn default_runner(&self) -> Box<dyn Runner>;
 }
 
-/// Detect the current CI provider from environment variables.
+/// Detect the current CI provider from an environment map.
 ///
 /// Checks for provider-specific environment variables in order:
 /// 1. `GITHUB_ACTIONS` → GitHub Actions
@@ -73,17 +76,18 @@ pub trait CiProvider: Send + Sync {
 /// # Example
 ///
 /// ```ignore
-/// let provider = detect_provider();
+/// let env: HashMap<String, String> = std::env::vars().collect();
+/// let provider = detect_provider(&env);
 /// println!("Running on: {}", provider.name());
 /// ```
-pub fn detect_provider() -> Box<dyn CiProvider> {
+pub fn detect_provider(env: &HashMap<String, String>) -> Box<dyn CiProvider> {
     // Check for GitHub Actions
-    if std::env::var("GITHUB_ACTIONS").is_ok() {
+    if env.contains_key("GITHUB_ACTIONS") {
         return Box::new(super::providers::GitHubActionsProvider);
     }
 
     // Check for GitLab CI
-    if std::env::var("GITLAB_CI").is_ok() {
+    if env.contains_key("GITLAB_CI") {
         return Box::new(super::providers::GitLabCiProvider::new());
     }
 
@@ -92,10 +96,8 @@ pub fn detect_provider() -> Box<dyn CiProvider> {
 }
 
 /// Check if running in any CI environment.
-pub fn is_ci() -> bool {
-    std::env::var("CI").is_ok()
-        || std::env::var("GITHUB_ACTIONS").is_ok()
-        || std::env::var("GITLAB_CI").is_ok()
+pub fn is_ci(env: &HashMap<String, String>) -> bool {
+    env.contains_key("CI") || env.contains_key("GITHUB_ACTIONS") || env.contains_key("GITLAB_CI")
 }
 
 #[cfg(test)]
@@ -104,15 +106,15 @@ mod tests {
 
     #[test]
     fn test_is_ci_detection() {
-        // In test environment, CI may or may not be set
-        // Just verify the function doesn't panic
-        let _ = is_ci();
+        let env = HashMap::new();
+        assert!(!is_ci(&env));
     }
 
     #[test]
     fn test_detect_provider_returns_something() {
         // Should always return a provider (at least PlainText)
-        let provider = detect_provider();
+        let env = HashMap::new();
+        let provider = detect_provider(&env);
         assert!(!provider.id().is_empty());
     }
 }

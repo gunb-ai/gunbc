@@ -973,19 +973,8 @@ impl Mockable for GistGraphOp {
             },
 
             // Environment ops
-            GistGraphOp::FsEnv(op) => {
-                let fs = filename::FilesystemHandle::cross_platform(op.scope);
-                let port = match op.scope {
-                    filename::Scope::Read => "fs:read",
-                    filename::Scope::Write => "fs:write",
-                };
-                OutputMap::new().value(port, fs.into()).build()
-            }
-            GistGraphOp::ClockEnv(_) => {
-                let ts =
-                    gunbc_ir::Timestamp::from_system_time(std::time::SystemTime::UNIX_EPOCH);
-                OutputMap::new().value("clock", ts.into()).build()
-            }
+            GistGraphOp::FsEnv(op) => op.mock_outputs(),
+            GistGraphOp::ClockEnv(op) => op.mock_outputs(),
 
             // Pure ops
             GistGraphOp::Markdown(_) => OutputMap::new()

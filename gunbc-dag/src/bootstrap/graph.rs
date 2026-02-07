@@ -11,42 +11,17 @@
 //! separate read→compare→write chains that converge from the scan result.
 
 use crate::bootstrap::ops::BootstrapOp;
-use gunbc_exec::{ExecError, Executable};
+use crate::file_ops_graph::FileOpsGraph;
 use gunbc_ir::{
-    add_content_upsert_chain, build::*, BuilderError, Cardinality, Dag, DagBuilder, Node, Value,
+    add_content_upsert_chain, build::*, BuilderError, Cardinality, Dag, DagBuilder, Node,
     WorkflowSignature,
 };
 use gunbc_lib_blob::BlobOps;
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::{PrepareFileReadOp, PrepareFileWriteOp};
-use std::collections::HashMap;
 
 /// The operation type for bootstrap graphs - a union of bootstrap ops, primitives, and transport.
-#[derive(Debug, Clone)]
-pub enum BootstrapGraphOp {
-    /// Bootstrap-specific operations
-    Bootstrap(BootstrapOp),
-    /// Prepare file read (primitive - PURE)
-    PrepareFileRead(PrepareFileReadOp),
-    /// Prepare file write (primitive - PURE)
-    PrepareFileWrite(PrepareFileWriteOp),
-    /// Blob operations (compare content - PURE)
-    Blob(BlobOps),
-    /// Transport operations (boundary - actual I/O)
-    Transport(TransportOps),
-}
-
-impl Executable for BootstrapGraphOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        match self {
-            BootstrapGraphOp::Bootstrap(op) => op.execute(inputs),
-            BootstrapGraphOp::PrepareFileRead(op) => op.execute(inputs),
-            BootstrapGraphOp::PrepareFileWrite(op) => op.execute(inputs),
-            BootstrapGraphOp::Blob(op) => op.execute(inputs),
-            BootstrapGraphOp::Transport(op) => op.execute(inputs),
-        }
-    }
-}
+pub type BootstrapGraphOp = FileOpsGraph<BootstrapOp>;
 
 /// Get the declared signature for the bootstrap workflow.
 pub fn bootstrap_signature() -> WorkflowSignature {
@@ -91,7 +66,7 @@ pub fn build_bootstrap_graph() -> Result<Dag<BootstrapGraphOp>, BuilderError> {
         "prepare_scan_workspace",
         vec![],
         vec![port("request", "TransportRequest"), port("skip", "Bool")],
-        BootstrapGraphOp::Bootstrap(BootstrapOp::PrepareScanWorkspace),
+        BootstrapGraphOp::Domain(BootstrapOp::PrepareScanWorkspace),
     ))?;
 
     let execute_scan = builder.add_node_after(
@@ -109,7 +84,7 @@ pub fn build_bootstrap_graph() -> Result<Dag<BootstrapGraphOp>, BuilderError> {
             "parse_scan_result",
             vec![port("response", "TransportResponse")],
             vec![port("crate_count", "Int"), list("crate_names", "String")],
-            BootstrapGraphOp::Bootstrap(BootstrapOp::ParseScanResult),
+            BootstrapGraphOp::Domain(BootstrapOp::ParseScanResult),
         ),
         &execute_scan,
     )?;
@@ -133,7 +108,7 @@ pub fn build_bootstrap_graph() -> Result<Dag<BootstrapGraphOp>, BuilderError> {
             "generate_makefile",
             vec![list("crate_names", "String")],
             vec![port("makefile_content", "String")],
-            BootstrapGraphOp::Bootstrap(BootstrapOp::GenerateMakefile),
+            BootstrapGraphOp::Domain(BootstrapOp::GenerateMakefile),
         ),
         &scan_workspace,
     )?;
@@ -163,7 +138,7 @@ pub fn build_bootstrap_graph() -> Result<Dag<BootstrapGraphOp>, BuilderError> {
             "generate_gitignore",
             vec![list("crate_names", "String")],
             vec![port("gitignore_content", "String")],
-            BootstrapGraphOp::Bootstrap(BootstrapOp::GenerateGitignore),
+            BootstrapGraphOp::Domain(BootstrapOp::GenerateGitignore),
         ),
         &scan_workspace,
     )?;

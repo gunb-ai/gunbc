@@ -180,6 +180,55 @@ impl CliEntrypoint {
     pub fn is_repeatable(&self) -> bool {
         self.cardinality.allows_many()
     }
+
+    /// Convert to a `gunbc_cli::CliParam` for in-process parsing.
+    pub fn to_cli_param(&self) -> gunbc_cli::CliParam {
+        let mut p = gunbc_cli::CliParam::new(&self.port_name, &self.type_id)
+            .with_cardinality(self.cardinality);
+        if let Some(c) = self.short_flag {
+            p = p.short(c);
+        }
+        if let Some(ref d) = self.default_value {
+            p = p.default(d);
+        }
+        p
+    }
+
+    /// Parse entrypoints from a JSON string (as stored in `ToolRegistration.entrypoints_json`).
+    ///
+    /// JSON format: `[{"port_name":"...","type_id":"...","cardinality":"ONE","short":"r","default":".","help":"...","make_var":"REPO"}]`
+    /// All fields except `port_name` and `type_id` are optional.
+    pub fn from_json(json: &str) -> Vec<Self> {
+        if json.is_empty() {
+            return Vec::new();
+        }
+        let entries: Vec<serde_json::Value> = serde_json::from_str(json)
+            .unwrap_or_else(|e| panic!("invalid entrypoints JSON: {}: {}", e, json));
+        entries.iter().map(|entry| {
+            let port_name = entry["port_name"].as_str().expect("port_name required").to_string();
+            let type_id = entry["type_id"].as_str().expect("type_id required").to_string();
+            let cardinality = match entry.get("cardinality").and_then(|v| v.as_str()) {
+                Some("ZERO_OR_MORE") => Cardinality::ZERO_OR_MORE,
+                Some("ONE_OR_MORE") => Cardinality::ONE_OR_MORE,
+                Some("ZERO_OR_ONE") => Cardinality::ZERO_OR_ONE,
+                _ => Cardinality::ONE,
+            };
+            let short_flag = entry.get("short").and_then(|v| v.as_str()).and_then(|s| s.chars().next());
+            let default_value = entry.get("default").and_then(|v| v.as_str()).map(|s| s.to_string());
+            let help = entry.get("help").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let make_var = entry.get("make_var").and_then(|v| v.as_str()).map(|s| s.to_string());
+
+            Self {
+                port_name,
+                type_id,
+                cardinality,
+                short_flag,
+                default_value,
+                help,
+                make_var,
+            }
+        }).collect()
+    }
 }
 
 // ============================================================================
@@ -250,11 +299,13 @@ fn build_cli_imports(
     };
     items.push(Item::Raw(tool_import));
 
-    // std imports
-    items.push(Item::Use(Import {
-        path: vec!["std".to_string(), "collections".to_string()],
-        items: vec!["HashMap".to_string()],
-    }));
+    // std imports (HashMap only needed in step mode for env_dict/inputs)
+    if step_mode {
+        items.push(Item::Use(Import {
+            path: vec!["std".to_string(), "collections".to_string()],
+            items: vec!["HashMap".to_string()],
+        }));
+    }
     items.push(Item::Use(Import {
         path: vec!["std".to_string(), "env".to_string()],
         items: vec![],
@@ -292,124 +343,89 @@ fn generate_graph_builder_call(tool: &ToolMeta) -> String {
     }
 }
 
-/// Generate arg-parsing code (variable declarations + while loop).
+/// Generate arg-parsing code using `gunbc_cli::parse()`.
+///
+/// Emits a schema definition + parse call, then extracts local variables from
+/// `ParseResult.values` so that `graph_builder_args` (which references locals
+/// by name) still compiles.
 fn generate_arg_parsing(entrypoints: &[CliEntrypoint]) -> String {
     let mut code = String::new();
 
-    // Declare variables with defaults
+    // Build schema
+    code.push_str("let schema = vec![\n");
     for ep in entrypoints {
-        let default = ep.default_value.as_deref().unwrap_or_default();
+        code.push_str(&format!(
+            "    gunbc_cli::CliParam::new(\"{}\", \"{}\")",
+            ep.port_name, ep.type_id
+        ));
+        if ep.is_repeatable() {
+            code.push_str(".with_cardinality(gunbc_ir::Cardinality::ZERO_OR_MORE)");
+        }
+        if let Some(c) = ep.short_flag {
+            code.push_str(&format!(".short('{}')", c));
+        }
+        if let Some(ref d) = ep.default_value {
+            code.push_str(&format!(".default(\"{}\")", d));
+        }
+        code.push_str(",\n");
+    }
+    code.push_str("];\n\n");
+
+    // Parse
+    code.push_str("let parsed = gunbc_cli::parse(&args, &schema).unwrap_or_else(|e| {\n");
+    code.push_str("    eprintln!(\"{}\", e);\n");
+    code.push_str("    process::exit(1);\n");
+    code.push_str("});\n\n");
+
+    // Handle help
+    code.push_str("if parsed.help {\n    print_help();\n    return;\n}\n\n");
+
+    // Extract dry_run and cli_inputs (take ownership of values map)
+    code.push_str("let dry_run = parsed.dry_run;\n");
+    code.push_str("let cli_inputs = parsed.values;\n");
+
+    // Extract local variables from cli_inputs for graph_builder_args compatibility
+    for ep in entrypoints {
         if ep.is_repeatable() {
             code.push_str(&format!(
-                "let mut {}: Vec<String> = vec![];\n",
-                ep.var_name()
+                "let {}: Vec<String> = match cli_inputs.get(\"{}\") {{\n    Some(Value::List(items)) => items.iter().filter_map(|v| match v {{ Value::Str(s) => Some(s.clone()), _ => None }}).collect(),\n    _ => vec![],\n}};\n",
+                ep.var_name(), ep.port_name
             ));
         } else {
             match ep.type_id.as_str() {
-                "String" => {
-                    if default.is_empty() {
-                        code.push_str(&format!(
-                            "let mut {}: Option<String> = None;\n",
-                            ep.var_name()
-                        ));
-                    } else {
-                        code.push_str(&format!(
-                            "let mut {} = \"{}\".to_string();\n",
-                            ep.var_name(),
-                            default
-                        ));
-                    }
-                }
-                "Bool" => {
-                    let default_bool = default == "true";
-                    code.push_str(&format!(
-                        "let mut {} = {};\n",
-                        ep.var_name(),
-                        default_bool
-                    ));
-                }
+                "Bool" => code.push_str(&format!(
+                    "let {} = matches!(cli_inputs.get(\"{}\"), Some(Value::Bool(true)));\n",
+                    ep.var_name(),
+                    ep.port_name
+                )),
                 "Int" => {
-                    let default_int = default.parse::<i64>().unwrap_or(0);
+                    let default = ep
+                        .default_value
+                        .as_deref()
+                        .and_then(|d| d.parse::<i64>().ok())
+                        .unwrap_or(0);
                     code.push_str(&format!(
-                        "let mut {} = {}i64;\n",
-                        ep.var_name(),
-                        default_int
+                        "let {} = match cli_inputs.get(\"{}\") {{ Some(Value::Int(i)) => *i, _ => {} }};\n",
+                        ep.var_name(), ep.port_name, default
                     ));
                 }
                 _ => {
-                    code.push_str(&format!(
-                        "let mut {} = \"{}\".to_string();\n",
-                        ep.var_name(),
-                        default
-                    ));
-                }
-            }
-        }
-    }
-    code.push_str("let mut dry_run = false;\n");
-    code.push('\n');
-
-    // Parse loop
-    code.push_str("let mut i = 1;\n");
-    code.push_str("while i < args.len() {\n");
-    code.push_str("    match args[i].as_str() {\n");
-
-    for ep in entrypoints {
-        let flag = ep.flag_name();
-        let short = ep
-            .short_flag
-            .map(|c| format!("\"-{}\" | ", c))
-            .unwrap_or_default();
-
-        if ep.is_repeatable() {
-            code.push_str(&format!("        {}\"--{}\" => {{\n", short, flag));
-            code.push_str("            i += 1;\n");
-            code.push_str(&format!(
-                "            if i < args.len() {{ {}.push(args[i].clone()); }}\n",
-                ep.var_name()
-            ));
-            code.push_str("        }\n");
-        } else {
-            match ep.type_id.as_str() {
-                "Bool" => {
-                    code.push_str(&format!(
-                        "        {}\"--{}\" => {} = true,\n",
-                        short,
-                        flag,
-                        ep.var_name()
-                    ));
-                }
-                _ => {
-                    code.push_str(&format!("        {}\"--{}\" => {{\n", short, flag));
-                    code.push_str("            i += 1;\n");
-                    if ep.default_value.is_some() || ep.type_id != "String" {
+                    if ep.default_value.is_some() {
+                        let default = ep.default_value.as_deref().unwrap_or("");
                         code.push_str(&format!(
-                            "            if i < args.len() {{ {} = args[i].clone(){}; }}\n",
-                            ep.var_name(),
-                            if ep.type_id == "Int" {
-                                ".parse().unwrap_or(0)"
-                            } else {
-                                ""
-                            }
+                            "let {} = match cli_inputs.get(\"{}\") {{ Some(Value::Str(s)) => s.clone(), _ => \"{}\".to_string() }};\n",
+                            ep.var_name(), ep.port_name, default
                         ));
                     } else {
                         code.push_str(&format!(
-                            "            if i < args.len() {{ {} = Some(args[i].clone()); }}\n",
-                            ep.var_name()
+                            "let {}: Option<String> = cli_inputs.get(\"{}\").and_then(|v| match v {{ Value::Str(s) => Some(s.clone()), _ => None }});\n",
+                            ep.var_name(), ep.port_name
                         ));
                     }
-                    code.push_str("        }\n");
                 }
             }
         }
     }
-
-    code.push_str("        \"-n\" | \"--dry-run\" => dry_run = true,\n");
-    code.push_str("        \"-h\" | \"--help\" => { print_help(); return; }\n");
-    code.push_str("        _ => {}\n");
-    code.push_str("    }\n");
-    code.push_str("    i += 1;\n");
-    code.push_str("}\n");
 
     code
 }
@@ -464,66 +480,14 @@ fn generate_print_inputs(entrypoints: &[CliEntrypoint]) -> String {
     code
 }
 
-/// Generate the input_mocks block (HashMap + entrypoint detection loop).
-fn generate_input_mocks(entrypoints: &[CliEntrypoint]) -> String {
+/// Generate the input_mocks block using `cli_inputs` from parse result.
+///
+/// Since `generate_arg_parsing()` already stores `parsed.values` as `cli_inputs`,
+/// we simply wire those into boundary mocks via entrypoint detection.
+fn generate_input_mocks(_entrypoints: &[CliEntrypoint]) -> String {
     let mut code = String::new();
 
-    code.push_str("let mut cli_inputs: HashMap<String, Value> = HashMap::new();\n");
-
-    for ep in entrypoints {
-        let port_name = &ep.port_name;
-        let var_name = ep.var_name();
-        if ep.is_repeatable() {
-            code.push_str(&format!(
-                "if !{var}.is_empty() {{ cli_inputs.insert(\"{port}\".to_string(), Value::str_list({var}.clone())); }}\n",
-                var = var_name,
-                port = port_name
-            ));
-            continue;
-        }
-
-        match ep.type_id.as_str() {
-            "String" => {
-                let default = ep.default_value.as_deref().unwrap_or("");
-                if default.is_empty() {
-                    code.push_str(&format!(
-                        "if let Some(value) = &{var} {{ cli_inputs.insert(\"{port}\".to_string(), Value::Str(value.clone())); }}\n",
-                        var = var_name,
-                        port = port_name
-                    ));
-                } else {
-                    code.push_str(&format!(
-                        "cli_inputs.insert(\"{port}\".to_string(), Value::Str({var}.clone()));\n",
-                        var = var_name,
-                        port = port_name
-                    ));
-                }
-            }
-            "Bool" => {
-                code.push_str(&format!(
-                    "cli_inputs.insert(\"{port}\".to_string(), Value::Bool({var}));\n",
-                    var = var_name,
-                    port = port_name
-                ));
-            }
-            "Int" => {
-                code.push_str(&format!(
-                    "cli_inputs.insert(\"{port}\".to_string(), Value::Int({var}));\n",
-                    var = var_name,
-                    port = port_name
-                ));
-            }
-            _ => {
-                code.push_str(&format!(
-                    "cli_inputs.insert(\"{port}\".to_string(), Value::Str({var}.clone()));\n",
-                    var = var_name,
-                    port = port_name
-                ));
-            }
-        }
-    }
-
-    code.push_str("\nlet entrypoints = detect_entrypoints(&dag);\n");
+    code.push_str("let entrypoints = detect_entrypoints(&dag);\n");
     code.push_str("let mut input_mocks = BoundaryMocks::new();\n");
     code.push_str("for (node_id, port_name, _) in entrypoints.entrypoint_ports {\n");
     code.push_str("    if let Some(value) = cli_inputs.get(&port_name.0) {\n");

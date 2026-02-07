@@ -10,6 +10,9 @@ gunbc-ir = { path = "../../../core/ir" }
 gunbc-exec = { path = "../../../core/exec" }
 gunbc-test = { path = "../../../core/test" }
 gunbc-lib-transport = { path = "../../transport" }
+gunbc-tool-registry = { path = "../../../core/tool-registry" }
+gunbc-tool-registry-macros = { path = "../../../core/tool-registry-macros" }
+gunbc-testgen-registry-macros = { path = "../../../core/testgen-registry-macros" }
 
 [dev-dependencies]
 gunbc-test = { path = "../../../core/test" }

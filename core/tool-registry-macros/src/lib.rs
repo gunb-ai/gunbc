@@ -18,6 +18,9 @@ use syn::{parse_macro_input, AttributeArgs, ItemFn, Lit, Meta, NestedMeta};
 /// - `import = "..."` — Custom import line
 /// - `success_port = "..."` — Output port to check for success
 /// - `mock_spec = "..."` — Fully-qualified MockSpec function call for dry-run mocking
+/// - `entrypoints = "..."` — JSON array of entrypoint definitions
+/// - `package = "..."` — Cargo package name for invocation
+/// - `binary = "..."` — Binary name (defaults to tool name)
 /// - `returns_result` — Graph builder returns `Result<Dag, BuilderError>`
 /// - `enable_step_mode` — Generate step subcommand for CI
 /// - `skip` — Skip registration (emit function only, no inventory submit)
@@ -29,7 +32,11 @@ use syn::{parse_macro_input, AttributeArgs, ItemFn, Lit, Meta, NestedMeta};
 ///     name = "gist",
 ///     crate_name = "gunbc-gist",
 ///     description = "Create a GitHub gist from code files",
-///     builder = "build_gist_graph(GistMode::Snapshot, extensions.clone(), public)",
+///     builder = "build_gist_graph",
+///     args = "GistMode::Snapshot, extensions.clone(), public",
+///     entrypoints = r#"[
+///         {"port_name":"repo_path","type_id":"String","short":"r","default":".","help":"Repository path","make_var":"REPO"}
+///     ]"#,
 ///     returns_result
 /// )]
 /// pub fn gist_tool() {}
@@ -47,6 +54,9 @@ pub fn tool_target(args: TokenStream, input: TokenStream) -> TokenStream {
     let mut custom_import: Option<syn::LitStr> = None;
     let mut success_port: Option<syn::LitStr> = None;
     let mut mock_spec: Option<syn::LitStr> = None;
+    let mut entrypoints: Option<syn::LitStr> = None;
+    let mut package: Option<syn::LitStr> = None;
+    let mut binary: Option<syn::LitStr> = None;
     let mut returns_result = false;
     let mut enable_step_mode = false;
     let mut skip = false;
@@ -143,6 +153,36 @@ pub fn tool_target(args: TokenStream, input: TokenStream) -> TokenStream {
                             .into();
                         }
                     }
+                    Some("entrypoints") => {
+                        if let Lit::Str(s) = nv.lit {
+                            entrypoints = Some(s);
+                        } else {
+                            return syn::Error::new_spanned(
+                                nv,
+                                "entrypoints must be a string literal",
+                            )
+                            .to_compile_error()
+                            .into();
+                        }
+                    }
+                    Some("package") => {
+                        if let Lit::Str(s) = nv.lit {
+                            package = Some(s);
+                        } else {
+                            return syn::Error::new_spanned(nv, "package must be a string literal")
+                                .to_compile_error()
+                                .into();
+                        }
+                    }
+                    Some("binary") => {
+                        if let Lit::Str(s) = nv.lit {
+                            binary = Some(s);
+                        } else {
+                            return syn::Error::new_spanned(nv, "binary must be a string literal")
+                                .to_compile_error()
+                                .into();
+                        }
+                    }
                     _ => {
                         return syn::Error::new_spanned(nv, "unknown tool_target argument")
                             .to_compile_error()
@@ -182,6 +222,9 @@ pub fn tool_target(args: TokenStream, input: TokenStream) -> TokenStream {
             || custom_import.is_some()
             || success_port.is_some()
             || mock_spec.is_some()
+            || entrypoints.is_some()
+            || package.is_some()
+            || binary.is_some()
             || returns_result
             || enable_step_mode
         {
@@ -261,6 +304,21 @@ pub fn tool_target(args: TokenStream, input: TokenStream) -> TokenStream {
         None => quote!(None),
     };
 
+    let entrypoints_tokens = match entrypoints {
+        Some(s) => quote!(#s),
+        None => quote!(""),
+    };
+
+    let package_tokens = match package {
+        Some(s) => quote!(Some(#s)),
+        None => quote!(None),
+    };
+
+    let binary_tokens = match binary {
+        Some(s) => quote!(Some(#s)),
+        None => quote!(None),
+    };
+
     let expanded = quote! {
         #input_fn
 
@@ -277,6 +335,9 @@ pub fn tool_target(args: TokenStream, input: TokenStream) -> TokenStream {
                 enable_step_mode: #enable_step_mode,
                 custom_import: #import_tokens,
                 mock_spec_call: #mock_spec_tokens,
+                entrypoints_json: #entrypoints_tokens,
+                package: #package_tokens,
+                binary: #binary_tokens,
             }
         }
     };

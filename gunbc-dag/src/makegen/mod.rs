@@ -30,6 +30,9 @@ pub use render::{render_makefile, render_makefile_with_config};
     builder = "build_makegen_graph",
     import = "use gunbc_makegen::build_makegen_graph;",
     mock_spec = "gunbc_dag::makegen::graph_mock::makegen_mock_spec()",
+    package = "dag",
+    binary = "makegen",
+    entrypoints = r#"[{"port_name":"path","type_id":"String","short":"o","default":"Makefile","help":"Output Makefile path","make_var":"OUTPUT"}]"#,
     returns_result
 )]
 pub fn makegen_tool() {}

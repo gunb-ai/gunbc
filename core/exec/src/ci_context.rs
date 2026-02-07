@@ -36,6 +36,7 @@
 use gunbc_ir::transport::ci::{
     detect_provider, AnnotationLevel, CiProvider, FileLocation, WorkflowCommand,
 };
+use std::collections::HashMap;
 use std::io::{self, Write};
 
 /// Runtime CI context for DAG execution.
@@ -66,13 +67,15 @@ impl CiContext {
 
     /// Auto-detect CI environment and create context.
     pub fn detect() -> Self {
-        Self::new(detect_provider())
+        let env: HashMap<String, String> = std::env::vars().collect();
+        Self::new(detect_provider(&env))
     }
 
     /// Create a disabled context (for testing or when CI output is unwanted).
     pub fn disabled() -> Self {
+        let env: HashMap<String, String> = std::env::vars().collect();
         Self {
-            provider: detect_provider(),
+            provider: detect_provider(&env),
             group_stack: Vec::new(),
             writer: Box::new(io::sink()),
             enabled: false,

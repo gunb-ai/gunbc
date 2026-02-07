@@ -96,7 +96,7 @@ fn main() {
 
         // Makefile read
         mocks.set_value(
-            "execute_makefile_read",
+            "execute_read_makefile",
             "response",
             Value::Response(TransportResponse::File(FileResponse {
                 path: "Makefile".into(),
@@ -137,7 +137,7 @@ fn main() {
 
         // Gitignore read
         mocks.set_value(
-            "execute_gitignore_read",
+            "execute_read_gitignore",
             "response",
             Value::Response(TransportResponse::File(FileResponse {
                 path: ".gitignore".into(),

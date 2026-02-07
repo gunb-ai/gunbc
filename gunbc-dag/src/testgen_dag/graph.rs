@@ -3,42 +3,17 @@
 //! Builds a dynamic DAG with N parallel upsert chains, one per testgen target.
 //! Target count is known after inventory discovery but before graph construction.
 
+use crate::file_ops_graph::FileOpsGraph;
 use crate::testgen_dag::ops::TestgenOp;
-use gunbc_exec::{ExecError, Executable};
-use gunbc_ir::{add_content_upsert_chain, build::*, BuilderError, Dag, DagBuilder, Node, Value};
+use gunbc_ir::{add_content_upsert_chain, build::*, BuilderError, Dag, DagBuilder, Node};
 use gunbc_lib_blob::BlobOps;
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::{PrepareFileReadOp, PrepareFileWriteOp};
 use gunbc_testgen_registry::TestgenTarget;
-use std::collections::HashMap;
 use std::path::Path;
 
 /// The operation type for testgen graphs - a union of testgen ops, primitives, and transport.
-#[derive(Debug, Clone)]
-pub enum TestgenGraphOp {
-    /// Testgen-specific operations
-    Testgen(TestgenOp),
-    /// Prepare file read (primitive - PURE)
-    PrepareFileRead(PrepareFileReadOp),
-    /// Prepare file write (primitive - PURE)
-    PrepareFileWrite(PrepareFileWriteOp),
-    /// Blob operations (compare content - PURE)
-    Blob(BlobOps),
-    /// Transport operations (boundary - actual I/O)
-    Transport(TransportOps),
-}
-
-impl Executable for TestgenGraphOp {
-    fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
-        match self {
-            TestgenGraphOp::Testgen(op) => op.execute(inputs),
-            TestgenGraphOp::PrepareFileRead(op) => op.execute(inputs),
-            TestgenGraphOp::PrepareFileWrite(op) => op.execute(inputs),
-            TestgenGraphOp::Blob(op) => op.execute(inputs),
-            TestgenGraphOp::Transport(op) => op.execute(inputs),
-        }
-    }
-}
+pub type TestgenGraphOp = FileOpsGraph<TestgenOp>;
 
 /// Build the testgen graph from discovered targets.
 ///
@@ -62,7 +37,7 @@ pub fn build_testgen_graph(
         add_upsert_chain(
             &mut builder,
             &name,
-            TestgenGraphOp::Testgen(TestgenOp::Generate {
+            TestgenGraphOp::Domain(TestgenOp::Generate {
                 name: name.clone(),
                 target_def: config,
                 generate_fn: target.generate,
@@ -99,7 +74,7 @@ pub fn build_testgen_graph_for_test() -> Result<Dag<TestgenGraphOp>, BuilderErro
         add_upsert_chain(
             &mut builder,
             name,
-            TestgenGraphOp::Testgen(TestgenOp::Generate {
+            TestgenGraphOp::Domain(TestgenOp::Generate {
                 name: name.to_string(),
                 target_def: def,
                 generate_fn: mock_generate,

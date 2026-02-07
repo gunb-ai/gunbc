@@ -222,9 +222,10 @@ Add section **A.2.4 Content Upsert** (or A.12, depending on numbering preference
 
 ## 5. GraphOp Composition Helper
 
-**Status:** Not started
+**Status:** Done
 **Effort:** Medium
-**Location:** `core/ir/src/ops.rs` (new) or `lib/primitives/`
+**Location:** `gunbc-dag/src/file_ops_graph.rs`
+**Updated:** 2026-02-07
 
 ### Problem
 
@@ -287,21 +288,21 @@ If the content upsert helper (item 1) absorbs the need to pass `PrepareFileReadO
 
 | Graph | Current Enum | Would Become |
 |-------|-------------|-------------|
-| `testgen_dag/ops.rs` | `TestgenGraphOp` (5 variants) | `FileOpsGraph<TestgenOp>` |
-| `pragma/ops.rs` | `PragmaGraphOp` (5 variants) | `FileOpsGraph<PragmaOp>` |
-| `bootstrap/ops.rs` | `BootstrapGraphOp` (5 variants) | `FileOpsGraph<BootstrapOp>` |
-| `makegen/ops.rs` | `MakegenGraphOp` (5 variants) | `FileOpsGraph<MakegenOp>` |
+| `gunbc-dag/src/testgen_dag/graph.rs` | `TestgenGraphOp` (5 variants) | `FileOpsGraph<TestgenOp>` |
+| `gunbc-dag/src/pragma/graph.rs` | `PragmaGraphOp` (5 variants) | `FileOpsGraph<PragmaOp>` |
+| `gunbc-dag/src/bootstrap/graph.rs` | `BootstrapGraphOp` (5 variants) | `FileOpsGraph<BootstrapOp>` |
+| `gunbc-dag/src/makegen/graph.rs` | `MakegenGraphOp` (5 variants) | `FileOpsGraph<MakegenOp>` |
 
 **Not migrated** (different shape): codegen (2 variants), build (2 variants), CI (5 variants but different infra ops), gist, review, deps, llm.
 
 ### Recommendation
 
-Defer this until item 1 is done. If the content upsert helper makes the op enum pain tolerable, skip this entirely (Option C). If it doesn't, prefer Option A over Option B — a generic enum is simpler than a proc macro and easier to debug.
+Implemented Option A (`FileOpsGraph<D>`) as a generic wrapper enum in `gunbc-dag`,
+since the affected graphs live there and the type depends on `primitives`, `blob`,
+and `transport` crates.
 
-### Steps (if proceeding)
+### Steps (completed)
 
-1. Complete item 1 first
-2. Evaluate remaining boilerplate pain
-3. If still warranted, implement `FileOpsGraph<D>` in `core/ir/src/ops.rs`
-4. Migrate the 4 binary graphs
-5. Update workspace conversion to handle the generic wrapper
+1. Added `FileOpsGraph<D>` in `gunbc-dag/src/file_ops_graph.rs`
+2. Migrated makegen, pragma, bootstrap, testgen graphs to `FileOpsGraph`
+3. Updated call sites to use the `Domain` variant

@@ -180,6 +180,20 @@ pub fn ci_mock_spec() -> MockSpec {
                 .description("Prep success → stamp write request"),
         )
         .node_example(
+            NodeExample::new("prepare_bootstrap")
+                .input("prep_success", Value::Bool(true))
+                .output("request", OutputMatcher::non_empty())
+                .output("skip", OutputMatcher::exact(Value::Bool(false)))
+                .description("Prep success → bootstrap request"),
+        )
+        .node_example(
+            NodeExample::new("prepare_pragma")
+                .input("prep_success", Value::Bool(true))
+                .output("request", OutputMatcher::non_empty())
+                .output("skip", OutputMatcher::exact(Value::Bool(false)))
+                .description("Prep success → pragma request"),
+        )
+        .node_example(
             NodeExample::new("parse_testgen")
                 .input(
                     "response",
@@ -322,18 +336,21 @@ pub fn ci_mock_spec() -> MockSpec {
         .node_example(
             NodeExample::new("prepare_guardrail_check")
                 .input("testgen_success", Value::Bool(true))
+                .input("pragma_success", Value::Bool(true))
                 .output("skip", OutputMatcher::IsBool)
                 .description("Guardrail prepare emits skip flag"),
         )
         .node_example(
             NodeExample::new("prepare_clippy_lint")
                 .input("build_success", Value::Bool(true))
+                .input("pragma_success", Value::Bool(true))
                 .output("skip", OutputMatcher::exact(Value::Bool(false)))
                 .description("Build success → clippy not skipped"),
         )
         .node_example(
             NodeExample::new("prepare_clippy_lint")
                 .input("build_success", Value::Bool(false))
+                .input("pragma_success", Value::Bool(true))
                 .output("skip", OutputMatcher::exact(Value::Bool(true)))
                 .description("Build failure → clippy skipped"),
         )
@@ -357,6 +374,9 @@ pub fn ci_mock_spec() -> MockSpec {
         .node_example(
             NodeExample::new("prepare_verify_check")
                 .input("prep_success", Value::Bool(true))
+                .input("bootstrap_success", Value::Bool(true))
+                .input("testgen_success", Value::Bool(true))
+                .input("pragma_success", Value::Bool(true))
                 .output("skip", OutputMatcher::IsBool)
                 .description("Verify prepare emits skip flag"),
         )

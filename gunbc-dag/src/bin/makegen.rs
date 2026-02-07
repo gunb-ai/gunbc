@@ -81,7 +81,7 @@ fn main() {
     let mode = if dry_run && !check {
         let mut mocks = BoundaryMocks::new();
         mocks.set_value(
-            "execute_read",
+            "execute_read_makegen",
             "response",
             Value::Response(TransportResponse::File(FileResponse {
                 path: path.clone(),
@@ -93,8 +93,8 @@ fn main() {
             })),
         );
         mocks.set_value(
-            "execute_write",
-            "response",
+            "execute_makegen_transport",
+            "makegen_response",
             Value::Response(TransportResponse::File(FileResponse {
                 path: path.clone(),
                 operation: FileOp::Write,
@@ -105,18 +105,22 @@ fn main() {
             })),
         );
         mocks.set_value(
-            "execute_write",
-            "written_path",
+            "execute_makegen_transport",
+            "makegen_written_path",
             Value::Str("<DRY-RUN>".to_string()),
         );
         mocks.set_value(
-            "execute_write",
-            "content",
+            "execute_makegen_transport",
+            "makegen_content",
             Value::Str("<DRY-RUN>".to_string()),
         );
-        mocks.set_value("execute_write", "skip", Value::Bool(false));
         mocks.set_value(
-            "execute_write",
+            "execute_makegen_transport",
+            "skip",
+            Value::Bool(false),
+        );
+        mocks.set_value(
+            "execute_makegen_transport",
             "skip_reason",
             Value::Str(String::new()),
         );

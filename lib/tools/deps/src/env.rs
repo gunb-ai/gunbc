@@ -15,12 +15,16 @@ impl PlatformEnv {
     }
 
     pub fn mock_outputs(&self) -> HashMap<String, Value> {
-        self.outputs()
+        self.mock_output_map()
     }
 
     fn outputs(&self) -> HashMap<String, Value> {
         let platform = Platform::detect();
         env_single_output(self.output_port(), platform)
+    }
+
+    fn mock_output_map(&self) -> HashMap<String, Value> {
+        env_single_output(self.output_port(), Platform::Linux)
     }
 }
 
@@ -30,6 +34,6 @@ impl EnvNode for PlatformEnv {
     }
 
     fn mock_outputs(&self) -> HashMap<String, Value> {
-        self.outputs()
+        self.mock_output_map()
     }
 }

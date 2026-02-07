@@ -295,7 +295,7 @@ pub fn add_transport_execute_parse_named_with_passthrough<T>(
     }
 
     Ok(TransportTriplet {
-        prepare: prepare.clone(),
+        prepare: (*prepare).clone(),
         execute,
         parse,
     })

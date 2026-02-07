@@ -162,6 +162,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0cc23270f6e1808e30a928bdc84dea0b9b4136a8bc82338574f23baf47bbd280"
 
 [[package]]
+name = "gunbc-cli"
+version = "0.1.0"
+dependencies = [
+ "gunbc-ir",
+]
+
+[[package]]
 name = "gunbc-clippy"
 version = "0.1.0"
 dependencies = [
@@ -169,6 +176,9 @@ dependencies = [
  "gunbc-ir",
  "gunbc-lib-transport",
  "gunbc-test",
+ "gunbc-testgen-registry-macros",
+ "gunbc-tool-registry",
+ "gunbc-tool-registry-macros",
 ]
 
 [[package]]
@@ -176,6 +186,7 @@ name = "gunbc-codegen"
 version = "0.1.0"
 dependencies = [
  "cargo_metadata",
+ "gunbc-cli",
  "gunbc-clippy",
  "gunbc-exec",
  "gunbc-infra",
@@ -190,6 +201,7 @@ name = "gunbc-dag"
 version = "0.1.0"
 dependencies = [
  "glob",
+ "gunbc-cli",
  "gunbc-clippy",
  "gunbc-codegen",
  "gunbc-deps",
@@ -215,6 +227,7 @@ dependencies = [
 name = "gunbc-deps"
 version = "0.1.0"
 dependencies = [
+ "gunbc-cli",
  "gunbc-exec",
  "gunbc-ir",
  "gunbc-lib-transport",
@@ -243,6 +256,7 @@ dependencies = [
 name = "gunbc-gist"
 version = "0.1.0"
 dependencies = [
+ "gunbc-cli",
  "gunbc-exec",
  "gunbc-ir",
  "gunbc-lib-gist-ops",

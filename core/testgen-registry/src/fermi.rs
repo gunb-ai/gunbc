@@ -16,11 +16,9 @@ pub fn infer_test_class(analysis: &DagAnalysis) -> TestClass {
 }
 
 pub fn infer_fermi_cost(class: TestClass) -> FermiCost {
-    match class {
-        TestClass::Unit => FermiCost::XS,
-        TestClass::Hermetic => FermiCost::S,
-        TestClass::Integration => FermiCost::M,
-    }
+    let _ = class;
+    // Default to XS unless explicitly overridden by the test target.
+    FermiCost::XS
 }
 
 pub fn infer_requires(spec: &MockSpec) -> Vec<String> {

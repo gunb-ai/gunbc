@@ -54,6 +54,18 @@ pub struct ToolRegistration {
     /// Fully-qualified Rust expression for the MockSpec function.
     /// Used by generated CLIs for `--dry-run` boundary mocking.
     pub mock_spec_call: Option<&'static str>,
+    /// JSON-encoded array of entrypoint definitions.
+    ///
+    /// Each entry: `{"port_name":"...","type_id":"...","cardinality":"ONE",
+    ///   "short":null,"default":null,"help":"...","make_var":null}`
+    ///
+    /// Empty string means no entrypoints.
+    pub entrypoints_json: &'static str,
+    /// Cargo package name (e.g., "gist"). Used for invocation and Makefile generation.
+    /// When None, the tool has no runnable binary.
+    pub package: Option<&'static str>,
+    /// Binary name (e.g., "gist-diff"). When None, defaults to tool_name.
+    pub binary: Option<&'static str>,
 }
 
 impl ToolRegistration {

@@ -29,8 +29,10 @@
 //!
 //! ```ignore
 //! use gunbc_ir::transport::ci::{detect_provider, WorkflowCommand};
+//! use std::collections::HashMap;
 //!
-//! let provider = detect_provider();
+//! let env: HashMap<String, String> = std::env::vars().collect();
+//! let provider = detect_provider(&env);
 //!
 //! // Start a collapsible group
 //! println!("{}", provider.format(&WorkflowCommand::group_start("build")));

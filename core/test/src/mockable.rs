@@ -71,6 +71,10 @@ pub trait Mockable {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Auto-impls
+// ---------------------------------------------------------------------------
+
 impl<T: EnvNode> Mockable for T {
     fn mock_outputs(&self) -> HashMap<String, Value> {
         EnvNode::mock_outputs(self)

@@ -32,13 +32,16 @@
 #![allow(clippy::disallowed_methods)]
 
 pub mod credential;
+pub mod backend;
 pub mod cli;
 pub mod executor;
 pub mod ops;
+pub mod test_backend;
 
 // STRUCTURAL ENFORCEMENT: TransportOps + transport-layer CLI helpers only
 // execute_transport and execute_request are internal - not exported
 pub use credential::{CredentialOp, GitHubEnvVarProvider, LlmEnvVarProvider, MockCredentialProvider};
+pub use backend::{TransportBackend, TransportBackendGuard};
 pub use ops::TransportOps;
 
 #[cfg(test)]
