@@ -5,7 +5,6 @@ use gunbc_ir::transport::cloud::{
 };
 use gunbc_ir::transport::rest::RestResponse;
 use gunbc_ir::{AuthScheme, Credential, Secret, Value};
-use gunbc_primitives::NetworkHandle;
 use gunbc_test::{MockSpec, NodeExample, OutputMatcher};
 
 fn mock_credential() -> Value {
@@ -77,19 +76,6 @@ fn mock_cloud_config_with_secret(name: &str) -> Value {
 )]
 pub fn github_credential_lifecycle_mock_spec() -> MockSpec {
     let response = RestResponse::ok(serde_json::json!({"resources": {}}));
-    let oidc_response = RestResponse::ok(serde_json::json!({"value": "mock-oidc-token"}));
-    let sts_response = RestResponse::ok(serde_json::json!({
-        "access_token": "mock-sts-token",
-        "expires_in": 3600
-    }));
-    let impersonate_response = RestResponse::ok(serde_json::json!({
-        "accessToken": "mock-sa-token",
-        "expireTime": "2025-01-01T00:00:00Z"
-    }));
-    let secret_response = RestResponse::ok(serde_json::json!({
-        "payload": { "data": "bW9jay1zZWNyZXQ=" }
-    }));
-
     MockSpec::new("github-credential-lifecycle")
         // Cloud env + credential
         .boundary("cloud_env", "config", mock_cloud_config())
@@ -105,44 +91,6 @@ pub fn github_credential_lifecycle_mock_spec() -> MockSpec {
         )
         .boundary("bind_secret", "config", mock_cloud_config_with_secret("github"))
         .boundary("cloud_credential", "credential", mock_credential())
-        .boundary(
-            "cloud_credential/gcp_wif_secret/net_env",
-            "net",
-            NetworkHandle.into(),
-        )
-        .transport_mock(
-            "cloud_credential/gcp_wif_secret/execute_github_oidc",
-            "response",
-            Value::Response(gunbc_ir::transport::TransportResponse::Rest(
-                oidc_response,
-            )),
-        )
-        .transport_mock(
-            "cloud_credential/gcp_wif_secret/execute_sts",
-            "response",
-            Value::Response(gunbc_ir::transport::TransportResponse::Rest(
-                sts_response,
-            )),
-        )
-        .transport_mock(
-            "cloud_credential/gcp_wif_secret/execute_impersonate",
-            "response",
-            Value::Response(gunbc_ir::transport::TransportResponse::Rest(
-                impersonate_response,
-            )),
-        )
-        .transport_mock(
-            "cloud_credential/gcp_wif_secret/execute_secret_access",
-            "response",
-            Value::Response(gunbc_ir::transport::TransportResponse::Rest(
-                secret_response,
-            )),
-        )
-        .boundary(
-            "cloud_credential/gcp_wif_secret/build_credential",
-            "credential",
-            mock_credential(),
-        )
         // Transport mock
         .transport_mock(
             "execute",

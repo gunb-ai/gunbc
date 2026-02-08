@@ -14,9 +14,8 @@
 
 use crate::makegen::BuildConfig;
 use gunbc_exec::{
-    optional_response_strict, optional_str_strict, propagate_skipped,
-    require_bool, require_response, ExecError, Executable, OutputMap,
-    TransportResponseExt,
+    optional_response_strict, optional_str_strict, propagate_skipped, require_bool,
+    require_response, ExecError, Executable, OutputMap, TransportResponseExt,
 };
 use gunbc_ir::render_ir::{PlainText, StructuredBlock, StructuredRenderer};
 use gunbc_ir::symbols::{Tier, STANDARD};
@@ -107,11 +106,24 @@ pub enum CIOp {
     ParseGuardrailResult,
 
     // ========== Verify stage ==========
-    /// Prepare the verify shell command (pure)
-    /// Runs all four `--mode=verify` commands to verify generated artifacts are fresh.
-    PrepareVerifyCheck,
-    /// Parse the verify shell response (pure)
-    ParseVerifyResult,
+    /// Prepare the makegen verify shell command (pure)
+    PrepareVerifyMakegenCheck,
+    /// Parse the makegen verify shell response (pure)
+    ParseVerifyMakegenResult,
+    /// Prepare the bootstrap verify shell command (pure)
+    PrepareVerifyBootstrapCheck,
+    /// Parse the bootstrap verify shell response (pure)
+    ParseVerifyBootstrapResult,
+    /// Prepare the testgen verify shell command (pure)
+    PrepareVerifyTestgenCheck,
+    /// Parse the testgen verify shell response (pure)
+    ParseVerifyTestgenResult,
+    /// Prepare the pragma verify shell command (pure)
+    PrepareVerifyPragmaCheck,
+    /// Parse the pragma verify shell response (pure)
+    ParseVerifyPragmaResult,
+    /// Aggregate per-check verify results into report-friendly outputs (pure)
+    AggregateVerifyResults,
 
     // ========== Report stage (already pure) ==========
     /// Generate CI report (pure)
@@ -136,8 +148,15 @@ impl Executable for CIOp {
             CIOp::ParseClippyLintResult => execute_parse_clippy_lint_result(inputs),
             CIOp::PrepareGuardrailCheck => execute_prepare_guardrail_check(inputs),
             CIOp::ParseGuardrailResult => execute_parse_guardrail_result(inputs),
-            CIOp::PrepareVerifyCheck => execute_prepare_verify_check(inputs),
-            CIOp::ParseVerifyResult => execute_parse_verify_result(inputs),
+            CIOp::PrepareVerifyMakegenCheck => execute_prepare_verify_makegen_check(inputs),
+            CIOp::ParseVerifyMakegenResult => execute_parse_verify_makegen_result(inputs),
+            CIOp::PrepareVerifyBootstrapCheck => execute_prepare_verify_bootstrap_check(inputs),
+            CIOp::ParseVerifyBootstrapResult => execute_parse_verify_bootstrap_result(inputs),
+            CIOp::PrepareVerifyTestgenCheck => execute_prepare_verify_testgen_check(inputs),
+            CIOp::ParseVerifyTestgenResult => execute_parse_verify_testgen_result(inputs),
+            CIOp::PrepareVerifyPragmaCheck => execute_prepare_verify_pragma_check(inputs),
+            CIOp::ParseVerifyPragmaResult => execute_parse_verify_pragma_result(inputs),
+            CIOp::AggregateVerifyResults => execute_aggregate_verify_results(inputs),
             CIOp::Report => execute_report(inputs),
         }
     }
@@ -217,7 +236,9 @@ fn execute_prepare_testgen_command(
 fn execute_parse_testgen_result(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    if let Some(result) = propagate_skipped(&inputs, "response", &["testgen_success", "testgen_stderr"]) {
+    if let Some(result) =
+        propagate_skipped(&inputs, "response", &["testgen_success", "testgen_stderr"])
+    {
         return result;
     }
 
@@ -345,11 +366,9 @@ fn execute_prepare_pragma_command(
 fn execute_parse_pragma_result(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    if let Some(result) = propagate_skipped(
-        &inputs,
-        "response",
-        &["pragma_success", "pragma_stderr"],
-    ) {
+    if let Some(result) =
+        propagate_skipped(&inputs, "response", &["pragma_success", "pragma_stderr"])
+    {
         return result;
     }
 
@@ -558,10 +577,13 @@ fn execute_prepare_clippy_lint(
             .ok();
     }
 
-    let request = TransportRequest::Shell(
-        ShellRequest::new("cargo")
-            .args(["clippy", "--all-targets", "--", "-D", "warnings"]),
-    );
+    let request = TransportRequest::Shell(ShellRequest::new("cargo").args([
+        "clippy",
+        "--all-targets",
+        "--",
+        "-D",
+        "warnings",
+    ]));
 
     OutputMap::new()
         .request("request", request)
@@ -698,62 +720,43 @@ fn execute_parse_guardrail_result(
 // Verify Stage - Check generated artifacts are fresh
 // ============================================================================
 
-/// Prepare the verify shell command (pure).
-///
-/// Runs all four `--mode=verify` commands sequentially. If any fails, the combined
-/// command fails and stderr reports which generator drifted.
-fn execute_prepare_verify_check(
-    inputs: HashMap<String, Value>,
-) -> Result<HashMap<String, Value>, ExecError> {
+fn verify_skip_reason(inputs: &HashMap<String, Value>) -> Result<Option<&'static str>, ExecError> {
     let prep_success = require_bool_or_skipped(&inputs, "prep_success", false)?;
     let bootstrap_success = require_bool_or_skipped(&inputs, "bootstrap_success", false)?;
     let testgen_success = require_bool_or_skipped(&inputs, "testgen_success", false)?;
     let pragma_success = require_bool_or_skipped(&inputs, "pragma_success", false)?;
 
     if !prep_success {
-        return OutputMap::new()
-            .bool("skip", true)
-            .str("skip_reason", "Skipped due to codegen failure")
-            .ok();
+        return Ok(Some("Skipped due to codegen failure"));
     }
 
     if !bootstrap_success {
-        return OutputMap::new()
-            .bool("skip", true)
-            .str("skip_reason", "Skipped due to bootstrap failure")
-            .ok();
+        return Ok(Some("Skipped due to bootstrap failure"));
     }
 
     if !testgen_success {
-        return OutputMap::new()
-            .bool("skip", true)
-            .str("skip_reason", "Skipped due to testgen failure")
-            .ok();
+        return Ok(Some("Skipped due to testgen failure"));
     }
 
     if !pragma_success {
+        return Ok(Some("Skipped due to pragma failure"));
+    }
+
+    Ok(None)
+}
+
+fn execute_prepare_verify_check(
+    inputs: HashMap<String, Value>,
+    command: &str,
+) -> Result<HashMap<String, Value>, ExecError> {
+    if let Some(reason) = verify_skip_reason(&inputs)? {
         return OutputMap::new()
             .bool("skip", true)
-            .str("skip_reason", "Skipped due to pragma failure")
+            .str("skip_reason", reason)
             .ok();
     }
 
-    let config = BuildConfig::cargo();
-    // Build a combined shell command that runs all four --mode=verify verifiers.
-    // Each uses the same binary commands as `make verify`.
-    let makegen_check = config.makegen_check.to_shell();
-    let bootstrap_check = config.bootstrap_check.to_shell();
-    let testgen_check = config.testgen_check.to_shell();
-    let pragma_check = config.pragma_check.to_shell();
-
-    let combined = format!(
-        "{} && {} && {} && {}",
-        makegen_check, bootstrap_check, testgen_check, pragma_check
-    );
-
-    let request = TransportRequest::Shell(
-        ShellRequest::new("bash").args(["-lc", &combined]),
-    );
+    let request = TransportRequest::Shell(ShellRequest::new("bash").args(["-lc", command]));
 
     OutputMap::new()
         .request("request", request)
@@ -761,15 +764,49 @@ fn execute_prepare_verify_check(
         .ok()
 }
 
-/// Parse the verify shell response (pure).
-fn execute_parse_verify_result(
+/// Prepare the makegen verify shell command (pure).
+fn execute_prepare_verify_makegen_check(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    if let Some(result) = propagate_skipped(
-        &inputs,
-        "response",
-        &["verify_success", "verify_stderr"],
-    ) {
+    let config = BuildConfig::cargo();
+    let command = config.makegen_check.to_shell();
+    execute_prepare_verify_check(inputs, &command)
+}
+
+/// Prepare the bootstrap verify shell command (pure).
+fn execute_prepare_verify_bootstrap_check(
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    let config = BuildConfig::cargo();
+    let command = config.bootstrap_check.to_shell();
+    execute_prepare_verify_check(inputs, &command)
+}
+
+/// Prepare the testgen verify shell command (pure).
+fn execute_prepare_verify_testgen_check(
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    let config = BuildConfig::cargo();
+    let command = config.testgen_check.to_shell();
+    execute_prepare_verify_check(inputs, &command)
+}
+
+/// Prepare the pragma verify shell command (pure).
+fn execute_prepare_verify_pragma_check(
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    let config = BuildConfig::cargo();
+    let command = config.pragma_check.to_shell();
+    execute_prepare_verify_check(inputs, &command)
+}
+
+/// Parse a verify sub-check shell response (pure).
+fn execute_parse_verify_result(
+    inputs: HashMap<String, Value>,
+    success_key: &str,
+    stderr_key: &str,
+) -> Result<HashMap<String, Value>, ExecError> {
+    if let Some(result) = propagate_skipped(&inputs, "response", &[success_key, stderr_key]) {
         return result;
     }
 
@@ -780,8 +817,8 @@ fn execute_parse_verify_result(
     if skip {
         let reason = skip_reason.unwrap_or("Skipped");
         return OutputMap::new()
-            .bool("verify_success", false)
-            .str("verify_stderr", reason)
+            .bool(success_key, false)
+            .str(stderr_key, reason)
             .ok();
     }
 
@@ -789,15 +826,92 @@ fn execute_parse_verify_result(
         Some(response) => response.require_shell()?,
         None => {
             return OutputMap::new()
-                .bool("verify_success", false)
-                .str("verify_stderr", "missing response")
+                .bool(success_key, false)
+                .str(stderr_key, "missing response")
                 .ok();
         }
     };
 
     OutputMap::new()
-        .bool("verify_success", shell.success())
-        .str("verify_stderr", shell.stderr.clone())
+        .bool(success_key, shell.success())
+        .str(stderr_key, shell.stderr.clone())
+        .ok()
+}
+
+/// Parse the makegen verify shell response (pure).
+fn execute_parse_verify_makegen_result(
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    execute_parse_verify_result(inputs, "verify_makegen_success", "verify_makegen_stderr")
+}
+
+/// Parse the bootstrap verify shell response (pure).
+fn execute_parse_verify_bootstrap_result(
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    execute_parse_verify_result(
+        inputs,
+        "verify_bootstrap_success",
+        "verify_bootstrap_stderr",
+    )
+}
+
+/// Parse the testgen verify shell response (pure).
+fn execute_parse_verify_testgen_result(
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    execute_parse_verify_result(inputs, "verify_testgen_success", "verify_testgen_stderr")
+}
+
+/// Parse the pragma verify shell response (pure).
+fn execute_parse_verify_pragma_result(
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    execute_parse_verify_result(inputs, "verify_pragma_success", "verify_pragma_stderr")
+}
+
+/// Aggregate per-check verify results into report-friendly outputs.
+fn execute_aggregate_verify_results(
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    let checks = [
+        ("makegen", "verify_makegen_success", "verify_makegen_stderr"),
+        (
+            "bootstrap",
+            "verify_bootstrap_success",
+            "verify_bootstrap_stderr",
+        ),
+        ("testgen", "verify_testgen_success", "verify_testgen_stderr"),
+        ("pragma", "verify_pragma_success", "verify_pragma_stderr"),
+    ];
+
+    let mut verify_success = true;
+    let mut failure_messages: Vec<String> = Vec::new();
+
+    for (name, success_key, stderr_key) in checks {
+        let success = require_bool_or_skipped(&inputs, success_key, true)?;
+        if success {
+            continue;
+        }
+
+        verify_success = false;
+        let stderr = optional_str_strict(&inputs, stderr_key)?;
+        let message = match stderr {
+            Some(stderr) if !stderr.trim().is_empty() => format!("{name}: {stderr}"),
+            _ => format!("{name}: verify check failed"),
+        };
+        failure_messages.push(message);
+    }
+
+    let verify_stderr = if verify_success {
+        String::new()
+    } else {
+        failure_messages.join("\n\n")
+    };
+
+    OutputMap::new()
+        .bool("verify_success", verify_success)
+        .str("verify_stderr", verify_stderr)
         .ok()
 }
 
@@ -1105,10 +1219,13 @@ impl Mockable for CIOp {
                 .str("guardrail_stderr", "")
                 .build(),
             CIOp::PrepareClippyLint => {
-                let request = TransportRequest::Shell(
-                    ShellRequest::new("cargo")
-                        .args(["clippy", "--all-targets", "--", "-D", "warnings"]),
-                );
+                let request = TransportRequest::Shell(ShellRequest::new("cargo").args([
+                    "clippy",
+                    "--all-targets",
+                    "--",
+                    "-D",
+                    "warnings",
+                ]));
                 OutputMap::new()
                     .request("request", request)
                     .bool("skip", false)
@@ -1120,24 +1237,63 @@ impl Mockable for CIOp {
                 .str("lint_stdout", "No warnings")
                 .str("lint_stderr", "")
                 .build(),
-            CIOp::PrepareVerifyCheck => {
+            CIOp::PrepareVerifyMakegenCheck => {
                 let config = BuildConfig::cargo();
-                let cmd = format!(
-                    "{} && {} && {} && {}",
-                    config.makegen_check.to_shell(),
-                    config.bootstrap_check.to_shell(),
-                    config.testgen_check.to_shell(),
-                    config.pragma_check.to_shell(),
-                );
-                let request = TransportRequest::Shell(
-                    ShellRequest::new("bash").args(["-lc", &cmd]),
-                );
+                let cmd = config.makegen_check.to_shell();
+                let request =
+                    TransportRequest::Shell(ShellRequest::new("bash").args(["-lc", &cmd]));
                 OutputMap::new()
                     .request("request", request)
                     .bool("skip", false)
                     .build()
             }
-            CIOp::ParseVerifyResult => OutputMap::new()
+            CIOp::ParseVerifyMakegenResult => OutputMap::new()
+                .bool("verify_makegen_success", true)
+                .str("verify_makegen_stderr", "")
+                .build(),
+            CIOp::PrepareVerifyBootstrapCheck => {
+                let config = BuildConfig::cargo();
+                let cmd = config.bootstrap_check.to_shell();
+                let request =
+                    TransportRequest::Shell(ShellRequest::new("bash").args(["-lc", &cmd]));
+                OutputMap::new()
+                    .request("request", request)
+                    .bool("skip", false)
+                    .build()
+            }
+            CIOp::ParseVerifyBootstrapResult => OutputMap::new()
+                .bool("verify_bootstrap_success", true)
+                .str("verify_bootstrap_stderr", "")
+                .build(),
+            CIOp::PrepareVerifyTestgenCheck => {
+                let config = BuildConfig::cargo();
+                let cmd = config.testgen_check.to_shell();
+                let request =
+                    TransportRequest::Shell(ShellRequest::new("bash").args(["-lc", &cmd]));
+                OutputMap::new()
+                    .request("request", request)
+                    .bool("skip", false)
+                    .build()
+            }
+            CIOp::ParseVerifyTestgenResult => OutputMap::new()
+                .bool("verify_testgen_success", true)
+                .str("verify_testgen_stderr", "")
+                .build(),
+            CIOp::PrepareVerifyPragmaCheck => {
+                let config = BuildConfig::cargo();
+                let cmd = config.pragma_check.to_shell();
+                let request =
+                    TransportRequest::Shell(ShellRequest::new("bash").args(["-lc", &cmd]));
+                OutputMap::new()
+                    .request("request", request)
+                    .bool("skip", false)
+                    .build()
+            }
+            CIOp::ParseVerifyPragmaResult => OutputMap::new()
+                .bool("verify_pragma_success", true)
+                .str("verify_pragma_stderr", "")
+                .build(),
+            CIOp::AggregateVerifyResults => OutputMap::new()
                 .bool("verify_success", true)
                 .str("verify_stderr", "")
                 .build(),

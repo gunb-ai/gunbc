@@ -1250,7 +1250,7 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
                     if let Some(ref mut o) = obs {
                         o.on_node_skipped(&node_id);
                     }
-                    if let Err(e) = finalize_node_parallel(
+                    finalize_node_parallel(
                         &node_id,
                         outputs,
                         false,
@@ -1264,9 +1264,7 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
                         &mut remaining_deps,
                         &mut ready,
                         &mut completed,
-                    ) {
-                        return Err(e);
-                    }
+                    )?;
                     continue;
                 }
 
@@ -1294,7 +1292,7 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
                         let summary = OutputSummary::from_outputs(&outputs, node_start.elapsed());
                         o.on_node_intercepted(&node_id, summary);
                     }
-                    if let Err(e) = finalize_node_parallel(
+                    finalize_node_parallel(
                         &node_id,
                         outputs,
                         true,
@@ -1308,9 +1306,7 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
                         &mut remaining_deps,
                         &mut ready,
                         &mut completed,
-                    ) {
-                        return Err(e);
-                    }
+                    )?;
                     continue;
                 }
 
@@ -1363,7 +1359,7 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
                             OutputSummary::from_outputs(&outputs, completed_node.started_at.elapsed());
                         o.on_node_complete(&completed_node.node_id, summary);
                     }
-                    if let Err(e) = finalize_node_parallel(
+                    finalize_node_parallel(
                         &completed_node.node_id,
                         outputs,
                         false,
@@ -1377,9 +1373,7 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
                         &mut remaining_deps,
                         &mut ready,
                         &mut completed,
-                    ) {
-                        return Err(e);
-                    }
+                    )?
                 }
                 Err(e) => {
                     if let Some(ref mut o) = obs {

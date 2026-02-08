@@ -28,8 +28,8 @@ use gunbc_exec::{
 };
 use gunbc_ir::resource::ExecMode;
 use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse};
-use gunbc_ir::CODEGEN_STAMP_PATH;
 use gunbc_ir::Value;
+use gunbc_ir::CODEGEN_STAMP_PATH;
 use gunbc_lib_transport::preflight::ensure_lint_upsert;
 use std::env;
 use std::process;
@@ -141,6 +141,21 @@ fn main() {
         mocks.set_value("clippy_lint", "stderr", Value::Str(String::new()));
         mocks.set_value("clippy_lint", "skip", Value::Bool(false));
 
+        // verify checks: per-generator --mode=verify commands
+        for node in [
+            "execute_verify_makegen_check",
+            "execute_verify_bootstrap_check",
+            "execute_verify_testgen_check",
+            "execute_verify_pragma_check",
+        ] {
+            mocks.set_value(
+                node,
+                "response",
+                Value::Response(ShellResponse::ok("<DRY-RUN>").into()),
+            );
+            mocks.set_value(node, "skip", Value::Bool(false));
+        }
+
         ExecutionMode::DryRun(mocks)
     } else {
         ExecutionMode::Real
@@ -152,10 +167,7 @@ fn main() {
 
     // Print header
     println!("{}", gunbc_ir::cargo::name("ci"));
-    println!(
-        "  exec: {}",
-        if dry_run { "dry-run" } else { "real" }
-    );
+    println!("  exec: {}", if dry_run { "dry-run" } else { "real" });
     println!(
         "  resource_mode: {}",
         match resource_mode {
