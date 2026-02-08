@@ -203,7 +203,7 @@ fn build_core_targets(config: &BuildConfig) -> Vec<StructuredBlock> {
     // ensure-codegen
     blocks.push(StructuredBlock::Target(Target {
         name: "ensure-codegen".to_string(),
-        deps: vec!["preflight-fix".to_string()],
+        deps: vec![],
         body: vec![config.ensure_codegen_shell()],
         comment: Some("Ensure CLI entrypoints exist (bootstrap-safe)".to_string()),
     }));
@@ -606,7 +606,7 @@ fn build_tool_target(tool: &ToolInfo, config: &BuildConfig) -> StructuredBlock {
     let deps = if tool.short_name == "pragma" {
         vec!["preflight-fix".to_string()]
     } else if tool.needs_generated_cli {
-        vec!["lint-upsert".to_string()]
+        vec!["ensure-codegen".to_string()]
     } else {
         vec!["preflight-fix".to_string()]
     };
@@ -632,7 +632,7 @@ fn build_dry_run_target(tool: &ToolInfo, config: &BuildConfig) -> StructuredBloc
     let deps = if tool.short_name == "pragma" {
         vec!["preflight-fix".to_string()]
     } else if tool.needs_generated_cli {
-        vec!["lint-upsert".to_string()]
+        vec!["ensure-codegen".to_string()]
     } else {
         vec!["preflight-fix".to_string()]
     };
@@ -758,7 +758,11 @@ mod tests {
         let registry = ToolRegistry::default_registry();
         let makefile = render_makefile(&registry);
 
-        assert!(makefile.contains("ensure-codegen: preflight-fix"));
+        // ensure-codegen has no prerequisites (minimal pipeline)
+        assert!(
+            makefile.contains("ensure-codegen:\n"),
+            "ensure-codegen should have no prerequisites"
+        );
         assert!(makefile.contains("codegen: lint-upsert"));
         assert!(makefile.contains("build: codegen testgen"));
         assert!(makefile.contains("testgen: lint-upsert"));
@@ -783,10 +787,10 @@ mod tests {
         );
         assert!(makefile.contains("cargo test"));
 
-        assert!(makefile.contains("check: lint-upsert"));
+        assert!(makefile.contains("check: ensure-codegen"));
         assert!(makefile.contains("cargo check --all-targets"));
 
-        assert!(makefile.contains("clippy: lint-upsert"));
+        assert!(makefile.contains("clippy: ensure-codegen"));
         assert!(makefile.contains("cargo clippy --all-targets"));
 
         assert!(makefile.contains("fmt:"));
@@ -1009,6 +1013,37 @@ mod tests {
                     || raw.contains("============"),
                 "unexpected Raw block that looks like a target definition: {:?}",
                 &raw[..raw.len().min(80)]
+            );
+        }
+    }
+
+    #[test]
+    fn tool_targets_use_minimal_prerequisites() {
+        let registry = ToolRegistry::default_registry();
+        let makefile = render_makefile(&registry);
+
+        // Tool targets with generated CLI should depend on ensure-codegen, not lint-upsert
+        let generated_cli_tools: Vec<_> = registry
+            .tools
+            .iter()
+            .filter(|t| t.needs_generated_cli && t.short_name != "pragma")
+            .collect();
+
+        for tool in &generated_cli_tools {
+            let expected = format!("{}: ensure-codegen", tool.short_name);
+            assert!(
+                makefile.contains(&expected),
+                "tool '{}' should depend on ensure-codegen (minimal), got something else.\n\
+                 lint-upsert is for maintenance targets only.",
+                tool.short_name
+            );
+        }
+
+        // Maintenance targets MUST still use lint-upsert
+        for target in ["codegen", "testgen", "testgen-check", "pragma-check"] {
+            assert!(
+                makefile.contains(&format!("{target}: lint-upsert")),
+                "maintenance target '{target}' must depend on lint-upsert for full verification"
             );
         }
     }

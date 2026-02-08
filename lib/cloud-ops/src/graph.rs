@@ -15,8 +15,10 @@ use gunbc_lib_azure_ops::{
 };
 use gunbc_lib_gcp_ops::{
     build_gcp_secret_manager_credential_graph_github,
+    build_gcp_secret_manager_credential_graph_local,
     build_gcp_secret_manager_credential_graph_metadata,
     build_gcp_secret_manager_upsert_graph_github,
+    build_gcp_secret_manager_upsert_graph_local,
     build_gcp_secret_manager_upsert_graph_metadata, GcpSecretManagerGraphOp,
 };
 use std::collections::HashMap;
@@ -52,6 +54,7 @@ pub fn build_cloud_secret_manager_credential_graph_from_config(
         CloudProviderKind::Gcp => match config.runtime {
             CloudRuntimeKind::GitHubActions => build_cloud_secret_manager_credential_graph_gcp_github(),
             CloudRuntimeKind::CloudMetadata => build_cloud_secret_manager_credential_graph_gcp_metadata(),
+            CloudRuntimeKind::LocalDev => build_cloud_secret_manager_credential_graph_gcp_local(),
         },
         CloudProviderKind::Aws => build_cloud_secret_manager_credential_graph_aws_stub(),
         CloudProviderKind::Azure => build_cloud_secret_manager_credential_graph_azure_stub(),
@@ -74,6 +77,15 @@ pub fn build_cloud_secret_manager_credential_graph_gcp_github() -> Dag<CloudSecr
 )]
 pub fn build_cloud_secret_manager_credential_graph_gcp_metadata() -> Dag<CloudSecretManagerGraphOp> {
     build_cloud_secret_manager_credential_graph_gcp(CloudRuntimeKind::CloudMetadata)
+}
+
+#[gunbc_testgen_registry_macros::resource_test_target(
+    skip,
+    name = "cloud-secret-credential-gcp-local",
+    builder = "build_cloud_secret_manager_credential_graph_gcp_local()",
+)]
+pub fn build_cloud_secret_manager_credential_graph_gcp_local() -> Dag<CloudSecretManagerGraphOp> {
+    build_cloud_secret_manager_credential_graph_gcp(CloudRuntimeKind::LocalDev)
 }
 
 #[gunbc_testgen_registry_macros::resource_test_target(
@@ -102,6 +114,7 @@ pub fn build_cloud_secret_manager_upsert_graph_from_config(
         CloudProviderKind::Gcp => match config.runtime {
             CloudRuntimeKind::GitHubActions => build_cloud_secret_manager_upsert_graph_gcp_github(),
             CloudRuntimeKind::CloudMetadata => build_cloud_secret_manager_upsert_graph_gcp_metadata(),
+            CloudRuntimeKind::LocalDev => build_cloud_secret_manager_upsert_graph_gcp_local(),
         },
         CloudProviderKind::Aws => build_cloud_secret_manager_upsert_graph_aws_stub(),
         CloudProviderKind::Azure => build_cloud_secret_manager_upsert_graph_azure_stub(),
@@ -124,6 +137,15 @@ pub fn build_cloud_secret_manager_upsert_graph_gcp_github() -> Dag<CloudSecretMa
 )]
 pub fn build_cloud_secret_manager_upsert_graph_gcp_metadata() -> Dag<CloudSecretManagerGraphOp> {
     build_cloud_secret_manager_upsert_graph_gcp(CloudRuntimeKind::CloudMetadata)
+}
+
+#[gunbc_testgen_registry_macros::resource_test_target(
+    skip,
+    name = "cloud-secret-upsert-gcp-local",
+    builder = "build_cloud_secret_manager_upsert_graph_gcp_local()",
+)]
+pub fn build_cloud_secret_manager_upsert_graph_gcp_local() -> Dag<CloudSecretManagerGraphOp> {
+    build_cloud_secret_manager_upsert_graph_gcp(CloudRuntimeKind::LocalDev)
 }
 
 #[gunbc_testgen_registry_macros::resource_test_target(
@@ -154,6 +176,7 @@ fn build_cloud_secret_manager_credential_graph_gcp(
     let gcp_dag = match runtime {
         CloudRuntimeKind::GitHubActions => build_gcp_secret_manager_credential_graph_github(),
         CloudRuntimeKind::CloudMetadata => build_gcp_secret_manager_credential_graph_metadata(),
+        CloudRuntimeKind::LocalDev => build_gcp_secret_manager_credential_graph_local(),
     };
     let gcp_subdag = lift_gcp(gcp_dag);
 
@@ -313,6 +336,7 @@ fn build_cloud_secret_manager_upsert_graph_gcp(
     let gcp_dag = match runtime {
         CloudRuntimeKind::GitHubActions => build_gcp_secret_manager_upsert_graph_github(),
         CloudRuntimeKind::CloudMetadata => build_gcp_secret_manager_upsert_graph_metadata(),
+        CloudRuntimeKind::LocalDev => build_gcp_secret_manager_upsert_graph_local(),
     };
     let gcp_subdag = lift_gcp(gcp_dag);
 

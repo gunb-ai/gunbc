@@ -146,7 +146,7 @@ pub fn prepare_gist_request(
         .file(filename, content)
         .public(public)
         .description(description)
-        .to_shell_request()
+        .to_rest_request()
 }
 
 /// Sanitize a branch name for use as a filename component.
@@ -360,18 +360,38 @@ pub fn extract_gist_url(response: &TransportResponse) -> String {
 mod tests {
     use super::*;
 
+    fn request_filename(req: &gunbc_ir::transport::rest::RestRequest) -> String {
+        let body = req.body.as_ref().expect("request body should exist");
+        let files = body
+            .get("files")
+            .and_then(|v| v.as_object())
+            .expect("request body should include files object");
+        files
+            .keys()
+            .next()
+            .cloned()
+            .expect("request body should include one file entry")
+    }
+
+    fn request_description(req: &gunbc_ir::transport::rest::RestRequest) -> String {
+        req.body
+            .as_ref()
+            .and_then(|b| b.get("description"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string()
+    }
+
     #[test]
     fn test_prepare_gist_request() {
         let request = prepare_gist_request("# Test", false, "Test gist", "test.md");
 
         match request {
-            TransportRequest::Shell(req) => {
-                assert_eq!(req.command, "gh");
-                assert!(req.args.contains(&"gist".to_string()));
-                // Verify the filename is used
-                assert!(req.args.contains(&"test.md".to_string()));
+            TransportRequest::Rest(req) => {
+                assert_eq!(req.url, "https://api.github.com/gists");
+                assert_eq!(request_filename(&req), "test.md");
             }
-            _ => panic!("expected shell request"),
+            _ => panic!("expected rest request"),
         }
     }
 
@@ -385,20 +405,18 @@ mod tests {
         let request = prepare_gist_request("# Test", false, "Test gist", &filename);
 
         match request {
-            TransportRequest::Shell(req) => {
+            TransportRequest::Rest(req) => {
                 // Filename should start with sanitized branch name
-                let f_arg = req
-                    .args
-                    .iter()
-                    .find(|a| a.starts_with("claude-my-feature_"));
+                let file = request_filename(&req);
+                let f_arg = Some(&file).filter(|a| a.starts_with("claude-my-feature_"));
                 assert!(
                     f_arg.is_some(),
-                    "expected filename with sanitized branch name, got args: {:?}",
-                    req.args
+                    "expected filename with sanitized branch name, got filename: {}",
+                    file
                 );
                 assert!(f_arg.unwrap().ends_with(".md"));
             }
-            _ => panic!("expected shell request"),
+            _ => panic!("expected rest request"),
         }
     }
 
@@ -416,16 +434,17 @@ mod tests {
 
         assert!(result.contains_key("request"));
         match result.get("request") {
-            Some(Value::Request(TransportRequest::Shell(req))) => {
+            Some(Value::Request(TransportRequest::Rest(req))) => {
                 // Without branch, filename should start with "snapshot_"
-                let f_arg = req.args.iter().find(|a| a.starts_with("snapshot_"));
+                let filename = request_filename(req);
+                let f_arg = Some(&filename).filter(|a| a.starts_with("snapshot_"));
                 assert!(
                     f_arg.is_some(),
-                    "expected snapshot filename, got args: {:?}",
-                    req.args
+                    "expected snapshot filename, got filename: {}",
+                    filename
                 );
             }
-            _ => panic!("expected shell request"),
+            _ => panic!("expected rest request"),
         }
     }
 
@@ -446,25 +465,22 @@ mod tests {
         let result = op.execute(inputs).unwrap();
 
         match result.get("request") {
-            Some(Value::Request(TransportRequest::Shell(req))) => {
-                let f_arg = req
-                    .args
-                    .iter()
-                    .find(|a| a.starts_with("feature-cool-thing_"));
+            Some(Value::Request(TransportRequest::Rest(req))) => {
+                let filename = request_filename(req);
+                let f_arg = Some(&filename).filter(|a| a.starts_with("feature-cool-thing_"));
                 assert!(
                     f_arg.is_some(),
-                    "expected branch-based filename, got args: {:?}",
-                    req.args
+                    "expected branch-based filename, got filename: {}",
+                    filename
                 );
                 // Description should include the branch name
-                let desc_idx = req.args.iter().position(|a| a == "--desc").unwrap();
-                let desc = &req.args[desc_idx + 1];
+                let desc = request_description(req);
                 assert!(
                     desc.contains("feature/cool-thing"),
                     "description should include original branch name"
                 );
             }
-            _ => panic!("expected shell request"),
+            _ => panic!("expected rest request"),
         }
     }
 
@@ -486,23 +502,23 @@ mod tests {
         let result = op.execute(inputs).unwrap();
 
         match result.get("request") {
-            Some(Value::Request(TransportRequest::Shell(req))) => {
+            Some(Value::Request(TransportRequest::Rest(req))) => {
                 // Should use remote_branch ("main") for filename, not "snapshot"
-                let f_arg = req.args.iter().find(|a| a.starts_with("main_"));
+                let filename = request_filename(req);
+                let f_arg = Some(&filename).filter(|a| a.starts_with("main_"));
                 assert!(
                     f_arg.is_some(),
-                    "expected remote-branch-based filename, got args: {:?}",
-                    req.args
+                    "expected remote-branch-based filename, got filename: {}",
+                    filename
                 );
                 // Description should mention the branch
-                let desc_idx = req.args.iter().position(|a| a == "--desc").unwrap();
-                let desc = &req.args[desc_idx + 1];
+                let desc = request_description(req);
                 assert!(
                     desc.contains("main"),
                     "description should include remote branch name"
                 );
             }
-            _ => panic!("expected shell request"),
+            _ => panic!("expected rest request"),
         }
     }
 
@@ -528,16 +544,17 @@ mod tests {
         let result = op.execute(inputs).unwrap();
 
         match result.get("request") {
-            Some(Value::Request(TransportRequest::Shell(req))) => {
+            Some(Value::Request(TransportRequest::Rest(req))) => {
                 // Should use local branch, not remote
-                let f_arg = req.args.iter().find(|a| a.starts_with("my-feature_"));
+                let filename = request_filename(req);
+                let f_arg = Some(&filename).filter(|a| a.starts_with("my-feature_"));
                 assert!(
                     f_arg.is_some(),
-                    "local branch should take priority, got args: {:?}",
-                    req.args
+                    "local branch should take priority, got filename: {}",
+                    filename
                 );
             }
-            _ => panic!("expected shell request"),
+            _ => panic!("expected rest request"),
         }
     }
 
@@ -783,30 +800,28 @@ mod tests {
         let result = op.execute(inputs).unwrap();
 
         match result.get("request") {
-            Some(Value::Request(TransportRequest::Shell(req))) => {
+            Some(Value::Request(TransportRequest::Rest(req))) => {
                 // Filename should contain recent-3d and short SHA
-                let f_arg = req
-                    .args
-                    .iter()
-                    .find(|a| a.contains("recent-3d") && a.contains("abc123d..HEAD"));
+                let filename = request_filename(req);
+                let f_arg = Some(&filename)
+                    .filter(|a| a.contains("recent-3d") && a.contains("abc123d..HEAD"));
                 assert!(
                     f_arg.is_some(),
-                    "expected recent-mode filename with commit range, got args: {:?}",
-                    req.args
+                    "expected recent-mode filename with commit range, got filename: {}",
+                    filename
                 );
                 assert!(f_arg.unwrap().starts_with("main_recent-3d_abc123d..HEAD_"));
                 assert!(f_arg.unwrap().ends_with(".md"));
 
                 // Description should mention the commit range
-                let desc_idx = req.args.iter().position(|a| a == "--desc").unwrap();
-                let desc = &req.args[desc_idx + 1];
+                let desc = request_description(req);
                 assert!(
                     desc.contains("Recent changes (3d) abc123d..HEAD on main"),
                     "description should contain commit range and branch, got: {}",
                     desc
                 );
             }
-            _ => panic!("expected shell request"),
+            _ => panic!("expected rest request"),
         }
     }
 
@@ -826,19 +841,20 @@ mod tests {
         let result = op.execute(inputs).unwrap();
 
         match result.get("request") {
-            Some(Value::Request(TransportRequest::Shell(req))) => {
+            Some(Value::Request(TransportRequest::Rest(req))) => {
                 // Should NOT contain recent-3d
-                let has_recent = req.args.iter().any(|a| a.contains("recent-3d"));
+                let filename = request_filename(req);
+                let has_recent = filename.contains("recent-3d");
                 assert!(
                     !has_recent,
-                    "snapshot mode should not have recent-3d, got args: {:?}",
-                    req.args
+                    "snapshot mode should not have recent-3d, got filename: {}",
+                    filename
                 );
                 // Should start with branch name
-                let f_arg = req.args.iter().find(|a| a.starts_with("main_"));
+                let f_arg = Some(&filename).filter(|a| a.starts_with("main_"));
                 assert!(f_arg.is_some());
             }
-            _ => panic!("expected shell request"),
+            _ => panic!("expected rest request"),
         }
     }
 }

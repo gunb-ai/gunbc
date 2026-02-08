@@ -11,14 +11,17 @@
 //! 2. LLM call
 
 use gunbc_exec::{ExecError, Executable};
+use gunbc_ir::transport::cloud::CloudRuntimeKind;
 use gunbc_ir::{
     add_transport_execute_parse_named_with_passthrough,
     add_transport_triplet_named_with_passthrough, build::*, Dag, DagBuilder, Node, NodeBody,
     NodeRef, Value,
 };
 use gunbc_lib_cloud_ops::{
-    build_cloud_secret_manager_credential_graph_gcp_github, CloudEnv, CloudOps,
-    CloudSecretManagerGraphOp,
+    build_cloud_secret_manager_credential_graph_gcp_github,
+    build_cloud_secret_manager_credential_graph_gcp_local,
+    build_cloud_secret_manager_credential_graph_gcp_metadata,
+    detect_cloud_env_requirements, CloudEnv, CloudOps, CloudSecretManagerGraphOp,
 };
 use gunbc_lib_blob::BlobOps;
 use gunbc_lib_git_ops::GitOps;
@@ -103,7 +106,7 @@ fn add_cloud_credential_chain(
         .add_edge(resolve_auth.out("service"), bind_secret.in_port("service"))
         .expect("resolve_auth.service -> bind_secret.service");
 
-    let cloud_subdag = lift_cloud_dag(build_cloud_secret_manager_credential_graph_gcp_github());
+    let cloud_subdag = lift_cloud_dag(build_cloud_credential_graph_for_runtime());
     let cloud_credential = builder
         .add_node_after(Node::subdag("cloud_credential", cloud_subdag), &bind_secret)
         .expect("cloud_credential node");
@@ -147,6 +150,15 @@ fn lift_cloud_dag(
 ) -> Dag<ReviewGraphOp> {
     let mut lift = |op| ReviewGraphOp::Cloud(op);
     map_dag_ops(dag, &mut lift)
+}
+
+fn build_cloud_credential_graph_for_runtime() -> Dag<CloudSecretManagerGraphOp> {
+    let env_req = detect_cloud_env_requirements();
+    match env_req.runtime {
+        CloudRuntimeKind::GitHubActions => build_cloud_secret_manager_credential_graph_gcp_github(),
+        CloudRuntimeKind::CloudMetadata => build_cloud_secret_manager_credential_graph_gcp_metadata(),
+        CloudRuntimeKind::LocalDev => build_cloud_secret_manager_credential_graph_gcp_local(),
+    }
 }
 
 fn map_dag_ops<T, U, F>(dag: Dag<T>, f: &mut F) -> Dag<U>

@@ -64,6 +64,8 @@ pub enum CloudRuntimeKind {
     GitHubActions,
     /// Cloud metadata server (GCE/GKE, EC2/EKS, Azure IMDS).
     CloudMetadata,
+    /// Local developer workstation (e.g., gcloud CLI auth).
+    LocalDev,
 }
 
 impl CloudRuntimeKind {
@@ -71,6 +73,7 @@ impl CloudRuntimeKind {
         match self {
             CloudRuntimeKind::GitHubActions => "github",
             CloudRuntimeKind::CloudMetadata => "metadata",
+            CloudRuntimeKind::LocalDev => "local",
         }
     }
 
@@ -78,6 +81,7 @@ impl CloudRuntimeKind {
         match input.trim().to_lowercase().as_str() {
             "github" | "github-actions" => Some(CloudRuntimeKind::GitHubActions),
             "metadata" | "cloud-metadata" => Some(CloudRuntimeKind::CloudMetadata),
+            "local" | "local-dev" | "dev" => Some(CloudRuntimeKind::LocalDev),
             _ => None,
         }
     }

@@ -43,7 +43,7 @@ pub use build::{build_build_graph, build_signature, BuildGraphOp, BuildOp};
 pub use ci::{build_ci_graph, build_ci_graph_with_mode, ci_signature, ci_workflow_config, CIGraphOp, CIOp};
 pub use cloud_env::{
     aws_github_actions_env_stub, azure_github_actions_env_stub, cloud_env_matrix,
-    gcp_github_actions_env, gcp_metadata_env, CloudEnvRequirements, CLOUD_ENV_COMMON_OPTIONAL,
+    gcp_github_actions_env, gcp_local_env, gcp_metadata_env, CloudEnvRequirements, CLOUD_ENV_COMMON_OPTIONAL,
 };
 pub use codegen::{
     build_codegen_graph, build_codegen_graph_with_mode, codegen_signature, CodegenGraphOp,

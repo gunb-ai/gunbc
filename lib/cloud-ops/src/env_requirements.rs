@@ -28,6 +28,8 @@ pub const GCP_METADATA_REQUIRED: &[&str] = &[
     "GCP_SECRETS_PREFIX",
 ];
 
+pub const GCP_LOCAL_REQUIRED: &[&str] = &["GCP_SECRETS_PROJECT", "GCP_SECRETS_PREFIX"];
+
 pub const GCP_REQUIRED_ANY_OF: &[&[&str]] = &[&["GCP_SECRETS_SA", "GCP_SECRETS_IMPERSONATE_SA"]];
 
 pub fn gcp_github_actions_env() -> CloudEnvRequirements {
@@ -49,6 +51,17 @@ pub fn gcp_metadata_env() -> CloudEnvRequirements {
         required_any_of: GCP_REQUIRED_ANY_OF,
         optional: CLOUD_ENV_COMMON_OPTIONAL,
         notes: Some("Metadata runtime (GCE/GKE) for prod deployments."),
+    }
+}
+
+pub fn gcp_local_env() -> CloudEnvRequirements {
+    CloudEnvRequirements {
+        provider: CloudProviderKind::Gcp,
+        runtime: CloudRuntimeKind::LocalDev,
+        required: GCP_LOCAL_REQUIRED,
+        required_any_of: GCP_REQUIRED_ANY_OF,
+        optional: CLOUD_ENV_COMMON_OPTIONAL,
+        notes: Some("Local dev path (gcloud auth + Secret Manager)."),
     }
 }
 
@@ -78,6 +91,7 @@ pub fn cloud_env_matrix() -> Vec<CloudEnvRequirements> {
     vec![
         gcp_github_actions_env(),
         gcp_metadata_env(),
+        gcp_local_env(),
         aws_github_actions_env_stub(),
         azure_github_actions_env_stub(),
     ]
@@ -94,14 +108,20 @@ pub fn detect_cloud_env_requirements() -> CloudEnvRequirements {
         CloudRuntimeKind::parse(&runtime).unwrap_or(CloudRuntimeKind::GitHubActions)
     } else if std::env::var("ACTIONS_ID_TOKEN_REQUEST_URL").is_ok() {
         CloudRuntimeKind::GitHubActions
-    } else {
+    } else if std::env::var("GCE_METADATA_HOST").is_ok()
+        || std::env::var("K_SERVICE").is_ok()
+        || std::env::var("K_REVISION").is_ok()
+    {
         CloudRuntimeKind::CloudMetadata
+    } else {
+        CloudRuntimeKind::LocalDev
     };
 
     match provider {
         CloudProviderKind::Gcp => match runtime {
             CloudRuntimeKind::GitHubActions => gcp_github_actions_env(),
             CloudRuntimeKind::CloudMetadata => gcp_metadata_env(),
+            CloudRuntimeKind::LocalDev => gcp_local_env(),
         },
         CloudProviderKind::Aws => aws_github_actions_env_stub(),
         CloudProviderKind::Azure => azure_github_actions_env_stub(),

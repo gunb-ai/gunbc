@@ -33,7 +33,7 @@ impl CloudEnv {
         if let Ok(runtime) = std::env::var("CLOUD_RUNTIME") {
             return CloudRuntimeKind::parse(&runtime).ok_or_else(|| {
                 ExecError::new(format!(
-                    "unknown CLOUD_RUNTIME '{runtime}' (expected github|metadata)"
+                    "unknown CLOUD_RUNTIME '{runtime}' (expected github|metadata|local)"
                 ))
             });
         }
@@ -42,13 +42,27 @@ impl CloudEnv {
             return Ok(CloudRuntimeKind::GitHubActions);
         }
 
-        Ok(CloudRuntimeKind::CloudMetadata)
+        if std::env::var("GCE_METADATA_HOST").is_ok()
+            || std::env::var("K_SERVICE").is_ok()
+            || std::env::var("K_REVISION").is_ok()
+        {
+            return Ok(CloudRuntimeKind::CloudMetadata);
+        }
+
+        Ok(CloudRuntimeKind::GitHubActions)
     }
 
     fn build_gcp_config(runtime: CloudRuntimeKind) -> Result<CloudSecretConfig, ExecError> {
-        let audience = std::env::var("GCP_WIF_PROVIDER").map_err(|_| {
-            ExecError::new("missing GCP_WIF_PROVIDER (WIF audience/provider)")
-        })?;
+        let audience = match runtime {
+            CloudRuntimeKind::GitHubActions | CloudRuntimeKind::CloudMetadata => {
+                std::env::var("GCP_WIF_PROVIDER").map_err(|_| {
+                    ExecError::new("missing GCP_WIF_PROVIDER (WIF audience/provider)")
+                })?
+            }
+            CloudRuntimeKind::LocalDev => {
+                std::env::var("GCP_WIF_PROVIDER").unwrap_or_else(|_| "local-dev".to_string())
+            }
+        };
         let project = std::env::var("GCP_SECRETS_PROJECT")
             .map_err(|_| ExecError::new("missing GCP_SECRETS_PROJECT"))?;
         let prefix =

@@ -57,28 +57,143 @@ pub fn build_gcp_secret_manager_credential_graph(
         .expect("net_env");
 
     // ---------------------------------------------------------------------
-    // OIDC subject token acquisition
+    // Base access token acquisition
     // ---------------------------------------------------------------------
 
-    let subject_token_node = match runtime {
-        GcpRuntimeKind::GitHubActions => {
-            let prepare = builder
-                .add_root_node(Node::opaque(
-                    "prepare_github_oidc",
-                    vec![
-                        port("audience", "String"),
-                        optional("request_url", "OptionalString"),
-                        optional("request_token", "OptionalString"),
-                    ],
-                    vec![port("request", "TransportRequest"), port("skip", "Bool")],
-                    GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareGitHubOidcRequest),
-                ))
-                .expect("prepare_github_oidc");
+    let access_token_node = match runtime {
+        GcpRuntimeKind::GitHubActions | GcpRuntimeKind::GcpMetadata => {
+            // OIDC subject token acquisition
+            let subject_token_node = match runtime {
+                GcpRuntimeKind::GitHubActions => {
+                    let prepare = builder
+                        .add_root_node(Node::opaque(
+                            "prepare_github_oidc",
+                            vec![
+                                port("audience", "String"),
+                                optional("request_url", "OptionalString"),
+                                optional("request_token", "OptionalString"),
+                            ],
+                            vec![port("request", "TransportRequest"), port("skip", "Bool")],
+                            GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareGitHubOidcRequest),
+                        ))
+                        .expect("prepare_github_oidc");
 
-            let execute = builder
+                    let execute = builder
+                        .add_node_after(
+                            Node::opaque(
+                                "execute_github_oidc",
+                                vec![
+                                    port("request", "TransportRequest"),
+                                    port("skip", "Bool"),
+                                    resource("net", "NetworkHandle", AccessMode::Read),
+                                ],
+                                vec![port("response", "TransportResponse")],
+                                GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
+                            ),
+                            &prepare,
+                        )
+                        .expect("execute_github_oidc");
+
+                    let parse = builder
+                        .add_node_after(
+                            Node::opaque(
+                                "parse_github_oidc",
+                                vec![port("response", "TransportResponse")],
+                                vec![port("subject_token", "String")],
+                                GcpSecretManagerGraphOp::Gcp(GcpOps::ParseGitHubOidcResponse),
+                            ),
+                            &execute,
+                        )
+                        .expect("parse_github_oidc");
+
+                    builder
+                        .add_edge(prepare.out("request"), execute.in_port("request"))
+                        .expect("prepare_github_oidc.request -> execute_github_oidc.request");
+                    builder
+                        .add_edge(prepare.out("skip"), execute.in_port("skip"))
+                        .expect("prepare_github_oidc.skip -> execute_github_oidc.skip");
+                    builder
+                        .add_edge(net_env.out("net"), execute.in_port("res:net"))
+                        .expect("net_env -> execute_github_oidc.res:net");
+                    builder
+                        .add_edge(execute.out("response"), parse.in_port("response"))
+                        .expect("execute_github_oidc.response -> parse_github_oidc.response");
+
+                    parse
+                }
+                GcpRuntimeKind::GcpMetadata => {
+                    let prepare = builder
+                        .add_root_node(Node::opaque(
+                            "prepare_metadata_oidc",
+                            vec![port("audience", "String")],
+                            vec![port("request", "TransportRequest"), port("skip", "Bool")],
+                            GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareMetadataOidcRequest),
+                        ))
+                        .expect("prepare_metadata_oidc");
+
+                    let execute = builder
+                        .add_node_after(
+                            Node::opaque(
+                                "execute_metadata_oidc",
+                                vec![
+                                    port("request", "TransportRequest"),
+                                    port("skip", "Bool"),
+                                    resource("net", "NetworkHandle", AccessMode::Read),
+                                ],
+                                vec![port("response", "TransportResponse")],
+                                GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
+                            ),
+                            &prepare,
+                        )
+                        .expect("execute_metadata_oidc");
+
+                    let parse = builder
+                        .add_node_after(
+                            Node::opaque(
+                                "parse_metadata_oidc",
+                                vec![port("response", "TransportResponse")],
+                                vec![port("subject_token", "String")],
+                                GcpSecretManagerGraphOp::Gcp(GcpOps::ParseMetadataOidcResponse),
+                            ),
+                            &execute,
+                        )
+                        .expect("parse_metadata_oidc");
+
+                    builder
+                        .add_edge(prepare.out("request"), execute.in_port("request"))
+                        .expect("prepare_metadata_oidc.request -> execute_metadata_oidc.request");
+                    builder
+                        .add_edge(prepare.out("skip"), execute.in_port("skip"))
+                        .expect("prepare_metadata_oidc.skip -> execute_metadata_oidc.skip");
+                    builder
+                        .add_edge(net_env.out("net"), execute.in_port("res:net"))
+                        .expect("net_env -> execute_metadata_oidc.res:net");
+                    builder
+                        .add_edge(execute.out("response"), parse.in_port("response"))
+                        .expect("execute_metadata_oidc.response -> parse_metadata_oidc.response");
+
+                    parse
+                }
+                GcpRuntimeKind::LocalDev => unreachable!(),
+            };
+
+            // STS exchange (subject_token -> access_token)
+            let prepare_sts = builder
                 .add_node_after(
                     Node::opaque(
-                        "execute_github_oidc",
+                        "prepare_sts",
+                        vec![port("audience", "String"), port("subject_token", "String")],
+                        vec![port("request", "TransportRequest"), port("skip", "Bool")],
+                        GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareStsExchange),
+                    ),
+                    &subject_token_node,
+                )
+                .expect("prepare_sts");
+
+            let execute_sts = builder
+                .add_node_after(
+                    Node::opaque(
+                        "execute_sts",
                         vec![
                             port("request", "TransportRequest"),
                             port("skip", "Bool"),
@@ -87,51 +202,57 @@ pub fn build_gcp_secret_manager_credential_graph(
                         vec![port("response", "TransportResponse")],
                         GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
                     ),
-                    &prepare,
+                    &prepare_sts,
                 )
-                .expect("execute_github_oidc");
+                .expect("execute_sts");
 
-            let parse = builder
+            let parse_sts = builder
                 .add_node_after(
                     Node::opaque(
-                        "parse_github_oidc",
+                        "parse_sts",
                         vec![port("response", "TransportResponse")],
-                        vec![port("subject_token", "String")],
-                        GcpSecretManagerGraphOp::Gcp(GcpOps::ParseGitHubOidcResponse),
+                        vec![port("access_token", "String"), port("expires_in", "Int")],
+                        GcpSecretManagerGraphOp::Gcp(GcpOps::ParseStsExchange),
                     ),
-                    &execute,
+                    &execute_sts,
                 )
-                .expect("parse_github_oidc");
+                .expect("parse_sts");
 
             builder
-                .add_edge(prepare.out("request"), execute.in_port("request"))
-                .expect("prepare_github_oidc.request -> execute_github_oidc.request");
+                .add_edge(
+                    subject_token_node.out("subject_token"),
+                    prepare_sts.in_port("subject_token"),
+                )
+                .expect("subject_token -> prepare_sts.subject_token");
             builder
-                .add_edge(prepare.out("skip"), execute.in_port("skip"))
-                .expect("prepare_github_oidc.skip -> execute_github_oidc.skip");
+                .add_edge(prepare_sts.out("request"), execute_sts.in_port("request"))
+                .expect("prepare_sts.request -> execute_sts.request");
             builder
-                .add_edge(net_env.out("net"), execute.in_port("res:net"))
-                .expect("net_env -> execute_github_oidc.res:net");
+                .add_edge(prepare_sts.out("skip"), execute_sts.in_port("skip"))
+                .expect("prepare_sts.skip -> execute_sts.skip");
             builder
-                .add_edge(execute.out("response"), parse.in_port("response"))
-                .expect("execute_github_oidc.response -> parse_github_oidc.response");
+                .add_edge(net_env.out("net"), execute_sts.in_port("res:net"))
+                .expect("net_env -> execute_sts.res:net");
+            builder
+                .add_edge(execute_sts.out("response"), parse_sts.in_port("response"))
+                .expect("execute_sts.response -> parse_sts.response");
 
-            parse
+            parse_sts
         }
-        GcpRuntimeKind::GcpMetadata => {
-            let prepare = builder
+        GcpRuntimeKind::LocalDev => {
+            let prepare_local = builder
                 .add_root_node(Node::opaque(
-                    "prepare_metadata_oidc",
-                    vec![port("audience", "String")],
+                    "prepare_local_access_token",
+                    vec![],
                     vec![port("request", "TransportRequest"), port("skip", "Bool")],
-                    GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareMetadataOidcRequest),
+                    GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareLocalAccessToken),
                 ))
-                .expect("prepare_metadata_oidc");
+                .expect("prepare_local_access_token");
 
-            let execute = builder
+            let execute_local = builder
                 .add_node_after(
                     Node::opaque(
-                        "execute_metadata_oidc",
+                        "execute_local_access_token",
                         vec![
                             port("request", "TransportRequest"),
                             port("skip", "Bool"),
@@ -140,101 +261,38 @@ pub fn build_gcp_secret_manager_credential_graph(
                         vec![port("response", "TransportResponse")],
                         GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
                     ),
-                    &prepare,
+                    &prepare_local,
                 )
-                .expect("execute_metadata_oidc");
+                .expect("execute_local_access_token");
 
-            let parse = builder
+            let parse_local = builder
                 .add_node_after(
                     Node::opaque(
-                        "parse_metadata_oidc",
+                        "parse_local_access_token",
                         vec![port("response", "TransportResponse")],
-                        vec![port("subject_token", "String")],
-                        GcpSecretManagerGraphOp::Gcp(GcpOps::ParseMetadataOidcResponse),
+                        vec![port("access_token", "String")],
+                        GcpSecretManagerGraphOp::Gcp(GcpOps::ParseLocalAccessToken),
                     ),
-                    &execute,
+                    &execute_local,
                 )
-                .expect("parse_metadata_oidc");
+                .expect("parse_local_access_token");
 
             builder
-                .add_edge(prepare.out("request"), execute.in_port("request"))
-                .expect("prepare_metadata_oidc.request -> execute_metadata_oidc.request");
+                .add_edge(prepare_local.out("request"), execute_local.in_port("request"))
+                .expect("prepare_local_access_token.request -> execute_local_access_token.request");
             builder
-                .add_edge(prepare.out("skip"), execute.in_port("skip"))
-                .expect("prepare_metadata_oidc.skip -> execute_metadata_oidc.skip");
+                .add_edge(prepare_local.out("skip"), execute_local.in_port("skip"))
+                .expect("prepare_local_access_token.skip -> execute_local_access_token.skip");
             builder
-                .add_edge(net_env.out("net"), execute.in_port("res:net"))
-                .expect("net_env -> execute_metadata_oidc.res:net");
+                .add_edge(net_env.out("net"), execute_local.in_port("res:net"))
+                .expect("net_env -> execute_local_access_token.res:net");
             builder
-                .add_edge(execute.out("response"), parse.in_port("response"))
-                .expect("execute_metadata_oidc.response -> parse_metadata_oidc.response");
+                .add_edge(execute_local.out("response"), parse_local.in_port("response"))
+                .expect("execute_local_access_token.response -> parse_local_access_token.response");
 
-            parse
+            parse_local
         }
     };
-
-    // ---------------------------------------------------------------------
-    // STS exchange (subject_token -> access_token)
-    // ---------------------------------------------------------------------
-
-    let prepare_sts = builder
-        .add_node_after(
-            Node::opaque(
-                "prepare_sts",
-                vec![port("audience", "String"), port("subject_token", "String")],
-                vec![port("request", "TransportRequest"), port("skip", "Bool")],
-                GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareStsExchange),
-            ),
-            &subject_token_node,
-        )
-        .expect("prepare_sts");
-
-    let execute_sts = builder
-        .add_node_after(
-            Node::opaque(
-                "execute_sts",
-                vec![
-                    port("request", "TransportRequest"),
-                    port("skip", "Bool"),
-                    resource("net", "NetworkHandle", AccessMode::Read),
-                ],
-                vec![port("response", "TransportResponse")],
-                GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
-            ),
-            &prepare_sts,
-        )
-        .expect("execute_sts");
-
-    let parse_sts = builder
-        .add_node_after(
-            Node::opaque(
-                "parse_sts",
-                vec![port("response", "TransportResponse")],
-                vec![port("access_token", "String"), port("expires_in", "Int")],
-                GcpSecretManagerGraphOp::Gcp(GcpOps::ParseStsExchange),
-            ),
-            &execute_sts,
-        )
-        .expect("parse_sts");
-
-    builder
-        .add_edge(
-            subject_token_node.out("subject_token"),
-            prepare_sts.in_port("subject_token"),
-        )
-        .expect("subject_token -> prepare_sts.subject_token");
-    builder
-        .add_edge(prepare_sts.out("request"), execute_sts.in_port("request"))
-        .expect("prepare_sts.request -> execute_sts.request");
-    builder
-        .add_edge(prepare_sts.out("skip"), execute_sts.in_port("skip"))
-        .expect("prepare_sts.skip -> execute_sts.skip");
-    builder
-        .add_edge(net_env.out("net"), execute_sts.in_port("res:net"))
-        .expect("net_env -> execute_sts.res:net");
-    builder
-        .add_edge(execute_sts.out("response"), parse_sts.in_port("response"))
-        .expect("execute_sts.response -> parse_sts.response");
 
     // ---------------------------------------------------------------------
     // Service Account impersonation
@@ -252,7 +310,7 @@ pub fn build_gcp_secret_manager_credential_graph(
                 vec![port("request", "TransportRequest"), port("skip", "Bool")],
                 GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareImpersonate),
             ),
-            &parse_sts,
+            &access_token_node,
         )
         .expect("prepare_impersonate");
 
@@ -286,10 +344,10 @@ pub fn build_gcp_secret_manager_credential_graph(
 
     builder
         .add_edge(
-            parse_sts.out("access_token"),
+            access_token_node.out("access_token"),
             prepare_impersonate.in_port("access_token"),
         )
-        .expect("parse_sts.access_token -> prepare_impersonate.access_token");
+        .expect("access_token_node.access_token -> prepare_impersonate.access_token");
     builder
         .add_edge(
             prepare_impersonate.out("request"),
@@ -429,6 +487,10 @@ pub fn build_gcp_secret_manager_credential_graph_metadata() -> Dag<GcpSecretMana
     build_gcp_secret_manager_credential_graph(GcpRuntimeKind::GcpMetadata)
 }
 
+pub fn build_gcp_secret_manager_credential_graph_local() -> Dag<GcpSecretManagerGraphOp> {
+    build_gcp_secret_manager_credential_graph(GcpRuntimeKind::LocalDev)
+}
+
 /// Build a GCP Secret Manager upsert graph for the given runtime.
 ///
 /// Entrypoints:
@@ -458,28 +520,143 @@ pub fn build_gcp_secret_manager_upsert_graph(
         .expect("net_env");
 
     // ---------------------------------------------------------------------
-    // OIDC subject token acquisition
+    // Base access token acquisition
     // ---------------------------------------------------------------------
 
-    let subject_token_node = match runtime {
-        GcpRuntimeKind::GitHubActions => {
-            let prepare = builder
-                .add_root_node(Node::opaque(
-                    "prepare_github_oidc",
-                    vec![
-                        port("audience", "String"),
-                        optional("request_url", "OptionalString"),
-                        optional("request_token", "OptionalString"),
-                    ],
-                    vec![port("request", "TransportRequest"), port("skip", "Bool")],
-                    GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareGitHubOidcRequest),
-                ))
-                .expect("prepare_github_oidc");
+    let access_token_node = match runtime {
+        GcpRuntimeKind::GitHubActions | GcpRuntimeKind::GcpMetadata => {
+            // OIDC subject token acquisition
+            let subject_token_node = match runtime {
+                GcpRuntimeKind::GitHubActions => {
+                    let prepare = builder
+                        .add_root_node(Node::opaque(
+                            "prepare_github_oidc",
+                            vec![
+                                port("audience", "String"),
+                                optional("request_url", "OptionalString"),
+                                optional("request_token", "OptionalString"),
+                            ],
+                            vec![port("request", "TransportRequest"), port("skip", "Bool")],
+                            GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareGitHubOidcRequest),
+                        ))
+                        .expect("prepare_github_oidc");
 
-            let execute = builder
+                    let execute = builder
+                        .add_node_after(
+                            Node::opaque(
+                                "execute_github_oidc",
+                                vec![
+                                    port("request", "TransportRequest"),
+                                    port("skip", "Bool"),
+                                    resource("net", "NetworkHandle", AccessMode::Read),
+                                ],
+                                vec![port("response", "TransportResponse")],
+                                GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
+                            ),
+                            &prepare,
+                        )
+                        .expect("execute_github_oidc");
+
+                    let parse = builder
+                        .add_node_after(
+                            Node::opaque(
+                                "parse_github_oidc",
+                                vec![port("response", "TransportResponse")],
+                                vec![port("subject_token", "String")],
+                                GcpSecretManagerGraphOp::Gcp(GcpOps::ParseGitHubOidcResponse),
+                            ),
+                            &execute,
+                        )
+                        .expect("parse_github_oidc");
+
+                    builder
+                        .add_edge(prepare.out("request"), execute.in_port("request"))
+                        .expect("prepare_github_oidc.request -> execute_github_oidc.request");
+                    builder
+                        .add_edge(prepare.out("skip"), execute.in_port("skip"))
+                        .expect("prepare_github_oidc.skip -> execute_github_oidc.skip");
+                    builder
+                        .add_edge(net_env.out("net"), execute.in_port("res:net"))
+                        .expect("net_env -> execute_github_oidc.res:net");
+                    builder
+                        .add_edge(execute.out("response"), parse.in_port("response"))
+                        .expect("execute_github_oidc.response -> parse_github_oidc.response");
+
+                    parse
+                }
+                GcpRuntimeKind::GcpMetadata => {
+                    let prepare = builder
+                        .add_root_node(Node::opaque(
+                            "prepare_metadata_oidc",
+                            vec![port("audience", "String")],
+                            vec![port("request", "TransportRequest"), port("skip", "Bool")],
+                            GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareMetadataOidcRequest),
+                        ))
+                        .expect("prepare_metadata_oidc");
+
+                    let execute = builder
+                        .add_node_after(
+                            Node::opaque(
+                                "execute_metadata_oidc",
+                                vec![
+                                    port("request", "TransportRequest"),
+                                    port("skip", "Bool"),
+                                    resource("net", "NetworkHandle", AccessMode::Read),
+                                ],
+                                vec![port("response", "TransportResponse")],
+                                GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
+                            ),
+                            &prepare,
+                        )
+                        .expect("execute_metadata_oidc");
+
+                    let parse = builder
+                        .add_node_after(
+                            Node::opaque(
+                                "parse_metadata_oidc",
+                                vec![port("response", "TransportResponse")],
+                                vec![port("subject_token", "String")],
+                                GcpSecretManagerGraphOp::Gcp(GcpOps::ParseMetadataOidcResponse),
+                            ),
+                            &execute,
+                        )
+                        .expect("parse_metadata_oidc");
+
+                    builder
+                        .add_edge(prepare.out("request"), execute.in_port("request"))
+                        .expect("prepare_metadata_oidc.request -> execute_metadata_oidc.request");
+                    builder
+                        .add_edge(prepare.out("skip"), execute.in_port("skip"))
+                        .expect("prepare_metadata_oidc.skip -> execute_metadata_oidc.skip");
+                    builder
+                        .add_edge(net_env.out("net"), execute.in_port("res:net"))
+                        .expect("net_env -> execute_metadata_oidc.res:net");
+                    builder
+                        .add_edge(execute.out("response"), parse.in_port("response"))
+                        .expect("execute_metadata_oidc.response -> parse_metadata_oidc.response");
+
+                    parse
+                }
+                GcpRuntimeKind::LocalDev => unreachable!(),
+            };
+
+            // STS exchange (subject_token -> access_token)
+            let prepare_sts = builder
                 .add_node_after(
                     Node::opaque(
-                        "execute_github_oidc",
+                        "prepare_sts",
+                        vec![port("audience", "String"), port("subject_token", "String")],
+                        vec![port("request", "TransportRequest"), port("skip", "Bool")],
+                        GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareStsExchange),
+                    ),
+                    &subject_token_node,
+                )
+                .expect("prepare_sts");
+
+            let execute_sts = builder
+                .add_node_after(
+                    Node::opaque(
+                        "execute_sts",
                         vec![
                             port("request", "TransportRequest"),
                             port("skip", "Bool"),
@@ -488,51 +665,57 @@ pub fn build_gcp_secret_manager_upsert_graph(
                         vec![port("response", "TransportResponse")],
                         GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
                     ),
-                    &prepare,
+                    &prepare_sts,
                 )
-                .expect("execute_github_oidc");
+                .expect("execute_sts");
 
-            let parse = builder
+            let parse_sts = builder
                 .add_node_after(
                     Node::opaque(
-                        "parse_github_oidc",
+                        "parse_sts",
                         vec![port("response", "TransportResponse")],
-                        vec![port("subject_token", "String")],
-                        GcpSecretManagerGraphOp::Gcp(GcpOps::ParseGitHubOidcResponse),
+                        vec![port("access_token", "String"), port("expires_in", "Int")],
+                        GcpSecretManagerGraphOp::Gcp(GcpOps::ParseStsExchange),
                     ),
-                    &execute,
+                    &execute_sts,
                 )
-                .expect("parse_github_oidc");
+                .expect("parse_sts");
 
             builder
-                .add_edge(prepare.out("request"), execute.in_port("request"))
-                .expect("prepare_github_oidc.request -> execute_github_oidc.request");
+                .add_edge(
+                    subject_token_node.out("subject_token"),
+                    prepare_sts.in_port("subject_token"),
+                )
+                .expect("subject_token -> prepare_sts.subject_token");
             builder
-                .add_edge(prepare.out("skip"), execute.in_port("skip"))
-                .expect("prepare_github_oidc.skip -> execute_github_oidc.skip");
+                .add_edge(prepare_sts.out("request"), execute_sts.in_port("request"))
+                .expect("prepare_sts.request -> execute_sts.request");
             builder
-                .add_edge(net_env.out("net"), execute.in_port("res:net"))
-                .expect("net_env -> execute_github_oidc.res:net");
+                .add_edge(prepare_sts.out("skip"), execute_sts.in_port("skip"))
+                .expect("prepare_sts.skip -> execute_sts.skip");
             builder
-                .add_edge(execute.out("response"), parse.in_port("response"))
-                .expect("execute_github_oidc.response -> parse_github_oidc.response");
+                .add_edge(net_env.out("net"), execute_sts.in_port("res:net"))
+                .expect("net_env -> execute_sts.res:net");
+            builder
+                .add_edge(execute_sts.out("response"), parse_sts.in_port("response"))
+                .expect("execute_sts.response -> parse_sts.response");
 
-            parse
+            parse_sts
         }
-        GcpRuntimeKind::GcpMetadata => {
-            let prepare = builder
+        GcpRuntimeKind::LocalDev => {
+            let prepare_local = builder
                 .add_root_node(Node::opaque(
-                    "prepare_metadata_oidc",
-                    vec![port("audience", "String")],
+                    "prepare_local_access_token",
+                    vec![],
                     vec![port("request", "TransportRequest"), port("skip", "Bool")],
-                    GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareMetadataOidcRequest),
+                    GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareLocalAccessToken),
                 ))
-                .expect("prepare_metadata_oidc");
+                .expect("prepare_local_access_token");
 
-            let execute = builder
+            let execute_local = builder
                 .add_node_after(
                     Node::opaque(
-                        "execute_metadata_oidc",
+                        "execute_local_access_token",
                         vec![
                             port("request", "TransportRequest"),
                             port("skip", "Bool"),
@@ -541,101 +724,38 @@ pub fn build_gcp_secret_manager_upsert_graph(
                         vec![port("response", "TransportResponse")],
                         GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
                     ),
-                    &prepare,
+                    &prepare_local,
                 )
-                .expect("execute_metadata_oidc");
+                .expect("execute_local_access_token");
 
-            let parse = builder
+            let parse_local = builder
                 .add_node_after(
                     Node::opaque(
-                        "parse_metadata_oidc",
+                        "parse_local_access_token",
                         vec![port("response", "TransportResponse")],
-                        vec![port("subject_token", "String")],
-                        GcpSecretManagerGraphOp::Gcp(GcpOps::ParseMetadataOidcResponse),
+                        vec![port("access_token", "String")],
+                        GcpSecretManagerGraphOp::Gcp(GcpOps::ParseLocalAccessToken),
                     ),
-                    &execute,
+                    &execute_local,
                 )
-                .expect("parse_metadata_oidc");
+                .expect("parse_local_access_token");
 
             builder
-                .add_edge(prepare.out("request"), execute.in_port("request"))
-                .expect("prepare_metadata_oidc.request -> execute_metadata_oidc.request");
+                .add_edge(prepare_local.out("request"), execute_local.in_port("request"))
+                .expect("prepare_local_access_token.request -> execute_local_access_token.request");
             builder
-                .add_edge(prepare.out("skip"), execute.in_port("skip"))
-                .expect("prepare_metadata_oidc.skip -> execute_metadata_oidc.skip");
+                .add_edge(prepare_local.out("skip"), execute_local.in_port("skip"))
+                .expect("prepare_local_access_token.skip -> execute_local_access_token.skip");
             builder
-                .add_edge(net_env.out("net"), execute.in_port("res:net"))
-                .expect("net_env -> execute_metadata_oidc.res:net");
+                .add_edge(net_env.out("net"), execute_local.in_port("res:net"))
+                .expect("net_env -> execute_local_access_token.res:net");
             builder
-                .add_edge(execute.out("response"), parse.in_port("response"))
-                .expect("execute_metadata_oidc.response -> parse_metadata_oidc.response");
+                .add_edge(execute_local.out("response"), parse_local.in_port("response"))
+                .expect("execute_local_access_token.response -> parse_local_access_token.response");
 
-            parse
+            parse_local
         }
     };
-
-    // ---------------------------------------------------------------------
-    // STS exchange (subject_token -> access_token)
-    // ---------------------------------------------------------------------
-
-    let prepare_sts = builder
-        .add_node_after(
-            Node::opaque(
-                "prepare_sts",
-                vec![port("audience", "String"), port("subject_token", "String")],
-                vec![port("request", "TransportRequest"), port("skip", "Bool")],
-                GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareStsExchange),
-            ),
-            &subject_token_node,
-        )
-        .expect("prepare_sts");
-
-    let execute_sts = builder
-        .add_node_after(
-            Node::opaque(
-                "execute_sts",
-                vec![
-                    port("request", "TransportRequest"),
-                    port("skip", "Bool"),
-                    resource("net", "NetworkHandle", AccessMode::Read),
-                ],
-                vec![port("response", "TransportResponse")],
-                GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
-            ),
-            &prepare_sts,
-        )
-        .expect("execute_sts");
-
-    let parse_sts = builder
-        .add_node_after(
-            Node::opaque(
-                "parse_sts",
-                vec![port("response", "TransportResponse")],
-                vec![port("access_token", "String"), port("expires_in", "Int")],
-                GcpSecretManagerGraphOp::Gcp(GcpOps::ParseStsExchange),
-            ),
-            &execute_sts,
-        )
-        .expect("parse_sts");
-
-    builder
-        .add_edge(
-            subject_token_node.out("subject_token"),
-            prepare_sts.in_port("subject_token"),
-        )
-        .expect("subject_token -> prepare_sts.subject_token");
-    builder
-        .add_edge(prepare_sts.out("request"), execute_sts.in_port("request"))
-        .expect("prepare_sts.request -> execute_sts.request");
-    builder
-        .add_edge(prepare_sts.out("skip"), execute_sts.in_port("skip"))
-        .expect("prepare_sts.skip -> execute_sts.skip");
-    builder
-        .add_edge(net_env.out("net"), execute_sts.in_port("res:net"))
-        .expect("net_env -> execute_sts.res:net");
-    builder
-        .add_edge(execute_sts.out("response"), parse_sts.in_port("response"))
-        .expect("execute_sts.response -> parse_sts.response");
 
     // ---------------------------------------------------------------------
     // Service Account impersonation
@@ -653,7 +773,7 @@ pub fn build_gcp_secret_manager_upsert_graph(
                 vec![port("request", "TransportRequest"), port("skip", "Bool")],
                 GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareImpersonate),
             ),
-            &parse_sts,
+            &access_token_node,
         )
         .expect("prepare_impersonate");
 
@@ -687,10 +807,10 @@ pub fn build_gcp_secret_manager_upsert_graph(
 
     builder
         .add_edge(
-            parse_sts.out("access_token"),
+            access_token_node.out("access_token"),
             prepare_impersonate.in_port("access_token"),
         )
-        .expect("parse_sts.access_token -> prepare_impersonate.access_token");
+        .expect("access_token_node.access_token -> prepare_impersonate.access_token");
     builder
         .add_edge(
             prepare_impersonate.out("request"),
@@ -931,4 +1051,8 @@ pub fn build_gcp_secret_manager_upsert_graph_github() -> Dag<GcpSecretManagerGra
 )]
 pub fn build_gcp_secret_manager_upsert_graph_metadata() -> Dag<GcpSecretManagerGraphOp> {
     build_gcp_secret_manager_upsert_graph(GcpRuntimeKind::GcpMetadata)
+}
+
+pub fn build_gcp_secret_manager_upsert_graph_local() -> Dag<GcpSecretManagerGraphOp> {
+    build_gcp_secret_manager_upsert_graph(GcpRuntimeKind::LocalDev)
 }

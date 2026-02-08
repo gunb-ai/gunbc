@@ -15,9 +15,11 @@ pub mod graph_mock;
 pub use graph::{
     build_gcp_secret_manager_credential_graph,
     build_gcp_secret_manager_credential_graph_github,
+    build_gcp_secret_manager_credential_graph_local,
     build_gcp_secret_manager_credential_graph_metadata,
     build_gcp_secret_manager_upsert_graph,
     build_gcp_secret_manager_upsert_graph_github,
+    build_gcp_secret_manager_upsert_graph_local,
     build_gcp_secret_manager_upsert_graph_metadata,
     GcpSecretManagerGraphOp,
 };

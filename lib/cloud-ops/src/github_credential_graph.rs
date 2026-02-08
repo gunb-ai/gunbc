@@ -4,10 +4,16 @@
 //! a minimal GitHub API call to validate the token.
 
 use crate::env::CloudEnv;
-use crate::graph::{build_cloud_secret_manager_credential_graph_gcp_github, CloudSecretManagerGraphOp};
+use crate::env_requirements::detect_cloud_env_requirements;
+use crate::graph::{
+    build_cloud_secret_manager_credential_graph_gcp_github,
+    build_cloud_secret_manager_credential_graph_gcp_local,
+    build_cloud_secret_manager_credential_graph_gcp_metadata, CloudSecretManagerGraphOp,
+};
 use crate::ops::CloudOps;
 use gunbc_exec::{require_response, ExecError, Executable, OutputMap};
 use gunbc_ir::build::{optional, port, resource};
+use gunbc_ir::transport::cloud::CloudRuntimeKind;
 use gunbc_ir::transport::github::api::github_rest_request;
 use gunbc_ir::transport::{TransportRequest, TransportResponse};
 use gunbc_ir::{
@@ -142,7 +148,7 @@ pub fn build_github_credential_graph() -> Dag<GitHubCredentialGraphOp> {
         .expect("resolve_auth.service -> bind_secret.service");
 
     // Cloud credential acquisition graph (GCP WIF + Secret Manager).
-    let cloud_subdag = lift_cloud_dag(build_cloud_secret_manager_credential_graph_gcp_github());
+    let cloud_subdag = lift_cloud_dag(build_cloud_credential_graph_for_runtime());
     let cloud_credential = builder
         .add_node_after(Node::subdag("cloud_credential", cloud_subdag), &bind_secret)
         .expect("cloud_credential node");
@@ -219,6 +225,15 @@ pub fn build_github_credential_graph() -> Dag<GitHubCredentialGraphOp> {
 fn lift_cloud_dag(dag: Dag<CloudSecretManagerGraphOp>) -> Dag<GitHubCredentialGraphOp> {
     let mut lift = |op| GitHubCredentialGraphOp::Cloud(op);
     map_dag_ops(dag, &mut lift)
+}
+
+fn build_cloud_credential_graph_for_runtime() -> Dag<CloudSecretManagerGraphOp> {
+    let env_req = detect_cloud_env_requirements();
+    match env_req.runtime {
+        CloudRuntimeKind::GitHubActions => build_cloud_secret_manager_credential_graph_gcp_github(),
+        CloudRuntimeKind::CloudMetadata => build_cloud_secret_manager_credential_graph_gcp_metadata(),
+        CloudRuntimeKind::LocalDev => build_cloud_secret_manager_credential_graph_gcp_local(),
+    }
 }
 
 fn map_dag_ops<T, U, F>(dag: Dag<T>, f: &mut F) -> Dag<U>

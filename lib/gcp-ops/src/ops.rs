@@ -2,7 +2,7 @@
 
 use gunbc_exec::{require_bool, require_response, require_str, ExecError, Executable, OutputMap};
 use gunbc_ir::transport::rest::RestRequest;
-use gunbc_ir::transport::TransportResponse;
+use gunbc_ir::transport::{ShellRequest, TransportResponse};
 use gunbc_ir::{AuthScheme, Credential, Secret, SecretSource, Value};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -14,6 +14,8 @@ pub enum GcpRuntimeKind {
     GitHubActions,
     /// GCP metadata server (GCE / GKE / Cloud Run).
     GcpMetadata,
+    /// Local developer workstation using gcloud auth.
+    LocalDev,
 }
 
 impl GcpRuntimeKind {
@@ -21,6 +23,7 @@ impl GcpRuntimeKind {
         match s {
             "github" | "github-actions" => Some(GcpRuntimeKind::GitHubActions),
             "gcp" | "gcp-metadata" | "metadata" => Some(GcpRuntimeKind::GcpMetadata),
+            "local" | "local-dev" | "dev" => Some(GcpRuntimeKind::LocalDev),
             _ => None,
         }
     }
@@ -38,6 +41,10 @@ pub enum GcpOps {
     PrepareMetadataOidcRequest,
     /// Parse the OIDC token response from metadata server.
     ParseMetadataOidcResponse,
+    /// Prepare a local gcloud access token request.
+    PrepareLocalAccessToken,
+    /// Parse local gcloud access token response.
+    ParseLocalAccessToken,
     /// Prepare the STS token exchange request.
     PrepareStsExchange,
     /// Parse the STS token exchange response.
@@ -80,6 +87,7 @@ impl Executable for GcpOps {
                 let out = match kind {
                     GcpRuntimeKind::GitHubActions => "github",
                     GcpRuntimeKind::GcpMetadata => "gcp",
+                    GcpRuntimeKind::LocalDev => "local",
                 };
                 OutputMap::new().str("runtime", out).ok()
             }
@@ -148,6 +156,40 @@ impl Executable for GcpOps {
                 Err(ExecError::new(
                     "missing raw OIDC token from metadata response",
                 ))
+            }
+            GcpOps::PrepareLocalAccessToken => {
+                let req = ShellRequest::new("gcloud")
+                    .args(["auth", "print-access-token"])
+                    .into_transport_request();
+                OutputMap::new()
+                    .request("request", req)
+                    .bool("skip", false)
+                    .ok()
+            }
+            GcpOps::ParseLocalAccessToken => {
+                let response = require_response(&inputs, "response")?;
+                let shell = match response {
+                    TransportResponse::Shell(s) => s,
+                    other => {
+                        return Err(ExecError::new(format!(
+                            "expected shell response, got {:?}",
+                            other
+                        )));
+                    }
+                };
+                if shell.exit_code != 0 {
+                    return Err(ExecError::new(format!(
+                        "gcloud auth print-access-token failed: {}",
+                        shell.stderr.trim()
+                    )));
+                }
+                let token = shell.stdout.trim();
+                if token.is_empty() {
+                    return Err(ExecError::new(
+                        "gcloud auth print-access-token returned empty token",
+                    ));
+                }
+                OutputMap::new().str("access_token", token).ok()
             }
             GcpOps::PrepareStsExchange => {
                 let audience = require_str(&inputs, "audience")?;

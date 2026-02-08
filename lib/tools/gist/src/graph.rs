@@ -15,6 +15,7 @@ use gunbc_exec::{
     require_str, ExecError, Executable, OutputMap, TransportResponseExt,
 };
 use gunbc_ir::transport::gist::GistRequest;
+use gunbc_ir::transport::cloud::CloudRuntimeKind;
 use gunbc_ir::transport::{ShellRequest, TransportResponse};
 use gunbc_ir::patterns::PatternOp;
 use gunbc_ir::{
@@ -23,8 +24,10 @@ use gunbc_ir::{
     WorkflowSignature,
 };
 use gunbc_lib_cloud_ops::{
-    build_cloud_secret_manager_credential_graph_gcp_github, CloudEnv, CloudOps,
-    CloudSecretManagerGraphOp,
+    build_cloud_secret_manager_credential_graph_gcp_github,
+    build_cloud_secret_manager_credential_graph_gcp_local,
+    build_cloud_secret_manager_credential_graph_gcp_metadata,
+    detect_cloud_env_requirements, CloudEnv, CloudOps, CloudSecretManagerGraphOp,
 };
 use gunbc_lib_gist_ops::GistOps;
 use gunbc_lib_git_ops::GitOps;
@@ -434,6 +437,15 @@ fn execute_resolve_auth(
         .ok()
 }
 
+fn build_cloud_credential_graph_for_runtime() -> Dag<CloudSecretManagerGraphOp> {
+    let env_req = detect_cloud_env_requirements();
+    match env_req.runtime {
+        CloudRuntimeKind::GitHubActions => build_cloud_secret_manager_credential_graph_gcp_github(),
+        CloudRuntimeKind::CloudMetadata => build_cloud_secret_manager_credential_graph_gcp_metadata(),
+        CloudRuntimeKind::LocalDev => build_cloud_secret_manager_credential_graph_gcp_local(),
+    }
+}
+
 // ============================================================================
 // LoopBuilder body DAG
 // ============================================================================
@@ -598,7 +610,7 @@ pub fn build_gist_graph(
         &[&cloud_env, &resolve_auth],
     )?;
 
-    let cloud_subdag = lift_cloud_dag(build_cloud_secret_manager_credential_graph_gcp_github());
+    let cloud_subdag = lift_cloud_dag(build_cloud_credential_graph_for_runtime());
     let cloud_credential = builder
         .add_node_after(Node::subdag("cloud_credential", cloud_subdag), &bind_secret)?;
 
