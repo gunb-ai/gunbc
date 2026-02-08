@@ -6,6 +6,7 @@
 //! Built on the [`super::github`] platform layer for consistent GitHub interaction.
 
 use super::github::{api::github_rest_request, cli::gh_cli_request};
+use super::scope::{CredentialIntent, ScopeContract};
 use super::TransportRequest;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -29,6 +30,34 @@ pub struct GistRequest {
 pub struct GistFile {
     /// File content
     pub content: String,
+}
+
+/// Gist-specific permission scopes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum GistScope {
+    /// Create and update gists.
+    Write,
+}
+
+impl GistScope {
+    /// Canonical scope identifier.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            GistScope::Write => "gist:write",
+        }
+    }
+}
+
+/// Scope contract for gist actions.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GistScopeContract;
+
+impl ScopeContract for GistScopeContract {
+    fn credential_intent(&self) -> CredentialIntent {
+        CredentialIntent::new("github", "github", "bearer")
+            .with_required_scopes([GistScope::Write.as_str()])
+            .with_interactive_allowed(true)
+    }
 }
 
 impl GistRequest {
@@ -121,6 +150,16 @@ impl GistRequest {
 
         TransportRequest::Shell(req)
     }
+
+    /// Typed scope contract for gist requests.
+    pub fn scope_contract(&self) -> GistScopeContract {
+        GistScopeContract
+    }
+
+    /// Resolve credential intent from this request's scope contract.
+    pub fn credential_intent(&self) -> CredentialIntent {
+        self.scope_contract().credential_intent()
+    }
 }
 
 impl Default for GistRequest {
@@ -207,5 +246,15 @@ mod tests {
             parse_gist_url_from_rest(&body),
             Some("https://gist.github.com/xyz789".to_string())
         );
+    }
+
+    #[test]
+    fn test_gist_scope_contract_requires_gist_write() {
+        let intent = GistRequest::new().credential_intent();
+        assert_eq!(intent.provider, "github");
+        assert_eq!(intent.service, "github");
+        assert_eq!(intent.scheme, "bearer");
+        assert_eq!(intent.required_scopes, vec!["gist:write".to_string()]);
+        assert!(intent.validate().is_ok());
     }
 }

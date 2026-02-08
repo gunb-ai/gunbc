@@ -9,8 +9,11 @@
 //! - Chain validation with other tools
 
 use crate::graph::{build_gist_graph, GistMode};
+use gunbc_ir::transport::cloud::{
+    CloudProviderKind, CloudRuntimeKind, CloudSecretConfig, CloudSecretRef,
+};
 use gunbc_ir::transport::{ShellResponse, TransportResponse};
-use gunbc_ir::{AuthScheme, Credential, Secret, Timestamp, Value};
+use gunbc_ir::{SecretString, Timestamp, Value};
 use gunbc_primitives::filename;
 use gunbc_test::{extract_mock_requirements, InputConstraint, MockSpec, NodeExample, OutputMatcher};
 use std::collections::BTreeMap;
@@ -26,9 +29,37 @@ fn mock_clock() -> Value {
 }
 
 fn mock_credential() -> Value {
-    let secret = Secret::static_value("mock-token");
-    let cred = Credential::new(secret, AuthScheme::Bearer);
-    cred.into()
+    let mut map = BTreeMap::new();
+    map.insert(
+        "token".to_string(),
+        Value::Secret(SecretString::new("<MOCK_GITHUB_TOKEN>")),
+    );
+    map.insert("source_type".to_string(), Value::Str("static".to_string()));
+    map.insert("scheme".to_string(), Value::Str("bearer".to_string()));
+    map.insert(
+        "cap".to_string(),
+        Value::Secret(SecretString::new("capability")),
+    );
+    Value::Map(map)
+}
+
+fn mock_cloud_config() -> Value {
+    CloudSecretConfig {
+        provider: CloudProviderKind::Gcp,
+        runtime: CloudRuntimeKind::GitHubActions,
+        audience: "projects/123/locations/global/workloadIdentityPools/github/providers/gha"
+            .to_string(),
+        project_or_account: "mock-secrets".to_string(),
+        secret: CloudSecretRef {
+            prefix: "ci-".to_string(),
+            name: String::new(),
+            delimiter: String::new(),
+            version: None,
+        },
+        service_account_or_role: Some("ci-secrets@mock.iam.gserviceaccount.com".to_string()),
+        impersonate_account_or_role: None,
+    }
+    .into()
 }
 
 fn mock_diff_response() -> &'static str {
@@ -90,8 +121,26 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
         .expect("fs:write mock should match type")
         .boundary("clock_env", "clock", mock_clock())
         .expect("clock mock should match type")
-        .boundary("credential_env", "credential:github", mock_credential())
-        .expect("credential mock should match type");
+        .boundary("cloud_env", "config", mock_cloud_config())
+        .expect("cloud_env config should match type")
+        .boundary(
+            "cloud_env",
+            "request_url",
+            Value::Str("https://example.com/oidc".into()),
+        )
+        .expect("cloud_env request_url should match type")
+        .boundary(
+            "cloud_env",
+            "request_token",
+            Value::Str("mock-oidc-token".into()),
+        )
+        .expect("cloud_env request_token should match type")
+        .boundary("bind_secret", "config", mock_cloud_config())
+        .expect("bind_secret config should match type")
+        .boundary("cloud_credential", "credential", mock_credential())
+        .expect("cloud_credential credential should match type")
+        .boundary("cloud_credential", "expires_in", Value::Int(3_600))
+        .expect("cloud_credential expires_in should match type");
 
     // Mode-specific transport mocks
     match mode {
@@ -172,7 +221,12 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
         .expect("url mock should match type");
 
     // Build spec (with input expectations added via legacy API)
-    let mut spec = reqs.build_unchecked();
+    let mut spec = reqs
+        .build_unchecked()
+        .include_prefixed_runtime_mocks(
+            "cloud_credential/gcp_wif_secret",
+            &gunbc_lib_gcp_ops::graph_mock::gcp_github_mock_spec(),
+        );
 
     spec = spec.expects_input("repo_path", InputConstraint::Any);
     // Provide a default repo_path for entrypoint injection in DryRun tests.
@@ -215,11 +269,6 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
                 .description("Provides timestamp for gist filename generation"),
         )
         .node_example(
-            NodeExample::new("credential_env")
-                .output("credential:github", OutputMatcher::Any)
-                .description("Provides GitHub credential for gist creation"),
-        )
-        .node_example(
             NodeExample::new("prepare_current_branch")
                 .input("repo_path", Value::Str(".".into()))
                 .output("request", OutputMatcher::IsRequest)
@@ -250,6 +299,16 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
                 .description("Parses remote branch name from git output"),
         )
         .node_example(
+            NodeExample::new("resolve_auth")
+                .output("service", OutputMatcher::exact(Value::Str("github".into())))
+                .output("scheme", OutputMatcher::exact(Value::Str("bearer".into())))
+                .output(
+                    "required_scopes",
+                    OutputMatcher::exact(Value::str_list(vec!["gist:write".into()])),
+                )
+                .description("Resolves typed gist scope contract into auth intent"),
+        )
+        .node_example(
             NodeExample::new("prepare_gist_request")
                 .input("markdown", Value::Str("# Example".into()))
                 .input("branch", Value::Str("main".into()))
@@ -266,7 +325,10 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
                 )
                 .output("url", OutputMatcher::contains("gist.github.com"))
                 .description("Extracts gist URL from response JSON"),
-        );
+        )
+        .skip_node_example("cloud_env")
+        .skip_node_example("cloud_credential")
+        .skip_node_example("bind_secret");
 
     // Mode-specific node examples
     match mode {

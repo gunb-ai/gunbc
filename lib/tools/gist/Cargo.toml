@@ -13,6 +13,8 @@ gunbc-lib-git-ops = { path = "../../git-ops" }
 gunbc-lib-gist-ops = { path = "../../gist-ops" }
 gunbc-lib-markdown = { path = "../../markdown" }
 gunbc-lib-transport = { path = "../../transport" }
+gunbc-lib-cloud-ops = { path = "../../cloud-ops" }
+gunbc-lib-gcp-ops = { path = "../../gcp-ops" }
 gunbc-test = { path = "../../../core/test" }
 gunbc-testgen-registry = { path = "../../../core/testgen-registry" }
 gunbc-testgen-registry-macros = { path = "../../../core/testgen-registry-macros" }

@@ -746,7 +746,7 @@ impl ResourceTargetMap {
             entries: vec![
                 ResourceTargetEntry {
                     id: ResourceId::build("generated_cli"),
-                    ensure_target: "lint-upsert".to_string(),
+                    ensure_target: "ensure-codegen".to_string(),
                     verify_target: None, // always ensure
                 },
                 ResourceTargetEntry {

@@ -14,19 +14,24 @@ use gunbc_exec::{
     optional_str_list_strict, optional_str_strict, propagate_skipped, require_response,
     require_str, ExecError, Executable, OutputMap, TransportResponseExt,
 };
+use gunbc_ir::transport::gist::GistRequest;
 use gunbc_ir::transport::{ShellRequest, TransportResponse};
 use gunbc_ir::patterns::PatternOp;
 use gunbc_ir::{
     add_transport_triplet,
-    build::*, BuilderError, Cardinality, Dag, DagBuilder, Node, Value, WorkflowSignature,
+    build::*, BuilderError, Cardinality, Dag, DagBuilder, Node, NodeBody, Value,
+    WorkflowSignature,
+};
+use gunbc_lib_cloud_ops::{
+    build_cloud_secret_manager_credential_graph_gcp_github, CloudEnv, CloudOps,
+    CloudSecretManagerGraphOp,
 };
 use gunbc_lib_gist_ops::GistOps;
 use gunbc_lib_git_ops::GitOps;
 use gunbc_lib_markdown::MarkdownOp;
-use gunbc_lib_transport::{CredentialOp, GitHubEnvVarProvider, TransportOps};
+use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::{filename, ClockEnv, FsEnv};
 use std::collections::{BTreeMap, HashMap};
-use std::sync::Arc;
 
 /// Gist content acquisition mode.
 ///
@@ -82,8 +87,12 @@ pub enum GistGraphOp {
     FsEnv(FsEnv),
     /// Clock environment (timestamp snapshot)
     ClockEnv(ClockEnv),
-    /// Credential environment (GitHub token acquisition)
-    Credential(CredentialOp),
+    /// Cloud environment (config + runtime credential inputs)
+    CloudEnv(CloudEnv),
+    /// Cloud credential lifecycle operations
+    Cloud(CloudSecretManagerGraphOp),
+    /// Resolve auth contract for gist actions.
+    ResolveAuth,
 
     // ========================================================================
     // ReadFiles chain (batch): PrepareReadFiles -> Execute -> ParseReadFiles
@@ -145,7 +154,9 @@ impl Executable for GistGraphOp {
             // Environment ops (resource acquisition)
             GistGraphOp::FsEnv(op) => op.execute(inputs),
             GistGraphOp::ClockEnv(op) => op.execute(inputs),
-            GistGraphOp::Credential(op) => op.execute(inputs),
+            GistGraphOp::CloudEnv(op) => op.execute(inputs),
+            GistGraphOp::Cloud(op) => op.execute(inputs),
+            GistGraphOp::ResolveAuth => execute_resolve_auth(inputs),
 
             // ReadFiles chain - batch (pure)
             GistGraphOp::PrepareReadFiles => execute_prepare_read_files(inputs),
@@ -402,6 +413,27 @@ fn execute_collect_file_contents(
     OutputMap::new().map_str_str("contents", contents).ok()
 }
 
+/// Resolve auth requirements from the gist interface scope contract.
+///
+/// This is intentionally strict: credentialed actions without a valid scope
+/// contract fail before any transport execute node can run.
+fn execute_resolve_auth(
+    _inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    let intent = GistRequest::new().credential_intent();
+    intent
+        .validate()
+        .map_err(|e| ExecError::new(format!("invalid gist credential contract: {e}")))?;
+
+    OutputMap::new()
+        .str("service", intent.service)
+        .str("scheme", intent.scheme)
+        .str("header_name", intent.header_name)
+        .str_list("required_scopes", intent.required_scopes)
+        .int("lifetime_seconds", 3600)
+        .ok()
+}
+
 // ============================================================================
 // LoopBuilder body DAG
 // ============================================================================
@@ -482,11 +514,9 @@ pub fn gist_signature(mode: &GistMode) -> WorkflowSignature {
         .with_input("repo_path", "String", Cardinality::ONE)
         .with_output("url", "String", Cardinality::ONE);
 
-    // base_ref is an entrypoint in snapshot and diff modes (unwired optional on
-    // prepare_gist_request / prepare_diff). In recent mode, base_ref is wired
-    // from parse_rev_list → not an entrypoint.
-    if !matches!(mode, GistMode::Recent) {
-        sig = sig.with_input("base_ref", "String", Cardinality::ZERO_OR_ONE);
+    // base_ref is an entrypoint only in diff mode.
+    if matches!(mode, GistMode::Diff { .. }) {
+        sig = sig.with_input("base_ref", "OptionalString", Cardinality::ZERO_OR_ONE);
     }
 
     sig
@@ -517,7 +547,7 @@ pub fn build_gist_graph(
     let mut builder = DagBuilder::new();
 
     // ========================================================================
-    // Environment: filesystem + clock
+    // Environment: filesystem + clock + cloud credential context
     // ========================================================================
 
     let fs_env = builder.add_root_node(Node::opaque(
@@ -534,24 +564,54 @@ pub fn build_gist_graph(
         GistGraphOp::ClockEnv(ClockEnv),
     ))?;
 
-    let credential_env = builder.add_root_node(Node::opaque(
-        "credential_env",
+    let cloud_env = builder.add_root_node(Node::opaque(
+        "cloud_env",
         vec![],
-        vec![port("credential:github", "Credential")],
-        GistGraphOp::Credential(CredentialOp::new(vec![Arc::new(
-            GitHubEnvVarProvider::new(),
-        )])),
+        vec![
+            port("config", "CloudSecretConfig"),
+            optional("request_url", "OptionalString"),
+            optional("request_token", "OptionalString"),
+        ],
+        GistGraphOp::CloudEnv(CloudEnv::new()),
     ))?;
+
+    let resolve_auth = builder.add_root_node(Node::opaque(
+        "resolve_auth",
+        vec![],
+        vec![
+            port("service", "String"),
+            port("scheme", "String"),
+            port("header_name", "String"),
+            list("required_scopes", "String"),
+            optional("lifetime_seconds", "OptionalInt"),
+        ],
+        GistGraphOp::ResolveAuth,
+    ))?;
+
+    let bind_secret = builder.add_node_after_all(
+        Node::opaque(
+            "bind_secret",
+            vec![port("config", "CloudSecretConfig"), port("service", "String")],
+            vec![port("config", "CloudSecretConfig")],
+            GistGraphOp::Cloud(CloudSecretManagerGraphOp::Cloud(CloudOps::BindSecretName)),
+        ),
+        &[&cloud_env, &resolve_auth],
+    )?;
+
+    let cloud_subdag = lift_cloud_dag(build_cloud_secret_manager_credential_graph_gcp_github());
+    let cloud_credential = builder
+        .add_node_after(Node::subdag("cloud_credential", cloud_subdag), &bind_secret)?;
 
     // ========================================================================
     // Content acquisition (mode-dependent)
     // ========================================================================
     // Both modes produce a render_markdown node handle that outputs "markdown".
 
-    let (render_markdown, recent_parse_rev_list) = match mode {
+    let is_recent_mode = matches!(mode, GistMode::Recent);
+    let (render_markdown, recent_parse_rev_list) = match &mode {
         GistMode::Snapshot => (build_snapshot_acquire(&mut builder, &fs_env, extensions)?, None),
         GistMode::Diff { base_ref } => {
-            (build_diff_acquire(&mut builder, &fs_env, &base_ref, extensions)?, None)
+            (build_diff_acquire(&mut builder, &fs_env, base_ref, extensions)?, None)
         }
         GistMode::Recent => {
             let (md, rev) = build_recent_acquire(&mut builder, &fs_env, extensions)?;
@@ -596,17 +656,23 @@ pub fn build_gist_graph(
     // ========================================================================
 
     // Node: PrepareGistRequest (PURE)
+    let mut gist_prepare_inputs = vec![
+        scalar("markdown", "String"),
+        optional("branch", "OptionalString"),
+        optional("remote_branch", "OptionalString"),
+        resource("fs", "FilesystemHandle", AccessMode::Read),
+        resource("clock", "Timestamp", AccessMode::Read),
+        optional("credential_expires_in", "OptionalInt"),
+        list("required_scopes", "String"),
+    ];
+    if is_recent_mode {
+        gist_prepare_inputs.push(optional("base_ref", "OptionalString"));
+    }
+
     let prepare_gist_request = builder.add_node_after(
         Node::opaque(
             "prepare_gist_request",
-            vec![
-                scalar("markdown", "String"),
-                optional("branch", "OptionalString"),
-                optional("remote_branch", "OptionalString"),
-                optional("base_ref", "OptionalString"),
-                resource("fs", "FilesystemHandle", AccessMode::Read),
-                resource("clock", "Timestamp", AccessMode::Read),
-            ],
+            gist_prepare_inputs,
             vec![scalar("request", "TransportRequest"), scalar("skip", "Bool")],
             GistGraphOp::Gist(GistOps::PrepareRequest { public }),
         ),
@@ -660,6 +726,44 @@ pub fn build_gist_graph(
         clock_env.out("clock"),
         prepare_gist_request.in_port("res:clock"),
     )?;
+    builder.add_edge(cloud_env.out("config"), bind_secret.in_port("config"))?;
+    builder.add_edge(resolve_auth.out("service"), bind_secret.in_port("service"))?;
+    builder.add_edge(
+        bind_secret.out("config"),
+        cloud_credential.in_port("config"),
+    )?;
+    builder.add_edge(
+        resolve_auth.out("service"),
+        cloud_credential.in_port("source_id"),
+    )?;
+    builder.add_edge(
+        resolve_auth.out("scheme"),
+        cloud_credential.in_port("scheme"),
+    )?;
+    builder.add_edge(
+        resolve_auth.out("header_name"),
+        cloud_credential.in_port("header_name"),
+    )?;
+    builder.add_edge(
+        resolve_auth.out("lifetime_seconds"),
+        cloud_credential.in_port("lifetime_seconds"),
+    )?;
+    builder.add_edge(
+        cloud_env.out("request_url"),
+        cloud_credential.in_port("request_url"),
+    )?;
+    builder.add_edge(
+        cloud_credential.out("expires_in"),
+        prepare_gist_request.in_port("credential_expires_in"),
+    )?;
+    builder.add_edge(
+        resolve_auth.out("required_scopes"),
+        prepare_gist_request.in_port("required_scopes"),
+    )?;
+    builder.add_edge(
+        cloud_env.out("request_token"),
+        cloud_credential.in_port("request_token"),
+    )?;
     // Wire commit range (recent mode only) so filename reflects the diff range
     if let Some(ref parse_rev_list) = recent_parse_rev_list {
         builder.add_edge(
@@ -676,7 +780,7 @@ pub fn build_gist_graph(
         execute_gist.in_port("skip"),
     )?;
     builder.add_edge(
-        credential_env.out("credential:github"),
+        cloud_credential.out("credential"),
         execute_gist.in_port("res:credential"),
     )?;
     builder.add_edge(
@@ -919,6 +1023,55 @@ fn build_recent_acquire(
     Ok((render_markdown, rev_list.parse))
 }
 
+fn lift_cloud_dag(
+    dag: Dag<CloudSecretManagerGraphOp>,
+) -> Dag<GistGraphOp> {
+    let mut lift = |op| GistGraphOp::Cloud(op);
+    map_dag_ops(dag, &mut lift)
+}
+
+fn map_dag_ops<T, U, F>(dag: Dag<T>, f: &mut F) -> Dag<U>
+where
+    T: Clone,
+    U: Clone,
+    F: FnMut(T) -> U,
+{
+    let mut out = Dag::new();
+    out.edges = dag.edges.clone();
+    out.nodes = dag
+        .nodes
+        .into_iter()
+        .map(|node| map_node_ops(node, f))
+        .collect();
+    out
+}
+
+fn map_node_ops<T, U, F>(node: Node<T>, f: &mut F) -> Node<U>
+where
+    T: Clone,
+    U: Clone,
+    F: FnMut(T) -> U,
+{
+    let Node {
+        id,
+        inputs,
+        outputs,
+        body,
+        examples,
+    } = node;
+    let body = match body {
+        NodeBody::Opaque(op) => NodeBody::Opaque(f(op)),
+        NodeBody::SubDag(subdag) => NodeBody::SubDag(map_dag_ops(subdag, f)),
+    };
+    Node {
+        id,
+        inputs,
+        outputs,
+        body,
+        examples,
+    }
+}
+
 // Mockable implementation for test generation
 use gunbc_test::Mockable;
 
@@ -1026,7 +1179,32 @@ impl Mockable for GistGraphOp {
             // Environment ops
             GistGraphOp::FsEnv(op) => op.mock_outputs(),
             GistGraphOp::ClockEnv(op) => op.mock_outputs(),
-            GistGraphOp::Credential(op) => op.mock_outputs(),
+            GistGraphOp::CloudEnv(op) => op.mock_outputs(),
+            GistGraphOp::Cloud(_) => OutputMap::new()
+                .value(
+                    "credential",
+                    Value::Map(std::collections::BTreeMap::from([
+                        (
+                            "token".to_string(),
+                            Value::Secret(gunbc_ir::SecretString::new("<MOCK_GITHUB_TOKEN>")),
+                        ),
+                        ("source_type".to_string(), Value::Str("static".to_string())),
+                        ("scheme".to_string(), Value::Str("bearer".to_string())),
+                        (
+                            "cap".to_string(),
+                            Value::Secret(gunbc_ir::SecretString::new("capability")),
+                        ),
+                    ])),
+                )
+                .int("expires_in", 3600)
+                .build(),
+            GistGraphOp::ResolveAuth => OutputMap::new()
+                .str("service", "github")
+                .str("scheme", "bearer")
+                .str("header_name", "")
+                .str_list("required_scopes", vec!["gist:write".to_string()])
+                .int("lifetime_seconds", 3600)
+                .build(),
 
             // Pure ops
             GistGraphOp::Markdown(_) => OutputMap::new()
@@ -1281,6 +1459,20 @@ mod tests {
                 node_id
             );
         }
+    }
+
+    #[test]
+    fn test_gist_uses_cloud_credential_chain() {
+        let dag = build_gist_graph(GistMode::Snapshot, vec![], false).expect("snapshot should build");
+
+        assert!(dag.get_node(&"cloud_env".into()).is_some());
+        assert!(dag.get_node(&"resolve_auth".into()).is_some());
+        assert!(dag.get_node(&"bind_secret".into()).is_some());
+        assert!(dag.get_node(&"cloud_credential".into()).is_some());
+        assert!(
+            dag.get_node(&"credential_env".into()).is_none(),
+            "legacy credential_env node should be removed"
+        );
     }
 
     #[test]

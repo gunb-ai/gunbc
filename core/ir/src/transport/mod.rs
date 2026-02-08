@@ -51,6 +51,7 @@ pub mod github_actions;
 pub mod http;
 pub mod llm;
 pub mod rest;
+pub mod scope;
 pub mod tcp;
 pub mod tool;
 
@@ -99,6 +100,7 @@ pub use llm::{
     FinishReason, LlmProvider, Role, Usage,
 };
 pub use rest::{RestRequest, RestResponse};
+pub use scope::{CredentialIntent, ScopeContract, ScopeContractError};
 pub use tcp::{TcpRequest, TcpResponse};
 pub use tool::{
     check_all_satisfiable,

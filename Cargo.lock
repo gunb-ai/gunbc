@@ -340,6 +340,8 @@ dependencies = [
  "gunbc-cli",
  "gunbc-exec",
  "gunbc-ir",
+ "gunbc-lib-cloud-ops",
+ "gunbc-lib-gcp-ops",
  "gunbc-lib-gist-ops",
  "gunbc-lib-git-ops",
  "gunbc-lib-markdown",

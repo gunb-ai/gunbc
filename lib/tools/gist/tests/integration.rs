@@ -2,8 +2,11 @@
 
 use gunbc_exec::{execute_with_mode, BoundaryMocks, ExecutionMode};
 use gunbc_gist::{build_gist_graph, GistMode};
+use gunbc_ir::transport::cloud::{
+    CloudProviderKind, CloudRuntimeKind, CloudSecretConfig, CloudSecretRef,
+};
 use gunbc_ir::transport::{ShellResponse, TransportResponse};
-use gunbc_ir::{detect_boundaries, AuthScheme, Credential, Secret, Timestamp, Value};
+use gunbc_ir::{detect_boundaries, SecretString, Timestamp, Value};
 use gunbc_primitives::filename;
 use gunbc_test::{assert_boundary_mockable, guard_test, FermiCost, TestClass};
 use std::time::SystemTime;
@@ -34,8 +37,108 @@ fn mock_env(mocks: &mut BoundaryMocks) {
     mocks.set_value("fs_env", "fs:write", fs.into());
     let clock = Timestamp::from_system_time(SystemTime::UNIX_EPOCH);
     mocks.set_value("clock_env", "clock", clock.into());
-    let cred = Credential::new(Secret::static_value("mock-token"), AuthScheme::Bearer);
-    mocks.set_value("credential_env", "credential:github", cred.into());
+
+    let cloud_config = CloudSecretConfig {
+        provider: CloudProviderKind::Gcp,
+        runtime: CloudRuntimeKind::GitHubActions,
+        audience: "projects/123/locations/global/workloadIdentityPools/github/providers/gha"
+            .to_string(),
+        project_or_account: "mock-secrets".to_string(),
+        secret: CloudSecretRef {
+            prefix: "ci-".to_string(),
+            name: String::new(),
+            delimiter: String::new(),
+            version: None,
+        },
+        service_account_or_role: Some("ci-secrets@mock.iam.gserviceaccount.com".to_string()),
+        impersonate_account_or_role: None,
+    };
+
+    mocks.set_value("cloud_env", "config", cloud_config.clone().into());
+    mocks.set_value(
+        "cloud_env",
+        "request_url",
+        Value::Str("https://example.com/oidc".to_string()),
+    );
+    mocks.set_value(
+        "cloud_env",
+        "request_token",
+        Value::Str("mock-oidc-token".to_string()),
+    );
+    mocks.set_value("bind_secret", "config", cloud_config.into());
+
+    let credential = Value::Map(std::collections::BTreeMap::from([
+        (
+            "token".to_string(),
+            Value::Secret(SecretString::new("<MOCK_GITHUB_TOKEN>")),
+        ),
+        ("source_type".to_string(), Value::Str("static".to_string())),
+        ("scheme".to_string(), Value::Str("bearer".to_string())),
+        (
+            "cap".to_string(),
+            Value::Secret(SecretString::new("capability")),
+        ),
+    ]));
+    mocks.set_value("cloud_credential", "credential", credential);
+    mocks.set_value("cloud_credential", "expires_in", Value::Int(3_600));
+    mocks.set_value(
+        "cloud_credential/gcp_wif_secret/net_env",
+        "net",
+        gunbc_primitives::NetworkHandle.into(),
+    );
+    mocks.set_value(
+        "cloud_credential/gcp_wif_secret/execute_github_oidc",
+        "response",
+        Value::Response(TransportResponse::Rest(gunbc_ir::transport::RestResponse::ok(
+            serde_json::json!({"value":"mock-oidc-token"}),
+        ))),
+    );
+    mocks.set_value(
+        "cloud_credential/gcp_wif_secret/execute_sts",
+        "response",
+        Value::Response(TransportResponse::Rest(gunbc_ir::transport::RestResponse::ok(
+            serde_json::json!({
+                "access_token": "mock-sts-token",
+                "expires_in": 3600
+            }),
+        ))),
+    );
+    mocks.set_value(
+        "cloud_credential/gcp_wif_secret/execute_impersonate",
+        "response",
+        Value::Response(TransportResponse::Rest(gunbc_ir::transport::RestResponse::ok(
+            serde_json::json!({
+                "accessToken": "mock-sa-token",
+                "expireTime": "2025-01-01T00:00:00Z"
+            }),
+        ))),
+    );
+    mocks.set_value(
+        "cloud_credential/gcp_wif_secret/execute_secret_access",
+        "response",
+        Value::Response(TransportResponse::Rest(gunbc_ir::transport::RestResponse::ok(
+            serde_json::json!({
+                "payload": {"data": "bW9jay1zZWNyZXQ="}
+            }),
+        ))),
+    );
+    mocks.set_value(
+        "cloud_credential/gcp_wif_secret/build_credential",
+        "credential",
+        Value::Map(std::collections::BTreeMap::from([
+            (
+                "token".to_string(),
+                Value::Secret(SecretString::new("mock-secret")),
+            ),
+            ("source_type".to_string(), Value::Str("static".to_string())),
+            ("scheme".to_string(), Value::Str("bearer".to_string())),
+            (
+                "cap".to_string(),
+                Value::Secret(SecretString::new("capability")),
+            ),
+        ])),
+    );
+
     // Entry inputs (repo_path) for all gist modes
     mocks.set_input("prepare_list_files", "repo_path", Value::Str(".".into()));
     mocks.set_input("read_files_loop", "repo_path", Value::Str(".".into()));

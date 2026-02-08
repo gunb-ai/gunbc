@@ -15,8 +15,8 @@
 
 #![deny(dead_code)]
 use gunbc_exec::{
-    optional_str_strict, propagate_skipped, require_response, require_str, ExecError, Executable,
-    IntoExecResult, OutputMap,
+    optional_int_strict, optional_str_list_strict, optional_str_strict, propagate_skipped,
+    require_response, require_str, ExecError, Executable, IntoExecResult, OutputMap,
 };
 use gunbc_ir::transport::gist::GistRequest;
 use gunbc_ir::transport::{ShellResponse, TransportRequest, TransportResponse};
@@ -47,6 +47,10 @@ impl Executable for GistOps {
                 let branch = optional_str_strict(&inputs, "branch")?;
                 let remote_branch = optional_str_strict(&inputs, "remote_branch")?;
                 let base_ref = optional_str_strict(&inputs, "base_ref")?;
+                // These contract metadata inputs are currently informational for gist request
+                // preparation, but still validated for type safety.
+                let _credential_expires_in = optional_int_strict(&inputs, "credential_expires_in")?;
+                let _required_scopes = optional_str_list_strict(&inputs, "required_scopes")?;
 
                 // Acquire system resources at the DAG boundary (not inline)
                 let fs = require_filesystem_handle(&inputs, "res:fs")?;

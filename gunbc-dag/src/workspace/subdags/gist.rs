@@ -16,7 +16,9 @@ fn convert_gist_op(op: GistGraphOp) -> WorkspaceOp {
         GistGraphOp::Git(_)
         | GistGraphOp::FsEnv(_)
         | GistGraphOp::ClockEnv(_)
-        | GistGraphOp::Credential(_)
+        | GistGraphOp::CloudEnv(_)
+        | GistGraphOp::Cloud(_)
+        | GistGraphOp::ResolveAuth
         | GistGraphOp::PrepareReadFiles
         | GistGraphOp::ParseReadFiles
         | GistGraphOp::PrepareReadFile
