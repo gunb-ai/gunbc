@@ -10,6 +10,7 @@ gunbc-ir = { path = "../../core/ir" }
 gunbc-exec = { path = "../../core/exec" }
 gunbc-lib-transport = { path = "../transport" }
 gunbc-lib-cloud-ops = { path = "../cloud-ops" }
+gunbc-lib-gcp-ops = { path = "../gcp-ops" }
 gunbc-test = { path = "../../core/test" }
 serde_json = { workspace = true }
 gunbc-testgen-registry = { path = "../../core/testgen-registry" }

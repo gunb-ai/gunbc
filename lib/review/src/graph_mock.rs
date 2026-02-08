@@ -28,7 +28,9 @@ use gunbc_ir::transport::llm::mock;
 use gunbc_ir::transport::{ShellResponse, TransportResponse};
 use gunbc_ir::{SecretString, Value};
 use gunbc_primitives::filename;
-use gunbc_test::{extract_mock_requirements, InputConstraint, MockSpec, NodeExample, OutputMatcher};
+use gunbc_test::{
+    extract_mock_requirements, InputConstraint, MockSpec, NodeExample, OutputMatcher,
+};
 use std::collections::BTreeMap;
 
 fn mock_credential() -> Value {
@@ -37,10 +39,7 @@ fn mock_credential() -> Value {
         "token".to_string(),
         Value::Secret(SecretString::new("<MOCK_API_KEY>")),
     );
-    map.insert(
-        "source_type".to_string(),
-        Value::Str("static".to_string()),
-    );
+    map.insert("source_type".to_string(), Value::Str("static".to_string()));
     map.insert("scheme".to_string(), Value::Str("bearer".to_string()));
     map.insert(
         "cap".to_string(),
@@ -133,7 +132,7 @@ pub fn default_criteria() -> Criteria {
 /// are extracted from its structure, and mocks are type-checked at construction.
 #[gunbc_testgen_registry_macros::resource_test_target(
     name = "review-inline",
-    builder = "crate::graph::build_inline_review_graph()",
+    builder = "crate::graph::build_inline_review_graph()"
 )]
 #[gunbc_testgen_registry_macros::testgen_target(
     name = "review-inline",
@@ -192,17 +191,17 @@ pub fn inline_review_mock_spec() -> MockSpec {
         .expect("execute_llm response should match type")
         // Build spec (pure terminal outputs like parse_response are computed, not mocked)
         .build_unchecked()
+        .include_prefixed_runtime_mocks(
+            "cloud_credential/gcp_wif_secret",
+            &gunbc_lib_gcp_ops::graph_mock::gcp_github_mock_spec(),
+        )
         // Input mocks for entrypoints (inline graph has NO config node)
         .input_mock(
             "prepare_prompt",
             "artifact",
             Value::Str("fn main() { let x: Option<i32> = None; x.unwrap(); }".into()),
         )
-        .input_mock(
-            "prepare_prompt",
-            "criteria",
-            criteria_json.clone(),
-        )
+        .input_mock("prepare_prompt", "criteria", criteria_json.clone())
         .input_mock("parse_response", "criteria", criteria_json.clone())
         .input_mock(
             "prepare_llm",
@@ -239,14 +238,8 @@ pub fn inline_review_mock_spec() -> MockSpec {
         .node_example(
             NodeExample::new("resolve_auth")
                 .input("provider", Value::Str("openai".into()))
-                .output(
-                    "service",
-                    OutputMatcher::exact(Value::Str("openai".into())),
-                )
-                .output(
-                    "scheme",
-                    OutputMatcher::exact(Value::Str("bearer".into())),
-                )
+                .output("service", OutputMatcher::exact(Value::Str("openai".into())))
+                .output("scheme", OutputMatcher::exact(Value::Str("bearer".into())))
                 .output(
                     "header_name",
                     OutputMatcher::exact(Value::Str(String::new())),
@@ -258,9 +251,9 @@ pub fn inline_review_mock_spec() -> MockSpec {
                 .input("provider", Value::Str("openai".into()))
                 .input(
                     "response",
-                    Value::Response(TransportResponse::Rest(
-                        mock::mock_openai_response(&llm_answer),
-                    )),
+                    Value::Response(TransportResponse::Rest(mock::mock_openai_response(
+                        &llm_answer,
+                    ))),
                 )
                 .output("answer", OutputMatcher::non_empty())
                 .description("extracts answer text from LLM response"),
@@ -289,7 +282,7 @@ pub fn inline_review_mock_spec() -> MockSpec {
 /// are extracted from its structure, and mocks are type-checked at construction.
 #[gunbc_testgen_registry_macros::resource_test_target(
     name = "review-diff",
-    builder = "crate::graph::build_diff_review_graph()",
+    builder = "crate::graph::build_diff_review_graph()"
 )]
 #[gunbc_testgen_registry_macros::testgen_target(
     name = "review-diff",
@@ -369,6 +362,10 @@ diff --git a/src/main.rs b/src/main.rs
         .expect("execute_llm response should match type")
         // Build spec (pure terminal outputs are computed, not mocked)
         .build_unchecked()
+        .include_prefixed_runtime_mocks(
+            "cloud_credential/gcp_wif_secret",
+            &gunbc_lib_gcp_ops::graph_mock::gcp_github_mock_spec(),
+        )
         // Input mocks / expectations (repo_path is a required entrypoint)
         .input_mock("prepare_diff", "repo_path", Value::Str(".".into()))
         .expects_input("repo_path", InputConstraint::Any)
@@ -402,14 +399,17 @@ diff --git a/src/main.rs b/src/main.rs
         )
         .node_example(
             NodeExample::new("format_artifact")
-                .input("diff_files", Value::str_map({
-                    let mut diff_files = BTreeMap::new();
-                    diff_files.insert(
-                        "src/main.rs".to_string(),
-                        "@@ -1,2 +1,3 @@\n fn main() {}\n+println!(\"hi\");".to_string(),
-                    );
-                    diff_files
-                }))
+                .input(
+                    "diff_files",
+                    Value::str_map({
+                        let mut diff_files = BTreeMap::new();
+                        diff_files.insert(
+                            "src/main.rs".to_string(),
+                            "@@ -1,2 +1,3 @@\n fn main() {}\n+println!(\"hi\");".to_string(),
+                        );
+                        diff_files
+                    }),
+                )
                 .output("artifact", OutputMatcher::contains("src/main.rs"))
                 .description("formats diff files into review artifact"),
         )
@@ -437,14 +437,8 @@ diff --git a/src/main.rs b/src/main.rs
         .node_example(
             NodeExample::new("resolve_auth")
                 .input("provider", Value::Str("openai".into()))
-                .output(
-                    "service",
-                    OutputMatcher::exact(Value::Str("openai".into())),
-                )
-                .output(
-                    "scheme",
-                    OutputMatcher::exact(Value::Str("bearer".into())),
-                )
+                .output("service", OutputMatcher::exact(Value::Str("openai".into())))
+                .output("scheme", OutputMatcher::exact(Value::Str("bearer".into())))
                 .output(
                     "header_name",
                     OutputMatcher::exact(Value::Str(String::new())),
@@ -456,9 +450,9 @@ diff --git a/src/main.rs b/src/main.rs
                 .input("provider", Value::Str("openai".into()))
                 .input(
                     "response",
-                    Value::Response(TransportResponse::Rest(
-                        mock::mock_openai_response(&llm_answer),
-                    )),
+                    Value::Response(TransportResponse::Rest(mock::mock_openai_response(
+                        &llm_answer,
+                    ))),
                 )
                 .output("answer", OutputMatcher::non_empty())
                 .description("extracts answer text from LLM response"),

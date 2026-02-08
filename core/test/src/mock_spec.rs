@@ -149,11 +149,7 @@ impl MockSpec {
     }
 
     /// Add a credential resource simulation.
-    pub fn resource_credential(
-        mut self,
-        id: impl Into<String>,
-        expiry_ms: Option<u64>,
-    ) -> Self {
+    pub fn resource_credential(mut self, id: impl Into<String>, expiry_ms: Option<u64>) -> Self {
         self.resource_mocks = self.resource_mocks.credential(id, expiry_ms, false);
         self
     }
@@ -165,7 +161,9 @@ impl MockSpec {
         expiry_ms: u64,
         refresh_ttl_ms: u64,
     ) -> Self {
-        self.resource_mocks = self.resource_mocks.credential_refreshable(id, expiry_ms, refresh_ttl_ms);
+        self.resource_mocks =
+            self.resource_mocks
+                .credential_refreshable(id, expiry_ms, refresh_ttl_ms);
         self
     }
 
@@ -802,11 +800,7 @@ impl ResourceMocks {
     }
 
     /// Add a credential that fails to acquire.
-    pub fn credential_fails(
-        mut self,
-        id: impl Into<String>,
-        error: impl Into<String>,
-    ) -> Self {
+    pub fn credential_fails(mut self, id: impl Into<String>, error: impl Into<String>) -> Self {
         let sim = ResourceSimulation::new(
             id,
             ResourceType::Credential {
@@ -1246,7 +1240,11 @@ mod tests {
     #[test]
     fn test_include_prefixed_runtime_mocks() {
         let child = MockSpec::new("child")
-            .boundary("net_env", "net", Value::Map(HashMap::new()))
+            .boundary(
+                "net_env",
+                "net",
+                Value::Map(std::collections::BTreeMap::new()),
+            )
             .transport_mock("execute", "response", Value::Str("ok".into()))
             .input_mock("prepare", "audience", Value::Str("mock".into()));
 
@@ -1478,7 +1476,9 @@ mod tests {
         let result = resource.refresh();
         assert!(matches!(
             result,
-            ResourceRefreshResult::Refreshed { new_ttl_ms: 7_200_000 }
+            ResourceRefreshResult::Refreshed {
+                new_ttl_ms: 7_200_000
+            }
         ));
     }
 
@@ -1538,7 +1538,9 @@ mod tests {
         let refresh = spec.get_resource("cred:refresh").unwrap();
         assert!(matches!(
             refresh.refresh(),
-            ResourceRefreshResult::Refreshed { new_ttl_ms: 7_200_000 }
+            ResourceRefreshResult::Refreshed {
+                new_ttl_ms: 7_200_000
+            }
         ));
     }
 }

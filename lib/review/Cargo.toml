@@ -14,6 +14,7 @@ gunbc-lib-git-ops = { path = "../git-ops" }
 gunbc-lib-llm-ops = { path = "../llm-ops" }
 gunbc-lib-transport = { path = "../transport" }
 gunbc-lib-cloud-ops = { path = "../cloud-ops" }
+gunbc-lib-gcp-ops = { path = "../gcp-ops" }
 serde.workspace = true
 serde_json.workspace = true
 

@@ -19,6 +19,7 @@ gunbc-lib-transport = { path = "../lib/transport" }
 gunbc-lib-blob = { path = "../lib/blob" }
 gunbc-lib-gist-ops = { path = "../lib/gist-ops" }
 gunbc-lib-cloud-ops = { path = "../lib/cloud-ops" }
+gunbc-lib-gcp-ops = { path = "../lib/gcp-ops" }
 
 # General tools (reusable)
 gunbc-deps = { path = "../lib/tools/deps" }

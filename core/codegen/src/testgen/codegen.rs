@@ -23,18 +23,18 @@
 use crate::testgen::analyze::{analyze_dag, DagAnalysis};
 use crate::testgen::obligation::{collect_obligations, DischargeStatus, Obligation, ObligationSet};
 use crate::testgen::render_rust::plain_rust_renderer;
-use gunbc_ir::render_ir::CodeRenderer;
-use gunbc_ir::code_ir::{
-    Assert, Expr, HelperFn, Import, Stmt, TestFile, TestFn, TestSection,
-};
+use gunbc_infra::hash::ContentHash;
 use gunbc_ir::boundary_label;
+use gunbc_ir::code_ir::{Assert, Expr, HelperFn, Import, Stmt, TestFile, TestFn, TestSection};
 use gunbc_ir::language::NamingCase;
-use gunbc_ir::{contract, Cardinality, Dag, NodeId, PortName, SecretString, TypeRegistry, Value, ValueExpr};
+use gunbc_ir::render_ir::CodeRenderer;
 use gunbc_ir::transport::{ShellRequest, ShellResponse, TransportRequest, TransportResponse};
+use gunbc_ir::{
+    contract, Cardinality, Dag, NodeId, PortName, SecretString, TypeRegistry, Value, ValueExpr,
+};
 use gunbc_test::{FermiCost, MockSpec, OutputMatcher, TestClass};
 use serde_json::Value as JsonValue;
 use std::collections::{BTreeMap, HashMap, HashSet};
-use gunbc_infra::hash::ContentHash;
 
 /// Configuration for test generation.
 ///
@@ -488,8 +488,8 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
 
                     if is_connected {
                         // Check if there's a mock for this (node, port)
-                        let has_mock =
-                            mocked_ports.contains(&(transport_id.as_str(), output_port.name.0.as_str()));
+                        let has_mock = mocked_ports
+                            .contains(&(transport_id.as_str(), output_port.name.0.as_str()));
 
                         if !has_mock {
                             missing.push((transport_id.clone(), output_port.name.0.clone()));
@@ -559,7 +559,10 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             return Some("transport executor");
         }
 
-        let is_tool_env = node.outputs.iter().any(|port| port.type_id.0 == "ToolHandle");
+        let is_tool_env = node
+            .outputs
+            .iter()
+            .any(|port| port.type_id.0 == "ToolHandle");
         if is_tool_env {
             return Some("tool environment");
         }
@@ -579,7 +582,10 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             return Some("resource environment");
         }
 
-        let is_tool_consumer = node.inputs.iter().any(|port| port.type_id.0 == "ToolHandle");
+        let is_tool_consumer = node
+            .inputs
+            .iter()
+            .any(|port| port.type_id.0 == "ToolHandle");
         if is_tool_consumer {
             return Some("tool consumer");
         }
@@ -955,27 +961,18 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
              -> Stmt {
                 let cond = Expr::var(candidate_binding)
                     .field("name")
-                    .bin_op(
-                        "==",
-                        Expr::var(declared_binding).field("name"),
-                    )
+                    .bin_op("==", Expr::var(declared_binding).field("name"))
                     .bin_op(
                         "&&",
                         Expr::var(candidate_binding)
                             .field("type_id")
-                            .bin_op(
-                                "==",
-                                Expr::var(declared_binding).field("type_id"),
-                            ),
+                            .bin_op("==", Expr::var(declared_binding).field("type_id")),
                     )
                     .bin_op(
                         "&&",
                         Expr::var(candidate_binding)
                             .field("cardinality")
-                            .bin_op(
-                                "==",
-                                Expr::var(declared_binding).field("cardinality"),
-                            ),
+                            .bin_op("==", Expr::var(declared_binding).field("cardinality")),
                     );
 
                 Stmt::For {
@@ -1008,18 +1005,11 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                     Stmt::let_bind("sig", Expr::var(signature_fn)),
                     Stmt::let_bind(
                         "inferred",
-                        Expr::call(
-                            "gunbc_ir::infer_signature",
-                            vec![Expr::var("dag").ref_of()],
-                        ),
+                        Expr::call("gunbc_ir::infer_signature", vec![Expr::var("dag").ref_of()]),
                     ),
                     Stmt::Assert(Assert::Eq {
-                        left: Expr::var("sig")
-                            .field("inputs")
-                            .method("len", vec![]),
-                        right: Expr::var("inferred")
-                            .field("inputs")
-                            .method("len", vec![]),
+                        left: Expr::var("sig").field("inputs").method("len", vec![]),
+                        right: Expr::var("inferred").field("inputs").method("len", vec![]),
                         message: "declared inputs length matches inferred".to_string(),
                     }),
                     build_port_membership_loop(
@@ -1030,19 +1020,17 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                         "declared input should exist in inferred signature",
                     ),
                     Stmt::Assert(Assert::Eq {
-                        left: Expr::var("sig")
-                            .field("outputs")
-                            .method("len", vec![]),
-                        right: Expr::var("inferred")
-                            .field("outputs")
-                            .method("len", vec![]),
+                        left: Expr::var("sig").field("outputs").method("len", vec![]),
+                        right: Expr::var("inferred").field("outputs").method("len", vec![]),
                         message: "declared outputs length matches inferred".to_string(),
                     }),
                     build_port_membership_loop(
                         "declared_output",
                         "inferred_output",
                         Expr::var("sig").field("outputs").method("iter", vec![]),
-                        Expr::var("inferred").field("outputs").method("iter", vec![]),
+                        Expr::var("inferred")
+                            .field("outputs")
+                            .method("iter", vec![]),
                         "declared output should exist in inferred signature",
                     ),
                 ],
@@ -1308,9 +1296,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                     Self::collect_idents_from_expr(arg, used);
                 }
             }
-            Expr::MethodCall {
-                receiver, args, ..
-            } => {
+            Expr::MethodCall { receiver, args, .. } => {
                 Self::collect_idents_from_expr(receiver, used);
                 for arg in args {
                     Self::collect_idents_from_expr(arg, used);
@@ -1345,7 +1331,11 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                     }
                 }
             }
-            Expr::If { cond, then_body, else_body } => {
+            Expr::If {
+                cond,
+                then_body,
+                else_body,
+            } => {
                 Self::collect_idents_from_expr(cond, used);
                 for s in then_body {
                     Self::collect_idents_from_stmt(s, used);
@@ -1835,8 +1825,10 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
 
         let mut tests = Vec::new();
         let mut notes = Vec::new();
-        let mut base_inputs_cache: HashMap<String, Result<BTreeMap<String, ValueExpr>, Vec<String>>> =
-            HashMap::new();
+        let mut base_inputs_cache: HashMap<
+            String,
+            Result<BTreeMap<String, ValueExpr>, Vec<String>>,
+        > = HashMap::new();
         let mut skipped_nodes: HashSet<String> = HashSet::new();
         let lowered_ids = match gunbc_exec::lower(self.dag) {
             Ok(lowered) => lowered
@@ -2684,7 +2676,10 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                     ));
                     "PoolSlot"
                 }
-                gunbc_test::ResourceType::Credential { expiry_ms, refreshable } => {
+                gunbc_test::ResourceType::Credential {
+                    expiry_ms,
+                    refreshable,
+                } => {
                     doc.push(format!(
                         "Test resource '{}' credential (expiry: {:?}, refreshable: {}).",
                         resource.resource_id, expiry_ms, refreshable
@@ -3248,7 +3243,10 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
         }
 
         for (idx, eo) in spec.live_expected_outputs.iter().enumerate() {
-            body.push(Stmt::Comment(format!("Verify {}.{} (live)", eo.node, eo.port)));
+            body.push(Stmt::Comment(format!(
+                "Verify {}.{} (live)",
+                eo.node, eo.port
+            )));
             body.push(Stmt::let_bind(
                 "entry",
                 Expr::var("log")
@@ -3347,8 +3345,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                 doc: vec![
                     format!("Live flow verification: {} scenario.", spec.name),
                     String::new(),
-                    "Builds the DAG, executes in Real mode, and checks key outputs."
-                        .to_string(),
+                    "Builds the DAG, executes in Real mode, and checks key outputs.".to_string(),
                 ],
                 body,
             }],
@@ -4058,10 +4055,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
     fn build_cli_contract_section(&self) -> Option<TestSection> {
         let (tool_name, entrypoints) = self.cli_entrypoints.as_ref()?;
 
-        let test_name = format!(
-            "test_cli_contract_{}",
-            tool_name.replace('-', "_")
-        );
+        let test_name = format!("test_cli_contract_{}", tool_name.replace('-', "_"));
 
         // Build the entire test body as raw code to avoid Stmt::Expr semicolons
         // interfering with multi-line constructs like vec![...].
@@ -4088,10 +4082,8 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
         code.push_str("];\n");
 
         // Build argv and assertions
-        let mut argv_parts: Vec<String> = vec![
-            format!("\"{}\"", tool_name),
-            "\"--dry-run\"".to_string(),
-        ];
+        let mut argv_parts: Vec<String> =
+            vec![format!("\"{}\"", tool_name), "\"--dry-run\"".to_string()];
         let mut assertions: Vec<String> = Vec::new();
 
         for ep in entrypoints {
@@ -4143,9 +4135,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             "let argv: Vec<String> = [{}].iter().map(|s| s.to_string()).collect();\n",
             argv_str
         ));
-        code.push_str(
-            "let result = parse(&argv, &schema).expect(\"parse should succeed\");\n",
-        );
+        code.push_str("let result = parse(&argv, &schema).expect(\"parse should succeed\");\n");
         for assertion in &assertions {
             code.push_str(assertion);
         }
@@ -4463,10 +4453,7 @@ fn try_mock_element_value(type_id: &str, index: Option<u32>) -> Option<Value> {
         }
         "NetworkHandle" => {
             let mut map = BTreeMap::new();
-            map.insert(
-                "type".to_string(),
-                Value::Str("network_handle".to_string()),
-            );
+            map.insert("type".to_string(), Value::Str("network_handle".to_string()));
             map.insert(
                 "cap".to_string(),
                 Value::Secret(SecretString::new("capability")),
@@ -4474,9 +4461,9 @@ fn try_mock_element_value(type_id: &str, index: Option<u32>) -> Option<Value> {
             Value::Map(map)
         }
         "TransportRequest" => Value::Request(TransportRequest::Shell(ShellRequest::new("true"))),
-        "TransportResponse" => Value::Response(TransportResponse::Shell(ShellResponse::ok(
-            "<MOCK>",
-        ))),
+        "TransportResponse" => {
+            Value::Response(TransportResponse::Shell(ShellResponse::ok("<MOCK>")))
+        }
         "List" | "Set" => return None,
         _ => return None,
     };
@@ -4614,7 +4601,10 @@ fn select_guard_value(port: &gunbc_ir::Port, registry: Option<&TypeRegistry>) ->
         .find(|candidate| port.check_guard(candidate))
 }
 
-fn required_value_for_port(port: &gunbc_ir::Port, registry: Option<&TypeRegistry>) -> Option<Value> {
+fn required_value_for_port(
+    port: &gunbc_ir::Port,
+    registry: Option<&TypeRegistry>,
+) -> Option<Value> {
     let count = required_count_for_port(port)?;
     try_mock_value_for_count(port.type_id.0.as_str(), port.cardinality, count, registry)
 }
@@ -4750,20 +4740,8 @@ fn mock_element_expr(type_id: &str, index: Option<u32>) -> ValueExpr {
 fn mock_wrong_type_expr(type_id: &str) -> Option<ValueExpr> {
     match type_id {
         // String-like types → use Int
-        "String"
-        | "OptionalString"
-        | "StringList"
-        | "NonEmptyStringList"
-        | "Path"
-        | "FilePath"
-        | "SourceIR"
-        | "Platform"
-        | "Error"
-        | "Tier"
-        | "ToolId"
-        | "S" => {
-            Some(ValueExpr::Int(1))
-        }
+        "String" | "OptionalString" | "StringList" | "NonEmptyStringList" | "Path" | "FilePath"
+        | "SourceIR" | "Platform" | "Error" | "Tier" | "ToolId" | "S" => Some(ValueExpr::Int(1)),
         // Int-like types → use String
         "Int" | "i64" | "i32" | "Timestamp" | "OptionalInt" | "IntList" => {
             Some(ValueExpr::Str("<WRONG>".to_string()))
@@ -4775,13 +4753,8 @@ fn mock_wrong_type_expr(type_id: &str) -> Option<ValueExpr> {
         // Map → use Bool
         "Map" => Some(ValueExpr::Bool(true)),
         // Structured types → use String
-        "CliResult"
-        | "ToolHandle"
-        | "Credential"
-        | "FilesystemHandle"
-        | "NetworkHandle"
-        | "TransportRequest"
-        | "TransportResponse" => Some(ValueExpr::Str("<WRONG>".to_string())),
+        "CliResult" | "ToolHandle" | "Credential" | "FilesystemHandle" | "NetworkHandle"
+        | "TransportRequest" | "TransportResponse" => Some(ValueExpr::Str("<WRONG>".to_string())),
         // Unknown/Any/Json/Unit are too permissive or ambiguous
         "Json" | "OptionalJson" | "JsonList" | "Any" | "Unknown" | "Unit" => None,
         _ => None,
@@ -5207,12 +5180,8 @@ mod tests {
     #[test]
     fn test_mock_value_respects_cardinality() {
         let registry = TypeRegistry::with_core_types();
-        let list_expr = mock_value_expr_for_count(
-            "String",
-            Cardinality::ZERO_OR_MORE,
-            1,
-            Some(&registry),
-        );
+        let list_expr =
+            mock_value_expr_for_count("String", Cardinality::ZERO_OR_MORE, 1, Some(&registry));
         assert_eq!(
             list_expr,
             ValueExpr::List(vec![ValueExpr::Str("example".to_string())])
@@ -5395,18 +5364,12 @@ mod tests {
         dag.add_node(Node::opaque(
             "execute",
             vec![port("request", "TransportRequest")],
-            vec![
-                port("response", "TransportResponse"),
-                port("status", "Int"),
-            ],
+            vec![port("response", "TransportResponse"), port("status", "Int")],
             (),
         ));
         dag.add_node(Node::opaque(
             "parse",
-            vec![
-                port("response", "TransportResponse"),
-                port("status", "Int"),
-            ],
+            vec![port("response", "TransportResponse"), port("status", "Int")],
             vec![port("result", "String")],
             (),
         ));
@@ -5444,18 +5407,12 @@ mod tests {
         dag.add_node(Node::opaque(
             "execute",
             vec![port("request", "TransportRequest")],
-            vec![
-                port("response", "TransportResponse"),
-                port("status", "Int"),
-            ],
+            vec![port("response", "TransportResponse"), port("status", "Int")],
             (),
         ));
         dag.add_node(Node::opaque(
             "parse",
-            vec![
-                port("response", "TransportResponse"),
-                port("status", "Int"),
-            ],
+            vec![port("response", "TransportResponse"), port("status", "Int")],
             vec![port("result", "String")],
             (),
         ));

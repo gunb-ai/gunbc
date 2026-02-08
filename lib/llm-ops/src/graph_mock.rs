@@ -28,10 +28,7 @@ fn mock_credential() -> Value {
         "token".to_string(),
         Value::Secret(SecretString::new("<MOCK_API_KEY>")),
     );
-    map.insert(
-        "source_type".to_string(),
-        Value::Str("static".to_string()),
-    );
+    map.insert("source_type".to_string(), Value::Str("static".to_string()));
     map.insert("scheme".to_string(), Value::Str("bearer".to_string()));
     map.insert(
         "cap".to_string(),
@@ -71,7 +68,12 @@ fn with_cloud_env(spec: MockSpec) -> MockSpec {
             "request_token",
             Value::Str("mock-oidc-token".into()),
         )
+        .boundary("bind_secret", "config", mock_cloud_config())
         .boundary("cloud_credential", "credential", mock_credential())
+        .include_prefixed_runtime_mocks(
+            "cloud_credential/gcp_wif_secret",
+            &gunbc_lib_gcp_ops::graph_mock::gcp_github_mock_spec(),
+        )
 }
 
 /// Mock specification for OpenAI chat completion.
@@ -88,7 +90,7 @@ fn with_cloud_env(spec: MockSpec) -> MockSpec {
 /// - `messages`: JSON array of {role, content}
 #[gunbc_testgen_registry_macros::resource_test_target(
     name = "llm-openai",
-    builder = "crate::graph::build_chat_completion_graph()",
+    builder = "crate::graph::build_chat_completion_graph()"
 )]
 #[gunbc_testgen_registry_macros::testgen_target(
     name = "llm-openai",
@@ -159,10 +161,7 @@ pub fn openai_mock_spec() -> MockSpec {
             NodeExample::new("resolve_auth")
                 .input("provider", Value::Str("openai".into()))
                 .output("service", OutputMatcher::exact(Value::Str("openai".into())))
-                .output(
-                    "scheme",
-                    OutputMatcher::exact(Value::Str("bearer".into())),
-                )
+                .output("scheme", OutputMatcher::exact(Value::Str("bearer".into())))
                 .output(
                     "header_name",
                     OutputMatcher::exact(Value::Str(String::new())),
@@ -212,7 +211,7 @@ pub fn openai_mock_spec() -> MockSpec {
 /// Same structure as OpenAI but with Anthropic-format responses.
 #[gunbc_testgen_registry_macros::resource_test_target(
     name = "llm-anthropic",
-    builder = "crate::graph::build_chat_completion_graph()",
+    builder = "crate::graph::build_chat_completion_graph()"
 )]
 #[gunbc_testgen_registry_macros::testgen_target(
     name = "llm-anthropic",
@@ -298,10 +297,7 @@ pub fn anthropic_mock_spec() -> MockSpec {
                     "service",
                     OutputMatcher::exact(Value::Str("anthropic".into())),
                 )
-                .output(
-                    "scheme",
-                    OutputMatcher::exact(Value::Str("header".into())),
-                )
+                .output("scheme", OutputMatcher::exact(Value::Str("header".into())))
                 .output(
                     "header_name",
                     OutputMatcher::exact(Value::Str("x-api-key".into())),
@@ -352,7 +348,7 @@ pub fn anthropic_mock_spec() -> MockSpec {
 /// Simulates a code review request with a detailed response.
 #[gunbc_testgen_registry_macros::resource_test_target(
     name = "llm-code-review",
-    builder = "crate::graph::build_chat_completion_graph()",
+    builder = "crate::graph::build_chat_completion_graph()"
 )]
 #[gunbc_testgen_registry_macros::testgen_target(
     name = "llm-code-review",
@@ -461,7 +457,7 @@ Overall: The code is clean and well-structured. Minor fixes recommended.";
 /// `Value::Secret` and gets resolved at the transport boundary.
 #[gunbc_testgen_registry_macros::resource_test_target(
     name = "llm-secrets",
-    builder = "crate::graph::build_chat_completion_graph()",
+    builder = "crate::graph::build_chat_completion_graph()"
 )]
 #[gunbc_testgen_registry_macros::testgen_target(
     name = "llm-secrets",
@@ -524,10 +520,7 @@ pub fn secret_api_key_mock_spec() -> MockSpec {
             NodeExample::new("resolve_auth")
                 .input("provider", Value::Str("openai".into()))
                 .output("service", OutputMatcher::exact(Value::Str("openai".into())))
-                .output(
-                    "scheme",
-                    OutputMatcher::exact(Value::Str("bearer".into())),
-                )
+                .output("scheme", OutputMatcher::exact(Value::Str("bearer".into())))
                 .output(
                     "header_name",
                     OutputMatcher::exact(Value::Str(String::new())),
@@ -604,10 +597,7 @@ pub fn rate_limited_mock_spec() -> MockSpec {
             NodeExample::new("resolve_auth")
                 .input("provider", Value::Str("openai".into()))
                 .output("service", OutputMatcher::exact(Value::Str("openai".into())))
-                .output(
-                    "scheme",
-                    OutputMatcher::exact(Value::Str("bearer".into())),
-                )
+                .output("scheme", OutputMatcher::exact(Value::Str("bearer".into())))
                 .output(
                     "header_name",
                     OutputMatcher::exact(Value::Str(String::new())),
@@ -626,7 +616,7 @@ pub fn rate_limited_mock_spec() -> MockSpec {
 /// Generates `generated_tests_credential.rs` with lifecycle-specific tests.
 #[gunbc_testgen_registry_macros::resource_test_target(
     name = "llm-credential-lifecycle",
-    builder = "crate::graph::build_chat_completion_graph()",
+    builder = "crate::graph::build_chat_completion_graph()"
 )]
 #[gunbc_testgen_registry_macros::testgen_target(
     name = "llm-credential-lifecycle",
@@ -711,10 +701,7 @@ pub fn credential_lifecycle_mock_spec() -> MockSpec {
             NodeExample::new("resolve_auth")
                 .input("provider", Value::Str("openai".into()))
                 .output("service", OutputMatcher::exact(Value::Str("openai".into())))
-                .output(
-                    "scheme",
-                    OutputMatcher::exact(Value::Str("bearer".into())),
-                )
+                .output("scheme", OutputMatcher::exact(Value::Str("bearer".into())))
                 .output(
                     "header_name",
                     OutputMatcher::exact(Value::Str(String::new())),
@@ -755,7 +742,7 @@ pub fn credential_lifecycle_mock_spec() -> MockSpec {
 /// Tests credential acquire/timeout/refresh/revoke behavior via resource simulation.
 #[gunbc_testgen_registry_macros::resource_test_target(
     name = "llm-credential-lifecycle-anthropic",
-    builder = "crate::graph::build_chat_completion_graph()",
+    builder = "crate::graph::build_chat_completion_graph()"
 )]
 #[gunbc_testgen_registry_macros::testgen_target(
     name = "llm-credential-lifecycle-anthropic",
@@ -852,10 +839,7 @@ pub fn credential_lifecycle_anthropic_mock_spec() -> MockSpec {
                     "service",
                     OutputMatcher::exact(Value::Str("anthropic".into())),
                 )
-                .output(
-                    "scheme",
-                    OutputMatcher::exact(Value::Str("header".into())),
-                )
+                .output("scheme", OutputMatcher::exact(Value::Str("header".into())))
                 .output(
                     "header_name",
                     OutputMatcher::exact(Value::Str("x-api-key".into())),
