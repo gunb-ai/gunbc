@@ -5,6 +5,7 @@ use gunbc_ir::transport::cloud::{
 };
 use gunbc_ir::transport::rest::RestResponse;
 use gunbc_ir::{AuthScheme, Credential, Secret, Value};
+use gunbc_primitives::NetworkHandle;
 use gunbc_test::{MockSpec, NodeExample, OutputMatcher};
 
 fn mock_credential() -> Value {
@@ -29,6 +30,26 @@ fn mock_cloud_config() -> Value {
         impersonate_account_or_role: None,
     }
     .into()
+}
+
+fn mock_cloud_config_with_secret(name: &str) -> Value {
+    let mut config = CloudSecretConfig {
+        provider: CloudProviderKind::Gcp,
+        runtime: CloudRuntimeKind::GitHubActions,
+        audience: "projects/123/locations/global/workloadIdentityPools/github/providers/gha"
+            .to_string(),
+        project_or_account: "mock-secrets".to_string(),
+        secret: CloudSecretRef {
+            prefix: "ci-".to_string(),
+            name: String::new(),
+            delimiter: String::new(),
+            version: None,
+        },
+        service_account_or_role: Some("ci-secrets@mock.iam.gserviceaccount.com".to_string()),
+        impersonate_account_or_role: None,
+    };
+    config.secret.name = name.to_string();
+    config.into()
 }
 
 /// Mock specification for GitHub credential lifecycle testing.
@@ -56,6 +77,18 @@ fn mock_cloud_config() -> Value {
 )]
 pub fn github_credential_lifecycle_mock_spec() -> MockSpec {
     let response = RestResponse::ok(serde_json::json!({"resources": {}}));
+    let oidc_response = RestResponse::ok(serde_json::json!({"value": "mock-oidc-token"}));
+    let sts_response = RestResponse::ok(serde_json::json!({
+        "access_token": "mock-sts-token",
+        "expires_in": 3600
+    }));
+    let impersonate_response = RestResponse::ok(serde_json::json!({
+        "accessToken": "mock-sa-token",
+        "expireTime": "2025-01-01T00:00:00Z"
+    }));
+    let secret_response = RestResponse::ok(serde_json::json!({
+        "payload": { "data": "bW9jay1zZWNyZXQ=" }
+    }));
 
     MockSpec::new("github-credential-lifecycle")
         // Cloud env + credential
@@ -70,7 +103,41 @@ pub fn github_credential_lifecycle_mock_spec() -> MockSpec {
             "request_token",
             Value::Str("mock-oidc-token".into()),
         )
+        .boundary("bind_secret", "config", mock_cloud_config_with_secret("github"))
         .boundary("cloud_credential", "credential", mock_credential())
+        .boundary(
+            "cloud_credential/gcp_wif_secret/net_env",
+            "net",
+            NetworkHandle.into(),
+        )
+        .transport_mock(
+            "cloud_credential/gcp_wif_secret/execute_github_oidc",
+            "response",
+            Value::Response(gunbc_ir::transport::TransportResponse::Rest(
+                oidc_response,
+            )),
+        )
+        .transport_mock(
+            "cloud_credential/gcp_wif_secret/execute_sts",
+            "response",
+            Value::Response(gunbc_ir::transport::TransportResponse::Rest(
+                sts_response,
+            )),
+        )
+        .transport_mock(
+            "cloud_credential/gcp_wif_secret/execute_impersonate",
+            "response",
+            Value::Response(gunbc_ir::transport::TransportResponse::Rest(
+                impersonate_response,
+            )),
+        )
+        .transport_mock(
+            "cloud_credential/gcp_wif_secret/execute_secret_access",
+            "response",
+            Value::Response(gunbc_ir::transport::TransportResponse::Rest(
+                secret_response,
+            )),
+        )
         // Transport mock
         .transport_mock(
             "execute",

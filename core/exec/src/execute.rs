@@ -38,8 +38,10 @@ use gunbc_ir::{
     canonical_edge_order, detect_boundaries, detect_entrypoints, BoundaryInfo, Cardinality, Dag,
     Node, NodeBody, NodeId, Value,
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::sync::mpsc;
 use std::fmt;
+use std::thread;
 use std::time::{Duration, Instant};
 
 /// Execution mode: real, dry-run, or simulate.
@@ -218,7 +220,7 @@ impl fmt::Display for ExecutionLog {
 }
 
 /// Execute a DAG in real mode.
-pub fn execute<T: Executable + Clone>(dag: &Dag<T>) -> Result<ExecutionLog, ExecError> {
+pub fn execute<T: Executable + Clone + Send>(dag: &Dag<T>) -> Result<ExecutionLog, ExecError> {
     execute_with_mode(dag, ExecutionMode::Real)
 }
 
@@ -226,7 +228,7 @@ pub fn execute<T: Executable + Clone>(dag: &Dag<T>) -> Result<ExecutionLog, Exec
 ///
 /// In dry-run mode, boundary nodes have their outputs replaced with mock values.
 /// In simulate mode, timing and resource usage are tracked.
-pub fn execute_with_mode<T: Executable + Clone>(
+pub fn execute_with_mode<T: Executable + Clone + Send>(
     dag: &Dag<T>,
     mode: ExecutionMode,
 ) -> Result<ExecutionLog, ExecError> {
@@ -238,7 +240,7 @@ pub fn execute_with_mode<T: Executable + Clone>(
 /// Input mocks are injected into entrypoint ports (inputs with no upstream edge).
 /// Mock keys using original SubDag IDs are automatically remapped to the
 /// lowered inner entrypoint IDs.
-pub fn execute_with_mode_and_inputs<T: Executable + Clone>(
+pub fn execute_with_mode_and_inputs<T: Executable + Clone + Send>(
     dag: &Dag<T>,
     mode: ExecutionMode,
     input_mocks: Option<&BoundaryMocks>,
@@ -276,7 +278,7 @@ pub fn execute_with_mode_and_inputs<T: Executable + Clone>(
 /// let mut ci = CiContext::detect();
 /// let log = execute_with_ci(&dag, &mut ci)?;
 /// ```
-pub fn execute_with_ci<T: Executable + Clone>(
+pub fn execute_with_ci<T: Executable + Clone + Send>(
     dag: &Dag<T>,
     ci: &mut crate::CiContext,
 ) -> Result<ExecutionLog, ExecError> {
@@ -284,7 +286,7 @@ pub fn execute_with_ci<T: Executable + Clone>(
 }
 
 /// Execute a DAG with both execution mode and CI context.
-pub fn execute_with_mode_and_ci<T: Executable + Clone>(
+pub fn execute_with_mode_and_ci<T: Executable + Clone + Send>(
     dag: &Dag<T>,
     mode: ExecutionMode,
     ci: &mut crate::CiContext,
@@ -313,7 +315,7 @@ pub fn execute_with_mode_and_ci<T: Executable + Clone>(
 /// let mut progress = None; // Will be initialized from snapshot
 /// let log = execute_with_progress(&dag, &mut progress)?;
 /// ```
-pub fn execute_with_progress<T: Executable + Clone>(
+pub fn execute_with_progress<T: Executable + Clone + Send>(
     dag: &Dag<T>,
     observer: &mut dyn ProgressObserver,
 ) -> Result<ExecutionLog, ExecError> {
@@ -321,7 +323,7 @@ pub fn execute_with_progress<T: Executable + Clone>(
 }
 
 /// Execute a DAG with both execution mode and progress observer.
-pub fn execute_with_progress_and_mode<T: Executable + Clone>(
+pub fn execute_with_progress_and_mode<T: Executable + Clone + Send>(
     dag: &Dag<T>,
     mode: ExecutionMode,
     observer: &mut dyn ProgressObserver,
@@ -332,7 +334,7 @@ pub fn execute_with_progress_and_mode<T: Executable + Clone>(
 }
 
 /// Execute a DAG with both execution mode and progress observer plus input mocks.
-pub fn execute_with_progress_and_mode_and_inputs<T: Executable + Clone>(
+pub fn execute_with_progress_and_mode_and_inputs<T: Executable + Clone + Send>(
     dag: &Dag<T>,
     mode: ExecutionMode,
     observer: &mut dyn ProgressObserver,
@@ -357,7 +359,7 @@ pub fn execute_with_progress_and_mode_and_inputs<T: Executable + Clone>(
 }
 
 /// Execute a DAG with execution mode, CI context, and progress observer.
-pub fn execute_with_all<T: Executable + Clone>(
+pub fn execute_with_all<T: Executable + Clone + Send>(
     dag: &Dag<T>,
     mode: ExecutionMode,
     ci: &mut crate::CiContext,
@@ -404,7 +406,7 @@ pub fn execute_with_all<T: Executable + Clone>(
 /// let inputs = HashMap::new();  // Or load from environment
 /// let outputs = execute_single_node(&dag, "lint", inputs, ExecutionMode::Real)?;
 /// ```
-pub fn execute_single_node<T: Executable + Clone>(
+pub fn execute_single_node<T: Executable + Clone + Send>(
     dag: &Dag<T>,
     node_id: &str,
     inputs: HashMap<String, Value>,
@@ -464,7 +466,7 @@ pub fn execute_single_node<T: Executable + Clone>(
 ///
 /// This is a convenience wrapper that returns a `SimulationResult` instead
 /// of just an `ExecutionLog`.
-pub fn simulate<T: Executable + Clone>(
+pub fn simulate<T: Executable + Clone + Send>(
     dag: &Dag<T>,
     config: SimConfig,
 ) -> Result<SimulationResult, ExecError> {
@@ -568,7 +570,24 @@ fn remap_mode_inputs(
 }
 
 /// Execute a flat (fully lowered) DAG.
-fn execute_flat<T: Executable + Clone>(
+fn execute_flat<T: Executable + Clone + Send>(
+    dag: &Dag<T>,
+    boundaries: &BoundaryInfo,
+    mode: &ExecutionMode,
+    ci: Option<&mut crate::CiContext>,
+    observer: Option<&mut dyn ProgressObserver>,
+    input_mocks: Option<&BoundaryMocks>,
+    loops: &[LoopInfo<T>],
+) -> Result<ExecutionLog, ExecError> {
+    if ci.is_none() && observer.is_none() {
+        return execute_flat_parallel(dag, mode, input_mocks, loops);
+    }
+
+    execute_flat_sequential(dag, boundaries, mode, ci, observer, input_mocks, loops)
+}
+
+/// Execute a flat DAG sequentially.
+fn execute_flat_sequential<T: Executable + Clone + Send>(
     dag: &Dag<T>,
     boundaries: &BoundaryInfo,
     mode: &ExecutionMode,
@@ -915,6 +934,423 @@ fn execute_flat<T: Executable + Clone>(
     Ok(ExecutionLog { entries })
 }
 
+/// Parse max node concurrency from `GUNBC_EXEC_MAX_CONCURRENCY`.
+///
+/// Defaults to unbounded so all ready nodes can run immediately.
+fn execution_max_concurrency() -> usize {
+    std::env::var("GUNBC_EXEC_MAX_CONCURRENCY")
+        .ok()
+        .and_then(|raw| raw.parse::<usize>().ok())
+        .filter(|n| *n > 0)
+        .unwrap_or(usize::MAX)
+}
+
+fn should_intercept_for_mode<T>(node: &Node<T>, mode: &ExecutionMode) -> bool {
+    let is_transport_executor = is_transport_execution_node(node);
+    let is_tool_env = is_tool_env_node(node);
+    let is_resource_env = is_resource_env_node(node);
+    let is_tool_consumer = consumes_tool_handle(node);
+    let has_full_mock = match mode {
+        ExecutionMode::DryRun(mocks) => has_full_mock_for_node(node, mocks),
+        ExecutionMode::Simulate(config) => has_full_mock_for_node(node, &config.boundary_mocks),
+        ExecutionMode::Real => false,
+    };
+
+    (is_transport_executor || is_tool_env || is_resource_env || is_tool_consumer || has_full_mock)
+        && matches!(mode, ExecutionMode::DryRun(_) | ExecutionMode::Simulate(_))
+}
+
+fn build_node_inputs<T>(
+    dag: &Dag<T>,
+    node: &Node<T>,
+    node_id: &NodeId,
+    edges_by_to_node: &HashMap<NodeId, Vec<&gunbc_ir::Edge>>,
+    node_outputs: &HashMap<String, HashMap<String, Value>>,
+    mode: &ExecutionMode,
+    input_mocks: Option<&BoundaryMocks>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    // Gather inputs from upstream edges (cardinality-aware).
+    let mut inputs: HashMap<String, Value> = HashMap::new();
+    let mut fan_in: HashMap<String, Vec<Value>> = HashMap::new();
+    let mut scalar_sources: HashMap<String, String> = HashMap::new();
+
+    let list_ports: HashMap<&str, Cardinality> = node
+        .inputs
+        .iter()
+        .filter(|p| p.cardinality.is_list())
+        .map(|p| (p.name.0.as_str(), p.cardinality))
+        .collect();
+
+    if let Some(edges) = edges_by_to_node.get(node_id) {
+        for &edge in edges {
+            if let Some(upstream) = node_outputs.get(&edge.from_node.0) {
+                if let Some(val) = upstream.get(&edge.from_port.0) {
+                    if list_ports.contains_key(edge.to_port.0.as_str()) {
+                        let from_cardinality = dag
+                            .get_node(&edge.from_node)
+                            .and_then(|n| n.outputs.iter().find(|p| p.name == edge.from_port))
+                            .map(|p| p.cardinality)
+                            .unwrap_or(Cardinality::ONE);
+
+                        // Optional/list outputs represent absence as Unit.
+                        if matches!(val, Value::Unit) && from_cardinality.allows_empty() {
+                            continue;
+                        }
+                        // Skipped outputs should not become list elements.
+                        if matches!(val, Value::Skipped) {
+                            continue;
+                        }
+
+                        let bucket = fan_in.entry(edge.to_port.0.clone()).or_default();
+                        if from_cardinality.is_list() {
+                            if let Value::List(items) = val {
+                                bucket.extend(items.clone());
+                            } else {
+                                bucket.push(val.clone());
+                            }
+                        } else {
+                            bucket.push(val.clone());
+                        }
+                    } else {
+                        if let Some(prev) = scalar_sources.get(&edge.to_port.0) {
+                            let current = format!("{}.{}", edge.from_node.0, edge.from_port.0);
+                            return Err(ExecError::new(format!(
+                                "scalar input '{}.{}' has multiple upstream edges: {} and {}",
+                                edge.to_node.0, edge.to_port.0, prev, current
+                            )));
+                        }
+                        scalar_sources.insert(
+                            edge.to_port.0.clone(),
+                            format!("{}.{}", edge.from_node.0, edge.from_port.0),
+                        );
+                        inputs.insert(edge.to_port.0.clone(), val.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    for (port_name, values) in fan_in {
+        inputs.insert(port_name, Value::List(values));
+    }
+
+    let mut inject_inputs = |mocks: &BoundaryMocks| {
+        for port in &node.inputs {
+            if !inputs.contains_key(&port.name.0) {
+                if let Some(mock_value) = mocks.get_input(&node.id.0, &port.name.0) {
+                    inputs.insert(port.name.0.clone(), mock_value.clone());
+                }
+            }
+        }
+    };
+
+    if let Some(mocks) = input_mocks {
+        inject_inputs(mocks);
+    }
+
+    if let ExecutionMode::DryRun(mocks)
+    | ExecutionMode::Simulate(SimConfig {
+        boundary_mocks: mocks,
+        ..
+    }) = mode
+    {
+        inject_inputs(mocks);
+    }
+
+    for port in &node.inputs {
+        if port.cardinality.is_list()
+            && port.cardinality.allows_empty()
+            && !inputs.contains_key(&port.name.0)
+        {
+            inputs.insert(port.name.0.clone(), Value::List(vec![]));
+        }
+    }
+
+    Ok(inputs)
+}
+
+fn finalize_node_parallel<T: Executable + Clone + Send>(
+    node_id: &NodeId,
+    outputs: HashMap<String, Value>,
+    was_intercepted: bool,
+    mode: &ExecutionMode,
+    loops_by_unpack: &HashMap<NodeId, &LoopInfo<T>>,
+    node_index: &HashMap<NodeId, usize>,
+    node_outputs: &mut HashMap<String, HashMap<String, Value>>,
+    node_entries: &mut [Option<LogEntry>],
+    loop_entries: &mut [Vec<LogEntry>],
+    dependents: &HashMap<NodeId, Vec<NodeId>>,
+    remaining_deps: &mut HashMap<NodeId, usize>,
+    ready: &mut Vec<NodeId>,
+    completed: &mut usize,
+) -> Result<(), ExecError> {
+    let idx = *node_index.get(node_id).ok_or_else(|| {
+        ExecError::new(format!("node '{}' missing from topological order", node_id.0))
+    })?;
+
+    node_outputs.insert(node_id.0.clone(), outputs.clone());
+    node_entries[idx] = Some(LogEntry {
+        node_id: node_id.0.clone(),
+        outputs,
+        was_intercepted,
+    });
+
+    if let Some(loop_info) = loops_by_unpack.get(node_id) {
+        let body_entries = execute_loop_body(loop_info, node_outputs, mode)?;
+
+        // Replace the unpack element output with transformed body results.
+        let results: Vec<Value> = body_entries
+            .iter()
+            .filter_map(|entry| entry.outputs.get("result").cloned())
+            .collect();
+        if let Some(unpack_out) = node_outputs.get_mut(&loop_info.unpack_id.0) {
+            unpack_out.insert(loop_info.element_port.clone(), Value::List(results));
+        }
+
+        loop_entries[idx].extend(body_entries);
+    }
+
+    *completed += 1;
+    if let Some(children) = dependents.get(node_id) {
+        for child in children {
+            let rem = remaining_deps.get_mut(child).ok_or_else(|| {
+                ExecError::new(format!("node '{}' missing dependency counter", child.0))
+            })?;
+            if *rem == 0 {
+                return Err(ExecError::new(format!(
+                    "node '{}' became ready more than once",
+                    child.0
+                )));
+            }
+            *rem -= 1;
+            if *rem == 0 {
+                ready.push(child.clone());
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn execute_flat_parallel<T: Executable + Clone + Send>(
+    dag: &Dag<T>,
+    mode: &ExecutionMode,
+    input_mocks: Option<&BoundaryMocks>,
+    loops: &[LoopInfo<T>],
+) -> Result<ExecutionLog, ExecError> {
+    struct NodeExecutionResult {
+        node_id: NodeId,
+        result: Result<HashMap<String, Value>, ExecError>,
+    }
+
+    let order = topo_sort(dag);
+    let node_map: HashMap<&str, &Node<T>> =
+        dag.nodes.iter().map(|n| (n.id.0.as_str(), n)).collect();
+    let node_index: HashMap<NodeId, usize> = order
+        .iter()
+        .enumerate()
+        .map(|(idx, id)| (id.clone(), idx))
+        .collect();
+    let loops_by_unpack: HashMap<NodeId, &LoopInfo<T>> =
+        loops.iter().map(|loop_info| (loop_info.unpack_id.clone(), loop_info)).collect();
+
+    // Precompute canonical edge order and group by destination node.
+    let ordered_edges = canonical_edge_order(&dag.edges);
+    let mut edges_by_to_node: HashMap<NodeId, Vec<&gunbc_ir::Edge>> = HashMap::new();
+    for edge in ordered_edges {
+        edges_by_to_node
+            .entry(edge.to_node.clone())
+            .or_default()
+            .push(edge);
+    }
+
+    // Scheduling graph built from unique node dependencies.
+    let mut dependencies: HashMap<NodeId, HashSet<NodeId>> = HashMap::new();
+    let mut dependents_set: HashMap<NodeId, HashSet<NodeId>> = HashMap::new();
+    for node in &dag.nodes {
+        dependencies.entry(node.id.clone()).or_default();
+        dependents_set.entry(node.id.clone()).or_default();
+    }
+    for edge in &dag.edges {
+        dependencies
+            .entry(edge.to_node.clone())
+            .or_default()
+            .insert(edge.from_node.clone());
+        dependents_set
+            .entry(edge.from_node.clone())
+            .or_default()
+            .insert(edge.to_node.clone());
+    }
+
+    let mut remaining_deps: HashMap<NodeId, usize> = dependencies
+        .into_iter()
+        .map(|(node_id, parents)| (node_id, parents.len()))
+        .collect();
+    let mut dependents: HashMap<NodeId, Vec<NodeId>> = dependents_set
+        .into_iter()
+        .map(|(node_id, children)| {
+            let mut sorted: Vec<NodeId> = children.into_iter().collect();
+            sorted.sort_by_key(|id| node_index.get(id).copied().unwrap_or(usize::MAX));
+            (node_id, sorted)
+        })
+        .collect();
+    for node in &dag.nodes {
+        dependents.entry(node.id.clone()).or_default();
+    }
+
+    let mut ready: Vec<NodeId> = order
+        .iter()
+        .filter(|id| remaining_deps.get(*id).copied().unwrap_or(0) == 0)
+        .cloned()
+        .collect();
+
+    let mut node_outputs: HashMap<String, HashMap<String, Value>> = HashMap::new();
+    let mut node_entries: Vec<Option<LogEntry>> = vec![None; order.len()];
+    let mut loop_entries: Vec<Vec<LogEntry>> = (0..order.len()).map(|_| Vec::new()).collect();
+
+    let max_concurrency = execution_max_concurrency();
+    let mut completed = 0usize;
+    let mut in_flight = 0usize;
+
+    let (tx, rx) = mpsc::channel::<NodeExecutionResult>();
+    thread::scope(|scope| -> Result<(), ExecError> {
+        while completed < order.len() {
+            ready.sort_by_key(|id| node_index.get(id).copied().unwrap_or(usize::MAX));
+            while !ready.is_empty() && in_flight < max_concurrency {
+                let node_id = ready.remove(0);
+                let node = node_map
+                    .get(node_id.0.as_str())
+                    .ok_or_else(|| ExecError::new(format!("node '{}' not found", node_id.0)))?;
+
+                let inputs = build_node_inputs(
+                    dag,
+                    node,
+                    &node_id,
+                    &edges_by_to_node,
+                    &node_outputs,
+                    mode,
+                    input_mocks,
+                )?;
+
+                if should_skip_node(node, &inputs) {
+                    let outputs: HashMap<String, Value> = node
+                        .outputs
+                        .iter()
+                        .map(|port| (port.name.0.clone(), Value::Skipped))
+                        .collect();
+                    finalize_node_parallel(
+                        &node_id,
+                        outputs,
+                        false,
+                        mode,
+                        &loops_by_unpack,
+                        &node_index,
+                        &mut node_outputs,
+                        &mut node_entries,
+                        &mut loop_entries,
+                        &dependents,
+                        &mut remaining_deps,
+                        &mut ready,
+                        &mut completed,
+                    )?;
+                    continue;
+                }
+
+                if should_intercept_for_mode(node, mode) {
+                    let mocks = match mode {
+                        ExecutionMode::DryRun(mocks) => mocks,
+                        ExecutionMode::Simulate(config) => &config.boundary_mocks,
+                        ExecutionMode::Real => unreachable!(),
+                    };
+                    let outputs = mock_intercept_outputs(node, mocks)?;
+                    finalize_node_parallel(
+                        &node_id,
+                        outputs,
+                        true,
+                        mode,
+                        &loops_by_unpack,
+                        &node_index,
+                        &mut node_outputs,
+                        &mut node_entries,
+                        &mut loop_entries,
+                        &dependents,
+                        &mut remaining_deps,
+                        &mut ready,
+                        &mut completed,
+                    )?;
+                    continue;
+                }
+
+                match &node.body {
+                    NodeBody::Opaque(op) => {
+                        let op = op.clone();
+                        let node_id_clone = node_id.clone();
+                        let tx = tx.clone();
+                        scope.spawn(move || {
+                            let result = op.execute(inputs);
+                            let _ = tx.send(NodeExecutionResult {
+                                node_id: node_id_clone,
+                                result,
+                            });
+                        });
+                        in_flight += 1;
+                    }
+                    NodeBody::SubDag(_) => {
+                        return Err(ExecError::new(format!(
+                            "node '{}' is a SubDag — DAG must be lowered before execution",
+                            node_id.0
+                        )));
+                    }
+                }
+            }
+
+            if completed >= order.len() {
+                break;
+            }
+
+            if in_flight == 0 {
+                return Err(ExecError::new(
+                    "execution stalled: no ready nodes and no running tasks",
+                ));
+            }
+
+            let completed_node = rx.recv().map_err(|_| {
+                ExecError::new("execution worker channel closed unexpectedly")
+            })?;
+            in_flight = in_flight.saturating_sub(1);
+            let outputs = completed_node.result?;
+            finalize_node_parallel(
+                &completed_node.node_id,
+                outputs,
+                false,
+                mode,
+                &loops_by_unpack,
+                &node_index,
+                &mut node_outputs,
+                &mut node_entries,
+                &mut loop_entries,
+                &dependents,
+                &mut remaining_deps,
+                &mut ready,
+                &mut completed,
+            )?;
+        }
+
+        Ok(())
+    })?;
+
+    let mut entries = Vec::new();
+    for (idx, node_id) in order.iter().enumerate() {
+        let entry = node_entries[idx].take().ok_or_else(|| {
+            ExecError::new(format!("node '{}' did not produce an execution log entry", node_id.0))
+        })?;
+        entries.push(entry);
+        entries.append(&mut loop_entries[idx]);
+    }
+
+    Ok(ExecutionLog { entries })
+}
+
 /// Add default mocks for transport nodes in a loop body DAG that don't
 /// already have explicit mocks. This lets DryRun mode intercept body-internal
 /// transport nodes without requiring graph_mock to reference their IDs
@@ -944,7 +1380,7 @@ fn auto_mock_body_transport<T>(body_dag: &Dag<T>, existing: &BoundaryMocks) -> B
 /// lowered, injected with the element value as an input mock, and executed.
 /// Each iteration's nodes get prefixed with `{unpack_id}/body_{i}/` for
 /// unique identification in the execution log.
-fn execute_loop_body<T: Executable + Clone>(
+fn execute_loop_body<T: Executable + Clone + Send>(
     loop_info: &LoopInfo<T>,
     node_outputs: &HashMap<String, HashMap<String, Value>>,
     mode: &ExecutionMode,
@@ -1206,6 +1642,8 @@ mod tests {
     use super::*;
     use gunbc_ir::build::*;
     use gunbc_ir::Edge;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     // Test operation: produces a fixed value, or passes through inputs if `pass_through` is set.
     #[derive(Debug, Clone)]
@@ -1249,6 +1687,106 @@ mod tests {
 
     // Backward-compat alias used in existing tests
     type Produce = TestOp;
+
+    #[test]
+    fn test_execute_runs_ready_nodes_in_parallel() {
+        if execution_max_concurrency() == 1 {
+            return;
+        }
+
+        #[derive(Debug, Clone)]
+        struct BlockingOp {
+            port: String,
+            value: Value,
+            sleep_ms: u64,
+            active: Arc<AtomicUsize>,
+            peak: Arc<AtomicUsize>,
+        }
+
+        impl BlockingOp {
+            fn new(
+                port: &str,
+                value: Value,
+                sleep_ms: u64,
+                active: Arc<AtomicUsize>,
+                peak: Arc<AtomicUsize>,
+            ) -> Self {
+                Self {
+                    port: port.to_string(),
+                    value,
+                    sleep_ms,
+                    active,
+                    peak,
+                }
+            }
+        }
+
+        impl Executable for BlockingOp {
+            fn execute(
+                &self,
+                _inputs: HashMap<String, Value>,
+            ) -> Result<HashMap<String, Value>, ExecError> {
+                let current = self.active.fetch_add(1, Ordering::SeqCst) + 1;
+                loop {
+                    let observed = self.peak.load(Ordering::SeqCst);
+                    if current <= observed {
+                        break;
+                    }
+                    if self
+                        .peak
+                        .compare_exchange(
+                            observed,
+                            current,
+                            Ordering::SeqCst,
+                            Ordering::SeqCst,
+                        )
+                        .is_ok()
+                    {
+                        break;
+                    }
+                }
+                std::thread::sleep(Duration::from_millis(self.sleep_ms));
+                self.active.fetch_sub(1, Ordering::SeqCst);
+
+                let mut out = HashMap::new();
+                out.insert(self.port.clone(), self.value.clone());
+                Ok(out)
+            }
+        }
+
+        let active = Arc::new(AtomicUsize::new(0));
+        let peak = Arc::new(AtomicUsize::new(0));
+
+        let mut dag: Dag<BlockingOp> = Dag::new();
+        dag.add_node(Node::opaque(
+            "A",
+            vec![],
+            vec![port("a", "Int")],
+            BlockingOp::new("a", Value::Int(1), 50, active.clone(), peak.clone()),
+        ));
+        dag.add_node(Node::opaque(
+            "B",
+            vec![],
+            vec![port("b", "Int")],
+            BlockingOp::new("b", Value::Int(2), 50, active.clone(), peak.clone()),
+        ));
+        dag.add_node(Node::opaque(
+            "C",
+            vec![port("a", "Int"), port("b", "Int")],
+            vec![port("out", "Int")],
+            BlockingOp::new("out", Value::Int(3), 0, active.clone(), peak.clone()),
+        ));
+        dag.add_edge(edge("A", "a", "C", "a"));
+        dag.add_edge(edge("B", "b", "C", "b"));
+
+        let log = execute(&dag).unwrap();
+        assert_eq!(log.entries.len(), 3);
+        assert!(
+            peak.load(Ordering::SeqCst) >= 2,
+            "expected at least 2 concurrent nodes, saw {}",
+            peak.load(Ordering::SeqCst)
+        );
+    }
 
     #[test]
     fn test_execute_simple_pipeline() {

@@ -25,19 +25,19 @@ pub type MakegenGraphOp = FileOpsGraph<MakegenOp>;
 pub fn makegen_signature() -> WorkflowSignature {
     WorkflowSignature::new()
         // Inputs (entrypoints)
-        .with_input("check_mode", "Bool", Cardinality::ZERO_OR_ONE)
+        .with_input("check_mode", "OptionalBool", Cardinality::ZERO_OR_ONE)
         .with_input("path", "String", Cardinality::ONE)
         // Outputs from execute_makegen_transport (boundary)
         .with_output("makegen_response", "TransportResponse", Cardinality::ZERO_OR_ONE)
-        .with_output("makegen_written_path", "String", Cardinality::ZERO_OR_ONE)
-        .with_output("makegen_content", "String", Cardinality::ZERO_OR_ONE)
+        .with_output("makegen_written_path", "OptionalString", Cardinality::ZERO_OR_ONE)
+        .with_output("makegen_content", "OptionalString", Cardinality::ZERO_OR_ONE)
         .with_output("skip", "Bool", Cardinality::ONE)
-        .with_output("skip_reason", "String", Cardinality::ZERO_OR_ONE)
+        .with_output("skip_reason", "OptionalString", Cardinality::ZERO_OR_ONE)
         // Outputs from compare_makegen_content (freshness)
         .with_output("fresh", "Bool", Cardinality::ONE)
         // Informational outputs from load_registry (secondary boundaries)
         .with_output("tool_count", "Int", Cardinality::ONE)
-        .with_output("tool_names", "String", Cardinality::ONE_OR_MORE)
+        .with_output("tool_names", "NonEmptyStringList", Cardinality::ONE_OR_MORE)
 }
 
 /// Build the makegen graph using DagBuilder.
