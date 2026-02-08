@@ -16,7 +16,6 @@ fn convert_ci_op(op: CIGraphOp) -> WorkspaceOp {
             WorkspaceOp::Primitive(gunbc_primitives::PrimitiveOp::EmbeddedFileExists(pfe))
         }
         CIGraphOp::Transport(t) => WorkspaceOp::Transport(t),
-        CIGraphOp::CliTool(cli) => WorkspaceOp::Clippy(cli),
         CIGraphOp::CloudEnv(env) => WorkspaceOp::CloudEnv(env),
         CIGraphOp::FsEnv(env) => WorkspaceOp::FsEnv(env),
     }
@@ -58,7 +57,12 @@ mod tests {
 
         match &node.body {
             NodeBody::SubDag(dag) => {
-                for node_id in ["execute_build", "execute_test", "execute_verify", "clippy_lint"] {
+                for node_id in [
+                    "execute_build",
+                    "execute_test",
+                    "execute_verify_check",
+                    "execute_clippy_lint",
+                ] {
                     assert!(
                         dag.get_node(&node_id.into()).is_some(),
                         "missing node: {}",

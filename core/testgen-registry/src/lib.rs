@@ -246,7 +246,7 @@ mod resource_tests {
                 Ok(_) => {}
                 Err(err) => {
                     failures.push(format!(
-                        "{} ({}): derive_resource_accesses failed: {}",
+                        "{} ({}): derive_resource_accesses failed: {:?}",
                         def.name, def.origin_crate, err
                     ));
                     continue;
@@ -266,7 +266,7 @@ mod resource_tests {
                     }
                 }
                 Err(err) => failures.push(format!(
-                    "{} ({}): detect_resource_conflicts failed: {}",
+                    "{} ({}): detect_resource_conflicts failed: {:?}",
                     def.name, def.origin_crate, err
                 )),
             }

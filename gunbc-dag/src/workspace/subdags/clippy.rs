@@ -55,9 +55,15 @@ mod tests {
 
         if let NodeBody::SubDag(subdag) = &node.body {
             let ids: Vec<&str> = subdag.nodes.iter().map(|n| n.id.0.as_str()).collect();
-            assert!(ids.contains(&"check"));
-            assert!(ids.contains(&"create"));
-            assert!(ids.contains(&"resolve"));
+            assert!(ids.contains(&"prepare_check"));
+            assert!(ids.contains(&"execute_check"));
+            assert!(ids.contains(&"parse_check"));
+            assert!(ids.contains(&"prepare_install"));
+            assert!(ids.contains(&"execute_install"));
+            assert!(ids.contains(&"parse_install"));
+            assert!(ids.contains(&"prepare_resolve"));
+            assert!(ids.contains(&"execute_resolve"));
+            assert!(ids.contains(&"parse_resolve"));
         } else {
             panic!("Expected SubDag");
         }

@@ -441,17 +441,25 @@ impl CliToolDef {
 /// - Check: Does the tool exist?
 /// - Install: Create/install the tool
 /// - Run: Execute the tool
+///
+/// The `Prepare*` / `Parse*` variants are for the transport triplet pattern:
+/// prepare (pure) → execute (transport boundary) → parse (pure).
+/// The legacy `Check`/`Install`/`Run` variants remain for imperative callers.
 #[derive(Debug, Clone)]
 pub enum CliToolOp {
-    /// Check if the tool is installed.
+    // ========================================================================
+    // Legacy imperative variants (used by Clippy::upsert_and_run, CargoOp, etc.)
+    // ========================================================================
+
+    /// Check if the tool is installed (imperative, directly executes shell).
     /// Outputs: exists (Bool), output (String)
     Check { tool: &'static CliToolDef },
 
-    /// Install the tool.
+    /// Install the tool (imperative, directly executes shell).
     /// Outputs: success (Bool), error (String if failed)
     Install { tool: &'static CliToolDef },
 
-    /// Run the tool with arguments.
+    /// Run the tool with arguments (imperative, directly executes shell).
     /// Outputs: success (Bool), stdout (String), stderr (String), exit_code (Int)
     Run {
         tool: &'static CliToolDef,
@@ -465,20 +473,58 @@ pub enum CliToolOp {
         tool: &'static CliToolDef,
         ports: Vec<String>,
     },
+
+    // ========================================================================
+    // Transport triplet variants (pure prepare/parse + transport execute)
+    // ========================================================================
+
+    /// Build a ShellRequest for checking tool existence.
+    /// Outputs: request (TransportRequest)
+    PrepareCheck { tool: &'static CliToolDef },
+
+    /// Parse a ShellResponse from a tool check.
+    /// Inputs: response (TransportResponse)
+    /// Outputs: exists (Bool)
+    ParseCheck { tool: &'static CliToolDef },
+
+    /// Build a ShellRequest for installing a tool.
+    /// Outputs: request (TransportRequest)
+    PrepareInstall { tool: &'static CliToolDef },
+
+    /// Parse a ShellResponse from a tool install.
+    /// Inputs: response (TransportResponse)
+    /// Outputs: install_done (Bool)
+    ParseInstall { tool: &'static CliToolDef },
+
+    /// Build a ShellRequest for running a tool.
+    /// Outputs: request (TransportRequest)
+    PrepareRun {
+        tool: &'static CliToolDef,
+        args: Vec<String>,
+    },
+
+    /// Parse a ShellResponse from running a tool.
+    /// Inputs: response (TransportResponse)
+    /// Outputs: success (Bool), exit_code (Int), stdout (Str), stderr (Str)
+    ParseRun { tool: &'static CliToolDef },
+
+    /// Transport execute wrapper — delegates to `gunbc_lib_transport::execute_transport()`.
+    /// Used as the execute node in CLI tool transport triplets.
+    Transport,
 }
 
 impl CliToolOp {
-    /// Create a Check operation.
+    /// Create a Check operation (imperative).
     pub fn check(tool: &'static CliToolDef) -> Self {
         Self::Check { tool }
     }
 
-    /// Create an Install operation.
+    /// Create an Install operation (imperative).
     pub fn install(tool: &'static CliToolDef) -> Self {
         Self::Install { tool }
     }
 
-    /// Create a Run operation.
+    /// Create a Run operation (imperative).
     pub fn run(tool: &'static CliToolDef, args: &[&str]) -> Self {
         Self::Run {
             tool,
@@ -491,13 +537,62 @@ impl CliToolOp {
         Self::ResourceGate { tool, ports }
     }
 
-    /// Get the tool this operation is for.
+    /// Create a PrepareCheck operation (transport triplet).
+    pub fn prepare_check(tool: &'static CliToolDef) -> Self {
+        Self::PrepareCheck { tool }
+    }
+
+    /// Create a ParseCheck operation (transport triplet).
+    pub fn parse_check(tool: &'static CliToolDef) -> Self {
+        Self::ParseCheck { tool }
+    }
+
+    /// Create a PrepareInstall operation (transport triplet).
+    pub fn prepare_install(tool: &'static CliToolDef) -> Self {
+        Self::PrepareInstall { tool }
+    }
+
+    /// Create a ParseInstall operation (transport triplet).
+    pub fn parse_install(tool: &'static CliToolDef) -> Self {
+        Self::ParseInstall { tool }
+    }
+
+    /// Create a PrepareRun operation (transport triplet).
+    pub fn prepare_run(tool: &'static CliToolDef, args: &[&str]) -> Self {
+        Self::PrepareRun {
+            tool,
+            args: args.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    /// Create a ParseRun operation (transport triplet).
+    pub fn parse_run(tool: &'static CliToolDef) -> Self {
+        Self::ParseRun { tool }
+    }
+
+    /// Create a Transport execute operation.
+    pub fn transport() -> Self {
+        Self::Transport
+    }
+
+    /// Get the tool this operation is for (if any).
     pub fn tool(&self) -> &'static CliToolDef {
         match self {
             Self::Check { tool }
             | Self::Install { tool }
             | Self::Run { tool, .. }
-            | Self::ResourceGate { tool, .. } => tool,
+            | Self::ResourceGate { tool, .. }
+            | Self::PrepareCheck { tool }
+            | Self::ParseCheck { tool }
+            | Self::PrepareInstall { tool }
+            | Self::ParseInstall { tool }
+            | Self::PrepareRun { tool, .. }
+            | Self::ParseRun { tool } => tool,
+            Self::Transport => {
+                // Transport nodes are generic — they don't have a tool.
+                // This should only be called on tool-bearing variants.
+                panic!("CliToolOp::Transport has no associated tool")
+            }
         }
     }
 }
@@ -514,8 +609,8 @@ use crate::value::Value;
 /// Build a CLI tool upsert sub-DAG node.
 ///
 /// This creates a `Node<CliToolOp>` containing a sub-DAG that implements
-/// the check → install → run pattern. The node can be composed into
-/// larger DAGs using the fractal DAG approach.
+/// the check → install → run pattern using standard transport triplets.
+/// Each phase is split into prepare (pure) → execute (transport) → parse (pure).
 ///
 /// # Arguments
 ///
@@ -534,12 +629,7 @@ use crate::value::Value;
 /// builder.add_node(node);
 /// ```
 pub fn build_cli_upsert(tool: &'static CliToolDef, args: &[&str]) -> Node<CliToolOp> {
-    build_cli_tool_subdag(
-        tool,
-        tool.id,
-        CliToolOp::run(tool, args),
-        ("result", "CliResult"),
-    )
+    build_cli_tool_subdag(tool, tool.id, ResolveKind::Run(args))
 }
 
 /// Build a CLI tool upsert sub-DAG for just check + install (no run).
@@ -547,35 +637,35 @@ pub fn build_cli_upsert(tool: &'static CliToolDef, args: &[&str]) -> Node<CliToo
 /// This is useful when you want to ensure a tool is installed but
 /// will run it separately with different arguments.
 pub fn build_cli_ensure(tool: &'static CliToolDef) -> Node<CliToolOp> {
-    build_cli_tool_subdag(
-        tool,
-        format!("{}_ensure", tool.id),
-        CliToolOp::check(tool),
-        ("exists", "Bool"),
-    )
+    build_cli_tool_subdag(tool, format!("{}_ensure", tool.id), ResolveKind::Check)
+}
+
+/// What the final (resolve) triplet should do.
+enum ResolveKind<'a> {
+    /// Re-check: outputs `exists: Bool`
+    Check,
+    /// Run with args: outputs `result: CliResult`
+    Run(&'a [&'a str]),
 }
 
 fn build_cli_tool_subdag(
     tool: &'static CliToolDef,
     name: impl Into<String>,
-    resolve_op: CliToolOp,
-    output: (&str, &str),
+    resolve: ResolveKind<'_>,
 ) -> Node<CliToolOp> {
     let name = name.into();
     let tool_res_name = format!("tool:{}", tool.id);
     let tool_res_port_name = format!("res:tool:{}", tool.id);
     let tool_res_port_read = Port::resource(tool_res_name.clone(), "Unit", AccessMode::Read);
     let tool_res_port_write = Port::resource(tool_res_name.clone(), "Unit", AccessMode::Write);
-    let resolve_access = match &resolve_op {
-        CliToolOp::Check { .. } => AccessMode::Read,
-        CliToolOp::Install { .. } => AccessMode::Write,
-        CliToolOp::Run { tool, .. } => tool.access_mode,
-        CliToolOp::ResourceGate { .. } => AccessMode::Read,
+    let resolve_access = match &resolve {
+        ResolveKind::Check => AccessMode::Read,
+        ResolveKind::Run(_) => tool.access_mode,
     };
     let tool_res_port_run = Port::resource(tool_res_name.clone(), "Unit", resolve_access);
 
     let needs_pkg = tool.install_cmd.is_some();
-    let needs_target = matches!(&resolve_op, CliToolOp::Run { .. })
+    let needs_target = matches!(&resolve, ResolveKind::Run(_))
         && tool.run_cmd.first().copied() == Some("cargo");
 
     let mut gate_outputs = vec![Port::scalar(format!("tool:{}", tool.id), "Unit")];
@@ -588,6 +678,7 @@ fn build_cli_tool_subdag(
 
     let mut dag = Dag::new();
 
+    // resource_gate (pure) — emits Unit values for resource ports
     dag.add_node(Node::opaque(
         "resource_gate",
         vec![],
@@ -598,90 +689,169 @@ fn build_cli_tool_subdag(
         ),
     ));
 
-    // Check node
+    // ========================================================================
+    // Check triplet: prepare_check → execute_check → parse_check
+    // ========================================================================
+
     dag.add_node(Node::opaque(
-        "check",
-        vec![Port::scalar("trigger", "Unit"), tool_res_port_read.clone()],
-        vec![Port::scalar("exists", "Bool")],
-        CliToolOp::check(tool),
+        "prepare_check",
+        vec![Port::scalar("trigger", "Unit")],
+        vec![Port::scalar("request", "TransportRequest")],
+        CliToolOp::prepare_check(tool),
     ));
 
-    // Create node (guarded by exists == false)
-    let mut create_inputs = vec![
-        Port::scalar("trigger", "Unit"),
-        Port::guarded_with_cardinality(
+    dag.add_node(Node::opaque(
+        "execute_check",
+        vec![
+            Port::scalar("request", "TransportRequest"),
+            tool_res_port_read.clone(),
+        ],
+        vec![Port::scalar("response", "TransportResponse")],
+        CliToolOp::transport(),
+    ));
+
+    dag.add_node(Node::opaque(
+        "parse_check",
+        vec![Port::scalar("response", "TransportResponse")],
+        vec![Port::scalar("exists", "Bool")],
+        CliToolOp::parse_check(tool),
+    ));
+
+    // Check triplet edges
+    dag.add_edge(Edge::new("prepare_check", "request", "execute_check", "request"));
+    dag.add_edge(Edge::new("execute_check", "response", "parse_check", "response"));
+
+    // ========================================================================
+    // Install triplet: prepare_install → execute_install → parse_install
+    // Guarded by exists == false
+    // ========================================================================
+
+    let mut install_execute_inputs = vec![
+        Port::scalar("request", "TransportRequest"),
+        tool_res_port_write.clone(),
+    ];
+    if needs_pkg {
+        install_execute_inputs.push(Port::resource("pkg", "Unit", AccessMode::Write));
+    }
+
+    dag.add_node(Node::opaque(
+        "prepare_install",
+        vec![Port::guarded_with_cardinality(
             "exists",
             "Bool",
             Cardinality::ONE,
             Guard::Eq(Value::Bool(false)),
-        ),
-        tool_res_port_write.clone(),
-    ];
-    if needs_pkg {
-        create_inputs.push(Port::resource("pkg", "Unit", AccessMode::Write));
-    }
-
-    dag.add_node(Node::opaque(
-        "create",
-        create_inputs,
-        vec![Port::optional("install_done", "OptionalBool")],
-        CliToolOp::install(tool),
+        )],
+        vec![Port::scalar("request", "TransportRequest")],
+        CliToolOp::prepare_install(tool),
     ));
 
-    // Resolve node (run or re-check)
-    let mut resolve_inputs = vec![
-        Port::scalar("trigger", "Unit"),
-        Port::scalar("exists", "Bool"),
-        Port::optional("install_done", "OptionalBool"),
+    dag.add_node(Node::opaque(
+        "execute_install",
+        install_execute_inputs,
+        vec![Port::scalar("response", "TransportResponse")],
+        CliToolOp::transport(),
+    ));
+
+    dag.add_node(Node::opaque(
+        "parse_install",
+        vec![Port::scalar("response", "TransportResponse")],
+        vec![Port::optional("install_done", "OptionalBool")],
+        CliToolOp::parse_install(tool),
+    ));
+
+    // Install triplet edges
+    dag.add_edge(Edge::new("prepare_install", "request", "execute_install", "request"));
+    dag.add_edge(Edge::new("execute_install", "response", "parse_install", "response"));
+
+    // Check → install guard
+    dag.add_edge(Edge::new("parse_check", "exists", "prepare_install", "exists"));
+
+    // ========================================================================
+    // Resolve triplet: prepare_resolve → execute_resolve → parse_resolve
+    // ========================================================================
+
+    let (resolve_prepare_op, resolve_parse_op, resolve_output) = match &resolve {
+        ResolveKind::Check => (
+            CliToolOp::prepare_check(tool),
+            CliToolOp::parse_check(tool),
+            ("exists", "Bool"),
+        ),
+        ResolveKind::Run(args) => (
+            CliToolOp::prepare_run(tool, args),
+            CliToolOp::parse_run(tool),
+            ("result", "CliResult"),
+        ),
+    };
+
+    let mut resolve_execute_inputs = vec![
+        Port::scalar("request", "TransportRequest"),
         tool_res_port_run,
     ];
     if needs_target {
-        resolve_inputs.push(Port::resource("target", "Unit", AccessMode::Write));
+        resolve_execute_inputs.push(Port::resource("target", "Unit", AccessMode::Write));
     }
 
     dag.add_node(Node::opaque(
-        "resolve",
-        resolve_inputs,
-        vec![Port::scalar(output.0, output.1)],
-        resolve_op,
+        "prepare_resolve",
+        vec![
+            Port::scalar("exists", "Bool"),
+            Port::optional("install_done", "OptionalBool"),
+        ],
+        vec![Port::scalar("request", "TransportRequest")],
+        resolve_prepare_op,
     ));
 
-    // Edges for control ordering
-    dag.add_edge(Edge::new("check", "exists", "create", "exists"));
-    dag.add_edge(Edge::new("check", "exists", "resolve", "exists"));
-    dag.add_edge(Edge::new(
-        "create",
-        "install_done",
-        "resolve",
-        "install_done",
+    dag.add_node(Node::opaque(
+        "execute_resolve",
+        resolve_execute_inputs,
+        vec![Port::scalar("response", "TransportResponse")],
+        CliToolOp::transport(),
     ));
 
+    dag.add_node(Node::opaque(
+        "parse_resolve",
+        vec![Port::scalar("response", "TransportResponse")],
+        vec![Port::scalar(resolve_output.0, resolve_output.1)],
+        resolve_parse_op,
+    ));
+
+    // Resolve triplet edges
+    dag.add_edge(Edge::new("prepare_resolve", "request", "execute_resolve", "request"));
+    dag.add_edge(Edge::new("execute_resolve", "response", "parse_resolve", "response"));
+
+    // Data flow into resolve: check result + install result
+    dag.add_edge(Edge::new("parse_check", "exists", "prepare_resolve", "exists"));
+    dag.add_edge(Edge::new("parse_install", "install_done", "prepare_resolve", "install_done"));
+
+    // ========================================================================
     // Resource gate wiring
+    // ========================================================================
     let tool_gate_port = format!("tool:{}", tool.id);
     dag.add_edge(Edge::new(
         "resource_gate",
         tool_gate_port.as_str(),
-        "check",
+        "execute_check",
         tool_res_port_name.as_str(),
     ));
     dag.add_edge(Edge::new(
         "resource_gate",
         tool_gate_port.as_str(),
-        "create",
+        "execute_install",
         tool_res_port_name.as_str(),
     ));
     dag.add_edge(Edge::new(
         "resource_gate",
         tool_gate_port.as_str(),
-        "resolve",
+        "execute_resolve",
         tool_res_port_name.as_str(),
     ));
 
     if needs_pkg {
-        dag.add_edge(Edge::new("resource_gate", "pkg", "create", "res:pkg"));
+        dag.add_edge(Edge::new("resource_gate", "pkg", "execute_install", "res:pkg"));
     }
     if needs_target {
-        dag.add_edge(Edge::new("resource_gate", "target", "resolve", "res:target"));
+        dag.add_edge(Edge::new("resource_gate", "target", "execute_resolve", "res:target"));
     }
 
     Node::subdag(name, dag)

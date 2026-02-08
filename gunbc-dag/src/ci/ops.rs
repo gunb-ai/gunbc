@@ -14,7 +14,7 @@
 
 use crate::makegen::BuildConfig;
 use gunbc_exec::{
-    optional_bool_strict, optional_response_strict, optional_str_strict, propagate_skipped,
+    optional_response_strict, optional_str_strict, propagate_skipped,
     require_bool, require_response, ExecError, Executable, OutputMap,
     TransportResponseExt,
 };
@@ -95,7 +95,7 @@ pub enum CIOp {
     /// Inputs: build_success: Bool
     /// Outputs: skip: Bool, skip_reason: String (if skipping)
     PrepareClippyLint,
-    /// Parse clippy lint result - convert CliToolOp outputs to CI format (pure)
+    /// Parse clippy lint result - convert TransportResponse to CI format (pure)
     /// Inputs: success: Bool, stdout: String, stderr: String, skip: Bool
     /// Outputs: lint_success, lint_skipped, lint_stdout, lint_stderr
     ParseClippyLintResult,
@@ -535,10 +535,9 @@ fn execute_parse_test_result(
 // Lint Stage - Pure Operations (using Clippy SubDag)
 // ============================================================================
 
-/// Prepare clippy lint - check if we should skip based on build_success (pure).
+/// Prepare clippy lint - check if we should skip, and build the shell command (pure).
 ///
-/// This is the pre-gate for the Clippy tool execution. It checks if the build succeeded
-/// and either allows the lint or signals to skip.
+/// Outputs: request (TransportRequest), skip (Bool), skip_reason (OptionalString)
 fn execute_prepare_clippy_lint(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
@@ -559,21 +558,34 @@ fn execute_prepare_clippy_lint(
             .ok();
     }
 
-    OutputMap::new().bool("skip", false).ok()
+    let request = TransportRequest::Shell(
+        ShellRequest::new("cargo")
+            .args(["clippy", "--all-targets", "--", "-D", "warnings"]),
+    );
+
+    OutputMap::new()
+        .request("request", request)
+        .bool("skip", false)
+        .ok()
 }
 
-/// Parse clippy lint result - convert CliToolOp outputs to CI format (pure).
+/// Parse clippy lint result - convert TransportResponse to CI format (pure).
 ///
-/// This is the post-parse for the Clippy SubDag. It converts the clippy run
-/// outputs (success, stdout, stderr) to the expected CI format.
+/// Inputs: response (TransportResponse), skip (Bool), skip_reason (OptionalString)
+/// Outputs: lint_success, lint_skipped, lint_stdout, lint_stderr
 fn execute_parse_clippy_lint_result(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
+    if let Some(result) = propagate_skipped(
+        &inputs,
+        "response",
+        &["lint_success", "lint_skipped", "lint_stdout", "lint_stderr"],
+    ) {
+        return result;
+    }
+
     let skip = require_bool(&inputs, "skip")?;
     let skip_reason = optional_str_strict(&inputs, "skip_reason")?;
-    let success = optional_bool_strict(&inputs, "success")?;
-    let stdout = optional_str_strict(&inputs, "stdout")?;
-    let stderr = optional_str_strict(&inputs, "stderr")?;
 
     if skip {
         let reason = skip_reason.unwrap_or("Skipped");
@@ -585,16 +597,25 @@ fn execute_parse_clippy_lint_result(
             .ok();
     }
 
-    // Get outputs from the clippy SubDag (from the 'resolve' node which runs clippy)
-    let success = success.unwrap_or(false);
-    let stdout = stdout.unwrap_or("").to_string();
-    let stderr = stderr.unwrap_or("").to_string();
+    let response = optional_response_strict(&inputs, "response")?;
+
+    let shell = match response {
+        Some(response) => response.require_shell()?,
+        None => {
+            return OutputMap::new()
+                .bool("lint_success", false)
+                .bool("lint_skipped", false)
+                .str("lint_stdout", "")
+                .str("lint_stderr", "missing response")
+                .ok();
+        }
+    };
 
     OutputMap::new()
-        .bool("lint_success", success)
+        .bool("lint_success", shell.success())
         .bool("lint_skipped", false)
-        .str("lint_stdout", stdout)
-        .str("lint_stderr", stderr)
+        .str("lint_stdout", shell.stdout.clone())
+        .str("lint_stderr", shell.stderr.clone())
         .ok()
 }
 
@@ -1083,7 +1104,16 @@ impl Mockable for CIOp {
                 .bool("guardrail_success", true)
                 .str("guardrail_stderr", "")
                 .build(),
-            CIOp::PrepareClippyLint => OutputMap::new().bool("skip", false).build(),
+            CIOp::PrepareClippyLint => {
+                let request = TransportRequest::Shell(
+                    ShellRequest::new("cargo")
+                        .args(["clippy", "--all-targets", "--", "-D", "warnings"]),
+                );
+                OutputMap::new()
+                    .request("request", request)
+                    .bool("skip", false)
+                    .build()
+            }
             CIOp::ParseClippyLintResult => OutputMap::new()
                 .bool("lint_success", true)
                 .bool("lint_skipped", false)

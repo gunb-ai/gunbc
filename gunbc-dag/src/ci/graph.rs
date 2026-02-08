@@ -5,9 +5,9 @@
 //! # Transport Pattern (following MakegenGraphOp)
 //!
 //! This module follows the "every node is pure" principle:
-//! - `CIGraphOp` is a union of pure CI ops, primitives, transport, and CLI tool ops
-//! - I/O happens through explicit `TransportOps::Execute` nodes and self-acquiring CLI tool nodes
-//! - DryRun can intercept transport nodes and env tool acquisition
+//! - `CIGraphOp` is a union of pure CI ops, primitives, and transport
+//! - I/O happens through explicit `TransportOps::Execute` nodes
+//! - DryRun can intercept all transport nodes
 //!
 //! # Pipeline Structure
 //!
@@ -26,7 +26,7 @@
 //!   PrepareTestCommand -> Execute -> ParseTestResult
 //!
 //! Lint Stage:
-//!   PrepareClippyLint -> ClippyLint (self-acquiring) -> ParseClippyLint
+//!   PrepareClippyLint -> Execute -> ParseClippyLint
 //!
 //! Guardrails Stage:
 //!   PrepareGuardrailCheck -> Execute -> ParseGuardrailResult
@@ -40,9 +40,8 @@ use crate::codegen::{build_codegen_graph_with_mode, CodegenGraphOp, CodegenOp};
 use crate::WorkspaceBinary;
 use gunbc_lib_cloud_ops::CloudEnvStatus;
 use gunbc_deps::DEFAULT_MANIFEST_FILENAME;
-use gunbc_exec::{require_bool, ExecError, Executable, IntoExecResult, OutputMap};
+use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::resource::ExecMode;
-use gunbc_ir::transport::cli::CliToolOp;
 use gunbc_ir::{
     build::*,
     transport::github_actions::{
@@ -53,7 +52,6 @@ use gunbc_ir::{
     BuilderError, Cardinality, Dag, DagBuilder, Node, NodeBody, NodeId, NodeRef, Value,
     WorkflowSignature,
 };
-use gunbc_lib_transport::cli::{execute_cli_tool_op, upsert_tool_with, WhichResolver};
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::{EmbeddedFileExistsOp, FsEnv};
 use std::collections::HashMap;
@@ -68,8 +66,7 @@ use std::collections::HashMap;
 /// - `CI(CIOp)` - domain-specific pure operations
 /// - `Codegen(CodegenOp)` - inlined codegen DAG operations
 /// - `PrepareFileExists` - embedded primitive for file existence checks (from gunbc-primitives)
-/// - `Transport` - boundary for actual I/O
-/// - `CliTool` - CLI tool operations (self-acquiring: check/install before run)
+/// - `Transport` - boundary for actual I/O (including clippy lint)
 #[derive(Debug, Clone)]
 pub enum CIGraphOp {
     /// CI-specific pure operations
@@ -84,8 +81,6 @@ pub enum CIGraphOp {
     PrepareFileExists(EmbeddedFileExistsOp),
     /// Transport operations (boundary - actual I/O)
     Transport(TransportOps),
-    /// CLI tool operations (self-acquiring: check/install before run)
-    CliTool(CliToolOp),
 }
 
 impl Executable for CIGraphOp {
@@ -97,28 +92,6 @@ impl Executable for CIGraphOp {
             CIGraphOp::FsEnv(op) => op.execute(inputs),
             CIGraphOp::PrepareFileExists(op) => op.execute(inputs),
             CIGraphOp::Transport(op) => op.execute(inputs),
-            CIGraphOp::CliTool(op) => {
-                // Check if we should skip execution
-                let skip = require_bool(&inputs, "skip")?;
-
-                if skip {
-                    // Pass through skip flag, don't run the tool
-                    return OutputMap::new().bool("skip", true).ok();
-                }
-
-                // Self-acquiring: ensure tool is installed, then run via PATH
-                if let CliToolOp::Run { tool, .. } = op {
-                    let _ = upsert_tool_with(tool, &WhichResolver).map_err(|e| {
-                        ExecError::new(format!("Failed to acquire tool '{}': {}", tool.id, e))
-                    })?;
-                }
-                let result = execute_cli_tool_op(op).exec_context("CLI tool error")?;
-
-                // Copy tool outputs and add skip=false
-                let mut out = result;
-                out.insert("skip".to_string(), Value::Bool(false));
-                Ok(out)
-            }
         }
     }
 }
@@ -147,7 +120,7 @@ pub fn ci_signature() -> WorkflowSignature {
         // Note: test_stdout is no longer a boundary output - it's wired to report node
         .with_output("lint_skipped", "Bool", Cardinality::ONE)
         .with_output("lint_stdout", "String", Cardinality::ONE)
-        .with_output("skip_reason", "String", Cardinality::ZERO_OR_ONE)
+        .with_output("skip_reason", "OptionalString", Cardinality::ZERO_OR_ONE)
         .with_output("overall_success", "Bool", Cardinality::ONE)
         .with_output("report", "String", Cardinality::ONE)
 }
@@ -348,59 +321,24 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
     )?;
 
     // ========================================================================
-    // Lint Stage (parallel with Test) - receives tool handle from env node
+    // Lint Stage (parallel with Test) - standard transport triplet
     // ========================================================================
 
-    // PrepareClippyLint - pure gate for clippy execution
-    let prepare_clippy_lint = builder.add_node_after(
-        Node::opaque(
-            "prepare_clippy_lint",
-            vec![port("build_success", "Bool"), port("pragma_success", "Bool")],
-            vec![port("skip", "Bool"), optional("skip_reason", "OptionalString")],
-            CIGraphOp::CI(CIOp::PrepareClippyLint),
-        ),
+    let lint = add_skippable_transport_triplet(
+        &mut builder,
+        "clippy_lint",
+        vec![port("build_success", "Bool"), port("pragma_success", "Bool")],
+        vec![fs_resource.clone()],
+        vec![
+            port("lint_success", "Bool"),
+            port("lint_skipped", "Bool"),
+            port("lint_stdout", "String"),
+            port("lint_stderr", "String"),
+        ],
+        CIGraphOp::CI(CIOp::PrepareClippyLint),
+        CIGraphOp::CI(CIOp::ParseClippyLintResult),
+        CIGraphOp::Transport(TransportOps::Execute),
         &build.parse,
-    )?;
-
-    // ClippyLint - self-acquiring: calls upsert_tool_with() before running
-    let clippy_lint = builder.add_node_after(
-        Node::opaque(
-            "clippy_lint",
-            vec![port("skip", "Bool")],
-            vec![
-                optional("success", "OptionalBool"),
-                optional("stdout", "OptionalString"),
-                optional("stderr", "OptionalString"),
-                port("skip", "Bool"),
-            ],
-            CIGraphOp::CliTool(CliToolOp::run(
-                &gunbc_ir::transport::cli::CLIPPY,
-                &["--all-targets", "--", "-D", "warnings"],
-            )),
-        ),
-        &prepare_clippy_lint,
-    )?;
-
-    // ParseClippyLintResult - pure parser for clippy outputs
-    let parse_lint = builder.add_node_after(
-        Node::opaque(
-            "parse_clippy_lint",
-            vec![
-                optional("success", "OptionalBool"),
-                optional("stdout", "OptionalString"),
-                optional("stderr", "OptionalString"),
-                port("skip", "Bool"),
-                optional("skip_reason", "OptionalString"),
-            ],
-            vec![
-                port("lint_success", "Bool"),
-                port("lint_skipped", "Bool"),
-                port("lint_stdout", "String"),
-                port("lint_stderr", "String"),
-            ],
-            CIGraphOp::CI(CIOp::ParseClippyLintResult),
-        ),
-        &clippy_lint,
     )?;
 
     // ========================================================================
@@ -470,7 +408,7 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
             vec![port("overall_success", "Bool"), port("report", "String")],
             CIGraphOp::CI(CIOp::Report),
         ),
-        &[&test.parse, &parse_lint, &guardrail.parse, &verify.parse],
+        &[&test.parse, &lint.parse, &guardrail.parse, &verify.parse],
     )?;
 
     // ========================================================================
@@ -517,20 +455,11 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
     // Lint stage (parallel with test, both depend on build)
     builder.add_edge(
         build.parse.out("build_success"),
-        prepare_clippy_lint.in_port("build_success"),
+        lint.prepare.in_port("build_success"),
     )?;
     builder.add_edge(
         pragma.parse.out("pragma_success"),
-        prepare_clippy_lint.in_port("pragma_success"),
-    )?;
-    builder.add_edge(prepare_clippy_lint.out("skip"), clippy_lint.in_port("skip"))?;
-    builder.add_edge(clippy_lint.out("success"), parse_lint.in_port("success"))?;
-    builder.add_edge(clippy_lint.out("stdout"), parse_lint.in_port("stdout"))?;
-    builder.add_edge(clippy_lint.out("stderr"), parse_lint.in_port("stderr"))?;
-    builder.add_edge(clippy_lint.out("skip"), parse_lint.in_port("skip"))?;
-    builder.add_edge(
-        prepare_clippy_lint.out("skip_reason"),
-        parse_lint.in_port("skip_reason"),
+        lint.prepare.in_port("pragma_success"),
     )?;
 
     // Guardrails stage — testgen feeds prepare
@@ -564,7 +493,7 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
     // Report — success flags and stderr for failure details
     builder.add_edge(build.parse.out("build_success"), report.in_port("build_success"))?;
     builder.add_edge(test.parse.out("test_success"), report.in_port("test_success"))?;
-    builder.add_edge(parse_lint.out("lint_success"), report.in_port("lint_success"))?;
+    builder.add_edge(lint.parse.out("lint_success"), report.in_port("lint_success"))?;
     builder.add_edge(testgen.parse.out("testgen_success"), report.in_port("testgen_success"))?;
     builder.add_edge(
         bootstrap.parse.out("bootstrap_success"),
@@ -587,7 +516,7 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
     )?;
     builder.add_edge(test.parse.out("test_stdout"), report.in_port("test_stdout"))?;
     builder.add_edge(test.parse.out("test_stderr"), report.in_port("test_stderr"))?;
-    builder.add_edge(parse_lint.out("lint_stderr"), report.in_port("lint_stderr"))?;
+    builder.add_edge(lint.parse.out("lint_stderr"), report.in_port("lint_stderr"))?;
     builder.add_edge(guardrail.parse.out("guardrail_stderr"), report.in_port("guardrail_stderr"))?;
     builder.add_edge(verify.parse.out("verify_success"), report.in_port("verify_success"))?;
     builder.add_edge(verify.parse.out("verify_stderr"), report.in_port("verify_stderr"))?;
@@ -603,6 +532,7 @@ pub fn build_ci_graph_with_mode(mode: ExecMode) -> Result<Dag<CIGraphOp>, Builde
     builder.add_edge(fs_env.out("fs:write"), testgen.execute.in_port("res:fs"))?;
     builder.add_edge(fs_env.out("fs:write"), build.execute.in_port("res:fs"))?;
     builder.add_edge(fs_env.out("fs:write"), test.execute.in_port("res:fs"))?;
+    builder.add_edge(fs_env.out("fs:write"), lint.execute.in_port("res:fs"))?;
     builder.add_edge(fs_env.out("fs:write"), guardrail.execute.in_port("res:fs"))?;
     builder.add_edge(fs_env.out("fs:write"), verify.execute.in_port("res:fs"))?;
 
@@ -701,9 +631,9 @@ mod tests {
             "execute_stamp_write",
             "execute_build",
             "execute_test",
-            "clippy_lint",
-            "execute_guardrail",
-            "execute_verify",
+            "execute_clippy_lint",
+            "execute_guardrail_check",
+            "execute_verify_check",
             "report",
         ];
 
@@ -729,8 +659,8 @@ mod tests {
             "execute_testgen",
             "execute_build",
             "execute_test",
-            "execute_guardrail",
-            "execute_verify",
+            "execute_guardrail_check",
+            "execute_verify_check",
         ] {
             let node = dag
                 .get_node(&node_id.into())
@@ -742,42 +672,35 @@ mod tests {
             );
         }
 
-        let clippy_node = dag
-            .get_node(&"clippy_lint".into())
-            .expect("clippy_lint node should exist");
-        assert!(
-            matches!(clippy_node.body, NodeBody::Opaque(CIGraphOp::CliTool(_))),
-            "clippy_lint should be a CLI tool node"
-        );
     }
 
     #[test]
-    fn test_graph_has_clippy_lint_node() {
+    fn test_graph_has_clippy_lint_triplet() {
         let dag = build_ci_graph().expect("graph should build");
 
-        // Find clippy_lint node
-        let clippy_lint = dag.get_node(&"clippy_lint".into());
-        assert!(clippy_lint.is_some(), "clippy_lint node should exist");
-
-        // Verify it has a skip input (self-acquiring, no ToolHandle input)
-        if let Some(node) = clippy_lint {
-            let has_skip_input = node
-                .inputs
-                .iter()
-                .any(|p| p.name.0 == "skip" && p.type_id.0 == "Bool");
+        // Verify the clippy lint transport triplet exists
+        for node_id in ["prepare_clippy_lint", "execute_clippy_lint", "parse_clippy_lint"] {
             assert!(
-                has_skip_input,
-                "clippy_lint should have skip Bool input"
-            );
-            let has_tool_input = node
-                .inputs
-                .iter()
-                .any(|p| p.name.0 == "tool:clippy");
-            assert!(
-                !has_tool_input,
-                "clippy_lint should not have tool:clippy input (self-acquiring)"
+                dag.get_node(&node_id.into()).is_some(),
+                "missing clippy lint triplet node: {}",
+                node_id
             );
         }
+
+        // Verify execute node is a Transport op with TransportRequest input
+        let execute_node = dag.get_node(&"execute_clippy_lint".into()).unwrap();
+        assert!(
+            matches!(execute_node.body, NodeBody::Opaque(CIGraphOp::Transport(_))),
+            "execute_clippy_lint should be a transport node"
+        );
+        let has_request_input = execute_node
+            .inputs
+            .iter()
+            .any(|p| p.type_id.0 == "TransportRequest");
+        assert!(
+            has_request_input,
+            "execute_clippy_lint should have TransportRequest input"
+        );
     }
 
     #[test]
@@ -814,9 +737,10 @@ mod tests {
     #[test]
     fn test_ci_integrations() {
         let integrations = ci_integrations();
-        assert_eq!(integrations.len(), 2);
+        assert_eq!(integrations.len(), 3);
         assert!(integrations.iter().any(|i| i.id == "checkout"));
         assert!(integrations.iter().any(|i| i.id == "rust-toolchain"));
+        assert!(integrations.iter().any(|i| i.id == "gcp-wif"));
     }
 
     #[test]

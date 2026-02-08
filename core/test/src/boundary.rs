@@ -60,7 +60,7 @@ fn find_transport_executors<T>(dag: &Dag<T>) -> Vec<String> {
 /// let result = assert_boundary_mockable(&dag, default_mocks());
 /// assert!(result.is_ok());
 /// ```
-pub fn assert_boundary_mockable<T: gunbc_exec::Executable + Clone>(
+pub fn assert_boundary_mockable<T: gunbc_exec::Executable + Clone + Send>(
     dag: &Dag<T>,
     mocks: BoundaryMocks,
 ) -> BoundaryTestResult {

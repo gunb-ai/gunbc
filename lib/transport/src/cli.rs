@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use std::process::Command;
 
 use gunbc_ir::transport::cli::{CliToolDef, CliToolError, CliToolOp, ToolHandle, ToolPathResolver};
+use gunbc_ir::transport::{ShellRequest, ShellResponse, TransportRequest, TransportResponse};
 use gunbc_ir::Value;
 
 /// Resolver that uses the `which` command to find binaries on PATH (Unix).
@@ -141,7 +142,190 @@ pub fn execute_cli_tool_op(
         CliToolOp::Install { tool } => execute_install(tool),
         CliToolOp::Run { tool, args } => execute_run(tool, args),
         CliToolOp::ResourceGate { ports, .. } => execute_resource_gate(ports),
+        CliToolOp::PrepareCheck { tool } => Ok(prepare_check(tool)),
+        CliToolOp::ParseCheck { .. } => {
+            panic!("ParseCheck should be called via execute_cli_tool_op_with_inputs")
+        }
+        CliToolOp::PrepareInstall { tool } => Ok(prepare_install(tool)),
+        CliToolOp::ParseInstall { .. } => {
+            panic!("ParseInstall should be called via execute_cli_tool_op_with_inputs")
+        }
+        CliToolOp::PrepareRun { tool, args } => Ok(prepare_run(tool, args)),
+        CliToolOp::ParseRun { .. } => {
+            panic!("ParseRun should be called via execute_cli_tool_op_with_inputs")
+        }
+        CliToolOp::Transport => {
+            panic!("Transport should be executed via TransportOps, not execute_cli_tool_op")
+        }
     }
+}
+
+/// Execute a CLI tool op with inputs (for prepare/parse variants that need them).
+pub fn execute_cli_tool_op_with_inputs(
+    op: &CliToolOp,
+    inputs: &HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, CliToolError> {
+    match op {
+        CliToolOp::ParseCheck { tool } => {
+            match extract_shell_response(inputs, tool) {
+                Ok(response) => Ok(parse_check(&response)),
+                Err(_) if is_skipped_response(inputs) => Ok(skip_outputs(&["exists"])),
+                Err(e) => Err(e),
+            }
+        }
+        CliToolOp::ParseInstall { tool } => {
+            match extract_shell_response(inputs, tool) {
+                Ok(response) => Ok(parse_install(&response)),
+                Err(_) if is_skipped_response(inputs) => Ok(skip_outputs(&["install_done"])),
+                Err(e) => Err(e),
+            }
+        }
+        CliToolOp::ParseRun { tool } => {
+            match extract_shell_response(inputs, tool) {
+                Ok(response) => Ok(parse_run(&response)),
+                Err(_) if is_skipped_response(inputs) => {
+                    Ok(skip_outputs(&["success", "exit_code", "stdout", "stderr"]))
+                }
+                Err(e) => Err(e),
+            }
+        }
+        CliToolOp::PrepareRun { tool, args } => {
+            // Validate optional inputs before building the request
+            validate_optional_inputs(inputs, tool)?;
+            Ok(prepare_run(tool, args))
+        }
+        CliToolOp::PrepareCheck { tool } => {
+            validate_optional_inputs(inputs, tool)?;
+            Ok(prepare_check(tool))
+        }
+        // For non-parse variants, delegate to the no-inputs version
+        _ => execute_cli_tool_op(op),
+    }
+}
+
+// ============================================================================
+// Prepare functions (pure: build ShellRequest → TransportRequest)
+// ============================================================================
+
+/// Build a TransportRequest for checking tool existence.
+pub fn prepare_check(tool: &'static CliToolDef) -> HashMap<String, Value> {
+    let request = build_shell_request(tool.check_cmd, &[]);
+    let mut out = HashMap::new();
+    out.insert("request".to_string(), Value::Request(TransportRequest::Shell(request)));
+    out
+}
+
+/// Build a TransportRequest for installing a tool.
+pub fn prepare_install(tool: &'static CliToolDef) -> HashMap<String, Value> {
+    let mut out = HashMap::new();
+    if let Some(install_cmd) = tool.install_cmd {
+        let request = build_shell_request(install_cmd, &[]);
+        out.insert("request".to_string(), Value::Request(TransportRequest::Shell(request)));
+    }
+    out
+}
+
+/// Build a TransportRequest for running a tool.
+pub fn prepare_run(tool: &'static CliToolDef, args: &[String]) -> HashMap<String, Value> {
+    let request = build_shell_request(tool.run_cmd, args);
+    let mut out = HashMap::new();
+    out.insert("request".to_string(), Value::Request(TransportRequest::Shell(request)));
+    out
+}
+
+// ============================================================================
+// Parse functions (pure: ShellResponse → domain outputs)
+// ============================================================================
+
+/// Parse a check response: exists = exit_code == 0.
+pub fn parse_check(response: &ShellResponse) -> HashMap<String, Value> {
+    let mut out = HashMap::new();
+    out.insert("exists".to_string(), Value::Bool(response.exit_code == 0));
+    out
+}
+
+/// Parse an install response: install_done = exit_code == 0.
+pub fn parse_install(response: &ShellResponse) -> HashMap<String, Value> {
+    let mut out = HashMap::new();
+    out.insert("install_done".to_string(), Value::Bool(response.exit_code == 0));
+    out
+}
+
+/// Parse a run response: success, exit_code, stdout, stderr.
+pub fn parse_run(response: &ShellResponse) -> HashMap<String, Value> {
+    let mut out = HashMap::new();
+    out.insert("success".to_string(), Value::Bool(response.exit_code == 0));
+    out.insert("exit_code".to_string(), Value::Int(response.exit_code as i64));
+    out.insert("stdout".to_string(), Value::Str(response.stdout.clone()));
+    out.insert("stderr".to_string(), Value::Str(response.stderr.clone()));
+    out
+}
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+/// Build a ShellRequest from a command slice and extra args.
+fn build_shell_request(cmd: &[&str], extra_args: &[String]) -> ShellRequest {
+    let (command, base_args) = cmd.split_first().expect("command should not be empty");
+    let mut request = ShellRequest::new(*command);
+    for arg in base_args {
+        request = request.arg(*arg);
+    }
+    for arg in extra_args {
+        request = request.arg(arg.as_str());
+    }
+    request
+}
+
+/// Extract a ShellResponse from inputs (from a transport execute node).
+fn extract_shell_response(
+    inputs: &HashMap<String, Value>,
+    tool: &'static CliToolDef,
+) -> Result<ShellResponse, CliToolError> {
+    let response_value = inputs.get("response").ok_or_else(|| {
+        CliToolError::new(tool, "parse", "missing 'response' input")
+    })?;
+
+    match response_value {
+        Value::Response(TransportResponse::Shell(resp)) => Ok(resp.clone()),
+        _ => Err(CliToolError::new(
+            tool,
+            "parse",
+            format!("expected Shell response, got: {:?}", response_value),
+        )),
+    }
+}
+
+/// Validate optional inputs have correct types (reject wrong-typed values).
+fn validate_optional_inputs(
+    inputs: &HashMap<String, Value>,
+    tool: &'static CliToolDef,
+) -> Result<(), CliToolError> {
+    // install_done should be Bool or Skipped if present
+    if let Some(val) = inputs.get("install_done") {
+        match val {
+            Value::Bool(_) | Value::Skipped => {}
+            _ => {
+                return Err(CliToolError::new(
+                    tool,
+                    "prepare",
+                    format!("install_done: expected Bool, got {:?}", val),
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Check if the response input is Value::Skipped (skip propagation).
+fn is_skipped_response(inputs: &HashMap<String, Value>) -> bool {
+    matches!(inputs.get("response"), Some(Value::Skipped))
+}
+
+/// Produce skipped outputs for all named ports.
+fn skip_outputs(ports: &[&str]) -> HashMap<String, Value> {
+    ports.iter().map(|p| (p.to_string(), Value::Skipped)).collect()
 }
 
 /// Execute a CLI tool op, preferring the path from a ToolHandle when provided.

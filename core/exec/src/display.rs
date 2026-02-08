@@ -47,7 +47,7 @@ use std::time::Duration;
 /// - `profile`: Terminal profile from `TerminalProfile::detect()`.
 /// - `success_port`: Optional port name to check for `false` → exit(1).
 /// - `input_mocks`: Optional input overrides for entrypoint ports.
-pub fn execute_and_display<T: Executable + Clone>(
+pub fn execute_and_display<T: Executable + Clone + Send>(
     dag: &Dag<T>,
     mode: ExecutionMode,
     profile: &TerminalProfile,
@@ -62,7 +62,7 @@ pub fn execute_and_display<T: Executable + Clone>(
 }
 
 /// Classic execution: plain text log output.
-fn run_classic<T: Executable + Clone>(
+fn run_classic<T: Executable + Clone + Send>(
     dag: &Dag<T>,
     mode: ExecutionMode,
     success_port: Option<&str>,
@@ -99,7 +99,7 @@ fn run_classic<T: Executable + Clone>(
 }
 
 /// Progress-display execution: live DAG visualization with animated replay.
-fn run_with_progress<T: Executable + Clone>(
+fn run_with_progress<T: Executable + Clone + Send>(
     dag: &Dag<T>,
     mode: ExecutionMode,
     profile: &TerminalProfile,

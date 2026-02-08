@@ -21,7 +21,7 @@ use gunbc_ir::LanguageOp;
 use gunbc_lib_cloud_ops::CloudEnvStatus;
 
 // Infrastructure ops
-use gunbc_lib_transport::cli::execute_cli_tool_op;
+use gunbc_lib_transport::cli::execute_cli_tool_op_with_inputs;
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::{FsEnv, PrimitiveOp};
 
@@ -95,8 +95,12 @@ impl Executable for WorkspaceOp {
             WorkspaceOp::Makegen(op) => op.execute(inputs),
             WorkspaceOp::Gist(op) => op.execute(inputs),
             WorkspaceOp::Bootstrap(op) => op.execute(inputs),
-            // CliToolOp execution lives in the transport layer
-            WorkspaceOp::Clippy(op) => execute_cli_tool_op(op).exec_context("CliToolOp error"),
+            // CliToolOp execution lives in the transport layer.
+            // Transport variant delegates to TransportOps; others to cli execute.
+            WorkspaceOp::Clippy(CliToolOp::Transport) => {
+                TransportOps::Execute.execute(inputs)
+            }
+            WorkspaceOp::Clippy(op) => execute_cli_tool_op_with_inputs(op, &inputs).exec_context("CliToolOp error"),
             WorkspaceOp::CloudEnv(op) => op.execute(inputs),
             WorkspaceOp::FsEnv(op) => op.execute(inputs),
             // Language ops

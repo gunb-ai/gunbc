@@ -68,12 +68,13 @@ pub fn ci_mock_spec() -> MockSpec {
     // Extract typed requirements and fill transport mocks
     // All transport mocks are handled by with_ci_typed_mocks
     add_clippy_lint_mocks(
-        with_ci_typed_mocks(extract_mock_requirements(&dag, "ci")).build_unchecked(),
+        with_ci_typed_mocks(extract_mock_requirements(&dag, "ci")),
         true,
         CLIPPY_STDOUT_OK,
         "",
         false,
     )
+        .build_unchecked()
         // Resources
         .resource_lock("cargo:build")
         .resource_lock("cargo:test")
@@ -364,8 +365,9 @@ pub fn ci_mock_spec() -> MockSpec {
             NodeExample::new("prepare_clippy_lint")
                 .input("build_success", Value::Bool(true))
                 .input("pragma_success", Value::Bool(true))
+                .output("request", OutputMatcher::non_empty())
                 .output("skip", OutputMatcher::exact(Value::Bool(false)))
-                .description("Build success → clippy not skipped"),
+                .description("Build success → clippy not skipped, request emitted"),
         )
         .node_example(
             NodeExample::new("prepare_clippy_lint")
@@ -377,9 +379,10 @@ pub fn ci_mock_spec() -> MockSpec {
         .node_example(
             NodeExample::new("parse_clippy_lint")
                 .input("skip", Value::Bool(false))
-                .input("success", Value::Bool(true))
-                .input("stdout", Value::Str("Checking gunbc".into()))
-                .input("stderr", Value::Str(String::new()))
+                .input(
+                    "response",
+                    Value::Response(ShellResponse::ok("Checking gunbc").into()),
+                )
                 .output("lint_success", OutputMatcher::IsBool)
                 .output("lint_skipped", OutputMatcher::IsBool)
                 .description("Clippy result parse produces success/skipped flags"),
@@ -409,8 +412,8 @@ pub fn ci_mock_spec() -> MockSpec {
         )
         // Primitive nodes — tested in their own crates
         .skip_node_example("prepare_deps_exists")
-        // I/O nodes — self-acquiring, tested via integration
-        .skip_node_example("clippy_lint")
+        // I/O node — transport execute, tested via DryRun
+        .skip_node_example("execute_clippy_lint")
 }
 
 /// Mock spec for testing test failure.
@@ -523,13 +526,13 @@ pub fn ci_mock_spec_test_fails() -> MockSpec {
         .boundary_bool("execute_verify_check", "skip", false)
         .expect("execute_verify_check skip should match type")
         .boundary_str("execute_verify_check", "skip_reason", "")
-        .expect("execute_verify_check skip_reason should match type")
-        .build_unchecked(),
+        .expect("execute_verify_check skip_reason should match type"),
         true,
         CLIPPY_STDOUT_OK,
         "",
         false,
     )
+    .build_unchecked()
     .resource_lock("cargo:build")
     .resource_lock("cargo:test")
     .resource_lock("cargo:clippy")
@@ -639,13 +642,13 @@ pub fn ci_mock_spec_build_fails() -> MockSpec {
         .boundary_bool("execute_verify_check", "skip", false)
         .expect("execute_verify_check skip should match type")
         .boundary_str("execute_verify_check", "skip_reason", "")
-        .expect("execute_verify_check skip_reason should match type")
-        .build_unchecked(),
+        .expect("execute_verify_check skip_reason should match type"),
         false,
         "",
         "",
         true,
     )
+    .build_unchecked()
     .resource_lock("cargo:build")
 }
 
@@ -734,13 +737,13 @@ pub fn ci_mock_spec_prep_fails() -> MockSpec {
         .boundary_bool("execute_verify_check", "skip", true)
         .expect("execute_verify_check skip should match type")
         .boundary_str("execute_verify_check", "skip_reason", "Prep failed")
-        .expect("execute_verify_check skip_reason should match type")
-        .build_unchecked(),
+        .expect("execute_verify_check skip_reason should match type"),
         false,
         "",
         "",
         true,
     )
+    .build_unchecked()
 }
 
 /// Mock spec for testing lint failure.
@@ -852,13 +855,13 @@ pub fn ci_mock_spec_lint_fails() -> MockSpec {
         .boundary_bool("execute_verify_check", "skip", false)
         .expect("execute_verify_check skip should match type")
         .boundary_str("execute_verify_check", "skip_reason", "")
-        .expect("execute_verify_check skip_reason should match type")
-        .build_unchecked(),
+        .expect("execute_verify_check skip_reason should match type"),
         false,
         "",
         "error: unused variable `x`\n  --> src/main.rs:3:9\n   |\n3  |     let x = 1;\n   |         ^ help: if this is intentional, prefix it with an underscore: `_x`\n   |\n   = note: `-D unused-variables` implied by `-D warnings`",
         false,
     )
+    .build_unchecked()
     .resource_lock("cargo:build")
     .resource_lock("cargo:test")
     .resource_lock("cargo:clippy")
@@ -871,28 +874,53 @@ pub fn ci_mock_spec_build_contended() -> MockSpec {
 
     // All transport mocks are handled by with_ci_typed_mocks
     add_clippy_lint_mocks(
-        with_ci_typed_mocks(extract_mock_requirements(&dag, "ci")).build_unchecked(),
+        with_ci_typed_mocks(extract_mock_requirements(&dag, "ci")),
         true,
         CLIPPY_STDOUT_OK,
         "",
         false,
     )
+    .build_unchecked()
     .resource_lock_fails("cargo:build", "Another cargo build is in progress")
 }
 
 const CLIPPY_STDOUT_OK: &str = "Checking gunbc v0.1.0\n    Finished dev";
 
 fn add_clippy_lint_mocks(
-    spec: MockSpec,
+    reqs: gunbc_test::MockRequirements,
     success: bool,
     stdout: &str,
     stderr: &str,
     skip: bool,
-) -> MockSpec {
-    spec.boundary("clippy_lint", "success", Value::Bool(success))
-        .boundary("clippy_lint", "stdout", Value::Str(stdout.to_string()))
-        .boundary("clippy_lint", "stderr", Value::Str(stderr.to_string()))
-        .boundary("clippy_lint", "skip", Value::Bool(skip))
+) -> gunbc_test::MockRequirements {
+    if skip {
+        // When skipped, the execute node gets skip=true from prepare and emits
+        // Skipped response + skip=true + skip_reason
+        reqs
+            .boundary("execute_clippy_lint", "response", Value::Skipped)
+            .expect("execute_clippy_lint response should match type")
+            .boundary_bool("execute_clippy_lint", "skip", true)
+            .expect("execute_clippy_lint skip should match type")
+            .boundary_str("execute_clippy_lint", "skip_reason", "Skipped")
+            .expect("execute_clippy_lint skip_reason should match type")
+    } else {
+        let response = if success {
+            ShellResponse { exit_code: 0, stdout: stdout.to_string(), stderr: stderr.to_string() }
+        } else {
+            ShellResponse { exit_code: 1, stdout: stdout.to_string(), stderr: stderr.to_string() }
+        };
+        reqs
+            .transport_response(
+                "execute_clippy_lint",
+                "response",
+                TransportResponse::Shell(response),
+            )
+            .expect("execute_clippy_lint response should match type")
+            .boundary_bool("execute_clippy_lint", "skip", false)
+            .expect("execute_clippy_lint skip should match type")
+            .boundary_str("execute_clippy_lint", "skip_reason", "")
+            .expect("execute_clippy_lint skip_reason should match type")
+    }
 }
 
 /// Helper to fill common CI transport mocks using typed builder.
