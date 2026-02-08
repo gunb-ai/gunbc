@@ -721,10 +721,10 @@ fn execute_parse_guardrail_result(
 // ============================================================================
 
 fn verify_skip_reason(inputs: &HashMap<String, Value>) -> Result<Option<&'static str>, ExecError> {
-    let prep_success = require_bool_or_skipped(&inputs, "prep_success", false)?;
-    let bootstrap_success = require_bool_or_skipped(&inputs, "bootstrap_success", false)?;
-    let testgen_success = require_bool_or_skipped(&inputs, "testgen_success", false)?;
-    let pragma_success = require_bool_or_skipped(&inputs, "pragma_success", false)?;
+    let prep_success = require_bool_or_skipped(inputs, "prep_success", false)?;
+    let bootstrap_success = require_bool_or_skipped(inputs, "bootstrap_success", false)?;
+    let testgen_success = require_bool_or_skipped(inputs, "testgen_success", false)?;
+    let pragma_success = require_bool_or_skipped(inputs, "pragma_success", false)?;
 
     if !prep_success {
         return Ok(Some("Skipped due to codegen failure"));

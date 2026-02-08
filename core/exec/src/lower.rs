@@ -52,8 +52,8 @@ pub struct LoopInfo<T> {
     /// The body template DAG (not lowered — will be lowered per iteration).
     pub body_dag: Dag<T>,
     /// Additional input port names that flow from outside the loop into
-    /// the body (e.g., `repo_path`). These are wired as extra entrypoints
-    /// in the body DAG that share a port name with the unpack node's inputs.
+    /// the body (e.g., `repo_path`, `res:fs`). These are wired as extra
+    /// entrypoints in the body DAG that share a port name with unpack inputs.
     pub extra_input_ports: Vec<String>,
 }
 
@@ -151,9 +151,10 @@ where
     }
 
     // Find the element port: the edge from unpack → body (not "count")
-    let element_edge = inner_dag.edges.iter().find(|e| {
-        e.from_node.0 == "unpack" && e.to_node.0 == "body" && e.from_port.0 != "count"
-    })?;
+    let element_edge = inner_dag
+        .edges
+        .iter()
+        .find(|e| e.from_node.0 == "unpack" && e.to_node.0 == "body" && e.from_port.0 != "count")?;
     let element_port = element_edge.from_port.0.clone();
 
     // Extract body SubDag
@@ -232,8 +233,7 @@ pub fn lower<T: Clone>(dag: &Dag<T>) -> Result<LowerResult<T>, LowerError> {
                     let lowered_sub = lower(subdag)?;
 
                     // Build mapping before we modify the lowered_sub
-                    let mapping =
-                        build_subdag_mapping(node, &lowered_sub.dag, &node.id.0)?;
+                    let mapping = build_subdag_mapping(node, &lowered_sub.dag, &node.id.0)?;
                     subdag_mappings.insert(node.id.clone(), mapping);
 
                     // Add all nodes from the sub-DAG with prefixed IDs
@@ -370,16 +370,8 @@ fn lower_loop_subdag<T: Clone>(
     loop_pattern: &LoopPatternInfo<T>,
     parent_prefix: &str,
 ) -> Result<(LowerResult<T>, SubDagMapping), LowerError> {
-    let unpack = inner_dag
-        .nodes
-        .iter()
-        .find(|n| n.id.0 == "unpack")
-        .unwrap();
-    let pack = inner_dag
-        .nodes
-        .iter()
-        .find(|n| n.id.0 == "pack")
-        .unwrap();
+    let unpack = inner_dag.nodes.iter().find(|n| n.id.0 == "unpack").unwrap();
+    let pack = inner_dag.nodes.iter().find(|n| n.id.0 == "pack").unwrap();
 
     let unpack_id = NodeId::new(format!("{}/unpack", parent_prefix));
     let pack_id = NodeId::new(format!("{}/pack", parent_prefix));
@@ -427,18 +419,28 @@ fn lower_loop_subdag<T: Clone>(
     ));
 
     // Auto-detect extra inputs BEFORE building the port mapping.
-    // Body entrypoints beyond the element port (e.g., repo_path) flow
+    // Body entrypoints beyond the element port (including `res:*`) flow
     // through unpack at runtime. We need to identify them first so the
     // mapping function knows to skip them (they aren't entrypoints of
     // the flat_dag which only contains unpack + pack).
     let mut extra_input_ports = loop_pattern.extra_input_ports.clone();
     let body_entrypoints = detect_entrypoints(&loop_pattern.body_dag);
     for (_, port_name, _) in &body_entrypoints.entrypoint_ports {
-        if port_name.0 != loop_pattern.element_port
-            && !port_name.0.starts_with("res:")
-            && !extra_input_ports.contains(&port_name.0)
-        {
+        if port_name.0 != loop_pattern.element_port && !extra_input_ports.contains(&port_name.0) {
             extra_input_ports.push(port_name.0.clone());
+        }
+    }
+
+    // Ensure unpack explicitly declares every extra input port so remapped
+    // input mocks and upstream edges are injected through normal input handling.
+    if let Some(unpack_node) = flat_dag.nodes.iter_mut().find(|n| n.id == unpack_id) {
+        for port_name in &extra_input_ports {
+            if unpack_node.inputs.iter().any(|p| p.name.0 == *port_name) {
+                continue;
+            }
+            if let Some(parent_port) = parent_node.inputs.iter().find(|p| p.name.0 == *port_name) {
+                unpack_node.inputs.push(parent_port.clone());
+            }
         }
     }
 
@@ -453,10 +455,9 @@ fn lower_loop_subdag<T: Clone>(
     for port_name in &extra_input_ports {
         let pn = PortName::new(port_name.clone());
         if !mapping.input_mappings.contains_key(&pn) {
-            mapping.input_mappings.insert(
-                pn.clone(),
-                vec![(unpack_id.clone(), pn)],
-            );
+            mapping
+                .input_mappings
+                .insert(pn.clone(), vec![(unpack_id.clone(), pn)]);
         }
     }
 

@@ -252,17 +252,16 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
         // If a transport output is used but not mocked, DryRun will fail at runtime.
         // Catching this early at test generation time gives a better error message.
         if let Some(spec) = &self.mock_spec {
-            let lowered_for_validation = gunbc_exec::lower(self.dag).ok();
-            let lowered_dag = lowered_for_validation.as_ref().map(|res| &res.dag);
+            let lowered_for_validation = gunbc_exec::lower(self.dag).unwrap_or_else(|e| {
+                panic!(
+                    "DryRun mock coverage validation requires DAG lowering for '{}', but lowering failed: {}.\n\
+                     Fix lowering issues before generating tests.",
+                    module_name, e
+                )
+            });
+            let lowered_dag = &lowered_for_validation.dag;
 
-            let missing_mocks = if let Some(lowered) = lowered_dag {
-                self.find_missing_intercept_mocks_lowered(lowered, spec)
-            } else {
-                self.find_missing_transport_mocks(&analysis, spec)
-                    .into_iter()
-                    .map(|(node, port)| (node, port, "transport executor"))
-                    .collect()
-            };
+            let missing_mocks = self.find_missing_intercept_mocks_lowered(lowered_dag, spec);
             if !missing_mocks.is_empty() {
                 panic!(
                     "DryRun mock coverage incomplete: DAG '{}' has {} intercepted output port(s) \
@@ -299,7 +298,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             // Validate that all mocks reference existing nodes and ports.
             //
             // This catches typos and stale mocks that reference renamed/removed nodes.
-            let unknown_slots = self.find_unknown_mock_slots(spec, lowered_dag);
+            let unknown_slots = self.find_unknown_mock_slots(spec, Some(lowered_dag));
             if !unknown_slots.is_empty() {
                 panic!(
                     "Unknown mock slots: DAG '{}' has {} mock(s) referencing unknown nodes/ports:\n\
@@ -325,7 +324,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             //
             // This catches type drift between MockSpec and DAG port definitions.
             // Contract-level check: "mock is Bool-typed" not "mock == Bool(true)".
-            let type_mismatches = self.find_mock_type_mismatches(spec, lowered_dag);
+            let type_mismatches = self.find_mock_type_mismatches(spec, Some(lowered_dag));
             if !type_mismatches.is_empty() {
                 panic!(
                     "Mock value type mismatch: DAG '{}' has {} mock value(s) with incompatible types:\n\
@@ -453,53 +452,6 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
         ];
 
         plain_rust_renderer().render_file(&file)
-    }
-
-    /// Find transport executor output ports that are connected downstream but lack mocks.
-    ///
-    /// Returns a list of (node_id, port_name) pairs that need transport_mock entries.
-    fn find_missing_transport_mocks(
-        &self,
-        analysis: &DagAnalysis,
-        spec: &MockSpec,
-    ) -> Vec<(String, String)> {
-        let mut missing = Vec::new();
-
-        // Build a set of (node, port) pairs that have mocks
-        let mocked_ports: HashSet<(&str, &str)> = spec
-            .transport_mocks
-            .iter()
-            .map(|m| (m.node.as_str(), m.port.as_str()))
-            .chain(
-                spec.boundary_mocks
-                    .iter()
-                    .map(|m| (m.node.as_str(), m.port.as_str())),
-            )
-            .collect();
-
-        // For each transport executor, check if its connected output ports have mocks
-        for transport_id in &analysis.transport_executors {
-            if let Some(node) = self.dag.get_node(&NodeId(transport_id.clone())) {
-                for output_port in &node.outputs {
-                    // Check if this output port is connected to any downstream node
-                    let is_connected = self.dag.edges.iter().any(|e| {
-                        e.from_node.0 == *transport_id && e.from_port.0 == output_port.name.0
-                    });
-
-                    if is_connected {
-                        // Check if there's a mock for this (node, port)
-                        let has_mock = mocked_ports
-                            .contains(&(transport_id.as_str(), output_port.name.0.as_str()));
-
-                        if !has_mock {
-                            missing.push((transport_id.clone(), output_port.name.0.clone()));
-                        }
-                    }
-                }
-            }
-        }
-
-        missing
     }
 
     /// Find intercepted output ports in the lowered DAG that are connected downstream
@@ -1830,21 +1782,18 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             Result<BTreeMap<String, ValueExpr>, Vec<String>>,
         > = HashMap::new();
         let mut skipped_nodes: HashSet<String> = HashSet::new();
-        let lowered_ids = match gunbc_exec::lower(self.dag) {
-            Ok(lowered) => lowered
-                .dag
-                .nodes
-                .iter()
-                .map(|n| n.id.0.clone())
-                .collect::<HashSet<_>>(),
-            Err(err) => {
-                notes.push(format!(
-                    "Optional input tests skipped: lowering failed ({})",
+        let lowered_ids = gunbc_exec::lower(self.dag)
+            .unwrap_or_else(|err| {
+                panic!(
+                    "Optional input test generation requires DAG lowering, but lowering failed: {}",
                     err
-                ));
-                HashSet::new()
-            }
-        };
+                )
+            })
+            .dag
+            .nodes
+            .iter()
+            .map(|n| n.id.0.clone())
+            .collect::<HashSet<_>>();
 
         for obligation in &optional_obligations {
             let Obligation::OptionalInputHandling { node_id, port_name } = &obligation.kind else {

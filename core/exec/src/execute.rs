@@ -39,8 +39,8 @@ use gunbc_ir::{
     Node, NodeBody, NodeId, Value,
 };
 use std::collections::{HashMap, HashSet};
-use std::sync::mpsc;
 use std::fmt;
+use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -249,9 +249,7 @@ pub fn execute_with_mode_and_inputs<T: Executable + Clone + Send>(
     let lowered = lower(dag).exec_context("lowering failed")?;
 
     // Remap input mock keys from original SubDag IDs to lowered inner IDs
-    let remapped_mocks = input_mocks.map(|mocks| {
-        remap_input_mocks(mocks, &lowered.input_remaps)
-    });
+    let remapped_mocks = input_mocks.map(|mocks| remap_input_mocks(mocks, &lowered.input_remaps));
     let effective_mocks = remapped_mocks.as_ref().or(input_mocks);
 
     // Remap DryRun/Simulate mode input mocks too
@@ -261,7 +259,15 @@ pub fn execute_with_mode_and_inputs<T: Executable + Clone + Send>(
     let boundaries = detect_boundaries(&lowered.dag);
 
     // Execute the flat DAG
-    execute_flat(&lowered.dag, &boundaries, &effective_mode, None, None, effective_mocks, &lowered.loops)
+    execute_flat(
+        &lowered.dag,
+        &boundaries,
+        &effective_mode,
+        None,
+        None,
+        effective_mocks,
+        &lowered.loops,
+    )
 }
 
 /// Execute a DAG with CI context for workflow command emission.
@@ -298,7 +304,15 @@ pub fn execute_with_mode_and_ci<T: Executable + Clone + Send>(
     let boundaries = detect_boundaries(&lowered.dag);
 
     // Execute the flat DAG with CI context
-    execute_flat(&lowered.dag, &boundaries, &mode, Some(ci), None, None, &lowered.loops)
+    execute_flat(
+        &lowered.dag,
+        &boundaries,
+        &mode,
+        Some(ci),
+        None,
+        None,
+        &lowered.loops,
+    )
 }
 
 /// Execute a DAG with a progress observer.
@@ -330,7 +344,15 @@ pub fn execute_with_progress_and_mode<T: Executable + Clone + Send>(
 ) -> Result<ExecutionLog, ExecError> {
     let lowered = lower(dag).exec_context("lowering failed")?;
     let boundaries = detect_boundaries(&lowered.dag);
-    execute_flat(&lowered.dag, &boundaries, &mode, None, Some(observer), None, &lowered.loops)
+    execute_flat(
+        &lowered.dag,
+        &boundaries,
+        &mode,
+        None,
+        Some(observer),
+        None,
+        &lowered.loops,
+    )
 }
 
 /// Execute a DAG with both execution mode and progress observer plus input mocks.
@@ -341,9 +363,7 @@ pub fn execute_with_progress_and_mode_and_inputs<T: Executable + Clone + Send>(
     input_mocks: Option<&BoundaryMocks>,
 ) -> Result<ExecutionLog, ExecError> {
     let lowered = lower(dag).exec_context("lowering failed")?;
-    let remapped_mocks = input_mocks.map(|mocks| {
-        remap_input_mocks(mocks, &lowered.input_remaps)
-    });
+    let remapped_mocks = input_mocks.map(|mocks| remap_input_mocks(mocks, &lowered.input_remaps));
     let effective_mocks = remapped_mocks.as_ref().or(input_mocks);
     let effective_mode = remap_mode_inputs(mode, &lowered.input_remaps);
     let boundaries = detect_boundaries(&lowered.dag);
@@ -416,7 +436,8 @@ pub fn execute_single_node<T: Executable + Clone + Send>(
     let lowered = lower(dag).exec_context("lowering failed")?;
 
     // Find the node
-    let node = lowered.dag
+    let node = lowered
+        .dag
         .nodes
         .iter()
         .find(|n| n.id.0 == node_id)
@@ -432,13 +453,12 @@ pub fn execute_single_node<T: Executable + Clone + Send>(
         ExecutionMode::Simulate(config) => has_full_mock_for_node(node, &config.boundary_mocks),
         _ => false,
     };
-    let should_intercept =
-        (is_transport_executor
-            || is_tool_env
-            || is_resource_env
-            || is_tool_consumer
-            || has_full_mock)
-            && matches!(mode, ExecutionMode::DryRun(_) | ExecutionMode::Simulate(_));
+    let should_intercept = (is_transport_executor
+        || is_tool_env
+        || is_resource_env
+        || is_tool_consumer
+        || has_full_mock)
+        && matches!(mode, ExecutionMode::DryRun(_) | ExecutionMode::Simulate(_));
 
     if should_intercept {
         // Intercept: use mock values for boundary outputs
@@ -788,13 +808,12 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
                 }
                 _ => false,
             };
-            let should_intercept =
-                (is_transport_executor
-                    || is_tool_env
-                    || is_resource_env
-                    || is_tool_consumer
-                    || has_full_mock)
-                    && matches!(mode, ExecutionMode::DryRun(_) | ExecutionMode::Simulate(_));
+            let should_intercept = (is_transport_executor
+                || is_tool_env
+                || is_resource_env
+                || is_tool_consumer
+                || has_full_mock)
+                && matches!(mode, ExecutionMode::DryRun(_) | ExecutionMode::Simulate(_));
 
             if should_intercept {
                 // Intercept: use mock values for boundary outputs
@@ -898,11 +917,7 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
         // Loop body execution: if this node is a loop unpack, execute the body
         // template once per element and replace the element output with results.
         if let Some(loop_info) = loops.iter().find(|l| l.unpack_id == *node_id) {
-            let body_entries = execute_loop_body(
-                loop_info,
-                &node_outputs,
-                mode,
-            )?;
+            let body_entries = execute_loop_body(loop_info, &node_outputs, mode)?;
 
             // Collect body result values to replace unpack's element output.
             let results: Vec<Value> = body_entries
@@ -916,10 +931,7 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
             // Replace the element port output with body results so
             // the unpack→pack edge carries transformed values to pack.
             if let Some(unpack_out) = node_outputs.get_mut(&loop_info.unpack_id.0) {
-                unpack_out.insert(
-                    loop_info.element_port.clone(),
-                    Value::List(results),
-                );
+                unpack_out.insert(loop_info.element_port.clone(), Value::List(results));
             }
 
             entries.extend(body_entries);
@@ -1069,51 +1081,63 @@ fn build_node_inputs<T>(
     Ok(inputs)
 }
 
+struct ParallelSchedulerState<'a, T> {
+    // Immutable lookup tables
+    node_index: HashMap<NodeId, usize>,
+    loops_by_unpack: HashMap<NodeId, &'a LoopInfo<T>>,
+    dependents: HashMap<NodeId, Vec<NodeId>>,
+
+    // Mutable scheduling state
+    node_outputs: HashMap<String, HashMap<String, Value>>,
+    node_entries: Vec<Option<LogEntry>>,
+    loop_entries: Vec<Vec<LogEntry>>,
+    remaining_deps: HashMap<NodeId, usize>,
+    ready: Vec<NodeId>,
+    completed: usize,
+}
+
 fn finalize_node_parallel<T: Executable + Clone + Send>(
     node_id: &NodeId,
     outputs: HashMap<String, Value>,
     was_intercepted: bool,
     mode: &ExecutionMode,
-    loops_by_unpack: &HashMap<NodeId, &LoopInfo<T>>,
-    node_index: &HashMap<NodeId, usize>,
-    node_outputs: &mut HashMap<String, HashMap<String, Value>>,
-    node_entries: &mut [Option<LogEntry>],
-    loop_entries: &mut [Vec<LogEntry>],
-    dependents: &HashMap<NodeId, Vec<NodeId>>,
-    remaining_deps: &mut HashMap<NodeId, usize>,
-    ready: &mut Vec<NodeId>,
-    completed: &mut usize,
+    state: &mut ParallelSchedulerState<'_, T>,
 ) -> Result<(), ExecError> {
-    let idx = *node_index.get(node_id).ok_or_else(|| {
-        ExecError::new(format!("node '{}' missing from topological order", node_id.0))
+    let idx = *state.node_index.get(node_id).ok_or_else(|| {
+        ExecError::new(format!(
+            "node '{}' missing from topological order",
+            node_id.0
+        ))
     })?;
 
-    node_outputs.insert(node_id.0.clone(), outputs.clone());
-    node_entries[idx] = Some(LogEntry {
+    state
+        .node_outputs
+        .insert(node_id.0.clone(), outputs.clone());
+    state.node_entries[idx] = Some(LogEntry {
         node_id: node_id.0.clone(),
         outputs,
         was_intercepted,
     });
 
-    if let Some(loop_info) = loops_by_unpack.get(node_id) {
-        let body_entries = execute_loop_body(loop_info, node_outputs, mode)?;
+    if let Some(loop_info) = state.loops_by_unpack.get(node_id) {
+        let body_entries = execute_loop_body(loop_info, &state.node_outputs, mode)?;
 
         // Replace the unpack element output with transformed body results.
         let results: Vec<Value> = body_entries
             .iter()
             .filter_map(|entry| entry.outputs.get("result").cloned())
             .collect();
-        if let Some(unpack_out) = node_outputs.get_mut(&loop_info.unpack_id.0) {
+        if let Some(unpack_out) = state.node_outputs.get_mut(&loop_info.unpack_id.0) {
             unpack_out.insert(loop_info.element_port.clone(), Value::List(results));
         }
 
-        loop_entries[idx].extend(body_entries);
+        state.loop_entries[idx].extend(body_entries);
     }
 
-    *completed += 1;
-    if let Some(children) = dependents.get(node_id) {
+    state.completed += 1;
+    if let Some(children) = state.dependents.get(node_id) {
         for child in children {
-            let rem = remaining_deps.get_mut(child).ok_or_else(|| {
+            let rem = state.remaining_deps.get_mut(child).ok_or_else(|| {
                 ExecError::new(format!("node '{}' missing dependency counter", child.0))
             })?;
             if *rem == 0 {
@@ -1124,7 +1148,7 @@ fn finalize_node_parallel<T: Executable + Clone + Send>(
             }
             *rem -= 1;
             if *rem == 0 {
-                ready.push(child.clone());
+                state.ready.push(child.clone());
             }
         }
     }
@@ -1154,8 +1178,10 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
         .enumerate()
         .map(|(idx, id)| (id.clone(), idx))
         .collect();
-    let loops_by_unpack: HashMap<NodeId, &LoopInfo<T>> =
-        loops.iter().map(|loop_info| (loop_info.unpack_id.clone(), loop_info)).collect();
+    let loops_by_unpack: HashMap<NodeId, &LoopInfo<T>> = loops
+        .iter()
+        .map(|loop_info| (loop_info.unpack_id.clone(), loop_info))
+        .collect();
 
     // Precompute canonical edge order and group by destination node.
     let ordered_edges = canonical_edge_order(&dag.edges);
@@ -1185,7 +1211,7 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
             .insert(edge.to_node.clone());
     }
 
-    let mut remaining_deps: HashMap<NodeId, usize> = dependencies
+    let remaining_deps: HashMap<NodeId, usize> = dependencies
         .into_iter()
         .map(|(node_id, parents)| (node_id, parents.len()))
         .collect();
@@ -1201,18 +1227,25 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
         dependents.entry(node.id.clone()).or_default();
     }
 
-    let mut ready: Vec<NodeId> = order
+    let ready: Vec<NodeId> = order
         .iter()
         .filter(|id| remaining_deps.get(*id).copied().unwrap_or(0) == 0)
         .cloned()
         .collect();
 
-    let mut node_outputs: HashMap<String, HashMap<String, Value>> = HashMap::new();
-    let mut node_entries: Vec<Option<LogEntry>> = vec![None; order.len()];
-    let mut loop_entries: Vec<Vec<LogEntry>> = (0..order.len()).map(|_| Vec::new()).collect();
+    let mut state = ParallelSchedulerState {
+        node_index,
+        loops_by_unpack,
+        dependents,
+        node_outputs: HashMap::new(),
+        node_entries: vec![None; order.len()],
+        loop_entries: (0..order.len()).map(|_| Vec::new()).collect(),
+        remaining_deps,
+        ready,
+        completed: 0,
+    };
 
     let max_concurrency = execution_max_concurrency();
-    let mut completed = 0usize;
     let mut in_flight = 0usize;
     let mut obs = observer;
     let dag_start = Instant::now();
@@ -1223,10 +1256,13 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
 
     let (tx, rx) = mpsc::channel::<NodeExecutionResult>();
     let scoped_result = thread::scope(|scope| -> Result<(), ExecError> {
-        while completed < order.len() {
-            ready.sort_by_key(|id| node_index.get(id).copied().unwrap_or(usize::MAX));
-            while !ready.is_empty() && in_flight < max_concurrency {
-                let node_id = ready.remove(0);
+        while state.completed < order.len() {
+            let node_index = &state.node_index;
+            state
+                .ready
+                .sort_by_key(|id| node_index.get(id).copied().unwrap_or(usize::MAX));
+            while !state.ready.is_empty() && in_flight < max_concurrency {
+                let node_id = state.ready.remove(0);
                 let node = node_map
                     .get(node_id.0.as_str())
                     .ok_or_else(|| ExecError::new(format!("node '{}' not found", node_id.0)))?;
@@ -1236,7 +1272,7 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
                     node,
                     &node_id,
                     &edges_by_to_node,
-                    &node_outputs,
+                    &state.node_outputs,
                     mode,
                     input_mocks,
                 )?;
@@ -1250,21 +1286,7 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
                     if let Some(ref mut o) = obs {
                         o.on_node_skipped(&node_id);
                     }
-                    finalize_node_parallel(
-                        &node_id,
-                        outputs,
-                        false,
-                        mode,
-                        &loops_by_unpack,
-                        &node_index,
-                        &mut node_outputs,
-                        &mut node_entries,
-                        &mut loop_entries,
-                        &dependents,
-                        &mut remaining_deps,
-                        &mut ready,
-                        &mut completed,
-                    )?;
+                    finalize_node_parallel(&node_id, outputs, false, mode, &mut state)?;
                     continue;
                 }
 
@@ -1292,21 +1314,7 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
                         let summary = OutputSummary::from_outputs(&outputs, node_start.elapsed());
                         o.on_node_intercepted(&node_id, summary);
                     }
-                    finalize_node_parallel(
-                        &node_id,
-                        outputs,
-                        true,
-                        mode,
-                        &loops_by_unpack,
-                        &node_index,
-                        &mut node_outputs,
-                        &mut node_entries,
-                        &mut loop_entries,
-                        &dependents,
-                        &mut remaining_deps,
-                        &mut ready,
-                        &mut completed,
-                    )?;
+                    finalize_node_parallel(&node_id, outputs, true, mode, &mut state)?;
                     continue;
                 }
 
@@ -1338,7 +1346,7 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
                 }
             }
 
-            if completed >= order.len() {
+            if state.completed >= order.len() {
                 break;
             }
 
@@ -1348,15 +1356,17 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
                 ));
             }
 
-            let completed_node = rx.recv().map_err(|_| {
-                ExecError::new("execution worker channel closed unexpectedly")
-            })?;
+            let completed_node = rx
+                .recv()
+                .map_err(|_| ExecError::new("execution worker channel closed unexpectedly"))?;
             in_flight = in_flight.saturating_sub(1);
             match completed_node.result {
                 Ok(outputs) => {
                     if let Some(ref mut o) = obs {
-                        let summary =
-                            OutputSummary::from_outputs(&outputs, completed_node.started_at.elapsed());
+                        let summary = OutputSummary::from_outputs(
+                            &outputs,
+                            completed_node.started_at.elapsed(),
+                        );
                         o.on_node_complete(&completed_node.node_id, summary);
                     }
                     finalize_node_parallel(
@@ -1364,15 +1374,7 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
                         outputs,
                         false,
                         mode,
-                        &loops_by_unpack,
-                        &node_index,
-                        &mut node_outputs,
-                        &mut node_entries,
-                        &mut loop_entries,
-                        &dependents,
-                        &mut remaining_deps,
-                        &mut ready,
-                        &mut completed,
+                        &mut state,
                     )?
                 }
                 Err(e) => {
@@ -1403,11 +1405,14 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
 
     let mut entries = Vec::new();
     for (idx, node_id) in order.iter().enumerate() {
-        let entry = node_entries[idx].take().ok_or_else(|| {
-            ExecError::new(format!("node '{}' did not produce an execution log entry", node_id.0))
+        let entry = state.node_entries[idx].take().ok_or_else(|| {
+            ExecError::new(format!(
+                "node '{}' did not produce an execution log entry",
+                node_id.0
+            ))
         })?;
         entries.push(entry);
-        entries.append(&mut loop_entries[idx]);
+        entries.append(&mut state.loop_entries[idx]);
     }
 
     Ok(ExecutionLog { entries })
@@ -1468,7 +1473,7 @@ fn execute_loop_body<T: Executable + Clone + Send>(
     let body_entrypoints = detect_entrypoints(&loop_info.body_dag);
     let mut extra_inputs: HashMap<String, Value> = HashMap::new();
     for (_, port_name, _) in &body_entrypoints.entrypoint_ports {
-        if port_name.0 == loop_info.element_port || port_name.0.starts_with("res:") {
+        if port_name.0 == loop_info.element_port {
             continue;
         }
         // Check if the unpack node received this as an input
@@ -1704,8 +1709,8 @@ mod tests {
     use super::*;
     use gunbc_ir::build::*;
     use gunbc_ir::Edge;
-    use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
 
     // Test operation: produces a fixed value, or passes through inputs if `pass_through` is set.
     #[derive(Debug, Clone)]
@@ -1796,12 +1801,7 @@ mod tests {
                     }
                     if self
                         .peak
-                        .compare_exchange(
-                            observed,
-                            current,
-                            Ordering::SeqCst,
-                            Ordering::SeqCst,
-                        )
+                        .compare_exchange(observed, current, Ordering::SeqCst, Ordering::SeqCst)
                         .is_ok()
                     {
                         break;
@@ -2349,12 +2349,7 @@ mod tests {
             ]),
         );
 
-        let log = execute_with_mode_and_inputs(
-            &dag,
-            ExecutionMode::Real,
-            Some(&mocks),
-        )
-        .unwrap();
+        let log = execute_with_mode_and_inputs(&dag, ExecutionMode::Real, Some(&mocks)).unwrap();
 
         // Find the pack node's output
         let pack_entry = log
@@ -2436,12 +2431,7 @@ mod tests {
         let mut mocks = BoundaryMocks::new();
         mocks.set_input("empty_loop", "items", Value::List(vec![]));
 
-        let log = execute_with_mode_and_inputs(
-            &dag,
-            ExecutionMode::Real,
-            Some(&mocks),
-        )
-        .unwrap();
+        let log = execute_with_mode_and_inputs(&dag, ExecutionMode::Real, Some(&mocks)).unwrap();
 
         let pack_entry = log
             .entries
@@ -2452,6 +2442,103 @@ mod tests {
         match pack_entry.outputs.get("results") {
             Some(Value::List(items)) => assert!(items.is_empty()),
             other => panic!("expected empty Value::List, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_loop_resource_input_flows_to_body_iterations() {
+        use gunbc_ir::patterns::{LoopBuilder, PatternOp, ResourceInput};
+
+        #[derive(Debug, Clone)]
+        enum TestLoopOp {
+            Pattern(PatternOp),
+            ConcatToken,
+        }
+
+        impl From<PatternOp> for TestLoopOp {
+            fn from(op: PatternOp) -> Self {
+                TestLoopOp::Pattern(op)
+            }
+        }
+
+        impl Executable for TestLoopOp {
+            fn execute(
+                &self,
+                inputs: HashMap<String, Value>,
+            ) -> Result<HashMap<String, Value>, ExecError> {
+                match self {
+                    TestLoopOp::Pattern(op) => op.execute(inputs),
+                    TestLoopOp::ConcatToken => {
+                        let element = inputs
+                            .get("element")
+                            .and_then(|v| v.as_str())
+                            .ok_or_else(|| ExecError::new("missing element"))?;
+                        let token = inputs
+                            .get("res:token")
+                            .and_then(|v| v.as_str())
+                            .ok_or_else(|| ExecError::new("missing res:token"))?;
+
+                        let mut out = HashMap::new();
+                        out.insert(
+                            "result".to_string(),
+                            Value::Str(format!("{}@{}", element, token)),
+                        );
+                        Ok(out)
+                    }
+                }
+            }
+        }
+
+        let mut body_dag: Dag<TestLoopOp> = Dag::new();
+        body_dag.add_node(Node::opaque(
+            "transform",
+            vec![port("element", "String"), port("res:token", "String")],
+            vec![port("result", "String")],
+            TestLoopOp::ConcatToken,
+        ));
+
+        let loop_node: Node<TestLoopOp> = LoopBuilder::new("token_loop")
+            .with_input("items", "String", Cardinality::ZERO_OR_MORE)
+            .with_element("element", "String")
+            .with_resource_input(ResourceInput::new("res:token", "String"))
+            .with_body(body_dag)
+            .with_output("results", "String")
+            .build();
+
+        let mut dag: Dag<TestLoopOp> = Dag::new();
+        dag.add_node(loop_node);
+
+        let mut mocks = BoundaryMocks::new();
+        mocks.set_input(
+            "token_loop",
+            "items",
+            Value::List(vec![
+                Value::Str("alpha".to_string()),
+                Value::Str("beta".to_string()),
+            ]),
+        );
+        mocks.set_input("token_loop", "res:token", Value::Str("t".to_string()));
+
+        let log = execute_with_mode_and_inputs(&dag, ExecutionMode::Real, Some(&mocks))
+            .expect("loop execution should succeed with resource input");
+
+        let pack_entry = log
+            .entries
+            .iter()
+            .find(|e| e.node_id.ends_with("/pack"))
+            .expect("should have a pack node entry");
+
+        match pack_entry.outputs.get("results") {
+            Some(Value::List(items)) => {
+                assert_eq!(
+                    items,
+                    &vec![
+                        Value::Str("alpha@t".to_string()),
+                        Value::Str("beta@t".to_string()),
+                    ]
+                );
+            }
+            other => panic!("expected Value::List, got {:?}", other),
         }
     }
 }
