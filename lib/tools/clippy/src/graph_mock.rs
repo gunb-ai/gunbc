@@ -39,6 +39,7 @@ pub fn clippy_mock_spec() -> MockSpec {
         // Document the expected external input.
         .expects_input("trigger", InputConstraint::Any)
         // Skip node examples (these nodes are exercised via DAG-level tests).
+        .skip_node_example("resource_gate")
         .skip_node_example("check")
         .skip_node_example("create")
         .skip_node_example("resolve")

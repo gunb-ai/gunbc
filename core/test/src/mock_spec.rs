@@ -55,6 +55,10 @@ pub struct MockSpec {
     /// After DryRun execution, these are verified against actual outputs.
     pub expected_outputs: Vec<ExpectedOutput>,
 
+    /// Expected outputs for live flow tests (Real execution).
+    /// These use OutputMatcher instead of exact values.
+    pub live_expected_outputs: Vec<LiveExpectedOutput>,
+
     /// Per-node I/O examples for generating unit tests.
     /// Each example specifies inputs and expected outputs for a single node.
     pub node_examples: Vec<NodeExample>,
@@ -78,6 +82,7 @@ impl MockSpec {
             resource_mocks: ResourceMocks::new(),
             transport_mocks: Vec::new(),
             expected_outputs: Vec::new(),
+            live_expected_outputs: Vec::new(),
             node_examples: Vec::new(),
             skipped_node_examples: Vec::new(),
             input_mocks: Vec::new(),
@@ -96,6 +101,7 @@ impl MockSpec {
             port: port.into(),
             value,
             sequence: None,
+            sequence_exhausted_is_error: false,
         });
         self
     }
@@ -157,7 +163,8 @@ impl MockSpec {
     /// Add a boundary mock with a sequenced response.
     ///
     /// The mock returns values from `sequence` in order; once exhausted,
-    /// it falls back to `default`.
+    /// it falls back to `default`. Use `boundary_sequence_strict` to error
+    /// on sequence exhaustion instead.
     pub fn boundary_sequence(
         mut self,
         node: impl Into<String>,
@@ -170,6 +177,25 @@ impl MockSpec {
             port: port.into(),
             value: default,
             sequence: Some(sequence),
+            sequence_exhausted_is_error: false,
+        });
+        self
+    }
+
+    /// Add a boundary mock with a sequenced response that errors on exhaustion.
+    pub fn boundary_sequence_strict(
+        mut self,
+        node: impl Into<String>,
+        port: impl Into<String>,
+        default: Value,
+        sequence: Vec<Value>,
+    ) -> Self {
+        self.boundary_mocks.push(BoundaryMock {
+            node: node.into(),
+            port: port.into(),
+            value: default,
+            sequence: Some(sequence),
+            sequence_exhausted_is_error: true,
         });
         self
     }
@@ -200,6 +226,21 @@ impl MockSpec {
             node: node.into(),
             port: port.into(),
             expected,
+        });
+        self
+    }
+
+    /// Add an expected output matcher for live flow tests.
+    pub fn live_expected_output(
+        mut self,
+        node: impl Into<String>,
+        port: impl Into<String>,
+        matcher: OutputMatcher,
+    ) -> Self {
+        self.live_expected_outputs.push(LiveExpectedOutput {
+            node: node.into(),
+            port: port.into(),
+            matcher,
         });
         self
     }
@@ -249,7 +290,11 @@ impl MockSpec {
         let mut mocks = BoundaryMocks::new();
         for bm in &self.boundary_mocks {
             if let Some(seq) = &bm.sequence {
-                mocks.set_sequence(&bm.node, &bm.port, bm.value.clone(), seq.clone());
+                if bm.sequence_exhausted_is_error {
+                    mocks.set_sequence_strict(&bm.node, &bm.port, bm.value.clone(), seq.clone());
+                } else {
+                    mocks.set_sequence(&bm.node, &bm.port, bm.value.clone(), seq.clone());
+                }
             } else {
                 mocks.set_value(&bm.node, &bm.port, bm.value.clone());
             }
@@ -269,7 +314,11 @@ impl MockSpec {
         // Boundary mocks for output interception (env nodes, explicit boundaries, etc.)
         for bm in &self.boundary_mocks {
             if let Some(seq) = &bm.sequence {
-                mocks.set_sequence(&bm.node, &bm.port, bm.value.clone(), seq.clone());
+                if bm.sequence_exhausted_is_error {
+                    mocks.set_sequence_strict(&bm.node, &bm.port, bm.value.clone(), seq.clone());
+                } else {
+                    mocks.set_sequence(&bm.node, &bm.port, bm.value.clone(), seq.clone());
+                }
             } else {
                 mocks.set_value(&bm.node, &bm.port, bm.value.clone());
             }
@@ -288,6 +337,11 @@ impl MockSpec {
     /// Check whether this spec has flow test data (transport mocks or expected outputs).
     pub fn has_flow_test_data(&self) -> bool {
         !self.transport_mocks.is_empty() || !self.expected_outputs.is_empty()
+    }
+
+    /// Check whether this spec has live flow expectations.
+    pub fn has_live_flow_test_data(&self) -> bool {
+        !self.live_expected_outputs.is_empty()
     }
 
     /// Get mock value for a specific boundary port.
@@ -333,6 +387,8 @@ pub struct BoundaryMock {
     pub value: Value,
     /// Optional ordered sequence of responses
     pub sequence: Option<Vec<Value>>,
+    /// If true, sequence exhaustion should be treated as an error.
+    pub sequence_exhausted_is_error: bool,
 }
 
 /// A mock value for a transport executor node (injected via DryRun interception).
@@ -366,6 +422,17 @@ pub struct ExpectedOutput {
     pub port: String,
     /// Expected value
     pub expected: Value,
+}
+
+/// An expected output matcher for live flow tests.
+#[derive(Debug, Clone)]
+pub struct LiveExpectedOutput {
+    /// Node ID to check (e.g., "parse")
+    pub node: String,
+    /// Output port name (e.g., "content")
+    pub port: String,
+    /// Expected matcher
+    pub matcher: OutputMatcher,
 }
 
 /// An expectation about input from upstream.

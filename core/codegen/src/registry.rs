@@ -46,6 +46,8 @@ pub struct TestgenTargetDef {
     pub chain_tests: bool,
     /// Enable flow tests
     pub flow_tests: bool,
+    /// Enable live flow tests (Real execution)
+    pub live_flow_tests: bool,
     /// Max window size for windowed tests (None = no limit)
     pub window_max_nodes: Option<usize>,
     /// Test class override (unit/hermetic/integration)
@@ -56,6 +58,16 @@ pub struct TestgenTargetDef {
     pub requires: Option<Vec<String>>,
     /// Required secrets override (env vars)
     pub secrets: Option<Vec<String>>,
+    /// Live test class override
+    pub live_test_class: Option<TestClass>,
+    /// Live test cost override
+    pub live_fermi_cost: Option<FermiCost>,
+    /// Live test external requirements override
+    pub live_requires: Option<Vec<String>>,
+    /// Live test required env vars (hard requirements)
+    pub live_required: Option<Vec<String>>,
+    /// Live test required any-of env var groups
+    pub live_required_any_of: Option<Vec<Vec<String>>>,
     /// Tool name for CLI contract test generation. When set, entrypoints
     /// are looked up from `derive_tool_defs()` and a CLI contract test is emitted
     /// alongside the DAG tests.
@@ -75,11 +87,17 @@ impl TestgenTargetDef {
             boundary_tests: true,
             chain_tests: true,
             flow_tests: false,
+            live_flow_tests: false,
             window_max_nodes: Some(5),
             test_class: None,
             fermi_cost: None,
             requires: None,
             secrets: None,
+            live_test_class: None,
+            live_fermi_cost: None,
+            live_requires: None,
+            live_required: None,
+            live_required_any_of: None,
             tool_name: None,
         }
     }

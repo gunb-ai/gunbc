@@ -30,6 +30,7 @@ use crate::node::NodeBody;
 use crate::type_op::{Predicate, TypeOp, WrapperKind};
 use crate::types::Cardinality;
 use crate::value::Value;
+use std::fmt;
 
 /// L1: Extract cardinality from a type DAG.
 ///
@@ -86,6 +87,34 @@ pub fn predicates(type_dag: &Dag<TypeOp>) -> Vec<Predicate> {
         .collect()
 }
 
+/// Error from witness generation.
+#[derive(Debug, Clone)]
+pub enum WitnessError {
+    InvalidCardinality {
+        base: Option<String>,
+        wrapper: Option<WrapperKind>,
+        count: u32,
+    },
+}
+
+impl fmt::Display for WitnessError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            WitnessError::InvalidCardinality {
+                base,
+                wrapper,
+                count,
+            } => write!(
+                f,
+                "invalid witness count {} for base {:?} with wrapper {:?}",
+                count, base, wrapper
+            ),
+        }
+    }
+}
+
+impl std::error::Error for WitnessError {}
+
 /// L4: Generate boundary witness values for a type.
 ///
 /// Witnesses are example values that satisfy the type's constraints,
@@ -99,6 +128,13 @@ pub fn predicates(type_dag: &Dag<TypeOp>) -> Vec<Predicate> {
 /// For a `List<String>` (cardinality `[0,∞)`), this produces witnesses
 /// at counts 0 and 1 (the in-range boundary values).
 pub fn witnesses(type_dag: &Dag<TypeOp>) -> Vec<BoundaryWitness> {
+    witnesses_checked(type_dag)
+        .unwrap_or_else(|err| panic!("invalid witness generation: {}", err))
+}
+
+/// Like [`witnesses`] but returns an error instead of panicking on invalid
+/// cardinality/wrapper combinations.
+pub fn witnesses_checked(type_dag: &Dag<TypeOp>) -> Result<Vec<BoundaryWitness>, WitnessError> {
     let card = cardinality(type_dag);
     let base = base_type(type_dag);
     let preds = predicates(type_dag);
@@ -106,39 +142,45 @@ pub fn witnesses(type_dag: &Dag<TypeOp>) -> Vec<BoundaryWitness> {
 
     let scalar_witness = scalar_witness_for_base(&base, &preds);
 
-    card.test_cases_for_tests()
-        .into_iter()
-        .map(|count| {
-            let value = match count {
-                0 => match &wrapper {
-                    Some(WrapperKind::Optional) => Value::Unit,
-                    Some(WrapperKind::List | WrapperKind::NonEmptyList) => Value::List(vec![]),
-                    Some(WrapperKind::Set | WrapperKind::NonEmptySet) => Value::Set(vec![]),
-                    None => Value::Unit, // Scalar empty = absent
-                },
-                1 => match &wrapper {
+    let mut result = Vec::new();
+    for count in card.test_cases_for_tests() {
+        let value = match count {
+            0 => match &wrapper {
+                Some(WrapperKind::Optional) => Value::Unit,
+                Some(WrapperKind::List | WrapperKind::NonEmptyList) => Value::List(vec![]),
+                Some(WrapperKind::Set | WrapperKind::NonEmptySet) => Value::Set(vec![]),
+                None => Value::Unit, // Scalar empty = absent
+            },
+            1 => match &wrapper {
+                Some(WrapperKind::List | WrapperKind::NonEmptyList) => {
+                    Value::List(vec![scalar_witness.clone()])
+                }
+                Some(WrapperKind::Set | WrapperKind::NonEmptySet) => {
+                    Value::Set(vec![scalar_witness.clone()])
+                }
+                _ => scalar_witness.clone(),
+            },
+            n => {
+                let witnesses = n_witnesses(&scalar_witness, n);
+                match &wrapper {
                     Some(WrapperKind::List | WrapperKind::NonEmptyList) => {
-                        Value::List(vec![scalar_witness.clone()])
+                        Value::List(witnesses)
                     }
-                    Some(WrapperKind::Set | WrapperKind::NonEmptySet) => {
-                        Value::Set(vec![scalar_witness.clone()])
-                    }
-                    _ => scalar_witness.clone(),
-                },
-                n => {
-                    let witnesses = n_witnesses(&scalar_witness, n);
-                    match &wrapper {
-                        Some(WrapperKind::List | WrapperKind::NonEmptyList) => {
-                            Value::List(witnesses)
-                        }
-                        Some(WrapperKind::Set | WrapperKind::NonEmptySet) => Value::set(witnesses),
-                        _ => Value::List(witnesses), // fallback
+                    Some(WrapperKind::Set | WrapperKind::NonEmptySet) => Value::set(witnesses),
+                    _ => {
+                        return Err(WitnessError::InvalidCardinality {
+                            base: base.clone(),
+                            wrapper: wrapper.clone(),
+                            count: n,
+                        })
                     }
                 }
-            };
-            BoundaryWitness { count, value }
-        })
-        .collect()
+            }
+        };
+        result.push(BoundaryWitness { count, value });
+    }
+
+    Ok(result)
 }
 
 /// A boundary witness: a boundary value count paired with an example value.

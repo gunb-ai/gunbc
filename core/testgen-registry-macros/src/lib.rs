@@ -14,6 +14,7 @@ pub fn testgen_target(args: TokenStream, input: TokenStream) -> TokenStream {
     let mut builder: Option<Expr> = None;
     let mut signature: Option<Expr> = None;
     let mut flow_tests = false;
+    let mut live_flow_tests = false;
     let mut no_boundary_tests = false;
     let mut no_chain_tests = false;
     let mut skip = false;
@@ -22,6 +23,11 @@ pub fn testgen_target(args: TokenStream, input: TokenStream) -> TokenStream {
     let mut fermi_cost: Option<syn::LitStr> = None;
     let mut requires: Option<Vec<syn::LitStr>> = None;
     let mut secrets: Option<Vec<syn::LitStr>> = None;
+    let mut live_test_class: Option<syn::LitStr> = None;
+    let mut live_fermi_cost: Option<syn::LitStr> = None;
+    let mut live_requires: Option<Vec<syn::LitStr>> = None;
+    let mut live_required: Option<Vec<syn::LitStr>> = None;
+    let mut live_required_any_of: Vec<Vec<syn::LitStr>> = Vec::new();
     let mut tool: Option<syn::LitStr> = None;
 
     for arg in args {
@@ -78,6 +84,14 @@ pub fn testgen_target(args: TokenStream, input: TokenStream) -> TokenStream {
                     Some("fermi") => {
                         if let Lit::Str(s) = nv.lit { fermi_cost = Some(s); }
                         else { return syn::Error::new_spanned(nv, "fermi must be a string literal").to_compile_error().into(); }
+                    }
+                    Some("live_class") => {
+                        if let Lit::Str(s) = nv.lit { live_test_class = Some(s); }
+                        else { return syn::Error::new_spanned(nv, "live_class must be a string literal").to_compile_error().into(); }
+                    }
+                    Some("live_fermi") => {
+                        if let Lit::Str(s) = nv.lit { live_fermi_cost = Some(s); }
+                        else { return syn::Error::new_spanned(nv, "live_fermi must be a string literal").to_compile_error().into(); }
                     }
                     Some("tool") => {
                         if let Lit::Str(s) = nv.lit { tool = Some(s); }
@@ -137,6 +151,57 @@ pub fn testgen_target(args: TokenStream, input: TokenStream) -> TokenStream {
                         }
                         secrets = Some(items);
                     }
+                    Some("live_requires") => {
+                        let mut items = Vec::new();
+                        for item in list.nested.iter() {
+                            match item {
+                                NestedMeta::Lit(Lit::Str(s)) => items.push(s.clone()),
+                                _ => {
+                                    return syn::Error::new_spanned(
+                                        item,
+                                        "live_requires(...) only supports string literals",
+                                    )
+                                    .to_compile_error()
+                                    .into();
+                                }
+                            }
+                        }
+                        live_requires = Some(items);
+                    }
+                    Some("live_required") => {
+                        let mut items = Vec::new();
+                        for item in list.nested.iter() {
+                            match item {
+                                NestedMeta::Lit(Lit::Str(s)) => items.push(s.clone()),
+                                _ => {
+                                    return syn::Error::new_spanned(
+                                        item,
+                                        "live_required(...) only supports string literals",
+                                    )
+                                    .to_compile_error()
+                                    .into();
+                                }
+                            }
+                        }
+                        live_required = Some(items);
+                    }
+                    Some("live_required_any_of") => {
+                        let mut items = Vec::new();
+                        for item in list.nested.iter() {
+                            match item {
+                                NestedMeta::Lit(Lit::Str(s)) => items.push(s.clone()),
+                                _ => {
+                                    return syn::Error::new_spanned(
+                                        item,
+                                        "live_required_any_of(...) only supports string literals",
+                                    )
+                                    .to_compile_error()
+                                    .into();
+                                }
+                            }
+                        }
+                        live_required_any_of.push(items);
+                    }
                     _ => {
                         return syn::Error::new_spanned(list, "unknown testgen_target list argument").to_compile_error().into();
                     }
@@ -146,6 +211,7 @@ pub fn testgen_target(args: TokenStream, input: TokenStream) -> TokenStream {
                 if let Some(ident) = path.get_ident() {
                     match ident.to_string().as_str() {
                         "flow_tests" => flow_tests = true,
+                        "live_flow_tests" => live_flow_tests = true,
                         "no_boundary_tests" => no_boundary_tests = true,
                         "no_chain_tests" => no_chain_tests = true,
                         "skip" => skip = true,
@@ -167,6 +233,7 @@ pub fn testgen_target(args: TokenStream, input: TokenStream) -> TokenStream {
             || module.is_some()
             || signature.is_some()
             || flow_tests
+            || live_flow_tests
             || no_boundary_tests
             || no_chain_tests
             || window_max_nodes.is_some()
@@ -174,6 +241,11 @@ pub fn testgen_target(args: TokenStream, input: TokenStream) -> TokenStream {
             || fermi_cost.is_some()
             || requires.is_some()
             || secrets.is_some()
+            || live_test_class.is_some()
+            || live_fermi_cost.is_some()
+            || live_requires.is_some()
+            || live_required.is_some()
+            || !live_required_any_of.is_empty()
             || tool.is_some()
         {
             return syn::Error::new_spanned(
@@ -274,6 +346,66 @@ pub fn testgen_target(args: TokenStream, input: TokenStream) -> TokenStream {
         quote!(None)
     };
 
+    let live_class_tokens = if let Some(class) = live_test_class {
+        match class.value().to_lowercase().as_str() {
+            "unit" => quote!(Some(gunbc_test::TestClass::Unit)),
+            "hermetic" => quote!(Some(gunbc_test::TestClass::Hermetic)),
+            "integration" => quote!(Some(gunbc_test::TestClass::Integration)),
+            _ => {
+                return syn::Error::new_spanned(
+                    class,
+                    "live_class must be one of: unit, hermetic, integration",
+                )
+                .to_compile_error()
+                .into();
+            }
+        }
+    } else {
+        quote!(None)
+    };
+
+    let live_fermi_tokens = if let Some(cost) = live_fermi_cost {
+        match cost.value().to_uppercase().as_str() {
+            "XS" => quote!(Some(gunbc_test::FermiCost::XS)),
+            "S" => quote!(Some(gunbc_test::FermiCost::S)),
+            "M" => quote!(Some(gunbc_test::FermiCost::M)),
+            "L" => quote!(Some(gunbc_test::FermiCost::L)),
+            "XL" => quote!(Some(gunbc_test::FermiCost::XL)),
+            _ => {
+                return syn::Error::new_spanned(
+                    cost,
+                    "live_fermi must be one of: XS, S, M, L, XL",
+                )
+                .to_compile_error()
+                .into();
+            }
+        }
+    } else {
+        quote!(None)
+    };
+
+    let live_requires_tokens = if let Some(list) = live_requires {
+        quote!(Some(&[#(#list),*]))
+    } else {
+        quote!(None)
+    };
+
+    let live_required_tokens = if let Some(list) = live_required {
+        quote!(Some(&[#(#list),*]))
+    } else {
+        quote!(None)
+    };
+
+    let live_required_any_of_tokens = if !live_required_any_of.is_empty() {
+        let groups: Vec<_> = live_required_any_of
+            .iter()
+            .map(|group| quote!(&[#(#group),*]))
+            .collect();
+        quote!(Some(&[#(#groups),*]))
+    } else {
+        quote!(None)
+    };
+
     let tool_tokens = if let Some(t) = tool {
         quote!(Some(#t))
     } else {
@@ -305,11 +437,17 @@ pub fn testgen_target(args: TokenStream, input: TokenStream) -> TokenStream {
                     boundary_tests: #boundary_tests,
                     chain_tests: #chain_tests,
                     flow_tests: #flow,
+                    live_flow_tests: #live_flow_tests,
                     window_max_nodes: #window_tokens,
                     test_class: #class_tokens,
                     fermi_cost: #fermi_tokens,
                     requires: #requires_tokens,
                     secrets: #secrets_tokens,
+                    live_test_class: #live_class_tokens,
+                    live_fermi_cost: #live_fermi_tokens,
+                    live_requires: #live_requires_tokens,
+                    live_required: #live_required_tokens,
+                    live_required_any_of: #live_required_any_of_tokens,
                 },
                 generate: #gen_ident,
             }

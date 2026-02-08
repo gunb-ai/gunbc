@@ -34,11 +34,17 @@ pub struct DagSpecTestgen {
     pub boundary_tests: bool,
     pub chain_tests: bool,
     pub flow_tests: bool,
+    pub live_flow_tests: bool,
     pub window_max_nodes: Option<usize>,
     pub test_class: Option<TestClass>,
     pub fermi_cost: Option<FermiCost>,
     pub requires: Option<&'static [&'static str]>,
     pub secrets: Option<&'static [&'static str]>,
+    pub live_test_class: Option<TestClass>,
+    pub live_fermi_cost: Option<FermiCost>,
+    pub live_requires: Option<&'static [&'static str]>,
+    pub live_required: Option<&'static [&'static str]>,
+    pub live_required_any_of: Option<&'static [&'static [&'static str]]>,
 }
 
 /// A registered DAG spec (auto-discovered via inventory).
@@ -79,6 +85,7 @@ impl DagSpecDef {
         def.boundary_tests = self.testgen.boundary_tests;
         def.chain_tests = self.testgen.chain_tests;
         def.flow_tests = self.testgen.flow_tests;
+        def.live_flow_tests = self.testgen.live_flow_tests;
         def.window_max_nodes = self.testgen.window_max_nodes;
         def.test_class = self.testgen.test_class;
         def.fermi_cost = self.testgen.fermi_cost;
@@ -90,6 +97,22 @@ impl DagSpecDef {
             .testgen
             .secrets
             .map(|items| items.iter().map(|s| s.to_string()).collect());
+        def.live_test_class = self.testgen.live_test_class;
+        def.live_fermi_cost = self.testgen.live_fermi_cost;
+        def.live_requires = self
+            .testgen
+            .live_requires
+            .map(|items| items.iter().map(|s| s.to_string()).collect());
+        def.live_required = self
+            .testgen
+            .live_required
+            .map(|items| items.iter().map(|s| s.to_string()).collect());
+        def.live_required_any_of = self.testgen.live_required_any_of.map(|groups| {
+            groups
+                .iter()
+                .map(|group| group.iter().map(|s| s.to_string()).collect())
+                .collect()
+        });
         def.tool_name = self.meta.tool_name.map(|s| s.to_string());
         def
     }
@@ -138,16 +161,34 @@ pub fn generate_target<T: Executable + Clone>(
         .clone()
         .unwrap_or_else(|| inferred_requires.clone());
     let secrets = config.secrets.clone().unwrap_or_default();
+    let live_test_class = config
+        .live_test_class
+        .unwrap_or(TestClass::Integration);
+    let live_requires = config
+        .live_requires
+        .clone()
+        .unwrap_or_else(|| inferred_requires.clone());
+    let live_fermi_cost = config
+        .live_fermi_cost
+        .unwrap_or_else(|| infer_fermi_cost(live_test_class, &live_requires));
+    let live_required = config.live_required.clone().unwrap_or_default();
+    let live_required_any_of = config.live_required_any_of.clone().unwrap_or_default();
 
     let test_config = TestConfig {
         boundary_tests: config.boundary_tests,
         chain_tests: config.chain_tests,
         flow_tests: config.flow_tests,
+        live_flow_tests: config.live_flow_tests,
         window_max_nodes: config.window_max_nodes,
         test_class,
         fermi_cost,
         requires,
         secrets,
+        live_test_class,
+        live_fermi_cost,
+        live_requires,
+        live_required,
+        live_required_any_of,
         ..TestConfig::default()
     };
     let mut generator = TestGenerator::new(&dag)

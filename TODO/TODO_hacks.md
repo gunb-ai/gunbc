@@ -23,6 +23,9 @@ accepted, so tests can pass even if call counts change or loops are added.
 **Suggested fix**: Add a strict mode (or per-mock flag) that errors once the
 sequence is exhausted unless a "repeat last" or explicit fallback mode is set.
 
+**Update (2026-02-07)**: Added strict sequence support; strict mocks now error
+on exhaustion during execution. Default behavior still falls back.
+
 ---
 
 ## 2. Scalar witnesses fall back to list values for count > 1
@@ -38,6 +41,10 @@ cardinality/type modeling. It can mask a missing wrapper or incorrect type.
 **Suggested fix**: Treat scalar-with-count>1 as an error unless a list/set
 wrapper is present. Alternatively, inject a wrapper type explicitly before
 generating witnesses.
+
+**Update (2026-02-07)**: Removed the list fallback and now treat this case as
+an error (panic) during witness generation. This should be unreachable for
+wrapper-derived cardinalities but fails loudly if it occurs.
 
 ---
 

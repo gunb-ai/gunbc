@@ -531,6 +531,7 @@ available. These are gated by:
 
 - Required cloud secret envs present (GCP WIF + Secret Manager)
 - `GUNBC_TEST_MAX_COST` (default `S` locally; CI defaults to `XL`)
+- **No extra flags** — live tests run automatically when env + cost allow
 
 ### GitHub (cloud secret manager source)
 
@@ -544,13 +545,14 @@ lifecycle tests (acquire/timeout/refresh/revoke) in CI.
 
 ### Live External Tests (auto when configured)
 
-Real secret usage should be **automatic when configured**:
+Real secret usage should be **automatic when configured** (no opt-in flags):
 
 - Cost gating: real HTTP transports are `FermiCost::M` or higher, so
   `GUNBC_TEST_MAX_COST` must allow them (default is `S` locally; CI defaults to `XL`).
 - WIF configuration must be present (`GCP_WIF_PROVIDER`, `GCP_SECRETS_PROJECT`,
   `GCP_SECRETS_PREFIX`, and either `GCP_SECRETS_SA` or `GCP_SECRETS_IMPERSONATE_SA`).
 - If missing in CI, tests **fail fast with reason**. Locally, they skip.
+- Any-of env groups are supported (e.g., service account OR impersonation).
 
 ---
 
@@ -569,9 +571,12 @@ Real secret usage should be **automatic when configured**:
 - Testgen generates **integration tests** for credential lifecycle
   flows (OpenAI, Anthropic, GitHub env-var provider; GitHub App when
   implemented) using stateful mocks and windowed phases once available.
-- Live OpenAI/Anthropic/GitHub integration tests run the DAG in
-  `ExecutionMode::Real` and validate non-empty outputs when WIF
-  config is present (guarded by required secrets + Fermi cost).
+- Live OpenAI/Anthropic/GitHub integration tests are **generated**
+  as **live flow tests** (Real mode), gated only by env + Fermi cost
+  (no extra flags), and validate non-empty outputs when WIF config
+  is present.
+- Live test env gating supports any-of groups (e.g., `GCP_SECRETS_SA`
+  OR `GCP_SECRETS_IMPERSONATE_SA`) so CI can use either path.
 - Generated integration tests run in the **default CI/test path** in a
   hermetic mode (mocked transport + mocked creds), with a clear opt-in
   path for **real external tests** (GitHub App / LLM keys) that are

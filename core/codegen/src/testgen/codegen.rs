@@ -69,6 +69,8 @@ pub struct TestConfig {
     pub chain_tests: bool,
     /// Generate flow verification tests (DryRun full DAG, verify terminal outputs)
     pub flow_tests: bool,
+    /// Generate live flow verification tests (Real execution, gated by env + cost)
+    pub live_flow_tests: bool,
     /// Generate per-node I/O example tests (from MockSpec.node_examples)
     pub example_tests: bool,
     /// Generate optional-input behavior tests (missing + wrong-type)
@@ -85,6 +87,16 @@ pub struct TestConfig {
     pub requires: Vec<String>,
     /// Required secrets (env vars) for live integration tests
     pub secrets: Vec<String>,
+    /// Live test class override (typically Integration)
+    pub live_test_class: TestClass,
+    /// Live test cost bucket
+    pub live_fermi_cost: FermiCost,
+    /// Live test external requirements (informational)
+    pub live_requires: Vec<String>,
+    /// Live test required env vars (hard requirements)
+    pub live_required: Vec<String>,
+    /// Live test required any-of env var groups
+    pub live_required_any_of: Vec<Vec<String>>,
 }
 
 impl Default for TestConfig {
@@ -97,6 +109,7 @@ impl Default for TestConfig {
             boundary_tests: true,
             chain_tests: true,
             flow_tests: false,
+            live_flow_tests: false,
             example_tests: true,
             optional_input_tests: true,
             window_max_nodes: Some(5),
@@ -105,6 +118,11 @@ impl Default for TestConfig {
             fermi_cost: FermiCost::XS,
             requires: Vec::new(),
             secrets: Vec::new(),
+            live_test_class: TestClass::Integration,
+            live_fermi_cost: FermiCost::M,
+            live_requires: Vec::new(),
+            live_required: Vec::new(),
+            live_required_any_of: Vec::new(),
         }
     }
 }
@@ -717,27 +735,35 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
         });
 
         if self.mock_spec_fn.is_some() {
+            let mut items = vec![
+                "assert_boundary_mockable".to_string(),
+                "assert_types_compatible".to_string(),
+                "guard_test".to_string(),
+                "FermiCost".to_string(),
+                "MockSpec".to_string(),
+                "TestClass".to_string(),
+            ];
+            if self.config.live_flow_tests {
+                items.push("guard_test_with_env".to_string());
+            }
             file.imports.push(Import {
                 path: vec!["gunbc_test".to_string()],
-                items: vec![
-                    "assert_boundary_mockable".to_string(),
-                    "assert_types_compatible".to_string(),
-                    "guard_test".to_string(),
-                    "FermiCost".to_string(),
-                    "MockSpec".to_string(),
-                    "TestClass".to_string(),
-                ],
+                items,
             });
         } else {
+            let mut items = vec![
+                "assert_boundary_mockable".to_string(),
+                "assert_types_compatible".to_string(),
+                "guard_test".to_string(),
+                "FermiCost".to_string(),
+                "TestClass".to_string(),
+            ];
+            if self.config.live_flow_tests {
+                items.push("guard_test_with_env".to_string());
+            }
             file.imports.push(Import {
                 path: vec!["gunbc_test".to_string()],
-                items: vec![
-                    "assert_boundary_mockable".to_string(),
-                    "assert_types_compatible".to_string(),
-                    "guard_test".to_string(),
-                    "FermiCost".to_string(),
-                    "TestClass".to_string(),
-                ],
+                items,
             });
         }
 
@@ -982,6 +1008,12 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             }
         }
 
+        if self.config.live_flow_tests {
+            if let Some(section) = self.build_live_flow_section(graph_builder_fn) {
+                file.sections.push(section);
+            }
+        }
+
         if self.mock_spec_fn.is_some() && self.config.window_max_nodes.unwrap_or(usize::MAX) >= 2 {
             if let Some(section) = self.build_window_section(graph_builder_fn) {
                 file.sections.push(section);
@@ -1042,6 +1074,17 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
     fn slice_expr(items: &[String]) -> Expr {
         let entries: Vec<Expr> = items.iter().map(Expr::str_lit).collect();
         Expr::Ref(Box::new(Expr::Array(entries)))
+    }
+
+    fn slice_2d_expr(items: &[Vec<String>]) -> Expr {
+        let groups: Vec<Expr> = items
+            .iter()
+            .map(|group| {
+                let entries: Vec<Expr> = group.iter().map(Expr::str_lit).collect();
+                Expr::Ref(Box::new(Expr::Array(entries)))
+            })
+            .collect();
+        Expr::Ref(Box::new(Expr::Array(groups)))
     }
 
     fn class_variant(class: TestClass) -> &'static str {
@@ -3002,6 +3045,192 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                     String::new(),
                     "Builds the DAG, injects mocked transport responses via DryRun,".to_string(),
                     "and verifies that the pure node chain produces expected terminal outputs."
+                        .to_string(),
+                ],
+                body,
+            }],
+        })
+    }
+
+    fn build_live_flow_section(&self, graph_builder_fn: &str) -> Option<TestSection> {
+        let Some(spec) = &self.mock_spec else {
+            return None;
+        };
+        if !self.config.live_flow_tests {
+            return None;
+        }
+
+        let has_satisfies = spec
+            .live_expected_outputs
+            .iter()
+            .any(|eo| matches!(eo.matcher, OutputMatcher::Satisfies { .. }));
+        if has_satisfies && self.mock_spec_fn.is_none() {
+            panic!(
+                "Live flow tests with OutputMatcher::Satisfies require mock_spec_fn so generated tests can access runtime matchers.\n\
+                 Provide TestGenerator::with_mock_spec_fn(\"path::to::mock_spec\")."
+            );
+        }
+
+        let test_name = format!("test_live_flow_{}", NamingCase::SnakeCase.apply(&spec.name));
+
+        let class_variant = Self::class_variant(self.config.live_test_class);
+        let cost_variant = Self::cost_variant(self.config.live_fermi_cost);
+        let class_expr = Expr::path(&["TestClass", class_variant]);
+        let cost_expr = Expr::path(&["FermiCost", cost_variant]);
+        let requires_expr = Self::slice_expr(&self.config.live_requires);
+        let required_expr = Self::slice_expr(&self.config.live_required);
+        let required_any_of_expr = Self::slice_2d_expr(&self.config.live_required_any_of);
+
+        let guard_call = Expr::call(
+            "guard_test_with_env",
+            vec![
+                Expr::Str(test_name.clone()),
+                class_expr,
+                cost_expr,
+                requires_expr,
+                required_expr,
+                required_any_of_expr,
+            ],
+        );
+        let guard_stmt = Stmt::Expr(Expr::If {
+            cond: Box::new(guard_call.logical_not()),
+            then_body: vec![Stmt::Return(Expr::raw("()"))],
+            else_body: None,
+        });
+
+        let mut body = vec![
+            guard_stmt,
+            Stmt::let_bind("dag", Expr::var(graph_builder_fn)),
+            Stmt::let_bind(
+                "log",
+                Expr::call(
+                    "execute_with_mode",
+                    vec![
+                        Expr::var("dag").ref_of(),
+                        Expr::Path(vec!["ExecutionMode".to_string(), "Real".to_string()]),
+                    ],
+                )
+                .method(
+                    "expect",
+                    vec![Expr::Str("Real execution should succeed".into())],
+                ),
+            ),
+            Stmt::Assert(Assert::True {
+                expr: Expr::var("log")
+                    .field("entries")
+                    .method("is_empty", vec![])
+                    .logical_not(),
+                message: "execution should produce log entries".to_string(),
+            }),
+            Stmt::Blank,
+        ];
+
+        if has_satisfies {
+            body.push(Stmt::let_bind("spec", Expr::call("mock_spec", vec![])));
+            body.push(Stmt::Blank);
+        }
+
+        for (idx, eo) in spec.live_expected_outputs.iter().enumerate() {
+            body.push(Stmt::Comment(format!("Verify {}.{} (live)", eo.node, eo.port)));
+            body.push(Stmt::let_bind(
+                "entry",
+                Expr::var("log")
+                    .method("get", vec![Expr::Str(eo.node.clone())])
+                    .method(
+                        "expect",
+                        vec![Expr::Str(format!(
+                            "node '{}' should be in execution log",
+                            eo.node
+                        ))],
+                    ),
+            ));
+
+            let var_name = sanitize_to_snake_case(&eo.port);
+            let output_var = format!("output_{}", var_name);
+            body.push(Stmt::let_bind(
+                output_var.clone(),
+                Expr::var("entry")
+                    .field("outputs")
+                    .method("get", vec![Expr::Str(eo.port.clone())])
+                    .method(
+                        "expect",
+                        vec![Expr::Str(format!(
+                            "port '{}' should exist on '{}'",
+                            eo.port, eo.node
+                        ))],
+                    ),
+            ));
+
+            if matches!(eo.matcher, OutputMatcher::Satisfies { .. }) {
+                let matcher_var = format!("matcher_{}", var_name);
+                body.push(Stmt::let_bind(
+                    "expected_spec",
+                    Expr::var("spec")
+                        .field("live_expected_outputs")
+                        .method("get", vec![Expr::int(idx as i64)])
+                        .method(
+                            "expect",
+                            vec![Expr::Str(format!(
+                                "mock_spec missing live expected output {} for '{}.{}'",
+                                idx, eo.node, eo.port
+                            ))],
+                        ),
+                ));
+                body.push(Stmt::Assert(Assert::Eq {
+                    left: Expr::var("expected_spec")
+                        .field("node")
+                        .method("as_str", vec![]),
+                    right: Expr::Str(eo.node.clone()),
+                    message: format!(
+                        "live expected output {} should match node id '{}'",
+                        idx, eo.node
+                    ),
+                }));
+                body.push(Stmt::Assert(Assert::Eq {
+                    left: Expr::var("expected_spec")
+                        .field("port")
+                        .method("as_str", vec![]),
+                    right: Expr::Str(eo.port.clone()),
+                    message: format!(
+                        "live expected output {} should match port '{}'",
+                        idx, eo.port
+                    ),
+                }));
+                body.push(Stmt::let_bind(
+                    matcher_var.clone(),
+                    Expr::var("expected_spec").field("matcher"),
+                ));
+                body.push(Stmt::Expr(
+                    Expr::var(&matcher_var)
+                        .method("check", vec![Expr::var(&output_var)])
+                        .method(
+                            "expect",
+                            vec![Expr::Str(format!(
+                                "live output port '{}.{}' failed satisfies matcher",
+                                eo.node, eo.port
+                            ))],
+                        ),
+                ));
+            } else {
+                let mut stmts = render_output_matcher_check(&eo.matcher, &var_name);
+                body.append(&mut stmts);
+            }
+
+            body.push(Stmt::Blank);
+        }
+
+        Some(TestSection {
+            title: "Live Flow Tests".to_string(),
+            notes: vec![
+                "These tests execute the full DAG in Real mode with actual I/O.".to_string(),
+                "They are gated by env requirements and Fermi cost.".to_string(),
+            ],
+            tests: vec![TestFn {
+                name: test_name,
+                doc: vec![
+                    format!("Live flow verification: {} scenario.", spec.name),
+                    String::new(),
+                    "Builds the DAG, executes in Real mode, and checks key outputs."
                         .to_string(),
                 ],
                 body,

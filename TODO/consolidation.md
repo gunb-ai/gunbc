@@ -319,8 +319,7 @@ framework.
 Integration-style tests that execute the full DAG in DryRun mode
 with mocked transport responses, verifying execution flow.
 
-**Where**: `lib/tools/gist/tests/integration.rs`,
-`lib/tools/buck2/tests/integration.rs`.
+**Where**: `lib/tools/gist/tests/integration.rs`.
 
 ```rust
 let dag = build_gist_graph(GistMode::Snapshot)?;
@@ -345,10 +344,10 @@ and structural tests.
 
 ## 8. Integration Test Gap Analysis
 
-**Current state**: All 885 tests are in-memory. Zero tests exercise
-real transport execution. The transport abstraction layer ensures
-correctness of DAG logic, but `lib/transport/src/executor.rs`
-is untested against real systems.
+**Current state**: 885 hand-written + 2,334 generated in-memory tests.
+46 integration tests added for File/Shell/Git/CLI transport execution
+(see `lib/transport/src/executor.rs` and `lib/transport/src/cli.rs`).
+External (non-hermetic) transport tests remain a gap.
 
 ### Design Problem: `TransportRequest` doesn't encode hermeticity
 
@@ -545,34 +544,13 @@ transport/ops test (1).
 
 ---
 
-## 11. MockSpec test boilerplate — 8 graph_mock.rs files
+## 11. MockSpec test boilerplate — DONE
 
-**Where**: Every crate with a DAG defines a `graph_mock.rs` with
-near-identical MockSpec construction and boundary assertion tests.
-
-**Files**: `lib/review/`, `lib/llm-ops/`, `lib/tools/gist/`,
-`lib/tools/buck2/`, `lib/tools/deps/`, `gunbc-dag/src/*/`
-
-**Pattern**: Each file has:
-1. A `xxx_mock_spec()` function building MockSpec chains
-2. Tests asserting boundaries exist: `assert!(spec.get_boundary_mock("node", "port").is_some())`
-3. Tests asserting mock specs are complete
-
-The boundary assertion tests are nearly copy-paste across files.
-
-**Proposed**: Parameterized test helper:
-
-```rust
-/// Assert all expected boundaries exist in a MockSpec.
-pub fn assert_boundaries(spec: &MockSpec, expected: &[(&str, &str)]) {
-    for (node, port) in expected {
-        assert!(spec.get_boundary_mock(node, port).is_some(),
-            "missing boundary mock for {}.{}", node, port);
-    }
-}
-```
-
-This could live in `core/test/` alongside existing test infrastructure.
+All 13 graph_mock.rs files are now data-only (MockSpec definitions +
+NodeExample data). Zero `#[test]` functions remain. The solution evolved
+beyond the proposed parameterized helper into a typed mock builder
+pattern (`extract_mock_requirements()`) that enforces correctness at
+construction time. Testgen generates all boundary and structural tests.
 
 ---
 
@@ -688,8 +666,8 @@ integration tests all added.
 
 - "Extract when second consumer appears" — don't prematurely abstract.
   The first consumer defines the interface, the second validates it.
-- The section 5 items (input/output/response helpers) are different:
-  they already have 18-24 consumers. These are safe to extract now.
+- The §9-15 items (input/output/response helpers) had 18-24 consumers
+  each. All extracted and migrated (DONE).
 - Rendering DAGs are high value but not urgent. The current functions
   are pure and testable. DAGs add composability and interceptability.
 - The cardinality design doc subsumes the MergeOutputs generalization.
@@ -702,9 +680,9 @@ integration tests all added.
   `GistRequest` → non-hermetic, both produce identical `ShellRequest`.
   Test categories must be derived from the producer type, not the
   `TransportRequest` variant. This is a design gap in the type system.
-- Test retrospective: 885 tests, all in-memory. Transport executor
-  (`lib/transport/src/executor.rs`) is the untested boundary.
-  `File` and `Shell` integration tests are the highest-value additions.
+- Test retrospective: 885 hand-written + 2,334 generated tests.
+  Transport executor (`lib/transport/src/executor.rs`) now has
+  46 integration tests (File/Shell/Git/CLI).
 - Testgen already subsumes most hand-written integration tests
   (Pattern 5). Focus hand-written tests on edge cases only.
 - graph_mock.rs files are now data-only (MockSpec + examples).
@@ -713,13 +691,6 @@ integration tests all added.
 - Makefile gen and CI gen should read the testgen registry (inventory)
   to auto-generate check targets (TODO/TODONE/testgen-improvements.md TODO 6.3).
   This keeps "add a new tool" to a single edit (`#[testgen_target]`).
-- The skipped-propagation pattern (§12) is mechanical — it affects the
-  parse ops that sit after transport boundaries. This will grow as
-  more DAGs are added, so worth fixing now.
-- The error-mapping pattern (§13) is less urgent since the current code
-  works, but the `ResultExt` trait eliminates a lot of visual noise.
-- The ShellResponse constructors (§14) are a quick win — `FileResponse`
-  already has the same pattern (`written()`, `read_ok()`, `error()`),
-  so this is consistent API completion.
-- The unmigrated HashMap sites (§15) are mostly in mock/infra code,
-  not primary execute paths. Lower urgency but worth cleaning up.
+- §9-15 (boilerplate consolidation): All DONE. `propagate_skipped()`,
+  `OutputMap`, `ResultExt`, `ShellResponse::ok/failed`, input extraction
+  helpers — all migrated. Remaining unmigrated sites are intentional.

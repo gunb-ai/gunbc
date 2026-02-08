@@ -457,6 +457,14 @@ pub enum CliToolOp {
         tool: &'static CliToolDef,
         args: Vec<String>,
     },
+
+    /// Emit resource gate values for tool usage.
+    ///
+    /// Outputs Unit values for configured resource ports.
+    ResourceGate {
+        tool: &'static CliToolDef,
+        ports: Vec<String>,
+    },
 }
 
 impl CliToolOp {
@@ -478,10 +486,18 @@ impl CliToolOp {
         }
     }
 
+    /// Create a resource gate operation.
+    pub fn resource_gate(tool: &'static CliToolDef, ports: Vec<String>) -> Self {
+        Self::ResourceGate { tool, ports }
+    }
+
     /// Get the tool this operation is for.
     pub fn tool(&self) -> &'static CliToolDef {
         match self {
-            Self::Check { tool } | Self::Install { tool } | Self::Run { tool, .. } => tool,
+            Self::Check { tool }
+            | Self::Install { tool }
+            | Self::Run { tool, .. }
+            | Self::ResourceGate { tool, .. } => tool,
         }
     }
 }
@@ -490,8 +506,10 @@ impl CliToolOp {
 // Fractal DAG Builder
 // ============================================================================
 
+use crate::dag::{Dag, Edge, Guard, Port};
 use crate::node::Node;
-use crate::patterns::UpsertBuilder;
+use crate::types::Cardinality;
+use crate::value::Value;
 
 /// Build a CLI tool upsert sub-DAG node.
 ///
@@ -516,13 +534,12 @@ use crate::patterns::UpsertBuilder;
 /// builder.add_node(node);
 /// ```
 pub fn build_cli_upsert(tool: &'static CliToolDef, args: &[&str]) -> Node<CliToolOp> {
-    UpsertBuilder::new(tool.id)
-        .with_check(CliToolOp::check(tool))
-        .with_create(CliToolOp::install(tool))
-        .with_resolve(CliToolOp::run(tool, args))
-        .with_input_port("trigger", "Unit")
-        .with_output_port("result", "CliResult")
-        .build()
+    build_cli_tool_subdag(
+        tool,
+        tool.id,
+        CliToolOp::run(tool, args),
+        ("result", "CliResult"),
+    )
 }
 
 /// Build a CLI tool upsert sub-DAG for just check + install (no run).
@@ -530,13 +547,137 @@ pub fn build_cli_upsert(tool: &'static CliToolDef, args: &[&str]) -> Node<CliToo
 /// This is useful when you want to ensure a tool is installed but
 /// will run it separately with different arguments.
 pub fn build_cli_ensure(tool: &'static CliToolDef) -> Node<CliToolOp> {
-    UpsertBuilder::new(format!("{}_ensure", tool.id))
-        .with_check(CliToolOp::check(tool))
-        .with_create(CliToolOp::install(tool))
-        .with_resolve(CliToolOp::check(tool)) // Re-check as resolve
-        .with_input_port("trigger", "Unit")
-        .with_output_port("exists", "Bool")
-        .build()
+    build_cli_tool_subdag(
+        tool,
+        format!("{}_ensure", tool.id),
+        CliToolOp::check(tool),
+        ("exists", "Bool"),
+    )
+}
+
+fn build_cli_tool_subdag(
+    tool: &'static CliToolDef,
+    name: impl Into<String>,
+    resolve_op: CliToolOp,
+    output: (&str, &str),
+) -> Node<CliToolOp> {
+    let name = name.into();
+    let tool_res_name = format!("tool:{}", tool.id);
+    let tool_res_port_name = format!("res:tool:{}", tool.id);
+    let tool_res_port_read = Port::resource(tool_res_name.clone(), "Unit", AccessMode::Read);
+    let tool_res_port_write = Port::resource(tool_res_name.clone(), "Unit", AccessMode::Write);
+    let tool_res_port_run = Port::resource(tool_res_name.clone(), "Unit", tool.access_mode);
+
+    let needs_pkg = tool.install_cmd.is_some();
+    let needs_target = tool.run_cmd.first().copied() == Some("cargo");
+
+    let mut gate_outputs = vec![Port::scalar(format!("tool:{}", tool.id), "Unit")];
+    if needs_pkg {
+        gate_outputs.push(Port::scalar("pkg", "Unit"));
+    }
+    if needs_target {
+        gate_outputs.push(Port::scalar("target", "Unit"));
+    }
+
+    let mut dag = Dag::new();
+
+    dag.add_node(Node::opaque(
+        "resource_gate",
+        vec![],
+        gate_outputs.clone(),
+        CliToolOp::resource_gate(
+            tool,
+            gate_outputs.iter().map(|p| p.name.0.clone()).collect(),
+        ),
+    ));
+
+    // Check node
+    dag.add_node(Node::opaque(
+        "check",
+        vec![Port::scalar("trigger", "Unit"), tool_res_port_read.clone()],
+        vec![Port::scalar("exists", "Bool")],
+        CliToolOp::check(tool),
+    ));
+
+    // Create node (guarded by exists == false)
+    let mut create_inputs = vec![
+        Port::scalar("trigger", "Unit"),
+        Port::guarded_with_cardinality(
+            "exists",
+            "Bool",
+            Cardinality::ONE,
+            Guard::Eq(Value::Bool(false)),
+        ),
+        tool_res_port_write.clone(),
+    ];
+    if needs_pkg {
+        create_inputs.push(Port::resource("pkg", "Unit", AccessMode::Write));
+    }
+
+    dag.add_node(Node::opaque(
+        "create",
+        create_inputs,
+        vec![Port::optional("install_done", "OptionalBool")],
+        CliToolOp::install(tool),
+    ));
+
+    // Resolve node (run or re-check)
+    let mut resolve_inputs = vec![
+        Port::scalar("trigger", "Unit"),
+        Port::scalar("exists", "Bool"),
+        Port::optional("install_done", "OptionalBool"),
+        tool_res_port_run,
+    ];
+    if needs_target {
+        resolve_inputs.push(Port::resource("target", "Unit", AccessMode::Write));
+    }
+
+    dag.add_node(Node::opaque(
+        "resolve",
+        resolve_inputs,
+        vec![Port::scalar(output.0, output.1)],
+        resolve_op,
+    ));
+
+    // Edges for control ordering
+    dag.add_edge(Edge::new("check", "exists", "create", "exists"));
+    dag.add_edge(Edge::new("check", "exists", "resolve", "exists"));
+    dag.add_edge(Edge::new(
+        "create",
+        "install_done",
+        "resolve",
+        "install_done",
+    ));
+
+    // Resource gate wiring
+    let tool_gate_port = format!("tool:{}", tool.id);
+    dag.add_edge(Edge::new(
+        "resource_gate",
+        tool_gate_port.as_str(),
+        "check",
+        tool_res_port_name.as_str(),
+    ));
+    dag.add_edge(Edge::new(
+        "resource_gate",
+        tool_gate_port.as_str(),
+        "create",
+        tool_res_port_name.as_str(),
+    ));
+    dag.add_edge(Edge::new(
+        "resource_gate",
+        tool_gate_port.as_str(),
+        "resolve",
+        tool_res_port_name.as_str(),
+    ));
+
+    if needs_pkg {
+        dag.add_edge(Edge::new("resource_gate", "pkg", "create", "res:pkg"));
+    }
+    if needs_target {
+        dag.add_edge(Edge::new("resource_gate", "target", "resolve", "res:target"));
+    }
+
+    Node::subdag(name, dag)
 }
 
 /// Error type for CLI tool operations.

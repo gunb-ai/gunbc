@@ -633,7 +633,18 @@ pub fn rate_limited_mock_spec() -> MockSpec {
     output = "lib/llm-ops/src/generated_tests_credential.rs",
     module = "llm_credential_lifecycle_generated_tests",
     builder = "crate::graph::build_chat_completion_graph()",
-    no_boundary_tests
+    no_boundary_tests,
+    live_flow_tests,
+    live_class = "integration",
+    live_fermi = "M",
+    live_required(
+        "GCP_WIF_PROVIDER",
+        "GCP_SECRETS_PROJECT",
+        "GCP_SECRETS_PREFIX",
+        "ACTIONS_ID_TOKEN_REQUEST_URL",
+        "ACTIONS_ID_TOKEN_REQUEST_TOKEN"
+    ),
+    live_required_any_of("GCP_SECRETS_SA", "GCP_SECRETS_IMPERSONATE_SA")
 )]
 pub fn credential_lifecycle_mock_spec() -> MockSpec {
     let response = mock::mock_openai_response("Credential lifecycle test response.");
@@ -671,6 +682,12 @@ pub fn credential_lifecycle_mock_spec() -> MockSpec {
         .boundary("parse", "finish_reason", Value::Str("Stop".into()))
         .boundary("parse", "input_tokens", Value::Int(10))
         .boundary("parse", "output_tokens", Value::Int(20))
+        // Live expectations: LLM returns non-empty content
+        .live_expected_output("parse", "content", OutputMatcher::non_empty())
+        .live_expected_output("parse", "model", OutputMatcher::IsString)
+        .live_expected_output("parse", "finish_reason", OutputMatcher::IsString)
+        .live_expected_output("parse", "input_tokens", OutputMatcher::IntGe(0))
+        .live_expected_output("parse", "output_tokens", OutputMatcher::IntGe(0))
         .expects_input("provider", InputConstraint::NonEmpty)
         .expects_input("model", InputConstraint::NonEmpty)
         // Credential resource: basic (acquire + timeout)
@@ -745,7 +762,18 @@ pub fn credential_lifecycle_mock_spec() -> MockSpec {
     output = "lib/llm-ops/src/generated_tests_credential_anthropic.rs",
     module = "llm_credential_lifecycle_anthropic_generated_tests",
     builder = "crate::graph::build_chat_completion_graph()",
-    no_boundary_tests
+    no_boundary_tests,
+    live_flow_tests,
+    live_class = "integration",
+    live_fermi = "M",
+    live_required(
+        "GCP_WIF_PROVIDER",
+        "GCP_SECRETS_PROJECT",
+        "GCP_SECRETS_PREFIX",
+        "ACTIONS_ID_TOKEN_REQUEST_URL",
+        "ACTIONS_ID_TOKEN_REQUEST_TOKEN"
+    ),
+    live_required_any_of("GCP_SECRETS_SA", "GCP_SECRETS_IMPERSONATE_SA")
 )]
 pub fn credential_lifecycle_anthropic_mock_spec() -> MockSpec {
     let response = mock::mock_anthropic_response("Credential lifecycle test response.");
@@ -792,6 +820,12 @@ pub fn credential_lifecycle_anthropic_mock_spec() -> MockSpec {
         .boundary("parse", "finish_reason", Value::Str("Stop".into()))
         .boundary("parse", "input_tokens", Value::Int(10))
         .boundary("parse", "output_tokens", Value::Int(20))
+        // Live expectations: LLM returns non-empty content
+        .live_expected_output("parse", "content", OutputMatcher::non_empty())
+        .live_expected_output("parse", "model", OutputMatcher::IsString)
+        .live_expected_output("parse", "finish_reason", OutputMatcher::IsString)
+        .live_expected_output("parse", "input_tokens", OutputMatcher::IntGe(0))
+        .live_expected_output("parse", "output_tokens", OutputMatcher::IntGe(0))
         .expects_input("provider", InputConstraint::NonEmpty)
         .expects_input("model", InputConstraint::NonEmpty)
         // Credential resource: basic (acquire + timeout)

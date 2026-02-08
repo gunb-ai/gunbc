@@ -140,6 +140,7 @@ pub fn execute_cli_tool_op(
         CliToolOp::Check { tool } => execute_check(tool),
         CliToolOp::Install { tool } => execute_install(tool),
         CliToolOp::Run { tool, args } => execute_run(tool, args),
+        CliToolOp::ResourceGate { ports, .. } => execute_resource_gate(ports),
     }
 }
 
@@ -226,6 +227,14 @@ fn execute_install(tool: &'static CliToolDef) -> Result<HashMap<String, Value>, 
 
     let mut out = HashMap::new();
     out.insert("success".to_string(), Value::Bool(true));
+    Ok(out)
+}
+
+fn execute_resource_gate(ports: &[String]) -> Result<HashMap<String, Value>, CliToolError> {
+    let mut out = HashMap::new();
+    for port in ports {
+        out.insert(port.clone(), Value::Unit);
+    }
     Ok(out)
 }
 

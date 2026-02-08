@@ -1188,7 +1188,14 @@ fn mock_intercept_outputs<T>(
                 node.id.0, port.name.0
             ))
         })?;
-        outputs.insert(port.name.0.clone(), mock.next_value());
+        let (value, used_fallback) = mock.next_value_with_status();
+        if used_fallback && mock.is_strict() {
+            return Err(ExecError::new(format!(
+                "boundary mock sequence exhausted for node '{}': output port '{}'",
+                node.id.0, port.name.0
+            )));
+        }
+        outputs.insert(port.name.0.clone(), value);
     }
 
     Ok(outputs)

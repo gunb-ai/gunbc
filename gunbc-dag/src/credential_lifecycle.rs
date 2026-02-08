@@ -41,7 +41,18 @@ fn mock_cloud_config() -> Value {
     output = "gunbc-dag/src/generated_tests_credential_github.rs",
     module = "github_credential_lifecycle_generated_tests",
     builder = "gunbc_lib_cloud_ops::build_github_credential_graph()",
-    no_boundary_tests
+    no_boundary_tests,
+    live_flow_tests,
+    live_class = "integration",
+    live_fermi = "M",
+    live_required(
+        "GCP_WIF_PROVIDER",
+        "GCP_SECRETS_PROJECT",
+        "GCP_SECRETS_PREFIX",
+        "ACTIONS_ID_TOKEN_REQUEST_URL",
+        "ACTIONS_ID_TOKEN_REQUEST_TOKEN"
+    ),
+    live_required_any_of("GCP_SECRETS_SA", "GCP_SECRETS_IMPERSONATE_SA")
 )]
 pub fn github_credential_lifecycle_mock_spec() -> MockSpec {
     let response = RestResponse::ok(serde_json::json!({"resources": {}}));
@@ -74,6 +85,13 @@ pub fn github_credential_lifecycle_mock_spec() -> MockSpec {
         // Parse outputs (status + ok)
         .boundary("parse_status", "status", Value::Int(200))
         .boundary("parse_status", "ok", Value::Bool(true))
+        // Live expectations: should authenticate successfully
+        .live_expected_output(
+            "parse_status",
+            "ok",
+            OutputMatcher::exact(Value::Bool(true)),
+        )
+        .live_expected_output("parse_status", "status", OutputMatcher::IntGe(200))
         // Credential resource: basic (acquire + timeout)
         .resource_credential("credential:github", Some(3_600_000))
         // Credential resource: refreshable (acquire + timeout + refresh)
