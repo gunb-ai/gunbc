@@ -12,7 +12,10 @@ pub enum AzureOps {
 }
 
 impl Executable for AzureOps {
-    fn execute(&self, _inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+    fn execute(
+        &self,
+        _inputs: HashMap<String, Value>,
+    ) -> Result<HashMap<String, Value>, ExecError> {
         Err(ExecError::new(
             "Azure Key Vault support is stubbed (not implemented)",
         ))

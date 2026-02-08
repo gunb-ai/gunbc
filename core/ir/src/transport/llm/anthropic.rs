@@ -255,12 +255,16 @@ pub fn parse_anthropic_response(response: &RestResponse) -> Result<ChatResponse,
                 let thinking = block
                     .get("thinking")
                     .and_then(|t| t.as_str())
-                    .ok_or_else(|| "Anthropic response thinking block missing thinking".to_string())?
+                    .ok_or_else(|| {
+                        "Anthropic response thinking block missing thinking".to_string()
+                    })?
                     .to_string();
                 let signature = block
                     .get("signature")
                     .and_then(|s| s.as_str())
-                    .ok_or_else(|| "Anthropic response thinking block missing signature".to_string())?
+                    .ok_or_else(|| {
+                        "Anthropic response thinking block missing signature".to_string()
+                    })?
                     .to_string();
                 thinking_parts.push(thinking.clone());
                 response_blocks.push(ResponseBlock::Thinking {
@@ -304,12 +308,7 @@ pub fn parse_anthropic_response(response: &RestResponse) -> Result<ChatResponse,
     let finish_reason = match stop_reason {
         "end_turn" => FinishReason::Stop,
         "max_tokens" => FinishReason::Length,
-        other => {
-            return Err(format!(
-                "Anthropic response unknown stop_reason: {}",
-                other
-            ))
-        }
+        other => return Err(format!("Anthropic response unknown stop_reason: {}", other)),
     };
 
     let usage = response
@@ -330,7 +329,9 @@ pub fn parse_anthropic_response(response: &RestResponse) -> Result<ChatResponse,
         cache_creation_input_tokens: usage
             .get("cache_creation_input_tokens")
             .and_then(|t| t.as_u64()),
-        cache_read_input_tokens: usage.get("cache_read_input_tokens").and_then(|t| t.as_u64()),
+        cache_read_input_tokens: usage
+            .get("cache_read_input_tokens")
+            .and_then(|t| t.as_u64()),
         cached_tokens: None,
         reasoning_tokens: None,
     };

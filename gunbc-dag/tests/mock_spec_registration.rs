@@ -36,7 +36,9 @@ fn all_mock_specs_are_registered() {
                 && trimmed.contains("-> MockSpec")
             {
                 let mut has_attr = false;
-                let start = idx.saturating_sub(16);
+                // Attributes can be verbose (e.g., live test requirements), so
+                // scan a wider window before the function signature.
+                let start = idx.saturating_sub(64);
                 for preceding_line in &lines[start..idx] {
                     if preceding_line.contains("testgen_target") {
                         has_attr = true;
@@ -44,12 +46,7 @@ fn all_mock_specs_are_registered() {
                     }
                 }
                 if !has_attr {
-                    missing.push(format!(
-                        "{}:{}: {}",
-                        path.display(),
-                        idx + 1,
-                        trimmed
-                    ));
+                    missing.push(format!("{}:{}: {}", path.display(), idx + 1, trimmed));
                 }
             }
         }

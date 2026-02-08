@@ -89,7 +89,9 @@ mod tests {
         if path.contains("/tests/") {
             return true;
         }
-        allowed_prefixes.iter().any(|prefix| path.starts_with(prefix))
+        allowed_prefixes
+            .iter()
+            .any(|prefix| path.starts_with(prefix))
     }
 
     fn extract_allow_lints(line: &str) -> Vec<String> {

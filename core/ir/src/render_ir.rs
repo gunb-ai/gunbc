@@ -465,7 +465,8 @@ pub trait StructuredRenderer<M: OutputMedium> {
 /// Renders streaming frames to an output sink.
 pub trait FrameRenderer<M: OutputMedium> {
     fn medium(&self) -> &M;
-    fn render_frame(&mut self, frame: &Frame, sink: &mut dyn std::io::Write) -> std::io::Result<()>;
+    fn render_frame(&mut self, frame: &Frame, sink: &mut dyn std::io::Write)
+        -> std::io::Result<()>;
 }
 
 /// Renders a complete document.
@@ -517,7 +518,10 @@ mod tests {
             symbol_set: &STANDARD,
         };
         let rendered = medium.render_span(&sample_span());
-        assert!(!rendered.contains("\x1b"), "should not contain ANSI escapes");
+        assert!(
+            !rendered.contains("\x1b"),
+            "should not contain ANSI escapes"
+        );
         assert_eq!(rendered, "hello");
     }
 
@@ -528,10 +532,7 @@ mod tests {
             symbol_set: &STANDARD,
         };
         let rendered = medium.render_span(&sample_span());
-        assert!(
-            rendered.contains("sym-success"),
-            "should contain CSS class"
-        );
+        assert!(rendered.contains("sym-success"), "should contain CSS class");
         assert!(rendered.contains("bold"), "should contain bold class");
         assert!(rendered.contains("hello"));
         assert!(rendered.contains("<span"), "should be wrapped in span tag");

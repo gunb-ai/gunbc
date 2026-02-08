@@ -35,16 +35,34 @@ pub fn build_languages_subdag() -> Node<WorkspaceOp> {
     // Pattern SubDags (foundations)
     inner.add_node(convert_node(build_regex_subdag(), &convert_language_op));
     inner.add_node(convert_node(build_glob_subdag(), &convert_language_op));
-    inner.add_node(convert_node(build_variable_syntax_subdag(), &convert_language_op));
+    inner.add_node(convert_node(
+        build_variable_syntax_subdag(),
+        &convert_language_op,
+    ));
 
     // Trait SubDags (composable characteristics)
-    inner.add_node(convert_node(build_type_system_mapping_subdag(), &convert_language_op));
-    inner.add_node(convert_node(build_naming_conventions_subdag(), &convert_language_op));
-    inner.add_node(convert_node(build_comment_prefix_subdag(), &convert_language_op));
+    inner.add_node(convert_node(
+        build_type_system_mapping_subdag(),
+        &convert_language_op,
+    ));
+    inner.add_node(convert_node(
+        build_naming_conventions_subdag(),
+        &convert_language_op,
+    ));
+    inner.add_node(convert_node(
+        build_comment_prefix_subdag(),
+        &convert_language_op,
+    ));
 
     // Category SubDags
-    inner.add_node(convert_node(build_turing_complete_subdag(), &convert_language_op));
-    inner.add_node(convert_node(build_config_format_subdag(), &convert_language_op));
+    inner.add_node(convert_node(
+        build_turing_complete_subdag(),
+        &convert_language_op,
+    ));
+    inner.add_node(convert_node(
+        build_config_format_subdag(),
+        &convert_language_op,
+    ));
 
     // Language/Format SubDags
     inner.add_node(convert_node(build_rust_subdag(), &convert_language_op));

@@ -35,8 +35,8 @@ use gunbc_ir::transport::ci::{
     yaml_block, CacheConfig, CiRenderer, GitHubActionsProvider, GitLabCiProvider, RenderConfig,
 };
 use gunbc_ir::{CODEGEN_BIN_DIR, CODEGEN_LIB_DIR};
-use gunbc_lib_transport::TransportIo;
 use gunbc_lib_transport::preflight::ensure_lint_upsert;
+use gunbc_lib_transport::TransportIo;
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::path::{Path, PathBuf};
@@ -46,11 +46,11 @@ use toml_edit::{value, ArrayOfTables, DocumentMut, Item, Table};
 // Without these references, the linker may dead-strip the inventory symbols
 // and derive_tool_defs() would return an empty list.
 use gunbc_clippy::clippy_tool;
+use gunbc_dag::bootstrap::bootstrap_tool;
+use gunbc_dag::makegen::makegen_tool;
 use gunbc_deps::deps_tool;
 use gunbc_gist::{gist_diff_tool, gist_recent_tool, gist_snapshot_tool};
 use gunbc_lib_review::review_tool;
-use gunbc_dag::bootstrap::bootstrap_tool;
-use gunbc_dag::makegen::makegen_tool;
 
 fn main() {
     // Touch the functions to prevent the linker from stripping them.
@@ -165,7 +165,11 @@ fn setup_bin_directory(io: &dyn ResourceIo) -> Result<(), ResourceError> {
 }
 
 #[cfg(unix)]
-fn setup_bin_link(io: &dyn ResourceIo, bin_path: &Path, target_path: &Path) -> Result<(), ResourceError> {
+fn setup_bin_link(
+    io: &dyn ResourceIo,
+    bin_path: &Path,
+    target_path: &Path,
+) -> Result<(), ResourceError> {
     let args = vec![
         "-s".to_string(),
         target_path.to_string_lossy().to_string(),
@@ -176,7 +180,11 @@ fn setup_bin_link(io: &dyn ResourceIo, bin_path: &Path, target_path: &Path) -> R
 }
 
 #[cfg(windows)]
-fn setup_bin_link(io: &dyn ResourceIo, bin_path: &Path, _target_path: &Path) -> Result<(), ResourceError> {
+fn setup_bin_link(
+    io: &dyn ResourceIo,
+    bin_path: &Path,
+    _target_path: &Path,
+) -> Result<(), ResourceError> {
     let marker_content = "Binaries are in target/release/\n";
     let marker_path = bin_path.join(".location");
     io.write_file(&marker_path, marker_content.as_bytes())?;
@@ -184,7 +192,11 @@ fn setup_bin_link(io: &dyn ResourceIo, bin_path: &Path, _target_path: &Path) -> 
 }
 
 #[cfg(not(any(unix, windows)))]
-fn setup_bin_link(_io: &dyn ResourceIo, _bin_path: &Path, _target_path: &Path) -> Result<(), ResourceError> {
+fn setup_bin_link(
+    _io: &dyn ResourceIo,
+    _bin_path: &Path,
+    _target_path: &Path,
+) -> Result<(), ResourceError> {
     Ok(())
 }
 
@@ -599,11 +611,8 @@ fn codegen_clis(dry_run: bool, io: &dyn ResourceIo) -> bool {
     }
 
     for tool in &tools {
-        let code = generate_cli_with_import(
-            &tool.meta,
-            &tool.entrypoints,
-            tool.custom_import.as_deref(),
-        );
+        let code =
+            generate_cli_with_import(&tool.meta, &tool.entrypoints, tool.custom_import.as_deref());
         let tool_dir = Path::new(output_dir).join(&tool.meta.tool_name);
         let main_path = tool_dir.join("main.rs");
 
@@ -715,7 +724,10 @@ impl CodegenResource {
     fn new() -> Self {
         Self {
             def: codegen_resource_def(),
-            outputs: vec![PathBuf::from(CODEGEN_BIN_DIR), PathBuf::from(CODEGEN_LIB_DIR)],
+            outputs: vec![
+                PathBuf::from(CODEGEN_BIN_DIR),
+                PathBuf::from(CODEGEN_LIB_DIR),
+            ],
         }
     }
 }
@@ -730,8 +742,7 @@ impl ManagedResource for CodegenResource {
         manifest: &ResourceManifest,
         io: &dyn ResourceIo,
     ) -> Result<ManifestEntry, ResourceError> {
-        let (key, file_count, input_files) =
-            self.compute_key_with_file_list(manifest, io)?;
+        let (key, file_count, input_files) = self.compute_key_with_file_list(manifest, io)?;
         Ok(ManifestEntry::new(key, file_count)
             .with_outputs(self.outputs.clone())
             .with_input_files(input_files))

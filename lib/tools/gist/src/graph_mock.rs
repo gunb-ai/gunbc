@@ -15,7 +15,9 @@ use gunbc_ir::transport::cloud::{
 use gunbc_ir::transport::{ShellResponse, TransportResponse};
 use gunbc_ir::{SecretString, Timestamp, Value};
 use gunbc_primitives::filename;
-use gunbc_test::{extract_mock_requirements, InputConstraint, MockSpec, NodeExample, OutputMatcher};
+use gunbc_test::{
+    extract_mock_requirements, InputConstraint, MockSpec, NodeExample, OutputMatcher,
+};
 use std::collections::BTreeMap;
 use std::time::SystemTime;
 
@@ -111,8 +113,7 @@ fn mock_gist_response_json() -> String {
 /// - `base_ref`: Optional string (diff mode only)
 fn gist_mock_spec(mode: &GistMode) -> MockSpec {
     // Build the actual DAG to extract requirements
-    let dag = build_gist_graph(mode.clone(), vec![], false)
-        .expect("gist graph should build");
+    let dag = build_gist_graph(mode.clone(), vec![], false).expect("gist graph should build");
 
     // Extract typed requirements from DAG structure
     let mut reqs = extract_mock_requirements(&dag, "gist")
@@ -207,7 +208,10 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
         .transport_response(
             "execute_gist",
             "response",
-            TransportResponse::Shell(ShellResponse::ok(mock_gist_response_json())),
+            TransportResponse::Rest(gunbc_ir::transport::RestResponse::ok(
+                serde_json::from_str::<serde_json::Value>(&mock_gist_response_json())
+                    .expect("mock gist response json should parse"),
+            )),
         )
         .expect("execute_gist response should match type");
 
@@ -221,17 +225,19 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
         .expect("url mock should match type");
 
     // Build spec (with input expectations added via legacy API)
-    let mut spec = reqs
-        .build_unchecked()
-        .include_prefixed_runtime_mocks(
-            "cloud_credential/gcp_wif_secret",
-            &gunbc_lib_gcp_ops::graph_mock::gcp_github_mock_spec(),
-        );
+    let mut spec = reqs.build_unchecked().include_prefixed_runtime_mocks(
+        "cloud_credential/gcp_wif_secret",
+        &gunbc_lib_gcp_ops::graph_mock::gcp_github_mock_spec(),
+    );
 
     spec = spec.expects_input("repo_path", InputConstraint::Any);
     // Provide a default repo_path for entrypoint injection in DryRun tests.
     spec = spec
-        .input_mock("prepare_current_branch", "repo_path", Value::Str(".".into()))
+        .input_mock(
+            "prepare_current_branch",
+            "repo_path",
+            Value::Str(".".into()),
+        )
         .input_mock(
             "prepare_remote_branches",
             "repo_path",
@@ -295,7 +301,10 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
                     "response",
                     Value::Response(ShellResponse::ok("  origin/main\n").into()),
                 )
-                .output("remote_branch", OutputMatcher::exact(Value::Str("main".into())))
+                .output(
+                    "remote_branch",
+                    OutputMatcher::exact(Value::Str("main".into())),
+                )
                 .description("Parses remote branch name from git output"),
         )
         .node_example(
@@ -321,7 +330,12 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
             NodeExample::new("parse_gist_response")
                 .input(
                     "response",
-                    Value::Response(ShellResponse::ok(mock_gist_response_json()).into()),
+                    Value::Response(TransportResponse::Rest(
+                        gunbc_ir::transport::RestResponse::ok(
+                            serde_json::from_str::<serde_json::Value>(&mock_gist_response_json())
+                                .expect("mock gist response json should parse"),
+                        ),
+                    )),
                 )
                 .output("url", OutputMatcher::contains("gist.github.com"))
                 .description("Extracts gist URL from response JSON"),
@@ -374,7 +388,9 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
                                 map
                             })),
                         )
-                        .description("Zips filenames + contents into a map, skipping empty content"),
+                        .description(
+                            "Zips filenames + contents into a map, skipping empty content",
+                        ),
                 )
                 .node_example(
                     NodeExample::new("render_markdown")
@@ -464,7 +480,7 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
 #[gunbc_testgen_registry_macros::resource_test_target(
     skip,
     name = "gist-snapshot",
-    builder = "crate::build_gist_graph(crate::GistMode::Snapshot, vec![], false).unwrap()",
+    builder = "crate::build_gist_graph(crate::GistMode::Snapshot, vec![], false).unwrap()"
 )]
 #[gunbc_testgen_registry_macros::testgen_target(
     name = "gist-snapshot",
@@ -483,7 +499,7 @@ pub fn gist_snapshot_mock_spec() -> MockSpec {
 #[gunbc_testgen_registry_macros::resource_test_target(
     skip,
     name = "gist-diff",
-    builder = r#"crate::build_gist_graph(crate::GistMode::Diff { base_ref: "main".to_string() }, vec![], false).unwrap()"#,
+    builder = r#"crate::build_gist_graph(crate::GistMode::Diff { base_ref: "main".to_string() }, vec![], false).unwrap()"#
 )]
 #[gunbc_testgen_registry_macros::testgen_target(
     name = "gist-diff",
@@ -504,7 +520,7 @@ pub fn gist_diff_mock_spec() -> MockSpec {
 #[gunbc_testgen_registry_macros::resource_test_target(
     skip,
     name = "gist-recent",
-    builder = "crate::build_gist_graph(crate::GistMode::Recent, vec![], false).unwrap()",
+    builder = "crate::build_gist_graph(crate::GistMode::Recent, vec![], false).unwrap()"
 )]
 #[gunbc_testgen_registry_macros::testgen_target(
     name = "gist-recent",
@@ -517,6 +533,34 @@ pub fn gist_diff_mock_spec() -> MockSpec {
 )]
 pub fn gist_recent_mock_spec() -> MockSpec {
     gist_mock_spec(&GistMode::Recent)
+}
+
+/// Mock spec for auth doctor mode (gist-auth-doctor).
+#[gunbc_testgen_registry_macros::resource_test_target(
+    skip,
+    name = "gist-auth-doctor",
+    builder = "crate::auth_doctor::build_gist_auth_doctor_graph(None).unwrap()"
+)]
+#[gunbc_testgen_registry_macros::testgen_target(
+    name = "gist-auth-doctor",
+    output = "lib/tools/gist/src/generated_tests_auth_doctor.rs",
+    module = "gist_auth_doctor_generated_tests",
+    builder = "crate::auth_doctor::build_gist_auth_doctor_graph(None).unwrap()",
+    tool = "gist-auth-doctor",
+    no_boundary_tests,
+    window_max_nodes = 1
+)]
+pub fn gist_auth_doctor_mock_spec() -> MockSpec {
+    MockSpec::new("gist-auth-doctor")
+        .boundary(
+            "cloud_status",
+            "status",
+            Value::Str("Cloud env (gcp/github): OK (mock)".into()),
+        )
+        .boundary("auth_report", "service", Value::Str("github".into()))
+        .boundary("auth_report", "ready", Value::Bool(true))
+        .skip_node_example("cloud_status")
+        .skip_node_example("auth_report")
 }
 
 /// Mock spec for testing gist with file system lock simulation.

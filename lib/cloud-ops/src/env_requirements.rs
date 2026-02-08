@@ -114,7 +114,7 @@ pub fn detect_cloud_env_requirements() -> CloudEnvRequirements {
     {
         CloudRuntimeKind::CloudMetadata
     } else {
-        CloudRuntimeKind::LocalDev
+        CloudRuntimeKind::GitHubActions
     };
 
     match provider {

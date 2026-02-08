@@ -1,6 +1,8 @@
 //! Mock specification for AWS Secrets Manager (stub).
 
-use gunbc_ir::transport::cloud::{CloudProviderKind, CloudRuntimeKind, CloudSecretConfig, CloudSecretRef};
+use gunbc_ir::transport::cloud::{
+    CloudProviderKind, CloudRuntimeKind, CloudSecretConfig, CloudSecretRef,
+};
 use gunbc_ir::{AuthScheme, Credential, Secret, Value};
 use gunbc_test::MockSpec;
 
@@ -30,7 +32,7 @@ fn mock_credential() -> Value {
 #[gunbc_testgen_registry_macros::resource_test_target(
     skip,
     name = "aws-secrets-stub",
-    builder = "crate::graph::build_aws_secrets_manager_credential_graph()",
+    builder = "crate::graph::build_aws_secrets_manager_credential_graph()"
 )]
 #[gunbc_testgen_registry_macros::testgen_target(
     name = "aws-secrets-stub",
@@ -42,9 +44,21 @@ fn mock_credential() -> Value {
 pub fn aws_stub_mock_spec() -> MockSpec {
     MockSpec::new("aws-secrets-stub")
         .input_mock("aws_secrets_manager_stub", "config", mock_config().into())
-        .input_mock("aws_secrets_manager_stub", "scheme", Value::Str("bearer".into()))
-        .input_mock("aws_secrets_manager_stub", "header_name", Value::Str(String::new()))
-        .input_mock("aws_secrets_manager_stub", "source_id", Value::Str("aws".into()))
+        .input_mock(
+            "aws_secrets_manager_stub",
+            "scheme",
+            Value::Str("bearer".into()),
+        )
+        .input_mock(
+            "aws_secrets_manager_stub",
+            "header_name",
+            Value::Str(String::new()),
+        )
+        .input_mock(
+            "aws_secrets_manager_stub",
+            "source_id",
+            Value::Str("aws".into()),
+        )
         .input_mock(
             "aws_secrets_manager_stub",
             "request_url",

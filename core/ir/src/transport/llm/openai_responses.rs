@@ -173,12 +173,7 @@ pub fn parse_openai_responses_response(response: &RestResponse) -> Result<ChatRe
     let finish_reason = match status {
         "completed" => FinishReason::Stop,
         "incomplete" => FinishReason::Length,
-        other => {
-            return Err(format!(
-                "OpenAI Responses API unknown status: {}",
-                other
-            ))
-        }
+        other => return Err(format!("OpenAI Responses API unknown status: {}", other)),
     };
 
     let usage_value = response
@@ -246,20 +241,18 @@ fn extract_text_from_output(body: &serde_json::Value) -> Result<String, String> 
                 let content = item
                     .get("content")
                     .and_then(|c| c.as_array())
-                    .ok_or_else(|| "OpenAI Responses API message missing content array".to_string())?;
+                    .ok_or_else(|| {
+                        "OpenAI Responses API message missing content array".to_string()
+                    })?;
                 for block in content {
-                    let block_type = block
-                        .get("type")
-                        .and_then(|t| t.as_str())
-                        .ok_or_else(|| {
+                    let block_type =
+                        block.get("type").and_then(|t| t.as_str()).ok_or_else(|| {
                             "OpenAI Responses API message content block missing type".to_string()
                         })?;
                     match block_type {
                         "output_text" => {
-                            let text = block
-                                .get("text")
-                                .and_then(|t| t.as_str())
-                                .ok_or_else(|| {
+                            let text =
+                                block.get("text").and_then(|t| t.as_str()).ok_or_else(|| {
                                     "OpenAI Responses API output_text block missing text"
                                         .to_string()
                                 })?;
@@ -314,14 +307,13 @@ fn extract_reasoning_from_output(
                 let summary = item
                     .get("summary")
                     .and_then(|s| s.as_array())
-                    .ok_or_else(|| "OpenAI Responses API reasoning item missing summary".to_string())?;
+                    .ok_or_else(|| {
+                        "OpenAI Responses API reasoning item missing summary".to_string()
+                    })?;
                 for s in summary {
-                    let text = s
-                        .get("text")
-                        .and_then(|t| t.as_str())
-                        .ok_or_else(|| {
-                            "OpenAI Responses API reasoning summary missing text".to_string()
-                        })?;
+                    let text = s.get("text").and_then(|t| t.as_str()).ok_or_else(|| {
+                        "OpenAI Responses API reasoning summary missing text".to_string()
+                    })?;
                     thinking_parts.push(text.to_string());
                     blocks.push(ResponseBlock::Thinking {
                         thinking: text.to_string(),
@@ -333,20 +325,18 @@ fn extract_reasoning_from_output(
                 let content = item
                     .get("content")
                     .and_then(|c| c.as_array())
-                    .ok_or_else(|| "OpenAI Responses API message missing content array".to_string())?;
+                    .ok_or_else(|| {
+                        "OpenAI Responses API message missing content array".to_string()
+                    })?;
                 for block in content {
-                    let block_type = block
-                        .get("type")
-                        .and_then(|t| t.as_str())
-                        .ok_or_else(|| {
+                    let block_type =
+                        block.get("type").and_then(|t| t.as_str()).ok_or_else(|| {
                             "OpenAI Responses API message content block missing type".to_string()
                         })?;
                     match block_type {
                         "output_text" => {
-                            let text = block
-                                .get("text")
-                                .and_then(|t| t.as_str())
-                                .ok_or_else(|| {
+                            let text =
+                                block.get("text").and_then(|t| t.as_str()).ok_or_else(|| {
                                     "OpenAI Responses API output_text block missing text"
                                         .to_string()
                                 })?;

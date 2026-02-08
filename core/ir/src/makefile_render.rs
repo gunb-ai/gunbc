@@ -55,10 +55,7 @@ impl<M: TextMedium> StructuredRenderer<M> for MakefileStructuredRenderer<M> {
     fn render_category(&self, category: &Category) -> String {
         let mut out = String::new();
         let source = category.source.as_deref().unwrap_or("unknown");
-        out.push_str(&format!(
-            "# --- {} (from {}) ---\n",
-            category.name, source
-        ));
+        out.push_str(&format!("# --- {} (from {}) ---\n", category.name, source));
         if let Some(ref rationale) = category.rationale {
             out.push_str(&format!("# {}\n", rationale));
         }

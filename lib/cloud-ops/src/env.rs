@@ -65,8 +65,8 @@ impl CloudEnv {
         };
         let project = std::env::var("GCP_SECRETS_PROJECT")
             .map_err(|_| ExecError::new("missing GCP_SECRETS_PROJECT"))?;
-        let prefix =
-            std::env::var("GCP_SECRETS_PREFIX").map_err(|_| ExecError::new("missing GCP_SECRETS_PREFIX"))?;
+        let prefix = std::env::var("GCP_SECRETS_PREFIX")
+            .map_err(|_| ExecError::new("missing GCP_SECRETS_PREFIX"))?;
 
         let service_account = std::env::var("GCP_SECRETS_SA").ok();
         let impersonate = std::env::var("GCP_SECRETS_IMPERSONATE_SA").ok();
@@ -99,7 +99,9 @@ impl CloudEnv {
                 .map_err(|_| ExecError::new("missing ACTIONS_ID_TOKEN_REQUEST_URL"))?;
             let request_token = std::env::var("ACTIONS_ID_TOKEN_REQUEST_TOKEN")
                 .map_err(|_| ExecError::new("missing ACTIONS_ID_TOKEN_REQUEST_TOKEN"))?;
-            out = out.str("request_url", request_url).str("request_token", request_token);
+            out = out
+                .str("request_url", request_url)
+                .str("request_token", request_token);
         }
 
         Ok(out.build())

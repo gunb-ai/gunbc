@@ -110,7 +110,11 @@ pub fn build_deps_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
         "execute_load_manifest",
         "parse_manifest",
         vec![port("manifest_path", "String")],
-        vec![resource("fs:deps.toml", "FilesystemHandle", AccessMode::Read)],
+        vec![resource(
+            "fs:deps.toml",
+            "FilesystemHandle",
+            AccessMode::Read,
+        )],
         vec![port("manifest_path", "String")],
         vec![
             scalar("dep_count", "Int"),
@@ -134,7 +138,7 @@ pub fn build_deps_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
             "generate_scripts",
             vec![
                 scalar("manifest_content", "String"), // Receives content, not path
-                resource("platform", "Platform", AccessMode::Read),   // Platform acquired at boundary
+                resource("platform", "Platform", AccessMode::Read), // Platform acquired at boundary
             ],
             vec![
                 scalar("install_script", "String"),
@@ -244,7 +248,7 @@ pub fn deps_generate_signature() -> WorkflowSignature {
 /// generation in the same way makegen owns Makefile generation.
 #[gunbc_testgen_registry_macros::resource_test_target(
     name = "deps-generate",
-    builder = "build_deps_generate_graph().unwrap()",
+    builder = "build_deps_generate_graph().unwrap()"
 )]
 pub fn build_deps_generate_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
     let mut builder = DagBuilder::new();
@@ -329,10 +333,7 @@ pub fn build_deps_generate_graph() -> Result<Dag<DepsGraphOp>, BuilderError> {
         prepare_write.out("request"),
         execute_transport.in_port("request"),
     )?;
-    builder.add_edge(
-        prepare_write.out("skip"),
-        execute_transport.in_port("skip"),
-    )?;
+    builder.add_edge(prepare_write.out("skip"), execute_transport.in_port("skip"))?;
 
     builder.add_edge(
         fs_env.out("fs:write"),

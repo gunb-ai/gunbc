@@ -58,7 +58,10 @@ pub fn build_bootstrap_subdag() -> Node<WorkspaceOp> {
             Node::opaque(
                 "parse_scan_result",
                 vec![port("response", "TransportResponse")],
-                vec![port("crate_count", "Int"), list("crate_names", "StringList")],
+                vec![
+                    port("crate_count", "Int"),
+                    list("crate_names", "StringList"),
+                ],
                 WorkspaceOp::Bootstrap(BootstrapOp::ParseScanResult),
             ),
             &execute_scan,
@@ -234,5 +237,4 @@ mod tests {
         assert!(node.is_subdag());
         assert_eq!(node.id.0, "bootstrap");
     }
-
 }

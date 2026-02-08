@@ -16,7 +16,7 @@ fn mock_fs_handle() -> Value {
 /// Mock specification for the testgen DAG graph (using test fixtures).
 #[gunbc_testgen_registry_macros::resource_test_target(
     name = "testgen-dag",
-    builder = "crate::testgen_dag::graph::build_testgen_graph_for_test().unwrap()",
+    builder = "crate::testgen_dag::graph::build_testgen_graph_for_test().unwrap()"
 )]
 #[gunbc_testgen_registry_macros::testgen_target(
     name = "testgen-dag",
@@ -114,12 +114,18 @@ pub fn testgen_dag_mock_spec() -> MockSpec {
         )
         .node_example(
             NodeExample::new("generate_mock-alpha")
-                .output("content", OutputMatcher::contains("mock_alpha_generated_tests"))
+                .output(
+                    "content",
+                    OutputMatcher::contains("mock_alpha_generated_tests"),
+                )
                 .description("Generates mock test code for alpha target"),
         )
         .node_example(
             NodeExample::new("generate_mock-beta")
-                .output("content", OutputMatcher::contains("mock_beta_generated_tests"))
+                .output(
+                    "content",
+                    OutputMatcher::contains("mock_beta_generated_tests"),
+                )
                 .description("Generates mock test code for beta target"),
         )
         .skip_node_example("prepare_read_mock-alpha")

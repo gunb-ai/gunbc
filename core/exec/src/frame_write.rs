@@ -34,7 +34,13 @@ impl FrameRenderer<AnsiText> for AnsiFrameRenderer {
     }
 
     fn render_frame(&mut self, frame: &Frame, sink: &mut dyn Write) -> std::io::Result<()> {
-        render_frame_common(&self.medium, frame, sink, self.is_tty, &mut self.last_frame_lines)
+        render_frame_common(
+            &self.medium,
+            frame,
+            sink,
+            self.is_tty,
+            &mut self.last_frame_lines,
+        )
     }
 }
 
@@ -66,7 +72,13 @@ impl FrameRenderer<PlainText> for PlainFrameRenderer {
     }
 
     fn render_frame(&mut self, frame: &Frame, sink: &mut dyn Write) -> std::io::Result<()> {
-        render_frame_common(&self.medium, frame, sink, self.is_tty, &mut self.last_frame_lines)
+        render_frame_common(
+            &self.medium,
+            frame,
+            sink,
+            self.is_tty,
+            &mut self.last_frame_lines,
+        )
     }
 }
 
@@ -127,7 +139,12 @@ pub enum FrameWriter {
 
 impl FrameWriter {
     /// Create the appropriate renderer for the given settings.
-    pub fn new(color_enabled: bool, tier: Tier, symbol_set: &'static SymbolSet, is_tty: bool) -> Self {
+    pub fn new(
+        color_enabled: bool,
+        tier: Tier,
+        symbol_set: &'static SymbolSet,
+        is_tty: bool,
+    ) -> Self {
         if color_enabled {
             Self::Ansi(AnsiFrameRenderer::new(
                 AnsiText { tier, symbol_set },
@@ -182,7 +199,10 @@ mod tests {
         assert!(output.contains("hello"));
         assert!(output.contains("world"));
         // No ANSI escapes in non-TTY plain mode
-        assert!(!output.contains("\x1b"), "Non-TTY should have no ANSI escapes");
+        assert!(
+            !output.contains("\x1b"),
+            "Non-TTY should have no ANSI escapes"
+        );
     }
 
     #[test]
@@ -237,6 +257,9 @@ mod tests {
 
         let output = String::from_utf8(buf).unwrap();
         // Should contain cursor-up for the leftover lines
-        assert!(output.contains("\x1b[2A"), "Should cursor-up past 2 leftover lines");
+        assert!(
+            output.contains("\x1b[2A"),
+            "Should cursor-up past 2 leftover lines"
+        );
     }
 }

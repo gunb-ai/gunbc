@@ -5,9 +5,9 @@
 //! The implementation will follow the same subject-token → STS →
 //! optional role chaining → Secrets Manager pattern.
 
-mod ops;
 mod graph;
 pub mod graph_mock;
+mod ops;
 
 pub use graph::{
     build_aws_secrets_manager_credential_graph, build_aws_secrets_manager_upsert_graph,

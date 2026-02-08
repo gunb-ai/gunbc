@@ -50,17 +50,19 @@ pub use boundary::{
     assert_boundary_mockable, default_mocks, mocks_with_values, BoundaryTestResult,
 };
 pub use composition::{assert_types_compatible, TypeCompatibility};
-pub use fermi::{guard, guard_test, guard_test_with_env, max_cost_from_env, FermiCost, TestClass, TestMeta};
+pub use fermi::{
+    guard, guard_test, guard_test_with_env, max_cost_from_env, FermiCost, TestClass, TestMeta,
+};
 pub use mock::{MockBehavior, MockOp, ScriptedDagBuilder};
+pub use mock_requirements::{
+    extract_mock_requirements, MockIncompleteError, MockRequirements, MockSlot, MockSlotKind,
+    MockTypeError,
+};
 pub use mock_spec::{
     assert_boundaries, assert_transport_mocks, validate_chain, BoundaryMock, ChainError,
     ChainValidationResult, ExpectedOutput, InputConstraint, InputExpectation, MockSpec,
     NodeExample, OutputMatcher, ResourceAcquireResult, ResourceBehavior, ResourceMocks,
     ResourceRefreshResult, ResourceSimulation, ResourceType, TransportMock,
-};
-pub use mock_requirements::{
-    extract_mock_requirements, MockIncompleteError, MockRequirements, MockSlot, MockSlotKind,
-    MockTypeError,
 };
 pub use mockable::{CardinalityTestInput, ErrorTestCase, ExpectedBehavior, Mockable};
 pub use simulator::{IoContract, Simulator};

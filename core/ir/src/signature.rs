@@ -222,11 +222,7 @@ pub fn infer_signature<T>(dag: &Dag<T>) -> WorkflowSignature {
             if let Some(port) = node.inputs.iter().find(|p| &p.name == port_name) {
                 let key = (port.name.clone(), port.type_id.clone(), port.cardinality);
                 if seen_inputs.insert(key.clone()) {
-                    inputs.push(SignaturePort::new(
-                        key.0.clone(),
-                        key.1.clone(),
-                        key.2,
-                    ));
+                    inputs.push(SignaturePort::new(key.0.clone(), key.1.clone(), key.2));
                 }
             }
         }
@@ -239,11 +235,7 @@ pub fn infer_signature<T>(dag: &Dag<T>) -> WorkflowSignature {
             if let Some(port) = node.outputs.iter().find(|p| &p.name == port_name) {
                 let key = (port.name.clone(), port.type_id.clone(), port.cardinality);
                 if seen_outputs.insert(key.clone()) {
-                    outputs.push(SignaturePort::new(
-                        key.0.clone(),
-                        key.1.clone(),
-                        key.2,
-                    ));
+                    outputs.push(SignaturePort::new(key.0.clone(), key.1.clone(), key.2));
                 }
             }
         }

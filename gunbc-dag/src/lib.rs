@@ -17,8 +17,8 @@
 //! - `gunbc-dag::ci` defines gunbc's CI pipeline (repo-specific)
 
 #![deny(dead_code)]
-pub mod bootstrap;
 pub mod binaries;
+pub mod bootstrap;
 pub mod build;
 pub mod ci;
 pub mod cloud_env;
@@ -31,31 +31,36 @@ pub mod makegen;
 pub mod policy;
 pub mod pragma;
 pub mod resources;
-pub mod tool_testgen;
 pub mod testgen_dag;
+pub mod tool_testgen;
 pub mod workspace;
 
 // Re-exports for convenience
-pub use file_ops_graph::FileOpsGraph;
 pub use binaries::WorkspaceBinary;
 pub use bootstrap::{bootstrap_signature, build_bootstrap_graph, BootstrapGraphOp, BootstrapOp};
 pub use build::{build_build_graph, build_signature, BuildGraphOp, BuildOp};
-pub use ci::{build_ci_graph, build_ci_graph_with_mode, ci_signature, ci_workflow_config, CIGraphOp, CIOp};
+pub use ci::{
+    build_ci_graph, build_ci_graph_with_mode, ci_signature, ci_workflow_config, CIGraphOp, CIOp,
+};
 pub use cloud_env::{
     aws_github_actions_env_stub, azure_github_actions_env_stub, cloud_env_matrix,
-    gcp_github_actions_env, gcp_local_env, gcp_metadata_env, CloudEnvRequirements, CLOUD_ENV_COMMON_OPTIONAL,
+    gcp_github_actions_env, gcp_local_env, gcp_metadata_env, CloudEnvRequirements,
+    CLOUD_ENV_COMMON_OPTIONAL,
 };
 pub use codegen::{
     build_codegen_graph, build_codegen_graph_with_mode, codegen_signature, CodegenGraphOp,
     CodegenOp,
 };
-pub use docgen::{build_docgen_graph, DocgenGraphOp, DocgenOp, DocgenReadTarget, DOCGEN_READ_TARGETS};
+pub use docgen::{
+    build_docgen_graph, DocgenGraphOp, DocgenOp, DocgenReadTarget, DOCGEN_READ_TARGETS,
+};
+pub use file_ops_graph::FileOpsGraph;
 pub use gunbc_ir::CODEGEN_STAMP_PATH;
-pub use pragma::{build_pragma_graph, pragma_signature, PragmaGraphOp, PragmaOp};
 pub use makegen::{
     build_makegen_graph, default_build_config, makegen_signature, render_gitignore,
     render_makefile, BuildConfig, MakegenGraphOp, MakegenOp,
 };
+pub use pragma::{build_pragma_graph, pragma_signature, PragmaGraphOp, PragmaOp};
 pub use resources::testgen_resource_def;
 pub use testgen_dag::{TestgenGraphOp, TestgenOp};
 pub use workspace::{

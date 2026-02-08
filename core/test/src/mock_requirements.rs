@@ -421,7 +421,10 @@ impl MockRequirements {
         self.slots
             .iter()
             .filter(|s| {
-                s.required && !self.filled.contains(&(s.node_id.clone(), s.port_name.clone()))
+                s.required
+                    && !self
+                        .filled
+                        .contains(&(s.node_id.clone(), s.port_name.clone()))
             })
             .collect()
     }
@@ -553,11 +556,7 @@ pub fn extract_mock_requirements<T>(dag: &gunbc_ir::Dag<T>, name: &str) -> MockR
     // Pure node terminal outputs are COMPUTED, not mocked, so they're not required
     for (node_id, port_name) in &boundaries.boundary_ports {
         let node = dag.get_node(node_id).unwrap();
-        let port = node
-            .outputs
-            .iter()
-            .find(|p| &p.name == port_name)
-            .unwrap();
+        let port = node.outputs.iter().find(|p| &p.name == port_name).unwrap();
 
         // Only require mocks for transport, resource, and CLI tool nodes
         // Pure node terminal outputs are computed during execution
@@ -699,21 +698,16 @@ mod tests {
 
     #[test]
     fn test_complete_build_succeeds() {
-        let reqs = MockRequirements::new("test")
-            .add_slot(test_slot("node", "port", "String"));
+        let reqs = MockRequirements::new("test").add_slot(test_slot("node", "port", "String"));
 
-        let result = reqs
-            .boundary_str("node", "port", "value")
-            .unwrap()
-            .build();
+        let result = reqs.boundary_str("node", "port", "value").unwrap().build();
 
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_incomplete_build_fails() {
-        let reqs = MockRequirements::new("test")
-            .add_slot(test_slot("node", "port", "String"));
+        let reqs = MockRequirements::new("test").add_slot(test_slot("node", "port", "String"));
 
         let result = reqs.build();
 
@@ -724,14 +718,15 @@ mod tests {
 
     #[test]
     fn test_type_mismatch_detected() {
-        let reqs = MockRequirements::new("test")
-            .add_slot(test_slot("node", "port", "Int"));
+        let reqs = MockRequirements::new("test").add_slot(test_slot("node", "port", "Int"));
 
         let result = reqs.boundary_str("node", "port", "not an int");
 
         assert!(result.is_err());
         match result.unwrap_err() {
-            MockTypeError::TypeMismatch { expected, actual, .. } => {
+            MockTypeError::TypeMismatch {
+                expected, actual, ..
+            } => {
                 assert_eq!(expected, "Int");
                 assert_eq!(actual, "String");
             }
@@ -757,7 +752,9 @@ mod tests {
 
         assert!(result.is_err());
         match result.unwrap_err() {
-            MockTypeError::CardinalityMismatch { expected, actual, .. } => {
+            MockTypeError::CardinalityMismatch {
+                expected, actual, ..
+            } => {
                 assert_eq!(expected, Cardinality::ONE);
                 assert_eq!(actual, 2);
             }
@@ -772,7 +769,10 @@ mod tests {
         let result = reqs.boundary_str("unknown", "port", "value");
 
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), MockTypeError::UnknownSlot { .. }));
+        assert!(matches!(
+            result.unwrap_err(),
+            MockTypeError::UnknownSlot { .. }
+        ));
     }
 
     #[test]
@@ -796,8 +796,7 @@ mod tests {
 
     #[test]
     fn test_map_backed_types_compatible() {
-        let reqs = MockRequirements::new("test")
-            .add_slot(test_slot("env", "handle", "ToolHandle"));
+        let reqs = MockRequirements::new("test").add_slot(test_slot("env", "handle", "ToolHandle"));
 
         // ToolHandle is represented as Map
         let mut map = std::collections::BTreeMap::new();

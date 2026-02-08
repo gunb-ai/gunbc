@@ -4,7 +4,7 @@ use gunbc_ir::transport::rest::RestResponse;
 use gunbc_ir::transport::TransportResponse;
 use gunbc_ir::{AuthScheme, Credential, Secret, SecretString, Value};
 use gunbc_primitives::NetworkHandle;
-use gunbc_test::MockSpec;
+use gunbc_test::{MockSpec, NodeExample, OutputMatcher};
 
 fn mock_credential() -> Value {
     let cred = Credential::new(Secret::static_value("mock-secret"), AuthScheme::Bearer);
@@ -19,7 +19,7 @@ fn mock_net_handle() -> Value {
 #[gunbc_testgen_registry_macros::resource_test_target(
     skip,
     name = "gcp-wif-secret-github",
-    builder = "crate::graph::build_gcp_secret_manager_credential_graph_github()",
+    builder = "crate::graph::build_gcp_secret_manager_credential_graph_github()"
 )]
 #[gunbc_testgen_registry_macros::testgen_target(
     name = "gcp-wif-secret-github",
@@ -49,8 +49,7 @@ pub fn gcp_github_mock_spec() -> MockSpec {
             "prepare_github_oidc",
             "audience",
             Value::Str(
-                "projects/123/locations/global/workloadIdentityPools/github/providers/gha"
-                    .into(),
+                "projects/123/locations/global/workloadIdentityPools/github/providers/gha".into(),
             ),
         )
         .input_mock(
@@ -67,8 +66,7 @@ pub fn gcp_github_mock_spec() -> MockSpec {
             "prepare_sts",
             "audience",
             Value::Str(
-                "projects/123/locations/global/workloadIdentityPools/github/providers/gha"
-                    .into(),
+                "projects/123/locations/global/workloadIdentityPools/github/providers/gha".into(),
             ),
         )
         .input_mock(
@@ -86,16 +84,8 @@ pub fn gcp_github_mock_spec() -> MockSpec {
             "secret",
             Value::Str("github".into()),
         )
-        .input_mock(
-            "build_credential",
-            "scheme",
-            Value::Str("bearer".into()),
-        )
-        .input_mock(
-            "build_credential",
-            "source_id",
-            Value::Str("github".into()),
-        )
+        .input_mock("build_credential", "scheme", Value::Str("bearer".into()))
+        .input_mock("build_credential", "source_id", Value::Str("github".into()))
         .transport_mock(
             "execute_github_oidc",
             "response",
@@ -118,6 +108,14 @@ pub fn gcp_github_mock_spec() -> MockSpec {
         )
         .boundary("build_credential", "credential", mock_credential())
         .boundary("net_env", "net", mock_net_handle())
+        .node_example(
+            NodeExample::new("build_credential")
+                .input("secret", Value::Str("mock-secret".into()))
+                .input("scheme", Value::Str("bearer".into()))
+                .input("source_id", Value::Str("github".into()))
+                .output("credential", OutputMatcher::Any)
+                .description("Builds a bearer credential from secret material"),
+        )
         // Pure nodes — skip example enforcement for now
         .skip_node_example("prepare_github_oidc")
         .skip_node_example("parse_github_oidc")
@@ -127,7 +125,6 @@ pub fn gcp_github_mock_spec() -> MockSpec {
         .skip_node_example("parse_impersonate")
         .skip_node_example("prepare_secret_access")
         .skip_node_example("parse_secret_access")
-        .skip_node_example("build_credential")
         .skip_node_example("net_env")
 }
 
@@ -135,7 +132,7 @@ pub fn gcp_github_mock_spec() -> MockSpec {
 #[gunbc_testgen_registry_macros::resource_test_target(
     skip,
     name = "gcp-wif-secret-upsert-github",
-    builder = "crate::graph::build_gcp_secret_manager_upsert_graph_github()",
+    builder = "crate::graph::build_gcp_secret_manager_upsert_graph_github()"
 )]
 #[gunbc_testgen_registry_macros::testgen_target(
     name = "gcp-wif-secret-upsert-github",
@@ -166,8 +163,7 @@ pub fn gcp_github_upsert_mock_spec() -> MockSpec {
             "prepare_github_oidc",
             "audience",
             Value::Str(
-                "projects/123/locations/global/workloadIdentityPools/github/providers/gha"
-                    .into(),
+                "projects/123/locations/global/workloadIdentityPools/github/providers/gha".into(),
             ),
         )
         .input_mock(
@@ -184,8 +180,7 @@ pub fn gcp_github_upsert_mock_spec() -> MockSpec {
             "prepare_sts",
             "audience",
             Value::Str(
-                "projects/123/locations/global/workloadIdentityPools/github/providers/gha"
-                    .into(),
+                "projects/123/locations/global/workloadIdentityPools/github/providers/gha".into(),
             ),
         )
         .input_mock(
@@ -198,11 +193,7 @@ pub fn gcp_github_upsert_mock_spec() -> MockSpec {
             "project",
             Value::Str("mock-secrets".into()),
         )
-        .input_mock(
-            "prepare_secret_get",
-            "secret",
-            Value::Str("github".into()),
-        )
+        .input_mock("prepare_secret_get", "secret", Value::Str("github".into()))
         .input_mock(
             "prepare_secret_create",
             "project",

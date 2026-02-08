@@ -11,8 +11,8 @@ use crate::makegen::registry::{
     ToolRegistry,
 };
 use gunbc_ir::cargo::Warnings;
-use gunbc_ir::resource::ExecMode;
 use gunbc_ir::render_ir::{FileHeader, PlainText, StructuredBlock, StructuredRenderer, Target};
+use gunbc_ir::resource::ExecMode;
 use gunbc_ir::symbols::{Tier, STANDARD};
 use gunbc_ir::MakefileStructuredRenderer;
 
@@ -192,12 +192,8 @@ fn build_core_targets(config: &BuildConfig) -> Vec<StructuredBlock> {
     blocks.push(StructuredBlock::Target(Target {
         name: "preflight-fix".to_string(),
         deps: vec![],
-        body: vec![
-            "@cargo fix --workspace --all-targets --allow-dirty --allow-staged".to_string(),
-        ],
-        comment: Some(
-            "Preflight: auto-fix rustc warnings before running generators".to_string(),
-        ),
+        body: vec!["@cargo fix --workspace --all-targets --allow-dirty --allow-staged".to_string()],
+        comment: Some("Preflight: auto-fix rustc warnings before running generators".to_string()),
     }));
 
     // ensure-codegen
@@ -301,9 +297,7 @@ fn build_core_targets(config: &BuildConfig) -> Vec<StructuredBlock> {
                 warning_prefix
             ),
         ],
-        comment: Some(
-            "Verify generated artifacts match their generators".to_string(),
-        ),
+        comment: Some("Verify generated artifacts match their generators".to_string()),
     }));
 
     // verify-fix
@@ -356,38 +350,31 @@ fn build_help_target(registry: &ToolRegistry, config: &BuildConfig) -> Structure
     lines.push(
         "@echo \"  ensure-codegen  - Bootstrap CLI entrypoints (safe on clean)\"".to_string(),
     );
-    lines.push(
-        "@echo \"  preflight-fix  - Auto-fix rustc warnings (workspace)\"".to_string(),
-    );
-    lines.push(
-        "@echo \"  lint-upsert  - Auto-fix lint issues then verify\"".to_string(),
-    );
+    lines.push("@echo \"  preflight-fix  - Auto-fix rustc warnings (workspace)\"".to_string());
+    lines.push("@echo \"  lint-upsert  - Auto-fix lint issues then verify\"".to_string());
     lines.push("@echo \"  clean    - Remove build artifacts\"".to_string());
     lines.push("@echo \"  testgen  - Regenerate tests from DAG structures\"".to_string());
     lines.push("@echo \"  testgen-check  - Check if generated tests are stale\"".to_string());
-    lines.push(
-        "@echo \"  pragma-check  - Check if pragma artifacts are stale\"".to_string(),
-    );
+    lines.push("@echo \"  pragma-check  - Check if pragma artifacts are stale\"".to_string());
     lines.push(
         "@echo \"  verify   - Verify generated artifacts match their generators\"".to_string(),
     );
-    lines.push(
-        "@echo \"  verify-fix  - Ensure generated artifacts are up to date\"".to_string(),
-    );
+    lines.push("@echo \"  verify-fix  - Ensure generated artifacts are up to date\"".to_string());
     lines.push("@echo \"\"".to_string());
 
     // Meta targets section
     lines.push("@echo \"Development:\"".to_string());
     for meta in &registry.meta_targets {
-        lines.push(format!(
-            "@echo \"  {}  - {}\"",
-            meta.name, meta.description
-        ));
+        lines.push(format!("@echo \"  {}  - {}\"", meta.name, meta.description));
         if meta.has_fix_variant {
             let deps = if meta.fix_prerequisites.is_empty() {
                 "auto-fix".to_string()
             } else {
-                let names: Vec<&str> = meta.fix_prerequisites.iter().map(|f| f.target_name()).collect();
+                let names: Vec<&str> = meta
+                    .fix_prerequisites
+                    .iter()
+                    .map(|f| f.target_name())
+                    .collect();
                 format!("{} first", names.join(" + "))
             };
             lines.push(format!(
@@ -461,10 +448,7 @@ fn build_meta_targets(registry: &ToolRegistry, config: &BuildConfig) -> Vec<Stru
 /// Build the dependency list for a meta target (base/check variant).
 ///
 /// Resolves each `ResourceNeed` using its `base_mode` via `ResourceTargetMap`.
-fn meta_target_deps(
-    meta: &MetaTarget,
-    res_map: &ResourceTargetMap,
-) -> Vec<String> {
+fn meta_target_deps(meta: &MetaTarget, res_map: &ResourceTargetMap) -> Vec<String> {
     let mut deps: Vec<String> = Vec::new();
 
     for need in &meta.resources {
@@ -614,7 +598,12 @@ fn build_tool_target(tool: &ToolInfo, config: &BuildConfig) -> StructuredBlock {
     StructuredBlock::Target(Target {
         name: tool.short_name.clone(),
         deps,
-        body: vec![format!("@{}{} --{}", warning_prefix, tool.invocation.command(), cli_args)],
+        body: vec![format!(
+            "@{}{} --{}",
+            warning_prefix,
+            tool.invocation.command(),
+            cli_args
+        )],
         comment: Some(format!("{} entrypoints: {}", tool.binary_name(), port_list)),
     })
 }
@@ -680,10 +669,7 @@ fn render_cli_args(params: &[EntrypointParam]) -> String {
                 )
             } else {
                 // $(if $(VAR),--flag $(VAR))
-                format!(
-                    " $(if $({}),{} $({}))",
-                    p.make_var, p.cli_flag, p.make_var
-                )
+                format!(" $(if $({}),{} $({}))", p.make_var, p.cli_flag, p.make_var)
             }
         })
         .collect();
@@ -1008,9 +994,7 @@ mod tests {
         // Raw blocks should only contain directives and section headers
         for raw in &raw_contents {
             assert!(
-                raw.starts_with('#')
-                    || raw.starts_with('.')
-                    || raw.contains("============"),
+                raw.starts_with('#') || raw.starts_with('.') || raw.contains("============"),
                 "unexpected Raw block that looks like a target definition: {:?}",
                 &raw[..raw.len().min(80)]
             );

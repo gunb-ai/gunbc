@@ -7,7 +7,9 @@ use gunbc_exec::{ExecError, Executable, OutputMap};
 use gunbc_ir::Value;
 use std::collections::HashMap;
 
-use crate::policy::pragma::{clippy_renderer, render_disallowed_methods_allowlist, render_pragma_lint_policy};
+use crate::policy::pragma::{
+    clippy_renderer, render_disallowed_methods_allowlist, render_pragma_lint_policy,
+};
 
 /// Operations for the pragma tool.
 ///
@@ -23,7 +25,10 @@ pub enum PragmaOp {
 }
 
 impl Executable for PragmaOp {
-    fn execute(&self, _inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+    fn execute(
+        &self,
+        _inputs: HashMap<String, Value>,
+    ) -> Result<HashMap<String, Value>, ExecError> {
         match self {
             PragmaOp::RenderClippy => {
                 let content = clippy_renderer().render();
@@ -50,9 +55,9 @@ impl Mockable for PragmaOp {
             PragmaOp::RenderClippy => OutputMap::new()
                 .str("content", "# Mock clippy.toml")
                 .build(),
-            PragmaOp::RenderAllowlist => OutputMap::new()
-                .str("content", "# Mock allowlist")
-                .build(),
+            PragmaOp::RenderAllowlist => {
+                OutputMap::new().str("content", "# Mock allowlist").build()
+            }
             PragmaOp::RenderLintPolicy => OutputMap::new()
                 .str("content", "# Mock lint policy")
                 .build(),

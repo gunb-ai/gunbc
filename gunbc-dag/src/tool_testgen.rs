@@ -1,7 +1,9 @@
 //! Testgen targets for tool crates that should be tested in isolation.
 
 use gunbc_test::MockSpec;
-use gunbc_testgen_registry::{inventory, DagSpecDef, DagSpecMeta, DagSpecTestgen, TestgenTargetDef};
+use gunbc_testgen_registry::{
+    inventory, DagSpecDef, DagSpecMeta, DagSpecTestgen, TestgenTargetDef,
+};
 
 fn clippy_testgen_mock_spec() -> MockSpec {
     gunbc_clippy::graph_mock::clippy_mock_spec()

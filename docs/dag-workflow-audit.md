@@ -250,7 +250,7 @@ Config -> PrepareDiff -> ExecuteDiff -> ParseDiff -> FormatArtifact -> (LLM chai
 
 **Resources:** Credential resource (LLM API keys)
 
-**Op enum:** `ReviewGraphOp = Blob(BlobOps) | Git(GitOps) | Review(ReviewOps) | Llm(LlmOps) | Cred(CredentialOp) | Transport`
+**Op enum:** `ReviewGraphOp = Blob(BlobOps) | Git(GitOps) | Review(ReviewOps) | Llm(LlmOps) | CloudEnv | Cloud(CloudSecretManagerGraphOp) | Transport`
 
 ---
 
@@ -265,7 +265,7 @@ PrepareChatRequest -> ResolveAuth -> CredentialEnv -> Execute -> ParseChatRespon
 
 **Resources:** Credential resource (provider-specific API keys)
 
-**Op enum:** `LlmGraphOp = Llm(LlmOps) | Transport | Cred(CredentialOp)`
+**Op enum:** `LlmGraphOp = Llm(LlmOps) | Transport | CloudEnv | Cloud(CloudSecretManagerGraphOp)`
 
 **Notes:** Embeddable SubDAG used by the Review tool.
 
@@ -329,7 +329,7 @@ Environment nodes provide resources with explicit access modes:
 - `PlatformEnv` — platform detection
 - `FsEnv` — filesystem scope
 - `ClockEnv` — timestamps
-- `CredentialOp` — API credentials
+- `CloudEnv` + `CloudSecretManagerGraphOp` — API credentials (via cloud secret manager)
 
 Access modes: `Read` (shared), `Write` (exclusive), `Exclusive` (no other access). Validated by `derive_resource_accesses()` and `validate_resource_wiring_recursive()`.
 

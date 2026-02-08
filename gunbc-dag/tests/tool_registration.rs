@@ -8,9 +8,9 @@ use std::path::Path;
 // Force the linker to include inventory submissions from dependency crates.
 // Without these references, the linker may dead-strip the inventory symbols
 // and iter_tool_targets() would return an empty iterator.
-use gunbc_deps::deps_tool;
 use gunbc_clippy::clippy_tool;
-use gunbc_gist::{gist_diff_tool, gist_recent_tool, gist_snapshot_tool};
+use gunbc_deps::deps_tool;
+use gunbc_gist::{gist_auth_doctor_tool, gist_diff_tool, gist_recent_tool, gist_snapshot_tool};
 use gunbc_lib_review::review_tool;
 // These are in gunbc-dag itself (same binary), but reference for completeness.
 use gunbc_dag::bootstrap::bootstrap_tool;
@@ -24,6 +24,7 @@ fn derive_tool_defs_matches_inventory() {
     let _: fn() = gist_snapshot_tool;
     let _: fn() = gist_diff_tool;
     let _: fn() = gist_recent_tool;
+    let _: fn() = gist_auth_doctor_tool;
     let _: fn() = deps_tool;
     let _: fn() = review_tool;
     let _: fn() = makegen_tool;
@@ -39,10 +40,17 @@ fn derive_tool_defs_matches_inventory() {
         "derive_tool_defs() and iter_tool_targets() should contain the same tool names"
     );
 
-    // Verify expected count (8 tools)
+    // Verify expected set
     let expected = [
-        "bootstrap", "clippy", "deps", "gist", "gist-diff", "gist-recent",
-        "makegen", "review",
+        "bootstrap",
+        "clippy",
+        "deps",
+        "gist",
+        "gist-auth-doctor",
+        "gist-diff",
+        "gist-recent",
+        "makegen",
+        "review",
     ];
     for name in &expected {
         assert!(
@@ -91,9 +99,9 @@ fn tool_targets_have_testgen_coverage() {
     // references the same function name in the same crate directory.
     let mut missing = Vec::new();
     for (builder_fn, crate_dir, source_loc) in &tool_builders {
-        let has_testgen = testgen_builders.iter().any(|(testgen_fn, testgen_dir)| {
-            testgen_fn == builder_fn && testgen_dir == crate_dir
-        });
+        let has_testgen = testgen_builders
+            .iter()
+            .any(|(testgen_fn, testgen_dir)| testgen_fn == builder_fn && testgen_dir == crate_dir);
         if !has_testgen {
             missing.push(format!(
                 "{}: builder '{}' (crate {}) has no #[testgen_target] coverage",
@@ -248,11 +256,13 @@ fn crate_dir_from_path(root: &Path, file: &Path) -> String {
         }
         match dir.parent() {
             Some(p) if !p.as_os_str().is_empty() => dir = p,
-            _ => return relative
-                .components()
-                .next()
-                .map(|c| c.as_os_str().to_string_lossy().to_string())
-                .unwrap_or_default(),
+            _ => {
+                return relative
+                    .components()
+                    .next()
+                    .map(|c| c.as_os_str().to_string_lossy().to_string())
+                    .unwrap_or_default()
+            }
         }
     }
 }

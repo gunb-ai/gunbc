@@ -53,7 +53,10 @@ pub fn build_aws_secrets_manager_upsert_graph() -> Dag<AwsSecretManagerGraphOp> 
     builder
         .add_root_node(Node::opaque(
             "aws_secrets_manager_upsert_stub",
-            vec![port("config", "CloudSecretConfig"), port("secret_value", "Secret")],
+            vec![
+                port("config", "CloudSecretConfig"),
+                port("secret_value", "Secret"),
+            ],
             vec![port("version", "String")],
             AwsSecretManagerGraphOp::Aws(AwsOps::Unsupported),
         ))

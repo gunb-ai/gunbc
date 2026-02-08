@@ -28,7 +28,7 @@ fn mock_fs_handle() -> Value {
 /// Mock specification for the pragma graph.
 #[gunbc_testgen_registry_macros::resource_test_target(
     name = "pragma",
-    builder = "crate::build_pragma_graph().unwrap()",
+    builder = "crate::build_pragma_graph().unwrap()"
 )]
 #[gunbc_testgen_registry_macros::testgen_target(
     name = "pragma",
@@ -72,9 +72,17 @@ pub fn pragma_mock_spec() -> MockSpec {
             }),
         )
         .expect("execute_clippy_transport response should match type")
-        .boundary_str("execute_clippy_transport", "clippy_written_path", "clippy.toml")
+        .boundary_str(
+            "execute_clippy_transport",
+            "clippy_written_path",
+            "clippy.toml",
+        )
         .expect("execute_clippy_transport path should match type")
-        .boundary_str("execute_clippy_transport", "clippy_content", "<mock-clippy>")
+        .boundary_str(
+            "execute_clippy_transport",
+            "clippy_content",
+            "<mock-clippy>",
+        )
         .expect("execute_clippy_transport content should match type")
         .boundary_bool("execute_clippy_transport", "skip", false)
         .expect("execute_clippy_transport skip should match type")
@@ -108,9 +116,17 @@ pub fn pragma_mock_spec() -> MockSpec {
             }),
         )
         .expect("execute_allowlist_transport response should match type")
-        .boundary_str("execute_allowlist_transport", "allowlist_written_path", "tools/disallowed-methods-allowlist.txt")
+        .boundary_str(
+            "execute_allowlist_transport",
+            "allowlist_written_path",
+            "tools/disallowed-methods-allowlist.txt",
+        )
         .expect("execute_allowlist_transport path should match type")
-        .boundary_str("execute_allowlist_transport", "allowlist_content", "<mock-allowlist>")
+        .boundary_str(
+            "execute_allowlist_transport",
+            "allowlist_content",
+            "<mock-allowlist>",
+        )
         .expect("execute_allowlist_transport content should match type")
         .boundary_bool("execute_allowlist_transport", "skip", false)
         .expect("execute_allowlist_transport skip should match type")
@@ -144,9 +160,17 @@ pub fn pragma_mock_spec() -> MockSpec {
             }),
         )
         .expect("execute_policy_transport response should match type")
-        .boundary_str("execute_policy_transport", "policy_written_path", "tools/pragma-lint-policy.txt")
+        .boundary_str(
+            "execute_policy_transport",
+            "policy_written_path",
+            "tools/pragma-lint-policy.txt",
+        )
         .expect("execute_policy_transport path should match type")
-        .boundary_str("execute_policy_transport", "policy_content", "<mock-policy>")
+        .boundary_str(
+            "execute_policy_transport",
+            "policy_content",
+            "<mock-policy>",
+        )
         .expect("execute_policy_transport content should match type")
         .boundary_bool("execute_policy_transport", "skip", false)
         .expect("execute_policy_transport skip should match type")
@@ -155,14 +179,42 @@ pub fn pragma_mock_spec() -> MockSpec {
         // Build spec
         .build_unchecked()
         // Input mocks for DAG entry points
-        .input_mock("prepare_read_clippy", "path", Value::Str("clippy.toml".into()))
-        .input_mock("prepare_read_allowlist", "path", Value::Str("tools/disallowed-methods-allowlist.txt".into()))
-        .input_mock("prepare_read_policy", "path", Value::Str("tools/pragma-lint-policy.txt".into()))
-        .input_mock("prepare_write_clippy", "path", Value::Str("clippy.toml".into()))
-        .input_mock("prepare_write_allowlist", "path", Value::Str("tools/disallowed-methods-allowlist.txt".into()))
-        .input_mock("prepare_write_policy", "path", Value::Str("tools/pragma-lint-policy.txt".into()))
+        .input_mock(
+            "prepare_read_clippy",
+            "path",
+            Value::Str("clippy.toml".into()),
+        )
+        .input_mock(
+            "prepare_read_allowlist",
+            "path",
+            Value::Str("tools/disallowed-methods-allowlist.txt".into()),
+        )
+        .input_mock(
+            "prepare_read_policy",
+            "path",
+            Value::Str("tools/pragma-lint-policy.txt".into()),
+        )
+        .input_mock(
+            "prepare_write_clippy",
+            "path",
+            Value::Str("clippy.toml".into()),
+        )
+        .input_mock(
+            "prepare_write_allowlist",
+            "path",
+            Value::Str("tools/disallowed-methods-allowlist.txt".into()),
+        )
+        .input_mock(
+            "prepare_write_policy",
+            "path",
+            Value::Str("tools/pragma-lint-policy.txt".into()),
+        )
         .input_mock("compare_clippy_content", "check_mode", Value::Bool(false))
-        .input_mock("compare_allowlist_content", "check_mode", Value::Bool(false))
+        .input_mock(
+            "compare_allowlist_content",
+            "check_mode",
+            Value::Bool(false),
+        )
         .input_mock("compare_policy_content", "check_mode", Value::Bool(false))
         // Resources: file locks for all outputs
         .resource_lock("fs:clippy.toml")
@@ -181,12 +233,18 @@ pub fn pragma_mock_spec() -> MockSpec {
         )
         .node_example(
             NodeExample::new("render_allowlist")
-                .output("content", OutputMatcher::contains("Generated by gunbc-pragma"))
+                .output(
+                    "content",
+                    OutputMatcher::contains("Generated by gunbc-pragma"),
+                )
                 .description("Renders disallowed-methods allowlist"),
         )
         .node_example(
             NodeExample::new("render_policy")
-                .output("content", OutputMatcher::contains("Generated by gunbc-pragma"))
+                .output(
+                    "content",
+                    OutputMatcher::contains("Generated by gunbc-pragma"),
+                )
                 .description("Renders pragma lint policy"),
         )
         // Primitive nodes — tested in their own crates

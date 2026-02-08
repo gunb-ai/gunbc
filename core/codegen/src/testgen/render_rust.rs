@@ -223,8 +223,7 @@ impl<M: TextMedium> CodeRenderer<M> for RustCodeRenderer<M> {
                 if args.is_empty() {
                     format!("format!(\"{}\")", escape_rust_str(template))
                 } else {
-                    let args_str: Vec<String> =
-                        args.iter().map(|a| self.render_expr(a)).collect();
+                    let args_str: Vec<String> = args.iter().map(|a| self.render_expr(a)).collect();
                     format!(
                         "format!(\"{}\", {})",
                         escape_rust_str(template),
@@ -288,12 +287,7 @@ impl<M: TextMedium> CodeRenderer<M> for RustCodeRenderer<M> {
                 iter,
                 body,
             } => {
-                let mut out = format!(
-                    "{}for {} in {} {{\n",
-                    pad,
-                    binding,
-                    self.render_expr(iter)
-                );
+                let mut out = format!("{}for {} in {} {{\n", pad, binding, self.render_expr(iter));
                 for stmt in body {
                     out.push_str(&self.render_stmt(stmt, indent + 1));
                 }
@@ -670,11 +664,7 @@ impl<M: TextMedium> RustCodeRenderer<M> {
 
         // Derives
         if !e.derives.is_empty() {
-            out.push_str(&format!(
-                "{}#[derive({})]\n",
-                pad,
-                e.derives.join(", ")
-            ));
+            out.push_str(&format!("{}#[derive({})]\n", pad, e.derives.join(", ")));
         }
 
         // Enum header
@@ -722,11 +712,7 @@ impl<M: TextMedium> RustCodeRenderer<M> {
 
         // Derives
         if !s.derives.is_empty() {
-            out.push_str(&format!(
-                "{}#[derive({})]\n",
-                pad,
-                s.derives.join(", ")
-            ));
+            out.push_str(&format!("{}#[derive({})]\n", pad, s.derives.join(", ")));
         }
 
         // Struct header

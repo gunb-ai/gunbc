@@ -161,7 +161,12 @@ fn run_with_progress<T: Executable + Clone + Send>(
     .collect();
     let mut spinner = Animation::cycle(spinner_frames, Duration::from_millis(150));
 
-    let mut writer = FrameWriter::new(profile.supports_color, profile.tier, &STANDARD, profile.is_tty);
+    let mut writer = FrameWriter::new(
+        profile.supports_color,
+        profile.tier,
+        &STANDARD,
+        profile.is_tty,
+    );
     let mut stdout = io::stdout();
 
     let render = |visual: &DagProgress,

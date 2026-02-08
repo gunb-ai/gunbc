@@ -1,10 +1,11 @@
 //! Provider-neutral cloud credential DAGs.
 
+use crate::detect_cloud_env_requirements;
 use crate::ops::CloudOps;
 use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::build::{optional, port};
 use gunbc_ir::transport::cloud::{CloudProviderKind, CloudRuntimeKind, CloudSecretConfig};
-use gunbc_ir::{Dag, DagBuilder, Node, NodeBody, Value};
+use gunbc_ir::{Dag, DagBuilder, Node, Value};
 use gunbc_lib_aws_ops::{
     build_aws_secrets_manager_credential_graph, build_aws_secrets_manager_upsert_graph,
     AwsSecretManagerGraphOp,
@@ -17,8 +18,7 @@ use gunbc_lib_gcp_ops::{
     build_gcp_secret_manager_credential_graph_github,
     build_gcp_secret_manager_credential_graph_local,
     build_gcp_secret_manager_credential_graph_metadata,
-    build_gcp_secret_manager_upsert_graph_github,
-    build_gcp_secret_manager_upsert_graph_local,
+    build_gcp_secret_manager_upsert_graph_github, build_gcp_secret_manager_upsert_graph_local,
     build_gcp_secret_manager_upsert_graph_metadata, GcpSecretManagerGraphOp,
 };
 use std::collections::HashMap;
@@ -52,8 +52,12 @@ pub fn build_cloud_secret_manager_credential_graph_from_config(
 ) -> Dag<CloudSecretManagerGraphOp> {
     match config.provider {
         CloudProviderKind::Gcp => match config.runtime {
-            CloudRuntimeKind::GitHubActions => build_cloud_secret_manager_credential_graph_gcp_github(),
-            CloudRuntimeKind::CloudMetadata => build_cloud_secret_manager_credential_graph_gcp_metadata(),
+            CloudRuntimeKind::GitHubActions => {
+                build_cloud_secret_manager_credential_graph_gcp_github()
+            }
+            CloudRuntimeKind::CloudMetadata => {
+                build_cloud_secret_manager_credential_graph_gcp_metadata()
+            }
             CloudRuntimeKind::LocalDev => build_cloud_secret_manager_credential_graph_gcp_local(),
         },
         CloudProviderKind::Aws => build_cloud_secret_manager_credential_graph_aws_stub(),
@@ -64,7 +68,7 @@ pub fn build_cloud_secret_manager_credential_graph_from_config(
 #[gunbc_testgen_registry_macros::resource_test_target(
     skip,
     name = "cloud-secret-credential-gcp-github",
-    builder = "build_cloud_secret_manager_credential_graph_gcp_github()",
+    builder = "build_cloud_secret_manager_credential_graph_gcp_github()"
 )]
 pub fn build_cloud_secret_manager_credential_graph_gcp_github() -> Dag<CloudSecretManagerGraphOp> {
     build_cloud_secret_manager_credential_graph_gcp(CloudRuntimeKind::GitHubActions)
@@ -73,16 +77,17 @@ pub fn build_cloud_secret_manager_credential_graph_gcp_github() -> Dag<CloudSecr
 #[gunbc_testgen_registry_macros::resource_test_target(
     skip,
     name = "cloud-secret-credential-gcp-metadata",
-    builder = "build_cloud_secret_manager_credential_graph_gcp_metadata()",
+    builder = "build_cloud_secret_manager_credential_graph_gcp_metadata()"
 )]
-pub fn build_cloud_secret_manager_credential_graph_gcp_metadata() -> Dag<CloudSecretManagerGraphOp> {
+pub fn build_cloud_secret_manager_credential_graph_gcp_metadata() -> Dag<CloudSecretManagerGraphOp>
+{
     build_cloud_secret_manager_credential_graph_gcp(CloudRuntimeKind::CloudMetadata)
 }
 
 #[gunbc_testgen_registry_macros::resource_test_target(
     skip,
     name = "cloud-secret-credential-gcp-local",
-    builder = "build_cloud_secret_manager_credential_graph_gcp_local()",
+    builder = "build_cloud_secret_manager_credential_graph_gcp_local()"
 )]
 pub fn build_cloud_secret_manager_credential_graph_gcp_local() -> Dag<CloudSecretManagerGraphOp> {
     build_cloud_secret_manager_credential_graph_gcp(CloudRuntimeKind::LocalDev)
@@ -91,7 +96,7 @@ pub fn build_cloud_secret_manager_credential_graph_gcp_local() -> Dag<CloudSecre
 #[gunbc_testgen_registry_macros::resource_test_target(
     skip,
     name = "cloud-secret-credential-aws-stub",
-    builder = "build_cloud_secret_manager_credential_graph_aws_stub()",
+    builder = "build_cloud_secret_manager_credential_graph_aws_stub()"
 )]
 pub fn build_cloud_secret_manager_credential_graph_aws_stub() -> Dag<CloudSecretManagerGraphOp> {
     lift_aws(build_aws_secrets_manager_credential_graph())
@@ -100,7 +105,7 @@ pub fn build_cloud_secret_manager_credential_graph_aws_stub() -> Dag<CloudSecret
 #[gunbc_testgen_registry_macros::resource_test_target(
     skip,
     name = "cloud-secret-credential-azure-stub",
-    builder = "build_cloud_secret_manager_credential_graph_azure_stub()",
+    builder = "build_cloud_secret_manager_credential_graph_azure_stub()"
 )]
 pub fn build_cloud_secret_manager_credential_graph_azure_stub() -> Dag<CloudSecretManagerGraphOp> {
     lift_azure(build_azure_key_vault_credential_graph())
@@ -113,7 +118,9 @@ pub fn build_cloud_secret_manager_upsert_graph_from_config(
     match config.provider {
         CloudProviderKind::Gcp => match config.runtime {
             CloudRuntimeKind::GitHubActions => build_cloud_secret_manager_upsert_graph_gcp_github(),
-            CloudRuntimeKind::CloudMetadata => build_cloud_secret_manager_upsert_graph_gcp_metadata(),
+            CloudRuntimeKind::CloudMetadata => {
+                build_cloud_secret_manager_upsert_graph_gcp_metadata()
+            }
             CloudRuntimeKind::LocalDev => build_cloud_secret_manager_upsert_graph_gcp_local(),
         },
         CloudProviderKind::Aws => build_cloud_secret_manager_upsert_graph_aws_stub(),
@@ -124,7 +131,7 @@ pub fn build_cloud_secret_manager_upsert_graph_from_config(
 #[gunbc_testgen_registry_macros::resource_test_target(
     skip,
     name = "cloud-secret-upsert-gcp-github",
-    builder = "build_cloud_secret_manager_upsert_graph_gcp_github()",
+    builder = "build_cloud_secret_manager_upsert_graph_gcp_github()"
 )]
 pub fn build_cloud_secret_manager_upsert_graph_gcp_github() -> Dag<CloudSecretManagerGraphOp> {
     build_cloud_secret_manager_upsert_graph_gcp(CloudRuntimeKind::GitHubActions)
@@ -133,7 +140,7 @@ pub fn build_cloud_secret_manager_upsert_graph_gcp_github() -> Dag<CloudSecretMa
 #[gunbc_testgen_registry_macros::resource_test_target(
     skip,
     name = "cloud-secret-upsert-gcp-metadata",
-    builder = "build_cloud_secret_manager_upsert_graph_gcp_metadata()",
+    builder = "build_cloud_secret_manager_upsert_graph_gcp_metadata()"
 )]
 pub fn build_cloud_secret_manager_upsert_graph_gcp_metadata() -> Dag<CloudSecretManagerGraphOp> {
     build_cloud_secret_manager_upsert_graph_gcp(CloudRuntimeKind::CloudMetadata)
@@ -142,7 +149,7 @@ pub fn build_cloud_secret_manager_upsert_graph_gcp_metadata() -> Dag<CloudSecret
 #[gunbc_testgen_registry_macros::resource_test_target(
     skip,
     name = "cloud-secret-upsert-gcp-local",
-    builder = "build_cloud_secret_manager_upsert_graph_gcp_local()",
+    builder = "build_cloud_secret_manager_upsert_graph_gcp_local()"
 )]
 pub fn build_cloud_secret_manager_upsert_graph_gcp_local() -> Dag<CloudSecretManagerGraphOp> {
     build_cloud_secret_manager_upsert_graph_gcp(CloudRuntimeKind::LocalDev)
@@ -151,7 +158,7 @@ pub fn build_cloud_secret_manager_upsert_graph_gcp_local() -> Dag<CloudSecretMan
 #[gunbc_testgen_registry_macros::resource_test_target(
     skip,
     name = "cloud-secret-upsert-aws-stub",
-    builder = "build_cloud_secret_manager_upsert_graph_aws_stub()",
+    builder = "build_cloud_secret_manager_upsert_graph_aws_stub()"
 )]
 pub fn build_cloud_secret_manager_upsert_graph_aws_stub() -> Dag<CloudSecretManagerGraphOp> {
     lift_aws(build_aws_secrets_manager_upsert_graph())
@@ -160,7 +167,7 @@ pub fn build_cloud_secret_manager_upsert_graph_aws_stub() -> Dag<CloudSecretMana
 #[gunbc_testgen_registry_macros::resource_test_target(
     skip,
     name = "cloud-secret-upsert-azure-stub",
-    builder = "build_cloud_secret_manager_upsert_graph_azure_stub()",
+    builder = "build_cloud_secret_manager_upsert_graph_azure_stub()"
 )]
 pub fn build_cloud_secret_manager_upsert_graph_azure_stub() -> Dag<CloudSecretManagerGraphOp> {
     lift_azure(build_azure_key_vault_upsert_graph())
@@ -242,13 +249,19 @@ fn build_cloud_secret_manager_credential_graph_gcp(
 
     // Wire resolved config → map node.
     builder
-        .add_edge(resolve_config.out("provider"), map_inputs.in_port("provider"))
+        .add_edge(
+            resolve_config.out("provider"),
+            map_inputs.in_port("provider"),
+        )
         .expect("resolve_config.provider -> map_gcp_inputs.provider");
     builder
         .add_edge(resolve_config.out("runtime"), map_inputs.in_port("runtime"))
         .expect("resolve_config.runtime -> map_gcp_inputs.runtime");
     builder
-        .add_edge(resolve_config.out("audience"), map_inputs.in_port("audience"))
+        .add_edge(
+            resolve_config.out("audience"),
+            map_inputs.in_port("audience"),
+        )
         .expect("resolve_config.audience -> map_gcp_inputs.audience");
     builder
         .add_edge(
@@ -281,9 +294,11 @@ fn build_cloud_secret_manager_credential_graph_gcp(
         .expect("gcp_wif_secret");
 
     // Wire map outputs → GCP graph inputs.
-    builder
-        .add_edge(map_inputs.out("audience"), gcp_node.in_port("audience"))
-        .expect("map_gcp_inputs.audience -> gcp_wif_secret.audience");
+    if !matches!(runtime, CloudRuntimeKind::LocalDev) {
+        builder
+            .add_edge(map_inputs.out("audience"), gcp_node.in_port("audience"))
+            .expect("map_gcp_inputs.audience -> gcp_wif_secret.audience");
+    }
     builder
         .add_edge(map_inputs.out("project"), gcp_node.in_port("project"))
         .expect("map_gcp_inputs.project -> gcp_wif_secret.project");
@@ -303,7 +318,10 @@ fn build_cloud_secret_manager_credential_graph_gcp(
         .add_edge(map_inputs.out("scheme"), gcp_node.in_port("scheme"))
         .expect("map_gcp_inputs.scheme -> gcp_wif_secret.scheme");
     builder
-        .add_edge(map_inputs.out("header_name"), gcp_node.in_port("header_name"))
+        .add_edge(
+            map_inputs.out("header_name"),
+            gcp_node.in_port("header_name"),
+        )
         .expect("map_gcp_inputs.header_name -> gcp_wif_secret.header_name");
     builder
         .add_edge(map_inputs.out("source_id"), gcp_node.in_port("source_id"))
@@ -317,7 +335,10 @@ fn build_cloud_secret_manager_credential_graph_gcp(
 
     if matches!(runtime, CloudRuntimeKind::GitHubActions) {
         builder
-            .add_edge(map_inputs.out("request_url"), gcp_node.in_port("request_url"))
+            .add_edge(
+                map_inputs.out("request_url"),
+                gcp_node.in_port("request_url"),
+            )
             .expect("map_gcp_inputs.request_url -> gcp_wif_secret.request_url");
         builder
             .add_edge(
@@ -394,13 +415,19 @@ fn build_cloud_secret_manager_upsert_graph_gcp(
         .expect("map_gcp_secret_inputs");
 
     builder
-        .add_edge(resolve_config.out("provider"), map_inputs.in_port("provider"))
+        .add_edge(
+            resolve_config.out("provider"),
+            map_inputs.in_port("provider"),
+        )
         .expect("resolve_config.provider -> map_gcp_secret_inputs.provider");
     builder
         .add_edge(resolve_config.out("runtime"), map_inputs.in_port("runtime"))
         .expect("resolve_config.runtime -> map_gcp_secret_inputs.runtime");
     builder
-        .add_edge(resolve_config.out("audience"), map_inputs.in_port("audience"))
+        .add_edge(
+            resolve_config.out("audience"),
+            map_inputs.in_port("audience"),
+        )
         .expect("resolve_config.audience -> map_gcp_secret_inputs.audience");
     builder
         .add_edge(
@@ -430,15 +457,17 @@ fn build_cloud_secret_manager_upsert_graph_gcp(
         );
 
     let gcp_node = builder
-        .add_node_after(Node::subdag("gcp_wif_secret_upsert", gcp_subdag), &map_inputs)
+        .add_node_after(
+            Node::subdag("gcp_wif_secret_upsert", gcp_subdag),
+            &map_inputs,
+        )
         .expect("gcp_wif_secret_upsert");
 
-    builder
-        .add_edge(
-            map_inputs.out("audience"),
-            gcp_node.in_port("audience"),
-        )
-        .expect("map_gcp_secret_inputs.audience -> gcp_wif_secret_upsert.audience");
+    if !matches!(runtime, CloudRuntimeKind::LocalDev) {
+        builder
+            .add_edge(map_inputs.out("audience"), gcp_node.in_port("audience"))
+            .expect("map_gcp_secret_inputs.audience -> gcp_wif_secret_upsert.audience");
+    }
     builder
         .add_edge(map_inputs.out("project"), gcp_node.in_port("project"))
         .expect("map_gcp_secret_inputs.project -> gcp_wif_secret_upsert.project");
@@ -456,9 +485,7 @@ fn build_cloud_secret_manager_upsert_graph_gcp(
             map_inputs.out("lifetime_seconds"),
             gcp_node.in_port("lifetime_seconds"),
         )
-        .expect(
-            "map_gcp_secret_inputs.lifetime_seconds -> gcp_wif_secret_upsert.lifetime_seconds",
-        );
+        .expect("map_gcp_secret_inputs.lifetime_seconds -> gcp_wif_secret_upsert.lifetime_seconds");
 
     if matches!(runtime, CloudRuntimeKind::GitHubActions) {
         builder
@@ -479,62 +506,63 @@ fn build_cloud_secret_manager_upsert_graph_gcp(
 }
 
 // ---------------------------------------------------------------------------
+// Runtime credential graph selection
+// ---------------------------------------------------------------------------
+
+/// Build a cloud credential graph for the detected runtime environment.
+///
+/// Selects the appropriate GCP credential graph based on whether we're running
+/// in GitHub Actions, on a GCP instance, or locally.
+pub fn build_cloud_credential_graph_for_runtime() -> Dag<CloudSecretManagerGraphOp> {
+    let env_req = detect_cloud_env_requirements();
+    match env_req.runtime {
+        CloudRuntimeKind::GitHubActions => build_cloud_secret_manager_credential_graph_gcp_github(),
+        CloudRuntimeKind::CloudMetadata => {
+            build_cloud_secret_manager_credential_graph_gcp_metadata()
+        }
+        CloudRuntimeKind::LocalDev => build_cloud_secret_manager_credential_graph_gcp_local(),
+    }
+}
+
+// ---------------------------------------------------------------------------
 // DAG lifting helpers (provider op → cloud op)
 // ---------------------------------------------------------------------------
 
 fn lift_gcp(dag: Dag<GcpSecretManagerGraphOp>) -> Dag<CloudSecretManagerGraphOp> {
-    let mut lift = |op| CloudSecretManagerGraphOp::Gcp(op);
-    map_dag_ops(dag, &mut lift)
+    dag.map_ops(&mut CloudSecretManagerGraphOp::Gcp)
 }
 
 fn lift_aws(dag: Dag<AwsSecretManagerGraphOp>) -> Dag<CloudSecretManagerGraphOp> {
-    let mut lift = |op| CloudSecretManagerGraphOp::Aws(op);
-    map_dag_ops(dag, &mut lift)
+    dag.map_ops(&mut CloudSecretManagerGraphOp::Aws)
 }
 
 fn lift_azure(dag: Dag<AzureKeyVaultGraphOp>) -> Dag<CloudSecretManagerGraphOp> {
-    let mut lift = |op| CloudSecretManagerGraphOp::Azure(op);
-    map_dag_ops(dag, &mut lift)
+    dag.map_ops(&mut CloudSecretManagerGraphOp::Azure)
 }
 
-fn map_dag_ops<T, U, F>(dag: Dag<T>, f: &mut F) -> Dag<U>
-where
-    T: Clone,
-    U: Clone,
-    F: FnMut(T) -> U,
-{
-    let mut out = Dag::new();
-    out.edges = dag.edges.clone();
-    out.nodes = dag
-        .nodes
-        .into_iter()
-        .map(|node| map_node_ops(node, f))
-        .collect();
-    out
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-fn map_node_ops<T, U, F>(node: Node<T>, f: &mut F) -> Node<U>
-where
-    T: Clone,
-    U: Clone,
-    F: FnMut(T) -> U,
-{
-    let Node {
-        id,
-        inputs,
-        outputs,
-        body,
-        examples,
-    } = node;
-    let body = match body {
-        NodeBody::Opaque(op) => NodeBody::Opaque(f(op)),
-        NodeBody::SubDag(subdag) => NodeBody::SubDag(map_dag_ops(subdag, f)),
-    };
-    Node {
-        id,
-        inputs,
-        outputs,
-        body,
-        examples,
+    #[test]
+    fn build_local_credential_graph_does_not_panic() {
+        let _dag = build_cloud_secret_manager_credential_graph_gcp_local();
+    }
+
+    #[test]
+    fn build_local_upsert_graph_does_not_panic() {
+        let _dag = build_cloud_secret_manager_upsert_graph_gcp_local();
+    }
+
+    #[test]
+    fn local_cloud_credential_exposes_expires_in() {
+        let dag = build_cloud_secret_manager_credential_graph_gcp_local();
+        let node = dag
+            .get_node(&"gcp_wif_secret".into())
+            .expect("gcp_wif_secret node should exist");
+        assert!(
+            node.outputs.iter().any(|port| port.name.0 == "expires_in"),
+            "local cloud credential graph must expose expires_in for runtime-uniform contracts",
+        );
     }
 }

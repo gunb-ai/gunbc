@@ -190,10 +190,7 @@ impl<T: Clone> EmitBuilder<T> {
             "compare",
             vec![
                 Port::scalar("content_hash", "String"),
-                Port::scalar(
-                    self.path_port_name.as_str(),
-                    self.path_port_type.as_str(),
-                ),
+                Port::scalar(self.path_port_name.as_str(), self.path_port_type.as_str()),
             ],
             vec![Port::scalar("changed", "Bool")],
             compare_op,
@@ -204,10 +201,7 @@ impl<T: Clone> EmitBuilder<T> {
             "write",
             vec![
                 Port::scalar("rendered", "String"),
-                Port::scalar(
-                    self.path_port_name.as_str(),
-                    self.path_port_type.as_str(),
-                ),
+                Port::scalar(self.path_port_name.as_str(), self.path_port_type.as_str()),
                 Port::guarded_with_cardinality(
                     "changed",
                     "Bool",
@@ -223,10 +217,7 @@ impl<T: Clone> EmitBuilder<T> {
         dag.add_node(Node::opaque(
             "record",
             vec![
-                Port::scalar(
-                    self.path_port_name.as_str(),
-                    self.path_port_type.as_str(),
-                ),
+                Port::scalar(self.path_port_name.as_str(), self.path_port_type.as_str()),
                 Port::scalar("content_hash", "String"),
             ],
             vec![

@@ -172,10 +172,7 @@ pub enum Expr {
     /// Block expression: `{ stmts }`.
     Block(Vec<Stmt>),
     /// format!() macro: `format!("template", args...)`.
-    FormatStr {
-        template: String,
-        args: Vec<Expr>,
-    },
+    FormatStr { template: String, args: Vec<Expr> },
     /// General macro invocation: `name!(args...)`.
     MacroCall { name: String, args: Vec<Expr> },
     /// Tuple expression: `(a, b, c)`.

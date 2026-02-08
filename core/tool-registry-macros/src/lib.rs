@@ -105,12 +105,9 @@ pub fn tool_target(args: TokenStream, input: TokenStream) -> TokenStream {
                         if let Lit::Str(s) = nv.lit {
                             builder = Some(s);
                         } else {
-                            return syn::Error::new_spanned(
-                                nv,
-                                "builder must be a string literal",
-                            )
-                            .to_compile_error()
-                            .into();
+                            return syn::Error::new_spanned(nv, "builder must be a string literal")
+                                .to_compile_error()
+                                .into();
                         }
                     }
                     Some("args") => {

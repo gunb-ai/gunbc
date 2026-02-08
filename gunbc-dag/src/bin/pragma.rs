@@ -163,11 +163,7 @@ fn main() {
                     error: None,
                 })),
             );
-            mocks.set_value(
-                &write_node,
-                &path_key,
-                Value::Str("<DRY-RUN>".to_string()),
-            );
+            mocks.set_value(&write_node, &path_key, Value::Str("<DRY-RUN>".to_string()));
             mocks.set_value(
                 &write_node,
                 &content_key,

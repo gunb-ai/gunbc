@@ -12,11 +12,11 @@
 
 use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::node::Node;
-use gunbc_ir::{Dag, NodeBody};
 use gunbc_ir::transport::cli::{self, build_cli_upsert, CliToolOp};
+use gunbc_ir::Value;
+use gunbc_ir::{Dag, NodeBody};
 use gunbc_lib_transport::cli::execute_cli_tool_op_with_inputs;
 use gunbc_lib_transport::TransportOps;
-use gunbc_ir::Value;
 use std::collections::HashMap;
 
 /// Executable op wrapper for clippy graphs.
@@ -41,10 +41,8 @@ impl From<CliToolOp> for ClippyGraphOp {
 impl Executable for ClippyGraphOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         match self {
-            ClippyGraphOp::CliTool(op) => {
-                execute_cli_tool_op_with_inputs(op, &inputs)
-                    .map_err(|e| ExecError::new(e.to_string()))
-            }
+            ClippyGraphOp::CliTool(op) => execute_cli_tool_op_with_inputs(op, &inputs)
+                .map_err(|e| ExecError::new(e.to_string())),
             ClippyGraphOp::Transport(op) => op.execute(inputs),
         }
     }
@@ -162,9 +160,15 @@ mod tests {
             let ids: Vec<&str> = subdag.nodes.iter().map(|n| n.id.0.as_str()).collect();
             for expected in [
                 "resource_gate",
-                "prepare_check", "execute_check", "parse_check",
-                "prepare_install", "execute_install", "parse_install",
-                "prepare_resolve", "execute_resolve", "parse_resolve",
+                "prepare_check",
+                "execute_check",
+                "parse_check",
+                "prepare_install",
+                "execute_install",
+                "parse_install",
+                "prepare_resolve",
+                "execute_resolve",
+                "parse_resolve",
             ] {
                 assert!(
                     ids.contains(&expected),

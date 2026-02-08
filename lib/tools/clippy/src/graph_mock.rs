@@ -18,9 +18,12 @@ use gunbc_test::{InputConstraint, MockSpec};
 #[gunbc_testgen_registry_macros::resource_test_target(
     skip,
     name = "clippy",
-    builder = "crate::build_clippy_graph_lint_all()",
+    builder = "crate::build_clippy_graph_lint_all()"
 )]
-#[gunbc_testgen_registry_macros::testgen_target(skip, builder = "crate::build_clippy_graph_lint_all()")]
+#[gunbc_testgen_registry_macros::testgen_target(
+    skip,
+    builder = "crate::build_clippy_graph_lint_all()"
+)]
 pub fn clippy_mock_spec() -> MockSpec {
     MockSpec::new("clippy")
         // Transport mocks: mock the execute nodes with ShellResponses
@@ -43,12 +46,16 @@ pub fn clippy_mock_spec() -> MockSpec {
         .boundary(
             "parse_resolve",
             "result",
-            Value::Map(vec![
-                ("success".to_string(), Value::Bool(true)),
-                ("exit_code".to_string(), Value::Int(0)),
-                ("stdout".to_string(), Value::Str(String::new())),
-                ("stderr".to_string(), Value::Str(String::new())),
-            ].into_iter().collect()),
+            Value::Map(
+                vec![
+                    ("success".to_string(), Value::Bool(true)),
+                    ("exit_code".to_string(), Value::Int(0)),
+                    ("stdout".to_string(), Value::Str(String::new())),
+                    ("stderr".to_string(), Value::Str(String::new())),
+                ]
+                .into_iter()
+                .collect(),
+            ),
         )
         // Entry inputs (unit trigger) for isolated DAG execution.
         .input_mock("prepare_check", "trigger", Value::Unit)

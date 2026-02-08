@@ -1,6 +1,8 @@
 //! Mock specification for Azure Key Vault (stub).
 
-use gunbc_ir::transport::cloud::{CloudProviderKind, CloudRuntimeKind, CloudSecretConfig, CloudSecretRef};
+use gunbc_ir::transport::cloud::{
+    CloudProviderKind, CloudRuntimeKind, CloudSecretConfig, CloudSecretRef,
+};
 use gunbc_ir::{AuthScheme, Credential, Secret, Value};
 use gunbc_test::MockSpec;
 
@@ -30,7 +32,7 @@ fn mock_credential() -> Value {
 #[gunbc_testgen_registry_macros::resource_test_target(
     skip,
     name = "azure-keyvault-stub",
-    builder = "crate::graph::build_azure_key_vault_credential_graph()",
+    builder = "crate::graph::build_azure_key_vault_credential_graph()"
 )]
 #[gunbc_testgen_registry_macros::testgen_target(
     name = "azure-keyvault-stub",
@@ -42,9 +44,21 @@ fn mock_credential() -> Value {
 pub fn azure_stub_mock_spec() -> MockSpec {
     MockSpec::new("azure-keyvault-stub")
         .input_mock("azure_key_vault_stub", "config", mock_config().into())
-        .input_mock("azure_key_vault_stub", "scheme", Value::Str("bearer".into()))
-        .input_mock("azure_key_vault_stub", "header_name", Value::Str(String::new()))
-        .input_mock("azure_key_vault_stub", "source_id", Value::Str("azure".into()))
+        .input_mock(
+            "azure_key_vault_stub",
+            "scheme",
+            Value::Str("bearer".into()),
+        )
+        .input_mock(
+            "azure_key_vault_stub",
+            "header_name",
+            Value::Str(String::new()),
+        )
+        .input_mock(
+            "azure_key_vault_stub",
+            "source_id",
+            Value::Str("azure".into()),
+        )
         .input_mock(
             "azure_key_vault_stub",
             "request_url",

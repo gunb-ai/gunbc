@@ -43,10 +43,7 @@ pub enum InputPattern {
     ///
     /// Runs the command at hash time and hashes its stdout.
     /// Fails hard if the command cannot be executed.
-    CommandOutput {
-        command: String,
-        args: Vec<String>,
-    },
+    CommandOutput { command: String, args: Vec<String> },
 }
 
 impl InputPattern {

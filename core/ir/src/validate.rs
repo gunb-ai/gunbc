@@ -268,11 +268,7 @@ fn validate_resource_wiring_recursive_impl<T>(dag: &Dag<T>, unwired: &mut Vec<Un
     }
 }
 
-fn validate_dag_recursive<T>(
-    dag: &Dag<T>,
-    errors: &mut Vec<SubDagError>,
-    registry: &TypeRegistry,
-) {
+fn validate_dag_recursive<T>(dag: &Dag<T>, errors: &mut Vec<SubDagError>, registry: &TypeRegistry) {
     for node in &dag.nodes {
         if let NodeBody::SubDag(ref inner) = node.body {
             validate_single_subdag(node, inner, registry, errors);
@@ -917,7 +913,10 @@ mod tests {
 
         let unwired = validate_resource_wiring_recursive(&dag);
         // data is not a resource port, so no unwired resources
-        let resource_unwired: Vec<_> = unwired.iter().filter(|u| u.port.0.starts_with("res:")).collect();
+        let resource_unwired: Vec<_> = unwired
+            .iter()
+            .filter(|u| u.port.0.starts_with("res:"))
+            .collect();
         assert!(resource_unwired.is_empty());
     }
 }

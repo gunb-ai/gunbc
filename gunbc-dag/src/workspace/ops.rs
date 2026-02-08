@@ -9,8 +9,8 @@ use std::collections::HashMap;
 
 // Domain ops - local (repo-specific)
 use crate::bootstrap::BootstrapOp;
-use crate::codegen::CodegenOp;
 use crate::ci::CIOp;
+use crate::codegen::CodegenOp;
 use crate::makegen::MakegenOp;
 
 // Domain ops - external (general tools)
@@ -97,10 +97,10 @@ impl Executable for WorkspaceOp {
             WorkspaceOp::Bootstrap(op) => op.execute(inputs),
             // CliToolOp execution lives in the transport layer.
             // Transport variant delegates to TransportOps; others to cli execute.
-            WorkspaceOp::Clippy(CliToolOp::Transport) => {
-                TransportOps::Execute.execute(inputs)
+            WorkspaceOp::Clippy(CliToolOp::Transport) => TransportOps::Execute.execute(inputs),
+            WorkspaceOp::Clippy(op) => {
+                execute_cli_tool_op_with_inputs(op, &inputs).exec_context("CliToolOp error")
             }
-            WorkspaceOp::Clippy(op) => execute_cli_tool_op_with_inputs(op, &inputs).exec_context("CliToolOp error"),
             WorkspaceOp::CloudEnv(op) => op.execute(inputs),
             WorkspaceOp::FsEnv(op) => op.execute(inputs),
             // Language ops

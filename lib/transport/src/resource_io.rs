@@ -25,10 +25,9 @@ impl ResourceIo for TransportIo {
         let request = TransportRequest::File(FileRequest::read(path.to_string_lossy()));
         let response = execute_request(&request).map_err(exec_to_resource)?;
         match response {
-            TransportResponse::File(file) if file.success => Ok(file
-                .content
-                .unwrap_or_default()
-                .into_bytes()),
+            TransportResponse::File(file) if file.success => {
+                Ok(file.content.unwrap_or_default().into_bytes())
+            }
             TransportResponse::File(file) => Err(ResourceError::Io(io::Error::other(
                 file.error.unwrap_or_else(|| "file read failed".to_string()),
             ))),
@@ -42,15 +41,13 @@ impl ResourceIo for TransportIo {
     fn write_file(&self, path: &Path, contents: &[u8]) -> Result<(), ResourceError> {
         let content = String::from_utf8(contents.to_vec())
             .map_err(|e| ResourceError::Io(io::Error::other(e.to_string())))?;
-        let request = TransportRequest::File(FileRequest::write(
-            path.to_string_lossy(),
-            content,
-        ));
+        let request = TransportRequest::File(FileRequest::write(path.to_string_lossy(), content));
         let response = execute_request(&request).map_err(exec_to_resource)?;
         match response {
             TransportResponse::File(file) if file.success => Ok(()),
             TransportResponse::File(file) => Err(ResourceError::Io(io::Error::other(
-                file.error.unwrap_or_else(|| "file write failed".to_string()),
+                file.error
+                    .unwrap_or_else(|| "file write failed".to_string()),
             ))),
             other => Err(ResourceError::Io(io::Error::other(format!(
                 "unexpected transport response for write: {:?}",
@@ -65,7 +62,8 @@ impl ResourceIo for TransportIo {
         match response {
             TransportResponse::File(file) if file.success => Ok(file.exists.unwrap_or(false)),
             TransportResponse::File(file) => Err(ResourceError::Io(io::Error::other(
-                file.error.unwrap_or_else(|| "file exists check failed".to_string()),
+                file.error
+                    .unwrap_or_else(|| "file exists check failed".to_string()),
             ))),
             other => Err(ResourceError::Io(io::Error::other(format!(
                 "unexpected transport response for exists: {:?}",
@@ -127,10 +125,7 @@ impl ResourceIo for TransportIo {
                     ResourceError::Io(io::Error::other("metadata missing content"))
                 })?;
                 let millis = content.trim().parse::<i64>().map_err(|e| {
-                    ResourceError::Io(io::Error::other(format!(
-                        "metadata parse failed: {}",
-                        e
-                    )))
+                    ResourceError::Io(io::Error::other(format!("metadata parse failed: {}", e)))
                 })?;
                 if millis >= 0 {
                     Ok(UNIX_EPOCH + Duration::from_millis(millis as u64))

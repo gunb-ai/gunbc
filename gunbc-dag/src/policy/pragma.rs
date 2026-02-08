@@ -29,20 +29,17 @@ pub struct PragmaLintPolicy {
     pub allow_lints: &'static [LintId],
 }
 
-const CRATE_POLICIES: &[CratePolicy] = &[
-    CratePolicy::allow_disallowed_methods(
-        "gunbc-lib-transport",
-        CrateRole::TransportBoundary,
-        "IS the I/O boundary - the designated place for I/O",
-    ),
-];
+const CRATE_POLICIES: &[CratePolicy] = &[CratePolicy::allow_disallowed_methods(
+    "gunbc-lib-transport",
+    CrateRole::TransportBoundary,
+    "IS the I/O boundary - the designated place for I/O",
+)];
 
-const DISALLOWED_METHODS_ALLOWLIST: &[DisallowedMethodsAllowPattern] = &[
-    DisallowedMethodsAllowPattern {
+const DISALLOWED_METHODS_ALLOWLIST: &[DisallowedMethodsAllowPattern] =
+    &[DisallowedMethodsAllowPattern {
         pattern: "lib/transport/",
         rationale: "transport boundary",
-    },
-];
+    }];
 
 const PRAGMA_LINT_POLICY: PragmaLintPolicy = PragmaLintPolicy {
     allow_dead_code: &[],

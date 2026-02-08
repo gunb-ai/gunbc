@@ -267,10 +267,7 @@ pub enum FormatMapOp {
 
 impl FormatMapOp {
     /// Format entries using the configured format.
-    pub fn format_entries(
-        &self,
-        entries: &std::collections::BTreeMap<String, String>,
-    ) -> String {
+    pub fn format_entries(&self, entries: &std::collections::BTreeMap<String, String>) -> String {
         match self {
             FormatMapOp::DiffArtifact => {
                 if entries.is_empty() {

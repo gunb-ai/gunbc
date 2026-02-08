@@ -147,9 +147,10 @@ pub fn optional_str_strict<'a>(
     match inputs.get(key) {
         None => Ok(None),
         Some(Value::Skipped) => Ok(None),
-        Some(v) => v.as_str().map(Some).ok_or_else(|| {
-            ExecError::new(format!("invalid '{}' input: expected String", key))
-        }),
+        Some(v) => v
+            .as_str()
+            .map(Some)
+            .ok_or_else(|| ExecError::new(format!("invalid '{}' input: expected String", key))),
     }
 }
 
@@ -171,9 +172,10 @@ pub fn optional_json_strict<'a>(
     match inputs.get(key) {
         None => Ok(None),
         Some(Value::Skipped) => Ok(None),
-        Some(v) => v.as_json().map(Some).ok_or_else(|| {
-            ExecError::new(format!("invalid '{}' input: expected Json", key))
-        }),
+        Some(v) => v
+            .as_json()
+            .map(Some)
+            .ok_or_else(|| ExecError::new(format!("invalid '{}' input: expected Json", key))),
     }
 }
 
@@ -214,9 +216,10 @@ pub fn optional_bool_strict(
     match inputs.get(key) {
         None => Ok(None),
         Some(Value::Skipped) => Ok(None),
-        Some(v) => v.as_bool().map(Some).ok_or_else(|| {
-            ExecError::new(format!("invalid '{}' input: expected Bool", key))
-        }),
+        Some(v) => v
+            .as_bool()
+            .map(Some)
+            .ok_or_else(|| ExecError::new(format!("invalid '{}' input: expected Bool", key))),
     }
 }
 
@@ -235,9 +238,10 @@ pub fn optional_str_list_strict(
     match inputs.get(key) {
         None => Ok(None),
         Some(Value::Skipped) => Ok(None),
-        Some(v) => v.as_str_list().map(Some).ok_or_else(|| {
-            ExecError::new(format!("invalid '{}' input: expected StringList", key))
-        }),
+        Some(v) => v
+            .as_str_list()
+            .map(Some)
+            .ok_or_else(|| ExecError::new(format!("invalid '{}' input: expected StringList", key))),
     }
 }
 
@@ -260,7 +264,10 @@ pub fn optional_map_str_str_strict(
         None => Ok(None),
         Some(Value::Skipped) => Ok(None),
         Some(v) => v.as_map_str_str().map(Some).ok_or_else(|| {
-            ExecError::new(format!("invalid '{}' input: expected Map<String,String>", key))
+            ExecError::new(format!(
+                "invalid '{}' input: expected Map<String,String>",
+                key
+            ))
         }),
     }
 }
@@ -370,10 +377,7 @@ pub trait InputsExt {
     ) -> Result<Option<BTreeMap<String, String>>, ExecError>;
 
     /// Extract an optional transport response input (strict).
-    fn optional_response_strict(
-        &self,
-        key: &str,
-    ) -> Result<Option<&TransportResponse>, ExecError>;
+    fn optional_response_strict(&self, key: &str) -> Result<Option<&TransportResponse>, ExecError>;
 }
 
 impl InputsExt for HashMap<String, Value> {
@@ -464,10 +468,7 @@ impl InputsExt for HashMap<String, Value> {
         optional_map_str_str_strict(self, key)
     }
 
-    fn optional_response_strict(
-        &self,
-        key: &str,
-    ) -> Result<Option<&TransportResponse>, ExecError> {
+    fn optional_response_strict(&self, key: &str) -> Result<Option<&TransportResponse>, ExecError> {
         optional_response_strict(self, key)
     }
 }

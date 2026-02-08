@@ -36,18 +36,18 @@ pub mod control;
 pub mod data;
 pub mod env;
 pub mod filename;
-pub mod network;
 pub mod io;
+pub mod network;
 
 pub use collection::{CollectionOp, FilterOp, FirstOp, FoldOp, LastOp, MapOp, SetOp, SortOp};
 pub use control::{BranchOp, LoopOp};
 pub use data::{ConcatOp, ExtractOp, FormatMapOp, FormatOp, ParseOp, SplitOp, StableHashOp};
 pub use env::{ClockEnv, FsEnv, NetEnv};
-pub use network::NetworkHandle;
 pub use io::{
     EmbeddedFileExistsOp, EmbeddedShellOp, HttpRequestOp, PrepareDirectoryListOp,
     PrepareFileExistsOp, PrepareFileReadOp, PrepareFileWriteOp, PrepareShellOp,
 };
+pub use network::NetworkHandle;
 
 use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::Value;

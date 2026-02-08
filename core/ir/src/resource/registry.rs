@@ -8,8 +8,8 @@
 //! This is separate from `ToolRegistry` (platform satisfiability) —
 //! this registry handles freshness-based resource acquisition.
 
-use super::def::{InputPattern, ResourceDef};
 use super::super::ResourceId;
+use super::def::{InputPattern, ResourceDef};
 use std::collections::{HashMap, HashSet};
 use thiserror::Error;
 

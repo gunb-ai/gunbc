@@ -41,9 +41,8 @@ impl Executable for HttpRequestOp {
 
         let http_method = match optional_str_strict(&inputs, "method")? {
             None => HttpMethod::Get,
-            Some(method) => HttpMethod::parse(method).ok_or_else(|| {
-                ExecError::new(format!("unsupported http method '{}'", method))
-            })?,
+            Some(method) => HttpMethod::parse(method)
+                .ok_or_else(|| ExecError::new(format!("unsupported http method '{}'", method)))?,
         };
 
         let body = optional_str_strict(&inputs, "body")?;

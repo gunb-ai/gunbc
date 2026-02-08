@@ -28,7 +28,7 @@ impl Executable for GcpSecretManagerGraphOp {
 /// Build a GCP Secret Manager credential acquisition graph for the given runtime.
 ///
 /// Entrypoints:
-/// - `audience`: WIF provider audience
+/// - `audience`: WIF provider audience (GitHub/metadata runtimes only)
 /// - `request_url`: GitHub OIDC request URL (GitHub runtime only)
 /// - `request_token`: GitHub OIDC request token (GitHub runtime only)
 /// - `service_account`: SA email for impersonation
@@ -270,7 +270,7 @@ pub fn build_gcp_secret_manager_credential_graph(
                     Node::opaque(
                         "parse_local_access_token",
                         vec![port("response", "TransportResponse")],
-                        vec![port("access_token", "String")],
+                        vec![port("access_token", "String"), port("expires_in", "Int")],
                         GcpSecretManagerGraphOp::Gcp(GcpOps::ParseLocalAccessToken),
                     ),
                     &execute_local,
@@ -278,7 +278,10 @@ pub fn build_gcp_secret_manager_credential_graph(
                 .expect("parse_local_access_token");
 
             builder
-                .add_edge(prepare_local.out("request"), execute_local.in_port("request"))
+                .add_edge(
+                    prepare_local.out("request"),
+                    execute_local.in_port("request"),
+                )
                 .expect("prepare_local_access_token.request -> execute_local_access_token.request");
             builder
                 .add_edge(prepare_local.out("skip"), execute_local.in_port("skip"))
@@ -287,7 +290,10 @@ pub fn build_gcp_secret_manager_credential_graph(
                 .add_edge(net_env.out("net"), execute_local.in_port("res:net"))
                 .expect("net_env -> execute_local_access_token.res:net");
             builder
-                .add_edge(execute_local.out("response"), parse_local.in_port("response"))
+                .add_edge(
+                    execute_local.out("response"),
+                    parse_local.in_port("response"),
+                )
                 .expect("execute_local_access_token.response -> parse_local_access_token.response");
 
             parse_local
@@ -432,10 +438,7 @@ pub fn build_gcp_secret_manager_credential_graph(
         )
         .expect("prepare_secret.request -> execute_secret.request");
     builder
-        .add_edge(
-            prepare_secret.out("skip"),
-            execute_secret.in_port("skip"),
-        )
+        .add_edge(prepare_secret.out("skip"), execute_secret.in_port("skip"))
         .expect("prepare_secret.skip -> execute_secret.skip");
     builder
         .add_edge(net_env.out("net"), execute_secret.in_port("res:net"))
@@ -469,7 +472,10 @@ pub fn build_gcp_secret_manager_credential_graph(
         .expect("build_credential");
 
     builder
-        .add_edge(parse_secret.out("secret"), build_credential.in_port("secret"))
+        .add_edge(
+            parse_secret.out("secret"),
+            build_credential.in_port("secret"),
+        )
         .expect("parse_secret.secret -> build_credential.secret");
 
     builder.build()
@@ -481,7 +487,7 @@ pub fn build_gcp_secret_manager_credential_graph_github() -> Dag<GcpSecretManage
 
 #[gunbc_testgen_registry_macros::resource_test_target(
     name = "gcp-wif-secret-metadata",
-    builder = "build_gcp_secret_manager_credential_graph_metadata()",
+    builder = "build_gcp_secret_manager_credential_graph_metadata()"
 )]
 pub fn build_gcp_secret_manager_credential_graph_metadata() -> Dag<GcpSecretManagerGraphOp> {
     build_gcp_secret_manager_credential_graph(GcpRuntimeKind::GcpMetadata)
@@ -494,7 +500,7 @@ pub fn build_gcp_secret_manager_credential_graph_local() -> Dag<GcpSecretManager
 /// Build a GCP Secret Manager upsert graph for the given runtime.
 ///
 /// Entrypoints:
-/// - `audience`: WIF provider audience
+/// - `audience`: WIF provider audience (GitHub/metadata runtimes only)
 /// - `request_url`: GitHub OIDC request URL (GitHub runtime only)
 /// - `request_token`: GitHub OIDC request token (GitHub runtime only)
 /// - `service_account`: SA email for impersonation
@@ -733,7 +739,7 @@ pub fn build_gcp_secret_manager_upsert_graph(
                     Node::opaque(
                         "parse_local_access_token",
                         vec![port("response", "TransportResponse")],
-                        vec![port("access_token", "String")],
+                        vec![port("access_token", "String"), port("expires_in", "Int")],
                         GcpSecretManagerGraphOp::Gcp(GcpOps::ParseLocalAccessToken),
                     ),
                     &execute_local,
@@ -741,7 +747,10 @@ pub fn build_gcp_secret_manager_upsert_graph(
                 .expect("parse_local_access_token");
 
             builder
-                .add_edge(prepare_local.out("request"), execute_local.in_port("request"))
+                .add_edge(
+                    prepare_local.out("request"),
+                    execute_local.in_port("request"),
+                )
                 .expect("prepare_local_access_token.request -> execute_local_access_token.request");
             builder
                 .add_edge(prepare_local.out("skip"), execute_local.in_port("skip"))
@@ -750,7 +759,10 @@ pub fn build_gcp_secret_manager_upsert_graph(
                 .add_edge(net_env.out("net"), execute_local.in_port("res:net"))
                 .expect("net_env -> execute_local_access_token.res:net");
             builder
-                .add_edge(execute_local.out("response"), parse_local.in_port("response"))
+                .add_edge(
+                    execute_local.out("response"),
+                    parse_local.in_port("response"),
+                )
                 .expect("execute_local_access_token.response -> parse_local_access_token.response");
 
             parse_local
@@ -888,16 +900,10 @@ pub fn build_gcp_secret_manager_upsert_graph(
         )
         .expect("parse_impersonate.access_token -> prepare_secret_get.access_token");
     builder
-        .add_edge(
-            prepare_get.out("request"),
-            execute_get.in_port("request"),
-        )
+        .add_edge(prepare_get.out("request"), execute_get.in_port("request"))
         .expect("prepare_secret_get.request -> execute_secret_get.request");
     builder
-        .add_edge(
-            prepare_get.out("skip"),
-            execute_get.in_port("skip"),
-        )
+        .add_edge(prepare_get.out("skip"), execute_get.in_port("skip"))
         .expect("prepare_secret_get.skip -> execute_secret_get.skip");
     builder
         .add_edge(net_env.out("net"), execute_get.in_port("res:net"))
@@ -955,10 +961,7 @@ pub fn build_gcp_secret_manager_upsert_graph(
         )
         .expect("prepare_secret_create.request -> execute_secret_create.request");
     builder
-        .add_edge(
-            prepare_create.out("skip"),
-            execute_create.in_port("skip"),
-        )
+        .add_edge(prepare_create.out("skip"), execute_create.in_port("skip"))
         .expect("prepare_secret_create.skip -> execute_secret_create.skip");
     builder
         .add_edge(net_env.out("net"), execute_create.in_port("res:net"))
@@ -1023,10 +1026,7 @@ pub fn build_gcp_secret_manager_upsert_graph(
         )
         .expect("execute_secret_create.skip -> prepare_secret_add_version.create_done");
     builder
-        .add_edge(
-            prepare_add.out("request"),
-            execute_add.in_port("request"),
-        )
+        .add_edge(prepare_add.out("request"), execute_add.in_port("request"))
         .expect("prepare_secret_add_version.request -> execute_secret_add_version.request");
     builder
         .add_edge(prepare_add.out("skip"), execute_add.in_port("skip"))
@@ -1047,7 +1047,7 @@ pub fn build_gcp_secret_manager_upsert_graph_github() -> Dag<GcpSecretManagerGra
 
 #[gunbc_testgen_registry_macros::resource_test_target(
     name = "gcp-wif-secret-upsert-metadata",
-    builder = "build_gcp_secret_manager_upsert_graph_metadata()",
+    builder = "build_gcp_secret_manager_upsert_graph_metadata()"
 )]
 pub fn build_gcp_secret_manager_upsert_graph_metadata() -> Dag<GcpSecretManagerGraphOp> {
     build_gcp_secret_manager_upsert_graph(GcpRuntimeKind::GcpMetadata)

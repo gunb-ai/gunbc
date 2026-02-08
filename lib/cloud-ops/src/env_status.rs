@@ -26,7 +26,11 @@ fn env_truthy(name: &str) -> bool {
 
 fn build_status_message() -> String {
     let req = detect_cloud_env_requirements();
-    let prefix = format!("Cloud env ({}/{})", req.provider.as_str(), req.runtime.as_str());
+    let prefix = format!(
+        "Cloud env ({}/{})",
+        req.provider.as_str(),
+        req.runtime.as_str()
+    );
     let is_ci = env_truthy("CI") || env_truthy("GITHUB_ACTIONS");
 
     let mut missing: Vec<&str> = Vec::new();

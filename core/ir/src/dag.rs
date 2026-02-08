@@ -1,9 +1,9 @@
 //! DAG structure: edges, ports, and the graph itself.
 
 use crate::node::Node;
+use crate::resource::AccessMode;
 use crate::type_op::TypeOp;
 use crate::type_registry::TypeRegistry;
-use crate::resource::AccessMode;
 use crate::types::{Cardinality, NodeId, PortName, TypeId};
 use crate::value::Value;
 use serde::{Deserialize, Serialize};
@@ -279,11 +279,7 @@ impl Port {
     /// * `name` - Resource name (without `res:` prefix), e.g. `"platform"`, `"fs"`
     /// * `type_id` - Type of the resource value, e.g. `"Platform"`, `"FilesystemHandle"`
     /// * `mode` - How the resource is accessed (Read, Write, Exclusive)
-    pub fn resource(
-        name: impl Into<String>,
-        type_id: impl Into<TypeId>,
-        mode: AccessMode,
-    ) -> Self {
+    pub fn resource(name: impl Into<String>, type_id: impl Into<TypeId>, mode: AccessMode) -> Self {
         let raw = name.into();
         let stripped = raw.strip_prefix("res:").unwrap_or(&raw);
         let full_name = format!("res:{stripped}");

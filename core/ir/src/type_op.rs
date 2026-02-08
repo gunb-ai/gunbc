@@ -106,9 +106,7 @@ impl Predicate {
         }
 
         match (self, other) {
-            (Predicate::And(_), Predicate::And(targets)) => {
-                targets.iter().all(|t| self.entails(t))
-            }
+            (Predicate::And(_), Predicate::And(targets)) => targets.iter().all(|t| self.entails(t)),
             (Predicate::And(preds), target) => preds.iter().any(|p| p.entails(target)),
             (source, Predicate::And(targets)) => targets.iter().all(|t| source.entails(t)),
 

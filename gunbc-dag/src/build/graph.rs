@@ -18,8 +18,8 @@
 use crate::build::ops::BuildOp;
 use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::{
-    add_skippable_transport_triplet, add_transport_triplet,
-    build::*, BuilderError, Cardinality, Dag, DagBuilder, Node, Value, WorkflowSignature,
+    add_skippable_transport_triplet, add_transport_triplet, build::*, BuilderError, Cardinality,
+    Dag, DagBuilder, Node, Value, WorkflowSignature,
 };
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::{filename, FsEnv};
@@ -56,7 +56,7 @@ pub fn build_signature() -> WorkflowSignature {
 /// Build the build graph: build → (test + clippy) → summary.
 #[gunbc_testgen_registry_macros::resource_test_target(
     name = "build",
-    builder = "build_build_graph().unwrap()",
+    builder = "build_build_graph().unwrap()"
 )]
 pub fn build_build_graph() -> Result<Dag<BuildGraphOp>, BuilderError> {
     let mut builder = DagBuilder::new();

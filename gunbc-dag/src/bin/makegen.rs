@@ -155,11 +155,7 @@ fn main() {
             "makegen_content",
             Value::Str("<DRY-RUN>".to_string()),
         );
-        mocks.set_value(
-            "execute_makegen_transport",
-            "skip",
-            Value::Bool(false),
-        );
+        mocks.set_value("execute_makegen_transport", "skip", Value::Bool(false));
         mocks.set_value(
             "execute_makegen_transport",
             "skip_reason",

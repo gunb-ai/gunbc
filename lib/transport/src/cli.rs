@@ -134,9 +134,7 @@ pub fn upsert_tool_with(
 }
 
 /// Execute a CLI tool op using the tool's configured command.
-pub fn execute_cli_tool_op(
-    op: &CliToolOp,
-) -> Result<HashMap<String, Value>, CliToolError> {
+pub fn execute_cli_tool_op(op: &CliToolOp) -> Result<HashMap<String, Value>, CliToolError> {
     match op {
         CliToolOp::Check { tool } => execute_check(tool),
         CliToolOp::Install { tool } => execute_install(tool),
@@ -166,29 +164,23 @@ pub fn execute_cli_tool_op_with_inputs(
     inputs: &HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, CliToolError> {
     match op {
-        CliToolOp::ParseCheck { tool } => {
-            match extract_shell_response(inputs, tool) {
-                Ok(response) => Ok(parse_check(&response)),
-                Err(_) if is_skipped_response(inputs) => Ok(skip_outputs(&["exists"])),
-                Err(e) => Err(e),
+        CliToolOp::ParseCheck { tool } => match extract_shell_response(inputs, tool) {
+            Ok(response) => Ok(parse_check(&response)),
+            Err(_) if is_skipped_response(inputs) => Ok(skip_outputs(&["exists"])),
+            Err(e) => Err(e),
+        },
+        CliToolOp::ParseInstall { tool } => match extract_shell_response(inputs, tool) {
+            Ok(response) => Ok(parse_install(&response)),
+            Err(_) if is_skipped_response(inputs) => Ok(skip_outputs(&["install_done"])),
+            Err(e) => Err(e),
+        },
+        CliToolOp::ParseRun { tool } => match extract_shell_response(inputs, tool) {
+            Ok(response) => Ok(parse_run(&response)),
+            Err(_) if is_skipped_response(inputs) => {
+                Ok(skip_outputs(&["success", "exit_code", "stdout", "stderr"]))
             }
-        }
-        CliToolOp::ParseInstall { tool } => {
-            match extract_shell_response(inputs, tool) {
-                Ok(response) => Ok(parse_install(&response)),
-                Err(_) if is_skipped_response(inputs) => Ok(skip_outputs(&["install_done"])),
-                Err(e) => Err(e),
-            }
-        }
-        CliToolOp::ParseRun { tool } => {
-            match extract_shell_response(inputs, tool) {
-                Ok(response) => Ok(parse_run(&response)),
-                Err(_) if is_skipped_response(inputs) => {
-                    Ok(skip_outputs(&["success", "exit_code", "stdout", "stderr"]))
-                }
-                Err(e) => Err(e),
-            }
-        }
+            Err(e) => Err(e),
+        },
         CliToolOp::PrepareRun { tool, args } => {
             // Validate optional inputs before building the request
             validate_optional_inputs(inputs, tool)?;
@@ -211,7 +203,10 @@ pub fn execute_cli_tool_op_with_inputs(
 pub fn prepare_check(tool: &'static CliToolDef) -> HashMap<String, Value> {
     let request = build_shell_request(tool.check_cmd, &[]);
     let mut out = HashMap::new();
-    out.insert("request".to_string(), Value::Request(TransportRequest::Shell(request)));
+    out.insert(
+        "request".to_string(),
+        Value::Request(TransportRequest::Shell(request)),
+    );
     out
 }
 
@@ -220,7 +215,10 @@ pub fn prepare_install(tool: &'static CliToolDef) -> HashMap<String, Value> {
     let mut out = HashMap::new();
     if let Some(install_cmd) = tool.install_cmd {
         let request = build_shell_request(install_cmd, &[]);
-        out.insert("request".to_string(), Value::Request(TransportRequest::Shell(request)));
+        out.insert(
+            "request".to_string(),
+            Value::Request(TransportRequest::Shell(request)),
+        );
     }
     out
 }
@@ -229,7 +227,10 @@ pub fn prepare_install(tool: &'static CliToolDef) -> HashMap<String, Value> {
 pub fn prepare_run(tool: &'static CliToolDef, args: &[String]) -> HashMap<String, Value> {
     let request = build_shell_request(tool.run_cmd, args);
     let mut out = HashMap::new();
-    out.insert("request".to_string(), Value::Request(TransportRequest::Shell(request)));
+    out.insert(
+        "request".to_string(),
+        Value::Request(TransportRequest::Shell(request)),
+    );
     out
 }
 
@@ -247,7 +248,10 @@ pub fn parse_check(response: &ShellResponse) -> HashMap<String, Value> {
 /// Parse an install response: install_done = exit_code == 0.
 pub fn parse_install(response: &ShellResponse) -> HashMap<String, Value> {
     let mut out = HashMap::new();
-    out.insert("install_done".to_string(), Value::Bool(response.exit_code == 0));
+    out.insert(
+        "install_done".to_string(),
+        Value::Bool(response.exit_code == 0),
+    );
     out
 }
 
@@ -255,7 +259,10 @@ pub fn parse_install(response: &ShellResponse) -> HashMap<String, Value> {
 pub fn parse_run(response: &ShellResponse) -> HashMap<String, Value> {
     let mut out = HashMap::new();
     out.insert("success".to_string(), Value::Bool(response.exit_code == 0));
-    out.insert("exit_code".to_string(), Value::Int(response.exit_code as i64));
+    out.insert(
+        "exit_code".to_string(),
+        Value::Int(response.exit_code as i64),
+    );
     out.insert("stdout".to_string(), Value::Str(response.stdout.clone()));
     out.insert("stderr".to_string(), Value::Str(response.stderr.clone()));
     out
@@ -283,9 +290,9 @@ fn extract_shell_response(
     inputs: &HashMap<String, Value>,
     tool: &'static CliToolDef,
 ) -> Result<ShellResponse, CliToolError> {
-    let response_value = inputs.get("response").ok_or_else(|| {
-        CliToolError::new(tool, "parse", "missing 'response' input")
-    })?;
+    let response_value = inputs
+        .get("response")
+        .ok_or_else(|| CliToolError::new(tool, "parse", "missing 'response' input"))?;
 
     match response_value {
         Value::Response(TransportResponse::Shell(resp)) => Ok(resp.clone()),
@@ -325,7 +332,10 @@ fn is_skipped_response(inputs: &HashMap<String, Value>) -> bool {
 
 /// Produce skipped outputs for all named ports.
 fn skip_outputs(ports: &[&str]) -> HashMap<String, Value> {
-    ports.iter().map(|p| (p.to_string(), Value::Skipped)).collect()
+    ports
+        .iter()
+        .map(|p| (p.to_string(), Value::Skipped))
+        .collect()
 }
 
 /// Execute a CLI tool op, preferring the path from a ToolHandle when provided.

@@ -3,9 +3,9 @@
 //!
 //! Placeholder implementation to keep provider-neutral modeling honest.
 
-mod ops;
 mod graph;
 pub mod graph_mock;
+mod ops;
 
 pub use graph::{
     build_azure_key_vault_credential_graph, build_azure_key_vault_upsert_graph,

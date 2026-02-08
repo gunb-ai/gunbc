@@ -27,16 +27,44 @@ pub fn pragma_signature() -> WorkflowSignature {
         .with_input("check_mode", "OptionalBool", Cardinality::ZERO_OR_ONE)
         .with_input("path", "String", Cardinality::ONE)
         // Outputs from clippy write transport (boundary, skippable)
-        .with_output("clippy_response", "TransportResponse", Cardinality::ZERO_OR_ONE)
-        .with_output("clippy_written_path", "OptionalString", Cardinality::ZERO_OR_ONE)
+        .with_output(
+            "clippy_response",
+            "TransportResponse",
+            Cardinality::ZERO_OR_ONE,
+        )
+        .with_output(
+            "clippy_written_path",
+            "OptionalString",
+            Cardinality::ZERO_OR_ONE,
+        )
         .with_output("clippy_content", "OptionalString", Cardinality::ZERO_OR_ONE)
         // Outputs from allowlist write transport (boundary, skippable)
-        .with_output("allowlist_response", "TransportResponse", Cardinality::ZERO_OR_ONE)
-        .with_output("allowlist_written_path", "OptionalString", Cardinality::ZERO_OR_ONE)
-        .with_output("allowlist_content", "OptionalString", Cardinality::ZERO_OR_ONE)
+        .with_output(
+            "allowlist_response",
+            "TransportResponse",
+            Cardinality::ZERO_OR_ONE,
+        )
+        .with_output(
+            "allowlist_written_path",
+            "OptionalString",
+            Cardinality::ZERO_OR_ONE,
+        )
+        .with_output(
+            "allowlist_content",
+            "OptionalString",
+            Cardinality::ZERO_OR_ONE,
+        )
         // Outputs from policy write transport (boundary, skippable)
-        .with_output("policy_response", "TransportResponse", Cardinality::ZERO_OR_ONE)
-        .with_output("policy_written_path", "OptionalString", Cardinality::ZERO_OR_ONE)
+        .with_output(
+            "policy_response",
+            "TransportResponse",
+            Cardinality::ZERO_OR_ONE,
+        )
+        .with_output(
+            "policy_written_path",
+            "OptionalString",
+            Cardinality::ZERO_OR_ONE,
+        )
         .with_output("policy_content", "OptionalString", Cardinality::ZERO_OR_ONE)
         // Freshness from compare nodes (terminal boundary outputs)
         .with_output("fresh", "Bool", Cardinality::ONE)
@@ -99,10 +127,16 @@ pub fn build_pragma_graph() -> Result<Dag<PragmaGraphOp>, BuilderError> {
         PragmaGraphOp::Domain(PragmaOp::RenderAllowlist),
     ))?;
 
-    let allowlist_read =
-        resource("fs:tools/disallowed-methods-allowlist.txt", "FilesystemHandle", AccessMode::Read);
-    let allowlist_write =
-        resource("fs:tools/disallowed-methods-allowlist.txt", "FilesystemHandle", AccessMode::Write);
+    let allowlist_read = resource(
+        "fs:tools/disallowed-methods-allowlist.txt",
+        "FilesystemHandle",
+        AccessMode::Read,
+    );
+    let allowlist_write = resource(
+        "fs:tools/disallowed-methods-allowlist.txt",
+        "FilesystemHandle",
+        AccessMode::Write,
+    );
     let allowlist_chain = add_content_upsert_chain(
         &mut builder,
         "allowlist",
@@ -124,10 +158,16 @@ pub fn build_pragma_graph() -> Result<Dag<PragmaGraphOp>, BuilderError> {
         PragmaGraphOp::Domain(PragmaOp::RenderLintPolicy),
     ))?;
 
-    let policy_read =
-        resource("fs:tools/pragma-lint-policy.txt", "FilesystemHandle", AccessMode::Read);
-    let policy_write =
-        resource("fs:tools/pragma-lint-policy.txt", "FilesystemHandle", AccessMode::Write);
+    let policy_read = resource(
+        "fs:tools/pragma-lint-policy.txt",
+        "FilesystemHandle",
+        AccessMode::Read,
+    );
+    let policy_write = resource(
+        "fs:tools/pragma-lint-policy.txt",
+        "FilesystemHandle",
+        AccessMode::Write,
+    );
     let policy_chain = add_content_upsert_chain(
         &mut builder,
         "policy",
@@ -191,7 +231,9 @@ mod tests {
         assert!(dag.get_node(&"execute_read_clippy".into()).is_some());
         assert!(dag.get_node(&"execute_clippy_transport".into()).is_some());
         assert!(dag.get_node(&"execute_read_allowlist".into()).is_some());
-        assert!(dag.get_node(&"execute_allowlist_transport".into()).is_some());
+        assert!(dag
+            .get_node(&"execute_allowlist_transport".into())
+            .is_some());
         assert!(dag.get_node(&"execute_read_policy".into()).is_some());
         assert!(dag.get_node(&"execute_policy_transport".into()).is_some());
     }
@@ -202,9 +244,14 @@ mod tests {
         let entrypoints = detect_entrypoints(&dag);
 
         // check_mode entrypoints on each compare node
-        assert!(entrypoints.is_entrypoint_port(&"compare_clippy_content".into(), &"check_mode".into()));
-        assert!(entrypoints.is_entrypoint_port(&"compare_allowlist_content".into(), &"check_mode".into()));
-        assert!(entrypoints.is_entrypoint_port(&"compare_policy_content".into(), &"check_mode".into()));
+        assert!(
+            entrypoints.is_entrypoint_port(&"compare_clippy_content".into(), &"check_mode".into())
+        );
+        assert!(entrypoints
+            .is_entrypoint_port(&"compare_allowlist_content".into(), &"check_mode".into()));
+        assert!(
+            entrypoints.is_entrypoint_port(&"compare_policy_content".into(), &"check_mode".into())
+        );
         // path entrypoints on each read prepare node
         assert!(entrypoints.is_entrypoint_port(&"prepare_read_clippy".into(), &"path".into()));
         assert!(entrypoints.is_entrypoint_port(&"prepare_read_allowlist".into(), &"path".into()));

@@ -4,11 +4,11 @@
 //! artifacts, and other acquirable resources under a single pattern:
 //! Check → Create → Resolve.
 
+use super::super::ResourceId;
 use super::def::{InputPattern, ResourceDef};
 use super::handle::ResourceHandle;
 use super::state::{ExecMode, ResourceState};
 use super::{ContentHash, HashBuilder, ManifestEntry, ResourceManifest, DEFAULT_MANIFEST_PATH};
-use super::super::ResourceId;
 use gunbc_infra::freshness::{check_freshness_mtime, FileMtime, MtimeResult};
 use std::io;
 use std::path::{Path, PathBuf};
@@ -32,7 +32,10 @@ pub enum ResourceError {
 
     /// A dependency resource required for hashing is missing.
     #[error("Resource '{resource}' depends on missing resource '{dependency}'")]
-    MissingDependency { resource: ResourceId, dependency: ResourceId },
+    MissingDependency {
+        resource: ResourceId,
+        dependency: ResourceId,
+    },
 
     /// Error while checking resource state.
     #[error("Failed to check resource '{0}': {1}")]
@@ -303,12 +306,13 @@ pub fn compute_key_with_files(
                 builder = builder.update_command_output_bytes(command, args, &stdout);
             }
             InputPattern::Resource(dep_id) => {
-                let entry = manifest.get(dep_id).ok_or_else(|| {
-                    ResourceError::MissingDependency {
-                        resource: def.id.clone(),
-                        dependency: dep_id.clone(),
-                    }
-                })?;
+                let entry =
+                    manifest
+                        .get(dep_id)
+                        .ok_or_else(|| ResourceError::MissingDependency {
+                            resource: def.id.clone(),
+                            dependency: dep_id.clone(),
+                        })?;
                 builder = update_tagged_str(builder, "resource", dep_id.0.as_str());
                 builder = update_len_prefixed(builder, entry.key.as_str());
             }
@@ -339,7 +343,9 @@ fn mtime_inputs_from_def(def: &ResourceDef) -> MtimeInputs {
         match input {
             InputPattern::Glob(pattern) => glob_patterns.push(pattern.clone()),
             InputPattern::File(path) => files.push(path.clone()),
-            InputPattern::Env(_) | InputPattern::Resource(_) | InputPattern::CommandOutput { .. } => {
+            InputPattern::Env(_)
+            | InputPattern::Resource(_)
+            | InputPattern::CommandOutput { .. } => {
                 has_non_file_inputs = true;
             }
         }
@@ -593,16 +599,12 @@ mod tests {
 
     impl ResourceIo for TestIo {
         fn read_file(&self, path: &Path) -> Result<Vec<u8>, ResourceError> {
-            self.files
-                .borrow()
-                .get(path)
-                .cloned()
-                .ok_or_else(|| {
-                    ResourceError::Io(io::Error::other(format!(
-                        "file not found: {}",
-                        path.display()
-                    )))
-                })
+            self.files.borrow().get(path).cloned().ok_or_else(|| {
+                ResourceError::Io(io::Error::other(format!(
+                    "file not found: {}",
+                    path.display()
+                )))
+            })
         }
 
         fn write_file(&self, path: &Path, contents: &[u8]) -> Result<(), ResourceError> {
@@ -633,23 +635,23 @@ mod tests {
             Ok(out)
         }
 
-        fn command_output(&self, _command: &str, _args: &[String]) -> Result<Vec<u8>, ResourceError> {
+        fn command_output(
+            &self,
+            _command: &str,
+            _args: &[String],
+        ) -> Result<Vec<u8>, ResourceError> {
             Err(ResourceError::Io(io::Error::other(
                 "command output not supported in tests",
             )))
         }
 
         fn file_mtime(&self, path: &Path) -> Result<SystemTime, ResourceError> {
-            self.mtimes
-                .borrow()
-                .get(path)
-                .cloned()
-                .ok_or_else(|| {
-                    ResourceError::Io(io::Error::other(format!(
-                        "mtime not found: {}",
-                        path.display()
-                    )))
-                })
+            self.mtimes.borrow().get(path).cloned().ok_or_else(|| {
+                ResourceError::Io(io::Error::other(format!(
+                    "mtime not found: {}",
+                    path.display()
+                )))
+            })
         }
     }
 
@@ -773,10 +775,16 @@ mod tests {
         let mut manifest = ResourceManifest::new();
         let io = TestIo::default();
 
-        manifest.insert(dep_id.clone(), ManifestEntry::new(ContentHash::from_bytes(b"one"), 0));
+        manifest.insert(
+            dep_id.clone(),
+            ManifestEntry::new(ContentHash::from_bytes(b"one"), 0),
+        );
         let (key1, _) = compute_key_from_def(&def, &manifest, &io).unwrap();
 
-        manifest.insert(dep_id.clone(), ManifestEntry::new(ContentHash::from_bytes(b"two"), 0));
+        manifest.insert(
+            dep_id.clone(),
+            ManifestEntry::new(ContentHash::from_bytes(b"two"), 0),
+        );
         let (key2, _) = compute_key_from_def(&def, &manifest, &io).unwrap();
 
         assert_ne!(key1, key2);

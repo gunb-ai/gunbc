@@ -357,7 +357,7 @@ mod tests {
 
         let dag = builder.build();
         assert_eq!(dag.nodes.len(), 4); // root + prepare + execute + parse
-        // 5 internal edges + 1 root→prepare = 6
+                                        // 5 internal edges + 1 root→prepare = 6
         assert_eq!(dag.edges.len(), 6);
 
         // Verify node names
@@ -441,12 +441,7 @@ mod tests {
 
         let after = builder
             .add_node_after(
-                Node::opaque(
-                    "after",
-                    vec![],
-                    vec![port("ok", "Bool")],
-                    TestOp::Execute,
-                ),
+                Node::opaque("after", vec![], vec![port("ok", "Bool")], TestOp::Execute),
                 &prepare,
             )
             .unwrap();

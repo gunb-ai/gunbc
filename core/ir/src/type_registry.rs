@@ -57,7 +57,11 @@ impl TypeExprError {
 
 impl fmt::Display for TypeExprError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "invalid type expression '{}': {}", self.expr, self.message)
+        write!(
+            f,
+            "invalid type expression '{}': {}",
+            self.expr, self.message
+        )
     }
 }
 
@@ -170,11 +174,9 @@ fn render_type_expr(expr: &TypeExpr) -> String {
             };
             format!("{wrapper}<{}>", render_type_expr(inner))
         }
-        TypeExpr::Map(key, value) => format!(
-            "Map<{},{}>",
-            render_type_expr(key),
-            render_type_expr(value)
-        ),
+        TypeExpr::Map(key, value) => {
+            format!("Map<{},{}>", render_type_expr(key), render_type_expr(value))
+        }
     }
 }
 
@@ -450,8 +452,7 @@ impl TypeRegistry {
         }
 
         // Look up both types; if not registered, fall back to name equality (handled above).
-        let (Some(from_dag), Some(to_dag)) =
-            (self.resolve_type(from), self.resolve_type(to))
+        let (Some(from_dag), Some(to_dag)) = (self.resolve_type(from), self.resolve_type(to))
         else {
             return false;
         };
@@ -460,9 +461,7 @@ impl TypeRegistry {
         let to_contract = TypeContract::from_type_dag(&to_dag);
 
         from_contract
-            .can_safely_coerce_to_with(&to_contract, |from, to| {
-                self.base_type_upcasts_to(from, to)
-            })
+            .can_safely_coerce_to_with(&to_contract, |from, to| self.base_type_upcasts_to(from, to))
             .is_ok()
     }
 
@@ -605,33 +604,18 @@ mod tests {
         assert!(!registry.is_compatible(&TypeId::from("String"), &TypeId::from("Url")));
 
         // NonEmptyString is a refinement of String.
-        assert!(registry.is_compatible(
-            &TypeId::from("NonEmptyString"),
-            &TypeId::from("String")
-        ));
-        assert!(!registry.is_compatible(
-            &TypeId::from("String"),
-            &TypeId::from("NonEmptyString")
-        ));
+        assert!(registry.is_compatible(&TypeId::from("NonEmptyString"), &TypeId::from("String")));
+        assert!(!registry.is_compatible(&TypeId::from("String"), &TypeId::from("NonEmptyString")));
 
         // Primitive upcasts to Json are safe.
         assert!(registry.is_compatible(&TypeId::from("Int"), &TypeId::from("Json")));
         assert!(registry.is_compatible(&TypeId::from("Bool"), &TypeId::from("Json")));
-        assert!(registry.is_compatible(
-            &TypeId::from("String"),
-            &TypeId::from("Json")
-        ));
+        assert!(registry.is_compatible(&TypeId::from("String"), &TypeId::from("Json")));
         assert!(!registry.is_compatible(&TypeId::from("Json"), &TypeId::from("Int")));
 
         // Registry-driven refinement: CustomUrl (refines Url) upcasts to String via Url.
-        assert!(registry.is_compatible(
-            &TypeId::from("CustomUrl"),
-            &TypeId::from("String")
-        ));
-        assert!(!registry.is_compatible(
-            &TypeId::from("String"),
-            &TypeId::from("CustomUrl")
-        ));
+        assert!(registry.is_compatible(&TypeId::from("CustomUrl"), &TypeId::from("String")));
+        assert!(!registry.is_compatible(&TypeId::from("String"), &TypeId::from("CustomUrl")));
     }
 
     #[test]

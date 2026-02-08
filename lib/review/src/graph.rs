@@ -11,19 +11,14 @@
 //! 2. LLM call
 
 use gunbc_exec::{ExecError, Executable};
-use gunbc_ir::transport::cloud::CloudRuntimeKind;
 use gunbc_ir::{
     add_transport_execute_parse_named_with_passthrough,
-    add_transport_triplet_named_with_passthrough, build::*, Dag, DagBuilder, Node, NodeBody,
-    NodeRef, Value,
-};
-use gunbc_lib_cloud_ops::{
-    build_cloud_secret_manager_credential_graph_gcp_github,
-    build_cloud_secret_manager_credential_graph_gcp_local,
-    build_cloud_secret_manager_credential_graph_gcp_metadata,
-    detect_cloud_env_requirements, CloudEnv, CloudOps, CloudSecretManagerGraphOp,
+    add_transport_triplet_named_with_passthrough, build::*, Dag, DagBuilder, Node, NodeRef, Value,
 };
 use gunbc_lib_blob::BlobOps;
+use gunbc_lib_cloud_ops::{
+    build_cloud_credential_graph_for_runtime, CloudEnv, CloudOps, CloudSecretManagerGraphOp,
+};
 use gunbc_lib_git_ops::GitOps;
 use gunbc_lib_llm_ops::LlmOps;
 use gunbc_lib_transport::TransportOps;
@@ -112,7 +107,10 @@ fn add_cloud_credential_chain(
         .expect("cloud_credential node");
 
     builder
-        .add_edge(bind_secret.out("config"), cloud_credential.in_port("config"))
+        .add_edge(
+            bind_secret.out("config"),
+            cloud_credential.in_port("config"),
+        )
         .expect("bind_secret.config -> cloud_credential.config");
     builder
         .add_edge(
@@ -121,7 +119,10 @@ fn add_cloud_credential_chain(
         )
         .expect("resolve_auth.service -> cloud_credential.source_id");
     builder
-        .add_edge(resolve_auth.out("scheme"), cloud_credential.in_port("scheme"))
+        .add_edge(
+            resolve_auth.out("scheme"),
+            cloud_credential.in_port("scheme"),
+        )
         .expect("resolve_auth.scheme -> cloud_credential.scheme");
     builder
         .add_edge(
@@ -145,62 +146,8 @@ fn add_cloud_credential_chain(
     cloud_credential
 }
 
-fn lift_cloud_dag(
-    dag: Dag<CloudSecretManagerGraphOp>,
-) -> Dag<ReviewGraphOp> {
-    let mut lift = |op| ReviewGraphOp::Cloud(op);
-    map_dag_ops(dag, &mut lift)
-}
-
-fn build_cloud_credential_graph_for_runtime() -> Dag<CloudSecretManagerGraphOp> {
-    let env_req = detect_cloud_env_requirements();
-    match env_req.runtime {
-        CloudRuntimeKind::GitHubActions => build_cloud_secret_manager_credential_graph_gcp_github(),
-        CloudRuntimeKind::CloudMetadata => build_cloud_secret_manager_credential_graph_gcp_metadata(),
-        CloudRuntimeKind::LocalDev => build_cloud_secret_manager_credential_graph_gcp_local(),
-    }
-}
-
-fn map_dag_ops<T, U, F>(dag: Dag<T>, f: &mut F) -> Dag<U>
-where
-    T: Clone,
-    U: Clone,
-    F: FnMut(T) -> U,
-{
-    let mut out = Dag::new();
-    out.edges = dag.edges.clone();
-    out.nodes = dag
-        .nodes
-        .into_iter()
-        .map(|node| map_node_ops(node, f))
-        .collect();
-    out
-}
-
-fn map_node_ops<T, U, F>(node: Node<T>, f: &mut F) -> Node<U>
-where
-    T: Clone,
-    U: Clone,
-    F: FnMut(T) -> U,
-{
-    let Node {
-        id,
-        inputs,
-        outputs,
-        body,
-        examples,
-    } = node;
-    let body = match body {
-        NodeBody::Opaque(op) => NodeBody::Opaque(f(op)),
-        NodeBody::SubDag(subdag) => NodeBody::SubDag(map_dag_ops(subdag, f)),
-    };
-    Node {
-        id,
-        inputs,
-        outputs,
-        body,
-        examples,
-    }
+fn lift_cloud_dag(dag: Dag<CloudSecretManagerGraphOp>) -> Dag<ReviewGraphOp> {
+    dag.map_ops(&mut ReviewGraphOp::Cloud)
 }
 
 // ============================================================================
@@ -237,7 +184,7 @@ where
 /// The graph handles this with conditional execution.
 #[gunbc_testgen_registry_macros::resource_test_target(
     name = "review-phase",
-    builder = "build_review_phase_graph()",
+    builder = "build_review_phase_graph()"
 )]
 pub fn build_review_phase_graph() -> Dag<ReviewGraphOp> {
     let mut builder: DagBuilder<ReviewGraphOp> = DagBuilder::new();
@@ -424,10 +371,7 @@ pub fn build_review_phase_graph() -> Dag<ReviewGraphOp> {
 
     // Blob acquisition flow
     builder
-        .add_edge(
-            prepare_blob.out("request"),
-            execute_blob.in_port("request"),
-        )
+        .add_edge(prepare_blob.out("request"), execute_blob.in_port("request"))
         .expect("prepare_blob.request -> execute_blob.request");
     builder
         .add_edge(prepare_blob.out("skip"), execute_blob.in_port("skip"))
@@ -436,10 +380,7 @@ pub fn build_review_phase_graph() -> Dag<ReviewGraphOp> {
         .add_edge(fs_env.out("fs:write"), execute_blob.in_port("res:fs"))
         .expect("fs_env -> execute_blob.res:fs");
     builder
-        .add_edge(
-            execute_blob.out("response"),
-            parse_blob.in_port("response"),
-        )
+        .add_edge(execute_blob.out("response"), parse_blob.in_port("response"))
         .expect("execute_blob.response -> parse_blob.response");
     builder
         .add_edge(prepare_blob.out("source"), parse_blob.in_port("source"))
@@ -893,7 +834,10 @@ pub fn build_diff_review_graph_with(config: ReviewPipelineConfig) -> Dag<ReviewG
         )
         .expect("config.criteria -> parse_response.criteria");
     builder
-        .add_edge(config_node.out("provider"), resolve_auth.in_port("provider"))
+        .add_edge(
+            config_node.out("provider"),
+            resolve_auth.in_port("provider"),
+        )
         .expect("config.provider -> resolve_auth.provider");
 
     // Diff → artifact formatting
@@ -904,7 +848,10 @@ pub fn build_diff_review_graph_with(config: ReviewPipelineConfig) -> Dag<ReviewG
         )
         .expect("parse_diff.diff_files -> format_artifact.diff_files");
     builder
-        .add_edge(fs_env.out("fs:write"), diff_triplet.execute.in_port("res:fs"))
+        .add_edge(
+            fs_env.out("fs:write"),
+            diff_triplet.execute.in_port("res:fs"),
+        )
         .expect("fs_env -> execute_diff.res:fs");
 
     // Artifact → review prompt + LLM content
@@ -985,7 +932,7 @@ pub fn build_diff_review_graph_with(config: ReviewPipelineConfig) -> Dag<ReviewG
 /// directly to the merge node without wrapper nodes.
 #[gunbc_testgen_registry_macros::resource_test_target(
     name = "review-multi-source",
-    builder = "build_multi_source_review_graph()",
+    builder = "build_multi_source_review_graph()"
 )]
 pub fn build_multi_source_review_graph() -> Dag<ReviewGraphOp> {
     build_multi_source_review_graph_with(ReviewPipelineConfig::gunbc_default())
@@ -1152,7 +1099,10 @@ pub fn build_multi_source_review_graph_with(config: ReviewPipelineConfig) -> Dag
         )
         .expect("config.criteria -> parse_response.criteria");
     builder
-        .add_edge(config_node.out("provider"), resolve_auth.in_port("provider"))
+        .add_edge(
+            config_node.out("provider"),
+            resolve_auth.in_port("provider"),
+        )
         .expect("config.provider -> resolve_auth.provider");
 
     // LLM review flow
@@ -1183,10 +1133,7 @@ pub fn build_multi_source_review_graph_with(config: ReviewPipelineConfig) -> Dag
 
     // Review output → merge (list port collects fan-in automatically)
     builder
-        .add_edge(
-            parse_response.out("output"),
-            merge.in_port("outputs"),
-        )
+        .add_edge(parse_response.out("output"), merge.in_port("outputs"))
         .expect("parse_response.output -> merge.outputs");
 
     builder.build()

@@ -176,7 +176,12 @@ fn execute_parse_manifest(
     if let Some(result) = propagate_skipped(
         &inputs,
         "response",
-        &["dep_count", "dep_names", "manifest_path", "manifest_content"],
+        &[
+            "dep_count",
+            "dep_names",
+            "manifest_path",
+            "manifest_content",
+        ],
     ) {
         return result;
     }
@@ -198,8 +203,7 @@ fn execute_parse_manifest(
     let _parse_result = ParseOp::Toml.execute(parse_inputs)?;
 
     // Domain-specific: Use DepsManifest for structured extraction
-    let manifest = DepsManifest::parse(&content)
-        .exec_context("failed to parse manifest")?;
+    let manifest = DepsManifest::parse(&content).exec_context("failed to parse manifest")?;
 
     let dep_names: Vec<String> = manifest.dependency.iter().map(|d| d.name.clone()).collect();
 
@@ -223,14 +227,24 @@ fn execute_generate_scripts(
     if let Some(result) = propagate_skipped(
         &inputs,
         "manifest_content",
-        &["install_script", "already_installed", "needs_install", "platform"],
+        &[
+            "install_script",
+            "already_installed",
+            "needs_install",
+            "platform",
+        ],
     ) {
         return result;
     }
     if let Some(result) = propagate_skipped(
         &inputs,
         "res:platform",
-        &["install_script", "already_installed", "needs_install", "platform"],
+        &[
+            "install_script",
+            "already_installed",
+            "needs_install",
+            "platform",
+        ],
     ) {
         return result;
     }
@@ -239,8 +253,8 @@ fn execute_generate_scripts(
     let manifest_content = require_str(&inputs, "manifest_content")?;
 
     // Parse the manifest content (no file I/O)
-    let manifest = DepsManifest::parse(manifest_content)
-        .exec_context("failed to parse manifest")?;
+    let manifest =
+        DepsManifest::parse(manifest_content).exec_context("failed to parse manifest")?;
 
     // Use platform from DAG input (acquired at boundary)
     let platform_str = require_str(&inputs, "res:platform")?;

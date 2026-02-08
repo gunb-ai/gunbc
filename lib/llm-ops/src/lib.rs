@@ -192,7 +192,8 @@ fn execute_prepare_chat_request(
     }
 
     // Convert to REST request via provider-specific builder
-    let rest_request = llm::build_chat_request(&provider_id, &chat).exec_context("build chat request")?;
+    let rest_request =
+        llm::build_chat_request(&provider_id, &chat).exec_context("build chat request")?;
 
     OutputMap::new()
         .request("request", TransportRequest::Rest(rest_request))
@@ -270,7 +271,8 @@ fn execute_prepare_simple_request(
     let chat = ChatRequest::new(model, messages);
 
     // Convert to REST request
-    let rest_request = llm::build_chat_request(&provider_id, &chat).exec_context("build chat request")?;
+    let rest_request =
+        llm::build_chat_request(&provider_id, &chat).exec_context("build chat request")?;
 
     OutputMap::new()
         .request("request", TransportRequest::Rest(rest_request))
@@ -573,10 +575,7 @@ mod tests {
             result.get("scheme"),
             Some(&Value::Str("bearer".to_string()))
         );
-        assert_eq!(
-            result.get("header_name"),
-            Some(&Value::Str(String::new()))
-        );
+        assert_eq!(result.get("header_name"), Some(&Value::Str(String::new())));
     }
 
     #[test]

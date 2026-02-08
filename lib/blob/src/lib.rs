@@ -162,7 +162,9 @@ impl BlobMeta {
 
     /// Compute SHA256 hash of content.
     fn compute_hash(content: &str) -> String {
-        ContentHash::from_bytes(content.as_bytes()).as_str().to_string()
+        ContentHash::from_bytes(content.as_bytes())
+            .as_str()
+            .to_string()
     }
 }
 
@@ -358,8 +360,8 @@ impl Executable for BlobOps {
             BlobOps::PrepareFetch => {
                 let source_json = require_json(&inputs, "source")?;
 
-                let source: BlobSource = serde_json::from_value(source_json.clone())
-                    .exec_context("invalid source")?;
+                let source: BlobSource =
+                    serde_json::from_value(source_json.clone()).exec_context("invalid source")?;
 
                 match &source.source {
                     // Inline: no I/O needed, return handle directly
@@ -408,9 +410,8 @@ impl Executable for BlobOps {
                 let skip = optional_bool_strict(&inputs, "skip")?.unwrap_or(false);
                 if skip {
                     let handle_json = require_json(&inputs, "handle")?;
-                    let handle = BlobHandle::decode(&Value::Json(handle_json.clone())).map_err(
-                        |e| ExecError::new(format!("invalid handle: {}", e)),
-                    )?;
+                    let handle = BlobHandle::decode(&Value::Json(handle_json.clone()))
+                        .map_err(|e| ExecError::new(format!("invalid handle: {}", e)))?;
                     return OutputMap::new()
                         .value("handle", handle.encode())
                         .json("meta", serde_json::to_value(handle.meta()).unwrap())
@@ -419,8 +420,8 @@ impl Executable for BlobOps {
 
                 let source_json = require_json(&inputs, "source")?;
 
-                let source: BlobSource = serde_json::from_value(source_json.clone())
-                    .exec_context("invalid source")?;
+                let source: BlobSource =
+                    serde_json::from_value(source_json.clone()).exec_context("invalid source")?;
 
                 let response = require_response(&inputs, "response")?;
 
@@ -459,13 +460,9 @@ impl Executable for BlobOps {
                 // Priority: actual (BlobHandle) > actual_content (String) > response
                 let (actual_data, actual_hash): (Option<String>, Option<String>) =
                     if let Some(json) = optional_json_strict(&inputs, "actual")? {
-                        let handle = BlobHandle::decode(&Value::Json(json.clone())).map_err(
-                            |e| ExecError::new(format!("invalid actual handle: {}", e)),
-                        )?;
-                        (
-                            Some(handle.data().to_string()),
-                            handle.meta().hash.clone(),
-                        )
+                        let handle = BlobHandle::decode(&Value::Json(json.clone()))
+                            .map_err(|e| ExecError::new(format!("invalid actual handle: {}", e)))?;
+                        (Some(handle.data().to_string()), handle.meta().hash.clone())
                     } else if let Some(s) = optional_str_strict(&inputs, "actual_content")? {
                         (Some(s.to_string()), None)
                     } else {
@@ -482,13 +479,11 @@ impl Executable for BlobOps {
                 // Priority: expected (BlobHandle) > expected_hash > expected_content
                 let (expected_data, expected_hash): (Option<String>, Option<String>) =
                     if let Some(json) = optional_json_strict(&inputs, "expected")? {
-                        let handle = BlobHandle::decode(&Value::Json(json.clone())).map_err(
-                            |e| ExecError::new(format!("invalid expected handle: {}", e)),
-                        )?;
-                        (
-                            Some(handle.data().to_string()),
-                            handle.meta().hash.clone(),
-                        )
+                        let handle =
+                            BlobHandle::decode(&Value::Json(json.clone())).map_err(|e| {
+                                ExecError::new(format!("invalid expected handle: {}", e))
+                            })?;
+                        (Some(handle.data().to_string()), handle.meta().hash.clone())
                     } else if let Some(h) = optional_str_strict(&inputs, "expected_hash")? {
                         (None, Some(h.to_string()))
                     } else if let Some(c) = optional_str_strict(&inputs, "expected_content")? {
@@ -510,9 +505,7 @@ impl Executable for BlobOps {
                         }
                         // Expected has hash, actual has data → compute actual hash
                         (Some(ad), None, _, Some(eh)) => {
-                            let ah = ContentHash::from_bytes(ad.as_bytes())
-                                .as_str()
-                                .to_string();
+                            let ah = ContentHash::from_bytes(ad.as_bytes()).as_str().to_string();
                             if ah == *eh {
                                 (true, "content hash matches".to_string())
                             } else {
@@ -530,23 +523,16 @@ impl Executable for BlobOps {
                         // Missing actual
                         (None, None, _, _) => {
                             let reason = match inputs.get("response") {
-                                Some(Value::Response(TransportResponse::File(f)))
-                                    if !f.success =>
-                                {
+                                Some(Value::Response(TransportResponse::File(f))) if !f.success => {
                                     "file read failed".to_string()
                                 }
-                                Some(Value::Skipped) => {
-                                    "upstream read was skipped".to_string()
-                                }
+                                Some(Value::Skipped) => "upstream read was skipped".to_string(),
                                 _ => "no actual content available".to_string(),
                             };
                             (false, reason)
                         }
                         // Missing expected
-                        _ => (
-                            false,
-                            "no expected content or hash provided".to_string(),
-                        ),
+                        _ => (false, "no expected content or hash provided".to_string()),
                     };
 
                 let skip = fresh || check_mode;
@@ -864,10 +850,7 @@ mod tests {
                 error: None,
             })),
         );
-        inputs.insert(
-            "expected_content".to_string(),
-            Value::Str("new".into()),
-        );
+        inputs.insert("expected_content".to_string(), Value::Str("new".into()));
 
         let op = BlobOps::CompareContent;
         let result = op.execute(inputs).unwrap();
@@ -892,10 +875,7 @@ mod tests {
                 error: Some("No such file".into()),
             })),
         );
-        inputs.insert(
-            "expected_content".to_string(),
-            Value::Str("content".into()),
-        );
+        inputs.insert("expected_content".to_string(), Value::Str("content".into()));
 
         let op = BlobOps::CompareContent;
         let result = op.execute(inputs).unwrap();
@@ -919,10 +899,7 @@ mod tests {
                 error: None,
             })),
         );
-        inputs.insert(
-            "expected_content".to_string(),
-            Value::Str("new".into()),
-        );
+        inputs.insert("expected_content".to_string(), Value::Str("new".into()));
         inputs.insert("check_mode".to_string(), Value::Bool(true));
 
         let op = BlobOps::CompareContent;
@@ -937,14 +914,8 @@ mod tests {
     #[test]
     fn test_blob_compare_actual_content_string() {
         let mut inputs = HashMap::new();
-        inputs.insert(
-            "actual_content".to_string(),
-            Value::Str("same".into()),
-        );
-        inputs.insert(
-            "expected_content".to_string(),
-            Value::Str("same".into()),
-        );
+        inputs.insert("actual_content".to_string(), Value::Str("same".into()));
+        inputs.insert("expected_content".to_string(), Value::Str("same".into()));
 
         let op = BlobOps::CompareContent;
         let result = op.execute(inputs).unwrap();

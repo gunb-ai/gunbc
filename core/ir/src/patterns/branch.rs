@@ -127,8 +127,16 @@ impl<T: Clone> BranchBuilder<T> {
     {
         let true_dag = self.true_dag.expect("true branch DAG is required");
         let false_dag = self.false_dag.expect("false branch DAG is required");
-        validate_resource_inputs(&format!("{}:true_branch", self.name), &self.resource_inputs, &true_dag);
-        validate_resource_inputs(&format!("{}:false_branch", self.name), &self.resource_inputs, &false_dag);
+        validate_resource_inputs(
+            &format!("{}:true_branch", self.name),
+            &self.resource_inputs,
+            &true_dag,
+        );
+        validate_resource_inputs(
+            &format!("{}:false_branch", self.name),
+            &self.resource_inputs,
+            &false_dag,
+        );
 
         let mut dag = Dag::new();
 

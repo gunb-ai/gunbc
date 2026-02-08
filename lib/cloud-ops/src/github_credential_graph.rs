@@ -4,21 +4,14 @@
 //! a minimal GitHub API call to validate the token.
 
 use crate::env::CloudEnv;
-use crate::env_requirements::detect_cloud_env_requirements;
-use crate::graph::{
-    build_cloud_secret_manager_credential_graph_gcp_github,
-    build_cloud_secret_manager_credential_graph_gcp_local,
-    build_cloud_secret_manager_credential_graph_gcp_metadata, CloudSecretManagerGraphOp,
-};
+use crate::graph::{build_cloud_credential_graph_for_runtime, CloudSecretManagerGraphOp};
 use crate::ops::CloudOps;
 use gunbc_exec::{require_response, ExecError, Executable, OutputMap};
 use gunbc_ir::build::{optional, port, resource};
-use gunbc_ir::transport::cloud::CloudRuntimeKind;
 use gunbc_ir::transport::github::api::github_rest_request;
 use gunbc_ir::transport::{TransportRequest, TransportResponse};
 use gunbc_ir::{
-    add_transport_execute_parse_named_with_passthrough, AccessMode, Dag, DagBuilder, Node,
-    NodeBody, Value,
+    add_transport_execute_parse_named_with_passthrough, AccessMode, Dag, DagBuilder, Node, Value,
 };
 use gunbc_lib_transport::TransportOps;
 use std::collections::HashMap;
@@ -88,7 +81,7 @@ impl Executable for GitHubCredentialGraphOp {
 #[gunbc_testgen_registry_macros::resource_test_target(
     skip,
     name = "github-credential-graph",
-    builder = "build_github_credential_graph()",
+    builder = "build_github_credential_graph()"
 )]
 pub fn build_github_credential_graph() -> Dag<GitHubCredentialGraphOp> {
     let mut builder: DagBuilder<GitHubCredentialGraphOp> = DagBuilder::new();
@@ -154,7 +147,10 @@ pub fn build_github_credential_graph() -> Dag<GitHubCredentialGraphOp> {
         .expect("cloud_credential node");
 
     builder
-        .add_edge(bind_secret.out("config"), cloud_credential.in_port("config"))
+        .add_edge(
+            bind_secret.out("config"),
+            cloud_credential.in_port("config"),
+        )
         .expect("bind_secret.config -> cloud_credential.config");
     builder
         .add_edge(
@@ -163,7 +159,10 @@ pub fn build_github_credential_graph() -> Dag<GitHubCredentialGraphOp> {
         )
         .expect("resolve_auth.service -> cloud_credential.source_id");
     builder
-        .add_edge(resolve_auth.out("scheme"), cloud_credential.in_port("scheme"))
+        .add_edge(
+            resolve_auth.out("scheme"),
+            cloud_credential.in_port("scheme"),
+        )
         .expect("resolve_auth.scheme -> cloud_credential.scheme");
     builder
         .add_edge(
@@ -223,57 +222,5 @@ pub fn build_github_credential_graph() -> Dag<GitHubCredentialGraphOp> {
 }
 
 fn lift_cloud_dag(dag: Dag<CloudSecretManagerGraphOp>) -> Dag<GitHubCredentialGraphOp> {
-    let mut lift = |op| GitHubCredentialGraphOp::Cloud(op);
-    map_dag_ops(dag, &mut lift)
-}
-
-fn build_cloud_credential_graph_for_runtime() -> Dag<CloudSecretManagerGraphOp> {
-    let env_req = detect_cloud_env_requirements();
-    match env_req.runtime {
-        CloudRuntimeKind::GitHubActions => build_cloud_secret_manager_credential_graph_gcp_github(),
-        CloudRuntimeKind::CloudMetadata => build_cloud_secret_manager_credential_graph_gcp_metadata(),
-        CloudRuntimeKind::LocalDev => build_cloud_secret_manager_credential_graph_gcp_local(),
-    }
-}
-
-fn map_dag_ops<T, U, F>(dag: Dag<T>, f: &mut F) -> Dag<U>
-where
-    T: Clone,
-    U: Clone,
-    F: FnMut(T) -> U,
-{
-    let mut out = Dag::new();
-    out.edges = dag.edges.clone();
-    out.nodes = dag
-        .nodes
-        .into_iter()
-        .map(|node| map_node_ops(node, f))
-        .collect();
-    out
-}
-
-fn map_node_ops<T, U, F>(node: Node<T>, f: &mut F) -> Node<U>
-where
-    T: Clone,
-    U: Clone,
-    F: FnMut(T) -> U,
-{
-    let Node {
-        id,
-        inputs,
-        outputs,
-        body,
-        examples,
-    } = node;
-    let body = match body {
-        NodeBody::Opaque(op) => NodeBody::Opaque(f(op)),
-        NodeBody::SubDag(subdag) => NodeBody::SubDag(map_dag_ops(subdag, f)),
-    };
-    Node {
-        id,
-        inputs,
-        outputs,
-        body,
-        examples,
-    }
+    dag.map_ops(&mut GitHubCredentialGraphOp::Cloud)
 }

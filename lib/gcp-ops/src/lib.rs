@@ -8,20 +8,16 @@
 //! - Secret Manager access + decoding
 //! - Credential assembly for downstream transports
 
-mod ops;
 mod graph;
 pub mod graph_mock;
+mod ops;
 
 pub use graph::{
-    build_gcp_secret_manager_credential_graph,
-    build_gcp_secret_manager_credential_graph_github,
+    build_gcp_secret_manager_credential_graph, build_gcp_secret_manager_credential_graph_github,
     build_gcp_secret_manager_credential_graph_local,
-    build_gcp_secret_manager_credential_graph_metadata,
-    build_gcp_secret_manager_upsert_graph,
-    build_gcp_secret_manager_upsert_graph_github,
-    build_gcp_secret_manager_upsert_graph_local,
-    build_gcp_secret_manager_upsert_graph_metadata,
-    GcpSecretManagerGraphOp,
+    build_gcp_secret_manager_credential_graph_metadata, build_gcp_secret_manager_upsert_graph,
+    build_gcp_secret_manager_upsert_graph_github, build_gcp_secret_manager_upsert_graph_local,
+    build_gcp_secret_manager_upsert_graph_metadata, GcpSecretManagerGraphOp,
 };
 pub use ops::{GcpOps, GcpRuntimeKind};
 

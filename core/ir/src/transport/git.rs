@@ -835,10 +835,7 @@ new file mode 100644
 
     #[test]
     fn test_parse_remote_branches_at_head_single() {
-        assert_eq!(
-            parse_remote_branches_at_head("  origin/main\n"),
-            "main"
-        );
+        assert_eq!(parse_remote_branches_at_head("  origin/main\n"), "main");
     }
 
     #[test]
@@ -898,10 +895,7 @@ new file mode 100644
 
     #[test]
     fn test_parse_rev_list_before() {
-        assert_eq!(
-            parse_rev_list_before("abc123def456\n"),
-            "abc123def456"
-        );
+        assert_eq!(parse_rev_list_before("abc123def456\n"), "abc123def456");
     }
 
     #[test]

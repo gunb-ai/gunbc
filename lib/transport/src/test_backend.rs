@@ -152,13 +152,7 @@ impl VirtualFilesystem {
     fn glob_files(&self, pattern: &str) -> FileResponse {
         let pat = match glob::Pattern::new(pattern) {
             Ok(p) => p,
-            Err(e) => {
-                return FileResponse::error(
-                    pattern.to_string(),
-                    FileOp::Glob,
-                    e.to_string(),
-                )
-            }
+            Err(e) => return FileResponse::error(pattern.to_string(), FileOp::Glob, e.to_string()),
         };
 
         let mut matches: Vec<String> = self

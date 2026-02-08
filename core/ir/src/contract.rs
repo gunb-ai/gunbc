@@ -128,8 +128,7 @@ impl std::error::Error for WitnessError {}
 /// For a `List<String>` (cardinality `[0,∞)`), this produces witnesses
 /// at counts 0 and 1 (the in-range boundary values).
 pub fn witnesses(type_dag: &Dag<TypeOp>) -> Vec<BoundaryWitness> {
-    witnesses_checked(type_dag)
-        .unwrap_or_else(|err| panic!("invalid witness generation: {}", err))
+    witnesses_checked(type_dag).unwrap_or_else(|err| panic!("invalid witness generation: {}", err))
 }
 
 /// Like [`witnesses`] but returns an error instead of panicking on invalid
@@ -163,9 +162,7 @@ pub fn witnesses_checked(type_dag: &Dag<TypeOp>) -> Result<Vec<BoundaryWitness>,
             n => {
                 let witnesses = n_witnesses(&scalar_witness, n);
                 match &wrapper {
-                    Some(WrapperKind::List | WrapperKind::NonEmptyList) => {
-                        Value::List(witnesses)
-                    }
+                    Some(WrapperKind::List | WrapperKind::NonEmptyList) => Value::List(witnesses),
                     Some(WrapperKind::Set | WrapperKind::NonEmptySet) => Value::set(witnesses),
                     _ => {
                         return Err(WitnessError::InvalidCardinality {
@@ -559,9 +556,7 @@ mod tests {
         let json_contract = TypeContract::from_type_dag(&json_type);
 
         assert!(url_contract.can_safely_coerce_to(&string_contract).is_ok());
-        assert!(!string_contract
-            .can_safely_coerce_to(&url_contract)
-            .is_ok());
+        assert!(!string_contract.can_safely_coerce_to(&url_contract).is_ok());
         assert!(int_contract.can_safely_coerce_to(&json_contract).is_ok());
     }
 

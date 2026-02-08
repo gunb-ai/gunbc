@@ -23,7 +23,9 @@ use crate::Platform;
 use gunbc_ir::transport::{FileOp, FileResponse, ShellResponse, TransportResponse};
 use gunbc_ir::Value;
 use gunbc_primitives::filename;
-use gunbc_test::{extract_mock_requirements, InputConstraint, MockSpec, NodeExample, OutputMatcher};
+use gunbc_test::{
+    extract_mock_requirements, InputConstraint, MockSpec, NodeExample, OutputMatcher,
+};
 
 fn mock_fs_handle() -> Value {
     let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
@@ -56,7 +58,7 @@ packages = ["ripgrep"]
 #[gunbc_testgen_registry_macros::resource_test_target(
     skip,
     name = "deps",
-    builder = "crate::graph::build_deps_graph().unwrap()",
+    builder = "crate::graph::build_deps_graph().unwrap()"
 )]
 #[gunbc_testgen_registry_macros::testgen_target(
     name = "deps",
@@ -161,7 +163,10 @@ pub fn deps_mock_spec() -> MockSpec {
             NodeExample::new("prepare_load_manifest")
                 .input("manifest_path", Value::Str("deps.toml".into()))
                 .output("request", OutputMatcher::IsRequest)
-                .output("manifest_path", OutputMatcher::exact(Value::Str("deps.toml".into())))
+                .output(
+                    "manifest_path",
+                    OutputMatcher::exact(Value::Str("deps.toml".into())),
+                )
                 .description("Prepares file read request for deps.toml"),
         )
         .node_example(
@@ -186,7 +191,10 @@ pub fn deps_mock_spec() -> MockSpec {
                     "dep_names",
                     OutputMatcher::exact(Value::str_list(vec!["ripgrep".into()])),
                 )
-                .output("manifest_path", OutputMatcher::exact(Value::Str("deps.toml".into())))
+                .output(
+                    "manifest_path",
+                    OutputMatcher::exact(Value::Str("deps.toml".into())),
+                )
                 .output("manifest_content", OutputMatcher::contains("ripgrep"))
                 .description("Parses deps.toml into dependency list and content"),
         )
@@ -194,7 +202,10 @@ pub fn deps_mock_spec() -> MockSpec {
             NodeExample::new("generate_scripts")
                 .input("manifest_content", Value::Str(mock_manifest().to_string()))
                 .input("res:platform", Value::Str("linux".into()))
-                .output("install_script", OutputMatcher::contains("cargo install ripgrep"))
+                .output(
+                    "install_script",
+                    OutputMatcher::contains("cargo install ripgrep"),
+                )
                 .output("needs_install", OutputMatcher::NonEmpty)
                 .output("platform", OutputMatcher::exact(Value::Str("linux".into())))
                 .description("Generates install script and plan for linux"),
@@ -203,7 +214,10 @@ pub fn deps_mock_spec() -> MockSpec {
             NodeExample::new("prepare_execute_installs")
                 .input("install_script", Value::Str("echo install".into()))
                 .output("request", OutputMatcher::IsRequest)
-                .output("script", OutputMatcher::exact(Value::Str("echo install".into())))
+                .output(
+                    "script",
+                    OutputMatcher::exact(Value::Str("echo install".into())),
+                )
                 .description("Prepares shell request for install script"),
         )
         .node_example(
@@ -215,8 +229,14 @@ pub fn deps_mock_spec() -> MockSpec {
                 .input("script", Value::Str("echo install".into()))
                 .output("executed", OutputMatcher::exact(Value::Bool(true)))
                 .output("success", OutputMatcher::exact(Value::Bool(true)))
-                .output("script", OutputMatcher::exact(Value::Str("echo install".into())))
-                .output("stdout", OutputMatcher::exact(Value::Str("installed\n".into())))
+                .output(
+                    "script",
+                    OutputMatcher::exact(Value::Str("echo install".into())),
+                )
+                .output(
+                    "stdout",
+                    OutputMatcher::exact(Value::Str("installed\n".into())),
+                )
                 .output("stderr", OutputMatcher::exact(Value::Str("".into())))
                 .description("Parses install execution result"),
         )
@@ -263,7 +283,10 @@ pub fn deps_mock_spec_pkg_fails() -> MockSpec {
         .transport_response(
             "execute_installs",
             "response",
-            TransportResponse::Shell(ShellResponse::failed(1, "Package manager locked by another process")),
+            TransportResponse::Shell(ShellResponse::failed(
+                1,
+                "Package manager locked by another process",
+            )),
         )
         .expect("execute_installs response should match type")
         // Build spec

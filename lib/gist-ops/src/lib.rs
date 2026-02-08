@@ -89,11 +89,8 @@ impl Executable for GistOps {
                 } else {
                     // Snapshot/diff mode, or recent mode with young repo
                     // (young repo: parse_rev_list produces no output → absent from inputs)
-                    let filename = generate_gist_filename(
-                        &fs,
-                        effective_branch.unwrap_or("snapshot"),
-                        now,
-                    );
+                    let filename =
+                        generate_gist_filename(&fs, effective_branch.unwrap_or("snapshot"), now);
                     let description = match effective_branch {
                         Some(b) if !b.trim().is_empty() && b.trim() != "HEAD" => {
                             format!("Code snapshot of {} created by gunbc-gist", b)
@@ -489,10 +486,7 @@ mod tests {
         let mut inputs = HashMap::new();
         inputs.insert("markdown".to_string(), Value::Str("# Test".to_string()));
         // No local "branch" — simulates detached HEAD
-        inputs.insert(
-            "remote_branch".to_string(),
-            Value::Str("main".to_string()),
-        );
+        inputs.insert("remote_branch".to_string(), Value::Str("main".to_string()));
         let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
         let ts = Timestamp::from_system_time(SystemTime::UNIX_EPOCH);
         inputs.insert("res:fs".to_string(), fs.into());
@@ -527,14 +521,8 @@ mod tests {
         let mut inputs = HashMap::new();
         inputs.insert("markdown".to_string(), Value::Str("# Test".to_string()));
         // Both local and remote — local should win
-        inputs.insert(
-            "branch".to_string(),
-            Value::Str("my-feature".to_string()),
-        );
-        inputs.insert(
-            "remote_branch".to_string(),
-            Value::Str("main".to_string()),
-        );
+        inputs.insert("branch".to_string(), Value::Str("my-feature".to_string()));
+        inputs.insert("remote_branch".to_string(), Value::Str("main".to_string()));
         let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
         let ts = Timestamp::from_system_time(SystemTime::UNIX_EPOCH);
         inputs.insert("res:fs".to_string(), fs.into());

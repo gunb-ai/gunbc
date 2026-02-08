@@ -3,7 +3,9 @@
 //! Produces documentation content by stitching together handwritten text
 //! and live code/test excerpts.
 
-use gunbc_exec::{require_response, require_str, ExecError, Executable, OutputMap, TransportResponseExt};
+use gunbc_exec::{
+    require_response, require_str, ExecError, Executable, OutputMap, TransportResponseExt,
+};
 use gunbc_ir::transport::{FileOp, FileRequest, TransportRequest};
 use gunbc_ir::Value;
 use std::collections::HashMap;
@@ -18,7 +20,8 @@ pub const CLIPPY_LINT_PATH: &str = "lib/tools/clippy/src/lint.rs";
 pub const CLIPPY_OPS_PATH: &str = "lib/tools/clippy/src/ops.rs";
 pub const CLIPPY_POLICY_PATH: &str = "lib/tools/clippy/src/policy.rs";
 pub const GIST_GRAPH_MOCK_PATH: &str = "lib/tools/gist/src/graph_mock.rs";
-pub const GIST_GENERATED_TESTS_SNAPSHOT_PATH: &str = "lib/tools/gist/src/generated_tests_snapshot.rs";
+pub const GIST_GENERATED_TESTS_SNAPSHOT_PATH: &str =
+    "lib/tools/gist/src/generated_tests_snapshot.rs";
 pub const GIST_GENERATED_INTEGRATION_TESTS_PATH: &str = "lib/tools/gist/tests/generated_tests.rs";
 pub const GIST_CODEGEN_CLI_PATH: &str = "target/codegen/bin/gist/main.rs";
 const MARKER_CLIPPY_MOCK_SPEC: &str = "clippy_mock_spec";
@@ -42,9 +45,10 @@ impl Executable for DocgenOp {
         match self {
             DocgenOp::RenderAbWorkflowsDoc => execute_render_ab_workflows_doc(inputs),
             DocgenOp::PrepareFileRead { path } => execute_prepare_file_read(path),
-            DocgenOp::ParseFileContent { path, allow_missing } => {
-                execute_parse_file_content(path, *allow_missing, inputs)
-            }
+            DocgenOp::ParseFileContent {
+                path,
+                allow_missing,
+            } => execute_parse_file_content(path, *allow_missing, inputs),
         }
     }
 }
@@ -131,7 +135,9 @@ fn execute_parse_file_content(
                 .str("content", format!("// Missing file: {path} ({err})"))
                 .ok();
         }
-        return Err(ExecError::new(format!("docgen: failed to read {path}: {err}")));
+        return Err(ExecError::new(format!(
+            "docgen: failed to read {path}: {err}"
+        )));
     }
 
     let content = match &file_resp.content {
@@ -236,9 +242,17 @@ fn render_appendix_d(sources: &DocgenSources) -> String {
     out.push("- [Clippy MockSpec](#appendix-d-clippy-mockspec)".to_string());
     out.push("- [Clippy Generated Tests](#appendix-d-clippy-generated-tests)".to_string());
     out.push("- [Gist MockSpec](#appendix-d-gist-mockspec)".to_string());
-    out.push("- [Gist Generated Tests (Snapshot)](#appendix-d-gist-generated-tests-snapshot)".to_string());
-    out.push("- [Gist Generated Integration Tests](#appendix-d-gist-generated-integration-tests)".to_string());
-    out.push("- [Gist Generated CLI (Snapshot)](#appendix-d-gist-generated-cli-snapshot)".to_string());
+    out.push(
+        "- [Gist Generated Tests (Snapshot)](#appendix-d-gist-generated-tests-snapshot)"
+            .to_string(),
+    );
+    out.push(
+        "- [Gist Generated Integration Tests](#appendix-d-gist-generated-integration-tests)"
+            .to_string(),
+    );
+    out.push(
+        "- [Gist Generated CLI (Snapshot)](#appendix-d-gist-generated-cli-snapshot)".to_string(),
+    );
     out.push(String::new());
     out.push("</details>".to_string());
     out.push(String::new());
@@ -277,8 +291,9 @@ fn render_clippy_mock_spec(src: &str) -> Result<String, ExecError> {
 }
 
 fn render_clippy_generated_test_excerpt(src: &str) -> Result<String, ExecError> {
-    let mut snippet = extract_fn(src, "test_dryrun_completion")
-        .ok_or_else(|| ExecError::new("docgen: missing test_dryrun_completion in clippy generated tests"))?;
+    let mut snippet = extract_fn(src, "test_dryrun_completion").ok_or_else(|| {
+        ExecError::new("docgen: missing test_dryrun_completion in clippy generated tests")
+    })?;
     snippet = strip_guard_test(&snippet);
     snippet = normalize_colons(&snippet);
     Ok(wrap_rust_with_prefix(
@@ -292,8 +307,9 @@ fn render_appendix_a_clippy(src: &str) -> Result<String, ExecError> {
 }
 
 fn render_appendix_a_gist(src: &str) -> Result<String, ExecError> {
-    let mut snippet = extract_fn(src, "test_transport_interception")
-        .ok_or_else(|| ExecError::new("docgen: missing test_transport_interception in gist generated tests"))?;
+    let mut snippet = extract_fn(src, "test_transport_interception").ok_or_else(|| {
+        ExecError::new("docgen: missing test_transport_interception in gist generated tests")
+    })?;
     snippet = strip_guard_test(&snippet);
     snippet = normalize_colons(&snippet);
     Ok(wrap_rust_with_prefix(
@@ -319,7 +335,8 @@ fn render_appendix_b(sources: &DocgenSources) -> Result<String, ExecError> {
     }
     clippy_manual.sort_by(|a, b| a.name.cmp(&b.name));
     let gist_generated = collect_tests_from_content(&sources.gist_generated_tests_snapshot, false);
-    let gist_integration = collect_tests_from_content(&sources.gist_generated_integration_tests, false);
+    let gist_integration =
+        collect_tests_from_content(&sources.gist_generated_integration_tests, false);
 
     let mut out = Vec::new();
 
@@ -367,7 +384,10 @@ fn render_appendix_c() -> String {
     out.push(String::new());
     out.push("Generated integration tests:".to_string());
     out.push(String::new());
-    out.push("(None yet — add when clippy gets a CLI codegen target or integration harness.)".to_string());
+    out.push(
+        "(None yet — add when clippy gets a CLI codegen target or integration harness.)"
+            .to_string(),
+    );
     out.push(String::new());
 
     out.push("### C.2 Gist".to_string());
@@ -375,8 +395,14 @@ fn render_appendix_c() -> String {
     out.push("Generated graph (snapshot, simplified):".to_string());
     out.push(String::new());
     out.push("```text".to_string());
-    out.push("prepare_list_files -> execute_list_files -> parse_list_files -> read_files_loop".to_string());
-    out.push("read_files_loop -> collect_file_contents -> render_markdown -> prepare_gist_request".to_string());
+    out.push(
+        "prepare_list_files -> execute_list_files -> parse_list_files -> read_files_loop"
+            .to_string(),
+    );
+    out.push(
+        "read_files_loop -> collect_file_contents -> render_markdown -> prepare_gist_request"
+            .to_string(),
+    );
     out.push("prepare_gist_request -> execute_gist -> parse_gist_response -> url".to_string());
     out.push("```".to_string());
     out.push(String::new());
@@ -427,10 +453,12 @@ fn replace_section(doc: &str, key: &str, replacement: &str) -> Result<String, Ex
     let begin = format!("<!-- BEGIN GENERATED:{key} -->");
     let end = format!("<!-- END GENERATED:{key} -->");
 
-    let start = doc.find(&begin)
+    let start = doc
+        .find(&begin)
         .ok_or_else(|| ExecError::new(format!("docgen: missing begin marker: {begin}")))?;
     let rest = &doc[start + begin.len()..];
-    let end_rel = rest.find(&end)
+    let end_rel = rest
+        .find(&end)
         .ok_or_else(|| ExecError::new(format!("docgen: missing end marker: {end}")))?;
 
     let before = &doc[..start + begin.len()];
@@ -519,7 +547,12 @@ fn strip_guard_test(src: &str) -> String {
             continue;
         }
         if skip_guard {
-            if trimmed == "return ();" || trimmed == "return();" || trimmed == "return ()" || trimmed == "return;" || trimmed == "return ;" {
+            if trimmed == "return ();"
+                || trimmed == "return();"
+                || trimmed == "return ()"
+                || trimmed == "return;"
+                || trimmed == "return ;"
+            {
                 continue;
             }
             if trimmed == "};" {
@@ -600,7 +633,11 @@ fn parse_fn_name(line: &str) -> Option<String> {
         .chars()
         .take_while(|c| c.is_alphanumeric() || *c == '_')
         .collect();
-    if name.is_empty() { None } else { Some(name) }
+    if name.is_empty() {
+        None
+    } else {
+        Some(name)
+    }
 }
 
 fn first_sentence(text: &str) -> String {

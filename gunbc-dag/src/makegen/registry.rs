@@ -168,58 +168,44 @@ impl BuildConfig {
                 .trailing_arg("cigen")
                 .warnings(w)),
             testgen: c(
-                CargoCommand::new(Subcommand::Run(
-                    WorkspaceBinary::Testgen.invocation(),
-                ))
-                .release()
-                .warnings(w),
+                CargoCommand::new(Subcommand::Run(WorkspaceBinary::Testgen.invocation()))
+                    .release()
+                    .warnings(w),
             ),
-            bootstrap: c(
-                CargoCommand::new(Subcommand::Run(
-                    WorkspaceBinary::Bootstrap.invocation(),
-                ))
-                .release()
-                .warnings(w),
-            ),
+            bootstrap: c(CargoCommand::new(Subcommand::Run(
+                WorkspaceBinary::Bootstrap.invocation(),
+            ))
+            .release()
+            .warnings(w)),
             pragma: c(
-                CargoCommand::new(Subcommand::Run(
-                    WorkspaceBinary::Pragma.invocation(),
-                ))
-                .release()
-                .warnings(w),
+                CargoCommand::new(Subcommand::Run(WorkspaceBinary::Pragma.invocation()))
+                    .release()
+                    .warnings(w),
             ),
-            testgen_check: c(
-                CargoCommand::new(Subcommand::Run(
-                    WorkspaceBinary::Testgen.invocation(),
-                ))
-                .release()
-                .trailing_arg("--mode=verify")
-                .warnings(w),
-            ),
-            makegen_check: c(
-                CargoCommand::new(Subcommand::Run(
-                    WorkspaceBinary::Makegen.invocation(),
-                ))
-                .release()
-                .trailing_arg("--mode=verify")
-                .warnings(w),
-            ),
-            bootstrap_check: c(
-                CargoCommand::new(Subcommand::Run(
-                    WorkspaceBinary::Bootstrap.invocation(),
-                ))
-                .release()
-                .trailing_arg("--mode=verify")
-                .warnings(w),
-            ),
-            pragma_check: c(
-                CargoCommand::new(Subcommand::Run(
-                    WorkspaceBinary::Pragma.invocation(),
-                ))
-                .release()
-                .trailing_arg("--mode=verify")
-                .warnings(w),
-            ),
+            testgen_check: c(CargoCommand::new(Subcommand::Run(
+                WorkspaceBinary::Testgen.invocation(),
+            ))
+            .release()
+            .trailing_arg("--mode=verify")
+            .warnings(w)),
+            makegen_check: c(CargoCommand::new(Subcommand::Run(
+                WorkspaceBinary::Makegen.invocation(),
+            ))
+            .release()
+            .trailing_arg("--mode=verify")
+            .warnings(w)),
+            bootstrap_check: c(CargoCommand::new(Subcommand::Run(
+                WorkspaceBinary::Bootstrap.invocation(),
+            ))
+            .release()
+            .trailing_arg("--mode=verify")
+            .warnings(w)),
+            pragma_check: c(CargoCommand::new(Subcommand::Run(
+                WorkspaceBinary::Pragma.invocation(),
+            ))
+            .release()
+            .trailing_arg("--mode=verify")
+            .warnings(w)),
         }
     }
 
@@ -290,58 +276,44 @@ impl BuildConfig {
                 .warnings(w)),
             // testgen uses cargo (no buck2 equivalent yet)
             testgen: c(
-                CargoCommand::new(Subcommand::Run(
-                    WorkspaceBinary::Testgen.invocation(),
-                ))
-                .release()
-                .warnings(w),
+                CargoCommand::new(Subcommand::Run(WorkspaceBinary::Testgen.invocation()))
+                    .release()
+                    .warnings(w),
             ),
-            bootstrap: c(
-                CargoCommand::new(Subcommand::Run(
-                    WorkspaceBinary::Bootstrap.invocation(),
-                ))
-                .release()
-                .warnings(w),
-            ),
+            bootstrap: c(CargoCommand::new(Subcommand::Run(
+                WorkspaceBinary::Bootstrap.invocation(),
+            ))
+            .release()
+            .warnings(w)),
             pragma: c(
-                CargoCommand::new(Subcommand::Run(
-                    WorkspaceBinary::Pragma.invocation(),
-                ))
-                .release()
-                .warnings(w),
+                CargoCommand::new(Subcommand::Run(WorkspaceBinary::Pragma.invocation()))
+                    .release()
+                    .warnings(w),
             ),
-            testgen_check: c(
-                CargoCommand::new(Subcommand::Run(
-                    WorkspaceBinary::Testgen.invocation(),
-                ))
-                .release()
-                .trailing_arg("--mode=verify")
-                .warnings(w),
-            ),
-            makegen_check: c(
-                CargoCommand::new(Subcommand::Run(
-                    WorkspaceBinary::Makegen.invocation(),
-                ))
-                .release()
-                .trailing_arg("--mode=verify")
-                .warnings(w),
-            ),
-            bootstrap_check: c(
-                CargoCommand::new(Subcommand::Run(
-                    WorkspaceBinary::Bootstrap.invocation(),
-                ))
-                .release()
-                .trailing_arg("--mode=verify")
-                .warnings(w),
-            ),
-            pragma_check: c(
-                CargoCommand::new(Subcommand::Run(
-                    WorkspaceBinary::Pragma.invocation(),
-                ))
-                .release()
-                .trailing_arg("--mode=verify")
-                .warnings(w),
-            ),
+            testgen_check: c(CargoCommand::new(Subcommand::Run(
+                WorkspaceBinary::Testgen.invocation(),
+            ))
+            .release()
+            .trailing_arg("--mode=verify")
+            .warnings(w)),
+            makegen_check: c(CargoCommand::new(Subcommand::Run(
+                WorkspaceBinary::Makegen.invocation(),
+            ))
+            .release()
+            .trailing_arg("--mode=verify")
+            .warnings(w)),
+            bootstrap_check: c(CargoCommand::new(Subcommand::Run(
+                WorkspaceBinary::Bootstrap.invocation(),
+            ))
+            .release()
+            .trailing_arg("--mode=verify")
+            .warnings(w)),
+            pragma_check: c(CargoCommand::new(Subcommand::Run(
+                WorkspaceBinary::Pragma.invocation(),
+            ))
+            .release()
+            .trailing_arg("--mode=verify")
+            .warnings(w)),
         }
     }
 
@@ -721,13 +693,16 @@ impl ResourceTargetMap {
     /// - `Ensure` → ensure_target
     /// - `Verify` → verify_target (fallback to ensure_target if None)
     pub fn resolve(&self, id: &ResourceId, mode: ExecMode) -> Option<&str> {
-        self.entries.iter().find(|e| e.id == *id).map(|e| match mode {
-            ExecMode::Ensure => e.ensure_target.as_str(),
-            ExecMode::Verify => e
-                .verify_target
-                .as_deref()
-                .unwrap_or(e.ensure_target.as_str()),
-        })
+        self.entries
+            .iter()
+            .find(|e| e.id == *id)
+            .map(|e| match mode {
+                ExecMode::Ensure => e.ensure_target.as_str(),
+                ExecMode::Verify => e
+                    .verify_target
+                    .as_deref()
+                    .unwrap_or(e.ensure_target.as_str()),
+            })
     }
 
     /// Build the default resource target map.
@@ -1319,7 +1294,10 @@ mod tests {
         let test = targets.iter().find(|t| t.name == "test").unwrap();
 
         assert!(test.has_fix_variant);
-        assert_eq!(test.fix_prerequisites, vec![FixAlias::FmtFix, FixAlias::LintFix]);
+        assert_eq!(
+            test.fix_prerequisites,
+            vec![FixAlias::FmtFix, FixAlias::LintFix]
+        );
     }
 
     #[test]

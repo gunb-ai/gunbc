@@ -22,16 +22,16 @@ use gunbc_ir::resource::{
 };
 use gunbc_ir::transport::{FileOp, FileResponse, TransportResponse};
 use gunbc_ir::{detect_entrypoints, Value};
-use gunbc_lib_transport::TransportIo;
 use gunbc_lib_transport::preflight::ensure_lint_upsert;
+use gunbc_lib_transport::TransportIo;
 // Force-link crates that register testgen targets.
 use gunbc_deps as _;
 use gunbc_gist as _;
 use gunbc_lib_llm_ops as _;
 use gunbc_lib_review as _;
 use gunbc_testgen_registry::{iter_dag_specs, DagSpecDef};
-use std::env;
 use std::collections::HashMap;
+use std::env;
 use std::path::PathBuf;
 use std::process;
 
@@ -128,7 +128,10 @@ fn main() {
         .iter()
         .map(|t| {
             let config = t.to_def();
-            let path = output_dir.join(&config.output_path).to_string_lossy().to_string();
+            let path = output_dir
+                .join(&config.output_path)
+                .to_string_lossy()
+                .to_string();
             (config.name.clone(), path)
         })
         .collect();
@@ -203,11 +206,7 @@ fn main() {
                     error: None,
                 })),
             );
-            mocks.set_value(
-                &write_node,
-                &path_key,
-                Value::Str("<DRY-RUN>".to_string()),
-            );
+            mocks.set_value(&write_node, &path_key, Value::Str("<DRY-RUN>".to_string()));
             mocks.set_value(
                 &write_node,
                 &content_key,
@@ -312,8 +311,7 @@ fn update_manifest_after_testgen() {
             manifest: &ResourceManifest,
             io: &dyn ResourceIo,
         ) -> Result<ManifestEntry, ResourceError> {
-            let (key, file_count, input_files) =
-                self.compute_key_with_file_list(manifest, io)?;
+            let (key, file_count, input_files) = self.compute_key_with_file_list(manifest, io)?;
             Ok(ManifestEntry::new(key, file_count)
                 .with_outputs(self.outputs.clone())
                 .with_input_files(input_files))

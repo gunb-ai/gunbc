@@ -193,9 +193,15 @@ fn exec_summary(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>
     let test_success = require_bool(&inputs, "test_success")?;
     let clippy_success = require_bool(&inputs, "clippy_success")?;
 
-    let test_stderr = optional_str_strict(&inputs, "test_stderr")?.unwrap_or("").to_string();
-    let clippy_stderr = optional_str_strict(&inputs, "clippy_stderr")?.unwrap_or("").to_string();
-    let build_stderr = optional_str_strict(&inputs, "build_stderr")?.unwrap_or("").to_string();
+    let test_stderr = optional_str_strict(&inputs, "test_stderr")?
+        .unwrap_or("")
+        .to_string();
+    let clippy_stderr = optional_str_strict(&inputs, "clippy_stderr")?
+        .unwrap_or("")
+        .to_string();
+    let build_stderr = optional_str_strict(&inputs, "build_stderr")?
+        .unwrap_or("")
+        .to_string();
 
     let overall = build_success && test_success && clippy_success;
 
@@ -247,7 +253,10 @@ mod tests {
         let mut inputs = HashMap::new();
         inputs.insert(
             "response".to_string(),
-            Value::Response(TransportResponse::Shell(ShellResponse::failed(1, "error[E0308]"))),
+            Value::Response(TransportResponse::Shell(ShellResponse::failed(
+                1,
+                "error[E0308]",
+            ))),
         );
         let out = exec_parse_build(inputs).unwrap();
         assert_eq!(out["build_success"], Value::Bool(false));

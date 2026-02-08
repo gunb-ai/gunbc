@@ -40,7 +40,10 @@ impl Executable for CloudOps {
                     out.insert("version".to_string(), Value::Str(version.clone()));
                 }
                 if let Some(sa) = config.service_account_or_role.as_ref() {
-                    out.insert("service_account_or_role".to_string(), Value::Str(sa.clone()));
+                    out.insert(
+                        "service_account_or_role".to_string(),
+                        Value::Str(sa.clone()),
+                    );
                 }
                 if let Some(impersonate) = config.impersonate_account_or_role.as_ref() {
                     out.insert(
@@ -124,7 +127,10 @@ impl Executable for CloudOps {
                 out.insert("source_id".to_string(), Value::Str(source_id.to_string()));
 
                 if let Some(header_name) = inputs.get("header_name").and_then(Value::as_str) {
-                    out.insert("header_name".to_string(), Value::Str(header_name.to_string()));
+                    out.insert(
+                        "header_name".to_string(),
+                        Value::Str(header_name.to_string()),
+                    );
                 }
 
                 if let Some(lifetime) = inputs.get("lifetime_seconds").and_then(Value::as_int) {
@@ -134,7 +140,10 @@ impl Executable for CloudOps {
                 if matches!(runtime, CloudRuntimeKind::GitHubActions) {
                     let request_url = require_str(&inputs, "request_url")?;
                     let request_token = require_str(&inputs, "request_token")?;
-                    out.insert("request_url".to_string(), Value::Str(request_url.to_string()));
+                    out.insert(
+                        "request_url".to_string(),
+                        Value::Str(request_url.to_string()),
+                    );
                     out.insert(
                         "request_token".to_string(),
                         Value::Str(request_token.to_string()),
@@ -203,7 +212,10 @@ impl Executable for CloudOps {
                 if matches!(runtime, CloudRuntimeKind::GitHubActions) {
                     let request_url = require_str(&inputs, "request_url")?;
                     let request_token = require_str(&inputs, "request_token")?;
-                    out.insert("request_url".to_string(), Value::Str(request_url.to_string()));
+                    out.insert(
+                        "request_url".to_string(),
+                        Value::Str(request_url.to_string()),
+                    );
                     out.insert(
                         "request_token".to_string(),
                         Value::Str(request_token.to_string()),

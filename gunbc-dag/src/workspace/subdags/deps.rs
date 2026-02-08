@@ -207,7 +207,10 @@ pub fn build_deps_install_subdag() -> Node<WorkspaceOp> {
         )
         .expect("execute request edge");
     builder
-        .add_edge(prepare_execute.out("skip"), execute_installs.in_port("skip"))
+        .add_edge(
+            prepare_execute.out("skip"),
+            execute_installs.in_port("skip"),
+        )
         .expect("execute skip edge");
     builder
         .add_edge(
@@ -318,10 +321,7 @@ pub fn build_deps_generate_subdag() -> Node<WorkspaceOp> {
         )
         .expect("request edge");
     builder
-        .add_edge(
-            prepare_write.out("skip"),
-            execute_transport.in_port("skip"),
-        )
+        .add_edge(prepare_write.out("skip"), execute_transport.in_port("skip"))
         .expect("skip edge");
 
     let inner_dag = builder.build();
@@ -346,5 +346,4 @@ mod tests {
         assert!(node.is_subdag());
         assert_eq!(node.id.0, "deps_generate");
     }
-
 }

@@ -42,7 +42,10 @@ pub fn single_output(port: &'static str, value: impl Into<Value>) -> HashMap<Str
 // ---------------------------------------------------------------------------
 
 impl<T: EnvNode> Executable for T {
-    fn execute(&self, _inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+    fn execute(
+        &self,
+        _inputs: HashMap<String, Value>,
+    ) -> Result<HashMap<String, Value>, ExecError> {
         self.env_outputs()
     }
 }

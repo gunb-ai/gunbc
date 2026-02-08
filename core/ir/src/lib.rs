@@ -49,8 +49,8 @@ pub mod algebra;
 pub mod boundary;
 pub mod builder;
 pub mod cargo;
-pub mod coerce;
 pub mod code_ir;
+pub mod coerce;
 pub mod compose;
 pub mod contract;
 pub mod dag;
@@ -58,9 +58,9 @@ pub mod entrypoint;
 pub mod git;
 pub mod language;
 pub mod layout;
+pub mod makefile_render;
 pub mod node;
 pub mod patterns;
-pub mod makefile_render;
 pub mod plain_render;
 pub mod render_ir;
 pub mod resource;
@@ -91,6 +91,10 @@ pub use cargo::{
     CargoCommand, CargoEnv, CargoInvocation, Subcommand, TermColor, Warnings,
     PREFIX as CARGO_PREFIX,
 };
+pub use code_ir::{
+    Assert, EnumDef, Expr, FnDef, HelperFn, ImplBlock, Import, Item, MatchArm, SourceFile, Stmt,
+    StructDef, TestFile, TestFn, TestSection,
+};
 pub use coerce::{
     classify_coercion, detect_coercions, validate_coercions, CardinalityCoercion, CoercionError,
     CoercionKind, CoercionReport,
@@ -103,17 +107,17 @@ pub use layout::{
     compute_layout, compute_levels, ConnectorCell, DagLayout, EdgeLayout, EdgeOrientation,
     NodeLayout, OverflowState, OverflowStrategy, Viewport, ViewportUnit,
 };
+pub use makefile_render::MakefileStructuredRenderer;
 pub use node::{Node, NodeBody, NodeIoExample};
 pub use patterns::{
+    content_upsert::{add_content_upsert_chain, ContentUpsertChain},
+    transport_triplet::{
+        add_skippable_transport_triplet, add_transport_execute_parse_named_with_passthrough,
+        add_transport_triplet, add_transport_triplet_named_with_passthrough, TransportTriplet,
+    },
     AtomicBuilder, BackoffStrategy, FailureClassifier, PatternOp, PollBuilder, RepeatPolicy,
     ResourceInput, RetryBuilder, TransactionBuilder, UpsertBuilder, WhileBuilder,
-    content_upsert::{ContentUpsertChain, add_content_upsert_chain},
-    transport_triplet::{
-        TransportTriplet, add_skippable_transport_triplet, add_transport_execute_parse_named_with_passthrough,
-        add_transport_triplet, add_transport_triplet_named_with_passthrough,
-    },
 };
-pub use makefile_render::MakefileStructuredRenderer;
 pub use plain_render::PlainStructuredRenderer;
 pub use render_ir::{
     AnsiText, Block, Category, CodeRenderer, CursorAction, DataNode, DataValue, Document,
@@ -121,19 +125,15 @@ pub use render_ir::{
     GraphicsMedium, HtmlText, Line, MarkupNode, MarkupRenderer, OutputMedium, PlainText,
     RenderSurface, Span, SpanStyle, StructuredBlock, StructuredRenderer, Target, TextMedium,
 };
-pub use code_ir::{
-    Assert, EnumDef, Expr, FnDef, HelperFn, ImplBlock, Import, Item, MatchArm, SourceFile, Stmt,
-    StructDef, TestFile, TestFn, TestSection,
-};
 pub use resource::{
-    detect_resource_conflicts, derive_resource_accesses, AccessMode, Resource, ResourceAccess,
+    derive_resource_accesses, detect_resource_conflicts, AccessMode, Resource, ResourceAccess,
     ResourceAccessError, ResourceConflict, ResourceId, ResourceKind, Timestamp,
 };
 pub use signature::{infer_signature, SignatureError, SignaturePort, WorkflowSignature};
 pub use symbols::{SemanticColor, Symbol, SymbolId, SymbolOp, SymbolSet, Tier, STANDARD};
 pub use transport::{
-    AuthScheme, Credential, CredentialError, CredentialIntent, CredentialProvider, ScopeContract,
-    ScopeContractError, Secret, SecretSource, TransportRequest, TransportResponse,
+    AuthScheme, Credential, CredentialError, CredentialIntent, ScopeContract, ScopeContractError,
+    Secret, SecretSource, TransportRequest, TransportResponse,
 };
 pub use type_op::{BaseType, Coercion, Predicate, PredicateValue, TypeOp, WrapperKind};
 pub use type_registry::{TypeNotFoundError, TypeRegistry};

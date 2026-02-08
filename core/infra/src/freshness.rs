@@ -31,9 +31,15 @@ pub enum StaleReason {
 impl fmt::Display for StaleReason {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            StaleReason::FileNewer(path) => write!(f, "file newer than manifest: {}", path.display()),
+            StaleReason::FileNewer(path) => {
+                write!(f, "file newer than manifest: {}", path.display())
+            }
             StaleReason::FileCountChanged { expected, actual } => {
-                write!(f, "file count changed: expected {}, found {}", expected, actual)
+                write!(
+                    f,
+                    "file count changed: expected {}, found {}",
+                    expected, actual
+                )
             }
         }
     }
@@ -51,10 +57,7 @@ pub struct FileMtime {
 /// Returns `Fresh` if all input files are older than `entry.created_at` and the
 /// total file count matches `entry.input_file_count`. Otherwise returns
 /// `MaybeStale` with a reason — the caller should fall through to full hashing.
-pub fn check_freshness_mtime(
-    entry: &ManifestEntry,
-    files: &[FileMtime],
-) -> MtimeResult {
+pub fn check_freshness_mtime(entry: &ManifestEntry, files: &[FileMtime]) -> MtimeResult {
     let created_at = millis_to_system_time(entry.created_at);
 
     // Check file count
@@ -97,8 +100,7 @@ mod tests {
 
     #[test]
     fn test_fresh_with_old_files() {
-        let entry = ManifestEntry::new(ContentHash::from_bytes(b"test"), 2)
-            .with_timestamp(2_000);
+        let entry = ManifestEntry::new(ContentHash::from_bytes(b"test"), 2).with_timestamp(2_000);
         let files = vec![file("a.rs", 1_000), file("b.rs", 1_500)];
 
         let result = check_freshness_mtime(&entry, &files);
@@ -107,24 +109,28 @@ mod tests {
 
     #[test]
     fn test_stale_with_newer_file() {
-        let entry = ManifestEntry::new(ContentHash::from_bytes(b"test"), 1)
-            .with_timestamp(1_000);
+        let entry = ManifestEntry::new(ContentHash::from_bytes(b"test"), 1).with_timestamp(1_000);
         let files = vec![file("new.rs", 5_000)];
 
         let result = check_freshness_mtime(&entry, &files);
-        assert!(matches!(result, MtimeResult::MaybeStale(StaleReason::FileNewer(_))));
+        assert!(matches!(
+            result,
+            MtimeResult::MaybeStale(StaleReason::FileNewer(_))
+        ));
     }
 
     #[test]
     fn test_stale_file_count_changed() {
-        let entry = ManifestEntry::new(ContentHash::from_bytes(b"test"), 3)
-            .with_timestamp(2_000);
+        let entry = ManifestEntry::new(ContentHash::from_bytes(b"test"), 3).with_timestamp(2_000);
         let files = vec![file("a.rs", 1_000), file("b.rs", 1_000)];
 
         let result = check_freshness_mtime(&entry, &files);
         assert!(matches!(
             result,
-            MtimeResult::MaybeStale(StaleReason::FileCountChanged { expected: 3, actual: 2 })
+            MtimeResult::MaybeStale(StaleReason::FileCountChanged {
+                expected: 3,
+                actual: 2
+            })
         ));
     }
 
@@ -133,7 +139,10 @@ mod tests {
         let r = StaleReason::FileNewer(PathBuf::from("foo.rs"));
         assert!(r.to_string().contains("foo.rs"));
 
-        let r = StaleReason::FileCountChanged { expected: 5, actual: 3 };
+        let r = StaleReason::FileCountChanged {
+            expected: 5,
+            actual: 3,
+        };
         assert!(r.to_string().contains("expected 5"));
         assert!(r.to_string().contains("found 3"));
     }

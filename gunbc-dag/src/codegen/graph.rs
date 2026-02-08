@@ -13,11 +13,11 @@
 
 use crate::codegen::ops::CodegenOp;
 use gunbc_exec::{ExecError, Executable};
-use gunbc_ir::{
-    add_transport_triplet,
-    build::*, BuilderError, Cardinality, Dag, DagBuilder, Node, Value, WorkflowSignature,
-};
 use gunbc_ir::resource::ExecMode;
+use gunbc_ir::{
+    add_transport_triplet, build::*, BuilderError, Cardinality, Dag, DagBuilder, Node, Value,
+    WorkflowSignature,
+};
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::{filename, FsEnv};
 use std::collections::HashMap;
@@ -57,7 +57,7 @@ pub fn codegen_signature() -> WorkflowSignature {
 /// Build the codegen prep graph.
 #[gunbc_testgen_registry_macros::resource_test_target(
     name = "codegen",
-    builder = "build_codegen_graph().unwrap()",
+    builder = "build_codegen_graph().unwrap()"
 )]
 pub fn build_codegen_graph() -> Result<Dag<CodegenGraphOp>, BuilderError> {
     build_codegen_graph_with_mode(ExecMode::Ensure)
@@ -219,9 +219,15 @@ pub fn build_codegen_graph_with_mode(mode: ExecMode) -> Result<Dag<CodegenGraphO
     )?;
 
     // Resource wiring
-    builder.add_edge(fs_env.out("fs:write"), codegen_exists.execute.in_port("res:fs"))?;
+    builder.add_edge(
+        fs_env.out("fs:write"),
+        codegen_exists.execute.in_port("res:fs"),
+    )?;
     builder.add_edge(fs_env.out("fs:write"), execute_codegen.in_port("res:fs"))?;
-    builder.add_edge(fs_env.out("fs:write"), execute_stamp_write.in_port("res:fs"))?;
+    builder.add_edge(
+        fs_env.out("fs:write"),
+        execute_stamp_write.in_port("res:fs"),
+    )?;
 
     Ok(builder.build())
 }
@@ -234,7 +240,11 @@ mod tests {
     #[test]
     fn test_graph_has_transport_nodes() {
         let dag = build_codegen_graph().expect("graph should build");
-        for node_id in ["execute_codegen_exists", "execute_codegen", "execute_stamp_write"] {
+        for node_id in [
+            "execute_codegen_exists",
+            "execute_codegen",
+            "execute_stamp_write",
+        ] {
             let node = dag
                 .get_node(&node_id.into())
                 .unwrap_or_else(|| panic!("missing transport node: {}", node_id));

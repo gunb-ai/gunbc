@@ -8,8 +8,8 @@
 //! - The freshness key at time of acquisition (proof it was fresh)
 //! - A capability marker preventing forgery
 
-use super::ContentHash;
 use super::super::{ResourceId, Value};
+use super::ContentHash;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::marker::PhantomData;
@@ -118,7 +118,10 @@ impl<R> From<ResourceHandle<R>> for Value {
             "resource_id".to_string(),
             Value::Str(handle.resource_id.0.clone()),
         );
-        map.insert("key".to_string(), Value::Str(handle.key.as_str().to_string()));
+        map.insert(
+            "key".to_string(),
+            Value::Str(handle.key.as_str().to_string()),
+        );
         map.insert(
             "cap".to_string(),
             Value::Secret(super::super::SecretString::new(&*PROCESS_SECRET)),
@@ -331,24 +334,17 @@ mod tests {
         let result: Result<ResourceHandle<TestResource>, _> = ResourceHandle::try_from(&value);
         assert!(result.is_err(), "forged handle should be rejected");
         assert!(
-            result
-                .unwrap_err()
-                .message
-                .contains("capability marker"),
+            result.unwrap_err().message.contains("capability marker"),
             "error should mention capability marker"
         );
     }
 
     #[test]
     fn test_handle_equality() {
-        let h1: ResourceHandle<TestResource> = ResourceHandle::acquire(
-            ResourceId::new("test:eq"),
-            ContentHash::from_bytes(b"same"),
-        );
-        let h2: ResourceHandle<TestResource> = ResourceHandle::acquire(
-            ResourceId::new("test:eq"),
-            ContentHash::from_bytes(b"same"),
-        );
+        let h1: ResourceHandle<TestResource> =
+            ResourceHandle::acquire(ResourceId::new("test:eq"), ContentHash::from_bytes(b"same"));
+        let h2: ResourceHandle<TestResource> =
+            ResourceHandle::acquire(ResourceId::new("test:eq"), ContentHash::from_bytes(b"same"));
         let h3: ResourceHandle<TestResource> = ResourceHandle::acquire(
             ResourceId::new("test:eq"),
             ContentHash::from_bytes(b"different"),

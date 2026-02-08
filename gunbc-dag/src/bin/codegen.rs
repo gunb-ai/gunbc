@@ -89,11 +89,11 @@ fn main() {
     // Set up execution mode
     let mode = if dry_run && resource_mode != ExecMode::Verify {
         let mut mocks = BoundaryMocks::new();
-        let ok_shell = || {
-            Value::Response(TransportResponse::Shell(ShellResponse::ok("")))
-        };
+        let ok_shell = || Value::Response(TransportResponse::Shell(ShellResponse::ok("")));
         let missing_shell = || {
-            Value::Response(TransportResponse::Shell(ShellResponse::failed(1, "missing")))
+            Value::Response(TransportResponse::Shell(ShellResponse::failed(
+                1, "missing",
+            )))
         };
 
         // Simulate missing codegen outputs so the codegen step runs.

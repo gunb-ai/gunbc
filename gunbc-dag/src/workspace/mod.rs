@@ -2,9 +2,9 @@
 //!
 //! Unified WorkspaceOp and fractal DAG composition.
 
+pub(crate) mod convert;
 pub mod ops;
 pub mod subdags;
-pub(crate) mod convert;
 
 pub use ops::WorkspaceOp;
 pub use subdags::bootstrap::build_bootstrap_subdag;

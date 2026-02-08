@@ -154,8 +154,8 @@ impl Executable for GitOps {
                 let repo_path = require_str(&inputs, "repo_path")?;
 
                 // Allow runtime override of base_ref
-                let effective_ref = optional_str_strict(&inputs, "base_ref")?
-                    .unwrap_or(base_ref.as_str());
+                let effective_ref =
+                    optional_str_strict(&inputs, "base_ref")?.unwrap_or(base_ref.as_str());
 
                 let mut req = GitRequest::diff(effective_ref);
                 if !extensions.is_empty() {
@@ -172,7 +172,9 @@ impl Executable for GitOps {
                     .ok()
             }
             GitOps::ParseDiff => {
-                if let Some(result) = propagate_skipped(&inputs, "response", &["diff_files", "stats"]) {
+                if let Some(result) =
+                    propagate_skipped(&inputs, "response", &["diff_files", "stats"])
+                {
                     return result;
                 }
                 let response = require_response(&inputs, "response")?;
@@ -203,8 +205,8 @@ impl Executable for GitOps {
             } => {
                 let repo_path = require_str(&inputs, "repo_path")?;
 
-                let effective_ref = optional_str_strict(&inputs, "base_ref")?
-                    .unwrap_or(base_ref.as_str());
+                let effective_ref =
+                    optional_str_strict(&inputs, "base_ref")?.unwrap_or(base_ref.as_str());
 
                 let mut req = GitRequest::diff_name_only(effective_ref);
                 if !extensions.is_empty() {
@@ -577,10 +579,7 @@ diff --git a/src/main.rs b/src/main.rs
     #[test]
     fn test_parse_remote_branches_at_head_empty() {
         let mut inputs = HashMap::new();
-        inputs.insert(
-            "response".to_string(),
-            Value::Response(shell_response("")),
-        );
+        inputs.insert("response".to_string(), Value::Response(shell_response("")));
 
         let result = GitOps::ParseRemoteBranchesAtHead.execute(inputs).unwrap();
         // No remote branch found — output should be absent
@@ -661,10 +660,7 @@ diff --git a/src/main.rs b/src/main.rs
     #[test]
     fn test_parse_rev_list_before_empty() {
         let mut inputs = HashMap::new();
-        inputs.insert(
-            "response".to_string(),
-            Value::Response(shell_response("")),
-        );
+        inputs.insert("response".to_string(), Value::Response(shell_response("")));
 
         let result = GitOps::ParseRevListBefore.execute(inputs).unwrap();
         // No commit found — output should be absent

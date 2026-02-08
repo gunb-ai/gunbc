@@ -25,7 +25,9 @@ use crate::WorkspaceBinary;
 use gunbc_ir::transport::{FileOp, FileResponse, TransportResponse};
 use gunbc_ir::{CargoInvocation, Value};
 use gunbc_primitives::filename;
-use gunbc_test::{extract_mock_requirements, InputConstraint, MockSpec, NodeExample, OutputMatcher};
+use gunbc_test::{
+    extract_mock_requirements, InputConstraint, MockSpec, NodeExample, OutputMatcher,
+};
 
 fn mock_fs_handle() -> Value {
     let fs = filename::FilesystemHandle::cross_platform(filename::Scope::Write);
@@ -41,7 +43,7 @@ fn mock_fs_handle() -> Value {
 /// load_registry.tool_names) are computed during DryRun execution.
 #[gunbc_testgen_registry_macros::resource_test_target(
     name = "makegen",
-    builder = "crate::build_makegen_graph().unwrap()",
+    builder = "crate::build_makegen_graph().unwrap()"
 )]
 #[gunbc_testgen_registry_macros::testgen_target(
     name = "makegen",
@@ -88,19 +90,39 @@ pub fn makegen_mock_spec() -> MockSpec {
             }),
         )
         .expect("execute_makegen_transport response should match type")
-        .boundary_str("execute_makegen_transport", "makegen_written_path", "Makefile")
+        .boundary_str(
+            "execute_makegen_transport",
+            "makegen_written_path",
+            "Makefile",
+        )
         .expect("execute_makegen_transport written_path should match type")
-        .boundary_str("execute_makegen_transport", "makegen_content", &mock_makefile_content())
+        .boundary_str(
+            "execute_makegen_transport",
+            "makegen_content",
+            &mock_makefile_content(),
+        )
         .expect("execute_makegen_transport content should match type")
         .boundary_bool("execute_makegen_transport", "skip", true)
         .expect("execute_write skip should match type")
-        .boundary_str("execute_makegen_transport", "skip_reason", "content is fresh — write skipped")
+        .boundary_str(
+            "execute_makegen_transport",
+            "skip_reason",
+            "content is fresh — write skipped",
+        )
         .expect("execute_write skip_reason should match type")
         // Build spec (pure terminal outputs are computed, not mocked)
         .build_unchecked()
         // Input mocks for DAG entry points (dangling inputs with no upstream edge)
-        .input_mock("prepare_read_makegen", "path", Value::Str("Makefile".into()))
-        .input_mock("prepare_write_makegen", "path", Value::Str("Makefile".into()))
+        .input_mock(
+            "prepare_read_makegen",
+            "path",
+            Value::Str("Makefile".into()),
+        )
+        .input_mock(
+            "prepare_write_makegen",
+            "path",
+            Value::Str("Makefile".into()),
+        )
         .input_mock("compare_makegen_content", "check_mode", Value::Bool(false))
         // Input expectations (via legacy API post-build)
         .expects_input("path", InputConstraint::Any)
@@ -108,7 +130,15 @@ pub fn makegen_mock_spec() -> MockSpec {
         // Resource: file write lock
         .resource_lock("fs:Makefile")
         // Expected outputs for verification
-        .expected_output("load_registry", "tool_count", Value::Int(9))
+        .expected_output(
+            "load_registry",
+            "tool_count",
+            Value::Int(
+                crate::makegen::registry::ToolRegistry::default_registry()
+                    .tools
+                    .len() as i64,
+            ),
+        )
         // Node I/O examples: verify pure node behavior
         .node_example(
             NodeExample::new("fs_env")
@@ -167,17 +197,37 @@ pub fn makegen_mock_spec_no_change() -> MockSpec {
             }),
         )
         .expect("execute_makegen_transport response should match type")
-        .boundary_str("execute_makegen_transport", "makegen_written_path", "Makefile")
+        .boundary_str(
+            "execute_makegen_transport",
+            "makegen_written_path",
+            "Makefile",
+        )
         .expect("execute_makegen_transport written_path should match type")
-        .boundary_str("execute_makegen_transport", "makegen_content", &mock_makefile_content())
+        .boundary_str(
+            "execute_makegen_transport",
+            "makegen_content",
+            &mock_makefile_content(),
+        )
         .expect("execute_makegen_transport content should match type")
         .boundary_bool("execute_makegen_transport", "skip", true)
         .expect("execute_makegen_transport skip should match type")
-        .boundary_str("execute_makegen_transport", "skip_reason", "content is fresh — write skipped")
+        .boundary_str(
+            "execute_makegen_transport",
+            "skip_reason",
+            "content is fresh — write skipped",
+        )
         .expect("execute_makegen_transport skip_reason should match type")
         .build_unchecked()
-        .input_mock("prepare_read_makegen", "path", Value::Str("Makefile".into()))
-        .input_mock("prepare_write_makegen", "path", Value::Str("Makefile".into()))
+        .input_mock(
+            "prepare_read_makegen",
+            "path",
+            Value::Str("Makefile".into()),
+        )
+        .input_mock(
+            "prepare_write_makegen",
+            "path",
+            Value::Str("Makefile".into()),
+        )
         .input_mock("compare_makegen_content", "check_mode", Value::Bool(false))
         .expects_input("path", InputConstraint::Any)
         .expects_input("check_mode", InputConstraint::Any)
@@ -227,8 +277,16 @@ pub fn makegen_mock_spec_fs_fails() -> MockSpec {
         .boundary_str("execute_makegen_transport", "skip_reason", "")
         .expect("execute_makegen_transport skip_reason should match type")
         .build_unchecked()
-        .input_mock("prepare_read_makegen", "path", Value::Str("Makefile".into()))
-        .input_mock("prepare_write_makegen", "path", Value::Str("Makefile".into()))
+        .input_mock(
+            "prepare_read_makegen",
+            "path",
+            Value::Str("Makefile".into()),
+        )
+        .input_mock(
+            "prepare_write_makegen",
+            "path",
+            Value::Str("Makefile".into()),
+        )
         .input_mock("compare_makegen_content", "check_mode", Value::Bool(false))
         .expects_input("path", InputConstraint::Any)
         .expects_input("check_mode", InputConstraint::Any)

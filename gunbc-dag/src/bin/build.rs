@@ -51,9 +51,7 @@ fn main() {
     // Set up execution mode
     let mode = if dry_run {
         let mut mocks = BoundaryMocks::new();
-        let ok_shell = || {
-            Value::Response(TransportResponse::Shell(ShellResponse::ok("")))
-        };
+        let ok_shell = || Value::Response(TransportResponse::Shell(ShellResponse::ok("")));
 
         // Build transport
         mocks.set_value("execute_build", "response", ok_shell());

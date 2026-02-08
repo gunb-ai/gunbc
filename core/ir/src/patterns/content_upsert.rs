@@ -162,14 +162,23 @@ pub fn add_content_upsert_chain<T: Clone>(
     )?;
 
     // Wire 8 internal edges
-    builder.add_edge(generate.out(content_port), compare.in_port("expected_content"))?;
+    builder.add_edge(
+        generate.out(content_port),
+        compare.in_port("expected_content"),
+    )?;
     builder.add_edge(generate.out(content_port), prepare_write.in_port("content"))?;
     builder.add_edge(prepare_read.out("request"), execute_read.in_port("request"))?;
     builder.add_edge(prepare_read.out("skip"), execute_read.in_port("skip"))?;
     builder.add_edge(execute_read.out("response"), compare.in_port("response"))?;
     builder.add_edge(compare.out("skip"), execute_write.in_port("skip"))?;
-    builder.add_edge(compare.out("skip_reason"), execute_write.in_port("skip_reason"))?;
-    builder.add_edge(prepare_write.out("request"), execute_write.in_port("request"))?;
+    builder.add_edge(
+        compare.out("skip_reason"),
+        execute_write.in_port("skip_reason"),
+    )?;
+    builder.add_edge(
+        prepare_write.out("request"),
+        execute_write.in_port("request"),
+    )?;
 
     Ok(ContentUpsertChain {
         prepare_read,

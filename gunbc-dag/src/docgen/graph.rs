@@ -3,16 +3,15 @@
 //! Generates documentation artifacts from live code and test sources.
 
 use crate::docgen::ops::{
-    AB_DOC_PATH, CLIPPY_CONFIG_PATH, CLIPPY_GENERATED_TESTS_PATH, CLIPPY_GRAPH_MOCK_PATH,
+    DocgenOp, AB_DOC_PATH, CLIPPY_CONFIG_PATH, CLIPPY_GENERATED_TESTS_PATH, CLIPPY_GRAPH_MOCK_PATH,
     CLIPPY_GRAPH_PATH, CLIPPY_LIB_PATH, CLIPPY_LINT_PATH, CLIPPY_OPS_PATH, CLIPPY_POLICY_PATH,
-    DocgenOp, GIST_CODEGEN_CLI_PATH, GIST_GENERATED_INTEGRATION_TESTS_PATH,
+    GIST_CODEGEN_CLI_PATH, GIST_GENERATED_INTEGRATION_TESTS_PATH,
     GIST_GENERATED_TESTS_SNAPSHOT_PATH, GIST_GRAPH_MOCK_PATH,
 };
 use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::{
-    add_content_upsert_chain, add_transport_triplet,
-    build::*,
-    BuilderError, Dag, DagBuilder, Node, Value,
+    add_content_upsert_chain, add_transport_triplet, build::*, BuilderError, Dag, DagBuilder, Node,
+    Value,
 };
 use gunbc_lib_blob::BlobOps;
 use gunbc_lib_transport::TransportOps;
@@ -171,7 +170,7 @@ fn add_docgen_read_triplet(
 /// - docs/ab-writing-workflows.md (handwritten template + generated sections)
 #[gunbc_testgen_registry_macros::resource_test_target(
     name = "docgen",
-    builder = "build_docgen_graph().unwrap()",
+    builder = "build_docgen_graph().unwrap()"
 )]
 pub fn build_docgen_graph() -> Result<Dag<DocgenGraphOp>, BuilderError> {
     let mut builder = DagBuilder::new();
@@ -216,11 +215,22 @@ pub fn build_docgen_graph() -> Result<Dag<DocgenGraphOp>, BuilderError> {
         let parse = read_nodes
             .get(target.input_port)
             .expect("docgen read target missing parse node");
-        builder.add_edge(parse.out("content"), render_ab_doc.in_port(target.input_port))?;
+        builder.add_edge(
+            parse.out("content"),
+            render_ab_doc.in_port(target.input_port),
+        )?;
     }
 
-    let doc_read = resource("fs:docs/ab-writing-workflows.md", "FilesystemHandle", AccessMode::Read);
-    let doc_write = resource("fs:docs/ab-writing-workflows.md", "FilesystemHandle", AccessMode::Write);
+    let doc_read = resource(
+        "fs:docs/ab-writing-workflows.md",
+        "FilesystemHandle",
+        AccessMode::Read,
+    );
+    let doc_write = resource(
+        "fs:docs/ab-writing-workflows.md",
+        "FilesystemHandle",
+        AccessMode::Write,
+    );
     let chain_ab_doc = add_content_upsert_chain(
         &mut builder,
         "ab_workflows_doc",
@@ -245,11 +255,15 @@ pub fn build_docgen_graph() -> Result<Dag<DocgenGraphOp>, BuilderError> {
 
     builder.add_edge(
         fs_env.out("fs:write"),
-        chain_ab_doc.execute_read.in_port("res:fs:docs/ab-writing-workflows.md"),
+        chain_ab_doc
+            .execute_read
+            .in_port("res:fs:docs/ab-writing-workflows.md"),
     )?;
     builder.add_edge(
         fs_env.out("fs:write"),
-        chain_ab_doc.execute_write.in_port("res:fs:docs/ab-writing-workflows.md"),
+        chain_ab_doc
+            .execute_write
+            .in_port("res:fs:docs/ab-writing-workflows.md"),
     )?;
 
     Ok(builder.build())

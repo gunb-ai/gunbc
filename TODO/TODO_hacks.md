@@ -1,4 +1,4 @@
-# Hacks & Fallbacks (2026-02-07 scan)
+# Hacks & Fallbacks (2026-02-08 scan)
 
 **Status**: Active
 **Date**: 2026-02-07
@@ -115,3 +115,26 @@ slowdowns without any diagnostic signal.
 **Suggested fix**: Add a warning/diagnostic or a distinct freshness state that
 captures the reason for the fallback. Consider making fallback behavior
 configurable.
+
+---
+
+## 7. ~~Dead code: `CredentialOp` + env-var providers (~500 lines)~~ DONE
+
+Removed `lib/transport/src/credential.rs` (487 lines), `CredentialProvider` trait,
+and all stale references. `Credential`, `AuthScheme`, `Secret`, `SecretSource`,
+`CredentialError` remain (actively used).
+
+---
+
+## 8. ~~Duplicated `map_dag_ops` / `map_node_ops` (5 copies)~~ DONE
+
+Replaced all 5 local copies with `Dag::map_ops()` (already in `core/ir`).
+Consolidated 4 copies of `build_cloud_credential_graph_for_runtime` into
+`lib/cloud-ops/src/graph.rs` (public, re-exported from `lib.rs`).
+
+---
+
+## 9. ~~`Clippy::upsert_and_run` has zero callers~~ DONE
+
+Removed `upsert_and_run` and unused imports (`CliToolError`, `Value`,
+`execute_cli_tool_op`, `HashMap`) from `lib/tools/clippy/src/ops.rs`.

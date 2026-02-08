@@ -1,6 +1,6 @@
 use gunbc_exec::{execute_with_mode_and_inputs, BoundaryMocks, ExecutionMode};
-use gunbc_ir::Value;
 use gunbc_ir::transport::cloud::CloudProviderKind;
+use gunbc_ir::Value;
 use gunbc_lib_cloud_ops::detect_cloud_env_requirements;
 use gunbc_lib_llm_ops::graph::build_chat_completion_graph;
 use gunbc_test::{guard_test_with_env, FermiCost, TestClass};
@@ -67,11 +67,7 @@ fn run_live_chat(name: &str, provider: &str, model: &str) {
 
 #[test]
 fn test_openai_live_chat_completion() {
-    run_live_chat(
-        "test_openai_live_chat_completion",
-        "openai",
-        "gpt-4o",
-    );
+    run_live_chat("test_openai_live_chat_completion", "openai", "gpt-4o");
 }
 
 #[test]

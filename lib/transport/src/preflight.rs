@@ -8,8 +8,8 @@
 use crate::ops::execute_request;
 use crate::TransportIo;
 use gunbc_ir::resource::{
-    load_manifest_default, save_manifest_default, ContentHash, ExecMode, ManifestEntry,
-    ManagedResource, ResourceDef, ResourceError, ResourceIo, ResourceManifest, ResourceState,
+    load_manifest_default, save_manifest_default, ContentHash, ExecMode, ManagedResource,
+    ManifestEntry, ResourceDef, ResourceError, ResourceIo, ResourceManifest, ResourceState,
 };
 use gunbc_ir::transport::{ShellRequest, TransportRequest, TransportResponse};
 use gunbc_ir::ResourceId;
@@ -66,9 +66,7 @@ fn should_skip_preflight() -> bool {
     let Some(name) = current_binary_name() else {
         return false;
     };
-    PREFLIGHT_SKIP_BINARIES
-        .iter()
-        .any(|skip| *skip == name)
+    PREFLIGHT_SKIP_BINARIES.iter().any(|skip| *skip == name)
 }
 
 fn current_binary_name() -> Option<String> {
@@ -79,9 +77,11 @@ fn current_binary_name() -> Option<String> {
         return from_exe;
     }
 
-    std::env::args()
-        .next()
-        .and_then(|arg0| Path::new(&arg0).file_stem().map(|s| s.to_string_lossy().to_string()))
+    std::env::args().next().and_then(|arg0| {
+        Path::new(&arg0)
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+    })
 }
 
 #[derive(Clone)]
@@ -119,8 +119,10 @@ impl ManagedResource for LintResource {
         };
 
         if let Some(prev_files) = &entry.input_files {
-            let curr_files: Vec<String> =
-                files.iter().map(|p| p.to_string_lossy().to_string()).collect();
+            let curr_files: Vec<String> = files
+                .iter()
+                .map(|p| p.to_string_lossy().to_string())
+                .collect();
             if &curr_files != prev_files {
                 return ResourceState::stale(
                     "tracked file set changed",
@@ -149,6 +151,15 @@ impl ManagedResource for LintResource {
                     }
                 }
                 Err(e) => {
+                    if let ResourceError::Io(io_err) = &e {
+                        if io_err.kind() == std::io::ErrorKind::NotFound {
+                            return ResourceState::stale(
+                                format!("tracked file missing: {}", path.display()),
+                                entry.key.clone(),
+                                ContentHash::empty(),
+                            );
+                        }
+                    }
                     return ResourceState::error(format!(
                         "failed to stat {}: {}",
                         path.display(),
@@ -257,10 +268,8 @@ fn compute_lint_key(io: &dyn ResourceIo, files: &[PathBuf]) -> Result<ContentHas
         hash_builder = hash_builder.update(b"rustc:missing\0");
     }
 
-    if let Ok(stdout) = io.command_output(
-        "cargo",
-        &["clippy".to_string(), "--version".to_string()],
-    ) {
+    if let Ok(stdout) = io.command_output("cargo", &["clippy".to_string(), "--version".to_string()])
+    {
         hash_builder = hash_builder.update_command_output_bytes(
             "cargo",
             &["clippy".to_string(), "--version".to_string()],
@@ -276,37 +285,33 @@ fn compute_lint_key(io: &dyn ResourceIo, files: &[PathBuf]) -> Result<ContentHas
 fn run_lint_upsert(resource_id: &ResourceId) -> Result<(), ResourceError> {
     let env = [(PREFLIGHT_ENV_DISABLE, "1")];
 
-    run_shell(resource_id, "cargo", &[
-        "run",
-        "-p",
-        "gunbc-dag",
-        "--bin",
-        "gunbc-codegen-dag",
-    ], &env)?;
+    run_shell(
+        resource_id,
+        "cargo",
+        &["run", "-p", "gunbc-dag", "--bin", "gunbc-codegen-dag"],
+        &env,
+    )?;
 
-    run_shell(resource_id, "cargo", &[
-        "run",
-        "-p",
-        "gunbc-dag",
-        "--bin",
-        "gunbc-testgen",
-    ], &env)?;
+    run_shell(
+        resource_id,
+        "cargo",
+        &["run", "-p", "gunbc-dag", "--bin", "gunbc-testgen"],
+        &env,
+    )?;
 
-    run_shell(resource_id, "cargo", &[
-        "run",
-        "-p",
-        "gunbc-dag",
-        "--bin",
-        "gunbc-pragma",
-    ], &env)?;
+    run_shell(
+        resource_id,
+        "cargo",
+        &["run", "-p", "gunbc-dag", "--bin", "gunbc-pragma"],
+        &env,
+    )?;
 
-    let clippy = run_shell_response(resource_id, "cargo", &[
-        "clippy",
-        "--all-targets",
-        "--",
-        "-D",
-        "warnings",
-    ], &env)?;
+    let clippy = run_shell_response(
+        resource_id,
+        "cargo",
+        &["clippy", "--all-targets", "--", "-D", "warnings"],
+        &env,
+    )?;
 
     if !clippy.success() {
         run_shell(
@@ -325,13 +330,12 @@ fn run_lint_upsert(resource_id: &ResourceId) -> Result<(), ResourceError> {
             &env,
         )?;
 
-        let verify = run_shell_response(resource_id, "cargo", &[
-            "clippy",
-            "--all-targets",
-            "--",
-            "-D",
-            "warnings",
-        ], &env)?;
+        let verify = run_shell_response(
+            resource_id,
+            "cargo",
+            &["clippy", "--all-targets", "--", "-D", "warnings"],
+            &env,
+        )?;
 
         if !verify.success() {
             return Err(ResourceError::CreateFailed(

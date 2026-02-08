@@ -127,7 +127,6 @@ impl RestRequest {
         self.timeout_ms = Some(ms);
         self
     }
-
 }
 
 impl RestResponse {
@@ -186,7 +185,10 @@ mod tests {
         assert_eq!(req.method, HttpMethod::Post);
         assert_eq!(req.url, "https://api.github.com/gists");
         assert!(req.body.is_some());
-        assert!(matches!(req.auth.as_ref().map(|c| c.scheme()), Some(AuthScheme::Bearer)));
+        assert!(matches!(
+            req.auth.as_ref().map(|c| c.scheme()),
+            Some(AuthScheme::Bearer)
+        ));
     }
 
     #[test]
@@ -201,6 +203,4 @@ mod tests {
             Some("https://gist.github.com/abc123")
         );
     }
-
-    // Auth resolution now happens via CredentialOp at the DAG boundary.
 }

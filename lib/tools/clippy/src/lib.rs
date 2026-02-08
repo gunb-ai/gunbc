@@ -55,12 +55,8 @@ pub use config::{
     generate_clippy_toml, ClippyConfig, ClippyConfigRenderer, CrateAllowance, DisallowedMethod,
 };
 pub use graph::{
-    build_clippy_dag,
-    build_clippy_graph,
-    build_clippy_graph_lint_all,
-    build_clippy_lint_all,
-    build_clippy_upsert,
-    ClippyGraphOp,
+    build_clippy_dag, build_clippy_graph, build_clippy_graph_lint_all, build_clippy_lint_all,
+    build_clippy_upsert, ClippyGraphOp,
 };
 pub use lint::{LintId, LintSource};
 pub use ops::{CliToolOp, Clippy};

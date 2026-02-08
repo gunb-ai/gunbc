@@ -485,7 +485,12 @@ mod window_helper_tests {
     #[test]
     fn apply_window_inputs_flattens_list_outputs() {
         let mut dag: Dag<()> = Dag::new();
-        dag.add_node(Node::opaque("a", vec![], vec![list("items", "IntList")], ()));
+        dag.add_node(Node::opaque(
+            "a",
+            vec![],
+            vec![list("items", "IntList")],
+            (),
+        ));
         dag.add_node(Node::opaque(
             "b",
             vec![list("items", "IntList")],

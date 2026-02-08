@@ -33,7 +33,10 @@ impl fmt::Debug for TestgenOp {
 }
 
 impl Executable for TestgenOp {
-    fn execute(&self, _inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
+    fn execute(
+        &self,
+        _inputs: HashMap<String, Value>,
+    ) -> Result<HashMap<String, Value>, ExecError> {
         match self {
             TestgenOp::Generate {
                 target_def,

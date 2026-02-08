@@ -39,7 +39,7 @@ fn mock_fs_handle() -> Value {
 /// are extracted from its structure, and mocks are type-checked at construction.
 #[gunbc_testgen_registry_macros::resource_test_target(
     name = "bootstrap",
-    builder = "crate::build_bootstrap_graph().unwrap()",
+    builder = "crate::build_bootstrap_graph().unwrap()"
 )]
 #[gunbc_testgen_registry_macros::testgen_target(
     name = "bootstrap",
@@ -93,9 +93,17 @@ pub fn bootstrap_mock_spec() -> MockSpec {
             }),
         )
         .expect("execute_makefile_transport response should match type")
-        .boundary_str("execute_makefile_transport", "makefile_written_path", "Makefile")
+        .boundary_str(
+            "execute_makefile_transport",
+            "makefile_written_path",
+            "Makefile",
+        )
         .expect("execute_makefile_transport path should match type")
-        .boundary_str("execute_makefile_transport", "makefile_content", "<mock-makefile>")
+        .boundary_str(
+            "execute_makefile_transport",
+            "makefile_content",
+            "<mock-makefile>",
+        )
         .expect("execute_makefile_transport content should match type")
         .boundary_bool("execute_makefile_transport", "skip", false)
         .expect("execute_makefile_transport skip should match type")
@@ -129,9 +137,17 @@ pub fn bootstrap_mock_spec() -> MockSpec {
             }),
         )
         .expect("execute_gitignore_transport response should match type")
-        .boundary_str("execute_gitignore_transport", "gitignore_written_path", ".gitignore")
+        .boundary_str(
+            "execute_gitignore_transport",
+            "gitignore_written_path",
+            ".gitignore",
+        )
         .expect("execute_gitignore_transport path should match type")
-        .boundary_str("execute_gitignore_transport", "gitignore_content", "<mock-gitignore>")
+        .boundary_str(
+            "execute_gitignore_transport",
+            "gitignore_content",
+            "<mock-gitignore>",
+        )
         .expect("execute_gitignore_transport content should match type")
         .boundary_bool("execute_gitignore_transport", "skip", false)
         .expect("execute_gitignore_transport skip should match type")
@@ -140,12 +156,32 @@ pub fn bootstrap_mock_spec() -> MockSpec {
         // Build spec (pure terminal outputs are computed, not mocked)
         .build_unchecked()
         // Input mocks for DAG entry points (dangling inputs with no upstream edge)
-        .input_mock("prepare_read_makefile", "path", Value::Str("Makefile".into()))
-        .input_mock("prepare_read_gitignore", "path", Value::Str(".gitignore".into()))
-        .input_mock("prepare_write_makefile", "path", Value::Str("Makefile".into()))
-        .input_mock("prepare_write_gitignore", "path", Value::Str(".gitignore".into()))
+        .input_mock(
+            "prepare_read_makefile",
+            "path",
+            Value::Str("Makefile".into()),
+        )
+        .input_mock(
+            "prepare_read_gitignore",
+            "path",
+            Value::Str(".gitignore".into()),
+        )
+        .input_mock(
+            "prepare_write_makefile",
+            "path",
+            Value::Str("Makefile".into()),
+        )
+        .input_mock(
+            "prepare_write_gitignore",
+            "path",
+            Value::Str(".gitignore".into()),
+        )
         .input_mock("compare_makefile_content", "check_mode", Value::Bool(false))
-        .input_mock("compare_gitignore_content", "check_mode", Value::Bool(false))
+        .input_mock(
+            "compare_gitignore_content",
+            "check_mode",
+            Value::Bool(false),
+        )
         // Resources: file locks for both outputs
         .resource_lock("fs:Makefile")
         .resource_lock("fs:.gitignore")
@@ -247,7 +283,11 @@ pub fn bootstrap_mock_spec_makefile_only() -> MockSpec {
             }),
         )
         .expect("execute_makefile_transport response should match type")
-        .boundary_str("execute_makefile_transport", "makefile_written_path", "Makefile")
+        .boundary_str(
+            "execute_makefile_transport",
+            "makefile_written_path",
+            "Makefile",
+        )
         .expect("path should match type")
         .boundary_str("execute_makefile_transport", "makefile_content", "<mock>")
         .expect("content should match type")
@@ -290,12 +330,32 @@ pub fn bootstrap_mock_spec_makefile_only() -> MockSpec {
         .boundary_str("execute_gitignore_transport", "skip_reason", "")
         .expect("skip_reason should match type")
         .build_unchecked()
-        .input_mock("prepare_read_makefile", "path", Value::Str("Makefile".into()))
-        .input_mock("prepare_read_gitignore", "path", Value::Str(".gitignore".into()))
-        .input_mock("prepare_write_makefile", "path", Value::Str("Makefile".into()))
-        .input_mock("prepare_write_gitignore", "path", Value::Str(".gitignore".into()))
+        .input_mock(
+            "prepare_read_makefile",
+            "path",
+            Value::Str("Makefile".into()),
+        )
+        .input_mock(
+            "prepare_read_gitignore",
+            "path",
+            Value::Str(".gitignore".into()),
+        )
+        .input_mock(
+            "prepare_write_makefile",
+            "path",
+            Value::Str("Makefile".into()),
+        )
+        .input_mock(
+            "prepare_write_gitignore",
+            "path",
+            Value::Str(".gitignore".into()),
+        )
         .input_mock("compare_makefile_content", "check_mode", Value::Bool(false))
-        .input_mock("compare_gitignore_content", "check_mode", Value::Bool(false))
+        .input_mock(
+            "compare_gitignore_content",
+            "check_mode",
+            Value::Bool(false),
+        )
         .resource_lock("fs:Makefile")
 }
 
@@ -373,7 +433,11 @@ pub fn bootstrap_mock_spec_makefile_fails() -> MockSpec {
             }),
         )
         .expect("execute_gitignore_transport response should match type")
-        .boundary_str("execute_gitignore_transport", "gitignore_written_path", ".gitignore")
+        .boundary_str(
+            "execute_gitignore_transport",
+            "gitignore_written_path",
+            ".gitignore",
+        )
         .expect("path should match type")
         .boundary_str("execute_gitignore_transport", "gitignore_content", "<mock>")
         .expect("content should match type")
@@ -382,12 +446,32 @@ pub fn bootstrap_mock_spec_makefile_fails() -> MockSpec {
         .boundary_str("execute_gitignore_transport", "skip_reason", "")
         .expect("skip_reason should match type")
         .build_unchecked()
-        .input_mock("prepare_read_makefile", "path", Value::Str("Makefile".into()))
-        .input_mock("prepare_read_gitignore", "path", Value::Str(".gitignore".into()))
-        .input_mock("prepare_write_makefile", "path", Value::Str("Makefile".into()))
-        .input_mock("prepare_write_gitignore", "path", Value::Str(".gitignore".into()))
+        .input_mock(
+            "prepare_read_makefile",
+            "path",
+            Value::Str("Makefile".into()),
+        )
+        .input_mock(
+            "prepare_read_gitignore",
+            "path",
+            Value::Str(".gitignore".into()),
+        )
+        .input_mock(
+            "prepare_write_makefile",
+            "path",
+            Value::Str("Makefile".into()),
+        )
+        .input_mock(
+            "prepare_write_gitignore",
+            "path",
+            Value::Str(".gitignore".into()),
+        )
         .input_mock("compare_makefile_content", "check_mode", Value::Bool(false))
-        .input_mock("compare_gitignore_content", "check_mode", Value::Bool(false))
+        .input_mock(
+            "compare_gitignore_content",
+            "check_mode",
+            Value::Bool(false),
+        )
         .resource_lock_fails("fs:Makefile", "Permission denied: Makefile is read-only")
         .resource_lock("fs:.gitignore")
 }
@@ -475,12 +559,32 @@ pub fn bootstrap_mock_spec_all_fail() -> MockSpec {
         .boundary_str("execute_gitignore_transport", "skip_reason", "")
         .expect("skip_reason should match type")
         .build_unchecked()
-        .input_mock("prepare_read_makefile", "path", Value::Str("Makefile".into()))
-        .input_mock("prepare_read_gitignore", "path", Value::Str(".gitignore".into()))
-        .input_mock("prepare_write_makefile", "path", Value::Str("Makefile".into()))
-        .input_mock("prepare_write_gitignore", "path", Value::Str(".gitignore".into()))
+        .input_mock(
+            "prepare_read_makefile",
+            "path",
+            Value::Str("Makefile".into()),
+        )
+        .input_mock(
+            "prepare_read_gitignore",
+            "path",
+            Value::Str(".gitignore".into()),
+        )
+        .input_mock(
+            "prepare_write_makefile",
+            "path",
+            Value::Str("Makefile".into()),
+        )
+        .input_mock(
+            "prepare_write_gitignore",
+            "path",
+            Value::Str(".gitignore".into()),
+        )
         .input_mock("compare_makefile_content", "check_mode", Value::Bool(false))
-        .input_mock("compare_gitignore_content", "check_mode", Value::Bool(false))
+        .input_mock(
+            "compare_gitignore_content",
+            "check_mode",
+            Value::Bool(false),
+        )
         .resource_lock_fails("fs:Makefile", "Permission denied")
         .resource_lock_fails("fs:.gitignore", "Permission denied")
 }

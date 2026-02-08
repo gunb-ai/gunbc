@@ -70,8 +70,16 @@ pub fn build_testgen_graph_for_test() -> Result<Dag<TestgenGraphOp>, BuilderErro
     }
 
     let targets = [
-        ("mock-alpha", "mock_alpha/generated_tests.rs", "mock_alpha_generated_tests"),
-        ("mock-beta", "mock_beta/generated_tests.rs", "mock_beta_generated_tests"),
+        (
+            "mock-alpha",
+            "mock_alpha/generated_tests.rs",
+            "mock_alpha_generated_tests",
+        ),
+        (
+            "mock-beta",
+            "mock_beta/generated_tests.rs",
+            "mock_beta_generated_tests",
+        ),
     ];
 
     let mut builder = DagBuilder::new();
@@ -151,9 +159,13 @@ mod tests {
         let dag = build_testgen_graph_for_test().expect("graph should build");
 
         assert!(dag.get_node(&"execute_read_mock-alpha".into()).is_some());
-        assert!(dag.get_node(&"execute_mock-alpha_transport".into()).is_some());
+        assert!(dag
+            .get_node(&"execute_mock-alpha_transport".into())
+            .is_some());
         assert!(dag.get_node(&"execute_read_mock-beta".into()).is_some());
-        assert!(dag.get_node(&"execute_mock-beta_transport".into()).is_some());
+        assert!(dag
+            .get_node(&"execute_mock-beta_transport".into())
+            .is_some());
     }
 
     #[test]
@@ -161,8 +173,10 @@ mod tests {
         let dag = build_testgen_graph_for_test().expect("graph should build");
         let entrypoints = detect_entrypoints(&dag);
 
-        assert!(entrypoints.is_entrypoint_port(&"compare_mock-alpha_content".into(), &"check_mode".into()));
-        assert!(entrypoints.is_entrypoint_port(&"compare_mock-beta_content".into(), &"check_mode".into()));
+        assert!(entrypoints
+            .is_entrypoint_port(&"compare_mock-alpha_content".into(), &"check_mode".into()));
+        assert!(entrypoints
+            .is_entrypoint_port(&"compare_mock-beta_content".into(), &"check_mode".into()));
         assert!(entrypoints.is_entrypoint_port(&"prepare_read_mock-alpha".into(), &"path".into()));
         assert!(entrypoints.is_entrypoint_port(&"prepare_read_mock-beta".into(), &"path".into()));
     }

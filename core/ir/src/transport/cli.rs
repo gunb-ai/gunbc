@@ -310,10 +310,7 @@ impl Resource for ToolHandle {
     }
 }
 
-fn tool_resource_handle(
-    tool: &'static CliToolDef,
-    path: &PathBuf,
-) -> ResourceHandle<ToolResource> {
+fn tool_resource_handle(tool: &'static CliToolDef, path: &PathBuf) -> ResourceHandle<ToolResource> {
     let key = ContentHash::from_path(path);
     ResourceHandle::acquire(tool.resource_id(), key)
 }
@@ -450,7 +447,6 @@ pub enum CliToolOp {
     // ========================================================================
     // Legacy imperative variants (used by Clippy::upsert_and_run, CargoOp, etc.)
     // ========================================================================
-
     /// Check if the tool is installed (imperative, directly executes shell).
     /// Outputs: exists (Bool), output (String)
     Check { tool: &'static CliToolDef },
@@ -477,7 +473,6 @@ pub enum CliToolOp {
     // ========================================================================
     // Transport triplet variants (pure prepare/parse + transport execute)
     // ========================================================================
-
     /// Build a ShellRequest for checking tool existence.
     /// Outputs: request (TransportRequest)
     PrepareCheck { tool: &'static CliToolDef },
@@ -665,8 +660,8 @@ fn build_cli_tool_subdag(
     let tool_res_port_run = Port::resource(tool_res_name.clone(), "Unit", resolve_access);
 
     let needs_pkg = tool.install_cmd.is_some();
-    let needs_target = matches!(&resolve, ResolveKind::Run(_))
-        && tool.run_cmd.first().copied() == Some("cargo");
+    let needs_target =
+        matches!(&resolve, ResolveKind::Run(_)) && tool.run_cmd.first().copied() == Some("cargo");
 
     let mut gate_outputs = vec![Port::scalar(format!("tool:{}", tool.id), "Unit")];
     if needs_pkg {
@@ -718,8 +713,18 @@ fn build_cli_tool_subdag(
     ));
 
     // Check triplet edges
-    dag.add_edge(Edge::new("prepare_check", "request", "execute_check", "request"));
-    dag.add_edge(Edge::new("execute_check", "response", "parse_check", "response"));
+    dag.add_edge(Edge::new(
+        "prepare_check",
+        "request",
+        "execute_check",
+        "request",
+    ));
+    dag.add_edge(Edge::new(
+        "execute_check",
+        "response",
+        "parse_check",
+        "response",
+    ));
 
     // ========================================================================
     // Install triplet: prepare_install → execute_install → parse_install
@@ -761,11 +766,26 @@ fn build_cli_tool_subdag(
     ));
 
     // Install triplet edges
-    dag.add_edge(Edge::new("prepare_install", "request", "execute_install", "request"));
-    dag.add_edge(Edge::new("execute_install", "response", "parse_install", "response"));
+    dag.add_edge(Edge::new(
+        "prepare_install",
+        "request",
+        "execute_install",
+        "request",
+    ));
+    dag.add_edge(Edge::new(
+        "execute_install",
+        "response",
+        "parse_install",
+        "response",
+    ));
 
     // Check → install guard
-    dag.add_edge(Edge::new("parse_check", "exists", "prepare_install", "exists"));
+    dag.add_edge(Edge::new(
+        "parse_check",
+        "exists",
+        "prepare_install",
+        "exists",
+    ));
 
     // ========================================================================
     // Resolve triplet: prepare_resolve → execute_resolve → parse_resolve
@@ -817,12 +837,32 @@ fn build_cli_tool_subdag(
     ));
 
     // Resolve triplet edges
-    dag.add_edge(Edge::new("prepare_resolve", "request", "execute_resolve", "request"));
-    dag.add_edge(Edge::new("execute_resolve", "response", "parse_resolve", "response"));
+    dag.add_edge(Edge::new(
+        "prepare_resolve",
+        "request",
+        "execute_resolve",
+        "request",
+    ));
+    dag.add_edge(Edge::new(
+        "execute_resolve",
+        "response",
+        "parse_resolve",
+        "response",
+    ));
 
     // Data flow into resolve: check result + install result
-    dag.add_edge(Edge::new("parse_check", "exists", "prepare_resolve", "exists"));
-    dag.add_edge(Edge::new("parse_install", "install_done", "prepare_resolve", "install_done"));
+    dag.add_edge(Edge::new(
+        "parse_check",
+        "exists",
+        "prepare_resolve",
+        "exists",
+    ));
+    dag.add_edge(Edge::new(
+        "parse_install",
+        "install_done",
+        "prepare_resolve",
+        "install_done",
+    ));
 
     // ========================================================================
     // Resource gate wiring
@@ -848,10 +888,20 @@ fn build_cli_tool_subdag(
     ));
 
     if needs_pkg {
-        dag.add_edge(Edge::new("resource_gate", "pkg", "execute_install", "res:pkg"));
+        dag.add_edge(Edge::new(
+            "resource_gate",
+            "pkg",
+            "execute_install",
+            "res:pkg",
+        ));
     }
     if needs_target {
-        dag.add_edge(Edge::new("resource_gate", "target", "execute_resolve", "res:target"));
+        dag.add_edge(Edge::new(
+            "resource_gate",
+            "target",
+            "execute_resolve",
+            "res:target",
+        ));
     }
 
     Node::subdag(name, dag)

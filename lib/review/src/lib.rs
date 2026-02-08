@@ -316,8 +316,8 @@ impl Executable for ReviewOps {
 fn execute_load_pipeline_config(
     config: &ReviewPipelineConfig,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    let criteria_json = serde_json::to_value(&config.criteria)
-        .exec_context("failed to serialize criteria")?;
+    let criteria_json =
+        serde_json::to_value(&config.criteria).exec_context("failed to serialize criteria")?;
 
     OutputMap::new()
         .str("provider", config.provider.clone())

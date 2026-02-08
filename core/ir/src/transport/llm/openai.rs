@@ -218,10 +218,7 @@ pub fn parse_openai_response(response: &RestResponse) -> Result<ChatResponse, St
 /// This enables use of OpenAI-compatible APIs (e.g., local models via Ollama,
 /// Azure OpenAI, etc.) by overriding the endpoint URL while keeping the
 /// same request format.
-pub fn build_openai_compatible_request(
-    chat: &ChatRequest,
-    base_url: &str,
-) -> RestRequest {
+pub fn build_openai_compatible_request(chat: &ChatRequest, base_url: &str) -> RestRequest {
     let mut req = build_openai_request(chat);
     req.url = format!("{}/v1/chat/completions", base_url.trim_end_matches('/'));
     req

@@ -242,10 +242,7 @@ mod tests {
     fn test_sequence_returns_in_order() {
         let mock = BoundaryMock::with_sequence(
             Value::Str("default".into()),
-            vec![
-                Value::Str("first".into()),
-                Value::Str("second".into()),
-            ],
+            vec![Value::Str("first".into()), Value::Str("second".into())],
         );
 
         assert_eq!(mock.next_value(), Value::Str("first".into()));

@@ -28,9 +28,21 @@ pub fn makegen_signature() -> WorkflowSignature {
         .with_input("check_mode", "OptionalBool", Cardinality::ZERO_OR_ONE)
         .with_input("path", "String", Cardinality::ONE)
         // Outputs from execute_makegen_transport (boundary)
-        .with_output("makegen_response", "TransportResponse", Cardinality::ZERO_OR_ONE)
-        .with_output("makegen_written_path", "OptionalString", Cardinality::ZERO_OR_ONE)
-        .with_output("makegen_content", "OptionalString", Cardinality::ZERO_OR_ONE)
+        .with_output(
+            "makegen_response",
+            "TransportResponse",
+            Cardinality::ZERO_OR_ONE,
+        )
+        .with_output(
+            "makegen_written_path",
+            "OptionalString",
+            Cardinality::ZERO_OR_ONE,
+        )
+        .with_output(
+            "makegen_content",
+            "OptionalString",
+            Cardinality::ZERO_OR_ONE,
+        )
         .with_output("skip", "Bool", Cardinality::ONE)
         .with_output("skip_reason", "OptionalString", Cardinality::ZERO_OR_ONE)
         // Outputs from compare_makegen_content (freshness)
@@ -152,7 +164,9 @@ mod tests {
         // path is an entrypoint (input to prepare_read_makegen with no upstream)
         assert!(entrypoints.is_entrypoint_port(&"prepare_read_makegen".into(), &"path".into()));
         // check_mode is an entrypoint (input to compare_makegen_content with no upstream)
-        assert!(entrypoints.is_entrypoint_port(&"compare_makegen_content".into(), &"check_mode".into()));
+        assert!(
+            entrypoints.is_entrypoint_port(&"compare_makegen_content".into(), &"check_mode".into())
+        );
     }
 
     #[test]

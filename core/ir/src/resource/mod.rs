@@ -63,14 +63,15 @@ pub mod state;
 // Re-exports from submodules
 pub use def::{DagRef, InputPattern, ResourceDef, ResourceScope};
 pub use defs::{codegen_resource_def, CODEGEN_INPUT_FILES, CODEGEN_INPUT_GLOBS};
-pub use handle::{HandleParseError, ResourceHandle};
 pub use gunbc_infra::hash::{ContentHash, HashBuilder};
+pub use gunbc_infra::manifest::{ManifestEntry, ResourceManifest, DEFAULT_MANIFEST_PATH};
+pub use handle::{HandleParseError, ResourceHandle};
 pub use managed::{
     check_manifest_freshness, compute_key_with_files, load_manifest, load_manifest_default,
-    save_manifest, save_manifest_default, update_resource_manifest, FreshnessOptions, ManagedResource,
-    ManifestFreshness, ManifestUpdateError, ResourceError, ResourceIo, SimpleResource,
+    save_manifest, save_manifest_default, update_resource_manifest, FreshnessOptions,
+    ManagedResource, ManifestFreshness, ManifestUpdateError, ResourceError, ResourceIo,
+    SimpleResource,
 };
-pub use gunbc_infra::manifest::{ManifestEntry, ResourceManifest, DEFAULT_MANIFEST_PATH};
 pub use registry::{ResolutionError, ResourceRegistry};
 pub use state::{ExecMode, ResourceState};
 
@@ -713,7 +714,10 @@ mod tests {
         let accesses = derive_resource_accesses(&dag).expect("resource accesses should derive");
         assert_eq!(accesses.len(), 2);
 
-        let platform = accesses.iter().find(|a| a.resource_id.0 == "platform").unwrap();
+        let platform = accesses
+            .iter()
+            .find(|a| a.resource_id.0 == "platform")
+            .unwrap();
         assert_eq!(platform.node_id.0, "node_a");
         assert_eq!(platform.mode, AccessMode::Read);
 

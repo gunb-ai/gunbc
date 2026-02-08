@@ -30,10 +30,7 @@ impl Resource for NetworkHandle {
 impl From<NetworkHandle> for Value {
     fn from(_handle: NetworkHandle) -> Self {
         let mut map = BTreeMap::new();
-        map.insert(
-            "type".to_string(),
-            Value::Str("network_handle".to_string()),
-        );
+        map.insert("type".to_string(), Value::Str("network_handle".to_string()));
         map.insert("cap".to_string(), Value::Secret(capability_marker()));
         Value::Map(map)
     }

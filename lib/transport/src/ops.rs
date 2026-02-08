@@ -101,7 +101,9 @@ mod tests {
     use super::*;
     use crate::executor::TransportError;
     use crate::{TransportBackend, TransportBackendGuard};
-    use gunbc_ir::transport::{FileRequest, RestResponse, ShellRequest, TransportRequest, TransportResponse};
+    use gunbc_ir::transport::{
+        FileRequest, RestResponse, ShellRequest, TransportRequest, TransportResponse,
+    };
     use gunbc_ir::{AuthScheme, Secret, Value};
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
@@ -204,7 +206,9 @@ mod tests {
 
         let cred = Credential::new(
             Secret::static_value("sk-ant-key"),
-            AuthScheme::Header { name: "x-api-key".to_string() },
+            AuthScheme::Header {
+                name: "x-api-key".to_string(),
+            },
         );
         let cred_value: Value = cred.into();
 

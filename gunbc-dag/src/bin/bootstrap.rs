@@ -125,14 +125,15 @@ fn main() {
     // In --dry-run mode (without verify), mock all transports.
     let mode = if dry_run && resource_mode != ExecMode::Verify {
         let mut mocks = BoundaryMocks::new();
-        let ok_shell =
-            || Value::Response(TransportResponse::Shell(ShellResponse::ok("")));
+        let ok_shell = || Value::Response(TransportResponse::Shell(ShellResponse::ok("")));
 
         // Scan workspace
         mocks.set_value(
             "execute_scan_workspace",
             "response",
-            Value::Response(TransportResponse::Shell(ShellResponse::ok("crates/example\n"))),
+            Value::Response(TransportResponse::Shell(ShellResponse::ok(
+                "crates/example\n",
+            ))),
         );
 
         // Makefile read
@@ -165,11 +166,7 @@ fn main() {
             "makefile_content",
             Value::Str("<DRY-RUN>".to_string()),
         );
-        mocks.set_value(
-            "execute_makefile_transport",
-            "skip",
-            Value::Bool(false),
-        );
+        mocks.set_value("execute_makefile_transport", "skip", Value::Bool(false));
         mocks.set_value(
             "execute_makefile_transport",
             "skip_reason",
@@ -206,11 +203,7 @@ fn main() {
             "gitignore_content",
             Value::Str("<DRY-RUN>".to_string()),
         );
-        mocks.set_value(
-            "execute_gitignore_transport",
-            "skip",
-            Value::Bool(false),
-        );
+        mocks.set_value("execute_gitignore_transport", "skip", Value::Bool(false));
         mocks.set_value(
             "execute_gitignore_transport",
             "skip_reason",

@@ -16,7 +16,7 @@ use gunbc_codegen::testgen::{TestConfig, TestGenerator};
 pub use gunbc_codegen::TestgenTargetDef;
 use gunbc_exec::Executable;
 use gunbc_ir::Dag;
-use gunbc_test::{MockSpec, TestClass, FermiCost};
+use gunbc_test::{FermiCost, MockSpec, TestClass};
 
 /// Metadata for a DAG spec (output and ownership details).
 #[derive(Debug, Clone)]
@@ -77,11 +77,13 @@ impl DagSpecDef {
             }
         }
 
-        let mut def = TestgenTargetDef::new(self.name, self.meta.output_path, self.meta.module_name);
+        let mut def =
+            TestgenTargetDef::new(self.name, self.meta.output_path, self.meta.module_name);
         def.dag_builder_call = to_crate_path(self.dag_builder_call, self.origin_crate);
         def.mock_spec_path = to_crate_path(self.mock_spec_path, self.origin_crate);
-        def.signature_path =
-            self.signature_path.map(|s| to_crate_path(s, self.origin_crate));
+        def.signature_path = self
+            .signature_path
+            .map(|s| to_crate_path(s, self.origin_crate));
         def.boundary_tests = self.testgen.boundary_tests;
         def.chain_tests = self.testgen.chain_tests;
         def.flow_tests = self.testgen.flow_tests;
@@ -166,9 +168,7 @@ pub fn generate_target<T: Executable + Clone>(
         .clone()
         .unwrap_or_else(|| inferred_requires.clone());
     let secrets = config.secrets.clone().unwrap_or_default();
-    let live_test_class = config
-        .live_test_class
-        .unwrap_or(TestClass::Integration);
+    let live_test_class = config.live_test_class.unwrap_or(TestClass::Integration);
     let live_requires = config
         .live_requires
         .clone()
@@ -209,10 +209,8 @@ pub fn generate_target<T: Executable + Clone>(
         let tools = gunbc_codegen::derive_tool_defs();
         if let Some(tool) = tools.iter().find(|t| t.meta.tool_name == *tool_name) {
             if !tool.entrypoints.is_empty() {
-                generator = generator.with_cli_entrypoints(
-                    tool_name.clone(),
-                    tool.entrypoints.clone(),
-                );
+                generator =
+                    generator.with_cli_entrypoints(tool_name.clone(), tool.entrypoints.clone());
             }
         }
     }
@@ -226,7 +224,7 @@ pub fn generate_target<T: Executable + Clone>(
 mod resource_tests {
     use super::iter_resource_tests;
     use gunbc_ir::{
-        detect_resource_conflicts, derive_resource_accesses, validate_resource_wiring_recursive,
+        derive_resource_accesses, detect_resource_conflicts, validate_resource_wiring_recursive,
     };
 
     #[test]

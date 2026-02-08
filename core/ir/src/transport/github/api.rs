@@ -64,7 +64,7 @@ pub fn github_enterprise_api(base_url: &'static str) -> GitHubApi {
 /// This creates a GET request with:
 /// - Proper Accept header for GitHub API
 /// - X-GitHub-Api-Version header
-/// - Authentication should be attached via `CredentialOp` at the DAG boundary
+/// - Authentication should be attached via the cloud credential chain at the DAG boundary
 ///
 /// # Arguments
 ///

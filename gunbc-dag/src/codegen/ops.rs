@@ -1,16 +1,16 @@
 //! Pure operations for the codegen DAG.
 
+use crate::WorkspaceBinary;
 use gunbc_codegen::registry::derive_tool_defs;
 use gunbc_exec::{
     optional_response_strict, propagate_skipped, require_bool, require_response, ExecError,
     Executable, OutputMap, TransportResponseExt,
 };
-use crate::WorkspaceBinary;
 use gunbc_ir::cargo::{CargoCommand, Subcommand};
 use gunbc_ir::resource::{
     check_manifest_freshness, codegen_resource_def, load_manifest_default, ExecMode,
-    FreshnessOptions, ManifestFreshness, ManagedResource, ManifestEntry, ResourceDef, ResourceError,
-    ResourceIo, ResourceManifest,
+    FreshnessOptions, ManagedResource, ManifestEntry, ManifestFreshness, ResourceDef,
+    ResourceError, ResourceIo, ResourceManifest,
 };
 use gunbc_ir::transport::{FileRequest, ShellRequest, TransportRequest};
 use gunbc_ir::Value;
@@ -149,7 +149,10 @@ impl ManagedResource for CodegenResourceCheck {
         _manifest: &ResourceManifest,
         _io: &dyn ResourceIo,
     ) -> Result<ManifestEntry, ResourceError> {
-        Err(ResourceError::CreateFailed(self.def.id.clone(), "not supported".into()))
+        Err(ResourceError::CreateFailed(
+            self.def.id.clone(),
+            "not supported".into(),
+        ))
     }
 }
 

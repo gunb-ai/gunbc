@@ -14,20 +14,15 @@ use gunbc_exec::{
     optional_str_list_strict, optional_str_strict, propagate_skipped, require_response,
     require_str, ExecError, Executable, OutputMap, TransportResponseExt,
 };
-use gunbc_ir::transport::gist::GistRequest;
-use gunbc_ir::transport::cloud::CloudRuntimeKind;
-use gunbc_ir::transport::{ShellRequest, TransportResponse};
 use gunbc_ir::patterns::PatternOp;
+use gunbc_ir::transport::gist::GistRequest;
+use gunbc_ir::transport::{ShellRequest, TransportResponse};
 use gunbc_ir::{
-    add_transport_triplet,
-    build::*, BuilderError, Cardinality, Dag, DagBuilder, Node, NodeBody, Value,
+    add_transport_triplet, build::*, BuilderError, Cardinality, Dag, DagBuilder, Node, Value,
     WorkflowSignature,
 };
 use gunbc_lib_cloud_ops::{
-    build_cloud_secret_manager_credential_graph_gcp_github,
-    build_cloud_secret_manager_credential_graph_gcp_local,
-    build_cloud_secret_manager_credential_graph_gcp_metadata,
-    detect_cloud_env_requirements, CloudEnv, CloudOps, CloudSecretManagerGraphOp,
+    build_cloud_credential_graph_for_runtime, CloudEnv, CloudOps, CloudSecretManagerGraphOp,
 };
 use gunbc_lib_gist_ops::GistOps;
 use gunbc_lib_git_ops::GitOps;
@@ -204,7 +199,8 @@ const FILE_MARKER_END: &str = "===";
 fn execute_prepare_read_files(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
-    if matches!(inputs.get("files"), Some(Value::List(items)) if items.iter().any(|v| matches!(v, Value::Skipped))) {
+    if matches!(inputs.get("files"), Some(Value::List(items)) if items.iter().any(|v| matches!(v, Value::Skipped)))
+    {
         return OutputMap::new().value("request", Value::Skipped).ok();
     }
     if let Some(result) = propagate_skipped(&inputs, "files", &["request"]) {
@@ -437,15 +433,6 @@ fn execute_resolve_auth(
         .ok()
 }
 
-fn build_cloud_credential_graph_for_runtime() -> Dag<CloudSecretManagerGraphOp> {
-    let env_req = detect_cloud_env_requirements();
-    match env_req.runtime {
-        CloudRuntimeKind::GitHubActions => build_cloud_secret_manager_credential_graph_gcp_github(),
-        CloudRuntimeKind::CloudMetadata => build_cloud_secret_manager_credential_graph_gcp_metadata(),
-        CloudRuntimeKind::LocalDev => build_cloud_secret_manager_credential_graph_gcp_local(),
-    }
-}
-
 // ============================================================================
 // LoopBuilder body DAG
 // ============================================================================
@@ -503,9 +490,7 @@ pub fn build_read_file_body_dag() -> Dag<GistGraphOp> {
     dag.add_edge(gunbc_ir::Edge::new(
         "prepare", "request", "execute", "request",
     ));
-    dag.add_edge(gunbc_ir::Edge::new(
-        "prepare", "skip", "execute", "skip",
-    ));
+    dag.add_edge(gunbc_ir::Edge::new("prepare", "skip", "execute", "skip"));
     dag.add_edge(gunbc_ir::Edge::new(
         "execute", "response", "parse", "response",
     ));
@@ -603,7 +588,10 @@ pub fn build_gist_graph(
     let bind_secret = builder.add_node_after_all(
         Node::opaque(
             "bind_secret",
-            vec![port("config", "CloudSecretConfig"), port("service", "String")],
+            vec![
+                port("config", "CloudSecretConfig"),
+                port("service", "String"),
+            ],
             vec![port("config", "CloudSecretConfig")],
             GistGraphOp::Cloud(CloudSecretManagerGraphOp::Cloud(CloudOps::BindSecretName)),
         ),
@@ -611,8 +599,8 @@ pub fn build_gist_graph(
     )?;
 
     let cloud_subdag = lift_cloud_dag(build_cloud_credential_graph_for_runtime());
-    let cloud_credential = builder
-        .add_node_after(Node::subdag("cloud_credential", cloud_subdag), &bind_secret)?;
+    let cloud_credential =
+        builder.add_node_after(Node::subdag("cloud_credential", cloud_subdag), &bind_secret)?;
 
     // ========================================================================
     // Content acquisition (mode-dependent)
@@ -621,10 +609,14 @@ pub fn build_gist_graph(
 
     let is_recent_mode = matches!(mode, GistMode::Recent);
     let (render_markdown, recent_parse_rev_list) = match &mode {
-        GistMode::Snapshot => (build_snapshot_acquire(&mut builder, &fs_env, extensions)?, None),
-        GistMode::Diff { base_ref } => {
-            (build_diff_acquire(&mut builder, &fs_env, base_ref, extensions)?, None)
-        }
+        GistMode::Snapshot => (
+            build_snapshot_acquire(&mut builder, &fs_env, extensions)?,
+            None,
+        ),
+        GistMode::Diff { base_ref } => (
+            build_diff_acquire(&mut builder, &fs_env, base_ref, extensions)?,
+            None,
+        ),
         GistMode::Recent => {
             let (md, rev) = build_recent_acquire(&mut builder, &fs_env, extensions)?;
             (md, Some(rev))
@@ -685,7 +677,10 @@ pub fn build_gist_graph(
         Node::opaque(
             "prepare_gist_request",
             gist_prepare_inputs,
-            vec![scalar("request", "TransportRequest"), scalar("skip", "Bool")],
+            vec![
+                scalar("request", "TransportRequest"),
+                scalar("skip", "Bool"),
+            ],
             GistGraphOp::Gist(GistOps::PrepareRequest { public }),
         ),
         &render_markdown,
@@ -801,8 +796,14 @@ pub fn build_gist_graph(
     )?;
 
     // Resource wiring
-    builder.add_edge(fs_env.out("fs:write"), current_branch.execute.in_port("res:fs"))?;
-    builder.add_edge(fs_env.out("fs:write"), remote_branches.execute.in_port("res:fs"))?;
+    builder.add_edge(
+        fs_env.out("fs:write"),
+        current_branch.execute.in_port("res:fs"),
+    )?;
+    builder.add_edge(
+        fs_env.out("fs:write"),
+        remote_branches.execute.in_port("res:fs"),
+    )?;
 
     let dag = builder.build();
     if let Some(unwired) = gunbc_ir::validate_resource_wiring(&dag).first() {
@@ -834,10 +835,7 @@ fn build_snapshot_acquire(
         None,
     )?;
 
-    builder.add_edge(
-        fs_env.out("fs:write"),
-        list_files.execute.in_port("res:fs"),
-    )?;
+    builder.add_edge(fs_env.out("fs:write"), list_files.execute.in_port("res:fs"))?;
 
     // Node: LoopBuilder for per-file reading
     use gunbc_ir::patterns::{LoopBuilder, ResourceInput};
@@ -930,7 +928,10 @@ fn build_diff_acquire(
     let render_markdown = builder.add_node_after(
         Node::opaque(
             "render_markdown",
-            vec![port("diff_files", "Map"), optional("stats", "OptionalString")],
+            vec![
+                port("diff_files", "Map"),
+                optional("stats", "OptionalString"),
+            ],
             vec![scalar("markdown", "String")],
             GistGraphOp::Markdown(MarkdownOp::RenderDiffSnapshot),
         ),
@@ -1014,7 +1015,10 @@ fn build_recent_acquire(
     let render_markdown = builder.add_node_after(
         Node::opaque(
             "render_markdown",
-            vec![port("diff_files", "Map"), optional("stats", "OptionalString")],
+            vec![
+                port("diff_files", "Map"),
+                optional("stats", "OptionalString"),
+            ],
             vec![scalar("markdown", "String")],
             GistGraphOp::Markdown(MarkdownOp::RenderDiffSnapshot),
         ),
@@ -1035,53 +1039,8 @@ fn build_recent_acquire(
     Ok((render_markdown, rev_list.parse))
 }
 
-fn lift_cloud_dag(
-    dag: Dag<CloudSecretManagerGraphOp>,
-) -> Dag<GistGraphOp> {
-    let mut lift = |op| GistGraphOp::Cloud(op);
-    map_dag_ops(dag, &mut lift)
-}
-
-fn map_dag_ops<T, U, F>(dag: Dag<T>, f: &mut F) -> Dag<U>
-where
-    T: Clone,
-    U: Clone,
-    F: FnMut(T) -> U,
-{
-    let mut out = Dag::new();
-    out.edges = dag.edges.clone();
-    out.nodes = dag
-        .nodes
-        .into_iter()
-        .map(|node| map_node_ops(node, f))
-        .collect();
-    out
-}
-
-fn map_node_ops<T, U, F>(node: Node<T>, f: &mut F) -> Node<U>
-where
-    T: Clone,
-    U: Clone,
-    F: FnMut(T) -> U,
-{
-    let Node {
-        id,
-        inputs,
-        outputs,
-        body,
-        examples,
-    } = node;
-    let body = match body {
-        NodeBody::Opaque(op) => NodeBody::Opaque(f(op)),
-        NodeBody::SubDag(subdag) => NodeBody::SubDag(map_dag_ops(subdag, f)),
-    };
-    Node {
-        id,
-        inputs,
-        outputs,
-        body,
-        examples,
-    }
+fn lift_cloud_dag(dag: Dag<CloudSecretManagerGraphOp>) -> Dag<GistGraphOp> {
+    dag.map_ops(&mut GistGraphOp::Cloud)
 }
 
 // Mockable implementation for test generation
@@ -1115,7 +1074,9 @@ impl Mockable for GistGraphOp {
                     | GitOps::PrepareRevListBefore { .. } => OutputMap::new()
                         .request(
                             "request",
-                            ShellRequest::new("git").arg("mock").into_transport_request(),
+                            ShellRequest::new("git")
+                                .arg("mock")
+                                .into_transport_request(),
                         )
                         .bool("skip", false)
                         .build(),
@@ -1182,9 +1143,9 @@ impl Mockable for GistGraphOp {
                     .str(output_port, "mock_result")
                     .int("iterations", 1)
                     .build(),
-                PatternOp::BranchMerge { output_port } => OutputMap::new()
-                    .str(output_port, "mock_merge")
-                    .build(),
+                PatternOp::BranchMerge { output_port } => {
+                    OutputMap::new().str(output_port, "mock_merge").build()
+                }
                 _ => HashMap::new(),
             },
 
@@ -1241,7 +1202,9 @@ impl Mockable for GistGraphOp {
             GistGraphOp::Transport(_) => OutputMap::new()
                 .response(
                     "response",
-                    TransportResponse::Shell(gunbc_ir::transport::ShellResponse::ok("src/main.rs\nREADME.md\n")),
+                    TransportResponse::Shell(gunbc_ir::transport::ShellResponse::ok(
+                        "src/main.rs\nREADME.md\n",
+                    )),
                 )
                 .build(),
         }
@@ -1278,8 +1241,7 @@ mod tests {
             entrypoints.is_entrypoint_port(&"prepare_current_branch".into(), &"repo_path".into())
         );
         assert!(
-            entrypoints
-                .is_entrypoint_port(&"prepare_remote_branches".into(), &"repo_path".into())
+            entrypoints.is_entrypoint_port(&"prepare_remote_branches".into(), &"repo_path".into())
         );
     }
 
@@ -1359,8 +1321,7 @@ mod tests {
             entrypoints.is_entrypoint_port(&"prepare_current_branch".into(), &"repo_path".into())
         );
         assert!(
-            entrypoints
-                .is_entrypoint_port(&"prepare_remote_branches".into(), &"repo_path".into())
+            entrypoints.is_entrypoint_port(&"prepare_remote_branches".into(), &"repo_path".into())
         );
     }
 
@@ -1475,7 +1436,8 @@ mod tests {
 
     #[test]
     fn test_gist_uses_cloud_credential_chain() {
-        let dag = build_gist_graph(GistMode::Snapshot, vec![], false).expect("snapshot should build");
+        let dag =
+            build_gist_graph(GistMode::Snapshot, vec![], false).expect("snapshot should build");
 
         assert!(dag.get_node(&"cloud_env".into()).is_some());
         assert!(dag.get_node(&"resolve_auth".into()).is_some());
@@ -1533,15 +1495,12 @@ mod tests {
             build_gist_graph(GistMode::Recent, vec![], false).expect("recent graph should build");
         let entrypoints = detect_entrypoints(&dag);
 
-        assert!(
-            entrypoints.is_entrypoint_port(&"prepare_rev_list".into(), &"repo_path".into())
-        );
+        assert!(entrypoints.is_entrypoint_port(&"prepare_rev_list".into(), &"repo_path".into()));
         assert!(
             entrypoints.is_entrypoint_port(&"prepare_current_branch".into(), &"repo_path".into())
         );
         assert!(
-            entrypoints
-                .is_entrypoint_port(&"prepare_remote_branches".into(), &"repo_path".into())
+            entrypoints.is_entrypoint_port(&"prepare_remote_branches".into(), &"repo_path".into())
         );
     }
 

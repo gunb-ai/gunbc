@@ -347,7 +347,6 @@ impl Cardinality {
             },
         }
     }
-
 }
 
 impl Default for Cardinality {

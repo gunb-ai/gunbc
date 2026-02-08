@@ -11,12 +11,40 @@ use gunbc_primitives::filename;
 use gunbc_test::{assert_boundary_mockable, guard_test, FermiCost, TestClass};
 use std::time::SystemTime;
 
+fn gist_request_filename(req: &gunbc_ir::transport::rest::RestRequest) -> String {
+    let body = req
+        .body
+        .as_ref()
+        .expect("gist request should have json body");
+    let files = body
+        .get("files")
+        .and_then(|v| v.as_object())
+        .expect("gist request should include files");
+    files
+        .keys()
+        .next()
+        .cloned()
+        .expect("gist request should include a filename")
+}
+
+fn gist_request_description(req: &gunbc_ir::transport::rest::RestRequest) -> String {
+    req.body
+        .as_ref()
+        .and_then(|b| b.get("description"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string()
+}
+
 /// Helper: mock for execute_current_branch boundary.
 fn mock_current_branch(mocks: &mut BoundaryMocks, branch: &str) {
     mocks.set_value(
         "execute_current_branch",
         "response",
-        Value::Response(TransportResponse::Shell(ShellResponse::ok(format!("{}\n", branch)))),
+        Value::Response(TransportResponse::Shell(ShellResponse::ok(format!(
+            "{}\n",
+            branch
+        )))),
     );
 }
 
@@ -89,38 +117,38 @@ fn mock_env(mocks: &mut BoundaryMocks) {
     mocks.set_value(
         "cloud_credential/gcp_wif_secret/execute_github_oidc",
         "response",
-        Value::Response(TransportResponse::Rest(gunbc_ir::transport::RestResponse::ok(
-            serde_json::json!({"value":"mock-oidc-token"}),
-        ))),
+        Value::Response(TransportResponse::Rest(
+            gunbc_ir::transport::RestResponse::ok(serde_json::json!({"value":"mock-oidc-token"})),
+        )),
     );
     mocks.set_value(
         "cloud_credential/gcp_wif_secret/execute_sts",
         "response",
-        Value::Response(TransportResponse::Rest(gunbc_ir::transport::RestResponse::ok(
-            serde_json::json!({
+        Value::Response(TransportResponse::Rest(
+            gunbc_ir::transport::RestResponse::ok(serde_json::json!({
                 "access_token": "mock-sts-token",
                 "expires_in": 3600
-            }),
-        ))),
+            })),
+        )),
     );
     mocks.set_value(
         "cloud_credential/gcp_wif_secret/execute_impersonate",
         "response",
-        Value::Response(TransportResponse::Rest(gunbc_ir::transport::RestResponse::ok(
-            serde_json::json!({
+        Value::Response(TransportResponse::Rest(
+            gunbc_ir::transport::RestResponse::ok(serde_json::json!({
                 "accessToken": "mock-sa-token",
                 "expireTime": "2025-01-01T00:00:00Z"
-            }),
-        ))),
+            })),
+        )),
     );
     mocks.set_value(
         "cloud_credential/gcp_wif_secret/execute_secret_access",
         "response",
-        Value::Response(TransportResponse::Rest(gunbc_ir::transport::RestResponse::ok(
-            serde_json::json!({
+        Value::Response(TransportResponse::Rest(
+            gunbc_ir::transport::RestResponse::ok(serde_json::json!({
                 "payload": {"data": "bW9jay1zZWNyZXQ="}
-            }),
-        ))),
+            })),
+        )),
     );
     mocks.set_value(
         "cloud_credential/gcp_wif_secret/build_credential",
@@ -142,8 +170,16 @@ fn mock_env(mocks: &mut BoundaryMocks) {
     // Entry inputs (repo_path) for all gist modes
     mocks.set_input("prepare_list_files", "repo_path", Value::Str(".".into()));
     mocks.set_input("read_files_loop", "repo_path", Value::Str(".".into()));
-    mocks.set_input("prepare_current_branch", "repo_path", Value::Str(".".into()));
-    mocks.set_input("prepare_remote_branches", "repo_path", Value::Str(".".into()));
+    mocks.set_input(
+        "prepare_current_branch",
+        "repo_path",
+        Value::Str(".".into()),
+    );
+    mocks.set_input(
+        "prepare_remote_branches",
+        "repo_path",
+        Value::Str(".".into()),
+    );
     mocks.set_input("prepare_diff", "repo_path", Value::Str(".".into()));
     mocks.set_input("prepare_rev_list", "repo_path", Value::Str(".".into()));
     // Loop body transport nodes are auto-mocked by execute_loop_body in DryRun mode.
@@ -181,7 +217,9 @@ fn test_dry_run_intercepts_transport() {
     mocks.set_value(
         "execute_list_files",
         "response",
-        Value::Response(TransportResponse::Shell(ShellResponse::ok("src/main.rs\nREADME.md\n"))),
+        Value::Response(TransportResponse::Shell(ShellResponse::ok(
+            "src/main.rs\nREADME.md\n",
+        ))),
     );
 
     // Loop body transport nodes are auto-intercepted in DryRun mode
@@ -195,7 +233,11 @@ fn test_dry_run_intercepts_transport() {
     mocks.set_value(
         "execute_gist",
         "response",
-        Value::Response(TransportResponse::Shell(ShellResponse::ok("https://mock.gist/12345\n"))),
+        Value::Response(TransportResponse::Rest(
+            gunbc_ir::transport::RestResponse::ok(
+                serde_json::json!({"html_url":"https://gist.github.com/mock/12345"}),
+            ),
+        )),
     );
 
     let log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).unwrap();
@@ -231,8 +273,8 @@ fn test_dry_run_intercepts_transport() {
         .expect("parse_gist_response should be in log");
     match parse_gist_entry.outputs.get("url") {
         Some(Value::Str(url)) => assert!(
-            url.contains("mock.gist"),
-            "expected URL to contain mock.gist"
+            url.contains("gist.github.com"),
+            "expected URL to contain gist.github.com"
         ),
         _ => panic!("expected url output"),
     }
@@ -309,7 +351,11 @@ fn test_gist_graph_boundary_mockable() {
     mocks.set_value(
         "execute_gist",
         "response",
-        Value::Response(TransportResponse::Shell(ShellResponse::ok("https://gist.github.com/mock/123"))),
+        Value::Response(TransportResponse::Rest(
+            gunbc_ir::transport::RestResponse::ok(
+                serde_json::json!({"html_url":"https://gist.github.com/mock/123"}),
+            ),
+        )),
     );
 
     let result = assert_boundary_mockable(&dag, mocks);
@@ -395,7 +441,11 @@ fn test_branch_name_in_gist_filename() {
     mocks.set_value(
         "execute_gist",
         "response",
-        Value::Response(TransportResponse::Shell(ShellResponse::ok("https://gist.github.com/mock/456"))),
+        Value::Response(TransportResponse::Rest(
+            gunbc_ir::transport::RestResponse::ok(
+                serde_json::json!({"html_url":"https://gist.github.com/mock/456"}),
+            ),
+        )),
     );
 
     let log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).unwrap();
@@ -405,16 +455,15 @@ fn test_branch_name_in_gist_filename() {
         .get("prepare_gist_request")
         .expect("prepare_gist_request should be in log");
     match prepare_gist.outputs.get("request") {
-        Some(Value::Request(gunbc_ir::transport::TransportRequest::Shell(req))) => {
+        Some(Value::Request(gunbc_ir::transport::TransportRequest::Rest(req))) => {
             // The filename should contain the sanitized branch name (slashes → hyphens)
-            let filename_arg = req
-                .args
-                .iter()
-                .find(|a| a.contains("claude-improve-gist-filename"));
+            let filename = gist_request_filename(req);
+            let filename_arg =
+                Some(&filename).filter(|a| a.contains("claude-improve-gist-filename"));
             assert!(
                 filename_arg.is_some(),
-                "expected sanitized branch name in filename, got args: {:?}",
-                req.args
+                "expected sanitized branch name in filename, got filename: {}",
+                filename
             );
             // Should end with .md
             assert!(
@@ -428,7 +477,7 @@ fn test_branch_name_in_gist_filename() {
             );
         }
         other => panic!(
-            "expected shell request from prepare_gist_request, got: {:?}",
+            "expected rest request from prepare_gist_request, got: {:?}",
             other
         ),
     }
@@ -474,7 +523,11 @@ fn test_platform_challenging_branch_names() {
         mocks.set_value(
             "execute_gist",
             "response",
-            Value::Response(TransportResponse::Shell(ShellResponse::ok("https://gist.github.com/mock/789"))),
+            Value::Response(TransportResponse::Rest(
+                gunbc_ir::transport::RestResponse::ok(
+                    serde_json::json!({"html_url":"https://gist.github.com/mock/789"}),
+                ),
+            )),
         );
 
         let log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).unwrap();
@@ -483,18 +536,19 @@ fn test_platform_challenging_branch_names() {
             .get("prepare_gist_request")
             .expect("prepare_gist_request should be in log");
         match prepare_gist.outputs.get("request") {
-            Some(Value::Request(gunbc_ir::transport::TransportRequest::Shell(req))) => {
-                let filename_arg = req.args.iter().find(|a| a.starts_with(expected_prefix));
+            Some(Value::Request(gunbc_ir::transport::TransportRequest::Rest(req))) => {
+                let filename = gist_request_filename(req);
+                let filename_arg = Some(&filename).filter(|a| a.starts_with(expected_prefix));
                 assert!(
                     filename_arg.is_some(),
-                    "branch '{}': expected filename starting with '{}', got args: {:?}",
+                    "branch '{}': expected filename starting with '{}', got filename: {}",
                     branch,
                     expected_prefix,
-                    req.args
+                    filename
                 );
             }
             other => panic!(
-                "branch '{}': expected shell request, got: {:?}",
+                "branch '{}': expected rest request, got: {:?}",
                 branch, other
             ),
         }
@@ -538,7 +592,11 @@ fn test_detached_head_uses_remote_branch_name() {
     mocks.set_value(
         "execute_gist",
         "response",
-        Value::Response(TransportResponse::Shell(ShellResponse::ok("https://gist.github.com/mock/detached"))),
+        Value::Response(TransportResponse::Rest(
+            gunbc_ir::transport::RestResponse::ok(
+                serde_json::json!({"html_url":"https://gist.github.com/mock/detached"}),
+            ),
+        )),
     );
 
     let log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).unwrap();
@@ -547,18 +605,19 @@ fn test_detached_head_uses_remote_branch_name() {
         .get("prepare_gist_request")
         .expect("prepare_gist_request should be in log");
     match prepare_gist.outputs.get("request") {
-        Some(Value::Request(gunbc_ir::transport::TransportRequest::Shell(req))) => {
+        Some(Value::Request(gunbc_ir::transport::TransportRequest::Rest(req))) => {
             // Should use remote branch name "main" for filename
-            let filename_arg = req.args.iter().find(|a| a.starts_with("main_"));
+            let filename = gist_request_filename(req);
+            let filename_arg = Some(&filename).filter(|a| a.starts_with("main_"));
             assert!(
                 filename_arg.is_some(),
-                "expected remote branch 'main' in filename, got args: {:?}",
-                req.args
+                "expected remote branch 'main' in filename, got filename: {}",
+                filename
             );
             assert!(filename_arg.unwrap().ends_with(".md"));
         }
         other => panic!(
-            "expected shell request from prepare_gist_request, got: {:?}",
+            "expected rest request from prepare_gist_request, got: {:?}",
             other
         ),
     }
@@ -586,7 +645,9 @@ fn test_recent_mode_dry_run() {
     mocks.set_value(
         "execute_rev_list",
         "response",
-        Value::Response(TransportResponse::Shell(ShellResponse::ok("abc123def456\n"))),
+        Value::Response(TransportResponse::Shell(ShellResponse::ok(
+            "abc123def456\n",
+        ))),
     );
 
     // Mock execute_diff: return sample diff
@@ -602,7 +663,11 @@ fn test_recent_mode_dry_run() {
     mocks.set_value(
         "execute_gist",
         "response",
-        Value::Response(TransportResponse::Shell(ShellResponse::ok("https://gist.github.com/mock/recent123"))),
+        Value::Response(TransportResponse::Rest(
+            gunbc_ir::transport::RestResponse::ok(
+                serde_json::json!({"html_url":"https://gist.github.com/mock/recent123"}),
+            ),
+        )),
     );
 
     let log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).unwrap();
@@ -648,19 +713,17 @@ fn test_recent_mode_dry_run() {
         .get("prepare_gist_request")
         .expect("prepare_gist_request should be in log");
     match prepare_gist.outputs.get("request") {
-        Some(Value::Request(gunbc_ir::transport::TransportRequest::Shell(req))) => {
-            let filename_arg = req
-                .args
-                .iter()
-                .find(|a| a.contains("recent-3d") && a.contains("abc123d..HEAD"));
+        Some(Value::Request(gunbc_ir::transport::TransportRequest::Rest(req))) => {
+            let filename = gist_request_filename(req);
+            let filename_arg =
+                Some(&filename).filter(|a| a.contains("recent-3d") && a.contains("abc123d..HEAD"));
             assert!(
                 filename_arg.is_some(),
-                "expected recent-mode filename with commit range, got args: {:?}",
-                req.args
+                "expected recent-mode filename with commit range, got filename: {}",
+                filename
             );
             // Description should mention the commit range
-            let desc_idx = req.args.iter().position(|a| a == "--desc").unwrap();
-            let desc = &req.args[desc_idx + 1];
+            let desc = gist_request_description(req);
             assert!(
                 desc.contains("Recent changes (3d) abc123d..HEAD on main"),
                 "expected recent-mode description, got: {}",
@@ -668,7 +731,7 @@ fn test_recent_mode_dry_run() {
             );
         }
         other => panic!(
-            "expected shell request from prepare_gist_request, got: {:?}",
+            "expected rest request from prepare_gist_request, got: {:?}",
             other
         ),
     }
@@ -707,7 +770,11 @@ fn test_recent_mode_young_repo() {
     mocks.set_value(
         "execute_gist",
         "response",
-        Value::Response(TransportResponse::Shell(ShellResponse::ok("https://gist.github.com/mock/young"))),
+        Value::Response(TransportResponse::Rest(
+            gunbc_ir::transport::RestResponse::ok(
+                serde_json::json!({"html_url":"https://gist.github.com/mock/young"}),
+            ),
+        )),
     );
 
     let log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).unwrap();
@@ -735,24 +802,25 @@ fn test_recent_mode_young_repo() {
         .get("prepare_gist_request")
         .expect("prepare_gist_request should be in log");
     match prepare_gist.outputs.get("request") {
-        Some(Value::Request(gunbc_ir::transport::TransportRequest::Shell(req))) => {
+        Some(Value::Request(gunbc_ir::transport::TransportRequest::Rest(req))) => {
             // Should NOT contain recent-3d (no base_ref to form commit range)
-            let has_recent = req.args.iter().any(|a| a.contains("recent-3d"));
+            let filename = gist_request_filename(req);
+            let has_recent = filename.contains("recent-3d");
             assert!(
                 !has_recent,
-                "young repo should fall back to snapshot-style filename, got args: {:?}",
-                req.args
+                "young repo should fall back to snapshot-style filename, got filename: {}",
+                filename
             );
             // Should use branch name "main" as prefix
-            let f_arg = req.args.iter().find(|a| a.starts_with("main_"));
+            let f_arg = Some(&filename).filter(|a| a.starts_with("main_"));
             assert!(
                 f_arg.is_some(),
-                "expected main-prefixed filename for young repo, got args: {:?}",
-                req.args
+                "expected main-prefixed filename for young repo, got filename: {}",
+                filename
             );
         }
         other => panic!(
-            "expected shell request from prepare_gist_request, got: {:?}",
+            "expected rest request from prepare_gist_request, got: {:?}",
             other
         ),
     }
@@ -786,7 +854,11 @@ fn test_detached_head_no_remote_uses_snapshot() {
     mocks.set_value(
         "execute_gist",
         "response",
-        Value::Response(TransportResponse::Shell(ShellResponse::ok("https://gist.github.com/mock/orphan"))),
+        Value::Response(TransportResponse::Rest(
+            gunbc_ir::transport::RestResponse::ok(
+                serde_json::json!({"html_url":"https://gist.github.com/mock/orphan"}),
+            ),
+        )),
     );
 
     let log = execute_with_mode(&dag, ExecutionMode::DryRun(mocks)).unwrap();
@@ -795,17 +867,18 @@ fn test_detached_head_no_remote_uses_snapshot() {
         .get("prepare_gist_request")
         .expect("prepare_gist_request should be in log");
     match prepare_gist.outputs.get("request") {
-        Some(Value::Request(gunbc_ir::transport::TransportRequest::Shell(req))) => {
+        Some(Value::Request(gunbc_ir::transport::TransportRequest::Rest(req))) => {
             // Should fall back to "snapshot" for filename
-            let filename_arg = req.args.iter().find(|a| a.starts_with("snapshot_"));
+            let filename = gist_request_filename(req);
+            let filename_arg = Some(&filename).filter(|a| a.starts_with("snapshot_"));
             assert!(
                 filename_arg.is_some(),
-                "expected 'snapshot' filename for orphan detached HEAD, got args: {:?}",
-                req.args
+                "expected 'snapshot' filename for orphan detached HEAD, got filename: {}",
+                filename
             );
         }
         other => panic!(
-            "expected shell request from prepare_gist_request, got: {:?}",
+            "expected rest request from prepare_gist_request, got: {:?}",
             other
         ),
     }

@@ -430,8 +430,7 @@ fn build_clippy_toml_blocks(config: &ClippyConfig) -> Vec<StructuredBlock> {
         invariants.push_str("#\n");
         invariants.push_str("# I8. NO WARNINGS\n");
         invariants.push_str("#     Run with: cargo clippy --all-targets -- -D warnings\n");
-        invariants
-            .push_str("#     Warnings are errors. If something is wrong, the build fails.\n");
+        invariants.push_str("#     Warnings are errors. If something is wrong, the build fails.\n");
         invariants.push_str("#\n");
         invariants.push_str("# APPROVED EXCEPTIONS (must have documented reason):\n");
         for allowance in &config.crate_allowances {
@@ -441,8 +440,9 @@ fn build_clippy_toml_blocks(config: &ClippyConfig) -> Vec<StructuredBlock> {
             ));
         }
         invariants.push_str("#\n");
-        invariants
-            .push_str("# To add an exception: #[allow(clippy::disallowed_methods)] with comment.\n");
+        invariants.push_str(
+            "# To add an exception: #[allow(clippy::disallowed_methods)] with comment.\n",
+        );
         invariants.push('\n');
         blocks.push(StructuredBlock::Raw(invariants));
     }
@@ -462,9 +462,7 @@ fn build_clippy_toml_blocks(config: &ClippyConfig) -> Vec<StructuredBlock> {
         let other_methods: Vec<_> = config
             .disallowed_methods
             .iter()
-            .filter(|m| {
-                !m.path.starts_with("std::fs::") && !m.path.starts_with("std::process::")
-            })
+            .filter(|m| !m.path.starts_with("std::fs::") && !m.path.starts_with("std::process::"))
             .collect();
 
         let mut array = String::from("disallowed-methods = [\n");
@@ -605,7 +603,11 @@ impl ClippyConfigRenderer {
             regenerate_command: self.regenerate_command.clone(),
             comment_prefix: "#".to_string(),
         };
-        format!("{}\n\n{}", header.render(), generate_clippy_toml(&self.config))
+        format!(
+            "{}\n\n{}",
+            header.render(),
+            generate_clippy_toml(&self.config)
+        )
     }
 
     /// Get the generator name.

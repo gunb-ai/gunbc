@@ -5,6 +5,8 @@
 pub mod graph;
 pub mod ops;
 
-pub use graph::{build_codegen_graph, build_codegen_graph_with_mode, codegen_signature, CodegenGraphOp};
+pub use graph::{
+    build_codegen_graph, build_codegen_graph_with_mode, codegen_signature, CodegenGraphOp,
+};
 pub use gunbc_ir::CODEGEN_STAMP_PATH;
 pub use ops::CodegenOp;

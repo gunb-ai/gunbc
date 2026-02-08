@@ -30,7 +30,12 @@ pub fn build_frame(
 
     match mode {
         RenderMode::Compact => {
-            lines.push(build_compact_line(progress, spinner_frame, symbol_set, tier));
+            lines.push(build_compact_line(
+                progress,
+                spinner_frame,
+                symbol_set,
+                tier,
+            ));
         }
         RenderMode::Standard | RenderMode::Dynamic => {
             lines.push(build_dag_header(progress, tier, symbol_set));
@@ -53,19 +58,13 @@ pub fn build_frame(
 // ---------------------------------------------------------------------------
 
 /// Build the DAG header line (e.g., "◐ Running: lint [1.2s]").
-fn build_dag_header(
-    progress: &DagProgress,
-    tier: Tier,
-    symbol_set: &'static SymbolSet,
-) -> Line {
+fn build_dag_header(progress: &DagProgress, tier: Tier, symbol_set: &'static SymbolSet) -> Line {
     let elapsed = format_duration(progress.elapsed());
     match &progress.phase {
-        DagPhase::NotStarted => {
-            Line::new(vec![
-                symbol_span(SymbolId::DagNotStarted, symbol_set, tier),
-                Span::plain(" DAG pending"),
-            ])
-        }
+        DagPhase::NotStarted => Line::new(vec![
+            symbol_span(SymbolId::DagNotStarted, symbol_set, tier),
+            Span::plain(" DAG pending"),
+        ]),
         DagPhase::Running { current_node } => {
             let label = progress
                 .snapshot
@@ -259,16 +258,10 @@ fn build_compact_line(
         .count();
 
     let status_span = match &progress.phase {
-        DagPhase::NotStarted => {
-            symbol_span(SymbolId::DagNotStarted, symbol_set, tier)
-        }
+        DagPhase::NotStarted => symbol_span(SymbolId::DagNotStarted, symbol_set, tier),
         DagPhase::Running { .. } => Span::plain(spinner_frame.to_string()),
-        DagPhase::Completed { .. } => {
-            symbol_span(SymbolId::DagCompleted, symbol_set, tier)
-        }
-        DagPhase::Failed { .. } => {
-            symbol_span(SymbolId::DagFailed, symbol_set, tier)
-        }
+        DagPhase::Completed { .. } => symbol_span(SymbolId::DagCompleted, symbol_set, tier),
+        DagPhase::Failed { .. } => symbol_span(SymbolId::DagFailed, symbol_set, tier),
     };
 
     let elapsed_str = format_duration(progress.elapsed());
@@ -314,8 +307,7 @@ fn build_legend_lines(
                 .cloned()
                 .unwrap_or_else(|| "?".to_string());
             let label = full_label(node, &progress.snapshot.labels);
-            let elapsed =
-                np.and_then(|n| n.elapsed.or_else(|| n.start_time.map(|t| t.elapsed())));
+            let elapsed = np.and_then(|n| n.elapsed.or_else(|| n.start_time.map(|t| t.elapsed())));
 
             match state {
                 NodeState::Running | NodeState::Failed => {
@@ -457,16 +449,14 @@ fn node_box_spans(label: &str, state: NodeState) -> Vec<Span> {
         NodeState::Completed | NodeState::Failed | NodeState::Running | NodeState::Intercepted
     );
 
-    vec![
-        Span::styled(
-            format!("[{}]", label),
-            SpanStyle {
-                color: Some(color),
-                bold,
-                ..Default::default()
-            },
-        ),
-    ]
+    vec![Span::styled(
+        format!("[{}]", label),
+        SpanStyle {
+            color: Some(color),
+            bold,
+            ..Default::default()
+        },
+    )]
 }
 
 /// Create a span for a connector string with edge-state coloring.
@@ -514,10 +504,7 @@ fn legend_char(state: NodeState) -> &'static str {
 // ---------------------------------------------------------------------------
 
 /// Determine the dominant edge state for a connector cell.
-fn connector_cell_state(
-    edges: &[(NodeId, NodeId)],
-    progress: &DagProgress,
-) -> EdgeState {
+fn connector_cell_state(edges: &[(NodeId, NodeId)], progress: &DagProgress) -> EdgeState {
     let mut has_done = false;
     let mut has_dead = false;
     for (from, to) in edges {
@@ -714,7 +701,10 @@ mod tests {
             &STANDARD,
         );
 
-        assert!(!frame.lines.is_empty(), "Frame should have at least a header line");
+        assert!(
+            !frame.lines.is_empty(),
+            "Frame should have at least a header line"
+        );
         assert_eq!(frame.cursor_action, CursorAction::Overwrite);
     }
 
@@ -781,13 +771,19 @@ mod tests {
     #[test]
     fn test_node_box_spans_bold_for_running() {
         let spans = node_box_spans("A", NodeState::Running);
-        assert!(spans.iter().any(|s| s.style.bold), "Running node should be bold");
+        assert!(
+            spans.iter().any(|s| s.style.bold),
+            "Running node should be bold"
+        );
     }
 
     #[test]
     fn test_node_box_spans_not_bold_for_pending() {
         let spans = node_box_spans("A", NodeState::Pending);
-        assert!(!spans.iter().any(|s| s.style.bold), "Pending node should not be bold");
+        assert!(
+            !spans.iter().any(|s| s.style.bold),
+            "Pending node should not be bold"
+        );
     }
 
     #[test]

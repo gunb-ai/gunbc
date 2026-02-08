@@ -30,13 +30,37 @@ pub fn bootstrap_signature() -> WorkflowSignature {
         .with_input("check_mode", "OptionalBool", Cardinality::ZERO_OR_ONE)
         .with_input("path", "String", Cardinality::ONE)
         // Outputs from makefile write transport (boundary, skippable)
-        .with_output("makefile_response", "TransportResponse", Cardinality::ZERO_OR_ONE)
-        .with_output("makefile_written_path", "OptionalString", Cardinality::ZERO_OR_ONE)
-        .with_output("makefile_content", "OptionalString", Cardinality::ZERO_OR_ONE)
+        .with_output(
+            "makefile_response",
+            "TransportResponse",
+            Cardinality::ZERO_OR_ONE,
+        )
+        .with_output(
+            "makefile_written_path",
+            "OptionalString",
+            Cardinality::ZERO_OR_ONE,
+        )
+        .with_output(
+            "makefile_content",
+            "OptionalString",
+            Cardinality::ZERO_OR_ONE,
+        )
         // Outputs from gitignore write transport (boundary, skippable)
-        .with_output("gitignore_response", "TransportResponse", Cardinality::ZERO_OR_ONE)
-        .with_output("gitignore_written_path", "OptionalString", Cardinality::ZERO_OR_ONE)
-        .with_output("gitignore_content", "OptionalString", Cardinality::ZERO_OR_ONE)
+        .with_output(
+            "gitignore_response",
+            "TransportResponse",
+            Cardinality::ZERO_OR_ONE,
+        )
+        .with_output(
+            "gitignore_written_path",
+            "OptionalString",
+            Cardinality::ZERO_OR_ONE,
+        )
+        .with_output(
+            "gitignore_content",
+            "OptionalString",
+            Cardinality::ZERO_OR_ONE,
+        )
         // Freshness from compare nodes (terminal boundary outputs)
         .with_output("fresh", "Bool", Cardinality::ONE)
         // Skip from write transports (terminal boundary outputs)
@@ -94,7 +118,10 @@ pub fn build_bootstrap_graph() -> Result<Dag<BootstrapGraphOp>, BuilderError> {
         Node::opaque(
             "parse_scan_result",
             vec![port("response", "TransportResponse")],
-            vec![port("crate_count", "Int"), list("crate_names", "StringList")],
+            vec![
+                port("crate_count", "Int"),
+                list("crate_names", "StringList"),
+            ],
             BootstrapGraphOp::Domain(BootstrapOp::ParseScanResult),
         ),
         &execute_scan,
@@ -225,8 +252,10 @@ mod tests {
         let entrypoints = detect_entrypoints(&dag);
 
         // check_mode and read paths are entrypoints
-        assert!(entrypoints.is_entrypoint_port(&"compare_makefile_content".into(), &"check_mode".into()));
-        assert!(entrypoints.is_entrypoint_port(&"compare_gitignore_content".into(), &"check_mode".into()));
+        assert!(entrypoints
+            .is_entrypoint_port(&"compare_makefile_content".into(), &"check_mode".into()));
+        assert!(entrypoints
+            .is_entrypoint_port(&"compare_gitignore_content".into(), &"check_mode".into()));
         assert!(entrypoints.is_entrypoint_port(&"prepare_read_makefile".into(), &"path".into()));
         assert!(entrypoints.is_entrypoint_port(&"prepare_read_gitignore".into(), &"path".into()));
     }

@@ -197,29 +197,13 @@ impl fmt::Display for CredentialError {
                 write!(f, "credential for '{service}' has expired")
             }
             CredentialError::AcquisitionFailed { service, message } => {
-                write!(
-                    f,
-                    "failed to acquire credential for '{service}': {message}"
-                )
+                write!(f, "failed to acquire credential for '{service}': {message}")
             }
         }
     }
 }
 
 impl std::error::Error for CredentialError {}
-
-// ---------------------------------------------------------------------------
-// CredentialProvider trait
-// ---------------------------------------------------------------------------
-
-/// A provider that can acquire credentials.
-pub trait CredentialProvider: fmt::Debug + Send + Sync {
-    /// Identifier for the service this provider targets (e.g., "github", "openai").
-    fn service_id(&self) -> &str;
-
-    /// Acquire a fresh credential.
-    fn acquire(&self) -> Result<Credential, CredentialError>;
-}
 
 // ---------------------------------------------------------------------------
 // Credential
@@ -301,8 +285,7 @@ impl Credential {
 // ---------------------------------------------------------------------------
 
 fn base64_encode(input: &str) -> String {
-    const ALPHABET: &[u8] =
-        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let bytes = input.as_bytes();
     let mut result = String::new();
 
@@ -450,17 +433,14 @@ impl TryFrom<&Value> for Credential {
                 }
             }
             "static" => SecretSource::Static,
-            other => {
-                return Err(format!(
-                    "unknown Credential source_type: {other}"
-                ))
-            }
+            other => return Err(format!("unknown Credential source_type: {other}")),
         };
 
         // Expiry
-        let expires_at = map.get("expires_at").and_then(Value::as_int).map(|millis| {
-            std::time::UNIX_EPOCH + std::time::Duration::from_millis(millis as u64)
-        });
+        let expires_at = map
+            .get("expires_at")
+            .and_then(Value::as_int)
+            .map(|millis| std::time::UNIX_EPOCH + std::time::Duration::from_millis(millis as u64));
 
         // Scheme
         let scheme_str = map
@@ -605,7 +585,13 @@ mod tests {
 
         // Header with exchange source
         let cred = Credential::new(
-            Secret::new("tok", SecretSource::Exchange { provider: "oidc".to_string() }, None),
+            Secret::new(
+                "tok",
+                SecretSource::Exchange {
+                    provider: "oidc".to_string(),
+                },
+                None,
+            ),
             AuthScheme::Header {
                 name: "x-api-key".to_string(),
             },
@@ -643,22 +629,14 @@ mod tests {
     fn capability_marker_rejection() {
         // Build a map without the capability marker
         let mut map = BTreeMap::new();
-        map.insert(
-            "token".to_string(),
-            Value::Secret(SecretString::new("tok")),
-        );
+        map.insert("token".to_string(), Value::Secret(SecretString::new("tok")));
         map.insert("scheme".to_string(), Value::Str("bearer".to_string()));
-        map.insert(
-            "source_type".to_string(),
-            Value::Str("static".to_string()),
-        );
+        map.insert("source_type".to_string(), Value::Str("static".to_string()));
 
         let value = Value::Map(map);
         let result = Credential::try_from(&value);
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .contains("capability marker"));
+        assert!(result.unwrap_err().contains("capability marker"));
     }
 
     #[test]

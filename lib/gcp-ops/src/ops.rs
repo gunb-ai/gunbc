@@ -1,6 +1,6 @@
 //! Pure GCP ops for WIF + Secret Manager.
 
-use gunbc_exec::{require_bool, require_response, require_str, ExecError, Executable, OutputMap};
+use gunbc_exec::{require_bool, require_str, ExecError, Executable, OutputMap};
 use gunbc_ir::transport::rest::RestRequest;
 use gunbc_ir::transport::{ShellRequest, TransportResponse};
 use gunbc_ir::{AuthScheme, Credential, Secret, SecretSource, Value};
@@ -83,7 +83,7 @@ impl Executable for GcpOps {
             GcpOps::ResolveRuntime => {
                 let raw = require_str(&inputs, "runtime")?;
                 let kind = GcpRuntimeKind::parse(raw)
-                    .ok_or_else(|| ExecError::new("unknown runtime (expected github|gcp)"))?;
+                    .ok_or_else(|| ExecError::new("unknown runtime (expected github|gcp|local)"))?;
                 let out = match kind {
                     GcpRuntimeKind::GitHubActions => "github",
                     GcpRuntimeKind::GcpMetadata => "gcp",
@@ -93,20 +93,47 @@ impl Executable for GcpOps {
             }
             GcpOps::PrepareGitHubOidcRequest => {
                 let audience = require_str(&inputs, "audience")?;
-                let request_url = require_str(&inputs, "request_url")?;
-                let request_token = require_str(&inputs, "request_token")?;
+                let request_url = match inputs.get("request_url") {
+                    Some(value) => value
+                        .as_str()
+                        .ok_or_else(|| ExecError::new("missing or invalid 'request_url' input"))?,
+                    None => "",
+                };
+                let request_token = match inputs.get("request_token") {
+                    Some(value) => value.as_str().ok_or_else(|| {
+                        ExecError::new("missing or invalid 'request_token' input")
+                    })?,
+                    None => "",
+                };
 
-                let url = format!("{}?audience={}", request_url, url_encode_component(audience));
-                let req = RestRequest::get(url)
-                    .header("Authorization", format!("Bearer {}", request_token));
+                let skip = request_url.trim().is_empty() || request_token.trim().is_empty();
+                let url = if skip {
+                    "https://example.invalid/oidc".to_string()
+                } else {
+                    format!(
+                        "{}?audience={}",
+                        request_url,
+                        url_encode_component(audience)
+                    )
+                };
+                let req = if skip {
+                    RestRequest::get(url)
+                } else {
+                    RestRequest::get(url)
+                        .header("Authorization", format!("Bearer {}", request_token))
+                };
 
                 OutputMap::new()
                     .request("request", req.into())
-                    .bool("skip", false)
+                    .bool("skip", skip)
                     .ok()
             }
             GcpOps::ParseGitHubOidcResponse => {
-                let response = require_response(&inputs, "response")?;
+                let response = match inputs.get("response") {
+                    Some(Value::Skipped) => return OutputMap::new().str("subject_token", "").ok(),
+                    Some(Value::Response(r)) => r,
+                    _ => return Err(ExecError::new("missing or invalid 'response' input")),
+                };
                 let rest = match response {
                     TransportResponse::Rest(r) => r,
                     other => {
@@ -136,7 +163,11 @@ impl Executable for GcpOps {
                     .ok()
             }
             GcpOps::ParseMetadataOidcResponse => {
-                let response = require_response(&inputs, "response")?;
+                let response = match inputs.get("response") {
+                    Some(Value::Skipped) => return OutputMap::new().str("subject_token", "").ok(),
+                    Some(Value::Response(r)) => r,
+                    _ => return Err(ExecError::new("missing or invalid 'response' input")),
+                };
                 let rest = match response {
                     TransportResponse::Rest(r) => r,
                     other => {
@@ -167,7 +198,16 @@ impl Executable for GcpOps {
                     .ok()
             }
             GcpOps::ParseLocalAccessToken => {
-                let response = require_response(&inputs, "response")?;
+                let response = match inputs.get("response") {
+                    Some(Value::Skipped) => {
+                        return OutputMap::new()
+                            .str("access_token", "")
+                            .int("expires_in", 0)
+                            .ok();
+                    }
+                    Some(Value::Response(r)) => r,
+                    _ => return Err(ExecError::new("missing or invalid 'response' input")),
+                };
                 let shell = match response {
                     TransportResponse::Shell(s) => s,
                     other => {
@@ -189,7 +229,11 @@ impl Executable for GcpOps {
                         "gcloud auth print-access-token returned empty token",
                     ));
                 }
-                OutputMap::new().str("access_token", token).ok()
+                // gcloud doesn't return TTL in this path; keep a stable contract by emitting 0.
+                OutputMap::new()
+                    .str("access_token", token)
+                    .int("expires_in", 0)
+                    .ok()
             }
             GcpOps::PrepareStsExchange => {
                 let audience = require_str(&inputs, "audience")?;
@@ -210,7 +254,16 @@ impl Executable for GcpOps {
                     .ok()
             }
             GcpOps::ParseStsExchange => {
-                let response = require_response(&inputs, "response")?;
+                let response = match inputs.get("response") {
+                    Some(Value::Skipped) => {
+                        return OutputMap::new()
+                            .str("access_token", "")
+                            .int("expires_in", 0)
+                            .ok();
+                    }
+                    Some(Value::Response(r)) => r,
+                    _ => return Err(ExecError::new("missing or invalid 'response' input")),
+                };
                 let rest = match response {
                     TransportResponse::Rest(r) => r,
                     other => {
@@ -238,10 +291,12 @@ impl Executable for GcpOps {
             GcpOps::PrepareImpersonate => {
                 let access_token = require_str(&inputs, "access_token")?;
                 let service_account = require_str(&inputs, "service_account")?;
-                let lifetime_seconds = inputs
-                    .get("lifetime_seconds")
-                    .and_then(Value::as_int)
-                    .unwrap_or(3600);
+                let lifetime_seconds = match inputs.get("lifetime_seconds") {
+                    Some(value) => value.as_int().ok_or_else(|| {
+                        ExecError::new("missing or invalid 'lifetime_seconds' input")
+                    })?,
+                    None => 3600,
+                };
 
                 let body = serde_json::json!({
                     "scope": ["https://www.googleapis.com/auth/cloud-platform"],
@@ -262,7 +317,11 @@ impl Executable for GcpOps {
                     .ok()
             }
             GcpOps::ParseImpersonate => {
-                let response = require_response(&inputs, "response")?;
+                let response = match inputs.get("response") {
+                    Some(Value::Skipped) => return OutputMap::new().str("access_token", "").ok(),
+                    Some(Value::Response(r)) => r,
+                    _ => return Err(ExecError::new("missing or invalid 'response' input")),
+                };
                 let rest = match response {
                     TransportResponse::Rest(r) => r,
                     other => {
@@ -276,7 +335,9 @@ impl Executable for GcpOps {
                     .body
                     .get("accessToken")
                     .and_then(|v| v.as_str())
-                    .ok_or_else(|| ExecError::new("missing accessToken in impersonation response"))?;
+                    .ok_or_else(|| {
+                        ExecError::new("missing accessToken in impersonation response")
+                    })?;
                 let _ = rest
                     .body
                     .get("expireTime")
@@ -288,10 +349,12 @@ impl Executable for GcpOps {
                 let access_token = require_str(&inputs, "access_token")?;
                 let project = require_str(&inputs, "project")?;
                 let secret = require_str(&inputs, "secret")?;
-                let version = inputs
-                    .get("version")
-                    .and_then(Value::as_str)
-                    .unwrap_or("latest");
+                let version = match inputs.get("version") {
+                    Some(value) => value
+                        .as_str()
+                        .ok_or_else(|| ExecError::new("missing or invalid 'version' input"))?,
+                    None => "latest",
+                };
 
                 let url = format!(
                     "https://secretmanager.googleapis.com/v1/projects/{}/secrets/{}/versions/{}:access",
@@ -306,7 +369,11 @@ impl Executable for GcpOps {
                     .ok()
             }
             GcpOps::ParseSecretAccess => {
-                let response = require_response(&inputs, "response")?;
+                let response = match inputs.get("response") {
+                    Some(Value::Skipped) => return OutputMap::new().str("secret", "").ok(),
+                    Some(Value::Response(r)) => r,
+                    _ => return Err(ExecError::new("missing or invalid 'response' input")),
+                };
                 let rest = match response {
                     TransportResponse::Rest(r) => r,
                     other => {
@@ -346,7 +413,11 @@ impl Executable for GcpOps {
                     .ok()
             }
             GcpOps::ParseSecretGet => {
-                let response = require_response(&inputs, "response")?;
+                let response = match inputs.get("response") {
+                    Some(Value::Skipped) => return OutputMap::new().bool("exists", false).ok(),
+                    Some(Value::Response(r)) => r,
+                    _ => return Err(ExecError::new("missing or invalid 'response' input")),
+                };
                 let rest = match response {
                     TransportResponse::Rest(r) => r,
                     other => {
@@ -392,7 +463,11 @@ impl Executable for GcpOps {
                     .ok()
             }
             GcpOps::ParseSecretCreate => {
-                let response = require_response(&inputs, "response")?;
+                let response = match inputs.get("response") {
+                    Some(Value::Skipped) => return OutputMap::new().bool("ok", true).ok(),
+                    Some(Value::Response(r)) => r,
+                    _ => return Err(ExecError::new("missing or invalid 'response' input")),
+                };
                 let rest = match response {
                     TransportResponse::Rest(r) => r,
                     other => {
@@ -414,6 +489,13 @@ impl Executable for GcpOps {
                 let access_token = require_str(&inputs, "access_token")?;
                 let project = require_str(&inputs, "project")?;
                 let secret = require_str(&inputs, "secret")?;
+                if let Some(value) = inputs.get("create_done") {
+                    if !matches!(value, Value::Skipped) {
+                        value.as_bool().ok_or_else(|| {
+                            ExecError::new("missing or invalid 'create_done' input")
+                        })?;
+                    }
+                }
                 let secret_value = inputs
                     .get("secret_value")
                     .and_then(Value::as_secret)
@@ -436,7 +518,11 @@ impl Executable for GcpOps {
                     .ok()
             }
             GcpOps::ParseSecretAddVersion => {
-                let response = require_response(&inputs, "response")?;
+                let response = match inputs.get("response") {
+                    Some(Value::Skipped) => return OutputMap::new().str("version", "").ok(),
+                    Some(Value::Response(r)) => r,
+                    _ => return Err(ExecError::new("missing or invalid 'response' input")),
+                };
                 let rest = match response {
                     TransportResponse::Rest(r) => r,
                     other => {
@@ -452,17 +538,19 @@ impl Executable for GcpOps {
                         rest.status
                     )));
                 }
-                let name = rest
-                    .body
-                    .get("name")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
+                let name = rest.body.get("name").and_then(|v| v.as_str()).unwrap_or("");
                 OutputMap::new().str("version", name).ok()
             }
             GcpOps::BuildCredential => {
                 let secret = require_str(&inputs, "secret")?;
                 let scheme = require_str(&inputs, "scheme")?;
-                let header_name = inputs.get("header_name").and_then(Value::as_str);
+                let header_name =
+                    match inputs.get("header_name") {
+                        Some(value) => Some(value.as_str().ok_or_else(|| {
+                            ExecError::new("missing or invalid 'header_name' input")
+                        })?),
+                        None => None,
+                    };
                 let source_id = require_str(&inputs, "source_id")?;
                 let expires_at = None;
 
@@ -472,7 +560,9 @@ impl Executable for GcpOps {
                         let name = header_name.ok_or_else(|| {
                             ExecError::new("scheme 'header' requires header_name")
                         })?;
-                        AuthScheme::Header { name: name.to_string() }
+                        AuthScheme::Header {
+                            name: name.to_string(),
+                        }
                     }
                     other => {
                         return Err(ExecError::new(format!(
@@ -484,7 +574,9 @@ impl Executable for GcpOps {
 
                 let secret = Secret::new(
                     secret,
-                    SecretSource::Exchange { provider: source_id.to_string() },
+                    SecretSource::Exchange {
+                        provider: source_id.to_string(),
+                    },
                     expires_at,
                 );
                 let cred = Credential::new(secret, scheme);
@@ -498,7 +590,10 @@ impl Executable for GcpOps {
             GcpOps::ComposeSecretName => {
                 let prefix = require_str(&inputs, "prefix")?;
                 let service = require_str(&inputs, "service")?;
-                let delimiter = inputs.get("delimiter").and_then(Value::as_str).unwrap_or("");
+                let delimiter = inputs
+                    .get("delimiter")
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
                 OutputMap::new()
                     .str("secret", format!("{prefix}{delimiter}{service}"))
                     .ok()
@@ -535,8 +630,7 @@ fn is_unreserved_url_byte(b: u8) -> bool {
 }
 
 fn base64_encode(input: &str) -> String {
-    const ALPHABET: &[u8] =
-        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let bytes = input.as_bytes();
     let mut result = String::new();
 
@@ -600,7 +694,13 @@ fn base64_decode(input: &str) -> Result<Vec<u8>, String> {
             return Err("invalid base64 padding".to_string());
         }
 
-        let pad = if v2 == 64 { 2 } else if v3 == 64 { 1 } else { 0 };
+        let pad = if v2 == 64 {
+            2
+        } else if v3 == 64 {
+            1
+        } else {
+            0
+        };
         if pad > 0 && idx != total_chunks.saturating_sub(1) {
             return Err("invalid base64 padding".to_string());
         }

@@ -7,16 +7,10 @@ use super::{InputPattern, ResourceDef};
 use crate::ResourceId;
 
 /// Input globs that affect codegen outputs.
-pub const CODEGEN_INPUT_GLOBS: &[&str] = &[
-    "core/codegen/src/**/*.rs",
-    "core/ir/src/**/*.rs",
-];
+pub const CODEGEN_INPUT_GLOBS: &[&str] = &["core/codegen/src/**/*.rs", "core/ir/src/**/*.rs"];
 
 /// Individual files that affect codegen outputs.
-pub const CODEGEN_INPUT_FILES: &[&str] = &[
-    "core/codegen/Cargo.toml",
-    "core/ir/Cargo.toml",
-];
+pub const CODEGEN_INPUT_FILES: &[&str] = &["core/codegen/Cargo.toml", "core/ir/Cargo.toml"];
 
 /// Resource definition for codegen outputs (`build:generated_cli`).
 pub fn codegen_resource_def() -> ResourceDef {

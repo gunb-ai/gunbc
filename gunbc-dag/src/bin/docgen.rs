@@ -110,10 +110,22 @@ fn set_chain_mocks(mocks: &mut BoundaryMocks, name: &str, path: &str) {
         })),
     );
 
-    mocks.set_value(&write_node, format!("{name}_written_path"), Value::Str("<DRY-RUN>".to_string()));
-    mocks.set_value(&write_node, format!("{name}_content"), Value::Str("<DRY-RUN>".to_string()));
+    mocks.set_value(
+        &write_node,
+        format!("{name}_written_path"),
+        Value::Str("<DRY-RUN>".to_string()),
+    );
+    mocks.set_value(
+        &write_node,
+        format!("{name}_content"),
+        Value::Str("<DRY-RUN>".to_string()),
+    );
     mocks.set_value(&write_node, "skip", Value::Bool(false));
-    mocks.set_value(&write_node, "skip_reason", Value::Str("<DRY-RUN>".to_string()));
+    mocks.set_value(
+        &write_node,
+        "skip_reason",
+        Value::Str("<DRY-RUN>".to_string()),
+    );
 }
 
 fn print_help() {

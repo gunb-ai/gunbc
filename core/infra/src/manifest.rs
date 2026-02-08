@@ -208,7 +208,10 @@ mod tests {
     fn test_manifest_round_trip() {
         let mut manifest = ResourceManifest::new();
         let id = ResourceId::new("build:test");
-        manifest.insert(id.clone(), ManifestEntry::new(ContentHash::from_bytes(b"data"), 0));
+        manifest.insert(
+            id.clone(),
+            ManifestEntry::new(ContentHash::from_bytes(b"data"), 0),
+        );
 
         let json = manifest.to_json_pretty().expect("serialize failed");
         let loaded = ResourceManifest::from_json_str(&json).expect("parse failed");
@@ -225,11 +228,10 @@ mod tests {
 
     #[test]
     fn test_manifest_entry_with_outputs() {
-        let entry = ManifestEntry::new(ContentHash::from_bytes(b"test"), 0)
-            .with_outputs(vec![
-                PathBuf::from("output1.txt"),
-                PathBuf::from("output2.txt"),
-            ]);
+        let entry = ManifestEntry::new(ContentHash::from_bytes(b"test"), 0).with_outputs(vec![
+            PathBuf::from("output1.txt"),
+            PathBuf::from("output2.txt"),
+        ]);
 
         assert_eq!(entry.outputs.len(), 2);
     }
@@ -238,7 +240,10 @@ mod tests {
     fn test_manifest_remove() {
         let mut manifest = ResourceManifest::new();
         let id = ResourceId::new("build:test");
-        manifest.insert(id.clone(), ManifestEntry::new(ContentHash::from_bytes(b"test"), 0));
+        manifest.insert(
+            id.clone(),
+            ManifestEntry::new(ContentHash::from_bytes(b"test"), 0),
+        );
 
         assert_eq!(manifest.len(), 1);
         manifest.remove(&id);

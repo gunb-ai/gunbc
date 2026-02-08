@@ -55,10 +55,6 @@ pub mod scope;
 pub mod tcp;
 pub mod tool;
 
-pub use credential::{
-    AuthScheme, Credential, CredentialError, CredentialProvider, Secret, SecretSource,
-};
-pub use cloud::{CloudProviderKind, CloudRuntimeKind, CloudSecretConfig, CloudSecretRef};
 pub use ci::{
     detect_provider, is_ci, AnnotationLevel, CiProvider, FileLocation, GitHubActionsProvider,
     GitLabCiProvider, GitLabRunner, PlainTextProvider, Runner, WorkflowCommand,
@@ -80,6 +76,8 @@ pub use cli::{
     GIT as CLI_GIT,
     RUSTFMT as CLI_RUSTFMT,
 };
+pub use cloud::{CloudProviderKind, CloudRuntimeKind, CloudSecretConfig, CloudSecretRef};
+pub use credential::{AuthScheme, Credential, CredentialError, Secret, SecretSource};
 pub use file::{FileOp, FileRequest, FileResponse};
 pub use gist::GistRequest;
 pub use git::GitRequest;
@@ -96,8 +94,8 @@ pub use github_actions::{
 pub use http::{HttpMethod, HttpRequest, HttpResponse};
 pub use llm::{
     anthropic_provider, build_chat_request, builtin_provider_ids, openai_provider,
-    parse_chat_response, provider_by_id, ChatMessage, ChatRequest, ChatResponse,
-    FinishReason, LlmProvider, Role, Usage,
+    parse_chat_response, provider_by_id, ChatMessage, ChatRequest, ChatResponse, FinishReason,
+    LlmProvider, Role, Usage,
 };
 pub use rest::{RestRequest, RestResponse};
 pub use scope::{CredentialIntent, ScopeContract, ScopeContractError};

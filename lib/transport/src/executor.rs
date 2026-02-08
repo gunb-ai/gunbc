@@ -108,22 +108,12 @@ fn execute_http(request: &HttpRequest) -> Result<HttpResponse, TransportError> {
         Some(body) => match req.send_string(body) {
             Ok(resp) => resp,
             Err(ureq::Error::Status(_, resp)) => resp,
-            Err(e) => {
-                return Err(TransportError::new(format!(
-                    "http request failed: {}",
-                    e
-                )))
-            }
+            Err(e) => return Err(TransportError::new(format!("http request failed: {}", e))),
         },
         None => match req.call() {
             Ok(resp) => resp,
             Err(ureq::Error::Status(_, resp)) => resp,
-            Err(e) => {
-                return Err(TransportError::new(format!(
-                    "http request failed: {}",
-                    e
-                )))
-            }
+            Err(e) => return Err(TransportError::new(format!("http request failed: {}", e))),
         },
     };
 
@@ -136,7 +126,11 @@ fn execute_http(request: &HttpRequest) -> Result<HttpResponse, TransportError> {
     }
     let body = response.into_string().unwrap_or_default();
 
-    Ok(HttpResponse { status, headers, body })
+    Ok(HttpResponse {
+        status,
+        headers,
+        body,
+    })
 }
 
 fn append_query(url: &str, query: &HashMap<String, String>) -> String {
@@ -437,28 +431,20 @@ mod tests {
     /// Generate a unique temp file path for testing.
     fn temp_path(name: &str) -> PathBuf {
         let mut path = temp_dir();
-        path.push(format!("gunbc_transport_test_{}_{}", std::process::id(), name));
+        path.push(format!(
+            "gunbc_transport_test_{}_{}",
+            std::process::id(),
+            name
+        ));
         path
     }
 
     fn guard_fs(name: &str) -> bool {
-        guard_test(
-            name,
-            TestClass::Integration,
-            FermiCost::S,
-            &["fs"],
-            &[],
-        )
+        guard_test(name, TestClass::Integration, FermiCost::S, &["fs"], &[])
     }
 
     fn guard_shell(name: &str) -> bool {
-        guard_test(
-            name,
-            TestClass::Integration,
-            FermiCost::M,
-            &["shell"],
-            &[],
-        )
+        guard_test(name, TestClass::Integration, FermiCost::M, &["shell"], &[])
     }
 
     fn guard_git(name: &str) -> bool {
