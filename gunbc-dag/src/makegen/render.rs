@@ -955,7 +955,7 @@ mod tests {
         assert!(makefile.contains("lint-fix"));
 
         // clippy-fix should exist
-        assert!(makefile.contains("clippy-fix: lint-upsert pragma"));
+        assert!(makefile.contains("clippy-fix: ensure-codegen pragma"));
 
         // check-fix should exist
         assert!(makefile.contains("check-fix:"));

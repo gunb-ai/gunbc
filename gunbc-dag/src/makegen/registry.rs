@@ -1383,7 +1383,7 @@ mod tests {
         );
         assert_eq!(
             map.resolve(&ResourceId::build("generated_cli"), ExecMode::Ensure),
-            Some("lint-upsert")
+            Some("ensure-codegen")
         );
     }
 
@@ -1404,7 +1404,7 @@ mod tests {
         // No verify target → fallback to ensure
         assert_eq!(
             map.resolve(&ResourceId::build("generated_cli"), ExecMode::Verify),
-            Some("lint-upsert")
+            Some("ensure-codegen")
         );
         assert_eq!(
             map.resolve(&ResourceId::build("verified_artifacts"), ExecMode::Verify),
