@@ -227,6 +227,7 @@ fn execute_install(tool: &'static CliToolDef) -> Result<HashMap<String, Value>, 
 
     let mut out = HashMap::new();
     out.insert("success".to_string(), Value::Bool(true));
+    out.insert("install_done".to_string(), Value::Bool(true));
     Ok(out)
 }
 

@@ -137,7 +137,12 @@ inventory::collect!(ResourceTestDef);
 
 /// Iterate over all registered resource test DAGs.
 pub fn iter_resource_tests() -> impl Iterator<Item = &'static ResourceTestDef> {
-    inventory::iter::<ResourceTestDef>.into_iter()
+    use std::collections::HashSet;
+
+    let mut seen: HashSet<(&'static str, &'static str)> = HashSet::new();
+    inventory::iter::<ResourceTestDef>
+        .into_iter()
+        .filter(move |def| seen.insert((def.origin_crate, def.name)))
 }
 
 /// Shared test generation helper: builds test code from a DAG + MockSpec + config.

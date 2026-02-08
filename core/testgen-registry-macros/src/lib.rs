@@ -267,6 +267,7 @@ pub fn testgen_target(args: TokenStream, input: TokenStream) -> TokenStream {
 
     let fn_ident = input_fn.sig.ident.clone();
     let gen_ident = format_ident!("__testgen_generate_{}", fn_ident);
+    let resource_gen_ident = format_ident!("__resource_test_build_from_testgen_{}", fn_ident);
 
     let mut boundary_tests = true;
     let mut chain_tests = true;
@@ -421,6 +422,12 @@ pub fn testgen_target(args: TokenStream, input: TokenStream) -> TokenStream {
             gunbc_testgen_registry::generate_target(config, dag, spec)
         }
 
+        fn #resource_gen_ident() -> gunbc_ir::Dag<()> {
+            let dag = #builder;
+            let mut mapper = |_| ();
+            dag.map_ops(&mut mapper)
+        }
+
         gunbc_testgen_registry::inventory::submit! {
             gunbc_testgen_registry::DagSpecDef {
                 origin_crate: env!("CARGO_CRATE_NAME"),
@@ -450,6 +457,14 @@ pub fn testgen_target(args: TokenStream, input: TokenStream) -> TokenStream {
                     live_required_any_of: #live_required_any_of_tokens,
                 },
                 generate: #gen_ident,
+            }
+        }
+
+        gunbc_testgen_registry::inventory::submit! {
+            gunbc_testgen_registry::ResourceTestDef {
+                origin_crate: env!("CARGO_CRATE_NAME"),
+                name: #name,
+                build: #resource_gen_ident,
             }
         }
     };

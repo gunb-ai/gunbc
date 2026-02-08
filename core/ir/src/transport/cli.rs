@@ -566,10 +566,17 @@ fn build_cli_tool_subdag(
     let tool_res_port_name = format!("res:tool:{}", tool.id);
     let tool_res_port_read = Port::resource(tool_res_name.clone(), "Unit", AccessMode::Read);
     let tool_res_port_write = Port::resource(tool_res_name.clone(), "Unit", AccessMode::Write);
-    let tool_res_port_run = Port::resource(tool_res_name.clone(), "Unit", tool.access_mode);
+    let resolve_access = match &resolve_op {
+        CliToolOp::Check { .. } => AccessMode::Read,
+        CliToolOp::Install { .. } => AccessMode::Write,
+        CliToolOp::Run { tool, .. } => tool.access_mode,
+        CliToolOp::ResourceGate { .. } => AccessMode::Read,
+    };
+    let tool_res_port_run = Port::resource(tool_res_name.clone(), "Unit", resolve_access);
 
     let needs_pkg = tool.install_cmd.is_some();
-    let needs_target = tool.run_cmd.first().copied() == Some("cargo");
+    let needs_target = matches!(&resolve_op, CliToolOp::Run { .. })
+        && tool.run_cmd.first().copied() == Some("cargo");
 
     let mut gate_outputs = vec![Port::scalar(format!("tool:{}", tool.id), "Unit")];
     if needs_pkg {
