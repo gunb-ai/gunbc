@@ -111,6 +111,7 @@ pub fn build_chat_completion_graph() -> Dag<LlmGraphOp> {
                     port("service", "String"),
                     port("scheme", "String"),
                     port("header_name", "String"),
+                    port("interactive_allowed", "Bool"),
                 ],
                 LlmGraphOp::Llm(LlmOps::ResolveAuth),
             ),
@@ -196,6 +197,12 @@ pub fn build_chat_completion_graph() -> Dag<LlmGraphOp> {
             cloud_credential.in_port("header_name"),
         )
         .expect("resolve_auth.header_name -> cloud_credential.header_name");
+    builder
+        .add_edge(
+            resolve_auth.out("interactive_allowed"),
+            cloud_credential.in_port("interactive_allowed"),
+        )
+        .expect("resolve_auth.interactive_allowed -> cloud_credential.interactive_allowed");
     builder
         .add_edge(
             cloud_env.out("request_url"),

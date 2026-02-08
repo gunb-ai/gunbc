@@ -51,9 +51,8 @@ fn mock_credential() -> Value {
 fn mock_cloud_config() -> Value {
     CloudSecretConfig {
         provider: CloudProviderKind::Gcp,
-        runtime: CloudRuntimeKind::GitHubActions,
-        audience: "projects/123/locations/global/workloadIdentityPools/github/providers/gha"
-            .to_string(),
+        runtime: CloudRuntimeKind::LocalDev,
+        audience: "local-dev".to_string(),
         project_or_account: "mock-secrets".to_string(),
         secret: CloudSecretRef {
             prefix: "ci-".to_string(),
@@ -193,7 +192,7 @@ pub fn inline_review_mock_spec() -> MockSpec {
         .build_unchecked()
         .include_prefixed_runtime_mocks(
             "cloud_credential/gcp_wif_secret",
-            &gunbc_lib_gcp_ops::graph_mock::gcp_github_mock_spec(),
+            &gunbc_lib_gcp_ops::graph_mock::gcp_local_mock_spec(),
         )
         // Input mocks for entrypoints (inline graph has NO config node)
         .input_mock(
@@ -364,7 +363,7 @@ diff --git a/src/main.rs b/src/main.rs
         .build_unchecked()
         .include_prefixed_runtime_mocks(
             "cloud_credential/gcp_wif_secret",
-            &gunbc_lib_gcp_ops::graph_mock::gcp_github_mock_spec(),
+            &gunbc_lib_gcp_ops::graph_mock::gcp_local_mock_spec(),
         )
         // Input mocks / expectations (repo_path is a required entrypoint)
         .input_mock("prepare_diff", "repo_path", Value::Str(".".into()))

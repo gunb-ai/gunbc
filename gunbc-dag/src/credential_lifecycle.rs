@@ -158,7 +158,7 @@ pub fn github_credential_lifecycle_mock_spec() -> MockSpec {
         // cloud_credential -> gcp_wif_secret -> <inner-node>
         .include_prefixed_runtime_mocks(
             "cloud_credential/gcp_wif_secret",
-            &gunbc_lib_gcp_ops::graph_mock::gcp_github_mock_spec(),
+            &gunbc_lib_gcp_ops::graph_mock::gcp_local_mock_spec(),
         )
 }
 

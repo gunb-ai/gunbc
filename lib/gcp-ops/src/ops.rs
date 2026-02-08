@@ -787,3 +787,52 @@ fn base64_decode(input: &str) -> Result<Vec<u8>, String> {
 
     Ok(out)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gunbc_ir::transport::ShellResponse;
+
+    #[test]
+    fn parse_local_auth_check_treats_failed_token_probe_as_missing_auth() {
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "response".to_string(),
+            Value::Response(TransportResponse::Shell(ShellResponse::failed(
+                1,
+                "not logged in",
+            ))),
+        );
+
+        let outputs = GcpOps::ParseLocalAuthCheck
+            .execute(inputs)
+            .expect("check parser should not fail on unauthenticated sessions");
+
+        assert_eq!(outputs.get("exists"), Some(&Value::Bool(false)));
+    }
+
+    #[test]
+    fn prepare_local_auth_login_requires_interactive_when_auth_missing() {
+        let mut inputs = HashMap::new();
+        inputs.insert("exists".to_string(), Value::Bool(false));
+
+        let err = GcpOps::PrepareLocalAuthLogin
+            .execute(inputs)
+            .expect_err("missing auth with interactive disabled should fail");
+        assert!(
+            err.to_string().contains("interactive"),
+            "error should explain why local login did not run"
+        );
+    }
+
+    #[test]
+    fn prepare_local_auth_login_skips_when_auth_exists() {
+        let mut inputs = HashMap::new();
+        inputs.insert("exists".to_string(), Value::Bool(true));
+
+        let outputs = GcpOps::PrepareLocalAuthLogin
+            .execute(inputs)
+            .expect("prepare local auth login should succeed");
+        assert_eq!(outputs.get("skip"), Some(&Value::Bool(true)));
+    }
+}

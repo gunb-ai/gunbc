@@ -1,6 +1,6 @@
 //! Environment status helper for cloud credential flows.
 
-use crate::env_requirements::detect_cloud_env_requirements;
+use crate::env_requirements::{collect_missing_requirements, detect_cloud_env_requirements};
 use gunbc_exec::{EnvNode, ExecError, OutputMap};
 use gunbc_ir::Value;
 use std::collections::HashMap;
@@ -32,25 +32,16 @@ fn build_status_message() -> String {
         req.runtime.as_str()
     );
     let is_ci = env_truthy("CI") || env_truthy("GITHUB_ACTIONS");
-
-    let mut missing: Vec<&str> = Vec::new();
-    for &var in req.required {
-        if std::env::var(var).is_err() {
-            missing.push(var);
-        }
-    }
-
-    let mut missing_groups: Vec<String> = Vec::new();
-    for group in req.required_any_of {
-        let present = group.iter().any(|k| std::env::var(k).is_ok());
-        if !present {
-            missing_groups.push(group.join(" | "));
-        }
-    }
+    let missing = collect_missing_requirements(&req);
+    let missing_groups: Vec<String> = missing
+        .missing_any_of
+        .iter()
+        .map(|group| group.join(" | "))
+        .collect();
 
     let mut parts: Vec<String> = Vec::new();
-    if !missing.is_empty() {
-        parts.push(format!("missing: {}", missing.join(", ")));
+    if !missing.missing_required.is_empty() {
+        parts.push(format!("missing: {}", missing.missing_required.join(", ")));
     }
     if !missing_groups.is_empty() {
         parts.push(format!("missing any-of: {}", missing_groups.join(", ")));

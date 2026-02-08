@@ -132,6 +132,12 @@ fn add_cloud_credential_chain(
         .expect("resolve_auth.header_name -> cloud_credential.header_name");
     builder
         .add_edge(
+            resolve_auth.out("interactive_allowed"),
+            cloud_credential.in_port("interactive_allowed"),
+        )
+        .expect("resolve_auth.interactive_allowed -> cloud_credential.interactive_allowed");
+    builder
+        .add_edge(
             cloud_env.out("request_url"),
             cloud_credential.in_port("request_url"),
         )
@@ -323,6 +329,7 @@ pub fn build_review_phase_graph() -> Dag<ReviewGraphOp> {
                     port("service", "String"),
                     port("scheme", "String"),
                     port("header_name", "String"),
+                    port("interactive_allowed", "Bool"),
                 ],
                 ReviewGraphOp::Llm(LlmOps::ResolveAuth),
             ),
@@ -507,6 +514,7 @@ pub fn build_inline_review_graph() -> Dag<ReviewGraphOp> {
                     port("service", "String"),
                     port("scheme", "String"),
                     port("header_name", "String"),
+                    port("interactive_allowed", "Bool"),
                 ],
                 ReviewGraphOp::Llm(LlmOps::ResolveAuth),
             ),
@@ -771,6 +779,7 @@ pub fn build_diff_review_graph_with(config: ReviewPipelineConfig) -> Dag<ReviewG
                     port("service", "String"),
                     port("scheme", "String"),
                     port("header_name", "String"),
+                    port("interactive_allowed", "Bool"),
                 ],
                 ReviewGraphOp::Llm(LlmOps::ResolveAuth),
             ),
@@ -1024,6 +1033,7 @@ pub fn build_multi_source_review_graph_with(config: ReviewPipelineConfig) -> Dag
                     port("service", "String"),
                     port("scheme", "String"),
                     port("header_name", "String"),
+                    port("interactive_allowed", "Bool"),
                 ],
                 ReviewGraphOp::Llm(LlmOps::ResolveAuth),
             ),

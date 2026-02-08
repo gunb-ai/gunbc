@@ -48,9 +48,8 @@ fn mock_credential() -> Value {
 fn mock_cloud_config() -> Value {
     CloudSecretConfig {
         provider: CloudProviderKind::Gcp,
-        runtime: CloudRuntimeKind::GitHubActions,
-        audience: "projects/123/locations/global/workloadIdentityPools/github/providers/gha"
-            .to_string(),
+        runtime: CloudRuntimeKind::LocalDev,
+        audience: "local-dev".to_string(),
         project_or_account: "mock-secrets".to_string(),
         secret: CloudSecretRef {
             prefix: "ci-".to_string(),
@@ -227,7 +226,7 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
     // Build spec (with input expectations added via legacy API)
     let mut spec = reqs.build_unchecked().include_prefixed_runtime_mocks(
         "cloud_credential/gcp_wif_secret",
-        &gunbc_lib_gcp_ops::graph_mock::gcp_github_mock_spec(),
+        &gunbc_lib_gcp_ops::graph_mock::gcp_local_mock_spec(),
     );
 
     spec = spec.expects_input("repo_path", InputConstraint::Any);
@@ -311,6 +310,10 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
             NodeExample::new("resolve_auth")
                 .output("service", OutputMatcher::exact(Value::Str("github".into())))
                 .output("scheme", OutputMatcher::exact(Value::Str("bearer".into())))
+                .output(
+                    "interactive_allowed",
+                    OutputMatcher::exact(Value::Bool(true)),
+                )
                 .output(
                     "required_scopes",
                     OutputMatcher::exact(Value::str_list(vec!["gist:write".into()])),

@@ -67,6 +67,16 @@ Environment can change provider implementation, but the graph pattern must stay 
 - [ ] Add CI audit step: fail if new interface uses credentials without `ScopeContract`.
 - [ ] Add runtime preflight error contract for missing scope declarations.
 
+### E. Cloud Env Layering
+
+- [x] Model cloud selectors layer (`CLOUD_PROVIDER`, `CLOUD_RUNTIME`) explicitly.
+- [x] Model provider/runtime required vars via `CloudEnvRequirements`.
+- [x] Model developer identity as required-any-of groups (for local GCP: `GCP_SECRETS_SA | GCP_SECRETS_IMPERSONATE_SA`).
+- [x] Make `cloud_env` fail with aggregated missing requirements (not first-missing only).
+- [x] Include first-class diagnosis path in errors (`make gist-auth-doctor RUNTIME=...`).
+- [ ] Add a provider-neutral `cloud-auth-doctor` tool (gist doctor is currently the only surfaced entrypoint).
+- [ ] Define/implement local developer profile source of truth and precedence (shell env vs managed profile).
+
 ## Acceptance Criteria
 
 - [ ] `make gist-recent` no longer depends on `GITHUB_TOKEN` env wiring in graph modeling.

@@ -1,7 +1,7 @@
 //! Mock specs for GCP WIF + Secret Manager graphs.
 
 use gunbc_ir::transport::rest::RestResponse;
-use gunbc_ir::transport::TransportResponse;
+use gunbc_ir::transport::{ShellResponse, TransportResponse};
 use gunbc_ir::{AuthScheme, Credential, Secret, SecretString, Value};
 use gunbc_primitives::NetworkHandle;
 use gunbc_test::{MockSpec, NodeExample, OutputMatcher};
@@ -121,6 +121,96 @@ pub fn gcp_github_mock_spec() -> MockSpec {
         .skip_node_example("parse_github_oidc")
         .skip_node_example("prepare_sts")
         .skip_node_example("parse_sts")
+        .skip_node_example("prepare_impersonate")
+        .skip_node_example("parse_impersonate")
+        .skip_node_example("prepare_secret_access")
+        .skip_node_example("parse_secret_access")
+        .skip_node_example("net_env")
+}
+
+/// Mock spec for local-dev gcloud auth + Secret Manager credential flow.
+pub fn gcp_local_mock_spec() -> MockSpec {
+    let impersonate_response = RestResponse::ok(serde_json::json!({
+        "accessToken": "mock-sa-token",
+        "expireTime": "2025-01-01T00:00:00Z"
+    }));
+    let secret_response = RestResponse::ok(serde_json::json!({
+        "payload": {
+            "data": "bW9jay1zZWNyZXQ="
+        }
+    }));
+
+    MockSpec::new("gcp-wif-secret-local")
+        .input_mock(
+            "prepare_create_local_auth",
+            "interactive_allowed",
+            Value::Bool(true),
+        )
+        .input_mock(
+            "prepare_impersonate",
+            "service_account",
+            Value::Str("ci-secrets@mock.iam.gserviceaccount.com".into()),
+        )
+        .input_mock(
+            "prepare_secret_access",
+            "project",
+            Value::Str("mock-secrets".into()),
+        )
+        .input_mock(
+            "prepare_secret_access",
+            "secret",
+            Value::Str("github".into()),
+        )
+        .input_mock("build_credential", "scheme", Value::Str("bearer".into()))
+        .input_mock("build_credential", "source_id", Value::Str("github".into()))
+        .transport_mock(
+            "execute_check_local_auth",
+            "response",
+            Value::Response(TransportResponse::Shell(ShellResponse::ok(
+                "mock-local-token\n",
+            ))),
+        )
+        .transport_mock(
+            "execute_create_local_auth",
+            "response",
+            Value::Response(TransportResponse::Shell(ShellResponse::ok(
+                "already logged in\n",
+            ))),
+        )
+        .transport_mock(
+            "execute_local_access_token",
+            "response",
+            Value::Response(TransportResponse::Shell(ShellResponse::ok(
+                "mock-local-token\n",
+            ))),
+        )
+        .transport_mock(
+            "execute_impersonate",
+            "response",
+            Value::Response(TransportResponse::Rest(impersonate_response)),
+        )
+        .transport_mock(
+            "execute_secret_access",
+            "response",
+            Value::Response(TransportResponse::Rest(secret_response)),
+        )
+        .boundary("build_credential", "credential", mock_credential())
+        .boundary("net_env", "net", mock_net_handle())
+        .node_example(
+            NodeExample::new("build_credential")
+                .input("secret", Value::Str("mock-secret".into()))
+                .input("scheme", Value::Str("bearer".into()))
+                .input("source_id", Value::Str("github".into()))
+                .output("credential", OutputMatcher::Any)
+                .description("Builds a bearer credential from secret material"),
+        )
+        // Primitive nodes — tested in their own crates
+        .skip_node_example("prepare_check_local_auth")
+        .skip_node_example("parse_check_local_auth")
+        .skip_node_example("prepare_create_local_auth")
+        .skip_node_example("parse_create_local_auth")
+        .skip_node_example("prepare_local_access_token")
+        .skip_node_example("parse_local_access_token")
         .skip_node_example("prepare_impersonate")
         .skip_node_example("parse_impersonate")
         .skip_node_example("prepare_secret_access")

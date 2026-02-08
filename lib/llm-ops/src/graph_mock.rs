@@ -40,9 +40,8 @@ fn mock_credential() -> Value {
 fn mock_cloud_config() -> Value {
     CloudSecretConfig {
         provider: CloudProviderKind::Gcp,
-        runtime: CloudRuntimeKind::GitHubActions,
-        audience: "projects/123/locations/global/workloadIdentityPools/github/providers/gha"
-            .to_string(),
+        runtime: CloudRuntimeKind::LocalDev,
+        audience: "local-dev".to_string(),
         project_or_account: "mock-secrets".to_string(),
         secret: CloudSecretRef {
             prefix: "ci-".to_string(),
@@ -72,7 +71,7 @@ fn with_cloud_env(spec: MockSpec) -> MockSpec {
         .boundary("cloud_credential", "credential", mock_credential())
         .include_prefixed_runtime_mocks(
             "cloud_credential/gcp_wif_secret",
-            &gunbc_lib_gcp_ops::graph_mock::gcp_github_mock_spec(),
+            &gunbc_lib_gcp_ops::graph_mock::gcp_local_mock_spec(),
         )
 }
 

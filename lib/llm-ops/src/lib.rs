@@ -145,6 +145,7 @@ fn execute_resolve_auth(
         .str("service", provider.id)
         .str("scheme", scheme)
         .str("header_name", header_name)
+        .bool("interactive_allowed", true)
         .ok()
 }
 
@@ -576,6 +577,7 @@ mod tests {
             Some(&Value::Str("bearer".to_string()))
         );
         assert_eq!(result.get("header_name"), Some(&Value::Str(String::new())));
+        assert_eq!(result.get("interactive_allowed"), Some(&Value::Bool(true)));
     }
 
     #[test]

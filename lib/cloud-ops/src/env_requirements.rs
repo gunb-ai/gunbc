@@ -32,6 +32,18 @@ pub const GCP_LOCAL_REQUIRED: &[&str] = &["GCP_SECRETS_PROJECT", "GCP_SECRETS_PR
 
 pub const GCP_REQUIRED_ANY_OF: &[&[&str]] = &[&["GCP_SECRETS_SA", "GCP_SECRETS_IMPERSONATE_SA"]];
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MissingCloudEnvRequirements {
+    pub missing_required: Vec<&'static str>,
+    pub missing_any_of: Vec<Vec<&'static str>>,
+}
+
+impl MissingCloudEnvRequirements {
+    pub fn is_empty(&self) -> bool {
+        self.missing_required.is_empty() && self.missing_any_of.is_empty()
+    }
+}
+
 pub fn gcp_github_actions_env() -> CloudEnvRequirements {
     CloudEnvRequirements {
         provider: CloudProviderKind::Gcp,
@@ -97,8 +109,22 @@ pub fn cloud_env_matrix() -> Vec<CloudEnvRequirements> {
     ]
 }
 
-/// Detect the most likely environment requirements from current env vars.
-pub fn detect_cloud_env_requirements() -> CloudEnvRequirements {
+pub fn requirements_for(
+    provider: CloudProviderKind,
+    runtime: CloudRuntimeKind,
+) -> CloudEnvRequirements {
+    match provider {
+        CloudProviderKind::Gcp => match runtime {
+            CloudRuntimeKind::GitHubActions => gcp_github_actions_env(),
+            CloudRuntimeKind::CloudMetadata => gcp_metadata_env(),
+            CloudRuntimeKind::LocalDev => gcp_local_env(),
+        },
+        CloudProviderKind::Aws => aws_github_actions_env_stub(),
+        CloudProviderKind::Azure => azure_github_actions_env_stub(),
+    }
+}
+
+pub fn detect_provider_runtime() -> (CloudProviderKind, CloudRuntimeKind) {
     let provider = std::env::var("CLOUD_PROVIDER")
         .ok()
         .and_then(|v| CloudProviderKind::parse(&v))
@@ -117,13 +143,59 @@ pub fn detect_cloud_env_requirements() -> CloudEnvRequirements {
         CloudRuntimeKind::LocalDev
     };
 
-    match provider {
-        CloudProviderKind::Gcp => match runtime {
-            CloudRuntimeKind::GitHubActions => gcp_github_actions_env(),
-            CloudRuntimeKind::CloudMetadata => gcp_metadata_env(),
-            CloudRuntimeKind::LocalDev => gcp_local_env(),
-        },
-        CloudProviderKind::Aws => aws_github_actions_env_stub(),
-        CloudProviderKind::Azure => azure_github_actions_env_stub(),
+    (provider, runtime)
+}
+
+pub fn collect_missing_requirements(req: &CloudEnvRequirements) -> MissingCloudEnvRequirements {
+    let missing_required = req
+        .required
+        .iter()
+        .copied()
+        .filter(|name| std::env::var(name).is_err())
+        .collect();
+
+    let missing_any_of = req
+        .required_any_of
+        .iter()
+        .filter(|group| !group.iter().any(|name| std::env::var(name).is_ok()))
+        .map(|group| group.to_vec())
+        .collect();
+
+    MissingCloudEnvRequirements {
+        missing_required,
+        missing_any_of,
     }
+}
+
+pub fn format_missing_requirements_message(
+    req: &CloudEnvRequirements,
+    missing: &MissingCloudEnvRequirements,
+) -> String {
+    let mut parts = Vec::new();
+    if !missing.missing_required.is_empty() {
+        parts.push(format!("provider-runtime required: {}", missing.missing_required.join(", ")));
+    }
+    if !missing.missing_any_of.is_empty() {
+        let groups = missing
+            .missing_any_of
+            .iter()
+            .map(|group| group.join(" | "))
+            .collect::<Vec<_>>()
+            .join(", ");
+        parts.push(format!("developer identity required-any-of: {groups}"));
+    }
+
+    format!(
+        "missing cloud environment for {}/{}: {}; selectors: CLOUD_PROVIDER, CLOUD_RUNTIME; hint: run `make gist-auth-doctor RUNTIME={}`",
+        req.provider.as_str(),
+        req.runtime.as_str(),
+        parts.join("; "),
+        req.runtime.as_str(),
+    )
+}
+
+/// Detect the most likely environment requirements from current env vars.
+pub fn detect_cloud_env_requirements() -> CloudEnvRequirements {
+    let (provider, runtime) = detect_provider_runtime();
+    requirements_for(provider, runtime)
 }

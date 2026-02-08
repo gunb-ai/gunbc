@@ -31,6 +31,7 @@ impl Executable for GcpSecretManagerGraphOp {
 /// - `audience`: WIF provider audience (GitHub/metadata runtimes only)
 /// - `request_url`: GitHub OIDC request URL (GitHub runtime only)
 /// - `request_token`: GitHub OIDC request token (GitHub runtime only)
+/// - `interactive_allowed`: allow interactive local auth upsert (local runtime only)
 /// - `service_account`: SA email for impersonation
 /// - `lifetime_seconds`: optional SA token lifetime (default: 3600s)
 /// - `project`: GCP project ID for Secret Manager
@@ -303,7 +304,10 @@ pub fn build_gcp_secret_manager_credential_graph(
                 .add_node_after(
                     Node::opaque(
                         "prepare_create_local_auth",
-                        vec![port("exists", "Bool"), optional("interactive_allowed", "OptionalBool")],
+                        vec![
+                            port("exists", "Bool"),
+                            optional("interactive_allowed", "OptionalBool"),
+                        ],
                         vec![port("request", "TransportRequest"), port("skip", "Bool")],
                         GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareLocalAuthLogin),
                     ),
@@ -639,6 +643,7 @@ pub fn build_gcp_secret_manager_credential_graph_local() -> Dag<GcpSecretManager
 /// - `audience`: WIF provider audience (GitHub/metadata runtimes only)
 /// - `request_url`: GitHub OIDC request URL (GitHub runtime only)
 /// - `request_token`: GitHub OIDC request token (GitHub runtime only)
+/// - `interactive_allowed`: allow interactive local auth upsert (local runtime only)
 /// - `service_account`: SA email for impersonation
 /// - `lifetime_seconds`: optional SA token lifetime (default: 3600s)
 /// - `project`: GCP project ID for Secret Manager
@@ -908,7 +913,10 @@ pub fn build_gcp_secret_manager_upsert_graph(
                 .add_node_after(
                     Node::opaque(
                         "prepare_create_local_auth",
-                        vec![port("exists", "Bool"), optional("interactive_allowed", "OptionalBool")],
+                        vec![
+                            port("exists", "Bool"),
+                            optional("interactive_allowed", "OptionalBool"),
+                        ],
                         vec![port("request", "TransportRequest"), port("skip", "Bool")],
                         GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareLocalAuthLogin),
                     ),

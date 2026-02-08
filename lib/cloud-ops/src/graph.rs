@@ -207,6 +207,25 @@ fn build_cloud_secret_manager_credential_graph_gcp(
         ))
         .expect("resolve_config");
 
+    let mut map_outputs = vec![
+        port("project", "String"),
+        port("secret", "String"),
+        optional("version", "OptionalString"),
+        port("service_account", "String"),
+        port("scheme", "String"),
+        optional("header_name", "OptionalString"),
+        port("source_id", "String"),
+        optional("lifetime_seconds", "OptionalInt"),
+        optional("interactive_allowed", "OptionalBool"),
+    ];
+    if !matches!(runtime, CloudRuntimeKind::LocalDev) {
+        map_outputs.push(port("audience", "String"));
+    }
+    if matches!(runtime, CloudRuntimeKind::GitHubActions) {
+        map_outputs.push(optional("request_url", "OptionalString"));
+        map_outputs.push(optional("request_token", "OptionalString"));
+    }
+
     let map_inputs = builder
         .add_node_after(
             Node::opaque(
@@ -229,20 +248,7 @@ fn build_cloud_secret_manager_credential_graph_gcp(
                     optional("request_url", "OptionalString"),
                     optional("request_token", "OptionalString"),
                 ],
-                vec![
-                    port("audience", "String"),
-                    port("project", "String"),
-                    port("secret", "String"),
-                    optional("version", "OptionalString"),
-                    port("service_account", "String"),
-                    port("scheme", "String"),
-                    optional("header_name", "OptionalString"),
-                    port("source_id", "String"),
-                    optional("lifetime_seconds", "OptionalInt"),
-                    optional("interactive_allowed", "OptionalBool"),
-                    optional("request_url", "OptionalString"),
-                    optional("request_token", "OptionalString"),
-                ],
+                map_outputs,
                 CloudSecretManagerGraphOp::Cloud(CloudOps::MapToGcpInputs { runtime }),
             ),
             &resolve_config,
@@ -391,6 +397,22 @@ fn build_cloud_secret_manager_upsert_graph_gcp(
         ))
         .expect("resolve_config");
 
+    let mut map_outputs = vec![
+        port("project", "String"),
+        port("secret", "String"),
+        port("service_account", "String"),
+        optional("version", "OptionalString"),
+        optional("lifetime_seconds", "OptionalInt"),
+        optional("interactive_allowed", "OptionalBool"),
+    ];
+    if !matches!(runtime, CloudRuntimeKind::LocalDev) {
+        map_outputs.push(port("audience", "String"));
+    }
+    if matches!(runtime, CloudRuntimeKind::GitHubActions) {
+        map_outputs.push(optional("request_url", "OptionalString"));
+        map_outputs.push(optional("request_token", "OptionalString"));
+    }
+
     let map_inputs = builder
         .add_node_after(
             Node::opaque(
@@ -409,17 +431,7 @@ fn build_cloud_secret_manager_upsert_graph_gcp(
                     optional("request_url", "OptionalString"),
                     optional("request_token", "OptionalString"),
                 ],
-                vec![
-                    port("audience", "String"),
-                    port("project", "String"),
-                    port("secret", "String"),
-                    port("service_account", "String"),
-                    optional("version", "OptionalString"),
-                    optional("lifetime_seconds", "OptionalInt"),
-                    optional("interactive_allowed", "OptionalBool"),
-                    optional("request_url", "OptionalString"),
-                    optional("request_token", "OptionalString"),
-                ],
+                map_outputs,
                 CloudSecretManagerGraphOp::Cloud(CloudOps::MapToGcpSecretInputs { runtime }),
             ),
             &resolve_config,

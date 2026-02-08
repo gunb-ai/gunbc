@@ -6,8 +6,8 @@ use gunbc_ir::transport::cloud::{CloudProviderKind, CloudRuntimeKind};
 use gunbc_ir::transport::gist::GistRequest;
 use gunbc_ir::{BuilderError, Dag, DagBuilder, Node, Value};
 use gunbc_lib_cloud_ops::{
-    detect_cloud_env_requirements, gcp_github_actions_env, gcp_local_env, gcp_metadata_env,
-    CloudEnvStatus,
+    collect_missing_requirements, detect_cloud_env_requirements, gcp_github_actions_env,
+    gcp_local_env, gcp_metadata_env, CloudEnvStatus,
 };
 use std::collections::HashMap;
 
@@ -50,10 +50,10 @@ fn execute_build_report(
         .map_err(|e| ExecError::new(format!("invalid gist scope contract: {e}")))?;
 
     let required_env: Vec<String> = env_req.required.iter().map(|v| (*v).to_string()).collect();
-    let missing_env: Vec<String> = env_req
-        .required
+    let missing = collect_missing_requirements(&env_req);
+    let missing_env: Vec<String> = missing
+        .missing_required
         .iter()
-        .filter(|name| std::env::var(name).is_err())
         .map(|v| (*v).to_string())
         .collect();
 
@@ -62,10 +62,9 @@ fn execute_build_report(
         .iter()
         .map(|group| group.join(" | "))
         .collect();
-    let missing_any_of: Vec<String> = env_req
-        .required_any_of
+    let missing_any_of: Vec<String> = missing
+        .missing_any_of
         .iter()
-        .filter(|group| !group.iter().any(|name| std::env::var(name).is_ok()))
         .map(|group| group.join(" | "))
         .collect();
 
@@ -74,7 +73,7 @@ fn execute_build_report(
     let secret_name = format!("{secret_prefix}{}", intent.service);
 
     let local_setup = if matches!(env_req.runtime, CloudRuntimeKind::LocalDev) {
-        "gcloud auth login && gcloud auth application-default login"
+        "login-on-demand via credential upsert (manual fallback: gcloud auth login --update-adc)"
     } else {
         "n/a"
     };
@@ -94,7 +93,7 @@ fn execute_build_report(
         .str("secret_name", secret_name)
         .str(
             "acquisition_flow",
-            "resolve_auth_contract -> cloud_env -> bind_secret -> cloud_credential -> execute(res:credential)",
+            "resolve_auth_contract -> cloud_env -> bind_secret -> cloud_credential(local: check_auth -> create_auth_if_needed -> resolve_token) -> execute(res:credential)",
         )
         .str("local_setup", local_setup)
         .bool("ready", ready)

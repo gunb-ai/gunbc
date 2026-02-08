@@ -1,5 +1,8 @@
 //! Cloud environment acquisition (provider-neutral baseline).
 
+use crate::env_requirements::{
+    collect_missing_requirements, format_missing_requirements_message, requirements_for,
+};
 use gunbc_exec::{EnvNode, ExecError, OutputMap};
 use gunbc_ir::transport::cloud::{
     CloudProviderKind, CloudRuntimeKind, CloudSecretConfig, CloudSecretRef,
@@ -142,6 +145,13 @@ impl EnvNode for CloudEnv {
     fn env_outputs(&self) -> Result<HashMap<String, Value>, ExecError> {
         let provider = Self::detect_provider()?;
         let runtime = Self::detect_runtime()?;
+        let req = requirements_for(provider, runtime);
+        let missing = collect_missing_requirements(&req);
+        if !missing.is_empty() {
+            return Err(ExecError::new(format_missing_requirements_message(
+                &req, &missing,
+            )));
+        }
 
         let config = match provider {
             CloudProviderKind::Gcp => Self::build_gcp_config(runtime)?,
