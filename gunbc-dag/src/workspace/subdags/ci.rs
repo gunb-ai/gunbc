@@ -60,7 +60,7 @@ mod tests {
                 for node_id in [
                     "execute_build",
                     "execute_test",
-                    "execute_verify_check",
+                    "execute_verify_makegen_check",
                     "execute_clippy_lint",
                 ] {
                     assert!(

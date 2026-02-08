@@ -420,6 +420,72 @@ pub fn ci_mock_spec() -> MockSpec {
             .description("Verify check success → verify_makegen_success true"),
     )
     .node_example(
+        NodeExample::new("prepare_verify_bootstrap_check")
+            .input("prep_success", Value::Bool(true))
+            .input("bootstrap_success", Value::Bool(true))
+            .input("testgen_success", Value::Bool(true))
+            .input("pragma_success", Value::Bool(true))
+            .output("skip", OutputMatcher::IsBool)
+            .description("Verify bootstrap prepare emits skip flag"),
+    )
+    .node_example(
+        NodeExample::new("parse_verify_bootstrap_check")
+            .input("skip", Value::Bool(false))
+            .input(
+                "response",
+                Value::Response(ShellResponse::ok("All checks passed").into()),
+            )
+            .output(
+                "verify_bootstrap_success",
+                OutputMatcher::exact(Value::Bool(true)),
+            )
+            .description("Verify bootstrap check success → verify_bootstrap_success true"),
+    )
+    .node_example(
+        NodeExample::new("prepare_verify_testgen_check")
+            .input("prep_success", Value::Bool(true))
+            .input("bootstrap_success", Value::Bool(true))
+            .input("testgen_success", Value::Bool(true))
+            .input("pragma_success", Value::Bool(true))
+            .output("skip", OutputMatcher::IsBool)
+            .description("Verify testgen prepare emits skip flag"),
+    )
+    .node_example(
+        NodeExample::new("parse_verify_testgen_check")
+            .input("skip", Value::Bool(false))
+            .input(
+                "response",
+                Value::Response(ShellResponse::ok("All checks passed").into()),
+            )
+            .output(
+                "verify_testgen_success",
+                OutputMatcher::exact(Value::Bool(true)),
+            )
+            .description("Verify testgen check success → verify_testgen_success true"),
+    )
+    .node_example(
+        NodeExample::new("prepare_verify_pragma_check")
+            .input("prep_success", Value::Bool(true))
+            .input("bootstrap_success", Value::Bool(true))
+            .input("testgen_success", Value::Bool(true))
+            .input("pragma_success", Value::Bool(true))
+            .output("skip", OutputMatcher::IsBool)
+            .description("Verify pragma prepare emits skip flag"),
+    )
+    .node_example(
+        NodeExample::new("parse_verify_pragma_check")
+            .input("skip", Value::Bool(false))
+            .input(
+                "response",
+                Value::Response(ShellResponse::ok("All checks passed").into()),
+            )
+            .output(
+                "verify_pragma_success",
+                OutputMatcher::exact(Value::Bool(true)),
+            )
+            .description("Verify pragma check success → verify_pragma_success true"),
+    )
+    .node_example(
         NodeExample::new("aggregate_verify_results")
             .input("verify_makegen_success", Value::Bool(true))
             .input("verify_makegen_stderr", Value::Str(String::new()))
@@ -431,17 +497,11 @@ pub fn ci_mock_spec() -> MockSpec {
             .input("verify_pragma_stderr", Value::Str(String::new()))
             .output("verify_success", OutputMatcher::exact(Value::Bool(true)))
             .description("Aggregate verify checks into final verify_success"),
-        )
-        // Primitive nodes — tested in their own crates
-        .skip_node_example("prepare_deps_exists")
-        .skip_node_example("prepare_verify_bootstrap_check")
-        .skip_node_example("parse_verify_bootstrap_check")
-        .skip_node_example("prepare_verify_testgen_check")
-        .skip_node_example("parse_verify_testgen_check")
-        .skip_node_example("prepare_verify_pragma_check")
-        .skip_node_example("parse_verify_pragma_check")
-        // I/O node — transport execute, tested via DryRun
-        .skip_node_example("execute_clippy_lint")
+    )
+    // Primitive nodes — tested in their own crates
+    .skip_node_example("prepare_deps_exists")
+    // I/O node — transport execute, tested via DryRun
+    .skip_node_example("execute_clippy_lint")
 }
 
 /// Mock spec for testing test failure.

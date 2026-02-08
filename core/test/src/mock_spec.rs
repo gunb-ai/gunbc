@@ -73,6 +73,15 @@ pub struct MockSpec {
 }
 
 impl MockSpec {
+    fn join_node_prefix(prefix: &str, node: &str) -> String {
+        let trimmed = prefix.trim_matches('/');
+        if trimmed.is_empty() {
+            node.to_string()
+        } else {
+            format!("{}/{}", trimmed, node)
+        }
+    }
+
     /// Create a new mock spec for a named tool.
     pub fn new(name: impl Into<String>) -> Self {
         Self {
@@ -279,6 +288,47 @@ impl MockSpec {
             port: port.into(),
             value,
         });
+        self
+    }
+
+    /// Merge runtime mocks from another spec with a node ID prefix.
+    ///
+    /// This is useful when a parent DAG embeds a child DAG as a SubDag. Child
+    /// node IDs become `"{prefix}/{child_node}"` after lowering, so DryRun mock
+    /// coverage can be composed without duplicating child mock definitions.
+    ///
+    /// Merged fields:
+    /// - `boundary_mocks`
+    /// - `transport_mocks`
+    /// - `input_mocks`
+    ///
+    /// Other fields (resource simulations, expectations, node examples, etc.)
+    /// are intentionally not merged.
+    pub fn include_prefixed_runtime_mocks(
+        mut self,
+        prefix: impl AsRef<str>,
+        other: &MockSpec,
+    ) -> Self {
+        let prefix = prefix.as_ref();
+
+        self.boundary_mocks
+            .extend(other.boundary_mocks.iter().cloned().map(|mut mock| {
+                mock.node = Self::join_node_prefix(prefix, &mock.node);
+                mock
+            }));
+
+        self.transport_mocks
+            .extend(other.transport_mocks.iter().cloned().map(|mut mock| {
+                mock.node = Self::join_node_prefix(prefix, &mock.node);
+                mock
+            }));
+
+        self.input_mocks
+            .extend(other.input_mocks.iter().cloned().map(|mut mock| {
+                mock.node = Self::join_node_prefix(prefix, &mock.node);
+                mock
+            }));
+
         self
     }
 
@@ -1191,6 +1241,31 @@ mod tests {
 
         assert!(spec.get_boundary_mock("node1", "out").is_some());
         assert!(spec.get_boundary_mock("node1", "other").is_none());
+    }
+
+    #[test]
+    fn test_include_prefixed_runtime_mocks() {
+        let child = MockSpec::new("child")
+            .boundary("net_env", "net", Value::Map(HashMap::new()))
+            .transport_mock("execute", "response", Value::Str("ok".into()))
+            .input_mock("prepare", "audience", Value::Str("mock".into()));
+
+        let parent = MockSpec::new("parent")
+            .boundary("root", "out", Value::Bool(true))
+            .include_prefixed_runtime_mocks("cloud_credential/gcp_wif_secret", &child);
+
+        assert!(parent
+            .get_boundary_mock("cloud_credential/gcp_wif_secret/net_env", "net")
+            .is_some());
+        assert!(parent
+            .get_transport_mock("cloud_credential/gcp_wif_secret/execute", "response")
+            .is_some());
+        assert!(parent.input_mocks.iter().any(|m| {
+            m.node == "cloud_credential/gcp_wif_secret/prepare"
+                && m.port == "audience"
+                && matches!(m.value, Value::Str(_))
+        }));
+        assert!(parent.get_boundary_mock("root", "out").is_some());
     }
 
     #[test]

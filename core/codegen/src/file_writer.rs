@@ -80,7 +80,9 @@ impl<'a> FileWriter<'a> {
 
         // Check if content differs from existing file
         let changed = match self.io.read_file(path) {
-            Ok(existing) => String::from_utf8(existing).map(|s| s != content).unwrap_or(true),
+            Ok(existing) => String::from_utf8(existing)
+                .map(|s| s != content)
+                .unwrap_or(true),
             Err(_) => true, // File doesn't exist, so it's a change
         };
 
@@ -104,7 +106,9 @@ impl<'a> FileWriter<'a> {
 
         // Check if content differs from existing file
         let changed = match self.io.read_file(path) {
-            Ok(existing) => String::from_utf8(existing).map(|s| s != content).unwrap_or(true),
+            Ok(existing) => String::from_utf8(existing)
+                .map(|s| s != content)
+                .unwrap_or(true),
             Err(_) => true,
         };
 
@@ -186,7 +190,11 @@ mod tests {
             Ok(Vec::new())
         }
 
-        fn command_output(&self, _command: &str, _args: &[String]) -> Result<Vec<u8>, ResourceError> {
+        fn command_output(
+            &self,
+            _command: &str,
+            _args: &[String],
+        ) -> Result<Vec<u8>, ResourceError> {
             Err(ResourceError::Io(std::io::Error::other(
                 "command output not supported",
             )))

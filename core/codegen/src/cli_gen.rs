@@ -204,30 +204,52 @@ impl CliEntrypoint {
         }
         let entries: Vec<serde_json::Value> = serde_json::from_str(json)
             .unwrap_or_else(|e| panic!("invalid entrypoints JSON: {}: {}", e, json));
-        entries.iter().map(|entry| {
-            let port_name = entry["port_name"].as_str().expect("port_name required").to_string();
-            let type_id = entry["type_id"].as_str().expect("type_id required").to_string();
-            let cardinality = match entry.get("cardinality").and_then(|v| v.as_str()) {
-                Some("ZERO_OR_MORE") => Cardinality::ZERO_OR_MORE,
-                Some("ONE_OR_MORE") => Cardinality::ONE_OR_MORE,
-                Some("ZERO_OR_ONE") => Cardinality::ZERO_OR_ONE,
-                _ => Cardinality::ONE,
-            };
-            let short_flag = entry.get("short").and_then(|v| v.as_str()).and_then(|s| s.chars().next());
-            let default_value = entry.get("default").and_then(|v| v.as_str()).map(|s| s.to_string());
-            let help = entry.get("help").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            let make_var = entry.get("make_var").and_then(|v| v.as_str()).map(|s| s.to_string());
+        entries
+            .iter()
+            .map(|entry| {
+                let port_name = entry["port_name"]
+                    .as_str()
+                    .expect("port_name required")
+                    .to_string();
+                let type_id = entry["type_id"]
+                    .as_str()
+                    .expect("type_id required")
+                    .to_string();
+                let cardinality = match entry.get("cardinality").and_then(|v| v.as_str()) {
+                    Some("ZERO_OR_MORE") => Cardinality::ZERO_OR_MORE,
+                    Some("ONE_OR_MORE") => Cardinality::ONE_OR_MORE,
+                    Some("ZERO_OR_ONE") => Cardinality::ZERO_OR_ONE,
+                    _ => Cardinality::ONE,
+                };
+                let short_flag = entry
+                    .get("short")
+                    .and_then(|v| v.as_str())
+                    .and_then(|s| s.chars().next());
+                let default_value = entry
+                    .get("default")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let help = entry
+                    .get("help")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let make_var = entry
+                    .get("make_var")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
 
-            Self {
-                port_name,
-                type_id,
-                cardinality,
-                short_flag,
-                default_value,
-                help,
-                make_var,
-            }
-        }).collect()
+                Self {
+                    port_name,
+                    type_id,
+                    cardinality,
+                    short_flag,
+                    default_value,
+                    help,
+                    make_var,
+                }
+            })
+            .collect()
     }
 }
 
@@ -259,11 +281,7 @@ pub fn generate_cli_with_import(
 // ============================================================================
 
 /// Build the import items for the generated CLI.
-fn build_cli_imports(
-    tool: &ToolMeta,
-    custom_import: Option<&str>,
-    step_mode: bool,
-) -> Vec<Item> {
+fn build_cli_imports(tool: &ToolMeta, custom_import: Option<&str>, step_mode: bool) -> Vec<Item> {
     let crate_module = NamingCase::SnakeCase.apply(&tool.crate_name);
 
     // gunbc_exec imports
@@ -288,10 +306,7 @@ fn build_cli_imports(
             items: vec!["detect_entrypoints".to_string(), "Value".to_string()],
         }),
         Item::Use(Import {
-            path: vec![
-                "gunbc_lib_transport".to_string(),
-                "preflight".to_string(),
-            ],
+            path: vec!["gunbc_lib_transport".to_string(), "preflight".to_string()],
             items: vec!["ensure_lint_upsert".to_string()],
         }),
     ];
@@ -299,10 +314,7 @@ fn build_cli_imports(
     // Tool-specific import
     let tool_import = match custom_import {
         Some(line) if !line.is_empty() => line.to_string(),
-        _ => format!(
-            "use {}::build_{}_graph;",
-            crate_module, tool.tool_name
-        ),
+        _ => format!("use {}::build_{}_graph;", crate_module, tool.tool_name),
     };
     items.push(Item::Raw(tool_import));
 
@@ -485,7 +497,8 @@ fn generate_print_inputs(entrypoints: &[CliEntrypoint]) -> String {
                     } else {
                         code.push_str(&format!(
                             "println!(\"  {}: {{}}\", {}.as_deref().unwrap_or(\"<default>\"));\n",
-                            ep.port_name, ep.var_name()
+                            ep.port_name,
+                            ep.var_name()
                         ));
                     }
                 }
@@ -506,7 +519,9 @@ fn generate_input_mocks(_entrypoints: &[CliEntrypoint]) -> String {
     code.push_str("let mut input_mocks = BoundaryMocks::new();\n");
     code.push_str("for (node_id, port_name, _) in entrypoints.entrypoint_ports {\n");
     code.push_str("    if let Some(value) = cli_inputs.get(&port_name.0) {\n");
-    code.push_str("        input_mocks.set_input(node_id.0.clone(), port_name.0.clone(), value.clone());\n");
+    code.push_str(
+        "        input_mocks.set_input(node_id.0.clone(), port_name.0.clone(), value.clone());\n",
+    );
     code.push_str("    }\n");
     code.push_str("}\n");
 
@@ -711,7 +726,10 @@ fn build_step_mode_source_file(
 
     SourceFile {
         doc: vec![
-            format!("Generated CLI for {} with step mode support.", tool.tool_name),
+            format!(
+                "Generated CLI for {} with step mode support.",
+                tool.tool_name
+            ),
             String::new(),
             "This file is generated by gunbc-codegen. Do not edit manually.".to_string(),
             "Regenerate with: make codegen".to_string(),
@@ -1047,10 +1065,7 @@ if let Some(output_file) = env_dict.get(\"GITHUB_OUTPUT\") {\n\
         is_pub: false,
         params: vec![
             ("step_name".to_string(), "&str".to_string()),
-            (
-                "outputs".to_string(),
-                "&HashMap<String, Value>".to_string(),
-            ),
+            ("outputs".to_string(), "&HashMap<String, Value>".to_string()),
             (
                 "env_dict".to_string(),
                 "&HashMap<String, String>".to_string(),
@@ -1127,9 +1142,7 @@ mod tests {
             returns_result: false,
             success_port: None,
             enable_step_mode: false,
-            mock_spec_call: Some(
-                "gunbc_gist::graph_mock::gist_snapshot_mock_spec()".to_string(),
-            ),
+            mock_spec_call: Some("gunbc_gist::graph_mock::gist_snapshot_mock_spec()".to_string()),
         };
 
         let entrypoints = vec![CliEntrypoint::new("repo_path", "String")
@@ -1237,9 +1250,17 @@ mod tests {
         // Should have doc comments
         assert!(!file.doc.is_empty());
         // Should have imports + 2 functions (main, print_help)
-        let fn_count = file.items.iter().filter(|i| matches!(i, Item::Fn(_))).count();
+        let fn_count = file
+            .items
+            .iter()
+            .filter(|i| matches!(i, Item::Fn(_)))
+            .count();
         assert_eq!(fn_count, 2, "standard mode should have 2 functions");
-        let import_count = file.items.iter().filter(|i| matches!(i, Item::Use(_))).count();
+        let import_count = file
+            .items
+            .iter()
+            .filter(|i| matches!(i, Item::Use(_)))
+            .count();
         assert!(import_count >= 4, "should have at least 4 import items");
     }
 
@@ -1259,7 +1280,11 @@ mod tests {
         let entrypoints = vec![];
 
         let file = build_step_mode_source_file(&tool, &entrypoints, None);
-        let fn_count = file.items.iter().filter(|i| matches!(i, Item::Fn(_))).count();
+        let fn_count = file
+            .items
+            .iter()
+            .filter(|i| matches!(i, Item::Fn(_)))
+            .count();
         assert_eq!(fn_count, 7, "step mode should have 7 functions");
     }
 }

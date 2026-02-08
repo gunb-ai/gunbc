@@ -252,15 +252,26 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
         // If a transport output is used but not mocked, DryRun will fail at runtime.
         // Catching this early at test generation time gives a better error message.
         if let Some(spec) = &self.mock_spec {
-            let missing_mocks = self.find_missing_transport_mocks(&analysis, spec);
+            let lowered_for_validation = gunbc_exec::lower(self.dag).ok();
+            let lowered_dag = lowered_for_validation.as_ref().map(|res| &res.dag);
+
+            let missing_mocks = if let Some(lowered) = lowered_dag {
+                self.find_missing_intercept_mocks_lowered(lowered, spec)
+            } else {
+                self.find_missing_transport_mocks(&analysis, spec)
+                    .into_iter()
+                    .map(|(node, port)| (node, port, "transport executor"))
+                    .collect()
+            };
             if !missing_mocks.is_empty() {
                 panic!(
-                    "Transport mock coverage incomplete: DAG '{}' has {} transport output port(s) \
+                    "DryRun mock coverage incomplete: DAG '{}' has {} intercepted output port(s) \
                      connected downstream but not mocked:\n\
                      \n\
                      {}\n\
                      \n\
-                     Each transport executor output that flows to downstream nodes needs a mock.\n\
+                     Each intercepted output that flows to downstream nodes needs a mock.\n\
+                     This includes lowered sub-DAG node IDs (for example `parent/subdag/node`).\n\
                      Add the missing mocks to your MockSpec:\n\
                      \n\
                      ```rust\n\
@@ -271,14 +282,14 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                     missing_mocks.len(),
                     missing_mocks
                         .iter()
-                        .map(|(node, port)| format!("  - {}.{}", node, port))
+                        .map(|(node, port, kind)| format!("  - {}.{} ({})", node, port, kind))
                         .collect::<Vec<_>>()
                         .join("\n"),
                     module_name,
                     missing_mocks
                         .iter()
-                        .map(|(node, port)| {
-                            format!("    .transport_mock(\"{}\", \"{}\", mock_value())", node, port)
+                        .map(|(node, port, _)| {
+                            format!("    .boundary(\"{}\", \"{}\", mock_value())", node, port)
                         })
                         .collect::<Vec<_>>()
                         .join("\n"),
@@ -288,7 +299,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             // Validate that all mocks reference existing nodes and ports.
             //
             // This catches typos and stale mocks that reference renamed/removed nodes.
-            let unknown_slots = self.find_unknown_mock_slots(spec);
+            let unknown_slots = self.find_unknown_mock_slots(spec, lowered_dag);
             if !unknown_slots.is_empty() {
                 panic!(
                     "Unknown mock slots: DAG '{}' has {} mock(s) referencing unknown nodes/ports:\n\
@@ -314,7 +325,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             //
             // This catches type drift between MockSpec and DAG port definitions.
             // Contract-level check: "mock is Bool-typed" not "mock == Bool(true)".
-            let type_mismatches = self.find_mock_type_mismatches(spec);
+            let type_mismatches = self.find_mock_type_mismatches(spec, lowered_dag);
             if !type_mismatches.is_empty() {
                 panic!(
                     "Mock value type mismatch: DAG '{}' has {} mock value(s) with incompatible types:\n\
@@ -491,12 +502,98 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
         missing
     }
 
+    /// Find intercepted output ports in the lowered DAG that are connected downstream
+    /// but have no explicit DryRun mock in MockSpec.
+    ///
+    /// This catches missing mocks for nested SubDag nodes (e.g. `parent/child/node`)
+    /// that are intercepted after lowering.
+    fn find_missing_intercept_mocks_lowered(
+        &self,
+        lowered_dag: &Dag<T>,
+        spec: &MockSpec,
+    ) -> Vec<(String, String, &'static str)> {
+        let mut missing = Vec::new();
+
+        let mocked_ports: HashSet<(&str, &str)> = spec
+            .transport_mocks
+            .iter()
+            .map(|m| (m.node.as_str(), m.port.as_str()))
+            .chain(
+                spec.boundary_mocks
+                    .iter()
+                    .map(|m| (m.node.as_str(), m.port.as_str())),
+            )
+            .collect();
+
+        for node in &lowered_dag.nodes {
+            let Some(kind) = Self::lowered_intercept_kind(node) else {
+                continue;
+            };
+
+            for output_port in &node.outputs {
+                let is_connected = lowered_dag
+                    .edges
+                    .iter()
+                    .any(|e| e.from_node == node.id && e.from_port == output_port.name);
+                if !is_connected {
+                    continue;
+                }
+
+                if !mocked_ports.contains(&(node.id.0.as_str(), output_port.name.0.as_str())) {
+                    missing.push((node.id.0.clone(), output_port.name.0.clone(), kind));
+                }
+            }
+        }
+
+        missing.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+        missing.dedup();
+        missing
+    }
+
+    fn lowered_intercept_kind(node: &gunbc_ir::Node<T>) -> Option<&'static str> {
+        let is_transport_executor = node
+            .inputs
+            .iter()
+            .any(|port| port.type_id.0 == "TransportRequest");
+        if is_transport_executor {
+            return Some("transport executor");
+        }
+
+        let is_tool_env = node.outputs.iter().any(|port| port.type_id.0 == "ToolHandle");
+        if is_tool_env {
+            return Some("tool environment");
+        }
+
+        let is_resource_env = node.outputs.iter().any(|port| {
+            matches!(
+                port.type_id.0.as_str(),
+                "FilesystemHandle"
+                    | "NetworkHandle"
+                    | "Timestamp"
+                    | "Credential"
+                    | "Platform"
+                    | "CloudSecretConfig"
+            )
+        });
+        if is_resource_env {
+            return Some("resource environment");
+        }
+
+        let is_tool_consumer = node.inputs.iter().any(|port| port.type_id.0 == "ToolHandle");
+        if is_tool_consumer {
+            return Some("tool consumer");
+        }
+
+        None
+    }
+
     /// Find mock values whose types don't match the port's declared TypeId.
     ///
     /// Returns a list of (node_id, port_name, expected_type, actual_type) tuples.
     fn find_mock_type_mismatches(
         &self,
         spec: &MockSpec,
+        lowered_dag: Option<&Dag<T>>,
     ) -> Vec<(String, String, String, String)> {
         use gunbc_ir::Value;
 
@@ -585,7 +682,11 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
 
         // Check transport mocks
         for tm in &spec.transport_mocks {
-            if let Some(node) = self.dag.get_node(&NodeId(tm.node.clone())) {
+            let node = self
+                .dag
+                .get_node(&NodeId(tm.node.clone()))
+                .or_else(|| lowered_dag.and_then(|dag| dag.get_node(&NodeId(tm.node.clone()))));
+            if let Some(node) = node {
                 if let Some(port) = node.outputs.iter().find(|p| p.name.0 == tm.port) {
                     let expected = &port.type_id.0;
                     let actual = value_type_name(&tm.value);
@@ -603,7 +704,11 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
 
         // Check boundary mocks
         for bm in &spec.boundary_mocks {
-            if let Some(node) = self.dag.get_node(&NodeId(bm.node.clone())) {
+            let node = self
+                .dag
+                .get_node(&NodeId(bm.node.clone()))
+                .or_else(|| lowered_dag.and_then(|dag| dag.get_node(&NodeId(bm.node.clone()))));
+            if let Some(node) = node {
                 if let Some(port) = node.outputs.iter().find(|p| p.name.0 == bm.port) {
                     let expected = &port.type_id.0;
                     let actual = value_type_name(&bm.value);
@@ -625,12 +730,20 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
     /// Find mocks that reference non-existent nodes or ports.
     ///
     /// Returns a list of (node_id, port_name, reason) tuples.
-    fn find_unknown_mock_slots(&self, spec: &MockSpec) -> Vec<(String, String, String)> {
+    fn find_unknown_mock_slots(
+        &self,
+        spec: &MockSpec,
+        lowered_dag: Option<&Dag<T>>,
+    ) -> Vec<(String, String, String)> {
         let mut unknown = Vec::new();
 
         // Check transport mocks
         for tm in &spec.transport_mocks {
-            match self.dag.get_node(&NodeId(tm.node.clone())) {
+            let node = self
+                .dag
+                .get_node(&NodeId(tm.node.clone()))
+                .or_else(|| lowered_dag.and_then(|dag| dag.get_node(&NodeId(tm.node.clone()))));
+            match node {
                 None => {
                     unknown.push((
                         tm.node.clone(),
@@ -659,7 +772,11 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
 
         // Check boundary mocks
         for bm in &spec.boundary_mocks {
-            match self.dag.get_node(&NodeId(bm.node.clone())) {
+            let node = self
+                .dag
+                .get_node(&NodeId(bm.node.clone()))
+                .or_else(|| lowered_dag.and_then(|dag| dag.get_node(&NodeId(bm.node.clone()))));
+            match node {
                 None => {
                     unknown.push((
                         bm.node.clone(),
@@ -4281,7 +4398,7 @@ fn try_mock_element_value(type_id: &str, index: Option<u32>) -> Option<Value> {
         "Unit" => Value::Unit,
         "Json" => Value::Json(JsonValue::Null),
         "Map" => Value::Map(BTreeMap::new()),
-        "CloudSecretConfig" => Value::Json(JsonValue::Null),
+        "CloudSecretConfig" => Value::Json(mock_cloud_secret_config_json()),
         "Secret" => Value::Secret(SecretString::new("<MOCK_SECRET>")),
         "Any" => Value::Json(JsonValue::Null),
         "S" => Value::Str("<MOCK>".to_string()),
@@ -4365,6 +4482,21 @@ fn try_mock_element_value(type_id: &str, index: Option<u32>) -> Option<Value> {
     };
 
     Some(value)
+}
+
+fn mock_cloud_secret_config_json() -> JsonValue {
+    serde_json::json!({
+        "provider": "Gcp",
+        "runtime": "GitHubActions",
+        "audience": "projects/123/locations/global/workloadIdentityPools/github/providers/gha",
+        "project_or_account": "mock-secrets",
+        "secret": {
+            "prefix": "ci-",
+            "name": "example",
+            "delimiter": ""
+        },
+        "service_account_or_role": "ci-secrets@mock.iam.gserviceaccount.com"
+    })
 }
 
 fn witness_value_for_count(
@@ -4539,6 +4671,7 @@ fn mock_element_expr(type_id: &str, index: Option<u32>) -> ValueExpr {
         },
         "Unit" => ValueExpr::Unit,
         "Json" | "OptionalJson" | "JsonList" => ValueExpr::Json(JsonValue::Null),
+        "CloudSecretConfig" => ValueExpr::Json(mock_cloud_secret_config_json()),
         "Map" => ValueExpr::Map(vec![]),
         "Secret" => ValueExpr::Secret("<MOCK_SECRET>".to_string()),
         "Any" => ValueExpr::Json(JsonValue::Null),

@@ -329,7 +329,12 @@ mod tests {
             vec![port("response", "String")],
             (),
         ));
-        dag.add_edge(edge("cloud_credential", "credential", "execute", "credential"));
+        dag.add_edge(edge(
+            "cloud_credential",
+            "credential",
+            "execute",
+            "credential",
+        ));
 
         let analysis = analyze_dag(&dag);
 

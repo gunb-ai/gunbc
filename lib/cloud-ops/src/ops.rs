@@ -1,6 +1,6 @@
 //! Cloud configuration ops.
 
-use gunbc_exec::{require_str, ExecError, Executable, OutputMap};
+use gunbc_exec::{optional_str_strict, require_str, ExecError, Executable, OutputMap};
 use gunbc_ir::transport::cloud::{CloudProviderKind, CloudRuntimeKind, CloudSecretConfig};
 use gunbc_ir::Value;
 use serde::{Deserialize, Serialize};
@@ -58,10 +58,7 @@ impl Executable for CloudOps {
                 let mut config = CloudSecretConfig::try_from(config_val)
                     .map_err(|e| ExecError::new(format!("invalid cloud config: {e}")))?;
                 let service = require_str(&inputs, "service")?;
-                let secret_name = inputs
-                    .get("secret_name")
-                    .and_then(Value::as_str)
-                    .unwrap_or(service);
+                let secret_name = optional_str_strict(&inputs, "secret_name")?.unwrap_or(service);
 
                 config.secret.name = secret_name.to_string();
 

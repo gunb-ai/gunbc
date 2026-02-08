@@ -90,7 +90,11 @@ impl std::fmt::Display for ParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ParseError::MissingRequired { port_name } => {
-                write!(f, "missing required argument: --{}", NamingCase::KebabCase.apply(port_name))
+                write!(
+                    f,
+                    "missing required argument: --{}",
+                    NamingCase::KebabCase.apply(port_name)
+                )
             }
             ParseError::MissingValue { flag } => {
                 write!(f, "flag '{}' requires a value", flag)
@@ -220,10 +224,7 @@ pub fn format_value(value: &Value) -> String {
         Value::Str(s) => s.clone(),
         Value::Int(i) => i.to_string(),
         Value::Bool(b) => b.to_string(),
-        Value::List(items) => format!(
-            "{:?}",
-            items.iter().map(format_value).collect::<Vec<_>>()
-        ),
+        Value::List(items) => format!("{:?}", items.iter().map(format_value).collect::<Vec<_>>()),
         _ => format!("{:?}", value),
     }
 }
@@ -266,10 +267,8 @@ mod tests {
 
     #[test]
     fn test_repeatable_param() {
-        let schema = vec![
-            CliParam::new("extensions", "String")
-                .with_cardinality(Cardinality::ZERO_OR_MORE),
-        ];
+        let schema =
+            vec![CliParam::new("extensions", "String").with_cardinality(Cardinality::ZERO_OR_MORE)];
         let result = parse(
             &argv(&["prog", "--extensions", ".rs", "--extensions", ".toml"]),
             &schema,
@@ -283,10 +282,8 @@ mod tests {
 
     #[test]
     fn test_repeatable_empty() {
-        let schema = vec![
-            CliParam::new("extensions", "String")
-                .with_cardinality(Cardinality::ZERO_OR_MORE),
-        ];
+        let schema =
+            vec![CliParam::new("extensions", "String").with_cardinality(Cardinality::ZERO_OR_MORE)];
         let result = parse(&argv(&["prog"]), &schema).unwrap();
         assert!(!result.values.contains_key("extensions"));
     }
@@ -382,8 +379,7 @@ mod tests {
         let schema = vec![
             CliParam::new("repo_path", "String").short('r').default("."),
             CliParam::new("public", "Bool"),
-            CliParam::new("extensions", "String")
-                .with_cardinality(Cardinality::ZERO_OR_MORE),
+            CliParam::new("extensions", "String").with_cardinality(Cardinality::ZERO_OR_MORE),
         ];
         let result = parse(
             &argv(&[

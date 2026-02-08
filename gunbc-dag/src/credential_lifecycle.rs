@@ -54,7 +54,7 @@ fn mock_cloud_config_with_secret(name: &str) -> Value {
 /// Mock specification for GitHub credential lifecycle testing.
 #[gunbc_testgen_registry_macros::resource_test_target(
     name = "github-credential-lifecycle",
-    builder = "gunbc_lib_cloud_ops::build_github_credential_graph()",
+    builder = "gunbc_lib_cloud_ops::build_github_credential_graph()"
 )]
 #[gunbc_testgen_registry_macros::testgen_target(
     name = "github-credential-lifecycle",
@@ -89,13 +89,19 @@ pub fn github_credential_lifecycle_mock_spec() -> MockSpec {
             "request_token",
             Value::Str("mock-oidc-token".into()),
         )
-        .boundary("bind_secret", "config", mock_cloud_config_with_secret("github"))
+        .boundary(
+            "bind_secret",
+            "config",
+            mock_cloud_config_with_secret("github"),
+        )
         .boundary("cloud_credential", "credential", mock_credential())
         // Transport mock
         .transport_mock(
             "execute",
             "response",
-            Value::Response(gunbc_ir::transport::TransportResponse::Rest(response.clone())),
+            Value::Response(gunbc_ir::transport::TransportResponse::Rest(
+                response.clone(),
+            )),
         )
         .boundary(
             "execute",
@@ -120,10 +126,7 @@ pub fn github_credential_lifecycle_mock_spec() -> MockSpec {
         .node_example(
             NodeExample::new("resolve_auth")
                 .output("service", OutputMatcher::exact(Value::Str("github".into())))
-                .output(
-                    "scheme",
-                    OutputMatcher::exact(Value::Str("bearer".into())),
-                )
+                .output("scheme", OutputMatcher::exact(Value::Str("bearer".into())))
                 .output(
                     "header_name",
                     OutputMatcher::exact(Value::Str(String::new())),
@@ -151,6 +154,12 @@ pub fn github_credential_lifecycle_mock_spec() -> MockSpec {
         .skip_node_example("cloud_env")
         .skip_node_example("cloud_credential")
         .skip_node_example("bind_secret")
+        // Compose runtime mocks for the lowered GCP subdag:
+        // cloud_credential -> gcp_wif_secret -> <inner-node>
+        .include_prefixed_runtime_mocks(
+            "cloud_credential/gcp_wif_secret",
+            &gunbc_lib_gcp_ops::graph_mock::gcp_github_mock_spec(),
+        )
 }
 
 // Generated tests (from `make testgen`)
