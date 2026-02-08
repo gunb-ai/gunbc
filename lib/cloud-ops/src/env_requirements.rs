@@ -105,7 +105,7 @@ pub fn detect_cloud_env_requirements() -> CloudEnvRequirements {
         .unwrap_or(CloudProviderKind::Gcp);
 
     let runtime = if let Ok(runtime) = std::env::var("CLOUD_RUNTIME") {
-        CloudRuntimeKind::parse(&runtime).unwrap_or(CloudRuntimeKind::GitHubActions)
+        CloudRuntimeKind::parse(&runtime).unwrap_or(CloudRuntimeKind::LocalDev)
     } else if std::env::var("ACTIONS_ID_TOKEN_REQUEST_URL").is_ok() {
         CloudRuntimeKind::GitHubActions
     } else if std::env::var("GCE_METADATA_HOST").is_ok()
@@ -114,7 +114,7 @@ pub fn detect_cloud_env_requirements() -> CloudEnvRequirements {
     {
         CloudRuntimeKind::CloudMetadata
     } else {
-        CloudRuntimeKind::GitHubActions
+        CloudRuntimeKind::LocalDev
     };
 
     match provider {

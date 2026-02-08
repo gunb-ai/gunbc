@@ -136,6 +136,14 @@ impl Executable for CloudOps {
                 if let Some(lifetime) = inputs.get("lifetime_seconds").and_then(Value::as_int) {
                     out.insert("lifetime_seconds".to_string(), Value::Int(lifetime));
                 }
+                if let Some(interactive_allowed) =
+                    inputs.get("interactive_allowed").and_then(Value::as_bool)
+                {
+                    out.insert(
+                        "interactive_allowed".to_string(),
+                        Value::Bool(interactive_allowed),
+                    );
+                }
 
                 if matches!(runtime, CloudRuntimeKind::GitHubActions) {
                     let request_url = require_str(&inputs, "request_url")?;
@@ -207,6 +215,14 @@ impl Executable for CloudOps {
 
                 if let Some(lifetime) = inputs.get("lifetime_seconds").and_then(Value::as_int) {
                     out.insert("lifetime_seconds".to_string(), Value::Int(lifetime));
+                }
+                if let Some(interactive_allowed) =
+                    inputs.get("interactive_allowed").and_then(Value::as_bool)
+                {
+                    out.insert(
+                        "interactive_allowed".to_string(),
+                        Value::Bool(interactive_allowed),
+                    );
                 }
 
                 if matches!(runtime, CloudRuntimeKind::GitHubActions) {

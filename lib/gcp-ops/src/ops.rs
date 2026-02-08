@@ -45,6 +45,12 @@ pub enum GcpOps {
     PrepareLocalAccessToken,
     /// Parse local gcloud access token response.
     ParseLocalAccessToken,
+    /// Parse local auth check response (best-effort, non-failing).
+    ParseLocalAuthCheck,
+    /// Prepare local interactive auth login request.
+    PrepareLocalAuthLogin,
+    /// Parse local interactive auth login response.
+    ParseLocalAuthLogin,
     /// Prepare the STS token exchange request.
     PrepareStsExchange,
     /// Parse the STS token exchange response.
@@ -234,6 +240,67 @@ impl Executable for GcpOps {
                     .str("access_token", token)
                     .int("expires_in", 0)
                     .ok()
+            }
+            GcpOps::ParseLocalAuthCheck => {
+                let response = match inputs.get("response") {
+                    Some(Value::Skipped) => return OutputMap::new().bool("exists", false).ok(),
+                    Some(Value::Response(r)) => r,
+                    _ => return Err(ExecError::new("missing or invalid 'response' input")),
+                };
+                let shell = match response {
+                    TransportResponse::Shell(s) => s,
+                    other => {
+                        return Err(ExecError::new(format!(
+                            "expected shell response, got {:?}",
+                            other
+                        )));
+                    }
+                };
+                let exists = shell.exit_code == 0 && !shell.stdout.trim().is_empty();
+                OutputMap::new().bool("exists", exists).ok()
+            }
+            GcpOps::PrepareLocalAuthLogin => {
+                let exists = require_bool(&inputs, "exists")?;
+                let interactive_allowed = inputs
+                    .get("interactive_allowed")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false);
+                if !exists && !interactive_allowed {
+                    return Err(ExecError::new(
+                        "local auth session missing and interactive login is disabled for this action",
+                    ));
+                }
+
+                let req = ShellRequest::new("gcloud")
+                    .args(["auth", "login", "--update-adc"])
+                    .into_transport_request();
+                OutputMap::new()
+                    .request("request", req)
+                    .bool("skip", exists)
+                    .ok()
+            }
+            GcpOps::ParseLocalAuthLogin => {
+                let response = match inputs.get("response") {
+                    Some(Value::Skipped) => return OutputMap::new().bool("ok", true).ok(),
+                    Some(Value::Response(r)) => r,
+                    _ => return Err(ExecError::new("missing or invalid 'response' input")),
+                };
+                let shell = match response {
+                    TransportResponse::Shell(s) => s,
+                    other => {
+                        return Err(ExecError::new(format!(
+                            "expected shell response, got {:?}",
+                            other
+                        )));
+                    }
+                };
+                if shell.exit_code != 0 {
+                    return Err(ExecError::new(format!(
+                        "gcloud auth login failed: {}",
+                        shell.stderr.trim()
+                    )));
+                }
+                OutputMap::new().bool("ok", true).ok()
             }
             GcpOps::PrepareStsExchange => {
                 let audience = require_str(&inputs, "audience")?;

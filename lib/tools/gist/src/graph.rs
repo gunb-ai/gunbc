@@ -429,6 +429,7 @@ fn execute_resolve_auth(
         .str("scheme", intent.scheme)
         .str("header_name", intent.header_name)
         .str_list("required_scopes", intent.required_scopes)
+        .bool("interactive_allowed", intent.interactive_allowed)
         .int("lifetime_seconds", 3600)
         .ok()
 }
@@ -580,6 +581,7 @@ pub fn build_gist_graph(
             port("scheme", "String"),
             port("header_name", "String"),
             list("required_scopes", "String"),
+            port("interactive_allowed", "Bool"),
             optional("lifetime_seconds", "OptionalInt"),
         ],
         GistGraphOp::ResolveAuth,
@@ -754,6 +756,10 @@ pub fn build_gist_graph(
     builder.add_edge(
         resolve_auth.out("lifetime_seconds"),
         cloud_credential.in_port("lifetime_seconds"),
+    )?;
+    builder.add_edge(
+        resolve_auth.out("interactive_allowed"),
+        cloud_credential.in_port("interactive_allowed"),
     )?;
     builder.add_edge(
         cloud_env.out("request_url"),
@@ -1176,6 +1182,7 @@ impl Mockable for GistGraphOp {
                 .str("scheme", "bearer")
                 .str("header_name", "")
                 .str_list("required_scopes", vec!["gist:write".to_string()])
+                .bool("interactive_allowed", true)
                 .int("lifetime_seconds", 3600)
                 .build(),
 

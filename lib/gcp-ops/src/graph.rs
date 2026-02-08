@@ -240,13 +240,143 @@ pub fn build_gcp_secret_manager_credential_graph(
             parse_sts
         }
         GcpRuntimeKind::LocalDev => {
-            let prepare_local = builder
+            let prepare_check_local = builder
                 .add_root_node(Node::opaque(
-                    "prepare_local_access_token",
+                    "prepare_check_local_auth",
                     vec![],
                     vec![port("request", "TransportRequest"), port("skip", "Bool")],
                     GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareLocalAccessToken),
                 ))
+                .expect("prepare_check_local_auth");
+
+            let execute_check_local = builder
+                .add_node_after(
+                    Node::opaque(
+                        "execute_check_local_auth",
+                        vec![
+                            port("request", "TransportRequest"),
+                            port("skip", "Bool"),
+                            resource("net", "NetworkHandle", AccessMode::Read),
+                        ],
+                        vec![port("response", "TransportResponse")],
+                        GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
+                    ),
+                    &prepare_check_local,
+                )
+                .expect("execute_check_local_auth");
+
+            let parse_check_local = builder
+                .add_node_after(
+                    Node::opaque(
+                        "parse_check_local_auth",
+                        vec![port("response", "TransportResponse")],
+                        vec![port("exists", "Bool")],
+                        GcpSecretManagerGraphOp::Gcp(GcpOps::ParseLocalAuthCheck),
+                    ),
+                    &execute_check_local,
+                )
+                .expect("parse_check_local_auth");
+
+            builder
+                .add_edge(
+                    prepare_check_local.out("request"),
+                    execute_check_local.in_port("request"),
+                )
+                .expect("prepare_check_local_auth.request -> execute_check_local_auth.request");
+            builder
+                .add_edge(
+                    prepare_check_local.out("skip"),
+                    execute_check_local.in_port("skip"),
+                )
+                .expect("prepare_check_local_auth.skip -> execute_check_local_auth.skip");
+            builder
+                .add_edge(net_env.out("net"), execute_check_local.in_port("res:net"))
+                .expect("net_env -> execute_check_local_auth.res:net");
+            builder
+                .add_edge(
+                    execute_check_local.out("response"),
+                    parse_check_local.in_port("response"),
+                )
+                .expect("execute_check_local_auth.response -> parse_check_local_auth.response");
+
+            let prepare_create_local = builder
+                .add_node_after(
+                    Node::opaque(
+                        "prepare_create_local_auth",
+                        vec![port("exists", "Bool"), optional("interactive_allowed", "OptionalBool")],
+                        vec![port("request", "TransportRequest"), port("skip", "Bool")],
+                        GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareLocalAuthLogin),
+                    ),
+                    &parse_check_local,
+                )
+                .expect("prepare_create_local_auth");
+
+            let execute_create_local = builder
+                .add_node_after(
+                    Node::opaque(
+                        "execute_create_local_auth",
+                        vec![
+                            port("request", "TransportRequest"),
+                            port("skip", "Bool"),
+                            resource("net", "NetworkHandle", AccessMode::Read),
+                        ],
+                        vec![port("response", "TransportResponse")],
+                        GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
+                    ),
+                    &prepare_create_local,
+                )
+                .expect("execute_create_local_auth");
+
+            let parse_create_local = builder
+                .add_node_after(
+                    Node::opaque(
+                        "parse_create_local_auth",
+                        vec![port("response", "TransportResponse")],
+                        vec![port("ok", "Bool")],
+                        GcpSecretManagerGraphOp::Gcp(GcpOps::ParseLocalAuthLogin),
+                    ),
+                    &execute_create_local,
+                )
+                .expect("parse_create_local_auth");
+
+            builder
+                .add_edge(
+                    parse_check_local.out("exists"),
+                    prepare_create_local.in_port("exists"),
+                )
+                .expect("parse_check_local_auth.exists -> prepare_create_local_auth.exists");
+            builder
+                .add_edge(
+                    prepare_create_local.out("request"),
+                    execute_create_local.in_port("request"),
+                )
+                .expect("prepare_create_local_auth.request -> execute_create_local_auth.request");
+            builder
+                .add_edge(
+                    prepare_create_local.out("skip"),
+                    execute_create_local.in_port("skip"),
+                )
+                .expect("prepare_create_local_auth.skip -> execute_create_local_auth.skip");
+            builder
+                .add_edge(net_env.out("net"), execute_create_local.in_port("res:net"))
+                .expect("net_env -> execute_create_local_auth.res:net");
+            builder
+                .add_edge(
+                    execute_create_local.out("response"),
+                    parse_create_local.in_port("response"),
+                )
+                .expect("execute_create_local_auth.response -> parse_create_local_auth.response");
+
+            let prepare_local = builder
+                .add_node_after(
+                    Node::opaque(
+                        "prepare_local_access_token",
+                        vec![optional("auth_ready", "OptionalBool")],
+                        vec![port("request", "TransportRequest"), port("skip", "Bool")],
+                        GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareLocalAccessToken),
+                    ),
+                    &parse_create_local,
+                )
                 .expect("prepare_local_access_token");
 
             let execute_local = builder
@@ -277,6 +407,12 @@ pub fn build_gcp_secret_manager_credential_graph(
                 )
                 .expect("parse_local_access_token");
 
+            builder
+                .add_edge(
+                    parse_create_local.out("ok"),
+                    prepare_local.in_port("auth_ready"),
+                )
+                .expect("parse_create_local_auth.ok -> prepare_local_access_token.auth_ready");
             builder
                 .add_edge(
                     prepare_local.out("request"),
@@ -709,13 +845,143 @@ pub fn build_gcp_secret_manager_upsert_graph(
             parse_sts
         }
         GcpRuntimeKind::LocalDev => {
-            let prepare_local = builder
+            let prepare_check_local = builder
                 .add_root_node(Node::opaque(
-                    "prepare_local_access_token",
+                    "prepare_check_local_auth",
                     vec![],
                     vec![port("request", "TransportRequest"), port("skip", "Bool")],
                     GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareLocalAccessToken),
                 ))
+                .expect("prepare_check_local_auth");
+
+            let execute_check_local = builder
+                .add_node_after(
+                    Node::opaque(
+                        "execute_check_local_auth",
+                        vec![
+                            port("request", "TransportRequest"),
+                            port("skip", "Bool"),
+                            resource("net", "NetworkHandle", AccessMode::Read),
+                        ],
+                        vec![port("response", "TransportResponse")],
+                        GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
+                    ),
+                    &prepare_check_local,
+                )
+                .expect("execute_check_local_auth");
+
+            let parse_check_local = builder
+                .add_node_after(
+                    Node::opaque(
+                        "parse_check_local_auth",
+                        vec![port("response", "TransportResponse")],
+                        vec![port("exists", "Bool")],
+                        GcpSecretManagerGraphOp::Gcp(GcpOps::ParseLocalAuthCheck),
+                    ),
+                    &execute_check_local,
+                )
+                .expect("parse_check_local_auth");
+
+            builder
+                .add_edge(
+                    prepare_check_local.out("request"),
+                    execute_check_local.in_port("request"),
+                )
+                .expect("prepare_check_local_auth.request -> execute_check_local_auth.request");
+            builder
+                .add_edge(
+                    prepare_check_local.out("skip"),
+                    execute_check_local.in_port("skip"),
+                )
+                .expect("prepare_check_local_auth.skip -> execute_check_local_auth.skip");
+            builder
+                .add_edge(net_env.out("net"), execute_check_local.in_port("res:net"))
+                .expect("net_env -> execute_check_local_auth.res:net");
+            builder
+                .add_edge(
+                    execute_check_local.out("response"),
+                    parse_check_local.in_port("response"),
+                )
+                .expect("execute_check_local_auth.response -> parse_check_local_auth.response");
+
+            let prepare_create_local = builder
+                .add_node_after(
+                    Node::opaque(
+                        "prepare_create_local_auth",
+                        vec![port("exists", "Bool"), optional("interactive_allowed", "OptionalBool")],
+                        vec![port("request", "TransportRequest"), port("skip", "Bool")],
+                        GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareLocalAuthLogin),
+                    ),
+                    &parse_check_local,
+                )
+                .expect("prepare_create_local_auth");
+
+            let execute_create_local = builder
+                .add_node_after(
+                    Node::opaque(
+                        "execute_create_local_auth",
+                        vec![
+                            port("request", "TransportRequest"),
+                            port("skip", "Bool"),
+                            resource("net", "NetworkHandle", AccessMode::Read),
+                        ],
+                        vec![port("response", "TransportResponse")],
+                        GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
+                    ),
+                    &prepare_create_local,
+                )
+                .expect("execute_create_local_auth");
+
+            let parse_create_local = builder
+                .add_node_after(
+                    Node::opaque(
+                        "parse_create_local_auth",
+                        vec![port("response", "TransportResponse")],
+                        vec![port("ok", "Bool")],
+                        GcpSecretManagerGraphOp::Gcp(GcpOps::ParseLocalAuthLogin),
+                    ),
+                    &execute_create_local,
+                )
+                .expect("parse_create_local_auth");
+
+            builder
+                .add_edge(
+                    parse_check_local.out("exists"),
+                    prepare_create_local.in_port("exists"),
+                )
+                .expect("parse_check_local_auth.exists -> prepare_create_local_auth.exists");
+            builder
+                .add_edge(
+                    prepare_create_local.out("request"),
+                    execute_create_local.in_port("request"),
+                )
+                .expect("prepare_create_local_auth.request -> execute_create_local_auth.request");
+            builder
+                .add_edge(
+                    prepare_create_local.out("skip"),
+                    execute_create_local.in_port("skip"),
+                )
+                .expect("prepare_create_local_auth.skip -> execute_create_local_auth.skip");
+            builder
+                .add_edge(net_env.out("net"), execute_create_local.in_port("res:net"))
+                .expect("net_env -> execute_create_local_auth.res:net");
+            builder
+                .add_edge(
+                    execute_create_local.out("response"),
+                    parse_create_local.in_port("response"),
+                )
+                .expect("execute_create_local_auth.response -> parse_create_local_auth.response");
+
+            let prepare_local = builder
+                .add_node_after(
+                    Node::opaque(
+                        "prepare_local_access_token",
+                        vec![optional("auth_ready", "OptionalBool")],
+                        vec![port("request", "TransportRequest"), port("skip", "Bool")],
+                        GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareLocalAccessToken),
+                    ),
+                    &parse_create_local,
+                )
                 .expect("prepare_local_access_token");
 
             let execute_local = builder
@@ -746,6 +1012,12 @@ pub fn build_gcp_secret_manager_upsert_graph(
                 )
                 .expect("parse_local_access_token");
 
+            builder
+                .add_edge(
+                    parse_create_local.out("ok"),
+                    prepare_local.in_port("auth_ready"),
+                )
+                .expect("parse_create_local_auth.ok -> prepare_local_access_token.auth_ready");
             builder
                 .add_edge(
                     prepare_local.out("request"),

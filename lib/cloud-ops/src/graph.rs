@@ -225,6 +225,7 @@ fn build_cloud_secret_manager_credential_graph_gcp(
                     optional("header_name", "OptionalString"),
                     port("source_id", "String"),
                     optional("lifetime_seconds", "OptionalInt"),
+                    optional("interactive_allowed", "OptionalBool"),
                     optional("request_url", "OptionalString"),
                     optional("request_token", "OptionalString"),
                 ],
@@ -238,6 +239,7 @@ fn build_cloud_secret_manager_credential_graph_gcp(
                     optional("header_name", "OptionalString"),
                     port("source_id", "String"),
                     optional("lifetime_seconds", "OptionalInt"),
+                    optional("interactive_allowed", "OptionalBool"),
                     optional("request_url", "OptionalString"),
                     optional("request_token", "OptionalString"),
                 ],
@@ -332,6 +334,14 @@ fn build_cloud_secret_manager_credential_graph_gcp(
             gcp_node.in_port("lifetime_seconds"),
         )
         .expect("map_gcp_inputs.lifetime_seconds -> gcp_wif_secret.lifetime_seconds");
+    if matches!(runtime, CloudRuntimeKind::LocalDev) {
+        builder
+            .add_edge(
+                map_inputs.out("interactive_allowed"),
+                gcp_node.in_port("interactive_allowed"),
+            )
+            .expect("map_gcp_inputs.interactive_allowed -> gcp_wif_secret.interactive_allowed");
+    }
 
     if matches!(runtime, CloudRuntimeKind::GitHubActions) {
         builder
@@ -395,6 +405,7 @@ fn build_cloud_secret_manager_upsert_graph_gcp(
                     optional("service_account_or_role", "OptionalString"),
                     optional("impersonate_account_or_role", "OptionalString"),
                     optional("lifetime_seconds", "OptionalInt"),
+                    optional("interactive_allowed", "OptionalBool"),
                     optional("request_url", "OptionalString"),
                     optional("request_token", "OptionalString"),
                 ],
@@ -405,6 +416,7 @@ fn build_cloud_secret_manager_upsert_graph_gcp(
                     port("service_account", "String"),
                     optional("version", "OptionalString"),
                     optional("lifetime_seconds", "OptionalInt"),
+                    optional("interactive_allowed", "OptionalBool"),
                     optional("request_url", "OptionalString"),
                     optional("request_token", "OptionalString"),
                 ],
@@ -486,6 +498,16 @@ fn build_cloud_secret_manager_upsert_graph_gcp(
             gcp_node.in_port("lifetime_seconds"),
         )
         .expect("map_gcp_secret_inputs.lifetime_seconds -> gcp_wif_secret_upsert.lifetime_seconds");
+    if matches!(runtime, CloudRuntimeKind::LocalDev) {
+        builder
+            .add_edge(
+                map_inputs.out("interactive_allowed"),
+                gcp_node.in_port("interactive_allowed"),
+            )
+            .expect(
+                "map_gcp_secret_inputs.interactive_allowed -> gcp_wif_secret_upsert.interactive_allowed",
+            );
+    }
 
     if matches!(runtime, CloudRuntimeKind::GitHubActions) {
         builder

@@ -49,7 +49,7 @@ impl CloudEnv {
             return Ok(CloudRuntimeKind::CloudMetadata);
         }
 
-        Ok(CloudRuntimeKind::GitHubActions)
+        Ok(CloudRuntimeKind::LocalDev)
     }
 
     fn build_gcp_config(runtime: CloudRuntimeKind) -> Result<CloudSecretConfig, ExecError> {

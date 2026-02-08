@@ -33,6 +33,7 @@ impl Executable for GitHubCredentialOps {
                 .str("service", "github")
                 .str("scheme", "bearer")
                 .str("header_name", "")
+                .bool("interactive_allowed", true)
                 .ok(),
             GitHubCredentialOps::PrepareRateLimit => {
                 let req = github_rest_request("/rate_limit");
@@ -109,6 +110,7 @@ pub fn build_github_credential_graph() -> Dag<GitHubCredentialGraphOp> {
                 port("service", "String"),
                 port("scheme", "String"),
                 port("header_name", "String"),
+                port("interactive_allowed", "Bool"),
             ],
             GitHubCredentialGraphOp::GitHub(GitHubCredentialOps::ResolveAuth),
         ))
@@ -170,6 +172,12 @@ pub fn build_github_credential_graph() -> Dag<GitHubCredentialGraphOp> {
             cloud_credential.in_port("header_name"),
         )
         .expect("resolve_auth.header_name -> cloud_credential.header_name");
+    builder
+        .add_edge(
+            resolve_auth.out("interactive_allowed"),
+            cloud_credential.in_port("interactive_allowed"),
+        )
+        .expect("resolve_auth.interactive_allowed -> cloud_credential.interactive_allowed");
     builder
         .add_edge(
             cloud_env.out("request_url"),
