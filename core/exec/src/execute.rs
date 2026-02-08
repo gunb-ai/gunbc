@@ -579,8 +579,8 @@ fn execute_flat<T: Executable + Clone + Send>(
     input_mocks: Option<&BoundaryMocks>,
     loops: &[LoopInfo<T>],
 ) -> Result<ExecutionLog, ExecError> {
-    if ci.is_none() && observer.is_none() {
-        return execute_flat_parallel(dag, mode, input_mocks, loops);
+    if ci.is_none() {
+        return execute_flat_parallel(dag, boundaries, mode, observer, input_mocks, loops);
     }
 
     execute_flat_sequential(dag, boundaries, mode, ci, observer, input_mocks, loops)
@@ -1134,12 +1134,15 @@ fn finalize_node_parallel<T: Executable + Clone + Send>(
 
 fn execute_flat_parallel<T: Executable + Clone + Send>(
     dag: &Dag<T>,
+    boundaries: &BoundaryInfo,
     mode: &ExecutionMode,
+    observer: Option<&mut dyn ProgressObserver>,
     input_mocks: Option<&BoundaryMocks>,
     loops: &[LoopInfo<T>],
 ) -> Result<ExecutionLog, ExecError> {
     struct NodeExecutionResult {
         node_id: NodeId,
+        started_at: Instant,
         result: Result<HashMap<String, Value>, ExecError>,
     }
 
@@ -1211,9 +1214,15 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
     let max_concurrency = execution_max_concurrency();
     let mut completed = 0usize;
     let mut in_flight = 0usize;
+    let mut obs = observer;
+    let dag_start = Instant::now();
+    if let Some(ref mut o) = obs {
+        let snapshot = DagSnapshot::from_dag(dag, &order, boundaries);
+        o.on_dag_start(&snapshot);
+    }
 
     let (tx, rx) = mpsc::channel::<NodeExecutionResult>();
-    thread::scope(|scope| -> Result<(), ExecError> {
+    let scoped_result = thread::scope(|scope| -> Result<(), ExecError> {
         while completed < order.len() {
             ready.sort_by_key(|id| node_index.get(id).copied().unwrap_or(usize::MAX));
             while !ready.is_empty() && in_flight < max_concurrency {
@@ -1238,7 +1247,10 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
                         .iter()
                         .map(|port| (port.name.0.clone(), Value::Skipped))
                         .collect();
-                    finalize_node_parallel(
+                    if let Some(ref mut o) = obs {
+                        o.on_node_skipped(&node_id);
+                    }
+                    if let Err(e) = finalize_node_parallel(
                         &node_id,
                         outputs,
                         false,
@@ -1252,8 +1264,15 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
                         &mut remaining_deps,
                         &mut ready,
                         &mut completed,
-                    )?;
+                    ) {
+                        return Err(e);
+                    }
                     continue;
+                }
+
+                let node_start = Instant::now();
+                if let Some(ref mut o) = obs {
+                    o.on_node_start(&node_id);
                 }
 
                 if should_intercept_for_mode(node, mode) {
@@ -1262,8 +1281,20 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
                         ExecutionMode::Simulate(config) => &config.boundary_mocks,
                         ExecutionMode::Real => unreachable!(),
                     };
-                    let outputs = mock_intercept_outputs(node, mocks)?;
-                    finalize_node_parallel(
+                    let outputs = match mock_intercept_outputs(node, mocks) {
+                        Ok(outputs) => outputs,
+                        Err(e) => {
+                            if let Some(ref mut o) = obs {
+                                o.on_node_failed(&node_id, &e.to_string());
+                            }
+                            return Err(e);
+                        }
+                    };
+                    if let Some(ref mut o) = obs {
+                        let summary = OutputSummary::from_outputs(&outputs, node_start.elapsed());
+                        o.on_node_intercepted(&node_id, summary);
+                    }
+                    if let Err(e) = finalize_node_parallel(
                         &node_id,
                         outputs,
                         true,
@@ -1277,7 +1308,9 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
                         &mut remaining_deps,
                         &mut ready,
                         &mut completed,
-                    )?;
+                    ) {
+                        return Err(e);
+                    }
                     continue;
                 }
 
@@ -1290,16 +1323,21 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
                             let result = op.execute(inputs);
                             let _ = tx.send(NodeExecutionResult {
                                 node_id: node_id_clone,
+                                started_at: node_start,
                                 result,
                             });
                         });
                         in_flight += 1;
                     }
                     NodeBody::SubDag(_) => {
-                        return Err(ExecError::new(format!(
+                        let err = ExecError::new(format!(
                             "node '{}' is a SubDag — DAG must be lowered before execution",
                             node_id.0
-                        )));
+                        ));
+                        if let Some(ref mut o) = obs {
+                            o.on_node_failed(&node_id, &err.to_string());
+                        }
+                        return Err(err);
                     }
                 }
             }
@@ -1318,26 +1356,56 @@ fn execute_flat_parallel<T: Executable + Clone + Send>(
                 ExecError::new("execution worker channel closed unexpectedly")
             })?;
             in_flight = in_flight.saturating_sub(1);
-            let outputs = completed_node.result?;
-            finalize_node_parallel(
-                &completed_node.node_id,
-                outputs,
-                false,
-                mode,
-                &loops_by_unpack,
-                &node_index,
-                &mut node_outputs,
-                &mut node_entries,
-                &mut loop_entries,
-                &dependents,
-                &mut remaining_deps,
-                &mut ready,
-                &mut completed,
-            )?;
+            match completed_node.result {
+                Ok(outputs) => {
+                    if let Some(ref mut o) = obs {
+                        let summary =
+                            OutputSummary::from_outputs(&outputs, completed_node.started_at.elapsed());
+                        o.on_node_complete(&completed_node.node_id, summary);
+                    }
+                    if let Err(e) = finalize_node_parallel(
+                        &completed_node.node_id,
+                        outputs,
+                        false,
+                        mode,
+                        &loops_by_unpack,
+                        &node_index,
+                        &mut node_outputs,
+                        &mut node_entries,
+                        &mut loop_entries,
+                        &dependents,
+                        &mut remaining_deps,
+                        &mut ready,
+                        &mut completed,
+                    ) {
+                        return Err(e);
+                    }
+                }
+                Err(e) => {
+                    if let Some(ref mut o) = obs {
+                        o.on_node_failed(&completed_node.node_id, &e.to_string());
+                    }
+                    return Err(e);
+                }
+            }
         }
 
         Ok(())
-    })?;
+    });
+
+    match scoped_result {
+        Ok(()) => {
+            if let Some(ref mut o) = obs {
+                o.on_dag_complete(dag_start.elapsed());
+            }
+        }
+        Err(e) => {
+            if let Some(ref mut o) = obs {
+                o.on_dag_complete(dag_start.elapsed());
+            }
+            return Err(e);
+        }
+    }
 
     let mut entries = Vec::new();
     for (idx, node_id) in order.iter().enumerate() {

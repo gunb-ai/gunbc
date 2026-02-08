@@ -138,6 +138,11 @@ pub fn github_credential_lifecycle_mock_spec() -> MockSpec {
                 secret_response,
             )),
         )
+        .boundary(
+            "cloud_credential/gcp_wif_secret/build_credential",
+            "credential",
+            mock_credential(),
+        )
         // Transport mock
         .transport_mock(
             "execute",

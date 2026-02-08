@@ -3,7 +3,7 @@
 use gunbc_exec::{execute_with_mode, BoundaryMocks, ExecutionMode};
 use gunbc_gist::{build_gist_graph, GistMode};
 use gunbc_ir::transport::{ShellResponse, TransportResponse};
-use gunbc_ir::{AuthScheme, Credential, Secret, Timestamp, Value};
+use gunbc_ir::{detect_boundaries, AuthScheme, Credential, Secret, Timestamp, Value};
 use gunbc_primitives::filename;
 use gunbc_test::{assert_boundary_mockable, guard_test, FermiCost, TestClass};
 use std::time::SystemTime;
