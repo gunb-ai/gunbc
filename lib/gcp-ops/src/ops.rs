@@ -221,16 +221,19 @@ impl Executable for GcpOps {
                     }
                 };
                 let exists = file.exists.unwrap_or(false);
-                if !exists {
-                    // Provide actionable guidance instead of silently failing
-                    let path = adc_file_path();
-                    return Err(ExecError::new(format!(
-                        "ADC file not found at {path}. Run `gcloud auth application-default login` to create it."
-                    )));
-                }
                 OutputMap::new().bool("exists", exists).ok()
             }
             GcpOps::PrepareReadAdc => {
+                let exists = match inputs.get("exists") {
+                    Some(Value::Bool(b)) => *b,
+                    _ => false,
+                };
+                if !exists {
+                    return OutputMap::new()
+                        .request("request", FileRequest::read("/dev/null").into())
+                        .bool("skip", true)
+                        .ok();
+                }
                 let adc_path = adc_file_path();
                 let req = FileRequest::read(&adc_path);
                 OutputMap::new()
@@ -291,6 +294,15 @@ impl Executable for GcpOps {
                 let client_id = require_str(&inputs, "client_id")?;
                 let client_secret = require_str(&inputs, "client_secret")?;
                 let refresh_token = require_str(&inputs, "refresh_token")?;
+
+                // If credentials are empty (upstream was skipped), skip the OAuth2 call.
+                if client_id.is_empty() || client_secret.is_empty() || refresh_token.is_empty() {
+                    let placeholder = RestRequest::post("https://oauth2.googleapis.com/token");
+                    return OutputMap::new()
+                        .request("request", placeholder.into())
+                        .bool("skip", true)
+                        .ok();
+                }
 
                 let body = serde_json::json!({
                     "client_id": client_id,
@@ -873,7 +885,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_check_adc_reports_missing_file() {
+    fn parse_check_adc_returns_false_when_missing() {
         let mut inputs = HashMap::new();
         inputs.insert(
             "response".to_string(),
@@ -881,10 +893,8 @@ mod tests {
                 FileResponse::exists_result("/fake/path", false),
             )),
         );
-        let err = GcpOps::ParseCheckAdc
-            .execute(inputs)
-            .expect_err("missing ADC should error");
-        assert!(err.to_string().contains("gcloud auth application-default login"));
+        let outputs = GcpOps::ParseCheckAdc.execute(inputs).expect("should succeed");
+        assert_eq!(outputs.get("exists"), Some(&Value::Bool(false)));
     }
 
     #[test]
@@ -912,6 +922,14 @@ mod tests {
             }
             other => panic!("expected File request, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn prepare_read_adc_skips_when_not_exists() {
+        let mut inputs = HashMap::new();
+        inputs.insert("exists".to_string(), Value::Bool(false));
+        let outputs = GcpOps::PrepareReadAdc.execute(inputs).expect("should succeed");
+        assert_eq!(outputs.get("skip"), Some(&Value::Bool(true)));
     }
 
     #[test]

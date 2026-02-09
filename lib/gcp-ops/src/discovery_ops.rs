@@ -314,11 +314,11 @@ impl Executable for GcpDiscoveryOps {
                             labels: parse_labels(s.get("labels")),
                             replication: s
                                 .get("replication")
-                                .and_then(|r| {
+                                .map(|r| {
                                     if r.get("automatic").is_some() {
-                                        Some("AUTOMATIC".to_string())
+                                        "AUTOMATIC".to_string()
                                     } else {
-                                        Some("USER_MANAGED".to_string())
+                                        "USER_MANAGED".to_string()
                                     }
                                 }),
                         })
@@ -451,7 +451,7 @@ impl Executable for GcpDiscoveryOps {
                         .and_then(|v| v.as_str())
                         .map(String::from),
                 };
-                let json = serde_json::to_value(&vec![policy])
+                let json = serde_json::to_value(vec![policy])
                     .map_err(|e| ExecError::new(format!("serialize policy: {e}")))?;
                 OutputMap::new()
                     .value("iam_policies", Value::Json(json))

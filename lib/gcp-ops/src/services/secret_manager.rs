@@ -253,8 +253,8 @@ mod tests {
 
     #[test]
     fn test_method_meta_access_secret_version() {
-        assert!(ACCESS_SECRET_VERSION_META.idempotent);
-        assert!(ACCESS_SECRET_VERSION_META.read_only);
+        const { assert!(ACCESS_SECRET_VERSION_META.idempotent) };
+        const { assert!(ACCESS_SECRET_VERSION_META.read_only) };
         assert_eq!(ACCESS_SECRET_VERSION_META.permissions, &["secretmanager.versions.access"]);
     }
 }

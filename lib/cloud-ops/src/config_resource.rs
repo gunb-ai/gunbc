@@ -34,7 +34,7 @@ impl CloudConfigResource {
     /// The config file is stored at `.gunbc/config-{deployment}.toml`.
     pub fn new(deployment: &str) -> Self {
         let config_path = PathBuf::from(format!(".gunbc/config-{}.toml", deployment));
-        let def = ResourceDef::new(ResourceId::new(&format!("config:cloud:{}", deployment)))
+        let def = ResourceDef::new(ResourceId::new(format!("config:cloud:{}", deployment)))
             .with_input(InputPattern::file(&config_path))
             // Runtime detection signals (cheap env reads for freshness key)
             .with_input(InputPattern::env("GITHUB_ACTIONS"))
