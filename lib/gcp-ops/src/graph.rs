@@ -3,7 +3,7 @@
 use crate::ops::{GcpOps, GcpRuntimeKind};
 use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::build::{optional, port, resource, AccessMode};
-use gunbc_ir::{Dag, DagBuilder, Node, Value};
+use gunbc_ir::{Dag, DagBuilder, Edge, Node, Value};
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::NetEnv;
 use std::collections::HashMap;
@@ -241,202 +241,16 @@ pub fn build_gcp_secret_manager_credential_graph(
             parse_sts
         }
         GcpRuntimeKind::LocalDev => {
-            let prepare_check_local = builder
-                .add_root_node(Node::opaque(
-                    "prepare_check_local_auth",
-                    vec![],
-                    vec![port("request", "TransportRequest"), port("skip", "Bool")],
-                    GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareLocalAccessToken),
+            // Use the canonical upsert sub-DAG for local auth
+            // (check -> create[guarded] -> resolve)
+            
+
+            builder
+                .add_root_node(Node::subdag(
+                    "local_auth_upsert",
+                    build_local_auth_upsert_dag(),
                 ))
-                .expect("prepare_check_local_auth");
-
-            let execute_check_local = builder
-                .add_node_after(
-                    Node::opaque(
-                        "execute_check_local_auth",
-                        vec![
-                            port("request", "TransportRequest"),
-                            port("skip", "Bool"),
-                            resource("net", "NetworkHandle", AccessMode::Read),
-                        ],
-                        vec![port("response", "TransportResponse")],
-                        GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
-                    ),
-                    &prepare_check_local,
-                )
-                .expect("execute_check_local_auth");
-
-            let parse_check_local = builder
-                .add_node_after(
-                    Node::opaque(
-                        "parse_check_local_auth",
-                        vec![port("response", "TransportResponse")],
-                        vec![port("exists", "Bool")],
-                        GcpSecretManagerGraphOp::Gcp(GcpOps::ParseLocalAuthCheck),
-                    ),
-                    &execute_check_local,
-                )
-                .expect("parse_check_local_auth");
-
-            builder
-                .add_edge(
-                    prepare_check_local.out("request"),
-                    execute_check_local.in_port("request"),
-                )
-                .expect("prepare_check_local_auth.request -> execute_check_local_auth.request");
-            builder
-                .add_edge(
-                    prepare_check_local.out("skip"),
-                    execute_check_local.in_port("skip"),
-                )
-                .expect("prepare_check_local_auth.skip -> execute_check_local_auth.skip");
-            builder
-                .add_edge(net_env.out("net"), execute_check_local.in_port("res:net"))
-                .expect("net_env -> execute_check_local_auth.res:net");
-            builder
-                .add_edge(
-                    execute_check_local.out("response"),
-                    parse_check_local.in_port("response"),
-                )
-                .expect("execute_check_local_auth.response -> parse_check_local_auth.response");
-
-            let prepare_create_local = builder
-                .add_node_after(
-                    Node::opaque(
-                        "prepare_create_local_auth",
-                        vec![
-                            port("exists", "Bool"),
-                            optional("interactive_allowed", "OptionalBool"),
-                        ],
-                        vec![port("request", "TransportRequest"), port("skip", "Bool")],
-                        GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareLocalAuthLogin),
-                    ),
-                    &parse_check_local,
-                )
-                .expect("prepare_create_local_auth");
-
-            let execute_create_local = builder
-                .add_node_after(
-                    Node::opaque(
-                        "execute_create_local_auth",
-                        vec![
-                            port("request", "TransportRequest"),
-                            port("skip", "Bool"),
-                            resource("net", "NetworkHandle", AccessMode::Read),
-                        ],
-                        vec![port("response", "TransportResponse")],
-                        GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
-                    ),
-                    &prepare_create_local,
-                )
-                .expect("execute_create_local_auth");
-
-            let parse_create_local = builder
-                .add_node_after(
-                    Node::opaque(
-                        "parse_create_local_auth",
-                        vec![port("response", "TransportResponse")],
-                        vec![port("ok", "Bool")],
-                        GcpSecretManagerGraphOp::Gcp(GcpOps::ParseLocalAuthLogin),
-                    ),
-                    &execute_create_local,
-                )
-                .expect("parse_create_local_auth");
-
-            builder
-                .add_edge(
-                    parse_check_local.out("exists"),
-                    prepare_create_local.in_port("exists"),
-                )
-                .expect("parse_check_local_auth.exists -> prepare_create_local_auth.exists");
-            builder
-                .add_edge(
-                    prepare_create_local.out("request"),
-                    execute_create_local.in_port("request"),
-                )
-                .expect("prepare_create_local_auth.request -> execute_create_local_auth.request");
-            builder
-                .add_edge(
-                    prepare_create_local.out("skip"),
-                    execute_create_local.in_port("skip"),
-                )
-                .expect("prepare_create_local_auth.skip -> execute_create_local_auth.skip");
-            builder
-                .add_edge(net_env.out("net"), execute_create_local.in_port("res:net"))
-                .expect("net_env -> execute_create_local_auth.res:net");
-            builder
-                .add_edge(
-                    execute_create_local.out("response"),
-                    parse_create_local.in_port("response"),
-                )
-                .expect("execute_create_local_auth.response -> parse_create_local_auth.response");
-
-            let prepare_local = builder
-                .add_node_after(
-                    Node::opaque(
-                        "prepare_local_access_token",
-                        vec![optional("auth_ready", "OptionalBool")],
-                        vec![port("request", "TransportRequest"), port("skip", "Bool")],
-                        GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareLocalAccessToken),
-                    ),
-                    &parse_create_local,
-                )
-                .expect("prepare_local_access_token");
-
-            let execute_local = builder
-                .add_node_after(
-                    Node::opaque(
-                        "execute_local_access_token",
-                        vec![
-                            port("request", "TransportRequest"),
-                            port("skip", "Bool"),
-                            resource("net", "NetworkHandle", AccessMode::Read),
-                        ],
-                        vec![port("response", "TransportResponse")],
-                        GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
-                    ),
-                    &prepare_local,
-                )
-                .expect("execute_local_access_token");
-
-            let parse_local = builder
-                .add_node_after(
-                    Node::opaque(
-                        "parse_local_access_token",
-                        vec![port("response", "TransportResponse")],
-                        vec![port("access_token", "String"), port("expires_in", "Int")],
-                        GcpSecretManagerGraphOp::Gcp(GcpOps::ParseLocalAccessToken),
-                    ),
-                    &execute_local,
-                )
-                .expect("parse_local_access_token");
-
-            builder
-                .add_edge(
-                    parse_create_local.out("ok"),
-                    prepare_local.in_port("auth_ready"),
-                )
-                .expect("parse_create_local_auth.ok -> prepare_local_access_token.auth_ready");
-            builder
-                .add_edge(
-                    prepare_local.out("request"),
-                    execute_local.in_port("request"),
-                )
-                .expect("prepare_local_access_token.request -> execute_local_access_token.request");
-            builder
-                .add_edge(prepare_local.out("skip"), execute_local.in_port("skip"))
-                .expect("prepare_local_access_token.skip -> execute_local_access_token.skip");
-            builder
-                .add_edge(net_env.out("net"), execute_local.in_port("res:net"))
-                .expect("net_env -> execute_local_access_token.res:net");
-            builder
-                .add_edge(
-                    execute_local.out("response"),
-                    parse_local.in_port("response"),
-                )
-                .expect("execute_local_access_token.response -> parse_local_access_token.response");
-
-            parse_local
+                .expect("local_auth_upsert")
         }
     };
 
@@ -850,202 +664,16 @@ pub fn build_gcp_secret_manager_upsert_graph(
             parse_sts
         }
         GcpRuntimeKind::LocalDev => {
-            let prepare_check_local = builder
-                .add_root_node(Node::opaque(
-                    "prepare_check_local_auth",
-                    vec![],
-                    vec![port("request", "TransportRequest"), port("skip", "Bool")],
-                    GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareLocalAccessToken),
+            // Use the canonical upsert sub-DAG for local auth
+            // (check -> create[guarded] -> resolve)
+            
+
+            builder
+                .add_root_node(Node::subdag(
+                    "local_auth_upsert",
+                    build_local_auth_upsert_dag(),
                 ))
-                .expect("prepare_check_local_auth");
-
-            let execute_check_local = builder
-                .add_node_after(
-                    Node::opaque(
-                        "execute_check_local_auth",
-                        vec![
-                            port("request", "TransportRequest"),
-                            port("skip", "Bool"),
-                            resource("net", "NetworkHandle", AccessMode::Read),
-                        ],
-                        vec![port("response", "TransportResponse")],
-                        GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
-                    ),
-                    &prepare_check_local,
-                )
-                .expect("execute_check_local_auth");
-
-            let parse_check_local = builder
-                .add_node_after(
-                    Node::opaque(
-                        "parse_check_local_auth",
-                        vec![port("response", "TransportResponse")],
-                        vec![port("exists", "Bool")],
-                        GcpSecretManagerGraphOp::Gcp(GcpOps::ParseLocalAuthCheck),
-                    ),
-                    &execute_check_local,
-                )
-                .expect("parse_check_local_auth");
-
-            builder
-                .add_edge(
-                    prepare_check_local.out("request"),
-                    execute_check_local.in_port("request"),
-                )
-                .expect("prepare_check_local_auth.request -> execute_check_local_auth.request");
-            builder
-                .add_edge(
-                    prepare_check_local.out("skip"),
-                    execute_check_local.in_port("skip"),
-                )
-                .expect("prepare_check_local_auth.skip -> execute_check_local_auth.skip");
-            builder
-                .add_edge(net_env.out("net"), execute_check_local.in_port("res:net"))
-                .expect("net_env -> execute_check_local_auth.res:net");
-            builder
-                .add_edge(
-                    execute_check_local.out("response"),
-                    parse_check_local.in_port("response"),
-                )
-                .expect("execute_check_local_auth.response -> parse_check_local_auth.response");
-
-            let prepare_create_local = builder
-                .add_node_after(
-                    Node::opaque(
-                        "prepare_create_local_auth",
-                        vec![
-                            port("exists", "Bool"),
-                            optional("interactive_allowed", "OptionalBool"),
-                        ],
-                        vec![port("request", "TransportRequest"), port("skip", "Bool")],
-                        GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareLocalAuthLogin),
-                    ),
-                    &parse_check_local,
-                )
-                .expect("prepare_create_local_auth");
-
-            let execute_create_local = builder
-                .add_node_after(
-                    Node::opaque(
-                        "execute_create_local_auth",
-                        vec![
-                            port("request", "TransportRequest"),
-                            port("skip", "Bool"),
-                            resource("net", "NetworkHandle", AccessMode::Read),
-                        ],
-                        vec![port("response", "TransportResponse")],
-                        GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
-                    ),
-                    &prepare_create_local,
-                )
-                .expect("execute_create_local_auth");
-
-            let parse_create_local = builder
-                .add_node_after(
-                    Node::opaque(
-                        "parse_create_local_auth",
-                        vec![port("response", "TransportResponse")],
-                        vec![port("ok", "Bool")],
-                        GcpSecretManagerGraphOp::Gcp(GcpOps::ParseLocalAuthLogin),
-                    ),
-                    &execute_create_local,
-                )
-                .expect("parse_create_local_auth");
-
-            builder
-                .add_edge(
-                    parse_check_local.out("exists"),
-                    prepare_create_local.in_port("exists"),
-                )
-                .expect("parse_check_local_auth.exists -> prepare_create_local_auth.exists");
-            builder
-                .add_edge(
-                    prepare_create_local.out("request"),
-                    execute_create_local.in_port("request"),
-                )
-                .expect("prepare_create_local_auth.request -> execute_create_local_auth.request");
-            builder
-                .add_edge(
-                    prepare_create_local.out("skip"),
-                    execute_create_local.in_port("skip"),
-                )
-                .expect("prepare_create_local_auth.skip -> execute_create_local_auth.skip");
-            builder
-                .add_edge(net_env.out("net"), execute_create_local.in_port("res:net"))
-                .expect("net_env -> execute_create_local_auth.res:net");
-            builder
-                .add_edge(
-                    execute_create_local.out("response"),
-                    parse_create_local.in_port("response"),
-                )
-                .expect("execute_create_local_auth.response -> parse_create_local_auth.response");
-
-            let prepare_local = builder
-                .add_node_after(
-                    Node::opaque(
-                        "prepare_local_access_token",
-                        vec![optional("auth_ready", "OptionalBool")],
-                        vec![port("request", "TransportRequest"), port("skip", "Bool")],
-                        GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareLocalAccessToken),
-                    ),
-                    &parse_create_local,
-                )
-                .expect("prepare_local_access_token");
-
-            let execute_local = builder
-                .add_node_after(
-                    Node::opaque(
-                        "execute_local_access_token",
-                        vec![
-                            port("request", "TransportRequest"),
-                            port("skip", "Bool"),
-                            resource("net", "NetworkHandle", AccessMode::Read),
-                        ],
-                        vec![port("response", "TransportResponse")],
-                        GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
-                    ),
-                    &prepare_local,
-                )
-                .expect("execute_local_access_token");
-
-            let parse_local = builder
-                .add_node_after(
-                    Node::opaque(
-                        "parse_local_access_token",
-                        vec![port("response", "TransportResponse")],
-                        vec![port("access_token", "String"), port("expires_in", "Int")],
-                        GcpSecretManagerGraphOp::Gcp(GcpOps::ParseLocalAccessToken),
-                    ),
-                    &execute_local,
-                )
-                .expect("parse_local_access_token");
-
-            builder
-                .add_edge(
-                    parse_create_local.out("ok"),
-                    prepare_local.in_port("auth_ready"),
-                )
-                .expect("parse_create_local_auth.ok -> prepare_local_access_token.auth_ready");
-            builder
-                .add_edge(
-                    prepare_local.out("request"),
-                    execute_local.in_port("request"),
-                )
-                .expect("prepare_local_access_token.request -> execute_local_access_token.request");
-            builder
-                .add_edge(prepare_local.out("skip"), execute_local.in_port("skip"))
-                .expect("prepare_local_access_token.skip -> execute_local_access_token.skip");
-            builder
-                .add_edge(net_env.out("net"), execute_local.in_port("res:net"))
-                .expect("net_env -> execute_local_access_token.res:net");
-            builder
-                .add_edge(
-                    execute_local.out("response"),
-                    parse_local.in_port("response"),
-                )
-                .expect("execute_local_access_token.response -> parse_local_access_token.response");
-
-            parse_local
+                .expect("local_auth_upsert")
         }
     };
 
@@ -1335,4 +963,172 @@ pub fn build_gcp_secret_manager_upsert_graph_metadata() -> Dag<GcpSecretManagerG
 
 pub fn build_gcp_secret_manager_upsert_graph_local() -> Dag<GcpSecretManagerGraphOp> {
     build_gcp_secret_manager_upsert_graph(GcpRuntimeKind::LocalDev)
+}
+
+// ---------------------------------------------------------------------------
+// Local auth upsert sub-DAG (shared by credential and upsert graphs)
+// ---------------------------------------------------------------------------
+
+/// Public accessor for the local auth upsert sub-DAG (used by discovery_graph).
+pub fn build_local_auth_upsert_dag_pub() -> Dag<GcpSecretManagerGraphOp> {
+    build_local_auth_upsert_dag()
+}
+
+/// Build the local auth upsert sub-DAG using ADC + OAuth2 REST.
+///
+/// Implements the canonical upsert pattern (check -> create[guarded] -> resolve)
+/// for local developer authentication via Application Default Credentials.
+///
+/// Instead of shelling out to `gcloud auth print-access-token`, this:
+/// 1. **Check**: Tests if `~/.config/gcloud/application_default_credentials.json` exists
+/// 2. **Create**: If missing, reports an error with `gcloud auth application-default login` instructions
+/// 3. **Resolve**: Reads ADC file, extracts refresh_token, POSTs to oauth2.googleapis.com/token
+///
+/// Entrypoints:
+/// - `interactive_allowed`: OptionalBool — (legacy, kept for interface compat)
+///
+/// Boundaries (outputs):
+/// - `access_token`: String — the resolved GCP access token
+/// - `expires_in`: Int — token lifetime in seconds
+///
+/// Internal structure:
+/// ```text
+/// [check: prepare_check_adc -> execute -> parse(exists)]
+/// [create: guarded(exists==false) -> error with instructions]
+/// [resolve: read_adc -> parse_adc -> prepare_oauth2 -> execute_oauth2 -> parse_oauth2(access_token)]
+/// ```
+fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
+    let mut dag = Dag::new();
+
+    // Network environment (needed for OAuth2 REST call)
+    dag.add_node(Node::opaque(
+        "net_env",
+        vec![],
+        vec![port("net", "NetworkHandle")],
+        GcpSecretManagerGraphOp::NetEnv(NetEnv),
+    ));
+
+    // ========================================================================
+    // Check phase: does ADC file exist?
+    // ========================================================================
+
+    dag.add_node(Node::opaque(
+        "prepare_check",
+        vec![],
+        vec![port("request", "TransportRequest"), port("skip", "Bool")],
+        GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareCheckAdc),
+    ));
+
+    dag.add_node(Node::opaque(
+        "execute_check",
+        vec![
+            port("request", "TransportRequest"),
+            port("skip", "Bool"),
+            resource("net", "NetworkHandle", AccessMode::Read),
+        ],
+        vec![port("response", "TransportResponse")],
+        GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
+    ));
+
+    dag.add_node(Node::opaque(
+        "parse_check",
+        vec![port("response", "TransportResponse")],
+        vec![port("exists", "Bool")],
+        GcpSecretManagerGraphOp::Gcp(GcpOps::ParseCheckAdc),
+    ));
+
+    // Check edges
+    dag.add_edge(Edge::new("prepare_check", "request", "execute_check", "request"));
+    dag.add_edge(Edge::new("prepare_check", "skip", "execute_check", "skip"));
+    dag.add_edge(Edge::new("net_env", "net", "execute_check", "res:net"));
+    dag.add_edge(Edge::new("execute_check", "response", "parse_check", "response"));
+
+    // ========================================================================
+    // Resolve phase: read ADC -> parse credentials -> OAuth2 refresh -> parse token
+    // ========================================================================
+
+    // Step 1: Read ADC file
+    dag.add_node(Node::opaque(
+        "prepare_read_adc",
+        vec![port("exists", "Bool")],
+        vec![port("request", "TransportRequest"), port("skip", "Bool")],
+        GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareReadAdc),
+    ));
+
+    dag.add_node(Node::opaque(
+        "execute_read_adc",
+        vec![
+            port("request", "TransportRequest"),
+            port("skip", "Bool"),
+            resource("net", "NetworkHandle", AccessMode::Read),
+        ],
+        vec![port("response", "TransportResponse")],
+        GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
+    ));
+
+    // Step 2: Parse ADC credentials
+    // Note: token_type is intentionally excluded from output ports —
+    // it is computed by the op but not consumed by anything in this DAG.
+    // Including it would propagate as a dangling output through nested
+    // sub-DAGs, requiring spurious mock values in every consumer.
+    dag.add_node(Node::opaque(
+        "parse_adc",
+        vec![port("response", "TransportResponse")],
+        vec![
+            port("client_id", "String"),
+            port("client_secret", "String"),
+            port("refresh_token", "String"),
+        ],
+        GcpSecretManagerGraphOp::Gcp(GcpOps::ParseAdcCredentials),
+    ));
+
+    // Step 3: Prepare OAuth2 token refresh
+    dag.add_node(Node::opaque(
+        "prepare_oauth2",
+        vec![
+            port("client_id", "String"),
+            port("client_secret", "String"),
+            port("refresh_token", "String"),
+        ],
+        vec![port("request", "TransportRequest"), port("skip", "Bool")],
+        GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareOAuth2Refresh),
+    ));
+
+    // Step 4: Execute OAuth2 refresh
+    dag.add_node(Node::opaque(
+        "execute_oauth2",
+        vec![
+            port("request", "TransportRequest"),
+            port("skip", "Bool"),
+            resource("net", "NetworkHandle", AccessMode::Read),
+        ],
+        vec![port("response", "TransportResponse")],
+        GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
+    ));
+
+    // Step 5: Parse OAuth2 response
+    dag.add_node(Node::opaque(
+        "parse_resolve",
+        vec![port("response", "TransportResponse")],
+        vec![port("access_token", "String"), port("expires_in", "Int")],
+        GcpSecretManagerGraphOp::Gcp(GcpOps::ParseOAuth2Refresh),
+    ));
+
+    // Resolve edges: check -> read_adc -> parse_adc -> oauth2 -> parse_resolve
+    dag.add_edge(Edge::new("parse_check", "exists", "prepare_read_adc", "exists"));
+    dag.add_edge(Edge::new("prepare_read_adc", "request", "execute_read_adc", "request"));
+    dag.add_edge(Edge::new("prepare_read_adc", "skip", "execute_read_adc", "skip"));
+    dag.add_edge(Edge::new("net_env", "net", "execute_read_adc", "res:net"));
+    dag.add_edge(Edge::new("execute_read_adc", "response", "parse_adc", "response"));
+
+    dag.add_edge(Edge::new("parse_adc", "client_id", "prepare_oauth2", "client_id"));
+    dag.add_edge(Edge::new("parse_adc", "client_secret", "prepare_oauth2", "client_secret"));
+    dag.add_edge(Edge::new("parse_adc", "refresh_token", "prepare_oauth2", "refresh_token"));
+
+    dag.add_edge(Edge::new("prepare_oauth2", "request", "execute_oauth2", "request"));
+    dag.add_edge(Edge::new("prepare_oauth2", "skip", "execute_oauth2", "skip"));
+    dag.add_edge(Edge::new("net_env", "net", "execute_oauth2", "res:net"));
+    dag.add_edge(Edge::new("execute_oauth2", "response", "parse_resolve", "response"));
+
+    dag
 }

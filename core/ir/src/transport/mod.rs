@@ -44,13 +44,16 @@ pub mod cli;
 pub mod cloud;
 pub mod credential;
 pub mod file;
+pub mod gcp;
 pub mod gist;
 pub mod git;
 pub mod github;
 pub mod github_actions;
 pub mod http;
+pub mod infra_scope;
 pub mod llm;
 pub mod rest;
+pub mod review;
 pub mod scope;
 pub mod tcp;
 pub mod tool;
@@ -76,7 +79,15 @@ pub use cli::{
     GIT as CLI_GIT,
     RUSTFMT as CLI_RUSTFMT,
 };
-pub use cloud::{CloudProviderKind, CloudRuntimeKind, CloudSecretConfig, CloudSecretRef};
+pub use cloud::{
+    CloudConfigSpec, CloudNamespace, CloudProviderKind, CloudRuntimeKind, CloudSecretConfig,
+    CloudSecretRef,
+};
+pub use gcp::{
+    GcpBucket, GcpIamBinding, GcpIamCondition, GcpIamPolicy, GcpInfraSpec, GcpProject,
+    GcpSecret, GcpSecretPayload, GcpServiceAccount, GcpWifPool, GcpWifProvider,
+};
+pub use infra_scope::{GcpScope, InfraAccessLevel, InfraScope, InfraScopeType};
 pub use credential::{AuthScheme, Credential, CredentialError, Secret, SecretSource};
 pub use file::{FileOp, FileRequest, FileResponse};
 pub use gist::GistRequest;

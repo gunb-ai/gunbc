@@ -16,8 +16,11 @@ use gunbc_ir::{
     add_transport_triplet_named_with_passthrough, build::*, Dag, DagBuilder, Node, NodeRef, Value,
 };
 use gunbc_lib_blob::BlobOps;
+use gunbc_ir::transport::cloud::CloudSecretConfig;
 use gunbc_lib_cloud_ops::{
-    build_cloud_credential_graph_for_runtime, CloudEnv, CloudOps, CloudSecretManagerGraphOp,
+    build_cloud_credential_graph_for_runtime,
+    build_cloud_secret_manager_credential_graph_from_config, CloudEnv, CloudOps,
+    CloudSecretManagerGraphOp,
 };
 use gunbc_lib_git_ops::GitOps;
 use gunbc_lib_llm_ops::LlmOps;
@@ -78,6 +81,24 @@ fn add_cloud_credential_chain(
     cloud_env: &NodeRef<ReviewGraphOp>,
     resolve_auth: &NodeRef<ReviewGraphOp>,
 ) -> NodeRef<ReviewGraphOp> {
+    add_cloud_credential_chain_inner(builder, cloud_env, resolve_auth, None)
+}
+
+fn add_cloud_credential_chain_with_config(
+    builder: &mut DagBuilder<ReviewGraphOp>,
+    cloud_env: &NodeRef<ReviewGraphOp>,
+    resolve_auth: &NodeRef<ReviewGraphOp>,
+    config: &CloudSecretConfig,
+) -> NodeRef<ReviewGraphOp> {
+    add_cloud_credential_chain_inner(builder, cloud_env, resolve_auth, Some(config))
+}
+
+fn add_cloud_credential_chain_inner(
+    builder: &mut DagBuilder<ReviewGraphOp>,
+    cloud_env: &NodeRef<ReviewGraphOp>,
+    resolve_auth: &NodeRef<ReviewGraphOp>,
+    cloud_config: Option<&CloudSecretConfig>,
+) -> NodeRef<ReviewGraphOp> {
     let bind_secret = builder
         .add_node_after_all(
             Node::opaque(
@@ -101,7 +122,11 @@ fn add_cloud_credential_chain(
         .add_edge(resolve_auth.out("service"), bind_secret.in_port("service"))
         .expect("resolve_auth.service -> bind_secret.service");
 
-    let cloud_subdag = lift_cloud_dag(build_cloud_credential_graph_for_runtime());
+    let cloud_subdag = if let Some(config) = cloud_config {
+        lift_cloud_dag(build_cloud_secret_manager_credential_graph_from_config(config))
+    } else {
+        lift_cloud_dag(build_cloud_credential_graph_for_runtime())
+    };
     let cloud_credential = builder
         .add_node_after(Node::subdag("cloud_credential", cloud_subdag), &bind_secret)
         .expect("cloud_credential node");
@@ -156,6 +181,45 @@ fn lift_cloud_dag(dag: Dag<CloudSecretManagerGraphOp>) -> Dag<ReviewGraphOp> {
     dag.map_ops(&mut ReviewGraphOp::Cloud)
 }
 
+/// Create the `cloud_env` root node, using `ConstCloudConfig` when a config is
+/// provided, or the legacy `CloudEnv` env-reader when `None`.
+fn add_cloud_env_node(
+    builder: &mut DagBuilder<ReviewGraphOp>,
+    cloud_config: Option<&CloudSecretConfig>,
+) -> NodeRef<ReviewGraphOp> {
+    if let Some(config) = cloud_config {
+        builder
+            .add_root_node(Node::opaque(
+                "cloud_env",
+                vec![],
+                vec![
+                    port("config", "CloudSecretConfig"),
+                    optional("request_url", "OptionalString"),
+                    optional("request_token", "OptionalString"),
+                ],
+                ReviewGraphOp::Cloud(CloudSecretManagerGraphOp::Cloud(
+                    CloudOps::ConstCloudConfig {
+                        config: config.clone(),
+                    },
+                )),
+            ))
+            .expect("cloud_env node")
+    } else {
+        builder
+            .add_root_node(Node::opaque(
+                "cloud_env",
+                vec![],
+                vec![
+                    port("config", "CloudSecretConfig"),
+                    optional("request_url", "OptionalString"),
+                    optional("request_token", "OptionalString"),
+                ],
+                ReviewGraphOp::CloudEnv(CloudEnv::new()),
+            ))
+            .expect("cloud_env node")
+    }
+}
+
 // ============================================================================
 // ReviewPhase DAG Builder
 // ============================================================================
@@ -193,6 +257,16 @@ fn lift_cloud_dag(dag: Dag<CloudSecretManagerGraphOp>) -> Dag<ReviewGraphOp> {
     builder = "build_review_phase_graph()"
 )]
 pub fn build_review_phase_graph() -> Dag<ReviewGraphOp> {
+    build_review_phase_graph_with_config(None)
+}
+
+/// Build a ReviewPhase DAG with an explicit cloud config.
+///
+/// When `cloud_config` is `Some`, uses `ConstCloudConfig` instead of
+/// the legacy `CloudEnv` env-reader.
+pub fn build_review_phase_graph_with_config(
+    cloud_config: Option<CloudSecretConfig>,
+) -> Dag<ReviewGraphOp> {
     let mut builder: DagBuilder<ReviewGraphOp> = DagBuilder::new();
 
     let fs_env = builder
@@ -205,18 +279,7 @@ pub fn build_review_phase_graph() -> Dag<ReviewGraphOp> {
         .expect("fs_env node");
 
     // Node 0: Cloud environment (config + OIDC request inputs)
-    let cloud_env = builder
-        .add_root_node(Node::opaque(
-            "cloud_env",
-            vec![],
-            vec![
-                port("config", "CloudSecretConfig"),
-                optional("request_url", "OptionalString"),
-                optional("request_token", "OptionalString"),
-            ],
-            ReviewGraphOp::CloudEnv(CloudEnv::new()),
-        ))
-        .expect("cloud_env node");
+    let cloud_env = add_cloud_env_node(&mut builder, cloud_config.as_ref());
 
     // ========================================================================
     // Blob Acquisition
@@ -338,7 +401,11 @@ pub fn build_review_phase_graph() -> Dag<ReviewGraphOp> {
         .expect("resolve_auth node");
 
     // Node 7: Cloud credential acquisition (resolves provider credentials)
-    let cloud_credential = add_cloud_credential_chain(&mut builder, &cloud_env, &resolve_auth);
+    let cloud_credential = if let Some(ref config) = cloud_config {
+        add_cloud_credential_chain_with_config(&mut builder, &cloud_env, &resolve_auth, config)
+    } else {
+        add_cloud_credential_chain(&mut builder, &cloud_env, &resolve_auth)
+    };
 
     // Nodes 8-9: Execute LLM + ParseSimpleResponse
     let llm_triplet = add_transport_execute_parse_named_with_passthrough(
@@ -451,21 +518,17 @@ pub fn build_review_phase_graph() -> Dag<ReviewGraphOp> {
 /// - `parse_response.output`: Json — ReviewOutput
 /// - `parse_response.errors`: Json — Parse errors array
 pub fn build_inline_review_graph() -> Dag<ReviewGraphOp> {
+    build_inline_review_graph_with_config(None)
+}
+
+/// Build an inline review graph with explicit cloud config.
+pub fn build_inline_review_graph_with_config(
+    cloud_config: Option<CloudSecretConfig>,
+) -> Dag<ReviewGraphOp> {
     let mut builder: DagBuilder<ReviewGraphOp> = DagBuilder::new();
 
     // Node 0: Cloud environment (config + OIDC request inputs)
-    let cloud_env = builder
-        .add_root_node(Node::opaque(
-            "cloud_env",
-            vec![],
-            vec![
-                port("config", "CloudSecretConfig"),
-                optional("request_url", "OptionalString"),
-                optional("request_token", "OptionalString"),
-            ],
-            ReviewGraphOp::CloudEnv(CloudEnv::new()),
-        ))
-        .expect("cloud_env node");
+    let cloud_env = add_cloud_env_node(&mut builder, cloud_config.as_ref());
 
     // Node 1: PrepareReviewPrompt
     let prepare_prompt = builder
@@ -523,7 +586,11 @@ pub fn build_inline_review_graph() -> Dag<ReviewGraphOp> {
         .expect("resolve_auth node");
 
     // Node 4: Cloud credential acquisition (resolves provider credentials)
-    let cloud_credential = add_cloud_credential_chain(&mut builder, &cloud_env, &resolve_auth);
+    let cloud_credential = if let Some(ref config) = cloud_config {
+        add_cloud_credential_chain_with_config(&mut builder, &cloud_env, &resolve_auth, config)
+    } else {
+        add_cloud_credential_chain(&mut builder, &cloud_env, &resolve_auth)
+    };
 
     // Nodes 5-6: Execute LLM + ParseSimpleResponse
     let llm_triplet = add_transport_execute_parse_named_with_passthrough(
@@ -635,6 +702,14 @@ pub fn build_diff_review_graph() -> Dag<ReviewGraphOp> {
 /// - Two TransportOps::Execute calls: git diff (read), LLM (read)
 /// - Phase overall: Read-only
 pub fn build_diff_review_graph_with(config: ReviewPipelineConfig) -> Dag<ReviewGraphOp> {
+    build_diff_review_graph_with_cloud_config(config, None)
+}
+
+/// Build a DiffReviewPhase DAG with explicit cloud config.
+pub fn build_diff_review_graph_with_cloud_config(
+    config: ReviewPipelineConfig,
+    cloud_config: Option<CloudSecretConfig>,
+) -> Dag<ReviewGraphOp> {
     let mut builder: DagBuilder<ReviewGraphOp> = DagBuilder::new();
 
     let fs_env = builder
@@ -647,18 +722,7 @@ pub fn build_diff_review_graph_with(config: ReviewPipelineConfig) -> Dag<ReviewG
         .expect("fs_env node");
 
     // Cloud environment (config + OIDC request inputs)
-    let cloud_env = builder
-        .add_root_node(Node::opaque(
-            "cloud_env",
-            vec![],
-            vec![
-                port("config", "CloudSecretConfig"),
-                optional("request_url", "OptionalString"),
-                optional("request_token", "OptionalString"),
-            ],
-            ReviewGraphOp::CloudEnv(CloudEnv::new()),
-        ))
-        .expect("cloud_env node");
+    let cloud_env = add_cloud_env_node(&mut builder, cloud_config.as_ref());
 
     let default_branch = config.default_branch.clone();
 
@@ -787,7 +851,11 @@ pub fn build_diff_review_graph_with(config: ReviewPipelineConfig) -> Dag<ReviewG
         )
         .expect("resolve_auth node");
 
-    let cloud_credential = add_cloud_credential_chain(&mut builder, &cloud_env, &resolve_auth);
+    let cloud_credential = if let Some(ref config) = cloud_config {
+        add_cloud_credential_chain_with_config(&mut builder, &cloud_env, &resolve_auth, config)
+    } else {
+        add_cloud_credential_chain(&mut builder, &cloud_env, &resolve_auth)
+    };
 
     let llm_triplet = add_transport_execute_parse_named_with_passthrough(
         &mut builder,
@@ -949,21 +1017,18 @@ pub fn build_multi_source_review_graph() -> Dag<ReviewGraphOp> {
 
 /// Build a MultiSourceReviewPhase DAG with explicit pipeline config.
 pub fn build_multi_source_review_graph_with(config: ReviewPipelineConfig) -> Dag<ReviewGraphOp> {
+    build_multi_source_review_graph_with_cloud_config(config, None)
+}
+
+/// Build a MultiSourceReviewPhase DAG with explicit pipeline and cloud configs.
+pub fn build_multi_source_review_graph_with_cloud_config(
+    config: ReviewPipelineConfig,
+    cloud_config: Option<CloudSecretConfig>,
+) -> Dag<ReviewGraphOp> {
     let mut builder: DagBuilder<ReviewGraphOp> = DagBuilder::new();
 
     // Cloud environment (config + OIDC request inputs)
-    let cloud_env = builder
-        .add_root_node(Node::opaque(
-            "cloud_env",
-            vec![],
-            vec![
-                port("config", "CloudSecretConfig"),
-                optional("request_url", "OptionalString"),
-                optional("request_token", "OptionalString"),
-            ],
-            ReviewGraphOp::CloudEnv(CloudEnv::new()),
-        ))
-        .expect("cloud_env node");
+    let cloud_env = add_cloud_env_node(&mut builder, cloud_config.as_ref());
 
     // ========================================================================
     // Pipeline Config
@@ -1041,7 +1106,11 @@ pub fn build_multi_source_review_graph_with(config: ReviewPipelineConfig) -> Dag
         )
         .expect("resolve_auth node");
 
-    let cloud_credential = add_cloud_credential_chain(&mut builder, &cloud_env, &resolve_auth);
+    let cloud_credential = if let Some(ref config) = cloud_config {
+        add_cloud_credential_chain_with_config(&mut builder, &cloud_env, &resolve_auth, config)
+    } else {
+        add_cloud_credential_chain(&mut builder, &cloud_env, &resolve_auth)
+    };
 
     let llm_triplet = add_transport_execute_parse_named_with_passthrough(
         &mut builder,

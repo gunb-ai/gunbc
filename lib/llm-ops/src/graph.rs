@@ -13,8 +13,11 @@ use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::{
     add_transport_execute_parse_named_with_passthrough, build::*, Dag, DagBuilder, Node, Value,
 };
+use gunbc_ir::transport::cloud::CloudSecretConfig;
 use gunbc_lib_cloud_ops::{
-    build_cloud_credential_graph_for_runtime, CloudEnv, CloudOps, CloudSecretManagerGraphOp,
+    build_cloud_credential_graph_for_runtime,
+    build_cloud_secret_manager_credential_graph_from_config, CloudEnv, CloudOps,
+    CloudSecretManagerGraphOp,
 };
 use gunbc_lib_transport::TransportOps;
 use std::collections::HashMap;
@@ -64,21 +67,50 @@ impl Executable for LlmGraphOp {
 /// - `parse.input_tokens`: Int
 /// - `parse.output_tokens`: Int
 pub fn build_chat_completion_graph() -> Dag<LlmGraphOp> {
+    build_chat_completion_graph_with_config(None)
+}
+
+/// Build a chat completion DAG with explicit cloud config.
+///
+/// When `cloud_config` is `Some`, uses `ConstCloudConfig` instead of
+/// the legacy `CloudEnv` env-reader.
+pub fn build_chat_completion_graph_with_config(
+    cloud_config: Option<CloudSecretConfig>,
+) -> Dag<LlmGraphOp> {
     let mut builder: DagBuilder<LlmGraphOp> = DagBuilder::new();
 
     // Node 0: Cloud environment (config + OIDC request inputs)
-    let cloud_env = builder
-        .add_root_node(Node::opaque(
-            "cloud_env",
-            vec![],
-            vec![
-                port("config", "CloudSecretConfig"),
-                optional("request_url", "OptionalString"),
-                optional("request_token", "OptionalString"),
-            ],
-            LlmGraphOp::CloudEnv(CloudEnv::new()),
-        ))
-        .expect("cloud_env node");
+    let cloud_env = if let Some(ref config) = cloud_config {
+        builder
+            .add_root_node(Node::opaque(
+                "cloud_env",
+                vec![],
+                vec![
+                    port("config", "CloudSecretConfig"),
+                    optional("request_url", "OptionalString"),
+                    optional("request_token", "OptionalString"),
+                ],
+                LlmGraphOp::Cloud(CloudSecretManagerGraphOp::Cloud(
+                    CloudOps::ConstCloudConfig {
+                        config: config.clone(),
+                    },
+                )),
+            ))
+            .expect("cloud_env node")
+    } else {
+        builder
+            .add_root_node(Node::opaque(
+                "cloud_env",
+                vec![],
+                vec![
+                    port("config", "CloudSecretConfig"),
+                    optional("request_url", "OptionalString"),
+                    optional("request_token", "OptionalString"),
+                ],
+                LlmGraphOp::CloudEnv(CloudEnv::new()),
+            ))
+            .expect("cloud_env node")
+    };
 
     // Node 1: PrepareChatRequest (pure)
     let prepare = builder
@@ -137,7 +169,11 @@ pub fn build_chat_completion_graph() -> Dag<LlmGraphOp> {
         .expect("bind_secret node");
 
     // Node 4: Cloud credential acquisition graph (GCP WIF + Secret Manager)
-    let cloud_subdag = lift_cloud_dag(build_cloud_credential_graph_for_runtime());
+    let cloud_subdag = if let Some(ref config) = cloud_config {
+        lift_cloud_dag(build_cloud_secret_manager_credential_graph_from_config(config))
+    } else {
+        lift_cloud_dag(build_cloud_credential_graph_for_runtime())
+    };
     let cloud_credential = builder
         .add_node_after(Node::subdag("cloud_credential", cloud_subdag), &bind_secret)
         .expect("cloud_credential node");

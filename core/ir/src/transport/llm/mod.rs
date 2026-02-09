@@ -54,6 +54,78 @@ pub use provider::{
 };
 
 use crate::transport::rest::{RestRequest, RestResponse};
+use crate::transport::scope::{CredentialIntent, ScopeContract};
+use serde::{Deserialize, Serialize};
+
+// ============================================================================
+// LLM Scope Contracts
+// ============================================================================
+
+/// LLM-specific permission scopes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum LlmScope {
+    /// Send chat completion / message requests.
+    ChatCompletion,
+}
+
+impl LlmScope {
+    /// Canonical scope identifier.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            LlmScope::ChatCompletion => "llm:chat_completion",
+        }
+    }
+}
+
+/// Scope contract for LLM chat completion actions.
+///
+/// This contract is parameterized by provider ID so it can resolve
+/// the correct auth scheme (bearer for OpenAI, header for Anthropic).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LlmScopeContract {
+    provider_id: String,
+}
+
+impl LlmScopeContract {
+    /// Create a scope contract for the given LLM provider.
+    pub fn new(provider_id: impl Into<String>) -> Self {
+        Self {
+            provider_id: provider_id.into(),
+        }
+    }
+
+    /// Scope contract for OpenAI.
+    pub fn openai() -> Self {
+        Self::new("openai")
+    }
+
+    /// Scope contract for Anthropic.
+    pub fn anthropic() -> Self {
+        Self::new("anthropic")
+    }
+}
+
+impl ScopeContract for LlmScopeContract {
+    fn credential_intent(&self) -> CredentialIntent {
+        let provider = provider_by_id(&self.provider_id);
+        let (scheme, header_name) = match provider.as_ref().map(|p| &p.auth_scheme) {
+            Some(crate::AuthScheme::Bearer) => ("bearer", ""),
+            Some(crate::AuthScheme::Header { name }) => ("header", name.as_str()),
+            _ => ("bearer", ""),
+        };
+
+        let mut intent =
+            CredentialIntent::new(&self.provider_id, &self.provider_id, scheme)
+                .with_required_scopes([LlmScope::ChatCompletion.as_str()])
+                .with_interactive_allowed(true);
+
+        if !header_name.is_empty() {
+            intent = intent.with_header_name(header_name);
+        }
+
+        intent
+    }
+}
 
 /// Build a REST request for the Chat Completions / Messages endpoint.
 ///
@@ -125,5 +197,34 @@ mod tests {
         assert!(parse_chat_response("openai", &openai_resp).is_ok());
         assert!(parse_chat_response("anthropic", &anthropic_resp).is_ok());
         assert!(parse_chat_response("unknown", &openai_resp).is_err());
+    }
+
+    #[test]
+    fn test_llm_scope_contract_openai() {
+        let intent = LlmScopeContract::openai().credential_intent();
+        assert_eq!(intent.provider, "openai");
+        assert_eq!(intent.service, "openai");
+        assert_eq!(intent.scheme, "bearer");
+        assert!(intent.header_name.is_empty());
+        assert_eq!(
+            intent.required_scopes,
+            vec!["llm:chat_completion".to_string()]
+        );
+        assert!(intent.interactive_allowed);
+        assert!(intent.validate().is_ok());
+    }
+
+    #[test]
+    fn test_llm_scope_contract_anthropic() {
+        let intent = LlmScopeContract::anthropic().credential_intent();
+        assert_eq!(intent.provider, "anthropic");
+        assert_eq!(intent.service, "anthropic");
+        assert_eq!(intent.scheme, "header");
+        assert_eq!(intent.header_name, "x-api-key");
+        assert_eq!(
+            intent.required_scopes,
+            vec!["llm:chat_completion".to_string()]
+        );
+        assert!(intent.validate().is_ok());
     }
 }

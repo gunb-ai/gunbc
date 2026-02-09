@@ -1,8 +1,9 @@
 //! Pure GCP ops for WIF + Secret Manager.
 
 use gunbc_exec::{require_bool, require_str, ExecError, Executable, OutputMap};
+use gunbc_ir::transport::file::FileRequest;
 use gunbc_ir::transport::rest::RestRequest;
-use gunbc_ir::transport::{ShellRequest, TransportResponse};
+use gunbc_ir::transport::TransportResponse;
 use gunbc_ir::{AuthScheme, Credential, Secret, SecretSource, Value};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -41,16 +42,18 @@ pub enum GcpOps {
     PrepareMetadataOidcRequest,
     /// Parse the OIDC token response from metadata server.
     ParseMetadataOidcResponse,
-    /// Prepare a local gcloud access token request.
-    PrepareLocalAccessToken,
-    /// Parse local gcloud access token response.
-    ParseLocalAccessToken,
-    /// Parse local auth check response (best-effort, non-failing).
-    ParseLocalAuthCheck,
-    /// Prepare local interactive auth login request.
-    PrepareLocalAuthLogin,
-    /// Parse local interactive auth login response.
-    ParseLocalAuthLogin,
+    /// Prepare to check if the ADC file exists (file transport).
+    PrepareCheckAdc,
+    /// Parse ADC file existence check response.
+    ParseCheckAdc,
+    /// Prepare to read the ADC credentials file (file transport).
+    PrepareReadAdc,
+    /// Parse ADC credentials JSON (extract client_id, client_secret, refresh_token).
+    ParseAdcCredentials,
+    /// Prepare OAuth2 token refresh request (REST transport).
+    PrepareOAuth2Refresh,
+    /// Parse OAuth2 token refresh response (extract access_token, expires_in).
+    ParseOAuth2Refresh,
     /// Prepare the STS token exchange request.
     PrepareStsExchange,
     /// Parse the STS token exchange response.
@@ -194,16 +197,117 @@ impl Executable for GcpOps {
                     "missing raw OIDC token from metadata response",
                 ))
             }
-            GcpOps::PrepareLocalAccessToken => {
-                let req = ShellRequest::new("gcloud")
-                    .args(["auth", "print-access-token"])
-                    .into_transport_request();
+            GcpOps::PrepareCheckAdc => {
+                let adc_path = adc_file_path();
+                let req = FileRequest::exists(&adc_path);
                 OutputMap::new()
-                    .request("request", req)
+                    .request("request", req.into())
                     .bool("skip", false)
                     .ok()
             }
-            GcpOps::ParseLocalAccessToken => {
+            GcpOps::ParseCheckAdc => {
+                let response = match inputs.get("response") {
+                    Some(Value::Skipped) => return OutputMap::new().bool("exists", false).ok(),
+                    Some(Value::Response(r)) => r,
+                    _ => return Err(ExecError::new("missing or invalid 'response' input")),
+                };
+                let file = match response {
+                    TransportResponse::File(f) => f,
+                    other => {
+                        return Err(ExecError::new(format!(
+                            "expected File response, got {:?}",
+                            other
+                        )));
+                    }
+                };
+                let exists = file.exists.unwrap_or(false);
+                if !exists {
+                    // Provide actionable guidance instead of silently failing
+                    let path = adc_file_path();
+                    return Err(ExecError::new(format!(
+                        "ADC file not found at {path}. Run `gcloud auth application-default login` to create it."
+                    )));
+                }
+                OutputMap::new().bool("exists", exists).ok()
+            }
+            GcpOps::PrepareReadAdc => {
+                let adc_path = adc_file_path();
+                let req = FileRequest::read(&adc_path);
+                OutputMap::new()
+                    .request("request", req.into())
+                    .bool("skip", false)
+                    .ok()
+            }
+            GcpOps::ParseAdcCredentials => {
+                let response = match inputs.get("response") {
+                    Some(Value::Skipped) => {
+                        return OutputMap::new()
+                            .str("client_id", "")
+                            .str("client_secret", "")
+                            .str("refresh_token", "")
+                            .str("token_type", "")
+                            .ok();
+                    }
+                    Some(Value::Response(r)) => r,
+                    _ => return Err(ExecError::new("missing or invalid 'response' input")),
+                };
+                let file = match response {
+                    TransportResponse::File(f) => f,
+                    other => {
+                        return Err(ExecError::new(format!(
+                            "expected File response, got {:?}",
+                            other
+                        )));
+                    }
+                };
+                let content = file.content.as_deref().ok_or_else(|| {
+                    let path = adc_file_path();
+                    ExecError::new(format!(
+                        "ADC file at {path} is empty or unreadable. Run `gcloud auth application-default login` to recreate it."
+                    ))
+                })?;
+                let json: serde_json::Value = serde_json::from_str(content)
+                    .map_err(|e| ExecError::new(format!("ADC file is not valid JSON: {e}")))?;
+
+                let client_id = json.get("client_id").and_then(|v| v.as_str()).unwrap_or("");
+                let client_secret = json.get("client_secret").and_then(|v| v.as_str()).unwrap_or("");
+                let refresh_token = json.get("refresh_token").and_then(|v| v.as_str()).unwrap_or("");
+                let token_type = json.get("type").and_then(|v| v.as_str()).unwrap_or("authorized_user");
+
+                if refresh_token.is_empty() {
+                    return Err(ExecError::new(
+                        "ADC file missing refresh_token. Run `gcloud auth application-default login` to recreate."
+                    ));
+                }
+
+                OutputMap::new()
+                    .str("client_id", client_id)
+                    .str("client_secret", client_secret)
+                    .str("refresh_token", refresh_token)
+                    .str("token_type", token_type)
+                    .ok()
+            }
+            GcpOps::PrepareOAuth2Refresh => {
+                let client_id = require_str(&inputs, "client_id")?;
+                let client_secret = require_str(&inputs, "client_secret")?;
+                let refresh_token = require_str(&inputs, "refresh_token")?;
+
+                let body = serde_json::json!({
+                    "client_id": client_id,
+                    "client_secret": client_secret,
+                    "refresh_token": refresh_token,
+                    "grant_type": "refresh_token",
+                });
+
+                let req = RestRequest::post("https://oauth2.googleapis.com/token")
+                    .json(body);
+
+                OutputMap::new()
+                    .request("request", req.into())
+                    .bool("skip", false)
+                    .ok()
+            }
+            GcpOps::ParseOAuth2Refresh => {
                 let response = match inputs.get("response") {
                     Some(Value::Skipped) => {
                         return OutputMap::new()
@@ -214,93 +318,34 @@ impl Executable for GcpOps {
                     Some(Value::Response(r)) => r,
                     _ => return Err(ExecError::new("missing or invalid 'response' input")),
                 };
-                let shell = match response {
-                    TransportResponse::Shell(s) => s,
+                let rest = match response {
+                    TransportResponse::Rest(r) => r,
                     other => {
                         return Err(ExecError::new(format!(
-                            "expected shell response, got {:?}",
+                            "expected REST response, got {:?}",
                             other
                         )));
                     }
                 };
-                if shell.exit_code != 0 {
+                if !rest.is_success() {
+                    let error_desc = rest.body.get("error_description")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown error");
                     return Err(ExecError::new(format!(
-                        "gcloud auth print-access-token failed: {}",
-                        shell.stderr.trim()
+                        "OAuth2 token refresh failed (status {}): {}",
+                        rest.status, error_desc
                     )));
                 }
-                let token = shell.stdout.trim();
-                if token.is_empty() {
-                    return Err(ExecError::new(
-                        "gcloud auth print-access-token returned empty token",
-                    ));
-                }
-                // gcloud doesn't return TTL in this path; keep a stable contract by emitting 0.
+                let access_token = rest.body.get("access_token")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| ExecError::new("missing access_token in OAuth2 refresh response"))?;
+                let expires_in = rest.body.get("expires_in")
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(3599);
                 OutputMap::new()
-                    .str("access_token", token)
-                    .int("expires_in", 0)
+                    .str("access_token", access_token)
+                    .int("expires_in", expires_in)
                     .ok()
-            }
-            GcpOps::ParseLocalAuthCheck => {
-                let response = match inputs.get("response") {
-                    Some(Value::Skipped) => return OutputMap::new().bool("exists", false).ok(),
-                    Some(Value::Response(r)) => r,
-                    _ => return Err(ExecError::new("missing or invalid 'response' input")),
-                };
-                let shell = match response {
-                    TransportResponse::Shell(s) => s,
-                    other => {
-                        return Err(ExecError::new(format!(
-                            "expected shell response, got {:?}",
-                            other
-                        )));
-                    }
-                };
-                let exists = shell.exit_code == 0 && !shell.stdout.trim().is_empty();
-                OutputMap::new().bool("exists", exists).ok()
-            }
-            GcpOps::PrepareLocalAuthLogin => {
-                let exists = require_bool(&inputs, "exists")?;
-                let interactive_allowed = inputs
-                    .get("interactive_allowed")
-                    .and_then(Value::as_bool)
-                    .unwrap_or(false);
-                if !exists && !interactive_allowed {
-                    return Err(ExecError::new(
-                        "local auth session missing and interactive login is disabled for this action",
-                    ));
-                }
-
-                let req = ShellRequest::new("gcloud")
-                    .args(["auth", "login", "--update-adc"])
-                    .into_transport_request();
-                OutputMap::new()
-                    .request("request", req)
-                    .bool("skip", exists)
-                    .ok()
-            }
-            GcpOps::ParseLocalAuthLogin => {
-                let response = match inputs.get("response") {
-                    Some(Value::Skipped) => return OutputMap::new().bool("ok", true).ok(),
-                    Some(Value::Response(r)) => r,
-                    _ => return Err(ExecError::new("missing or invalid 'response' input")),
-                };
-                let shell = match response {
-                    TransportResponse::Shell(s) => s,
-                    other => {
-                        return Err(ExecError::new(format!(
-                            "expected shell response, got {:?}",
-                            other
-                        )));
-                    }
-                };
-                if shell.exit_code != 0 {
-                    return Err(ExecError::new(format!(
-                        "gcloud auth login failed: {}",
-                        shell.stderr.trim()
-                    )));
-                }
-                OutputMap::new().bool("ok", true).ok()
             }
             GcpOps::PrepareStsExchange => {
                 let audience = require_str(&inputs, "audience")?;
@@ -673,6 +718,20 @@ impl Executable for GcpOps {
 // Small helpers (url-encode and base64 decode) to avoid extra deps.
 // ---------------------------------------------------------------------------
 
+/// Default path to the Google Cloud Application Default Credentials file.
+///
+/// Typically `~/.config/gcloud/application_default_credentials.json`.
+pub(crate) fn adc_file_path() -> String {
+    if let Ok(path) = std::env::var("GOOGLE_APPLICATION_CREDENTIALS") {
+        return path;
+    }
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
+    format!(
+        "{}/.config/gcloud/application_default_credentials.json",
+        home
+    )
+}
+
 fn url_encode_component(input: &str) -> String {
     const HEX: &[u8; 16] = b"0123456789ABCDEF";
     let bytes = input.as_bytes();
@@ -791,48 +850,175 @@ fn base64_decode(input: &str) -> Result<Vec<u8>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gunbc_ir::transport::ShellResponse;
+    use gunbc_ir::transport::file::FileResponse;
+    use gunbc_ir::transport::rest::RestResponse;
+
+    // ==========================================================================
+    // ADC + OAuth2 ops tests
+    // ==========================================================================
 
     #[test]
-    fn parse_local_auth_check_treats_failed_token_probe_as_missing_auth() {
+    fn prepare_check_adc_produces_file_exists_request() {
+        let inputs = HashMap::new();
+        let outputs = GcpOps::PrepareCheckAdc.execute(inputs).expect("should succeed");
+        let req = outputs.get("request").expect("should have request");
+        // The request should be a File transport request
+        match req {
+            Value::Request(gunbc_ir::transport::TransportRequest::File(f)) => {
+                assert!(f.path.contains("application_default_credentials.json"));
+                assert_eq!(f.operation, gunbc_ir::transport::file::FileOp::Exists);
+            }
+            other => panic!("expected File request, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_check_adc_reports_missing_file() {
         let mut inputs = HashMap::new();
         inputs.insert(
             "response".to_string(),
-            Value::Response(TransportResponse::Shell(ShellResponse::failed(
-                1,
-                "not logged in",
-            ))),
+            Value::Response(TransportResponse::File(
+                FileResponse::exists_result("/fake/path", false),
+            )),
         );
-
-        let outputs = GcpOps::ParseLocalAuthCheck
+        let err = GcpOps::ParseCheckAdc
             .execute(inputs)
-            .expect("check parser should not fail on unauthenticated sessions");
-
-        assert_eq!(outputs.get("exists"), Some(&Value::Bool(false)));
+            .expect_err("missing ADC should error");
+        assert!(err.to_string().contains("gcloud auth application-default login"));
     }
 
     #[test]
-    fn prepare_local_auth_login_requires_interactive_when_auth_missing() {
+    fn parse_check_adc_succeeds_when_file_exists() {
         let mut inputs = HashMap::new();
-        inputs.insert("exists".to_string(), Value::Bool(false));
-
-        let err = GcpOps::PrepareLocalAuthLogin
-            .execute(inputs)
-            .expect_err("missing auth with interactive disabled should fail");
-        assert!(
-            err.to_string().contains("interactive"),
-            "error should explain why local login did not run"
+        inputs.insert(
+            "response".to_string(),
+            Value::Response(TransportResponse::File(
+                FileResponse::exists_result("/fake/path", true),
+            )),
         );
+        let outputs = GcpOps::ParseCheckAdc.execute(inputs).expect("should succeed");
+        assert_eq!(outputs.get("exists"), Some(&Value::Bool(true)));
     }
 
     #[test]
-    fn prepare_local_auth_login_skips_when_auth_exists() {
+    fn prepare_read_adc_produces_file_read_request() {
         let mut inputs = HashMap::new();
         inputs.insert("exists".to_string(), Value::Bool(true));
+        let outputs = GcpOps::PrepareReadAdc.execute(inputs).expect("should succeed");
+        match outputs.get("request") {
+            Some(Value::Request(gunbc_ir::transport::TransportRequest::File(f))) => {
+                assert!(f.path.contains("application_default_credentials.json"));
+                assert_eq!(f.operation, gunbc_ir::transport::file::FileOp::Read);
+            }
+            other => panic!("expected File request, got {:?}", other),
+        }
+    }
 
-        let outputs = GcpOps::PrepareLocalAuthLogin
+    #[test]
+    fn parse_adc_credentials_extracts_tokens() {
+        let adc_json = serde_json::json!({
+            "client_id": "my-client-id.apps.googleusercontent.com",
+            "client_secret": "my-secret",
+            "refresh_token": "1//refresh-token",
+            "type": "authorized_user"
+        });
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "response".to_string(),
+            Value::Response(TransportResponse::File(
+                FileResponse::read_ok("/fake/path", adc_json.to_string()),
+            )),
+        );
+        let outputs = GcpOps::ParseAdcCredentials.execute(inputs).expect("should succeed");
+        assert_eq!(
+            outputs.get("client_id").and_then(|v| v.as_str()),
+            Some("my-client-id.apps.googleusercontent.com")
+        );
+        assert_eq!(
+            outputs.get("refresh_token").and_then(|v| v.as_str()),
+            Some("1//refresh-token")
+        );
+        assert_eq!(
+            outputs.get("token_type").and_then(|v| v.as_str()),
+            Some("authorized_user")
+        );
+    }
+
+    #[test]
+    fn parse_adc_credentials_fails_on_missing_refresh_token() {
+        let adc_json = serde_json::json!({
+            "client_id": "id",
+            "client_secret": "secret",
+            "type": "authorized_user"
+        });
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "response".to_string(),
+            Value::Response(TransportResponse::File(
+                FileResponse::read_ok("/fake/path", adc_json.to_string()),
+            )),
+        );
+        let err = GcpOps::ParseAdcCredentials
             .execute(inputs)
-            .expect("prepare local auth login should succeed");
-        assert_eq!(outputs.get("skip"), Some(&Value::Bool(true)));
+            .expect_err("should fail on missing refresh_token");
+        assert!(err.to_string().contains("refresh_token"));
+    }
+
+    #[test]
+    fn prepare_oauth2_refresh_builds_rest_request() {
+        let mut inputs = HashMap::new();
+        inputs.insert("client_id".to_string(), Value::Str("id".to_string()));
+        inputs.insert("client_secret".to_string(), Value::Str("secret".to_string()));
+        inputs.insert("refresh_token".to_string(), Value::Str("token".to_string()));
+        let outputs = GcpOps::PrepareOAuth2Refresh.execute(inputs).expect("should succeed");
+        match outputs.get("request") {
+            Some(Value::Request(gunbc_ir::transport::TransportRequest::Rest(r))) => {
+                assert!(r.url.contains("oauth2.googleapis.com/token"));
+                assert_eq!(r.method, gunbc_ir::transport::http::HttpMethod::Post);
+                let body = r.body.as_ref().expect("should have body");
+                assert_eq!(body["grant_type"], "refresh_token");
+            }
+            other => panic!("expected REST request, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_oauth2_refresh_extracts_token() {
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "response".to_string(),
+            Value::Response(TransportResponse::Rest(RestResponse::ok(
+                serde_json::json!({
+                    "access_token": "ya29.a-token",
+                    "expires_in": 3600,
+                    "token_type": "Bearer"
+                }),
+            ))),
+        );
+        let outputs = GcpOps::ParseOAuth2Refresh.execute(inputs).expect("should succeed");
+        assert_eq!(
+            outputs.get("access_token").and_then(|v| v.as_str()),
+            Some("ya29.a-token")
+        );
+        assert_eq!(outputs.get("expires_in").and_then(|v| v.as_int()), Some(3600));
+    }
+
+    #[test]
+    fn parse_oauth2_refresh_fails_on_error_response() {
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "response".to_string(),
+            Value::Response(TransportResponse::Rest(RestResponse::new(
+                401,
+                serde_json::json!({
+                    "error": "invalid_grant",
+                    "error_description": "Token has been expired or revoked."
+                }),
+            ))),
+        );
+        let err = GcpOps::ParseOAuth2Refresh
+            .execute(inputs)
+            .expect_err("should fail on error response");
+        assert!(err.to_string().contains("expired or revoked"));
     }
 }

@@ -15,9 +15,8 @@ fn mock_credential() -> Value {
 fn mock_cloud_config() -> Value {
     CloudSecretConfig {
         provider: CloudProviderKind::Gcp,
-        runtime: CloudRuntimeKind::GitHubActions,
-        audience: "projects/123/locations/global/workloadIdentityPools/github/providers/gha"
-            .to_string(),
+        runtime: CloudRuntimeKind::LocalDev,
+        audience: "local-dev".to_string(),
         project_or_account: "mock-secrets".to_string(),
         secret: CloudSecretRef {
             prefix: "ci-".to_string(),
@@ -34,9 +33,8 @@ fn mock_cloud_config() -> Value {
 fn mock_cloud_config_with_secret(name: &str) -> Value {
     let mut config = CloudSecretConfig {
         provider: CloudProviderKind::Gcp,
-        runtime: CloudRuntimeKind::GitHubActions,
-        audience: "projects/123/locations/global/workloadIdentityPools/github/providers/gha"
-            .to_string(),
+        runtime: CloudRuntimeKind::LocalDev,
+        audience: "local-dev".to_string(),
         project_or_account: "mock-secrets".to_string(),
         secret: CloudSecretRef {
             prefix: "ci-".to_string(),

@@ -4,7 +4,8 @@
 
 use crate::workspace::convert::convert_dag;
 use crate::workspace::WorkspaceOp;
-use gunbc_gist::{build_gist_graph, GistGraphOp, GistMode, GistOps};
+use gunbc_gist::{build_gist_graph_with_config, GistGraphOp, GistMode, GistOps};
+use gunbc_ir::transport::cloud::CloudSecretConfig;
 use gunbc_ir::Node;
 
 /// Convert a GistGraphOp to WorkspaceOp.
@@ -62,8 +63,21 @@ pub fn build_gist_subdag(
     extensions: Vec<String>,
     create_gist: bool,
 ) -> Node<WorkspaceOp> {
-    let original =
-        build_gist_graph(mode, extensions, create_gist).expect("Gist graph should build");
+    build_gist_subdag_with_config(mode, extensions, create_gist, None)
+}
+
+/// Build a gist SubDag with explicit cloud config.
+///
+/// When `cloud_config` is `Some`, the internal gist graph uses
+/// `ConstCloudConfig` instead of the legacy `CloudEnv` env-reader.
+pub fn build_gist_subdag_with_config(
+    mode: GistMode,
+    extensions: Vec<String>,
+    create_gist: bool,
+    cloud_config: Option<CloudSecretConfig>,
+) -> Node<WorkspaceOp> {
+    let original = build_gist_graph_with_config(mode, extensions, create_gist, cloud_config)
+        .expect("Gist graph should build");
     let converted_dag = convert_dag(original, &convert_gist_op);
 
     Node::subdag("gist", converted_dag)

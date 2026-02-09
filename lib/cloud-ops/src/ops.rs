@@ -16,6 +16,14 @@ pub enum CloudOps {
     MapToGcpInputs { runtime: CloudRuntimeKind },
     /// Validate config and map to GCP-specific inputs for secret upsert.
     MapToGcpSecretInputs { runtime: CloudRuntimeKind },
+    /// Emit a pre-resolved CloudSecretConfig as constant outputs.
+    ///
+    /// Replacement for CloudEnv: takes a serialized config and emits
+    /// the same outputs (config, request_url, request_token) without
+    /// reading any environment variables.
+    ConstCloudConfig {
+        config: CloudSecretConfig,
+    },
 }
 
 impl Executable for CloudOps {
@@ -159,6 +167,25 @@ impl Executable for CloudOps {
                 }
 
                 Ok(out)
+            }
+            CloudOps::ConstCloudConfig { config } => {
+                // Emit the same outputs as CloudEnv would, but from a pre-resolved config.
+                let mut out = OutputMap::new().value("config", config.clone().into());
+
+                // For GitHub Actions runtime, provide the OIDC request inputs.
+                // These are still from env because they're ephemeral per-job values,
+                // not infrastructure configuration.
+                if matches!(config.runtime, CloudRuntimeKind::GitHubActions) {
+                    let request_url = std::env::var("ACTIONS_ID_TOKEN_REQUEST_URL")
+                        .unwrap_or_default();
+                    let request_token = std::env::var("ACTIONS_ID_TOKEN_REQUEST_TOKEN")
+                        .unwrap_or_default();
+                    out = out
+                        .str("request_url", &request_url)
+                        .str("request_token", &request_token);
+                }
+
+                out.ok()
             }
             CloudOps::MapToGcpSecretInputs { runtime } => {
                 let provider = require_str(&inputs, "provider")?;

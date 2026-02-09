@@ -5301,7 +5301,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Transport mock coverage incomplete")]
+    #[should_panic(expected = "DryRun mock coverage incomplete")]
     fn test_transport_mock_coverage_required() {
         let mut dag: Dag<()> = Dag::new();
         dag.add_node(Node::opaque(

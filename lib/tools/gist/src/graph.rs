@@ -15,6 +15,7 @@ use gunbc_exec::{
     require_str, ExecError, Executable, OutputMap, TransportResponseExt,
 };
 use gunbc_ir::patterns::PatternOp;
+use gunbc_ir::transport::cloud::CloudSecretConfig;
 use gunbc_ir::transport::gist::GistRequest;
 use gunbc_ir::transport::{ShellRequest, TransportResponse};
 use gunbc_ir::{
@@ -22,7 +23,9 @@ use gunbc_ir::{
     WorkflowSignature,
 };
 use gunbc_lib_cloud_ops::{
-    build_cloud_credential_graph_for_runtime, CloudEnv, CloudOps, CloudSecretManagerGraphOp,
+    build_cloud_credential_graph_for_runtime,
+    build_cloud_secret_manager_credential_graph_from_config, CloudEnv, CloudOps,
+    CloudSecretManagerGraphOp,
 };
 use gunbc_lib_gist_ops::GistOps;
 use gunbc_lib_git_ops::GitOps;
@@ -542,6 +545,23 @@ pub fn build_gist_graph(
     extensions: Vec<String>,
     public: bool,
 ) -> Result<Dag<GistGraphOp>, BuilderError> {
+    build_gist_graph_with_config(mode, extensions, public, None)
+}
+
+/// Build the gist graph with an explicit `CloudSecretConfig`.
+///
+/// When `cloud_config` is `Some`, the graph uses `ConstCloudConfig` instead of
+/// the legacy `CloudEnv` env-reader, and selects the credential sub-DAG based
+/// on the config's provider/runtime rather than probing the environment.
+///
+/// When `cloud_config` is `None`, the graph falls back to the legacy
+/// `CloudEnv`-based dispatch (reads environment variables at execution time).
+pub fn build_gist_graph_with_config(
+    mode: GistMode,
+    extensions: Vec<String>,
+    public: bool,
+    cloud_config: Option<CloudSecretConfig>,
+) -> Result<Dag<GistGraphOp>, BuilderError> {
     let mut builder = DagBuilder::new();
 
     // ========================================================================
@@ -562,16 +582,33 @@ pub fn build_gist_graph(
         GistGraphOp::ClockEnv(ClockEnv),
     ))?;
 
-    let cloud_env = builder.add_root_node(Node::opaque(
-        "cloud_env",
-        vec![],
-        vec![
-            port("config", "CloudSecretConfig"),
-            optional("request_url", "OptionalString"),
-            optional("request_token", "OptionalString"),
-        ],
-        GistGraphOp::CloudEnv(CloudEnv::new()),
-    ))?;
+    let cloud_env = if let Some(ref config) = cloud_config {
+        builder.add_root_node(Node::opaque(
+            "cloud_env",
+            vec![],
+            vec![
+                port("config", "CloudSecretConfig"),
+                optional("request_url", "OptionalString"),
+                optional("request_token", "OptionalString"),
+            ],
+            GistGraphOp::Cloud(CloudSecretManagerGraphOp::Cloud(
+                CloudOps::ConstCloudConfig {
+                    config: config.clone(),
+                },
+            )),
+        ))?
+    } else {
+        builder.add_root_node(Node::opaque(
+            "cloud_env",
+            vec![],
+            vec![
+                port("config", "CloudSecretConfig"),
+                optional("request_url", "OptionalString"),
+                optional("request_token", "OptionalString"),
+            ],
+            GistGraphOp::CloudEnv(CloudEnv::new()),
+        ))?
+    };
 
     let resolve_auth = builder.add_root_node(Node::opaque(
         "resolve_auth",
@@ -600,7 +637,11 @@ pub fn build_gist_graph(
         &[&cloud_env, &resolve_auth],
     )?;
 
-    let cloud_subdag = lift_cloud_dag(build_cloud_credential_graph_for_runtime());
+    let cloud_subdag = if let Some(ref config) = cloud_config {
+        lift_cloud_dag(build_cloud_secret_manager_credential_graph_from_config(config))
+    } else {
+        lift_cloud_dag(build_cloud_credential_graph_for_runtime())
+    };
     let cloud_credential =
         builder.add_node_after(Node::subdag("cloud_credential", cloud_subdag), &bind_secret)?;
 

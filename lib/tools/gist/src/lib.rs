@@ -33,9 +33,12 @@ pub mod graph;
 pub mod graph_mock;
 
 // Re-export public API
-pub use auth_doctor::{build_gist_auth_doctor_graph, GistAuthDoctorOp};
+pub use auth_doctor::build_gist_auth_doctor_graph;
+// Re-export CloudAuthDoctorOp for backwards compatibility (used by graph_mock.rs).
+pub use gunbc_lib_cloud_ops::auth_doctor::CloudAuthDoctorOp;
 pub use graph::{
-    build_gist_graph, build_read_file_body_dag, gist_signature, GistGraphOp, GistMode,
+    build_gist_graph, build_gist_graph_with_config, build_read_file_body_dag, gist_signature,
+    GistGraphOp, GistMode,
 };
 
 // Re-export the library ops for convenience

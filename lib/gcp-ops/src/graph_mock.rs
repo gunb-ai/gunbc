@@ -1,7 +1,7 @@
 //! Mock specs for GCP WIF + Secret Manager graphs.
 
 use gunbc_ir::transport::rest::RestResponse;
-use gunbc_ir::transport::{ShellResponse, TransportResponse};
+use gunbc_ir::transport::TransportResponse;
 use gunbc_ir::{AuthScheme, Credential, Secret, SecretString, Value};
 use gunbc_primitives::NetworkHandle;
 use gunbc_test::{MockSpec, NodeExample, OutputMatcher};
@@ -128,8 +128,29 @@ pub fn gcp_github_mock_spec() -> MockSpec {
         .skip_node_example("net_env")
 }
 
-/// Mock spec for local-dev gcloud auth + Secret Manager credential flow.
+/// Mock spec for local-dev ADC auth + Secret Manager credential flow.
+///
+/// The local auth phase is a `local_auth_upsert` sub-DAG that:
+/// 1. Checks if the ADC file exists (File transport)
+/// 2. Reads the ADC file (File transport)
+/// 3. Refreshes OAuth2 token (REST transport)
+///
+/// This is a composition helper — it gets included in higher-level tool
+/// mock specs via `include_prefixed_runtime_mocks`.
+#[gunbc_testgen_registry_macros::testgen_target(skip)]
 pub fn gcp_local_mock_spec() -> MockSpec {
+    use gunbc_ir::transport::file::FileResponse;
+
+    let adc_path = crate::ops::adc_file_path();
+
+    // Mock ADC file content (minimal authorized_user credentials)
+    let mock_adc_json = serde_json::json!({
+        "type": "authorized_user",
+        "client_id": "mock-client-id.apps.googleusercontent.com",
+        "client_secret": "mock-client-secret",
+        "refresh_token": "mock-refresh-token"
+    });
+
     let impersonate_response = RestResponse::ok(serde_json::json!({
         "accessToken": "mock-sa-token",
         "expireTime": "2025-01-01T00:00:00Z"
@@ -139,13 +160,36 @@ pub fn gcp_local_mock_spec() -> MockSpec {
             "data": "bW9jay1zZWNyZXQ="
         }
     }));
+    let oauth2_response = RestResponse::ok(serde_json::json!({
+        "access_token": "mock-local-token",
+        "expires_in": 3599,
+        "token_type": "Bearer"
+    }));
 
     MockSpec::new("gcp-wif-secret-local")
-        .input_mock(
-            "prepare_create_local_auth",
-            "interactive_allowed",
-            Value::Bool(true),
+        // local_auth_upsert sub-DAG boundaries: ADC file check (File transport)
+        .boundary(
+            "local_auth_upsert/execute_check",
+            "response",
+            Value::Response(TransportResponse::File(
+                FileResponse::exists_result(&adc_path, true),
+            )),
         )
+        // local_auth_upsert sub-DAG: read ADC file (File transport)
+        .boundary(
+            "local_auth_upsert/execute_read_adc",
+            "response",
+            Value::Response(TransportResponse::File(
+                FileResponse::read_ok(&adc_path, mock_adc_json.to_string()),
+            )),
+        )
+        // local_auth_upsert sub-DAG: OAuth2 token refresh (REST transport)
+        .boundary(
+            "local_auth_upsert/execute_oauth2",
+            "response",
+            Value::Response(TransportResponse::Rest(oauth2_response)),
+        )
+        .boundary("local_auth_upsert/net_env", "net", mock_net_handle())
         .input_mock(
             "prepare_impersonate",
             "service_account",
@@ -163,27 +207,6 @@ pub fn gcp_local_mock_spec() -> MockSpec {
         )
         .input_mock("build_credential", "scheme", Value::Str("bearer".into()))
         .input_mock("build_credential", "source_id", Value::Str("github".into()))
-        .transport_mock(
-            "execute_check_local_auth",
-            "response",
-            Value::Response(TransportResponse::Shell(ShellResponse::ok(
-                "mock-local-token\n",
-            ))),
-        )
-        .transport_mock(
-            "execute_create_local_auth",
-            "response",
-            Value::Response(TransportResponse::Shell(ShellResponse::ok(
-                "already logged in\n",
-            ))),
-        )
-        .transport_mock(
-            "execute_local_access_token",
-            "response",
-            Value::Response(TransportResponse::Shell(ShellResponse::ok(
-                "mock-local-token\n",
-            ))),
-        )
         .transport_mock(
             "execute_impersonate",
             "response",
@@ -204,13 +227,8 @@ pub fn gcp_local_mock_spec() -> MockSpec {
                 .output("credential", OutputMatcher::Any)
                 .description("Builds a bearer credential from secret material"),
         )
-        // Primitive nodes — tested in their own crates
-        .skip_node_example("prepare_check_local_auth")
-        .skip_node_example("parse_check_local_auth")
-        .skip_node_example("prepare_create_local_auth")
-        .skip_node_example("parse_create_local_auth")
-        .skip_node_example("prepare_local_access_token")
-        .skip_node_example("parse_local_access_token")
+        // Sub-DAG internal nodes — tested at their own level
+        .skip_node_example("local_auth_upsert")
         .skip_node_example("prepare_impersonate")
         .skip_node_example("parse_impersonate")
         .skip_node_example("prepare_secret_access")

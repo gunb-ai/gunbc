@@ -1,6 +1,5 @@
 //! Provider-neutral cloud credential DAGs.
 
-use crate::detect_cloud_env_requirements;
 use crate::ops::CloudOps;
 use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::build::{optional, port};
@@ -216,9 +215,13 @@ fn build_cloud_secret_manager_credential_graph_gcp(
         optional("header_name", "OptionalString"),
         port("source_id", "String"),
         optional("lifetime_seconds", "OptionalInt"),
-        optional("interactive_allowed", "OptionalBool"),
     ];
+    // interactive_allowed is only needed for non-local runtimes where
+    // it gets wired to the GCP sub-DAG. For LocalDev (ADC-based auth),
+    // it's unused — excluding it prevents a dangling output that would
+    // propagate up through nested sub-DAGs.
     if !matches!(runtime, CloudRuntimeKind::LocalDev) {
+        map_outputs.push(optional("interactive_allowed", "OptionalBool"));
         map_outputs.push(port("audience", "String"));
     }
     if matches!(runtime, CloudRuntimeKind::GitHubActions) {
@@ -244,6 +247,9 @@ fn build_cloud_secret_manager_credential_graph_gcp(
                     optional("header_name", "OptionalString"),
                     port("source_id", "String"),
                     optional("lifetime_seconds", "OptionalInt"),
+                    // interactive_allowed is accepted as input for all runtimes
+                    // (parent graphs always wire it), but only OUTPUT for
+                    // non-LocalDev runtimes where it gets wired to the GCP sub-DAG.
                     optional("interactive_allowed", "OptionalBool"),
                     optional("request_url", "OptionalString"),
                     optional("request_token", "OptionalString"),
@@ -340,14 +346,8 @@ fn build_cloud_secret_manager_credential_graph_gcp(
             gcp_node.in_port("lifetime_seconds"),
         )
         .expect("map_gcp_inputs.lifetime_seconds -> gcp_wif_secret.lifetime_seconds");
-    if matches!(runtime, CloudRuntimeKind::LocalDev) {
-        builder
-            .add_edge(
-                map_inputs.out("interactive_allowed"),
-                gcp_node.in_port("interactive_allowed"),
-            )
-            .expect("map_gcp_inputs.interactive_allowed -> gcp_wif_secret.interactive_allowed");
-    }
+    // Note: interactive_allowed is no longer wired to the GCP subdag for LocalDev
+    // because the new ADC-based local auth flow doesn't use it.
 
     if matches!(runtime, CloudRuntimeKind::GitHubActions) {
         builder
@@ -403,9 +403,10 @@ fn build_cloud_secret_manager_upsert_graph_gcp(
         port("service_account", "String"),
         optional("version", "OptionalString"),
         optional("lifetime_seconds", "OptionalInt"),
-        optional("interactive_allowed", "OptionalBool"),
     ];
+    // interactive_allowed only needed for non-local runtimes (see credential graph).
     if !matches!(runtime, CloudRuntimeKind::LocalDev) {
+        map_outputs.push(optional("interactive_allowed", "OptionalBool"));
         map_outputs.push(port("audience", "String"));
     }
     if matches!(runtime, CloudRuntimeKind::GitHubActions) {
@@ -510,16 +511,8 @@ fn build_cloud_secret_manager_upsert_graph_gcp(
             gcp_node.in_port("lifetime_seconds"),
         )
         .expect("map_gcp_secret_inputs.lifetime_seconds -> gcp_wif_secret_upsert.lifetime_seconds");
-    if matches!(runtime, CloudRuntimeKind::LocalDev) {
-        builder
-            .add_edge(
-                map_inputs.out("interactive_allowed"),
-                gcp_node.in_port("interactive_allowed"),
-            )
-            .expect(
-                "map_gcp_secret_inputs.interactive_allowed -> gcp_wif_secret_upsert.interactive_allowed",
-            );
-    }
+    // Note: interactive_allowed is no longer wired to the GCP subdag for LocalDev
+    // because the new ADC-based local auth flow doesn't use it.
 
     if matches!(runtime, CloudRuntimeKind::GitHubActions) {
         builder
@@ -537,25 +530,6 @@ fn build_cloud_secret_manager_upsert_graph_gcp(
     }
 
     builder.build()
-}
-
-// ---------------------------------------------------------------------------
-// Runtime credential graph selection
-// ---------------------------------------------------------------------------
-
-/// Build a cloud credential graph for the detected runtime environment.
-///
-/// Selects the appropriate GCP credential graph based on whether we're running
-/// in GitHub Actions, on a GCP instance, or locally.
-pub fn build_cloud_credential_graph_for_runtime() -> Dag<CloudSecretManagerGraphOp> {
-    let env_req = detect_cloud_env_requirements();
-    match env_req.runtime {
-        CloudRuntimeKind::GitHubActions => build_cloud_secret_manager_credential_graph_gcp_github(),
-        CloudRuntimeKind::CloudMetadata => {
-            build_cloud_secret_manager_credential_graph_gcp_metadata()
-        }
-        CloudRuntimeKind::LocalDev => build_cloud_secret_manager_credential_graph_gcp_local(),
-    }
 }
 
 // ---------------------------------------------------------------------------
