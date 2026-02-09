@@ -3,8 +3,8 @@
 //! Resolves GitHub credentials via the cloud secret manager and performs
 //! a minimal GitHub API call to validate the token.
 
-use crate::env::CloudEnv;
-use crate::graph::{build_cloud_credential_graph_for_runtime, CloudSecretManagerGraphOp};
+use crate::config_loader::default_local_dev_config;
+use crate::graph::{build_cloud_secret_manager_credential_graph_from_config, CloudSecretManagerGraphOp};
 use crate::ops::CloudOps;
 use gunbc_exec::{require_response, ExecError, Executable, OutputMap};
 use gunbc_ir::build::{optional, port, resource};
@@ -61,7 +61,6 @@ impl Executable for GitHubCredentialOps {
 
 #[derive(Debug, Clone)]
 pub enum GitHubCredentialGraphOp {
-    CloudEnv(CloudEnv),
     Cloud(CloudSecretManagerGraphOp),
     GitHub(GitHubCredentialOps),
     Transport(TransportOps),
@@ -70,7 +69,6 @@ pub enum GitHubCredentialGraphOp {
 impl Executable for GitHubCredentialGraphOp {
     fn execute(&self, inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>, ExecError> {
         match self {
-            GitHubCredentialGraphOp::CloudEnv(op) => op.execute(inputs),
             GitHubCredentialGraphOp::Cloud(op) => op.execute(inputs),
             GitHubCredentialGraphOp::GitHub(op) => op.execute(inputs),
             GitHubCredentialGraphOp::Transport(op) => op.execute(inputs),
@@ -85,9 +83,10 @@ impl Executable for GitHubCredentialGraphOp {
     builder = "build_github_credential_graph()"
 )]
 pub fn build_github_credential_graph() -> Dag<GitHubCredentialGraphOp> {
+    let config = default_local_dev_config();
     let mut builder: DagBuilder<GitHubCredentialGraphOp> = DagBuilder::new();
 
-    // Cloud environment (config + OIDC request inputs).
+    // Cloud environment — pre-resolved config (no env var reads).
     let cloud_env = builder
         .add_root_node(Node::opaque(
             "cloud_env",
@@ -97,7 +96,11 @@ pub fn build_github_credential_graph() -> Dag<GitHubCredentialGraphOp> {
                 optional("request_url", "OptionalString"),
                 optional("request_token", "OptionalString"),
             ],
-            GitHubCredentialGraphOp::CloudEnv(CloudEnv::new()),
+            GitHubCredentialGraphOp::Cloud(CloudSecretManagerGraphOp::Cloud(
+                CloudOps::ConstCloudConfig {
+                    config: config.clone(),
+                },
+            )),
         ))
         .expect("cloud_env node");
 
@@ -142,8 +145,8 @@ pub fn build_github_credential_graph() -> Dag<GitHubCredentialGraphOp> {
         .add_edge(resolve_auth.out("service"), bind_secret.in_port("service"))
         .expect("resolve_auth.service -> bind_secret.service");
 
-    // Cloud credential acquisition graph (GCP WIF + Secret Manager).
-    let cloud_subdag = lift_cloud_dag(build_cloud_credential_graph_for_runtime());
+    // Cloud credential acquisition graph — dispatched from config.
+    let cloud_subdag = lift_cloud_dag(build_cloud_secret_manager_credential_graph_from_config(&config));
     let cloud_credential = builder
         .add_node_after(Node::subdag("cloud_credential", cloud_subdag), &bind_secret)
         .expect("cloud_credential node");
