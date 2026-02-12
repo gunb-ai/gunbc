@@ -55,8 +55,8 @@ pub use fermi::{
 };
 pub use mock::{MockBehavior, MockOp, ScriptedDagBuilder};
 pub use mock_requirements::{
-    extract_mock_requirements, MockIncompleteError, MockRequirements, MockSlot, MockSlotKind,
-    MockTypeError,
+    extract_mock_requirements, MissingSlot, MockIncompleteError, MockRequirements, MockSlot,
+    MockSlotKind, MockTypeError,
 };
 pub use mock_spec::{
     assert_boundaries, assert_transport_mocks, validate_chain, BoundaryMock, ChainError,

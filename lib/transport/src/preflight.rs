@@ -291,34 +291,47 @@ fn run_lint_upsert(resource_id: &ResourceId) -> Result<(), ResourceError> {
     // pragma) don't benefit from debug mode, and using release ensures we reuse
     // cached artifacts when CI runs with --release (avoiding a 30+ min rebuild).
 
-    // codegen-dag: cargo run -p gunbc-dag --bin gunbc-codegen-dag --release
-    let codegen_cmd = CargoCommand::new(Subcommand::Run(
-        CargoInvocation::composed("codegen-dag", "dag"),
-    ))
-    .release();
-    run_cargo_command(resource_id, &codegen_cmd)?;
+    let steps: &[(&str, CargoCommand)] = &[
+        (
+            "codegen-dag",
+            CargoCommand::new(Subcommand::Run(CargoInvocation::composed(
+                "codegen-dag",
+                "dag",
+            )))
+            .release(),
+        ),
+        (
+            "testgen",
+            CargoCommand::new(Subcommand::Run(CargoInvocation::composed("testgen", "dag")))
+                .release(),
+        ),
+        (
+            "pragma",
+            CargoCommand::new(Subcommand::Run(CargoInvocation::composed("pragma", "dag")))
+                .release(),
+        ),
+    ];
 
-    // testgen: cargo run -p gunbc-dag --bin gunbc-testgen --release
-    let testgen_cmd = CargoCommand::new(Subcommand::Run(
-        CargoInvocation::composed("testgen", "dag"),
-    ))
-    .release();
-    run_cargo_command(resource_id, &testgen_cmd)?;
-
-    // pragma: cargo run -p gunbc-dag --bin gunbc-pragma --release
-    let pragma_cmd = CargoCommand::new(Subcommand::Run(
-        CargoInvocation::composed("pragma", "dag"),
-    ))
-    .release();
-    run_cargo_command(resource_id, &pragma_cmd)?;
+    let total = steps.len() + 1; // +1 for clippy
+    for (i, (label, cmd)) in steps.iter().enumerate() {
+        eprint!("  [{}/{}] {}...", i + 1, total, label);
+        let start = std::time::Instant::now();
+        run_cargo_command(resource_id, cmd)?;
+        eprintln!(" {:.1}s", start.elapsed().as_secs_f64());
+    }
 
     // clippy check: cargo clippy -- -D warnings
     // Note: no --all-targets for speed; CI still catches test-only lint issues
-    let clippy_check = CargoCommand::new(Subcommand::Clippy)
-        .warnings(Warnings::Deny);
+    eprint!("  [{}/{}] clippy...", total, total);
+    let clippy_start = std::time::Instant::now();
+    let clippy_check = CargoCommand::new(Subcommand::Clippy).warnings(Warnings::Deny);
     let clippy_result = run_cargo_command_response(resource_id, &clippy_check)?;
 
     if !clippy_result.success() {
+        eprintln!(" fix needed ({:.1}s)", clippy_start.elapsed().as_secs_f64());
+        eprint!("  [{}/{}] clippy --fix...", total, total);
+        let fix_start = std::time::Instant::now();
+
         // clippy fix: cargo clippy --fix --workspace --allow-dirty --allow-staged -- -D warnings
         let clippy_fix = CargoCommand::new(Subcommand::Clippy)
             .fix()
@@ -331,6 +344,7 @@ fn run_lint_upsert(resource_id: &ResourceId) -> Result<(), ResourceError> {
         // verify fix worked
         let verify_result = run_cargo_command_response(resource_id, &clippy_check)?;
         if !verify_result.success() {
+            eprintln!(" failed ({:.1}s)", fix_start.elapsed().as_secs_f64());
             return Err(ResourceError::CreateFailed(
                 resource_id.clone(),
                 format!(
@@ -339,6 +353,9 @@ fn run_lint_upsert(resource_id: &ResourceId) -> Result<(), ResourceError> {
                 ),
             ));
         }
+        eprintln!(" {:.1}s", fix_start.elapsed().as_secs_f64());
+    } else {
+        eprintln!(" {:.1}s", clippy_start.elapsed().as_secs_f64());
     }
 
     Ok(())

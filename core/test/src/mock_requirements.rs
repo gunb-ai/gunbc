@@ -118,17 +118,41 @@ impl Error for MockTypeError {}
 pub struct MockIncompleteError {
     /// DAG name
     pub dag_name: String,
-    /// List of unfilled required slots (node.port format)
-    pub missing: Vec<String>,
+    /// Structured info about each missing slot.
+    pub missing: Vec<MissingSlot>,
+}
+
+/// A missing mock slot with enough info for an actionable error message.
+#[derive(Debug, Clone)]
+pub struct MissingSlot {
+    /// Node ID
+    pub node: String,
+    /// Port name
+    pub port: String,
+    /// Expected type
+    pub type_id: String,
+    /// Slot kind
+    pub kind: MockSlotKind,
 }
 
 impl fmt::Display for MockIncompleteError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(
+            f,
+            "incomplete mock spec for '{}': {} unfilled slot(s)",
+            self.dag_name,
+            self.missing.len()
+        )?;
+        writeln!(f)?;
+        writeln!(f, "  Missing boundary mocks:")?;
+        for slot in &self.missing {
+            writeln!(f, "    .boundary(\"{}\", \"{}\", <{}>)", slot.node, slot.port, slot.type_id)?;
+        }
+        writeln!(f)?;
         write!(
             f,
-            "incomplete mock spec for '{}': missing {}",
-            self.dag_name,
-            self.missing.join(", ")
+            "  Add these to the mock spec in the graph_mock.rs for '{}'.",
+            self.dag_name
         )
     }
 }
@@ -445,7 +469,12 @@ impl MockRequirements {
                 dag_name: self.dag_name.clone(),
                 missing: missing
                     .iter()
-                    .map(|s| format!("{}.{}", s.node_id.0, s.port_name.0))
+                    .map(|s| MissingSlot {
+                        node: s.node_id.0.clone(),
+                        port: s.port_name.0.clone(),
+                        type_id: s.type_id.0.clone(),
+                        kind: s.kind,
+                    })
                     .collect(),
             });
         }
@@ -475,7 +504,10 @@ impl MockRequirements {
     ///
     /// Use this when you're confident all mocks are provided.
     pub fn build_unchecked(self) -> MockSpec {
-        self.build().expect("all required mocks must be provided")
+        match self.build() {
+            Ok(spec) => spec,
+            Err(e) => panic!("{e}"),
+        }
     }
 }
 
@@ -713,7 +745,7 @@ mod tests {
 
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.missing.contains(&"node.port".to_string()));
+        assert!(err.missing.iter().any(|s| s.node == "node" && s.port == "port"));
     }
 
     #[test]

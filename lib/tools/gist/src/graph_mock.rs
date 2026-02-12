@@ -140,7 +140,9 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
         .boundary("cloud_credential", "credential", mock_credential())
         .expect("cloud_credential credential should match type")
         .boundary("cloud_credential", "expires_in", Value::Int(3_600))
-        .expect("cloud_credential expires_in should match type");
+        .expect("cloud_credential expires_in should match type")
+        .boundary("cloud_credential", "ok", Value::Bool(true))
+        .expect("cloud_credential ok should match type");
 
     // Mode-specific transport mocks
     match mode {

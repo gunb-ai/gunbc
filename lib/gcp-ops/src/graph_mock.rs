@@ -214,6 +214,36 @@ pub fn gcp_local_mock_spec() -> MockSpec {
             Value::Skipped,
         )
         .boundary("local_auth_upsert/net_env", "net", mock_net_handle())
+        // IAM ensure (local dev only) — REST-based check + conditional set
+        .input_mock(
+            "prepare_ensure_iam",
+            "project",
+            Value::Str("mock-secrets".into()),
+        )
+        .input_mock(
+            "prepare_ensure_iam",
+            "service_account",
+            Value::Str("ci-secrets@mock.iam.gserviceaccount.com".into()),
+        )
+        .transport_mock(
+            "execute_get_iam",
+            "response",
+            Value::Response(TransportResponse::Rest(RestResponse::ok(
+                serde_json::json!({
+                    "bindings": [{
+                        "role": "roles/secretmanager.secretAccessor",
+                        "members": ["serviceAccount:ci-secrets@mock.iam.gserviceaccount.com"]
+                    }],
+                    "etag": "mock-etag"
+                }),
+            ))),
+        )
+        // setIamPolicy is skipped (binding already exists in mock)
+        .transport_mock(
+            "execute_set_iam",
+            "response",
+            Value::Skipped,
+        )
         .input_mock(
             "prepare_impersonate",
             "service_account",
@@ -259,6 +289,9 @@ pub fn gcp_local_mock_spec() -> MockSpec {
         // Sub-DAG internal nodes — tested at their own level
         .skip_node_example("local_auth_upsert")
         .skip_node_example("should_impersonate")
+        .skip_node_example("prepare_ensure_iam")
+        .skip_node_example("check_iam_binding")
+        .skip_node_example("parse_set_iam")
         .skip_node_example("prepare_impersonate")
         .skip_node_example("parse_impersonate")
         .skip_node_example("prepare_secret_access")

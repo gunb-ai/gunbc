@@ -3,7 +3,7 @@
 use crate::ops::{GcpOps, GcpRuntimeKind};
 use gunbc_exec::{ExecError, Executable};
 use gunbc_ir::build::{list, optional, port, resource, AccessMode};
-use gunbc_ir::{Dag, DagBuilder, Edge, Node, Value};
+use gunbc_ir::{Dag, DagBuilder, Edge, Node, NodeRef, Value};
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::NetEnv;
 use std::collections::HashMap;
@@ -252,6 +252,9 @@ pub fn build_gcp_secret_manager_credential_graph(
                 .expect("local_auth_upsert")
         }
     };
+
+    // Ensure SA has required IAM roles before impersonation (local dev only).
+    add_ensure_iam_nodes(&mut builder, &net_env, &access_token_node, runtime);
 
     // ---------------------------------------------------------------------
     // Service Account impersonation
@@ -704,6 +707,9 @@ pub fn build_gcp_secret_manager_upsert_graph(
         }
     };
 
+    // Ensure SA has required IAM roles before impersonation (local dev only).
+    add_ensure_iam_nodes(&mut builder, &net_env, &access_token_node, runtime);
+
     // ---------------------------------------------------------------------
     // Service Account impersonation
     // ---------------------------------------------------------------------
@@ -1027,6 +1033,192 @@ pub fn build_gcp_secret_manager_upsert_graph_local() -> Dag<GcpSecretManagerGrap
 /// Public accessor for the local auth upsert sub-DAG (used by discovery_graph).
 pub fn build_local_auth_upsert_dag_pub() -> Dag<GcpSecretManagerGraphOp> {
     build_local_auth_upsert_dag()
+}
+
+/// Add IAM ensure nodes to a graph builder (local dev only).
+///
+/// Uses REST API (getIamPolicy + setIamPolicy) to ensure the SA has
+/// `roles/secretmanager.secretAccessor` on the secrets project.
+/// Fast in the common case (binding exists = single REST call, ~1s).
+///
+/// Flow:
+/// 1. `prepare_ensure_iam` — builds getIamPolicy REST request
+/// 2. `execute_get_iam` — executes getIamPolicy
+/// 3. `check_iam_binding` — checks policy, outputs setIamPolicy request if missing
+/// 4. `execute_set_iam` — executes setIamPolicy (skipped if binding exists)
+/// 5. `parse_set_iam` — validates result
+///
+/// Tolerates PERMISSION_DENIED gracefully.
+fn add_ensure_iam_nodes(
+    builder: &mut DagBuilder<GcpSecretManagerGraphOp>,
+    net_env: &NodeRef<GcpSecretManagerGraphOp>,
+    access_token_node: &NodeRef<GcpSecretManagerGraphOp>,
+    runtime: GcpRuntimeKind,
+) {
+    if !matches!(runtime, GcpRuntimeKind::LocalDev) {
+        return;
+    }
+
+    // Step 1: Prepare getIamPolicy request
+    let prepare_ensure_iam = builder
+        .add_node_after(
+            Node::opaque(
+                "prepare_ensure_iam",
+                vec![
+                    port("access_token", "String"),
+                    port("project", "String"),
+                    port("service_account", "String"),
+                ],
+                vec![
+                    port("request", "TransportRequest"),
+                    port("skip", "Bool"),
+                    port("service_account", "String"),
+                    port("project", "String"),
+                ],
+                GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareEnsureIamBinding),
+            ),
+            access_token_node,
+        )
+        .expect("prepare_ensure_iam");
+
+    // Step 2: Execute getIamPolicy
+    let execute_get_iam = builder
+        .add_node_after(
+            Node::opaque(
+                "execute_get_iam",
+                vec![
+                    port("request", "TransportRequest"),
+                    port("skip", "Bool"),
+                    resource("net", "NetworkHandle", AccessMode::Read),
+                ],
+                vec![port("response", "TransportResponse")],
+                GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
+            ),
+            &prepare_ensure_iam,
+        )
+        .expect("execute_get_iam");
+
+    // Step 3: Check binding and prepare setIamPolicy if needed
+    let check_iam = builder
+        .add_node_after(
+            Node::opaque(
+                "check_iam_binding",
+                vec![
+                    port("response", "TransportResponse"),
+                    port("access_token", "String"),
+                    port("project", "String"),
+                    port("service_account", "String"),
+                ],
+                vec![port("request", "TransportRequest"), port("skip", "Bool")],
+                GcpSecretManagerGraphOp::Gcp(GcpOps::CheckAndPrepareIamBinding),
+            ),
+            &execute_get_iam,
+        )
+        .expect("check_iam_binding");
+
+    // Step 4: Execute setIamPolicy (skipped if binding already exists)
+    let execute_set_iam = builder
+        .add_node_after(
+            Node::opaque(
+                "execute_set_iam",
+                vec![
+                    port("request", "TransportRequest"),
+                    port("skip", "Bool"),
+                    resource("net", "NetworkHandle", AccessMode::Read),
+                ],
+                vec![port("response", "TransportResponse")],
+                GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
+            ),
+            &check_iam,
+        )
+        .expect("execute_set_iam");
+
+    // Step 5: Parse setIamPolicy result
+    let parse_set_iam = builder
+        .add_node_after(
+            Node::opaque(
+                "parse_set_iam",
+                vec![port("response", "TransportResponse")],
+                vec![port("ok", "Bool")],
+                GcpSecretManagerGraphOp::Gcp(GcpOps::ParseSetIamBinding),
+            ),
+            &execute_set_iam,
+        )
+        .expect("parse_set_iam");
+
+    // Wire: prepare -> execute_get_iam
+    builder
+        .add_edge(
+            prepare_ensure_iam.out("request"),
+            execute_get_iam.in_port("request"),
+        )
+        .expect("prepare_ensure_iam.request -> execute_get_iam.request");
+    builder
+        .add_edge(
+            prepare_ensure_iam.out("skip"),
+            execute_get_iam.in_port("skip"),
+        )
+        .expect("prepare_ensure_iam.skip -> execute_get_iam.skip");
+    builder
+        .add_edge(net_env.out("net"), execute_get_iam.in_port("res:net"))
+        .expect("net_env -> execute_get_iam.res:net");
+
+    // Wire: execute_get_iam -> check_iam_binding
+    builder
+        .add_edge(
+            execute_get_iam.out("response"),
+            check_iam.in_port("response"),
+        )
+        .expect("execute_get_iam.response -> check_iam_binding.response");
+    // Pass through access_token, project, service_account
+    builder
+        .add_edge(
+            prepare_ensure_iam.out("service_account"),
+            check_iam.in_port("service_account"),
+        )
+        .expect("prepare_ensure_iam.sa -> check_iam_binding.sa");
+    builder
+        .add_edge(
+            prepare_ensure_iam.out("project"),
+            check_iam.in_port("project"),
+        )
+        .expect("prepare_ensure_iam.project -> check_iam_binding.project");
+
+    // Wire: check_iam_binding -> execute_set_iam
+    builder
+        .add_edge(
+            check_iam.out("request"),
+            execute_set_iam.in_port("request"),
+        )
+        .expect("check_iam_binding.request -> execute_set_iam.request");
+    builder
+        .add_edge(check_iam.out("skip"), execute_set_iam.in_port("skip"))
+        .expect("check_iam_binding.skip -> execute_set_iam.skip");
+    builder
+        .add_edge(net_env.out("net"), execute_set_iam.in_port("res:net"))
+        .expect("net_env -> execute_set_iam.res:net");
+
+    // Wire: execute_set_iam -> parse_set_iam
+    builder
+        .add_edge(
+            execute_set_iam.out("response"),
+            parse_set_iam.in_port("response"),
+        )
+        .expect("execute_set_iam.response -> parse_set_iam.response");
+
+    // Wire access_token from the auth step to the IAM ensure nodes
+    builder
+        .add_edge(
+            access_token_node.out("access_token"),
+            prepare_ensure_iam.in_port("access_token"),
+        )
+        .expect("access_token_node -> prepare_ensure_iam.access_token");
+    builder
+        .add_edge(
+            access_token_node.out("access_token"),
+            check_iam.in_port("access_token"),
+        )
+        .expect("access_token_node -> check_iam_binding.access_token");
 }
 
 /// Build the local auth upsert sub-DAG using ADC + OAuth2 REST.
