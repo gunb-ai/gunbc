@@ -138,3 +138,55 @@ Consolidated 4 copies of `build_cloud_credential_graph_for_runtime` into
 
 Removed `upsert_and_run` and unused imports (`CliToolError`, `Value`,
 `execute_cli_tool_op`, `HashMap`) from `lib/tools/clippy/src/ops.rs`.
+
+---
+
+## 10. Swapped TCP timeout fields — PROBABLE BUG
+
+**Where**: `lib/transport/src/executor.rs` ~lines 343-352
+
+**What happens**: `connect_timeout_ms` is assigned to `set_read_timeout`
+and `read_timeout_ms` is assigned to `set_write_timeout`. The fields
+are swapped, meaning TCP reads use the connect timeout and writes use
+the read timeout.
+
+**Impact**: If `connect_timeout_ms` is short (e.g. 5s) and `read_timeout_ms`
+is long (e.g. 30s), reads will time out prematurely while writes get an
+unexpectedly long window. This can cause intermittent timeout failures
+that are difficult to diagnose.
+
+**Suggested fix**: Swap the assignments so `read_timeout_ms` maps to
+`set_read_timeout` and an appropriate value maps to `set_write_timeout`.
+
+See also: consolidation.md §17.1.
+
+---
+
+## 11. `panic!()` in Result-returning `Executable` impl
+
+**Where**: `lib/transport/src/cli.rs` lines 144-157
+
+**What happens**: Several match arms use `panic!()` for unexpected
+`CliToolOp` variants. The function returns `Result<_, ExecError>`.
+
+**Impact**: If a new variant is accidentally routed here, the process
+crashes instead of returning a recoverable error.
+
+**Suggested fix**: Replace `panic!(...)` with `Err(ExecError::new(...))`.
+
+See also: consolidation.md §17.6.
+
+---
+
+## 12. ~70 `.expect()` calls in production graph builders
+
+**Where**: `gunbc-dag/src/ci/graph.rs`, `gunbc-dag/src/workspace/subdags/bootstrap.rs`,
+`gunbc-dag/src/workspace/subdags/deps.rs`, `core/exec/src/topo.rs`
+
+**What happens**: Builder methods (`.add_node`, `.add_edge`, HashMap lookups)
+are followed by `.expect()`. All enclosing functions return `Result`.
+
+**Impact**: A renamed node ID or malformed DAG panics the process instead
+of returning a diagnostic error.
+
+**Suggested fix**: Replace `.expect()` / `.unwrap()` with `.ok_or_else(|| ...)?`.
