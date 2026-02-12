@@ -5,8 +5,8 @@
 //! - If stale or missing, run codegen/testgen/pragma + clippy fix/lint,
 //!   then update the resource manifest.
 //!
-//! Preflight commands always use `--release` to reuse cached release artifacts
-//! and avoid triggering full debug rebuilds in CI.
+//! Preflight commands use the default (debug) profile so they share the
+//! same compilation cache as dev builds — no separate release recompilation.
 
 use crate::ops::execute_request;
 use crate::TransportIo;
@@ -20,6 +20,7 @@ use gunbc_ir::ResourceId;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+/// Binaries that should never trigger preflight (they ARE preflight tools).
 const PREFLIGHT_SKIP_BINARIES: &[&str] = &[
     "gunbc-codegen",
     "gunbc-codegen-dag",
@@ -27,8 +28,6 @@ const PREFLIGHT_SKIP_BINARIES: &[&str] = &[
     "gunbc-pragma",
     "gunbc-makegen",
 ];
-
-const PREFLIGHT_ENV_DISABLE: &str = "GUNBC_PREFLIGHT_DISABLE";
 
 /// Ensure lint is fresh (run lint-upsert if stale/missing).
 pub fn ensure_lint_upsert() -> Result<(), String> {
@@ -62,11 +61,8 @@ pub fn ensure_lint_upsert() -> Result<(), String> {
     Ok(())
 }
 
+/// Skip preflight when the current binary IS a preflight tool (prevents recursion).
 fn should_skip_preflight() -> bool {
-    if std::env::var(PREFLIGHT_ENV_DISABLE).is_ok() {
-        return true;
-    }
-
     let Some(name) = current_binary_name() else {
         return false;
     };
@@ -287,34 +283,28 @@ fn compute_lint_key(io: &dyn ResourceIo, files: &[PathBuf]) -> Result<ContentHas
 }
 
 fn run_lint_upsert(resource_id: &ResourceId) -> Result<(), ResourceError> {
-    // Always use --release for preflight commands. These tools (codegen, testgen,
-    // pragma) don't benefit from debug mode, and using release ensures we reuse
-    // cached artifacts when CI runs with --release (avoiding a 30+ min rebuild).
-
     let steps: &[(&str, CargoCommand)] = &[
         (
             "codegen-dag",
             CargoCommand::new(Subcommand::Run(CargoInvocation::composed(
                 "codegen-dag",
                 "dag",
-            )))
-            .release(),
+            ))),
         ),
         (
             "testgen",
-            CargoCommand::new(Subcommand::Run(CargoInvocation::composed("testgen", "dag")))
-                .release(),
+            CargoCommand::new(Subcommand::Run(CargoInvocation::composed("testgen", "dag"))),
         ),
         (
             "pragma",
-            CargoCommand::new(Subcommand::Run(CargoInvocation::composed("pragma", "dag")))
-                .release(),
+            CargoCommand::new(Subcommand::Run(CargoInvocation::composed("pragma", "dag"))),
         ),
     ];
 
     let total = steps.len() + 1; // +1 for clippy
     for (i, (label, cmd)) in steps.iter().enumerate() {
         eprint!("  [{}/{}] {}...", i + 1, total, label);
+        let _ = std::io::Write::flush(&mut std::io::stderr());
         let start = std::time::Instant::now();
         run_cargo_command(resource_id, cmd)?;
         eprintln!(" {:.1}s", start.elapsed().as_secs_f64());
@@ -323,6 +313,7 @@ fn run_lint_upsert(resource_id: &ResourceId) -> Result<(), ResourceError> {
     // clippy check: cargo clippy -- -D warnings
     // Note: no --all-targets for speed; CI still catches test-only lint issues
     eprint!("  [{}/{}] clippy...", total, total);
+    let _ = std::io::Write::flush(&mut std::io::stderr());
     let clippy_start = std::time::Instant::now();
     let clippy_check = CargoCommand::new(Subcommand::Clippy).warnings(Warnings::Deny);
     let clippy_result = run_cargo_command_response(resource_id, &clippy_check)?;
@@ -330,6 +321,7 @@ fn run_lint_upsert(resource_id: &ResourceId) -> Result<(), ResourceError> {
     if !clippy_result.success() {
         eprintln!(" fix needed ({:.1}s)", clippy_start.elapsed().as_secs_f64());
         eprint!("  [{}/{}] clippy --fix...", total, total);
+        let _ = std::io::Write::flush(&mut std::io::stderr());
         let fix_start = std::time::Instant::now();
 
         // clippy fix: cargo clippy --fix --workspace --allow-dirty --allow-staged -- -D warnings
@@ -362,10 +354,7 @@ fn run_lint_upsert(resource_id: &ResourceId) -> Result<(), ResourceError> {
 }
 
 /// Run a cargo command, failing on non-zero exit.
-fn run_cargo_command(
-    resource_id: &ResourceId,
-    cmd: &CargoCommand,
-) -> Result<(), ResourceError> {
+fn run_cargo_command(resource_id: &ResourceId, cmd: &CargoCommand) -> Result<(), ResourceError> {
     let response = run_cargo_command_response(resource_id, cmd)?;
     if response.success() {
         Ok(())
@@ -391,9 +380,7 @@ fn run_cargo_command_response(
     // this can take well over 5 minutes. Use FermiCost::L (30 min).
     const PREFLIGHT_TIMEOUT_MS: u64 = 1_800_000; // FermiCost::L = 30 min
 
-    let mut request = cmd.to_shell_request().timeout(PREFLIGHT_TIMEOUT_MS);
-    // Disable recursive preflight in child processes
-    request = request.env(PREFLIGHT_ENV_DISABLE, "1");
+    let request = cmd.to_shell_request().timeout(PREFLIGHT_TIMEOUT_MS);
 
     let response = execute_request(&TransportRequest::Shell(request))
         .map_err(|e| ResourceError::CreateFailed(resource_id.clone(), e.to_string()))?;
