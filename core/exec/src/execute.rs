@@ -2232,6 +2232,152 @@ mod tests {
         }
     }
 
+    // =========================================================================
+    // Coercion-kind-mapped tests
+    //
+    // These tests map 1:1 to the CoercionKind variants in coerce.rs and verify
+    // that the executor produces the correct value shapes for each classified
+    // coercion. See TODO_hacks "Coercion analysis may be ahead of runtime
+    // implementation" for context.
+    // =========================================================================
+
+    #[test]
+    fn test_coercion_wrap_scalar_single_edge() {
+        // CoercionKind::WrapScalar — a single scalar [1,1] output feeds a
+        // list [0,∞) input. The engine must wrap the scalar in a one-element
+        // Value::List.
+        let mut dag: Dag<TestOp> = Dag::new();
+        dag.add_node(Node::opaque(
+            "producer",
+            vec![],
+            vec![port("val", "String")], // [1,1]
+            TestOp::produce("val", Value::Str("wrapped".to_string())),
+        ));
+        dag.add_node(Node::opaque(
+            "consumer",
+            vec![list("items", "StringList")], // [0,∞)
+            vec![list("items", "StringList")],
+            TestOp::echo(),
+        ));
+        dag.add_edge(edge("producer", "val", "consumer", "items"));
+
+        let log = execute(&dag).unwrap();
+
+        let entry = log.get("consumer").unwrap();
+        match entry.outputs.get("items") {
+            Some(Value::List(items)) => {
+                assert_eq!(items.len(), 1, "WrapScalar should produce a one-element list");
+                assert_eq!(items[0], Value::Str("wrapped".to_string()));
+            }
+            other => panic!("WrapScalar: expected Value::List, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_coercion_optional_to_list_absent() {
+        // CoercionKind::OptionalToList (absent case) — an optional [0,1] output
+        // that produces Unit feeds a list [0,∞) input. The engine must produce
+        // an empty Value::List (Unit is skipped).
+        let mut dag: Dag<TestOp> = Dag::new();
+        dag.add_node(Node::opaque(
+            "producer",
+            vec![],
+            vec![optional("val", "OptionalString")], // [0,1]
+            TestOp::produce("val", Value::Unit),
+        ));
+        dag.add_node(Node::opaque(
+            "consumer",
+            vec![list("items", "StringList")], // [0,∞)
+            vec![list("items", "StringList")],
+            TestOp::echo(),
+        ));
+        dag.add_edge(edge("producer", "val", "consumer", "items"));
+
+        let log = execute(&dag).unwrap();
+
+        let entry = log.get("consumer").unwrap();
+        match entry.outputs.get("items") {
+            Some(Value::List(items)) => {
+                assert!(items.is_empty(), "OptionalToList (absent): should produce empty list");
+            }
+            other => panic!("OptionalToList (absent): expected Value::List, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_coercion_optional_to_list_present() {
+        // CoercionKind::OptionalToList (present case) — an optional [0,1] output
+        // that produces a real value feeds a list [0,∞) input. The engine must
+        // produce a one-element Value::List.
+        let mut dag: Dag<TestOp> = Dag::new();
+        dag.add_node(Node::opaque(
+            "producer",
+            vec![],
+            vec![optional("val", "OptionalString")], // [0,1]
+            TestOp::produce("val", Value::Str("present".to_string())),
+        ));
+        dag.add_node(Node::opaque(
+            "consumer",
+            vec![list("items", "StringList")], // [0,∞)
+            vec![list("items", "StringList")],
+            TestOp::echo(),
+        ));
+        dag.add_edge(edge("producer", "val", "consumer", "items"));
+
+        let log = execute(&dag).unwrap();
+
+        let entry = log.get("consumer").unwrap();
+        match entry.outputs.get("items") {
+            Some(Value::List(items)) => {
+                assert_eq!(items.len(), 1, "OptionalToList (present): should produce one-element list");
+                assert_eq!(items[0], Value::Str("present".to_string()));
+            }
+            other => panic!("OptionalToList (present): expected Value::List, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_coercion_widen_bounded_to_unbounded() {
+        // CoercionKind::Widen — a bounded [2,5] list output feeds an unbounded
+        // [0,∞) list input. The engine's fan-in collection flattens the list
+        // elements into the target bucket. This is a no-op transformation
+        // (elements pass through unchanged).
+        let mut dag: Dag<TestOp> = Dag::new();
+        dag.add_node(Node::opaque(
+            "producer",
+            vec![],
+            vec![gunbc_ir::Port::with_cardinality("vals", "StringList", Cardinality::new(2, Some(5)))], // [2,5]
+            TestOp::produce(
+                "vals",
+                Value::List(vec![
+                    Value::Str("a".to_string()),
+                    Value::Str("b".to_string()),
+                    Value::Str("c".to_string()),
+                ]),
+            ),
+        ));
+        dag.add_node(Node::opaque(
+            "consumer",
+            vec![list("items", "StringList")], // [0,∞)
+            vec![list("items", "StringList")],
+            TestOp::echo(),
+        ));
+        dag.add_edge(edge("producer", "vals", "consumer", "items"));
+
+        let log = execute(&dag).unwrap();
+
+        let entry = log.get("consumer").unwrap();
+        match entry.outputs.get("items") {
+            Some(Value::List(items)) => {
+                assert_eq!(items.len(), 3, "Widen: elements should pass through unchanged");
+                assert_eq!(items[0], Value::Str("a".to_string()));
+                assert_eq!(items[1], Value::Str("b".to_string()));
+                assert_eq!(items[2], Value::Str("c".to_string()));
+            }
+            other => panic!("Widen: expected Value::List, got {:?}", other),
+        }
+    }
+
     #[test]
     fn test_sim_config_builder() {
         let config = SimConfig::new()

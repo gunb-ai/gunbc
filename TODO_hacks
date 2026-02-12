@@ -99,44 +99,58 @@ Files:
 
 ---
 
-## Coercion coverage tests don't verify actual coercion (only "doesn't crash")
+## Coercion coverage tests don't verify actual coercion (only "doesn't crash") — PARTIAL FIX (2026-02-12)
 
 `build_coercion_coverage_tests()` generates tests that:
 1. Build the DAG
 2. Execute in DryRun
 3. Assert via `.expect()` that it didn't crash
+4. **NEW**: Assert the target node has a log entry (proving it actually executed)
 
-This is useful as a smoke test but won't catch "nested lists vs flat lists"
-or other shape bugs if downstream ops are mocked or loosely typed.
+This is better than just "didn't crash" but still won't catch shape bugs
+(e.g., nested lists vs flat lists) if downstream ops are loosely typed.
 
-**Suggested fix:** Either:
-- Inject a tiny "assert shape" node in test graphs, or
-- Have the test inspect downstream node's received inputs, or
-- Add explicit assertions on output value shapes after execution.
+The deeper fix (value-shape assertions) is blocked on one of:
+- Recording node inputs in the execution log (refactor `LogEntry`)
+- Injecting shape-assert nodes into test graphs (testgen complexity)
+
+For now, **definitive coercion behavior is verified by the 4 explicit
+coercion-kind-mapped tests in `execute.rs`** — these directly assert
+value shapes for each `CoercionKind`. The generated tests provide
+coverage that real DAGs don't crash at coercion edges.
 
 Files:
-  - core/codegen/src/testgen/codegen.rs (build_coercion_coverage_tests, line ~848)
+  - core/codegen/src/testgen/codegen.rs (build_coercion_coverage_tests)
+  - core/exec/src/execute.rs (test_coercion_* — definitive shape tests)
 
 ---
 
-## Coercion analysis may be ahead of runtime implementation
+## ~~Coercion analysis may be ahead of runtime implementation~~ AUDITED (2026-02-12)
 
-`core/ir/src/coerce.rs` classifies coercions as:
-- `WrapScalar` (scalar → list)
-- `OptionalToList` (optional → list)
-- `Widen` (cardinality widening)
+All three `classify_coercion()` kinds are correctly implemented by the
+executor's fan-in logic. No gap between analysis and runtime.
 
-The executor (execute.rs) now handles list→list concat and optional→list skip,
-but may not implement all classified coercion kinds. This can cause:
-- Obligations/tests generated for coercion kinds the engine doesn't perform
-- Subtle bugs where analysis says "safe" but runtime shape is wrong
+| CoercionKind    | Classification                           | Runtime behavior                              |
+|-----------------|------------------------------------------|-----------------------------------------------|
+| `WrapScalar`    | `from.is_scalar() && to.is_list()`       | Scalar pushed to fan-in bucket → `List([v])`  |
+| `OptionalToList`| `from == ZERO_OR_ONE && to.is_list()`    | Unit skipped → `List([])`; present → `List([v])` |
+| `Widen`         | `from.is_bounded() && !to.is_bounded()`  | List items flattened via fan-in → re-wrapped  |
 
-**Action:** Audit `classify_coercion()` kinds against actual executor behavior.
-Either implement missing coercions or constrain analysis to emit only supported kinds.
+Explicit coercion-kind-mapped tests added in `execute.rs` (4 tests):
+  - `test_coercion_wrap_scalar_single_edge`
+  - `test_coercion_optional_to_list_absent`
+  - `test_coercion_optional_to_list_present`
+  - `test_coercion_widen_bounded_to_unbounded`
+
+Generated coercion coverage tests (`build_coercion_coverage_tests`) now
+assert the target node actually executed (log entry exists), not just that
+the DAG didn't crash. No current DAGs trigger coercion edges (all builders
+use matching cardinalities), so the improvement is forward-looking.
 
 Files:
-  - core/ir/src/coerce.rs (classify_coercion)
-  - core/exec/src/execute.rs (fan-in logic)
+  - core/ir/src/coerce.rs (classify_coercion — unchanged, correct)
+  - core/exec/src/execute.rs (fan-in logic — added tests)
+  - core/codegen/src/testgen/codegen.rs (improved generated test assertions)
 
 ---
 
