@@ -11,7 +11,9 @@ mod github_credential_graph;
 mod graph;
 mod ops;
 
-pub use config_loader::{default_local_dev_config, graph_cloud_config, resolve_graph_cloud_config};
+pub use config_loader::{
+    default_local_dev_config, graph_cloud_config, resolve_graph_cloud_config, ConfigError,
+};
 pub use env_requirements::{
     aws_github_actions_env_stub, azure_github_actions_env_stub, cloud_env_matrix,
     collect_missing_requirements, detect_cloud_env_requirements, detect_provider_runtime,

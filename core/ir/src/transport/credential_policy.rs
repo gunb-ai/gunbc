@@ -177,8 +177,8 @@ pub struct CredentialPolicyDefaults {
     pub impersonation: Option<ImpersonationPolicy>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub version_selector: Option<VersionSelector>,
-    #[serde(default)]
-    pub scope_merge: ScopeMergeMode,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope_merge: Option<ScopeMergeMode>,
 }
 
 impl CredentialPolicyDefaults {
@@ -191,11 +191,7 @@ impl CredentialPolicyDefaults {
                 .version_selector
                 .clone()
                 .or_else(|| self.version_selector.clone()),
-            scope_merge: if child.scope_merge == ScopeMergeMode::Replace {
-                self.scope_merge
-            } else {
-                child.scope_merge
-            },
+            scope_merge: child.scope_merge.or(self.scope_merge),
         }
     }
 }
@@ -326,9 +322,12 @@ impl ResolvedCredentialIntentPolicy {
 fn merge_intent_policy(
     parent: &ResolvedCredentialIntentPolicy,
     child: &CredentialIntentPolicy,
-    default_scope_mode: &ScopeMergeMode,
+    default_scope_mode: &Option<ScopeMergeMode>,
 ) -> ResolvedCredentialIntentPolicy {
-    let scope_mode = child.scope_merge.unwrap_or(*default_scope_mode);
+    let scope_mode = child
+        .scope_merge
+        .or(*default_scope_mode)
+        .unwrap_or(ScopeMergeMode::Replace);
     let required_scopes = match (&child.required_scopes, scope_mode) {
         (Some(scopes), ScopeMergeMode::Replace) => scopes.clone(),
         (Some(scopes), ScopeMergeMode::Union) => {
@@ -434,7 +433,7 @@ mod tests {
                         version_selector: Some(VersionSelector::Alias {
                             name: "active".to_string(),
                         }),
-                        scope_merge: ScopeMergeMode::Replace,
+                        scope_merge: Some(ScopeMergeMode::Replace),
                     },
                     intents: vec![CredentialIntentPolicy {
                         intent: "github.gist.create".to_string(),
@@ -461,7 +460,7 @@ mod tests {
                         version_selector: Some(VersionSelector::Alias {
                             name: "dev-active".to_string(),
                         }),
-                        scope_merge: ScopeMergeMode::Replace,
+                        scope_merge: None,
                     },
                     intents: vec![CredentialIntentPolicy {
                         intent: "github.gist.create".to_string(),
@@ -562,5 +561,170 @@ mod tests {
             err,
             CredentialPolicyError::MissingSecretBinding { .. }
         ));
+    }
+
+    #[test]
+    fn child_explicit_replace_overrides_parent_union() {
+        // Parent sets scope_merge = Union at defaults level.
+        // Child explicitly sets scope_merge = Replace.
+        // The child's Replace must win, not be ignored.
+        let spec = CredentialPolicySpec {
+            version: 0,
+            default_profile: None,
+            profiles: vec![
+                CredentialPolicyProfile {
+                    name: "base".to_string(),
+                    inherits_from: None,
+                    defaults: CredentialPolicyDefaults {
+                        provider: Some(CloudProviderKind::Gcp),
+                        runtime: Some(CloudRuntimeKind::LocalDev),
+                        impersonation: None,
+                        version_selector: None,
+                        scope_merge: Some(ScopeMergeMode::Union),
+                    },
+                    intents: vec![CredentialIntentPolicy {
+                        intent: "github.gist.create".to_string(),
+                        provider: None,
+                        runtime: None,
+                        secret: Some(SecretBinding {
+                            name: "github-token".to_string(),
+                            prefix: Some("dev-".to_string()),
+                            delimiter: None,
+                        }),
+                        required_scopes: Some(vec!["gist:read".to_string()]),
+                        scope_merge: None,
+                        impersonation: None,
+                        version_selector: None,
+                    }],
+                },
+                CredentialPolicyProfile {
+                    name: "strict".to_string(),
+                    inherits_from: Some("base".to_string()),
+                    defaults: CredentialPolicyDefaults {
+                        provider: None,
+                        runtime: None,
+                        impersonation: None,
+                        version_selector: None,
+                        scope_merge: Some(ScopeMergeMode::Replace),
+                    },
+                    intents: vec![CredentialIntentPolicy {
+                        intent: "github.gist.create".to_string(),
+                        provider: None,
+                        runtime: None,
+                        secret: None,
+                        required_scopes: Some(vec!["gist:write".to_string()]),
+                        scope_merge: None, // inherits defaults scope_merge
+                        impersonation: None,
+                        version_selector: None,
+                    }],
+                },
+            ],
+        };
+
+        let resolved = spec
+            .resolve_profile("strict")
+            .expect("profile should resolve");
+
+        // The resolved defaults should have Replace (child's explicit value).
+        assert_eq!(
+            resolved.defaults.scope_merge,
+            Some(ScopeMergeMode::Replace),
+            "child explicit Replace must override parent Union at defaults level"
+        );
+
+        // The intent scopes should be replaced, not unioned.
+        let intent = resolved
+            .intents
+            .get("github.gist.create")
+            .expect("intent should exist");
+        assert_eq!(
+            intent.required_scopes,
+            vec!["gist:write".to_string()],
+            "scope_merge=Replace means child scopes replace parent scopes"
+        );
+    }
+
+    #[test]
+    fn child_omitted_scope_merge_inherits_parent_union() {
+        // Parent sets scope_merge = Union.
+        // Child omits scope_merge (None).
+        // The child should inherit Union from the parent.
+        let spec = CredentialPolicySpec {
+            version: 0,
+            default_profile: None,
+            profiles: vec![
+                CredentialPolicyProfile {
+                    name: "base".to_string(),
+                    inherits_from: None,
+                    defaults: CredentialPolicyDefaults {
+                        provider: Some(CloudProviderKind::Gcp),
+                        runtime: Some(CloudRuntimeKind::LocalDev),
+                        impersonation: None,
+                        version_selector: None,
+                        scope_merge: Some(ScopeMergeMode::Union),
+                    },
+                    intents: vec![CredentialIntentPolicy {
+                        intent: "github.gist.create".to_string(),
+                        provider: None,
+                        runtime: None,
+                        secret: Some(SecretBinding {
+                            name: "github-token".to_string(),
+                            prefix: Some("dev-".to_string()),
+                            delimiter: None,
+                        }),
+                        required_scopes: Some(vec!["gist:read".to_string()]),
+                        scope_merge: None,
+                        impersonation: None,
+                        version_selector: None,
+                    }],
+                },
+                CredentialPolicyProfile {
+                    name: "dev".to_string(),
+                    inherits_from: Some("base".to_string()),
+                    defaults: CredentialPolicyDefaults {
+                        provider: None,
+                        runtime: None,
+                        impersonation: None,
+                        version_selector: None,
+                        scope_merge: None, // not set -- should inherit Union
+                    },
+                    intents: vec![CredentialIntentPolicy {
+                        intent: "github.gist.create".to_string(),
+                        provider: None,
+                        runtime: None,
+                        secret: None,
+                        required_scopes: Some(vec!["gist:write".to_string()]),
+                        scope_merge: None,
+                        impersonation: None,
+                        version_selector: None,
+                    }],
+                },
+            ],
+        };
+
+        let resolved = spec
+            .resolve_profile("dev")
+            .expect("profile should resolve");
+
+        // Should inherit parent's Union.
+        assert_eq!(
+            resolved.defaults.scope_merge,
+            Some(ScopeMergeMode::Union),
+            "omitted scope_merge should inherit parent Union"
+        );
+
+        // Scopes should be unioned (parent read + child write).
+        let intent = resolved
+            .intents
+            .get("github.gist.create")
+            .expect("intent should exist");
+        assert!(
+            intent.required_scopes.contains(&"gist:read".to_string()),
+            "parent scope should be included via union"
+        );
+        assert!(
+            intent.required_scopes.contains(&"gist:write".to_string()),
+            "child scope should be included via union"
+        );
     }
 }

@@ -110,14 +110,22 @@ pub struct BuildConfig {
     pub bootstrap: BuildCommand,
     /// Command to generate pragma artifacts (clippy.toml + allowlists)
     pub pragma: BuildCommand,
-    /// Command to check if generated tests are stale
+    /// Command to check if generated tests are stale (`--mode=verify`)
     pub testgen_check: BuildCommand,
-    /// Command to check if generated Makefile is stale
+    /// Command to check if generated Makefile is stale (`--mode=verify`)
     pub makegen_check: BuildCommand,
-    /// Command to check if generated bootstrap files are stale
+    /// Command to check if generated bootstrap files are stale (`--mode=verify`)
     pub bootstrap_check: BuildCommand,
-    /// Command to check if generated pragma/clippy config is stale
+    /// Command to check if generated pragma/clippy config is stale (`--mode=verify`)
     pub pragma_check: BuildCommand,
+    /// Command to ensure generated tests are up to date (`--mode=ensure`)
+    pub testgen_ensure: BuildCommand,
+    /// Command to ensure generated Makefile is up to date (`--mode=ensure`)
+    pub makegen_ensure: BuildCommand,
+    /// Command to ensure generated bootstrap files are up to date (`--mode=ensure`)
+    pub bootstrap_ensure: BuildCommand,
+    /// Command to ensure generated pragma/clippy config is up to date (`--mode=ensure`)
+    pub pragma_ensure: BuildCommand,
 }
 
 impl BuildConfig {
@@ -136,14 +144,14 @@ impl BuildConfig {
             warnings: w,
             ensure_codegen: c(CargoCommand::new(Subcommand::Run(codegen_inv.clone()))
                 .release()
-                .trailing_arg("codegen")
+                .args(BinaryArgs::codegen(CodegenSubcommand::Codegen))
                 .warnings(w)),
             codegen: c(CargoCommand::new(Subcommand::Run(codegen_dag_inv.clone()))
                 .release()
                 .warnings(w)),
             daggen: c(CargoCommand::new(Subcommand::Run(codegen_inv.clone()))
                 .release()
-                .trailing_arg("daggen")
+                .args(BinaryArgs::codegen(CodegenSubcommand::Daggen))
                 .warnings(w)),
             build: c(CargoCommand::new(Subcommand::Build)
                 .all_targets()
@@ -165,7 +173,7 @@ impl BuildConfig {
                 .warnings(w)),
             ci_yaml: c(CargoCommand::new(Subcommand::Run(codegen_inv.clone()))
                 .release()
-                .trailing_arg("cigen")
+                .args(BinaryArgs::codegen(CodegenSubcommand::Cigen))
                 .warnings(w)),
             testgen: c(
                 CargoCommand::new(Subcommand::Run(WorkspaceBinary::Testgen.invocation()))
@@ -186,25 +194,49 @@ impl BuildConfig {
                 WorkspaceBinary::Testgen.invocation(),
             ))
             .release()
-            .trailing_arg("--mode=verify")
+            .args(BinaryArgs::with_mode(ExecMode::Verify))
             .warnings(w)),
             makegen_check: c(CargoCommand::new(Subcommand::Run(
                 WorkspaceBinary::Makegen.invocation(),
             ))
             .release()
-            .trailing_arg("--mode=verify")
+            .args(BinaryArgs::with_mode(ExecMode::Verify))
             .warnings(w)),
             bootstrap_check: c(CargoCommand::new(Subcommand::Run(
                 WorkspaceBinary::Bootstrap.invocation(),
             ))
             .release()
-            .trailing_arg("--mode=verify")
+            .args(BinaryArgs::with_mode(ExecMode::Verify))
             .warnings(w)),
             pragma_check: c(CargoCommand::new(Subcommand::Run(
                 WorkspaceBinary::Pragma.invocation(),
             ))
             .release()
-            .trailing_arg("--mode=verify")
+            .args(BinaryArgs::with_mode(ExecMode::Verify))
+            .warnings(w)),
+            testgen_ensure: c(CargoCommand::new(Subcommand::Run(
+                WorkspaceBinary::Testgen.invocation(),
+            ))
+            .release()
+            .args(BinaryArgs::with_mode(ExecMode::Ensure))
+            .warnings(w)),
+            makegen_ensure: c(CargoCommand::new(Subcommand::Run(
+                WorkspaceBinary::Makegen.invocation(),
+            ))
+            .release()
+            .args(BinaryArgs::with_mode(ExecMode::Ensure))
+            .warnings(w)),
+            bootstrap_ensure: c(CargoCommand::new(Subcommand::Run(
+                WorkspaceBinary::Bootstrap.invocation(),
+            ))
+            .release()
+            .args(BinaryArgs::with_mode(ExecMode::Ensure))
+            .warnings(w)),
+            pragma_ensure: c(CargoCommand::new(Subcommand::Run(
+                WorkspaceBinary::Pragma.invocation(),
+            ))
+            .release()
+            .args(BinaryArgs::with_mode(ExecMode::Ensure))
             .warnings(w)),
         }
     }
@@ -246,14 +278,14 @@ impl BuildConfig {
             warnings: w,
             ensure_codegen: c(CargoCommand::new(Subcommand::Run(codegen_inv.clone()))
                 .release()
-                .trailing_arg("codegen")
+                .args(BinaryArgs::codegen(CodegenSubcommand::Codegen))
                 .warnings(w)),
             codegen: c(CargoCommand::new(Subcommand::Run(codegen_dag_inv.clone()))
                 .release()
                 .warnings(w)),
             daggen: c(CargoCommand::new(Subcommand::Run(codegen_inv.clone()))
                 .release()
-                .trailing_arg("daggen")
+                .args(BinaryArgs::codegen(CodegenSubcommand::Daggen))
                 .warnings(w)),
             // Buck2-native commands
             build: sh(&["buck2", "build", "//..."]),
@@ -272,7 +304,7 @@ impl BuildConfig {
             check: sh(&["buck2", "build", "//..."]),
             ci_yaml: c(CargoCommand::new(Subcommand::Run(codegen_inv.clone()))
                 .release()
-                .trailing_arg("cigen")
+                .args(BinaryArgs::codegen(CodegenSubcommand::Cigen))
                 .warnings(w)),
             // testgen uses cargo (no buck2 equivalent yet)
             testgen: c(
@@ -294,25 +326,49 @@ impl BuildConfig {
                 WorkspaceBinary::Testgen.invocation(),
             ))
             .release()
-            .trailing_arg("--mode=verify")
+            .args(BinaryArgs::with_mode(ExecMode::Verify))
             .warnings(w)),
             makegen_check: c(CargoCommand::new(Subcommand::Run(
                 WorkspaceBinary::Makegen.invocation(),
             ))
             .release()
-            .trailing_arg("--mode=verify")
+            .args(BinaryArgs::with_mode(ExecMode::Verify))
             .warnings(w)),
             bootstrap_check: c(CargoCommand::new(Subcommand::Run(
                 WorkspaceBinary::Bootstrap.invocation(),
             ))
             .release()
-            .trailing_arg("--mode=verify")
+            .args(BinaryArgs::with_mode(ExecMode::Verify))
             .warnings(w)),
             pragma_check: c(CargoCommand::new(Subcommand::Run(
                 WorkspaceBinary::Pragma.invocation(),
             ))
             .release()
-            .trailing_arg("--mode=verify")
+            .args(BinaryArgs::with_mode(ExecMode::Verify))
+            .warnings(w)),
+            testgen_ensure: c(CargoCommand::new(Subcommand::Run(
+                WorkspaceBinary::Testgen.invocation(),
+            ))
+            .release()
+            .args(BinaryArgs::with_mode(ExecMode::Ensure))
+            .warnings(w)),
+            makegen_ensure: c(CargoCommand::new(Subcommand::Run(
+                WorkspaceBinary::Makegen.invocation(),
+            ))
+            .release()
+            .args(BinaryArgs::with_mode(ExecMode::Ensure))
+            .warnings(w)),
+            bootstrap_ensure: c(CargoCommand::new(Subcommand::Run(
+                WorkspaceBinary::Bootstrap.invocation(),
+            ))
+            .release()
+            .args(BinaryArgs::with_mode(ExecMode::Ensure))
+            .warnings(w)),
+            pragma_ensure: c(CargoCommand::new(Subcommand::Run(
+                WorkspaceBinary::Pragma.invocation(),
+            ))
+            .release()
+            .args(BinaryArgs::with_mode(ExecMode::Ensure))
             .warnings(w)),
         }
     }
@@ -375,6 +431,41 @@ impl BuildConfig {
     /// Get the testgen-check command as a shell string.
     pub fn testgen_check_shell(&self) -> String {
         format!("@{}", self.testgen_check.to_shell())
+    }
+
+    /// Get the makegen-check command as a shell string.
+    pub fn makegen_check_shell(&self) -> String {
+        format!("@{}", self.makegen_check.to_shell())
+    }
+
+    /// Get the bootstrap-check command as a shell string.
+    pub fn bootstrap_check_shell(&self) -> String {
+        format!("@{}", self.bootstrap_check.to_shell())
+    }
+
+    /// Get the pragma-check command as a shell string.
+    pub fn pragma_check_shell(&self) -> String {
+        format!("@{}", self.pragma_check.to_shell())
+    }
+
+    /// Get the testgen-ensure command as a shell string.
+    pub fn testgen_ensure_shell(&self) -> String {
+        format!("@{}", self.testgen_ensure.to_shell())
+    }
+
+    /// Get the makegen-ensure command as a shell string.
+    pub fn makegen_ensure_shell(&self) -> String {
+        format!("@{}", self.makegen_ensure.to_shell())
+    }
+
+    /// Get the bootstrap-ensure command as a shell string.
+    pub fn bootstrap_ensure_shell(&self) -> String {
+        format!("@{}", self.bootstrap_ensure.to_shell())
+    }
+
+    /// Get the pragma-ensure command as a shell string.
+    pub fn pragma_ensure_shell(&self) -> String {
+        format!("@{}", self.pragma_ensure.to_shell())
     }
 }
 

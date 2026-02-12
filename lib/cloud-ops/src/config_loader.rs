@@ -6,10 +6,38 @@
 //! 3. Resolving namespace inheritance
 //! 4. Converting to runtime `CloudSecretConfig`
 
+use std::fmt;
+
 use gunbc_ir::transport::cloud::{
     CloudConfigSpec, CloudNamespace, CloudProviderKind, CloudRuntimeKind, CloudSecretConfig,
     CloudSecretRef,
 };
+
+// ---------------------------------------------------------------------------
+// Config error types
+// ---------------------------------------------------------------------------
+
+/// Error type for cloud config resolution.
+///
+/// Distinguishes between "no config source is set" (safe to fall back to
+/// dev defaults) and "a config source is present but invalid" (must surface
+/// the misconfiguration immediately).
+#[derive(Debug, Clone)]
+pub enum ConfigError {
+    /// No config env vars are set at all -- safe to use dev defaults.
+    NotConfigured(String),
+    /// A config source is present but malformed or references an unknown namespace.
+    Invalid(String),
+}
+
+impl fmt::Display for ConfigError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ConfigError::NotConfigured(msg) => write!(f, "not configured: {msg}"),
+            ConfigError::Invalid(msg) => write!(f, "invalid config: {msg}"),
+        }
+    }
+}
 
 const ENV_CONFIG_JSON: &str = "GUNBC_CLOUD_CONFIG_JSON";
 const ENV_CONFIG_TOML: &str = "GUNBC_CLOUD_CONFIG_TOML";
@@ -146,11 +174,15 @@ pub fn detect_runtime() -> CloudRuntimeKind {
 /// 2) `GUNBC_CLOUD_CONFIG_TOML` (+ namespace/profile selection)
 /// 3) Legacy env model (`GCP_*`)
 ///
-/// If no source is configured, this returns an error.
-pub fn resolve_graph_cloud_config() -> Result<CloudSecretConfig, String> {
+/// Returns `ConfigError::NotConfigured` when no config source is set at all,
+/// and `ConfigError::Invalid` when a source is present but malformed or
+/// references an unknown namespace.
+pub fn resolve_graph_cloud_config() -> Result<CloudSecretConfig, ConfigError> {
     if let Some(raw_json) = env_nonempty(ENV_CONFIG_JSON) {
         let mut config: CloudSecretConfig = serde_json::from_str(&raw_json).map_err(|e| {
-            format!("{ENV_CONFIG_JSON} must contain valid CloudSecretConfig JSON: {e}")
+            ConfigError::Invalid(format!(
+                "{ENV_CONFIG_JSON} must contain valid CloudSecretConfig JSON: {e}"
+            ))
         })?;
         if let Some(version) = env_nonempty(ENV_SECRET_VERSION) {
             config.secret.version = Some(version);
@@ -160,20 +192,24 @@ pub fn resolve_graph_cloud_config() -> Result<CloudSecretConfig, String> {
 
     if let Some(raw_toml) = env_nonempty(ENV_CONFIG_TOML) {
         let spec = parse_config_toml(&raw_toml)
-            .map_err(|e| format!("failed to parse {ENV_CONFIG_TOML}: {e}"))?;
+            .map_err(|e| ConfigError::Invalid(format!("failed to parse {ENV_CONFIG_TOML}: {e}")))?;
         let runtime = runtime_with_override();
         let namespace = env_nonempty(ENV_NAMESPACE)
             .or_else(|| env_nonempty(ENV_PROFILE))
             .or_else(|| spec.default_namespace.clone())
             .ok_or_else(|| {
-                format!(
+                ConfigError::Invalid(format!(
                     "{ENV_CONFIG_TOML} is set but no namespace/profile resolved; set {ENV_NAMESPACE} or {ENV_PROFILE}, or include default_namespace"
-                )
+                ))
             })?;
 
         let mut config = spec
             .to_secret_config(&namespace, runtime, "")
-            .ok_or_else(|| format!("namespace '{namespace}' could not be resolved from config"))?;
+            .ok_or_else(|| {
+                ConfigError::Invalid(format!(
+                    "namespace '{namespace}' could not be resolved from config"
+                ))
+            })?;
         if let Some(version) = env_nonempty(ENV_SECRET_VERSION) {
             config.secret.version = Some(version);
         }
@@ -184,21 +220,28 @@ pub fn resolve_graph_cloud_config() -> Result<CloudSecretConfig, String> {
         return Ok(config);
     }
 
-    Err(format!(
+    Err(ConfigError::NotConfigured(format!(
         "no cloud config source found (expected {ENV_CONFIG_JSON} or {ENV_CONFIG_TOML}, or legacy {LEGACY_ENV_SECRETS_PROJECT}/{LEGACY_ENV_SECRETS_PREFIX})"
-    ))
+    )))
 }
 
 /// Resolve graph cloud config with compatibility fallback.
 ///
-/// When config sources are absent, this falls back to `default_local_dev_config()`
-/// unless `GUNBC_CLOUD_CONFIG_REQUIRED=1|true`.
+/// When no config source is present at all (`NotConfigured`), this falls back
+/// to `default_local_dev_config()` unless `GUNBC_CLOUD_CONFIG_REQUIRED=1|true`.
+///
+/// When a config source **is** present but malformed or references an unknown
+/// namespace (`Invalid`), this always panics -- silently using dev defaults
+/// for broken config would route credentials to the wrong project/prefix.
 pub fn graph_cloud_config() -> CloudSecretConfig {
     match resolve_graph_cloud_config() {
         Ok(config) => config,
-        Err(err) => {
+        Err(ConfigError::Invalid(msg)) => {
+            panic!("cloud config is present but invalid: {msg}");
+        }
+        Err(ConfigError::NotConfigured(msg)) => {
             if env_truthy(ENV_CONFIG_REQUIRED) {
-                panic!("cloud config resolution failed: {err}");
+                panic!("cloud config resolution failed: {msg}");
             }
             default_local_dev_config()
         }
@@ -503,6 +546,25 @@ service_account = "gunbai-prod-secrets@gunbai-secrets.iam.gserviceaccount.com"
     fn graph_cloud_config_panics_when_required_flag_is_set() {
         with_env_lock(|| {
             std::env::set_var(ENV_CONFIG_REQUIRED, "true");
+            let _ = graph_cloud_config();
+        });
+    }
+
+    #[test]
+    #[should_panic(expected = "cloud config is present but invalid")]
+    fn graph_cloud_config_panics_on_malformed_json() {
+        with_env_lock(|| {
+            std::env::set_var(ENV_CONFIG_JSON, "{ not valid json }");
+            let _ = graph_cloud_config();
+        });
+    }
+
+    #[test]
+    #[should_panic(expected = "cloud config is present but invalid")]
+    fn graph_cloud_config_panics_on_unknown_toml_namespace() {
+        with_env_lock(|| {
+            std::env::set_var(ENV_CONFIG_TOML, SAMPLE_TOML);
+            std::env::set_var(ENV_NAMESPACE, "nonexistent");
             let _ = graph_cloud_config();
         });
     }

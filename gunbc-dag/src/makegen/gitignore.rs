@@ -12,6 +12,8 @@
 //! - `rationale`: Why these files are ignored
 
 use crate::makegen::registry::{BuildConfig, BuildSystem};
+use crate::WorkspaceBinary;
+use gunbc_ir::cargo::{CargoCommand, Subcommand};
 use gunbc_ir::render_ir::{Category, FileHeader, PlainText, StructuredRenderer};
 use gunbc_ir::symbols::{Tier, STANDARD};
 use gunbc_ir::MakefileStructuredRenderer;
@@ -31,136 +33,136 @@ pub fn derive_categories(config: &BuildConfig) -> Vec<Category> {
     match config.build_system {
         BuildSystem::Cargo => {
             categories.push(Category {
-                name: "Cargo build artifacts".to_string(),
-                source: Some("cargo".to_string()),
-                items: vec!["/target/".to_string(), "/target-codex/".to_string()],
-                rationale: Some("Reproducible from source via cargo build".to_string()),
+                name: "Cargo build artifacts".into(),
+                source: Some("cargo".into()),
+                items: vec!["/target/".into(), "/target-codex/".into()],
+                rationale: Some("Reproducible from source via cargo build".into()),
             });
             categories.push(Category {
-                name: "Cargo cache (local CARGO_HOME)".to_string(),
-                source: Some("tool/rust".to_string()),
-                items: vec!["/.cargo-home/".to_string()],
+                name: "Cargo cache (local CARGO_HOME)".into(),
+                source: Some("tool/rust".into()),
+                items: vec!["/.cargo-home/".into()],
                 rationale: Some(
-                    "Local Cargo cache may include git checkouts; not project state".to_string(),
+                    "Local Cargo cache may include git checkouts; not project state".into(),
                 ),
             });
             categories.push(Category {
-                name: "Codegen bin symlink".to_string(),
-                source: Some("codegen".to_string()),
-                items: vec!["/bin/".to_string()],
-                rationale: Some("Symlink to target/release created by codegen".to_string()),
+                name: "Codegen bin symlink".into(),
+                source: Some("codegen".into()),
+                items: vec!["/bin/".into()],
+                rationale: Some("Symlink to target/release created by codegen".into()),
             });
         }
         BuildSystem::Buck2 => {
             // Buck2 uses both cargo (for codegen) and buck2 (for build)
             categories.push(Category {
-                name: "Cargo build artifacts".to_string(),
-                source: Some("cargo".to_string()),
-                items: vec!["/target/".to_string(), "/target-codex/".to_string()],
-                rationale: Some("Reproducible from source via cargo build".to_string()),
+                name: "Cargo build artifacts".into(),
+                source: Some("cargo".into()),
+                items: vec!["/target/".into(), "/target-codex/".into()],
+                rationale: Some("Reproducible from source via cargo build".into()),
             });
             categories.push(Category {
-                name: "Cargo cache (local CARGO_HOME)".to_string(),
-                source: Some("tool/rust".to_string()),
-                items: vec!["/.cargo-home/".to_string()],
+                name: "Cargo cache (local CARGO_HOME)".into(),
+                source: Some("tool/rust".into()),
+                items: vec!["/.cargo-home/".into()],
                 rationale: Some(
-                    "Local Cargo cache may include git checkouts; not project state".to_string(),
+                    "Local Cargo cache may include git checkouts; not project state".into(),
                 ),
             });
             categories.push(Category {
-                name: "Codegen bin symlink".to_string(),
-                source: Some("codegen".to_string()),
-                items: vec!["/bin/".to_string()],
-                rationale: Some("Symlink to target/release created by codegen".to_string()),
+                name: "Codegen bin symlink".into(),
+                source: Some("codegen".into()),
+                items: vec!["/bin/".into()],
+                rationale: Some("Symlink to target/release created by codegen".into()),
             });
             categories.push(Category {
-                name: "Buck2 build artifacts".to_string(),
-                source: Some("buck2".to_string()),
-                items: vec!["/buck-out/".to_string()],
-                rationale: Some("Reproducible from source via buck2 build".to_string()),
+                name: "Buck2 build artifacts".into(),
+                source: Some("buck2".into()),
+                items: vec!["/buck-out/".into()],
+                rationale: Some("Reproducible from source via buck2 build".into()),
             });
             categories.push(Category {
-                name: "Vendored dependencies".to_string(),
-                source: Some("buck2".to_string()),
+                name: "Vendored dependencies".into(),
+                source: Some("buck2".into()),
                 items: vec![
-                    "/third-party/rust/vendor/".to_string(),
-                    "/third-party/rust/.cargo/".to_string(),
+                    "/third-party/rust/vendor/".into(),
+                    "/third-party/rust/.cargo/".into(),
                 ],
-                rationale: Some("Reproducible from lockfile via reindeer vendor".to_string()),
+                rationale: Some("Reproducible from lockfile via reindeer vendor".into()),
             });
         }
     }
 
     // Coverage is always included (cargo-tarpaulin)
     categories.push(Category {
-        name: "Coverage reports".to_string(),
-        source: Some("cargo-tarpaulin".to_string()),
+        name: "Coverage reports".into(),
+        source: Some("cargo-tarpaulin".into()),
         items: vec![
-            "tarpaulin-report.html".to_string(),
-            "tarpaulin-report.json".to_string(),
-            "cobertura.xml".to_string(),
-            "lcov.info".to_string(),
-            "coverage/".to_string(),
+            "tarpaulin-report.html".into(),
+            "tarpaulin-report.json".into(),
+            "cobertura.xml".into(),
+            "lcov.info".into(),
+            "coverage/".into(),
         ],
-        rationale: Some("Generated, often large, reproducible".to_string()),
+        rationale: Some("Generated, often large, reproducible".into()),
     });
 
     // Universal categories (always included)
     categories.push(Category {
-        name: "Editor/IDE state".to_string(),
-        source: Some("editor".to_string()),
+        name: "Editor/IDE state".into(),
+        source: Some("editor".into()),
         items: vec![
-            ".idea/".to_string(),
-            ".vscode/".to_string(),
-            "*.swp".to_string(),
-            "*.swo".to_string(),
-            "*~".to_string(),
+            ".idea/".into(),
+            ".vscode/".into(),
+            "*.swp".into(),
+            "*.swo".into(),
+            "*~".into(),
         ],
-        rationale: Some("Per-developer configuration, not project state".to_string()),
+        rationale: Some("Per-developer configuration, not project state".into()),
     });
     categories.push(Category {
-        name: "OS metadata".to_string(),
-        source: Some("os".to_string()),
-        items: vec![".DS_Store".to_string(), "Thumbs.db".to_string()],
-        rationale: Some("OS-generated, not project state".to_string()),
+        name: "OS metadata".into(),
+        source: Some("os".into()),
+        items: vec![".DS_Store".into(), "Thumbs.db".into()],
+        rationale: Some("OS-generated, not project state".into()),
     });
     categories.push(Category {
-        name: "Secrets and local config".to_string(),
-        source: Some("secrets".to_string()),
+        name: "Secrets and local config".into(),
+        source: Some("secrets".into()),
         items: vec![
-            ".env".to_string(),
-            ".env.local".to_string(),
-            ".env.*.local".to_string(),
+            ".env".into(),
+            ".env.local".into(),
+            ".env.*.local".into(),
         ],
-        rationale: Some("Environment-specific, may contain secrets".to_string()),
+        rationale: Some("Environment-specific, may contain secrets".into()),
     });
     categories.push(Category {
-        name: "Generator stamp files".to_string(),
-        source: Some("generators".to_string()),
-        items: vec![".*-stamp".to_string()],
-        rationale: Some("Producer-centric model stamps; regenerated by make targets".to_string()),
+        name: "Generator stamp files".into(),
+        source: Some("generators".into()),
+        items: vec![".*-stamp".into()],
+        rationale: Some("Producer-centric model stamps; regenerated by make targets".into()),
     });
     categories.push(Category {
-        name: "Bootstrap outputs".to_string(),
-        source: Some("bootstrap".to_string()),
-        items: vec!["/Makefile".to_string(), "/output".to_string()],
-        rationale: Some("Regenerated by gunbc-bootstrap/makegen; not source-of-truth".to_string()),
+        name: "Bootstrap outputs".into(),
+        source: Some("bootstrap".into()),
+        items: vec!["/Makefile".into(), "/output".into()],
+        rationale: Some("Regenerated by gunbc-bootstrap/makegen; not source-of-truth".into()),
     });
     categories.push(Category {
-        name: "Pragma outputs".to_string(),
-        source: Some("pragma".to_string()),
+        name: "Pragma outputs".into(),
+        source: Some("pragma".into()),
         items: vec![
-            "/clippy.toml".to_string(),
-            "/tools/disallowed-methods-allowlist.txt".to_string(),
-            "/tools/pragma-lint-policy.txt".to_string(),
+            "/clippy.toml".into(),
+            "/tools/disallowed-methods-allowlist.txt".into(),
+            "/tools/pragma-lint-policy.txt".into(),
         ],
-        rationale: Some("Regenerated by gunbc-pragma; not source-of-truth".to_string()),
+        rationale: Some("Regenerated by gunbc-pragma; not source-of-truth".into()),
     });
     categories.push(Category {
-        name: "Generated test files".to_string(),
-        source: Some("testgen".to_string()),
-        items: vec!["**/generated_tests*.rs".to_string()],
-        rationale: Some("Regenerated by make testgen; staleness checked by make test".to_string()),
+        name: "Generated test files".into(),
+        source: Some("testgen".into()),
+        items: vec!["**/generated_tests*.rs".into()],
+        rationale: Some("Regenerated by make testgen; staleness checked by make test".into()),
     });
 
     categories
@@ -197,11 +199,14 @@ impl<'a> GitignoreRenderer<'a> {
 
     /// Render the complete .gitignore with header.
     pub fn render(&self) -> String {
+        let regenerate_cmd = CargoCommand::new(Subcommand::Run(
+            WorkspaceBinary::Bootstrap.invocation(),
+        ))
+        .release();
         let header = FileHeader {
-            generator_name: "gunbc-bootstrap".to_string(),
-            regenerate_command: "cargo run -p gunbc-dag --bin gunbc-bootstrap --release"
-                .to_string(),
-            comment_prefix: "#".to_string(),
+            generator_name: "gunbc-bootstrap".into(),
+            regenerate_command: regenerate_cmd.to_shell().into(),
+            comment_prefix: "#".into(),
         };
         format!("{}\n\n{}", header.render(), self.render_content())
     }
