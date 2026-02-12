@@ -1,6 +1,6 @@
 # CI Timeout & Fermi Cost Estimation
 
-## Status: Design / TODO
+## Status: Implemented (simple), full fermi integration deferred
 
 ## Problem
 
@@ -13,87 +13,49 @@ Our CI was running indefinitely at `preflight: lint-upsert (missing)` because:
 3. **stdin inheritance** — `execute_shell` didn't set `Stdio::null()` for
    commands without explicit stdin, causing potential deadlocks in CI
 
-## What's Already Fixed
+## What's Fixed
 
 | Fix | Location | Scope |
 |-----|----------|-------|
 | `timeout-minutes: 30` in generated YAML | `RenderConfig.timeout_minutes`, `WorkflowConfig.timeout_minutes` | All generated CI workflows (GitHub Actions + GitLab CI) |
 | `Stdio::null()` default | `executor.rs:execute_shell` | Every shell command (central function) |
 | `ShellRequest.timeout_ms` field | `core/ir/src/transport/mod.rs` | Available on all shell requests |
-| `try_wait` + kill-on-expiry | `executor.rs:execute_shell` | Every shell command with `timeout_ms` set |
+| Default 5 min timeout (FermiCost::S) | `executor.rs:execute_shell` `DEFAULT_TIMEOUT_MS` | Every shell command, even without explicit timeout |
+| `try_wait` + kill-on-expiry | `executor.rs:execute_shell` | Every shell command (always active) |
+| `FermiCost::timeout_ms()` method | `core/test/src/fermi.rs` | Canonical timeout-per-cost-bucket mapping |
 
-## What's Missing: Default Timeout Policy
-
-The `timeout_ms` field on `ShellRequest` is opt-in (`None` = wait forever).
-This means existing callers (preflight, pragma-lint, etc.) still have no timeout
-unless they explicitly set one.
-
-### Design Options
-
-#### Option A: Global default in `execute_shell` (recommended)
-
-Add a `DEFAULT_SHELL_TIMEOUT_MS` constant (e.g., 5 minutes = 300_000) that
-applies when `timeout_ms` is `None`. Callers that truly need long-running
-commands (e.g., full `cargo build --release`) can set an explicit higher value.
+### How the Default Timeout Works
 
 ```text
 execute_shell():
-  timeout = request.timeout_ms
-           .unwrap_or(DEFAULT_SHELL_TIMEOUT_MS)  // 5 min
+  timeout = request.timeout_ms           // caller-specified
+           .unwrap_or(DEFAULT_TIMEOUT_MS) // 300_000 ms = FermiCost::S = 5 min
 ```
 
-**Pro**: Every caller gets a timeout for free. No code changes needed.
-**Con**: Must audit callers that legitimately take > 5 min (cargo release builds).
+Every shell command now gets a 5-minute timeout by default. Callers that need
+longer (e.g., `cargo build --release`) can set `ShellRequest::timeout(ms)`.
 
-#### Option B: Fermi-estimated timeout per operation
+### FermiCost → Timeout Mapping
 
-Each DAG operation declares a `FermiCost` (already in `core/test/src/fermi.rs`).
-Map cost to timeout:
+`core/test/src/fermi.rs` now has `FermiCost::timeout_ms()`:
 
 ```text
-FermiCost::XS → 30s
-FermiCost::S  → 2 min
-FermiCost::M  → 10 min
-FermiCost::L  → 30 min
-FermiCost::XL → 60 min
+FermiCost::XS →  30 s
+FermiCost::S  →   5 min  (DEFAULT_TIMEOUT_MS in executor)
+FermiCost::M  →  10 min
+FermiCost::L  →  30 min
+FermiCost::XL →  60 min
 ```
 
-This extends the existing test-gating pattern to runtime execution.
+## Deferred: Full Per-Operation Fermi Integration
 
-**Pro**: Each operation gets a right-sized timeout. Matches the integration test pattern.
-**Con**: Requires every operation to declare cost. Migration work.
+The current implementation uses a flat default. Future work:
 
-#### Option C: Hybrid (recommended long-term)
-
-1. Immediately: Apply Option A (global default) as a safety net
-2. Incrementally: Have operations declare `FermiCost`, derive timeout from it
-3. The global default becomes the fallback for operations that haven't declared cost yet
-
-### Implementation Steps
-
-1. Add `const DEFAULT_SHELL_TIMEOUT_MS: u64 = 300_000` in `executor.rs`
-2. Apply as fallback in `execute_shell` when `timeout_ms` is `None`
-3. Extend `FermiCost` with `fn timeout_ms(&self) -> u64` method
-4. Have preflight commands use `FermiCost::M` → 10 min timeout
-5. Have cargo build/test use `FermiCost::L` → 30 min timeout
-6. CI job-level `timeout-minutes` becomes `max(sum_of_step_timeouts * 1.5, 30)`
-
-## Fermi Cost for CI Job Estimation
-
-The `timeout-minutes` on the CI job itself should also be estimated rather than
-hardcoded. Following the integration test pattern:
-
-```text
-CI job timeout = Σ(step fermi timeouts) × safety_factor + overhead
-```
-
-Where:
-- `safety_factor = 1.5` (account for cold caches, network variability)
-- `overhead = 2 min` (checkout, env setup)
-- Each step's fermi timeout comes from `FermiCost::timeout_ms()`
-
-This gives us CI timeouts that automatically scale with the pipeline complexity
-rather than being a magic number.
+1. Have each DAG operation declare a `FermiCost`
+2. Pass `FermiCost::timeout_ms()` into `ShellRequest::timeout()` at the call site
+3. CI job-level `timeout-minutes` becomes `max(Σ(step fermi timeouts) × 1.5, 30)`
+4. Move `FermiCost` to `gunbc-ir` so it's available in non-test crates without
+   depending on `gunbc-test` (currently `executor.rs` uses a const mirror)
 
 ## Non-TTY Progress Reporting
 

@@ -414,28 +414,30 @@ fn execute_shell(request: &ShellRequest) -> Result<ShellResponse, TransportError
         }
     }
 
-    // If a timeout is set, poll with try_wait; kill on expiry.
-    if let Some(timeout_ms) = request.timeout_ms {
-        let deadline = Duration::from_millis(timeout_ms);
-        let start = std::time::Instant::now();
-        loop {
-            match child.try_wait() {
-                Ok(Some(_)) => break, // exited
-                Ok(None) => {
-                    if start.elapsed() > deadline {
-                        child.kill().ok();
-                        child.wait().ok();
-                        return Err(TransportError::new(format!(
-                            "command timed out after {}ms: {} {}",
-                            timeout_ms,
-                            request.command,
-                            request.args.join(" ")
-                        )));
-                    }
-                    std::thread::sleep(Duration::from_millis(100));
+    // Every shell command gets a timeout. Explicit timeout_ms takes priority;
+    // otherwise fall back to FermiCost::S (5 min) as a safe default.
+    // See core/test/src/fermi.rs FermiCost::S.timeout_ms() for the canonical value.
+    const DEFAULT_TIMEOUT_MS: u64 = 300_000; // FermiCost::S = 5 min
+    let timeout_ms = request.timeout_ms.unwrap_or(DEFAULT_TIMEOUT_MS);
+    let deadline = Duration::from_millis(timeout_ms);
+    let start = std::time::Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) => {
+                if start.elapsed() > deadline {
+                    child.kill().ok();
+                    child.wait().ok();
+                    return Err(TransportError::new(format!(
+                        "command timed out after {}ms: {} {}",
+                        timeout_ms,
+                        request.command,
+                        request.args.join(" ")
+                    )));
                 }
-                Err(e) => return Err(TransportError::new(format!("failed to wait: {}", e))),
+                std::thread::sleep(Duration::from_millis(100));
             }
+            Err(e) => return Err(TransportError::new(format!("failed to wait: {}", e))),
         }
     }
 

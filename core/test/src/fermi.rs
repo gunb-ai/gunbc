@@ -63,6 +63,20 @@ impl FermiCost {
             _ => None,
         }
     }
+
+    /// Fermi-estimated timeout in milliseconds for this cost bucket.
+    ///
+    /// Used as the default shell command timeout when callers don't specify
+    /// an explicit value. Also used for CI job timeout estimation.
+    pub fn timeout_ms(self) -> u64 {
+        match self {
+            FermiCost::XS => 30_000,      //  30 s
+            FermiCost::S => 300_000,       //   5 min
+            FermiCost::M => 600_000,       //  10 min
+            FermiCost::L => 1_800_000,     //  30 min
+            FermiCost::XL => 3_600_000,    //  60 min
+        }
+    }
 }
 
 /// Metadata for a test case (used for gating decisions).
