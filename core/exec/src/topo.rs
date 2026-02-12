@@ -6,16 +6,6 @@ use std::collections::{HashMap, VecDeque};
 /// Topologically sort the nodes in a DAG using Kahn's algorithm.
 ///
 /// Returns nodes in an order where dependencies come before dependents.
-///
-/// # Panics
-///
-/// Panics if any edge references a node ID that is not present in `dag.nodes`.
-/// To propagate errors instead, this function would need to return
-/// `Result<Vec<NodeId>, ExecError>`, which would require updating callers in:
-/// - `core/exec/src/execute.rs` (`simulate`, `execute_flat`, and parallel executor)
-/// - `core/exec/src/execute.rs` (`compute_critical_path` — also returns `Vec<NodeId>`)
-/// - `core/exec/src/display.rs` (`run_with_progress` — does not return `Result`)
-/// - `core/codegen/src/testgen/codegen.rs`
 pub fn topo_sort<T>(dag: &Dag<T>) -> Vec<NodeId> {
     let node_ids: Vec<&str> = dag.nodes.iter().map(|n| n.id.0.as_str()).collect();
     let mut in_degree: HashMap<&str, usize> = node_ids.iter().map(|id| (*id, 0)).collect();

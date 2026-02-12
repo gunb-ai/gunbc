@@ -18,7 +18,6 @@
 use crate::language::NamingCase;
 use crate::transport::ci::command::{AnnotationLevel, WorkflowCommand};
 use crate::transport::ci::provider::CiProvider;
-use std::fmt::Write;
 use crate::transport::ci::render::{dag_to_shared_steps, CiRenderer, RenderConfig, SharedStep};
 use crate::transport::ci::runner::{
     gitlab_saas_linux_large, gitlab_saas_linux_medium, gitlab_saas_linux_small, Runner,
@@ -225,7 +224,7 @@ fn render_gitlab_ci(steps: &[SharedStep], config: &RenderConfig) -> String {
     let mut yaml = String::new();
 
     yaml.push_str(&config.header("#"));
-    write!(yaml, "\n\nimage: {}\n\n", config.runner.id).unwrap();
+    yaml.push_str(&format!("\n\nimage: {}\n\n", config.runner.id));
 
     // Variables — derived from cargo env + manual overrides
     yaml_block(&mut yaml, "variables:", &config.all_env(), |(k, v)| {
@@ -252,36 +251,42 @@ fn render_gitlab_ci(steps: &[SharedStep], config: &RenderConfig) -> String {
 /// Strategy: Build a stage for each "level" of the DAG based on dependencies.
 fn compute_stages(steps: &[SharedStep]) -> Vec<String> {
     let mut stages = Vec::new();
-    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut seen_checkout = false;
 
     for step in steps {
         match step {
             SharedStep::Checkout(_) => {
                 if !seen_checkout {
-                    let name = "prepare".to_string();
-                    seen.insert(name.clone());
-                    stages.push(name);
+                    stages.push("prepare".to_string());
                     seen_checkout = true;
                 }
             }
             SharedStep::DagStep {
                 node_id,
+                depends_on,
                 ..
             } => {
-                let stage_name = node_id.0.clone();
-                if seen.insert(stage_name.clone()) {
+                // If no dependencies (other than checkout), it's a "build" stage
+                // Otherwise, determine stage based on depth
+                let stage_name = if depends_on.is_empty() {
+                    node_id.0.clone()
+                } else {
+                    // Use the node id as stage name for simplicity
+                    // A more sophisticated impl would compute DAG levels
+                    node_id.0.clone()
+                };
+                if !stages.contains(&stage_name) {
                     stages.push(stage_name);
                 }
             }
             SharedStep::DagRun { tool } => {
                 let stage = format!("{}-run", NamingCase::SnakeCase.apply(&tool.binary));
-                if seen.insert(stage.clone()) {
+                if !stages.contains(&stage) {
                     stages.push(stage);
                 }
             }
             SharedStep::Run { name, .. } => {
-                if seen.insert(name.clone()) {
+                if !stages.contains(name) {
                     stages.push(name.clone());
                 }
             }
@@ -292,22 +297,19 @@ fn compute_stages(steps: &[SharedStep]) -> Vec<String> {
 }
 
 /// Render a single GitLab CI job.
-fn render_gitlab_job(step: &SharedStep, config: &RenderConfig) -> String {
+fn render_gitlab_job(step: &SharedStep, _config: &RenderConfig) -> String {
     match step {
         SharedStep::Checkout(_checkout) => {
             // GitLab CI automatically checks out code, but we can add a prepare job
-            format!(
-                "prepare:\n  stage: prepare\n  timeout: {} minutes\n  script:\n    - git --version\n    - ls -la\n  rules:\n    - if: $CI_PIPELINE_SOURCE == \"push\" || $CI_PIPELINE_SOURCE == \"merge_request_event\"\n\n",
-                config.timeout_minutes
-            )
+            "prepare:\n  stage: prepare\n  script:\n    - git --version\n    - ls -la\n  rules:\n    - if: $CI_PIPELINE_SOURCE == \"push\" || $CI_PIPELINE_SOURCE == \"merge_request_event\"\n\n"
+                .to_string()
         }
 
         SharedStep::Run { name, command } => {
             format!(
-                "{}:\n  stage: {}\n  timeout: {} minutes\n  script:\n    - {}\n\n",
+                "{}:\n  stage: {}\n  script:\n    - {}\n\n",
                 name.replace(' ', "_").to_lowercase(),
                 name,
-                config.timeout_minutes,
                 command
             )
         }
@@ -318,10 +320,9 @@ fn render_gitlab_job(step: &SharedStep, config: &RenderConfig) -> String {
             depends_on,
         } => {
             let mut yaml = format!(
-                "{}:\n  stage: {}\n  timeout: {} minutes\n  script:\n    - {} step {}\n",
+                "{}:\n  stage: {}\n  script:\n    - {} step {}\n",
                 node_id.0,
                 node_id.0,
-                config.timeout_minutes,
                 tool.command(),
                 node_id.0
             );
@@ -331,14 +332,14 @@ fn render_gitlab_job(step: &SharedStep, config: &RenderConfig) -> String {
                 yaml.push_str("  needs:\n");
                 let seen: HashSet<_> = depends_on.iter().map(|d| &d.0).collect();
                 for dep in seen {
-                    writeln!(yaml, "    - {}", dep).unwrap();
+                    yaml.push_str(&format!("    - {}\n", dep));
                 }
             }
 
             // Artifacts for passing data
             yaml.push_str("  artifacts:\n");
             yaml.push_str("    reports:\n");
-            writeln!(yaml, "      dotenv: {}.env", node_id.0).unwrap();
+            yaml.push_str(&format!("      dotenv: {}.env\n", node_id.0));
 
             yaml.push('\n');
             yaml
@@ -347,10 +348,9 @@ fn render_gitlab_job(step: &SharedStep, config: &RenderConfig) -> String {
         SharedStep::DagRun { tool } => {
             let stage_name = format!("{}-run", NamingCase::SnakeCase.apply(&tool.binary));
             format!(
-                "{}:\n  stage: {}\n  timeout: {} minutes\n  script:\n    - {}\n\n",
+                "{}:\n  stage: {}\n  script:\n    - {}\n\n",
                 stage_name,
                 stage_name,
-                config.timeout_minutes,
                 tool.command()
             )
         }

@@ -935,15 +935,6 @@ impl CliToolError {
             message: message.into(),
         }
     }
-
-    /// Create an error for invariant violations (calling the wrong dispatch function).
-    pub fn invariant(message: impl Into<String>) -> Self {
-        Self {
-            tool_id: "<dispatch>",
-            operation: "route",
-            message: message.into(),
-        }
-    }
 }
 
 // ============================================================================

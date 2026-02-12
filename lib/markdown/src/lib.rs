@@ -22,7 +22,6 @@ use gunbc_exec::{
 use gunbc_ir::language::markdown_language_id;
 use gunbc_ir::Value;
 use std::collections::{BTreeMap, HashMap};
-use std::fmt::Write;
 
 /// Markdown operations for use in DAG nodes.
 #[derive(Debug, Clone)]
@@ -88,8 +87,8 @@ pub fn render_code_snapshot(contents: &BTreeMap<String, String>) -> String {
         // Use centralized language detection from the Languages DAG
         let lang = markdown_language_id(filename);
 
-        write!(markdown, "## `{}`\n\n", filename).unwrap();
-        writeln!(markdown, "```{}", lang).unwrap();
+        markdown.push_str(&format!("## `{}`\n\n", filename));
+        markdown.push_str(&format!("```{}\n", lang));
         markdown.push_str(content);
         if !content.ends_with('\n') {
             markdown.push('\n');
@@ -120,7 +119,7 @@ pub fn render_diff_snapshot(diff_files: &BTreeMap<String, String>, stats: &str) 
     markdown.push_str("# Branch Diff\n\n");
 
     if !stats.is_empty() {
-        write!(markdown, "> {}\n\n", stats).unwrap();
+        markdown.push_str(&format!("> {}\n\n", stats));
     }
 
     if diff_files.is_empty() {
@@ -129,7 +128,7 @@ pub fn render_diff_snapshot(diff_files: &BTreeMap<String, String>, stats: &str) 
     }
 
     for (filename, diff_chunk) in diff_files {
-        write!(markdown, "## `{}`\n\n", filename).unwrap();
+        markdown.push_str(&format!("## `{}`\n\n", filename));
         markdown.push_str("```diff\n");
         markdown.push_str(diff_chunk);
         if !diff_chunk.ends_with('\n') {

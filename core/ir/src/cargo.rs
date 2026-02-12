@@ -305,9 +305,21 @@ pub struct CargoCommand {
     pub with_all_targets: bool,
     pub with_release: bool,
     pub with_warnings: Warnings,
-    /// Additional subcommand-specific flags (before `--`).
-    pub flags: Vec<String>,
-    /// Arguments passed after `--`.
+    /// Enable `--fix` (clippy auto-fix mode).
+    pub with_fix: bool,
+    /// Enable `--workspace` (operate on all workspace members).
+    pub with_workspace: bool,
+    /// Enable `--allow-dirty` (allow uncommitted changes).
+    pub with_allow_dirty: bool,
+    /// Enable `--allow-staged` (allow staged changes).
+    pub with_allow_staged: bool,
+    /// Enable `--check` (fmt verification mode, no modifications).
+    pub with_check: bool,
+    /// Arguments passed after `--` to the compiled binary.
+    ///
+    /// Only meaningful for `Subcommand::Run`. These are passed directly to
+    /// the binary (e.g., `cargo run -p foo -- arg1 arg2`). Cannot be modeled
+    /// exhaustively since each binary has different CLI.
     pub trailing_args: Vec<String>,
 }
 
@@ -319,7 +331,11 @@ impl CargoCommand {
             with_all_targets: false,
             with_release: false,
             with_warnings: Warnings::Default,
-            flags: Vec::new(),
+            with_fix: false,
+            with_workspace: false,
+            with_allow_dirty: false,
+            with_allow_staged: false,
+            with_check: false,
             trailing_args: Vec::new(),
         }
     }
@@ -342,13 +358,41 @@ impl CargoCommand {
         self
     }
 
-    /// Add a subcommand-specific flag (before `--`).
-    pub fn flag(mut self, flag: &str) -> Self {
-        self.flags.push(flag.to_string());
+    /// Enable `--fix` (clippy auto-fix mode).
+    pub fn fix(mut self) -> Self {
+        self.with_fix = true;
         self
     }
 
-    /// Add an argument after `--`.
+    /// Enable `--workspace` (operate on all workspace members).
+    pub fn workspace(mut self) -> Self {
+        self.with_workspace = true;
+        self
+    }
+
+    /// Enable `--allow-dirty` (allow uncommitted changes).
+    pub fn allow_dirty(mut self) -> Self {
+        self.with_allow_dirty = true;
+        self
+    }
+
+    /// Enable `--allow-staged` (allow staged changes).
+    pub fn allow_staged(mut self) -> Self {
+        self.with_allow_staged = true;
+        self
+    }
+
+    /// Enable `--check` (fmt verification mode).
+    pub fn check(mut self) -> Self {
+        self.with_check = true;
+        self
+    }
+
+    /// Add an argument after `--` (for binary args in `cargo run`).
+    ///
+    /// This is only meaningful for `Subcommand::Run` where arguments are
+    /// passed to the compiled binary. Each binary has its own CLI, so these
+    /// cannot be modeled exhaustively.
     pub fn trailing_arg(mut self, arg: &str) -> Self {
         self.trailing_args.push(arg.to_string());
         self
@@ -388,8 +432,21 @@ impl CargoCommand {
         if self.with_release {
             args.push("--release".to_string());
         }
-
-        args.extend(self.flags.iter().cloned());
+        if self.with_fix {
+            args.push("--fix".to_string());
+        }
+        if self.with_workspace {
+            args.push("--workspace".to_string());
+        }
+        if self.with_allow_dirty {
+            args.push("--allow-dirty".to_string());
+        }
+        if self.with_allow_staged {
+            args.push("--allow-staged".to_string());
+        }
+        if self.with_check {
+            args.push("--check".to_string());
+        }
 
         // Build trailing args, including clippy's -D warnings
         let mut trailing = self.trailing_args.clone();
@@ -568,10 +625,10 @@ mod tests {
     #[test]
     fn test_cargo_clippy_fix() {
         let cmd = CargoCommand::new(Subcommand::Clippy)
-            .flag("--fix")
-            .flag("--workspace")
-            .flag("--allow-dirty")
-            .flag("--allow-staged")
+            .fix()
+            .workspace()
+            .allow_dirty()
+            .allow_staged()
             .warnings(Warnings::Deny);
         assert_eq!(
             cmd.to_args(),
@@ -591,8 +648,8 @@ mod tests {
 
     #[test]
     fn test_cargo_fmt_check() {
-        let cmd = CargoCommand::new(Subcommand::Fmt).trailing_arg("--check");
-        assert_eq!(cmd.to_args(), vec!["cargo", "fmt", "--", "--check"]);
+        let cmd = CargoCommand::new(Subcommand::Fmt).check();
+        assert_eq!(cmd.to_args(), vec!["cargo", "fmt", "--check"]);
     }
 
     #[test]

@@ -153,13 +153,13 @@ impl BuildConfig {
                 .all_targets()
                 .warnings(w)),
             lint_fix: c(CargoCommand::new(Subcommand::Clippy)
-                .flag("--fix")
-                .flag("--workspace")
-                .flag("--allow-dirty")
-                .flag("--allow-staged")
+                .fix()
+                .workspace()
+                .allow_dirty()
+                .allow_staged()
                 .warnings(w)),
             fmt: c(CargoCommand::new(Subcommand::Fmt)),
-            fmt_check: c(CargoCommand::new(Subcommand::Fmt).trailing_arg("--check")),
+            fmt_check: c(CargoCommand::new(Subcommand::Fmt).check()),
             check: c(CargoCommand::new(Subcommand::Check)
                 .all_targets()
                 .warnings(w)),
@@ -261,14 +261,14 @@ impl BuildConfig {
             lint: sh(&["buck2", "run", "//tools:clippy"]),
             // lint-fix still uses cargo (buck2 doesn't have an equivalent)
             lint_fix: c(CargoCommand::new(Subcommand::Clippy)
-                .flag("--fix")
-                .flag("--workspace")
-                .flag("--allow-dirty")
-                .flag("--allow-staged")
+                .fix()
+                .workspace()
+                .allow_dirty()
+                .allow_staged()
                 .warnings(w)),
             // fmt stays cargo (buck2 delegates to cargo fmt)
             fmt: c(CargoCommand::new(Subcommand::Fmt)),
-            fmt_check: c(CargoCommand::new(Subcommand::Fmt).trailing_arg("--check")),
+            fmt_check: c(CargoCommand::new(Subcommand::Fmt).check()),
             check: sh(&["buck2", "build", "//..."]),
             ci_yaml: c(CargoCommand::new(Subcommand::Run(codegen_inv.clone()))
                 .release()

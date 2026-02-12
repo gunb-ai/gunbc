@@ -15,7 +15,6 @@ use crate::makegen::registry::{BuildConfig, BuildSystem};
 use gunbc_ir::render_ir::{Category, FileHeader, PlainText, StructuredRenderer};
 use gunbc_ir::symbols::{Tier, STANDARD};
 use gunbc_ir::MakefileStructuredRenderer;
-use std::borrow::Cow;
 
 // ============================================================================
 // Derive Categories from BuildConfig
@@ -32,144 +31,136 @@ pub fn derive_categories(config: &BuildConfig) -> Vec<Category> {
     match config.build_system {
         BuildSystem::Cargo => {
             categories.push(Category {
-                name: Cow::Borrowed("Cargo build artifacts"),
-                source: Some(Cow::Borrowed("cargo")),
-                items: vec![Cow::Borrowed("/target/"), Cow::Borrowed("/target-codex/")],
-                rationale: Some(Cow::Borrowed("Reproducible from source via cargo build")),
+                name: "Cargo build artifacts".to_string(),
+                source: Some("cargo".to_string()),
+                items: vec!["/target/".to_string(), "/target-codex/".to_string()],
+                rationale: Some("Reproducible from source via cargo build".to_string()),
             });
             categories.push(Category {
-                name: Cow::Borrowed("Cargo cache (local CARGO_HOME)"),
-                source: Some(Cow::Borrowed("tool/rust")),
-                items: vec![Cow::Borrowed("/.cargo-home/")],
-                rationale: Some(Cow::Borrowed(
-                    "Local Cargo cache may include git checkouts; not project state",
-                )),
+                name: "Cargo cache (local CARGO_HOME)".to_string(),
+                source: Some("tool/rust".to_string()),
+                items: vec!["/.cargo-home/".to_string()],
+                rationale: Some(
+                    "Local Cargo cache may include git checkouts; not project state".to_string(),
+                ),
             });
             categories.push(Category {
-                name: Cow::Borrowed("Codegen bin symlink"),
-                source: Some(Cow::Borrowed("codegen")),
-                items: vec![Cow::Borrowed("/bin/")],
-                rationale: Some(Cow::Borrowed("Symlink to target/release created by codegen")),
+                name: "Codegen bin symlink".to_string(),
+                source: Some("codegen".to_string()),
+                items: vec!["/bin/".to_string()],
+                rationale: Some("Symlink to target/release created by codegen".to_string()),
             });
         }
         BuildSystem::Buck2 => {
             // Buck2 uses both cargo (for codegen) and buck2 (for build)
             categories.push(Category {
-                name: Cow::Borrowed("Cargo build artifacts"),
-                source: Some(Cow::Borrowed("cargo")),
-                items: vec![Cow::Borrowed("/target/"), Cow::Borrowed("/target-codex/")],
-                rationale: Some(Cow::Borrowed("Reproducible from source via cargo build")),
+                name: "Cargo build artifacts".to_string(),
+                source: Some("cargo".to_string()),
+                items: vec!["/target/".to_string(), "/target-codex/".to_string()],
+                rationale: Some("Reproducible from source via cargo build".to_string()),
             });
             categories.push(Category {
-                name: Cow::Borrowed("Cargo cache (local CARGO_HOME)"),
-                source: Some(Cow::Borrowed("tool/rust")),
-                items: vec![Cow::Borrowed("/.cargo-home/")],
-                rationale: Some(Cow::Borrowed(
-                    "Local Cargo cache may include git checkouts; not project state",
-                )),
+                name: "Cargo cache (local CARGO_HOME)".to_string(),
+                source: Some("tool/rust".to_string()),
+                items: vec!["/.cargo-home/".to_string()],
+                rationale: Some(
+                    "Local Cargo cache may include git checkouts; not project state".to_string(),
+                ),
             });
             categories.push(Category {
-                name: Cow::Borrowed("Codegen bin symlink"),
-                source: Some(Cow::Borrowed("codegen")),
-                items: vec![Cow::Borrowed("/bin/")],
-                rationale: Some(Cow::Borrowed("Symlink to target/release created by codegen")),
+                name: "Codegen bin symlink".to_string(),
+                source: Some("codegen".to_string()),
+                items: vec!["/bin/".to_string()],
+                rationale: Some("Symlink to target/release created by codegen".to_string()),
             });
             categories.push(Category {
-                name: Cow::Borrowed("Buck2 build artifacts"),
-                source: Some(Cow::Borrowed("buck2")),
-                items: vec![Cow::Borrowed("/buck-out/")],
-                rationale: Some(Cow::Borrowed("Reproducible from source via buck2 build")),
+                name: "Buck2 build artifacts".to_string(),
+                source: Some("buck2".to_string()),
+                items: vec!["/buck-out/".to_string()],
+                rationale: Some("Reproducible from source via buck2 build".to_string()),
             });
             categories.push(Category {
-                name: Cow::Borrowed("Vendored dependencies"),
-                source: Some(Cow::Borrowed("buck2")),
+                name: "Vendored dependencies".to_string(),
+                source: Some("buck2".to_string()),
                 items: vec![
-                    Cow::Borrowed("/third-party/rust/vendor/"),
-                    Cow::Borrowed("/third-party/rust/.cargo/"),
+                    "/third-party/rust/vendor/".to_string(),
+                    "/third-party/rust/.cargo/".to_string(),
                 ],
-                rationale: Some(Cow::Borrowed("Reproducible from lockfile via reindeer vendor")),
+                rationale: Some("Reproducible from lockfile via reindeer vendor".to_string()),
             });
         }
     }
 
     // Coverage is always included (cargo-tarpaulin)
     categories.push(Category {
-        name: Cow::Borrowed("Coverage reports"),
-        source: Some(Cow::Borrowed("cargo-tarpaulin")),
+        name: "Coverage reports".to_string(),
+        source: Some("cargo-tarpaulin".to_string()),
         items: vec![
-            Cow::Borrowed("tarpaulin-report.html"),
-            Cow::Borrowed("tarpaulin-report.json"),
-            Cow::Borrowed("cobertura.xml"),
-            Cow::Borrowed("lcov.info"),
-            Cow::Borrowed("coverage/"),
+            "tarpaulin-report.html".to_string(),
+            "tarpaulin-report.json".to_string(),
+            "cobertura.xml".to_string(),
+            "lcov.info".to_string(),
+            "coverage/".to_string(),
         ],
-        rationale: Some(Cow::Borrowed("Generated, often large, reproducible")),
+        rationale: Some("Generated, often large, reproducible".to_string()),
     });
 
     // Universal categories (always included)
     categories.push(Category {
-        name: Cow::Borrowed("Editor/IDE state"),
-        source: Some(Cow::Borrowed("editor")),
+        name: "Editor/IDE state".to_string(),
+        source: Some("editor".to_string()),
         items: vec![
-            Cow::Borrowed(".idea/"),
-            Cow::Borrowed(".vscode/"),
-            Cow::Borrowed("*.swp"),
-            Cow::Borrowed("*.swo"),
-            Cow::Borrowed("*~"),
+            ".idea/".to_string(),
+            ".vscode/".to_string(),
+            "*.swp".to_string(),
+            "*.swo".to_string(),
+            "*~".to_string(),
         ],
-        rationale: Some(Cow::Borrowed("Per-developer configuration, not project state")),
+        rationale: Some("Per-developer configuration, not project state".to_string()),
     });
     categories.push(Category {
-        name: Cow::Borrowed("OS metadata"),
-        source: Some(Cow::Borrowed("os")),
-        items: vec![Cow::Borrowed(".DS_Store"), Cow::Borrowed("Thumbs.db")],
-        rationale: Some(Cow::Borrowed("OS-generated, not project state")),
+        name: "OS metadata".to_string(),
+        source: Some("os".to_string()),
+        items: vec![".DS_Store".to_string(), "Thumbs.db".to_string()],
+        rationale: Some("OS-generated, not project state".to_string()),
     });
     categories.push(Category {
-        name: Cow::Borrowed("Secrets and local config"),
-        source: Some(Cow::Borrowed("secrets")),
+        name: "Secrets and local config".to_string(),
+        source: Some("secrets".to_string()),
         items: vec![
-            Cow::Borrowed(".env"),
-            Cow::Borrowed(".env.local"),
-            Cow::Borrowed(".env.*.local"),
+            ".env".to_string(),
+            ".env.local".to_string(),
+            ".env.*.local".to_string(),
         ],
-        rationale: Some(Cow::Borrowed("Environment-specific, may contain secrets")),
+        rationale: Some("Environment-specific, may contain secrets".to_string()),
     });
     categories.push(Category {
-        name: Cow::Borrowed("Generator stamp files"),
-        source: Some(Cow::Borrowed("generators")),
-        items: vec![Cow::Borrowed(".*-stamp")],
-        rationale: Some(Cow::Borrowed(
-            "Producer-centric model stamps; regenerated by make targets",
-        )),
+        name: "Generator stamp files".to_string(),
+        source: Some("generators".to_string()),
+        items: vec![".*-stamp".to_string()],
+        rationale: Some("Producer-centric model stamps; regenerated by make targets".to_string()),
     });
     categories.push(Category {
-        name: Cow::Borrowed("Bootstrap outputs"),
-        source: Some(Cow::Borrowed("bootstrap")),
-        items: vec![Cow::Borrowed("/Makefile"), Cow::Borrowed("/output")],
-        rationale: Some(Cow::Borrowed(
-            "Regenerated by gunbc-bootstrap/makegen; not source-of-truth",
-        )),
+        name: "Bootstrap outputs".to_string(),
+        source: Some("bootstrap".to_string()),
+        items: vec!["/Makefile".to_string(), "/output".to_string()],
+        rationale: Some("Regenerated by gunbc-bootstrap/makegen; not source-of-truth".to_string()),
     });
     categories.push(Category {
-        name: Cow::Borrowed("Pragma outputs"),
-        source: Some(Cow::Borrowed("pragma")),
+        name: "Pragma outputs".to_string(),
+        source: Some("pragma".to_string()),
         items: vec![
-            Cow::Borrowed("/clippy.toml"),
-            Cow::Borrowed("/tools/disallowed-methods-allowlist.txt"),
-            Cow::Borrowed("/tools/pragma-lint-policy.txt"),
+            "/clippy.toml".to_string(),
+            "/tools/disallowed-methods-allowlist.txt".to_string(),
+            "/tools/pragma-lint-policy.txt".to_string(),
         ],
-        rationale: Some(Cow::Borrowed(
-            "Regenerated by gunbc-pragma; not source-of-truth",
-        )),
+        rationale: Some("Regenerated by gunbc-pragma; not source-of-truth".to_string()),
     });
     categories.push(Category {
-        name: Cow::Borrowed("Generated test files"),
-        source: Some(Cow::Borrowed("testgen")),
-        items: vec![Cow::Borrowed("**/generated_tests*.rs")],
-        rationale: Some(Cow::Borrowed(
-            "Regenerated by make testgen; staleness checked by make test",
-        )),
+        name: "Generated test files".to_string(),
+        source: Some("testgen".to_string()),
+        items: vec!["**/generated_tests*.rs".to_string()],
+        rationale: Some("Regenerated by make testgen; staleness checked by make test".to_string()),
     });
 
     categories
@@ -207,9 +198,10 @@ impl<'a> GitignoreRenderer<'a> {
     /// Render the complete .gitignore with header.
     pub fn render(&self) -> String {
         let header = FileHeader {
-            generator_name: Cow::Borrowed("gunbc-bootstrap"),
-            regenerate_command: Cow::Borrowed("cargo run -p gunbc-dag --bin gunbc-bootstrap --release"),
-            comment_prefix: Cow::Borrowed("#"),
+            generator_name: "gunbc-bootstrap".to_string(),
+            regenerate_command: "cargo run -p gunbc-dag --bin gunbc-bootstrap --release"
+                .to_string(),
+            comment_prefix: "#".to_string(),
         };
         format!("{}\n\n{}", header.render(), self.render_content())
     }

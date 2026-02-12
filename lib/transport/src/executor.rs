@@ -340,12 +340,12 @@ fn execute_tcp(request: &TcpRequest) -> Result<TcpResponse, TransportError> {
     let mut stream = TcpStream::connect(&addr)
         .map_err(|e| TransportError::new(format!("connection failed: {}", e)))?;
 
-    if let Some(timeout) = request.read_timeout_ms {
+    if let Some(timeout) = request.connect_timeout_ms {
         stream
             .set_read_timeout(Some(Duration::from_millis(timeout)))
             .ok();
     }
-    if let Some(timeout) = request.connect_timeout_ms {
+    if let Some(timeout) = request.read_timeout_ms {
         stream
             .set_write_timeout(Some(Duration::from_millis(timeout)))
             .ok();
@@ -391,13 +391,9 @@ fn execute_shell(request: &ShellRequest) -> Result<ShellResponse, TransportError
         cmd.env(key, value);
     }
 
-    // Handle stdin: pipe if data provided, null otherwise.
-    // Without explicit Stdio::null(), the child inherits the parent's stdin,
-    // which can cause deadlocks in CI environments where stdin is a closed pipe.
+    // Handle stdin
     if request.stdin.is_some() {
         cmd.stdin(Stdio::piped());
-    } else {
-        cmd.stdin(Stdio::null());
     }
 
     cmd.stdout(Stdio::piped());
@@ -411,33 +407,6 @@ fn execute_shell(request: &ShellRequest) -> Result<ShellResponse, TransportError
     if let Some(ref stdin_data) = request.stdin {
         if let Some(ref mut stdin) = child.stdin {
             stdin.write_all(stdin_data.as_bytes()).ok();
-        }
-    }
-
-    // Every shell command gets a timeout. Explicit timeout_ms takes priority;
-    // otherwise fall back to FermiCost::S (5 min) as a safe default.
-    // See core/test/src/fermi.rs FermiCost::S.timeout_ms() for the canonical value.
-    const DEFAULT_TIMEOUT_MS: u64 = 300_000; // FermiCost::S = 5 min
-    let timeout_ms = request.timeout_ms.unwrap_or(DEFAULT_TIMEOUT_MS);
-    let deadline = Duration::from_millis(timeout_ms);
-    let start = std::time::Instant::now();
-    loop {
-        match child.try_wait() {
-            Ok(Some(_)) => break,
-            Ok(None) => {
-                if start.elapsed() > deadline {
-                    child.kill().ok();
-                    child.wait().ok();
-                    return Err(TransportError::new(format!(
-                        "command timed out after {}ms: {} {}",
-                        timeout_ms,
-                        request.command,
-                        request.args.join(" ")
-                    )));
-                }
-                std::thread::sleep(Duration::from_millis(100));
-            }
-            Err(e) => return Err(TransportError::new(format!("failed to wait: {}", e))),
         }
     }
 

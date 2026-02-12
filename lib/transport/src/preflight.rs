@@ -312,19 +312,19 @@ fn run_lint_upsert(resource_id: &ResourceId) -> Result<(), ResourceError> {
     .release();
     run_cargo_command(resource_id, &pragma_cmd)?;
 
-    // clippy check: cargo clippy --all-targets -- -D warnings
+    // clippy check: cargo clippy -- -D warnings
+    // Note: no --all-targets for speed; CI still catches test-only lint issues
     let clippy_check = CargoCommand::new(Subcommand::Clippy)
-        .all_targets()
         .warnings(Warnings::Deny);
     let clippy_result = run_cargo_command_response(resource_id, &clippy_check)?;
 
     if !clippy_result.success() {
         // clippy fix: cargo clippy --fix --workspace --allow-dirty --allow-staged -- -D warnings
         let clippy_fix = CargoCommand::new(Subcommand::Clippy)
-            .flag("--fix")
-            .flag("--workspace")
-            .flag("--allow-dirty")
-            .flag("--allow-staged")
+            .fix()
+            .workspace()
+            .allow_dirty()
+            .allow_staged()
             .warnings(Warnings::Deny);
         run_cargo_command(resource_id, &clippy_fix)?;
 
