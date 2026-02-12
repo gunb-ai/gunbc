@@ -14,7 +14,7 @@
 
 use crate::WorkspaceBinary;
 use gunbc_infra::ResourceId;
-use gunbc_ir::cargo::{CargoCommand, Subcommand, Warnings};
+use gunbc_ir::cargo::{BinaryArgs, CargoCommand, CodegenSubcommand, Subcommand, Warnings};
 use gunbc_ir::resource::ExecMode;
 use gunbc_ir::transport::ShellRequest;
 

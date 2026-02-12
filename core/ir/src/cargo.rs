@@ -16,6 +16,8 @@
 //! Use [`CargoInvocation::standalone`] and [`CargoInvocation::composed`] to
 //! construct invocations from component names, avoiding hardcoded full names.
 
+use crate::resource::ExecMode;
+
 /// Workspace binary name prefix. All gunbc binaries follow `{PREFIX}-{component}`.
 pub const PREFIX: &str = "gunbc";
 
@@ -196,6 +198,84 @@ impl Subcommand {
     }
 }
 
+// ============================================================================
+// Binary Arguments
+// ============================================================================
+
+/// Subcommand for the codegen binary (gunbc-codegen).
+///
+/// The codegen binary has multiple modes of operation, selected via
+/// a positional subcommand argument.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CodegenSubcommand {
+    /// Default: full commit (generate CLIs, build binaries, create bin directory).
+    #[default]
+    Commit,
+    /// Just generate CLIs (partial commit).
+    Codegen,
+    /// Generate DAG files.
+    Daggen,
+    /// Generate CI workflow YAML (GitHub Actions and GitLab CI).
+    Cigen,
+    /// Remove all generated artifacts.
+    Rollback,
+}
+
+impl CodegenSubcommand {
+    /// The subcommand string as used on the command line.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Commit => "commit",
+            Self::Codegen => "codegen",
+            Self::Daggen => "daggen",
+            Self::Cigen => "cigen",
+            Self::Rollback => "rollback",
+        }
+    }
+}
+
+/// Binary-specific arguments.
+///
+/// Models the arguments passed after `--` to cargo run, in a typed way.
+/// Each variant corresponds to a specific binary's CLI interface. This
+/// eliminates stringly-typed escape hatches by providing typed constructors.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum BinaryArgs {
+    /// No binary arguments.
+    #[default]
+    None,
+    /// Subcommand for gunbc-codegen binary.
+    Codegen(CodegenSubcommand),
+    /// Mode argument for binaries that support ExecMode (testgen, makegen, etc.).
+    WithMode(ExecMode),
+}
+
+impl BinaryArgs {
+    /// Create args for codegen subcommand.
+    pub fn codegen(sub: CodegenSubcommand) -> Self {
+        Self::Codegen(sub)
+    }
+
+    /// Create args for binaries that take --mode flag.
+    pub fn with_mode(mode: ExecMode) -> Self {
+        Self::WithMode(mode)
+    }
+
+    /// Convert to trailing args for cargo run.
+    pub fn to_args(&self) -> Vec<String> {
+        match self {
+            Self::None => vec![],
+            Self::Codegen(sub) => vec![sub.as_str().to_string()],
+            Self::WithMode(mode) => vec![format!("--mode={mode}")],
+        }
+    }
+
+    /// Returns true if there are no arguments.
+    pub fn is_empty(&self) -> bool {
+        matches!(self, Self::None)
+    }
+}
+
 /// How compiler warnings should be treated.
 ///
 /// The rendering layer owns how this is expressed per subcommand:
@@ -315,12 +395,12 @@ pub struct CargoCommand {
     pub with_allow_staged: bool,
     /// Enable `--check` (fmt verification mode, no modifications).
     pub with_check: bool,
-    /// Arguments passed after `--` to the compiled binary.
+    /// Typed binary arguments (only for `Subcommand::Run`).
     ///
-    /// Only meaningful for `Subcommand::Run`. These are passed directly to
-    /// the binary (e.g., `cargo run -p foo -- arg1 arg2`). Cannot be modeled
-    /// exhaustively since each binary has different CLI.
-    pub trailing_args: Vec<String>,
+    /// These are passed after `--` to the compiled binary. Use typed
+    /// constructors like `BinaryArgs::codegen()` or `BinaryArgs::with_mode()`
+    /// rather than raw strings.
+    pub binary_args: BinaryArgs,
 }
 
 impl CargoCommand {
@@ -336,7 +416,7 @@ impl CargoCommand {
             with_allow_dirty: false,
             with_allow_staged: false,
             with_check: false,
-            trailing_args: Vec::new(),
+            binary_args: BinaryArgs::None,
         }
     }
 
@@ -388,13 +468,12 @@ impl CargoCommand {
         self
     }
 
-    /// Add an argument after `--` (for binary args in `cargo run`).
+    /// Set typed binary arguments (only for `Subcommand::Run`).
     ///
-    /// This is only meaningful for `Subcommand::Run` where arguments are
-    /// passed to the compiled binary. Each binary has its own CLI, so these
-    /// cannot be modeled exhaustively.
-    pub fn trailing_arg(mut self, arg: &str) -> Self {
-        self.trailing_args.push(arg.to_string());
+    /// Use `BinaryArgs::codegen()` for codegen subcommands or
+    /// `BinaryArgs::with_mode()` for binaries that take --mode.
+    pub fn args(mut self, args: BinaryArgs) -> Self {
+        self.binary_args = args;
         self
     }
 
@@ -448,8 +527,10 @@ impl CargoCommand {
             args.push("--check".to_string());
         }
 
-        // Build trailing args, including clippy's -D warnings
-        let mut trailing = self.trailing_args.clone();
+        // Build trailing args:
+        // - For Run: binary_args.to_args()
+        // - For Clippy with Deny: append -D warnings
+        let mut trailing = self.binary_args.to_args();
         if self.with_warnings == Warnings::Deny && self.subcommand == Subcommand::Clippy {
             trailing.extend(["-D".to_string(), "warnings".to_string()]);
         }
@@ -657,7 +738,7 @@ mod tests {
         let inv = CargoInvocation::standalone("codegen");
         let cmd = CargoCommand::new(Subcommand::Run(inv))
             .release()
-            .trailing_arg("codegen");
+            .args(BinaryArgs::codegen(CodegenSubcommand::Codegen));
         assert_eq!(
             cmd.to_args(),
             vec![
