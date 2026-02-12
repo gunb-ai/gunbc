@@ -379,8 +379,8 @@ fn generate_github_actions_template(config: &RenderConfig) -> String {
     });
 
     yaml.push_str(&format!(
-        "jobs:\n  {}:\n    runs-on: {}\n    steps:\n",
-        config.workflow_name, config.runner.id,
+        "jobs:\n  {}:\n    runs-on: {}\n    timeout-minutes: {}\n    steps:\n",
+        config.workflow_name, config.runner.id, config.timeout_minutes,
     ));
 
     if let Some(checkout) = &config.checkout {

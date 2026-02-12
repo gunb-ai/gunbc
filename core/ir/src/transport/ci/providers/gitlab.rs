@@ -292,19 +292,22 @@ fn compute_stages(steps: &[SharedStep]) -> Vec<String> {
 }
 
 /// Render a single GitLab CI job.
-fn render_gitlab_job(step: &SharedStep, _config: &RenderConfig) -> String {
+fn render_gitlab_job(step: &SharedStep, config: &RenderConfig) -> String {
     match step {
         SharedStep::Checkout(_checkout) => {
             // GitLab CI automatically checks out code, but we can add a prepare job
-            "prepare:\n  stage: prepare\n  script:\n    - git --version\n    - ls -la\n  rules:\n    - if: $CI_PIPELINE_SOURCE == \"push\" || $CI_PIPELINE_SOURCE == \"merge_request_event\"\n\n"
-                .to_string()
+            format!(
+                "prepare:\n  stage: prepare\n  timeout: {} minutes\n  script:\n    - git --version\n    - ls -la\n  rules:\n    - if: $CI_PIPELINE_SOURCE == \"push\" || $CI_PIPELINE_SOURCE == \"merge_request_event\"\n\n",
+                config.timeout_minutes
+            )
         }
 
         SharedStep::Run { name, command } => {
             format!(
-                "{}:\n  stage: {}\n  script:\n    - {}\n\n",
+                "{}:\n  stage: {}\n  timeout: {} minutes\n  script:\n    - {}\n\n",
                 name.replace(' ', "_").to_lowercase(),
                 name,
+                config.timeout_minutes,
                 command
             )
         }
@@ -315,9 +318,10 @@ fn render_gitlab_job(step: &SharedStep, _config: &RenderConfig) -> String {
             depends_on,
         } => {
             let mut yaml = format!(
-                "{}:\n  stage: {}\n  script:\n    - {} step {}\n",
+                "{}:\n  stage: {}\n  timeout: {} minutes\n  script:\n    - {} step {}\n",
                 node_id.0,
                 node_id.0,
+                config.timeout_minutes,
                 tool.command(),
                 node_id.0
             );
@@ -343,9 +347,10 @@ fn render_gitlab_job(step: &SharedStep, _config: &RenderConfig) -> String {
         SharedStep::DagRun { tool } => {
             let stage_name = format!("{}-run", NamingCase::SnakeCase.apply(&tool.binary));
             format!(
-                "{}:\n  stage: {}\n  script:\n    - {}\n\n",
+                "{}:\n  stage: {}\n  timeout: {} minutes\n  script:\n    - {}\n\n",
                 stage_name,
                 stage_name,
+                config.timeout_minutes,
                 tool.command()
             )
         }

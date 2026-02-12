@@ -197,8 +197,8 @@ fn render_github_workflow(steps: &[SharedStep], config: &RenderConfig) -> String
 
     // Job
     write!(yaml,
-        "jobs:\n  {}:\n    runs-on: {}\n    steps:\n",
-        config.workflow_name, config.runner.id,
+        "jobs:\n  {}:\n    runs-on: {}\n    timeout-minutes: {}\n    steps:\n",
+        config.workflow_name, config.runner.id, config.timeout_minutes,
     ).unwrap();
 
     for step in steps {

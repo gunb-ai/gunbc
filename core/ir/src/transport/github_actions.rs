@@ -505,6 +505,9 @@ pub struct WorkflowConfig {
     pub permissions: Permissions,
     /// Command to run in the CI step
     pub run_command: String,
+    /// Job-level timeout in minutes (GitHub Actions `timeout-minutes`).
+    /// Defaults to 30. GitHub's own default is 360 (6 hours).
+    pub timeout_minutes: u32,
 }
 
 impl WorkflowConfig {
@@ -525,12 +528,19 @@ impl WorkflowConfig {
             integrations,
             permissions,
             run_command: String::new(),
+            timeout_minutes: 30,
         }
     }
 
     /// Set the run command for the CI step.
     pub fn with_run_command(mut self, cmd: impl Into<String>) -> Self {
         self.run_command = cmd.into();
+        self
+    }
+
+    /// Set the job-level timeout in minutes.
+    pub fn with_timeout_minutes(mut self, minutes: u32) -> Self {
+        self.timeout_minutes = minutes;
         self
     }
 
@@ -607,6 +617,7 @@ impl WorkflowConfig {
         yaml.push_str("jobs:\n");
         yaml.push_str("  ci:\n");
         write!(yaml, "    runs-on: {}\n", self.runner.id).unwrap();
+        write!(yaml, "    timeout-minutes: {}\n", self.timeout_minutes).unwrap();
         yaml.push_str("    steps:\n");
 
         // Integration steps (actions)
