@@ -380,7 +380,12 @@ fn run_shell_response(
     args: &[&str],
     env: &[(&str, &str)],
 ) -> Result<gunbc_ir::transport::ShellResponse, ResourceError> {
-    let mut request = ShellRequest::new(command).args(args.iter().copied());
+    // Preflight steps compile + run cargo binaries; in CI with cold caches
+    // this can take well over 5 minutes. Use FermiCost::L (30 min).
+    const PREFLIGHT_TIMEOUT_MS: u64 = 1_800_000; // FermiCost::L = 30 min
+    let mut request = ShellRequest::new(command)
+        .args(args.iter().copied())
+        .timeout(PREFLIGHT_TIMEOUT_MS);
     for (key, value) in env {
         request = request.env(*key, *value);
     }
