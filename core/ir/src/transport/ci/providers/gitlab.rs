@@ -18,6 +18,7 @@
 use crate::language::NamingCase;
 use crate::transport::ci::command::{AnnotationLevel, WorkflowCommand};
 use crate::transport::ci::provider::CiProvider;
+use std::fmt::Write;
 use crate::transport::ci::render::{dag_to_shared_steps, CiRenderer, RenderConfig, SharedStep};
 use crate::transport::ci::runner::{
     gitlab_saas_linux_large, gitlab_saas_linux_medium, gitlab_saas_linux_small, Runner,
@@ -224,7 +225,7 @@ fn render_gitlab_ci(steps: &[SharedStep], config: &RenderConfig) -> String {
     let mut yaml = String::new();
 
     yaml.push_str(&config.header("#"));
-    yaml.push_str(&format!("\n\nimage: {}\n\n", config.runner.id));
+    write!(yaml, "\n\nimage: {}\n\n", config.runner.id).unwrap();
 
     // Variables — derived from cargo env + manual overrides
     yaml_block(&mut yaml, "variables:", &config.all_env(), |(k, v)| {
@@ -251,42 +252,36 @@ fn render_gitlab_ci(steps: &[SharedStep], config: &RenderConfig) -> String {
 /// Strategy: Build a stage for each "level" of the DAG based on dependencies.
 fn compute_stages(steps: &[SharedStep]) -> Vec<String> {
     let mut stages = Vec::new();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut seen_checkout = false;
 
     for step in steps {
         match step {
             SharedStep::Checkout(_) => {
                 if !seen_checkout {
-                    stages.push("prepare".to_string());
+                    let name = "prepare".to_string();
+                    seen.insert(name.clone());
+                    stages.push(name);
                     seen_checkout = true;
                 }
             }
             SharedStep::DagStep {
                 node_id,
-                depends_on,
                 ..
             } => {
-                // If no dependencies (other than checkout), it's a "build" stage
-                // Otherwise, determine stage based on depth
-                let stage_name = if depends_on.is_empty() {
-                    node_id.0.clone()
-                } else {
-                    // Use the node id as stage name for simplicity
-                    // A more sophisticated impl would compute DAG levels
-                    node_id.0.clone()
-                };
-                if !stages.contains(&stage_name) {
+                let stage_name = node_id.0.clone();
+                if seen.insert(stage_name.clone()) {
                     stages.push(stage_name);
                 }
             }
             SharedStep::DagRun { tool } => {
                 let stage = format!("{}-run", NamingCase::SnakeCase.apply(&tool.binary));
-                if !stages.contains(&stage) {
+                if seen.insert(stage.clone()) {
                     stages.push(stage);
                 }
             }
             SharedStep::Run { name, .. } => {
-                if !stages.contains(name) {
+                if seen.insert(name.clone()) {
                     stages.push(name.clone());
                 }
             }
@@ -332,14 +327,14 @@ fn render_gitlab_job(step: &SharedStep, _config: &RenderConfig) -> String {
                 yaml.push_str("  needs:\n");
                 let seen: HashSet<_> = depends_on.iter().map(|d| &d.0).collect();
                 for dep in seen {
-                    yaml.push_str(&format!("    - {}\n", dep));
+                    write!(yaml, "    - {}\n", dep).unwrap();
                 }
             }
 
             // Artifacts for passing data
             yaml.push_str("  artifacts:\n");
             yaml.push_str("    reports:\n");
-            yaml.push_str(&format!("      dotenv: {}.env\n", node_id.0));
+            write!(yaml, "      dotenv: {}.env\n", node_id.0).unwrap();
 
             yaml.push('\n');
             yaml

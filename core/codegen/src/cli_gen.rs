@@ -18,6 +18,7 @@
 //! allowing incremental IR deepening later.
 
 use crate::testgen::render_rust::plain_rust_renderer;
+use std::fmt::Write;
 use gunbc_ir::code_ir::{Expr, FnDef, Import, Item, SourceFile, Stmt};
 use gunbc_ir::language::{rust_type as lang_rust_type, NamingCase};
 use gunbc_ir::render_ir::CodeRenderer;
@@ -183,7 +184,7 @@ impl CliEntrypoint {
 
     /// Convert to a `gunbc_cli::CliParam` for in-process parsing.
     pub fn to_cli_param(&self) -> gunbc_cli::CliParam {
-        let mut p = gunbc_cli::CliParam::new(&self.port_name, &self.type_id)
+        let mut p = gunbc_cli::CliParam::new(&self.port_name, self.type_id.as_str())
             .with_cardinality(self.cardinality);
         if let Some(c) = self.short_flag {
             p = p.short(c);
@@ -381,18 +382,18 @@ fn generate_arg_parsing(entrypoints: &[CliEntrypoint]) -> String {
     // Build schema
     code.push_str("let schema = vec![\n");
     for ep in entrypoints {
-        code.push_str(&format!(
+        write!(code,
             "    gunbc_cli::CliParam::new(\"{}\", \"{}\")",
             ep.port_name, ep.type_id
-        ));
+        ).unwrap();
         if ep.is_repeatable() {
             code.push_str(".with_cardinality(gunbc_ir::Cardinality::ZERO_OR_MORE)");
         }
         if let Some(c) = ep.short_flag {
-            code.push_str(&format!(".short('{}')", c));
+            write!(code, ".short('{}')", c).unwrap();
         }
         if let Some(ref d) = ep.default_value {
-            code.push_str(&format!(".default(\"{}\")", d));
+            write!(code, ".default(\"{}\")", d).unwrap();
         }
         code.push_str(",\n");
     }
@@ -414,40 +415,40 @@ fn generate_arg_parsing(entrypoints: &[CliEntrypoint]) -> String {
     // Extract local variables from cli_inputs for graph_builder_args compatibility
     for ep in entrypoints {
         if ep.is_repeatable() {
-            code.push_str(&format!(
+            write!(code,
                 "let {}: Vec<String> = match cli_inputs.get(\"{}\") {{\n    Some(Value::List(items)) => items.iter().filter_map(|v| match v {{ Value::Str(s) => Some(s.clone()), _ => None }}).collect(),\n    _ => vec![],\n}};\n",
                 ep.var_name(), ep.port_name
-            ));
+            ).unwrap();
         } else {
             match ep.type_id.as_str() {
-                "Bool" => code.push_str(&format!(
+                "Bool" => write!(code,
                     "let {} = matches!(cli_inputs.get(\"{}\"), Some(Value::Bool(true)));\n",
                     ep.var_name(),
                     ep.port_name
-                )),
+                ).unwrap(),
                 "Int" => {
                     let default = ep
                         .default_value
                         .as_deref()
                         .and_then(|d| d.parse::<i64>().ok())
                         .unwrap_or(0);
-                    code.push_str(&format!(
+                    write!(code,
                         "let {} = match cli_inputs.get(\"{}\") {{ Some(Value::Int(i)) => *i, _ => {} }};\n",
                         ep.var_name(), ep.port_name, default
-                    ));
+                    ).unwrap();
                 }
                 _ => {
                     if ep.default_value.is_some() {
                         let default = ep.default_value.as_deref().unwrap_or("");
-                        code.push_str(&format!(
+                        write!(code,
                             "let {} = match cli_inputs.get(\"{}\") {{ Some(Value::Str(s)) => s.clone(), _ => \"{}\".to_string() }};\n",
                             ep.var_name(), ep.port_name, default
-                        ));
+                        ).unwrap();
                     } else {
-                        code.push_str(&format!(
+                        write!(code,
                             "let {}: Option<String> = cli_inputs.get(\"{}\").and_then(|v| match v {{ Value::Str(s) => Some(s.clone()), _ => None }});\n",
                             ep.var_name(), ep.port_name
-                        ));
+                        ).unwrap();
                     }
                 }
             }
@@ -473,33 +474,33 @@ fn generate_print_inputs(entrypoints: &[CliEntrypoint]) -> String {
     let mut code = String::new();
     for ep in entrypoints {
         if ep.is_repeatable() {
-            code.push_str(&format!(
+            write!(code,
                 "println!(\"  {}: {{:?}}\", {});\n",
                 ep.port_name,
                 ep.var_name()
-            ));
+            ).unwrap();
         } else {
             match ep.type_id.as_str() {
                 "Bool" => {
-                    code.push_str(&format!(
+                    write!(code,
                         "println!(\"  {}: {{}}\", {});\n",
                         ep.port_name,
                         ep.var_name()
-                    ));
+                    ).unwrap();
                 }
                 _ => {
                     if ep.default_value.is_some() {
-                        code.push_str(&format!(
+                        write!(code,
                             "println!(\"  {}: {{}}\", {});\n",
                             ep.port_name,
                             ep.var_name()
-                        ));
+                        ).unwrap();
                     } else {
-                        code.push_str(&format!(
+                        write!(code,
                             "println!(\"  {}: {{}}\", {}.as_deref().unwrap_or(\"<default>\"));\n",
                             ep.port_name,
                             ep.var_name()
-                        ));
+                        ).unwrap();
                     }
                 }
             }
@@ -546,14 +547,14 @@ fn generate_help_options(entrypoints: &[CliEntrypoint]) -> String {
                 _ => " <VAL>",
             }
         };
-        code.push_str(&format!(
+        write!(code,
             "println!(\"    {}--{}{:width$}  {}\");\n",
             short,
             flag,
             type_hint,
             ep.help,
             width = 20 - flag.len()
-        ));
+        ).unwrap();
     }
     code
 }

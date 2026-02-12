@@ -6,7 +6,7 @@
 use crate::workspace::WorkspaceOp;
 use gunbc_deps::{DepsOp, PlatformEnv};
 use gunbc_ir::build::*;
-use gunbc_ir::{DagBuilder, Node};
+use gunbc_ir::{BuilderError, DagBuilder, Node};
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::PrepareFileWriteOp;
 
@@ -29,7 +29,7 @@ use gunbc_primitives::PrepareFileWriteOp;
 /// - `executed`: Bool - Whether installs were executed
 /// - `success`: Bool - Whether installation succeeded
 /// - `script`: String - Generated install script
-pub fn build_deps_install_subdag() -> Node<WorkspaceOp> {
+pub fn build_deps_install_subdag() -> Result<Node<WorkspaceOp>, BuilderError> {
     let mut builder: DagBuilder<WorkspaceOp> = DagBuilder::new();
 
     // Platform env (resource acquisition)
@@ -39,8 +39,7 @@ pub fn build_deps_install_subdag() -> Node<WorkspaceOp> {
             vec![],
             vec![port("platform", "Platform")],
             WorkspaceOp::DepsEnv(PlatformEnv),
-        ))
-        .expect("platform_env node");
+        ))?;
 
     // Node: PrepareLoadManifest (PURE)
     let prepare_load = builder
@@ -53,8 +52,7 @@ pub fn build_deps_install_subdag() -> Node<WorkspaceOp> {
                 port("skip", "Bool"),
             ],
             WorkspaceOp::Deps(DepsOp::PrepareLoadManifest),
-        ))
-        .expect("prepare_load_manifest node");
+        ))?;
 
     // Node: Execute manifest load (BOUNDARY)
     let execute_load = builder
@@ -66,8 +64,7 @@ pub fn build_deps_install_subdag() -> Node<WorkspaceOp> {
                 WorkspaceOp::Transport(TransportOps::Execute),
             ),
             &prepare_load,
-        )
-        .expect("execute_load_manifest node");
+        )?;
 
     // Node: ParseManifest (PURE)
     let parse_manifest = builder
@@ -87,8 +84,7 @@ pub fn build_deps_install_subdag() -> Node<WorkspaceOp> {
                 WorkspaceOp::Deps(DepsOp::ParseManifest),
             ),
             &execute_load,
-        )
-        .expect("parse_manifest node");
+        )?;
 
     // Node: GenerateScripts (PURE)
     let generate_scripts = builder
@@ -108,8 +104,7 @@ pub fn build_deps_install_subdag() -> Node<WorkspaceOp> {
                 WorkspaceOp::Deps(DepsOp::GenerateScripts),
             ),
             &parse_manifest,
-        )
-        .expect("generate_scripts node");
+        )?;
 
     // Node: PrepareExecuteInstalls (PURE)
     let prepare_execute = builder
@@ -125,8 +120,7 @@ pub fn build_deps_install_subdag() -> Node<WorkspaceOp> {
                 WorkspaceOp::Deps(DepsOp::PrepareExecuteInstalls),
             ),
             &generate_scripts,
-        )
-        .expect("prepare_execute_installs node");
+        )?;
 
     // Node: Execute installs (BOUNDARY)
     let execute_installs = builder
@@ -138,8 +132,7 @@ pub fn build_deps_install_subdag() -> Node<WorkspaceOp> {
                 WorkspaceOp::Transport(TransportOps::Execute),
             ),
             &prepare_execute,
-        )
-        .expect("execute_installs node");
+        )?;
 
     // Node: ParseExecuteResult (PURE)
     let _parse_result = builder
@@ -160,75 +153,63 @@ pub fn build_deps_install_subdag() -> Node<WorkspaceOp> {
                 WorkspaceOp::Deps(DepsOp::ParseExecuteResult),
             ),
             &execute_installs,
-        )
-        .expect("parse_execute_result node");
+        )?;
 
     // Wire up the pipeline
     builder
-        .add_edge(prepare_load.out("request"), execute_load.in_port("request"))
-        .expect("request edge");
+        .add_edge(prepare_load.out("request"), execute_load.in_port("request"))?;
     builder
-        .add_edge(prepare_load.out("skip"), execute_load.in_port("skip"))
-        .expect("skip edge");
+        .add_edge(prepare_load.out("skip"), execute_load.in_port("skip"))?;
     builder
         .add_edge(
             execute_load.out("response"),
             parse_manifest.in_port("response"),
-        )
-        .expect("response edge");
+        )?;
     builder
         .add_edge(
             prepare_load.out("manifest_path"),
             parse_manifest.in_port("manifest_path"),
-        )
-        .expect("manifest_path edge");
+        )?;
     builder
         .add_edge(
             parse_manifest.out("manifest_content"),
             generate_scripts.in_port("manifest_content"),
-        )
-        .expect("manifest_content edge");
+        )?;
     builder
         .add_edge(
             platform_env.out("platform"),
             generate_scripts.in_port("res:platform"),
-        )
-        .expect("platform edge");
+        )?;
     builder
         .add_edge(
             generate_scripts.out("install_script"),
             prepare_execute.in_port("install_script"),
-        )
-        .expect("install_script edge");
+        )?;
     builder
         .add_edge(
             prepare_execute.out("request"),
             execute_installs.in_port("request"),
-        )
-        .expect("execute request edge");
+        )?;
     builder
         .add_edge(
             prepare_execute.out("skip"),
             execute_installs.in_port("skip"),
-        )
-        .expect("execute skip edge");
+        )?;
     builder
         .add_edge(
             execute_installs.out("response"),
             _parse_result.in_port("response"),
-        )
-        .expect("execute response edge");
+        )?;
     builder
         .add_edge(
             prepare_execute.out("script"),
             _parse_result.in_port("script"),
-        )
-        .expect("script edge");
+        )?;
 
     let inner_dag = builder.build();
 
     // Wrap as SubDag with explicit I/O interface
-    Node::subdag("deps_install", inner_dag)
+    Ok(Node::subdag("deps_install", inner_dag))
 }
 
 /// Build the deps generate SubDag node.
@@ -246,7 +227,7 @@ pub fn build_deps_install_subdag() -> Node<WorkspaceOp> {
 /// - `content`: String - Generated content
 /// - `tool_count`: Int - Number of tools in registry
 /// - `tool_names`: List - Names of registered tools
-pub fn build_deps_generate_subdag() -> Node<WorkspaceOp> {
+pub fn build_deps_generate_subdag() -> Result<Node<WorkspaceOp>, BuilderError> {
     let mut builder: DagBuilder<WorkspaceOp> = DagBuilder::new();
 
     // Node: LoadToolRegistry
@@ -259,8 +240,7 @@ pub fn build_deps_generate_subdag() -> Node<WorkspaceOp> {
                 non_empty_list("tool_names", "NonEmptyStringList"),
             ],
             WorkspaceOp::Deps(DepsOp::LoadToolRegistry),
-        ))
-        .expect("load_tool_registry node");
+        ))?;
 
     // Node: RenderDepsToml
     let render_deps_toml = builder
@@ -272,8 +252,7 @@ pub fn build_deps_generate_subdag() -> Node<WorkspaceOp> {
                 WorkspaceOp::Deps(DepsOp::RenderDepsToml),
             ),
             &load_registry,
-        )
-        .expect("render_deps_toml node");
+        )?;
 
     // Node: PrepareFileWrite
     let prepare_write = builder
@@ -287,8 +266,7 @@ pub fn build_deps_generate_subdag() -> Node<WorkspaceOp> {
                 )),
             ),
             &render_deps_toml,
-        )
-        .expect("prepare_file_write node");
+        )?;
 
     // Node: ExecuteTransport
     let execute_transport = builder
@@ -304,29 +282,25 @@ pub fn build_deps_generate_subdag() -> Node<WorkspaceOp> {
                 WorkspaceOp::Transport(TransportOps::Execute),
             ),
             &prepare_write,
-        )
-        .expect("execute_transport node");
+        )?;
 
     // Wire up
     builder
         .add_edge(
             render_deps_toml.out("deps_toml_content"),
             prepare_write.in_port("content"),
-        )
-        .expect("content edge");
+        )?;
     builder
         .add_edge(
             prepare_write.out("request"),
             execute_transport.in_port("request"),
-        )
-        .expect("request edge");
+        )?;
     builder
-        .add_edge(prepare_write.out("skip"), execute_transport.in_port("skip"))
-        .expect("skip edge");
+        .add_edge(prepare_write.out("skip"), execute_transport.in_port("skip"))?;
 
     let inner_dag = builder.build();
 
-    Node::subdag("deps_generate", inner_dag)
+    Ok(Node::subdag("deps_generate", inner_dag))
 }
 
 #[cfg(test)]
@@ -335,14 +309,14 @@ mod tests {
 
     #[test]
     fn test_deps_install_subdag_is_subdag() {
-        let node = build_deps_install_subdag();
+        let node = build_deps_install_subdag().expect("deps install subdag should build");
         assert!(node.is_subdag());
         assert_eq!(node.id.0, "deps_install");
     }
 
     #[test]
     fn test_deps_generate_subdag_is_subdag() {
-        let node = build_deps_generate_subdag();
+        let node = build_deps_generate_subdag().expect("deps generate subdag should build");
         assert!(node.is_subdag());
         assert_eq!(node.id.0, "deps_generate");
     }

@@ -6,6 +6,7 @@
 //! - Targets rendered as labeled blocks (not Makefile syntax)
 
 use crate::render_ir::{Category, StructuredBlock, StructuredRenderer, Target, TextMedium};
+use std::fmt::Write;
 
 /// Renders structured IR to plain text (reports, pragma files, etc.).
 pub struct PlainStructuredRenderer<M> {
@@ -43,9 +44,9 @@ impl<M: TextMedium> StructuredRenderer<M> for PlainStructuredRenderer<M> {
     fn render_category(&self, category: &Category) -> String {
         let mut out = String::new();
         let source = category.source.as_deref().unwrap_or("unknown");
-        out.push_str(&format!("# --- {} (from {}) ---\n", category.name, source));
+        write!(out, "# --- {} (from {}) ---\n", category.name, source).unwrap();
         if let Some(ref rationale) = category.rationale {
-            out.push_str(&format!("# {}\n", rationale));
+            write!(out, "# {}\n", rationale).unwrap();
         }
         for item in &category.items {
             out.push_str(item);
@@ -86,6 +87,7 @@ mod tests {
     use super::*;
     use crate::render_ir::{Block, PlainText};
     use crate::symbols::{Tier, STANDARD};
+    use std::borrow::Cow;
 
     fn plain() -> PlainText {
         PlainText {
@@ -98,10 +100,10 @@ mod tests {
     fn test_render_category() {
         let r = PlainStructuredRenderer::new(plain());
         let cat = Category {
-            name: "Crate exemptions".to_string(),
-            source: Some("policy".to_string()),
-            items: vec!["core/codegen/src/lib.rs:1".to_string()],
-            rationale: Some("Crate-level allowance".to_string()),
+            name: Cow::Borrowed("Crate exemptions"),
+            source: Some(Cow::Borrowed("policy")),
+            items: vec![Cow::Borrowed("core/codegen/src/lib.rs:1")],
+            rationale: Some(Cow::Borrowed("Crate-level allowance")),
         };
         let out = r.render_category(&cat);
         assert!(out.contains("# --- Crate exemptions (from policy) ---"));

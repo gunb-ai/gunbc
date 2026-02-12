@@ -340,12 +340,12 @@ fn execute_tcp(request: &TcpRequest) -> Result<TcpResponse, TransportError> {
     let mut stream = TcpStream::connect(&addr)
         .map_err(|e| TransportError::new(format!("connection failed: {}", e)))?;
 
-    if let Some(timeout) = request.connect_timeout_ms {
+    if let Some(timeout) = request.read_timeout_ms {
         stream
             .set_read_timeout(Some(Duration::from_millis(timeout)))
             .ok();
     }
-    if let Some(timeout) = request.read_timeout_ms {
+    if let Some(timeout) = request.connect_timeout_ms {
         stream
             .set_write_timeout(Some(Duration::from_millis(timeout)))
             .ok();

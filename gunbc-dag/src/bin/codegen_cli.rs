@@ -172,8 +172,8 @@ fn setup_bin_link(
 ) -> Result<(), ResourceError> {
     let args = vec![
         "-s".to_string(),
-        target_path.to_string_lossy().to_string(),
-        bin_path.to_string_lossy().to_string(),
+        target_path.to_string_lossy().into_owned(),
+        bin_path.to_string_lossy().into_owned(),
     ];
     io.command_output("ln", &args)?;
     Ok(())
@@ -207,7 +207,7 @@ fn remove_path(io: &dyn ResourceIo, path: &Path) -> Result<(), ResourceError> {
 
     #[cfg(windows)]
     {
-        let path_str = path.to_string_lossy().to_string();
+        let path_str = path.to_string_lossy().into_owned();
         let _ = io.command_output(
             "cmd",
             &[
@@ -233,7 +233,7 @@ fn remove_path(io: &dyn ResourceIo, path: &Path) -> Result<(), ResourceError> {
 
     #[cfg(not(windows))]
     {
-        let args = vec!["-rf".to_string(), path.to_string_lossy().to_string()];
+        let args = vec!["-rf".to_string(), path.to_string_lossy().into_owned()];
         io.command_output("rm", &args)?;
         Ok(())
     }

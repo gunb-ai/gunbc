@@ -5,7 +5,7 @@
 //! these helpers as the I/O boundary for tool acquisition and execution.
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use gunbc_ir::transport::cli::{CliToolDef, CliToolError, CliToolOp, ToolHandle, ToolPathResolver};
@@ -142,18 +142,18 @@ pub fn execute_cli_tool_op(op: &CliToolOp) -> Result<HashMap<String, Value>, Cli
         CliToolOp::ResourceGate { ports, .. } => execute_resource_gate(ports),
         CliToolOp::PrepareCheck { tool } => Ok(prepare_check(tool)),
         CliToolOp::ParseCheck { .. } => {
-            panic!("ParseCheck should be called via execute_cli_tool_op_with_inputs")
+            Err(CliToolError::invariant("ParseCheck should be called via execute_cli_tool_op_with_inputs"))
         }
         CliToolOp::PrepareInstall { tool } => Ok(prepare_install(tool)),
         CliToolOp::ParseInstall { .. } => {
-            panic!("ParseInstall should be called via execute_cli_tool_op_with_inputs")
+            Err(CliToolError::invariant("ParseInstall should be called via execute_cli_tool_op_with_inputs"))
         }
         CliToolOp::PrepareRun { tool, args } => Ok(prepare_run(tool, args)),
         CliToolOp::ParseRun { .. } => {
-            panic!("ParseRun should be called via execute_cli_tool_op_with_inputs")
+            Err(CliToolError::invariant("ParseRun should be called via execute_cli_tool_op_with_inputs"))
         }
         CliToolOp::Transport => {
-            panic!("Transport should be executed via TransportOps, not execute_cli_tool_op")
+            Err(CliToolError::invariant("Transport should be executed via TransportOps, not execute_cli_tool_op"))
         }
     }
 }
@@ -437,16 +437,38 @@ fn execute_run(
     tool: &'static CliToolDef,
     args: &[String],
 ) -> Result<HashMap<String, Value>, CliToolError> {
+    let (cmd, _) = tool.run_cmd.split_first().ok_or_else(|| {
+        CliToolError::new(tool, "run", "No run command defined")
+    })?;
+    execute_run_impl(tool, args, cmd.as_ref())
+}
+
+fn execute_run_with_path(
+    tool: &'static CliToolDef,
+    args: &[String],
+    path: &Path,
+) -> Result<HashMap<String, Value>, CliToolError> {
     if tool.run_cmd.is_empty() {
         return Err(CliToolError::new(tool, "run", "No run command defined"));
     }
+    execute_run_impl(tool, args, path.as_ref())
+}
 
-    let (cmd, base_args) = tool.run_cmd.split_first().unwrap();
+fn execute_run_impl(
+    tool: &'static CliToolDef,
+    args: &[String],
+    cmd: &std::ffi::OsStr,
+) -> Result<HashMap<String, Value>, CliToolError> {
+    let base_args = if tool.run_cmd.len() > 1 {
+        &tool.run_cmd[1..]
+    } else {
+        &[]
+    };
 
     let mut full_args: Vec<&str> = base_args.to_vec();
     full_args.extend(args.iter().map(|s| s.as_str()));
 
-    println!("Running: {} {}", cmd, full_args.join(" "));
+    println!("Running: {} {}", cmd.to_string_lossy(), full_args.join(" "));
 
     let output = Command::new(cmd)
         .args(&full_args)
@@ -455,42 +477,8 @@ fn execute_run(
 
     let success = output.status.success();
     let exit_code = output.status.code().unwrap_or(-1);
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-
-    let mut out = HashMap::new();
-    out.insert("success".to_string(), Value::Bool(success));
-    out.insert("exit_code".to_string(), Value::Int(exit_code as i64));
-    out.insert("stdout".to_string(), Value::Str(stdout));
-    out.insert("stderr".to_string(), Value::Str(stderr));
-    Ok(out)
-}
-
-fn execute_run_with_path(
-    tool: &'static CliToolDef,
-    args: &[String],
-    path: &PathBuf,
-) -> Result<HashMap<String, Value>, CliToolError> {
-    if tool.run_cmd.is_empty() {
-        return Err(CliToolError::new(tool, "run", "No run command defined"));
-    }
-
-    let (_, base_args) = tool.run_cmd.split_first().unwrap();
-
-    let mut full_args: Vec<&str> = base_args.to_vec();
-    full_args.extend(args.iter().map(|s| s.as_str()));
-
-    println!("Running: {} {}", path.display(), full_args.join(" "));
-
-    let output = Command::new(path)
-        .args(&full_args)
-        .output()
-        .map_err(|e| CliToolError::new(tool, "run", format!("Failed to execute: {}", e)))?;
-
-    let success = output.status.success();
-    let exit_code = output.status.code().unwrap_or(-1);
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
 
     let mut out = HashMap::new();
     out.insert("success".to_string(), Value::Bool(success));

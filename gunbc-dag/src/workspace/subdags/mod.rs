@@ -12,7 +12,7 @@ pub mod languages;
 pub mod makegen;
 
 use crate::workspace::WorkspaceOp;
-use gunbc_ir::Dag;
+use gunbc_ir::{BuilderError, Dag};
 
 /// Build the Workspace DAG containing all tool and language SubDags.
 ///
@@ -31,22 +31,22 @@ use gunbc_ir::Dag;
 /// │   └── ...
 /// └── (more tools as they're migrated)
 /// ```
-pub fn build_workspace_dag() -> Dag<WorkspaceOp> {
+pub fn build_workspace_dag() -> Result<Dag<WorkspaceOp>, BuilderError> {
     let mut dag = Dag::new();
 
     // Tool SubDags (all migrated to fractal pattern)
     dag.add_node(makegen::build_makegen_subdag());
     dag.add_node(clippy::build_clippy_lint_all_subdag());
-    dag.add_node(deps::build_deps_install_subdag());
-    dag.add_node(deps::build_deps_generate_subdag());
-    dag.add_node(bootstrap::build_bootstrap_subdag());
+    dag.add_node(deps::build_deps_install_subdag()?);
+    dag.add_node(deps::build_deps_generate_subdag()?);
+    dag.add_node(bootstrap::build_bootstrap_subdag()?);
     dag.add_node(ci::build_ci_subdag());
     dag.add_node(gist::build_gist_rust_subdag());
 
     // Language SubDag (already fractal)
     dag.add_node(languages::build_languages_subdag());
 
-    dag
+    Ok(dag)
 }
 
 #[cfg(test)]
@@ -55,7 +55,7 @@ mod tests {
 
     #[test]
     fn test_workspace_dag_structure() {
-        let dag = build_workspace_dag();
+        let dag = build_workspace_dag().expect("workspace dag should build");
 
         // Should have all tool subdags plus languages
         let node_ids: Vec<_> = dag.nodes.iter().map(|n| n.id.0.as_str()).collect();
@@ -71,7 +71,7 @@ mod tests {
 
     #[test]
     fn test_workspace_dag_nodes_are_subdags() {
-        let dag = build_workspace_dag();
+        let dag = build_workspace_dag().expect("workspace dag should build");
 
         for node in &dag.nodes {
             assert!(node.is_subdag(), "Node {} should be a SubDag", node.id.0);

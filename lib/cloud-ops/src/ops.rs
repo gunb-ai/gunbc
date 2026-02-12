@@ -76,57 +76,7 @@ impl Executable for CloudOps {
                 OutputMap::new().value("config", config.into()).ok()
             }
             CloudOps::MapToGcpInputs { runtime } => {
-                let provider = require_str(&inputs, "provider")?;
-                if CloudProviderKind::parse(provider) != Some(CloudProviderKind::Gcp) {
-                    return Err(ExecError::new(format!(
-                        "cloud config provider '{provider}' is not gcp"
-                    )));
-                }
-
-                let runtime_str = require_str(&inputs, "runtime")?;
-                if CloudRuntimeKind::parse(runtime_str) != Some(*runtime) {
-                    return Err(ExecError::new(format!(
-                        "cloud config runtime '{runtime_str}' does not match expected '{}'",
-                        runtime.as_str()
-                    )));
-                }
-
-                let audience = require_str(&inputs, "audience")?;
-                let project = require_str(&inputs, "project_or_account")?;
-                let secret = require_str(&inputs, "secret")?;
-
-                let service_account = match inputs
-                    .get("impersonate_account_or_role")
-                    .and_then(Value::as_str)
-                    .map(|s| s.trim())
-                    .filter(|s| !s.is_empty())
-                {
-                    Some(value) => value.to_string(),
-                    None => match inputs
-                        .get("service_account_or_role")
-                        .and_then(Value::as_str)
-                        .map(|s| s.trim())
-                        .filter(|s| !s.is_empty())
-                    {
-                        Some(value) => value.to_string(),
-                        None => {
-                            return Err(ExecError::new(
-                                "missing service_account_or_role for gcp config",
-                            ))
-                        }
-                    },
-                };
-
-                let mut out = OutputMap::new()
-                    .str("audience", audience)
-                    .str("project", project)
-                    .str("secret", secret)
-                    .str("service_account", service_account)
-                    .ok()?;
-
-                if let Some(version) = inputs.get("version").and_then(Value::as_str) {
-                    out.insert("version".to_string(), Value::Str(version.to_string()));
-                }
+                let mut out = extract_gcp_common_inputs(&inputs, *runtime)?;
 
                 // Pass-through inputs required by the GCP graph.
                 let scheme = require_str(&inputs, "scheme")?;
@@ -138,31 +88,6 @@ impl Executable for CloudOps {
                     out.insert(
                         "header_name".to_string(),
                         Value::Str(header_name.to_string()),
-                    );
-                }
-
-                if let Some(lifetime) = inputs.get("lifetime_seconds").and_then(Value::as_int) {
-                    out.insert("lifetime_seconds".to_string(), Value::Int(lifetime));
-                }
-                if let Some(interactive_allowed) =
-                    inputs.get("interactive_allowed").and_then(Value::as_bool)
-                {
-                    out.insert(
-                        "interactive_allowed".to_string(),
-                        Value::Bool(interactive_allowed),
-                    );
-                }
-
-                if matches!(runtime, CloudRuntimeKind::GitHubActions) {
-                    let request_url = require_str(&inputs, "request_url")?;
-                    let request_token = require_str(&inputs, "request_token")?;
-                    out.insert(
-                        "request_url".to_string(),
-                        Value::Str(request_url.to_string()),
-                    );
-                    out.insert(
-                        "request_token".to_string(),
-                        Value::Str(request_token.to_string()),
                     );
                 }
 
@@ -188,85 +113,98 @@ impl Executable for CloudOps {
                 out.ok()
             }
             CloudOps::MapToGcpSecretInputs { runtime } => {
-                let provider = require_str(&inputs, "provider")?;
-                if CloudProviderKind::parse(provider) != Some(CloudProviderKind::Gcp) {
-                    return Err(ExecError::new(format!(
-                        "cloud config provider '{provider}' is not gcp"
-                    )));
-                }
-
-                let runtime_str = require_str(&inputs, "runtime")?;
-                if CloudRuntimeKind::parse(runtime_str) != Some(*runtime) {
-                    return Err(ExecError::new(format!(
-                        "cloud config runtime '{runtime_str}' does not match expected '{}'",
-                        runtime.as_str()
-                    )));
-                }
-
-                let audience = require_str(&inputs, "audience")?;
-                let project = require_str(&inputs, "project_or_account")?;
-                let secret = require_str(&inputs, "secret")?;
-
-                let service_account = match inputs
-                    .get("impersonate_account_or_role")
-                    .and_then(Value::as_str)
-                    .map(|s| s.trim())
-                    .filter(|s| !s.is_empty())
-                {
-                    Some(value) => value.to_string(),
-                    None => match inputs
-                        .get("service_account_or_role")
-                        .and_then(Value::as_str)
-                        .map(|s| s.trim())
-                        .filter(|s| !s.is_empty())
-                    {
-                        Some(value) => value.to_string(),
-                        None => {
-                            return Err(ExecError::new(
-                                "missing service_account_or_role for gcp config",
-                            ))
-                        }
-                    },
-                };
-
-                let mut out = OutputMap::new()
-                    .str("audience", audience)
-                    .str("project", project)
-                    .str("secret", secret)
-                    .str("service_account", service_account)
-                    .ok()?;
-
-                if let Some(version) = inputs.get("version").and_then(Value::as_str) {
-                    out.insert("version".to_string(), Value::Str(version.to_string()));
-                }
-
-                if let Some(lifetime) = inputs.get("lifetime_seconds").and_then(Value::as_int) {
-                    out.insert("lifetime_seconds".to_string(), Value::Int(lifetime));
-                }
-                if let Some(interactive_allowed) =
-                    inputs.get("interactive_allowed").and_then(Value::as_bool)
-                {
-                    out.insert(
-                        "interactive_allowed".to_string(),
-                        Value::Bool(interactive_allowed),
-                    );
-                }
-
-                if matches!(runtime, CloudRuntimeKind::GitHubActions) {
-                    let request_url = require_str(&inputs, "request_url")?;
-                    let request_token = require_str(&inputs, "request_token")?;
-                    out.insert(
-                        "request_url".to_string(),
-                        Value::Str(request_url.to_string()),
-                    );
-                    out.insert(
-                        "request_token".to_string(),
-                        Value::Str(request_token.to_string()),
-                    );
-                }
-
+                let out = extract_gcp_common_inputs(&inputs, *runtime)?;
                 Ok(out)
             }
         }
     }
+}
+
+/// Shared extraction logic for MapToGcpInputs and MapToGcpSecretInputs.
+///
+/// Validates provider/runtime, extracts core fields (audience, project, secret,
+/// service_account), and adds optional fields (version, lifetime, interactive,
+/// GitHub Actions OIDC tokens).
+fn extract_gcp_common_inputs(
+    inputs: &HashMap<String, Value>,
+    runtime: CloudRuntimeKind,
+) -> Result<HashMap<String, Value>, ExecError> {
+    let provider = require_str(inputs, "provider")?;
+    if CloudProviderKind::parse(provider) != Some(CloudProviderKind::Gcp) {
+        return Err(ExecError::new(format!(
+            "cloud config provider '{provider}' is not gcp"
+        )));
+    }
+
+    let runtime_str = require_str(inputs, "runtime")?;
+    if CloudRuntimeKind::parse(runtime_str) != Some(runtime) {
+        return Err(ExecError::new(format!(
+            "cloud config runtime '{runtime_str}' does not match expected '{}'",
+            runtime.as_str()
+        )));
+    }
+
+    let audience = require_str(inputs, "audience")?;
+    let project = require_str(inputs, "project_or_account")?;
+    let secret = require_str(inputs, "secret")?;
+
+    let service_account = match inputs
+        .get("impersonate_account_or_role")
+        .and_then(Value::as_str)
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+    {
+        Some(value) => value.to_string(),
+        None => match inputs
+            .get("service_account_or_role")
+            .and_then(Value::as_str)
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+        {
+            Some(value) => value.to_string(),
+            None => {
+                return Err(ExecError::new(
+                    "missing service_account_or_role for gcp config",
+                ))
+            }
+        },
+    };
+
+    let mut out = OutputMap::new()
+        .str("audience", audience)
+        .str("project", project)
+        .str("secret", secret)
+        .str("service_account", service_account)
+        .ok()?;
+
+    if let Some(version) = inputs.get("version").and_then(Value::as_str) {
+        out.insert("version".to_string(), Value::Str(version.to_string()));
+    }
+
+    if let Some(lifetime) = inputs.get("lifetime_seconds").and_then(Value::as_int) {
+        out.insert("lifetime_seconds".to_string(), Value::Int(lifetime));
+    }
+    if let Some(interactive_allowed) =
+        inputs.get("interactive_allowed").and_then(Value::as_bool)
+    {
+        out.insert(
+            "interactive_allowed".to_string(),
+            Value::Bool(interactive_allowed),
+        );
+    }
+
+    if matches!(runtime, CloudRuntimeKind::GitHubActions) {
+        let request_url = require_str(inputs, "request_url")?;
+        let request_token = require_str(inputs, "request_token")?;
+        out.insert(
+            "request_url".to_string(),
+            Value::Str(request_url.to_string()),
+        );
+        out.insert(
+            "request_token".to_string(),
+            Value::Str(request_token.to_string()),
+        );
+    }
+
+    Ok(out)
 }

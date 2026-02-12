@@ -6,6 +6,7 @@
 use gunbc_ir::code_ir::*;
 use gunbc_ir::render_ir::{CodeRenderer, OutputMedium, TextMedium};
 use gunbc_ir::ValueExpr;
+use std::fmt::Write;
 
 /// Escape a string for embedding in a Rust string literal.
 fn escape_rust_str(s: &str) -> String {
@@ -47,7 +48,7 @@ impl<M: TextMedium> CodeRenderer<M> for RustCodeRenderer<M> {
 
         // Header comments
         for line in &file.header {
-            out.push_str(&format!("// {}\n", line));
+            write!(out, "// {}\n", line).unwrap();
         }
         out.push('\n');
 
@@ -61,10 +62,10 @@ impl<M: TextMedium> CodeRenderer<M> for RustCodeRenderer<M> {
 
         // Helper functions
         for helper in &file.helpers {
-            out.push_str(&format!(
+            write!(out,
                 "fn {}() -> {} {{\n",
                 helper.name, helper.return_type
-            ));
+            ).unwrap();
             for stmt in &helper.body {
                 out.push_str(&self.render_stmt(stmt, 1));
             }
@@ -73,15 +74,15 @@ impl<M: TextMedium> CodeRenderer<M> for RustCodeRenderer<M> {
 
         // Test sections
         for section in &file.sections {
-            out.push_str(&format!(
+            write!(out,
                 "// =========================================================================\n\
                  // {}\n\
                  // =========================================================================\n\n",
                 section.title
-            ));
+            ).unwrap();
 
             for note in &section.notes {
-                out.push_str(&format!("// {}\n", note));
+                write!(out, "// {}\n", note).unwrap();
             }
             if !section.notes.is_empty() {
                 out.push('\n');
@@ -90,11 +91,11 @@ impl<M: TextMedium> CodeRenderer<M> for RustCodeRenderer<M> {
             for test_fn in &section.tests {
                 // Doc comments
                 for line in &test_fn.doc {
-                    out.push_str(&format!("/// {}\n", line));
+                    write!(out, "/// {}\n", line).unwrap();
                 }
                 // Test attribute and function signature
                 out.push_str("#[test]\n");
-                out.push_str(&format!("fn {}() {{\n", test_fn.name));
+                write!(out, "fn {}() {{\n", test_fn.name).unwrap();
 
                 // Body
                 for stmt in &test_fn.body {
@@ -113,7 +114,7 @@ impl<M: TextMedium> CodeRenderer<M> for RustCodeRenderer<M> {
 
         // Module-level doc comments
         for line in &file.doc {
-            out.push_str(&format!("//! {}\n", line));
+            write!(out, "//! {}\n", line).unwrap();
         }
         if !file.doc.is_empty() {
             out.push('\n');
@@ -184,7 +185,7 @@ impl<M: TextMedium> CodeRenderer<M> for RustCodeRenderer<M> {
             Expr::Match { expr, arms } => {
                 let mut out = format!("match {} {{\n", self.render_expr(expr));
                 for arm in arms {
-                    out.push_str(&format!("    {} => {{\n", arm.pattern));
+                    write!(out, "    {} => {{\n", arm.pattern).unwrap();
                     for stmt in &arm.body {
                         out.push_str(&self.render_stmt(stmt, 2));
                     }
@@ -291,7 +292,7 @@ impl<M: TextMedium> CodeRenderer<M> for RustCodeRenderer<M> {
                 for stmt in body {
                     out.push_str(&self.render_stmt(stmt, indent + 1));
                 }
-                out.push_str(&format!("{}}}\n", pad));
+                write!(out, "{}}}\n", pad).unwrap();
                 out
             }
             Stmt::Item(item) => self.render_item(item, indent),
@@ -610,12 +611,12 @@ impl<M: TextMedium> RustCodeRenderer<M> {
 
         // Doc comments
         for line in &f.doc {
-            out.push_str(&format!("{}/// {}\n", pad, line));
+            write!(out, "{}/// {}\n", pad, line).unwrap();
         }
 
         // Attributes
         for attr in &f.attributes {
-            out.push_str(&format!("{}{}\n", pad, attr));
+            write!(out, "{}{}\n", pad, attr).unwrap();
         }
 
         // Signature
@@ -635,21 +636,21 @@ impl<M: TextMedium> RustCodeRenderer<M> {
             Some(ty) => format!(" -> {}", ty),
             None => String::new(),
         };
-        out.push_str(&format!(
+        write!(out,
             "{}{}fn {}({}){} {{\n",
             pad,
             vis,
             f.name,
             params.join(", "),
             ret
-        ));
+        ).unwrap();
 
         // Body
         for stmt in &f.body {
             out.push_str(&self.render_stmt(stmt, indent + 1));
         }
 
-        out.push_str(&format!("{}}}\n", pad));
+        write!(out, "{}}}\n", pad).unwrap();
         out
     }
 
@@ -659,24 +660,24 @@ impl<M: TextMedium> RustCodeRenderer<M> {
 
         // Doc comments
         for line in &e.doc {
-            out.push_str(&format!("{}/// {}\n", pad, line));
+            write!(out, "{}/// {}\n", pad, line).unwrap();
         }
 
         // Derives
         if !e.derives.is_empty() {
-            out.push_str(&format!("{}#[derive({})]\n", pad, e.derives.join(", ")));
+            write!(out, "{}#[derive({})]\n", pad, e.derives.join(", ")).unwrap();
         }
 
         // Enum header
         let vis = if e.is_pub { "pub " } else { "" };
-        out.push_str(&format!("{}{}enum {} {{\n", pad, vis, e.name));
+        write!(out, "{}{}enum {} {{\n", pad, vis, e.name).unwrap();
 
         // Variants
         for variant in &e.variants {
-            out.push_str(&format!("{}    {},\n", pad, variant));
+            write!(out, "{}    {},\n", pad, variant).unwrap();
         }
 
-        out.push_str(&format!("{}}}\n", pad));
+        write!(out, "{}}}\n", pad).unwrap();
         out
     }
 
@@ -697,7 +698,7 @@ impl<M: TextMedium> RustCodeRenderer<M> {
             out.push_str(&self.render_fn_def(func, indent + 1));
         }
 
-        out.push_str(&format!("{}}}\n", pad));
+        write!(out, "{}}}\n", pad).unwrap();
         out
     }
 
@@ -707,25 +708,25 @@ impl<M: TextMedium> RustCodeRenderer<M> {
 
         // Doc comments
         for line in &s.doc {
-            out.push_str(&format!("{}/// {}\n", pad, line));
+            write!(out, "{}/// {}\n", pad, line).unwrap();
         }
 
         // Derives
         if !s.derives.is_empty() {
-            out.push_str(&format!("{}#[derive({})]\n", pad, s.derives.join(", ")));
+            write!(out, "{}#[derive({})]\n", pad, s.derives.join(", ")).unwrap();
         }
 
         // Struct header
         let vis = if s.is_pub { "pub " } else { "" };
-        out.push_str(&format!("{}{}struct {} {{\n", pad, vis, s.name));
+        write!(out, "{}{}struct {} {{\n", pad, vis, s.name).unwrap();
 
         // Fields
         for (name, ty, is_pub) in &s.fields {
             let field_vis = if *is_pub { "pub " } else { "" };
-            out.push_str(&format!("{}    {}{}: {},\n", pad, field_vis, name, ty));
+            write!(out, "{}    {}{}: {},\n", pad, field_vis, name, ty).unwrap();
         }
 
-        out.push_str(&format!("{}}}\n", pad));
+        write!(out, "{}}}\n", pad).unwrap();
         out
     }
 }

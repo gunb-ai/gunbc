@@ -25,6 +25,7 @@
 
 use crate::transport::tool::{InstallInputs, InstallOption, ToolDef};
 use crate::transport::ShellRequest;
+use std::fmt::Write;
 
 // ============================================================================
 // Tool Definition (New - uses tool module)
@@ -175,7 +176,7 @@ verify = "{}"
         match method {
             InstallMethod::Apt { packages } => {
                 let packages_str: Vec<_> = packages.iter().map(|p| format!("\"{}\"", p)).collect();
-                entry.push_str(&format!(
+                write!(entry,
                     r#"
 [dependency.install.{}]
 method = "apt"
@@ -183,11 +184,11 @@ packages = [{}]
 "#,
                     platform,
                     packages_str.join(", ")
-                ));
+                ).unwrap();
             }
             InstallMethod::Brew { packages } => {
                 let packages_str: Vec<_> = packages.iter().map(|p| format!("\"{}\"", p)).collect();
-                entry.push_str(&format!(
+                write!(entry,
                     r#"
 [dependency.install.{}]
 method = "brew"
@@ -195,21 +196,21 @@ packages = [{}]
 "#,
                     platform,
                     packages_str.join(", ")
-                ));
+                ).unwrap();
             }
             InstallMethod::Script { script } => {
-                entry.push_str(&format!(
+                write!(entry,
                     r#"
 [dependency.install.{}]
 method = "script"
 script = {:?}
 "#,
                     platform, script
-                ));
+                ).unwrap();
             }
             InstallMethod::Cargo { packages } => {
                 let packages_str: Vec<_> = packages.iter().map(|p| format!("\"{}\"", p)).collect();
-                entry.push_str(&format!(
+                write!(entry,
                     r#"
 [dependency.install.{}]
 method = "cargo"
@@ -217,17 +218,17 @@ packages = [{}]
 "#,
                     platform,
                     packages_str.join(", ")
-                ));
+                ).unwrap();
             }
             InstallMethod::GithubRelease { url_template } => {
-                entry.push_str(&format!(
+                write!(entry,
                     r#"
 [dependency.install.{}]
 method = "github_release"
 url = {:?}
 "#,
                     platform, url_template
-                ));
+                ).unwrap();
             }
         }
     }

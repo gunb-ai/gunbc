@@ -8,13 +8,50 @@ use std::collections::HashMap;
 
 use gunbc_ir::{Cardinality, NamingCase, Value};
 
+/// The type of a CLI parameter.
+///
+/// Provides compile-time safety instead of stringly-typed `"Bool"` / `"Int"` / `"String"`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ParamType {
+    Str,
+    Int,
+    Bool,
+}
+
+impl ParamType {
+    /// String representation matching the IR type system names.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Str => "String",
+            Self::Int => "Int",
+            Self::Bool => "Bool",
+        }
+    }
+}
+
+impl From<&str> for ParamType {
+    fn from(s: &str) -> Self {
+        match s {
+            "Bool" => Self::Bool,
+            "Int" => Self::Int,
+            _ => Self::Str,
+        }
+    }
+}
+
+impl std::fmt::Display for ParamType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 /// Describes a single CLI parameter (flag).
 #[derive(Debug, Clone)]
 pub struct CliParam {
     /// Port name in snake_case (e.g., "repo_path").
     pub port_name: String,
-    /// Type identifier: "String", "Int", or "Bool".
-    pub type_id: String,
+    /// The type of this parameter.
+    pub type_id: ParamType,
     /// Cardinality — scalar vs repeatable.
     pub cardinality: Cardinality,
     /// Optional short flag character (e.g., 'r' for `-r`).
@@ -25,7 +62,10 @@ pub struct CliParam {
 
 impl CliParam {
     /// Create a new CLI param with default `Cardinality::ONE`.
-    pub fn new(port_name: impl Into<String>, type_id: impl Into<String>) -> Self {
+    ///
+    /// Accepts `&str` for the type_id thanks to `From<&str> for ParamType`,
+    /// so existing callers like `CliParam::new("port", "String")` still work.
+    pub fn new(port_name: impl Into<String>, type_id: impl Into<ParamType>) -> Self {
         Self {
             port_name: port_name.into(),
             type_id: type_id.into(),
@@ -154,7 +194,7 @@ pub fn parse(argv: &[String], schema: &[CliParam]) -> Result<ParseResult, ParseE
             _ => {
                 if let Some(&idx) = flag_map.get(arg.as_str()) {
                     let param = &schema[idx];
-                    if param.type_id == "Bool" && !param.is_repeatable() {
+                    if param.type_id == ParamType::Bool && !param.is_repeatable() {
                         scalars.insert(idx, Some("true".to_string()));
                     } else if param.is_repeatable() {
                         i += 1;
@@ -186,10 +226,10 @@ pub fn parse(argv: &[String], schema: &[CliParam]) -> Result<ParseResult, ParseE
         } else {
             match scalars.get(&idx) {
                 Some(Some(val)) => {
-                    let value = match param.type_id.as_str() {
-                        "Bool" => Value::Bool(val == "true"),
-                        "Int" => Value::Int(val.parse::<i64>().unwrap_or(0)),
-                        _ => Value::Str(val.clone()),
+                    let value = match param.type_id {
+                        ParamType::Bool => Value::Bool(val == "true"),
+                        ParamType::Int => Value::Int(val.parse::<i64>().unwrap_or(0)),
+                        ParamType::Str => Value::Str(val.clone()),
                     };
                     values.insert(param.port_name.clone(), value);
                 }
@@ -197,7 +237,7 @@ pub fn parse(argv: &[String], schema: &[CliParam]) -> Result<ParseResult, ParseE
                     // No value and no default — check if required
                     if param.cardinality.requires_one() && param.default_value.is_none() {
                         // Bool defaults to false (not missing)
-                        if param.type_id == "Bool" {
+                        if param.type_id == ParamType::Bool {
                             values.insert(param.port_name.clone(), Value::Bool(false));
                         }
                         // String/Int with no default: not present in values

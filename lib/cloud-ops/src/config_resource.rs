@@ -13,7 +13,7 @@ use gunbc_ir::resource::def::{DagRef, InputPattern, ResourceDef, ResourceScope};
 use gunbc_ir::resource::managed::{ManagedResource, ResourceError, ResourceIo};
 use gunbc_ir::resource::{ManifestEntry, ResourceManifest};
 use gunbc_ir::ResourceId;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Cloud config resource for a specific deployment.
 ///
@@ -50,7 +50,7 @@ impl CloudConfigResource {
     }
 
     /// Get the path to the config file.
-    pub fn config_path(&self) -> &PathBuf {
+    pub fn config_path(&self) -> &Path {
         &self.config_path
     }
 

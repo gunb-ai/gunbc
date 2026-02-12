@@ -462,11 +462,8 @@ impl Executable for GcpOps {
                     .ok_or_else(|| {
                         ExecError::new("missing accessToken in impersonation response")
                     })?;
-                let _ = rest
-                    .body
-                    .get("expireTime")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
+                // expireTime is present in the response but not yet surfaced as an output.
+                // TODO: wire into output if callers need token expiry.
                 OutputMap::new().str("access_token", token).ok()
             }
             GcpOps::PrepareSecretAccess => {
@@ -737,7 +734,11 @@ pub(crate) fn adc_file_path() -> String {
     if let Ok(path) = std::env::var("GOOGLE_APPLICATION_CREDENTIALS") {
         return path;
     }
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
+    let home = std::env::var("HOME").unwrap_or_else(|_| {
+        // Fallback for minimal container environments (e.g., distroless, scratch)
+        // where $HOME is unset. Only safe when running as root.
+        "/root".to_string()
+    });
     format!(
         "{}/.config/gcloud/application_default_credentials.json",
         home

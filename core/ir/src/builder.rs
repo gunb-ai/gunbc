@@ -91,6 +91,8 @@ pub enum BuilderError {
     InvalidResourceOutputPort { node: NodeId, port: PortName },
     /// Resource input port is not wired to any upstream edge.
     UnwiredResourceInput { node: NodeId, port: PortName },
+    /// Internal consistency error (e.g., expected node not found during graph construction).
+    InternalError(String),
 }
 
 /// Whether a port is an input or output.
@@ -200,6 +202,9 @@ impl fmt::Display for BuilderError {
                     "unwired resource input '{}:{}' (res:* inputs must be connected)",
                     node, port
                 )
+            }
+            BuilderError::InternalError(msg) => {
+                write!(f, "internal error: {}", msg)
             }
         }
     }
@@ -491,26 +496,22 @@ impl<T> DagBuilder<T> {
         let to_node = self.nodes.iter().find(|n| n.id == to.node_id);
 
         // Verify output port exists
-        let from_port = from_node.and_then(|n| n.outputs.iter().find(|p| p.name == from.port));
-        if from_port.is_none() {
-            return Err(BuilderError::PortNotFound {
+        let from_port = from_node
+            .and_then(|n| n.outputs.iter().find(|p| p.name == from.port))
+            .ok_or_else(|| BuilderError::PortNotFound {
                 node: from.node_id.clone(),
                 port: from.port.clone(),
                 kind: PortKind::Output,
-            });
-        }
-        let from_port = from_port.unwrap();
+            })?;
 
         // Verify input port exists
-        let to_port = to_node.and_then(|n| n.inputs.iter().find(|p| p.name == to.port));
-        if to_port.is_none() {
-            return Err(BuilderError::PortNotFound {
+        let to_port = to_node
+            .and_then(|n| n.inputs.iter().find(|p| p.name == to.port))
+            .ok_or_else(|| BuilderError::PortNotFound {
                 node: to.node_id.clone(),
                 port: to.port.clone(),
                 kind: PortKind::Input,
-            });
-        }
-        let to_port = to_port.unwrap();
+            })?;
 
         if let Some(registry) = &self.type_registry {
             if let Err(error) = registry.validate_type_expr(&from_port.type_id) {

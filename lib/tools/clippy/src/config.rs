@@ -25,6 +25,8 @@
 use gunbc_ir::render_ir::{FileHeader, PlainText, StructuredBlock, StructuredRenderer};
 use gunbc_ir::symbols::{Tier, STANDARD};
 use gunbc_ir::PlainStructuredRenderer;
+use std::borrow::Cow;
+use std::fmt::Write;
 
 // ============================================================================
 // Configuration Structs
@@ -434,10 +436,10 @@ fn build_clippy_toml_blocks(config: &ClippyConfig) -> Vec<StructuredBlock> {
         invariants.push_str("#\n");
         invariants.push_str("# APPROVED EXCEPTIONS (must have documented reason):\n");
         for allowance in &config.crate_allowances {
-            invariants.push_str(&format!(
+            write!(invariants,
                 "#   - {} ({})\n",
                 allowance.crate_name, allowance.reason
-            ));
+            ).unwrap();
         }
         invariants.push_str("#\n");
         invariants.push_str(
@@ -472,10 +474,10 @@ fn build_clippy_toml_blocks(config: &ClippyConfig) -> Vec<StructuredBlock> {
                 "    # Filesystem operations - use PrepareFileReadOp/PrepareFileWriteOp instead\n",
             );
             for method in &fs_methods {
-                array.push_str(&format!(
+                write!(array,
                     "    {{ path = \"{}\", reason = \"{}\" }},\n",
                     method.path, method.reason
-                ));
+                ).unwrap();
             }
             array.push_str("    \n");
         }
@@ -488,20 +490,20 @@ fn build_clippy_toml_blocks(config: &ClippyConfig) -> Vec<StructuredBlock> {
                 "    # Direct Command::new should only be in transport executor and cli.rs\n",
             );
             for method in &process_methods {
-                array.push_str(&format!(
+                write!(array,
                     "    {{ path = \"{}\", reason = \"{}\" }},\n",
                     method.path, method.reason
-                ));
+                ).unwrap();
             }
         }
 
         if !other_methods.is_empty() {
             array.push_str("    # Other disallowed methods\n");
             for method in &other_methods {
-                array.push_str(&format!(
+                write!(array,
                     "    {{ path = \"{}\", reason = \"{}\" }},\n",
                     method.path, method.reason
-                ));
+                ).unwrap();
             }
         }
 
@@ -529,20 +531,20 @@ fn build_clippy_toml_blocks(config: &ClippyConfig) -> Vec<StructuredBlock> {
                 "    # Filesystem types - use FilesystemHandle and transport ops instead\n",
             );
             for ty in &fs_types {
-                array.push_str(&format!(
+                write!(array,
                     "    {{ path = \"{}\", reason = \"{}\" }},\n",
                     ty.path, ty.reason
-                ));
+                ).unwrap();
             }
         }
 
         if !other_types.is_empty() {
             array.push_str("    # Other disallowed types\n");
             for ty in &other_types {
-                array.push_str(&format!(
+                write!(array,
                     "    {{ path = \"{}\", reason = \"{}\" }},\n",
                     ty.path, ty.reason
-                ));
+                ).unwrap();
             }
         }
 
@@ -599,9 +601,9 @@ impl ClippyConfigRenderer {
     /// Render the complete clippy.toml with header.
     pub fn render(&self) -> String {
         let header = FileHeader {
-            generator_name: CLIPPY_GENERATOR_NAME.to_string(),
-            regenerate_command: self.regenerate_command.clone(),
-            comment_prefix: "#".to_string(),
+            generator_name: Cow::Borrowed(CLIPPY_GENERATOR_NAME),
+            regenerate_command: Cow::Owned(self.regenerate_command.clone()),
+            comment_prefix: Cow::Borrowed("#"),
         };
         format!(
             "{}\n\n{}",

@@ -9,31 +9,19 @@ use gunbc_ir::transport::cloud::CloudSecretConfig;
 use gunbc_ir::Node;
 
 /// Convert a GistGraphOp to WorkspaceOp.
+///
+/// Internal gist ops (Git, FsEnv, Cloud, Pattern, Markdown, etc.) don't have
+/// direct WorkspaceOp equivalents. They live inside SubDag nodes and are never
+/// dispatched directly by the workspace executor — the SubDag executor handles
+/// them using the original GistGraphOp type. The placeholder here is only used
+/// for structural traversal (e.g., Mermaid rendering, node counting).
 fn convert_gist_op(op: GistGraphOp) -> WorkspaceOp {
     match op {
-        // Gist-specific ops - wrap in Gist variant with a placeholder
-        // GistOps includes request/parse variants; internal ops use a placeholder
-        // The internal graph ops don't have direct WorkspaceOp equivalents
-        GistGraphOp::Git(_)
-        | GistGraphOp::FsEnv(_)
-        | GistGraphOp::ClockEnv(_)
-        | GistGraphOp::Cloud(_)
-        | GistGraphOp::ResolveAuth
-        | GistGraphOp::PrepareReadFiles
-        | GistGraphOp::ParseReadFiles
-        | GistGraphOp::PrepareReadFile
-        | GistGraphOp::ParseReadFile
-        | GistGraphOp::CollectFileContents
-        | GistGraphOp::Pattern(_) => {
-            // These are gist-internal ops - use ParseGistResponse as placeholder
-            WorkspaceOp::Gist(GistOps::ParseGistResponse)
-        }
-        GistGraphOp::Markdown(_) => {
-            // Markdown ops - use Gist as container
-            WorkspaceOp::Gist(GistOps::ParseGistResponse)
-        }
         GistGraphOp::Gist(gist_op) => WorkspaceOp::Gist(gist_op),
         GistGraphOp::Transport(t) => WorkspaceOp::Transport(t),
+        // Internal ops — structurally present but never directly executed
+        // in workspace context (SubDag executor dispatches them).
+        _ => WorkspaceOp::Gist(GistOps::ParseGistResponse),
     }
 }
 

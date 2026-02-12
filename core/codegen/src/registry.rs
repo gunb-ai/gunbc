@@ -6,6 +6,7 @@
 use crate::cli_gen::{CliEntrypoint, ToolMeta};
 use gunbc_ir::cargo;
 use gunbc_test::{FermiCost, TestClass};
+use std::collections::BTreeSet;
 
 // ============================================================================
 // Tool Definition
@@ -291,14 +292,11 @@ pub fn core_outputs() -> Vec<&'static str> {
 
 /// Get all cleanable artifacts from tools and core.
 pub fn all_cleanable_outputs() -> Vec<String> {
-    let mut outputs: Vec<String> = core_outputs().into_iter().map(|s| s.to_string()).collect();
+    let mut outputs: BTreeSet<String> = core_outputs().into_iter().map(|s| s.to_string()).collect();
 
     for tool in derive_tool_defs() {
         outputs.extend(tool.outputs);
     }
 
-    // Deduplicate
-    outputs.sort();
-    outputs.dedup();
-    outputs
+    outputs.into_iter().collect()
 }

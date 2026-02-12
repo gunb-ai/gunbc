@@ -196,16 +196,14 @@ fn split_into_words(name: &str) -> Vec<String> {
             continue;
         }
         let mut current = String::new();
-        let chars: Vec<char> = segment.chars().collect();
-        for i in 0..chars.len() {
-            if chars[i].is_uppercase() && !current.is_empty() {
-                // Split before uppercase if previous was lowercase
-                if i > 0 && chars[i - 1].is_lowercase() {
-                    words.push(current);
-                    current = String::new();
-                }
+        let mut prev_lower = false;
+        for ch in segment.chars() {
+            if ch.is_uppercase() && !current.is_empty() && prev_lower {
+                words.push(current);
+                current = String::new();
             }
-            current.push(chars[i]);
+            current.push(ch);
+            prev_lower = ch.is_lowercase();
         }
         if !current.is_empty() {
             words.push(current);

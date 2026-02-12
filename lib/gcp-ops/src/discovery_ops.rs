@@ -11,6 +11,7 @@ use gunbc_ir::transport::TransportResponse;
 use gunbc_ir::Value;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fmt::Write;
 
 /// Discovery ops for enumerating GCP infrastructure resources.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -567,9 +568,9 @@ fn parse_labels(value: Option<&serde_json::Value>) -> HashMap<String, String> {
 
 fn extract_project_number(resource_name: &str) -> Option<i64> {
     // "projects/{number}/locations/global/..."
-    let parts: Vec<&str> = resource_name.split('/').collect();
-    if parts.len() >= 2 && parts[0] == "projects" {
-        parts[1].parse().ok()
+    let mut parts = resource_name.split('/');
+    if parts.next() == Some("projects") {
+        parts.next().and_then(|s| s.parse().ok())
     } else {
         None
     }
@@ -600,20 +601,16 @@ fn generate_config_from_infra(
     use gunbc_ir::transport::cloud::{CloudConfigSpec, CloudNamespace, CloudProviderKind};
 
     // Find unique prefixes from secret names
-    let mut prefixes: Vec<String> = spec
-        .secrets
-        .iter()
-        .filter_map(|s| {
-            let parts: Vec<&str> = s.secret_id.splitn(2, '-').collect();
-            if parts.len() == 2 {
-                Some(parts[0].to_string())
-            } else {
-                None
+    let prefixes: Vec<String> = {
+        let mut set = std::collections::BTreeSet::new();
+        for s in &spec.secrets {
+            let mut parts = s.secret_id.splitn(2, '-');
+            if let (Some(prefix), Some(_)) = (parts.next(), parts.next()) {
+                set.insert(prefix.to_string());
             }
-        })
-        .collect();
-    prefixes.sort();
-    prefixes.dedup();
+        }
+        set.into_iter().collect()
+    };
 
     // Find the first WIF provider audience
     let wif_provider = spec.wif_providers.first().map(|p| p.name.clone());
@@ -666,36 +663,36 @@ fn toml_serialize(
     let mut out = String::new();
 
     if let Some(ref ns) = config.default_namespace {
-        out.push_str(&format!("default_namespace = \"{}\"\n", ns));
+        write!(out, "default_namespace = \"{}\"\n", ns).unwrap();
     }
     if let Some(ref at) = config.generated_at {
-        out.push_str(&format!("generated_at = \"{}\"\n", at));
+        write!(out, "generated_at = \"{}\"\n", at).unwrap();
     }
     if let Some(ref proj) = config.source_project {
-        out.push_str(&format!("source_project = \"{}\"\n", proj));
+        write!(out, "source_project = \"{}\"\n", proj).unwrap();
     }
     out.push('\n');
 
     for ns in &config.namespaces {
         out.push_str("[[namespaces]]\n");
-        out.push_str(&format!("name = \"{}\"\n", ns.name));
+        write!(out, "name = \"{}\"\n", ns.name).unwrap();
         if let Some(ref inherits) = ns.inherits_from {
-            out.push_str(&format!("inherits_from = \"{}\"\n", inherits));
+            write!(out, "inherits_from = \"{}\"\n", inherits).unwrap();
         }
         if let Some(ref provider) = ns.provider {
-            out.push_str(&format!("provider = \"{}\"\n", provider.as_str()));
+            write!(out, "provider = \"{}\"\n", provider.as_str()).unwrap();
         }
         if let Some(ref proj) = ns.secrets_project {
-            out.push_str(&format!("secrets_project = \"{}\"\n", proj));
+            write!(out, "secrets_project = \"{}\"\n", proj).unwrap();
         }
         if let Some(ref wif) = ns.wif_provider {
-            out.push_str(&format!("wif_provider = \"{}\"\n", wif));
+            write!(out, "wif_provider = \"{}\"\n", wif).unwrap();
         }
         if let Some(ref sa) = ns.service_account {
-            out.push_str(&format!("service_account = \"{}\"\n", sa));
+            write!(out, "service_account = \"{}\"\n", sa).unwrap();
         }
         if let Some(ref imp) = ns.impersonate_account {
-            out.push_str(&format!("impersonate_account = \"{}\"\n", imp));
+            write!(out, "impersonate_account = \"{}\"\n", imp).unwrap();
         }
         out.push('\n');
     }
