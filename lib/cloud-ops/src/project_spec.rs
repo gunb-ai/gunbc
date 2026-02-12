@@ -45,8 +45,14 @@ pub struct GcpProject {
 ///
 /// Mirrors `WIFBinding` and the `WIFPoolID`/`WIFProviderID` constants from
 /// `gunb.ai/tools/infra/spec/spec.go`.
+///
+/// The WIF pool lives in a separate project (gunbai-auto) from the secrets
+/// project (gunbai-secrets), so the pool's project number is stored here
+/// rather than derived from the secrets project.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WifConfig {
+    /// Project number where the WIF pool lives (e.g., gunbai-auto = 314501921854).
+    pub project_number: u64,
     /// Pool ID (e.g., "github-pool").
     pub pool_id: &'static str,
     /// Provider ID (e.g., "github").
@@ -57,10 +63,10 @@ impl WifConfig {
     /// Full resource path for the WIF provider.
     ///
     /// Format: `projects/{number}/locations/global/workloadIdentityPools/{pool}/providers/{provider}`
-    pub fn provider_resource_name(&self, project_number: u64) -> String {
+    pub fn provider_resource_name(&self) -> String {
         format!(
             "projects/{}/locations/global/workloadIdentityPools/{}/providers/{}",
-            project_number, self.pool_id, self.provider_id
+            self.project_number, self.pool_id, self.provider_id
         )
     }
 }
@@ -206,10 +212,9 @@ impl ProjectSpec {
         self.namespaces.iter().find(|ns| ns.name == name)
     }
 
-    /// WIF provider resource name for the secrets project.
+    /// WIF provider resource name (from the WIF pool's project, not the secrets project).
     pub fn wif_provider_resource_name(&self) -> String {
-        self.wif
-            .provider_resource_name(self.secrets_project.project_number)
+        self.wif.provider_resource_name()
     }
 
     /// Build a `CloudSecretConfig` for a given namespace and runtime.
@@ -267,9 +272,10 @@ impl ProjectSpec {
 pub static GUNBAI_SECRETS: ProjectSpec = ProjectSpec {
     secrets_project: GcpProject {
         project_id: "gunbai-secrets",
-        project_number: 314501921854,
+        project_number: 582015116396,
     },
     wif: WifConfig {
+        project_number: 314501921854, // gunbai-auto (WIF pool host)
         pool_id: "github-pool",
         provider_id: "github",
     },
@@ -296,27 +302,9 @@ pub static GUNBAI_SECRETS: ProjectSpec = ProjectSpec {
 
 /// Canonical secret catalog.
 ///
-/// Ported from `gunb.ai/tools/secrets/spec/spec.go::AllSecrets()`.
-/// Only includes secrets relevant to gunbc (not gunb.ai-specific ones
-/// like IAP OAuth, workspace SA keys, etc.)
-static KNOWN_SECRETS: [SecretSpec; 5] = [
-    // API keys — manual rotation via provider dashboards
-    SecretSpec {
-        env_name: "OPENAI_API_KEY",
-        secret_id: "openai-api-key",
-        requirement: SecretRequirement::Required,
-        status: SecretStatus::Active,
-        scopes: &[],
-        rotation: RotationHandler::Manual,
-    },
-    SecretSpec {
-        env_name: "ANTHROPIC_API_KEY",
-        secret_id: "anthropic-api-key",
-        requirement: SecretRequirement::Optional,
-        status: SecretStatus::Active,
-        scopes: &[],
-        rotation: RotationHandler::Manual,
-    },
+/// Only includes secrets that gunbc currently needs. Additional secrets
+/// (openai, anthropic, github-app-*) can be added back as needed.
+static KNOWN_SECRETS: [SecretSpec; 1] = [
     // GitHub PAT — interactive browser rotation
     SecretSpec {
         env_name: "GITHUB_TOKEN",
@@ -325,23 +313,6 @@ static KNOWN_SECRETS: [SecretSpec; 5] = [
         status: SecretStatus::Active,
         scopes: &["repo", "read:org", "gist"],
         rotation: RotationHandler::GitHubPat,
-    },
-    // GitHub App credentials
-    SecretSpec {
-        env_name: "CI_GITHUB_APP_ID",
-        secret_id: "github-app-id",
-        requirement: SecretRequirement::Optional,
-        status: SecretStatus::Active,
-        scopes: &[],
-        rotation: RotationHandler::None,
-    },
-    SecretSpec {
-        env_name: "CI_GITHUB_APP_PRIVATE_KEY",
-        secret_id: "github-app-private-key",
-        requirement: SecretRequirement::Optional,
-        status: SecretStatus::Active,
-        scopes: &[],
-        rotation: RotationHandler::Manual,
     },
 ];
 
@@ -526,10 +497,10 @@ mod tests {
     }
 
     #[test]
-    fn at_least_one_required_secret_exists() {
+    fn secrets_catalog_is_not_empty() {
         assert!(
-            GUNBAI_SECRETS.required_secrets().count() > 0,
-            "at least one required secret must exist"
+            GUNBAI_SECRETS.active_secrets().count() > 0,
+            "at least one active secret must exist"
         );
     }
 }

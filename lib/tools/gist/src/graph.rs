@@ -509,7 +509,9 @@ pub fn build_read_file_body_dag() -> Dag<GistGraphOp> {
 pub fn gist_signature(mode: &GistMode) -> WorkflowSignature {
     let mut sig = WorkflowSignature::new()
         .with_input("repo_path", "String", Cardinality::ONE)
-        .with_output("url", "String", Cardinality::ONE);
+        .with_output("url", "String", Cardinality::ONE)
+        // cloud_credential subdag exposes ok from IAM ensure chain
+        .with_output("ok", "Bool", Cardinality::ONE);
 
     // base_ref is an entrypoint only in diff mode.
     if matches!(mode, GistMode::Diff { .. }) {

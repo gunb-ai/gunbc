@@ -311,6 +311,10 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
         .node_example(
             NodeExample::new("resolve_auth")
                 .output("service", OutputMatcher::exact(Value::Str("github".into())))
+                .output(
+                    "secret_name",
+                    OutputMatcher::exact(Value::Str("github-token".into())),
+                )
                 .output("scheme", OutputMatcher::exact(Value::Str("bearer".into())))
                 .output(
                     "interactive_allowed",

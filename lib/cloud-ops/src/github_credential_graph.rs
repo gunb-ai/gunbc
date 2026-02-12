@@ -33,6 +33,7 @@ impl Executable for GitHubCredentialOps {
         match self {
             GitHubCredentialOps::ResolveAuth => OutputMap::new()
                 .str("service", "github")
+                .str("secret_name", "github-token")
                 .str("scheme", "bearer")
                 .str("header_name", "")
                 .str_list("required_scopes", vec!["github:api".to_string()])
@@ -114,6 +115,7 @@ pub fn build_github_credential_graph() -> Dag<GitHubCredentialGraphOp> {
             vec![],
             vec![
                 port("service", "String"),
+                port("secret_name", "String"),
                 port("scheme", "String"),
                 port("header_name", "String"),
                 list("required_scopes", "String"),
@@ -148,6 +150,12 @@ pub fn build_github_credential_graph() -> Dag<GitHubCredentialGraphOp> {
     builder
         .add_edge(resolve_auth.out("service"), bind_secret.in_port("service"))
         .expect("resolve_auth.service -> bind_secret.service");
+    builder
+        .add_edge(
+            resolve_auth.out("secret_name"),
+            bind_secret.in_port("secret_name"),
+        )
+        .expect("resolve_auth.secret_name -> bind_secret.secret_name");
 
     // Cloud credential acquisition graph — dispatched from config.
     let cloud_subdag = lift_cloud_dag(build_cloud_secret_manager_credential_graph_from_config(

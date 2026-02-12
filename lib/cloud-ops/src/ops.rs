@@ -296,9 +296,12 @@ mod tests {
         inputs.insert("audience".to_string(), Value::Str("local-dev".to_string()));
         inputs.insert(
             "project_or_account".to_string(),
-            Value::Str("gunb-secrets".to_string()),
+            Value::Str("gunbai-secrets".to_string()),
         );
-        inputs.insert("secret".to_string(), Value::Str("dev-github".to_string()));
+        inputs.insert(
+            "secret".to_string(),
+            Value::Str("dev-github-token".to_string()),
+        );
         inputs.insert("scheme".to_string(), Value::Str("bearer".to_string()));
         inputs.insert("source_id".to_string(), Value::Str("github".to_string()));
 
@@ -319,9 +322,12 @@ mod tests {
         inputs.insert("audience".to_string(), Value::Str("local-dev".to_string()));
         inputs.insert(
             "project_or_account".to_string(),
-            Value::Str("gunb-secrets".to_string()),
+            Value::Str("gunbai-secrets".to_string()),
         );
-        inputs.insert("secret".to_string(), Value::Str("dev-github".to_string()));
+        inputs.insert(
+            "secret".to_string(),
+            Value::Str("dev-github-token".to_string()),
+        );
         inputs.insert("scheme".to_string(), Value::Str("bearer".to_string()));
         inputs.insert("source_id".to_string(), Value::Str("github".to_string()));
         inputs.insert(
@@ -353,9 +359,12 @@ mod tests {
         inputs.insert("audience".to_string(), Value::Str("local-dev".to_string()));
         inputs.insert(
             "project_or_account".to_string(),
-            Value::Str("gunb-secrets".to_string()),
+            Value::Str("gunbai-secrets".to_string()),
         );
-        inputs.insert("secret".to_string(), Value::Str("dev-github".to_string()));
+        inputs.insert(
+            "secret".to_string(),
+            Value::Str("dev-github-token".to_string()),
+        );
         inputs.insert("scheme".to_string(), Value::Str("bearer".to_string()));
         inputs.insert("source_id".to_string(), Value::Str("github".to_string()));
         inputs.insert(

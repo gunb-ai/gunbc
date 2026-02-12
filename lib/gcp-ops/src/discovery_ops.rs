@@ -718,7 +718,7 @@ mod tests {
                 "projects": [
                     {
                         "projectId": "gunbai-secrets",
-                        "projectNumber": "314501921854",
+                        "projectNumber": "582015116396",
                         "name": "gunbai-secrets",
                         "lifecycleState": "ACTIVE"
                     }
@@ -763,7 +763,7 @@ mod tests {
         let spec = GcpInfraSpec {
             projects: vec![GcpProject {
                 project_id: "gunbai-secrets".to_string(),
-                project_number: Some(314501921854),
+                project_number: Some(582015116396),
                 display_name: None,
                 state: None,
                 labels: HashMap::new(),
