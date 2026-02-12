@@ -125,14 +125,14 @@ Two options (design decision needed):
    complex testgen logic; needs a way to express shape constraints in
    the code IR (e.g., `Assert::ValueShape { expr, expected_shape }`).
 
-**Interim coverage:** The 4 coercion-kind-mapped tests in `execute.rs`
-(`test_coercion_wrap_scalar_single_edge`, etc.) directly assert value
-shapes for each `CoercionKind`. These are the definitive correctness
-proof. The generated tests remain smoke-only until one of the above
-is implemented.
+**Interim coverage:** The `collect_fan_in()` function in `execute.rs`
+is unit-tested directly (`fan_in_wraps_scalar`, `fan_in_skips_absent_optional`,
+etc.) — these test the coercion logic at the level where it happens,
+without DAG execution or the execution log. The generated tests remain
+smoke-only until one of the above is implemented.
 
 Files:
-  - core/exec/src/execute.rs (LogEntry — needs inputs field or opt-in detail level)
+  - core/exec/src/execute.rs (collect_fan_in — unit-tested; LogEntry — needs inputs field or opt-in detail level)
   - core/codegen/src/testgen/codegen.rs (build_coercion_coverage_tests)
   - core/ir/src/code_ir.rs (Assert enum — may need ValueShape variant for option 2)
 
@@ -149,21 +149,19 @@ executor's fan-in logic. No gap between analysis and runtime.
 | `OptionalToList`| `from == ZERO_OR_ONE && to.is_list()`    | Unit skipped → `List([])`; present → `List([v])` |
 | `Widen`         | `from.is_bounded() && !to.is_bounded()`  | List items flattened via fan-in → re-wrapped  |
 
-Explicit coercion-kind-mapped tests added in `execute.rs` (4 tests):
-  - `test_coercion_wrap_scalar_single_edge`
-  - `test_coercion_optional_to_list_absent`
-  - `test_coercion_optional_to_list_present`
-  - `test_coercion_widen_bounded_to_unbounded`
+Fan-in logic extracted into `collect_fan_in()` and unit-tested directly:
+  - `fan_in_wraps_scalar` (WrapScalar)
+  - `fan_in_skips_absent_optional` / `fan_in_wraps_present_optional` (OptionalToList)
+  - `fan_in_flattens_list` (Widen)
+  - `fan_in_skips_skipped_value`, `fan_in_unit_from_required_port_is_kept`,
+    `fan_in_skips_unit_from_empty_list` (edge cases)
 
-Generated coercion coverage tests (`build_coercion_coverage_tests`) now
-assert the target node actually executed (log entry exists), not just that
-the DAG didn't crash. No current DAGs trigger coercion edges (all builders
-use matching cardinalities), so the improvement is forward-looking.
+This also removed duplicated fan-in logic between the main executor loop
+and `build_node_inputs` — both now call `collect_fan_in()`.
 
 Files:
   - core/ir/src/coerce.rs (classify_coercion — unchanged, correct)
-  - core/exec/src/execute.rs (fan-in logic — added tests)
-  - core/codegen/src/testgen/codegen.rs (improved generated test assertions)
+  - core/exec/src/execute.rs (collect_fan_in — extracted + unit-tested)
 
 ---
 

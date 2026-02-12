@@ -678,24 +678,9 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
                                 .map(|p| p.cardinality)
                                 .unwrap_or(Cardinality::ONE);
 
-                            // Optional/list outputs represent absence as Unit — skip those.
-                            if matches!(val, Value::Unit) && from_cardinality.allows_empty() {
-                                continue;
-                            }
-                            // Skipped outputs should not become list elements.
-                            if matches!(val, Value::Skipped) {
-                                continue;
-                            }
-
-                            let bucket = fan_in.entry(edge.to_port.0.clone()).or_default();
-                            if from_cardinality.is_list() {
-                                if let Value::List(items) = val {
-                                    bucket.extend(items.clone());
-                                } else {
-                                    bucket.push(val.clone());
-                                }
-                            } else {
-                                bucket.push(val.clone());
+                            if let Some(elements) = collect_fan_in(val, from_cardinality) {
+                                let bucket = fan_in.entry(edge.to_port.0.clone()).or_default();
+                                bucket.extend(elements);
                             }
                         } else {
                             if let Some(prev) = scalar_sources.get(&edge.to_port.0) {
@@ -972,6 +957,39 @@ fn should_intercept_for_mode<T>(node: &Node<T>, mode: &ExecutionMode) -> bool {
         && matches!(mode, ExecutionMode::DryRun(_) | ExecutionMode::Simulate(_))
 }
 
+/// Collect a single upstream value into a fan-in bucket for a list port.
+///
+/// Given a value produced by an upstream node and the source port's
+/// cardinality, returns the elements to add to the fan-in bucket, or
+/// `None` if the value should be skipped (absent optional, Skipped sentinel).
+///
+/// This is the core coercion logic — it handles:
+/// - **WrapScalar**: scalar value → single-element vec
+/// - **OptionalToList**: Unit from empty-allowing port → None (skipped)
+/// - **Widen**: list value from list port → flattened elements
+fn collect_fan_in(val: &Value, from_cardinality: Cardinality) -> Option<Vec<Value>> {
+    // Optional/list outputs represent absence as Unit — skip those.
+    if matches!(val, Value::Unit) && from_cardinality.allows_empty() {
+        return None;
+    }
+    // Skipped outputs should not become list elements.
+    if matches!(val, Value::Skipped) {
+        return None;
+    }
+
+    if from_cardinality.is_list() {
+        // List → list: flatten elements (Widen coercion)
+        if let Value::List(items) = val {
+            Some(items.clone())
+        } else {
+            Some(vec![val.clone()])
+        }
+    } else {
+        // Scalar → list: wrap as single element (WrapScalar coercion)
+        Some(vec![val.clone()])
+    }
+}
+
 fn build_node_inputs<T>(
     dag: &Dag<T>,
     node: &Node<T>,
@@ -1004,24 +1022,9 @@ fn build_node_inputs<T>(
                             .map(|p| p.cardinality)
                             .unwrap_or(Cardinality::ONE);
 
-                        // Optional/list outputs represent absence as Unit.
-                        if matches!(val, Value::Unit) && from_cardinality.allows_empty() {
-                            continue;
-                        }
-                        // Skipped outputs should not become list elements.
-                        if matches!(val, Value::Skipped) {
-                            continue;
-                        }
-
-                        let bucket = fan_in.entry(edge.to_port.0.clone()).or_default();
-                        if from_cardinality.is_list() {
-                            if let Value::List(items) = val {
-                                bucket.extend(items.clone());
-                            } else {
-                                bucket.push(val.clone());
-                            }
-                        } else {
-                            bucket.push(val.clone());
+                        if let Some(elements) = collect_fan_in(val, from_cardinality) {
+                            let bucket = fan_in.entry(edge.to_port.0.clone()).or_default();
+                            bucket.extend(elements);
                         }
                     } else {
                         if let Some(prev) = scalar_sources.get(&edge.to_port.0) {
@@ -2233,149 +2236,73 @@ mod tests {
     }
 
     // =========================================================================
-    // Coercion-kind-mapped tests
+    // collect_fan_in unit tests
     //
-    // These tests map 1:1 to the CoercionKind variants in coerce.rs and verify
-    // that the executor produces the correct value shapes for each classified
-    // coercion. See TODO_hacks "Coercion analysis may be ahead of runtime
-    // implementation" for context.
+    // These test the extracted fan-in function directly, mapping 1:1 to the
+    // CoercionKind variants in coerce.rs.
     // =========================================================================
 
     #[test]
-    fn test_coercion_wrap_scalar_single_edge() {
-        // CoercionKind::WrapScalar — a single scalar [1,1] output feeds a
-        // list [0,∞) input. The engine must wrap the scalar in a one-element
-        // Value::List.
-        let mut dag: Dag<TestOp> = Dag::new();
-        dag.add_node(Node::opaque(
-            "producer",
-            vec![],
-            vec![port("val", "String")], // [1,1]
-            TestOp::produce("val", Value::Str("wrapped".to_string())),
-        ));
-        dag.add_node(Node::opaque(
-            "consumer",
-            vec![list("items", "StringList")], // [0,∞)
-            vec![list("items", "StringList")],
-            TestOp::echo(),
-        ));
-        dag.add_edge(edge("producer", "val", "consumer", "items"));
-
-        let log = execute(&dag).unwrap();
-
-        let entry = log.get("consumer").unwrap();
-        match entry.outputs.get("items") {
-            Some(Value::List(items)) => {
-                assert_eq!(items.len(), 1, "WrapScalar should produce a one-element list");
-                assert_eq!(items[0], Value::Str("wrapped".to_string()));
-            }
-            other => panic!("WrapScalar: expected Value::List, got {:?}", other),
-        }
+    fn fan_in_wraps_scalar() {
+        // WrapScalar: scalar [1,1] value → single-element vec
+        let val = Value::Str("hello".into());
+        let elements = collect_fan_in(&val, Cardinality::ONE).unwrap();
+        assert_eq!(elements, vec![Value::Str("hello".into())]);
     }
 
     #[test]
-    fn test_coercion_optional_to_list_absent() {
-        // CoercionKind::OptionalToList (absent case) — an optional [0,1] output
-        // that produces Unit feeds a list [0,∞) input. The engine must produce
-        // an empty Value::List (Unit is skipped).
-        let mut dag: Dag<TestOp> = Dag::new();
-        dag.add_node(Node::opaque(
-            "producer",
-            vec![],
-            vec![optional("val", "OptionalString")], // [0,1]
-            TestOp::produce("val", Value::Unit),
-        ));
-        dag.add_node(Node::opaque(
-            "consumer",
-            vec![list("items", "StringList")], // [0,∞)
-            vec![list("items", "StringList")],
-            TestOp::echo(),
-        ));
-        dag.add_edge(edge("producer", "val", "consumer", "items"));
-
-        let log = execute(&dag).unwrap();
-
-        let entry = log.get("consumer").unwrap();
-        match entry.outputs.get("items") {
-            Some(Value::List(items)) => {
-                assert!(items.is_empty(), "OptionalToList (absent): should produce empty list");
-            }
-            other => panic!("OptionalToList (absent): expected Value::List, got {:?}", other),
-        }
+    fn fan_in_skips_absent_optional() {
+        // OptionalToList (absent): Unit from [0,1] port → None (skipped)
+        assert!(collect_fan_in(&Value::Unit, Cardinality::ZERO_OR_ONE).is_none());
     }
 
     #[test]
-    fn test_coercion_optional_to_list_present() {
-        // CoercionKind::OptionalToList (present case) — an optional [0,1] output
-        // that produces a real value feeds a list [0,∞) input. The engine must
-        // produce a one-element Value::List.
-        let mut dag: Dag<TestOp> = Dag::new();
-        dag.add_node(Node::opaque(
-            "producer",
-            vec![],
-            vec![optional("val", "OptionalString")], // [0,1]
-            TestOp::produce("val", Value::Str("present".to_string())),
-        ));
-        dag.add_node(Node::opaque(
-            "consumer",
-            vec![list("items", "StringList")], // [0,∞)
-            vec![list("items", "StringList")],
-            TestOp::echo(),
-        ));
-        dag.add_edge(edge("producer", "val", "consumer", "items"));
-
-        let log = execute(&dag).unwrap();
-
-        let entry = log.get("consumer").unwrap();
-        match entry.outputs.get("items") {
-            Some(Value::List(items)) => {
-                assert_eq!(items.len(), 1, "OptionalToList (present): should produce one-element list");
-                assert_eq!(items[0], Value::Str("present".to_string()));
-            }
-            other => panic!("OptionalToList (present): expected Value::List, got {:?}", other),
-        }
+    fn fan_in_wraps_present_optional() {
+        // OptionalToList (present): real value from [0,1] port → single-element vec
+        let val = Value::Str("present".into());
+        let elements = collect_fan_in(&val, Cardinality::ZERO_OR_ONE).unwrap();
+        assert_eq!(elements, vec![Value::Str("present".into())]);
     }
 
     #[test]
-    fn test_coercion_widen_bounded_to_unbounded() {
-        // CoercionKind::Widen — a bounded [2,5] list output feeds an unbounded
-        // [0,∞) list input. The engine's fan-in collection flattens the list
-        // elements into the target bucket. This is a no-op transformation
-        // (elements pass through unchanged).
-        let mut dag: Dag<TestOp> = Dag::new();
-        dag.add_node(Node::opaque(
-            "producer",
-            vec![],
-            vec![gunbc_ir::Port::with_cardinality("vals", "StringList", Cardinality::new(2, Some(5)))], // [2,5]
-            TestOp::produce(
-                "vals",
-                Value::List(vec![
-                    Value::Str("a".to_string()),
-                    Value::Str("b".to_string()),
-                    Value::Str("c".to_string()),
-                ]),
-            ),
-        ));
-        dag.add_node(Node::opaque(
-            "consumer",
-            vec![list("items", "StringList")], // [0,∞)
-            vec![list("items", "StringList")],
-            TestOp::echo(),
-        ));
-        dag.add_edge(edge("producer", "vals", "consumer", "items"));
+    fn fan_in_flattens_list() {
+        // Widen: list [2,5] value → flattened elements
+        let val = Value::List(vec![
+            Value::Str("a".into()),
+            Value::Str("b".into()),
+            Value::Str("c".into()),
+        ]);
+        let elements = collect_fan_in(&val, Cardinality::new(2, Some(5))).unwrap();
+        assert_eq!(
+            elements,
+            vec![
+                Value::Str("a".into()),
+                Value::Str("b".into()),
+                Value::Str("c".into()),
+            ]
+        );
+    }
 
-        let log = execute(&dag).unwrap();
+    #[test]
+    fn fan_in_skips_skipped_value() {
+        // Skipped sentinel is never collected regardless of cardinality
+        assert!(collect_fan_in(&Value::Skipped, Cardinality::ONE).is_none());
+        assert!(collect_fan_in(&Value::Skipped, Cardinality::ZERO_OR_ONE).is_none());
+        assert!(collect_fan_in(&Value::Skipped, Cardinality::ZERO_OR_MORE).is_none());
+    }
 
-        let entry = log.get("consumer").unwrap();
-        match entry.outputs.get("items") {
-            Some(Value::List(items)) => {
-                assert_eq!(items.len(), 3, "Widen: elements should pass through unchanged");
-                assert_eq!(items[0], Value::Str("a".to_string()));
-                assert_eq!(items[1], Value::Str("b".to_string()));
-                assert_eq!(items[2], Value::Str("c".to_string()));
-            }
-            other => panic!("Widen: expected Value::List, got {:?}", other),
-        }
+    #[test]
+    fn fan_in_unit_from_required_port_is_kept() {
+        // Unit from a required [1,1] port is NOT skipped — only empty-allowing
+        // ports treat Unit as absence.
+        let elements = collect_fan_in(&Value::Unit, Cardinality::ONE).unwrap();
+        assert_eq!(elements, vec![Value::Unit]);
+    }
+
+    #[test]
+    fn fan_in_skips_unit_from_empty_list() {
+        // Unit from a [0,∞) port is skipped (allows_empty = true)
+        assert!(collect_fan_in(&Value::Unit, Cardinality::ZERO_OR_MORE).is_none());
     }
 
     #[test]
