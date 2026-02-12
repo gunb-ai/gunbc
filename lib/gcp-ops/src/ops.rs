@@ -232,10 +232,10 @@ impl Executable for GcpOps {
                     _ => false,
                 };
                 if !exists {
-                    return OutputMap::new()
-                        .request("request", FileRequest::read("/dev/null").into())
-                        .bool("skip", true)
-                        .ok();
+                    let path = adc_file_path();
+                    return Err(ExecError::new(format!(
+                        "ADC file not found at {path}. Run `gcloud auth application-default login` and retry."
+                    )));
                 }
                 let adc_path = adc_file_path();
                 let req = FileRequest::read(&adc_path);
@@ -1019,13 +1019,18 @@ mod tests {
     }
 
     #[test]
-    fn prepare_read_adc_skips_when_not_exists() {
+    fn prepare_read_adc_fails_when_not_exists() {
         let mut inputs = HashMap::new();
         inputs.insert("exists".to_string(), Value::Bool(false));
-        let outputs = GcpOps::PrepareReadAdc
+        let err = GcpOps::PrepareReadAdc
             .execute(inputs)
-            .expect("should succeed");
-        assert_eq!(outputs.get("skip"), Some(&Value::Bool(true)));
+            .expect_err("missing ADC should fail early");
+        assert!(
+            err.to_string()
+                .contains("gcloud auth application-default login"),
+            "error should include remediation command, got: {}",
+            err
+        );
     }
 
     #[test]

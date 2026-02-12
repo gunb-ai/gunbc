@@ -3,7 +3,7 @@
 //! Resolves GitHub credentials via the cloud secret manager and performs
 //! a minimal GitHub API call to validate the token.
 
-use crate::config_loader::default_local_dev_config;
+use crate::config_loader::graph_cloud_config;
 use crate::graph::{
     build_cloud_secret_manager_credential_graph_from_config, CloudSecretManagerGraphOp,
 };
@@ -86,7 +86,7 @@ impl Executable for GitHubCredentialGraphOp {
     builder = "build_github_credential_graph()"
 )]
 pub fn build_github_credential_graph() -> Dag<GitHubCredentialGraphOp> {
-    let config = default_local_dev_config();
+    let config = graph_cloud_config();
     let mut builder: DagBuilder<GitHubCredentialGraphOp> = DagBuilder::new();
 
     // Cloud environment — pre-resolved config (no env var reads).

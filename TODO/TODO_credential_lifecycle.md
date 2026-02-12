@@ -40,17 +40,10 @@ Current flows can work when environment assumptions happen to match local setup,
 
 ### Half-implemented or mismatched abstractions
 
-- `ShouldImpersonate` exists but is not wired into credential/upsert graph branching.  
-  (`lib/gcp-ops/src/ops.rs`, `lib/gcp-ops/src/graph.rs`)
-- Impersonation parse failure only checks for `accessToken` and returns low-context errors.  
-  (`lib/gcp-ops/src/ops.rs`)
-- `local_auth_upsert` comment says check -> create -> resolve, but DAG currently implements check -> resolve only.  
-  (`lib/gcp-ops/src/graph.rs`)
 - `CloudConfigResource::create()` does not yet execute discovery; it currently records manifest key/outputs only.  
   (`lib/cloud-ops/src/config_resource.rs`)
-- `default_local_dev_config()` is hardcoded and still used directly in graph constructors.  
-  (`lib/cloud-ops/src/config_loader.rs`, `lib/tools/gist/src/graph.rs`, `lib/review/src/graph.rs`, `lib/llm-ops/src/graph.rs`)
-- No explicit precedence contract exists for profile/config selection (explicit config vs repo file vs env vs fallback).
+- Context/profile resolution now centralizes in `graph_cloud_config()` with deterministic source precedence, but compatibility fallback defaults still exist when no source is configured and strict mode is off.
+- Profile/config precedence is specified for JSON/TOML/env sources, but repo-file loading and policy-file binding are still pending.
 
 ## Target Architecture
 
@@ -228,8 +221,8 @@ This section maps the target architecture to the DAGs already in the repo so mig
 - Current implementation:
   - Tool graphs use `cloud_env` via `CloudOps::ConstCloudConfig`.
   - Cloud DAG normalizes config via `resolve_config` + `map_gcp_inputs`.
-- Coverage: partial.
-- Gap: profile precedence is not centralized; multiple graphs still call `default_local_dev_config()`.
+- Coverage: medium.
+- Gap: precedence is centralized, but file-backed profile resolution and policy binding are not integrated yet.
 
 2. `SelectFlow`
 - Current implementation:
@@ -306,7 +299,7 @@ This section maps the target architecture to the DAGs already in the repo so mig
 
 - Upsert pattern exists concretely for secret provisioning:
   - `prepare_secret_get -> parse_secret_get -> prepare_secret_create -> prepare_secret_add_version`.
-- Local auth sub-DAG is documented as check/create/resolve but implemented as check/resolve path currently.
+- Local auth sub-DAG now fails fast with explicit `gcloud auth application-default login` remediation when ADC is missing (no late impersonation 401 fallback path).
 - Canonical tool-chain invariant is already enforced in tests:
   - `gunbc-dag/tests/credential_chain.rs`.
 
@@ -317,7 +310,7 @@ This section maps the target architecture to the DAGs already in the repo so mig
 - Add `required_scopes` as required resolve_auth output in all credentialed flows.
 - Add explicit `scope_preflight` node in credential chain before business `execute`.
 - Wire conditional impersonation (`ShouldImpersonate`) in GCP credential and upsert DAGs.
-- Replace direct `default_local_dev_config()` callsites with centralized context/profile resolver.
+- (Done) Replace direct `default_local_dev_config()` callsites with centralized context/profile resolver.
 
 ## Keep / Refactor / Replace
 

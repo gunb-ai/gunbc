@@ -17,7 +17,7 @@ use gunbc_ir::{
     add_transport_execute_parse_named_with_passthrough, build::*, Dag, DagBuilder, Node, Value,
 };
 use gunbc_lib_cloud_ops::{
-    build_cloud_secret_manager_credential_graph_from_config, default_local_dev_config, CloudOps,
+    build_cloud_secret_manager_credential_graph_from_config, graph_cloud_config, CloudOps,
     CloudSecretManagerGraphOp,
 };
 use gunbc_lib_transport::TransportOps;
@@ -65,7 +65,7 @@ impl Executable for LlmGraphOp {
 /// - `parse.input_tokens`: Int
 /// - `parse.output_tokens`: Int
 pub fn build_chat_completion_graph() -> Dag<LlmGraphOp> {
-    build_chat_completion_graph_with_config(default_local_dev_config())
+    build_chat_completion_graph_with_config(graph_cloud_config())
 }
 
 /// Build a chat completion DAG with explicit cloud config.

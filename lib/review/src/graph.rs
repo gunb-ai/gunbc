@@ -18,7 +18,7 @@ use gunbc_ir::{
 };
 use gunbc_lib_blob::BlobOps;
 use gunbc_lib_cloud_ops::{
-    build_cloud_secret_manager_credential_graph_from_config, default_local_dev_config, CloudOps,
+    build_cloud_secret_manager_credential_graph_from_config, graph_cloud_config, CloudOps,
     CloudSecretManagerGraphOp,
 };
 use gunbc_lib_git_ops::GitOps;
@@ -250,7 +250,7 @@ fn add_cloud_env_node(
     builder = "build_review_phase_graph()"
 )]
 pub fn build_review_phase_graph() -> Dag<ReviewGraphOp> {
-    build_review_phase_graph_with_config(default_local_dev_config())
+    build_review_phase_graph_with_config(graph_cloud_config())
 }
 
 /// Build a ReviewPhase DAG with an explicit cloud config.
@@ -514,7 +514,7 @@ pub fn build_review_phase_graph_with_config(cloud_config: CloudSecretConfig) -> 
 /// - `parse_response.output`: Json — ReviewOutput
 /// - `parse_response.errors`: Json — Parse errors array
 pub fn build_inline_review_graph() -> Dag<ReviewGraphOp> {
-    build_inline_review_graph_with_config(default_local_dev_config())
+    build_inline_review_graph_with_config(graph_cloud_config())
 }
 
 /// Build an inline review graph with explicit cloud config.
@@ -706,7 +706,7 @@ pub fn build_diff_review_graph() -> Dag<ReviewGraphOp> {
 /// - Two TransportOps::Execute calls: git diff (read), LLM (read)
 /// - Phase overall: Read-only
 pub fn build_diff_review_graph_with(config: ReviewPipelineConfig) -> Dag<ReviewGraphOp> {
-    build_diff_review_graph_with_cloud_config(config, default_local_dev_config())
+    build_diff_review_graph_with_cloud_config(config, graph_cloud_config())
 }
 
 /// Build a DiffReviewPhase DAG with explicit cloud config.
@@ -1029,7 +1029,7 @@ pub fn build_multi_source_review_graph() -> Dag<ReviewGraphOp> {
 
 /// Build a MultiSourceReviewPhase DAG with explicit pipeline config.
 pub fn build_multi_source_review_graph_with(config: ReviewPipelineConfig) -> Dag<ReviewGraphOp> {
-    build_multi_source_review_graph_with_cloud_config(config, default_local_dev_config())
+    build_multi_source_review_graph_with_cloud_config(config, graph_cloud_config())
 }
 
 /// Build a MultiSourceReviewPhase DAG with explicit pipeline and cloud configs.

@@ -23,7 +23,7 @@ use gunbc_ir::{
     WorkflowSignature,
 };
 use gunbc_lib_cloud_ops::{
-    build_cloud_secret_manager_credential_graph_from_config, default_local_dev_config, CloudOps,
+    build_cloud_secret_manager_credential_graph_from_config, graph_cloud_config, CloudOps,
     CloudSecretManagerGraphOp,
 };
 use gunbc_lib_gist_ops::GistOps;
@@ -541,7 +541,7 @@ pub fn build_gist_graph(
     extensions: Vec<String>,
     public: bool,
 ) -> Result<Dag<GistGraphOp>, BuilderError> {
-    build_gist_graph_with_config(mode, extensions, public, default_local_dev_config())
+    build_gist_graph_with_config(mode, extensions, public, graph_cloud_config())
 }
 
 /// Build the gist graph with an explicit `CloudSecretConfig`.

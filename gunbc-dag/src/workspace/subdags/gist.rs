@@ -68,14 +68,14 @@ pub fn build_gist_subdag(
 /// Build a gist SubDag with explicit cloud config.
 ///
 /// When `cloud_config` is `Some`, it is used directly; when `None`,
-/// `default_local_dev_config()` provides a sensible default.
+/// `graph_cloud_config()` provides centralized profile-aware resolution.
 pub fn build_gist_subdag_with_config(
     mode: GistMode,
     extensions: Vec<String>,
     create_gist: bool,
     cloud_config: Option<CloudSecretConfig>,
 ) -> Node<WorkspaceOp> {
-    let config = cloud_config.unwrap_or_else(gunbc_lib_cloud_ops::default_local_dev_config);
+    let config = cloud_config.unwrap_or_else(gunbc_lib_cloud_ops::graph_cloud_config);
     let original = build_gist_graph_with_config(mode, extensions, create_gist, config)
         .expect("Gist graph should build");
     let converted_dag = convert_dag(original, &convert_gist_op);
