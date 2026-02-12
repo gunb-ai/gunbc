@@ -178,9 +178,33 @@ pub fn bootstrap_mock_spec() -> MockSpec {
         )
         .input_mock("compare_makefile_content", "check_mode", Value::Bool(false))
         .input_mock(
+            "compare_makefile_content",
+            "response",
+            Value::Response(TransportResponse::File(FileResponse {
+                path: "Makefile".into(),
+                operation: FileOp::Read,
+                success: true,
+                content: Some("<mock-makefile>".into()),
+                exists: None,
+                error: None,
+            })),
+        )
+        .input_mock(
             "compare_gitignore_content",
             "check_mode",
             Value::Bool(false),
+        )
+        .input_mock(
+            "compare_gitignore_content",
+            "response",
+            Value::Response(TransportResponse::File(FileResponse {
+                path: ".gitignore".into(),
+                operation: FileOp::Read,
+                success: true,
+                content: Some("<mock-gitignore>".into()),
+                exists: None,
+                error: None,
+            })),
         )
         // Resources: file locks for both outputs
         .resource_lock("fs:Makefile")

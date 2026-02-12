@@ -1,98 +1,438 @@
-# Credential/Auth Convergence Tracker
+# Credential Lifecycle Architecture (Reset)
 
-Status date: 2026-02-09
-Owner: runtime/auth modeling
+Status date: 2026-02-12  
+Owner: runtime/auth modeling  
+Supersedes: checklist-style convergence tracker version
 
-## Goal
+## Why This Rewrite Exists
 
-Make credentialed actions uniform across the codebase:
+The prior document tracked migration tasks, but it mixed three different concerns:
 
-1. Every credentialed interface declares required scopes.
-2. Runtime derives credential acquisition from that contract.
-3. Graph shape is consistent across local/dev/test/prod.
-4. Missing contract is a hard failure, not a fallback path.
+1. What is implemented now.
+2. What abstraction boundaries we want.
+3. What debt remains tactical vs architectural.
 
-## Canonical Pattern
+This rewrite resets around one rule:
 
-For any credentialed workflow:
+`credentialed workflows request capability intent, not provider mechanics`
 
-`resolve_auth_contract -> cloud_env -> bind_secret -> cloud_credential -> execute(res:credential)`
+## Problem Statement
 
-Environment can change provider implementation, but the graph pattern must stay the same.
+Current flows can work when environment assumptions happen to match local setup, but abstraction leakage makes auth brittle:
 
-## Current Convergence State
+- defaults and provider details leak into graph construction callsites,
+- impersonation behavior is not selected through an explicit strategy layer,
+- profile and secret source-of-truth are fragmented,
+- lifecycle actions (acquire/create/rotate/verify) are not represented as one policy-driven pipeline.
 
-- [x] Shared scope-contract primitives exist in `core/ir` (`ScopeContract`, `CredentialIntent`).
-- [x] Gist interface declares a typed scope contract (`GistScopeContract`) and intent.
-- [x] Gist graph uses cloud credential lifecycle chain.
-- [x] Review graph declares typed scope contract (`ReviewScopeContract`) wrapping LLM contract.
-- [x] LLM graph declares typed scope contract (`LlmScopeContract`) with provider-specific auth.
-- [ ] Transport shell auth contract is standardized (explicit credential materialization semantics for shell flows).
-- [x] CI guardrails prevent reintroduction of env-var credential nodes in tool graphs.
+## Current State (Verified)
 
-## Strict Invariants (Must Hold)
+### Solid and worth keeping
 
-- [x] No production tool graph may acquire credentials directly from env-var-only auth nodes.
-- [x] Every credentialed action/request type exposes a scope contract.
-- [x] Every `execute` node that requires auth must consume `res:credential`.
-- [ ] Missing or invalid scope contract fails deterministically before transport I/O.
+- Canonical chain shape is enforced by tests:
+  `resolve_auth -> cloud_env -> bind_secret -> cloud_credential -> execute(res:credential)`  
+  (`gunbc-dag/tests/credential_chain.rs`)
+- Typed contract primitives already exist: `ScopeContract`, `CredentialIntent`  
+  (`core/ir/src/transport/scope.rs`)
+- Credentialed interfaces are already contract-based (gist/review/llm transport modules).
+- Discovery DAG exists for generating cloud config from live GCP state:  
+  `lib/gcp-ops/src/discovery_graph.rs`, `lib/gcp-ops/src/discovery_ops.rs`
 
-## Migration Checklist
+### Half-implemented or mismatched abstractions
 
-### A. Interface Contracts
+- `ShouldImpersonate` exists but is not wired into credential/upsert graph branching.  
+  (`lib/gcp-ops/src/ops.rs`, `lib/gcp-ops/src/graph.rs`)
+- Impersonation parse failure only checks for `accessToken` and returns low-context errors.  
+  (`lib/gcp-ops/src/ops.rs`)
+- `local_auth_upsert` comment says check -> create -> resolve, but DAG currently implements check -> resolve only.  
+  (`lib/gcp-ops/src/graph.rs`)
+- `CloudConfigResource::create()` does not yet execute discovery; it currently records manifest key/outputs only.  
+  (`lib/cloud-ops/src/config_resource.rs`)
+- `default_local_dev_config()` is hardcoded and still used directly in graph constructors.  
+  (`lib/cloud-ops/src/config_loader.rs`, `lib/tools/gist/src/graph.rs`, `lib/review/src/graph.rs`, `lib/llm-ops/src/graph.rs`)
+- No explicit precedence contract exists for profile/config selection (explicit config vs repo file vs env vs fallback).
 
-- [x] Add shared contract types in `core/ir/src/transport/scope.rs`.
-- [x] Add gist scope contract in `core/ir/src/transport/gist.rs`.
-- [x] Add review scope contract in `core/ir/src/transport/review.rs`.
-- [x] Add LLM provider scope contract in `core/ir/src/transport/llm/mod.rs`.
-- [x] Add compile-time tests for each contract type (unit tests in each module + `credential_chain.rs` regression tests).
+## Target Architecture
 
-### B. Graph Wiring
+Credential lifecycle is modeled as five strict layers.
 
-- [x] Migrate `lib/tools/gist/src/graph.rs` to cloud credential chain.
-- [x] Migrate all auth-required tool graphs — all use canonical chain (gist, review, llm, github-credential).
-- [x] Auth contract nodes emit `service/scheme/header_name/required_scopes` in all credentialed graphs.
-- [x] Required scopes are visible in mock specs for every auth flow.
-- [x] `build_cloud_credential_graph_for_runtime()` dispatches on both provider AND runtime (not just runtime).
-- [x] Local dev auth refactored into `local_auth_upsert` sub-DAG with formal guard on create phase.
+1. Intent layer (capability request)
+- Input: `CredentialIntent` from interface contract.
+- Output: normalized intent id + required scopes.
+- Rule: callers say what they need, never how to fetch it.
 
-### C. Tests and Mocks
+2. Context layer (environment understanding)
+- Input: runtime signals + profile selection.
+- Output: `CredentialContext` (runtime kind, namespace, actor identity, candidate providers).
+- Rule: env detection happens once here; downstream layers do not inspect env directly.
 
-- [x] Update gist mock spec/integration mocks for cloud lifecycle nodes.
-- [x] Regenerate testgen artifacts after auth graph migrations.
-- [x] Add regression tests that assert no `credential_env` nodes in production tool graphs (`credential_chain.rs`).
-- [x] Add tests that fail when contract scope list is empty (`credential_chain.rs`).
-- [x] Update `gcp_local_mock_spec()` for `local_auth_upsert` sub-DAG boundaries.
-- [x] Fix credential_lifecycle mock config to use `LocalDev` runtime for DryRun mode.
-- [x] Fix `should_panic` expected message for `test_transport_mock_coverage_required`.
+3. Policy layer (spec-driven decision)
+- Input: intent + context.
+- Output: `CredentialPolicy` (secret refs, scopes, impersonation rule, rotation policy, status).
+- Rule: all intent-to-secret mapping lives in policy spec, not callsites.
 
-### D. Enforcement
+4. Provider strategy layer (concrete auth plan)
+- Input: policy + context.
+- Output: provider-specific execution plan (`gcp_wif_secret`, `adc_direct`, etc.).
+- Rule: branching decisions such as impersonation happen here.
 
-- [x] Add CI audit step: fail if auth-required graphs skip canonical credential chain (`credential_chain.rs` regression tests run in `cargo test --workspace`).
-- [x] Add CI audit step: fail if new interface uses credentials without `ScopeContract` (scope contract validation tests in `credential_chain.rs`).
-- [ ] Add runtime preflight error contract for missing scope declarations.
+5. Execution layer (DAG apply)
+- Input: provider plan.
+- Output: credential lease + expiry + structured diagnostics.
+- Rule: lifecycle actions (acquire/create/rotate/verify) run as explicit DAG steps.
 
-### E. Cloud Env Layering
+## Extraction from `the-gunbai`
 
-- [x] Model cloud selectors layer (`CLOUD_PROVIDER`, `CLOUD_RUNTIME`) explicitly.
-- [x] Model provider/runtime required vars via `CloudEnvRequirements`.
-- [x] Model developer identity as required-any-of groups (for local GCP: `GCP_SECRETS_SA | GCP_SECRETS_IMPERSONATE_SA`).
-- [x] Make `cloud_env` fail with aggregated missing requirements (not first-missing only).
-- [x] Include first-class diagnosis path in errors (`make gist-auth-doctor RUNTIME=...`).
-- [x] Add a provider-neutral `cloud-auth-doctor` tool (`lib/cloud-ops/src/auth_doctor.rs`); gist doctor delegates to it.
-- [ ] Define/implement local developer profile source of truth and precedence (shell env vs managed profile).
+The most reusable parts from `the-gunbai` are architecture patterns, not code copy:
 
-## Acceptance Criteria
+1. Credential flow algebra (typed auth strategy)
+- `CredentialFlow` is an explicit enum of acquisition strategies:
+  `Stored`, `PlatformInjected`, `WorkloadIdentity`, `InteractiveAuth`, `Derived`, `Chained`.  
+  (`../the-gunbai/crates/gunbai-types/src/credential.rs`)
+- This cleanly separates "what flow class is this?" from provider details.
 
-- [x] `make gist-recent` no longer depends on `GITHUB_TOKEN` env wiring in graph modeling.
-- [x] Auth modeling for gist/review/llm follows one canonical chain shape.
-- [x] Auth contract declarations are typed and colocated with action/request interfaces.
-- [ ] No fallback-only auth paths remain undocumented.
-- [x] CI has at least one hard guard preventing credential modeling drift.
+2. Strict runtime/provisioning split
+- Runtime secret reads are read-only; provisioning/upsert uses separate identity and command path.  
+  (`../the-gunbai/docs/design/ci-secrets-minimal-invariants.md`)
+- No implicit runtime upsert fallback.
 
-## Remaining Open Items
+3. Policy-driven auth config
+- `secret-sources.toml` binds provider config + auth flow + per-secret mapping in one declarative model.  
+  (`../the-gunbai/config/secret-sources.toml`)
+- CI code resolves that model into concrete GCP OIDC -> STS -> optional impersonation execution.  
+  (`../the-gunbai/crates/gunbai-ci/src/secrets.rs`)
 
-- [ ] Transport shell auth contract standardization (explicit credential materialization semantics for shell flows).
-- [ ] Runtime preflight error contract for missing scope declarations.
-- [ ] Local developer profile source of truth and precedence (shell env vs managed profile).
-- [ ] Document remaining fallback-only auth paths (if any exist).
+4. First-class behavior patterns
+- Authentication should be modeled as a reusable pattern (like `pattern/upsert`), not duplicated workflow glue.  
+  (`../the-gunbai/docs/design/behavior-patterns.md`)
+
+5. Requirements as generic I/O contracts
+- Secrets are treated as requirements within a generic prerequisite model (not a bespoke side subsystem).  
+  (`../the-gunbai/docs/design/requirements-and-io.md`)
+
+6. Scope rigor by behavior
+- Secret requirements merge scopes across understandings and support per-behavior scope lookup.  
+  (`../the-gunbai/crates/gunbai-integrations-contracts/src/secret_validation.rs`)
+
+## Base `authenticate` Pattern (New Requirement for Gunbc)
+
+To make auth robust across the full codebase, define one foundational pattern:
+
+`pattern/authenticate`
+
+Every credentialed flow (gist/review/llm/cloud ops/future providers) must consume this pattern, not invent local auth logic.
+
+### Pattern contract
+
+Input:
+- `CredentialIntent` (capability + scopes + scheme)
+- `AuthContext` (runtime/profile/provider candidates)
+- `AuthPolicy` (flow constraints and lifecycle policy)
+
+Output:
+- `CredentialLease` (materialized credential + expiry + source metadata)
+- `AuthDiagnostics` (structured path, phase failures, remediations)
+
+### Required phases
+
+1. `ResolveContext`
+- detect runtime and profile using deterministic precedence.
+
+2. `SelectFlow`
+- choose typed flow class:
+  `PlatformInjected | WorkloadIdentity | InteractiveAuth | Stored | Derived | Chained`.
+
+3. `AcquireBaseIdentity`
+- gather initial token/credential seed for selected flow.
+
+4. `ExchangeOrDerive`
+- run token exchange or derivation (STS, OAuth refresh, app token, etc.).
+
+5. `Impersonate` (conditional)
+- executed only when strategy/policy requires it.
+
+6. `VerifyScopes`
+- preflight required scopes/capabilities before downstream execute transport.
+
+7. `MaterializeLease`
+- return uniform credential object with expiry and provenance.
+
+### Pattern invariants
+
+- No provider-specific branching in tool graphs.
+- No implicit fallback auth path.
+- Runtime auth read path is non-mutating.
+- Provisioning/rotation paths are explicit, separate operations.
+- Missing required scopes fail before external business transport I/O.
+
+## Spec Model (Gunb.ai Pattern, Gunbc Adaptation)
+
+Use two specs with a clean boundary:
+
+1. Discovered config (generated)
+- Source: infra discovery DAG.
+- Purpose: describe cloud topology/resources.
+- Artifact: `CloudConfigSpec` (TOML/JSON, generated).
+
+2. Credential policy (authored)
+- Source: repo-authored policy file(s).
+- Purpose: describe auth behavior per intent and context.
+- Fields include:
+  - required scopes,
+  - secret binding,
+  - provider preference,
+  - impersonation policy,
+  - rotation handler/max age,
+  - status (`active`/`deleted`) for reconcile/prune.
+
+This preserves gunbc’s DAG runtime while adopting spec-driven apply principles proven in `gunb.ai`.
+
+## Canonical Runtime Contract
+
+Graph shape stays canonical, but semantics tighten:
+
+`resolve_auth_contract -> resolve_context -> bind_policy -> cloud_credential(provider_plan) -> execute(res:credential)`
+
+Mapping from current node names:
+
+- `resolve_auth`: stays intent-focused.
+- `cloud_env`: evolves into context/profile resolution.
+- `bind_secret`: evolves into policy binding (not only naming composition).
+- `cloud_credential`: executes strategy-selected provider plan.
+
+`cloud_credential` becomes the implementation of `pattern/authenticate` inside the canonical chain.
+
+## Reconciliation with Existing Gunbc DAGs
+
+This section maps the target architecture to the DAGs already in the repo so migration is incremental, not a rewrite.
+
+### Existing flow inventory (today)
+
+- Tool entry DAGs:
+  - `lib/tools/gist/src/graph.rs` (`build_gist_graph_with_config`)
+  - `lib/llm-ops/src/graph.rs` (`build_chat_completion_graph_with_config`)
+  - `lib/review/src/graph.rs` (`build_review_phase_graph_with_config`)
+  - `lib/cloud-ops/src/github_credential_graph.rs` (`build_github_credential_graph`)
+- Provider-neutral cloud DAG:
+  - `lib/cloud-ops/src/graph.rs` (`build_cloud_secret_manager_credential_graph_from_config`)
+- GCP credential DAG:
+  - `lib/gcp-ops/src/graph.rs` (`build_gcp_secret_manager_credential_graph`)
+- GCP upsert DAG:
+  - `lib/gcp-ops/src/graph.rs` (`build_gcp_secret_manager_upsert_graph`)
+- Local auth sub-DAG (shared):
+  - `lib/gcp-ops/src/graph.rs` (`build_local_auth_upsert_dag`)
+
+### Phase mapping (`pattern/authenticate` -> current nodes)
+
+1. `ResolveContext`
+- Current implementation:
+  - Tool graphs use `cloud_env` via `CloudOps::ConstCloudConfig`.
+  - Cloud DAG normalizes config via `resolve_config` + `map_gcp_inputs`.
+- Coverage: partial.
+- Gap: profile precedence is not centralized; multiple graphs still call `default_local_dev_config()`.
+
+2. `SelectFlow`
+- Current implementation:
+  - Provider/runtime dispatch in `build_cloud_secret_manager_credential_graph_from_config`.
+  - Runtime guard in `CloudOps::MapToGcpInputs`.
+- Coverage: partial.
+- Gap: selection is runtime/provider based, not policy + typed flow class.
+
+3. `AcquireBaseIdentity`
+- Current implementation:
+  - GitHub runtime: `prepare_github_oidc -> execute -> parse_github_oidc`.
+  - Metadata runtime: `prepare_metadata_oidc -> execute -> parse_metadata_oidc`.
+  - Local runtime: `local_auth_upsert` sub-DAG (`check + ADC/OAuth refresh` path).
+- Coverage: strong.
+
+4. `ExchangeOrDerive`
+- Current implementation:
+  - `prepare_sts -> execute_sts -> parse_sts`.
+- Coverage: strong.
+
+5. `Impersonate` (conditional)
+- Current implementation:
+  - `prepare_impersonate -> execute_impersonate -> parse_impersonate`.
+- Coverage: partial.
+- Gap: currently unconditional in graph shape; `ShouldImpersonate` op exists but is not wired.
+
+6. `VerifyScopes`
+- Current implementation:
+  - Contract typing and validation exists in `core/ir`.
+  - Gist/LLM/review/GitHub resolve auth nodes emit `required_scopes`.
+  - `required_scopes` now threads through `cloud_credential` inputs across credentialed tool flows.
+- Dedicated `scope_preflight` nodes now gate business transport execute paths.
+- Coverage: partial.
+- Gaps:
+  - Scope preflight currently validates declaration presence/shape, not provider-granted effective scope sets.
+
+7. `MaterializeLease`
+- Current implementation:
+  - `build_credential` constructs `Credential`.
+  - `expires_in` is surfaced by credential sub-DAG.
+- Coverage: strong for materialization, partial for structured provenance diagnostics.
+
+### Reconciliation by workflow
+
+- Gist flow (`lib/tools/gist/src/graph.rs`):
+  - Best aligned today.
+  - Has `required_scopes`, `lifetime_seconds`, and `expires_in` wiring.
+  - Has explicit `scope_preflight` before gist execute.
+  - Gap: preflight validates declared scope IDs, not provider-granted effective scopes.
+
+- LLM flow (`lib/llm-ops/src/graph.rs` + `lib/llm-ops/src/lib.rs`):
+  - Canonical chain shape is correct.
+  - `LlmOps::ResolveAuth` emits `required_scopes` and passes them through `cloud_credential`.
+  - Has explicit `scope_preflight` before execute.
+  - Gap: preflight validates declared scope IDs, not provider-granted effective scopes.
+
+- Review flow (`lib/review/src/graph.rs`):
+  - Canonical chain shape is correct.
+  - Uses `ReviewOps::ResolveAuthContract` (backed by `ReviewScopeContract`) and carries review scopes.
+  - Has explicit `scope_preflight` before execute.
+  - Gap: preflight validates declared scope IDs, not provider-granted effective scopes.
+
+- GitHub credential validation flow (`lib/cloud-ops/src/github_credential_graph.rs`):
+  - Canonical chain shape is correct.
+  - `resolve_auth` now emits and threads `required_scopes`.
+  - Has explicit `scope_preflight` before execute.
+  - Gap: validation endpoint remains auth-presence focused only.
+
+- Cloud config resource path (`lib/cloud-ops/src/config_resource.rs`):
+  - Modeled as managed resource.
+  - Gap: `create()` currently does not invoke discovery DAG, so config lifecycle orchestration is incomplete.
+
+### Behavior-pattern alignment already present
+
+- Upsert pattern exists concretely for secret provisioning:
+  - `prepare_secret_get -> parse_secret_get -> prepare_secret_create -> prepare_secret_add_version`.
+- Local auth sub-DAG is documented as check/create/resolve but implemented as check/resolve path currently.
+- Canonical tool-chain invariant is already enforced in tests:
+  - `gunbc-dag/tests/credential_chain.rs`.
+
+### Reconciliation decisions (authoritative)
+
+- Keep the external canonical chain node names in tool graphs.
+- Implement `pattern/authenticate` inside `cloud_credential` internals first.
+- Add `required_scopes` as required resolve_auth output in all credentialed flows.
+- Add explicit `scope_preflight` node in credential chain before business `execute`.
+- Wire conditional impersonation (`ShouldImpersonate`) in GCP credential and upsert DAGs.
+- Replace direct `default_local_dev_config()` callsites with centralized context/profile resolver.
+
+## Keep / Refactor / Replace
+
+Keep:
+
+- existing `CredentialIntent` / `ScopeContract` types,
+- canonical chain tests and guardrails,
+- reusable GCP local auth and discovery ops.
+
+Refactor:
+
+- config/profile precedence and loading,
+- `cloud_credential` internals to strategy + diagnostics,
+- `bind_secret` semantics from “string binding” to policy binding.
+
+Replace/Add:
+
+- credential-policy spec + resolver,
+- `pattern/authenticate` core module and tests,
+- provider strategy interface,
+- secret reconcile and rotation DAGs,
+- explicit runtime preflight for missing/invalid required scopes.
+
+## Proposed Interfaces (Rust Sketch)
+
+```rust
+trait CredentialResolver {
+    fn resolve(&self, req: CredentialRequest) -> Result<CredentialLease, CredentialError>;
+}
+
+struct CredentialRequest {
+    intent: CredentialIntent,
+    interactive_allowed: bool,
+    ttl_seconds: Option<i64>,
+}
+
+trait ContextResolver {
+    fn resolve(&self) -> Result<CredentialContext, CredentialError>;
+}
+
+trait PolicyResolver {
+    fn resolve(
+        &self,
+        intent: &CredentialIntent,
+        context: &CredentialContext,
+    ) -> Result<CredentialPolicy, CredentialError>;
+}
+
+trait ProviderStrategy {
+    fn plan(
+        &self,
+        policy: &CredentialPolicy,
+        context: &CredentialContext,
+    ) -> Result<CredentialPlan, CredentialError>;
+}
+```
+
+## Migration Plan
+
+Phase 0: Baseline diagnostics
+
+- Improve impersonation failures to include status and parsed error summary.
+- Keep current graph shape unchanged while improving observability.
+
+Phase 1: Context/profile precedence
+
+- Implement deterministic precedence:
+  1) explicit `--cloud-config` path,
+  2) repo config (e.g. `.gunbc/config-<env>.toml`),
+  3) env overrides,
+  4) fallback defaults (dev-only with explicit warning).
+- Remove hidden hardcoded config from graph constructors.
+
+Phase 1.5: Introduce `pattern/authenticate`
+
+- Add a provider-neutral authenticate contract module in `core/ir`.
+- Rewire existing `cloud_credential` internals to call pattern phases.
+- Keep external graph shape unchanged while internals migrate.
+
+Phase 2: Policy binding
+
+- Introduce `credential-policy` schema and loader.
+- Move intent->secret/scopes mapping from callsites into policy.
+- Evolve `bind_secret` semantics to bind policy output.
+
+Phase 3: Strategy execution
+
+- Add provider strategy selection inside `cloud_credential`.
+- Wire conditional impersonation.
+- Support local flows that do not require impersonation when policy allows.
+
+Phase 4: Secret lifecycle apply loops
+
+- Add reconcile DAG: check/create/bind/upsert.
+- Add rotation DAG: age check -> rotate handler -> version add -> verify.
+- Add prune path for policy entries marked `deleted`.
+
+Phase 5: Hardening and cutover
+
+- Fail preflight before transport I/O if required scopes are absent/invalid.
+- Add regression tests for precedence and policy resolution.
+- Deprecate and then remove fallback-only behavior behind explicit compatibility gate.
+
+## Definition of Done
+
+- Credential behavior can be explained for every workflow as:  
+  `intent -> context -> policy -> strategy -> execute`
+- `make gist-recent` no longer depends on hidden hardcoded project/service-account defaults.
+- Impersonation is conditional and diagnosable.
+- Rotation is policy-driven, not per-workflow custom logic.
+- Missing scope declarations fail before outbound network calls.
+- Generated discovery config and authored credential policy are both first-class inputs.
+
+## Open Decisions
+
+- policy layout: single root file vs domain-split includes,
+- namespace model: `local/dev/prod` flat vs inherited hierarchy,
+- fallback compatibility window duration for existing env-driven setups.

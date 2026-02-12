@@ -617,8 +617,9 @@ pub fn build_gist_graph_with_config(
         &[&cloud_env, &resolve_auth],
     )?;
 
-    let cloud_subdag =
-        lift_cloud_dag(build_cloud_secret_manager_credential_graph_from_config(&cloud_config));
+    let cloud_subdag = lift_cloud_dag(build_cloud_secret_manager_credential_graph_from_config(
+        &cloud_config,
+    ));
     let cloud_credential =
         builder.add_node_after(Node::subdag("cloud_credential", cloud_subdag), &bind_secret)?;
 
@@ -706,19 +707,31 @@ pub fn build_gist_graph_with_config(
         &render_markdown,
     )?;
 
+    // Node: ScopePreflight (PURE - fails fast on invalid/empty scopes)
+    let scope_preflight = builder.add_node_after(
+        Node::opaque(
+            "scope_preflight",
+            vec![list("required_scopes", "String")],
+            vec![scalar("scope_verified", "Bool")],
+            GistGraphOp::Cloud(CloudSecretManagerGraphOp::Cloud(CloudOps::ScopePreflight)),
+        ),
+        &resolve_auth,
+    )?;
+
     // Node: ExecuteGist (BOUNDARY - actual I/O)
-    let execute_gist = builder.add_node_after(
+    let execute_gist = builder.add_node_after_all(
         Node::opaque(
             "execute_gist",
             vec![
                 scalar("request", "TransportRequest"),
                 scalar("skip", "Bool"),
+                optional("scope_verified", "OptionalBool"),
                 resource("credential", "Credential", AccessMode::Read),
             ],
             vec![scalar("response", "TransportResponse")],
             GistGraphOp::Transport(TransportOps::Execute),
         ),
-        &prepare_gist_request,
+        &[&prepare_gist_request, &scope_preflight],
     )?;
 
     // Node: ParseGistResponse (PURE - extracts URL)
@@ -780,6 +793,10 @@ pub fn build_gist_graph_with_config(
         cloud_credential.in_port("interactive_allowed"),
     )?;
     builder.add_edge(
+        resolve_auth.out("required_scopes"),
+        cloud_credential.in_port("required_scopes"),
+    )?;
+    builder.add_edge(
         cloud_env.out("request_url"),
         cloud_credential.in_port("request_url"),
     )?;
@@ -790,6 +807,10 @@ pub fn build_gist_graph_with_config(
     builder.add_edge(
         resolve_auth.out("required_scopes"),
         prepare_gist_request.in_port("required_scopes"),
+    )?;
+    builder.add_edge(
+        resolve_auth.out("required_scopes"),
+        scope_preflight.in_port("required_scopes"),
     )?;
     builder.add_edge(
         cloud_env.out("request_token"),
@@ -809,6 +830,10 @@ pub fn build_gist_graph_with_config(
     builder.add_edge(
         prepare_gist_request.out("skip"),
         execute_gist.in_port("skip"),
+    )?;
+    builder.add_edge(
+        scope_preflight.out("scope_verified"),
+        execute_gist.in_port("scope_verified"),
     )?;
     builder.add_edge(
         cloud_credential.out("credential"),

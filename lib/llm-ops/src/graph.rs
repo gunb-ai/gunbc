@@ -3,17 +3,19 @@
 //! Provides a composable DAG for the LLM chat completion pattern:
 //!
 //! ```text
-//! PrepareChatRequest (pure) → ResolveAuth (pure) → ConstCloudConfig → CloudSecretManager (subdag) → TransportOps::Execute (I/O) → ParseChatResponse (pure)
+//! PrepareChatRequest (pure) → ResolveAuth (pure) → ScopePreflight (pure)
+//!   → ConstCloudConfig → CloudSecretManager (subdag)
+//!   → TransportOps::Execute (I/O) → ParseChatResponse (pure)
 //! ```
 //!
 //! This graph can be embedded as a sub-DAG in larger workflows that need
 //! LLM capabilities (code review, code generation, etc.).
 
 use gunbc_exec::{ExecError, Executable};
+use gunbc_ir::transport::cloud::CloudSecretConfig;
 use gunbc_ir::{
     add_transport_execute_parse_named_with_passthrough, build::*, Dag, DagBuilder, Node, Value,
 };
-use gunbc_ir::transport::cloud::CloudSecretConfig;
 use gunbc_lib_cloud_ops::{
     build_cloud_secret_manager_credential_graph_from_config, default_local_dev_config, CloudOps,
     CloudSecretManagerGraphOp,
@@ -67,9 +69,7 @@ pub fn build_chat_completion_graph() -> Dag<LlmGraphOp> {
 }
 
 /// Build a chat completion DAG with explicit cloud config.
-pub fn build_chat_completion_graph_with_config(
-    cloud_config: CloudSecretConfig,
-) -> Dag<LlmGraphOp> {
+pub fn build_chat_completion_graph_with_config(cloud_config: CloudSecretConfig) -> Dag<LlmGraphOp> {
     let mut builder: DagBuilder<LlmGraphOp> = DagBuilder::new();
 
     // Node 0: Cloud environment (config + OIDC request inputs)
@@ -121,6 +121,7 @@ pub fn build_chat_completion_graph_with_config(
                     port("service", "String"),
                     port("scheme", "String"),
                     port("header_name", "String"),
+                    list("required_scopes", "String"),
                     port("interactive_allowed", "Bool"),
                 ],
                 LlmGraphOp::Llm(LlmOps::ResolveAuth),
@@ -147,20 +148,37 @@ pub fn build_chat_completion_graph_with_config(
         .expect("bind_secret node");
 
     // Node 4: Cloud credential acquisition graph (GCP WIF + Secret Manager)
-    let cloud_subdag =
-        lift_cloud_dag(build_cloud_secret_manager_credential_graph_from_config(&cloud_config));
+    let cloud_subdag = lift_cloud_dag(build_cloud_secret_manager_credential_graph_from_config(
+        &cloud_config,
+    ));
     let cloud_credential = builder
         .add_node_after(Node::subdag("cloud_credential", cloud_subdag), &bind_secret)
         .expect("cloud_credential node");
 
-    // Nodes 5-6: Execute transport + ParseChatResponse
+    // Node 5: Scope preflight gate (pure; fails fast on invalid/empty scopes)
+    let scope_preflight = builder
+        .add_node_after(
+            Node::opaque(
+                "scope_preflight",
+                vec![list("required_scopes", "String")],
+                vec![port("scope_verified", "Bool")],
+                LlmGraphOp::Cloud(CloudSecretManagerGraphOp::Cloud(CloudOps::ScopePreflight)),
+            ),
+            &resolve_auth,
+        )
+        .expect("scope_preflight node");
+
+    // Nodes 6-7: Execute transport + ParseChatResponse
     let llm_triplet = add_transport_execute_parse_named_with_passthrough(
         &mut builder,
         &prepare,
         "execute",
         "parse",
         vec![port("provider", "String")],
-        vec![resource("credential", "Credential", AccessMode::Read)],
+        vec![
+            optional("scope_verified", "OptionalBool"),
+            resource("credential", "Credential", AccessMode::Read),
+        ],
         vec![
             port("content", "String"),
             port("model", "String"),
@@ -178,6 +196,18 @@ pub fn build_chat_completion_graph_with_config(
     builder
         .add_edge(prepare.out("provider"), resolve_auth.in_port("provider"))
         .expect("prepare.provider -> resolve_auth.provider");
+    builder
+        .add_edge(
+            resolve_auth.out("required_scopes"),
+            scope_preflight.in_port("required_scopes"),
+        )
+        .expect("resolve_auth.required_scopes -> scope_preflight.required_scopes");
+    builder
+        .add_edge(
+            scope_preflight.out("scope_verified"),
+            llm_triplet.execute.in_port("scope_verified"),
+        )
+        .expect("scope_preflight.scope_verified -> execute.scope_verified");
     builder
         .add_edge(cloud_env.out("config"), bind_secret.in_port("config"))
         .expect("cloud_env.config -> bind_secret.config");
@@ -214,6 +244,12 @@ pub fn build_chat_completion_graph_with_config(
             cloud_credential.in_port("interactive_allowed"),
         )
         .expect("resolve_auth.interactive_allowed -> cloud_credential.interactive_allowed");
+    builder
+        .add_edge(
+            resolve_auth.out("required_scopes"),
+            cloud_credential.in_port("required_scopes"),
+        )
+        .expect("resolve_auth.required_scopes -> cloud_credential.required_scopes");
     builder
         .add_edge(
             cloud_env.out("request_url"),

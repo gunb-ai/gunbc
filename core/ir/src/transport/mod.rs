@@ -43,6 +43,7 @@ pub mod ci;
 pub mod cli;
 pub mod cloud;
 pub mod credential;
+pub mod credential_policy;
 pub mod file;
 pub mod gcp;
 pub mod gist;
@@ -89,6 +90,19 @@ pub use gcp::{
 };
 pub use infra_scope::{GcpScope, InfraAccessLevel, InfraScope, InfraScopeType};
 pub use credential::{AuthScheme, Credential, CredentialError, Secret, SecretSource};
+pub use credential_policy::{
+    CredentialIntentPolicy,
+    CredentialPolicyDefaults,
+    CredentialPolicyError,
+    CredentialPolicyProfile,
+    CredentialPolicySpec,
+    ImpersonationPolicy,
+    ResolvedCredentialIntentPolicy,
+    ResolvedCredentialPolicyProfile,
+    ScopeMergeMode,
+    SecretBinding,
+    VersionSelector,
+};
 pub use file::{FileOp, FileRequest, FileResponse};
 pub use gist::GistRequest;
 pub use git::GitRequest;

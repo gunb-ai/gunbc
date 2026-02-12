@@ -345,7 +345,8 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
         )
         .skip_node_example("cloud_env")
         .skip_node_example("cloud_credential")
-        .skip_node_example("bind_secret");
+        .skip_node_example("bind_secret")
+        .skip_node_example("scope_preflight");
 
     // Mode-specific node examples
     match mode {

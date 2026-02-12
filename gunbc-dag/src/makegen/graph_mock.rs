@@ -124,6 +124,18 @@ pub fn makegen_mock_spec() -> MockSpec {
             Value::Str("Makefile".into()),
         )
         .input_mock("compare_makegen_content", "check_mode", Value::Bool(false))
+        .input_mock(
+            "compare_makegen_content",
+            "response",
+            Value::Response(TransportResponse::File(FileResponse {
+                path: "Makefile".into(),
+                operation: FileOp::Read,
+                success: true,
+                content: Some(mock_makefile_content()),
+                exists: None,
+                error: None,
+            })),
+        )
         // Input expectations (via legacy API post-build)
         .expects_input("path", InputConstraint::Any)
         .expects_input("check_mode", InputConstraint::Any)

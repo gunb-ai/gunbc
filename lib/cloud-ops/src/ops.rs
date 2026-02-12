@@ -1,6 +1,8 @@
 //! Cloud configuration ops.
 
-use gunbc_exec::{optional_str_strict, require_str, ExecError, Executable, OutputMap};
+use gunbc_exec::{
+    optional_str_list_strict, optional_str_strict, require_str, ExecError, Executable, OutputMap,
+};
 use gunbc_ir::transport::cloud::{CloudProviderKind, CloudRuntimeKind, CloudSecretConfig};
 use gunbc_ir::Value;
 use serde::{Deserialize, Serialize};
@@ -21,9 +23,13 @@ pub enum CloudOps {
     /// Replacement for CloudEnv: takes a serialized config and emits
     /// the same outputs (config, request_url, request_token) without
     /// reading any environment variables.
-    ConstCloudConfig {
-        config: CloudSecretConfig,
-    },
+    ConstCloudConfig { config: CloudSecretConfig },
+    /// Validate declared required scopes before business transport execution.
+    ///
+    /// This op is intentionally provider-neutral. It validates that
+    /// `required_scopes` (when provided) are syntactically canonical.
+    /// It emits `scope_verified=true` on success and errors on invalid scopes.
+    ScopePreflight,
 }
 
 impl Executable for CloudOps {
@@ -94,34 +100,30 @@ impl Executable for CloudOps {
                 let audience = require_str(&inputs, "audience")?;
                 let project = require_str(&inputs, "project_or_account")?;
                 let secret = require_str(&inputs, "secret")?;
+                let required_scopes =
+                    optional_str_list_strict(&inputs, "required_scopes")?.unwrap_or_default();
 
-                let service_account = match inputs
+                let service_account = inputs
                     .get("impersonate_account_or_role")
                     .and_then(Value::as_str)
                     .map(|s| s.trim())
                     .filter(|s| !s.is_empty())
-                {
-                    Some(value) => value.to_string(),
-                    None => match inputs
-                        .get("service_account_or_role")
-                        .and_then(Value::as_str)
-                        .map(|s| s.trim())
-                        .filter(|s| !s.is_empty())
-                    {
-                        Some(value) => value.to_string(),
-                        None => {
-                            return Err(ExecError::new(
-                                "missing service_account_or_role for gcp config",
-                            ))
-                        }
-                    },
-                };
+                    .or_else(|| {
+                        inputs
+                            .get("service_account_or_role")
+                            .and_then(Value::as_str)
+                            .map(|s| s.trim())
+                            .filter(|s| !s.is_empty())
+                    })
+                    .unwrap_or("")
+                    .to_string();
 
                 let mut out = OutputMap::new()
                     .str("audience", audience)
                     .str("project", project)
                     .str("secret", secret)
                     .str("service_account", service_account)
+                    .str_list("required_scopes", required_scopes)
                     .ok()?;
 
                 if let Some(version) = inputs.get("version").and_then(Value::as_str) {
@@ -176,16 +178,26 @@ impl Executable for CloudOps {
                 // These are still from env because they're ephemeral per-job values,
                 // not infrastructure configuration.
                 if matches!(config.runtime, CloudRuntimeKind::GitHubActions) {
-                    let request_url = std::env::var("ACTIONS_ID_TOKEN_REQUEST_URL")
-                        .unwrap_or_default();
-                    let request_token = std::env::var("ACTIONS_ID_TOKEN_REQUEST_TOKEN")
-                        .unwrap_or_default();
+                    let request_url =
+                        std::env::var("ACTIONS_ID_TOKEN_REQUEST_URL").unwrap_or_default();
+                    let request_token =
+                        std::env::var("ACTIONS_ID_TOKEN_REQUEST_TOKEN").unwrap_or_default();
                     out = out
                         .str("request_url", &request_url)
                         .str("request_token", &request_token);
                 }
 
                 out.ok()
+            }
+            CloudOps::ScopePreflight => {
+                let required_scopes =
+                    optional_str_list_strict(&inputs, "required_scopes")?.unwrap_or_default();
+
+                for scope in &required_scopes {
+                    validate_scope_id(scope)?;
+                }
+
+                OutputMap::new().bool("scope_verified", true).ok()
             }
             CloudOps::MapToGcpSecretInputs { runtime } => {
                 let provider = require_str(&inputs, "provider")?;
@@ -207,27 +219,20 @@ impl Executable for CloudOps {
                 let project = require_str(&inputs, "project_or_account")?;
                 let secret = require_str(&inputs, "secret")?;
 
-                let service_account = match inputs
+                let service_account = inputs
                     .get("impersonate_account_or_role")
                     .and_then(Value::as_str)
                     .map(|s| s.trim())
                     .filter(|s| !s.is_empty())
-                {
-                    Some(value) => value.to_string(),
-                    None => match inputs
-                        .get("service_account_or_role")
-                        .and_then(Value::as_str)
-                        .map(|s| s.trim())
-                        .filter(|s| !s.is_empty())
-                    {
-                        Some(value) => value.to_string(),
-                        None => {
-                            return Err(ExecError::new(
-                                "missing service_account_or_role for gcp config",
-                            ))
-                        }
-                    },
-                };
+                    .or_else(|| {
+                        inputs
+                            .get("service_account_or_role")
+                            .and_then(Value::as_str)
+                            .map(|s| s.trim())
+                            .filter(|s| !s.is_empty())
+                    })
+                    .unwrap_or("")
+                    .to_string();
 
                 let mut out = OutputMap::new()
                     .str("audience", audience)
@@ -268,5 +273,182 @@ impl Executable for CloudOps {
                 Ok(out)
             }
         }
+    }
+}
+
+fn validate_scope_id(scope: &str) -> Result<(), ExecError> {
+    if scope.trim() != scope {
+        return Err(ExecError::new(format!(
+            "scope '{}' has leading/trailing whitespace",
+            scope
+        )));
+    }
+    if scope.is_empty() {
+        return Err(ExecError::new("scope id cannot be empty"));
+    }
+    if !scope.contains(':') {
+        return Err(ExecError::new(format!(
+            "scope '{}' must contain ':' delimiter",
+            scope
+        )));
+    }
+    if scope.starts_with(':') || scope.ends_with(':') || scope.contains("::") {
+        return Err(ExecError::new(format!(
+            "scope '{}' has invalid ':' placement",
+            scope
+        )));
+    }
+    if !scope.chars().all(|c| {
+        c.is_ascii_lowercase() || c.is_ascii_digit() || c == ':' || c == '_' || c == '-' || c == '.'
+    }) {
+        return Err(ExecError::new(format!(
+            "scope '{}' contains invalid characters (allowed: [a-z0-9:_-.])",
+            scope
+        )));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn map_to_gcp_inputs_allows_empty_service_account() {
+        let mut inputs = HashMap::new();
+        inputs.insert("provider".to_string(), Value::Str("gcp".to_string()));
+        inputs.insert("runtime".to_string(), Value::Str("local".to_string()));
+        inputs.insert("audience".to_string(), Value::Str("local-dev".to_string()));
+        inputs.insert(
+            "project_or_account".to_string(),
+            Value::Str("gunb-secrets".to_string()),
+        );
+        inputs.insert("secret".to_string(), Value::Str("dev-github".to_string()));
+        inputs.insert("scheme".to_string(), Value::Str("bearer".to_string()));
+        inputs.insert("source_id".to_string(), Value::Str("github".to_string()));
+
+        let out = CloudOps::MapToGcpInputs {
+            runtime: CloudRuntimeKind::LocalDev,
+        }
+        .execute(inputs)
+        .expect("missing SA should not fail mapping");
+
+        assert_eq!(out.get("service_account").and_then(Value::as_str), Some(""));
+    }
+
+    #[test]
+    fn map_to_gcp_inputs_prefers_impersonate_account() {
+        let mut inputs = HashMap::new();
+        inputs.insert("provider".to_string(), Value::Str("gcp".to_string()));
+        inputs.insert("runtime".to_string(), Value::Str("local".to_string()));
+        inputs.insert("audience".to_string(), Value::Str("local-dev".to_string()));
+        inputs.insert(
+            "project_or_account".to_string(),
+            Value::Str("gunb-secrets".to_string()),
+        );
+        inputs.insert("secret".to_string(), Value::Str("dev-github".to_string()));
+        inputs.insert("scheme".to_string(), Value::Str("bearer".to_string()));
+        inputs.insert("source_id".to_string(), Value::Str("github".to_string()));
+        inputs.insert(
+            "service_account_or_role".to_string(),
+            Value::Str("base@p.iam.gserviceaccount.com".to_string()),
+        );
+        inputs.insert(
+            "impersonate_account_or_role".to_string(),
+            Value::Str("imp@p.iam.gserviceaccount.com".to_string()),
+        );
+
+        let out = CloudOps::MapToGcpInputs {
+            runtime: CloudRuntimeKind::LocalDev,
+        }
+        .execute(inputs)
+        .expect("mapping should succeed");
+
+        assert_eq!(
+            out.get("service_account").and_then(Value::as_str),
+            Some("imp@p.iam.gserviceaccount.com")
+        );
+    }
+
+    #[test]
+    fn map_to_gcp_inputs_passes_required_scopes() {
+        let mut inputs = HashMap::new();
+        inputs.insert("provider".to_string(), Value::Str("gcp".to_string()));
+        inputs.insert("runtime".to_string(), Value::Str("local".to_string()));
+        inputs.insert("audience".to_string(), Value::Str("local-dev".to_string()));
+        inputs.insert(
+            "project_or_account".to_string(),
+            Value::Str("gunb-secrets".to_string()),
+        );
+        inputs.insert("secret".to_string(), Value::Str("dev-github".to_string()));
+        inputs.insert("scheme".to_string(), Value::Str("bearer".to_string()));
+        inputs.insert("source_id".to_string(), Value::Str("github".to_string()));
+        inputs.insert(
+            "required_scopes".to_string(),
+            Value::str_list(vec![
+                "llm:chat_completion".to_string(),
+                "review:code_review".to_string(),
+            ]),
+        );
+
+        let out = CloudOps::MapToGcpInputs {
+            runtime: CloudRuntimeKind::LocalDev,
+        }
+        .execute(inputs)
+        .expect("mapping should pass required scopes through");
+
+        assert_eq!(
+            out.get("required_scopes").and_then(Value::as_str_list),
+            Some(vec![
+                "llm:chat_completion".to_string(),
+                "review:code_review".to_string(),
+            ])
+        );
+    }
+
+    #[test]
+    fn scope_preflight_accepts_valid_scopes() {
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "required_scopes".to_string(),
+            Value::str_list(vec![
+                "gist:write".to_string(),
+                "review:code_review".to_string(),
+            ]),
+        );
+
+        let out = CloudOps::ScopePreflight
+            .execute(inputs)
+            .expect("valid required_scopes should pass");
+        assert_eq!(out.get("scope_verified"), Some(&Value::Bool(true)));
+    }
+
+    #[test]
+    fn scope_preflight_accepts_missing_required_scopes() {
+        let mut inputs = HashMap::new();
+        inputs.insert("skip".to_string(), Value::Bool(false));
+
+        let out = CloudOps::ScopePreflight
+            .execute(inputs)
+            .expect("missing required_scopes should default to empty list");
+        assert_eq!(out.get("scope_verified"), Some(&Value::Bool(true)));
+    }
+
+    #[test]
+    fn scope_preflight_rejects_invalid_scope_id() {
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "required_scopes".to_string(),
+            Value::str_list(vec!["BAD_SCOPE".to_string()]),
+        );
+
+        let err = CloudOps::ScopePreflight
+            .execute(inputs)
+            .expect_err("invalid scope format should fail");
+        assert!(
+            err.to_string().contains("must contain ':' delimiter"),
+            "error should describe invalid scope format, got: {}",
+            err
+        );
     }
 }

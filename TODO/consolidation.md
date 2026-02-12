@@ -645,6 +645,7 @@ compiler version is now captured directly, regardless of environment setup.
 - [x] Builder strings compile-time validation (`#[tool_target]`) — §6.1
 - [x] Remove static CODEGEN_SOURCES path list — §6.3
 - [ ] Design hermeticity annotation for `Shell` transport (see §8 design problem)
+- [ ] Design DAG typing hardening plan (typed node I/O wrappers + input_mock type validation + semantic carrier refinements) — see `TODO/TODO_hacks.md` §10
 
 ### Remaining (extension features — from architecture-debt.md §16)
 

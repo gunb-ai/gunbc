@@ -75,6 +75,11 @@ pub fn gcp_github_mock_spec() -> MockSpec {
             Value::Str("ci-secrets@mock.iam.gserviceaccount.com".into()),
         )
         .input_mock(
+            "parse_impersonate",
+            "response",
+            Value::Response(TransportResponse::Rest(impersonate_response.clone())),
+        )
+        .input_mock(
             "prepare_secret_access",
             "project",
             Value::Str("mock-secrets".into()),
@@ -121,6 +126,7 @@ pub fn gcp_github_mock_spec() -> MockSpec {
         .skip_node_example("parse_github_oidc")
         .skip_node_example("prepare_sts")
         .skip_node_example("parse_sts")
+        .skip_node_example("should_impersonate")
         .skip_node_example("prepare_impersonate")
         .skip_node_example("parse_impersonate")
         .skip_node_example("prepare_secret_access")
@@ -196,6 +202,11 @@ pub fn gcp_local_mock_spec() -> MockSpec {
             Value::Str("ci-secrets@mock.iam.gserviceaccount.com".into()),
         )
         .input_mock(
+            "parse_impersonate",
+            "response",
+            Value::Response(TransportResponse::Rest(impersonate_response.clone())),
+        )
+        .input_mock(
             "prepare_secret_access",
             "project",
             Value::Str("mock-secrets".into()),
@@ -229,6 +240,7 @@ pub fn gcp_local_mock_spec() -> MockSpec {
         )
         // Sub-DAG internal nodes — tested at their own level
         .skip_node_example("local_auth_upsert")
+        .skip_node_example("should_impersonate")
         .skip_node_example("prepare_impersonate")
         .skip_node_example("parse_impersonate")
         .skip_node_example("prepare_secret_access")
@@ -295,6 +307,11 @@ pub fn gcp_github_upsert_mock_spec() -> MockSpec {
             "prepare_impersonate",
             "service_account",
             Value::Str("ci-secrets@mock.iam.gserviceaccount.com".into()),
+        )
+        .input_mock(
+            "parse_impersonate",
+            "response",
+            Value::Response(TransportResponse::Rest(impersonate_response.clone())),
         )
         .input_mock(
             "prepare_secret_get",
@@ -364,6 +381,7 @@ pub fn gcp_github_upsert_mock_spec() -> MockSpec {
         .skip_node_example("parse_github_oidc")
         .skip_node_example("prepare_sts")
         .skip_node_example("parse_sts")
+        .skip_node_example("should_impersonate")
         .skip_node_example("prepare_impersonate")
         .skip_node_example("parse_impersonate")
         .skip_node_example("prepare_secret_get")
