@@ -22,6 +22,7 @@
 
 use crate::testgen::analyze::{analyze_dag, DagAnalysis};
 use crate::testgen::obligation::{collect_obligations, DischargeStatus, Obligation, ObligationSet};
+use crate::testgen::probe_observer::{analyze_probe_observers, ProbeObserverAnalysis};
 use crate::testgen::render_rust::plain_rust_renderer;
 use gunbc_infra::hash::ContentHash;
 use gunbc_ir::boundary_label;
@@ -108,6 +109,8 @@ pub struct TestConfig {
     pub example_tests: bool,
     /// Generate optional-input behavior tests (missing + wrong-type)
     pub optional_input_tests: bool,
+    /// Generate probe-observer integration tests (non-tautological chain tests)
+    pub probe_observer_tests: bool,
     /// Max window size for windowed tests (None = no limit)
     pub window_max_nodes: Option<usize>,
     /// Test module visibility
@@ -145,6 +148,7 @@ impl Default for TestConfig {
             live_flow_tests: false,
             example_tests: true,
             optional_input_tests: true,
+            probe_observer_tests: true,
             window_max_nodes: Some(5),
             visibility: "pub".to_string(),
             test_class: TestClass::Hermetic,
@@ -887,6 +891,22 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             });
         }
 
+        if self.config.probe_observer_tests && self.mock_spec.is_some() {
+            file.imports.push(Import {
+                path: vec!["gunbc_test".to_string()],
+                items: vec![
+                    "assert_chain_outputs".to_string(),
+                    "OutputMatcher".to_string(),
+                    "window_subdag".to_string(),
+                    "Window".to_string(),
+                ],
+            });
+            file.imports.push(Import {
+                path: vec!["std::collections".to_string()],
+                items: vec!["HashMap".to_string()],
+            });
+        }
+
         if self.config.chain_tests && self.mock_spec.is_some() {
             file.imports.push(Import {
                 path: vec!["gunbc_test".to_string()],
@@ -1106,6 +1126,12 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
 
         if self.mock_spec_fn.is_some() && self.config.window_max_nodes.unwrap_or(usize::MAX) >= 2 {
             if let Some(section) = self.build_window_section(graph_builder_fn) {
+                file.sections.push(section);
+            }
+        }
+
+        if self.config.probe_observer_tests {
+            if let Some(section) = self.build_probe_observer_section(analysis, graph_builder_fn) {
                 file.sections.push(section);
             }
         }

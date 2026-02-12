@@ -24,6 +24,7 @@ pub mod analyze;
 pub mod cardinality;
 pub mod codegen;
 pub mod obligation;
+pub mod probe_observer;
 pub mod render;
 pub mod render_python;
 pub mod render_rust;
@@ -34,4 +35,8 @@ pub use codegen::{TestConfig, TestGenerator};
 pub use obligation::{
     collect_obligations, DischargeStatus, EntailmentStatus, Obligation, ObligationSet,
     ObligationSource, ObligationStats, ProofObligation,
+};
+pub use probe_observer::{
+    analyze_probe_observers, observability_report, CoverageGap, Observer,
+    Probe, ProbeObserverAnalysis, ProbeObserverTest, ProbeSource,
 };
