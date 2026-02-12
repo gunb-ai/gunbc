@@ -1136,6 +1136,26 @@ impl OutputMatcher {
         }
     }
 
+    /// Whether this matcher is safe for chain/integration tests.
+    ///
+    /// Input-independent matchers verify structural properties (type, non-emptiness)
+    /// rather than exact values that depend on specific inputs. Only these matchers
+    /// are used in probe-observer chain tests.
+    pub fn is_chain_safe(&self) -> bool {
+        matches!(
+            self,
+            OutputMatcher::NonEmpty
+                | OutputMatcher::IsBool
+                | OutputMatcher::IsInt
+                | OutputMatcher::IsString
+                | OutputMatcher::IsRequest
+                | OutputMatcher::IsResponse
+                | OutputMatcher::IntGe(_)
+                | OutputMatcher::IntLe(_)
+                | OutputMatcher::Any
+        )
+    }
+
     /// Check if a value matches this matcher.
     pub fn check(&self, value: &Value) -> Result<(), String> {
         match self {

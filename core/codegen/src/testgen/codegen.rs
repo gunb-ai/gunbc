@@ -492,7 +492,13 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
 
         // Append probe-observer coverage report if available.
         if let Some(spec) = &self.mock_spec {
-            let po_analysis = analyze_probe_observers(self.dag, spec, &analysis);
+            let lowered_dag = gunbc_exec::lower(self.dag).ok();
+            let po_analysis = if let Some(ref lowered) = lowered_dag {
+                let la = analyze_dag(&lowered.dag);
+                analyze_probe_observers(&lowered.dag, spec, &la)
+            } else {
+                analyze_probe_observers(self.dag, spec, &analysis)
+            };
             if !po_analysis.probes.is_empty() || !po_analysis.observers.is_empty() {
                 use crate::testgen::probe_observer::observability_report;
                 file.header.push(String::new());
@@ -925,6 +931,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             file.imports.push(Import {
                 path: vec!["gunbc_test".to_string()],
                 items: vec![
+                    "apply_window_inputs".to_string(),
                     "assert_chain_outputs".to_string(),
                     "OutputMatcher".to_string(),
                     "window_subdag".to_string(),
@@ -3647,13 +3654,20 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
 
     fn build_probe_observer_section(
         &self,
-        analysis: &DagAnalysis,
+        _analysis: &DagAnalysis,
         graph_builder_fn: &str,
     ) -> Option<TestSection> {
         let spec = self.mock_spec.as_ref()?;
         self.mock_spec_fn.as_ref()?;
 
-        let po_analysis = analyze_probe_observers(self.dag, spec, analysis);
+        // Lower the DAG so SubDag nodes are expanded. The probe-observer analysis
+        // must use the lowered node IDs since test execution happens on the flat DAG.
+        let lowered = match gunbc_exec::lower(self.dag) {
+            Ok(lowered) => lowered,
+            Err(_) => return None, // DAG can't be lowered; skip chain tests
+        };
+        let lowered_analysis = analyze_dag(&lowered.dag);
+        let po_analysis = analyze_probe_observers(&lowered.dag, spec, &lowered_analysis);
         if po_analysis.tests.is_empty() {
             return None;
         }
@@ -3693,9 +3707,11 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
 
             // Generate the test body that:
             // 1. Builds the DAG and lowers it
-            // 2. Creates a window from the subgraph nodes
-            // 3. Runs DryRun with mocks
-            // 4. Checks observer outputs via assert_chain_outputs
+            // 2. Runs a full baseline DryRun to get input values
+            // 3. Creates a window from the subgraph nodes
+            // 4. Injects entry inputs from the baseline
+            // 5. Executes the window subDAG
+            // 6. Checks observer outputs via assert_chain_outputs (not baseline!)
             let body = vec![
                 Stmt::let_bind("dag", Expr::var(graph_builder_fn)),
                 Stmt::let_bind(
@@ -3705,15 +3721,50 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                         .field("dag"),
                 ),
                 Stmt::let_bind("spec", Expr::call("mock_spec", vec![])),
+                Stmt::Comment("Full baseline DryRun to derive window entry inputs".to_string()),
                 Stmt::let_bind(
-                    "mocks",
-                    Expr::var("spec").method("to_boundary_mocks", vec![]),
+                    "baseline",
+                    Expr::call(
+                        "execute_with_mode",
+                        vec![
+                            Expr::var("flat").ref_of(),
+                            Expr::call(
+                                "ExecutionMode::DryRun",
+                                vec![Expr::call("mock_spec", vec![]).method("to_boundary_mocks", vec![])],
+                            ),
+                        ],
+                    )
+                    .method(
+                        "expect",
+                        vec![Expr::Str("baseline DryRun should succeed".into())],
+                    ),
                 ),
                 Stmt::let_bind(
                     "window",
                     Expr::call(
                         "Window::from_nodes",
                         vec![Expr::var("flat").ref_of(), Expr::call("vec!", node_args)],
+                    ),
+                ),
+                Stmt::let_mut(
+                    "mocks",
+                    Expr::var("spec").method("to_boundary_mocks", vec![]),
+                ),
+                Stmt::Expr(
+                    Expr::call(
+                        "apply_window_inputs",
+                        vec![
+                            Expr::var("flat").ref_of(),
+                            Expr::var("window").ref_of(),
+                            Expr::var("baseline").ref_of(),
+                            Expr::var("mocks").ref_mut(),
+                        ],
+                    )
+                    .method(
+                        "expect",
+                        vec![Expr::Str(
+                            "chain entry inputs should be derivable from baseline".into(),
+                        )],
                     ),
                 ),
                 Stmt::let_bind(
@@ -3746,19 +3797,23 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                     "matchers",
                     Expr::call("HashMap::new", vec![]),
                 ),
-                // Insert matchers from the spec's node_examples at runtime.
+                // Insert only chain-safe (input-independent) matchers at runtime.
                 Stmt::Item(Item::Raw(format!(
                     "for ex in spec.node_examples.iter().filter(|e| e.node_id == \"{}\") {{\n\
                         for (port, matcher) in &ex.outputs {{\n\
-                            matchers.insert((\"{}\".to_string(), port.clone()), matcher.clone());\n\
+                            if matcher.is_chain_safe() {{\n\
+                                matchers.insert((\"{}\".to_string(), port.clone()), matcher.clone());\n\
+                            }}\n\
                         }}\n\
                      }}",
                     chain_test.observer.node_id, chain_test.observer.node_id
                 ))),
-                // Also insert from live_expected_outputs
+                // Also insert chain-safe matchers from live_expected_outputs
                 Stmt::Item(Item::Raw(format!(
                     "for leo in spec.live_expected_outputs.iter().filter(|e| e.node == \"{}\") {{\n\
-                        matchers.insert((\"{}\".to_string(), leo.port.clone()), leo.matcher.clone());\n\
+                        if leo.matcher.is_chain_safe() {{\n\
+                            matchers.insert((\"{}\".to_string(), leo.port.clone()), leo.matcher.clone());\n\
+                        }}\n\
                      }}",
                     chain_test.observer.node_id, chain_test.observer.node_id
                 ))),

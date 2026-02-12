@@ -571,6 +571,13 @@ impl Executable for GcpOps {
                         )));
                     }
                 };
+                if !rest.is_success() {
+                    let details = impersonation_error_summary(&rest.body);
+                    return Err(ExecError::new(format!(
+                        "Secret Manager access failed (status {}): {}",
+                        rest.status, details
+                    )));
+                }
                 let data = rest
                     .body
                     .get("payload")

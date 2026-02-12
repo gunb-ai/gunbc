@@ -81,6 +81,9 @@ pub struct MatcherDescription {
     /// Whether this matcher provides a concrete value (Exact) that can be
     /// used as a downstream probe.
     pub has_concrete_value: bool,
+    /// Whether this matcher is input-independent (valid regardless of what
+    /// input the node receives). Exact matchers are input-dependent.
+    pub is_input_independent: bool,
 }
 
 /// A discovered integration test: probe -> observer through a subgraph.
@@ -116,6 +119,34 @@ pub struct ProbeObserverAnalysis {
     pub tests: Vec<ProbeObserverTest>,
     /// Coverage gaps (hard errors).
     pub gaps: Vec<CoverageGap>,
+}
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+/// Check if an OutputMatcher is input-independent (valid for chain tests).
+///
+/// Input-independent matchers verify structural properties of the output
+/// (type, non-emptiness, range) rather than exact values that depend on
+/// specific inputs.
+fn is_input_independent(matcher: &OutputMatcher) -> bool {
+    match matcher {
+        // These depend on specific input values — not safe for chains
+        OutputMatcher::Exact(_) => false,
+        OutputMatcher::Contains(_) => false,
+        OutputMatcher::Satisfies { .. } => false,
+        // These are structural invariants — safe for chains
+        OutputMatcher::NonEmpty => true,
+        OutputMatcher::IsBool => true,
+        OutputMatcher::IsInt => true,
+        OutputMatcher::IsString => true,
+        OutputMatcher::IsRequest => true,
+        OutputMatcher::IsResponse => true,
+        OutputMatcher::IntGe(_) => true,
+        OutputMatcher::IntLe(_) => true,
+        OutputMatcher::Any => true,
+    }
 }
 
 // ============================================================================
@@ -166,28 +197,33 @@ fn extract_observers<T>(spec: &MockSpec, dag: &Dag<T>) -> Vec<Observer> {
     let mut observers = Vec::new();
     let mut seen = HashSet::new();
 
-    // NodeExamples with outputs → observers
+    // NodeExamples with outputs → observers (only input-independent matchers)
     for ex in &spec.node_examples {
         if !ex.outputs.is_empty() && seen.insert(ex.node_id.clone()) {
-            let matchers = ex
+            let matchers: BTreeMap<String, MatcherDescription> = ex
                 .outputs
                 .iter()
+                .filter(|(_, matcher)| is_input_independent(matcher))
                 .map(|(port, matcher)| {
                     (
                         port.clone(),
                         MatcherDescription {
                             description: format!("{:?}", matcher),
                             has_concrete_value: matches!(matcher, OutputMatcher::Exact(_)),
+                            is_input_independent: true,
                         },
                     )
                 })
                 .collect();
 
-            observers.push(Observer {
-                node_id: ex.node_id.clone(),
-                matchers,
-                is_terminal: terminal_nodes.contains(&ex.node_id),
-            });
+            // Only add as observer if there are chain-compatible matchers.
+            if !matchers.is_empty() {
+                observers.push(Observer {
+                    node_id: ex.node_id.clone(),
+                    matchers,
+                    is_terminal: terminal_nodes.contains(&ex.node_id),
+                });
+            }
         }
     }
 
@@ -195,7 +231,7 @@ fn extract_observers<T>(spec: &MockSpec, dag: &Dag<T>) -> Vec<Observer> {
     // Group by node, multiple ports per node.
     let mut live_by_node: BTreeMap<String, BTreeMap<String, MatcherDescription>> = BTreeMap::new();
     for leo in &spec.live_expected_outputs {
-        if !seen.contains(&leo.node) {
+        if !seen.contains(&leo.node) && is_input_independent(&leo.matcher) {
             live_by_node
                 .entry(leo.node.clone())
                 .or_default()
@@ -204,6 +240,7 @@ fn extract_observers<T>(spec: &MockSpec, dag: &Dag<T>) -> Vec<Observer> {
                     MatcherDescription {
                         description: format!("{:?}", leo.matcher),
                         has_concrete_value: matches!(leo.matcher, OutputMatcher::Exact(_)),
+                        is_input_independent: true,
                     },
                 );
         }
@@ -688,16 +725,14 @@ mod tests {
         let dag = linear_dag();
         let analysis = simple_analysis();
 
-        // Probe at a, intermediate observer at b (with Exact output), terminal observer at c
+        // Probe at a, intermediate observer at b (with IsString — input-independent),
+        // terminal observer at c (with NonEmpty — input-independent).
         let spec = MockSpec::new("test")
             .transport_mock("a", "response", gunbc_ir::Value::Str("hello".into()))
             .node_example(
                 NodeExample::new("b")
                     .input("in", gunbc_ir::Value::Str("hello".into()))
-                    .output(
-                        "out",
-                        OutputMatcher::exact(gunbc_ir::Value::Str("world".into())),
-                    ),
+                    .output("out", OutputMatcher::IsString),
             )
             .node_example(
                 NodeExample::new("c")
@@ -707,18 +742,29 @@ mod tests {
 
         let result = analyze_probe_observers(&dag, &spec, &analysis);
 
-        // Should have two tests: a->b and b->c (segmented at intermediate observer b)
+        // Should have tests from probe a through observers at b and c.
+        // Since b is an intermediate observer with an input-independent matcher,
+        // it splits the chain: a->b and a->c (b isn't promoted since it has no
+        // concrete Exact value to use as downstream input).
         let a_to_b = result
             .tests
             .iter()
             .find(|t| t.probe.node_id == "a" && t.observer.node_id == "b");
+        let a_to_c = result
+            .tests
+            .iter()
+            .find(|t| t.probe.node_id == "a" && t.observer.node_id == "c");
+
+        assert!(a_to_b.is_some(), "should have a->b test");
+        // Since b is an intermediate observer but doesn't have Exact values,
+        // the chain continues past b to reach c directly from a.
+        assert!(a_to_c.is_none(), "a->c should be segmented: a hits observer b first");
+        // But b->c should exist because b is also a probe (from NodeExample inputs)
         let b_to_c = result
             .tests
             .iter()
             .find(|t| t.probe.node_id == "b" && t.observer.node_id == "c");
-
-        assert!(a_to_b.is_some(), "should have a->b test");
-        assert!(b_to_c.is_some(), "should have b->c test (promoted probe)");
+        assert!(b_to_c.is_some(), "should have b->c test (b is also a probe from example inputs)");
         assert!(result.gaps.is_empty(), "no coverage gaps");
     }
 }
