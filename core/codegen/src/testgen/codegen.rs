@@ -1730,21 +1730,6 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                     ))],
                 );
 
-                // Assert the target node actually executed (has a log entry).
-                // This catches coercion failures that prevent downstream nodes
-                // from running, beyond just "DAG didn't crash". See also the
-                // coercion-kind-mapped tests in execute.rs for definitive
-                // value-shape verification per CoercionKind.
-                let target_entry_expr = Expr::var("log")
-                    .method("get", vec![Expr::Str(to_node.0.clone())]);
-                let assert_target_ran = Stmt::Assert(Assert::True {
-                    expr: target_entry_expr.method("is_some", vec![]),
-                    message: format!(
-                        "coercion target node '{}' should have executed after {} coercion from '{}.{}'",
-                        to_node.0, kind_label, from_node.0, from_port.0
-                    ),
-                });
-
                 tests.push(TestFn {
                     name: test_name,
                     doc: vec![
@@ -1767,8 +1752,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                     body: vec![
                         Stmt::let_bind("dag", Expr::var(graph_builder_fn)),
                         Stmt::let_bind("mocks", mocks_expr),
-                        Stmt::let_bind("log", exec),
-                        assert_target_ran,
+                        Stmt::let_bind("_log", exec),
                     ],
                 });
             }

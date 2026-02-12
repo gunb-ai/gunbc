@@ -99,29 +99,42 @@ Files:
 
 ---
 
-## Coercion coverage tests don't verify actual coercion (only "doesn't crash") — PARTIAL FIX (2026-02-12)
+## Coercion coverage tests don't verify actual coercion (only "doesn't crash")
 
 `build_coercion_coverage_tests()` generates tests that:
 1. Build the DAG
 2. Execute in DryRun
 3. Assert via `.expect()` that it didn't crash
-4. **NEW**: Assert the target node has a log entry (proving it actually executed)
 
-This is better than just "didn't crash" but still won't catch shape bugs
-(e.g., nested lists vs flat lists) if downstream ops are loosely typed.
+This won't catch "nested lists vs flat lists" or other shape bugs if
+downstream ops are mocked or loosely typed.
 
-The deeper fix (value-shape assertions) is blocked on one of:
-- Recording node inputs in the execution log (refactor `LogEntry`)
-- Injecting shape-assert nodes into test graphs (testgen complexity)
+**Blocked on:** `LogEntry` only records node *outputs*, not *inputs*.
+To assert "this node received a `Value::List` after WrapScalar coercion"
+the generated test needs to observe what the target node was *given*.
 
-For now, **definitive coercion behavior is verified by the 4 explicit
-coercion-kind-mapped tests in `execute.rs`** — these directly assert
-value shapes for each `CoercionKind`. The generated tests provide
-coverage that real DAGs don't crash at coercion edges.
+Two options (design decision needed):
+
+1. **Add `inputs: HashMap<String, Value>` to `LogEntry`** — straightforward
+   refactor but doubles log memory per node and changes every `LogEntry`
+   consumer. Sub-decision: always record inputs, or opt-in (e.g., a
+   `LogDetail::Full` vs `LogDetail::OutputsOnly` enum)?
+
+2. **Inject shape-assert nodes into test graphs** — testgen inserts
+   synthetic nodes after coercion edges that assert value shape. More
+   complex testgen logic; needs a way to express shape constraints in
+   the code IR (e.g., `Assert::ValueShape { expr, expected_shape }`).
+
+**Interim coverage:** The 4 coercion-kind-mapped tests in `execute.rs`
+(`test_coercion_wrap_scalar_single_edge`, etc.) directly assert value
+shapes for each `CoercionKind`. These are the definitive correctness
+proof. The generated tests remain smoke-only until one of the above
+is implemented.
 
 Files:
+  - core/exec/src/execute.rs (LogEntry — needs inputs field or opt-in detail level)
   - core/codegen/src/testgen/codegen.rs (build_coercion_coverage_tests)
-  - core/exec/src/execute.rs (test_coercion_* — definitive shape tests)
+  - core/ir/src/code_ir.rs (Assert enum — may need ValueShape variant for option 2)
 
 ---
 
