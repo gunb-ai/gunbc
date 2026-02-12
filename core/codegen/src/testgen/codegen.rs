@@ -22,11 +22,11 @@
 
 use crate::testgen::analyze::{analyze_dag, DagAnalysis};
 use crate::testgen::obligation::{collect_obligations, DischargeStatus, Obligation, ObligationSet};
-use crate::testgen::probe_observer::{analyze_probe_observers, ProbeObserverAnalysis};
+use crate::testgen::probe_observer::analyze_probe_observers;
 use crate::testgen::render_rust::plain_rust_renderer;
 use gunbc_infra::hash::ContentHash;
 use gunbc_ir::boundary_label;
-use gunbc_ir::code_ir::{Assert, Expr, HelperFn, Import, Stmt, TestFile, TestFn, TestSection};
+use gunbc_ir::code_ir::{Assert, Expr, HelperFn, Import, Item, Stmt, TestFile, TestFn, TestSection};
 use gunbc_ir::language::NamingCase;
 use gunbc_ir::render_ir::CodeRenderer;
 use gunbc_ir::transport::{ShellRequest, ShellResponse, TransportRequest, TransportResponse};
@@ -101,7 +101,8 @@ pub struct TestConfig {
     pub boundary_tests: bool,
     /// Generate chain validation tests (mock spec self-consistency)
     pub chain_tests: bool,
-    /// Generate flow verification tests (DryRun full DAG, verify terminal outputs)
+    /// Generate flow verification tests (DryRun full DAG, verify terminal outputs).
+    /// DEPRECATED: Tautological — replaced by probe_observer_tests.
     pub flow_tests: bool,
     /// Generate live flow verification tests (Real execution, gated by env + cost)
     pub live_flow_tests: bool,
@@ -111,7 +112,8 @@ pub struct TestConfig {
     pub optional_input_tests: bool,
     /// Generate probe-observer integration tests (non-tautological chain tests)
     pub probe_observer_tests: bool,
-    /// Max window size for windowed tests (None = no limit)
+    /// Max window size for windowed tests (None = disabled).
+    /// DEPRECATED: Tautological — replaced by probe_observer_tests.
     pub window_max_nodes: Option<usize>,
     /// Test module visibility
     pub visibility: String,
@@ -149,7 +151,7 @@ impl Default for TestConfig {
             example_tests: true,
             optional_input_tests: true,
             probe_observer_tests: true,
-            window_max_nodes: Some(5),
+            window_max_nodes: None, // Deprecated: use probe_observer_tests instead
             visibility: "pub".to_string(),
             test_class: TestClass::Hermetic,
             fermi_cost: FermiCost::XS,
@@ -487,6 +489,26 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                 .to_string(),
             format!("Content-Hash: {}", content_hash.as_str()),
         ];
+
+        // Append probe-observer coverage report if available.
+        if let Some(spec) = &self.mock_spec {
+            let po_analysis = analyze_probe_observers(self.dag, spec, &analysis);
+            if !po_analysis.probes.is_empty() || !po_analysis.observers.is_empty() {
+                use crate::testgen::probe_observer::observability_report;
+                file.header.push(String::new());
+                file.header.push("Probe-Observer Coverage:".to_string());
+                for line in observability_report(&po_analysis).lines() {
+                    file.header.push(format!("  {}", line));
+                }
+                if !po_analysis.gaps.is_empty() {
+                    file.header.push(String::new());
+                    file.header.push("WARNING: Unobserved terminal nodes detected.".to_string());
+                    file.header.push(
+                        "Add OutputMatchers via NodeExample for these nodes.".to_string(),
+                    );
+                }
+            }
+        }
 
         plain_rust_renderer().render_file(&file)
     }
@@ -893,6 +915,14 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
 
         if self.config.probe_observer_tests && self.mock_spec.is_some() {
             file.imports.push(Import {
+                path: vec!["gunbc_exec".to_string()],
+                items: vec![
+                    "lower".to_string(),
+                    "ExecutionMode".to_string(),
+                    "execute_with_mode".to_string(),
+                ],
+            });
+            file.imports.push(Import {
                 path: vec!["gunbc_test".to_string()],
                 items: vec![
                     "assert_chain_outputs".to_string(),
@@ -1153,6 +1183,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
 
         self.inject_test_guards(&mut file);
         Self::prune_unused_imports(&mut file);
+        Self::dedup_imports(&mut file);
 
         file
     }
@@ -1245,6 +1276,26 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
         file.imports.retain(|import| !import.items.is_empty());
     }
 
+    /// Merge imports from the same module path to avoid duplicate use statements.
+    fn dedup_imports(file: &mut TestFile) {
+        let mut by_path: BTreeMap<Vec<String>, HashSet<String>> = BTreeMap::new();
+        for import in &file.imports {
+            by_path
+                .entry(import.path.clone())
+                .or_default()
+                .extend(import.items.iter().cloned());
+        }
+        file.imports = by_path
+            .into_iter()
+            .map(|(path, items)| {
+                let mut items: Vec<String> = items.into_iter().collect();
+                items.sort();
+                Import { path, items }
+            })
+            .filter(|imp| !imp.items.is_empty())
+            .collect();
+    }
+
     fn collect_idents_from_type(ty: &str, used: &mut HashSet<String>) {
         let mut buf = String::new();
         for ch in ty.chars() {
@@ -1273,6 +1324,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                     Self::collect_idents_from_stmt(s, used);
                 }
             }
+            Stmt::Item(Item::Raw(code)) => Self::collect_idents_from_type(code, used),
             Stmt::Item(_) => {}
         }
     }
@@ -3588,6 +3640,177 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                     .to_string(),
                 "values as injected inputs, then verify window exit outputs match baseline."
                     .to_string(),
+            ],
+            tests,
+        })
+    }
+
+    fn build_probe_observer_section(
+        &self,
+        analysis: &DagAnalysis,
+        graph_builder_fn: &str,
+    ) -> Option<TestSection> {
+        let spec = self.mock_spec.as_ref()?;
+        self.mock_spec_fn.as_ref()?;
+
+        let po_analysis = analyze_probe_observers(self.dag, spec, analysis);
+        if po_analysis.tests.is_empty() {
+            return None;
+        }
+
+        let mut tests = Vec::new();
+        let mut used_names: HashSet<String> = HashSet::new();
+
+        for (idx, chain_test) in po_analysis.tests.iter().enumerate() {
+            let base_name = format!(
+                "test_chain_{}_to_{}",
+                NamingCase::SnakeCase.apply(&chain_test.probe.node_id),
+                NamingCase::SnakeCase.apply(&chain_test.observer.node_id)
+            );
+            let test_name = if used_names.insert(base_name.clone()) {
+                base_name
+            } else {
+                format!("{}_{}", base_name, idx)
+            };
+
+            // Build node list for the subgraph window.
+            let mut node_args = Vec::new();
+            for node in &chain_test.subgraph_nodes {
+                node_args.push(Expr::Str(node.clone()));
+            }
+
+            // Build matcher HashMap entries.
+            let mut matcher_stmts = Vec::new();
+            for (port, matcher_desc) in &chain_test.observer.matchers {
+                // We need to reconstruct the matcher from the MockSpec's NodeExample.
+                // Emit: matchers.insert(("node".into(), "port".into()), mock_spec().node_examples[...].outputs["port"].clone());
+                // Instead, use a simpler approach: reference the mock_spec at runtime.
+                matcher_stmts.push(Stmt::Comment(format!(
+                    "Observer: {}.{} — {}",
+                    chain_test.observer.node_id, port, matcher_desc.description
+                )));
+            }
+
+            // Generate the test body that:
+            // 1. Builds the DAG and lowers it
+            // 2. Creates a window from the subgraph nodes
+            // 3. Runs DryRun with mocks
+            // 4. Checks observer outputs via assert_chain_outputs
+            let body = vec![
+                Stmt::let_bind("dag", Expr::var(graph_builder_fn)),
+                Stmt::let_bind(
+                    "flat",
+                    Expr::call("lower", vec![Expr::var("dag").ref_of()])
+                        .method("expect", vec![Expr::Str("lower should succeed".into())])
+                        .field("dag"),
+                ),
+                Stmt::let_bind("spec", Expr::call("mock_spec", vec![])),
+                Stmt::let_bind(
+                    "mocks",
+                    Expr::var("spec").method("to_boundary_mocks", vec![]),
+                ),
+                Stmt::let_bind(
+                    "window",
+                    Expr::call(
+                        "Window::from_nodes",
+                        vec![Expr::var("flat").ref_of(), Expr::call("vec!", node_args)],
+                    ),
+                ),
+                Stmt::let_bind(
+                    "window_dag",
+                    Expr::call(
+                        "window_subdag",
+                        vec![Expr::var("flat").ref_of(), Expr::var("window").ref_of()],
+                    ),
+                ),
+                Stmt::let_bind(
+                    "log",
+                    Expr::call(
+                        "execute_with_mode",
+                        vec![
+                            Expr::var("window_dag").ref_of(),
+                            Expr::call("ExecutionMode::DryRun", vec![Expr::var("mocks")]),
+                        ],
+                    )
+                    .method(
+                        "expect",
+                        vec![Expr::Str("chain execution should succeed".into())],
+                    ),
+                ),
+                Stmt::Blank,
+                Stmt::Comment(format!(
+                    "Verify observer: {} (depth {})",
+                    chain_test.observer.node_id, chain_test.depth
+                )),
+                Stmt::let_mut(
+                    "matchers",
+                    Expr::call("HashMap::new", vec![]),
+                ),
+                // Insert matchers from the spec's node_examples at runtime.
+                Stmt::Item(Item::Raw(format!(
+                    "for ex in spec.node_examples.iter().filter(|e| e.node_id == \"{}\") {{\n\
+                        for (port, matcher) in &ex.outputs {{\n\
+                            matchers.insert((\"{}\".to_string(), port.clone()), matcher.clone());\n\
+                        }}\n\
+                     }}",
+                    chain_test.observer.node_id, chain_test.observer.node_id
+                ))),
+                // Also insert from live_expected_outputs
+                Stmt::Item(Item::Raw(format!(
+                    "for leo in spec.live_expected_outputs.iter().filter(|e| e.node == \"{}\") {{\n\
+                        matchers.insert((\"{}\".to_string(), leo.port.clone()), leo.matcher.clone());\n\
+                     }}",
+                    chain_test.observer.node_id, chain_test.observer.node_id
+                ))),
+                Stmt::Expr(
+                    Expr::call(
+                        "assert_chain_outputs",
+                        vec![
+                            Expr::var("log").ref_of(),
+                            Expr::var("matchers").ref_of(),
+                        ],
+                    )
+                    .method(
+                        "expect",
+                        vec![Expr::Str(format!(
+                            "chain {} -> {} should satisfy observer matchers",
+                            chain_test.probe.node_id, chain_test.observer.node_id
+                        ))],
+                    ),
+                ),
+            ];
+
+            tests.push(TestFn {
+                name: test_name,
+                doc: vec![
+                    format!(
+                        "Chain test: {} -> {} (depth {})",
+                        chain_test.probe.node_id,
+                        chain_test.observer.node_id,
+                        chain_test.depth
+                    ),
+                    String::new(),
+                    "Non-tautological: asserts observer matchers, not baseline values.".to_string(),
+                ],
+                body,
+            });
+        }
+
+        Some(TestSection {
+            title: "Probe-Observer Integration Tests".to_string(),
+            notes: vec![
+                format!("Probes: {} | Observers: {} | Tests: {}", 
+                    po_analysis.probes.len(),
+                    po_analysis.observers.len(),
+                    po_analysis.tests.len()),
+                if po_analysis.gaps.is_empty() {
+                    "All terminal nodes are observed.".to_string()
+                } else {
+                    format!(
+                        "Coverage gaps: {} unobserved terminal(s) — add OutputMatchers to fix.",
+                        po_analysis.gaps.len()
+                    )
+                },
             ],
             tests,
         })

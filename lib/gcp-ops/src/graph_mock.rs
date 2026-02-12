@@ -139,7 +139,9 @@ pub fn gcp_github_mock_spec() -> MockSpec {
 /// The local auth phase is a `local_auth_upsert` sub-DAG that:
 /// 1. Checks if the ADC file exists (File transport)
 /// 2. Reads the ADC file (File transport)
-/// 3. Refreshes OAuth2 token (REST transport)
+/// 3. Try-refreshes OAuth2 token (REST transport)
+/// 4. If refresh fails with auth error: runs gcloud auth (Shell transport)
+/// 5. Re-reads ADC, retries OAuth2 refresh, merges result
 ///
 /// This is a composition helper — it gets included in higher-level tool
 /// mock specs via `include_prefixed_runtime_mocks`.
@@ -189,11 +191,27 @@ pub fn gcp_local_mock_spec() -> MockSpec {
                 FileResponse::read_ok(&adc_path, mock_adc_json.to_string()),
             )),
         )
-        // local_auth_upsert sub-DAG: OAuth2 token refresh (REST transport)
+        // local_auth_upsert sub-DAG: OAuth2 token try-refresh (REST transport)
         .boundary(
             "local_auth_upsert/execute_oauth2",
             "response",
             Value::Response(TransportResponse::Rest(oauth2_response)),
+        )
+        // Re-auth branch boundaries (skipped in happy path — mock as Skipped)
+        .boundary(
+            "local_auth_upsert/execute_gcloud_auth",
+            "response",
+            Value::Skipped,
+        )
+        .boundary(
+            "local_auth_upsert/execute_reread_adc",
+            "response",
+            Value::Skipped,
+        )
+        .boundary(
+            "local_auth_upsert/execute_retry_oauth2",
+            "response",
+            Value::Skipped,
         )
         .boundary("local_auth_upsert/net_env", "net", mock_net_handle())
         .input_mock(

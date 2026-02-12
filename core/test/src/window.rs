@@ -327,6 +327,9 @@ pub fn apply_window_inputs<T>(
 }
 
 /// Verify that all exit-port outputs from the window match the baseline.
+///
+/// DEPRECATED: Tautological — compares re-execution against its own baseline.
+/// Use `assert_chain_outputs` with developer-specified OutputMatchers instead.
 pub fn assert_window_outputs<T>(
     dag: &Dag<T>,
     window: &Window,

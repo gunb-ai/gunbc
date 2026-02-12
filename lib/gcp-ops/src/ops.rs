@@ -6,7 +6,7 @@ use gunbc_exec::{
 };
 use gunbc_ir::transport::file::FileRequest;
 use gunbc_ir::transport::rest::RestRequest;
-use gunbc_ir::transport::TransportResponse;
+use gunbc_ir::transport::{ShellRequest, TransportResponse};
 use gunbc_ir::{AuthScheme, Credential, Secret, SecretSource, Value};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -87,6 +87,25 @@ pub enum GcpOps {
     ShouldImpersonate,
     /// Compose a secret name from prefix + service (optional delimiter).
     ComposeSecretName,
+    /// Try OAuth2 token refresh — catches auth errors as recoverable.
+    ///
+    /// Like `ParseOAuth2Refresh` but instead of failing on auth errors
+    /// (invalid_rapt, invalid_grant, etc.), outputs `needs_reauth: true`
+    /// so the DAG can fall back to `gcloud auth login --update-adc`.
+    ParseTryRefresh,
+    /// Prepare `gcloud auth login --update-adc` shell command.
+    ///
+    /// Accepts `needs_reauth: Bool` — when false, outputs `skip: true`.
+    PrepareGcloudAuth,
+    /// Parse the result of `gcloud auth login --update-adc`.
+    ///
+    /// Validates exit code 0 and outputs `ok: Bool`.
+    ParseGcloudAuth,
+    /// Merge auth results from the try-refresh and retry-refresh branches.
+    ///
+    /// Takes optional access_token/expires_in from both paths and outputs
+    /// the non-skipped values.
+    MergeAuthResult,
 }
 
 impl Executable for GcpOps {
@@ -772,8 +791,180 @@ impl Executable for GcpOps {
                     .str("secret", format!("{prefix}{delimiter}{service}"))
                     .ok()
             }
+            GcpOps::ParseTryRefresh => {
+                let response = match inputs.get("response") {
+                    Some(Value::Skipped) => {
+                        return OutputMap::new()
+                            .bool("needs_reauth", true)
+                            .value("access_token", Value::Unit)
+                            .value("expires_in", Value::Unit)
+                            .ok();
+                    }
+                    Some(Value::Response(r)) => r,
+                    _ => return Err(ExecError::new("missing or invalid 'response' input")),
+                };
+                let rest = match response {
+                    TransportResponse::Rest(r) => r,
+                    other => {
+                        return Err(ExecError::new(format!(
+                            "expected REST response, got {:?}",
+                            other
+                        )));
+                    }
+                };
+                if !rest.is_success() {
+                    let error_desc = rest
+                        .body
+                        .get("error_description")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    let error_code = rest
+                        .body
+                        .get("error")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+
+                    // Check if this is a recoverable auth error that gcloud re-auth can fix.
+                    if is_reauth_error(error_code, error_desc) {
+                        return OutputMap::new()
+                            .bool("needs_reauth", true)
+                            .value("access_token", Value::Unit)
+                            .value("expires_in", Value::Unit)
+                            .ok();
+                    }
+
+                    // Non-auth error — fail immediately (e.g., quota, network).
+                    return Err(ExecError::new(format!(
+                        "OAuth2 token refresh failed (status {}): {}",
+                        rest.status, error_desc
+                    )));
+                }
+                let access_token = rest
+                    .body
+                    .get("access_token")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| {
+                        ExecError::new("missing access_token in OAuth2 refresh response")
+                    })?;
+                let expires_in = rest
+                    .body
+                    .get("expires_in")
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(3599);
+                OutputMap::new()
+                    .bool("needs_reauth", false)
+                    .str("access_token", access_token)
+                    .int("expires_in", expires_in)
+                    .ok()
+            }
+            GcpOps::PrepareGcloudAuth => {
+                let needs_reauth = match inputs.get("needs_reauth") {
+                    Some(Value::Bool(b)) => *b,
+                    Some(Value::Skipped) => false,
+                    _ => false,
+                };
+                if !needs_reauth {
+                    let placeholder = ShellRequest::new("true");
+                    return OutputMap::new()
+                        .request("request", placeholder.into())
+                        .bool("skip", true)
+                        .ok();
+                }
+                let req = ShellRequest::new("gcloud")
+                    .arg("auth")
+                    .arg("login")
+                    .arg("--update-adc");
+                OutputMap::new()
+                    .request("request", req.into())
+                    .bool("skip", false)
+                    .ok()
+            }
+            GcpOps::ParseGcloudAuth => {
+                let response = match inputs.get("response") {
+                    Some(Value::Skipped) => {
+                        return OutputMap::new().bool("ok", true).ok();
+                    }
+                    Some(Value::Response(r)) => r,
+                    _ => return Err(ExecError::new("missing or invalid 'response' input")),
+                };
+                let shell = match response {
+                    TransportResponse::Shell(s) => s,
+                    other => {
+                        return Err(ExecError::new(format!(
+                            "expected Shell response, got {:?}",
+                            other
+                        )));
+                    }
+                };
+                if shell.exit_code != 0 {
+                    let stderr = shell.stderr.trim();
+                    return Err(ExecError::new(format!(
+                        "gcloud auth login failed (exit {}): {}",
+                        shell.exit_code,
+                        if stderr.is_empty() {
+                            "no output"
+                        } else {
+                            stderr
+                        }
+                    )));
+                }
+                OutputMap::new().bool("ok", true).ok()
+            }
+            GcpOps::MergeAuthResult => {
+                // Try the "try" path first (direct refresh succeeded).
+                if let Some(token) = inputs.get("try_access_token") {
+                    if let Some(s) = token.as_str() {
+                        if !s.is_empty() {
+                            let expires_in = inputs
+                                .get("try_expires_in")
+                                .and_then(|v| v.as_int())
+                                .unwrap_or(3599);
+                            return OutputMap::new()
+                                .str("access_token", s)
+                                .int("expires_in", expires_in)
+                                .ok();
+                        }
+                    }
+                }
+                // Fall back to the "retry" path (after gcloud re-auth).
+                if let Some(token) = inputs.get("retry_access_token") {
+                    if let Some(s) = token.as_str() {
+                        if !s.is_empty() {
+                            let expires_in = inputs
+                                .get("retry_expires_in")
+                                .and_then(|v| v.as_int())
+                                .unwrap_or(3599);
+                            return OutputMap::new()
+                                .str("access_token", s)
+                                .int("expires_in", expires_in)
+                                .ok();
+                        }
+                    }
+                }
+                Err(ExecError::new(
+                    "no valid access token from either refresh path — run `make login` to re-authenticate",
+                ))
+            }
         }
     }
+}
+
+/// Auth error patterns that indicate a recoverable token issue.
+///
+/// When matched, the DAG falls back to `gcloud auth login --update-adc`
+/// instead of failing. Based on gunb.ai's `isPermanentAuthFailure` +
+/// Google's OAuth2 error codes.
+fn is_reauth_error(error_code: &str, error_description: &str) -> bool {
+    let combined = format!("{} {}", error_code, error_description).to_lowercase();
+    const PATTERNS: &[&str] = &[
+        "invalid_rapt",
+        "invalid_grant",
+        "expired or revoked",
+        "unauthenticated",
+        "reauth",
+        "invalid_client",
+    ];
+    PATTERNS.iter().any(|p| combined.contains(p))
 }
 
 // ---------------------------------------------------------------------------
@@ -1274,5 +1465,214 @@ mod tests {
             "error should mention required_scopes, got: {}",
             err
         );
+    }
+
+    // ==========================================================================
+    // ParseTryRefresh tests
+    // ==========================================================================
+
+    #[test]
+    fn parse_try_refresh_succeeds_on_valid_response() {
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "response".to_string(),
+            Value::Response(TransportResponse::Rest(RestResponse::ok(
+                serde_json::json!({
+                    "access_token": "ya29.fresh",
+                    "expires_in": 3600,
+                }),
+            ))),
+        );
+        let outputs = GcpOps::ParseTryRefresh
+            .execute(inputs)
+            .expect("should succeed");
+        assert_eq!(outputs.get("needs_reauth"), Some(&Value::Bool(false)));
+        assert_eq!(
+            outputs.get("access_token").and_then(|v| v.as_str()),
+            Some("ya29.fresh")
+        );
+        assert_eq!(
+            outputs.get("expires_in").and_then(|v| v.as_int()),
+            Some(3600)
+        );
+    }
+
+    #[test]
+    fn parse_try_refresh_flags_reauth_on_invalid_rapt() {
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "response".to_string(),
+            Value::Response(TransportResponse::Rest(RestResponse::new(
+                400,
+                serde_json::json!({
+                    "error": "invalid_rapt",
+                    "error_description": "reauth related error (invalid_rapt)"
+                }),
+            ))),
+        );
+        let outputs = GcpOps::ParseTryRefresh
+            .execute(inputs)
+            .expect("should not fail on recoverable auth error");
+        assert_eq!(outputs.get("needs_reauth"), Some(&Value::Bool(true)));
+        assert_eq!(outputs.get("access_token"), Some(&Value::Unit));
+    }
+
+    #[test]
+    fn parse_try_refresh_flags_reauth_on_invalid_grant() {
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "response".to_string(),
+            Value::Response(TransportResponse::Rest(RestResponse::new(
+                401,
+                serde_json::json!({
+                    "error": "invalid_grant",
+                    "error_description": "Token has been expired or revoked."
+                }),
+            ))),
+        );
+        let outputs = GcpOps::ParseTryRefresh
+            .execute(inputs)
+            .expect("should not fail on expired token");
+        assert_eq!(outputs.get("needs_reauth"), Some(&Value::Bool(true)));
+    }
+
+    #[test]
+    fn parse_try_refresh_fails_on_non_auth_error() {
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "response".to_string(),
+            Value::Response(TransportResponse::Rest(RestResponse::new(
+                429,
+                serde_json::json!({
+                    "error": "rate_limit_exceeded",
+                    "error_description": "too many requests"
+                }),
+            ))),
+        );
+        let err = GcpOps::ParseTryRefresh
+            .execute(inputs)
+            .expect_err("non-auth error should fail");
+        assert!(
+            err.to_string().contains("too many requests"),
+            "msg: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn prepare_gcloud_auth_builds_shell_request_when_needed() {
+        let mut inputs = HashMap::new();
+        inputs.insert("needs_reauth".to_string(), Value::Bool(true));
+        let outputs = GcpOps::PrepareGcloudAuth
+            .execute(inputs)
+            .expect("should succeed");
+        assert_eq!(outputs.get("skip"), Some(&Value::Bool(false)));
+        match outputs.get("request") {
+            Some(Value::Request(gunbc_ir::transport::TransportRequest::Shell(s))) => {
+                assert_eq!(s.command, "gcloud");
+                assert_eq!(s.args, vec!["auth", "login", "--update-adc"]);
+            }
+            other => panic!("expected Shell request, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn prepare_gcloud_auth_skips_when_not_needed() {
+        let mut inputs = HashMap::new();
+        inputs.insert("needs_reauth".to_string(), Value::Bool(false));
+        let outputs = GcpOps::PrepareGcloudAuth
+            .execute(inputs)
+            .expect("should succeed");
+        assert_eq!(outputs.get("skip"), Some(&Value::Bool(true)));
+    }
+
+    #[test]
+    fn parse_gcloud_auth_succeeds_on_zero_exit() {
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "response".to_string(),
+            Value::Response(TransportResponse::Shell(
+                gunbc_ir::transport::ShellResponse {
+                    exit_code: 0,
+                    stdout: "You are now logged in.".to_string(),
+                    stderr: String::new(),
+                },
+            )),
+        );
+        let outputs = GcpOps::ParseGcloudAuth
+            .execute(inputs)
+            .expect("should succeed");
+        assert_eq!(outputs.get("ok"), Some(&Value::Bool(true)));
+    }
+
+    #[test]
+    fn parse_gcloud_auth_fails_on_nonzero_exit() {
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "response".to_string(),
+            Value::Response(TransportResponse::Shell(
+                gunbc_ir::transport::ShellResponse {
+                    exit_code: 1,
+                    stdout: String::new(),
+                    stderr: "ERROR: gcloud crashed".to_string(),
+                },
+            )),
+        );
+        let err = GcpOps::ParseGcloudAuth
+            .execute(inputs)
+            .expect_err("nonzero exit should fail");
+        assert!(err.to_string().contains("gcloud auth login failed"));
+        assert!(err.to_string().contains("gcloud crashed"));
+    }
+
+    #[test]
+    fn merge_auth_result_prefers_try_path() {
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "try_access_token".to_string(),
+            Value::Str("ya29.try".to_string()),
+        );
+        inputs.insert("try_expires_in".to_string(), Value::Int(3600));
+        inputs.insert("retry_access_token".to_string(), Value::Unit);
+        inputs.insert("retry_expires_in".to_string(), Value::Unit);
+        let outputs = GcpOps::MergeAuthResult
+            .execute(inputs)
+            .expect("should succeed");
+        assert_eq!(
+            outputs.get("access_token").and_then(|v| v.as_str()),
+            Some("ya29.try")
+        );
+    }
+
+    #[test]
+    fn merge_auth_result_falls_back_to_retry_path() {
+        let mut inputs = HashMap::new();
+        inputs.insert("try_access_token".to_string(), Value::Unit);
+        inputs.insert("try_expires_in".to_string(), Value::Unit);
+        inputs.insert(
+            "retry_access_token".to_string(),
+            Value::Str("ya29.retry".to_string()),
+        );
+        inputs.insert("retry_expires_in".to_string(), Value::Int(3600));
+        let outputs = GcpOps::MergeAuthResult
+            .execute(inputs)
+            .expect("should succeed");
+        assert_eq!(
+            outputs.get("access_token").and_then(|v| v.as_str()),
+            Some("ya29.retry")
+        );
+    }
+
+    #[test]
+    fn merge_auth_result_fails_when_both_empty() {
+        let mut inputs = HashMap::new();
+        inputs.insert("try_access_token".to_string(), Value::Unit);
+        inputs.insert("try_expires_in".to_string(), Value::Unit);
+        inputs.insert("retry_access_token".to_string(), Value::Unit);
+        inputs.insert("retry_expires_in".to_string(), Value::Unit);
+        let err = GcpOps::MergeAuthResult
+            .execute(inputs)
+            .expect_err("both empty should fail");
+        assert!(err.to_string().contains("make login"));
     }
 }

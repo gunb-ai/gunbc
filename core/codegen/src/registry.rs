@@ -89,7 +89,7 @@ impl TestgenTargetDef {
             chain_tests: true,
             flow_tests: false,
             live_flow_tests: false,
-            window_max_nodes: Some(5),
+            window_max_nodes: None, // Deprecated: use probe_observer_tests instead
             test_class: None,
             fermi_cost: None,
             requires: None,

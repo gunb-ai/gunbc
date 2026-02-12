@@ -462,6 +462,10 @@ pub struct InputMock {
 }
 
 /// An expected output at a terminal/boundary node (for flow test assertions).
+///
+/// DEPRECATED: Use NodeExample with OutputMatchers instead. ExpectedOutput
+/// causes tautological tests — the expected value is often just a copy of
+/// what the code already produces.
 #[derive(Debug, Clone)]
 pub struct ExpectedOutput {
     /// Node ID to check (e.g., "report")

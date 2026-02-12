@@ -1055,7 +1055,7 @@ pub fn build_local_auth_upsert_dag_pub() -> Dag<GcpSecretManagerGraphOp> {
 fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
     let mut dag = Dag::new();
 
-    // Network environment (needed for OAuth2 REST call)
+    // Network environment (needed for OAuth2 REST calls)
     dag.add_node(Node::opaque(
         "net_env",
         vec![],
@@ -1109,7 +1109,7 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
     ));
 
     // ========================================================================
-    // Resolve phase: read ADC -> parse credentials -> OAuth2 refresh -> parse token
+    // Try-refresh phase: read ADC -> parse -> OAuth2 refresh -> try parse
     // ========================================================================
 
     // Step 1: Read ADC file
@@ -1132,10 +1132,6 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
     ));
 
     // Step 2: Parse ADC credentials
-    // Note: token_type is intentionally excluded from output ports —
-    // it is computed by the op but not consumed by anything in this DAG.
-    // Including it would propagate as a dangling output through nested
-    // sub-DAGs, requiring spurious mock values in every consumer.
     dag.add_node(Node::opaque(
         "parse_adc",
         vec![port("response", "TransportResponse")],
@@ -1171,15 +1167,19 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
         GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
     ));
 
-    // Step 5: Parse OAuth2 response
+    // Step 5: Try-parse — catches auth errors as needs_reauth instead of failing
     dag.add_node(Node::opaque(
-        "parse_resolve",
+        "parse_try_refresh",
         vec![port("response", "TransportResponse")],
-        vec![port("access_token", "String"), port("expires_in", "Int")],
-        GcpSecretManagerGraphOp::Gcp(GcpOps::ParseOAuth2Refresh),
+        vec![
+            port("needs_reauth", "Bool"),
+            optional("access_token", "OptionalString"),
+            optional("expires_in", "OptionalInt"),
+        ],
+        GcpSecretManagerGraphOp::Gcp(GcpOps::ParseTryRefresh),
     ));
 
-    // Resolve edges: check -> read_adc -> parse_adc -> oauth2 -> parse_resolve
+    // Try-refresh edges
     dag.add_edge(Edge::new(
         "parse_check",
         "exists",
@@ -1241,8 +1241,254 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
     dag.add_edge(Edge::new(
         "execute_oauth2",
         "response",
-        "parse_resolve",
+        "parse_try_refresh",
         "response",
+    ));
+
+    // ========================================================================
+    // Re-auth phase: gcloud auth login -> re-read ADC -> retry refresh
+    // (guarded by needs_reauth = true from parse_try_refresh)
+    // ========================================================================
+
+    // Gcloud auth login --update-adc
+    dag.add_node(Node::opaque(
+        "prepare_gcloud_auth",
+        vec![port("needs_reauth", "Bool")],
+        vec![port("request", "TransportRequest"), port("skip", "Bool")],
+        GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareGcloudAuth),
+    ));
+
+    dag.add_node(Node::opaque(
+        "execute_gcloud_auth",
+        vec![
+            port("request", "TransportRequest"),
+            port("skip", "Bool"),
+            resource("net", "NetworkHandle", AccessMode::Read),
+        ],
+        vec![port("response", "TransportResponse")],
+        GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
+    ));
+
+    dag.add_node(Node::opaque(
+        "parse_gcloud_auth",
+        vec![port("response", "TransportResponse")],
+        vec![port("ok", "Bool")],
+        GcpSecretManagerGraphOp::Gcp(GcpOps::ParseGcloudAuth),
+    ));
+
+    // Re-auth edges
+    dag.add_edge(Edge::new(
+        "parse_try_refresh",
+        "needs_reauth",
+        "prepare_gcloud_auth",
+        "needs_reauth",
+    ));
+    dag.add_edge(Edge::new(
+        "prepare_gcloud_auth",
+        "request",
+        "execute_gcloud_auth",
+        "request",
+    ));
+    dag.add_edge(Edge::new(
+        "prepare_gcloud_auth",
+        "skip",
+        "execute_gcloud_auth",
+        "skip",
+    ));
+    dag.add_edge(Edge::new(
+        "net_env",
+        "net",
+        "execute_gcloud_auth",
+        "res:net",
+    ));
+    dag.add_edge(Edge::new(
+        "execute_gcloud_auth",
+        "response",
+        "parse_gcloud_auth",
+        "response",
+    ));
+
+    // Re-read ADC after gcloud auth
+    // Note: input port is "exists" to match PrepareReadAdc's expected input key.
+    dag.add_node(Node::opaque(
+        "prepare_reread_adc",
+        vec![port("exists", "Bool")],
+        vec![port("request", "TransportRequest"), port("skip", "Bool")],
+        GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareReadAdc),
+    ));
+
+    dag.add_node(Node::opaque(
+        "execute_reread_adc",
+        vec![
+            port("request", "TransportRequest"),
+            port("skip", "Bool"),
+            resource("net", "NetworkHandle", AccessMode::Read),
+        ],
+        vec![port("response", "TransportResponse")],
+        GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
+    ));
+
+    dag.add_node(Node::opaque(
+        "parse_reread_adc",
+        vec![port("response", "TransportResponse")],
+        vec![
+            port("client_id", "String"),
+            port("client_secret", "String"),
+            port("refresh_token", "String"),
+        ],
+        GcpSecretManagerGraphOp::Gcp(GcpOps::ParseAdcCredentials),
+    ));
+
+    // Re-read edges (gcloud auth ok -> treat as "exists" for PrepareReadAdc)
+    dag.add_edge(Edge::new(
+        "parse_gcloud_auth",
+        "ok",
+        "prepare_reread_adc",
+        "exists",
+    ));
+    dag.add_edge(Edge::new(
+        "prepare_reread_adc",
+        "request",
+        "execute_reread_adc",
+        "request",
+    ));
+    dag.add_edge(Edge::new(
+        "prepare_reread_adc",
+        "skip",
+        "execute_reread_adc",
+        "skip",
+    ));
+    dag.add_edge(Edge::new(
+        "net_env",
+        "net",
+        "execute_reread_adc",
+        "res:net",
+    ));
+    dag.add_edge(Edge::new(
+        "execute_reread_adc",
+        "response",
+        "parse_reread_adc",
+        "response",
+    ));
+
+    // Retry OAuth2 refresh with fresh credentials
+    dag.add_node(Node::opaque(
+        "prepare_retry_oauth2",
+        vec![
+            port("client_id", "String"),
+            port("client_secret", "String"),
+            port("refresh_token", "String"),
+        ],
+        vec![port("request", "TransportRequest"), port("skip", "Bool")],
+        GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareOAuth2Refresh),
+    ));
+
+    dag.add_node(Node::opaque(
+        "execute_retry_oauth2",
+        vec![
+            port("request", "TransportRequest"),
+            port("skip", "Bool"),
+            resource("net", "NetworkHandle", AccessMode::Read),
+        ],
+        vec![port("response", "TransportResponse")],
+        GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
+    ));
+
+    dag.add_node(Node::opaque(
+        "parse_retry_refresh",
+        vec![port("response", "TransportResponse")],
+        vec![
+            optional("access_token", "OptionalString"),
+            optional("expires_in", "OptionalInt"),
+        ],
+        GcpSecretManagerGraphOp::Gcp(GcpOps::ParseOAuth2Refresh),
+    ));
+
+    // Retry edges
+    dag.add_edge(Edge::new(
+        "parse_reread_adc",
+        "client_id",
+        "prepare_retry_oauth2",
+        "client_id",
+    ));
+    dag.add_edge(Edge::new(
+        "parse_reread_adc",
+        "client_secret",
+        "prepare_retry_oauth2",
+        "client_secret",
+    ));
+    dag.add_edge(Edge::new(
+        "parse_reread_adc",
+        "refresh_token",
+        "prepare_retry_oauth2",
+        "refresh_token",
+    ));
+    dag.add_edge(Edge::new(
+        "prepare_retry_oauth2",
+        "request",
+        "execute_retry_oauth2",
+        "request",
+    ));
+    dag.add_edge(Edge::new(
+        "prepare_retry_oauth2",
+        "skip",
+        "execute_retry_oauth2",
+        "skip",
+    ));
+    dag.add_edge(Edge::new(
+        "net_env",
+        "net",
+        "execute_retry_oauth2",
+        "res:net",
+    ));
+    dag.add_edge(Edge::new(
+        "execute_retry_oauth2",
+        "response",
+        "parse_retry_refresh",
+        "response",
+    ));
+
+    // ========================================================================
+    // Merge phase: combine try-refresh and retry-refresh results
+    // ========================================================================
+
+    dag.add_node(Node::opaque(
+        "merge_auth_result",
+        vec![
+            optional("try_access_token", "OptionalString"),
+            optional("try_expires_in", "OptionalInt"),
+            optional("retry_access_token", "OptionalString"),
+            optional("retry_expires_in", "OptionalInt"),
+        ],
+        vec![port("access_token", "String"), port("expires_in", "Int")],
+        GcpSecretManagerGraphOp::Gcp(GcpOps::MergeAuthResult),
+    ));
+
+    // Merge edges: try-refresh outputs
+    dag.add_edge(Edge::new(
+        "parse_try_refresh",
+        "access_token",
+        "merge_auth_result",
+        "try_access_token",
+    ));
+    dag.add_edge(Edge::new(
+        "parse_try_refresh",
+        "expires_in",
+        "merge_auth_result",
+        "try_expires_in",
+    ));
+    // Merge edges: retry-refresh outputs
+    dag.add_edge(Edge::new(
+        "parse_retry_refresh",
+        "access_token",
+        "merge_auth_result",
+        "retry_access_token",
+    ));
+    dag.add_edge(Edge::new(
+        "parse_retry_refresh",
+        "expires_in",
+        "merge_auth_result",
+        "retry_expires_in",
     ));
 
     dag
