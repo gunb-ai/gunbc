@@ -154,18 +154,21 @@ pub struct CloudConfigSpec {
 
 /// A single deployment namespace within the config spec.
 ///
-/// Namespace inheritance allows common settings to be shared:
+/// Namespace inheritance allows common settings to be shared.
+/// For the canonical project structure, see `cloud_ops::project_spec::GUNBAI_SECRETS`
+/// which defines typed specs that derive all namespace values (prefixes,
+/// SA emails, WIF resource names) from base fields.
+///
 /// ```toml
 /// [[namespaces]]
 /// name = "base"
-/// secrets_project = "gunbai-secrets"
-/// wif_provider = "projects/314501921854/locations/global/workloadIdentityPools/github-pool/providers/github"
+/// secrets_project = "my-secrets-project"
+/// wif_provider = "projects/{number}/locations/global/workloadIdentityPools/{pool}/providers/{provider}"
 ///
 /// [[namespaces]]
 /// name = "dev"
 /// inherits_from = "base"
-/// service_account = "gunbai-dev-secrets@gunbai-secrets.iam.gserviceaccount.com"
-/// # prefix is derived: "dev-"
+/// # prefix derived from name: "dev-"
 /// ```
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CloudNamespace {

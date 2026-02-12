@@ -1,0 +1,535 @@
+//! GCP project spec — the single source of truth for project structure.
+//!
+//! This module models the GCP infrastructure that gunbc depends on, following
+//! the same code-as-config pattern as `gunb.ai/tools/infra/spec/spec.go`.
+//! All values are compile-time constants — no env files, no YAML, no magic
+//! strings scattered across the codebase.
+//!
+//! # Design
+//!
+//! - **`ProjectSpec`** defines the top-level project structure (like `InfraSpec`
+//!   in gunb.ai).
+//! - **`NamespaceSpec`** defines deployment contexts (dev, ci) with service
+//!   account naming and prefix derivation.
+//! - **`SecretSpec`** is the canonical secret catalog (like
+//!   `tools/secrets/spec/spec.go` in gunb.ai).
+//! - **Derived values** — SA emails, prefixes, WIF resource names — are
+//!   computed from base fields, not stored as separate strings.
+//!
+//! # Adding new environments
+//!
+//! Add a `NamespaceSpec` entry to `GUNBAI_SECRETS.namespaces` and the
+//! conformance tests will verify it produces valid `CloudSecretConfig`.
+
+use gunbc_ir::transport::cloud::{
+    CloudProviderKind, CloudRuntimeKind, CloudSecretConfig, CloudSecretRef,
+};
+
+// ---------------------------------------------------------------------------
+// GCP project types
+// ---------------------------------------------------------------------------
+
+/// A GCP project reference.
+///
+/// Mirrors `EnvironmentConfig.Project` + `ProjectNumber` from
+/// `gunb.ai/tools/infra/spec/spec.go`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GcpProject {
+    /// Project ID (globally unique, e.g., "gunbai-secrets").
+    pub project_id: &'static str,
+    /// Project number (numeric, e.g., 314501921854).
+    pub project_number: u64,
+}
+
+/// Workload Identity Federation config for keyless auth.
+///
+/// Mirrors `WIFBinding` and the `WIFPoolID`/`WIFProviderID` constants from
+/// `gunb.ai/tools/infra/spec/spec.go`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WifConfig {
+    /// Pool ID (e.g., "github-pool").
+    pub pool_id: &'static str,
+    /// Provider ID (e.g., "github").
+    pub provider_id: &'static str,
+}
+
+impl WifConfig {
+    /// Full resource path for the WIF provider.
+    ///
+    /// Format: `projects/{number}/locations/global/workloadIdentityPools/{pool}/providers/{provider}`
+    pub fn provider_resource_name(&self, project_number: u64) -> String {
+        format!(
+            "projects/{}/locations/global/workloadIdentityPools/{}/providers/{}",
+            project_number, self.pool_id, self.provider_id
+        )
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Service account types
+// ---------------------------------------------------------------------------
+
+/// A GCP service account spec.
+///
+/// Mirrors `ServiceAccountSpec` from `gunb.ai/tools/infra/spec/spec.go`.
+/// The full email is derived from `name` + project ID.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServiceAccountSpec {
+    /// SA name without the `@project.iam.gserviceaccount.com` suffix.
+    pub name: &'static str,
+    /// Human-readable description.
+    pub description: &'static str,
+    /// IAM roles to grant on the project.
+    pub roles: &'static [&'static str],
+}
+
+impl ServiceAccountSpec {
+    /// Full service account email: `{name}@{project_id}.iam.gserviceaccount.com`.
+    pub fn email(&self, project_id: &str) -> String {
+        format!("{}@{}.iam.gserviceaccount.com", self.name, project_id)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Namespace (deployment context)
+// ---------------------------------------------------------------------------
+
+/// A deployment namespace (dev, ci, etc.)
+///
+/// Mirrors `EnvironmentConfig` from `gunb.ai/tools/infra/spec/spec.go`.
+/// Each namespace has a secrets service account and derives its own
+/// prefix from its name.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NamespaceSpec {
+    /// Namespace name (e.g., "dev", "ci").
+    pub name: &'static str,
+    /// The secrets service account for this namespace.
+    pub secrets_service_account: ServiceAccountSpec,
+}
+
+impl NamespaceSpec {
+    /// Secret prefix derived from namespace name: `"{name}-"`.
+    ///
+    /// Convention from `CloudNamespace::secret_prefix()`.
+    pub fn secret_prefix(&self) -> String {
+        format!("{}-", self.name)
+    }
+
+    /// Full service account email for secrets access.
+    pub fn service_account_email(&self, project_id: &str) -> String {
+        self.secrets_service_account.email(project_id)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Secret catalog
+// ---------------------------------------------------------------------------
+
+/// Requirement level for a secret.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SecretRequirement {
+    Required,
+    Optional,
+}
+
+/// Status of a secret (active or deleted/deprecated).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SecretStatus {
+    Active,
+    Deleted,
+}
+
+/// How a secret can be rotated.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RotationHandler {
+    /// Manual rotation via provider dashboard/UI.
+    Manual,
+    /// Interactive GitHub OAuth browser flow.
+    GitHubPat,
+    /// `gcloud` SA key creation.
+    ServiceAccountKey,
+    /// No rotation needed (static/permanent value).
+    None,
+}
+
+/// A single secret's specification.
+///
+/// Mirrors `Secret` from `gunb.ai/tools/secrets/spec/spec.go`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SecretSpec {
+    /// Environment variable name (e.g., "GITHUB_TOKEN").
+    pub env_name: &'static str,
+    /// Base Secret Manager ID (e.g., "github-token").
+    /// Actual ID has namespace prefix: `"{prefix}{secret_id}"`.
+    pub secret_id: &'static str,
+    /// Whether this secret is required for the system to function.
+    pub requirement: SecretRequirement,
+    /// Whether this secret is currently active or deprecated/deleted.
+    pub status: SecretStatus,
+    /// OAuth/API scopes required (empty for non-token secrets).
+    pub scopes: &'static [&'static str],
+    /// How this secret can be rotated.
+    pub rotation: RotationHandler,
+}
+
+impl SecretSpec {
+    /// Prefixed secret ID for a given namespace.
+    pub fn prefixed_id(&self, namespace: &NamespaceSpec) -> String {
+        format!("{}{}", namespace.secret_prefix(), self.secret_id)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Top-level project spec
+// ---------------------------------------------------------------------------
+
+/// Top-level GCP project spec.
+///
+/// Mirrors `InfraSpec` from `gunb.ai/tools/infra/spec/spec.go`, scoped to
+/// the resources gunbc actually depends on: a secrets project with WIF and
+/// per-namespace service accounts.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectSpec {
+    /// The GCP project used for secret storage.
+    pub secrets_project: GcpProject,
+    /// Workload Identity Federation config (for GitHub Actions keyless auth).
+    pub wif: WifConfig,
+    /// Deployment namespaces (dev, ci, etc.)
+    pub namespaces: &'static [NamespaceSpec],
+    /// Canonical secret catalog.
+    pub secrets: &'static [SecretSpec],
+}
+
+impl ProjectSpec {
+    /// Look up a namespace by name.
+    pub fn namespace(&self, name: &str) -> Option<&NamespaceSpec> {
+        self.namespaces.iter().find(|ns| ns.name == name)
+    }
+
+    /// WIF provider resource name for the secrets project.
+    pub fn wif_provider_resource_name(&self) -> String {
+        self.wif
+            .provider_resource_name(self.secrets_project.project_number)
+    }
+
+    /// Build a `CloudSecretConfig` for a given namespace and runtime.
+    ///
+    /// This is the primary conversion from the typed spec to the runtime
+    /// config used by graph builders. For local dev, `runtime` comes from
+    /// `detect_runtime()` in config_loader.
+    pub fn to_cloud_secret_config(
+        &self,
+        namespace: &str,
+        runtime: CloudRuntimeKind,
+    ) -> Option<CloudSecretConfig> {
+        let ns = self.namespace(namespace)?;
+        Some(CloudSecretConfig {
+            provider: CloudProviderKind::Gcp,
+            runtime,
+            audience: self.wif_provider_resource_name(),
+            project_or_account: self.secrets_project.project_id.to_string(),
+            secret: CloudSecretRef {
+                prefix: ns.secret_prefix(),
+                name: String::new(),
+                delimiter: String::new(),
+                version: None,
+            },
+            service_account_or_role: Some(
+                ns.service_account_email(self.secrets_project.project_id),
+            ),
+            impersonate_account_or_role: None,
+        })
+    }
+
+    /// Active secrets only.
+    pub fn active_secrets(&self) -> impl Iterator<Item = &SecretSpec> {
+        self.secrets
+            .iter()
+            .filter(|s| s.status == SecretStatus::Active)
+    }
+
+    /// Required active secrets only.
+    pub fn required_secrets(&self) -> impl Iterator<Item = &SecretSpec> {
+        self.active_secrets()
+            .filter(|s| s.requirement == SecretRequirement::Required)
+    }
+}
+
+// ===========================================================================
+// Canonical spec: gunbai-secrets
+// ===========================================================================
+
+/// The canonical project spec for the gunbai-secrets infrastructure.
+///
+/// All values are hardcoded from the canonical spec — no env var overrides.
+/// Mirrors `DevConfig()` / `CIConfig()` from `gunb.ai/tools/infra/spec/spec.go`
+/// and `AllSecrets()` from `gunb.ai/tools/secrets/spec/spec.go`.
+pub static GUNBAI_SECRETS: ProjectSpec = ProjectSpec {
+    secrets_project: GcpProject {
+        project_id: "gunbai-secrets",
+        project_number: 314501921854,
+    },
+    wif: WifConfig {
+        pool_id: "github-pool",
+        provider_id: "github",
+    },
+    namespaces: &[
+        NamespaceSpec {
+            name: "dev",
+            secrets_service_account: ServiceAccountSpec {
+                name: "gunbai-dev-secrets",
+                description: "Dev environment secrets access",
+                roles: &["roles/secretmanager.secretAccessor"],
+            },
+        },
+        NamespaceSpec {
+            name: "ci",
+            secrets_service_account: ServiceAccountSpec {
+                name: "gunbai-ci-secrets",
+                description: "CI environment secrets access",
+                roles: &["roles/secretmanager.secretAccessor"],
+            },
+        },
+    ],
+    secrets: &KNOWN_SECRETS,
+};
+
+/// Canonical secret catalog.
+///
+/// Ported from `gunb.ai/tools/secrets/spec/spec.go::AllSecrets()`.
+/// Only includes secrets relevant to gunbc (not gunb.ai-specific ones
+/// like IAP OAuth, workspace SA keys, etc.)
+static KNOWN_SECRETS: [SecretSpec; 5] = [
+    // API keys — manual rotation via provider dashboards
+    SecretSpec {
+        env_name: "OPENAI_API_KEY",
+        secret_id: "openai-api-key",
+        requirement: SecretRequirement::Required,
+        status: SecretStatus::Active,
+        scopes: &[],
+        rotation: RotationHandler::Manual,
+    },
+    SecretSpec {
+        env_name: "ANTHROPIC_API_KEY",
+        secret_id: "anthropic-api-key",
+        requirement: SecretRequirement::Optional,
+        status: SecretStatus::Active,
+        scopes: &[],
+        rotation: RotationHandler::Manual,
+    },
+    // GitHub PAT — interactive browser rotation
+    SecretSpec {
+        env_name: "GITHUB_TOKEN",
+        secret_id: "github-token",
+        requirement: SecretRequirement::Optional,
+        status: SecretStatus::Active,
+        scopes: &["repo", "read:org", "gist"],
+        rotation: RotationHandler::GitHubPat,
+    },
+    // GitHub App credentials
+    SecretSpec {
+        env_name: "CI_GITHUB_APP_ID",
+        secret_id: "github-app-id",
+        requirement: SecretRequirement::Optional,
+        status: SecretStatus::Active,
+        scopes: &[],
+        rotation: RotationHandler::None,
+    },
+    SecretSpec {
+        env_name: "CI_GITHUB_APP_PRIVATE_KEY",
+        secret_id: "github-app-private-key",
+        requirement: SecretRequirement::Optional,
+        status: SecretStatus::Active,
+        scopes: &[],
+        rotation: RotationHandler::Manual,
+    },
+];
+
+// ===========================================================================
+// Tests
+// ===========================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dev_namespace_exists() {
+        let ns = GUNBAI_SECRETS
+            .namespace("dev")
+            .expect("dev namespace must exist");
+        assert_eq!(ns.name, "dev");
+    }
+
+    #[test]
+    fn ci_namespace_exists() {
+        let ns = GUNBAI_SECRETS
+            .namespace("ci")
+            .expect("ci namespace must exist");
+        assert_eq!(ns.name, "ci");
+    }
+
+    #[test]
+    fn dev_secret_prefix_is_derived() {
+        let ns = GUNBAI_SECRETS.namespace("dev").unwrap();
+        assert_eq!(ns.secret_prefix(), "dev-");
+    }
+
+    #[test]
+    fn ci_secret_prefix_is_derived() {
+        let ns = GUNBAI_SECRETS.namespace("ci").unwrap();
+        assert_eq!(ns.secret_prefix(), "ci-");
+    }
+
+    #[test]
+    fn dev_service_account_email_is_derived() {
+        let ns = GUNBAI_SECRETS.namespace("dev").unwrap();
+        assert_eq!(
+            ns.service_account_email(GUNBAI_SECRETS.secrets_project.project_id),
+            "gunbai-dev-secrets@gunbai-secrets.iam.gserviceaccount.com"
+        );
+    }
+
+    #[test]
+    fn ci_service_account_email_is_derived() {
+        let ns = GUNBAI_SECRETS.namespace("ci").unwrap();
+        assert_eq!(
+            ns.service_account_email(GUNBAI_SECRETS.secrets_project.project_id),
+            "gunbai-ci-secrets@gunbai-secrets.iam.gserviceaccount.com"
+        );
+    }
+
+    #[test]
+    fn wif_provider_resource_name_is_derived() {
+        assert_eq!(
+            GUNBAI_SECRETS.wif_provider_resource_name(),
+            "projects/314501921854/locations/global/workloadIdentityPools/github-pool/providers/github"
+        );
+    }
+
+    #[test]
+    fn to_cloud_secret_config_dev() {
+        let config = GUNBAI_SECRETS
+            .to_cloud_secret_config("dev", CloudRuntimeKind::LocalDev)
+            .expect("dev config should resolve");
+
+        assert_eq!(config.provider, CloudProviderKind::Gcp);
+        assert_eq!(config.runtime, CloudRuntimeKind::LocalDev);
+        assert_eq!(config.project_or_account, "gunbai-secrets");
+        assert_eq!(config.secret.prefix, "dev-");
+        assert_eq!(
+            config.audience,
+            "projects/314501921854/locations/global/workloadIdentityPools/github-pool/providers/github"
+        );
+        assert_eq!(
+            config.service_account_or_role,
+            Some("gunbai-dev-secrets@gunbai-secrets.iam.gserviceaccount.com".to_string())
+        );
+        assert_eq!(config.impersonate_account_or_role, None);
+    }
+
+    #[test]
+    fn to_cloud_secret_config_ci_github_actions() {
+        let config = GUNBAI_SECRETS
+            .to_cloud_secret_config("ci", CloudRuntimeKind::GitHubActions)
+            .expect("ci config should resolve");
+
+        assert_eq!(config.runtime, CloudRuntimeKind::GitHubActions);
+        assert_eq!(config.secret.prefix, "ci-");
+        assert_eq!(
+            config.service_account_or_role,
+            Some("gunbai-ci-secrets@gunbai-secrets.iam.gserviceaccount.com".to_string())
+        );
+    }
+
+    #[test]
+    fn unknown_namespace_returns_none() {
+        assert!(GUNBAI_SECRETS
+            .to_cloud_secret_config("nonexistent", CloudRuntimeKind::LocalDev)
+            .is_none());
+    }
+
+    #[test]
+    fn sa_email_format_is_valid() {
+        for ns in GUNBAI_SECRETS.namespaces {
+            let email = ns.service_account_email(GUNBAI_SECRETS.secrets_project.project_id);
+            assert!(
+                email.contains('@') && email.ends_with(".iam.gserviceaccount.com"),
+                "SA email must be valid format: {email}"
+            );
+        }
+    }
+
+    #[test]
+    fn all_namespaces_have_unique_names() {
+        let mut seen = std::collections::HashSet::new();
+        for ns in GUNBAI_SECRETS.namespaces {
+            assert!(
+                seen.insert(ns.name),
+                "duplicate namespace name: {}",
+                ns.name
+            );
+        }
+    }
+
+    #[test]
+    fn all_namespaces_have_unique_prefixes() {
+        let mut seen = std::collections::HashSet::new();
+        for ns in GUNBAI_SECRETS.namespaces {
+            let prefix = ns.secret_prefix();
+            assert!(seen.insert(prefix.clone()), "duplicate prefix: {prefix}");
+        }
+    }
+
+    #[test]
+    fn all_secrets_have_unique_ids() {
+        let mut seen = std::collections::HashSet::new();
+        for s in GUNBAI_SECRETS.secrets {
+            assert!(
+                seen.insert(s.secret_id),
+                "duplicate secret_id: {}",
+                s.secret_id
+            );
+        }
+    }
+
+    #[test]
+    fn all_secrets_have_unique_env_names() {
+        let mut seen = std::collections::HashSet::new();
+        for s in GUNBAI_SECRETS.secrets {
+            assert!(
+                seen.insert(s.env_name),
+                "duplicate env_name: {}",
+                s.env_name
+            );
+        }
+    }
+
+    #[test]
+    fn prefixed_secret_id_is_correct() {
+        let ns = GUNBAI_SECRETS.namespace("dev").unwrap();
+        let github = GUNBAI_SECRETS
+            .secrets
+            .iter()
+            .find(|s| s.secret_id == "github-token")
+            .expect("github-token must exist");
+        assert_eq!(github.prefixed_id(ns), "dev-github-token");
+    }
+
+    #[test]
+    fn active_secrets_excludes_deleted() {
+        let active: Vec<_> = GUNBAI_SECRETS.active_secrets().collect();
+        assert!(
+            active.iter().all(|s| s.status == SecretStatus::Active),
+            "active_secrets should only return active secrets"
+        );
+    }
+
+    #[test]
+    fn at_least_one_required_secret_exists() {
+        assert!(
+            GUNBAI_SECRETS.required_secrets().count() > 0,
+            "at least one required secret must exist"
+        );
+    }
+}

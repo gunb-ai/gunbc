@@ -341,26 +341,14 @@ pub fn resolve_default_secret_config(
 /// This is used when no explicit config is provided (e.g., in tests,
 /// graph construction for mock specs, or early bootstrapping).
 ///
-/// The values are sensible defaults for the `gunbai-secrets` project.
+/// Values are derived from the canonical project spec
+/// ([`crate::project_spec::GUNBAI_SECRETS`]), not hardcoded strings.
 /// For real deployments, config should come from the generated TOML
 /// via [`resolve_default_secret_config`].
 pub fn default_local_dev_config() -> CloudSecretConfig {
-    CloudSecretConfig {
-        provider: CloudProviderKind::Gcp,
-        runtime: detect_runtime(),
-        audience: "local-dev".to_string(),
-        project_or_account: "gunbai-secrets".to_string(),
-        secret: CloudSecretRef {
-            prefix: "dev-".to_string(),
-            name: String::new(),
-            delimiter: String::new(),
-            version: None,
-        },
-        service_account_or_role: Some(
-            "gunbai-dev-secrets@gunbai-secrets.iam.gserviceaccount.com".to_string(),
-        ),
-        impersonate_account_or_role: None,
-    }
+    crate::project_spec::GUNBAI_SECRETS
+        .to_cloud_secret_config("dev", detect_runtime())
+        .expect("dev namespace must exist in GUNBAI_SECRETS project spec")
 }
 
 // ---------------------------------------------------------------------------

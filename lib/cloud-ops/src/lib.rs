@@ -10,6 +10,7 @@ mod env_status;
 mod github_credential_graph;
 mod graph;
 mod ops;
+pub mod project_spec;
 
 pub use config_loader::{
     default_local_dev_config, graph_cloud_config, resolve_graph_cloud_config, ConfigError,
