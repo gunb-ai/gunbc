@@ -173,7 +173,10 @@ pub fn format_missing_requirements_message(
 ) -> String {
     let mut parts = Vec::new();
     if !missing.missing_required.is_empty() {
-        parts.push(format!("provider-runtime required: {}", missing.missing_required.join(", ")));
+        parts.push(format!(
+            "provider-runtime required: {}",
+            missing.missing_required.join(", ")
+        ));
     }
     if !missing.missing_any_of.is_empty() {
         let groups = missing
@@ -186,11 +189,10 @@ pub fn format_missing_requirements_message(
     }
 
     format!(
-        "missing cloud environment for {}/{}: {}; selectors: CLOUD_PROVIDER, CLOUD_RUNTIME; hint: run `make gist-auth-doctor RUNTIME={}`",
+        "missing cloud environment for {}/{}: {}; selectors: CLOUD_PROVIDER, CLOUD_RUNTIME",
         req.provider.as_str(),
         req.runtime.as_str(),
         parts.join("; "),
-        req.runtime.as_str(),
     )
 }
 
