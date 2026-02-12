@@ -269,6 +269,7 @@ pub fn inline_review_mock_spec() -> MockSpec {
         .skip_node_example("cloud_credential")
         .skip_node_example("fs_env")
         .skip_node_example("bind_secret")
+        .skip_node_example("scope_preflight")
 }
 
 // ============================================================================
@@ -468,4 +469,5 @@ diff --git a/src/main.rs b/src/main.rs
         .skip_node_example("cloud_credential")
         .skip_node_example("fs_env")
         .skip_node_example("bind_secret")
+        .skip_node_example("scope_preflight")
 }

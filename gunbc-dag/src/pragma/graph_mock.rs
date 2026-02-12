@@ -211,11 +211,47 @@ pub fn pragma_mock_spec() -> MockSpec {
         )
         .input_mock("compare_clippy_content", "check_mode", Value::Bool(false))
         .input_mock(
+            "compare_clippy_content",
+            "response",
+            Value::Response(TransportResponse::File(FileResponse {
+                path: "clippy.toml".into(),
+                operation: FileOp::Read,
+                success: true,
+                content: Some("<mock-clippy>".into()),
+                exists: None,
+                error: None,
+            })),
+        )
+        .input_mock(
             "compare_allowlist_content",
             "check_mode",
             Value::Bool(false),
         )
+        .input_mock(
+            "compare_allowlist_content",
+            "response",
+            Value::Response(TransportResponse::File(FileResponse {
+                path: "tools/disallowed-methods-allowlist.txt".into(),
+                operation: FileOp::Read,
+                success: true,
+                content: Some("<mock-allowlist>".into()),
+                exists: None,
+                error: None,
+            })),
+        )
         .input_mock("compare_policy_content", "check_mode", Value::Bool(false))
+        .input_mock(
+            "compare_policy_content",
+            "response",
+            Value::Response(TransportResponse::File(FileResponse {
+                path: "tools/pragma-lint-policy.txt".into(),
+                operation: FileOp::Read,
+                success: true,
+                content: Some("<mock-policy>".into()),
+                exists: None,
+                error: None,
+            })),
+        )
         // Resources: file locks for all outputs
         .resource_lock("fs:clippy.toml")
         .resource_lock("fs:tools/disallowed-methods-allowlist.txt")

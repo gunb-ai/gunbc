@@ -1,6 +1,9 @@
 //! Pure GCP ops for WIF + Secret Manager.
 
-use gunbc_exec::{require_bool, require_str, ExecError, Executable, OutputMap};
+use gunbc_exec::{
+    optional_bool_strict, optional_str_list_strict, optional_str_strict, require_bool, require_str,
+    ExecError, Executable, OutputMap,
+};
 use gunbc_ir::transport::file::FileRequest;
 use gunbc_ir::transport::rest::RestRequest;
 use gunbc_ir::transport::TransportResponse;
@@ -229,10 +232,10 @@ impl Executable for GcpOps {
                     _ => false,
                 };
                 if !exists {
-                    return OutputMap::new()
-                        .request("request", FileRequest::read("/dev/null").into())
-                        .bool("skip", true)
-                        .ok();
+                    let path = adc_file_path();
+                    return Err(ExecError::new(format!(
+                        "ADC file not found at {path}. Run `gcloud auth application-default login` and retry."
+                    )));
                 }
                 let adc_path = adc_file_path();
                 let req = FileRequest::read(&adc_path);
@@ -273,9 +276,18 @@ impl Executable for GcpOps {
                     .map_err(|e| ExecError::new(format!("ADC file is not valid JSON: {e}")))?;
 
                 let client_id = json.get("client_id").and_then(|v| v.as_str()).unwrap_or("");
-                let client_secret = json.get("client_secret").and_then(|v| v.as_str()).unwrap_or("");
-                let refresh_token = json.get("refresh_token").and_then(|v| v.as_str()).unwrap_or("");
-                let token_type = json.get("type").and_then(|v| v.as_str()).unwrap_or("authorized_user");
+                let client_secret = json
+                    .get("client_secret")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let refresh_token = json
+                    .get("refresh_token")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let token_type = json
+                    .get("type")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("authorized_user");
 
                 if refresh_token.is_empty() {
                     return Err(ExecError::new(
@@ -311,8 +323,7 @@ impl Executable for GcpOps {
                     "grant_type": "refresh_token",
                 });
 
-                let req = RestRequest::post("https://oauth2.googleapis.com/token")
-                    .json(body);
+                let req = RestRequest::post("https://oauth2.googleapis.com/token").json(body);
 
                 OutputMap::new()
                     .request("request", req.into())
@@ -340,7 +351,9 @@ impl Executable for GcpOps {
                     }
                 };
                 if !rest.is_success() {
-                    let error_desc = rest.body.get("error_description")
+                    let error_desc = rest
+                        .body
+                        .get("error_description")
                         .and_then(|v| v.as_str())
                         .unwrap_or("unknown error");
                     return Err(ExecError::new(format!(
@@ -348,10 +361,16 @@ impl Executable for GcpOps {
                         rest.status, error_desc
                     )));
                 }
-                let access_token = rest.body.get("access_token")
+                let access_token = rest
+                    .body
+                    .get("access_token")
                     .and_then(|v| v.as_str())
-                    .ok_or_else(|| ExecError::new("missing access_token in OAuth2 refresh response"))?;
-                let expires_in = rest.body.get("expires_in")
+                    .ok_or_else(|| {
+                        ExecError::new("missing access_token in OAuth2 refresh response")
+                    })?;
+                let expires_in = rest
+                    .body
+                    .get("expires_in")
                     .and_then(|v| v.as_i64())
                     .unwrap_or(3599);
                 OutputMap::new()
@@ -415,6 +434,19 @@ impl Executable for GcpOps {
             GcpOps::PrepareImpersonate => {
                 let access_token = require_str(&inputs, "access_token")?;
                 let service_account = require_str(&inputs, "service_account")?;
+                let should_impersonate = optional_bool_strict(&inputs, "should_impersonate")?
+                    .unwrap_or_else(|| !service_account.trim().is_empty());
+                if !should_impersonate || service_account.trim().is_empty() {
+                    // No impersonation target configured; downstream parse node will
+                    // fall back to the base access token.
+                    return OutputMap::new()
+                        .request(
+                            "request",
+                            RestRequest::post("https://example.invalid/impersonate").into(),
+                        )
+                        .bool("skip", true)
+                        .ok();
+                }
                 let lifetime_seconds = match inputs.get("lifetime_seconds") {
                     Some(value) => value.as_int().ok_or_else(|| {
                         ExecError::new("missing or invalid 'lifetime_seconds' input")
@@ -441,8 +473,12 @@ impl Executable for GcpOps {
                     .ok()
             }
             GcpOps::ParseImpersonate => {
+                let base_access_token =
+                    optional_str_strict(&inputs, "base_access_token")?.unwrap_or("");
                 let response = match inputs.get("response") {
-                    Some(Value::Skipped) => return OutputMap::new().str("access_token", "").ok(),
+                    Some(Value::Skipped) => {
+                        return OutputMap::new().str("access_token", base_access_token).ok()
+                    }
                     Some(Value::Response(r)) => r,
                     _ => return Err(ExecError::new("missing or invalid 'response' input")),
                 };
@@ -455,12 +491,24 @@ impl Executable for GcpOps {
                         )));
                     }
                 };
+                if !rest.is_success() {
+                    let details = impersonation_error_summary(&rest.body);
+                    return Err(ExecError::new(format!(
+                        "impersonation failed (status {}): {}",
+                        rest.status, details
+                    )));
+                }
                 let token = rest
                     .body
                     .get("accessToken")
+                    .or_else(|| rest.body.get("access_token"))
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| {
-                        ExecError::new("missing accessToken in impersonation response")
+                        let details = impersonation_error_summary(&rest.body);
+                        ExecError::new(format!(
+                            "impersonation response missing accessToken (status {}): {}",
+                            rest.status, details
+                        ))
                     })?;
                 // expireTime is present in the response but not yet surfaced as an output.
                 // TODO: wire into output if callers need token expiry.
@@ -665,6 +713,8 @@ impl Executable for GcpOps {
             GcpOps::BuildCredential => {
                 let secret = require_str(&inputs, "secret")?;
                 let scheme = require_str(&inputs, "scheme")?;
+                let _required_scopes =
+                    optional_str_list_strict(&inputs, "required_scopes")?.unwrap_or_default();
                 let header_name =
                     match inputs.get("header_name") {
                         Some(value) => Some(value.as_str().ok_or_else(|| {
@@ -704,8 +754,11 @@ impl Executable for GcpOps {
                 OutputMap::new().value("credential", cred.into()).ok()
             }
             GcpOps::ShouldImpersonate => {
-                let service_account = require_str(&inputs, "service_account")?;
-                let should = !service_account.trim().is_empty();
+                let should = inputs
+                    .get("service_account")
+                    .and_then(Value::as_str)
+                    .map(|s| !s.trim().is_empty())
+                    .unwrap_or(false);
                 OutputMap::new().bool("should", should).ok()
             }
             GcpOps::ComposeSecretName => {
@@ -860,6 +913,37 @@ fn base64_decode(input: &str) -> Result<Vec<u8>, String> {
     Ok(out)
 }
 
+fn impersonation_error_summary(body: &serde_json::Value) -> String {
+    if let Some(err) = body.get("error") {
+        if let Some(message) = err.get("message").and_then(|v| v.as_str()) {
+            return message.to_string();
+        }
+        if let Some(status) = err.get("status").and_then(|v| v.as_str()) {
+            return status.to_string();
+        }
+        if let Some(code) = err.get("code").and_then(|v| v.as_i64()) {
+            return format!("error code {code}");
+        }
+    }
+
+    if let Some(message) = body.get("message").and_then(|v| v.as_str()) {
+        return message.to_string();
+    }
+    if let Some(desc) = body.get("error_description").and_then(|v| v.as_str()) {
+        return desc.to_string();
+    }
+    if let Some(status) = body.get("status").and_then(|v| v.as_str()) {
+        return status.to_string();
+    }
+
+    let rendered = body.to_string();
+    if rendered.len() > 240 {
+        format!("{}...", &rendered[..240])
+    } else {
+        rendered
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -873,7 +957,9 @@ mod tests {
     #[test]
     fn prepare_check_adc_produces_file_exists_request() {
         let inputs = HashMap::new();
-        let outputs = GcpOps::PrepareCheckAdc.execute(inputs).expect("should succeed");
+        let outputs = GcpOps::PrepareCheckAdc
+            .execute(inputs)
+            .expect("should succeed");
         let req = outputs.get("request").expect("should have request");
         // The request should be a File transport request
         match req {
@@ -890,11 +976,14 @@ mod tests {
         let mut inputs = HashMap::new();
         inputs.insert(
             "response".to_string(),
-            Value::Response(TransportResponse::File(
-                FileResponse::exists_result("/fake/path", false),
-            )),
+            Value::Response(TransportResponse::File(FileResponse::exists_result(
+                "/fake/path",
+                false,
+            ))),
         );
-        let outputs = GcpOps::ParseCheckAdc.execute(inputs).expect("should succeed");
+        let outputs = GcpOps::ParseCheckAdc
+            .execute(inputs)
+            .expect("should succeed");
         assert_eq!(outputs.get("exists"), Some(&Value::Bool(false)));
     }
 
@@ -903,11 +992,14 @@ mod tests {
         let mut inputs = HashMap::new();
         inputs.insert(
             "response".to_string(),
-            Value::Response(TransportResponse::File(
-                FileResponse::exists_result("/fake/path", true),
-            )),
+            Value::Response(TransportResponse::File(FileResponse::exists_result(
+                "/fake/path",
+                true,
+            ))),
         );
-        let outputs = GcpOps::ParseCheckAdc.execute(inputs).expect("should succeed");
+        let outputs = GcpOps::ParseCheckAdc
+            .execute(inputs)
+            .expect("should succeed");
         assert_eq!(outputs.get("exists"), Some(&Value::Bool(true)));
     }
 
@@ -915,7 +1007,9 @@ mod tests {
     fn prepare_read_adc_produces_file_read_request() {
         let mut inputs = HashMap::new();
         inputs.insert("exists".to_string(), Value::Bool(true));
-        let outputs = GcpOps::PrepareReadAdc.execute(inputs).expect("should succeed");
+        let outputs = GcpOps::PrepareReadAdc
+            .execute(inputs)
+            .expect("should succeed");
         match outputs.get("request") {
             Some(Value::Request(gunbc_ir::transport::TransportRequest::File(f))) => {
                 assert!(f.path.contains("application_default_credentials.json"));
@@ -926,11 +1020,18 @@ mod tests {
     }
 
     #[test]
-    fn prepare_read_adc_skips_when_not_exists() {
+    fn prepare_read_adc_fails_when_not_exists() {
         let mut inputs = HashMap::new();
         inputs.insert("exists".to_string(), Value::Bool(false));
-        let outputs = GcpOps::PrepareReadAdc.execute(inputs).expect("should succeed");
-        assert_eq!(outputs.get("skip"), Some(&Value::Bool(true)));
+        let err = GcpOps::PrepareReadAdc
+            .execute(inputs)
+            .expect_err("missing ADC should fail early");
+        assert!(
+            err.to_string()
+                .contains("gcloud auth application-default login"),
+            "error should include remediation command, got: {}",
+            err
+        );
     }
 
     #[test]
@@ -944,11 +1045,14 @@ mod tests {
         let mut inputs = HashMap::new();
         inputs.insert(
             "response".to_string(),
-            Value::Response(TransportResponse::File(
-                FileResponse::read_ok("/fake/path", adc_json.to_string()),
-            )),
+            Value::Response(TransportResponse::File(FileResponse::read_ok(
+                "/fake/path",
+                adc_json.to_string(),
+            ))),
         );
-        let outputs = GcpOps::ParseAdcCredentials.execute(inputs).expect("should succeed");
+        let outputs = GcpOps::ParseAdcCredentials
+            .execute(inputs)
+            .expect("should succeed");
         assert_eq!(
             outputs.get("client_id").and_then(|v| v.as_str()),
             Some("my-client-id.apps.googleusercontent.com")
@@ -973,9 +1077,10 @@ mod tests {
         let mut inputs = HashMap::new();
         inputs.insert(
             "response".to_string(),
-            Value::Response(TransportResponse::File(
-                FileResponse::read_ok("/fake/path", adc_json.to_string()),
-            )),
+            Value::Response(TransportResponse::File(FileResponse::read_ok(
+                "/fake/path",
+                adc_json.to_string(),
+            ))),
         );
         let err = GcpOps::ParseAdcCredentials
             .execute(inputs)
@@ -987,9 +1092,14 @@ mod tests {
     fn prepare_oauth2_refresh_builds_rest_request() {
         let mut inputs = HashMap::new();
         inputs.insert("client_id".to_string(), Value::Str("id".to_string()));
-        inputs.insert("client_secret".to_string(), Value::Str("secret".to_string()));
+        inputs.insert(
+            "client_secret".to_string(),
+            Value::Str("secret".to_string()),
+        );
         inputs.insert("refresh_token".to_string(), Value::Str("token".to_string()));
-        let outputs = GcpOps::PrepareOAuth2Refresh.execute(inputs).expect("should succeed");
+        let outputs = GcpOps::PrepareOAuth2Refresh
+            .execute(inputs)
+            .expect("should succeed");
         match outputs.get("request") {
             Some(Value::Request(gunbc_ir::transport::TransportRequest::Rest(r))) => {
                 assert!(r.url.contains("oauth2.googleapis.com/token"));
@@ -1014,12 +1124,17 @@ mod tests {
                 }),
             ))),
         );
-        let outputs = GcpOps::ParseOAuth2Refresh.execute(inputs).expect("should succeed");
+        let outputs = GcpOps::ParseOAuth2Refresh
+            .execute(inputs)
+            .expect("should succeed");
         assert_eq!(
             outputs.get("access_token").and_then(|v| v.as_str()),
             Some("ya29.a-token")
         );
-        assert_eq!(outputs.get("expires_in").and_then(|v| v.as_int()), Some(3600));
+        assert_eq!(
+            outputs.get("expires_in").and_then(|v| v.as_int()),
+            Some(3600)
+        );
     }
 
     #[test]
@@ -1039,5 +1154,125 @@ mod tests {
             .execute(inputs)
             .expect_err("should fail on error response");
         assert!(err.to_string().contains("expired or revoked"));
+    }
+
+    #[test]
+    fn parse_impersonate_reports_status_and_error_message() {
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "response".to_string(),
+            Value::Response(TransportResponse::Rest(RestResponse::new(
+                403,
+                serde_json::json!({
+                    "error": {
+                        "code": 403,
+                        "message": "Permission iam.serviceAccounts.getAccessToken denied",
+                        "status": "PERMISSION_DENIED"
+                    }
+                }),
+            ))),
+        );
+
+        let err = GcpOps::ParseImpersonate
+            .execute(inputs)
+            .expect_err("impersonation failure should bubble up");
+        let msg = err.to_string();
+        assert!(msg.contains("status 403"), "msg: {msg}");
+        assert!(
+            msg.contains("Permission iam.serviceAccounts.getAccessToken denied"),
+            "msg: {msg}"
+        );
+    }
+
+    #[test]
+    fn parse_impersonate_accepts_access_token_snake_case() {
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "response".to_string(),
+            Value::Response(TransportResponse::Rest(RestResponse::ok(
+                serde_json::json!({
+                    "access_token": "ya29.impersonated"
+                }),
+            ))),
+        );
+
+        let outputs = GcpOps::ParseImpersonate
+            .execute(inputs)
+            .expect("snake_case access token should parse");
+        assert_eq!(
+            outputs.get("access_token").and_then(|v| v.as_str()),
+            Some("ya29.impersonated")
+        );
+    }
+
+    #[test]
+    fn prepare_impersonate_skips_when_service_account_empty() {
+        let mut inputs = HashMap::new();
+        inputs.insert(
+            "access_token".to_string(),
+            Value::Str("base-token".to_string()),
+        );
+        inputs.insert("service_account".to_string(), Value::Str(String::new()));
+
+        let outputs = GcpOps::PrepareImpersonate
+            .execute(inputs)
+            .expect("empty service account should skip impersonation");
+        assert_eq!(outputs.get("skip"), Some(&Value::Bool(true)));
+    }
+
+    #[test]
+    fn parse_impersonate_uses_base_token_when_skipped() {
+        let mut inputs = HashMap::new();
+        inputs.insert("response".to_string(), Value::Skipped);
+        inputs.insert(
+            "base_access_token".to_string(),
+            Value::Str("base-token".to_string()),
+        );
+
+        let outputs = GcpOps::ParseImpersonate
+            .execute(inputs)
+            .expect("skipped impersonation should return base token");
+        assert_eq!(
+            outputs.get("access_token").and_then(|v| v.as_str()),
+            Some("base-token")
+        );
+    }
+
+    #[test]
+    fn build_credential_accepts_required_scopes_list() {
+        let mut inputs = HashMap::new();
+        inputs.insert("secret".to_string(), Value::Str("tok".to_string()));
+        inputs.insert("scheme".to_string(), Value::Str("bearer".to_string()));
+        inputs.insert("source_id".to_string(), Value::Str("openai".to_string()));
+        inputs.insert(
+            "required_scopes".to_string(),
+            Value::str_list(vec!["llm:chat_completion".to_string()]),
+        );
+
+        let outputs = GcpOps::BuildCredential
+            .execute(inputs)
+            .expect("valid required_scopes list should be accepted");
+        assert!(
+            outputs.contains_key("credential"),
+            "build_credential should return a credential"
+        );
+    }
+
+    #[test]
+    fn build_credential_rejects_wrong_required_scopes_type() {
+        let mut inputs = HashMap::new();
+        inputs.insert("secret".to_string(), Value::Str("tok".to_string()));
+        inputs.insert("scheme".to_string(), Value::Str("bearer".to_string()));
+        inputs.insert("source_id".to_string(), Value::Str("openai".to_string()));
+        inputs.insert("required_scopes".to_string(), Value::Int(1));
+
+        let err = GcpOps::BuildCredential
+            .execute(inputs)
+            .expect_err("wrong required_scopes type should fail");
+        assert!(
+            err.to_string().contains("required_scopes"),
+            "error should mention required_scopes, got: {}",
+            err
+        );
     }
 }

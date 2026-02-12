@@ -119,10 +119,7 @@ mod tests {
     }
 
     impl ResourceIo for TestIo {
-        fn read_file(
-            &self,
-            path: &std::path::Path,
-        ) -> Result<Vec<u8>, ResourceError> {
+        fn read_file(&self, path: &std::path::Path) -> Result<Vec<u8>, ResourceError> {
             self.files.borrow().get(path).cloned().ok_or_else(|| {
                 ResourceError::Io(std::io::Error::other(format!(
                     "file not found: {}",
@@ -131,28 +128,18 @@ mod tests {
             })
         }
 
-        fn write_file(
-            &self,
-            path: &std::path::Path,
-            contents: &[u8],
-        ) -> Result<(), ResourceError> {
+        fn write_file(&self, path: &std::path::Path, contents: &[u8]) -> Result<(), ResourceError> {
             self.files
                 .borrow_mut()
                 .insert(path.to_path_buf(), contents.to_vec());
             Ok(())
         }
 
-        fn file_exists(
-            &self,
-            path: &std::path::Path,
-        ) -> Result<bool, ResourceError> {
+        fn file_exists(&self, path: &std::path::Path) -> Result<bool, ResourceError> {
             Ok(self.files.borrow().contains_key(path))
         }
 
-        fn glob_paths(
-            &self,
-            _pattern: &str,
-        ) -> Result<Vec<PathBuf>, ResourceError> {
+        fn glob_paths(&self, _pattern: &str) -> Result<Vec<PathBuf>, ResourceError> {
             Ok(vec![])
         }
 
@@ -164,10 +151,7 @@ mod tests {
             Err(ResourceError::Io(std::io::Error::other("not supported")))
         }
 
-        fn file_mtime(
-            &self,
-            _path: &std::path::Path,
-        ) -> Result<SystemTime, ResourceError> {
+        fn file_mtime(&self, _path: &std::path::Path) -> Result<SystemTime, ResourceError> {
             Ok(SystemTime::now())
         }
     }

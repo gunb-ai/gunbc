@@ -3,11 +3,13 @@
 //! Resolves GitHub credentials via the cloud secret manager and performs
 //! a minimal GitHub API call to validate the token.
 
-use crate::config_loader::default_local_dev_config;
-use crate::graph::{build_cloud_secret_manager_credential_graph_from_config, CloudSecretManagerGraphOp};
+use crate::config_loader::graph_cloud_config;
+use crate::graph::{
+    build_cloud_secret_manager_credential_graph_from_config, CloudSecretManagerGraphOp,
+};
 use crate::ops::CloudOps;
 use gunbc_exec::{require_response, ExecError, Executable, OutputMap};
-use gunbc_ir::build::{optional, port, resource};
+use gunbc_ir::build::{list, optional, port, resource};
 use gunbc_ir::transport::github::api::github_rest_request;
 use gunbc_ir::transport::{TransportRequest, TransportResponse};
 use gunbc_ir::{
@@ -33,6 +35,7 @@ impl Executable for GitHubCredentialOps {
                 .str("service", "github")
                 .str("scheme", "bearer")
                 .str("header_name", "")
+                .str_list("required_scopes", vec!["github:api".to_string()])
                 .bool("interactive_allowed", true)
                 .ok(),
             GitHubCredentialOps::PrepareRateLimit => {
@@ -83,7 +86,7 @@ impl Executable for GitHubCredentialGraphOp {
     builder = "build_github_credential_graph()"
 )]
 pub fn build_github_credential_graph() -> Dag<GitHubCredentialGraphOp> {
-    let config = default_local_dev_config();
+    let config = graph_cloud_config();
     let mut builder: DagBuilder<GitHubCredentialGraphOp> = DagBuilder::new();
 
     // Cloud environment — pre-resolved config (no env var reads).
@@ -113,6 +116,7 @@ pub fn build_github_credential_graph() -> Dag<GitHubCredentialGraphOp> {
                 port("service", "String"),
                 port("scheme", "String"),
                 port("header_name", "String"),
+                list("required_scopes", "String"),
                 port("interactive_allowed", "Bool"),
             ],
             GitHubCredentialGraphOp::GitHub(GitHubCredentialOps::ResolveAuth),
@@ -146,7 +150,9 @@ pub fn build_github_credential_graph() -> Dag<GitHubCredentialGraphOp> {
         .expect("resolve_auth.service -> bind_secret.service");
 
     // Cloud credential acquisition graph — dispatched from config.
-    let cloud_subdag = lift_cloud_dag(build_cloud_secret_manager_credential_graph_from_config(&config));
+    let cloud_subdag = lift_cloud_dag(build_cloud_secret_manager_credential_graph_from_config(
+        &config,
+    ));
     let cloud_credential = builder
         .add_node_after(Node::subdag("cloud_credential", cloud_subdag), &bind_secret)
         .expect("cloud_credential node");
@@ -183,6 +189,12 @@ pub fn build_github_credential_graph() -> Dag<GitHubCredentialGraphOp> {
         .expect("resolve_auth.interactive_allowed -> cloud_credential.interactive_allowed");
     builder
         .add_edge(
+            resolve_auth.out("required_scopes"),
+            cloud_credential.in_port("required_scopes"),
+        )
+        .expect("resolve_auth.required_scopes -> cloud_credential.required_scopes");
+    builder
+        .add_edge(
             cloud_env.out("request_url"),
             cloud_credential.in_port("request_url"),
         )
@@ -207,6 +219,27 @@ pub fn build_github_credential_graph() -> Dag<GitHubCredentialGraphOp> {
         )
         .expect("prepare_request node");
 
+    // Scope preflight: fail fast on invalid/missing required scope declarations.
+    let scope_preflight = builder
+        .add_node_after(
+            Node::opaque(
+                "scope_preflight",
+                vec![list("required_scopes", "String")],
+                vec![port("scope_verified", "Bool")],
+                GitHubCredentialGraphOp::Cloud(CloudSecretManagerGraphOp::Cloud(
+                    CloudOps::ScopePreflight,
+                )),
+            ),
+            &resolve_auth,
+        )
+        .expect("scope_preflight node");
+    builder
+        .add_edge(
+            resolve_auth.out("required_scopes"),
+            scope_preflight.in_port("required_scopes"),
+        )
+        .expect("resolve_auth.required_scopes -> scope_preflight.required_scopes");
+
     // Execute transport + ParseStatus.
     let triplet = add_transport_execute_parse_named_with_passthrough(
         &mut builder,
@@ -214,13 +247,22 @@ pub fn build_github_credential_graph() -> Dag<GitHubCredentialGraphOp> {
         "execute",
         "parse_status",
         vec![],
-        vec![resource("credential", "Credential", AccessMode::Read)],
+        vec![
+            optional("scope_verified", "OptionalBool"),
+            resource("credential", "Credential", AccessMode::Read),
+        ],
         vec![port("status", "Int"), port("ok", "Bool")],
         GitHubCredentialGraphOp::GitHub(GitHubCredentialOps::ParseStatus),
         GitHubCredentialGraphOp::Transport(TransportOps::Execute),
         Some(&cloud_credential),
     )
     .expect("transport triplet");
+    builder
+        .add_edge(
+            scope_preflight.out("scope_verified"),
+            triplet.execute.in_port("scope_verified"),
+        )
+        .expect("scope_preflight.scope_verified -> execute.scope_verified");
 
     builder
         .add_edge(

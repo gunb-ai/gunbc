@@ -138,6 +138,15 @@ pub fn github_credential_lifecycle_mock_spec() -> MockSpec {
                 .description("Prepare request builds GitHub REST rate_limit call"),
         )
         .node_example(
+            NodeExample::new("scope_preflight")
+                .input(
+                    "required_scopes",
+                    Value::str_list(vec!["gist:write".to_string()]),
+                )
+                .output("scope_verified", OutputMatcher::exact(Value::Bool(true)))
+                .description("Scope preflight validates required scope declarations"),
+        )
+        .node_example(
             NodeExample::new("parse_status")
                 .input(
                     "response",

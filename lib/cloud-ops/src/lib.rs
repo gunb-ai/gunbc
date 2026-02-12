@@ -3,7 +3,6 @@
 //! This crate stitches provider-specific secret manager DAGs together behind a
 //! stable interface so callers can switch providers without reworking DAG shapes.
 
-pub mod auth_doctor;
 pub mod config_loader;
 pub mod config_resource;
 pub mod env_requirements;
@@ -12,7 +11,7 @@ mod github_credential_graph;
 mod graph;
 mod ops;
 
-pub use config_loader::default_local_dev_config;
+pub use config_loader::{default_local_dev_config, graph_cloud_config, resolve_graph_cloud_config};
 pub use env_requirements::{
     aws_github_actions_env_stub, azure_github_actions_env_stub, cloud_env_matrix,
     collect_missing_requirements, detect_cloud_env_requirements, detect_provider_runtime,
@@ -33,8 +32,7 @@ pub use graph::{
     build_cloud_secret_manager_upsert_graph_from_config,
     build_cloud_secret_manager_upsert_graph_gcp_github,
     build_cloud_secret_manager_upsert_graph_gcp_local,
-    build_cloud_secret_manager_upsert_graph_gcp_metadata,
-    CloudSecretManagerGraphOp,
+    build_cloud_secret_manager_upsert_graph_gcp_metadata, CloudSecretManagerGraphOp,
 };
 pub use ops::CloudOps;
 
@@ -59,8 +57,6 @@ pub use ops::CloudOps;
 ///     )),
 /// ));
 /// ```
-pub fn const_cloud_config(
-    config: gunbc_ir::transport::cloud::CloudSecretConfig,
-) -> CloudOps {
+pub fn const_cloud_config(config: gunbc_ir::transport::cloud::CloudSecretConfig) -> CloudOps {
     CloudOps::ConstCloudConfig { config }
 }

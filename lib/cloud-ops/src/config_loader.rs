@@ -11,6 +11,19 @@ use gunbc_ir::transport::cloud::{
     CloudSecretRef,
 };
 
+const ENV_CONFIG_JSON: &str = "GUNBC_CLOUD_CONFIG_JSON";
+const ENV_CONFIG_TOML: &str = "GUNBC_CLOUD_CONFIG_TOML";
+const ENV_PROFILE: &str = "GUNBC_CLOUD_PROFILE";
+const ENV_NAMESPACE: &str = "GUNBC_CLOUD_NAMESPACE";
+const ENV_SECRET_VERSION: &str = "GUNBC_CLOUD_SECRET_VERSION";
+const ENV_CONFIG_REQUIRED: &str = "GUNBC_CLOUD_CONFIG_REQUIRED";
+
+const LEGACY_ENV_WIF_PROVIDER: &str = "GCP_WIF_PROVIDER";
+const LEGACY_ENV_SECRETS_PROJECT: &str = "GCP_SECRETS_PROJECT";
+const LEGACY_ENV_SECRETS_PREFIX: &str = "GCP_SECRETS_PREFIX";
+const LEGACY_ENV_SECRETS_SA: &str = "GCP_SECRETS_SA";
+const LEGACY_ENV_IMPERSONATE_SA: &str = "GCP_SECRETS_IMPERSONATE_SA";
+
 // ---------------------------------------------------------------------------
 // TOML parser (minimal, avoids pulling in toml crate)
 // ---------------------------------------------------------------------------
@@ -123,6 +136,130 @@ pub fn detect_runtime() -> CloudRuntimeKind {
 }
 
 // ---------------------------------------------------------------------------
+// Graph config resolution (centralized precedence)
+// ---------------------------------------------------------------------------
+
+/// Resolve graph cloud config using deterministic precedence.
+///
+/// Precedence:
+/// 1) `GUNBC_CLOUD_CONFIG_JSON` (serialized `CloudSecretConfig`)
+/// 2) `GUNBC_CLOUD_CONFIG_TOML` (+ namespace/profile selection)
+/// 3) Legacy env model (`GCP_*`)
+///
+/// If no source is configured, this returns an error.
+pub fn resolve_graph_cloud_config() -> Result<CloudSecretConfig, String> {
+    if let Some(raw_json) = env_nonempty(ENV_CONFIG_JSON) {
+        let mut config: CloudSecretConfig = serde_json::from_str(&raw_json).map_err(|e| {
+            format!("{ENV_CONFIG_JSON} must contain valid CloudSecretConfig JSON: {e}")
+        })?;
+        if let Some(version) = env_nonempty(ENV_SECRET_VERSION) {
+            config.secret.version = Some(version);
+        }
+        return Ok(config);
+    }
+
+    if let Some(raw_toml) = env_nonempty(ENV_CONFIG_TOML) {
+        let spec = parse_config_toml(&raw_toml)
+            .map_err(|e| format!("failed to parse {ENV_CONFIG_TOML}: {e}"))?;
+        let runtime = runtime_with_override();
+        let namespace = env_nonempty(ENV_NAMESPACE)
+            .or_else(|| env_nonempty(ENV_PROFILE))
+            .or_else(|| spec.default_namespace.clone())
+            .ok_or_else(|| {
+                format!(
+                    "{ENV_CONFIG_TOML} is set but no namespace/profile resolved; set {ENV_NAMESPACE} or {ENV_PROFILE}, or include default_namespace"
+                )
+            })?;
+
+        let mut config = spec
+            .to_secret_config(&namespace, runtime, "")
+            .ok_or_else(|| format!("namespace '{namespace}' could not be resolved from config"))?;
+        if let Some(version) = env_nonempty(ENV_SECRET_VERSION) {
+            config.secret.version = Some(version);
+        }
+        return Ok(config);
+    }
+
+    if let Some(config) = resolve_legacy_gcp_env_config() {
+        return Ok(config);
+    }
+
+    Err(format!(
+        "no cloud config source found (expected {ENV_CONFIG_JSON} or {ENV_CONFIG_TOML}, or legacy {LEGACY_ENV_SECRETS_PROJECT}/{LEGACY_ENV_SECRETS_PREFIX})"
+    ))
+}
+
+/// Resolve graph cloud config with compatibility fallback.
+///
+/// When config sources are absent, this falls back to `default_local_dev_config()`
+/// unless `GUNBC_CLOUD_CONFIG_REQUIRED=1|true`.
+pub fn graph_cloud_config() -> CloudSecretConfig {
+    match resolve_graph_cloud_config() {
+        Ok(config) => config,
+        Err(err) => {
+            if env_truthy(ENV_CONFIG_REQUIRED) {
+                panic!("cloud config resolution failed: {err}");
+            }
+            default_local_dev_config()
+        }
+    }
+}
+
+fn env_nonempty(name: &str) -> Option<String> {
+    std::env::var(name)
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+}
+
+fn env_truthy(name: &str) -> bool {
+    env_nonempty(name)
+        .map(|v| {
+            matches!(
+                v.as_str(),
+                "1" | "true" | "TRUE" | "True" | "yes" | "YES" | "on" | "ON"
+            )
+        })
+        .unwrap_or(false)
+}
+
+fn runtime_with_override() -> CloudRuntimeKind {
+    env_nonempty("CLOUD_RUNTIME")
+        .and_then(|v| CloudRuntimeKind::parse(&v))
+        .unwrap_or_else(detect_runtime)
+}
+
+fn resolve_legacy_gcp_env_config() -> Option<CloudSecretConfig> {
+    if let Some(provider) =
+        env_nonempty("CLOUD_PROVIDER").and_then(|v| CloudProviderKind::parse(&v))
+    {
+        if provider != CloudProviderKind::Gcp {
+            return None;
+        }
+    }
+
+    let project = env_nonempty(LEGACY_ENV_SECRETS_PROJECT)?;
+    let prefix = env_nonempty(LEGACY_ENV_SECRETS_PREFIX)?;
+    let audience = env_nonempty(LEGACY_ENV_WIF_PROVIDER).unwrap_or_else(|| "local-dev".to_string());
+    let runtime = runtime_with_override();
+
+    Some(CloudSecretConfig {
+        provider: CloudProviderKind::Gcp,
+        runtime,
+        audience,
+        project_or_account: project,
+        secret: CloudSecretRef {
+            prefix,
+            name: String::new(),
+            delimiter: String::new(),
+            version: env_nonempty(ENV_SECRET_VERSION),
+        },
+        service_account_or_role: env_nonempty(LEGACY_ENV_SECRETS_SA),
+        impersonate_account_or_role: env_nonempty(LEGACY_ENV_IMPERSONATE_SA),
+    })
+}
+
+// ---------------------------------------------------------------------------
 // Config resolution
 // ---------------------------------------------------------------------------
 
@@ -190,6 +327,7 @@ pub fn default_local_dev_config() -> CloudSecretConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex, OnceLock};
 
     const SAMPLE_TOML: &str = r#"
 default_namespace = "dev"
@@ -284,5 +422,125 @@ service_account = "gunbai-prod-secrets@gunbai-secrets.iam.gserviceaccount.com"
         let spec = parse_config_toml("").unwrap();
         assert!(spec.namespaces.is_empty());
         assert!(spec.default_namespace.is_none());
+    }
+
+    #[test]
+    fn resolve_graph_cloud_config_prefers_json_over_toml() {
+        with_env_lock(|| {
+            let json_config = CloudSecretConfig {
+                provider: CloudProviderKind::Gcp,
+                runtime: CloudRuntimeKind::LocalDev,
+                audience: "json-audience".to_string(),
+                project_or_account: "json-project".to_string(),
+                secret: CloudSecretRef {
+                    prefix: "json-".to_string(),
+                    name: String::new(),
+                    delimiter: String::new(),
+                    version: None,
+                },
+                service_account_or_role: Some("json-sa@example".to_string()),
+                impersonate_account_or_role: None,
+            };
+            std::env::set_var(
+                ENV_CONFIG_JSON,
+                serde_json::to_string(&json_config).expect("serialize json config"),
+            );
+            std::env::set_var(ENV_CONFIG_TOML, SAMPLE_TOML);
+            std::env::set_var(ENV_PROFILE, "prod");
+
+            let resolved = resolve_graph_cloud_config().expect("json config should resolve");
+            assert_eq!(resolved.project_or_account, "json-project");
+            assert_eq!(resolved.audience, "json-audience");
+        });
+    }
+
+    #[test]
+    fn resolve_graph_cloud_config_uses_toml_profile_when_present() {
+        with_env_lock(|| {
+            std::env::set_var(ENV_CONFIG_TOML, SAMPLE_TOML);
+            std::env::set_var(ENV_PROFILE, "prod");
+
+            let resolved = resolve_graph_cloud_config().expect("toml config should resolve");
+            assert_eq!(resolved.project_or_account, "gunbai-secrets");
+            assert_eq!(resolved.secret.prefix, "prod-");
+            assert_eq!(
+                resolved.service_account_or_role,
+                Some("gunbai-prod-secrets@gunbai-secrets.iam.gserviceaccount.com".to_string())
+            );
+        });
+    }
+
+    #[test]
+    fn resolve_graph_cloud_config_uses_legacy_env_when_no_spec_source() {
+        with_env_lock(|| {
+            std::env::set_var(LEGACY_ENV_SECRETS_PROJECT, "legacy-project");
+            std::env::set_var(LEGACY_ENV_SECRETS_PREFIX, "legacy-");
+            std::env::set_var(LEGACY_ENV_WIF_PROVIDER, "legacy-audience");
+            std::env::set_var(LEGACY_ENV_SECRETS_SA, "legacy-sa@example");
+
+            let resolved = resolve_graph_cloud_config().expect("legacy env should resolve");
+            assert_eq!(resolved.project_or_account, "legacy-project");
+            assert_eq!(resolved.secret.prefix, "legacy-");
+            assert_eq!(resolved.audience, "legacy-audience");
+            assert_eq!(
+                resolved.service_account_or_role,
+                Some("legacy-sa@example".to_string())
+            );
+        });
+    }
+
+    #[test]
+    fn graph_cloud_config_falls_back_to_default_when_unconfigured() {
+        with_env_lock(|| {
+            let resolved = graph_cloud_config();
+            assert_eq!(resolved.project_or_account, "gunbai-secrets");
+            assert_eq!(resolved.secret.prefix, "dev-");
+        });
+    }
+
+    #[test]
+    #[should_panic(expected = "cloud config resolution failed")]
+    fn graph_cloud_config_panics_when_required_flag_is_set() {
+        with_env_lock(|| {
+            std::env::set_var(ENV_CONFIG_REQUIRED, "true");
+            let _ = graph_cloud_config();
+        });
+    }
+
+    fn with_env_lock<F>(f: F)
+    where
+        F: FnOnce() + std::panic::UnwindSafe,
+    {
+        static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        let _guard = ENV_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        clear_cloud_config_env();
+        let result = std::panic::catch_unwind(f);
+        clear_cloud_config_env();
+        if let Err(panic) = result {
+            std::panic::resume_unwind(panic);
+        }
+    }
+
+    fn clear_cloud_config_env() {
+        for key in [
+            ENV_CONFIG_JSON,
+            ENV_CONFIG_TOML,
+            ENV_PROFILE,
+            ENV_NAMESPACE,
+            ENV_SECRET_VERSION,
+            ENV_CONFIG_REQUIRED,
+            "CLOUD_PROVIDER",
+            "CLOUD_RUNTIME",
+            LEGACY_ENV_WIF_PROVIDER,
+            LEGACY_ENV_SECRETS_PROJECT,
+            LEGACY_ENV_SECRETS_PREFIX,
+            LEGACY_ENV_SECRETS_SA,
+            LEGACY_ENV_IMPERSONATE_SA,
+        ] {
+            std::env::remove_var(key);
+        }
     }
 }

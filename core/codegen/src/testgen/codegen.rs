@@ -36,6 +36,39 @@ use gunbc_test::{FermiCost, MockSpec, OutputMatcher, TestClass};
 use serde_json::Value as JsonValue;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SeedPolicy {
+    Generated,
+    ExplicitSeedRequired,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SeedContext {
+    RealSingleNodeRequiredInput,
+}
+
+fn seed_policy_for_type(type_id: &str) -> SeedPolicy {
+    match type_id {
+        // Semantic carrier types: shape-valid placeholders are often behavior-invalid.
+        "TransportRequest"
+        | "TransportResponse"
+        | "Credential"
+        | "Secret"
+        | "FilesystemHandle"
+        | "NetworkHandle"
+        | "ToolHandle" => SeedPolicy::ExplicitSeedRequired,
+        _ => SeedPolicy::Generated,
+    }
+}
+
+fn requires_explicit_seed(type_id: &str, context: SeedContext) -> bool {
+    match context {
+        SeedContext::RealSingleNodeRequiredInput => {
+            seed_policy_for_type(type_id) == SeedPolicy::ExplicitSeedRequired
+        }
+    }
+}
+
 /// Configuration for test generation.
 ///
 /// # What is NOT generated (proven by construction):
@@ -1782,6 +1815,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             Result<BTreeMap<String, ValueExpr>, Vec<String>>,
         > = HashMap::new();
         let mut skipped_nodes: HashSet<String> = HashSet::new();
+        let mut strict_seed_checked_nodes: HashSet<String> = HashSet::new();
         let lowered_ids = gunbc_exec::lower(self.dag)
             .unwrap_or_else(|err| {
                 panic!(
@@ -1849,6 +1883,10 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                     continue;
                 }
             };
+
+            if strict_seed_checked_nodes.insert(node_id.0.clone()) {
+                self.assert_optional_required_inputs_seeded(node, base_inputs);
+            }
 
             // Missing optional input should not error.
             let mut inputs_missing = base_inputs.clone();
@@ -1952,6 +1990,73 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
         }
 
         (tests, notes)
+    }
+
+    fn has_explicit_node_input_seed(&self, node_id: &str, port_name: &str) -> bool {
+        if let Some(spec) = &self.mock_spec {
+            if spec
+                .input_mocks
+                .iter()
+                .any(|mock| mock.node == node_id && mock.port == port_name)
+            {
+                return true;
+            }
+            if spec
+                .node_examples
+                .iter()
+                .any(|example| example.node_id == node_id && example.inputs.contains_key(port_name))
+            {
+                return true;
+            }
+        }
+
+        self.dag
+            .get_node(&NodeId(node_id.to_string()))
+            .is_some_and(|node| {
+                node.examples
+                    .iter()
+                    .any(|example| example.inputs.contains_key(port_name))
+            })
+    }
+
+    fn assert_optional_required_inputs_seeded(
+        &self,
+        node: &gunbc_ir::Node<T>,
+        base_inputs: &BTreeMap<String, ValueExpr>,
+    ) {
+        let mut missing = Vec::new();
+
+        for port in &node.inputs {
+            let needs_value = port.has_guard() || !port.cardinality.allows_empty();
+            if !needs_value {
+                continue;
+            }
+            if port.name.0 == "skip" && port.type_id.0 == "Bool" {
+                continue;
+            }
+            if !requires_explicit_seed(
+                port.type_id.0.as_str(),
+                SeedContext::RealSingleNodeRequiredInput,
+            ) {
+                continue;
+            }
+            if !base_inputs.contains_key(&port.name.0)
+                || !self.has_explicit_node_input_seed(&node.id.0, &port.name.0)
+            {
+                missing.push(format!("{}.{} ({})", node.id.0, port.name.0, port.type_id.0));
+            }
+        }
+
+        if missing.is_empty() {
+            return;
+        }
+
+        panic!(
+            "Optional input tests require explicit seeds for required semantic inputs in Real single-node mode.\n\
+             Missing explicit seeds: {}.\n\
+             Add one of: MockSpec::input_mock(\"<node>\", \"<port>\", ...), MockSpec::node_example(...), or Node::with_example(...).",
+            missing.join(", ")
+        );
     }
 
     // =======================================================================
@@ -2950,6 +3055,22 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                 }
             }
         }
+
+        // Seed known per-node inputs from MockSpec before generic synthesis.
+        if let Some(spec) = &self.mock_spec {
+            for input_mock in &spec.input_mocks {
+                if input_mock.node != node_id.0 {
+                    continue;
+                }
+                if !node.inputs.iter().any(|port| port.name.0 == input_mock.port) {
+                    continue;
+                }
+                inputs
+                    .entry(input_mock.port.clone())
+                    .or_insert_with(|| ValueExpr::from(&input_mock.value));
+            }
+        }
+
         let mut issues = Vec::new();
 
         for port in &node.inputs {
@@ -5592,6 +5713,108 @@ mod tests {
             code.contains("assert_eq!"),
             "should have exact match assertion"
         );
+    }
+
+    #[test]
+    fn test_optional_inputs_use_mockspec_input_mocks_for_required_ports() {
+        use gunbc_ir::transport::{RestResponse, TransportResponse};
+
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque(
+            "parse",
+            vec![
+                port("response", "TransportResponse"),
+                optional("fallback", "OptionalString"),
+            ],
+            vec![port("result", "String")],
+            (),
+        ));
+
+        let spec = MockSpec::new("opt")
+            .input_mock(
+                "parse",
+                "response",
+                Value::Response(TransportResponse::Rest(RestResponse::ok(
+                    serde_json::json!({ "result": "ok" }),
+                ))),
+            )
+            .boundary("parse", "result", Value::Str("ok".into()))
+            .skip_node_example("parse");
+
+        let generator = TestGenerator::new(&dag)
+            .with_mock_spec(spec)
+            .with_mock_spec_fn("crate::mock_spec()");
+        let code = generator.generate_test_module("opt", "build_opt_graph()");
+
+        assert!(
+            code.contains("test_optional_missing_parse_fallback"),
+            "should generate missing-optional test"
+        );
+        assert!(
+            code.contains("TransportResponse::Rest"),
+            "required inputs should come from MockSpec input_mock values"
+        );
+        assert!(
+            !code.contains(
+                "TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: \"<MOCK>\""
+            ),
+            "should not synthesize generic shell placeholders when input mocks exist"
+        );
+    }
+
+    #[test]
+    fn test_seed_policy_marks_semantic_types_explicit() {
+        assert_eq!(
+            seed_policy_for_type("TransportResponse"),
+            SeedPolicy::ExplicitSeedRequired
+        );
+        assert_eq!(
+            seed_policy_for_type("TransportRequest"),
+            SeedPolicy::ExplicitSeedRequired
+        );
+        assert_eq!(
+            seed_policy_for_type("Credential"),
+            SeedPolicy::ExplicitSeedRequired
+        );
+        assert_eq!(
+            seed_policy_for_type("Secret"),
+            SeedPolicy::ExplicitSeedRequired
+        );
+        assert_eq!(seed_policy_for_type("String"), SeedPolicy::Generated);
+        assert_eq!(seed_policy_for_type("Int"), SeedPolicy::Generated);
+
+        assert!(requires_explicit_seed(
+            "TransportResponse",
+            SeedContext::RealSingleNodeRequiredInput
+        ));
+        assert!(!requires_explicit_seed(
+            "String",
+            SeedContext::RealSingleNodeRequiredInput
+        ));
+    }
+
+    #[test]
+    #[should_panic(expected = "Optional input tests require explicit seeds for required semantic inputs in Real single-node mode")]
+    fn test_optional_inputs_require_explicit_semantic_seed() {
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque(
+            "parse",
+            vec![
+                port("response", "TransportResponse"),
+                optional("fallback", "OptionalString"),
+            ],
+            vec![port("result", "String")],
+            (),
+        ));
+
+        let spec = MockSpec::new("opt")
+            .boundary("parse", "result", Value::Str("ok".into()))
+            .skip_node_example("parse");
+
+        let generator = TestGenerator::new(&dag)
+            .with_mock_spec(spec)
+            .with_mock_spec_fn("crate::mock_spec()");
+        let _ = generator.generate_test_module("opt", "build_opt_graph()");
     }
 
     #[test]

@@ -68,9 +68,8 @@ fn mock_env(mocks: &mut BoundaryMocks) {
 
     let cloud_config = CloudSecretConfig {
         provider: CloudProviderKind::Gcp,
-        runtime: CloudRuntimeKind::GitHubActions,
-        audience: "projects/123/locations/global/workloadIdentityPools/github/providers/gha"
-            .to_string(),
+        runtime: CloudRuntimeKind::LocalDev,
+        audience: "local-dev".to_string(),
         project_or_account: "mock-secrets".to_string(),
         secret: CloudSecretRef {
             prefix: "ci-".to_string(),
@@ -109,6 +108,45 @@ fn mock_env(mocks: &mut BoundaryMocks) {
     ]));
     mocks.set_value("cloud_credential", "credential", credential);
     mocks.set_value("cloud_credential", "expires_in", Value::Int(3_600));
+    // local_auth_upsert sub-DAG mocks (local-dev path)
+    let adc_path = "/tmp/mock-adc.json";
+    let mock_adc_json = serde_json::json!({
+        "type": "authorized_user",
+        "client_id": "mock-client-id.apps.googleusercontent.com",
+        "client_secret": "mock-client-secret",
+        "refresh_token": "mock-refresh-token"
+    })
+    .to_string();
+    mocks.set_value(
+        "cloud_credential/gcp_wif_secret/local_auth_upsert/net_env",
+        "net",
+        gunbc_primitives::NetworkHandle.into(),
+    );
+    mocks.set_value(
+        "cloud_credential/gcp_wif_secret/local_auth_upsert/execute_check",
+        "response",
+        Value::Response(TransportResponse::File(
+            gunbc_ir::transport::file::FileResponse::exists_result(adc_path, true),
+        )),
+    );
+    mocks.set_value(
+        "cloud_credential/gcp_wif_secret/local_auth_upsert/execute_read_adc",
+        "response",
+        Value::Response(TransportResponse::File(
+            gunbc_ir::transport::file::FileResponse::read_ok(adc_path, mock_adc_json),
+        )),
+    );
+    mocks.set_value(
+        "cloud_credential/gcp_wif_secret/local_auth_upsert/execute_oauth2",
+        "response",
+        Value::Response(TransportResponse::Rest(
+            gunbc_ir::transport::RestResponse::ok(serde_json::json!({
+                "access_token": "mock-local-token",
+                "expires_in": 3599,
+                "token_type": "Bearer"
+            })),
+        )),
+    );
     mocks.set_value(
         "cloud_credential/gcp_wif_secret/net_env",
         "net",

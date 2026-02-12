@@ -27,15 +27,11 @@
 //! Mock specs are in `graph_mock.rs` for test generation.
 
 #![deny(dead_code)]
-pub mod auth_doctor;
 pub mod graph;
 
 pub mod graph_mock;
 
 // Re-export public API
-pub use auth_doctor::build_gist_auth_doctor_graph;
-// Re-export CloudAuthDoctorOp for backwards compatibility (used by graph_mock.rs).
-pub use gunbc_lib_cloud_ops::auth_doctor::CloudAuthDoctorOp;
 pub use graph::{
     build_gist_graph, build_gist_graph_with_config, build_read_file_body_dag, gist_signature,
     GistGraphOp, GistMode,
@@ -97,22 +93,6 @@ pub fn gist_diff_tool() {}
     returns_result
 )]
 pub fn gist_recent_tool() {}
-
-#[gunbc_tool_registry_macros::tool_target(
-    name = "gist-auth-doctor",
-    crate_name = "gunbc-gist",
-    description = "Diagnose auth/credential setup for gist workflows",
-    builder = "build_gist_auth_doctor_graph",
-    args = "if runtime_hint.trim().is_empty() { None } else { Some(runtime_hint.clone()) }",
-    import = "use gunbc_gist::build_gist_auth_doctor_graph;",
-    mock_spec = "gunbc_gist::graph_mock::gist_auth_doctor_mock_spec()",
-    package = "gist",
-    binary = "gist-auth-doctor",
-    entrypoints = r#"[{"port_name":"runtime_hint","type_id":"String","short":"r","default":"","help":"Override runtime for diagnosis (github|metadata|local)","make_var":"RUNTIME"}]"#,
-    has_invocation,
-    returns_result
-)]
-pub fn gist_auth_doctor_tool() {}
 
 // ============================================================================
 // DagSpec Registry Helpers

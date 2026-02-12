@@ -27,6 +27,8 @@ use gunbc_exec::{
     optional_str_strict, propagate_skipped, require_json, require_map_str_str, require_str,
     ExecError, Executable, IntoExecResult, OutputMap,
 };
+use gunbc_ir::transport::review::ReviewScopeContract;
+use gunbc_ir::transport::ScopeContract;
 use gunbc_ir::Value;
 use gunbc_primitives::{FormatMapOp, StableHashOp};
 use serde::{Deserialize, Serialize};
@@ -251,6 +253,19 @@ pub enum ReviewOps {
     /// - `system_prompt`: String - system prompt for LLM
     PrepareReviewPrompt,
 
+    /// Resolve review auth requirements from the review scope contract.
+    ///
+    /// Inputs:
+    /// - `provider`: String - LLM provider ID ("openai", "anthropic")
+    ///
+    /// Outputs:
+    /// - `service`: String - credential service ID
+    /// - `scheme`: String - auth scheme ("bearer" or "header")
+    /// - `header_name`: String - header name for "header" scheme
+    /// - `required_scopes`: List<String> - includes `review:code_review`
+    /// - `interactive_allowed`: Bool - whether interactive remediation is allowed
+    ResolveAuthContract,
+
     /// Parse an LLM response into structured findings.
     ///
     /// Inputs:
@@ -301,6 +316,7 @@ impl Executable for ReviewOps {
         match self {
             ReviewOps::LoadPipelineConfig(config) => execute_load_pipeline_config(config),
             ReviewOps::PrepareReviewPrompt => execute_prepare_review_prompt(inputs),
+            ReviewOps::ResolveAuthContract => execute_resolve_auth_contract(inputs),
             ReviewOps::ParseReviewResponse => execute_parse_review_response(inputs),
             ReviewOps::MergeOutputs => execute_merge_outputs(inputs),
             ReviewOps::HashFinding => execute_hash_finding(inputs),
@@ -373,6 +389,24 @@ fn execute_prepare_review_prompt(
     OutputMap::new()
         .str("question", question)
         .str("system_prompt", system_prompt)
+        .ok()
+}
+
+fn execute_resolve_auth_contract(
+    inputs: HashMap<String, Value>,
+) -> Result<HashMap<String, Value>, ExecError> {
+    let provider = require_str(&inputs, "provider")?;
+    let intent = ReviewScopeContract::new(provider).credential_intent();
+    intent
+        .validate()
+        .map_err(|e| ExecError::new(format!("invalid review credential contract: {e}")))?;
+
+    OutputMap::new()
+        .str("service", intent.service)
+        .str("scheme", intent.scheme)
+        .str("header_name", intent.header_name)
+        .str_list("required_scopes", intent.required_scopes)
+        .bool("interactive_allowed", intent.interactive_allowed)
         .ok()
 }
 
@@ -775,6 +809,44 @@ mod tests {
 
         let question = result.get("question").unwrap().as_str().unwrap();
         assert!(question.contains("web application backend"));
+    }
+
+    #[test]
+    fn test_resolve_auth_contract_openai_includes_review_scope() {
+        let mut inputs = HashMap::new();
+        inputs.insert("provider".to_string(), Value::Str("openai".to_string()));
+
+        let result = ReviewOps::ResolveAuthContract
+            .execute(inputs)
+            .expect("resolve_auth_contract should succeed for openai");
+
+        assert_eq!(
+            result.get("service").and_then(Value::as_str),
+            Some("openai")
+        );
+        assert_eq!(result.get("scheme").and_then(Value::as_str), Some("bearer"));
+        let scopes = result
+            .get("required_scopes")
+            .and_then(Value::as_str_list)
+            .expect("required_scopes should be present");
+        assert!(scopes.iter().any(|s| s == "llm:chat_completion"));
+        assert!(scopes.iter().any(|s| s == "review:code_review"));
+    }
+
+    #[test]
+    fn test_resolve_auth_contract_anthropic_header() {
+        let mut inputs = HashMap::new();
+        inputs.insert("provider".to_string(), Value::Str("anthropic".to_string()));
+
+        let result = ReviewOps::ResolveAuthContract
+            .execute(inputs)
+            .expect("resolve_auth_contract should succeed for anthropic");
+
+        assert_eq!(result.get("scheme").and_then(Value::as_str), Some("header"));
+        assert_eq!(
+            result.get("header_name").and_then(Value::as_str),
+            Some("x-api-key")
+        );
     }
 
     #[test]
