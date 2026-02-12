@@ -217,10 +217,10 @@ fn render_github_step(step: &SharedStep, _config: &RenderConfig) -> String {
             if checkout.fetch_depth.is_some() || checkout.submodules.is_some() {
                 yaml.push_str("        with:\n");
                 if let Some(depth) = checkout.fetch_depth {
-                    write!(yaml, "          fetch-depth: {}\n", depth).unwrap();
+                    writeln!(yaml, "          fetch-depth: {}", depth).unwrap();
                 }
                 if let Some(ref submodules) = checkout.submodules {
-                    write!(yaml, "          submodules: {}\n", submodules).unwrap();
+                    writeln!(yaml, "          submodules: {}", submodules).unwrap();
                 }
             }
             yaml
@@ -248,8 +248,8 @@ fn render_github_step(step: &SharedStep, _config: &RenderConfig) -> String {
                 yaml.push_str("        env:\n");
                 for dep in depends_on {
                     // Pass outputs from previous steps
-                    write!(yaml,
-                        "          STEP_{}_SUCCESS: ${{{{ steps.{}.outputs.STEP_{}_SUCCESS }}}}\n",
+                    writeln!(yaml,
+                        "          STEP_{}_SUCCESS: ${{{{ steps.{}.outputs.STEP_{}_SUCCESS }}}}",
                         dep.0.to_uppercase(),
                         dep.0,
                         dep.0.to_uppercase()

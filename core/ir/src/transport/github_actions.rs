@@ -616,19 +616,19 @@ impl WorkflowConfig {
         // Jobs
         yaml.push_str("jobs:\n");
         yaml.push_str("  ci:\n");
-        write!(yaml, "    runs-on: {}\n", self.runner.id).unwrap();
-        write!(yaml, "    timeout-minutes: {}\n", self.timeout_minutes).unwrap();
+        writeln!(yaml, "    runs-on: {}", self.runner.id).unwrap();
+        writeln!(yaml, "    timeout-minutes: {}", self.timeout_minutes).unwrap();
         yaml.push_str("    steps:\n");
 
         // Integration steps (actions)
         for integration in &self.integrations {
-            write!(yaml, "      - uses: {}\n", integration.uses).unwrap();
+            writeln!(yaml, "      - uses: {}", integration.uses).unwrap();
         }
 
         // Run command
         if !self.run_command.is_empty() {
             yaml.push_str("      - name: Run CI\n");
-            write!(yaml, "        run: {}\n", self.run_command).unwrap();
+            writeln!(yaml, "        run: {}", self.run_command).unwrap();
         }
 
         yaml

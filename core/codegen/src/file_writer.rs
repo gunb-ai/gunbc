@@ -145,13 +145,13 @@ pub fn format_diff(old: &str, new: &str) -> String {
 
         if old_line != new_line {
             if !old_line.is_empty() {
-                write!(result, "- {}\n", old_line).unwrap();
+                writeln!(result, "- {}", old_line).unwrap();
             }
             if !new_line.is_empty() {
-                write!(result, "+ {}\n", new_line).unwrap();
+                writeln!(result, "+ {}", new_line).unwrap();
             }
         } else {
-            write!(result, "  {}\n", old_line).unwrap();
+            writeln!(result, "  {}", old_line).unwrap();
         }
     }
 

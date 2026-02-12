@@ -4,14 +4,18 @@
 //! - If lint inputs are fresh, do nothing.
 //! - If stale or missing, run codegen/testgen/pragma + clippy fix/lint,
 //!   then update the resource manifest.
+//!
+//! Preflight commands always use `--release` to reuse cached release artifacts
+//! and avoid triggering full debug rebuilds in CI.
 
 use crate::ops::execute_request;
 use crate::TransportIo;
+use gunbc_ir::cargo::{CargoCommand, CargoInvocation, Subcommand, Warnings};
 use gunbc_ir::resource::{
     load_manifest_default, save_manifest_default, ContentHash, ExecMode, ManagedResource,
     ManifestEntry, ResourceDef, ResourceError, ResourceIo, ResourceManifest, ResourceState,
 };
-use gunbc_ir::transport::{ShellRequest, TransportRequest, TransportResponse};
+use gunbc_ir::transport::{TransportRequest, TransportResponse};
 use gunbc_ir::ResourceId;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -283,66 +287,55 @@ fn compute_lint_key(io: &dyn ResourceIo, files: &[PathBuf]) -> Result<ContentHas
 }
 
 fn run_lint_upsert(resource_id: &ResourceId) -> Result<(), ResourceError> {
-    let env = [(PREFLIGHT_ENV_DISABLE, "1")];
+    // Always use --release for preflight commands. These tools (codegen, testgen,
+    // pragma) don't benefit from debug mode, and using release ensures we reuse
+    // cached artifacts when CI runs with --release (avoiding a 30+ min rebuild).
 
-    run_shell(
-        resource_id,
-        "cargo",
-        &["run", "-p", "gunbc-dag", "--bin", "gunbc-codegen-dag"],
-        &env,
-    )?;
+    // codegen-dag: cargo run -p gunbc-dag --bin gunbc-codegen-dag --release
+    let codegen_cmd = CargoCommand::new(Subcommand::Run(
+        CargoInvocation::composed("codegen-dag", "dag"),
+    ))
+    .release();
+    run_cargo_command(resource_id, &codegen_cmd)?;
 
-    run_shell(
-        resource_id,
-        "cargo",
-        &["run", "-p", "gunbc-dag", "--bin", "gunbc-testgen"],
-        &env,
-    )?;
+    // testgen: cargo run -p gunbc-dag --bin gunbc-testgen --release
+    let testgen_cmd = CargoCommand::new(Subcommand::Run(
+        CargoInvocation::composed("testgen", "dag"),
+    ))
+    .release();
+    run_cargo_command(resource_id, &testgen_cmd)?;
 
-    run_shell(
-        resource_id,
-        "cargo",
-        &["run", "-p", "gunbc-dag", "--bin", "gunbc-pragma"],
-        &env,
-    )?;
+    // pragma: cargo run -p gunbc-dag --bin gunbc-pragma --release
+    let pragma_cmd = CargoCommand::new(Subcommand::Run(
+        CargoInvocation::composed("pragma", "dag"),
+    ))
+    .release();
+    run_cargo_command(resource_id, &pragma_cmd)?;
 
-    let clippy = run_shell_response(
-        resource_id,
-        "cargo",
-        &["clippy", "--all-targets", "--", "-D", "warnings"],
-        &env,
-    )?;
+    // clippy check: cargo clippy --all-targets -- -D warnings
+    let clippy_check = CargoCommand::new(Subcommand::Clippy)
+        .all_targets()
+        .warnings(Warnings::Deny);
+    let clippy_result = run_cargo_command_response(resource_id, &clippy_check)?;
 
-    if !clippy.success() {
-        run_shell(
-            resource_id,
-            "cargo",
-            &[
-                "clippy",
-                "--fix",
-                "--workspace",
-                "--allow-dirty",
-                "--allow-staged",
-                "--",
-                "-D",
-                "warnings",
-            ],
-            &env,
-        )?;
+    if !clippy_result.success() {
+        // clippy fix: cargo clippy --fix --workspace --allow-dirty --allow-staged -- -D warnings
+        let clippy_fix = CargoCommand::new(Subcommand::Clippy)
+            .flag("--fix")
+            .flag("--workspace")
+            .flag("--allow-dirty")
+            .flag("--allow-staged")
+            .warnings(Warnings::Deny);
+        run_cargo_command(resource_id, &clippy_fix)?;
 
-        let verify = run_shell_response(
-            resource_id,
-            "cargo",
-            &["clippy", "--all-targets", "--", "-D", "warnings"],
-            &env,
-        )?;
-
-        if !verify.success() {
+        // verify fix worked
+        let verify_result = run_cargo_command_response(resource_id, &clippy_check)?;
+        if !verify_result.success() {
             return Err(ResourceError::CreateFailed(
                 resource_id.clone(),
                 format!(
                     "cargo clippy failed after fix (exit {})\n{}",
-                    verify.exit_code, verify.stderr
+                    verify_result.exit_code, verify_result.stderr
                 ),
             ));
         }
@@ -351,44 +344,39 @@ fn run_lint_upsert(resource_id: &ResourceId) -> Result<(), ResourceError> {
     Ok(())
 }
 
-fn run_shell(
+/// Run a cargo command, failing on non-zero exit.
+fn run_cargo_command(
     resource_id: &ResourceId,
-    command: &str,
-    args: &[&str],
-    env: &[(&str, &str)],
+    cmd: &CargoCommand,
 ) -> Result<(), ResourceError> {
-    let response = run_shell_response(resource_id, command, args, env)?;
+    let response = run_cargo_command_response(resource_id, cmd)?;
     if response.success() {
         Ok(())
     } else {
         Err(ResourceError::CreateFailed(
             resource_id.clone(),
             format!(
-                "command failed (exit {}): {} {} \n{}",
+                "command failed (exit {}): {}\n{}",
                 response.exit_code,
-                command,
-                args.join(" "),
+                cmd.to_shell(),
                 response.stderr
             ),
         ))
     }
 }
 
-fn run_shell_response(
+/// Run a cargo command and return the response.
+fn run_cargo_command_response(
     resource_id: &ResourceId,
-    command: &str,
-    args: &[&str],
-    env: &[(&str, &str)],
+    cmd: &CargoCommand,
 ) -> Result<gunbc_ir::transport::ShellResponse, ResourceError> {
     // Preflight steps compile + run cargo binaries; in CI with cold caches
     // this can take well over 5 minutes. Use FermiCost::L (30 min).
     const PREFLIGHT_TIMEOUT_MS: u64 = 1_800_000; // FermiCost::L = 30 min
-    let mut request = ShellRequest::new(command)
-        .args(args.iter().copied())
-        .timeout(PREFLIGHT_TIMEOUT_MS);
-    for (key, value) in env {
-        request = request.env(*key, *value);
-    }
+
+    let mut request = cmd.to_shell_request().timeout(PREFLIGHT_TIMEOUT_MS);
+    // Disable recursive preflight in child processes
+    request = request.env(PREFLIGHT_ENV_DISABLE, "1");
 
     let response = execute_request(&TransportRequest::Shell(request))
         .map_err(|e| ResourceError::CreateFailed(resource_id.clone(), e.to_string()))?;

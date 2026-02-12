@@ -56,9 +56,9 @@ impl<M: TextMedium> StructuredRenderer<M> for MakefileStructuredRenderer<M> {
     fn render_category(&self, category: &Category) -> String {
         let mut out = String::new();
         let source = category.source.as_deref().unwrap_or("unknown");
-        write!(out, "# --- {} (from {}) ---\n", category.name, source).unwrap();
+        writeln!(out, "# --- {} (from {}) ---", category.name, source).unwrap();
         if let Some(ref rationale) = category.rationale {
-            write!(out, "# {}\n", rationale).unwrap();
+            writeln!(out, "# {}", rationale).unwrap();
         }
         for item in &category.items {
             out.push_str(item);
@@ -74,7 +74,7 @@ impl<M: TextMedium> StructuredRenderer<M> for MakefileStructuredRenderer<M> {
             StructuredBlock::Category(c) => self.render_category(c),
             StructuredBlock::Section { title, content } => {
                 let mut out = String::new();
-                write!(out, "# {}\n", title).unwrap();
+                writeln!(out, "# {}", title).unwrap();
                 out.push_str(&self.medium.render_block(content));
                 out.push_str("\n\n");
                 out

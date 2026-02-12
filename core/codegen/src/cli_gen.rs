@@ -421,8 +421,8 @@ fn generate_arg_parsing(entrypoints: &[CliEntrypoint]) -> String {
             ).unwrap();
         } else {
             match ep.type_id.as_str() {
-                "Bool" => write!(code,
-                    "let {} = matches!(cli_inputs.get(\"{}\"), Some(Value::Bool(true)));\n",
+                "Bool" => writeln!(code,
+                    "let {} = matches!(cli_inputs.get(\"{}\"), Some(Value::Bool(true)));",
                     ep.var_name(),
                     ep.port_name
                 ).unwrap(),
@@ -432,21 +432,21 @@ fn generate_arg_parsing(entrypoints: &[CliEntrypoint]) -> String {
                         .as_deref()
                         .and_then(|d| d.parse::<i64>().ok())
                         .unwrap_or(0);
-                    write!(code,
-                        "let {} = match cli_inputs.get(\"{}\") {{ Some(Value::Int(i)) => *i, _ => {} }};\n",
+                    writeln!(code,
+                        "let {} = match cli_inputs.get(\"{}\") {{ Some(Value::Int(i)) => *i, _ => {} }};",
                         ep.var_name(), ep.port_name, default
                     ).unwrap();
                 }
                 _ => {
                     if ep.default_value.is_some() {
                         let default = ep.default_value.as_deref().unwrap_or("");
-                        write!(code,
-                            "let {} = match cli_inputs.get(\"{}\") {{ Some(Value::Str(s)) => s.clone(), _ => \"{}\".to_string() }};\n",
+                        writeln!(code,
+                            "let {} = match cli_inputs.get(\"{}\") {{ Some(Value::Str(s)) => s.clone(), _ => \"{}\".to_string() }};",
                             ep.var_name(), ep.port_name, default
                         ).unwrap();
                     } else {
-                        write!(code,
-                            "let {}: Option<String> = cli_inputs.get(\"{}\").and_then(|v| match v {{ Value::Str(s) => Some(s.clone()), _ => None }});\n",
+                        writeln!(code,
+                            "let {}: Option<String> = cli_inputs.get(\"{}\").and_then(|v| match v {{ Value::Str(s) => Some(s.clone()), _ => None }});",
                             ep.var_name(), ep.port_name
                         ).unwrap();
                     }
@@ -474,30 +474,30 @@ fn generate_print_inputs(entrypoints: &[CliEntrypoint]) -> String {
     let mut code = String::new();
     for ep in entrypoints {
         if ep.is_repeatable() {
-            write!(code,
-                "println!(\"  {}: {{:?}}\", {});\n",
+            writeln!(code,
+                "println!(\"  {}: {{:?}}\", {});",
                 ep.port_name,
                 ep.var_name()
             ).unwrap();
         } else {
             match ep.type_id.as_str() {
                 "Bool" => {
-                    write!(code,
-                        "println!(\"  {}: {{}}\", {});\n",
+                    writeln!(code,
+                        "println!(\"  {}: {{}}\", {});",
                         ep.port_name,
                         ep.var_name()
                     ).unwrap();
                 }
                 _ => {
                     if ep.default_value.is_some() {
-                        write!(code,
-                            "println!(\"  {}: {{}}\", {});\n",
+                        writeln!(code,
+                            "println!(\"  {}: {{}}\", {});",
                             ep.port_name,
                             ep.var_name()
                         ).unwrap();
                     } else {
-                        write!(code,
-                            "println!(\"  {}: {{}}\", {}.as_deref().unwrap_or(\"<default>\"));\n",
+                        writeln!(code,
+                            "println!(\"  {}: {{}}\", {}.as_deref().unwrap_or(\"<default>\"));",
                             ep.port_name,
                             ep.var_name()
                         ).unwrap();
@@ -547,8 +547,8 @@ fn generate_help_options(entrypoints: &[CliEntrypoint]) -> String {
                 _ => " <VAL>",
             }
         };
-        write!(code,
-            "println!(\"    {}--{}{:width$}  {}\");\n",
+        writeln!(code,
+            "println!(\"    {}--{}{:width$}  {}\");",
             short,
             flag,
             type_hint,

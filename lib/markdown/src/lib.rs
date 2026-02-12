@@ -89,7 +89,7 @@ pub fn render_code_snapshot(contents: &BTreeMap<String, String>) -> String {
         let lang = markdown_language_id(filename);
 
         write!(markdown, "## `{}`\n\n", filename).unwrap();
-        write!(markdown, "```{}\n", lang).unwrap();
+        writeln!(markdown, "```{}", lang).unwrap();
         markdown.push_str(content);
         if !content.ends_with('\n') {
             markdown.push('\n');

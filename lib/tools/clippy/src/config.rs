@@ -436,8 +436,8 @@ fn build_clippy_toml_blocks(config: &ClippyConfig) -> Vec<StructuredBlock> {
         invariants.push_str("#\n");
         invariants.push_str("# APPROVED EXCEPTIONS (must have documented reason):\n");
         for allowance in &config.crate_allowances {
-            write!(invariants,
-                "#   - {} ({})\n",
+            writeln!(invariants,
+                "#   - {} ({})",
                 allowance.crate_name, allowance.reason
             ).unwrap();
         }
@@ -474,8 +474,8 @@ fn build_clippy_toml_blocks(config: &ClippyConfig) -> Vec<StructuredBlock> {
                 "    # Filesystem operations - use PrepareFileReadOp/PrepareFileWriteOp instead\n",
             );
             for method in &fs_methods {
-                write!(array,
-                    "    {{ path = \"{}\", reason = \"{}\" }},\n",
+                writeln!(array,
+                    "    {{ path = \"{}\", reason = \"{}\" }},",
                     method.path, method.reason
                 ).unwrap();
             }
@@ -490,8 +490,8 @@ fn build_clippy_toml_blocks(config: &ClippyConfig) -> Vec<StructuredBlock> {
                 "    # Direct Command::new should only be in transport executor and cli.rs\n",
             );
             for method in &process_methods {
-                write!(array,
-                    "    {{ path = \"{}\", reason = \"{}\" }},\n",
+                writeln!(array,
+                    "    {{ path = \"{}\", reason = \"{}\" }},",
                     method.path, method.reason
                 ).unwrap();
             }
@@ -500,8 +500,8 @@ fn build_clippy_toml_blocks(config: &ClippyConfig) -> Vec<StructuredBlock> {
         if !other_methods.is_empty() {
             array.push_str("    # Other disallowed methods\n");
             for method in &other_methods {
-                write!(array,
-                    "    {{ path = \"{}\", reason = \"{}\" }},\n",
+                writeln!(array,
+                    "    {{ path = \"{}\", reason = \"{}\" }},",
                     method.path, method.reason
                 ).unwrap();
             }
@@ -531,8 +531,8 @@ fn build_clippy_toml_blocks(config: &ClippyConfig) -> Vec<StructuredBlock> {
                 "    # Filesystem types - use FilesystemHandle and transport ops instead\n",
             );
             for ty in &fs_types {
-                write!(array,
-                    "    {{ path = \"{}\", reason = \"{}\" }},\n",
+                writeln!(array,
+                    "    {{ path = \"{}\", reason = \"{}\" }},",
                     ty.path, ty.reason
                 ).unwrap();
             }
@@ -541,8 +541,8 @@ fn build_clippy_toml_blocks(config: &ClippyConfig) -> Vec<StructuredBlock> {
         if !other_types.is_empty() {
             array.push_str("    # Other disallowed types\n");
             for ty in &other_types {
-                write!(array,
-                    "    {{ path = \"{}\", reason = \"{}\" }},\n",
+                writeln!(array,
+                    "    {{ path = \"{}\", reason = \"{}\" }},",
                     ty.path, ty.reason
                 ).unwrap();
             }

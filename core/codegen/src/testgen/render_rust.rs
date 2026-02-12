@@ -48,7 +48,7 @@ impl<M: TextMedium> CodeRenderer<M> for RustCodeRenderer<M> {
 
         // Header comments
         for line in &file.header {
-            write!(out, "// {}\n", line).unwrap();
+            writeln!(out, "// {}", line).unwrap();
         }
         out.push('\n');
 
@@ -62,8 +62,8 @@ impl<M: TextMedium> CodeRenderer<M> for RustCodeRenderer<M> {
 
         // Helper functions
         for helper in &file.helpers {
-            write!(out,
-                "fn {}() -> {} {{\n",
+            writeln!(out,
+                "fn {}() -> {} {{",
                 helper.name, helper.return_type
             ).unwrap();
             for stmt in &helper.body {
@@ -82,7 +82,7 @@ impl<M: TextMedium> CodeRenderer<M> for RustCodeRenderer<M> {
             ).unwrap();
 
             for note in &section.notes {
-                write!(out, "// {}\n", note).unwrap();
+                writeln!(out, "// {}", note).unwrap();
             }
             if !section.notes.is_empty() {
                 out.push('\n');
@@ -91,11 +91,11 @@ impl<M: TextMedium> CodeRenderer<M> for RustCodeRenderer<M> {
             for test_fn in &section.tests {
                 // Doc comments
                 for line in &test_fn.doc {
-                    write!(out, "/// {}\n", line).unwrap();
+                    writeln!(out, "/// {}", line).unwrap();
                 }
                 // Test attribute and function signature
                 out.push_str("#[test]\n");
-                write!(out, "fn {}() {{\n", test_fn.name).unwrap();
+                writeln!(out, "fn {}() {{", test_fn.name).unwrap();
 
                 // Body
                 for stmt in &test_fn.body {
@@ -114,7 +114,7 @@ impl<M: TextMedium> CodeRenderer<M> for RustCodeRenderer<M> {
 
         // Module-level doc comments
         for line in &file.doc {
-            write!(out, "//! {}\n", line).unwrap();
+            writeln!(out, "//! {}", line).unwrap();
         }
         if !file.doc.is_empty() {
             out.push('\n');
@@ -185,7 +185,7 @@ impl<M: TextMedium> CodeRenderer<M> for RustCodeRenderer<M> {
             Expr::Match { expr, arms } => {
                 let mut out = format!("match {} {{\n", self.render_expr(expr));
                 for arm in arms {
-                    write!(out, "    {} => {{\n", arm.pattern).unwrap();
+                    writeln!(out, "    {} => {{", arm.pattern).unwrap();
                     for stmt in &arm.body {
                         out.push_str(&self.render_stmt(stmt, 2));
                     }
@@ -292,7 +292,7 @@ impl<M: TextMedium> CodeRenderer<M> for RustCodeRenderer<M> {
                 for stmt in body {
                     out.push_str(&self.render_stmt(stmt, indent + 1));
                 }
-                write!(out, "{}}}\n", pad).unwrap();
+                writeln!(out, "{}}}", pad).unwrap();
                 out
             }
             Stmt::Item(item) => self.render_item(item, indent),
@@ -611,12 +611,12 @@ impl<M: TextMedium> RustCodeRenderer<M> {
 
         // Doc comments
         for line in &f.doc {
-            write!(out, "{}/// {}\n", pad, line).unwrap();
+            writeln!(out, "{}/// {}", pad, line).unwrap();
         }
 
         // Attributes
         for attr in &f.attributes {
-            write!(out, "{}{}\n", pad, attr).unwrap();
+            writeln!(out, "{}{}", pad, attr).unwrap();
         }
 
         // Signature
@@ -636,8 +636,8 @@ impl<M: TextMedium> RustCodeRenderer<M> {
             Some(ty) => format!(" -> {}", ty),
             None => String::new(),
         };
-        write!(out,
-            "{}{}fn {}({}){} {{\n",
+        writeln!(out,
+            "{}{}fn {}({}){} {{",
             pad,
             vis,
             f.name,
@@ -650,7 +650,7 @@ impl<M: TextMedium> RustCodeRenderer<M> {
             out.push_str(&self.render_stmt(stmt, indent + 1));
         }
 
-        write!(out, "{}}}\n", pad).unwrap();
+        writeln!(out, "{}}}", pad).unwrap();
         out
     }
 
@@ -660,24 +660,24 @@ impl<M: TextMedium> RustCodeRenderer<M> {
 
         // Doc comments
         for line in &e.doc {
-            write!(out, "{}/// {}\n", pad, line).unwrap();
+            writeln!(out, "{}/// {}", pad, line).unwrap();
         }
 
         // Derives
         if !e.derives.is_empty() {
-            write!(out, "{}#[derive({})]\n", pad, e.derives.join(", ")).unwrap();
+            writeln!(out, "{}#[derive({})]", pad, e.derives.join(", ")).unwrap();
         }
 
         // Enum header
         let vis = if e.is_pub { "pub " } else { "" };
-        write!(out, "{}{}enum {} {{\n", pad, vis, e.name).unwrap();
+        writeln!(out, "{}{}enum {} {{", pad, vis, e.name).unwrap();
 
         // Variants
         for variant in &e.variants {
-            write!(out, "{}    {},\n", pad, variant).unwrap();
+            writeln!(out, "{}    {},", pad, variant).unwrap();
         }
 
-        write!(out, "{}}}\n", pad).unwrap();
+        writeln!(out, "{}}}", pad).unwrap();
         out
     }
 
@@ -698,7 +698,7 @@ impl<M: TextMedium> RustCodeRenderer<M> {
             out.push_str(&self.render_fn_def(func, indent + 1));
         }
 
-        write!(out, "{}}}\n", pad).unwrap();
+        writeln!(out, "{}}}", pad).unwrap();
         out
     }
 
@@ -708,25 +708,25 @@ impl<M: TextMedium> RustCodeRenderer<M> {
 
         // Doc comments
         for line in &s.doc {
-            write!(out, "{}/// {}\n", pad, line).unwrap();
+            writeln!(out, "{}/// {}", pad, line).unwrap();
         }
 
         // Derives
         if !s.derives.is_empty() {
-            write!(out, "{}#[derive({})]\n", pad, s.derives.join(", ")).unwrap();
+            writeln!(out, "{}#[derive({})]", pad, s.derives.join(", ")).unwrap();
         }
 
         // Struct header
         let vis = if s.is_pub { "pub " } else { "" };
-        write!(out, "{}{}struct {} {{\n", pad, vis, s.name).unwrap();
+        writeln!(out, "{}{}struct {} {{", pad, vis, s.name).unwrap();
 
         // Fields
         for (name, ty, is_pub) in &s.fields {
             let field_vis = if *is_pub { "pub " } else { "" };
-            write!(out, "{}    {}{}: {},\n", pad, field_vis, name, ty).unwrap();
+            writeln!(out, "{}    {}{}: {},", pad, field_vis, name, ty).unwrap();
         }
 
-        write!(out, "{}}}\n", pad).unwrap();
+        writeln!(out, "{}}}", pad).unwrap();
         out
     }
 }

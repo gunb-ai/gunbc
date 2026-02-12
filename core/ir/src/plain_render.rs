@@ -44,9 +44,9 @@ impl<M: TextMedium> StructuredRenderer<M> for PlainStructuredRenderer<M> {
     fn render_category(&self, category: &Category) -> String {
         let mut out = String::new();
         let source = category.source.as_deref().unwrap_or("unknown");
-        write!(out, "# --- {} (from {}) ---\n", category.name, source).unwrap();
+        writeln!(out, "# --- {} (from {}) ---", category.name, source).unwrap();
         if let Some(ref rationale) = category.rationale {
-            write!(out, "# {}\n", rationale).unwrap();
+            writeln!(out, "# {}", rationale).unwrap();
         }
         for item in &category.items {
             out.push_str(item);

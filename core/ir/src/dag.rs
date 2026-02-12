@@ -86,8 +86,8 @@ impl<T> Dag<T> {
 
         // Create a subgraph for this DAG
         let subgraph_id = name.replace(['-', ' '], "_");
-        write!(out,
-            "{}subgraph {}[\"{}\"]\n",
+        writeln!(out,
+            "{}subgraph {}[\"{}\"]",
             indent, subgraph_id, name
         ).unwrap();
 
@@ -98,10 +98,10 @@ impl<T> Dag<T> {
 
             if node.is_subdag() {
                 // SubDag nodes get double brackets
-                write!(out, "{}    {}[[{}]]\n", indent, node_id, label).unwrap();
+                writeln!(out, "{}    {}[[{}]]", indent, node_id, label).unwrap();
             } else {
                 // Regular nodes get single brackets
-                write!(out, "{}    {}[{}]\n", indent, node_id, label).unwrap();
+                writeln!(out, "{}    {}[{}]", indent, node_id, label).unwrap();
             }
         }
 
@@ -110,13 +110,13 @@ impl<T> Dag<T> {
             let from_id = format!("{}_{}", subgraph_id, edge.from_node.0.replace('-', "_"));
             let to_id = format!("{}_{}", subgraph_id, edge.to_node.0.replace('-', "_"));
             let label = format!("{}:{}", edge.from_port.0, edge.to_port.0);
-            write!(out,
-                "{}    {} -->|{}| {}\n",
+            writeln!(out,
+                "{}    {} -->|{}| {}",
                 indent, from_id, label, to_id
             ).unwrap();
         }
 
-        write!(out, "{}end\n", indent).unwrap();
+        writeln!(out, "{}end", indent).unwrap();
 
         // Recursively render subdags
         for node in &self.nodes {
@@ -127,8 +127,8 @@ impl<T> Dag<T> {
                 // Link parent node to subgraph
                 let parent_node_id = format!("{}_{}", subgraph_id, node.id.0.replace('-', "_"));
                 let child_subgraph_id = subdag_name.replace(['-', ' ', ':'], "_");
-                write!(out,
-                    "{}    {} -.-> {}\n",
+                writeln!(out,
+                    "{}    {} -.-> {}",
                     indent, parent_node_id, child_subgraph_id
                 ).unwrap();
             }

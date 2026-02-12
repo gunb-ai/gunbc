@@ -331,14 +331,14 @@ fn render_gitlab_job(step: &SharedStep, config: &RenderConfig) -> String {
                 yaml.push_str("  needs:\n");
                 let seen: HashSet<_> = depends_on.iter().map(|d| &d.0).collect();
                 for dep in seen {
-                    write!(yaml, "    - {}\n", dep).unwrap();
+                    writeln!(yaml, "    - {}", dep).unwrap();
                 }
             }
 
             // Artifacts for passing data
             yaml.push_str("  artifacts:\n");
             yaml.push_str("    reports:\n");
-            write!(yaml, "      dotenv: {}.env\n", node_id.0).unwrap();
+            writeln!(yaml, "      dotenv: {}.env", node_id.0).unwrap();
 
             yaml.push('\n');
             yaml

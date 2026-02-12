@@ -663,36 +663,36 @@ fn toml_serialize(
     let mut out = String::new();
 
     if let Some(ref ns) = config.default_namespace {
-        write!(out, "default_namespace = \"{}\"\n", ns).unwrap();
+        writeln!(out, "default_namespace = \"{}\"", ns).unwrap();
     }
     if let Some(ref at) = config.generated_at {
-        write!(out, "generated_at = \"{}\"\n", at).unwrap();
+        writeln!(out, "generated_at = \"{}\"", at).unwrap();
     }
     if let Some(ref proj) = config.source_project {
-        write!(out, "source_project = \"{}\"\n", proj).unwrap();
+        writeln!(out, "source_project = \"{}\"", proj).unwrap();
     }
     out.push('\n');
 
     for ns in &config.namespaces {
         out.push_str("[[namespaces]]\n");
-        write!(out, "name = \"{}\"\n", ns.name).unwrap();
+        writeln!(out, "name = \"{}\"", ns.name).unwrap();
         if let Some(ref inherits) = ns.inherits_from {
-            write!(out, "inherits_from = \"{}\"\n", inherits).unwrap();
+            writeln!(out, "inherits_from = \"{}\"", inherits).unwrap();
         }
         if let Some(ref provider) = ns.provider {
-            write!(out, "provider = \"{}\"\n", provider.as_str()).unwrap();
+            writeln!(out, "provider = \"{}\"", provider.as_str()).unwrap();
         }
         if let Some(ref proj) = ns.secrets_project {
-            write!(out, "secrets_project = \"{}\"\n", proj).unwrap();
+            writeln!(out, "secrets_project = \"{}\"", proj).unwrap();
         }
         if let Some(ref wif) = ns.wif_provider {
-            write!(out, "wif_provider = \"{}\"\n", wif).unwrap();
+            writeln!(out, "wif_provider = \"{}\"", wif).unwrap();
         }
         if let Some(ref sa) = ns.service_account {
-            write!(out, "service_account = \"{}\"\n", sa).unwrap();
+            writeln!(out, "service_account = \"{}\"", sa).unwrap();
         }
         if let Some(ref imp) = ns.impersonate_account {
-            write!(out, "impersonate_account = \"{}\"\n", imp).unwrap();
+            writeln!(out, "impersonate_account = \"{}\"", imp).unwrap();
         }
         out.push('\n');
     }
