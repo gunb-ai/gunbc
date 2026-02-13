@@ -115,6 +115,16 @@ fn cost_limit_is_explicit() -> bool {
         .is_some()
 }
 
+/// True when an env var is set to a non-empty value.
+///
+/// GitHub Actions exports undefined secrets as empty strings (`${{ secrets.X }}`
+/// resolves to `""` when `X` is not configured). Plain `env::var(k).is_ok()`
+/// would treat that as "present", allowing live tests to run with blank
+/// credentials. This helper rejects both unset and empty-string values.
+fn env_is_present(key: &str) -> bool {
+    env::var(key).map(|v| !v.is_empty()).unwrap_or(false)
+}
+
 /// True only when running inside a GitHub Actions workflow.
 ///
 /// `GITHUB_ACTIONS` is the authoritative signal — it is set automatically
@@ -156,7 +166,7 @@ pub fn guard(meta: TestMeta<'_>) -> bool {
             .secrets
             .iter()
             .copied()
-            .filter(|k| env::var(k).is_err())
+            .filter(|k| !env_is_present(k))
             .collect();
         if !missing.is_empty() {
             if in_github_actions() && !explicit {
@@ -230,7 +240,7 @@ pub fn guard_test_with_env(
         let missing: Vec<&str> = required
             .iter()
             .copied()
-            .filter(|k| env::var(k).is_err())
+            .filter(|k| !env_is_present(k))
             .collect();
         if !missing.is_empty() {
             if in_github_actions() && !explicit {
@@ -247,7 +257,7 @@ pub fn guard_test_with_env(
     if !required_any_of.is_empty() {
         let mut missing_groups: Vec<String> = Vec::new();
         for group in required_any_of {
-            let present = group.iter().any(|k| env::var(k).is_ok());
+            let present = group.iter().any(|k| env_is_present(k));
             if !present {
                 missing_groups.push(group.join(" | "));
             }
@@ -434,6 +444,99 @@ mod tests {
                     &[],
                     &["DEFINITELY_MISSING_SECRET"],
                     &[],
+                );
+            },
+        );
+    }
+
+    #[test]
+    fn test_env_is_present_rejects_empty_string() {
+        // GitHub Actions exports undefined secrets as "" — guard must treat that as missing.
+        with_env(&[("EMPTY_SECRET_TEST", Some(""))], || {
+            assert!(
+                !env_is_present("EMPTY_SECRET_TEST"),
+                "empty string should be treated as absent"
+            );
+        });
+    }
+
+    #[test]
+    fn test_env_is_present_accepts_non_empty() {
+        with_env(&[("PRESENT_SECRET_TEST", Some("value"))], || {
+            assert!(env_is_present("PRESENT_SECRET_TEST"));
+        });
+    }
+
+    #[test]
+    fn test_env_is_present_rejects_unset() {
+        with_env(&[("MISSING_SECRET_TEST", None)], || {
+            assert!(!env_is_present("MISSING_SECRET_TEST"));
+        });
+    }
+
+    #[test]
+    #[should_panic(expected = "missing secrets")]
+    fn test_guard_panics_on_empty_string_secret_in_ci() {
+        // Empty-string secrets (from undefined GitHub Actions secrets) must be
+        // detected as missing, not silently treated as present.
+        with_env(
+            &[
+                ("GITHUB_ACTIONS", Some("true")),
+                ("GUNBC_TEST_MAX_COST", None),
+                ("EMPTY_GCP_SECRET_TEST", Some("")),
+            ],
+            || {
+                guard(TestMeta {
+                    name: "empty_secret_test",
+                    class: TestClass::Integration,
+                    cost: FermiCost::XS,
+                    requires: &[],
+                    secrets: &["EMPTY_GCP_SECRET_TEST"],
+                });
+            },
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "missing secrets")]
+    fn test_guard_test_with_env_panics_on_empty_string_required() {
+        with_env(
+            &[
+                ("GITHUB_ACTIONS", Some("true")),
+                ("GUNBC_TEST_MAX_COST", None),
+                ("EMPTY_REQUIRED_TEST", Some("")),
+            ],
+            || {
+                guard_test_with_env(
+                    "empty_required_test",
+                    TestClass::Integration,
+                    FermiCost::XS,
+                    &[],
+                    &["EMPTY_REQUIRED_TEST"],
+                    &[],
+                );
+            },
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "missing secrets")]
+    fn test_guard_test_with_env_panics_on_empty_string_any_of() {
+        with_env(
+            &[
+                ("GITHUB_ACTIONS", Some("true")),
+                ("GUNBC_TEST_MAX_COST", None),
+                ("EMPTY_GROUP_A", Some("")),
+                ("EMPTY_GROUP_B", Some("")),
+            ],
+            || {
+                guard_test_with_env(
+                    "empty_any_of_test",
+                    TestClass::Integration,
+                    FermiCost::XS,
+                    &[],
+                    &[],
+                    &[&["EMPTY_GROUP_A", "EMPTY_GROUP_B"]],
                 );
             },
         );

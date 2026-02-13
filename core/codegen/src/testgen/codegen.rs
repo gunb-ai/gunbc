@@ -2122,6 +2122,18 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
         node: &gunbc_ir::Node<T>,
         base_inputs: &BTreeMap<String, ValueExpr>,
     ) {
+        // Nodes explicitly marked skip_node_example are resource/boundary nodes
+        // that won't be tested in single-node Real mode — no seed assertion needed.
+        if let Some(spec) = &self.mock_spec {
+            if spec
+                .skipped_node_examples
+                .iter()
+                .any(|s| s == &node.id.0)
+            {
+                return;
+            }
+        }
+
         let mut missing = Vec::new();
 
         for port in &node.inputs {
@@ -6183,6 +6195,8 @@ mod tests {
     #[test]
     #[should_panic(expected = "Optional input tests require explicit seeds for required semantic inputs in Real single-node mode")]
     fn test_optional_inputs_require_explicit_semantic_seed() {
+        use gunbc_test::{NodeExample, OutputMatcher};
+
         let mut dag: Dag<()> = Dag::new();
         dag.add_node(Node::opaque(
             "parse",
@@ -6194,14 +6208,48 @@ mod tests {
             (),
         ));
 
+        // Provide a node_example with outputs (satisfies the I/O example
+        // requirement) but do NOT seed the TransportResponse input — the
+        // seed assertion should fire.
         let spec = MockSpec::new("opt")
             .boundary("parse", "result", Value::Str("ok".into()))
-            .skip_node_example("parse");
+            .node_example(
+                NodeExample::new("parse")
+                    .input("fallback", Value::Str("fb".into()))
+                    .output("result", OutputMatcher::non_empty()),
+            );
 
         let generator = TestGenerator::new(&dag)
             .with_mock_spec(spec)
             .with_mock_spec_fn("crate::mock_spec()");
         let _ = generator.generate_test_module("opt", "build_opt_graph()");
+    }
+
+    #[test]
+    fn test_skip_node_example_bypasses_seed_assertion() {
+        // Nodes with skip_node_example should NOT panic about missing seeds
+        // — they are known resource/boundary nodes that won't be tested
+        // in single-node Real mode.
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque(
+            "resolver",
+            vec![
+                port("config", "TransportResponse"),
+                optional("name", "OptionalString"),
+            ],
+            vec![port("result", "String")],
+            (),
+        ));
+
+        let spec = MockSpec::new("skip")
+            .boundary("resolver", "result", Value::Str("ok".into()))
+            .skip_node_example("resolver");
+
+        let generator = TestGenerator::new(&dag)
+            .with_mock_spec(spec)
+            .with_mock_spec_fn("crate::mock_spec()");
+        // Should NOT panic — skip_node_example suppresses the seed check.
+        let _ = generator.generate_test_module("skip", "build_skip_graph()");
     }
 
     #[test]
