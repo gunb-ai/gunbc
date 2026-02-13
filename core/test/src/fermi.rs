@@ -141,10 +141,14 @@ fn in_github_actions() -> bool {
 ///
 /// Returns true if the test should run, false if it should be skipped.
 ///
-/// In GitHub Actions with the default cost budget, exceeding the budget or
-/// missing secrets causes a panic (to catch CI misconfigurations). When the
-/// cost limit is explicitly set via `GUNBC_TEST_MAX_COST`, tests that exceed
-/// the budget are silently skipped — the caller made a deliberate choice.
+/// In GitHub Actions with the default cost budget, exceeding the budget
+/// causes a panic (to catch CI misconfigurations). When the cost limit is
+/// explicitly set via `GUNBC_TEST_MAX_COST`, tests that exceed the budget
+/// are silently skipped — the caller made a deliberate choice.
+///
+/// Missing secrets always cause a graceful skip (never panic). Secret
+/// availability depends on the CI environment's provisioning, not on test
+/// configuration — a runner may legitimately lack specific cloud credentials.
 pub fn guard(meta: TestMeta<'_>) -> bool {
     let max_cost = max_cost_from_env();
     let explicit = cost_limit_is_explicit();
@@ -175,13 +179,6 @@ pub fn guard(meta: TestMeta<'_>) -> bool {
             .filter(|k| !env_is_present(k))
             .collect();
         if !missing.is_empty() {
-            if in_github_actions() && !explicit {
-                panic!(
-                    "skipping {}: missing secrets [{}]",
-                    meta.name,
-                    missing.join(", ")
-                );
-            }
             eprintln!(
                 "[guard] skipping {}: missing secrets [{}]",
                 meta.name,
@@ -222,8 +219,8 @@ pub fn guard_test(
 /// `required` are checked directly. Each group in `required_any_of` requires at
 /// least one env var to be present.
 ///
-/// Like [`guard`], panics in CI are suppressed when `GUNBC_TEST_MAX_COST` is
-/// explicitly set.
+/// Missing secrets always skip gracefully. Cost-exceeded panics in CI are
+/// suppressed when `GUNBC_TEST_MAX_COST` is explicitly set.
 pub fn guard_test_with_env(
     name: &str,
     _class: TestClass,
@@ -260,13 +257,6 @@ pub fn guard_test_with_env(
             .filter(|k| !env_is_present(k))
             .collect();
         if !missing.is_empty() {
-            if in_github_actions() && !explicit {
-                panic!(
-                    "skipping {}: missing secrets [{}]",
-                    name,
-                    missing.join(", ")
-                );
-            }
             eprintln!(
                 "[guard] skipping {}: missing secrets [{}]",
                 name,
@@ -285,13 +275,6 @@ pub fn guard_test_with_env(
             }
         }
         if !missing_groups.is_empty() {
-            if in_github_actions() && !explicit {
-                panic!(
-                    "skipping {}: missing secrets [{}]",
-                    name,
-                    missing_groups.join(", ")
-                );
-            }
             eprintln!(
                 "[guard] skipping {}: missing secrets [{}]",
                 name,
@@ -388,8 +371,10 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "missing secrets")]
-    fn test_guard_panics_on_missing_secrets_in_ci_without_explicit_limit() {
+    fn test_guard_skips_missing_secrets_in_ci_without_explicit_limit() {
+        // Missing secrets always skip gracefully, even in CI without an
+        // explicit cost limit. Secret availability is an environment concern,
+        // not a test configuration bug.
         with_env(
             &[
                 ("GITHUB_ACTIONS", Some("true")),
@@ -398,13 +383,14 @@ mod tests {
                 ("NONEXISTENT_SECRET_FOR_TEST", None),
             ],
             || {
-                guard(TestMeta {
+                let result = guard(TestMeta {
                     name: "secret_test",
                     class: TestClass::Integration,
                     cost: FermiCost::XS, // within budget
                     requires: &[],
                     secrets: &["NONEXISTENT_SECRET_FOR_TEST"],
                 });
+                assert!(!result, "test should be skipped, not run");
             },
         );
     }
@@ -455,16 +441,16 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "missing secrets")]
-    fn test_guard_test_with_env_panics_without_explicit_limit() {
-        // Without explicit limit, missing secrets should panic in CI.
+    fn test_guard_test_with_env_skips_missing_secrets_without_explicit_limit() {
+        // Missing secrets always skip gracefully, even in CI without an
+        // explicit cost limit.
         with_env(
             &[
                 ("GITHUB_ACTIONS", Some("true")),
                 ("GUNBC_TEST_MAX_COST", None),
             ],
             || {
-                guard_test_with_env(
+                let result = guard_test_with_env(
                     "test_live_flow",
                     TestClass::Integration,
                     FermiCost::XS, // within default XL budget
@@ -472,6 +458,7 @@ mod tests {
                     &["DEFINITELY_MISSING_SECRET"],
                     &[],
                 );
+                assert!(!result, "test should be skipped, not run");
             },
         );
     }
@@ -502,8 +489,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "missing secrets")]
-    fn test_guard_panics_on_empty_string_secret_in_ci() {
+    fn test_guard_skips_on_empty_string_secret_in_ci() {
         // Empty-string secrets (from undefined GitHub Actions secrets) must be
         // detected as missing, not silently treated as present.
         with_env(
@@ -513,20 +499,20 @@ mod tests {
                 ("EMPTY_GCP_SECRET_TEST", Some("")),
             ],
             || {
-                guard(TestMeta {
+                let result = guard(TestMeta {
                     name: "empty_secret_test",
                     class: TestClass::Integration,
                     cost: FermiCost::XS,
                     requires: &[],
                     secrets: &["EMPTY_GCP_SECRET_TEST"],
                 });
+                assert!(!result, "empty-string secret should be treated as missing");
             },
         );
     }
 
     #[test]
-    #[should_panic(expected = "missing secrets")]
-    fn test_guard_test_with_env_panics_on_empty_string_required() {
+    fn test_guard_test_with_env_skips_on_empty_string_required() {
         with_env(
             &[
                 ("GITHUB_ACTIONS", Some("true")),
@@ -534,7 +520,7 @@ mod tests {
                 ("EMPTY_REQUIRED_TEST", Some("")),
             ],
             || {
-                guard_test_with_env(
+                let result = guard_test_with_env(
                     "empty_required_test",
                     TestClass::Integration,
                     FermiCost::XS,
@@ -542,13 +528,13 @@ mod tests {
                     &["EMPTY_REQUIRED_TEST"],
                     &[],
                 );
+                assert!(!result, "empty-string secret should be treated as missing");
             },
         );
     }
 
     #[test]
-    #[should_panic(expected = "missing secrets")]
-    fn test_guard_test_with_env_panics_on_empty_string_any_of() {
+    fn test_guard_test_with_env_skips_on_empty_string_any_of() {
         with_env(
             &[
                 ("GITHUB_ACTIONS", Some("true")),
@@ -557,7 +543,7 @@ mod tests {
                 ("EMPTY_GROUP_B", Some("")),
             ],
             || {
-                guard_test_with_env(
+                let result = guard_test_with_env(
                     "empty_any_of_test",
                     TestClass::Integration,
                     FermiCost::XS,
@@ -565,6 +551,7 @@ mod tests {
                     &[],
                     &[&["EMPTY_GROUP_A", "EMPTY_GROUP_B"]],
                 );
+                assert!(!result, "empty-string secrets should be treated as missing");
             },
         );
     }
