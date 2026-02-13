@@ -73,6 +73,12 @@ fn with_cloud_env(spec: MockSpec) -> MockSpec {
             "cloud_credential/gcp_wif_secret",
             &gunbc_lib_gcp_ops::graph_mock::gcp_local_mock_spec(),
         )
+        // Probe-observer: GCP sub-DAG terminal needs chain-safe observer
+        .live_expected_output(
+            "cloud_credential/gcp_wif_secret/parse_set_iam",
+            "ok",
+            OutputMatcher::IsBool,
+        )
 }
 
 /// Mock specification for OpenAI chat completion.

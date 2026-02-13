@@ -3906,10 +3906,10 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                 })
                 .collect();
             let msg = format!(
-                "Observability invariant violated: {} unobserved terminal(s):\\n{}\\n\
+                "Observability invariant violated: {} unobserved terminal(s):\n{}\n\
                  Add OutputMatchers via NodeExample or live_expected_output for these nodes.",
                 po_analysis.gaps.len(),
-                gap_lines.join("\\n")
+                gap_lines.join("\n")
             );
             tests.push(TestFn {
                 name: "test_observability_invariant_no_gaps".to_string(),

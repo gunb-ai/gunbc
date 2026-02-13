@@ -350,6 +350,13 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
                 .output("url", OutputMatcher::contains("gist.github.com"))
                 .description("Extracts gist URL from response JSON"),
         )
+        // Probe-observer: terminals need chain-safe observers
+        .live_expected_output("parse_gist_response", "url", OutputMatcher::NonEmpty)
+        .live_expected_output(
+            "cloud_credential/gcp_wif_secret/parse_set_iam",
+            "ok",
+            OutputMatcher::IsBool,
+        )
         .skip_node_example("cloud_env")
         .skip_node_example("cloud_credential")
         .skip_node_example("bind_secret")

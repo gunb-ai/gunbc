@@ -267,6 +267,12 @@ pub fn inline_review_mock_spec() -> MockSpec {
                 .output("errors", OutputMatcher::Any)
                 .description("parses LLM answer into review output"),
         )
+        // Probe-observer: GCP sub-DAG terminal needs chain-safe observer
+        .live_expected_output(
+            "cloud_credential/gcp_wif_secret/parse_set_iam",
+            "ok",
+            OutputMatcher::IsBool,
+        )
         .skip_node_example("cloud_env")
         .skip_node_example("cloud_credential")
         .skip_node_example("fs_env")
@@ -468,6 +474,12 @@ diff --git a/src/main.rs b/src/main.rs
                 .output("output", OutputMatcher::Any)
                 .output("errors", OutputMatcher::Any)
                 .description("parses LLM answer into review output"),
+        )
+        // Probe-observer: GCP sub-DAG terminal needs chain-safe observer
+        .live_expected_output(
+            "cloud_credential/gcp_wif_secret/parse_set_iam",
+            "ok",
+            OutputMatcher::IsBool,
         )
         .skip_node_example("cloud_env")
         .skip_node_example("cloud_credential")

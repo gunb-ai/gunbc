@@ -283,6 +283,10 @@ pub fn pragma_mock_spec() -> MockSpec {
                 )
                 .description("Renders pragma lint policy"),
         )
+        // Probe-observer: transport terminals need chain-safe observers
+        .live_expected_output("execute_clippy_transport", "skip", OutputMatcher::IsBool)
+        .live_expected_output("execute_allowlist_transport", "skip", OutputMatcher::IsBool)
+        .live_expected_output("execute_policy_transport", "skip", OutputMatcher::IsBool)
         // Primitive nodes — tested in their own crates
         .skip_node_example("prepare_read_clippy")
         .skip_node_example("prepare_write_clippy")
