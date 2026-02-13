@@ -341,13 +341,21 @@ pub fn resolve_default_secret_config(
 /// This is used when no explicit config is provided (e.g., in tests,
 /// graph construction for mock specs, or early bootstrapping).
 ///
+/// Always uses `CloudRuntimeKind::LocalDev` regardless of environment
+/// signals like `GITHUB_ACTIONS`. This is a *fallback* for when no
+/// explicit config is set — it must produce a deterministic graph
+/// topology so that mock specs (which target LocalDev) stay consistent
+/// across local and CI environments. For CI deployments that need a
+/// different runtime, set `GUNBC_CLOUD_CONFIG_TOML` or
+/// `GUNBC_CLOUD_CONFIG_JSON` explicitly.
+///
 /// Values are derived from the canonical project spec
 /// ([`crate::project_spec::GUNBAI_SECRETS`]), not hardcoded strings.
 /// For real deployments, config should come from the generated TOML
 /// via [`resolve_default_secret_config`].
 pub fn default_local_dev_config() -> CloudSecretConfig {
     crate::project_spec::GUNBAI_SECRETS
-        .to_cloud_secret_config("dev", detect_runtime())
+        .to_cloud_secret_config("dev", CloudRuntimeKind::LocalDev)
         .expect("dev namespace must exist in GUNBAI_SECRETS project spec")
 }
 

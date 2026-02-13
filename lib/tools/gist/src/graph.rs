@@ -515,7 +515,7 @@ pub fn gist_signature(mode: &GistMode) -> WorkflowSignature {
     let mut sig = WorkflowSignature::new()
         .with_input("repo_path", "String", Cardinality::ONE)
         .with_output("url", "String", Cardinality::ONE)
-        // cloud_credential subdag exposes ok from IAM ensure chain
+        // cloud_credential subdag exposes ok from IAM ensure chain (LocalDev only)
         .with_output("ok", "Bool", Cardinality::ONE);
 
     // base_ref is an entrypoint only in diff mode.

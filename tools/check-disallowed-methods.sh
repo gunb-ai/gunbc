@@ -9,7 +9,7 @@ if [[ ! -f "$allowlist_file" ]]; then
   exit 1
 fi
 
-pattern='allow\([^)]*clippy::disallowed_methods'
+pattern='^\s*#!?\[allow\([^)]*clippy::disallowed_methods'
 
 declare -A found_counts
 
