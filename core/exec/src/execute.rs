@@ -1559,34 +1559,7 @@ fn execute_loop_body<T: Executable + Clone + Send>(
 /// of context. This is the last line of defense against credential leaks.
 fn print_log_entry(entry: &LogEntry) {
     for (port, value) in &entry.outputs {
-        match value {
-            Value::Secret(_) => {
-                // Always redact secrets — never print actual values
-                println!("  {port}: ***");
-            }
-            Value::Str(s) => {
-                if port.ends_with("stderr") || port.ends_with("stdout") {
-                    if !s.is_empty() {
-                        println!("  {port}: {s}");
-                    }
-                } else if s.contains('\n') {
-                    // Multi-line values (reports, etc.) — print in full
-                    println!("  {port}: {s}");
-                } else if s.len() < 120 {
-                    println!("  {port}: {s}");
-                } else {
-                    println!("  {port}: {}...", &s[..80]);
-                }
-            }
-            Value::Int(i) => println!("  {port}: {i}"),
-            Value::Bool(b) => println!("  {port}: {b}"),
-            Value::List(list) => println!("  {port}: [{} items]", list.len()),
-            Value::Set(set) => println!("  {port}: {{{} items}}", set.len()),
-            Value::Map(map) => println!("  {port}: {{{} entries}}", map.len()),
-            Value::Json(_) => println!("  {port}: <JSON>"),
-            Value::Skipped => {} // Don't print skipped outputs
-            _ => {}
-        }
+        crate::display::print_value(port, value);
     }
 }
 

@@ -4,14 +4,70 @@
 **Date**: 2026-02-13
 **Priority**: High
 
+## Motivating Incident: CI Log Explosion (2026-02-13)
+
+Two consecutive CI runs on PR #39 produced logs so massive they were
+impractical to paste or read. Root-cause analysis follows.
+
+### What happened
+
+1. The CI runner ran out of disk space (`Free space left: 41 MB`), which
+   caused the `rust-lld` linker to crash with `signal 7 [Bus error]` while
+   linking `gunbc-deps`. This is an infra issue, not a code bug.
+
+2. The build failure triggered the CI DAG's report node. The report dumped
+   **the entire linker command line** (~4,000 chars of `.rlib` paths) into
+   the `--- Build stderr ---` section of the report. This made the report
+   itself unreadable.
+
+3. Independently, the `execute_testgen` CI group contained the **full stdout
+   of the testgen binary**. The testgen binary runs its own DAG via
+   `execute_and_display` in classic mode, which prints every node's outputs.
+   For 23 DAG targets with compare/execute nodes, this produced hundreds of
+   lines of `[compare_*_content] skip: true / fresh: true` noise. The full
+   generated test source code was also visible.
+
+4. The `parse_build` CI group then **re-printed the entire build stderr**
+   (including the linker command) via `print_log_entry`, which had no
+   truncation at all. So the linker command appeared **three times**: once in
+   the `execute_build` group, once in `parse_build`, and once in the report.
+
+### Why it was so verbose
+
+Three layers of the output system contributed, each independently too verbose:
+
+| Layer | What it dumped | Why |
+|-------|---------------|-----|
+| `print_log_entry` (execute.rs) | Full stderr/stdout for every node in CI groups | No truncation, no line limit |
+| `print_value` (display.rs) | Full stderr/stdout in classic mode | No truncation, no secret redaction |
+| `build_report_blocks` (ci/ops.rs) | Full build stderr in final report | No truncation (fixed 2026-02-13 via `truncate_for_report`) |
+
+### What was fixed
+
+| Fix | Date | Scope |
+|-----|------|-------|
+| `truncate_for_report` in CI report | 2026-02-13 | Report sections capped at 60 lines, 500 chars/line |
+| Unified `print_log_entry` → `print_value` | 2026-02-13 | Eliminated duplicate function; both CI and classic use same path |
+| `truncate_log_value` for CI group output | 2026-02-13 | Multi-line values in CI groups capped at 40 lines (5 head + 35 tail) |
+| Secret redaction in `print_value` | 2026-02-13 | `print_value` now redacts `Value::Secret` (was missing before) |
+
+### What remains unfixed
+
+- Testgen binary runs `execute_and_display` internally; its stdout is
+  captured and re-printed by the CI DAG → double-printing of all node outputs
+- No per-stage error extractors (like `extract_test_failures` for test output)
+- Stderr not captured from all stages (testgen, bootstrap, pragma only
+  capture stderr, not stdout)
+- No single, configurable verbosity control across CI/local/progress modes
+
+---
+
 ## Problem
 
 Output logging, error reporting, and progress tracking are fragmented across
 four different execution contexts with inconsistent behavior. Users see
 different output depending on whether they're in CI, a TTY, a non-TTY
 terminal, or verify mode. Stderr from some stages is silently discarded.
-The CI report can dump massive raw output (partially mitigated by
-`truncate_for_report` added 2026-02-13, but root cause is still there).
 
 ---
 

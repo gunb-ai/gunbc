@@ -288,18 +288,22 @@ fn run_with_progress<T: Executable + Clone + Send>(
 /// Print a single output value in the standard format.
 pub fn print_value(port: &str, value: &Value) {
     match value {
+        Value::Secret(_) => {
+            println!("  {}: ***", port);
+        }
         Value::Str(s) => {
             if port.ends_with("stderr") || port.ends_with("stdout") {
                 if !s.is_empty() {
-                    println!("  {}: {}", port, s);
+                    let t = truncate_log_value(s);
+                    println!("  {}: {}", port, t);
                 }
             } else if s.contains('\n') {
-                // Multi-line values (reports, etc.) — print in full
-                println!("  {}: {}", port, s);
-            } else if s.len() < 80 {
+                let t = truncate_log_value(s);
+                println!("  {}: {}", port, t);
+            } else if s.len() < 120 {
                 println!("  {}: {}", port, s);
             } else {
-                println!("  {}: {}...", port, truncate_str(s, 60));
+                println!("  {}: {}...", port, truncate_str(s, 80));
             }
         }
         Value::Int(i) => println!("  {}: {}", port, i),
@@ -308,6 +312,7 @@ pub fn print_value(port: &str, value: &Value) {
         Value::Set(set) => println!("  {}: {{{} items}}", port, set.len()),
         Value::Map(map) => println!("  {}: {{{} entries}}", port, map.len()),
         Value::Json(_) => println!("  {}: <JSON>", port),
+        Value::Skipped => {}
         _ => {}
     }
 }
@@ -339,4 +344,37 @@ fn truncate_str(s: &str, max_chars: usize) -> &str {
         Some((byte_idx, _)) => &s[..byte_idx],
         None => s,
     }
+}
+
+/// Maximum lines to display for a single port value in log output.
+const MAX_LOG_VALUE_LINES: usize = 40;
+
+/// Truncate a multi-line string for display in CI groups and classic log output.
+///
+/// Keeps the first 5 and last 35 lines, inserting a truncation marker.
+/// Also truncates individual lines longer than 500 characters.
+pub(crate) fn truncate_log_value(s: &str) -> String {
+    let lines: Vec<&str> = s.lines().collect();
+    if lines.len() <= MAX_LOG_VALUE_LINES {
+        return s.to_string();
+    }
+
+    let head = 5;
+    let tail = MAX_LOG_VALUE_LINES - head;
+    let omitted = lines.len() - head - tail;
+
+    let mut out = String::new();
+    for line in &lines[..head] {
+        out.push_str(line);
+        out.push('\n');
+    }
+    out.push_str(&format!("    ... ({omitted} lines omitted) ..."));
+    out.push('\n');
+    for (i, line) in lines[lines.len() - tail..].iter().enumerate() {
+        out.push_str(line);
+        if i < tail - 1 {
+            out.push('\n');
+        }
+    }
+    out
 }
