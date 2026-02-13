@@ -158,6 +158,12 @@ pub fn guard(meta: TestMeta<'_>) -> bool {
                 max_cost.as_str()
             );
         }
+        eprintln!(
+            "[guard] skipping {}: cost {} exceeds max {}",
+            meta.name,
+            meta.cost.as_str(),
+            max_cost.as_str()
+        );
         return false;
     }
 
@@ -176,6 +182,11 @@ pub fn guard(meta: TestMeta<'_>) -> bool {
                     missing.join(", ")
                 );
             }
+            eprintln!(
+                "[guard] skipping {}: missing secrets [{}]",
+                meta.name,
+                missing.join(", ")
+            );
             return false;
         }
     }
@@ -233,6 +244,12 @@ pub fn guard_test_with_env(
                 max_cost.as_str()
             );
         }
+        eprintln!(
+            "[guard] skipping {}: cost {} exceeds max {}",
+            name,
+            cost.as_str(),
+            max_cost.as_str()
+        );
         return false;
     }
 
@@ -250,6 +267,11 @@ pub fn guard_test_with_env(
                     missing.join(", ")
                 );
             }
+            eprintln!(
+                "[guard] skipping {}: missing secrets [{}]",
+                name,
+                missing.join(", ")
+            );
             return false;
         }
     }
@@ -270,6 +292,11 @@ pub fn guard_test_with_env(
                     missing_groups.join(", ")
                 );
             }
+            eprintln!(
+                "[guard] skipping {}: missing secrets [{}]",
+                name,
+                missing_groups.join(", ")
+            );
             return false;
         }
     }

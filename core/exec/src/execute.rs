@@ -2694,6 +2694,46 @@ mod tests {
     }
 
     #[test]
+    fn test_input_mocks_per_port_on_non_root_node() {
+        // Node B has two inputs: x (wired from A) and y (unwired entrypoint).
+        // Input mock injects B.y; B.x should come from A's output.
+        // This verifies per-port entrypoint injection, not per-node.
+        let mut dag: Dag<TestOp> = Dag::new();
+        dag.add_node(Node::opaque(
+            "A",
+            vec![],
+            vec![port("out", "String")],
+            TestOp::produce("out", Value::Str("from-A".into())),
+        ));
+        dag.add_node(Node::opaque(
+            "B",
+            vec![port("x", "String"), port("y", "String")],
+            vec![port("x", "String"), port("y", "String")],
+            TestOp::echo(), // echoes all inputs as outputs
+        ));
+        dag.add_edge(edge("A", "out", "B", "x"));
+
+        // Provide input mock for the unwired entrypoint port B.y
+        let mut input_mocks = BoundaryMocks::new();
+        input_mocks.set_input("B", "y", Value::Str("from-mock".into()));
+
+        let log =
+            execute_with_mode_and_inputs(&dag, ExecutionMode::Real, Some(&input_mocks)).unwrap();
+
+        let b = log.get("B").unwrap();
+        assert_eq!(
+            b.outputs.get("x"),
+            Some(&Value::Str("from-A".into())),
+            "wired port B.x should receive value from upstream A"
+        );
+        assert_eq!(
+            b.outputs.get("y"),
+            Some(&Value::Str("from-mock".into())),
+            "unwired entrypoint port B.y should receive value from input mock"
+        );
+    }
+
+    #[test]
     fn test_input_mocks_none_works() {
         // Passing None for input_mocks should work the same as execute_with_mode
         let mut dag: Dag<TestOp> = Dag::new();
