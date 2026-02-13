@@ -98,24 +98,13 @@ should go through the same display path.
 
 ## 2. `print_value` vs `print_log_entry` — Duplicate Logic with Drift
 
-**Where**:
-- `core/exec/src/display.rs:289-332` — `print_value()`
-- `core/exec/src/execute.rs:1560-1591` — `print_log_entry()`
+**Status**: Fixed (2026-02-13)
 
-**What happens**: Both functions format and print node outputs, but differ in:
+`print_log_entry` now delegates to `print_value`. Both CI group logging and
+classic display use the same code path with truncation and secret redaction.
 
-| Aspect | `print_value` | `print_log_entry` |
-|--------|---------------|-------------------|
-| Long string truncation | 80 chars | 120 chars |
-| Secret redaction | None | `Value::Secret(_) => "***"` |
-| Used by | Classic display mode | CI group logging |
-
-**Why this is a problem**: Security risk — `print_value` doesn't redact secrets.
-Subtle formatting differences between CI and local. Any fix to one function is
-easy to forget in the other.
-
-**Suggested fix**: Extract a single `format_output_value(port, value, opts)` function
-used by both. Options struct controls truncation width and redaction policy.
+The deeper issue (secret redaction depending on each call site rather than
+the type system) is tracked in §8 below.
 
 ---
 
@@ -259,15 +248,57 @@ knowing anything about the specific op.
 
 ---
 
+## 8. Secret Redaction Depends on Display Functions, Not the Type System
+
+**Where**: `core/exec/src/display.rs` (`print_value`), `core/exec/src/execute.rs` (`print_log_entry`, now unified), any code that formats `Value` for output
+
+**What happened**: `Value::Secret` exists as a dedicated enum variant — the type
+system already distinguishes secrets from plain strings. Yet `print_value` was
+missing a `Secret` arm entirely and would have fallen through to the `_ => {}`
+catch-all, silently dropping the value. Meanwhile `print_log_entry` had a
+manual `Secret => "***"` match. The fix (2026-02-13) added `Secret => "***"` to
+`print_value` too, but this is still the wrong architecture.
+
+**Why this is a problem**: Every function that ever renders, logs, serializes,
+or formats a `Value` needs to remember to handle `Secret` correctly. This is
+a classic "defense by convention" pattern that fails the moment someone writes
+a new display path and forgets the `Secret` arm. The type system already has
+the information — it should enforce redaction, not hope each call site does.
+
+Today there are at least these output paths for `Value`:
+- `print_value` (display.rs) — now redacts, didn't before
+- `truncate_for_report` / `build_report_blocks` (ci/ops.rs) — receives
+  strings, not `Value`; secrets would already be stringified by parse ops
+- `StructuredRenderer` — receives `StructuredBlock::Raw(String)`, opaque
+- `serde_json::to_string` in mock outputs — serializes `Value` directly
+- Any future display/export path
+
+**Root cause**: There is no single "render `Value` to displayable string"
+chokepoint. Instead, each consumer pattern-matches on `Value` independently.
+
+**Suggested fix**: Add a `Value::display_redacted(&self) -> String` method
+(or a `Display` impl that always redacts secrets) as the **only** sanctioned
+way to produce human-visible output from a `Value`. All display/log paths
+should call this method rather than matching on variants directly. The `Secret`
+variant's inner value should only be extractable via an explicit
+`Value::expose_secret()` method that makes the intent clear in code review.
+
+This would turn "every call site must remember to redact" into "you can't
+accidentally get the plaintext without calling a function that says `expose`
+in its name."
+
+---
+
 ## Refactoring Order
 
-1. **Immediate**: Unify `print_value` + `print_log_entry` (fixes secret leak, removes drift)
-2. **Short-term**: Add stdout capture to all CI stages (testgen, bootstrap, pragma, guardrail, verify)
-3. **Short-term**: Add per-stage error extractors for the CI report
-4. **Medium-term**: Unify CI vs local execution paths in `ci.rs`
-5. **Medium-term**: Wrap preflight in CI groups
-6. **Long-term**: Unified `ExecutionDisplay` trait with configurable verbosity
-7. **Long-term**: Standardize error field conventions across all ops
+1. ~~**Immediate**: Unify `print_value` + `print_log_entry`~~ (done 2026-02-13)
+2. **Immediate**: Secret redaction via `Value::display_redacted` chokepoint
+3. **Short-term**: Add stdout capture to all CI stages (testgen, bootstrap, pragma, guardrail, verify)
+4. **Short-term**: Add per-stage error extractors for the CI report
+5. **Medium-term**: Unify CI vs local execution paths in `ci.rs`
+6. **Medium-term**: Wrap preflight in CI groups
+7. **Long-term**: Unified `ExecutionDisplay` trait with configurable verbosity
+8. **Long-term**: Standardize error field conventions across all ops
 
 ---
 
