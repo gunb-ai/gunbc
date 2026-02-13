@@ -155,21 +155,25 @@ impl BuildConfig {
                 .warnings(w)),
             build: c(CargoCommand::new(Subcommand::Build)
                 .all_targets()
+                .release()
                 .warnings(w)),
-            test: c(CargoCommand::new(Subcommand::Test).warnings(w)),
+            test: c(CargoCommand::new(Subcommand::Test).release().warnings(w)),
             lint: c(CargoCommand::new(Subcommand::Clippy)
                 .all_targets()
+                .release()
                 .warnings(w)),
             lint_fix: c(CargoCommand::new(Subcommand::Clippy)
                 .fix()
                 .workspace()
                 .allow_dirty()
                 .allow_staged()
+                .release()
                 .warnings(w)),
             fmt: c(CargoCommand::new(Subcommand::Fmt)),
             fmt_check: c(CargoCommand::new(Subcommand::Fmt).check()),
             check: c(CargoCommand::new(Subcommand::Check)
                 .all_targets()
+                .release()
                 .warnings(w)),
             ci_yaml: c(CargoCommand::new(Subcommand::Run(codegen_inv.clone()))
                 .release()
