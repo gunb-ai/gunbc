@@ -48,17 +48,30 @@ enum SeedContext {
     RealSingleNodeRequiredInput,
 }
 
+/// Determine seed policy for a type.
+///
+/// This is **fail-closed**: only types on the known-safe whitelist use
+/// generated placeholders. Unknown types (including new semantic carriers
+/// and aliases) default to `ExplicitSeedRequired`, preventing silent
+/// shape-valid-but-behavior-invalid placeholders from sneaking through.
 fn seed_policy_for_type(type_id: &str) -> SeedPolicy {
     match type_id {
-        // Semantic carrier types: shape-valid placeholders are often behavior-invalid.
-        "TransportRequest"
-        | "TransportResponse"
-        | "Credential"
-        | "Secret"
-        | "FilesystemHandle"
-        | "NetworkHandle"
-        | "ToolHandle" => SeedPolicy::ExplicitSeedRequired,
-        _ => SeedPolicy::Generated,
+        // Primitives: generated placeholders are safe.
+        "String" | "Bool" | "Int" | "Unit" | "Json" | "Void"
+        // Refined primitives
+        | "NonEmptyString" | "Url" | "FilePath" | "Path" | "Email"
+        | "PositiveInt" | "NonNegativeInt"
+        // Container/wrapped types
+        | "OptionalString" | "OptionalInt" | "OptionalBool" | "OptionalJson"
+        | "OptionalUrl"
+        | "StringList" | "IntList" | "BoolList" | "JsonList"
+        | "UrlList" | "FilePathList"
+        | "NonEmptyStringList" | "NonEmptyFilePathList"
+        => SeedPolicy::Generated,
+        // Everything else (TransportRequest, TransportResponse, Credential,
+        // Secret, FilesystemHandle, NetworkHandle, ToolHandle, Platform, and
+        // any future types) requires explicit seeds — fail closed.
+        _ => SeedPolicy::ExplicitSeedRequired,
     }
 }
 
@@ -3664,11 +3677,26 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
         // must use the lowered node IDs since test execution happens on the flat DAG.
         let lowered = match gunbc_exec::lower(self.dag) {
             Ok(lowered) => lowered,
-            Err(_) => return None, // DAG can't be lowered; skip chain tests
+            Err(e) => {
+                // Lowering failed — emit a diagnostic test instead of silently skipping.
+                let err_msg = format!("DAG lowering failed, probe-observer tests skipped: {}", e);
+                return Some(TestSection {
+                    title: "Probe-Observer Integration Tests".to_string(),
+                    notes: vec![err_msg.clone()],
+                    tests: vec![TestFn {
+                        name: "test_probe_observer_lowering_failed".to_string(),
+                        doc: vec!["Lowering must succeed for probe-observer tests.".to_string()],
+                        body: vec![Stmt::Expr(Expr::call(
+                            "panic!",
+                            vec![Expr::Str(err_msg)],
+                        ))],
+                    }],
+                });
+            }
         };
         let lowered_analysis = analyze_dag(&lowered.dag);
         let po_analysis = analyze_probe_observers(&lowered.dag, spec, &lowered_analysis);
-        if po_analysis.tests.is_empty() {
+        if po_analysis.tests.is_empty() && po_analysis.gaps.is_empty() {
             return None;
         }
 
@@ -3851,10 +3879,43 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             });
         }
 
+        // Generate a failing test for coverage gaps (observability invariant).
+        // The module doc states: "Every terminal node reachable from any probe
+        // must have an OutputMatcher. Testgen emits an error for unobserved terminals."
+        if !po_analysis.gaps.is_empty() {
+            let gap_lines: Vec<String> = po_analysis
+                .gaps
+                .iter()
+                .map(|g| {
+                    format!(
+                        "  terminal '{}' reachable from probe '{}' has no OutputMatcher",
+                        g.terminal_node, g.probe_node
+                    )
+                })
+                .collect();
+            let msg = format!(
+                "Observability invariant violated: {} unobserved terminal(s):\\n{}\\n\
+                 Add OutputMatchers via NodeExample or live_expected_output for these nodes.",
+                po_analysis.gaps.len(),
+                gap_lines.join("\\n")
+            );
+            tests.push(TestFn {
+                name: "test_observability_invariant_no_gaps".to_string(),
+                doc: vec![
+                    "Every terminal node reachable from a probe must have an OutputMatcher.".to_string(),
+                    "This test fails when coverage gaps exist — add observers to fix.".to_string(),
+                ],
+                body: vec![Stmt::Expr(Expr::call(
+                    "panic!",
+                    vec![Expr::Str(msg)],
+                ))],
+            });
+        }
+
         Some(TestSection {
             title: "Probe-Observer Integration Tests".to_string(),
             notes: vec![
-                format!("Probes: {} | Observers: {} | Tests: {}", 
+                format!("Probes: {} | Observers: {} | Tests: {}",
                     po_analysis.probes.len(),
                     po_analysis.observers.len(),
                     po_analysis.tests.len()),
@@ -6068,6 +6129,7 @@ mod tests {
 
     #[test]
     fn test_seed_policy_marks_semantic_types_explicit() {
+        // Known semantic carriers require explicit seeds.
         assert_eq!(
             seed_policy_for_type("TransportResponse"),
             SeedPolicy::ExplicitSeedRequired
@@ -6084,8 +6146,29 @@ mod tests {
             seed_policy_for_type("Secret"),
             SeedPolicy::ExplicitSeedRequired
         );
+        assert_eq!(
+            seed_policy_for_type("FilesystemHandle"),
+            SeedPolicy::ExplicitSeedRequired
+        );
+
+        // Primitive/structural types are safe for generated placeholders.
         assert_eq!(seed_policy_for_type("String"), SeedPolicy::Generated);
         assert_eq!(seed_policy_for_type("Int"), SeedPolicy::Generated);
+        assert_eq!(seed_policy_for_type("Bool"), SeedPolicy::Generated);
+        assert_eq!(seed_policy_for_type("OptionalString"), SeedPolicy::Generated);
+        assert_eq!(seed_policy_for_type("StringList"), SeedPolicy::Generated);
+
+        // Fail-closed: unknown/new types default to ExplicitSeedRequired.
+        assert_eq!(
+            seed_policy_for_type("SomeNewCarrierType"),
+            SeedPolicy::ExplicitSeedRequired,
+            "unknown types must fail closed"
+        );
+        assert_eq!(
+            seed_policy_for_type("CustomAuthToken"),
+            SeedPolicy::ExplicitSeedRequired,
+            "unknown types must fail closed"
+        );
 
         assert!(requires_explicit_seed(
             "TransportResponse",
