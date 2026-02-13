@@ -147,6 +147,42 @@ fn mock_env(mocks: &mut BoundaryMocks) {
             })),
         )),
     );
+    // Re-auth branch boundaries (skipped in happy path)
+    mocks.set_value(
+        "cloud_credential/gcp_wif_secret/local_auth_upsert/execute_gcloud_auth",
+        "response",
+        Value::Skipped,
+    );
+    mocks.set_value(
+        "cloud_credential/gcp_wif_secret/local_auth_upsert/execute_reread_adc",
+        "response",
+        Value::Skipped,
+    );
+    mocks.set_value(
+        "cloud_credential/gcp_wif_secret/local_auth_upsert/execute_retry_oauth2",
+        "response",
+        Value::Skipped,
+    );
+    // IAM ensure (local dev only) — REST-based check + conditional set
+    mocks.set_value(
+        "cloud_credential/gcp_wif_secret/execute_get_iam",
+        "response",
+        Value::Response(TransportResponse::Rest(
+            gunbc_ir::transport::RestResponse::ok(serde_json::json!({
+                "bindings": [{
+                    "role": "roles/secretmanager.secretAccessor",
+                    "members": ["serviceAccount:ci-secrets@mock.iam.gserviceaccount.com"]
+                }],
+                "etag": "mock-etag"
+            })),
+        )),
+    );
+    // setIamPolicy is skipped (binding already exists in mock)
+    mocks.set_value(
+        "cloud_credential/gcp_wif_secret/execute_set_iam",
+        "response",
+        Value::Skipped,
+    );
     mocks.set_value(
         "cloud_credential/gcp_wif_secret/net_env",
         "net",
