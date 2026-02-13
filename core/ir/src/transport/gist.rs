@@ -32,6 +32,15 @@ pub struct GistFile {
     pub content: String,
 }
 
+/// Secret Manager secret ID for the GitHub PAT (without namespace prefix).
+///
+/// This is the single source of truth — all credential graphs, scope contracts,
+/// and the project spec catalog must agree on this value.
+///
+/// The full prefixed secret name is `"{namespace}-{GITHUB_SECRET_ID}"`,
+/// e.g., `"dev-github-token"`.
+pub const GITHUB_SECRET_ID: &str = "github-token";
+
 /// Gist-specific permission scopes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum GistScope {
@@ -55,6 +64,7 @@ pub struct GistScopeContract;
 impl ScopeContract for GistScopeContract {
     fn credential_intent(&self) -> CredentialIntent {
         CredentialIntent::new("github", "github", "bearer")
+            .with_secret_name(GITHUB_SECRET_ID)
             .with_required_scopes([GistScope::Write.as_str()])
             .with_interactive_allowed(true)
     }
@@ -253,6 +263,7 @@ mod tests {
         let intent = GistRequest::new().credential_intent();
         assert_eq!(intent.provider, "github");
         assert_eq!(intent.service, "github");
+        assert_eq!(intent.secret_name, Some(GITHUB_SECRET_ID.to_string()));
         assert_eq!(intent.scheme, "bearer");
         assert_eq!(intent.required_scopes, vec!["gist:write".to_string()]);
         assert!(intent.validate().is_ok());

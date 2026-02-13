@@ -106,37 +106,62 @@ Files:
 2. Execute in DryRun
 3. Assert via `.expect()` that it didn't crash
 
-This is useful as a smoke test but won't catch "nested lists vs flat lists"
-or other shape bugs if downstream ops are mocked or loosely typed.
+This won't catch "nested lists vs flat lists" or other shape bugs if
+downstream ops are mocked or loosely typed.
 
-**Suggested fix:** Either:
-- Inject a tiny "assert shape" node in test graphs, or
-- Have the test inspect downstream node's received inputs, or
-- Add explicit assertions on output value shapes after execution.
+**Blocked on:** `LogEntry` only records node *outputs*, not *inputs*.
+To assert "this node received a `Value::List` after WrapScalar coercion"
+the generated test needs to observe what the target node was *given*.
+
+Two options (design decision needed):
+
+1. **Add `inputs: HashMap<String, Value>` to `LogEntry`** — straightforward
+   refactor but doubles log memory per node and changes every `LogEntry`
+   consumer. Sub-decision: always record inputs, or opt-in (e.g., a
+   `LogDetail::Full` vs `LogDetail::OutputsOnly` enum)?
+
+2. **Inject shape-assert nodes into test graphs** — testgen inserts
+   synthetic nodes after coercion edges that assert value shape. More
+   complex testgen logic; needs a way to express shape constraints in
+   the code IR (e.g., `Assert::ValueShape { expr, expected_shape }`).
+
+**Interim coverage:** The `collect_fan_in()` function in `execute.rs`
+is unit-tested directly (`fan_in_wraps_scalar`, `fan_in_skips_absent_optional`,
+etc.) — these test the coercion logic at the level where it happens,
+without DAG execution or the execution log. The generated tests remain
+smoke-only until one of the above is implemented.
 
 Files:
-  - core/codegen/src/testgen/codegen.rs (build_coercion_coverage_tests, line ~848)
+  - core/exec/src/execute.rs (collect_fan_in — unit-tested; LogEntry — needs inputs field or opt-in detail level)
+  - core/codegen/src/testgen/codegen.rs (build_coercion_coverage_tests)
+  - core/ir/src/code_ir.rs (Assert enum — may need ValueShape variant for option 2)
 
 ---
 
-## Coercion analysis may be ahead of runtime implementation
+## ~~Coercion analysis may be ahead of runtime implementation~~ AUDITED (2026-02-12)
 
-`core/ir/src/coerce.rs` classifies coercions as:
-- `WrapScalar` (scalar → list)
-- `OptionalToList` (optional → list)
-- `Widen` (cardinality widening)
+All three `classify_coercion()` kinds are correctly implemented by the
+executor's fan-in logic. No gap between analysis and runtime.
 
-The executor (execute.rs) now handles list→list concat and optional→list skip,
-but may not implement all classified coercion kinds. This can cause:
-- Obligations/tests generated for coercion kinds the engine doesn't perform
-- Subtle bugs where analysis says "safe" but runtime shape is wrong
+| CoercionKind    | Classification                           | Runtime behavior                              |
+|-----------------|------------------------------------------|-----------------------------------------------|
+| `WrapScalar`    | `from.is_scalar() && to.is_list()`       | Scalar pushed to fan-in bucket → `List([v])`  |
+| `OptionalToList`| `from == ZERO_OR_ONE && to.is_list()`    | Unit skipped → `List([])`; present → `List([v])` |
+| `Widen`         | `from.is_bounded() && !to.is_bounded()`  | List items flattened via fan-in → re-wrapped  |
 
-**Action:** Audit `classify_coercion()` kinds against actual executor behavior.
-Either implement missing coercions or constrain analysis to emit only supported kinds.
+Fan-in logic extracted into `collect_fan_in()` and unit-tested directly:
+  - `fan_in_wraps_scalar` (WrapScalar)
+  - `fan_in_skips_absent_optional` / `fan_in_wraps_present_optional` (OptionalToList)
+  - `fan_in_flattens_list` (Widen)
+  - `fan_in_skips_skipped_value`, `fan_in_unit_from_required_port_is_kept`,
+    `fan_in_skips_unit_from_empty_list` (edge cases)
+
+This also removed duplicated fan-in logic between the main executor loop
+and `build_node_inputs` — both now call `collect_fan_in()`.
 
 Files:
-  - core/ir/src/coerce.rs (classify_coercion)
-  - core/exec/src/execute.rs (fan-in logic)
+  - core/ir/src/coerce.rs (classify_coercion — unchanged, correct)
+  - core/exec/src/execute.rs (collect_fan_in — extracted + unit-tested)
 
 ---
 

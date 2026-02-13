@@ -12,6 +12,7 @@
 //!    (pure)           (boundary)              (pure)
 //! ```
 
+use crate::makegen::registry::BuildCommand;
 use crate::makegen::BuildConfig;
 use gunbc_exec::{
     optional_response_strict, optional_str_strict, propagate_skipped, require_bool,
@@ -577,13 +578,8 @@ fn execute_prepare_clippy_lint(
             .ok();
     }
 
-    let request = TransportRequest::Shell(ShellRequest::new("cargo").args([
-        "clippy",
-        "--all-targets",
-        "--",
-        "-D",
-        "warnings",
-    ]));
+    let config = BuildConfig::cargo();
+    let request = TransportRequest::Shell(config.lint.to_shell_request());
 
     OutputMap::new()
         .request("request", request)
@@ -747,7 +743,7 @@ fn verify_skip_reason(inputs: &HashMap<String, Value>) -> Result<Option<&'static
 
 fn execute_prepare_verify_check(
     inputs: HashMap<String, Value>,
-    command: &str,
+    command: &BuildCommand,
 ) -> Result<HashMap<String, Value>, ExecError> {
     if let Some(reason) = verify_skip_reason(&inputs)? {
         return OutputMap::new()
@@ -756,7 +752,7 @@ fn execute_prepare_verify_check(
             .ok();
     }
 
-    let request = TransportRequest::Shell(ShellRequest::new("bash").args(["-lc", command]));
+    let request = TransportRequest::Shell(command.to_shell_request());
 
     OutputMap::new()
         .request("request", request)
@@ -769,8 +765,7 @@ fn execute_prepare_verify_makegen_check(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
     let config = BuildConfig::cargo();
-    let command = config.makegen_check.to_shell();
-    execute_prepare_verify_check(inputs, &command)
+    execute_prepare_verify_check(inputs, &config.makegen_check)
 }
 
 /// Prepare the bootstrap verify shell command (pure).
@@ -778,8 +773,7 @@ fn execute_prepare_verify_bootstrap_check(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
     let config = BuildConfig::cargo();
-    let command = config.bootstrap_check.to_shell();
-    execute_prepare_verify_check(inputs, &command)
+    execute_prepare_verify_check(inputs, &config.bootstrap_check)
 }
 
 /// Prepare the testgen verify shell command (pure).
@@ -787,8 +781,7 @@ fn execute_prepare_verify_testgen_check(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
     let config = BuildConfig::cargo();
-    let command = config.testgen_check.to_shell();
-    execute_prepare_verify_check(inputs, &command)
+    execute_prepare_verify_check(inputs, &config.testgen_check)
 }
 
 /// Prepare the pragma verify shell command (pure).
@@ -796,8 +789,7 @@ fn execute_prepare_verify_pragma_check(
     inputs: HashMap<String, Value>,
 ) -> Result<HashMap<String, Value>, ExecError> {
     let config = BuildConfig::cargo();
-    let command = config.pragma_check.to_shell();
-    execute_prepare_verify_check(inputs, &command)
+    execute_prepare_verify_check(inputs, &config.pragma_check)
 }
 
 /// Parse a verify sub-check shell response (pure).
@@ -1219,13 +1211,8 @@ impl Mockable for CIOp {
                 .str("guardrail_stderr", "")
                 .build(),
             CIOp::PrepareClippyLint => {
-                let request = TransportRequest::Shell(ShellRequest::new("cargo").args([
-                    "clippy",
-                    "--all-targets",
-                    "--",
-                    "-D",
-                    "warnings",
-                ]));
+                let config = BuildConfig::cargo();
+                let request = TransportRequest::Shell(config.lint.to_shell_request());
                 OutputMap::new()
                     .request("request", request)
                     .bool("skip", false)
@@ -1239,9 +1226,8 @@ impl Mockable for CIOp {
                 .build(),
             CIOp::PrepareVerifyMakegenCheck => {
                 let config = BuildConfig::cargo();
-                let cmd = config.makegen_check.to_shell();
                 let request =
-                    TransportRequest::Shell(ShellRequest::new("bash").args(["-lc", &cmd]));
+                    TransportRequest::Shell(config.makegen_check.to_shell_request());
                 OutputMap::new()
                     .request("request", request)
                     .bool("skip", false)
@@ -1253,9 +1239,8 @@ impl Mockable for CIOp {
                 .build(),
             CIOp::PrepareVerifyBootstrapCheck => {
                 let config = BuildConfig::cargo();
-                let cmd = config.bootstrap_check.to_shell();
                 let request =
-                    TransportRequest::Shell(ShellRequest::new("bash").args(["-lc", &cmd]));
+                    TransportRequest::Shell(config.bootstrap_check.to_shell_request());
                 OutputMap::new()
                     .request("request", request)
                     .bool("skip", false)
@@ -1267,9 +1252,8 @@ impl Mockable for CIOp {
                 .build(),
             CIOp::PrepareVerifyTestgenCheck => {
                 let config = BuildConfig::cargo();
-                let cmd = config.testgen_check.to_shell();
                 let request =
-                    TransportRequest::Shell(ShellRequest::new("bash").args(["-lc", &cmd]));
+                    TransportRequest::Shell(config.testgen_check.to_shell_request());
                 OutputMap::new()
                     .request("request", request)
                     .bool("skip", false)
@@ -1281,9 +1265,8 @@ impl Mockable for CIOp {
                 .build(),
             CIOp::PrepareVerifyPragmaCheck => {
                 let config = BuildConfig::cargo();
-                let cmd = config.pragma_check.to_shell();
                 let request =
-                    TransportRequest::Shell(ShellRequest::new("bash").args(["-lc", &cmd]));
+                    TransportRequest::Shell(config.pragma_check.to_shell_request());
                 OutputMap::new()
                     .request("request", request)
                     .bool("skip", false)

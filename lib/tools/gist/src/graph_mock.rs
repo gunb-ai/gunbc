@@ -12,6 +12,7 @@ use crate::graph::{build_gist_graph, GistMode};
 use gunbc_ir::transport::cloud::{
     CloudProviderKind, CloudRuntimeKind, CloudSecretConfig, CloudSecretRef,
 };
+use gunbc_ir::transport::gist::GITHUB_SECRET_ID;
 use gunbc_ir::transport::{ShellResponse, TransportResponse};
 use gunbc_ir::{SecretString, Timestamp, Value};
 use gunbc_primitives::filename;
@@ -140,7 +141,9 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
         .boundary("cloud_credential", "credential", mock_credential())
         .expect("cloud_credential credential should match type")
         .boundary("cloud_credential", "expires_in", Value::Int(3_600))
-        .expect("cloud_credential expires_in should match type");
+        .expect("cloud_credential expires_in should match type")
+        .boundary("cloud_credential", "ok", Value::Bool(true))
+        .expect("cloud_credential ok should match type");
 
     // Mode-specific transport mocks
     match mode {
@@ -309,6 +312,10 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
         .node_example(
             NodeExample::new("resolve_auth")
                 .output("service", OutputMatcher::exact(Value::Str("github".into())))
+                .output(
+                    "secret_name",
+                    OutputMatcher::exact(Value::Str(GITHUB_SECRET_ID.into())),
+                )
                 .output("scheme", OutputMatcher::exact(Value::Str("bearer".into())))
                 .output(
                     "interactive_allowed",
@@ -345,7 +352,8 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
         )
         .skip_node_example("cloud_env")
         .skip_node_example("cloud_credential")
-        .skip_node_example("bind_secret");
+        .skip_node_example("bind_secret")
+        .skip_node_example("scope_preflight");
 
     // Mode-specific node examples
     match mode {
@@ -536,34 +544,6 @@ pub fn gist_diff_mock_spec() -> MockSpec {
 )]
 pub fn gist_recent_mock_spec() -> MockSpec {
     gist_mock_spec(&GistMode::Recent)
-}
-
-/// Mock spec for auth doctor mode (gist-auth-doctor).
-#[gunbc_testgen_registry_macros::resource_test_target(
-    skip,
-    name = "gist-auth-doctor",
-    builder = "crate::auth_doctor::build_gist_auth_doctor_graph(None).unwrap()"
-)]
-#[gunbc_testgen_registry_macros::testgen_target(
-    name = "gist-auth-doctor",
-    output = "lib/tools/gist/src/generated_tests_auth_doctor.rs",
-    module = "gist_auth_doctor_generated_tests",
-    builder = "crate::auth_doctor::build_gist_auth_doctor_graph(None).unwrap()",
-    tool = "gist-auth-doctor",
-    no_boundary_tests,
-    window_max_nodes = 1
-)]
-pub fn gist_auth_doctor_mock_spec() -> MockSpec {
-    MockSpec::new("gist-auth-doctor")
-        .boundary(
-            "cloud_status",
-            "status",
-            Value::Str("Cloud env (gcp/github): OK (mock)".into()),
-        )
-        .boundary("auth_report", "service", Value::Str("github".into()))
-        .boundary("auth_report", "ready", Value::Bool(true))
-        .skip_node_example("cloud_status")
-        .skip_node_example("auth_report")
 }
 
 /// Mock spec for testing gist with file system lock simulation.

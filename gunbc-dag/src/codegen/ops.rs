@@ -6,7 +6,7 @@ use gunbc_exec::{
     optional_response_strict, propagate_skipped, require_bool, require_response, ExecError,
     Executable, OutputMap, TransportResponseExt,
 };
-use gunbc_ir::cargo::{CargoCommand, Subcommand};
+use gunbc_ir::cargo::{BinaryArgs, CargoCommand, CodegenSubcommand, Subcommand};
 use gunbc_ir::resource::{
     check_manifest_freshness, codegen_resource_def, load_manifest_default, ExecMode,
     FreshnessOptions, ManagedResource, ManifestEntry, ManifestFreshness, ResourceDef,
@@ -197,7 +197,7 @@ fn execute_prepare_codegen_command(
     let inv = WorkspaceBinary::Codegen.invocation();
     let cmd = CargoCommand::new(Subcommand::Run(inv))
         .release()
-        .trailing_arg("codegen");
+        .args(BinaryArgs::codegen(CodegenSubcommand::Codegen));
     let request = TransportRequest::Shell(cmd.to_shell_request());
 
     OutputMap::new()

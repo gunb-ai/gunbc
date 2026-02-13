@@ -59,10 +59,10 @@ pub fn deps_signature() -> WorkflowSignature {
         .with_input("manifest_path", "String", Cardinality::ONE)
         // Outputs - boundary outputs from terminal nodes
         .with_output("dep_count", "Int", Cardinality::ONE)
-        .with_output("dep_names", "String", Cardinality::ZERO_OR_MORE)
+        .with_output("dep_names", "StringList", Cardinality::ZERO_OR_MORE)
         .with_output("manifest_path", "String", Cardinality::ONE)
-        .with_output("already_installed", "String", Cardinality::ZERO_OR_MORE)
-        .with_output("needs_install", "String", Cardinality::ZERO_OR_MORE)
+        .with_output("already_installed", "StringList", Cardinality::ZERO_OR_MORE)
+        .with_output("needs_install", "StringList", Cardinality::ZERO_OR_MORE)
         .with_output("platform", "String", Cardinality::ONE)
         .with_output("executed", "Bool", Cardinality::ONE)
         .with_output("success", "Bool", Cardinality::ONE)

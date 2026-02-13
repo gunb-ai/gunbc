@@ -138,3 +138,117 @@ Consolidated 4 copies of `build_cloud_credential_graph_for_runtime` into
 
 Removed `upsert_and_run` and unused imports (`CliToolError`, `Value`,
 `execute_cli_tool_op`, `HashMap`) from `lib/tools/clippy/src/ops.rs`.
+
+---
+
+## 10. DAG typing is structural at edge-level, but node I/O is still dynamic
+
+**Where**:
+- `core/ir/src/builder.rs` (strong edge/type/cardinality checks)
+- `core/ir/src/types.rs` (`TypeId(pub String)`)
+- `core/exec/src/lib.rs` (`Executable::execute(HashMap<String, Value>)`)
+- `core/exec/src/execute.rs` (`execute_single_node` and input mock injection)
+- `core/codegen/src/testgen/codegen.rs` (mock type checks skip `input_mocks`)
+
+**What happens**:
+- We get strong DAG build-time guarantees for edge wiring:
+  - type compatibility
+  - cardinality compatibility
+  - fan-in rejection for scalar ports
+  - cycle prevention
+- But node execution boundaries are still `HashMap<String, Value>`, so wrong
+  value types can still be injected at runtime (especially entrypoint ports).
+- `MockSpec` type mismatch checks currently validate `transport_mocks` and
+  `boundary_mocks`, but not `input_mocks`.
+
+**Why it's a hack**:
+- The model appears strongly typed end-to-end, but there is still a dynamic
+  escape hatch at node call boundaries.
+- This is where regressions like optional bool/string coercion drift or
+  semantic placeholder values can bypass structural guarantees.
+
+**Supporting examples (current repo)**:
+1. `parse_impersonate` expects a REST payload with `accessToken`, but the type
+   system only knows `TransportResponse`; shape-valid placeholders can still be
+   behavior-invalid (`lib/gcp-ops/src/ops.rs`).
+2. `compare_*_content.check_mode` wrong-type tests (`Value::Str("<WRONG>")`)
+   are meaningful because node entrypoint inputs are runtime maps, not typed
+   structs (`gunbc-dag/src/*/generated_tests.rs`).
+3. `BlobOps::CompareContent` relies on strict input extraction
+   (`optional_bool_strict`) to reject wrong-typed inputs at runtime
+   (`lib/blob/src/lib.rs`).
+4. CLI parsing still has permissive coercion (`Int` uses parse-or-0) which is
+   runtime behavior, not structural typing (`core/cli/src/lib.rs`).
+
+**Suggested fix (incremental, DAG-first)**:
+1. Add `input_mocks` type validation in testgen coverage checks (same level as
+   existing boundary/transport mock compatibility checks).
+2. Generate typed node input/output wrappers from DAG signatures (e.g.
+   `ParseImpersonateIn`, `ParseImpersonateOut`) and use them in generated tests
+   + helper APIs.
+3. Add typed entrypoint injection APIs (`set_input_typed`) to avoid ad-hoc
+   `Value` maps for common call paths.
+4. Introduce refined semantic types for carrier payloads where needed:
+   - `ImpersonationResponse` (validated schema)
+   - `AccessToken`
+   - `ScopeSet`
+5. Keep transport/world effects as runtime checks; push everything else to
+   DAG build-time or generated type wrappers.
+
+**Boundary of guarantee (explicit)**:
+- Compile/build time can guarantee: DAG structure, port compatibility,
+  cardinality, typed wrappers, and mock shape/type correctness.
+- Runtime must still validate: external provider payloads, auth scopes,
+  permissions, and freshness/availability of real resources.
+
+---
+
+## 11. Swapped TCP timeout fields — PROBABLE BUG
+
+**Where**: `lib/transport/src/executor.rs` ~lines 343-352
+
+**What happens**: `connect_timeout_ms` is assigned to `set_read_timeout`
+and `read_timeout_ms` is assigned to `set_write_timeout`. The fields
+are swapped, meaning TCP reads use the connect timeout and writes use
+the read timeout.
+
+**Impact**: If `connect_timeout_ms` is short (e.g. 5s) and `read_timeout_ms`
+is long (e.g. 30s), reads will time out prematurely while writes get an
+unexpectedly long window. This can cause intermittent timeout failures
+that are difficult to diagnose.
+
+**Suggested fix**: Swap the assignments so `read_timeout_ms` maps to
+`set_read_timeout` and an appropriate value maps to `set_write_timeout`.
+
+See also: consolidation.md §17.1.
+
+---
+
+## 12. `panic!()` in Result-returning `Executable` impl
+
+**Where**: `lib/transport/src/cli.rs` lines 144-157
+
+**What happens**: Several match arms use `panic!()` for unexpected
+`CliToolOp` variants. The function returns `Result<_, ExecError>`.
+
+**Impact**: If a new variant is accidentally routed here, the process
+crashes instead of returning a recoverable error.
+
+**Suggested fix**: Replace `panic!(...)` with `Err(ExecError::new(...))`.
+
+See also: consolidation.md §17.6.
+
+---
+
+## 13. ~70 `.expect()` calls in production graph builders
+
+**Where**: `gunbc-dag/src/ci/graph.rs`, `gunbc-dag/src/workspace/subdags/bootstrap.rs`,
+`gunbc-dag/src/workspace/subdags/deps.rs`, `core/exec/src/topo.rs`
+
+**What happens**: Builder methods (`.add_node`, `.add_edge`, HashMap lookups)
+are followed by `.expect()`. All enclosing functions return `Result`.
+
+**Impact**: A renamed node ID or malformed DAG panics the process instead
+of returning a diagnostic error.
+
+**Suggested fix**: Replace `.expect()` / `.unwrap()` with `.ok_or_else(|| ...)?`.

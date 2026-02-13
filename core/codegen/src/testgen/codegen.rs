@@ -22,10 +22,11 @@
 
 use crate::testgen::analyze::{analyze_dag, DagAnalysis};
 use crate::testgen::obligation::{collect_obligations, DischargeStatus, Obligation, ObligationSet};
+use crate::testgen::probe_observer::analyze_probe_observers;
 use crate::testgen::render_rust::plain_rust_renderer;
 use gunbc_infra::hash::ContentHash;
 use gunbc_ir::boundary_label;
-use gunbc_ir::code_ir::{Assert, Expr, HelperFn, Import, Stmt, TestFile, TestFn, TestSection};
+use gunbc_ir::code_ir::{Assert, Expr, HelperFn, Import, Item, Stmt, TestFile, TestFn, TestSection};
 use gunbc_ir::language::NamingCase;
 use gunbc_ir::render_ir::CodeRenderer;
 use gunbc_ir::transport::{ShellRequest, ShellResponse, TransportRequest, TransportResponse};
@@ -35,6 +36,39 @@ use gunbc_ir::{
 use gunbc_test::{FermiCost, MockSpec, OutputMatcher, TestClass};
 use serde_json::Value as JsonValue;
 use std::collections::{BTreeMap, HashMap, HashSet};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SeedPolicy {
+    Generated,
+    ExplicitSeedRequired,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SeedContext {
+    RealSingleNodeRequiredInput,
+}
+
+fn seed_policy_for_type(type_id: &str) -> SeedPolicy {
+    match type_id {
+        // Semantic carrier types: shape-valid placeholders are often behavior-invalid.
+        "TransportRequest"
+        | "TransportResponse"
+        | "Credential"
+        | "Secret"
+        | "FilesystemHandle"
+        | "NetworkHandle"
+        | "ToolHandle" => SeedPolicy::ExplicitSeedRequired,
+        _ => SeedPolicy::Generated,
+    }
+}
+
+fn requires_explicit_seed(type_id: &str, context: SeedContext) -> bool {
+    match context {
+        SeedContext::RealSingleNodeRequiredInput => {
+            seed_policy_for_type(type_id) == SeedPolicy::ExplicitSeedRequired
+        }
+    }
+}
 
 /// Configuration for test generation.
 ///
@@ -67,7 +101,8 @@ pub struct TestConfig {
     pub boundary_tests: bool,
     /// Generate chain validation tests (mock spec self-consistency)
     pub chain_tests: bool,
-    /// Generate flow verification tests (DryRun full DAG, verify terminal outputs)
+    /// Generate flow verification tests (DryRun full DAG, verify terminal outputs).
+    /// DEPRECATED: Tautological — replaced by probe_observer_tests.
     pub flow_tests: bool,
     /// Generate live flow verification tests (Real execution, gated by env + cost)
     pub live_flow_tests: bool,
@@ -75,7 +110,10 @@ pub struct TestConfig {
     pub example_tests: bool,
     /// Generate optional-input behavior tests (missing + wrong-type)
     pub optional_input_tests: bool,
-    /// Max window size for windowed tests (None = no limit)
+    /// Generate probe-observer integration tests (non-tautological chain tests)
+    pub probe_observer_tests: bool,
+    /// Max window size for windowed tests (None = disabled).
+    /// DEPRECATED: Tautological — replaced by probe_observer_tests.
     pub window_max_nodes: Option<usize>,
     /// Test module visibility
     pub visibility: String,
@@ -112,7 +150,8 @@ impl Default for TestConfig {
             live_flow_tests: false,
             example_tests: true,
             optional_input_tests: true,
-            window_max_nodes: Some(5),
+            probe_observer_tests: true,
+            window_max_nodes: None, // Deprecated: use probe_observer_tests instead
             visibility: "pub".to_string(),
             test_class: TestClass::Hermetic,
             fermi_cost: FermiCost::XS,
@@ -450,6 +489,32 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                 .to_string(),
             format!("Content-Hash: {}", content_hash.as_str()),
         ];
+
+        // Append probe-observer coverage report if available.
+        if let Some(spec) = &self.mock_spec {
+            let lowered_dag = gunbc_exec::lower(self.dag).ok();
+            let po_analysis = if let Some(ref lowered) = lowered_dag {
+                let la = analyze_dag(&lowered.dag);
+                analyze_probe_observers(&lowered.dag, spec, &la)
+            } else {
+                analyze_probe_observers(self.dag, spec, &analysis)
+            };
+            if !po_analysis.probes.is_empty() || !po_analysis.observers.is_empty() {
+                use crate::testgen::probe_observer::observability_report;
+                file.header.push(String::new());
+                file.header.push("Probe-Observer Coverage:".to_string());
+                for line in observability_report(&po_analysis).lines() {
+                    file.header.push(format!("  {}", line));
+                }
+                if !po_analysis.gaps.is_empty() {
+                    file.header.push(String::new());
+                    file.header.push("WARNING: Unobserved terminal nodes detected.".to_string());
+                    file.header.push(
+                        "Add OutputMatchers via NodeExample for these nodes.".to_string(),
+                    );
+                }
+            }
+        }
 
         plain_rust_renderer().render_file(&file)
     }
@@ -854,6 +919,31 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             });
         }
 
+        if self.config.probe_observer_tests && self.mock_spec.is_some() {
+            file.imports.push(Import {
+                path: vec!["gunbc_exec".to_string()],
+                items: vec![
+                    "lower".to_string(),
+                    "ExecutionMode".to_string(),
+                    "execute_with_mode".to_string(),
+                ],
+            });
+            file.imports.push(Import {
+                path: vec!["gunbc_test".to_string()],
+                items: vec![
+                    "apply_window_inputs".to_string(),
+                    "assert_chain_outputs".to_string(),
+                    "OutputMatcher".to_string(),
+                    "window_subdag".to_string(),
+                    "Window".to_string(),
+                ],
+            });
+            file.imports.push(Import {
+                path: vec!["std::collections".to_string()],
+                items: vec!["HashMap".to_string()],
+            });
+        }
+
         if self.config.chain_tests && self.mock_spec.is_some() {
             file.imports.push(Import {
                 path: vec!["gunbc_test".to_string()],
@@ -1077,6 +1167,12 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             }
         }
 
+        if self.config.probe_observer_tests {
+            if let Some(section) = self.build_probe_observer_section(analysis, graph_builder_fn) {
+                file.sections.push(section);
+            }
+        }
+
         if self.config.example_tests {
             if let Some(section) = self.build_node_example_section(graph_builder_fn) {
                 file.sections.push(section);
@@ -1094,6 +1190,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
 
         self.inject_test_guards(&mut file);
         Self::prune_unused_imports(&mut file);
+        Self::dedup_imports(&mut file);
 
         file
     }
@@ -1186,6 +1283,26 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
         file.imports.retain(|import| !import.items.is_empty());
     }
 
+    /// Merge imports from the same module path to avoid duplicate use statements.
+    fn dedup_imports(file: &mut TestFile) {
+        let mut by_path: BTreeMap<Vec<String>, HashSet<String>> = BTreeMap::new();
+        for import in &file.imports {
+            by_path
+                .entry(import.path.clone())
+                .or_default()
+                .extend(import.items.iter().cloned());
+        }
+        file.imports = by_path
+            .into_iter()
+            .map(|(path, items)| {
+                let mut items: Vec<String> = items.into_iter().collect();
+                items.sort();
+                Import { path, items }
+            })
+            .filter(|imp| !imp.items.is_empty())
+            .collect();
+    }
+
     fn collect_idents_from_type(ty: &str, used: &mut HashSet<String>) {
         let mut buf = String::new();
         for ch in ty.chars() {
@@ -1214,6 +1331,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                     Self::collect_idents_from_stmt(s, used);
                 }
             }
+            Stmt::Item(Item::Raw(code)) => Self::collect_idents_from_type(code, used),
             Stmt::Item(_) => {}
         }
     }
@@ -1782,6 +1900,7 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
             Result<BTreeMap<String, ValueExpr>, Vec<String>>,
         > = HashMap::new();
         let mut skipped_nodes: HashSet<String> = HashSet::new();
+        let mut strict_seed_checked_nodes: HashSet<String> = HashSet::new();
         let lowered_ids = gunbc_exec::lower(self.dag)
             .unwrap_or_else(|err| {
                 panic!(
@@ -1849,6 +1968,10 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                     continue;
                 }
             };
+
+            if strict_seed_checked_nodes.insert(node_id.0.clone()) {
+                self.assert_optional_required_inputs_seeded(node, base_inputs);
+            }
 
             // Missing optional input should not error.
             let mut inputs_missing = base_inputs.clone();
@@ -1952,6 +2075,73 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
         }
 
         (tests, notes)
+    }
+
+    fn has_explicit_node_input_seed(&self, node_id: &str, port_name: &str) -> bool {
+        if let Some(spec) = &self.mock_spec {
+            if spec
+                .input_mocks
+                .iter()
+                .any(|mock| mock.node == node_id && mock.port == port_name)
+            {
+                return true;
+            }
+            if spec
+                .node_examples
+                .iter()
+                .any(|example| example.node_id == node_id && example.inputs.contains_key(port_name))
+            {
+                return true;
+            }
+        }
+
+        self.dag
+            .get_node(&NodeId(node_id.to_string()))
+            .is_some_and(|node| {
+                node.examples
+                    .iter()
+                    .any(|example| example.inputs.contains_key(port_name))
+            })
+    }
+
+    fn assert_optional_required_inputs_seeded(
+        &self,
+        node: &gunbc_ir::Node<T>,
+        base_inputs: &BTreeMap<String, ValueExpr>,
+    ) {
+        let mut missing = Vec::new();
+
+        for port in &node.inputs {
+            let needs_value = port.has_guard() || !port.cardinality.allows_empty();
+            if !needs_value {
+                continue;
+            }
+            if port.name.0 == "skip" && port.type_id.0 == "Bool" {
+                continue;
+            }
+            if !requires_explicit_seed(
+                port.type_id.0.as_str(),
+                SeedContext::RealSingleNodeRequiredInput,
+            ) {
+                continue;
+            }
+            if !base_inputs.contains_key(&port.name.0)
+                || !self.has_explicit_node_input_seed(&node.id.0, &port.name.0)
+            {
+                missing.push(format!("{}.{} ({})", node.id.0, port.name.0, port.type_id.0));
+            }
+        }
+
+        if missing.is_empty() {
+            return;
+        }
+
+        panic!(
+            "Optional input tests require explicit seeds for required semantic inputs in Real single-node mode.\n\
+             Missing explicit seeds: {}.\n\
+             Add one of: MockSpec::input_mock(\"<node>\", \"<port>\", ...), MockSpec::node_example(...), or Node::with_example(...).",
+            missing.join(", ")
+        );
     }
 
     // =======================================================================
@@ -2950,6 +3140,22 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                 }
             }
         }
+
+        // Seed known per-node inputs from MockSpec before generic synthesis.
+        if let Some(spec) = &self.mock_spec {
+            for input_mock in &spec.input_mocks {
+                if input_mock.node != node_id.0 {
+                    continue;
+                }
+                if !node.inputs.iter().any(|port| port.name.0 == input_mock.port) {
+                    continue;
+                }
+                inputs
+                    .entry(input_mock.port.clone())
+                    .or_insert_with(|| ValueExpr::from(&input_mock.value));
+            }
+        }
+
         let mut issues = Vec::new();
 
         for port in &node.inputs {
@@ -3441,6 +3647,225 @@ impl<'a, T: Clone> TestGenerator<'a, T> {
                     .to_string(),
                 "values as injected inputs, then verify window exit outputs match baseline."
                     .to_string(),
+            ],
+            tests,
+        })
+    }
+
+    fn build_probe_observer_section(
+        &self,
+        _analysis: &DagAnalysis,
+        graph_builder_fn: &str,
+    ) -> Option<TestSection> {
+        let spec = self.mock_spec.as_ref()?;
+        self.mock_spec_fn.as_ref()?;
+
+        // Lower the DAG so SubDag nodes are expanded. The probe-observer analysis
+        // must use the lowered node IDs since test execution happens on the flat DAG.
+        let lowered = match gunbc_exec::lower(self.dag) {
+            Ok(lowered) => lowered,
+            Err(_) => return None, // DAG can't be lowered; skip chain tests
+        };
+        let lowered_analysis = analyze_dag(&lowered.dag);
+        let po_analysis = analyze_probe_observers(&lowered.dag, spec, &lowered_analysis);
+        if po_analysis.tests.is_empty() {
+            return None;
+        }
+
+        let mut tests = Vec::new();
+        let mut used_names: HashSet<String> = HashSet::new();
+
+        for (idx, chain_test) in po_analysis.tests.iter().enumerate() {
+            let base_name = format!(
+                "test_chain_{}_to_{}",
+                NamingCase::SnakeCase.apply(&chain_test.probe.node_id),
+                NamingCase::SnakeCase.apply(&chain_test.observer.node_id)
+            );
+            let test_name = if used_names.insert(base_name.clone()) {
+                base_name
+            } else {
+                format!("{}_{}", base_name, idx)
+            };
+
+            // Build node list for the subgraph window.
+            let mut node_args = Vec::new();
+            for node in &chain_test.subgraph_nodes {
+                node_args.push(Expr::Str(node.clone()));
+            }
+
+            // Build matcher HashMap entries.
+            let mut matcher_stmts = Vec::new();
+            for (port, matcher_desc) in &chain_test.observer.matchers {
+                // We need to reconstruct the matcher from the MockSpec's NodeExample.
+                // Emit: matchers.insert(("node".into(), "port".into()), mock_spec().node_examples[...].outputs["port"].clone());
+                // Instead, use a simpler approach: reference the mock_spec at runtime.
+                matcher_stmts.push(Stmt::Comment(format!(
+                    "Observer: {}.{} — {}",
+                    chain_test.observer.node_id, port, matcher_desc.description
+                )));
+            }
+
+            // Generate the test body that:
+            // 1. Builds the DAG and lowers it
+            // 2. Runs a full baseline DryRun to get input values
+            // 3. Creates a window from the subgraph nodes
+            // 4. Injects entry inputs from the baseline
+            // 5. Executes the window subDAG
+            // 6. Checks observer outputs via assert_chain_outputs (not baseline!)
+            let body = vec![
+                Stmt::let_bind("dag", Expr::var(graph_builder_fn)),
+                Stmt::let_bind(
+                    "flat",
+                    Expr::call("lower", vec![Expr::var("dag").ref_of()])
+                        .method("expect", vec![Expr::Str("lower should succeed".into())])
+                        .field("dag"),
+                ),
+                Stmt::let_bind("spec", Expr::call("mock_spec", vec![])),
+                Stmt::Comment("Full baseline DryRun to derive window entry inputs".to_string()),
+                Stmt::let_bind(
+                    "baseline",
+                    Expr::call(
+                        "execute_with_mode",
+                        vec![
+                            Expr::var("flat").ref_of(),
+                            Expr::call(
+                                "ExecutionMode::DryRun",
+                                vec![Expr::call("mock_spec", vec![]).method("to_boundary_mocks", vec![])],
+                            ),
+                        ],
+                    )
+                    .method(
+                        "expect",
+                        vec![Expr::Str("baseline DryRun should succeed".into())],
+                    ),
+                ),
+                Stmt::let_bind(
+                    "window",
+                    Expr::call(
+                        "Window::from_nodes",
+                        vec![Expr::var("flat").ref_of(), Expr::call("vec!", node_args)],
+                    ),
+                ),
+                Stmt::let_mut(
+                    "mocks",
+                    Expr::var("spec").method("to_boundary_mocks", vec![]),
+                ),
+                Stmt::Expr(
+                    Expr::call(
+                        "apply_window_inputs",
+                        vec![
+                            Expr::var("flat").ref_of(),
+                            Expr::var("window").ref_of(),
+                            Expr::var("baseline").ref_of(),
+                            Expr::var("mocks").ref_mut(),
+                        ],
+                    )
+                    .method(
+                        "expect",
+                        vec![Expr::Str(
+                            "chain entry inputs should be derivable from baseline".into(),
+                        )],
+                    ),
+                ),
+                Stmt::let_bind(
+                    "window_dag",
+                    Expr::call(
+                        "window_subdag",
+                        vec![Expr::var("flat").ref_of(), Expr::var("window").ref_of()],
+                    ),
+                ),
+                Stmt::let_bind(
+                    "log",
+                    Expr::call(
+                        "execute_with_mode",
+                        vec![
+                            Expr::var("window_dag").ref_of(),
+                            Expr::call("ExecutionMode::DryRun", vec![Expr::var("mocks")]),
+                        ],
+                    )
+                    .method(
+                        "expect",
+                        vec![Expr::Str("chain execution should succeed".into())],
+                    ),
+                ),
+                Stmt::Blank,
+                Stmt::Comment(format!(
+                    "Verify observer: {} (depth {})",
+                    chain_test.observer.node_id, chain_test.depth
+                )),
+                Stmt::let_mut(
+                    "matchers",
+                    Expr::call("HashMap::new", vec![]),
+                ),
+                // Insert only chain-safe (input-independent) matchers at runtime.
+                Stmt::Item(Item::Raw(format!(
+                    "for ex in spec.node_examples.iter().filter(|e| e.node_id == \"{}\") {{\n\
+                        for (port, matcher) in &ex.outputs {{\n\
+                            if matcher.is_chain_safe() {{\n\
+                                matchers.insert((\"{}\".to_string(), port.clone()), matcher.clone());\n\
+                            }}\n\
+                        }}\n\
+                     }}",
+                    chain_test.observer.node_id, chain_test.observer.node_id
+                ))),
+                // Also insert chain-safe matchers from live_expected_outputs
+                Stmt::Item(Item::Raw(format!(
+                    "for leo in spec.live_expected_outputs.iter().filter(|e| e.node == \"{}\") {{\n\
+                        if leo.matcher.is_chain_safe() {{\n\
+                            matchers.insert((\"{}\".to_string(), leo.port.clone()), leo.matcher.clone());\n\
+                        }}\n\
+                     }}",
+                    chain_test.observer.node_id, chain_test.observer.node_id
+                ))),
+                Stmt::Expr(
+                    Expr::call(
+                        "assert_chain_outputs",
+                        vec![
+                            Expr::var("log").ref_of(),
+                            Expr::var("matchers").ref_of(),
+                        ],
+                    )
+                    .method(
+                        "expect",
+                        vec![Expr::Str(format!(
+                            "chain {} -> {} should satisfy observer matchers",
+                            chain_test.probe.node_id, chain_test.observer.node_id
+                        ))],
+                    ),
+                ),
+            ];
+
+            tests.push(TestFn {
+                name: test_name,
+                doc: vec![
+                    format!(
+                        "Chain test: {} -> {} (depth {})",
+                        chain_test.probe.node_id,
+                        chain_test.observer.node_id,
+                        chain_test.depth
+                    ),
+                    String::new(),
+                    "Non-tautological: asserts observer matchers, not baseline values.".to_string(),
+                ],
+                body,
+            });
+        }
+
+        Some(TestSection {
+            title: "Probe-Observer Integration Tests".to_string(),
+            notes: vec![
+                format!("Probes: {} | Observers: {} | Tests: {}", 
+                    po_analysis.probes.len(),
+                    po_analysis.observers.len(),
+                    po_analysis.tests.len()),
+                if po_analysis.gaps.is_empty() {
+                    "All terminal nodes are observed.".to_string()
+                } else {
+                    format!(
+                        "Coverage gaps: {} unobserved terminal(s) — add OutputMatchers to fix.",
+                        po_analysis.gaps.len()
+                    )
+                },
             ],
             tests,
         })
@@ -5592,6 +6017,108 @@ mod tests {
             code.contains("assert_eq!"),
             "should have exact match assertion"
         );
+    }
+
+    #[test]
+    fn test_optional_inputs_use_mockspec_input_mocks_for_required_ports() {
+        use gunbc_ir::transport::{RestResponse, TransportResponse};
+
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque(
+            "parse",
+            vec![
+                port("response", "TransportResponse"),
+                optional("fallback", "OptionalString"),
+            ],
+            vec![port("result", "String")],
+            (),
+        ));
+
+        let spec = MockSpec::new("opt")
+            .input_mock(
+                "parse",
+                "response",
+                Value::Response(TransportResponse::Rest(RestResponse::ok(
+                    serde_json::json!({ "result": "ok" }),
+                ))),
+            )
+            .boundary("parse", "result", Value::Str("ok".into()))
+            .skip_node_example("parse");
+
+        let generator = TestGenerator::new(&dag)
+            .with_mock_spec(spec)
+            .with_mock_spec_fn("crate::mock_spec()");
+        let code = generator.generate_test_module("opt", "build_opt_graph()");
+
+        assert!(
+            code.contains("test_optional_missing_parse_fallback"),
+            "should generate missing-optional test"
+        );
+        assert!(
+            code.contains("TransportResponse::Rest"),
+            "required inputs should come from MockSpec input_mock values"
+        );
+        assert!(
+            !code.contains(
+                "TransportResponse::Shell(gunbc_ir::transport::ShellResponse { exit_code: 0, stdout: \"<MOCK>\""
+            ),
+            "should not synthesize generic shell placeholders when input mocks exist"
+        );
+    }
+
+    #[test]
+    fn test_seed_policy_marks_semantic_types_explicit() {
+        assert_eq!(
+            seed_policy_for_type("TransportResponse"),
+            SeedPolicy::ExplicitSeedRequired
+        );
+        assert_eq!(
+            seed_policy_for_type("TransportRequest"),
+            SeedPolicy::ExplicitSeedRequired
+        );
+        assert_eq!(
+            seed_policy_for_type("Credential"),
+            SeedPolicy::ExplicitSeedRequired
+        );
+        assert_eq!(
+            seed_policy_for_type("Secret"),
+            SeedPolicy::ExplicitSeedRequired
+        );
+        assert_eq!(seed_policy_for_type("String"), SeedPolicy::Generated);
+        assert_eq!(seed_policy_for_type("Int"), SeedPolicy::Generated);
+
+        assert!(requires_explicit_seed(
+            "TransportResponse",
+            SeedContext::RealSingleNodeRequiredInput
+        ));
+        assert!(!requires_explicit_seed(
+            "String",
+            SeedContext::RealSingleNodeRequiredInput
+        ));
+    }
+
+    #[test]
+    #[should_panic(expected = "Optional input tests require explicit seeds for required semantic inputs in Real single-node mode")]
+    fn test_optional_inputs_require_explicit_semantic_seed() {
+        let mut dag: Dag<()> = Dag::new();
+        dag.add_node(Node::opaque(
+            "parse",
+            vec![
+                port("response", "TransportResponse"),
+                optional("fallback", "OptionalString"),
+            ],
+            vec![port("result", "String")],
+            (),
+        ));
+
+        let spec = MockSpec::new("opt")
+            .boundary("parse", "result", Value::Str("ok".into()))
+            .skip_node_example("parse");
+
+        let generator = TestGenerator::new(&dag)
+            .with_mock_spec(spec)
+            .with_mock_spec_fn("crate::mock_spec()");
+        let _ = generator.generate_test_module("opt", "build_opt_graph()");
     }
 
     #[test]

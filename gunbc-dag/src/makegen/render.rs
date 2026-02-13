@@ -6,11 +6,14 @@
 //! Uses `MAKEFILE.indent` from the language module for tab indentation.
 //! Uses `MakefileStructuredRenderer` to render `StructuredBlock` IR.
 
+use std::borrow::Cow;
+
 use crate::makegen::registry::{
     BuildConfig, EntrypointParam, ExtraTarget, MetaTarget, ResourceTargetMap, ToolInfo,
     ToolRegistry,
 };
-use gunbc_ir::cargo::Warnings;
+use crate::WorkspaceBinary;
+use gunbc_ir::cargo::{CargoCommand, Subcommand, Warnings};
 use gunbc_ir::render_ir::{FileHeader, PlainText, StructuredBlock, StructuredRenderer, Target};
 use gunbc_ir::resource::ExecMode;
 use gunbc_ir::symbols::{Tier, STANDARD};
@@ -51,10 +54,14 @@ pub(crate) const MAKEGEN_NAME: &str = "gunbc-makegen";
 impl MakefileRenderer<'_> {
     /// Render the complete Makefile with header.
     pub fn render(&self) -> String {
+        let regenerate_cmd = CargoCommand::new(Subcommand::Run(
+            WorkspaceBinary::Makegen.invocation(),
+        ))
+        .release();
         let header = FileHeader {
-            generator_name: MAKEGEN_NAME.to_string(),
-            regenerate_command: "cargo run -p gunbc-dag --bin gunbc-makegen --release".to_string(),
-            comment_prefix: "#".to_string(),
+            generator_name: MAKEGEN_NAME.into(),
+            regenerate_command: regenerate_cmd.to_shell().into(),
+            comment_prefix: "#".into(),
         };
         format!(
             "{}\n\n{}",
@@ -121,12 +128,12 @@ fn build_makefile_blocks(registry: &ToolRegistry, config: &BuildConfig) -> Vec<S
          # Dev default:     make test      (ensure generated artifacts, then test)\n\
          # Dev workflow:    make test-fix  (fmt/lint fix + ensure generated artifacts, then test)\n\
          # CI verification: make verify    (check generated artifacts)\n\n"
-            .to_string(),
+            .into(),
     ));
 
     // Default goal
     blocks.push(StructuredBlock::Raw(
-        ".DEFAULT_GOAL := help\n\n".to_string(),
+        ".DEFAULT_GOAL := help\n\n".into(),
     ));
 
     // .PHONY
@@ -182,26 +189,21 @@ fn build_phony_line(registry: &ToolRegistry) -> String {
 /// Build core targets as structured blocks.
 fn build_core_targets(config: &BuildConfig) -> Vec<StructuredBlock> {
     let mut blocks = Vec::new();
-    let warning_prefix = if config.warnings == Warnings::Deny {
-        "RUSTFLAGS=\"-D warnings\" "
-    } else {
-        ""
-    };
 
     // preflight-fix
     blocks.push(StructuredBlock::Target(Target {
-        name: "preflight-fix".to_string(),
+        name: "preflight-fix".into(),
         deps: vec![],
-        body: vec!["@cargo fix --workspace --all-targets --allow-dirty --allow-staged".to_string()],
-        comment: Some("Preflight: auto-fix rustc warnings before running generators".to_string()),
+        body: vec!["@cargo fix --workspace --all-targets --allow-dirty --allow-staged".into()],
+        comment: Some("Preflight: auto-fix rustc warnings before running generators".into()),
     }));
 
     // ensure-codegen
     blocks.push(StructuredBlock::Target(Target {
-        name: "ensure-codegen".to_string(),
+        name: "ensure-codegen".into(),
         deps: vec![],
-        body: vec![config.ensure_codegen_shell()],
-        comment: Some("Ensure CLI entrypoints exist (bootstrap-safe)".to_string()),
+        body: vec![config.ensure_codegen_shell().into()],
+        comment: Some("Ensure CLI entrypoints exist (bootstrap-safe)".into()),
     }));
 
     // lint-upsert
@@ -209,18 +211,18 @@ fn build_core_targets(config: &BuildConfig) -> Vec<StructuredBlock> {
     let lint_fix_cmd = config.lint_fix.to_shell();
     let lint_upsert = format!("@{} || ({} && {})", lint_cmd, lint_fix_cmd, lint_cmd);
     blocks.push(StructuredBlock::Target(Target {
-        name: "lint-upsert".to_string(),
-        deps: vec!["ensure-codegen".to_string(), "pragma".to_string()],
-        body: vec![lint_upsert],
-        comment: Some("Lint upsert: fix if needed, then verify".to_string()),
+        name: "lint-upsert".into(),
+        deps: vec!["ensure-codegen".into(), "pragma".into()],
+        body: vec![lint_upsert.into()],
+        comment: Some("Lint upsert: fix if needed, then verify".into()),
     }));
 
     // codegen
     blocks.push(StructuredBlock::Target(Target {
-        name: "codegen".to_string(),
-        deps: vec!["lint-upsert".to_string()],
-        body: vec![config.codegen_shell()],
-        comment: Some("Generate CLI entrypoints (DAG upsert)".to_string()),
+        name: "codegen".into(),
+        deps: vec!["lint-upsert".into()],
+        body: vec![config.codegen_shell().into()],
+        comment: Some("Generate CLI entrypoints (DAG upsert)".into()),
     }));
 
     // build
@@ -230,99 +232,72 @@ fn build_core_targets(config: &BuildConfig) -> Vec<StructuredBlock> {
         "codegen \u{2192} testgen \u{2192} cargo build"
     };
     blocks.push(StructuredBlock::Target(Target {
-        name: "build".to_string(),
-        deps: vec!["codegen".to_string(), "testgen".to_string()],
-        body: vec![config.build_shell()],
-        comment: Some(format!("Full build transaction: {build_desc}")),
+        name: "build".into(),
+        deps: vec!["codegen".into(), "testgen".into()],
+        body: vec![config.build_shell().into()],
+        comment: Some(format!("Full build transaction: {build_desc}").into()),
     }));
 
     // clean
     blocks.push(StructuredBlock::Target(Target {
-        name: "clean".to_string(),
+        name: "clean".into(),
         deps: vec![],
-        body: vec!["@cargo clean".to_string()],
-        comment: Some("Clean build artifacts".to_string()),
+        body: vec!["@cargo clean".into()],
+        comment: Some("Clean build artifacts".into()),
     }));
 
     // testgen
     blocks.push(StructuredBlock::Target(Target {
-        name: "testgen".to_string(),
-        deps: vec!["lint-upsert".to_string()],
-        body: vec![config.testgen_shell()],
-        comment: Some("Regenerate tests from DAG structures and MockSpecs".to_string()),
+        name: "testgen".into(),
+        deps: vec!["lint-upsert".into()],
+        body: vec![config.testgen_shell().into()],
+        comment: Some("Regenerate tests from DAG structures and MockSpecs".into()),
     }));
 
     // testgen-check
     blocks.push(StructuredBlock::Target(Target {
-        name: "testgen-check".to_string(),
-        deps: vec!["lint-upsert".to_string()],
-        body: vec![config.testgen_check_shell()],
+        name: "testgen-check".into(),
+        deps: vec!["lint-upsert".into()],
+        body: vec![config.testgen_check_shell().into()],
         comment: Some(
-            "Check if generated tests are stale (fails if regeneration needed)".to_string(),
+            "Check if generated tests are stale (fails if regeneration needed)".into(),
         ),
     }));
 
     // pragma-check
     blocks.push(StructuredBlock::Target(Target {
-        name: "pragma-check".to_string(),
-        deps: vec!["lint-upsert".to_string()],
-        body: vec![format!(
-            "@{}cargo run -p gunbc-dag --bin gunbc-pragma --release -- --mode=verify",
-            warning_prefix
-        )],
+        name: "pragma-check".into(),
+        deps: vec!["lint-upsert".into()],
+        body: vec![config.pragma_check_shell().into()],
         comment: Some(
-            "Check if pragma artifacts are stale (fails if regeneration needed)".to_string(),
+            "Check if pragma artifacts are stale (fails if regeneration needed)".into(),
         ),
     }));
 
     // verify
     blocks.push(StructuredBlock::Target(Target {
-        name: "verify".to_string(),
-        deps: vec!["lint-upsert".to_string()],
+        name: "verify".into(),
+        deps: vec!["lint-upsert".into()],
         body: vec![
-            format!(
-                "@{}cargo run -p gunbc-dag --bin gunbc-makegen --release -- --mode=verify",
-                warning_prefix
-            ),
-            format!(
-                "@{}cargo run -p gunbc-dag --bin gunbc-bootstrap --release -- --mode=verify",
-                warning_prefix
-            ),
-            format!(
-                "@{}cargo run -p gunbc-dag --bin gunbc-testgen --release -- --mode=verify",
-                warning_prefix
-            ),
-            format!(
-                "@{}cargo run -p gunbc-dag --bin gunbc-pragma --release -- --mode=verify",
-                warning_prefix
-            ),
+            config.makegen_check_shell().into(),
+            config.bootstrap_check_shell().into(),
+            config.testgen_check_shell().into(),
+            config.pragma_check_shell().into(),
         ],
-        comment: Some("Verify generated artifacts match their generators".to_string()),
+        comment: Some("Verify generated artifacts match their generators".into()),
     }));
 
     // verify-fix
     blocks.push(StructuredBlock::Target(Target {
-        name: "verify-fix".to_string(),
-        deps: vec!["lint-upsert".to_string()],
+        name: "verify-fix".into(),
+        deps: vec!["lint-upsert".into()],
         body: vec![
-            format!(
-                "@{}cargo run -p gunbc-dag --bin gunbc-makegen --release -- --mode=ensure",
-                warning_prefix
-            ),
-            format!(
-                "@{}cargo run -p gunbc-dag --bin gunbc-bootstrap --release -- --mode=ensure",
-                warning_prefix
-            ),
-            format!(
-                "@{}cargo run -p gunbc-dag --bin gunbc-testgen --release -- --mode=ensure",
-                warning_prefix
-            ),
-            format!(
-                "@{}cargo run -p gunbc-dag --bin gunbc-pragma --release -- --mode=ensure",
-                warning_prefix
-            ),
+            config.makegen_ensure_shell().into(),
+            config.bootstrap_ensure_shell().into(),
+            config.testgen_ensure_shell().into(),
+            config.pragma_ensure_shell().into(),
         ],
-        comment: Some("Ensure generated artifacts are up to date".to_string()),
+        comment: Some("Ensure generated artifacts are up to date".into()),
     }));
 
     blocks
@@ -330,45 +305,45 @@ fn build_core_targets(config: &BuildConfig) -> Vec<StructuredBlock> {
 
 /// Build the help target as a raw block (complex echo formatting).
 fn build_help_target(registry: &ToolRegistry, config: &BuildConfig) -> StructuredBlock {
-    let mut lines: Vec<String> = vec![
-        "@echo \"gunbc tools - generated Makefile\"".to_string(),
-        "@echo \"\"".to_string(),
-        "@echo \"Naming convention:\"".to_string(),
-        "@echo \"  make <target>      - verify only (CI-safe)\"".to_string(),
-        "@echo \"  make <target>-fix  - auto-fix then verify (for dev)\"".to_string(),
-        "@echo \"\"".to_string(),
+    let mut lines: Vec<Cow<'static, str>> = vec![
+        "@echo \"gunbc tools - generated Makefile\"".into(),
+        "@echo \"\"".into(),
+        "@echo \"Naming convention:\"".into(),
+        "@echo \"  make <target>      - verify only (CI-safe)\"".into(),
+        "@echo \"  make <target>-fix  - auto-fix then verify (for dev)\"".into(),
+        "@echo \"\"".into(),
         // Build transactions section
-        "@echo \"Build commands:\"".to_string(),
+        "@echo \"Build commands:\"".into(),
     ];
     let build_desc = if config.use_dag_entrypoints {
         "codegen \u{2192} testgen \u{2192} gunbc-build"
     } else {
         "codegen \u{2192} testgen \u{2192} cargo build"
     };
-    lines.push(format!("@echo \"  build    - {build_desc}\""));
-    lines.push("@echo \"  codegen  - Generate CLI entrypoints\"".to_string());
+    lines.push(format!("@echo \"  build    - {build_desc}\"").into());
+    lines.push("@echo \"  codegen  - Generate CLI entrypoints\"".into());
     lines.push(
-        "@echo \"  ensure-codegen  - Bootstrap CLI entrypoints (safe on clean)\"".to_string(),
+        "@echo \"  ensure-codegen  - Bootstrap CLI entrypoints (safe on clean)\"".into(),
     );
-    lines.push("@echo \"  preflight-fix  - Auto-fix rustc warnings (workspace)\"".to_string());
-    lines.push("@echo \"  lint-upsert  - Auto-fix lint issues then verify\"".to_string());
-    lines.push("@echo \"  clean    - Remove build artifacts\"".to_string());
-    lines.push("@echo \"  testgen  - Regenerate tests from DAG structures\"".to_string());
-    lines.push("@echo \"  testgen-check  - Check if generated tests are stale\"".to_string());
-    lines.push("@echo \"  pragma-check  - Check if pragma artifacts are stale\"".to_string());
+    lines.push("@echo \"  preflight-fix  - Auto-fix rustc warnings (workspace)\"".into());
+    lines.push("@echo \"  lint-upsert  - Auto-fix lint issues then verify\"".into());
+    lines.push("@echo \"  clean    - Remove build artifacts\"".into());
+    lines.push("@echo \"  testgen  - Regenerate tests from DAG structures\"".into());
+    lines.push("@echo \"  testgen-check  - Check if generated tests are stale\"".into());
+    lines.push("@echo \"  pragma-check  - Check if pragma artifacts are stale\"".into());
     lines.push(
-        "@echo \"  verify   - Verify generated artifacts match their generators\"".to_string(),
+        "@echo \"  verify   - Verify generated artifacts match their generators\"".into(),
     );
-    lines.push("@echo \"  verify-fix  - Ensure generated artifacts are up to date\"".to_string());
-    lines.push("@echo \"\"".to_string());
+    lines.push("@echo \"  verify-fix  - Ensure generated artifacts are up to date\"".into());
+    lines.push("@echo \"\"".into());
 
     // Meta targets section
-    lines.push("@echo \"Development:\"".to_string());
+    lines.push("@echo \"Development:\"".into());
     for meta in &registry.meta_targets {
-        lines.push(format!("@echo \"  {}  - {}\"", meta.name, meta.description));
+        lines.push(format!("@echo \"  {}  - {}\"", meta.name, meta.description).into());
         if meta.has_fix_variant {
             let deps = if meta.fix_prerequisites.is_empty() {
-                "auto-fix".to_string()
+                "auto-fix".into()
             } else {
                 let names: Vec<&str> = meta
                     .fix_prerequisites
@@ -377,40 +352,52 @@ fn build_help_target(registry: &ToolRegistry, config: &BuildConfig) -> Structure
                     .collect();
                 format!("{} first", names.join(" + "))
             };
-            lines.push(format!(
-                "@echo \"  {}-fix  - {} ({})\"",
-                meta.name, meta.description, deps
-            ));
+            lines.push(
+                format!(
+                    "@echo \"  {}-fix  - {} ({})\"",
+                    meta.name, meta.description, deps
+                )
+                .into(),
+            );
         }
         if meta.has_check_variant {
-            lines.push(format!(
-                "@echo \"  {}-check  - {} (check only)\"",
-                meta.name, meta.description
-            ));
+            lines.push(
+                format!(
+                    "@echo \"  {}-check  - {} (check only)\"",
+                    meta.name, meta.description
+                )
+                .into(),
+            );
         }
     }
-    lines.push("@echo \"\"".to_string());
+    lines.push("@echo \"\"".into());
 
     // Tools section
-    lines.push("@echo \"Tools:\"".to_string());
+    lines.push("@echo \"Tools:\"".into());
     for tool in &registry.tools {
         let params = render_help_params(&tool.entrypoints);
-        lines.push(format!(
-            "@echo \"  {} {}  - {}\"",
-            tool.short_name, params, tool.description
-        ));
+        lines.push(
+            format!(
+                "@echo \"  {} {}  - {}\"",
+                tool.short_name, params, tool.description
+            )
+            .into(),
+        );
         for extra in &tool.extra_targets {
-            lines.push(format!(
-                "@echo \"  {}-{}  - {}\"",
-                tool.short_name, extra.suffix, extra.description
-            ));
+            lines.push(
+                format!(
+                    "@echo \"  {}-{}  - {}\"",
+                    tool.short_name, extra.suffix, extra.description
+                )
+                .into(),
+            );
         }
     }
-    lines.push("@echo \"\"".to_string());
-    lines.push("@echo \"Add -dry suffix for dry-run (e.g., make gist-dry)\"".to_string());
+    lines.push("@echo \"\"".into());
+    lines.push("@echo \"Add -dry suffix for dry-run (e.g., make gist-dry)\"".into());
 
     StructuredBlock::Target(Target {
-        name: "help".to_string(),
+        name: "help".into(),
         deps: vec![],
         body: lines,
         comment: None,
@@ -426,7 +413,7 @@ fn build_meta_targets(registry: &ToolRegistry, config: &BuildConfig) -> Vec<Stru
         "# ============================================================================\n\
          # Meta Targets - Development workflow commands\n\
          # ============================================================================\n\n"
-            .to_string(),
+            .into(),
     ));
 
     // Fix alias targets
@@ -448,12 +435,12 @@ fn build_meta_targets(registry: &ToolRegistry, config: &BuildConfig) -> Vec<Stru
 /// Build the dependency list for a meta target (base/check variant).
 ///
 /// Resolves each `ResourceNeed` using its `base_mode` via `ResourceTargetMap`.
-fn meta_target_deps(meta: &MetaTarget, res_map: &ResourceTargetMap) -> Vec<String> {
-    let mut deps: Vec<String> = Vec::new();
+fn meta_target_deps(meta: &MetaTarget, res_map: &ResourceTargetMap) -> Vec<Cow<'static, str>> {
+    let mut deps: Vec<Cow<'static, str>> = Vec::new();
 
     for need in &meta.resources {
         if let Some(target) = res_map.resolve(&need.id, need.base_mode) {
-            deps.push(target.to_string());
+            deps.push(Cow::Owned(target.to_string()));
         }
     }
 
@@ -464,16 +451,16 @@ fn meta_target_deps(meta: &MetaTarget, res_map: &ResourceTargetMap) -> Vec<Strin
 fn build_fix_alias_targets(config: &BuildConfig) -> Vec<StructuredBlock> {
     vec![
         StructuredBlock::Target(Target {
-            name: "fmt-fix".to_string(),
+            name: "fmt-fix".into(),
             deps: vec![],
-            body: vec![config.fmt_shell()],
-            comment: Some("fmt-fix: apply formatting (alias for fmt)".to_string()),
+            body: vec![config.fmt_shell().into()],
+            comment: Some("fmt-fix: apply formatting (alias for fmt)".into()),
         }),
         StructuredBlock::Target(Target {
-            name: "lint-fix".to_string(),
-            deps: vec!["pragma".to_string()],
-            body: vec![config.lint_fix_shell()],
-            comment: Some("lint-fix: auto-fix lint issues where possible".to_string()),
+            name: "lint-fix".into(),
+            deps: vec!["pragma".into()],
+            body: vec![config.lint_fix_shell().into()],
+            comment: Some("lint-fix: auto-fix lint issues where possible".into()),
         }),
     ]
 }
@@ -488,10 +475,10 @@ fn build_meta_target(
     let command = meta.get_command(config);
 
     StructuredBlock::Target(Target {
-        name: meta.name.clone(),
+        name: meta.name.clone().into(),
         deps,
-        body: vec![command],
-        comment: Some(format!("{}: {}", meta.name, meta.description)),
+        body: vec![command.into()],
+        comment: Some(format!("{}: {}", meta.name, meta.description).into()),
     })
 }
 
@@ -505,9 +492,9 @@ fn build_meta_check_variant(
         let deps = meta_target_deps(meta, res_map);
 
         vec![StructuredBlock::Target(Target {
-            name: format!("{}-check", meta.name),
+            name: format!("{}-check", meta.name).into(),
             deps,
-            body: vec![check_cmd],
+            body: vec![check_cmd.into()],
             comment: None,
         })]
     } else {
@@ -528,17 +515,17 @@ fn build_meta_fix_variant(
         return vec![];
     }
 
-    let mut deps = Vec::new();
+    let mut deps: Vec<Cow<'static, str>> = Vec::new();
 
     // Fix prerequisites first (e.g., FmtFix, LintFix)
     for dep in &meta.fix_prerequisites {
-        deps.push(dep.target_name().to_string());
+        deps.push(dep.target_name().into());
     }
 
     // All resources resolved in Ensure mode
     for need in &meta.resources {
         if let Some(target) = res_map.resolve(&need.id, ExecMode::Ensure) {
-            deps.push(target.to_string());
+            deps.push(Cow::Owned(target.to_string()));
         }
     }
 
@@ -547,10 +534,10 @@ fn build_meta_fix_variant(
         .unwrap_or_else(|| meta.get_command(config));
 
     vec![StructuredBlock::Target(Target {
-        name: format!("{}-fix", meta.name),
+        name: format!("{}-fix", meta.name).into(),
         deps,
-        body: vec![fix_cmd],
-        comment: Some(format!("{}-fix: auto-fix then verify", meta.name)),
+        body: vec![fix_cmd.into()],
+        comment: Some(format!("{}-fix: auto-fix then verify", meta.name).into()),
     })]
 }
 
@@ -588,23 +575,24 @@ fn build_tool_target(tool: &ToolInfo, config: &BuildConfig) -> StructuredBlock {
     let cli_args = render_cli_args(&tool.entrypoints);
 
     let deps = if tool.short_name == "pragma" {
-        vec!["preflight-fix".to_string()]
+        vec!["preflight-fix".into()]
     } else if tool.needs_generated_cli {
-        vec!["ensure-codegen".to_string()]
+        vec!["ensure-codegen".into()]
     } else {
-        vec!["preflight-fix".to_string()]
+        vec!["preflight-fix".into()]
     };
 
     StructuredBlock::Target(Target {
-        name: tool.short_name.clone(),
+        name: tool.short_name.clone().into(),
         deps,
         body: vec![format!(
             "@{}{} --{}",
             warning_prefix,
             tool.invocation.command(),
             cli_args
-        )],
-        comment: Some(format!("{} entrypoints: {}", tool.binary_name(), port_list)),
+        )
+        .into()],
+        comment: Some(format!("{} entrypoints: {}", tool.binary_name(), port_list).into()),
     })
 }
 
@@ -619,22 +607,23 @@ fn build_dry_run_target(tool: &ToolInfo, config: &BuildConfig) -> StructuredBloc
     let cli_args = render_cli_args(&tool.entrypoints);
 
     let deps = if tool.short_name == "pragma" {
-        vec!["preflight-fix".to_string()]
+        vec!["preflight-fix".into()]
     } else if tool.needs_generated_cli {
-        vec!["ensure-codegen".to_string()]
+        vec!["ensure-codegen".into()]
     } else {
-        vec!["preflight-fix".to_string()]
+        vec!["preflight-fix".into()]
     };
 
     StructuredBlock::Target(Target {
-        name: format!("{}-dry", tool.short_name),
+        name: format!("{}-dry", tool.short_name).into(),
         deps,
         body: vec![format!(
             "@{}{} -- --dry-run{}",
             warning_prefix,
             tool.invocation.command(),
             cli_args
-        )],
+        )
+        .into()],
         comment: None,
     })
 }
@@ -642,13 +631,14 @@ fn build_dry_run_target(tool: &ToolInfo, config: &BuildConfig) -> StructuredBloc
 /// Build an extra composite target.
 fn build_extra_target(tool: &ToolInfo, extra: &ExtraTarget) -> StructuredBlock {
     StructuredBlock::Target(Target {
-        name: format!("{}-{}", tool.short_name, extra.suffix),
-        deps: vec![tool.short_name.clone()],
-        body: extra.post_commands.clone(),
+        name: format!("{}-{}", tool.short_name, extra.suffix).into(),
+        deps: vec![tool.short_name.clone().into()],
+        body: extra.post_commands.iter().map(|s| Cow::from(s.clone())).collect(),
         comment: Some(format!(
             "{}-{}: {}",
             tool.short_name, extra.suffix, extra.description
-        )),
+        )
+        .into()),
     })
 }
 
@@ -727,10 +717,10 @@ mod tests {
     #[test]
     fn test_render_help_params_repeatable() {
         let params = vec![EntrypointParam {
-            port_name: "extensions".to_string(),
-            make_var: "EXT".to_string(),
-            cli_flag: "--extensions".to_string(),
-            type_hint: "String".to_string(),
+            port_name: "extensions".into(),
+            make_var: "EXT".into(),
+            cli_flag: "--extensions".into(),
+            type_hint: "String".into(),
             default: None,
             repeatable: true,
         }];

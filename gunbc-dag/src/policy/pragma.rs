@@ -7,6 +7,7 @@ use gunbc_clippy::{ClippyConfig, ClippyConfigRenderer, CratePolicy, CrateRole, L
 use gunbc_ir::render_ir::{FileHeader, PlainText, StructuredBlock, StructuredRenderer};
 use gunbc_ir::symbols::{Tier, STANDARD};
 use gunbc_ir::PlainStructuredRenderer;
+use std::borrow::Cow;
 
 /// Regenerate command for pragma outputs.
 pub const PRAGMA_REGENERATE_CMD: &str = "cargo run -p gunbc-dag --bin gunbc-pragma";
@@ -78,9 +79,9 @@ pub fn pragma_lint_policy() -> PragmaLintPolicy {
 /// Render the disallowed-methods allowlist file.
 pub fn render_disallowed_methods_allowlist() -> String {
     let header = FileHeader {
-        generator_name: "gunbc-pragma".to_string(),
-        regenerate_command: PRAGMA_REGENERATE_CMD.to_string(),
-        comment_prefix: "#".to_string(),
+        generator_name: Cow::Borrowed("gunbc-pragma"),
+        regenerate_command: Cow::Borrowed(PRAGMA_REGENERATE_CMD),
+        comment_prefix: Cow::Borrowed("#"),
     };
 
     let blocks = build_allowlist_blocks();
@@ -121,9 +122,9 @@ fn build_allowlist_blocks() -> Vec<StructuredBlock> {
 /// Render the pragma lint policy file (dead_code allowances, allowlist).
 pub fn render_pragma_lint_policy() -> String {
     let header = FileHeader {
-        generator_name: "gunbc-pragma".to_string(),
-        regenerate_command: PRAGMA_REGENERATE_CMD.to_string(),
-        comment_prefix: "#".to_string(),
+        generator_name: Cow::Borrowed("gunbc-pragma"),
+        regenerate_command: Cow::Borrowed(PRAGMA_REGENERATE_CMD),
+        comment_prefix: Cow::Borrowed("#"),
     };
 
     let blocks = build_lint_policy_blocks();

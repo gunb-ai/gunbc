@@ -103,6 +103,18 @@ pub fn testgen_dag_mock_spec() -> MockSpec {
                 "check_mode",
                 Value::Bool(false),
             )
+            .input_mock(
+                format!("compare_{}_content", name),
+                "response",
+                Value::Response(TransportResponse::File(FileResponse {
+                    path: format!("{}/generated_tests.rs", name.replace('-', "_")),
+                    operation: FileOp::Read,
+                    success: true,
+                    content: Some(format!("<mock-{}>", name)),
+                    exists: None,
+                    error: None,
+                })),
+            )
             .resource_lock(format!("fs:{}/generated_tests.rs", name.replace('-', "_")));
     }
 

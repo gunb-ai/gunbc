@@ -39,12 +39,29 @@ impl Executable for TestgenOp {
     ) -> Result<HashMap<String, Value>, ExecError> {
         match self {
             TestgenOp::Generate {
+                name,
                 target_def,
                 generate_fn,
-                ..
             } => {
-                let content = (generate_fn)(target_def);
-                OutputMap::new().str("content", content).ok()
+                let def = target_def.clone();
+                let f = *generate_fn;
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| (f)(&def)));
+                match result {
+                    Ok(content) => OutputMap::new().str("content", content).ok(),
+                    Err(payload) => {
+                        let message = if let Some(s) = payload.downcast_ref::<String>() {
+                            s.clone()
+                        } else if let Some(s) = payload.downcast_ref::<&str>() {
+                            s.to_string()
+                        } else {
+                            "unknown panic".to_string()
+                        };
+                        Err(ExecError::new(format!(
+                            "generate '{}' failed:\n{}",
+                            name, message
+                        )))
+                    }
+                }
             }
         }
     }

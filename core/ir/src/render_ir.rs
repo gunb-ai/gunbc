@@ -14,6 +14,7 @@
 //! - **Document layer**: `Document`, `FileHeader`, `Frame`, `CursorAction`
 //! - **Data IR**: `DataValue`, `DataNode` for structured format sharing
 
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
@@ -296,9 +297,9 @@ pub enum GraphicsElement {
 /// Generated file header metadata.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FileHeader {
-    pub generator_name: String,
-    pub regenerate_command: String,
-    pub comment_prefix: String,
+    pub generator_name: Cow<'static, str>,
+    pub regenerate_command: Cow<'static, str>,
+    pub comment_prefix: Cow<'static, str>,
 }
 
 impl FileHeader {
@@ -353,20 +354,20 @@ pub enum DocumentBody {
 /// A build target (e.g., Makefile target).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Target {
-    pub name: String,
-    pub deps: Vec<String>,
-    pub body: Vec<String>,
+    pub name: Cow<'static, str>,
+    pub deps: Vec<Cow<'static, str>>,
+    pub body: Vec<Cow<'static, str>>,
     /// Optional comment line(s) rendered above the target definition.
-    pub comment: Option<String>,
+    pub comment: Option<Cow<'static, str>>,
 }
 
 /// A categorized group of items (e.g., review category).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Category {
-    pub name: String,
-    pub source: Option<String>,
-    pub items: Vec<String>,
-    pub rationale: Option<String>,
+    pub name: Cow<'static, str>,
+    pub source: Option<Cow<'static, str>>,
+    pub items: Vec<Cow<'static, str>>,
+    pub rationale: Option<Cow<'static, str>>,
 }
 
 /// A block in structured output.
@@ -642,9 +643,9 @@ mod tests {
         let doc = Document {
             path: PathBuf::from("output/test.rs"),
             header: Some(FileHeader {
-                generator_name: "gunbc-test".to_string(),
-                regenerate_command: "make test".to_string(),
-                comment_prefix: "//".to_string(),
+                generator_name: Cow::Borrowed("gunbc-test"),
+                regenerate_command: Cow::Borrowed("make test"),
+                comment_prefix: Cow::Borrowed("//"),
             }),
             body: DocumentBody::Raw("fn main() {}".to_string()),
         };

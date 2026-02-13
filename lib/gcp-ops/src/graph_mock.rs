@@ -75,6 +75,11 @@ pub fn gcp_github_mock_spec() -> MockSpec {
             Value::Str("ci-secrets@mock.iam.gserviceaccount.com".into()),
         )
         .input_mock(
+            "parse_impersonate",
+            "response",
+            Value::Response(TransportResponse::Rest(impersonate_response.clone())),
+        )
+        .input_mock(
             "prepare_secret_access",
             "project",
             Value::Str("mock-secrets".into()),
@@ -121,6 +126,7 @@ pub fn gcp_github_mock_spec() -> MockSpec {
         .skip_node_example("parse_github_oidc")
         .skip_node_example("prepare_sts")
         .skip_node_example("parse_sts")
+        .skip_node_example("should_impersonate")
         .skip_node_example("prepare_impersonate")
         .skip_node_example("parse_impersonate")
         .skip_node_example("prepare_secret_access")
@@ -133,7 +139,9 @@ pub fn gcp_github_mock_spec() -> MockSpec {
 /// The local auth phase is a `local_auth_upsert` sub-DAG that:
 /// 1. Checks if the ADC file exists (File transport)
 /// 2. Reads the ADC file (File transport)
-/// 3. Refreshes OAuth2 token (REST transport)
+/// 3. Try-refreshes OAuth2 token (REST transport)
+/// 4. If refresh fails with auth error: runs gcloud auth (Shell transport)
+/// 5. Re-reads ADC, retries OAuth2 refresh, merges result
 ///
 /// This is a composition helper — it gets included in higher-level tool
 /// mock specs via `include_prefixed_runtime_mocks`.
@@ -183,17 +191,68 @@ pub fn gcp_local_mock_spec() -> MockSpec {
                 FileResponse::read_ok(&adc_path, mock_adc_json.to_string()),
             )),
         )
-        // local_auth_upsert sub-DAG: OAuth2 token refresh (REST transport)
+        // local_auth_upsert sub-DAG: OAuth2 token try-refresh (REST transport)
         .boundary(
             "local_auth_upsert/execute_oauth2",
             "response",
             Value::Response(TransportResponse::Rest(oauth2_response)),
         )
+        // Re-auth branch boundaries (skipped in happy path — mock as Skipped)
+        .boundary(
+            "local_auth_upsert/execute_gcloud_auth",
+            "response",
+            Value::Skipped,
+        )
+        .boundary(
+            "local_auth_upsert/execute_reread_adc",
+            "response",
+            Value::Skipped,
+        )
+        .boundary(
+            "local_auth_upsert/execute_retry_oauth2",
+            "response",
+            Value::Skipped,
+        )
         .boundary("local_auth_upsert/net_env", "net", mock_net_handle())
+        // IAM ensure (local dev only) — REST-based check + conditional set
+        .input_mock(
+            "prepare_ensure_iam",
+            "project",
+            Value::Str("mock-secrets".into()),
+        )
+        .input_mock(
+            "prepare_ensure_iam",
+            "service_account",
+            Value::Str("ci-secrets@mock.iam.gserviceaccount.com".into()),
+        )
+        .transport_mock(
+            "execute_get_iam",
+            "response",
+            Value::Response(TransportResponse::Rest(RestResponse::ok(
+                serde_json::json!({
+                    "bindings": [{
+                        "role": "roles/secretmanager.secretAccessor",
+                        "members": ["serviceAccount:ci-secrets@mock.iam.gserviceaccount.com"]
+                    }],
+                    "etag": "mock-etag"
+                }),
+            ))),
+        )
+        // setIamPolicy is skipped (binding already exists in mock)
+        .transport_mock(
+            "execute_set_iam",
+            "response",
+            Value::Skipped,
+        )
         .input_mock(
             "prepare_impersonate",
             "service_account",
             Value::Str("ci-secrets@mock.iam.gserviceaccount.com".into()),
+        )
+        .input_mock(
+            "parse_impersonate",
+            "response",
+            Value::Response(TransportResponse::Rest(impersonate_response.clone())),
         )
         .input_mock(
             "prepare_secret_access",
@@ -229,6 +288,10 @@ pub fn gcp_local_mock_spec() -> MockSpec {
         )
         // Sub-DAG internal nodes — tested at their own level
         .skip_node_example("local_auth_upsert")
+        .skip_node_example("should_impersonate")
+        .skip_node_example("prepare_ensure_iam")
+        .skip_node_example("check_iam_binding")
+        .skip_node_example("parse_set_iam")
         .skip_node_example("prepare_impersonate")
         .skip_node_example("parse_impersonate")
         .skip_node_example("prepare_secret_access")
@@ -295,6 +358,11 @@ pub fn gcp_github_upsert_mock_spec() -> MockSpec {
             "prepare_impersonate",
             "service_account",
             Value::Str("ci-secrets@mock.iam.gserviceaccount.com".into()),
+        )
+        .input_mock(
+            "parse_impersonate",
+            "response",
+            Value::Response(TransportResponse::Rest(impersonate_response.clone())),
         )
         .input_mock(
             "prepare_secret_get",
@@ -364,6 +432,7 @@ pub fn gcp_github_upsert_mock_spec() -> MockSpec {
         .skip_node_example("parse_github_oidc")
         .skip_node_example("prepare_sts")
         .skip_node_example("parse_sts")
+        .skip_node_example("should_impersonate")
         .skip_node_example("prepare_impersonate")
         .skip_node_example("parse_impersonate")
         .skip_node_example("prepare_secret_get")

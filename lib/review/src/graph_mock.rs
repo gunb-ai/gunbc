@@ -183,6 +183,8 @@ pub fn inline_review_mock_spec() -> MockSpec {
         .expect("cloud_credential should match type")
         .boundary("cloud_credential", "expires_in", Value::Int(3_600))
         .expect("cloud_credential expires_in should match type")
+        .boundary("cloud_credential", "ok", Value::Bool(true))
+        .expect("cloud_credential ok should match type")
         .boundary("bind_secret", "config", mock_cloud_config())
         .expect("bind_secret config should match type")
         // Transport: execute_llm (LLM API call)
@@ -269,6 +271,7 @@ pub fn inline_review_mock_spec() -> MockSpec {
         .skip_node_example("cloud_credential")
         .skip_node_example("fs_env")
         .skip_node_example("bind_secret")
+        .skip_node_example("scope_preflight")
 }
 
 // ============================================================================
@@ -347,6 +350,8 @@ diff --git a/src/main.rs b/src/main.rs
         .expect("cloud_credential should match type")
         .boundary("cloud_credential", "expires_in", Value::Int(3_600))
         .expect("cloud_credential expires_in should match type")
+        .boundary("cloud_credential", "ok", Value::Bool(true))
+        .expect("cloud_credential ok should match type")
         .boundary("bind_secret", "config", mock_cloud_config())
         .expect("bind_secret config should match type")
         // Transport: execute_diff (git diff command)
@@ -468,4 +473,5 @@ diff --git a/src/main.rs b/src/main.rs
         .skip_node_example("cloud_credential")
         .skip_node_example("fs_env")
         .skip_node_example("bind_secret")
+        .skip_node_example("scope_preflight")
 }

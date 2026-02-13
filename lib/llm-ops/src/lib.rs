@@ -31,7 +31,7 @@ use gunbc_exec::{
     TransportResponseExt,
 };
 use gunbc_ir::transport::llm::{self, ChatMessage, ChatRequest, MessageContent, Role};
-use gunbc_ir::transport::TransportRequest;
+use gunbc_ir::transport::{ScopeContract, TransportRequest};
 use gunbc_ir::Value;
 use std::collections::HashMap;
 
@@ -47,9 +47,10 @@ pub enum LlmOps {
     ///
     /// Outputs:
     /// - `service`: String - canonical provider/service ID
-    /// - `env_var`: String - environment variable for the API key
     /// - `scheme`: String - auth scheme ("bearer" or "header")
     /// - `header_name`: String - header name for "header" scheme (e.g., "x-api-key"), empty for "bearer"
+    /// - `required_scopes`: List<String> - required capability scopes for this request class
+    /// - `interactive_allowed`: Bool - whether interactive recovery is allowed
     ResolveAuth,
     /// Build a chat completion REST request from inputs.
     ///
@@ -140,11 +141,20 @@ fn execute_resolve_auth(
             ))
         }
     };
+    let provider_id = provider.id.clone();
+    let intent = llm::LlmScopeContract::new(provider_id.clone()).credential_intent();
+    intent.validate().map_err(|e| {
+        ExecError::new(format!(
+            "invalid llm credential contract for '{}': {e}",
+            provider_id
+        ))
+    })?;
 
     OutputMap::new()
-        .str("service", provider.id)
+        .str("service", provider_id)
         .str("scheme", scheme)
         .str("header_name", header_name)
+        .str_list("required_scopes", intent.required_scopes)
         .bool("interactive_allowed", true)
         .ok()
 }
@@ -577,6 +587,10 @@ mod tests {
             Some(&Value::Str("bearer".to_string()))
         );
         assert_eq!(result.get("header_name"), Some(&Value::Str(String::new())));
+        assert_eq!(
+            result.get("required_scopes"),
+            Some(&Value::str_list(vec!["llm:chat_completion".to_string()]))
+        );
         assert_eq!(result.get("interactive_allowed"), Some(&Value::Bool(true)));
     }
 
@@ -593,6 +607,10 @@ mod tests {
         assert_eq!(
             result.get("header_name"),
             Some(&Value::Str("x-api-key".to_string()))
+        );
+        assert_eq!(
+            result.get("required_scopes"),
+            Some(&Value::str_list(vec!["llm:chat_completion".to_string()]))
         );
     }
 

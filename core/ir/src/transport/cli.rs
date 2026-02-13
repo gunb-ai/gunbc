@@ -935,6 +935,15 @@ impl CliToolError {
             message: message.into(),
         }
     }
+
+    /// Create an error for invariant violations (not tied to a specific tool).
+    pub fn invariant(message: impl Into<String>) -> Self {
+        Self {
+            tool_id: "<invariant>",
+            operation: "invariant",
+            message: message.into(),
+        }
+    }
 }
 
 // ============================================================================

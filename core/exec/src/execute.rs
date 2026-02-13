@@ -678,24 +678,9 @@ fn execute_flat_sequential<T: Executable + Clone + Send>(
                                 .map(|p| p.cardinality)
                                 .unwrap_or(Cardinality::ONE);
 
-                            // Optional/list outputs represent absence as Unit — skip those.
-                            if matches!(val, Value::Unit) && from_cardinality.allows_empty() {
-                                continue;
-                            }
-                            // Skipped outputs should not become list elements.
-                            if matches!(val, Value::Skipped) {
-                                continue;
-                            }
-
-                            let bucket = fan_in.entry(edge.to_port.0.clone()).or_default();
-                            if from_cardinality.is_list() {
-                                if let Value::List(items) = val {
-                                    bucket.extend(items.clone());
-                                } else {
-                                    bucket.push(val.clone());
-                                }
-                            } else {
-                                bucket.push(val.clone());
+                            if let Some(elements) = collect_fan_in(val, from_cardinality) {
+                                let bucket = fan_in.entry(edge.to_port.0.clone()).or_default();
+                                bucket.extend(elements);
                             }
                         } else {
                             if let Some(prev) = scalar_sources.get(&edge.to_port.0) {
@@ -972,6 +957,39 @@ fn should_intercept_for_mode<T>(node: &Node<T>, mode: &ExecutionMode) -> bool {
         && matches!(mode, ExecutionMode::DryRun(_) | ExecutionMode::Simulate(_))
 }
 
+/// Collect a single upstream value into a fan-in bucket for a list port.
+///
+/// Given a value produced by an upstream node and the source port's
+/// cardinality, returns the elements to add to the fan-in bucket, or
+/// `None` if the value should be skipped (absent optional, Skipped sentinel).
+///
+/// This is the core coercion logic — it handles:
+/// - **WrapScalar**: scalar value → single-element vec
+/// - **OptionalToList**: Unit from empty-allowing port → None (skipped)
+/// - **Widen**: list value from list port → flattened elements
+fn collect_fan_in(val: &Value, from_cardinality: Cardinality) -> Option<Vec<Value>> {
+    // Optional/list outputs represent absence as Unit — skip those.
+    if matches!(val, Value::Unit) && from_cardinality.allows_empty() {
+        return None;
+    }
+    // Skipped outputs should not become list elements.
+    if matches!(val, Value::Skipped) {
+        return None;
+    }
+
+    if from_cardinality.is_list() {
+        // List → list: flatten elements (Widen coercion)
+        if let Value::List(items) = val {
+            Some(items.clone())
+        } else {
+            Some(vec![val.clone()])
+        }
+    } else {
+        // Scalar → list: wrap as single element (WrapScalar coercion)
+        Some(vec![val.clone()])
+    }
+}
+
 fn build_node_inputs<T>(
     dag: &Dag<T>,
     node: &Node<T>,
@@ -1004,24 +1022,9 @@ fn build_node_inputs<T>(
                             .map(|p| p.cardinality)
                             .unwrap_or(Cardinality::ONE);
 
-                        // Optional/list outputs represent absence as Unit.
-                        if matches!(val, Value::Unit) && from_cardinality.allows_empty() {
-                            continue;
-                        }
-                        // Skipped outputs should not become list elements.
-                        if matches!(val, Value::Skipped) {
-                            continue;
-                        }
-
-                        let bucket = fan_in.entry(edge.to_port.0.clone()).or_default();
-                        if from_cardinality.is_list() {
-                            if let Value::List(items) = val {
-                                bucket.extend(items.clone());
-                            } else {
-                                bucket.push(val.clone());
-                            }
-                        } else {
-                            bucket.push(val.clone());
+                        if let Some(elements) = collect_fan_in(val, from_cardinality) {
+                            let bucket = fan_in.entry(edge.to_port.0.clone()).or_default();
+                            bucket.extend(elements);
                         }
                     } else {
                         if let Some(prev) = scalar_sources.get(&edge.to_port.0) {
@@ -2230,6 +2233,76 @@ mod tests {
             Some(Value::List(items)) => assert!(items.is_empty()),
             other => panic!("expected empty Value::List, got {:?}", other),
         }
+    }
+
+    // =========================================================================
+    // collect_fan_in unit tests
+    //
+    // These test the extracted fan-in function directly, mapping 1:1 to the
+    // CoercionKind variants in coerce.rs.
+    // =========================================================================
+
+    #[test]
+    fn fan_in_wraps_scalar() {
+        // WrapScalar: scalar [1,1] value → single-element vec
+        let val = Value::Str("hello".into());
+        let elements = collect_fan_in(&val, Cardinality::ONE).unwrap();
+        assert_eq!(elements, vec![Value::Str("hello".into())]);
+    }
+
+    #[test]
+    fn fan_in_skips_absent_optional() {
+        // OptionalToList (absent): Unit from [0,1] port → None (skipped)
+        assert!(collect_fan_in(&Value::Unit, Cardinality::ZERO_OR_ONE).is_none());
+    }
+
+    #[test]
+    fn fan_in_wraps_present_optional() {
+        // OptionalToList (present): real value from [0,1] port → single-element vec
+        let val = Value::Str("present".into());
+        let elements = collect_fan_in(&val, Cardinality::ZERO_OR_ONE).unwrap();
+        assert_eq!(elements, vec![Value::Str("present".into())]);
+    }
+
+    #[test]
+    fn fan_in_flattens_list() {
+        // Widen: list [2,5] value → flattened elements
+        let val = Value::List(vec![
+            Value::Str("a".into()),
+            Value::Str("b".into()),
+            Value::Str("c".into()),
+        ]);
+        let elements = collect_fan_in(&val, Cardinality::new(2, Some(5))).unwrap();
+        assert_eq!(
+            elements,
+            vec![
+                Value::Str("a".into()),
+                Value::Str("b".into()),
+                Value::Str("c".into()),
+            ]
+        );
+    }
+
+    #[test]
+    fn fan_in_skips_skipped_value() {
+        // Skipped sentinel is never collected regardless of cardinality
+        assert!(collect_fan_in(&Value::Skipped, Cardinality::ONE).is_none());
+        assert!(collect_fan_in(&Value::Skipped, Cardinality::ZERO_OR_ONE).is_none());
+        assert!(collect_fan_in(&Value::Skipped, Cardinality::ZERO_OR_MORE).is_none());
+    }
+
+    #[test]
+    fn fan_in_unit_from_required_port_is_kept() {
+        // Unit from a required [1,1] port is NOT skipped — only empty-allowing
+        // ports treat Unit as absence.
+        let elements = collect_fan_in(&Value::Unit, Cardinality::ONE).unwrap();
+        assert_eq!(elements, vec![Value::Unit]);
+    }
+
+    #[test]
+    fn fan_in_skips_unit_from_empty_list() {
+        // Unit from a [0,∞) port is skipped (allows_empty = true)
+        assert!(collect_fan_in(&Value::Unit, Cardinality::ZERO_OR_MORE).is_none());
     }
 
     #[test]

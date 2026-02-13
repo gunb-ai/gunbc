@@ -10,7 +10,7 @@ use std::path::Path;
 // and iter_tool_targets() would return an empty iterator.
 use gunbc_clippy::clippy_tool;
 use gunbc_deps::deps_tool;
-use gunbc_gist::{gist_auth_doctor_tool, gist_diff_tool, gist_recent_tool, gist_snapshot_tool};
+use gunbc_gist::{gist_diff_tool, gist_recent_tool, gist_snapshot_tool};
 use gunbc_lib_review::review_tool;
 // These are in gunbc-dag itself (same binary), but reference for completeness.
 use gunbc_dag::bootstrap::bootstrap_tool;
@@ -24,7 +24,6 @@ fn derive_tool_defs_matches_inventory() {
     let _: fn() = gist_snapshot_tool;
     let _: fn() = gist_diff_tool;
     let _: fn() = gist_recent_tool;
-    let _: fn() = gist_auth_doctor_tool;
     let _: fn() = deps_tool;
     let _: fn() = review_tool;
     let _: fn() = makegen_tool;
@@ -46,7 +45,6 @@ fn derive_tool_defs_matches_inventory() {
         "clippy",
         "deps",
         "gist",
-        "gist-auth-doctor",
         "gist-diff",
         "gist-recent",
         "makegen",

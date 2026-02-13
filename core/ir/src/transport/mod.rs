@@ -43,6 +43,7 @@ pub mod ci;
 pub mod cli;
 pub mod cloud;
 pub mod credential;
+pub mod credential_policy;
 pub mod file;
 pub mod gcp;
 pub mod gist;
@@ -89,6 +90,19 @@ pub use gcp::{
 };
 pub use infra_scope::{GcpScope, InfraAccessLevel, InfraScope, InfraScopeType};
 pub use credential::{AuthScheme, Credential, CredentialError, Secret, SecretSource};
+pub use credential_policy::{
+    CredentialIntentPolicy,
+    CredentialPolicyDefaults,
+    CredentialPolicyError,
+    CredentialPolicyProfile,
+    CredentialPolicySpec,
+    ImpersonationPolicy,
+    ResolvedCredentialIntentPolicy,
+    ResolvedCredentialPolicyProfile,
+    ScopeMergeMode,
+    SecretBinding,
+    VersionSelector,
+};
 pub use file::{FileOp, FileRequest, FileResponse};
 pub use gist::GistRequest;
 pub use git::GitRequest;
@@ -192,6 +206,10 @@ pub struct ShellRequest {
     pub env: std::collections::HashMap<String, String>,
     /// Standard input to pipe to the command
     pub stdin: Option<String>,
+    /// Timeout in milliseconds. If the command exceeds this, it is killed
+    /// and an error is returned. `None` means no timeout (wait forever).
+    #[serde(default)]
+    pub timeout_ms: Option<u64>,
 }
 
 /// Shell command response.
@@ -214,6 +232,7 @@ impl ShellRequest {
             cwd: None,
             env: std::collections::HashMap::new(),
             stdin: None,
+            timeout_ms: None,
         }
     }
 
@@ -248,6 +267,12 @@ impl ShellRequest {
     /// Set an environment variable.
     pub fn env(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
         self.env.insert(key.into(), value.into());
+        self
+    }
+
+    /// Set a timeout in milliseconds. The command is killed if it exceeds this.
+    pub fn timeout(mut self, ms: u64) -> Self {
+        self.timeout_ms = Some(ms);
         self
     }
 

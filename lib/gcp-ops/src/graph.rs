@@ -2,8 +2,8 @@
 
 use crate::ops::{GcpOps, GcpRuntimeKind};
 use gunbc_exec::{ExecError, Executable};
-use gunbc_ir::build::{optional, port, resource, AccessMode};
-use gunbc_ir::{Dag, DagBuilder, Edge, Node, Value};
+use gunbc_ir::build::{list, optional, port, resource, AccessMode};
+use gunbc_ir::{Dag, DagBuilder, Edge, Node, NodeRef, Value};
 use gunbc_lib_transport::TransportOps;
 use gunbc_primitives::NetEnv;
 use std::collections::HashMap;
@@ -243,7 +243,6 @@ pub fn build_gcp_secret_manager_credential_graph(
         GcpRuntimeKind::LocalDev => {
             // Use the canonical upsert sub-DAG for local auth
             // (check -> create[guarded] -> resolve)
-            
 
             builder
                 .add_root_node(Node::subdag(
@@ -254,9 +253,24 @@ pub fn build_gcp_secret_manager_credential_graph(
         }
     };
 
+    // Ensure SA has required IAM roles before impersonation (local dev only).
+    add_ensure_iam_nodes(&mut builder, &net_env, &access_token_node, runtime);
+
     // ---------------------------------------------------------------------
     // Service Account impersonation
     // ---------------------------------------------------------------------
+
+    let should_impersonate = builder
+        .add_node_after(
+            Node::opaque(
+                "should_impersonate",
+                vec![port("service_account", "String")],
+                vec![port("should", "Bool")],
+                GcpSecretManagerGraphOp::Gcp(GcpOps::ShouldImpersonate),
+            ),
+            &access_token_node,
+        )
+        .expect("should_impersonate");
 
     let prepare_impersonate = builder
         .add_node_after(
@@ -266,11 +280,12 @@ pub fn build_gcp_secret_manager_credential_graph(
                     port("access_token", "String"),
                     port("service_account", "String"),
                     optional("lifetime_seconds", "OptionalInt"),
+                    optional("should_impersonate", "OptionalBool"),
                 ],
                 vec![port("request", "TransportRequest"), port("skip", "Bool")],
                 GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareImpersonate),
             ),
-            &access_token_node,
+            &should_impersonate,
         )
         .expect("prepare_impersonate");
 
@@ -294,7 +309,10 @@ pub fn build_gcp_secret_manager_credential_graph(
         .add_node_after(
             Node::opaque(
                 "parse_impersonate",
-                vec![port("response", "TransportResponse")],
+                vec![
+                    port("response", "TransportResponse"),
+                    optional("base_access_token", "OptionalString"),
+                ],
                 vec![port("access_token", "String")],
                 GcpSecretManagerGraphOp::Gcp(GcpOps::ParseImpersonate),
             ),
@@ -308,6 +326,12 @@ pub fn build_gcp_secret_manager_credential_graph(
             prepare_impersonate.in_port("access_token"),
         )
         .expect("access_token_node.access_token -> prepare_impersonate.access_token");
+    builder
+        .add_edge(
+            should_impersonate.out("should"),
+            prepare_impersonate.in_port("should_impersonate"),
+        )
+        .expect("should_impersonate.should -> prepare_impersonate.should_impersonate");
     builder
         .add_edge(
             prepare_impersonate.out("request"),
@@ -329,6 +353,12 @@ pub fn build_gcp_secret_manager_credential_graph(
             parse_impersonate.in_port("response"),
         )
         .expect("execute_impersonate.response -> parse_impersonate.response");
+    builder
+        .add_edge(
+            access_token_node.out("access_token"),
+            parse_impersonate.in_port("base_access_token"),
+        )
+        .expect("access_token_node.access_token -> parse_impersonate.base_access_token");
 
     // ---------------------------------------------------------------------
     // Secret Manager access
@@ -417,6 +447,7 @@ pub fn build_gcp_secret_manager_credential_graph(
                     port("scheme", "String"),
                     optional("header_name", "OptionalString"),
                     port("source_id", "String"),
+                    list("required_scopes", "String"),
                 ],
                 vec![port("credential", "Credential")],
                 GcpSecretManagerGraphOp::Gcp(GcpOps::BuildCredential),
@@ -666,7 +697,6 @@ pub fn build_gcp_secret_manager_upsert_graph(
         GcpRuntimeKind::LocalDev => {
             // Use the canonical upsert sub-DAG for local auth
             // (check -> create[guarded] -> resolve)
-            
 
             builder
                 .add_root_node(Node::subdag(
@@ -677,9 +707,24 @@ pub fn build_gcp_secret_manager_upsert_graph(
         }
     };
 
+    // Ensure SA has required IAM roles before impersonation (local dev only).
+    add_ensure_iam_nodes(&mut builder, &net_env, &access_token_node, runtime);
+
     // ---------------------------------------------------------------------
     // Service Account impersonation
     // ---------------------------------------------------------------------
+
+    let should_impersonate = builder
+        .add_node_after(
+            Node::opaque(
+                "should_impersonate",
+                vec![port("service_account", "String")],
+                vec![port("should", "Bool")],
+                GcpSecretManagerGraphOp::Gcp(GcpOps::ShouldImpersonate),
+            ),
+            &access_token_node,
+        )
+        .expect("should_impersonate");
 
     let prepare_impersonate = builder
         .add_node_after(
@@ -689,11 +734,12 @@ pub fn build_gcp_secret_manager_upsert_graph(
                     port("access_token", "String"),
                     port("service_account", "String"),
                     optional("lifetime_seconds", "OptionalInt"),
+                    optional("should_impersonate", "OptionalBool"),
                 ],
                 vec![port("request", "TransportRequest"), port("skip", "Bool")],
                 GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareImpersonate),
             ),
-            &access_token_node,
+            &should_impersonate,
         )
         .expect("prepare_impersonate");
 
@@ -717,7 +763,10 @@ pub fn build_gcp_secret_manager_upsert_graph(
         .add_node_after(
             Node::opaque(
                 "parse_impersonate",
-                vec![port("response", "TransportResponse")],
+                vec![
+                    port("response", "TransportResponse"),
+                    optional("base_access_token", "OptionalString"),
+                ],
                 vec![port("access_token", "String")],
                 GcpSecretManagerGraphOp::Gcp(GcpOps::ParseImpersonate),
             ),
@@ -731,6 +780,12 @@ pub fn build_gcp_secret_manager_upsert_graph(
             prepare_impersonate.in_port("access_token"),
         )
         .expect("access_token_node.access_token -> prepare_impersonate.access_token");
+    builder
+        .add_edge(
+            should_impersonate.out("should"),
+            prepare_impersonate.in_port("should_impersonate"),
+        )
+        .expect("should_impersonate.should -> prepare_impersonate.should_impersonate");
     builder
         .add_edge(
             prepare_impersonate.out("request"),
@@ -752,6 +807,12 @@ pub fn build_gcp_secret_manager_upsert_graph(
             parse_impersonate.in_port("response"),
         )
         .expect("execute_impersonate.response -> parse_impersonate.response");
+    builder
+        .add_edge(
+            access_token_node.out("access_token"),
+            parse_impersonate.in_port("base_access_token"),
+        )
+        .expect("access_token_node.access_token -> parse_impersonate.base_access_token");
 
     // ---------------------------------------------------------------------
     // Secret Manager upsert: check -> create -> addVersion
@@ -974,6 +1035,192 @@ pub fn build_local_auth_upsert_dag_pub() -> Dag<GcpSecretManagerGraphOp> {
     build_local_auth_upsert_dag()
 }
 
+/// Add IAM ensure nodes to a graph builder (local dev only).
+///
+/// Uses REST API (getIamPolicy + setIamPolicy) to ensure the SA has
+/// `roles/secretmanager.secretAccessor` on the secrets project.
+/// Fast in the common case (binding exists = single REST call, ~1s).
+///
+/// Flow:
+/// 1. `prepare_ensure_iam` — builds getIamPolicy REST request
+/// 2. `execute_get_iam` — executes getIamPolicy
+/// 3. `check_iam_binding` — checks policy, outputs setIamPolicy request if missing
+/// 4. `execute_set_iam` — executes setIamPolicy (skipped if binding exists)
+/// 5. `parse_set_iam` — validates result
+///
+/// Tolerates PERMISSION_DENIED gracefully.
+fn add_ensure_iam_nodes(
+    builder: &mut DagBuilder<GcpSecretManagerGraphOp>,
+    net_env: &NodeRef<GcpSecretManagerGraphOp>,
+    access_token_node: &NodeRef<GcpSecretManagerGraphOp>,
+    runtime: GcpRuntimeKind,
+) {
+    if !matches!(runtime, GcpRuntimeKind::LocalDev) {
+        return;
+    }
+
+    // Step 1: Prepare getIamPolicy request
+    let prepare_ensure_iam = builder
+        .add_node_after(
+            Node::opaque(
+                "prepare_ensure_iam",
+                vec![
+                    port("access_token", "String"),
+                    port("project", "String"),
+                    port("service_account", "String"),
+                ],
+                vec![
+                    port("request", "TransportRequest"),
+                    port("skip", "Bool"),
+                    port("service_account", "String"),
+                    port("project", "String"),
+                ],
+                GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareEnsureIamBinding),
+            ),
+            access_token_node,
+        )
+        .expect("prepare_ensure_iam");
+
+    // Step 2: Execute getIamPolicy
+    let execute_get_iam = builder
+        .add_node_after(
+            Node::opaque(
+                "execute_get_iam",
+                vec![
+                    port("request", "TransportRequest"),
+                    port("skip", "Bool"),
+                    resource("net", "NetworkHandle", AccessMode::Read),
+                ],
+                vec![port("response", "TransportResponse")],
+                GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
+            ),
+            &prepare_ensure_iam,
+        )
+        .expect("execute_get_iam");
+
+    // Step 3: Check binding and prepare setIamPolicy if needed
+    let check_iam = builder
+        .add_node_after(
+            Node::opaque(
+                "check_iam_binding",
+                vec![
+                    port("response", "TransportResponse"),
+                    port("access_token", "String"),
+                    port("project", "String"),
+                    port("service_account", "String"),
+                ],
+                vec![port("request", "TransportRequest"), port("skip", "Bool")],
+                GcpSecretManagerGraphOp::Gcp(GcpOps::CheckAndPrepareIamBinding),
+            ),
+            &execute_get_iam,
+        )
+        .expect("check_iam_binding");
+
+    // Step 4: Execute setIamPolicy (skipped if binding already exists)
+    let execute_set_iam = builder
+        .add_node_after(
+            Node::opaque(
+                "execute_set_iam",
+                vec![
+                    port("request", "TransportRequest"),
+                    port("skip", "Bool"),
+                    resource("net", "NetworkHandle", AccessMode::Read),
+                ],
+                vec![port("response", "TransportResponse")],
+                GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
+            ),
+            &check_iam,
+        )
+        .expect("execute_set_iam");
+
+    // Step 5: Parse setIamPolicy result
+    let parse_set_iam = builder
+        .add_node_after(
+            Node::opaque(
+                "parse_set_iam",
+                vec![port("response", "TransportResponse")],
+                vec![port("ok", "Bool")],
+                GcpSecretManagerGraphOp::Gcp(GcpOps::ParseSetIamBinding),
+            ),
+            &execute_set_iam,
+        )
+        .expect("parse_set_iam");
+
+    // Wire: prepare -> execute_get_iam
+    builder
+        .add_edge(
+            prepare_ensure_iam.out("request"),
+            execute_get_iam.in_port("request"),
+        )
+        .expect("prepare_ensure_iam.request -> execute_get_iam.request");
+    builder
+        .add_edge(
+            prepare_ensure_iam.out("skip"),
+            execute_get_iam.in_port("skip"),
+        )
+        .expect("prepare_ensure_iam.skip -> execute_get_iam.skip");
+    builder
+        .add_edge(net_env.out("net"), execute_get_iam.in_port("res:net"))
+        .expect("net_env -> execute_get_iam.res:net");
+
+    // Wire: execute_get_iam -> check_iam_binding
+    builder
+        .add_edge(
+            execute_get_iam.out("response"),
+            check_iam.in_port("response"),
+        )
+        .expect("execute_get_iam.response -> check_iam_binding.response");
+    // Pass through access_token, project, service_account
+    builder
+        .add_edge(
+            prepare_ensure_iam.out("service_account"),
+            check_iam.in_port("service_account"),
+        )
+        .expect("prepare_ensure_iam.sa -> check_iam_binding.sa");
+    builder
+        .add_edge(
+            prepare_ensure_iam.out("project"),
+            check_iam.in_port("project"),
+        )
+        .expect("prepare_ensure_iam.project -> check_iam_binding.project");
+
+    // Wire: check_iam_binding -> execute_set_iam
+    builder
+        .add_edge(
+            check_iam.out("request"),
+            execute_set_iam.in_port("request"),
+        )
+        .expect("check_iam_binding.request -> execute_set_iam.request");
+    builder
+        .add_edge(check_iam.out("skip"), execute_set_iam.in_port("skip"))
+        .expect("check_iam_binding.skip -> execute_set_iam.skip");
+    builder
+        .add_edge(net_env.out("net"), execute_set_iam.in_port("res:net"))
+        .expect("net_env -> execute_set_iam.res:net");
+
+    // Wire: execute_set_iam -> parse_set_iam
+    builder
+        .add_edge(
+            execute_set_iam.out("response"),
+            parse_set_iam.in_port("response"),
+        )
+        .expect("execute_set_iam.response -> parse_set_iam.response");
+
+    // Wire access_token from the auth step to the IAM ensure nodes
+    builder
+        .add_edge(
+            access_token_node.out("access_token"),
+            prepare_ensure_iam.in_port("access_token"),
+        )
+        .expect("access_token_node -> prepare_ensure_iam.access_token");
+    builder
+        .add_edge(
+            access_token_node.out("access_token"),
+            check_iam.in_port("access_token"),
+        )
+        .expect("access_token_node -> check_iam_binding.access_token");
+}
+
 /// Build the local auth upsert sub-DAG using ADC + OAuth2 REST.
 ///
 /// Implements the canonical upsert pattern (check -> create[guarded] -> resolve)
@@ -1000,7 +1247,7 @@ pub fn build_local_auth_upsert_dag_pub() -> Dag<GcpSecretManagerGraphOp> {
 fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
     let mut dag = Dag::new();
 
-    // Network environment (needed for OAuth2 REST call)
+    // Network environment (needed for OAuth2 REST calls)
     dag.add_node(Node::opaque(
         "net_env",
         vec![],
@@ -1038,13 +1285,23 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
     ));
 
     // Check edges
-    dag.add_edge(Edge::new("prepare_check", "request", "execute_check", "request"));
+    dag.add_edge(Edge::new(
+        "prepare_check",
+        "request",
+        "execute_check",
+        "request",
+    ));
     dag.add_edge(Edge::new("prepare_check", "skip", "execute_check", "skip"));
     dag.add_edge(Edge::new("net_env", "net", "execute_check", "res:net"));
-    dag.add_edge(Edge::new("execute_check", "response", "parse_check", "response"));
+    dag.add_edge(Edge::new(
+        "execute_check",
+        "response",
+        "parse_check",
+        "response",
+    ));
 
     // ========================================================================
-    // Resolve phase: read ADC -> parse credentials -> OAuth2 refresh -> parse token
+    // Try-refresh phase: read ADC -> parse -> OAuth2 refresh -> try parse
     // ========================================================================
 
     // Step 1: Read ADC file
@@ -1067,10 +1324,6 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
     ));
 
     // Step 2: Parse ADC credentials
-    // Note: token_type is intentionally excluded from output ports —
-    // it is computed by the op but not consumed by anything in this DAG.
-    // Including it would propagate as a dangling output through nested
-    // sub-DAGs, requiring spurious mock values in every consumer.
     dag.add_node(Node::opaque(
         "parse_adc",
         vec![port("response", "TransportResponse")],
@@ -1106,29 +1359,329 @@ fn build_local_auth_upsert_dag() -> Dag<GcpSecretManagerGraphOp> {
         GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
     ));
 
-    // Step 5: Parse OAuth2 response
+    // Step 5: Try-parse — catches auth errors as needs_reauth instead of failing
     dag.add_node(Node::opaque(
-        "parse_resolve",
+        "parse_try_refresh",
         vec![port("response", "TransportResponse")],
-        vec![port("access_token", "String"), port("expires_in", "Int")],
+        vec![
+            port("needs_reauth", "Bool"),
+            optional("access_token", "OptionalString"),
+            optional("expires_in", "OptionalInt"),
+        ],
+        GcpSecretManagerGraphOp::Gcp(GcpOps::ParseTryRefresh),
+    ));
+
+    // Try-refresh edges
+    dag.add_edge(Edge::new(
+        "parse_check",
+        "exists",
+        "prepare_read_adc",
+        "exists",
+    ));
+    dag.add_edge(Edge::new(
+        "prepare_read_adc",
+        "request",
+        "execute_read_adc",
+        "request",
+    ));
+    dag.add_edge(Edge::new(
+        "prepare_read_adc",
+        "skip",
+        "execute_read_adc",
+        "skip",
+    ));
+    dag.add_edge(Edge::new("net_env", "net", "execute_read_adc", "res:net"));
+    dag.add_edge(Edge::new(
+        "execute_read_adc",
+        "response",
+        "parse_adc",
+        "response",
+    ));
+
+    dag.add_edge(Edge::new(
+        "parse_adc",
+        "client_id",
+        "prepare_oauth2",
+        "client_id",
+    ));
+    dag.add_edge(Edge::new(
+        "parse_adc",
+        "client_secret",
+        "prepare_oauth2",
+        "client_secret",
+    ));
+    dag.add_edge(Edge::new(
+        "parse_adc",
+        "refresh_token",
+        "prepare_oauth2",
+        "refresh_token",
+    ));
+
+    dag.add_edge(Edge::new(
+        "prepare_oauth2",
+        "request",
+        "execute_oauth2",
+        "request",
+    ));
+    dag.add_edge(Edge::new(
+        "prepare_oauth2",
+        "skip",
+        "execute_oauth2",
+        "skip",
+    ));
+    dag.add_edge(Edge::new("net_env", "net", "execute_oauth2", "res:net"));
+    dag.add_edge(Edge::new(
+        "execute_oauth2",
+        "response",
+        "parse_try_refresh",
+        "response",
+    ));
+
+    // ========================================================================
+    // Re-auth phase: gcloud auth login -> re-read ADC -> retry refresh
+    // (guarded by needs_reauth = true from parse_try_refresh)
+    // ========================================================================
+
+    // Gcloud auth login --update-adc
+    dag.add_node(Node::opaque(
+        "prepare_gcloud_auth",
+        vec![port("needs_reauth", "Bool")],
+        vec![port("request", "TransportRequest"), port("skip", "Bool")],
+        GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareGcloudAuth),
+    ));
+
+    dag.add_node(Node::opaque(
+        "execute_gcloud_auth",
+        vec![
+            port("request", "TransportRequest"),
+            port("skip", "Bool"),
+            resource("net", "NetworkHandle", AccessMode::Read),
+        ],
+        vec![port("response", "TransportResponse")],
+        GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
+    ));
+
+    dag.add_node(Node::opaque(
+        "parse_gcloud_auth",
+        vec![port("response", "TransportResponse")],
+        vec![port("ok", "Bool")],
+        GcpSecretManagerGraphOp::Gcp(GcpOps::ParseGcloudAuth),
+    ));
+
+    // Re-auth edges
+    dag.add_edge(Edge::new(
+        "parse_try_refresh",
+        "needs_reauth",
+        "prepare_gcloud_auth",
+        "needs_reauth",
+    ));
+    dag.add_edge(Edge::new(
+        "prepare_gcloud_auth",
+        "request",
+        "execute_gcloud_auth",
+        "request",
+    ));
+    dag.add_edge(Edge::new(
+        "prepare_gcloud_auth",
+        "skip",
+        "execute_gcloud_auth",
+        "skip",
+    ));
+    dag.add_edge(Edge::new(
+        "net_env",
+        "net",
+        "execute_gcloud_auth",
+        "res:net",
+    ));
+    dag.add_edge(Edge::new(
+        "execute_gcloud_auth",
+        "response",
+        "parse_gcloud_auth",
+        "response",
+    ));
+
+    // Re-read ADC after gcloud auth
+    // Note: input port is "exists" to match PrepareReadAdc's expected input key.
+    dag.add_node(Node::opaque(
+        "prepare_reread_adc",
+        vec![port("exists", "Bool")],
+        vec![port("request", "TransportRequest"), port("skip", "Bool")],
+        GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareReadAdc),
+    ));
+
+    dag.add_node(Node::opaque(
+        "execute_reread_adc",
+        vec![
+            port("request", "TransportRequest"),
+            port("skip", "Bool"),
+            resource("net", "NetworkHandle", AccessMode::Read),
+        ],
+        vec![port("response", "TransportResponse")],
+        GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
+    ));
+
+    dag.add_node(Node::opaque(
+        "parse_reread_adc",
+        vec![port("response", "TransportResponse")],
+        vec![
+            port("client_id", "String"),
+            port("client_secret", "String"),
+            port("refresh_token", "String"),
+        ],
+        GcpSecretManagerGraphOp::Gcp(GcpOps::ParseAdcCredentials),
+    ));
+
+    // Re-read edges (gcloud auth ok -> treat as "exists" for PrepareReadAdc)
+    dag.add_edge(Edge::new(
+        "parse_gcloud_auth",
+        "ok",
+        "prepare_reread_adc",
+        "exists",
+    ));
+    dag.add_edge(Edge::new(
+        "prepare_reread_adc",
+        "request",
+        "execute_reread_adc",
+        "request",
+    ));
+    dag.add_edge(Edge::new(
+        "prepare_reread_adc",
+        "skip",
+        "execute_reread_adc",
+        "skip",
+    ));
+    dag.add_edge(Edge::new(
+        "net_env",
+        "net",
+        "execute_reread_adc",
+        "res:net",
+    ));
+    dag.add_edge(Edge::new(
+        "execute_reread_adc",
+        "response",
+        "parse_reread_adc",
+        "response",
+    ));
+
+    // Retry OAuth2 refresh with fresh credentials
+    dag.add_node(Node::opaque(
+        "prepare_retry_oauth2",
+        vec![
+            port("client_id", "String"),
+            port("client_secret", "String"),
+            port("refresh_token", "String"),
+        ],
+        vec![port("request", "TransportRequest"), port("skip", "Bool")],
+        GcpSecretManagerGraphOp::Gcp(GcpOps::PrepareOAuth2Refresh),
+    ));
+
+    dag.add_node(Node::opaque(
+        "execute_retry_oauth2",
+        vec![
+            port("request", "TransportRequest"),
+            port("skip", "Bool"),
+            resource("net", "NetworkHandle", AccessMode::Read),
+        ],
+        vec![port("response", "TransportResponse")],
+        GcpSecretManagerGraphOp::Transport(TransportOps::Execute),
+    ));
+
+    dag.add_node(Node::opaque(
+        "parse_retry_refresh",
+        vec![port("response", "TransportResponse")],
+        vec![
+            optional("access_token", "OptionalString"),
+            optional("expires_in", "OptionalInt"),
+        ],
         GcpSecretManagerGraphOp::Gcp(GcpOps::ParseOAuth2Refresh),
     ));
 
-    // Resolve edges: check -> read_adc -> parse_adc -> oauth2 -> parse_resolve
-    dag.add_edge(Edge::new("parse_check", "exists", "prepare_read_adc", "exists"));
-    dag.add_edge(Edge::new("prepare_read_adc", "request", "execute_read_adc", "request"));
-    dag.add_edge(Edge::new("prepare_read_adc", "skip", "execute_read_adc", "skip"));
-    dag.add_edge(Edge::new("net_env", "net", "execute_read_adc", "res:net"));
-    dag.add_edge(Edge::new("execute_read_adc", "response", "parse_adc", "response"));
+    // Retry edges
+    dag.add_edge(Edge::new(
+        "parse_reread_adc",
+        "client_id",
+        "prepare_retry_oauth2",
+        "client_id",
+    ));
+    dag.add_edge(Edge::new(
+        "parse_reread_adc",
+        "client_secret",
+        "prepare_retry_oauth2",
+        "client_secret",
+    ));
+    dag.add_edge(Edge::new(
+        "parse_reread_adc",
+        "refresh_token",
+        "prepare_retry_oauth2",
+        "refresh_token",
+    ));
+    dag.add_edge(Edge::new(
+        "prepare_retry_oauth2",
+        "request",
+        "execute_retry_oauth2",
+        "request",
+    ));
+    dag.add_edge(Edge::new(
+        "prepare_retry_oauth2",
+        "skip",
+        "execute_retry_oauth2",
+        "skip",
+    ));
+    dag.add_edge(Edge::new(
+        "net_env",
+        "net",
+        "execute_retry_oauth2",
+        "res:net",
+    ));
+    dag.add_edge(Edge::new(
+        "execute_retry_oauth2",
+        "response",
+        "parse_retry_refresh",
+        "response",
+    ));
 
-    dag.add_edge(Edge::new("parse_adc", "client_id", "prepare_oauth2", "client_id"));
-    dag.add_edge(Edge::new("parse_adc", "client_secret", "prepare_oauth2", "client_secret"));
-    dag.add_edge(Edge::new("parse_adc", "refresh_token", "prepare_oauth2", "refresh_token"));
+    // ========================================================================
+    // Merge phase: combine try-refresh and retry-refresh results
+    // ========================================================================
 
-    dag.add_edge(Edge::new("prepare_oauth2", "request", "execute_oauth2", "request"));
-    dag.add_edge(Edge::new("prepare_oauth2", "skip", "execute_oauth2", "skip"));
-    dag.add_edge(Edge::new("net_env", "net", "execute_oauth2", "res:net"));
-    dag.add_edge(Edge::new("execute_oauth2", "response", "parse_resolve", "response"));
+    dag.add_node(Node::opaque(
+        "merge_auth_result",
+        vec![
+            optional("try_access_token", "OptionalString"),
+            optional("try_expires_in", "OptionalInt"),
+            optional("retry_access_token", "OptionalString"),
+            optional("retry_expires_in", "OptionalInt"),
+        ],
+        vec![port("access_token", "String"), port("expires_in", "Int")],
+        GcpSecretManagerGraphOp::Gcp(GcpOps::MergeAuthResult),
+    ));
+
+    // Merge edges: try-refresh outputs
+    dag.add_edge(Edge::new(
+        "parse_try_refresh",
+        "access_token",
+        "merge_auth_result",
+        "try_access_token",
+    ));
+    dag.add_edge(Edge::new(
+        "parse_try_refresh",
+        "expires_in",
+        "merge_auth_result",
+        "try_expires_in",
+    ));
+    // Merge edges: retry-refresh outputs
+    dag.add_edge(Edge::new(
+        "parse_retry_refresh",
+        "access_token",
+        "merge_auth_result",
+        "retry_access_token",
+    ));
+    dag.add_edge(Edge::new(
+        "parse_retry_refresh",
+        "expires_in",
+        "merge_auth_result",
+        "retry_expires_in",
+    ));
 
     dag
 }

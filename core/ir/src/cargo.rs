@@ -16,6 +16,8 @@
 //! Use [`CargoInvocation::standalone`] and [`CargoInvocation::composed`] to
 //! construct invocations from component names, avoiding hardcoded full names.
 
+use crate::resource::ExecMode;
+
 /// Workspace binary name prefix. All gunbc binaries follow `{PREFIX}-{component}`.
 pub const PREFIX: &str = "gunbc";
 
@@ -196,6 +198,84 @@ impl Subcommand {
     }
 }
 
+// ============================================================================
+// Binary Arguments
+// ============================================================================
+
+/// Subcommand for the codegen binary (gunbc-codegen).
+///
+/// The codegen binary has multiple modes of operation, selected via
+/// a positional subcommand argument.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CodegenSubcommand {
+    /// Default: full commit (generate CLIs, build binaries, create bin directory).
+    #[default]
+    Commit,
+    /// Just generate CLIs (partial commit).
+    Codegen,
+    /// Generate DAG files.
+    Daggen,
+    /// Generate CI workflow YAML (GitHub Actions and GitLab CI).
+    Cigen,
+    /// Remove all generated artifacts.
+    Rollback,
+}
+
+impl CodegenSubcommand {
+    /// The subcommand string as used on the command line.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Commit => "commit",
+            Self::Codegen => "codegen",
+            Self::Daggen => "daggen",
+            Self::Cigen => "cigen",
+            Self::Rollback => "rollback",
+        }
+    }
+}
+
+/// Binary-specific arguments.
+///
+/// Models the arguments passed after `--` to cargo run, in a typed way.
+/// Each variant corresponds to a specific binary's CLI interface. This
+/// eliminates stringly-typed escape hatches by providing typed constructors.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum BinaryArgs {
+    /// No binary arguments.
+    #[default]
+    None,
+    /// Subcommand for gunbc-codegen binary.
+    Codegen(CodegenSubcommand),
+    /// Mode argument for binaries that support ExecMode (testgen, makegen, etc.).
+    WithMode(ExecMode),
+}
+
+impl BinaryArgs {
+    /// Create args for codegen subcommand.
+    pub fn codegen(sub: CodegenSubcommand) -> Self {
+        Self::Codegen(sub)
+    }
+
+    /// Create args for binaries that take --mode flag.
+    pub fn with_mode(mode: ExecMode) -> Self {
+        Self::WithMode(mode)
+    }
+
+    /// Convert to trailing args for cargo run.
+    pub fn to_args(&self) -> Vec<String> {
+        match self {
+            Self::None => vec![],
+            Self::Codegen(sub) => vec![sub.as_str().to_string()],
+            Self::WithMode(mode) => vec![format!("--mode={mode}")],
+        }
+    }
+
+    /// Returns true if there are no arguments.
+    pub fn is_empty(&self) -> bool {
+        matches!(self, Self::None)
+    }
+}
+
 /// How compiler warnings should be treated.
 ///
 /// The rendering layer owns how this is expressed per subcommand:
@@ -305,10 +385,24 @@ pub struct CargoCommand {
     pub with_all_targets: bool,
     pub with_release: bool,
     pub with_warnings: Warnings,
-    /// Additional subcommand-specific flags (before `--`).
-    pub flags: Vec<String>,
-    /// Arguments passed after `--`.
-    pub trailing_args: Vec<String>,
+    /// Enable `--fix` (clippy auto-fix mode).
+    pub with_fix: bool,
+    /// Enable `--workspace` (operate on all workspace members).
+    pub with_workspace: bool,
+    /// Enable `--allow-dirty` (allow uncommitted changes).
+    pub with_allow_dirty: bool,
+    /// Enable `--allow-staged` (allow staged changes).
+    pub with_allow_staged: bool,
+    /// Enable `--check` (fmt verification mode, no modifications).
+    pub with_check: bool,
+    /// Enable `--lib` (test only library unit tests).
+    pub with_lib: bool,
+    /// Typed binary arguments (only for `Subcommand::Run`).
+    ///
+    /// These are passed after `--` to the compiled binary. Use typed
+    /// constructors like `BinaryArgs::codegen()` or `BinaryArgs::with_mode()`
+    /// rather than raw strings.
+    pub binary_args: BinaryArgs,
 }
 
 impl CargoCommand {
@@ -319,8 +413,13 @@ impl CargoCommand {
             with_all_targets: false,
             with_release: false,
             with_warnings: Warnings::Default,
-            flags: Vec::new(),
-            trailing_args: Vec::new(),
+            with_fix: false,
+            with_workspace: false,
+            with_allow_dirty: false,
+            with_allow_staged: false,
+            with_check: false,
+            with_lib: false,
+            binary_args: BinaryArgs::None,
         }
     }
 
@@ -342,15 +441,48 @@ impl CargoCommand {
         self
     }
 
-    /// Add a subcommand-specific flag (before `--`).
-    pub fn flag(mut self, flag: &str) -> Self {
-        self.flags.push(flag.to_string());
+    /// Enable `--fix` (clippy auto-fix mode).
+    pub fn fix(mut self) -> Self {
+        self.with_fix = true;
         self
     }
 
-    /// Add an argument after `--`.
-    pub fn trailing_arg(mut self, arg: &str) -> Self {
-        self.trailing_args.push(arg.to_string());
+    /// Enable `--workspace` (operate on all workspace members).
+    pub fn workspace(mut self) -> Self {
+        self.with_workspace = true;
+        self
+    }
+
+    /// Enable `--allow-dirty` (allow uncommitted changes).
+    pub fn allow_dirty(mut self) -> Self {
+        self.with_allow_dirty = true;
+        self
+    }
+
+    /// Enable `--allow-staged` (allow staged changes).
+    pub fn allow_staged(mut self) -> Self {
+        self.with_allow_staged = true;
+        self
+    }
+
+    /// Enable `--check` (fmt verification mode).
+    pub fn check(mut self) -> Self {
+        self.with_check = true;
+        self
+    }
+
+    /// Enable `--lib` (test only library unit tests).
+    pub fn lib_only(mut self) -> Self {
+        self.with_lib = true;
+        self
+    }
+
+    /// Set typed binary arguments (only for `Subcommand::Run`).
+    ///
+    /// Use `BinaryArgs::codegen()` for codegen subcommands or
+    /// `BinaryArgs::with_mode()` for binaries that take --mode.
+    pub fn args(mut self, args: BinaryArgs) -> Self {
+        self.binary_args = args;
         self
     }
 
@@ -388,11 +520,29 @@ impl CargoCommand {
         if self.with_release {
             args.push("--release".to_string());
         }
+        if self.with_fix {
+            args.push("--fix".to_string());
+        }
+        if self.with_workspace {
+            args.push("--workspace".to_string());
+        }
+        if self.with_allow_dirty {
+            args.push("--allow-dirty".to_string());
+        }
+        if self.with_allow_staged {
+            args.push("--allow-staged".to_string());
+        }
+        if self.with_check {
+            args.push("--check".to_string());
+        }
+        if self.with_lib {
+            args.push("--lib".to_string());
+        }
 
-        args.extend(self.flags.iter().cloned());
-
-        // Build trailing args, including clippy's -D warnings
-        let mut trailing = self.trailing_args.clone();
+        // Build trailing args:
+        // - For Run: binary_args.to_args()
+        // - For Clippy with Deny: append -D warnings
+        let mut trailing = self.binary_args.to_args();
         if self.with_warnings == Warnings::Deny && self.subcommand == Subcommand::Clippy {
             trailing.extend(["-D".to_string(), "warnings".to_string()]);
         }
@@ -568,10 +718,10 @@ mod tests {
     #[test]
     fn test_cargo_clippy_fix() {
         let cmd = CargoCommand::new(Subcommand::Clippy)
-            .flag("--fix")
-            .flag("--workspace")
-            .flag("--allow-dirty")
-            .flag("--allow-staged")
+            .fix()
+            .workspace()
+            .allow_dirty()
+            .allow_staged()
             .warnings(Warnings::Deny);
         assert_eq!(
             cmd.to_args(),
@@ -591,8 +741,8 @@ mod tests {
 
     #[test]
     fn test_cargo_fmt_check() {
-        let cmd = CargoCommand::new(Subcommand::Fmt).trailing_arg("--check");
-        assert_eq!(cmd.to_args(), vec!["cargo", "fmt", "--", "--check"]);
+        let cmd = CargoCommand::new(Subcommand::Fmt).check();
+        assert_eq!(cmd.to_args(), vec!["cargo", "fmt", "--check"]);
     }
 
     #[test]
@@ -600,7 +750,7 @@ mod tests {
         let inv = CargoInvocation::standalone("codegen");
         let cmd = CargoCommand::new(Subcommand::Run(inv))
             .release()
-            .trailing_arg("codegen");
+            .args(BinaryArgs::codegen(CodegenSubcommand::Codegen));
         assert_eq!(
             cmd.to_args(),
             vec![

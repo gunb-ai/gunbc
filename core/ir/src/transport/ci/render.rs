@@ -103,6 +103,10 @@ pub struct RenderConfig {
 
     /// Caching configuration.
     pub cache: Option<CacheConfig>,
+
+    /// Job-level timeout in minutes. GitHub Actions defaults to 360 (6 hours)
+    /// if unset, which is far too long for most CI jobs. Default: 30 minutes.
+    pub timeout_minutes: u32,
 }
 
 impl Default for RenderConfig {
@@ -119,6 +123,7 @@ impl Default for RenderConfig {
             checkout: Some(CheckoutConfig::default()),
             git: GitConfig::default(),
             cache: None,
+            timeout_minutes: 30,
         }
     }
 }

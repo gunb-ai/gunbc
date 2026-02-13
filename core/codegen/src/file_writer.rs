@@ -1,6 +1,7 @@
 //! File writing with dry-run support.
 
 use gunbc_ir::resource::{ResourceError, ResourceIo};
+use std::fmt::Write;
 use std::path::Path;
 
 /// Result of a file write operation.
@@ -144,13 +145,13 @@ pub fn format_diff(old: &str, new: &str) -> String {
 
         if old_line != new_line {
             if !old_line.is_empty() {
-                result.push_str(&format!("- {}\n", old_line));
+                writeln!(result, "- {}", old_line).unwrap();
             }
             if !new_line.is_empty() {
-                result.push_str(&format!("+ {}\n", new_line));
+                writeln!(result, "+ {}", new_line).unwrap();
             }
         } else {
-            result.push_str(&format!("  {}\n", old_line));
+            writeln!(result, "  {}", old_line).unwrap();
         }
     }
 

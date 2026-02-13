@@ -63,6 +63,20 @@ impl FermiCost {
             _ => None,
         }
     }
+
+    /// Fermi-estimated timeout in milliseconds for this cost bucket.
+    ///
+    /// Used as the default shell command timeout when callers don't specify
+    /// an explicit value. Also used for CI job timeout estimation.
+    pub fn timeout_ms(self) -> u64 {
+        match self {
+            FermiCost::XS => 30_000,      //  30 s
+            FermiCost::S => 300_000,       //   5 min
+            FermiCost::M => 600_000,       //  10 min
+            FermiCost::L => 1_800_000,     //  30 min
+            FermiCost::XL => 3_600_000,    //  60 min
+        }
+    }
 }
 
 /// Metadata for a test case (used for gating decisions).
@@ -81,7 +95,7 @@ pub fn max_cost_from_env() -> FermiCost {
         .ok()
         .and_then(|v| FermiCost::parse(&v))
         .unwrap_or_else(|| {
-            if env_truthy("CI") || env_truthy("GITHUB_ACTIONS") {
+            if in_github_actions() {
                 FermiCost::XL
             } else {
                 FermiCost::S
@@ -89,8 +103,14 @@ pub fn max_cost_from_env() -> FermiCost {
         })
 }
 
-fn env_truthy(name: &str) -> bool {
-    env::var(name)
+/// True only when running inside a GitHub Actions workflow.
+///
+/// `GITHUB_ACTIONS` is the authoritative signal — it is set automatically
+/// by every GitHub Actions runner. The generic `CI` env var is deliberately
+/// **not** checked because many non-CI tools (Cursor IDE, iTerm, etc.) set
+/// it, which causes tests to panic instead of gracefully skipping.
+fn in_github_actions() -> bool {
+    env::var("GITHUB_ACTIONS")
         .map(|v| matches!(v.as_str(), "1" | "true" | "TRUE"))
         .unwrap_or(false)
 }
@@ -101,7 +121,7 @@ fn env_truthy(name: &str) -> bool {
 pub fn guard(meta: TestMeta<'_>) -> bool {
     let max_cost = max_cost_from_env();
     if meta.cost > max_cost {
-        if env_truthy("CI") || env_truthy("GITHUB_ACTIONS") {
+        if in_github_actions() {
             panic!(
                 "skipping {}: cost {} exceeds max {} (set GUNBC_TEST_MAX_COST=...)",
                 meta.name,
@@ -120,7 +140,7 @@ pub fn guard(meta: TestMeta<'_>) -> bool {
             .filter(|k| env::var(k).is_err())
             .collect();
         if !missing.is_empty() {
-            if env_truthy("CI") || env_truthy("GITHUB_ACTIONS") {
+            if in_github_actions() {
                 panic!(
                     "skipping {}: missing secrets [{}]",
                     meta.name,
@@ -171,7 +191,7 @@ pub fn guard_test_with_env(
 ) -> bool {
     let max_cost = max_cost_from_env();
     if cost > max_cost {
-        if env_truthy("CI") || env_truthy("GITHUB_ACTIONS") {
+        if in_github_actions() {
             panic!(
                 "skipping {}: cost {} exceeds max {} (set GUNBC_TEST_MAX_COST=...)",
                 name,
@@ -189,7 +209,7 @@ pub fn guard_test_with_env(
             .filter(|k| env::var(k).is_err())
             .collect();
         if !missing.is_empty() {
-            if env_truthy("CI") || env_truthy("GITHUB_ACTIONS") {
+            if in_github_actions() {
                 panic!(
                     "skipping {}: missing secrets [{}]",
                     name,
@@ -209,7 +229,7 @@ pub fn guard_test_with_env(
             }
         }
         if !missing_groups.is_empty() {
-            if env_truthy("CI") || env_truthy("GITHUB_ACTIONS") {
+            if in_github_actions() {
                 panic!(
                     "skipping {}: missing secrets [{}]",
                     name,

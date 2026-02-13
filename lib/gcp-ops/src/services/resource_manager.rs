@@ -29,6 +29,15 @@ pub trait ResourceManagerService {
     ///
     /// `POST /v1/projects/{project}:getIamPolicy`
     fn get_iam_policy(&self, project: &str) -> RestRequest;
+
+    /// Set the IAM policy for a project (read-modify-write with etag).
+    ///
+    /// `POST /v1/projects/{project}:setIamPolicy`
+    fn set_iam_policy(
+        &self,
+        project: &str,
+        policy: serde_json::Value,
+    ) -> RestRequest;
 }
 
 // ---------------------------------------------------------------------------
@@ -62,6 +71,16 @@ pub const GET_IAM_POLICY_META: MethodMeta = MethodMeta {
     idempotent: true,
     read_only: true,
     permissions: &["resourcemanager.projects.getIamPolicy"],
+    service: "cloudresourcemanager",
+};
+
+/// Metadata for `set_iam_policy`.
+pub const SET_IAM_POLICY_META: MethodMeta = MethodMeta {
+    endpoint: "/v1/projects/{project}:setIamPolicy",
+    http_method: HttpMethod::Post,
+    idempotent: false,
+    read_only: false,
+    permissions: &["resourcemanager.projects.setIamPolicy"],
     service: "cloudresourcemanager",
 };
 
@@ -120,6 +139,16 @@ impl ResourceManagerService for ResourceManagerRest {
         self.authed_post(&path)
             .json(serde_json::json!({}))
     }
+
+    fn set_iam_policy(
+        &self,
+        project: &str,
+        policy: serde_json::Value,
+    ) -> RestRequest {
+        let path = format!("/v1/projects/{}:setIamPolicy", project);
+        self.authed_post(&path)
+            .json(serde_json::json!({ "policy": policy }))
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -152,5 +181,20 @@ mod tests {
         let req = svc.get_iam_policy("my-project");
         assert!(req.url.contains(":getIamPolicy"));
         assert_eq!(req.method, HttpMethod::Post);
+    }
+
+    #[test]
+    fn test_set_iam_policy_url_and_body() {
+        let svc = ResourceManagerRest::unauthenticated();
+        let policy = serde_json::json!({
+            "bindings": [{"role": "roles/viewer", "members": ["user:test@example.com"]}],
+            "etag": "abc123"
+        });
+        let req = svc.set_iam_policy("my-project", policy);
+        assert!(req.url.contains(":setIamPolicy"));
+        assert_eq!(req.method, HttpMethod::Post);
+        let body = req.body.unwrap();
+        assert!(body["policy"]["bindings"].is_array());
+        assert_eq!(body["policy"]["etag"], "abc123");
     }
 }

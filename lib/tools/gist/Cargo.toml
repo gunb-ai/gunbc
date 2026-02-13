@@ -39,7 +39,3 @@ path = "../../../target/codegen/bin/gist-diff/main.rs"
 [[bin]]
 name = "gunbc-gist-recent"
 path = "../../../target/codegen/bin/gist-recent/main.rs"
-
-[[bin]]
-name = "gunbc-gist-auth-doctor"
-path = "../../../target/codegen/bin/gist-auth-doctor/main.rs"

@@ -229,7 +229,7 @@ mod tests {
     fn test_gcp_project_serde_roundtrip() {
         let project = GcpProject {
             project_id: "gunbai-secrets".to_string(),
-            project_number: Some(314501921854),
+            project_number: Some(582015116396),
             display_name: Some("gunbai-secrets".to_string()),
             state: Some("ACTIVE".to_string()),
             labels: HashMap::from([("env".to_string(), "shared".to_string())]),

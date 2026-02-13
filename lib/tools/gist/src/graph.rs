@@ -23,7 +23,7 @@ use gunbc_ir::{
     WorkflowSignature,
 };
 use gunbc_lib_cloud_ops::{
-    build_cloud_secret_manager_credential_graph_from_config, default_local_dev_config, CloudOps,
+    build_cloud_secret_manager_credential_graph_from_config, graph_cloud_config, CloudOps,
     CloudSecretManagerGraphOp,
 };
 use gunbc_lib_gist_ops::GistOps;
@@ -423,14 +423,19 @@ fn execute_resolve_auth(
         .validate()
         .map_err(|e| ExecError::new(format!("invalid gist credential contract: {e}")))?;
 
-    OutputMap::new()
+    let mut out = OutputMap::new()
         .str("service", intent.service)
         .str("scheme", intent.scheme)
         .str("header_name", intent.header_name)
         .str_list("required_scopes", intent.required_scopes)
         .bool("interactive_allowed", intent.interactive_allowed)
-        .int("lifetime_seconds", 3600)
-        .ok()
+        .int("lifetime_seconds", 3600);
+
+    if let Some(secret_name) = intent.secret_name {
+        out = out.str("secret_name", secret_name);
+    }
+
+    out.ok()
 }
 
 // ============================================================================
@@ -509,7 +514,9 @@ pub fn build_read_file_body_dag() -> Dag<GistGraphOp> {
 pub fn gist_signature(mode: &GistMode) -> WorkflowSignature {
     let mut sig = WorkflowSignature::new()
         .with_input("repo_path", "String", Cardinality::ONE)
-        .with_output("url", "String", Cardinality::ONE);
+        .with_output("url", "String", Cardinality::ONE)
+        // cloud_credential subdag exposes ok from IAM ensure chain (LocalDev only)
+        .with_output("ok", "Bool", Cardinality::ONE);
 
     // base_ref is an entrypoint only in diff mode.
     if matches!(mode, GistMode::Diff { .. }) {
@@ -541,7 +548,7 @@ pub fn build_gist_graph(
     extensions: Vec<String>,
     public: bool,
 ) -> Result<Dag<GistGraphOp>, BuilderError> {
-    build_gist_graph_with_config(mode, extensions, public, default_local_dev_config())
+    build_gist_graph_with_config(mode, extensions, public, graph_cloud_config())
 }
 
 /// Build the gist graph with an explicit `CloudSecretConfig`.
@@ -595,6 +602,7 @@ pub fn build_gist_graph_with_config(
         vec![],
         vec![
             port("service", "String"),
+            optional("secret_name", "OptionalString"),
             port("scheme", "String"),
             port("header_name", "String"),
             list("required_scopes", "String"),
@@ -610,6 +618,7 @@ pub fn build_gist_graph_with_config(
             vec![
                 port("config", "CloudSecretConfig"),
                 port("service", "String"),
+                optional("secret_name", "OptionalString"),
             ],
             vec![port("config", "CloudSecretConfig")],
             GistGraphOp::Cloud(CloudSecretManagerGraphOp::Cloud(CloudOps::BindSecretName)),
@@ -617,8 +626,9 @@ pub fn build_gist_graph_with_config(
         &[&cloud_env, &resolve_auth],
     )?;
 
-    let cloud_subdag =
-        lift_cloud_dag(build_cloud_secret_manager_credential_graph_from_config(&cloud_config));
+    let cloud_subdag = lift_cloud_dag(build_cloud_secret_manager_credential_graph_from_config(
+        &cloud_config,
+    ));
     let cloud_credential =
         builder.add_node_after(Node::subdag("cloud_credential", cloud_subdag), &bind_secret)?;
 
@@ -706,19 +716,31 @@ pub fn build_gist_graph_with_config(
         &render_markdown,
     )?;
 
+    // Node: ScopePreflight (PURE - fails fast on invalid/empty scopes)
+    let scope_preflight = builder.add_node_after(
+        Node::opaque(
+            "scope_preflight",
+            vec![list("required_scopes", "String")],
+            vec![scalar("scope_verified", "Bool")],
+            GistGraphOp::Cloud(CloudSecretManagerGraphOp::Cloud(CloudOps::ScopePreflight)),
+        ),
+        &resolve_auth,
+    )?;
+
     // Node: ExecuteGist (BOUNDARY - actual I/O)
-    let execute_gist = builder.add_node_after(
+    let execute_gist = builder.add_node_after_all(
         Node::opaque(
             "execute_gist",
             vec![
                 scalar("request", "TransportRequest"),
                 scalar("skip", "Bool"),
+                optional("scope_verified", "OptionalBool"),
                 resource("credential", "Credential", AccessMode::Read),
             ],
             vec![scalar("response", "TransportResponse")],
             GistGraphOp::Transport(TransportOps::Execute),
         ),
-        &prepare_gist_request,
+        &[&prepare_gist_request, &scope_preflight],
     )?;
 
     // Node: ParseGistResponse (PURE - extracts URL)
@@ -756,6 +778,10 @@ pub fn build_gist_graph_with_config(
     builder.add_edge(cloud_env.out("config"), bind_secret.in_port("config"))?;
     builder.add_edge(resolve_auth.out("service"), bind_secret.in_port("service"))?;
     builder.add_edge(
+        resolve_auth.out("secret_name"),
+        bind_secret.in_port("secret_name"),
+    )?;
+    builder.add_edge(
         bind_secret.out("config"),
         cloud_credential.in_port("config"),
     )?;
@@ -780,6 +806,10 @@ pub fn build_gist_graph_with_config(
         cloud_credential.in_port("interactive_allowed"),
     )?;
     builder.add_edge(
+        resolve_auth.out("required_scopes"),
+        cloud_credential.in_port("required_scopes"),
+    )?;
+    builder.add_edge(
         cloud_env.out("request_url"),
         cloud_credential.in_port("request_url"),
     )?;
@@ -790,6 +820,10 @@ pub fn build_gist_graph_with_config(
     builder.add_edge(
         resolve_auth.out("required_scopes"),
         prepare_gist_request.in_port("required_scopes"),
+    )?;
+    builder.add_edge(
+        resolve_auth.out("required_scopes"),
+        scope_preflight.in_port("required_scopes"),
     )?;
     builder.add_edge(
         cloud_env.out("request_token"),
@@ -809,6 +843,10 @@ pub fn build_gist_graph_with_config(
     builder.add_edge(
         prepare_gist_request.out("skip"),
         execute_gist.in_port("skip"),
+    )?;
+    builder.add_edge(
+        scope_preflight.out("scope_verified"),
+        execute_gist.in_port("scope_verified"),
     )?;
     builder.add_edge(
         cloud_credential.out("credential"),

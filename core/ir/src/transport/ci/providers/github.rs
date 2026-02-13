@@ -18,6 +18,7 @@ use crate::transport::ci::command::{AnnotationLevel, WorkflowCommand};
 use crate::transport::ci::provider::CiProvider;
 use crate::transport::ci::render::{dag_to_shared_steps, CiRenderer, RenderConfig, SharedStep};
 use crate::transport::ci::runner::Runner;
+use std::fmt::Write;
 use crate::transport::github_actions::{ubuntu_22_04, ubuntu_24_04, ubuntu_latest, RunnerImage};
 use crate::Dag;
 
@@ -176,7 +177,7 @@ fn render_github_workflow(steps: &[SharedStep], config: &RenderConfig) -> String
     let mut yaml = String::new();
 
     yaml.push_str(&config.header("#"));
-    yaml.push_str(&format!("\n\nname: {}\n\n", config.workflow_name));
+    write!(yaml, "\n\nname: {}\n\n", config.workflow_name).unwrap();
 
     // Triggers — derived from git config
     let branches = config.git.ci_branches();
@@ -195,10 +196,10 @@ fn render_github_workflow(steps: &[SharedStep], config: &RenderConfig) -> String
     });
 
     // Job
-    yaml.push_str(&format!(
-        "jobs:\n  {}:\n    runs-on: {}\n    steps:\n",
-        config.workflow_name, config.runner.id,
-    ));
+    write!(yaml,
+        "jobs:\n  {}:\n    runs-on: {}\n    timeout-minutes: {}\n    steps:\n",
+        config.workflow_name, config.runner.id, config.timeout_minutes,
+    ).unwrap();
 
     for step in steps {
         yaml.push_str(&render_github_step(step, config));
@@ -216,10 +217,10 @@ fn render_github_step(step: &SharedStep, _config: &RenderConfig) -> String {
             if checkout.fetch_depth.is_some() || checkout.submodules.is_some() {
                 yaml.push_str("        with:\n");
                 if let Some(depth) = checkout.fetch_depth {
-                    yaml.push_str(&format!("          fetch-depth: {}\n", depth));
+                    writeln!(yaml, "          fetch-depth: {}", depth).unwrap();
                 }
                 if let Some(ref submodules) = checkout.submodules {
-                    yaml.push_str(&format!("          submodules: {}\n", submodules));
+                    writeln!(yaml, "          submodules: {}", submodules).unwrap();
                 }
             }
             yaml
@@ -247,12 +248,12 @@ fn render_github_step(step: &SharedStep, _config: &RenderConfig) -> String {
                 yaml.push_str("        env:\n");
                 for dep in depends_on {
                     // Pass outputs from previous steps
-                    yaml.push_str(&format!(
-                        "          STEP_{}_SUCCESS: ${{{{ steps.{}.outputs.STEP_{}_SUCCESS }}}}\n",
+                    writeln!(yaml,
+                        "          STEP_{}_SUCCESS: ${{{{ steps.{}.outputs.STEP_{}_SUCCESS }}}}",
                         dep.0.to_uppercase(),
                         dep.0,
                         dep.0.to_uppercase()
-                    ));
+                    ).unwrap();
                 }
             }
 

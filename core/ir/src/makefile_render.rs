@@ -6,6 +6,7 @@
 //! - Sections use `#` banner comments
 
 use crate::render_ir::{Category, StructuredBlock, StructuredRenderer, Target, TextMedium};
+use std::fmt::Write;
 
 /// Renders structured IR to Makefile-compatible text.
 ///
@@ -55,9 +56,9 @@ impl<M: TextMedium> StructuredRenderer<M> for MakefileStructuredRenderer<M> {
     fn render_category(&self, category: &Category) -> String {
         let mut out = String::new();
         let source = category.source.as_deref().unwrap_or("unknown");
-        out.push_str(&format!("# --- {} (from {}) ---\n", category.name, source));
+        writeln!(out, "# --- {} (from {}) ---", category.name, source).unwrap();
         if let Some(ref rationale) = category.rationale {
-            out.push_str(&format!("# {}\n", rationale));
+            writeln!(out, "# {}", rationale).unwrap();
         }
         for item in &category.items {
             out.push_str(item);
@@ -73,7 +74,7 @@ impl<M: TextMedium> StructuredRenderer<M> for MakefileStructuredRenderer<M> {
             StructuredBlock::Category(c) => self.render_category(c),
             StructuredBlock::Section { title, content } => {
                 let mut out = String::new();
-                out.push_str(&format!("# {}\n", title));
+                writeln!(out, "# {}", title).unwrap();
                 out.push_str(&self.medium.render_block(content));
                 out.push_str("\n\n");
                 out
@@ -94,6 +95,7 @@ mod tests {
     use super::*;
     use crate::render_ir::PlainText;
     use crate::symbols::{Tier, STANDARD};
+    use std::borrow::Cow;
 
     fn plain() -> PlainText {
         PlainText {
@@ -106,9 +108,9 @@ mod tests {
     fn test_render_target_no_deps() {
         let r = MakefileStructuredRenderer::new(plain());
         let target = Target {
-            name: "clean".to_string(),
+            name: Cow::Borrowed("clean"),
             deps: vec![],
-            body: vec!["@cargo clean".to_string()],
+            body: vec![Cow::Borrowed("@cargo clean")],
             comment: None,
         };
         assert_eq!(r.render_target(&target), "clean:\n\t@cargo clean\n\n");
@@ -118,9 +120,9 @@ mod tests {
     fn test_render_target_with_deps() {
         let r = MakefileStructuredRenderer::new(plain());
         let target = Target {
-            name: "build".to_string(),
-            deps: vec!["codegen".to_string(), "testgen".to_string()],
-            body: vec!["@cargo build".to_string()],
+            name: Cow::Borrowed("build"),
+            deps: vec![Cow::Borrowed("codegen"), Cow::Borrowed("testgen")],
+            body: vec![Cow::Borrowed("@cargo build")],
             comment: None,
         };
         assert_eq!(
@@ -133,10 +135,10 @@ mod tests {
     fn test_render_category() {
         let r = MakefileStructuredRenderer::new(plain());
         let cat = Category {
-            name: "Build artifacts".to_string(),
-            source: Some("cargo".to_string()),
-            items: vec!["/target/".to_string()],
-            rationale: Some("Reproducible".to_string()),
+            name: Cow::Borrowed("Build artifacts"),
+            source: Some(Cow::Borrowed("cargo")),
+            items: vec![Cow::Borrowed("/target/")],
+            rationale: Some(Cow::Borrowed("Reproducible")),
         };
         let out = r.render_category(&cat);
         assert!(out.contains("# --- Build artifacts (from cargo) ---"));
@@ -148,10 +150,10 @@ mod tests {
     fn test_render_target_with_comment() {
         let r = MakefileStructuredRenderer::new(plain());
         let target = Target {
-            name: "build".to_string(),
-            deps: vec!["codegen".to_string()],
-            body: vec!["@cargo build".to_string()],
-            comment: Some("Full build transaction".to_string()),
+            name: Cow::Borrowed("build"),
+            deps: vec![Cow::Borrowed("codegen")],
+            body: vec![Cow::Borrowed("@cargo build")],
+            comment: Some(Cow::Borrowed("Full build transaction")),
         };
         assert_eq!(
             r.render_target(&target),

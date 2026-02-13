@@ -14,6 +14,7 @@ use gunbc_exec::{
 use gunbc_ir::transport::TransportRequest;
 use gunbc_ir::Value;
 use std::collections::HashMap;
+use std::fmt::Write;
 
 /// Pure operations for the build pipeline.
 #[derive(Debug, Clone)]
@@ -207,13 +208,13 @@ fn exec_summary(inputs: HashMap<String, Value>) -> Result<HashMap<String, Value>
 
     let mut report = String::new();
     if !build_success {
-        report.push_str(&format!("Build FAILED\n{}\n", build_stderr));
+        write!(report, "Build FAILED\n{}\n", build_stderr).unwrap();
     }
     if !test_success {
-        report.push_str(&format!("Test FAILED\n{}\n", test_stderr));
+        write!(report, "Test FAILED\n{}\n", test_stderr).unwrap();
     }
     if !clippy_success {
-        report.push_str(&format!("Clippy FAILED\n{}\n", clippy_stderr));
+        write!(report, "Clippy FAILED\n{}\n", clippy_stderr).unwrap();
     }
     if overall {
         report.push_str("All checks passed.");

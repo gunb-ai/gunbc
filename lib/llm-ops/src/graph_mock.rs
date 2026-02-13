@@ -201,6 +201,7 @@ pub fn openai_mock_spec() -> MockSpec {
         .skip_node_example("cloud_env")
         .skip_node_example("cloud_credential")
         .skip_node_example("bind_secret")
+        .skip_node_example("scope_preflight")
 }
 
 /// Mock specification for Anthropic chat completion.
@@ -340,6 +341,7 @@ pub fn anthropic_mock_spec() -> MockSpec {
         .skip_node_example("cloud_env")
         .skip_node_example("cloud_credential")
         .skip_node_example("bind_secret")
+        .skip_node_example("scope_preflight")
 }
 
 /// Mock specification for code review workflow.
@@ -448,6 +450,7 @@ Overall: The code is clean and well-structured. Minor fixes recommended.";
         .skip_node_example("cloud_env")
         .skip_node_example("cloud_credential")
         .skip_node_example("bind_secret")
+        .skip_node_example("scope_preflight")
 }
 
 /// Mock specification for testing API key as secret.
@@ -554,6 +557,7 @@ pub fn secret_api_key_mock_spec() -> MockSpec {
         .skip_node_example("cloud_env")
         .skip_node_example("cloud_credential")
         .skip_node_example("bind_secret")
+        .skip_node_example("scope_preflight")
 }
 
 /// Mock specification for testing rate limiting / error scenarios.
@@ -607,6 +611,7 @@ pub fn rate_limited_mock_spec() -> MockSpec {
         .skip_node_example("cloud_env")
         .skip_node_example("cloud_credential")
         .skip_node_example("bind_secret")
+        .skip_node_example("scope_preflight")
 }
 
 /// Mock specification for credential lifecycle testing.
@@ -734,6 +739,7 @@ pub fn credential_lifecycle_mock_spec() -> MockSpec {
         .skip_node_example("cloud_env")
         .skip_node_example("cloud_credential")
         .skip_node_example("bind_secret")
+        .skip_node_example("scope_preflight")
 }
 
 /// Mock specification for Anthropic credential lifecycle testing.
@@ -875,4 +881,5 @@ pub fn credential_lifecycle_anthropic_mock_spec() -> MockSpec {
         .skip_node_example("cloud_env")
         .skip_node_example("cloud_credential")
         .skip_node_example("bind_secret")
+        .skip_node_example("scope_preflight")
 }

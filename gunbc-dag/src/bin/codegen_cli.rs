@@ -149,8 +149,10 @@ fn cmd_commit(dry_run: bool) {
 
 /// Run cargo build --release via the transport boundary.
 fn run_cargo_build(io: &dyn ResourceIo) -> Result<(), ResourceError> {
-    let args = vec!["build".to_string(), "--release".to_string()];
-    io.command_output("cargo", &args).map(|_| ())
+    let cmd = gunbc_ir::cargo::CargoCommand::new(gunbc_ir::cargo::Subcommand::Build).release();
+    let full_args = cmd.to_args();
+    // full_args = ["cargo", "build", "--release"]
+    io.command_output(&full_args[0], &full_args[1..]).map(|_| ())
 }
 
 /// Setup bin directory - symlink on Unix, marker on Windows.
@@ -172,8 +174,8 @@ fn setup_bin_link(
 ) -> Result<(), ResourceError> {
     let args = vec![
         "-s".to_string(),
-        target_path.to_string_lossy().to_string(),
-        bin_path.to_string_lossy().to_string(),
+        target_path.to_string_lossy().into_owned(),
+        bin_path.to_string_lossy().into_owned(),
     ];
     io.command_output("ln", &args)?;
     Ok(())
@@ -207,7 +209,7 @@ fn remove_path(io: &dyn ResourceIo, path: &Path) -> Result<(), ResourceError> {
 
     #[cfg(windows)]
     {
-        let path_str = path.to_string_lossy().to_string();
+        let path_str = path.to_string_lossy().into_owned();
         let _ = io.command_output(
             "cmd",
             &[
@@ -233,7 +235,7 @@ fn remove_path(io: &dyn ResourceIo, path: &Path) -> Result<(), ResourceError> {
 
     #[cfg(not(windows))]
     {
-        let args = vec!["-rf".to_string(), path.to_string_lossy().to_string()];
+        let args = vec!["-rf".to_string(), path.to_string_lossy().into_owned()];
         io.command_output("rm", &args)?;
         Ok(())
     }
@@ -379,8 +381,8 @@ fn generate_github_actions_template(config: &RenderConfig) -> String {
     });
 
     yaml.push_str(&format!(
-        "jobs:\n  {}:\n    runs-on: {}\n    steps:\n",
-        config.workflow_name, config.runner.id,
+        "jobs:\n  {}:\n    runs-on: {}\n    timeout-minutes: {}\n    steps:\n",
+        config.workflow_name, config.runner.id, config.timeout_minutes,
     ));
 
     if let Some(checkout) = &config.checkout {

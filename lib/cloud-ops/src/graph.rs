@@ -2,7 +2,7 @@
 
 use crate::ops::CloudOps;
 use gunbc_exec::{ExecError, Executable};
-use gunbc_ir::build::{optional, port};
+use gunbc_ir::build::{list, optional, port};
 use gunbc_ir::transport::cloud::{CloudProviderKind, CloudRuntimeKind, CloudSecretConfig};
 use gunbc_ir::{Dag, DagBuilder, Node, Value};
 use gunbc_lib_aws_ops::{
@@ -214,6 +214,7 @@ fn build_cloud_secret_manager_credential_graph_gcp(
         port("scheme", "String"),
         optional("header_name", "OptionalString"),
         port("source_id", "String"),
+        list("required_scopes", "String"),
         optional("lifetime_seconds", "OptionalInt"),
     ];
     // interactive_allowed is only needed for non-local runtimes where
@@ -246,6 +247,7 @@ fn build_cloud_secret_manager_credential_graph_gcp(
                     port("scheme", "String"),
                     optional("header_name", "OptionalString"),
                     port("source_id", "String"),
+                    list("required_scopes", "String"),
                     optional("lifetime_seconds", "OptionalInt"),
                     // interactive_allowed is accepted as input for all runtimes
                     // (parent graphs always wire it), but only OUTPUT for
@@ -340,6 +342,12 @@ fn build_cloud_secret_manager_credential_graph_gcp(
     builder
         .add_edge(map_inputs.out("source_id"), gcp_node.in_port("source_id"))
         .expect("map_gcp_inputs.source_id -> gcp_wif_secret.source_id");
+    builder
+        .add_edge(
+            map_inputs.out("required_scopes"),
+            gcp_node.in_port("required_scopes"),
+        )
+        .expect("map_gcp_inputs.required_scopes -> gcp_wif_secret.required_scopes");
     builder
         .add_edge(
             map_inputs.out("lifetime_seconds"),

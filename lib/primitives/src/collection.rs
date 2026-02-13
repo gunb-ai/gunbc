@@ -348,6 +348,10 @@ impl Executable for SetOp {
         let left = Self::extract_set(left_val)?;
         let right = Self::extract_set(right_val)?;
 
+        // Note: Value doesn't implement Hash (contains Json, TransportRequest),
+        // so we use Vec::contains() which is O(n) per lookup. This is acceptable
+        // because DAG sets are small in practice. If large sets become common,
+        // consider a serialization-based HashSet or adding Hash to leaf types.
         let result = match self {
             SetOp::Union => {
                 let mut out = left;
@@ -358,18 +362,10 @@ impl Executable for SetOp {
                 }
                 out
             }
-            SetOp::Intersection => left.iter().filter(|v| right.contains(v)).cloned().collect(),
-            SetOp::Difference => left
-                .iter()
-                .filter(|v| !right.contains(v))
-                .cloned()
-                .collect(),
+            SetOp::Intersection => left.into_iter().filter(|v| right.contains(v)).collect(),
+            SetOp::Difference => left.into_iter().filter(|v| !right.contains(v)).collect(),
             SetOp::SymmetricDifference => {
-                let mut out: Vec<Value> = left
-                    .iter()
-                    .filter(|v| !right.contains(v))
-                    .cloned()
-                    .collect();
+                let mut out: Vec<Value> = left.iter().filter(|v| !right.contains(v)).cloned().collect();
                 for v in &right {
                     if !left.contains(v) {
                         out.push(v.clone());

@@ -39,7 +39,9 @@
 
 use crate::render_ir::FileHeader;
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
+use std::fmt::Write;
 
 // ============================================================================
 // Permission Model
@@ -503,6 +505,9 @@ pub struct WorkflowConfig {
     pub permissions: Permissions,
     /// Command to run in the CI step
     pub run_command: String,
+    /// Job-level timeout in minutes (GitHub Actions `timeout-minutes`).
+    /// Defaults to 30. GitHub's own default is 360 (6 hours).
+    pub timeout_minutes: u32,
 }
 
 impl WorkflowConfig {
@@ -523,12 +528,19 @@ impl WorkflowConfig {
             integrations,
             permissions,
             run_command: String::new(),
+            timeout_minutes: 30,
         }
     }
 
     /// Set the run command for the CI step.
     pub fn with_run_command(mut self, cmd: impl Into<String>) -> Self {
         self.run_command = cmd.into();
+        self
+    }
+
+    /// Set the job-level timeout in minutes.
+    pub fn with_timeout_minutes(mut self, minutes: u32) -> Self {
+        self.timeout_minutes = minutes;
         self
     }
 
@@ -581,9 +593,9 @@ impl WorkflowConfig {
     /// Render the complete workflow YAML with header.
     pub fn render(&self) -> String {
         let header = FileHeader {
-            generator_name: CI_GENERATOR_NAME.to_string(),
-            regenerate_command: "make ci-yaml".to_string(),
-            comment_prefix: "#".to_string(),
+            generator_name: Cow::Borrowed(CI_GENERATOR_NAME),
+            regenerate_command: Cow::Borrowed("make ci-yaml"),
+            comment_prefix: Cow::Borrowed("#"),
         };
         format!("{}\n\n{}", header.render(), self.render_content())
     }
@@ -592,7 +604,7 @@ impl WorkflowConfig {
     pub fn render_content(&self) -> String {
         let mut yaml = String::new();
 
-        yaml.push_str(&format!("name: {}\n\n", self.name));
+        write!(yaml, "name: {}\n\n", self.name).unwrap();
 
         // Triggers
         yaml.push_str("on:\n");
@@ -604,18 +616,19 @@ impl WorkflowConfig {
         // Jobs
         yaml.push_str("jobs:\n");
         yaml.push_str("  ci:\n");
-        yaml.push_str(&format!("    runs-on: {}\n", self.runner.id));
+        writeln!(yaml, "    runs-on: {}", self.runner.id).unwrap();
+        writeln!(yaml, "    timeout-minutes: {}", self.timeout_minutes).unwrap();
         yaml.push_str("    steps:\n");
 
         // Integration steps (actions)
         for integration in &self.integrations {
-            yaml.push_str(&format!("      - uses: {}\n", integration.uses));
+            writeln!(yaml, "      - uses: {}", integration.uses).unwrap();
         }
 
         // Run command
         if !self.run_command.is_empty() {
             yaml.push_str("      - name: Run CI\n");
-            yaml.push_str(&format!("        run: {}\n", self.run_command));
+            writeln!(yaml, "        run: {}", self.run_command).unwrap();
         }
 
         yaml

@@ -245,7 +245,7 @@ impl BlobHandle {
             .ok_or_else(|| BlobHandleError::new("missing 'type' field"))?;
 
         if type_field != "blob_handle" {
-            return Err(BlobHandleError::new(&format!(
+            return Err(BlobHandleError::new(format!(
                 "expected type 'blob_handle', got '{}'",
                 type_field
             )));
@@ -256,7 +256,7 @@ impl BlobHandle {
                 .cloned()
                 .ok_or_else(|| BlobHandleError::new("missing 'source' field"))?,
         )
-        .map_err(|e| BlobHandleError::new(&format!("invalid source: {}", e)))?;
+        .map_err(|e| BlobHandleError::new(format!("invalid source: {}", e)))?;
 
         let data = json
             .get("data")
@@ -269,7 +269,7 @@ impl BlobHandle {
                 .cloned()
                 .ok_or_else(|| BlobHandleError::new("missing 'meta' field"))?,
         )
-        .map_err(|e| BlobHandleError::new(&format!("invalid meta: {}", e)))?;
+        .map_err(|e| BlobHandleError::new(format!("invalid meta: {}", e)))?;
 
         Ok(Self {
             source,
@@ -287,9 +287,9 @@ pub struct BlobHandleError {
 }
 
 impl BlobHandleError {
-    pub fn new(message: &str) -> Self {
+    pub fn new(message: impl Into<String>) -> Self {
         Self {
-            message: message.to_string(),
+            message: message.into(),
         }
     }
 }

@@ -645,6 +645,7 @@ compiler version is now captured directly, regardless of environment setup.
 - [x] Builder strings compile-time validation (`#[tool_target]`) — §6.1
 - [x] Remove static CODEGEN_SOURCES path list — §6.3
 - [ ] Design hermeticity annotation for `Shell` transport (see §8 design problem)
+- [ ] Design DAG typing hardening plan (typed node I/O wrappers + input_mock type validation + semantic carrier refinements) — see `TODO/TODO_hacks.md` §10
 
 ### Remaining (extension features — from architecture-debt.md §16)
 
@@ -694,3 +695,242 @@ integration tests all added.
 - §9-15 (boilerplate consolidation): All DONE. `propagate_skipped()`,
   `OutputMap`, `ResultExt`, `ShellResponse::ok/failed`, input extraction
   helpers — all migrated. Remaining unmigrated sites are intentional.
+
+---
+
+## 17. Inefficient / Hacky Code Patterns (2026-02-12 scan)
+
+Full codebase scan for needless conversions, unnecessary allocations,
+suboptimal idioms, and correctness risks. Findings organized by severity.
+
+### MAJOR — Probable Bug
+
+#### 17.1 Swapped timeout fields in TCP executor
+
+**File:** `lib/transport/src/executor.rs` ~lines 343-352
+
+`connect_timeout_ms` is used for `set_read_timeout`, and `read_timeout_ms`
+is used for `set_write_timeout`. These are swapped. If `connect_timeout_ms`
+is short (5s) and `read_timeout_ms` is long (30s), reads will time out
+prematurely and writes will have an unexpectedly long timeout.
+
+**Fix:** Swap the assignments.
+
+### MODERATE — Correctness Risk or Significant Readability
+
+#### 17.2 `.expect()` in production graph-building code (~70 sites)
+
+**Files:**
+- `gunbc-dag/src/ci/graph.rs` (~8 `.expect()` calls on builder methods)
+- `gunbc-dag/src/workspace/subdags/bootstrap.rs` (~18 `.expect()` calls)
+- `gunbc-dag/src/workspace/subdags/deps.rs` (~25 `.expect()` calls)
+- `core/exec/src/topo.rs` (3 `.unwrap()` on HashMap lookups in topo sort)
+
+All these functions already return `Result`. If a malformed DAG or
+renamed node causes a lookup failure, the process panics instead of
+returning a diagnostic error.
+
+**Fix:** Replace `.expect()` / `.unwrap()` with `.ok_or_else(|| ...)? `.
+
+#### 17.3 `.is_none()` then `.unwrap()` instead of `if let` / `ok_or`
+
+**File:** `core/ir/src/builder.rs` lines 494-513
+
+```rust
+let from_port = from_node.and_then(...);
+if from_port.is_none() { return Err(...); }
+let from_port = from_port.unwrap();
+```
+
+Repeated for both `from_port` and `to_port`.
+
+**Fix:** `let from_port = from_port.ok_or_else(|| BuilderError::...)?;`
+
+#### 17.4 Stringly-typed `type_id: String` for CLI param types
+
+**File:** `core/cli/src/lib.rs` line 17 and `core/codegen/src/cli_gen.rs`
+
+`type_id` stores `"Bool"`, `"Int"`, `"String"` as bare strings matched
+via `match param.type_id.as_str()`. A typo silently falls through to
+the `_` arm.
+
+**Fix:** Define `enum ParamType { String, Int, Bool }`.
+
+#### 17.5 O(n*m) set operations using `Vec::contains()`
+
+**Files:**
+- `lib/primitives/src/collection.rs` — `SetOp` uses Vec `.contains()`
+  for intersection/difference
+- `core/ir/src/value.rs` lines 216-221 — symmetric difference with
+  linear containment checks
+
+**Fix:** Convert one side to `HashSet` for O(1) lookups.
+
+#### 17.6 `panic!()` in match arms instead of `Err()` return
+
+**File:** `lib/transport/src/cli.rs` lines 144-157
+
+Several match arms in `Executable` impl for `CliToolOp` use `panic!()`
+for unexpected variants. The function returns `Result`.
+
+**Fix:** Return `Err(ExecError::new(...))`.
+
+#### 17.7 `&PathBuf` instead of `&Path` in function signatures
+
+**Files:**
+- `lib/transport/src/cli.rs` line 472
+- `lib/cloud-ops/src/config_resource.rs` line 53
+
+**Fix:** Change to `&Path` / return `&Path`.
+
+### MODERATE — Systematic Performance
+
+#### 17.8 `push_str(&format!(...))` pattern (~100+ sites)
+
+This is the single most pervasive anti-pattern. Each call allocates a
+temporary `String` via `format!()`, borrows it, appends to the buffer,
+then drops it. Using `write!()` on `String` (which implements
+`fmt::Write`) writes directly into the buffer.
+
+**Affected files (non-exhaustive):**
+- `core/ir/src/makefile_render.rs`
+- `core/ir/src/plain_render.rs`
+- `core/ir/src/dag.rs` (Mermaid rendering)
+- `core/codegen/src/cli_gen.rs` (~20 sites)
+- `core/codegen/src/file_writer.rs`
+- `core/codegen/src/testgen/render_rust.rs` (~30 sites)
+- `core/ir/src/transport/github_actions.rs`
+- `core/ir/src/transport/ci/providers/github.rs`
+- `core/ir/src/transport/ci/providers/gitlab.rs`
+- `core/ir/src/transport/github/cli.rs`
+- `gunbc-dag/src/build/ops.rs`
+- `gunbc-dag/src/makegen/render.rs`
+- `gunbc-dag/src/docgen/ops.rs`
+- `lib/gcp-ops/src/discovery_ops.rs`
+- `lib/markdown/src/lib.rs`
+- `lib/tools/clippy/src/config.rs`
+
+**Fix:** `use std::fmt::Write; write!(buf, "...", args).unwrap();`
+
+#### 17.9 `Vec<String>` from string literals (~80 allocations)
+
+**Files:**
+- `gunbc-dag/src/makegen/gitignore.rs` (~55 `.to_string()` on literals)
+- `gunbc-dag/src/makegen/render.rs` (~40 `.to_string()` on literals)
+- `gunbc-dag/src/docgen/ops.rs` (~25 `.to_string()` on literals)
+
+All build `Category`, `Target`, or line vectors from `&'static str`.
+
+**Fix:** Change struct fields to `Cow<'static, str>`. All literal
+usages become zero-cost `Cow::Borrowed`. This is the highest-impact
+single change for allocation reduction.
+
+#### 17.10 `&format!(...)` passed to `fn new(&str)` (double allocation)
+
+**File:** `lib/blob/src/lib.rs`
+
+`BlobHandleError::new(&str)` takes a `&str` and calls `.to_string()`
+internally. Callers frequently pass `&format!(...)`, creating a `String`,
+borrowing it, then allocating again inside `new()`.
+
+**Fix:** Accept `impl Into<String>` so callers can pass `format!(...)`
+directly.
+
+### MINOR — Style Nits
+
+#### 17.11 `.to_string_lossy().to_string()` double allocation
+
+**File:** `gunbc-dag/src/bin/codegen_cli.rs` lines 174-176, 210, 236
+
+**Fix:** Use `.to_string_lossy().into_owned()` (one allocation).
+
+#### 17.12 `sort()` + `dedup()` instead of `BTreeSet`
+
+**Files:**
+- `core/ir/src/types.rs` lines 165-166, 197-198
+- `core/codegen/src/registry.rs` lines 301-302
+- `core/codegen/src/testgen/cardinality.rs` lines 33-34
+- `lib/gcp-ops/src/discovery_ops.rs` lines 603-616
+
+Small collections; stylistic improvement only.
+
+#### 17.13 O(n^2) stage dedup in GitLab CI rendering
+
+**File:** `core/ir/src/transport/ci/providers/gitlab.rs` lines 278-289
+
+Uses `Vec::contains()` in a loop to dedup stages.
+
+**Fix:** Use `IndexSet` or parallel `HashSet`.
+
+#### 17.14 Dead statement: result computed and discarded
+
+**File:** `lib/gcp-ops/src/ops.rs` lines 465-469
+
+`let _ = rest.body.get("expireTime")...` computes a value discarded
+by `let _`.
+
+**Fix:** Remove the dead statement or wire the value into output.
+
+#### 17.15 Collect into Vec for indexed char access
+
+**File:** `core/ir/src/language/mod.rs` lines 199-200
+
+Collects `.chars()` into `Vec<char>` for `chars[i-1]` lookback.
+
+**Fix:** Use `.char_indices()` with a `prev_char` variable.
+
+#### 17.16 Hardcoded `/root` fallback for `$HOME`
+
+**File:** `lib/gcp-ops/src/ops.rs` line 740
+
+`std::env::var("HOME").unwrap_or_else(|_| "/root".to_string())`.
+
+**Fix:** Use `dirs::home_dir()` or document the assumption.
+
+#### 17.17 Code duplication: `execute_run` / `execute_run_with_path`
+
+**File:** `lib/transport/src/cli.rs` lines 436-501
+
+~30 lines duplicated; only differs in path resolution.
+
+**Fix:** Extract shared logic into a helper.
+
+#### 17.18 Code duplication: `MapToGcpInputs` / `MapToGcpSecretInputs`
+
+**File:** `lib/cloud-ops/src/ops.rs` lines 78-269
+
+Large overlap in field extraction logic.
+
+**Fix:** Extract shared helper, each variant calls it with its extras.
+
+#### 17.19 Lossy placeholder mapping in gist subdag
+
+**File:** `gunbc-dag/src/workspace/subdags/gist.rs` lines 17-37
+
+12 distinct `GistGraphOp` variants mapped to a single placeholder
+`WorkspaceOp::Gist(GistOps::ParseGistResponse)`. If any of these
+nodes execute in workspace context, they invoke the wrong operation.
+
+**Fix:** Add corresponding variants to `WorkspaceOp` or embed
+`GistGraphOp` as a variant.
+
+### Summary Table
+
+| Severity | Count | Key items |
+|----------|-------|-----------|
+| **Major** | 1 | Swapped TCP timeout fields (§17.1) |
+| **Moderate (correctness)** | 6 | `.expect()` in prod (§17.2), `.is_none()`+`.unwrap()` (§17.3), stringly-typed param (§17.4), O(n*m) sets (§17.5), `panic!()` in Result fn (§17.6), `&PathBuf` (§17.7) |
+| **Moderate (systematic)** | 3 | `push_str(&format!())` ~100 sites (§17.8), `Cow` for string literals ~80 allocs (§17.9), double-alloc error ctor (§17.10) |
+| **Minor** | 9 | Various style nits (§17.11–17.19) |
+
+### Priority Order
+
+1. **§17.1** — Fix swapped timeout fields (bug, 1 line)
+2. **§17.6** — Replace `panic!()` with `Err()` in Result-returning fn
+3. **§17.2** — Replace `.expect()` with `?` in graph builders (systematic, ~70 sites)
+4. **§17.3** — Replace `.is_none()`+`.unwrap()` with `ok_or_else`
+5. **§17.4** — Introduce `ParamType` enum
+6. **§17.8** — `push_str(&format!())` → `write!()` (mechanical, ~100 sites)
+7. **§17.9** — `Cow<'static, str>` for struct fields with literal values
+8. **§17.5** — `HashSet` for set operations
+9. Rest — minor items, address opportunistically

@@ -11,14 +11,14 @@
 //! 2. LLM call
 
 use gunbc_exec::{ExecError, Executable};
+use gunbc_ir::transport::cloud::CloudSecretConfig;
 use gunbc_ir::{
     add_transport_execute_parse_named_with_passthrough,
     add_transport_triplet_named_with_passthrough, build::*, Dag, DagBuilder, Node, NodeRef, Value,
 };
 use gunbc_lib_blob::BlobOps;
-use gunbc_ir::transport::cloud::CloudSecretConfig;
 use gunbc_lib_cloud_ops::{
-    build_cloud_secret_manager_credential_graph_from_config, default_local_dev_config, CloudOps,
+    build_cloud_secret_manager_credential_graph_from_config, graph_cloud_config, CloudOps,
     CloudSecretManagerGraphOp,
 };
 use gunbc_lib_git_ops::GitOps;
@@ -101,8 +101,9 @@ fn add_cloud_credential_chain(
         .add_edge(resolve_auth.out("service"), bind_secret.in_port("service"))
         .expect("resolve_auth.service -> bind_secret.service");
 
-    let cloud_subdag =
-        lift_cloud_dag(build_cloud_secret_manager_credential_graph_from_config(cloud_config));
+    let cloud_subdag = lift_cloud_dag(build_cloud_secret_manager_credential_graph_from_config(
+        cloud_config,
+    ));
     let cloud_credential = builder
         .add_node_after(Node::subdag("cloud_credential", cloud_subdag), &bind_secret)
         .expect("cloud_credential node");
@@ -139,6 +140,12 @@ fn add_cloud_credential_chain(
         .expect("resolve_auth.interactive_allowed -> cloud_credential.interactive_allowed");
     builder
         .add_edge(
+            resolve_auth.out("required_scopes"),
+            cloud_credential.in_port("required_scopes"),
+        )
+        .expect("resolve_auth.required_scopes -> cloud_credential.required_scopes");
+    builder
+        .add_edge(
             cloud_env.out("request_url"),
             cloud_credential.in_port("request_url"),
         )
@@ -151,6 +158,32 @@ fn add_cloud_credential_chain(
         .expect("cloud_env.request_token -> cloud_credential.request_token");
 
     cloud_credential
+}
+
+fn add_scope_preflight_chain(
+    builder: &mut DagBuilder<ReviewGraphOp>,
+    resolve_auth: &NodeRef<ReviewGraphOp>,
+) -> NodeRef<ReviewGraphOp> {
+    let scope_preflight = builder
+        .add_node_after(
+            Node::opaque(
+                "scope_preflight",
+                vec![list("required_scopes", "String")],
+                vec![port("scope_verified", "Bool")],
+                ReviewGraphOp::Cloud(CloudSecretManagerGraphOp::Cloud(CloudOps::ScopePreflight)),
+            ),
+            resolve_auth,
+        )
+        .expect("scope_preflight node");
+
+    builder
+        .add_edge(
+            resolve_auth.out("required_scopes"),
+            scope_preflight.in_port("required_scopes"),
+        )
+        .expect("resolve_auth.required_scopes -> scope_preflight.required_scopes");
+
+    scope_preflight
 }
 
 fn lift_cloud_dag(dag: Dag<CloudSecretManagerGraphOp>) -> Dag<ReviewGraphOp> {
@@ -217,13 +250,11 @@ fn add_cloud_env_node(
     builder = "build_review_phase_graph()"
 )]
 pub fn build_review_phase_graph() -> Dag<ReviewGraphOp> {
-    build_review_phase_graph_with_config(default_local_dev_config())
+    build_review_phase_graph_with_config(graph_cloud_config())
 }
 
 /// Build a ReviewPhase DAG with an explicit cloud config.
-pub fn build_review_phase_graph_with_config(
-    cloud_config: CloudSecretConfig,
-) -> Dag<ReviewGraphOp> {
+pub fn build_review_phase_graph_with_config(cloud_config: CloudSecretConfig) -> Dag<ReviewGraphOp> {
     let mut builder: DagBuilder<ReviewGraphOp> = DagBuilder::new();
 
     let fs_env = builder
@@ -349,9 +380,10 @@ pub fn build_review_phase_graph_with_config(
                     port("service", "String"),
                     port("scheme", "String"),
                     port("header_name", "String"),
+                    list("required_scopes", "String"),
                     port("interactive_allowed", "Bool"),
                 ],
-                ReviewGraphOp::Llm(LlmOps::ResolveAuth),
+                ReviewGraphOp::Review(ReviewOps::ResolveAuthContract),
             ),
             &prepare_llm,
         )
@@ -360,21 +392,31 @@ pub fn build_review_phase_graph_with_config(
     // Node 7: Cloud credential acquisition (resolves provider credentials)
     let cloud_credential =
         add_cloud_credential_chain(&mut builder, &cloud_env, &resolve_auth, &cloud_config);
+    let scope_preflight = add_scope_preflight_chain(&mut builder, &resolve_auth);
 
-    // Nodes 8-9: Execute LLM + ParseSimpleResponse
+    // Nodes 8-10: ScopePreflight -> Execute LLM + ParseSimpleResponse
     let llm_triplet = add_transport_execute_parse_named_with_passthrough(
         &mut builder,
         &prepare_llm,
         "execute_llm",
         "parse_llm",
         vec![port("provider", "String")],
-        vec![resource("credential", "Credential", AccessMode::Read)],
+        vec![
+            optional("scope_verified", "OptionalBool"),
+            resource("credential", "Credential", AccessMode::Read),
+        ],
         vec![port("answer", "String")],
         ReviewGraphOp::Llm(LlmOps::ParseSimpleResponse),
         ReviewGraphOp::Transport(TransportOps::Execute),
         Some(&cloud_credential),
     )
     .expect("llm triplet");
+    builder
+        .add_edge(
+            scope_preflight.out("scope_verified"),
+            llm_triplet.execute.in_port("scope_verified"),
+        )
+        .expect("scope_preflight.scope_verified -> execute_llm.scope_verified");
 
     // ========================================================================
     // Review Response Parsing
@@ -472,7 +514,7 @@ pub fn build_review_phase_graph_with_config(
 /// - `parse_response.output`: Json — ReviewOutput
 /// - `parse_response.errors`: Json — Parse errors array
 pub fn build_inline_review_graph() -> Dag<ReviewGraphOp> {
-    build_inline_review_graph_with_config(default_local_dev_config())
+    build_inline_review_graph_with_config(graph_cloud_config())
 }
 
 /// Build an inline review graph with explicit cloud config.
@@ -531,9 +573,10 @@ pub fn build_inline_review_graph_with_config(
                     port("service", "String"),
                     port("scheme", "String"),
                     port("header_name", "String"),
+                    list("required_scopes", "String"),
                     port("interactive_allowed", "Bool"),
                 ],
-                ReviewGraphOp::Llm(LlmOps::ResolveAuth),
+                ReviewGraphOp::Review(ReviewOps::ResolveAuthContract),
             ),
             &prepare_llm,
         )
@@ -542,6 +585,7 @@ pub fn build_inline_review_graph_with_config(
     // Node 4: Cloud credential acquisition (resolves provider credentials)
     let cloud_credential =
         add_cloud_credential_chain(&mut builder, &cloud_env, &resolve_auth, &cloud_config);
+    let scope_preflight = add_scope_preflight_chain(&mut builder, &resolve_auth);
 
     // Nodes 5-6: Execute LLM + ParseSimpleResponse
     let llm_triplet = add_transport_execute_parse_named_with_passthrough(
@@ -550,13 +594,22 @@ pub fn build_inline_review_graph_with_config(
         "execute_llm",
         "parse_llm",
         vec![port("provider", "String")],
-        vec![resource("credential", "Credential", AccessMode::Read)],
+        vec![
+            optional("scope_verified", "OptionalBool"),
+            resource("credential", "Credential", AccessMode::Read),
+        ],
         vec![port("answer", "String")],
         ReviewGraphOp::Llm(LlmOps::ParseSimpleResponse),
         ReviewGraphOp::Transport(TransportOps::Execute),
         Some(&cloud_credential),
     )
     .expect("llm triplet");
+    builder
+        .add_edge(
+            scope_preflight.out("scope_verified"),
+            llm_triplet.execute.in_port("scope_verified"),
+        )
+        .expect("scope_preflight.scope_verified -> execute_llm.scope_verified");
 
     // Node 7: ParseReviewResponse
     let parse_response = builder
@@ -653,7 +706,7 @@ pub fn build_diff_review_graph() -> Dag<ReviewGraphOp> {
 /// - Two TransportOps::Execute calls: git diff (read), LLM (read)
 /// - Phase overall: Read-only
 pub fn build_diff_review_graph_with(config: ReviewPipelineConfig) -> Dag<ReviewGraphOp> {
-    build_diff_review_graph_with_cloud_config(config, default_local_dev_config())
+    build_diff_review_graph_with_cloud_config(config, graph_cloud_config())
 }
 
 /// Build a DiffReviewPhase DAG with explicit cloud config.
@@ -794,9 +847,10 @@ pub fn build_diff_review_graph_with_cloud_config(
                     port("service", "String"),
                     port("scheme", "String"),
                     port("header_name", "String"),
+                    list("required_scopes", "String"),
                     port("interactive_allowed", "Bool"),
                 ],
-                ReviewGraphOp::Llm(LlmOps::ResolveAuth),
+                ReviewGraphOp::Review(ReviewOps::ResolveAuthContract),
             ),
             &prepare_llm,
         )
@@ -804,6 +858,7 @@ pub fn build_diff_review_graph_with_cloud_config(
 
     let cloud_credential =
         add_cloud_credential_chain(&mut builder, &cloud_env, &resolve_auth, &cloud_config);
+    let scope_preflight = add_scope_preflight_chain(&mut builder, &resolve_auth);
 
     let llm_triplet = add_transport_execute_parse_named_with_passthrough(
         &mut builder,
@@ -811,13 +866,22 @@ pub fn build_diff_review_graph_with_cloud_config(
         "execute_llm",
         "parse_llm",
         vec![port("provider", "String")],
-        vec![resource("credential", "Credential", AccessMode::Read)],
+        vec![
+            optional("scope_verified", "OptionalBool"),
+            resource("credential", "Credential", AccessMode::Read),
+        ],
         vec![port("answer", "String")],
         ReviewGraphOp::Llm(LlmOps::ParseSimpleResponse),
         ReviewGraphOp::Transport(TransportOps::Execute),
         Some(&cloud_credential),
     )
     .expect("llm triplet");
+    builder
+        .add_edge(
+            scope_preflight.out("scope_verified"),
+            llm_triplet.execute.in_port("scope_verified"),
+        )
+        .expect("scope_preflight.scope_verified -> execute_llm.scope_verified");
 
     // ========================================================================
     // Review Response Parsing
@@ -965,7 +1029,7 @@ pub fn build_multi_source_review_graph() -> Dag<ReviewGraphOp> {
 
 /// Build a MultiSourceReviewPhase DAG with explicit pipeline config.
 pub fn build_multi_source_review_graph_with(config: ReviewPipelineConfig) -> Dag<ReviewGraphOp> {
-    build_multi_source_review_graph_with_cloud_config(config, default_local_dev_config())
+    build_multi_source_review_graph_with_cloud_config(config, graph_cloud_config())
 }
 
 /// Build a MultiSourceReviewPhase DAG with explicit pipeline and cloud configs.
@@ -1046,9 +1110,10 @@ pub fn build_multi_source_review_graph_with_cloud_config(
                     port("service", "String"),
                     port("scheme", "String"),
                     port("header_name", "String"),
+                    list("required_scopes", "String"),
                     port("interactive_allowed", "Bool"),
                 ],
-                ReviewGraphOp::Llm(LlmOps::ResolveAuth),
+                ReviewGraphOp::Review(ReviewOps::ResolveAuthContract),
             ),
             &prepare_llm,
         )
@@ -1056,6 +1121,7 @@ pub fn build_multi_source_review_graph_with_cloud_config(
 
     let cloud_credential =
         add_cloud_credential_chain(&mut builder, &cloud_env, &resolve_auth, &cloud_config);
+    let scope_preflight = add_scope_preflight_chain(&mut builder, &resolve_auth);
 
     let llm_triplet = add_transport_execute_parse_named_with_passthrough(
         &mut builder,
@@ -1063,13 +1129,22 @@ pub fn build_multi_source_review_graph_with_cloud_config(
         "execute_llm",
         "parse_llm",
         vec![port("provider", "String")],
-        vec![resource("credential", "Credential", AccessMode::Read)],
+        vec![
+            optional("scope_verified", "OptionalBool"),
+            resource("credential", "Credential", AccessMode::Read),
+        ],
         vec![port("answer", "String")],
         ReviewGraphOp::Llm(LlmOps::ParseSimpleResponse),
         ReviewGraphOp::Transport(TransportOps::Execute),
         Some(&cloud_credential),
     )
     .expect("llm triplet");
+    builder
+        .add_edge(
+            scope_preflight.out("scope_verified"),
+            llm_triplet.execute.in_port("scope_verified"),
+        )
+        .expect("scope_preflight.scope_verified -> execute_llm.scope_verified");
 
     let parse_response = builder
         .add_node_after(

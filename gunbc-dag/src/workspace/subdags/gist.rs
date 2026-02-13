@@ -9,31 +9,19 @@ use gunbc_ir::transport::cloud::CloudSecretConfig;
 use gunbc_ir::Node;
 
 /// Convert a GistGraphOp to WorkspaceOp.
+///
+/// Internal gist ops (Git, FsEnv, Cloud, Pattern, Markdown, etc.) don't have
+/// direct WorkspaceOp equivalents. They live inside SubDag nodes and are never
+/// dispatched directly by the workspace executor — the SubDag executor handles
+/// them using the original GistGraphOp type. The placeholder here is only used
+/// for structural traversal (e.g., Mermaid rendering, node counting).
 fn convert_gist_op(op: GistGraphOp) -> WorkspaceOp {
     match op {
-        // Gist-specific ops - wrap in Gist variant with a placeholder
-        // GistOps includes request/parse variants; internal ops use a placeholder
-        // The internal graph ops don't have direct WorkspaceOp equivalents
-        GistGraphOp::Git(_)
-        | GistGraphOp::FsEnv(_)
-        | GistGraphOp::ClockEnv(_)
-        | GistGraphOp::Cloud(_)
-        | GistGraphOp::ResolveAuth
-        | GistGraphOp::PrepareReadFiles
-        | GistGraphOp::ParseReadFiles
-        | GistGraphOp::PrepareReadFile
-        | GistGraphOp::ParseReadFile
-        | GistGraphOp::CollectFileContents
-        | GistGraphOp::Pattern(_) => {
-            // These are gist-internal ops - use ParseGistResponse as placeholder
-            WorkspaceOp::Gist(GistOps::ParseGistResponse)
-        }
-        GistGraphOp::Markdown(_) => {
-            // Markdown ops - use Gist as container
-            WorkspaceOp::Gist(GistOps::ParseGistResponse)
-        }
         GistGraphOp::Gist(gist_op) => WorkspaceOp::Gist(gist_op),
         GistGraphOp::Transport(t) => WorkspaceOp::Transport(t),
+        // Internal ops — structurally present but never directly executed
+        // in workspace context (SubDag executor dispatches them).
+        _ => WorkspaceOp::Gist(GistOps::ParseGistResponse),
     }
 }
 
@@ -68,14 +56,14 @@ pub fn build_gist_subdag(
 /// Build a gist SubDag with explicit cloud config.
 ///
 /// When `cloud_config` is `Some`, it is used directly; when `None`,
-/// `default_local_dev_config()` provides a sensible default.
+/// `graph_cloud_config()` provides centralized profile-aware resolution.
 pub fn build_gist_subdag_with_config(
     mode: GistMode,
     extensions: Vec<String>,
     create_gist: bool,
     cloud_config: Option<CloudSecretConfig>,
 ) -> Node<WorkspaceOp> {
-    let config = cloud_config.unwrap_or_else(gunbc_lib_cloud_ops::default_local_dev_config);
+    let config = cloud_config.unwrap_or_else(gunbc_lib_cloud_ops::graph_cloud_config);
     let original = build_gist_graph_with_config(mode, extensions, create_gist, config)
         .expect("Gist graph should build");
     let converted_dag = convert_dag(original, &convert_gist_op);

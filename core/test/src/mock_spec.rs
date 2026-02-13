@@ -462,6 +462,10 @@ pub struct InputMock {
 }
 
 /// An expected output at a terminal/boundary node (for flow test assertions).
+///
+/// DEPRECATED: Use NodeExample with OutputMatchers instead. ExpectedOutput
+/// causes tautological tests — the expected value is often just a copy of
+/// what the code already produces.
 #[derive(Debug, Clone)]
 pub struct ExpectedOutput {
     /// Node ID to check (e.g., "report")
@@ -1130,6 +1134,26 @@ impl OutputMatcher {
             description: description.into(),
             predicate,
         }
+    }
+
+    /// Whether this matcher is safe for chain/integration tests.
+    ///
+    /// Input-independent matchers verify structural properties (type, non-emptiness)
+    /// rather than exact values that depend on specific inputs. Only these matchers
+    /// are used in probe-observer chain tests.
+    pub fn is_chain_safe(&self) -> bool {
+        matches!(
+            self,
+            OutputMatcher::NonEmpty
+                | OutputMatcher::IsBool
+                | OutputMatcher::IsInt
+                | OutputMatcher::IsString
+                | OutputMatcher::IsRequest
+                | OutputMatcher::IsResponse
+                | OutputMatcher::IntGe(_)
+                | OutputMatcher::IntLe(_)
+                | OutputMatcher::Any
+        )
     }
 
     /// Check if a value matches this matcher.

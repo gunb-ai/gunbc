@@ -4,6 +4,7 @@
 //! Entry inputs are injected from a baseline DryRun, and exit outputs are
 //! compared against that baseline to verify inter-node integration.
 
+use crate::mock_spec::OutputMatcher;
 use gunbc_exec::{BoundaryMocks, ExecutionLog};
 use gunbc_ir::{canonical_edge_order, Dag, NodeId, PortName, Value};
 use std::collections::{HashMap, HashSet};
@@ -129,6 +130,23 @@ pub enum WindowError {
         expected: Box<Value>,
         actual: Box<Value>,
     },
+    /// OutputMatcher failed for a chain observer.
+    MatcherFailed {
+        node: String,
+        port: String,
+        matcher: String,
+        actual: Box<Value>,
+        detail: String,
+    },
+    /// Observer node missing from execution log.
+    MissingObserverNode {
+        node: String,
+    },
+    /// Observer port missing from execution log.
+    MissingObserverPort {
+        node: String,
+        port: String,
+    },
 }
 
 impl fmt::Display for WindowError {
@@ -157,6 +175,27 @@ impl fmt::Display for WindowError {
                 "output mismatch for {}.{} (expected {:?}, got {:?})",
                 node, port, expected, actual
             ),
+            WindowError::MatcherFailed {
+                node,
+                port,
+                matcher,
+                actual,
+                detail,
+            } => write!(
+                f,
+                "matcher failed for {}.{}: {} (got {:?}, {})",
+                node, port, matcher, actual, detail
+            ),
+            WindowError::MissingObserverNode { node } => {
+                write!(f, "observer node '{}' missing from execution log", node)
+            }
+            WindowError::MissingObserverPort { node, port } => {
+                write!(
+                    f,
+                    "observer port {}.{} missing from execution log",
+                    node, port
+                )
+            }
         }
     }
 }
@@ -288,6 +327,9 @@ pub fn apply_window_inputs<T>(
 }
 
 /// Verify that all exit-port outputs from the window match the baseline.
+///
+/// DEPRECATED: Tautological — compares re-execution against its own baseline.
+/// Use `assert_chain_outputs` with developer-specified OutputMatchers instead.
 pub fn assert_window_outputs<T>(
     dag: &Dag<T>,
     window: &Window,
@@ -366,6 +408,45 @@ pub fn assert_window_outputs<T>(
                 });
             }
         }
+    }
+
+    Ok(())
+}
+
+/// Verify observer outputs against OutputMatchers (non-tautological).
+///
+/// Unlike `assert_window_outputs`, this does NOT compare against a baseline.
+/// Instead, it checks exit-port outputs against developer-specified matchers.
+/// This ensures the test provides real correctness signal.
+///
+/// `matchers` maps `(node_id, port_name) -> OutputMatcher`.
+pub fn assert_chain_outputs(
+    log: &ExecutionLog,
+    matchers: &HashMap<(String, String), OutputMatcher>,
+) -> Result<(), WindowError> {
+    for ((node, port), matcher) in matchers {
+        let entry = log
+            .get(node)
+            .ok_or_else(|| WindowError::MissingObserverNode {
+                node: node.clone(),
+            })?;
+
+        let actual = entry.outputs.get(port).ok_or_else(|| {
+            WindowError::MissingObserverPort {
+                node: node.clone(),
+                port: port.clone(),
+            }
+        })?;
+
+        matcher
+            .check(actual)
+            .map_err(|detail| WindowError::MatcherFailed {
+                node: node.clone(),
+                port: port.clone(),
+                matcher: format!("{:?}", matcher),
+                actual: Box::new(actual.clone()),
+                detail,
+            })?;
     }
 
     Ok(())
