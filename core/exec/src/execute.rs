@@ -2614,4 +2614,239 @@ mod tests {
             other => panic!("expected Value::List, got {:?}", other),
         }
     }
+
+    // =========================================================================
+    // execute_with_mode_and_inputs unit tests
+    // =========================================================================
+
+    #[test]
+    fn test_input_mocks_inject_into_entrypoint() {
+        // Node with no upstream edges receives value from input mocks
+        let mut dag: Dag<TestOp> = Dag::new();
+        dag.add_node(Node::opaque(
+            "echo",
+            vec![port("data", "String")],
+            vec![port("data", "String")],
+            TestOp::echo(),
+        ));
+
+        let mut mocks = BoundaryMocks::new();
+        mocks.set_input("echo", "data", Value::Str("injected".into()));
+
+        let log = execute_with_mode_and_inputs(&dag, ExecutionMode::Real, Some(&mocks)).unwrap();
+
+        let entry = log.get("echo").unwrap();
+        assert_eq!(
+            entry.outputs.get("data"),
+            Some(&Value::Str("injected".into())),
+            "input mock should be injected into entrypoint"
+        );
+    }
+
+    #[test]
+    fn test_input_mocks_with_dry_run_mode() {
+        // Combine input mocks with DryRun boundary interception
+        let mut dag: Dag<TestOp> = Dag::new();
+        dag.add_node(Node::opaque(
+            "prepare",
+            vec![port("arg", "String")],
+            vec![port("request", "TransportRequest")],
+            TestOp::produce("request", Value::Str("built-request".into())),
+        ));
+        dag.add_node(Node::opaque(
+            "execute_http",
+            vec![port("request", "TransportRequest")],
+            vec![port("response", "TransportResponse")],
+            TestOp::produce("response", Value::Str("real-response".into())),
+        ));
+        dag.add_edge(edge("prepare", "request", "execute_http", "request"));
+
+        // DryRun mocks intercept the transport executor
+        let mut dry_mocks = BoundaryMocks::new();
+        dry_mocks.set_value(
+            "execute_http",
+            "response",
+            Value::Str("mock-response".into()),
+        );
+
+        // Input mocks inject the entrypoint arg
+        let mut input_mocks = BoundaryMocks::new();
+        input_mocks.set_input("prepare", "arg", Value::Str("injected-arg".into()));
+
+        let log = execute_with_mode_and_inputs(
+            &dag,
+            ExecutionMode::DryRun(dry_mocks),
+            Some(&input_mocks),
+        )
+        .unwrap();
+
+        // prepare should run normally with the injected input
+        let prepare = log.get("prepare").unwrap();
+        assert!(!prepare.was_intercepted);
+
+        // execute_http should be intercepted
+        let exec = log.get("execute_http").unwrap();
+        assert!(exec.was_intercepted);
+        assert_eq!(
+            exec.outputs.get("response"),
+            Some(&Value::Str("mock-response".into()))
+        );
+    }
+
+    #[test]
+    fn test_input_mocks_none_works() {
+        // Passing None for input_mocks should work the same as execute_with_mode
+        let mut dag: Dag<TestOp> = Dag::new();
+        dag.add_node(Node::opaque(
+            "A",
+            vec![],
+            vec![port("out", "String")],
+            TestOp::produce("out", Value::Str("hello".into())),
+        ));
+
+        let log = execute_with_mode_and_inputs(&dag, ExecutionMode::Real, None).unwrap();
+        assert_eq!(log.entries.len(), 1);
+        assert_eq!(
+            log.entries[0].outputs.get("out"),
+            Some(&Value::Str("hello".into()))
+        );
+    }
+
+    #[test]
+    fn test_remap_input_mocks_preserves_non_subdag() {
+        // remap_input_mocks should keep original entries alongside remapped ones.
+        // We test this indirectly via execute_with_mode_and_inputs on a flat DAG.
+        let mut dag: Dag<TestOp> = Dag::new();
+        dag.add_node(Node::opaque(
+            "a",
+            vec![port("x", "String")],
+            vec![port("x", "String")],
+            TestOp::echo(),
+        ));
+        dag.add_node(Node::opaque(
+            "b",
+            vec![port("y", "String")],
+            vec![port("y", "String")],
+            TestOp::echo(),
+        ));
+
+        let mut input = BoundaryMocks::new();
+        input.set_input("a", "x", Value::Str("alpha".into()));
+        input.set_input("b", "y", Value::Str("beta".into()));
+
+        let log = execute_with_mode_and_inputs(&dag, ExecutionMode::Real, Some(&input)).unwrap();
+
+        assert_eq!(
+            log.get("a").unwrap().outputs.get("x"),
+            Some(&Value::Str("alpha".into()))
+        );
+        assert_eq!(
+            log.get("b").unwrap().outputs.get("y"),
+            Some(&Value::Str("beta".into()))
+        );
+    }
+
+    // =========================================================================
+    // remap_input_mocks unit tests
+    // =========================================================================
+
+    #[test]
+    fn test_remap_input_mocks_with_remaps() {
+        let mut mocks = BoundaryMocks::new();
+        mocks.set_input("subdag", "port_a", Value::Str("value".into()));
+
+        let mut remaps: HashMap<(String, String), Vec<(String, String)>> = HashMap::new();
+        remaps.insert(
+            ("subdag".to_string(), "port_a".to_string()),
+            vec![("subdag/inner_entry".to_string(), "inner_port".to_string())],
+        );
+
+        let result = remap_input_mocks(&mocks, &remaps);
+
+        // Original key should still exist
+        assert_eq!(
+            result.get_input("subdag", "port_a"),
+            Some(&Value::Str("value".into()))
+        );
+        // Remapped key should also exist
+        assert_eq!(
+            result.get_input("subdag/inner_entry", "inner_port"),
+            Some(&Value::Str("value".into()))
+        );
+    }
+
+    #[test]
+    fn test_remap_input_mocks_empty_remaps() {
+        let mut mocks = BoundaryMocks::new();
+        mocks.set_input("node", "port", Value::Int(42));
+
+        let remaps: HashMap<(String, String), Vec<(String, String)>> = HashMap::new();
+
+        let result = remap_input_mocks(&mocks, &remaps);
+        assert_eq!(
+            result.get_input("node", "port"),
+            Some(&Value::Int(42)),
+            "empty remaps should preserve all inputs"
+        );
+    }
+
+    #[test]
+    fn test_remap_input_mocks_multi_target() {
+        let mut mocks = BoundaryMocks::new();
+        mocks.set_input("subdag", "data", Value::Str("shared".into()));
+
+        let mut remaps: HashMap<(String, String), Vec<(String, String)>> = HashMap::new();
+        remaps.insert(
+            ("subdag".to_string(), "data".to_string()),
+            vec![
+                ("subdag/inner_a".to_string(), "input_a".to_string()),
+                ("subdag/inner_b".to_string(), "input_b".to_string()),
+            ],
+        );
+
+        let result = remap_input_mocks(&mocks, &remaps);
+
+        // Both targets should receive the value
+        assert_eq!(
+            result.get_input("subdag/inner_a", "input_a"),
+            Some(&Value::Str("shared".into()))
+        );
+        assert_eq!(
+            result.get_input("subdag/inner_b", "input_b"),
+            Some(&Value::Str("shared".into()))
+        );
+    }
+
+    #[test]
+    fn test_remap_mode_inputs_dry_run() {
+        let mut dry_mocks = BoundaryMocks::new();
+        dry_mocks.set_input("subdag", "port", Value::Int(99));
+
+        let mut remaps: HashMap<(String, String), Vec<(String, String)>> = HashMap::new();
+        remaps.insert(
+            ("subdag".to_string(), "port".to_string()),
+            vec![("subdag/inner".to_string(), "inner_port".to_string())],
+        );
+
+        let mode = ExecutionMode::DryRun(dry_mocks);
+        let result = remap_mode_inputs(mode, &remaps);
+
+        match result {
+            ExecutionMode::DryRun(mocks) => {
+                assert_eq!(
+                    mocks.get_input("subdag/inner", "inner_port"),
+                    Some(&Value::Int(99)),
+                    "DryRun mocks should be remapped"
+                );
+            }
+            _ => panic!("expected DryRun mode"),
+        }
+    }
+
+    #[test]
+    fn test_remap_mode_inputs_real_unchanged() {
+        let remaps: HashMap<(String, String), Vec<(String, String)>> = HashMap::new();
+        let mode = remap_mode_inputs(ExecutionMode::Real, &remaps);
+        assert!(matches!(mode, ExecutionMode::Real));
+    }
 }
