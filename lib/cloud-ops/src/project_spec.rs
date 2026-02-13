@@ -24,6 +24,7 @@
 use gunbc_ir::transport::cloud::{
     CloudProviderKind, CloudRuntimeKind, CloudSecretConfig, CloudSecretRef,
 };
+use gunbc_ir::transport::gist::GITHUB_SECRET_ID;
 
 // ---------------------------------------------------------------------------
 // GCP project types
@@ -308,7 +309,7 @@ static KNOWN_SECRETS: [SecretSpec; 1] = [
     // GitHub PAT — interactive browser rotation
     SecretSpec {
         env_name: "GITHUB_TOKEN",
-        secret_id: "github-token",
+        secret_id: GITHUB_SECRET_ID,
         requirement: SecretRequirement::Optional,
         status: SecretStatus::Active,
         scopes: &["repo", "read:org", "gist"],
@@ -482,7 +483,7 @@ mod tests {
         let github = GUNBAI_SECRETS
             .secrets
             .iter()
-            .find(|s| s.secret_id == "github-token")
+            .find(|s| s.secret_id == GITHUB_SECRET_ID)
             .expect("github-token must exist");
         assert_eq!(github.prefixed_id(ns), "dev-github-token");
     }

@@ -423,14 +423,19 @@ fn execute_resolve_auth(
         .validate()
         .map_err(|e| ExecError::new(format!("invalid gist credential contract: {e}")))?;
 
-    OutputMap::new()
+    let mut out = OutputMap::new()
         .str("service", intent.service)
         .str("scheme", intent.scheme)
         .str("header_name", intent.header_name)
         .str_list("required_scopes", intent.required_scopes)
         .bool("interactive_allowed", intent.interactive_allowed)
-        .int("lifetime_seconds", 3600)
-        .ok()
+        .int("lifetime_seconds", 3600);
+
+    if let Some(secret_name) = intent.secret_name {
+        out = out.str("secret_name", secret_name);
+    }
+
+    out.ok()
 }
 
 // ============================================================================
@@ -597,6 +602,7 @@ pub fn build_gist_graph_with_config(
         vec![],
         vec![
             port("service", "String"),
+            optional("secret_name", "OptionalString"),
             port("scheme", "String"),
             port("header_name", "String"),
             list("required_scopes", "String"),
@@ -612,6 +618,7 @@ pub fn build_gist_graph_with_config(
             vec![
                 port("config", "CloudSecretConfig"),
                 port("service", "String"),
+                optional("secret_name", "OptionalString"),
             ],
             vec![port("config", "CloudSecretConfig")],
             GistGraphOp::Cloud(CloudSecretManagerGraphOp::Cloud(CloudOps::BindSecretName)),
@@ -770,6 +777,10 @@ pub fn build_gist_graph_with_config(
     )?;
     builder.add_edge(cloud_env.out("config"), bind_secret.in_port("config"))?;
     builder.add_edge(resolve_auth.out("service"), bind_secret.in_port("service"))?;
+    builder.add_edge(
+        resolve_auth.out("secret_name"),
+        bind_secret.in_port("secret_name"),
+    )?;
     builder.add_edge(
         bind_secret.out("config"),
         cloud_credential.in_port("config"),

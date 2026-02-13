@@ -10,6 +10,7 @@ use crate::graph::{
 use crate::ops::CloudOps;
 use gunbc_exec::{require_response, ExecError, Executable, OutputMap};
 use gunbc_ir::build::{list, optional, port, resource};
+use gunbc_ir::transport::gist::GITHUB_SECRET_ID;
 use gunbc_ir::transport::github::api::github_rest_request;
 use gunbc_ir::transport::{TransportRequest, TransportResponse};
 use gunbc_ir::{
@@ -33,7 +34,7 @@ impl Executable for GitHubCredentialOps {
         match self {
             GitHubCredentialOps::ResolveAuth => OutputMap::new()
                 .str("service", "github")
-                .str("secret_name", "github-token")
+                .str("secret_name", GITHUB_SECRET_ID)
                 .str("scheme", "bearer")
                 .str("header_name", "")
                 .str_list("required_scopes", vec!["github:api".to_string()])

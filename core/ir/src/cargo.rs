@@ -395,6 +395,8 @@ pub struct CargoCommand {
     pub with_allow_staged: bool,
     /// Enable `--check` (fmt verification mode, no modifications).
     pub with_check: bool,
+    /// Enable `--lib` (test only library unit tests).
+    pub with_lib: bool,
     /// Typed binary arguments (only for `Subcommand::Run`).
     ///
     /// These are passed after `--` to the compiled binary. Use typed
@@ -416,6 +418,7 @@ impl CargoCommand {
             with_allow_dirty: false,
             with_allow_staged: false,
             with_check: false,
+            with_lib: false,
             binary_args: BinaryArgs::None,
         }
     }
@@ -465,6 +468,12 @@ impl CargoCommand {
     /// Enable `--check` (fmt verification mode).
     pub fn check(mut self) -> Self {
         self.with_check = true;
+        self
+    }
+
+    /// Enable `--lib` (test only library unit tests).
+    pub fn lib_only(mut self) -> Self {
+        self.with_lib = true;
         self
     }
 
@@ -525,6 +534,9 @@ impl CargoCommand {
         }
         if self.with_check {
             args.push("--check".to_string());
+        }
+        if self.with_lib {
+            args.push("--lib".to_string());
         }
 
         // Build trailing args:

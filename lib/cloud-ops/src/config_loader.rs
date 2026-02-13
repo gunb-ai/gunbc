@@ -421,15 +421,16 @@ service_account = "gunbai-prod-secrets@gunbai-secrets.iam.gserviceaccount.com"
 
     #[test]
     fn test_to_secret_config() {
+        use gunbc_ir::transport::gist::GITHUB_SECRET_ID;
         let spec = parse_config_toml(SAMPLE_TOML).unwrap();
         let config = spec
-            .to_secret_config("dev", CloudRuntimeKind::LocalDev, "github-token")
+            .to_secret_config("dev", CloudRuntimeKind::LocalDev, GITHUB_SECRET_ID)
             .unwrap();
         assert_eq!(config.provider, CloudProviderKind::Gcp);
         assert_eq!(config.runtime, CloudRuntimeKind::LocalDev);
         assert_eq!(config.project_or_account, "gunbai-secrets");
         assert_eq!(config.secret.prefix, "dev-");
-        assert_eq!(config.secret.name, "github-token");
+        assert_eq!(config.secret.name, GITHUB_SECRET_ID);
         assert_eq!(config.secret_name(), "dev-github-token");
         assert!(config.service_account_or_role.is_some());
     }

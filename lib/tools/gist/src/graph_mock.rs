@@ -12,6 +12,7 @@ use crate::graph::{build_gist_graph, GistMode};
 use gunbc_ir::transport::cloud::{
     CloudProviderKind, CloudRuntimeKind, CloudSecretConfig, CloudSecretRef,
 };
+use gunbc_ir::transport::gist::GITHUB_SECRET_ID;
 use gunbc_ir::transport::{ShellResponse, TransportResponse};
 use gunbc_ir::{SecretString, Timestamp, Value};
 use gunbc_primitives::filename;
@@ -313,7 +314,7 @@ fn gist_mock_spec(mode: &GistMode) -> MockSpec {
                 .output("service", OutputMatcher::exact(Value::Str("github".into())))
                 .output(
                     "secret_name",
-                    OutputMatcher::exact(Value::Str("github-token".into())),
+                    OutputMatcher::exact(Value::Str(GITHUB_SECRET_ID.into())),
                 )
                 .output("scheme", OutputMatcher::exact(Value::Str("bearer".into())))
                 .output(

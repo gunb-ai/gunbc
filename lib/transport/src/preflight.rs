@@ -301,7 +301,7 @@ fn run_lint_upsert(resource_id: &ResourceId) -> Result<(), ResourceError> {
         ),
     ];
 
-    let total = steps.len() + 1; // +1 for clippy
+    let total = steps.len() + 2; // +1 for clippy, +1 for test gate
     for (i, (label, cmd)) in steps.iter().enumerate() {
         eprint!("  [{}/{}] {}...", i + 1, total, label);
         let _ = std::io::Write::flush(&mut std::io::stderr());
@@ -349,6 +349,19 @@ fn run_lint_upsert(resource_id: &ResourceId) -> Result<(), ResourceError> {
     } else {
         eprintln!(" {:.1}s", clippy_start.elapsed().as_secs_f64());
     }
+
+    // Test gate: run lib tests to catch contract mismatches (e.g., wrong
+    // secret names, stale generated tests). Integration tests are skipped
+    // for speed — CI covers those.
+    eprint!("  [{}/{}] test --lib...", total, total);
+    let _ = std::io::Write::flush(&mut std::io::stderr());
+    let test_start = std::time::Instant::now();
+    let test_cmd = CargoCommand::new(Subcommand::Test)
+        .workspace()
+        .lib_only()
+        .warnings(Warnings::Deny);
+    run_cargo_command(resource_id, &test_cmd)?;
+    eprintln!(" {:.1}s", test_start.elapsed().as_secs_f64());
 
     Ok(())
 }

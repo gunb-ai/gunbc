@@ -15,6 +15,13 @@ pub struct CredentialIntent {
     pub provider: String,
     /// Service/source identifier used by secret binding.
     pub service: String,
+    /// Secret Manager secret ID (without namespace prefix).
+    ///
+    /// When `None`, `BindSecretName` falls back to `service`.
+    /// Example: `Some("github-token")` for the GitHub PAT stored as
+    /// `dev-github-token` in Secret Manager.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub secret_name: Option<String>,
     /// Auth scheme expected by execute boundary (e.g., "bearer").
     pub scheme: String,
     /// Optional header name when `scheme` requires a custom header.
@@ -35,11 +42,21 @@ impl CredentialIntent {
         Self {
             provider: provider.into(),
             service: service.into(),
+            secret_name: None,
             scheme: scheme.into(),
             header_name: String::new(),
             required_scopes: Vec::new(),
             interactive_allowed: false,
         }
+    }
+
+    /// Set the Secret Manager secret ID (without namespace prefix).
+    ///
+    /// Use this when the secret ID differs from `service`.
+    /// Example: service="github", secret_name="github-token".
+    pub fn with_secret_name(mut self, secret_name: impl Into<String>) -> Self {
+        self.secret_name = Some(secret_name.into());
+        self
     }
 
     /// Set a custom header name (for header-based schemes).
