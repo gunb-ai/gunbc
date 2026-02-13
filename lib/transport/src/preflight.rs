@@ -351,8 +351,9 @@ fn run_lint_upsert(resource_id: &ResourceId) -> Result<(), ResourceError> {
     }
 
     // Test gate: run lib tests to catch contract mismatches (e.g., wrong
-    // secret names, stale generated tests). Integration tests are skipped
-    // for speed — CI covers those.
+    // secret names, stale generated tests). Only hermetic tests run here —
+    // live/integration tests that require secrets or external services are
+    // skipped via GUNBC_TEST_MAX_COST=S. The full CI pipeline covers those.
     eprint!("  [{}/{}] test --lib...", total, total);
     let _ = std::io::Write::flush(&mut std::io::stderr());
     let test_start = std::time::Instant::now();
@@ -360,7 +361,7 @@ fn run_lint_upsert(resource_id: &ResourceId) -> Result<(), ResourceError> {
         .workspace()
         .lib_only()
         .warnings(Warnings::Deny);
-    run_cargo_command(resource_id, &test_cmd)?;
+    run_cargo_command_with_env(resource_id, &test_cmd, &[("GUNBC_TEST_MAX_COST", "S")])?;
     eprintln!(" {:.1}s", test_start.elapsed().as_secs_f64());
 
     Ok(())
@@ -368,7 +369,16 @@ fn run_lint_upsert(resource_id: &ResourceId) -> Result<(), ResourceError> {
 
 /// Run a cargo command, failing on non-zero exit.
 fn run_cargo_command(resource_id: &ResourceId, cmd: &CargoCommand) -> Result<(), ResourceError> {
-    let response = run_cargo_command_response(resource_id, cmd)?;
+    run_cargo_command_with_env(resource_id, cmd, &[])
+}
+
+/// Run a cargo command with extra environment variables, failing on non-zero exit.
+fn run_cargo_command_with_env(
+    resource_id: &ResourceId,
+    cmd: &CargoCommand,
+    extra_env: &[(&str, &str)],
+) -> Result<(), ResourceError> {
+    let response = run_cargo_command_response_with_env(resource_id, cmd, extra_env)?;
     if response.success() {
         Ok(())
     } else {
@@ -389,11 +399,23 @@ fn run_cargo_command_response(
     resource_id: &ResourceId,
     cmd: &CargoCommand,
 ) -> Result<gunbc_ir::transport::ShellResponse, ResourceError> {
+    run_cargo_command_response_with_env(resource_id, cmd, &[])
+}
+
+/// Run a cargo command with extra environment variables and return the response.
+fn run_cargo_command_response_with_env(
+    resource_id: &ResourceId,
+    cmd: &CargoCommand,
+    extra_env: &[(&str, &str)],
+) -> Result<gunbc_ir::transport::ShellResponse, ResourceError> {
     // Preflight steps compile + run cargo binaries; in CI with cold caches
     // this can take well over 5 minutes. Use FermiCost::L (30 min).
     const PREFLIGHT_TIMEOUT_MS: u64 = 1_800_000; // FermiCost::L = 30 min
 
-    let request = cmd.to_shell_request().timeout(PREFLIGHT_TIMEOUT_MS);
+    let mut request = cmd.to_shell_request().timeout(PREFLIGHT_TIMEOUT_MS);
+    for (k, v) in extra_env {
+        request = request.env(*k, *v);
+    }
 
     let response = execute_request(&TransportRequest::Shell(request))
         .map_err(|e| ResourceError::CreateFailed(resource_id.clone(), e.to_string()))?;

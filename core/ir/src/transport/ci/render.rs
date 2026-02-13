@@ -107,6 +107,19 @@ pub struct RenderConfig {
     /// Job-level timeout in minutes. GitHub Actions defaults to 360 (6 hours)
     /// if unset, which is far too long for most CI jobs. Default: 30 minutes.
     pub timeout_minutes: u32,
+
+    /// Workflow-level permission scopes (e.g., `("id-token", "write")`).
+    ///
+    /// Rendered as a `permissions:` block in GitHub Actions. Entries are
+    /// sorted by key for deterministic output.
+    pub permissions: Vec<(String, String)>,
+
+    /// Secret names to expose as environment variables in the CI run step.
+    ///
+    /// Each entry is a secret name; the rendering layer maps it to the
+    /// provider's secret reference syntax (e.g., `${{ secrets.NAME }}` for
+    /// GitHub Actions).
+    pub secrets_env: Vec<String>,
 }
 
 impl Default for RenderConfig {
@@ -124,6 +137,8 @@ impl Default for RenderConfig {
             git: GitConfig::default(),
             cache: None,
             timeout_minutes: 30,
+            permissions: Vec::new(),
+            secrets_env: Vec::new(),
         }
     }
 }
@@ -196,6 +211,22 @@ impl RenderConfig {
     /// Enable caching.
     pub fn with_cache(mut self, cache: CacheConfig) -> Self {
         self.cache = Some(cache);
+        self
+    }
+
+    /// Set workflow-level permissions.
+    ///
+    /// Accepts `(scope, level)` pairs like `("id-token", "write")`.
+    /// Entries are sorted by key for deterministic output.
+    pub fn with_permissions(mut self, mut perms: Vec<(String, String)>) -> Self {
+        perms.sort_by(|a, b| a.0.cmp(&b.0));
+        self.permissions = perms;
+        self
+    }
+
+    /// Set secret names to expose as environment variables in the CI run step.
+    pub fn with_secrets_env(mut self, secrets: Vec<String>) -> Self {
+        self.secrets_env = secrets;
         self
     }
 

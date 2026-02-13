@@ -103,6 +103,18 @@ pub fn max_cost_from_env() -> FermiCost {
         })
 }
 
+/// True when `GUNBC_TEST_MAX_COST` is explicitly set in the environment.
+///
+/// When the cost limit is explicit, guards should skip silently instead of
+/// panicking — the caller made a deliberate choice (e.g., the preflight
+/// test gate limits to `S` to avoid running live tests that require secrets).
+fn cost_limit_is_explicit() -> bool {
+    env::var("GUNBC_TEST_MAX_COST")
+        .ok()
+        .and_then(|v| FermiCost::parse(&v))
+        .is_some()
+}
+
 /// True only when running inside a GitHub Actions workflow.
 ///
 /// `GITHUB_ACTIONS` is the authoritative signal — it is set automatically
@@ -118,10 +130,17 @@ fn in_github_actions() -> bool {
 /// Guard a test based on its metadata.
 ///
 /// Returns true if the test should run, false if it should be skipped.
+///
+/// In GitHub Actions with the default cost budget, exceeding the budget or
+/// missing secrets causes a panic (to catch CI misconfigurations). When the
+/// cost limit is explicitly set via `GUNBC_TEST_MAX_COST`, tests that exceed
+/// the budget are silently skipped — the caller made a deliberate choice.
 pub fn guard(meta: TestMeta<'_>) -> bool {
     let max_cost = max_cost_from_env();
+    let explicit = cost_limit_is_explicit();
+
     if meta.cost > max_cost {
-        if in_github_actions() {
+        if in_github_actions() && !explicit {
             panic!(
                 "skipping {}: cost {} exceeds max {} (set GUNBC_TEST_MAX_COST=...)",
                 meta.name,
@@ -140,7 +159,7 @@ pub fn guard(meta: TestMeta<'_>) -> bool {
             .filter(|k| env::var(k).is_err())
             .collect();
         if !missing.is_empty() {
-            if in_github_actions() {
+            if in_github_actions() && !explicit {
                 panic!(
                     "skipping {}: missing secrets [{}]",
                     meta.name,
@@ -181,6 +200,9 @@ pub fn guard_test(
 ///
 /// `required` are checked directly. Each group in `required_any_of` requires at
 /// least one env var to be present.
+///
+/// Like [`guard`], panics in CI are suppressed when `GUNBC_TEST_MAX_COST` is
+/// explicitly set.
 pub fn guard_test_with_env(
     name: &str,
     _class: TestClass,
@@ -190,8 +212,10 @@ pub fn guard_test_with_env(
     required_any_of: &[&[&str]],
 ) -> bool {
     let max_cost = max_cost_from_env();
+    let explicit = cost_limit_is_explicit();
+
     if cost > max_cost {
-        if in_github_actions() {
+        if in_github_actions() && !explicit {
             panic!(
                 "skipping {}: cost {} exceeds max {} (set GUNBC_TEST_MAX_COST=...)",
                 name,
@@ -209,7 +233,7 @@ pub fn guard_test_with_env(
             .filter(|k| env::var(k).is_err())
             .collect();
         if !missing.is_empty() {
-            if in_github_actions() {
+            if in_github_actions() && !explicit {
                 panic!(
                     "skipping {}: missing secrets [{}]",
                     name,
@@ -229,7 +253,7 @@ pub fn guard_test_with_env(
             }
         }
         if !missing_groups.is_empty() {
-            if in_github_actions() {
+            if in_github_actions() && !explicit {
                 panic!(
                     "skipping {}: missing secrets [{}]",
                     name,
@@ -245,4 +269,193 @@ pub fn guard_test_with_env(
     }
 
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    // Env-var tests must run serially to avoid races on global state.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    /// Helper: run `f` with the given env overrides, restoring afterward.
+    fn with_env(overrides: &[(&str, Option<&str>)], f: impl FnOnce()) {
+        // Accept poisoned lock: prior #[should_panic] tests may have poisoned it.
+        let lock = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let saved: Vec<(&str, Option<String>)> = overrides
+            .iter()
+            .map(|(k, _)| (*k, env::var(k).ok()))
+            .collect();
+        for (k, v) in overrides {
+            match v {
+                Some(val) => env::set_var(k, val),
+                None => env::remove_var(k),
+            }
+        }
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
+        for (k, v) in &saved {
+            match v {
+                Some(val) => env::set_var(k, val),
+                None => env::remove_var(k),
+            }
+        }
+        // Release lock before re-panicking to avoid poisoning the mutex.
+        drop(lock);
+        if let Err(e) = result {
+            std::panic::resume_unwind(e);
+        }
+    }
+
+    #[test]
+    fn test_cost_limit_is_explicit_when_set() {
+        with_env(&[("GUNBC_TEST_MAX_COST", Some("S"))], || {
+            assert!(cost_limit_is_explicit());
+        });
+    }
+
+    #[test]
+    fn test_cost_limit_is_not_explicit_when_unset() {
+        with_env(&[("GUNBC_TEST_MAX_COST", None)], || {
+            assert!(!cost_limit_is_explicit());
+        });
+    }
+
+    #[test]
+    fn test_cost_limit_is_not_explicit_for_invalid_value() {
+        with_env(&[("GUNBC_TEST_MAX_COST", Some("bogus"))], || {
+            assert!(!cost_limit_is_explicit());
+        });
+    }
+
+    #[test]
+    fn test_guard_skips_silently_with_explicit_cost_limit_in_ci() {
+        // Simulates the preflight scenario: GITHUB_ACTIONS=true + explicit cost limit.
+        // The guard should return false (skip), NOT panic.
+        with_env(
+            &[
+                ("GITHUB_ACTIONS", Some("true")),
+                ("GUNBC_TEST_MAX_COST", Some("S")),
+            ],
+            || {
+                let result = guard(TestMeta {
+                    name: "expensive_test",
+                    class: TestClass::Integration,
+                    cost: FermiCost::M,
+                    requires: &[],
+                    secrets: &[],
+                });
+                assert!(!result, "test should be skipped, not run");
+            },
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "missing secrets")]
+    fn test_guard_panics_on_missing_secrets_in_ci_without_explicit_limit() {
+        with_env(
+            &[
+                ("GITHUB_ACTIONS", Some("true")),
+                ("GUNBC_TEST_MAX_COST", None),
+                // Ensure the secret is missing
+                ("NONEXISTENT_SECRET_FOR_TEST", None),
+            ],
+            || {
+                guard(TestMeta {
+                    name: "secret_test",
+                    class: TestClass::Integration,
+                    cost: FermiCost::XS, // within budget
+                    requires: &[],
+                    secrets: &["NONEXISTENT_SECRET_FOR_TEST"],
+                });
+            },
+        );
+    }
+
+    #[test]
+    fn test_guard_skips_missing_secrets_with_explicit_cost_limit() {
+        // With explicit cost limit, missing secrets should skip, not panic.
+        with_env(
+            &[
+                ("GITHUB_ACTIONS", Some("true")),
+                ("GUNBC_TEST_MAX_COST", Some("XL")),
+                ("NONEXISTENT_SECRET_FOR_TEST", None),
+            ],
+            || {
+                let result = guard(TestMeta {
+                    name: "secret_test",
+                    class: TestClass::Integration,
+                    cost: FermiCost::XS,
+                    requires: &[],
+                    secrets: &["NONEXISTENT_SECRET_FOR_TEST"],
+                });
+                assert!(!result, "test should be skipped, not run");
+            },
+        );
+    }
+
+    #[test]
+    fn test_guard_test_with_env_skips_with_explicit_limit() {
+        // Simulates the exact CI failure scenario: live flow test with required
+        // secrets, running in GitHub Actions with an explicit cost limit.
+        with_env(
+            &[
+                ("GITHUB_ACTIONS", Some("true")),
+                ("GUNBC_TEST_MAX_COST", Some("S")),
+            ],
+            || {
+                let result = guard_test_with_env(
+                    "test_live_flow",
+                    TestClass::Integration,
+                    FermiCost::M,
+                    &["fs", "shell"],
+                    &["GCP_WIF_PROVIDER", "GCP_SECRETS_PROJECT"],
+                    &[&["GCP_SECRETS_SA", "GCP_SECRETS_IMPERSONATE_SA"]],
+                );
+                assert!(!result, "live test should be skipped with explicit cost limit");
+            },
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "missing secrets")]
+    fn test_guard_test_with_env_panics_without_explicit_limit() {
+        // Without explicit limit, missing secrets should panic in CI.
+        with_env(
+            &[
+                ("GITHUB_ACTIONS", Some("true")),
+                ("GUNBC_TEST_MAX_COST", None),
+            ],
+            || {
+                guard_test_with_env(
+                    "test_live_flow",
+                    TestClass::Integration,
+                    FermiCost::XS, // within default XL budget
+                    &[],
+                    &["DEFINITELY_MISSING_SECRET"],
+                    &[],
+                );
+            },
+        );
+    }
+
+    #[test]
+    fn test_guard_runs_within_budget() {
+        with_env(
+            &[
+                ("GITHUB_ACTIONS", None),
+                ("GUNBC_TEST_MAX_COST", Some("M")),
+            ],
+            || {
+                let result = guard(TestMeta {
+                    name: "cheap_test",
+                    class: TestClass::Hermetic,
+                    cost: FermiCost::S,
+                    requires: &[],
+                    secrets: &[],
+                });
+                assert!(result, "test within budget should run");
+            },
+        );
+    }
 }

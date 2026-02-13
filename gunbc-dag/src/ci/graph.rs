@@ -146,6 +146,25 @@ pub fn ci_workflow_permissions() -> Permissions {
     ci_workflow_config().permissions
 }
 
+/// GCP secret names required by live tests.
+///
+/// These must be configured as GitHub repository secrets. The CI workflow
+/// template passes them as environment variables so that live flow tests can
+/// authenticate via Workload Identity Federation.
+///
+/// Note: `ACTIONS_ID_TOKEN_REQUEST_URL` and `ACTIONS_ID_TOKEN_REQUEST_TOKEN`
+/// are automatically provided by GitHub Actions when the `id-token: write`
+/// permission is granted — they do not need to be set as repository secrets.
+pub fn ci_gcp_secrets() -> Vec<&'static str> {
+    vec![
+        "GCP_WIF_PROVIDER",
+        "GCP_SECRETS_PROJECT",
+        "GCP_SECRETS_PREFIX",
+        "GCP_SECRETS_SA",
+        "GCP_SECRETS_IMPERSONATE_SA",
+    ]
+}
+
 // ============================================================================
 // Graph Builder
 // ============================================================================
@@ -999,6 +1018,20 @@ mod tests {
             perms.get(&PermissionScope::Contents),
             Some(&PermissionLevel::Read)
         );
+        assert_eq!(
+            perms.get(&PermissionScope::IdToken),
+            Some(&PermissionLevel::Write)
+        );
+    }
+
+    #[test]
+    fn test_ci_gcp_secrets() {
+        let secrets = ci_gcp_secrets();
+        assert!(secrets.contains(&"GCP_WIF_PROVIDER"));
+        assert!(secrets.contains(&"GCP_SECRETS_PROJECT"));
+        assert!(secrets.contains(&"GCP_SECRETS_PREFIX"));
+        assert!(secrets.contains(&"GCP_SECRETS_SA"));
+        assert!(secrets.contains(&"GCP_SECRETS_IMPERSONATE_SA"));
     }
 
     #[test]
